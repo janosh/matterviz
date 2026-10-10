@@ -47,10 +47,8 @@ test.each([`phonon`, `electronic`] as const)(
                 : { type, energies: doses.frequencies, densities: doses.densities },
           }),
           units: () => units,
-          bands_y_axis: () => undefined,
-          dos_y_axis: () => undefined,
-          bands_padding: () => undefined,
-          dos_padding: () => undefined,
+          bands_props: () => ({}),
+          dos_props: () => ({}),
           side_by_side: () => inputs.side_by_side,
           sync_zoom: () => inputs.sync_zoom,
           base_padding: { t: 20, b: 50 },
@@ -66,6 +64,7 @@ test.each([`phonon`, `electronic`] as const)(
     if (!shared) throw new Error(`no shared range`)
     expect(sync.y_axes.map((axis) => axis.range)).toEqual([shared, shared])
     expect(sync.y_axes[1].label).toBe(``)
+    expect(sync.dos_x_axis).toEqual({})
 
     // both panels report their initial view (the shared pin); nothing to mirror yet
     sync.views[0] = { x: [0, 1], y: [...shared] }
@@ -99,6 +98,7 @@ test.each([`phonon`, `electronic`] as const)(
     inputs.side_by_side = false
     flushSync()
     expect(sync.y_axes[1]).toEqual({})
+    expect(sync.dos_x_axis).toEqual({ range: shared })
     sync.views[0] = { x: [0, 1], y: [2, 3] }
     flushSync()
     expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })

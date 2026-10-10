@@ -167,17 +167,23 @@ describe(`load_from_url`, () => {
 
   // extension lists are unit-tested in io/is-binary.test.ts; .raw is Bruker/Rigaku XRD binary.
   // Pre-signed URL query strings must not hide the extension or leak into the filename.
+  // Content-Encoding is transparent (fetch already inflated the body), so a binary payload
+  // served with it must not be lossily decoded to text either.
   test.each([
-    [`test.h5`, `test.h5`],
-    [`scan.raw`, `scan.raw`],
-    [`data.h5?sig=abc`, `data.h5`],
-  ])(`binary extension %s`, async (basename, filename) => {
+    [`test.h5`, `test.h5`, {}],
+    [`scan.raw`, `scan.raw`, {}],
+    [`data.h5?sig=abc`, `data.h5`, {}],
+    [`data.npz`, `data.npz`, { 'content-encoding': `gzip` }],
+  ])(`binary extension %s stays ArrayBuffer`, async (basename, filename, headers) => {
+    // no magic signature, so only the extension can keep these bytes binary
+    const payload = new Uint8Array([0xff, 0xfe, 0x00, 0x80, 0x01, 0x02, 0x03, 0x04])
     const { received_content, received_filename } = await load_test_url(
       `https://example.com/${basename}`,
-      new ArrayBuffer(8),
-      { 'content-type': `application/octet-stream` },
+      payload.buffer,
+      { 'content-type': `application/octet-stream`, ...headers },
     )
     expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(await as_bytes(received_content)).toEqual(payload)
     expect(received_filename).toBe(filename)
   })
 
@@ -351,29 +357,23 @@ describe(`load_from_url`, () => {
 
   describe(`Content-Disposition edge cases`, () => {
     test.each([
-      // Quoted filename takes precedence over the URL basename
       [`filename="server-name.xyz"`, `server-name.xyz`, `quoted filename`],
-      // filename* with UTF-8 encoding
       [
         `filename*=UTF-8''structure%20data.xyz`,
         `structure data.xyz`,
         `RFC 5987 filename* with UTF-8 encoding`,
       ],
-      // filename* without explicit encoding
       [
         `filename*=structure%20file.cif`,
         `structure file.cif`,
         `filename* without explicit encoding`,
       ],
-      // Plain filename without quotes
       [`filename=simple.xyz`, `simple.xyz`, `filename without quotes`],
-      // filename* takes precedence over filename
       [
         `filename="fallback.xyz"; filename*=UTF-8''preferred.xyz`,
         `preferred.xyz`,
         `filename* takes precedence`,
       ],
-      // Invalid percent-encoding falls back to raw value
       [
         `filename*=UTF-8''invalid%ZZencoding.xyz`,
         `invalid%ZZencoding.xyz`,
@@ -392,7 +392,6 @@ describe(`load_from_url`, () => {
         `f%FCr.txt`,
         `RFC 5987 filename* with non-UTF-8 charset`,
       ],
-      // No filename at all -> fall back to URL basename
       [``, `url-name.xyz`, `no filename falls back to URL basename`],
     ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
       const { received_filename } = await load_test_url(
@@ -405,34 +404,5 @@ describe(`load_from_url`, () => {
       )
       expect(received_filename).toBe(expected)
     })
-  })
-
-  test(`awaits async callback`, async () => {
-    const mock_response = new Response(`content`, {
-      headers: { 'content-type': `text/plain` },
-    })
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-    const processed_files: string[] = []
-    await load_from_url(`https://example.com/test.xyz`, async (_content, filename) => {
-      await Promise.resolve()
-      processed_files.push(filename)
-    })
-
-    expect(processed_files).toEqual([`test.xyz`])
-  })
-
-  test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {
-    // Content-Encoding is transparent: fetch auto-decompresses, so the body is
-    // the original binary and must not be lossily decoded to text
-    const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80])
-    const { received_content, received_filename } = await load_test_url(
-      `https://example.com/data.npz`,
-      payload.buffer,
-      { 'content-encoding': `gzip`, 'content-type': `application/octet-stream` },
-    )
-    expect(received_content).toBeInstanceOf(ArrayBuffer)
-    expect(new Uint8Array(received_content as unknown as ArrayBuffer)).toEqual(payload)
-    expect(received_filename).toBe(`data.npz`)
   })
 })

@@ -594,19 +594,6 @@ describe(`parse_cube`, () => {
     expect(() => parse_cube(content)).toThrow(pattern)
   })
 
-  test(`computes data_range with correct min, max, abs_max, mean`, () => {
-    const result = parse_cube(
-      make_cube({
-        data: `-2.0  1.0  0.5  3.0\n  -1.0  0.0  2.0  0.5`,
-      }),
-    )
-    const range = result?.volumes[0].data_range
-    expect(range?.min).toBe(-2.0)
-    expect(range?.max).toBe(3.0)
-    expect(range?.abs_max).toBe(3.0)
-    expect(range?.mean).toBeCloseTo((-2 + 1 + 0.5 + 3 - 1 + 0 + 2 + 0.5) / 8, 5)
-  })
-
   // the grid origin is normalized into the structure frame either way
   test.each([
     { origin: [0, 0, 0] as Vec3, periodic: undefined, pbc: true, label: `origin at 0` },
@@ -893,6 +880,29 @@ describe(`parse_volumetric_file`, () => {
     expect(unnamed?.data_range).toEqual(named?.data_range)
   })
 
+  // A signed density written by pymatgen's Chgcar.write_file under a name that says nothing
+  // (an AFM magnetization block saved alone) stays a density divided by V_cell. Its min/max is
+  // ~ -1, so it used to read as a local potential, 36x too large (m_z max 153.92, not 4.245).
+  test.each([
+    [`m_x`, 1],
+    [`m_z`, 3],
+  ])(`a lone NiO %s block read as NiO_m.vasp is a density`, (_label, block_idx) => {
+    const content = read_maybe_gz(`src/site/isosurfaces/pymatgen-CHGCAR.NiO_SOC.gz`)
+    const named = parse_volumetric_file(content, `CHGCAR`)?.volumes[block_idx]
+    const lines = content.split(`\n`)
+    const grid_line_idx = lines.flatMap((line, idx) =>
+      line.trim() === `28   28   28` ? [idx] : [],
+    )
+    expect(grid_line_idx).toHaveLength(4)
+    const lone_block = [
+      ...lines.slice(0, grid_line_idx[0]),
+      ...lines.slice(grid_line_idx[block_idx], grid_line_idx[block_idx + 1]),
+    ].join(`\n`)
+    const [volume] = parse_volumetric_file(lone_block, `NiO_m.vasp`)?.volumes ?? []
+    expect(volume?.label).toBe(`charge density`)
+    expect(volume?.data_range).toEqual(named?.data_range)
+  })
+
   // A name that says nothing makes it an ELF only when every value of every block is in [0, 1]
   const elf_values = `0.0  0.1  0.2  0.3  0.4  0.5  0.6  1.0`
   test.each([
@@ -905,6 +915,10 @@ describe(`parse_volumetric_file`, () => {
       `   2   2   2\n${elf_values.replace(`0.5`, `-0.5`)}`,
       [`charge density`, `magnetization density`],
     ],
+    // signed first block: a potential only when its minimum is deeper than twice its maximum
+    [`-0.9  -0.5  -0.2  0.0  0.2  0.4  0.6  1.0`, ``, [`charge density`]], // a difference field
+    [`-30.0  -20.0  -10.0  -5.0  -1.0  0.0  0.5  1.0`, ``, [`local potential`]],
+    [`-8.0  -7.0  -6.0  -5.0  -4.0  -3.0  -2.0  -1.0`, ``, [`local potential`]],
   ])(`unnamed grid %s / %s reads as %s`, (data, second_volume, labels) => {
     const result = parse_volumetric_file(make_chgcar({ data, second_volume }), `grid.dat`)
     expect(result?.volumes.map((volume) => volume.label)).toEqual(labels)

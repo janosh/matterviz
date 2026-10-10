@@ -51,8 +51,8 @@ export const next_event_id = (model: AnyModel, key: string): number => {
 // Set a trait and flush it to Python, but only when the value actually changed
 // (guards against echo loops when the same value just arrived from Python).
 export const set_model = (model: AnyModel, key: string, value: unknown): void => {
-  const next = value === undefined ? null : value
-  if (equal(get_prop(model, key), next)) return // equal() treats undefined as null
+  const next = value ?? null
+  if (equal(get_prop(model, key), next)) return
   model.set(key, next)
   model.save_changes()
 }
@@ -191,11 +191,8 @@ export function reactive_widget(
   // a prop may have several deps), so one listener per trait recomputes them all.
   const specs_by_dep = new Map<string, DrivenProp[]>()
   for (const spec of driven) {
-    for (const dep of spec.deps) {
-      const list = specs_by_dep.get(dep) ?? []
-      list.push(spec)
-      specs_by_dep.set(dep, list)
-    }
+    for (const dep of spec.deps)
+      specs_by_dep.set(dep, [...(specs_by_dep.get(dep) ?? []), spec])
   }
 
   const unsubs: (() => void)[] = []
@@ -208,21 +205,18 @@ export function reactive_widget(
   }
 
   // JS -> Python (one $effect per writeback prop so each tracks only its own key)
-  const writeback_specs = driven.filter((spec) => spec.writeback)
-  if (writeback_specs.length > 0) {
-    const stop = $effect.root(() => {
-      for (const spec of writeback_specs) {
-        $effect(() => {
-          const value = $state.snapshot(props[spec.prop])
-          // Only write genuine component mutations: skip values still matching the
-          // model-derived value (the mount seed/fallback, or a Python clear/drive
-          // echo), so an absent/None trait doesn't save_changes() before interaction.
-          if (!equal(value, value_of(spec))) set_model(model, spec.prop, value)
-        })
-      }
-    })
-    unsubs.push(stop)
-  }
+  const stop_writebacks = $effect.root(() => {
+    for (const spec of driven.filter((driven_spec) => driven_spec.writeback)) {
+      $effect(() => {
+        const value = $state.snapshot(props[spec.prop])
+        // Only write genuine component mutations: skip values still matching the
+        // model-derived value (the mount seed/fallback, or a Python clear/drive
+        // echo), so an absent/None trait doesn't save_changes() before interaction.
+        if (!equal(value, value_of(spec))) set_model(model, spec.prop, value)
+      })
+    }
+  })
+  unsubs.push(stop_writebacks)
 
   return { props, dispose: () => unsubs.forEach((callback) => callback()) }
 }

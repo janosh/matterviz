@@ -2,7 +2,7 @@
   import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { format_num, format_tick_values } from '#lib/labels.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { in_range, type Vec2 } from '#lib/math.js'
   import {
     color_ramp_scale,
     resolve_color_ramp,
@@ -136,13 +136,11 @@
     const [lower, upper] = tick_domain
     if (n_ticks <= 0) return []
     if (n_ticks === 1) return [lower]
-    if (type_name === `log`) {
-      const values = generate_log_ticks(lower, upper, n_ticks)
-      return lower > upper ? values.toReversed() : values
-    }
-    if (type_name === `arcsinh`) {
-      const threshold = get_arcsinh_threshold(scale_type)
-      const values = generate_arcsinh_ticks(lower, upper, threshold, n_ticks)
+    if (type_name === `log` || type_name === `arcsinh`) {
+      const values =
+        type_name === `log`
+          ? generate_log_ticks(lower, upper, n_ticks)
+          : generate_arcsinh_ticks(lower, upper, get_arcsinh_threshold(scale_type), n_ticks)
       return lower > upper ? values.toReversed() : values
     }
     if (!snap_ticks) {
@@ -188,8 +186,7 @@
     } else {
       // Integer formats need integer positions; explicit tick arrays keep their values.
       if (!Array.isArray(tick_labels) && tick_format.endsWith(`d`)) {
-        const [lower, upper] = tick_domain.toSorted((left, right) => left - right)
-        values = ticks.map(Math.round).filter((value) => value >= lower && value <= upper)
+        values = ticks.map(Math.round).filter((value) => in_range(value, tick_domain))
       }
       labels = values.map((value) => format_num(value, tick_format))
     }

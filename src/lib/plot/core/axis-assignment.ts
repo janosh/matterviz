@@ -1,4 +1,4 @@
-import type { ScaleType } from './types'
+import type { ScaleType } from '#lib/plot/core/types.js'
 
 type AxisSlot = `y` | `y2`
 

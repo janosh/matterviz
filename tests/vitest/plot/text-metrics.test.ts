@@ -10,7 +10,8 @@ import {
   resolve_font_spec,
   wrap_text_paragraph,
 } from '#lib/plot/core/text-metrics.js'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mock_canvas_context } from '../setup'
 
 const TEST_FONT: FontSpec = {
   font_family: `"Inter", sans-serif`,
@@ -28,18 +29,10 @@ const mock_canvas = () => {
     actualBoundingBoxAscent: 9,
     actualBoundingBoxDescent: 3,
   }))
-  const context = {
-    font: ``,
-    measureText: measure_text,
-  } as unknown as CanvasRenderingContext2D
-  const get_context = vi
-    .spyOn(HTMLCanvasElement.prototype, `getContext`)
-    .mockReturnValue(context)
-  return { context, get_context, measure_text }
+  return { context: mock_canvas_context({ measureText: measure_text }), measure_text }
 }
 
 describe(`text metrics`, () => {
-  beforeEach(() => clear_text_metrics_cache())
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()

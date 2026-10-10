@@ -78,11 +78,9 @@ export const decompress_host_buffer = async (
 export const stream_file_to_buffer = async (file_path: string): Promise<ArrayBuffer> => {
   const uri = vscode.Uri.file(file_path)
 
-  // Get file size and validate
   let total_size: number
   try {
-    const stats = await vscode.workspace.fs.stat(uri)
-    total_size = stats.size
+    total_size = (await vscode.workspace.fs.stat(uri)).size
   } catch (error) {
     throw new Error(`Failed to get file stats: ${error}`, { cause: error })
   }
@@ -96,11 +94,9 @@ export const stream_file_to_buffer = async (file_path: string): Promise<ArrayBuf
     console.warn(`Large file detected: ${format_bytes(total_size)}. Processing may be slow.`)
   }
 
-  const uint8array = await vscode.workspace.fs.readFile(uri)
-
   // Keep the return type a true ArrayBuffer. This intentionally excludes
   // SharedArrayBuffer-backed or partial views, which are copied into an owned buffer.
-  return to_array_buffer(uint8array)
+  return to_array_buffer(await vscode.workspace.fs.readFile(uri))
 }
 
 // Text trajectories stay bytes too: open_trajectory decodes them in line-aligned chunks, so a

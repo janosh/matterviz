@@ -5,7 +5,7 @@ import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisRoute } from '#lib/synthesis-planning/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, trigger_resize_observer } from '../setup'
+import { bind_props, doc_query, set_select, trigger_resize_observer } from '../setup'
 import { load_json } from '../test-fixtures'
 
 const base = plan_synthesis({
@@ -40,8 +40,7 @@ test(`shortlisting is limited to four, independent of the viewed route, and surv
   expect(comparison.style.getPropertyValue(`--max-cell-lines`)).toBe(`3`)
   const select = doc_query<HTMLSelectElement>(`select`)
   for (const route of routes.slice(1, 4)) {
-    select.value = route.id
-    select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    set_select(select, route.id)
     await tick()
   }
   expect(state.shortlist_ids).toEqual(

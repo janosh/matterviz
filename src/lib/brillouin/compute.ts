@@ -90,7 +90,8 @@ class VertexDeduplicator {
     this.cell_size = cell_size
   }
 
-  has_duplicate(vertex: Vec3): boolean {
+  // Adds `vertex` unless a stored one lies within TOL per axis; returns whether it was new
+  insert(vertex: Vec3): boolean {
     const [base_x, base_y, base_z] = vertex.map((val) => Math.floor(val / this.cell_size))
 
     for (let delta_x = -1; delta_x <= 1; delta_x++) {
@@ -107,20 +108,21 @@ class VertexDeduplicator {
                 Math.abs(vector_3 - vertex[2]) < TOL,
             )
           )
-            return true
+            return false
         }
       }
     }
-    return false
-  }
-
-  add(vertex: Vec3): void {
-    const key = vertex.map((vert) => Math.floor(vert / this.cell_size)).join(`,`)
+    const key = `${base_x},${base_y},${base_z}`
     const cell = this.grid.get(key)
     if (cell) cell.push(vertex)
     else this.grid.set(key, [vertex])
+    return true
   }
 }
+
+// Order-independent key of the edge between two vertex indices
+const edge_key = (idx_a: number, idx_b: number): string =>
+  idx_a < idx_b ? `${idx_a},${idx_b}` : `${idx_b},${idx_a}`
 
 // Vertices of the nth-order zone: every three-plane intersection that lies beyond fewer
 // than `order` Bragg planes. Cramer's rule with cached pairwise cross products,
@@ -189,10 +191,7 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
         if (beyond_count >= order) continue
 
         const vertex: Vec3 = [vector_x, vector_y, vector_z]
-        if (!dedup.has_duplicate(vertex)) {
-          vertices.push(vertex)
-          dedup.add(vertex)
-        }
+        if (dedup.insert(vertex)) vertices.push(vertex)
       }
     }
   }
@@ -260,10 +259,13 @@ export function generate_bz_vertices(
   )
 }
 
-// Compute polyhedron volume via divergence theorem (sum of signed tetrahedral volumes).
-// Faces always come from compute_convex_hull, so each is a valid triangle.
-function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
-  return Math.abs(
+// Hull with edges as vertex pairs and its volume via the divergence theorem (sum of signed
+// tetrahedral volumes). Faces always come from compute_convex_hull, so each is a valid triangle.
+const hull_geometry = ({ vertices, faces, edges }: ConvexHullData): IrreducibleBZData => ({
+  vertices,
+  faces,
+  edges: edges.map(([index_1, index_2]) => [vertices[index_1], vertices[index_2]]),
+  volume: Math.abs(
     faces.reduce((sum, face) => {
       const [vector_0, vector_1, vector_2] = face.slice(0, 3).map((idx) => vertices[idx])
       const area_normal = math.scale(
@@ -272,8 +274,8 @@ function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
       )
       return sum + math.dot(vector_0, area_normal) / 3
     }, 0),
-  )
-}
+  ),
+})
 
 // Build convex hull from vertices and extract topology. Runs three's quickhull on the f64
 // points directly (ConvexGeometry would round them through a Float32Array, costing ~1e-7
@@ -309,12 +311,7 @@ export function compute_convex_hull(
 
   // Merge near-coincident inputs (IBZ clipping can produce them) before quickhull sees them
   const dedup = new VertexDeduplicator(TOL * 10)
-  const distinct: Vec3[] = []
-  for (const vertex of vertices) {
-    if (dedup.has_duplicate(vertex)) continue
-    dedup.add(vertex)
-    distinct.push(vertex)
-  }
+  const distinct = vertices.filter((vertex) => dedup.insert(vertex))
 
   // Rank checks belong after dedup: counting raw vertices let 4 coincident points through as a
   // silently empty hull, and 4 collinear ones through to a bare three.js TypeError from inside
@@ -367,11 +364,7 @@ export function compute_convex_hull(
   const edge_to_faces = new Map<string, number[]>()
   faces.forEach((face, face_idx) => {
     face.forEach((from_vertex_idx, idx) => {
-      const to_vertex_idx = face[(idx + 1) % face.length]
-      const key =
-        from_vertex_idx < to_vertex_idx
-          ? `${from_vertex_idx},${to_vertex_idx}`
-          : `${to_vertex_idx},${from_vertex_idx}`
+      const key = edge_key(from_vertex_idx, face[(idx + 1) % face.length])
       const adj = edge_to_faces.get(key)
       if (adj) adj.push(face_idx)
       else edge_to_faces.set(key, [face_idx])
@@ -410,18 +403,10 @@ export function compute_brillouin_zone(
     throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)
   }
 
-  const hull = compute_convex_hull(vertices, edge_sharp_angle_deg)
-
   return {
     order: Math.min(order, 3),
-    vertices: hull.vertices,
-    faces: hull.faces,
-    edges: hull.edges.map(([index_1, index_2]) => [
-      hull.vertices[index_1],
-      hull.vertices[index_2],
-    ]),
+    ...hull_geometry(compute_convex_hull(vertices, edge_sharp_angle_deg)),
     k_lattice,
-    volume: compute_hull_volume(hull.vertices, hull.faces),
   }
 }
 
@@ -527,10 +512,8 @@ function clip_polyhedron_by_plane(
 
   const edge_set = new Set<string>()
   for (const face of faces) {
-    for (let idx = 0; idx < face.length; idx++) {
-      const index_1 = face[idx]
-      const index_2 = face[(idx + 1) % face.length]
-      edge_set.add(index_1 < index_2 ? `${index_1},${index_2}` : `${index_2},${index_1}`)
+    for (const [idx, vertex_idx] of face.entries()) {
+      edge_set.add(edge_key(vertex_idx, face[(idx + 1) % face.length]))
     }
   }
 
@@ -556,22 +539,6 @@ function clip_polyhedron_by_plane(
   }
 
   return result
-}
-
-// Hull of a clipped vertex set. Fewer than 4 vertices (or a degenerate hull) means the clip
-// plane did not cut the polyhedron the way a symmetry plane must; a skipped plane would
-// yield a wrong IBZ volume and multiplicity, so this throws instead.
-function clipped_hull(
-  vertices: Vec3[],
-  edge_sharp_angle_deg: number,
-  plane: ClippingPlane,
-): ConvexHullData {
-  if (vertices.length < 4) {
-    throw new Error(
-      `IBZ clipping by plane n=[${plane.normal.map((val) => format_num(val)).join(`, `)}] left ${vertices.length} vertices (need ≥ 4 for a polyhedron)`,
-    )
-  }
-  return compute_convex_hull(vertices, edge_sharp_angle_deg)
 }
 
 // Compute the irreducible Brillouin zone by clipping the full BZ with symmetry planes.
@@ -616,20 +583,18 @@ export function compute_irreducible_bz(
     // n·x ≤ 0 always contains the reference direction) so clip directly — flipping a
     // plane would select the wrong half-space and break the fundamental-domain property
     const clipped = clip_polyhedron_by_plane(current_vertices, current_faces, plane)
-    const hull = clipped_hull(clipped, edge_sharp_angle_deg, plane)
+    // Fewer than 4 vertices (or a degenerate hull) means the plane did not cut the polyhedron
+    // the way a symmetry plane must; skipping it would yield a wrong IBZ volume and
+    // multiplicity, so this throws instead
+    if (clipped.length < 4) {
+      throw new Error(
+        `IBZ clipping by plane n=[${plane.normal.map((val) => format_num(val)).join(`, `)}] left ${clipped.length} vertices (need ≥ 4 for a polyhedron)`,
+      )
+    }
+    const hull = compute_convex_hull(clipped, edge_sharp_angle_deg)
     current_vertices = hull.vertices
     current_faces = hull.faces
   }
 
-  const hull = compute_convex_hull(current_vertices, edge_sharp_angle_deg)
-
-  return {
-    vertices: hull.vertices,
-    faces: hull.faces,
-    edges: hull.edges.map(([index_1, index_2]) => [
-      hull.vertices[index_1],
-      hull.vertices[index_2],
-    ]),
-    volume: compute_hull_volume(hull.vertices, hull.faces),
-  }
+  return hull_geometry(compute_convex_hull(current_vertices, edge_sharp_angle_deg))
 }

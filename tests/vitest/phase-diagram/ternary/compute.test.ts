@@ -92,7 +92,7 @@ describe(`prepare_diagram`, () => {
     [[...toy_entries, make_phase({ Rb: 1 }, 0)], toy_elements, /outside the Li-Na-K system/],
     [[{ composition: {}, energy: 0 }], toy_elements, /no recognizable elements/],
     [
-      // absolute DFT energies for Li and Na, no K entry: a 0 eV K corner would be meaningless
+      // absolute computed energies for Li and Na, no K entry: a 0 eV K corner would be meaningless
       [
         make_phase({ Li: 1 }, -1.9),
         make_phase({ Na: 1 }, -1.3),
@@ -112,17 +112,28 @@ describe(`prepare_diagram`, () => {
 })
 
 describe(`E_form-only entries`, () => {
-  // no `energy`: E_form is all the data carries; the lowest-E_form unary is the reference,
-  // whatever the entry order, and a polymorph sits at E_form + E_ref = 0.05 + 0 exactly
-  test.each([`auto`, `static`] as const)(`%s mode uses e_form_per_atom as dG_f`, (mode) => {
-    const entries = [
-      { composition: { Li: 1 }, e_form_per_atom: 0.05, entry_id: `Li-high` },
-      { composition: { Li: 1 }, e_form_per_atom: 0, entry_id: `Li` },
-      { composition: { Na: 1 }, e_form_per_atom: 0, entry_id: `Na` },
-      { composition: { K: 1 }, e_form_per_atom: 0, entry_id: `K` },
-      { composition: { Li: 1, Na: 1 }, e_form_per_atom: -0.5, entry_id: `LiNa` },
-      { composition: { Na: 1, K: 1 }, e_form_per_atom: -0.3, entry_id: `NaK` },
-    ] as PhaseData[]
+  // no `energy` (or a 0 eV placeholder): E_form is all the data carries; the lowest-E_form
+  // unary is the reference, whatever the entry order, and a polymorph sits at E_form + E_ref =
+  // 0.05 + 0 exactly. The placeholder used to be read as an absolute energy: dG_f = 0 for all.
+  test.each([
+    [`auto`, undefined],
+    [`static`, undefined],
+    [`auto`, 0],
+    [`static`, 0],
+  ] as const)(`%s mode uses e_form_per_atom as dG_f (energy: %s)`, (mode, energy) => {
+    const entries = (
+      [
+        [{ Li: 1 }, 0.05, `Li-high`],
+        [{ Li: 1 }, 0, `Li`],
+        [{ Na: 1 }, 0, `Na`],
+        [{ K: 1 }, 0, `K`],
+        [{ Li: 1, Na: 1 }, -0.5, `LiNa`],
+        [{ Na: 1, K: 1 }, -0.3, `NaK`],
+      ] as const
+    ).map(
+      ([composition, e_form_per_atom, entry_id]) =>
+        ({ composition, e_form_per_atom, entry_id, energy }) as PhaseData,
+    )
     const model = prepare_diagram(entries, { elements: toy_elements, free_energy: { mode } })
     const section = compute_section(model, 500)
     expect(Array.from(section.dg_form)).toEqual([0.05, 0, 0, 0, -0.5, -0.3])

@@ -8,8 +8,10 @@
   import { format_num, plural } from '#lib/labels.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
+  import { to_error } from '#lib/utils.js'
   import { format_plan_text } from './agent'
-  import { format_equation_html, format_mev } from './format'
+  import { format_equation_html } from './format'
+  import { format_mev } from './format-mev'
   import { prepare_phase_set, resolve_phase } from './phases'
   import { plan_synthesis_async } from './plan-synthesis-async.svelte'
   import { build_route_recipe } from './recipe'
@@ -176,9 +178,7 @@
         if (!controller.signal.aborted) worker_plan = result
       })
       .catch((err: unknown) => {
-        if (!controller.signal.aborted) {
-          planning_error = err instanceof Error ? err.message : String(err)
-        }
+        if (!controller.signal.aborted) planning_error = to_error(err).message
       })
       .finally(() => {
         if (controller.signal.aborted) return
@@ -457,22 +457,11 @@
         </label>
       </ToolbarMenu>
       <span class="copy">
-        <button
-          type="button"
-          onclick={() => copy(`text`)}
-          disabled={!computed_plan}
-          title="Copy the agent-style text summary"
-        >
-          {copied.value === `text` ? `Copied` : `Copy summary`}
-        </button>
-        <button
-          type="button"
-          onclick={() => copy(`json`)}
-          disabled={!computed_plan}
-          title="Copy the full plan as JSON"
-        >
-          {copied.value === `json` ? `Copied` : `Copy JSON`}
-        </button>
+        {#each [[`text`, `Copy summary`, `Copy the agent-style text summary`], [`json`, `Copy JSON`, `Copy the full plan as JSON`]] as const as [kind, label, title] (kind)}
+          <button type="button" onclick={() => copy(kind)} disabled={!computed_plan} {title}>
+            {copied.value === kind ? `Copied` : label}
+          </button>
+        {/each}
       </span>
     </section>
   {/if}

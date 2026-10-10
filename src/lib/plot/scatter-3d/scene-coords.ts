@@ -1,3 +1,6 @@
+// Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
+// reference lines/planes.
+
 import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
 import {
@@ -6,19 +9,10 @@ import {
   nice_range_from_extent,
 } from '#lib/plot/core/scales.js'
 import { type Camera, type Object3D, Plane, Vector3 } from 'three/webgpu'
-// Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
-// reference lines/planes.
-
 import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
 
-interface Scene3DParams {
-  scene_x: number
-  scene_y: number
-  scene_z: number
-  x_range: Vec2
-  y_range: Vec2
-  z_range: Vec2
-}
+// Scene box: x/y are horizontal (2:2), z is vertical (1)
+export const SCENE_SIZE: Vec3 = [10, 10, 5]
 
 // Apply span constraints or use full range as fallback
 export const span_or = (
@@ -42,13 +36,13 @@ export function normalize_to_scene(
 // - user Y → Three.js Z (depth/horizontal)
 // - user Z → Three.js Y (vertical)
 export function create_to_threejs(
-  params: Scene3DParams,
-): (user_x: number, user_y: number, user_z: number) => { x: number; y: number; z: number } {
-  const { scene_x, scene_y, scene_z, x_range, y_range, z_range } = params
+  ranges: Record<`x` | `y` | `z`, Vec2>,
+  [scene_x, scene_y, scene_z]: Vec3 = SCENE_SIZE,
+): (user_x: number, user_y: number, user_z: number) => Point3D {
   return (user_x: number, user_y: number, user_z: number) => ({
-    x: normalize_to_scene(user_x, x_range, scene_x),
-    y: normalize_to_scene(user_z, z_range, scene_z), // z → Y
-    z: normalize_to_scene(user_y, y_range, scene_y), // y → Z
+    x: normalize_to_scene(user_x, ranges.x, scene_x),
+    y: normalize_to_scene(user_z, ranges.z, scene_z), // z → Y
+    z: normalize_to_scene(user_y, ranges.y, scene_y), // y → Z
   })
 }
 
@@ -155,15 +149,12 @@ export function get_3d_auto_ranges(
     if (!srs || srs.visible === false) continue
     for (const axis of [`x`, `y`, `z`] as const) accumulate_extent(extents[axis], srs[axis])
   }
+  // min_positive also lands in the extents but only matters on log axes, unused here
   for (const axis of [`x`, `y`, `z`] as const) {
-    const extent = extents[axis]
-    for (const point of surface_samples) {
-      const value = point[axis]
-      if (typeof value !== `number` || !Number.isFinite(value)) continue
-      extent.n_finite++
-      if (extent.min === undefined || value < extent.min) extent.min = value
-      if (extent.max === undefined || value > extent.max) extent.max = value
-    }
+    accumulate_extent(
+      extents[axis],
+      surface_samples.map((point) => point[axis]),
+    )
   }
   const auto_range = (extent: RunningExtent): Vec2 =>
     nice_range_from_extent(extent, [null, null], `linear`, 0.05)

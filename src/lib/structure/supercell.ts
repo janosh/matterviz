@@ -12,27 +12,19 @@ const replicate_bonds_for_supercell = (
   n_sites: number,
   scaling_factors: Vec3,
 ): StructureBond[] => {
-  const [scale_x, scale_y, scale_z] = scaling_factors
+  const [scale_x, scale_y] = scaling_factors
   const replicated: StructureBond[] = []
-  const site_offset = ([cell_x, cell_y, cell_z]: Vec3): number =>
+  const site_offset = ([cell_x, cell_y, cell_z]: number[]): number =>
     (cell_z * scale_x * scale_y + cell_y * scale_x + cell_x) * n_sites
   for (const [source_cell_idx, source_cell] of generate_lattice_points(
     scaling_factors,
   ).entries()) {
     const source_offset = source_cell_idx * n_sites
     for (const { site_idx_1, site_idx_2, order, cell_shift = [0, 0, 0] } of bonds) {
-      const target_raw: Vec3 = [
-        source_cell[0] + cell_shift[0],
-        source_cell[1] + cell_shift[1],
-        source_cell[2] + cell_shift[2],
-      ]
-      const target_cell: Vec3 = [
-        mod(target_raw[0], scale_x),
-        mod(target_raw[1], scale_y),
-        mod(target_raw[2], scale_z),
-      ]
-      const supercell_shift = target_raw.map((val, idx) =>
-        Math.floor(val / scaling_factors[idx]),
+      const target_raw = math.add(source_cell, cell_shift)
+      const target_cell = target_raw.map((val, axis) => mod(val, scaling_factors[axis]))
+      const supercell_shift = target_raw.map((val, axis) =>
+        Math.floor(val / scaling_factors[axis]),
       ) as Vec3
       const target_offset = site_offset(target_cell)
       replicated.push(

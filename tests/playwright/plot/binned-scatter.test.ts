@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { IS_CI, svg_rect } from '../helpers'
 
 const CI_MULTIPLIER = IS_CI ? 5 : 1
 const LOAD_BUDGET_MS = 500 * CI_MULTIPLIER
@@ -8,21 +8,13 @@ const CLICK_BUDGET_MS = 500 * CI_MULTIPLIER
 // Shared deterministic point cloud; spreads y values without RNG overhead.
 const PSEUDO_RANDOM_MULTIPLIER = 48_271
 
-type PlotArea = { left: number; top: number; width: number; height: number }
-
 async function wait_for_ready(page: Page) {
   const status = page.locator(`[data-testid="binned-scatter-status"]`)
   await expect(status).toHaveAttribute(`data-ready`, `true`, { timeout: 15_000 })
   return status
 }
 
-const get_plot_area = (page: Page): Promise<PlotArea> =>
-  page.locator(`clipPath rect`).evaluate((rect) => ({
-    left: Number(rect.getAttribute(`x`)),
-    top: Number(rect.getAttribute(`y`)),
-    width: Number(rect.getAttribute(`width`)),
-    height: Number(rect.getAttribute(`height`)),
-  }))
+const get_plot_area = (page: Page) => svg_rect(page.locator(`clipPath rect`))
 
 async function measure_plot_interaction(page: Page, click_target: `center` | `known-point`) {
   const known_point_bounds = click_target === `known-point` ? await get_plot_area(page) : null
@@ -50,8 +42,8 @@ async function measure_plot_interaction(page: Page, click_target: `center` | `kn
         if (!area) throw new Error(`Binned scatter plot area not found`)
         const data_x = 0.5
         const data_y = ((5000 * pseudo_random_multiplier) % 1_000_000) / 1_000_000
-        clientX = rect.left + area.left + ((data_x + 0.05) / 1.1) * area.width
-        clientY = rect.top + area.top + (1 - (data_y + 0.05) / 1.1) * area.height
+        clientX = rect.left + area.x + ((data_x + 0.05) / 1.1) * area.width
+        clientY = rect.top + area.y + (1 - (data_y + 0.05) / 1.1) * area.height
       }
 
       const click_start = performance.now()
@@ -130,8 +122,8 @@ test(`opens singleton density bins without a slow data scan`, async ({ page }) =
     )
     if (!plot) throw new Error(`Binned scatter plot not found`)
     const rect = plot.getBoundingClientRect()
-    const clientX = rect.left + area.left + 0.9 * area.width
-    const clientY = rect.top + area.top + 0.1 * area.height
+    const clientX = rect.left + area.x + 0.9 * area.width
+    const clientY = rect.top + area.y + 0.1 * area.height
     const start = performance.now()
     plot.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX, clientY }))
     await Promise.resolve()

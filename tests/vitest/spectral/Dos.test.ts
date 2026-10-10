@@ -18,6 +18,7 @@ import {
   expect_plot_controls,
   mount_sized,
   plot_svg,
+  translate_of,
 } from '../setup'
 import { convert_frequencies } from '#lib/spectral/frequency-units.js'
 
@@ -193,6 +194,31 @@ describe(`Dos component`, () => {
     for (const axis_tick of plot.querySelectorAll(`.tick`)) {
       expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
     }
+  })
+
+  // A phonon DOS on a -1…20 THz grid with its tallest peak at -0.8 THz (an imaginary mode,
+  // as a Bands plot of the same mode shows down to -1.2 THz): only 0.27% of |frequency| is
+  // negative, under the noise threshold, so the axis used to clamp to [0, 20] and cut it off
+  it.each([
+    [`an imaginary-mode peak below -0.5 THz`, 2, 1 / 21],
+    [`a negligible tail below -0.5 THz`, 1e-6, 0],
+  ])(`frequency axis with %s starts at the right place`, async (_label, peak, zero_at) => {
+    const frequencies = Array.from({ length: 211 }, (_, idx) => -1 + idx / 10)
+    const densities = frequencies.map(
+      (freq) =>
+        peak * Math.exp(-(((freq + 0.8) / 0.15) ** 2)) + Math.exp(-(((freq - 8) / 4) ** 2)),
+    )
+    const plot = await mount_sized(
+      Dos,
+      { doses: { '': { type: `phonon`, frequencies, densities } } },
+      { selector: `.scatter` },
+    )
+    // relative position of the 0 THz tick: 1/21 of the way along [-1, 20], 0 if clamped
+    const zero_tick = [...plot.querySelectorAll(`.x-axis .tick`)].find(
+      (element) => element.textContent?.trim() === `0`,
+    )
+    const { x: clip_x, width: clip_width } = clip_rect(plot)
+    expect((translate_of(zero_tick).x - clip_x) / clip_width).toBeCloseTo(zero_at, 3)
   })
 
   // both axes carry Dos' own ranges (density from zero, the padded frequency range), which
@@ -389,27 +415,13 @@ describe(`format_dos_tooltip`, () => {
 })
 
 // valid ranges pass through, invalid ones (min > max, equal, non-finite) fall back to [0, 1]
+// oxfmt-ignore
 it.each<[Vec2, Vec2]>([
-  [
-    [0, 1],
-    [0, 1],
-  ],
-  [
-    [-5, 5],
-    [-5, 5],
-  ],
-  [
-    [1, 0],
-    [0, 1],
-  ],
-  [
-    [0, 0],
-    [0, 1],
-  ],
-  [
-    [NaN, 1],
-    [0, 1],
-  ],
+  [[0, 1], [0, 1]],
+  [[-5, 5], [-5, 5]],
+  [[1, 0], [0, 1]],
+  [[0, 0], [0, 1]],
+  [[NaN, 1], [0, 1]],
 ])(`validate_sigma_range(%j) returns %j`, (input, expected) => {
   expect(validate_sigma_range(input)).toEqual(expected)
 })

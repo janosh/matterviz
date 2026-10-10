@@ -9,6 +9,6 @@
 <TooltipValue
   label={segment.element}
   value={segment.amount}
-  unit={segment.amount === 1 ? 'atom' : 'atoms'}
+  unit={segment.amount === 1 ? `atom` : `atoms`}
 />
-(<TooltipValue value={format_num(segment.fraction, '.1~%')} />)
+(<TooltipValue value={format_num(segment.fraction, `.1~%`)} />)

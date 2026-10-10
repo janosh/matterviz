@@ -61,10 +61,6 @@
   const set_pressure = (gas: GasSpecies, pressure: number): void => {
     pressures = { ...pressures, [gas]: pressure }
   }
-
-  function set_pressure_direct(gas: GasSpecies, value: number): void {
-    set_pressure(gas, clamp(value, 10 ** LOG_P_MIN, 10 ** LOG_P_MAX))
-  }
 </script>
 
 {#if enabled_gases.length > 0}
@@ -91,7 +87,8 @@
             value={format_pressure(pressure)}
             onchange={(evt) => {
               const val = Number(evt.currentTarget.value)
-              if (Number.isFinite(val) && val > 0) set_pressure_direct(gas, val)
+              if (Number.isFinite(val) && val > 0)
+                set_pressure(gas, clamp(val, 10 ** LOG_P_MIN, 10 ** LOG_P_MAX))
               else evt.currentTarget.value = format_pressure(pressure)
             }}
             aria-label="{gas} pressure (bar)"

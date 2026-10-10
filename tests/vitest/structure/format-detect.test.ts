@@ -18,20 +18,18 @@ Atoms # atomic
 `
 
 describe(`LAMMPS content sniffing`, () => {
+  // oxfmt-ignore
   test.each([
-    [`a real data file`, lammps_data, true],
-    [`the same file with CRLF endings`, lammps_data.replaceAll(`\n`, `\r\n`), true],
-    [`a count line carrying a comment`, `12 atoms # note\nAtoms\n`, true],
-    [`a header with no Atoms section`, `256 atoms\n`, false],
-    [`an Atoms section with no count`, `Atoms\n1 1 0 0 0\n`, false],
-    [`unrelated text`, `just some prose about atoms\n`, false],
-  ])(`recognises %s`, (_case, content, expected) => {
-    expect(is_lammps_data_content(content)).toBe(expected)
-  })
-
-  test(`recognises a dump file`, () => {
-    expect(is_lammps_dump_content(`ITEM: TIMESTEP\n0\n`)).toBe(true)
-    expect(is_lammps_dump_content(`no items here\n`)).toBe(false)
+    [`a real data file`, is_lammps_data_content, lammps_data, true],
+    [`the same file with CRLF endings`, is_lammps_data_content, lammps_data.replaceAll(`\n`, `\r\n`), true],
+    [`a count line carrying a comment`, is_lammps_data_content, `12 atoms # note\nAtoms\n`, true],
+    [`a header with no Atoms section`, is_lammps_data_content, `256 atoms\n`, false],
+    [`an Atoms section with no count`, is_lammps_data_content, `Atoms\n1 1 0 0 0\n`, false],
+    [`unrelated text`, is_lammps_data_content, `just some prose about atoms\n`, false],
+    [`a dump file`, is_lammps_dump_content, `ITEM: TIMESTEP\n0\n`, true],
+    [`text without dump items`, is_lammps_dump_content, `no items here\n`, false],
+  ])(`recognises %s`, (_case, sniff, content, expected) => {
+    expect(sniff(content)).toBe(expected)
   })
 })
 

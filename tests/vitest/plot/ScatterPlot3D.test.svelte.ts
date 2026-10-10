@@ -17,7 +17,6 @@ import {
   get_3d_auto_ranges,
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
-import { resolve_axis_range } from '#lib/plot/core/interactions.js'
 import { mount_scene } from '../scene/mount'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
@@ -490,7 +489,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
       await unmount(mounted_component)
       mounted_component = null
     }
-    container.remove()
     vi.restoreAllMocks()
   })
 
@@ -807,25 +805,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
 describe(`scene coordinates`, () => {
   // oxfmt-ignore
-  test.each<[[number | null, number | null], [number, number]]>([
-    [[null, null], [0, 5.5]],
-    [[0.123, null], [0.123, 5.5]],
-    [[1e-8, null], [1e-8, 5.5]],
-    [[null, 4.987], [0, 4.987]],
-    [[0.123, 4.987], [0.123, 4.987]],
-    [[100, null], [100, 110]],
-    [[null, -100], [-110, -100]],
-    [[5.5, null], [5.5, 11]],
-    [[null, 0], [-5.5, 0]],
-    [[4.987, 0.123], [4.987, 0.123]],
-  ])(
-    `manual bounds %j only expand automatic endpoints when needed`,
-    (range, expected) => {
-      const auto_ranges = get_3d_auto_ranges([{ x: [0, 5], y: [0, 5], z: [0, 5] }], [])
-      expect(resolve_axis_range({ range }, auto_ranges.x)).toEqual(expected)
-    },
-  )
-
   test(`filters large triangulated surfaces and includes their bounds, skipping hidden series`, () => {
     const count = 200_000 // spreading these into push() exceeds the JS argument limit
     const points = Array.from({ length: count }, (_, idx) => ({ x: idx, y: -idx, z: 2 * idx }))

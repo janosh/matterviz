@@ -2,7 +2,6 @@
   import type { Vec2 } from '#lib/math.js'
   import { BinnedScatterPlot, type DensePointSeries } from '#lib/plot/index.js'
   import { onMount } from 'svelte'
-  import { SvelteSet } from 'svelte/reactivity'
 
   type TestMode = `density` | `points` | `singleton`
 
@@ -67,7 +66,7 @@
     timed_out = true
   }
 
-  const valid_modes = new SvelteSet<TestMode>([`density`, `points`, `singleton`])
+  const valid_modes = new Set<TestMode>([`density`, `points`, `singleton`])
   const MAX_POINTS = 1_000_000
 
   onMount(async () => {

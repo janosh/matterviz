@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
-import { calculate_all_pair_rdfs, calculate_rdf } from '#lib/rdf/calc-rdf.js'
+import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
 import {
   calculate_pdf,
   calculate_total_pdf,
@@ -260,7 +260,7 @@ describe(`reduced PDF G(r)`, () => {
     },
   )
 
-  test(`partial g_ab carries the N_a·N_b·4πr²Δr/V normalization, not just consistent counts`, () => {
+  test(`partial g_ab carries the N_a·N_b·V_shell/V normalization, not just consistent counts`, () => {
     const structure = cu3au(CU3AU_A)
     const pattern = peak_pdf(structure, { center_species: `Au`, neighbor_species: `Cu` })
     // All 12 Cu neighbours of the single Au sit at a/sqrt(2) = 2.6517 Å, inside one 0.01 Å bin
@@ -270,7 +270,7 @@ describe(`reduced PDF G(r)`, () => {
     // Built from the neighbour count and the cell alone — coordination_number cannot see this,
     // because there the ideal-gas factor cancels against its own reciprocal.
     const r_bin = pattern.r[shell_bin]
-    const ideal_count = (1 * 3 * (4 * Math.PI * r_bin ** 2 * PEAK_BIN_SIZE)) / CU3AU_A ** 3
+    const ideal_count = (1 * 3 * shell_volume(r_bin, PEAK_BIN_SIZE)) / CU3AU_A ** 3
     // g ≈ 238 here; 1e-6 absolute is ~4e-9 relative, orders above the ulp the different
     // grouping of the same products can cost
     expect(pattern.g_r[shell_bin]).toBeCloseTo(12 / ideal_count, 6)

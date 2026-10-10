@@ -2,6 +2,7 @@
 // crystallographic plane defined by Miller indices, using trilinear interpolation.
 import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { lower_corner, safe_mod, upper_corner } from './grid'
 import type { DisplayRange } from './sampling'
 import { sanitize_display_range, UNIT_CELL_RANGE } from './sampling'
 import type { VolumetricData } from './types'
@@ -48,7 +49,7 @@ const upsample_axis = (
 ): Float64Array => {
   const period = periodic ? size : 2 * size - 2
   const index = (idx: number): number => {
-    const wrapped = ((idx % period) + period) % period
+    const wrapped = safe_mod(idx, period)
     return wrapped < size ? wrapped : period - wrapped
   }
   const out_size = periodic ? size * factor : (size - 1) * factor + 1
@@ -274,13 +275,6 @@ function sample_grid_run(
   if (values.length === 0) return void out.fill(0, offset, offset + count)
   const [size_x, size_y, size_z] = dims
   const stride_x = size_y * size_z
-  // periodic cells wrap; finite ones clamp the lower corner to n - 2 (singleton axes to 0)
-  const lower = (floor_value: number, size: number): number =>
-    periodic
-      ? ((floor_value % size) + size) % size
-      : Math.max(0, Math.min(floor_value, size - 2))
-  const upper = (lower_idx: number, size: number): number =>
-    lower_idx + 1 === size ? 0 : lower_idx + 1
   let idx = 0
   while (idx < count) {
     const at_x = start_x + idx * step_x
@@ -293,12 +287,13 @@ function sample_grid_run(
       cell_exit(idx, start_y, step_y, floor_y),
       cell_exit(idx, start_z, step_z, floor_z),
     )
-    const [x_0, y_0, z_0] = [
-      lower(floor_x, size_x),
-      lower(floor_y, size_y),
-      lower(floor_z, size_z),
-    ]
-    const [x_1, y_1, z_1] = [upper(x_0, size_x), upper(y_0, size_y), upper(z_0, size_z)]
+    // periodic cells wrap; finite ones clamp the lower corner to n - 2 (singleton axes to 0)
+    const x_0 = lower_corner(size_x, floor_x, periodic)
+    const y_0 = lower_corner(size_y, floor_y, periodic)
+    const z_0 = lower_corner(size_z, floor_z, periodic)
+    const x_1 = upper_corner(size_x, x_0, periodic)
+    const y_1 = upper_corner(size_y, y_0, periodic)
+    const z_1 = upper_corner(size_z, z_0, periodic)
     // in-cell fractions at idx: periodic cells start at the unwrapped floor, finite ones at
     // the clamped lower corner
     const ax = at_x - (periodic ? floor_x : x_0)
@@ -400,8 +395,7 @@ export function sample_plane_slice(
   const polygon = intersect_plane_cell(corners, plane.point, normal, u_axis, v_axis)
   if (polygon.length < 3) return null
 
-  // Project all 8 unit cell corners onto the (u, v) plane to find sampling bounds.
-  // Corners are at fractional coords (0 or 1) for each axis.
+  // Sampling bounds: the (u, v) bounding box of the cell/plane intersection
   const { min, max, width: u_span, height: v_span } = math.compute_bounding_box_2d(polygon)
   const u_range: Vec2 = [min[0], max[0]]
   const v_range: Vec2 = [min[1], max[1]]
@@ -494,17 +488,12 @@ export function sample_hkl_slice(
   distance: number,
   n_points?: number,
 ): SliceResult | null {
-  const [h_idx, k_idx, l_idx] = miller_indices
-  if (h_idx === 0 && k_idx === 0 && l_idx === 0) return null
+  if (miller_indices.every((index) => index === 0)) return null
 
   // Plane normal G = h*b1 + k*b2 + l*b3 where b_i are reciprocal lattice rows
   // normalized below, so the 2π convention is immaterial
   const recip = math.reciprocal_lattice(volume.lattice)
-  const plane_normal: Vec3 = [
-    h_idx * recip[0][0] + k_idx * recip[1][0] + l_idx * recip[2][0],
-    h_idx * recip[0][1] + k_idx * recip[1][1] + l_idx * recip[2][1],
-    h_idx * recip[0][2] + k_idx * recip[1][2] + l_idx * recip[2][2],
-  ]
+  const plane_normal = math.create_frac_to_cart(recip)(miller_indices)
   if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
   const unit_normal = math.normalize_vec(plane_normal)
   const corners = cell_corners(volume, UNIT_CELL_RANGE)
@@ -512,12 +501,7 @@ export function sample_hkl_slice(
   const [normal_min, normal_max] = math.array_extent(projections)
 
   // Plane position: fractional distance [0,1] along the normal extent
-  const d_cartesian = normal_min + distance * (normal_max - normal_min)
-  const point: Vec3 = [
-    d_cartesian * unit_normal[0],
-    d_cartesian * unit_normal[1],
-    d_cartesian * unit_normal[2],
-  ]
+  const point = math.scale(unit_normal, normal_min + distance * (normal_max - normal_min))
   const resolution = n_points ?? Math.max(...volume.dims)
   return sample_plane_slice(
     volume,

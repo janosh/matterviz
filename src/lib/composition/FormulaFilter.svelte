@@ -96,8 +96,8 @@
     examples = DEFAULT_SEARCH_EXAMPLES,
     disabled = false,
     mode_locked = $bindable(false),
-    max_history = 5, // Max recent inputs to remember; 0 disables history dropdown
-    history_key = `formula-filter-history`, // localStorage key for persisting history
+    max_history = 5,
+    history_key = `formula-filter-history`,
     validate,
     on_parse,
     on_validation,
@@ -131,7 +131,7 @@
   let examples_open = $state(false)
   let history_open = $state(false)
   let wrapper: HTMLDivElement | null = $state(null)
-  let examples_wrapper: HTMLDivElement | null = $state(null)
+  let examples_dropdown: HTMLDivElement | null = $state(null)
   let focused_item_idx = $state(-1)
   let focused_history_idx = $state(-1)
   let anchor_left = $state(false)
@@ -171,9 +171,7 @@
     pinned_history = load_pinned()
     // The open dropdown still points into the OLD list: Enter reads
     // visible_history[focused_history_idx], so a shorter reload indexed undefined and crashed.
-    history_query = ``
-    focused_history_idx = -1
-    if (history.length === 0) history_open = false
+    reset_history(history_open && history.length > 0)
   })
 
   function add_to_history(entry: string): void {
@@ -196,9 +194,8 @@
   }
 
   function toggle_pin_history(entry: string): void {
-    pinned_history = pinned_history.includes(entry)
-      ? pinned_history.filter((item) => item !== entry)
-      : [entry, ...pinned_history.filter((item) => item !== entry)]
+    const others = pinned_history.filter((item) => item !== entry)
+    pinned_history = is_pinned(entry) ? others : [entry, ...others]
     save_pinned(pinned_history)
   }
 
@@ -221,27 +218,25 @@
     return [...filtered.filter(is_pinned), ...filtered.filter((item) => !is_pinned(item))]
   })
 
-  function close_history(): void {
-    history_open = false
+  // Open or close the history dropdown with no query and no focused entry
+  function reset_history(open: boolean): void {
+    history_open = open
     history_query = ``
     focused_history_idx = -1
   }
+  const close_history = () => reset_history(false)
 
   function open_history(): void {
     if (max_history <= 0 || visible_history.length === 0 || examples_open) return
-    history_open = true
-    history_query = ``
-    focused_history_idx = -1
+    reset_history(true)
   }
 
   function handle_document_click(event: MouseEvent): void {
-    if (!wrapper || (!examples_open && !history_open)) return
-    const target = event.target
-    if (!(target instanceof Node)) return
-    if (!wrapper.contains(target)) {
-      if (examples_open) close_examples()
-      if (history_open) close_history()
-    }
+    const { target } = event
+    // only clicks outside the filter close its dropdowns
+    if (!(target instanceof Node) || wrapper?.contains(target) !== false) return
+    if (examples_open) close_examples()
+    if (history_open) close_history()
   }
 
   function close_examples(restore_focus = true): void {
@@ -255,15 +250,14 @@
   // it is bookkeeping for the effect, not state anything renders from.
   let last_synced: string | null = null
   $effect(() => {
-    if (value !== last_synced) {
-      last_synced = value
-      input_value = value
-      if (value && !mode_locked) {
-        const inferred = infer_mode(value)
-        if (inferred !== search_mode) search_mode = inferred
-      }
-      run_validation(value, search_mode)
+    if (value === last_synced) return
+    last_synced = value
+    input_value = value
+    if (value && !mode_locked) {
+      const inferred = infer_mode(value)
+      if (inferred !== search_mode) search_mode = inferred
     }
+    run_validation(value, search_mode)
   })
 
   // Paste lands the text after the event, so normalising waits a frame. Held and cancelled for
@@ -276,14 +270,10 @@
   // cancelled on teardown: closing or unmounting within the same frame otherwise left the
   // callback to measure a dropdown that is on its way out and write state behind it.
   $effect(() => {
-    if (!examples_open || !examples_wrapper) return undefined
+    const dropdown = examples_dropdown
+    if (!dropdown) return undefined
     const frame = requestAnimationFrame(() => {
-      const dropdown = examples_wrapper?.querySelector(
-        `.examples-dropdown`,
-      ) as HTMLElement | null
-      if (!dropdown) return
-      const rect = dropdown.getBoundingClientRect()
-      if (rect.right > window.innerWidth && !anchor_left) anchor_left = true
+      if (dropdown.getBoundingClientRect().right > window.innerWidth) anchor_left = true
     })
     return () => cancelAnimationFrame(frame)
   })
@@ -437,12 +427,11 @@
   function run_validation(next_value: string, next_mode: FormulaSearchMode): void {
     const parsed = parse_query(next_value, next_mode)
     on_parse?.(parsed)
-
-    const default_validation: FormulaFilterValidation = parsed.is_valid
-      ? { state: `valid`, message: null }
-      : { state: `invalid`, message: parsed.error_message ?? `Invalid filter query` }
-    const custom_validation = validate?.(next_value, next_mode, parsed)
-    validation = custom_validation ?? default_validation
+    validation =
+      validate?.(next_value, next_mode, parsed) ??
+      (parsed.is_valid
+        ? { state: `valid`, message: null }
+        : { state: `invalid`, message: parsed.error_message ?? `Invalid filter query` })
     on_validation?.(validation)
   }
 
@@ -496,9 +485,12 @@
     commit(format_for_mode(value, next_mode), next_mode)
   }
 
-  function set_value(new_value: string, forced_mode?: FormulaSearchMode): void {
-    const mode = forced_mode ?? (mode_locked ? search_mode : infer_mode(new_value))
-    if (new_value.trim()) add_to_history(new_value)
+  // A locked mode wins over the one the input format implies
+  const mode_for = (input: string): FormulaSearchMode =>
+    mode_locked ? search_mode : infer_mode(input)
+
+  function set_value(new_value: string, mode = mode_for(new_value)): void {
+    add_to_history(new_value)
     close_history()
     commit(new_value, mode)
   }
@@ -507,7 +499,7 @@
     const trimmed = normalize_formula_unicode(input_value)
     if (!trimmed) return set_value(``)
 
-    const mode = mode_locked ? search_mode : infer_mode(trimmed)
+    const mode = mode_for(trimmed)
     if (mode === `exact`) {
       const exact_value = normalize_exact ? normalize_exact_formula(trimmed) : trimmed
       return set_value(exact_value, mode)
@@ -525,11 +517,9 @@
   function onkeydown(event: KeyboardEvent): void {
     if (event.key === `Enter`) {
       event.preventDefault()
-      if (history_open && focused_history_idx >= 0) {
+      if (history_open && focused_history_idx >= 0)
         set_value(visible_history[focused_history_idx])
-      } else {
-        sync_value()
-      }
+      else sync_value()
     } else if (event.key === `Escape`) {
       if (history_open) close_history()
       else if (examples_open) examples_open = false
@@ -552,8 +542,7 @@
       history_query = input_value
       focused_history_idx = visible_history.length > 0 ? 0 : -1
     }
-    const mode = mode_locked ? search_mode : infer_mode(input_value)
-    run_validation(input_value, mode)
+    run_validation(input_value, mode_for(input_value))
   }
 
   function clear_filter(): void {
@@ -562,7 +551,7 @@
   }
 
   function apply_example(example: string): void {
-    set_value(example, mode_locked ? search_mode : infer_mode(example))
+    set_value(example)
     close_examples()
   }
 
@@ -602,6 +591,12 @@
       (_, idx) => idx !== token_idx,
     )
     set_value(tokens.map(serialize_token).join(MODE_SEPARATOR[search_mode]), search_mode)
+  }
+
+  // History buttons act on mousedown and cancel it, so the input keeps focus (no blur commit)
+  const on_press = (action: () => void) => (event: MouseEvent) => {
+    event.preventDefault()
+    action()
   }
 
   // Focus the active menu item when index changes
@@ -661,10 +656,7 @@
             class="history-clear-all"
             title="Clear history"
             aria-label="Clear all history"
-            onmousedown={(event) => {
-              event.preventDefault()
-              clear_history()
-            }}
+            onmousedown={on_press(clear_history)}
           >
             Clear
           </button>
@@ -676,10 +668,7 @@
               class="history-value"
               role="option"
               aria-selected={idx === focused_history_idx}
-              onmousedown={(event) => {
-                event.preventDefault()
-                set_value(entry)
-              }}
+              onmousedown={on_press(() => set_value(entry))}
             >
               {entry}
             </button>
@@ -688,10 +677,7 @@
               class="history-pin"
               title={is_pinned(entry) ? `Unpin entry` : `Pin entry`}
               aria-label={is_pinned(entry) ? `Unpin ${entry}` : `Pin ${entry}`}
-              onmousedown={(event) => {
-                event.preventDefault()
-                toggle_pin_history(entry)
-              }}
+              onmousedown={on_press(() => toggle_pin_history(entry))}
             >
               <Icon
                 icon={is_pinned(entry) ? Star : Circle}
@@ -703,10 +689,7 @@
               class="history-remove"
               title="Remove from history"
               aria-label="Remove {entry} from history"
-              onmousedown={(event) => {
-                event.preventDefault()
-                remove_from_history(entry)
-              }}
+              onmousedown={on_press(() => remove_from_history(entry))}
             >
               <Icon icon={Close} style="width: 0.7em; height: 0.7em" />
             </button>
@@ -753,7 +736,7 @@
       </button>
     {/if}
     {#if show_examples && !disabled}
-      <div bind:this={examples_wrapper} style="position: relative">
+      <div style="position: relative">
         <button
           type="button"
           class={['icon-btn help-btn', { active: examples_open }]}
@@ -767,6 +750,7 @@
         </button>
         {#if examples_open}
           <div
+            bind:this={examples_dropdown}
             class={['examples-dropdown', { 'anchor-left': anchor_left }]}
             role="menu"
             tabindex="-1"
@@ -867,7 +851,6 @@
     }
   }
   .mode-hint {
-    opacity: 0.5;
     white-space: nowrap;
     &.clickable {
       display: inline-flex;

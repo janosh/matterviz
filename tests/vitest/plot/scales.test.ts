@@ -430,6 +430,20 @@ describe(`scales`, () => {
       expect(color_extent).toEqual({ min: -1, max: 9, min_positive: 3, n_finite: 3 })
       expect(color_range).toEqual([-1, 9])
       expect(collect_scale_ranges([{}]).color_range).toEqual([0, 1])
+      // log scales floor at the smallest positive value, not the non-positive min
+      expect(collect_scale_ranges(series, { color: `log` }).color_range).toEqual([3, 9])
+      expect(collect_scale_ranges([{}], { color: `log` }).color_range).toEqual([0, 1])
+    })
+
+    test.each([
+      [`log`, [0, 1, 100], [1, 100]],
+      [`log`, [-5, 0], [-5, 0]],
+      [`linear`, [0, 1, 100], [0, 100]],
+      [{ type: `arcsinh`, threshold: 1 }, [0, 1, 100], [0, 100]],
+    ] as const)(`%o size range of %j is %j`, (scale_type, size_values, expected) => {
+      const series = [{ size_values: [...size_values] }]
+      expect(collect_size_range(series, scale_type)).toEqual(expected)
+      expect(collect_scale_ranges(series, { size: scale_type }).size_range).toEqual(expected)
     })
   })
 
@@ -439,8 +453,6 @@ describe(`scales`, () => {
       { min: 0.1, max: 1000, ticks: 5, expected: [0.1, 1, 10, 100, 1000] },
       // under three decades with a generous count: 1-2-5 mantissas
       { min: 1, max: 10, ticks: 8, expected: [1, 2, 5, 10] },
-      { min: 0.5, max: 5, ticks: 10, expected: [0.5, 1, 2, 5] },
-      { min: 50, max: 500, ticks: 6, expected: [50, 100, 200, 500] },
       { min: 1, max: 50, ticks: 8, expected: [1, 2, 5, 10, 20, 50] },
       // same span, small count: powers of ten only
       { min: 1, max: 50, ticks: 5, expected: [1, 10] },
@@ -448,6 +460,9 @@ describe(`scales`, () => {
       { min: 2, max: 8, ticks: 5, expected: [2, 3, 4, 5, 6, 7, 8] },
       { min: 0.2, max: 0.8, ticks: 5, expected: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] },
       { min: 1.5, max: 1.6, ticks: 5, expected: [1.5, 1.52, 1.54, 1.56, 1.58, 1.6] },
+      // under two powers of ten in range, d3's fine ticks beat sparser 1-2-5 mantissas
+      { min: 0.5, max: 5, ticks: 10, expected: [0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5] },
+      { min: 50, max: 500, ticks: 6, expected: [50, 60, 70, 80, 90, 100, 200, 300, 400, 500] },
       // narrow domains straddling a power of ten must not emit ticks past max
       { min: 0.92, max: 0.99, ticks: 5, expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] },
       // a generous count on a domain holding fewer than two 1-2-5 mantissas must still
@@ -467,6 +482,23 @@ describe(`scales`, () => {
           32 * Number.EPSILON * expected[idx],
         ),
       )
+    })
+
+    // 1-2-5 mantissas only replace sparser ticks: [2, 8] with 10 ticks gave [2, 5] while 5
+    // gave [2..8], and [0.3, 3] with 10 gave [0.5, 1, 2]
+    test.each([
+      [2, 8],
+      [0.3, 3],
+      [0.5, 5],
+      [50, 500],
+      [1, 50],
+      [1, 10],
+      [0.92, 0.99],
+    ])(`asking for more ticks on [%s, %s] never returns fewer`, (min, max) => {
+      const counts = [2, 4, 5, 6, 8, 10, 12].map(
+        (count) => generate_log_ticks(min, max, count).length,
+      )
+      expect(counts).toEqual(counts.toSorted((count_a, count_b) => count_a - count_b))
     })
 
     test(`explicit tick arrays pass through untouched`, () => {

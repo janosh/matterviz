@@ -211,9 +211,7 @@ export const parse_file_content = async (
       })
     }
     if (
-      parsed_json &&
-      typeof parsed_json === `object` &&
-      `schema` in parsed_json &&
+      is_plain_object(parsed_json) &&
       typeof parsed_json.schema === `string` &&
       parsed_json.schema.startsWith(`matterviz-prediction-`)
     ) {

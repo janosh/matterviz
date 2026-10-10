@@ -535,10 +535,7 @@
         class="histogram-series"
         data-series-idx={hist.series_idx}
         clip-path="url(#{frame.clip_path_id})"
-        opacity={frame.hovered_series_idx !== null &&
-        frame.hovered_series_idx !== hist.series_idx
-          ? 0.25
-          : 1}
+        opacity={frame.series_opacity(hist.series_idx)}
       >
         {#each hist.bins as bin, bin_idx (bin_idx)}
           <!-- min/abs on both axes (as BarPlot's compute_bar_rect does) rather than assuming
@@ -616,11 +613,7 @@
       bind:x2_axis
       bind:y_axis
       bind:y2_axis
-      auto_ranges={{
-        ...auto_ranges,
-        x2: has_x2_points ? auto_ranges.x2 : undefined,
-        y2: has_y2_points ? auto_ranges.y2 : undefined,
-      }}
+      auto_ranges={frame.controls_auto_ranges}
       {series}
       children={controls_extra}
     />

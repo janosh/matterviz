@@ -64,32 +64,112 @@ declare global {
 const vscode_api: VSCodeAPI | null = get_vscode_api()
 
 // VS Code serves the bundle from a resource origin (https://*.vscode-cdn.net) that differs
-// from the webview document's origin, and nothing a worker fetches from that origin can load:
-// webview resources are served by a service worker that only intercepts the document's own
-// requests, so a `new Worker(cross_origin_url)` or a blob worker that `import()`s the real
-// script resolves the fake host over DNS and hangs ~20 s before failing (#451). Every worker
-// client here (parsing, MSD, VACF, RDF, structure-id, isosurface geometry) falls back to the
-// main thread when the constructor throws, so throw synchronously and make that fallback
-// instant. Real off-thread work in a webview needs self-contained single-file worker bundles
-// fetched on the main thread and handed over as blob URLs under a Trusted Types policy.
-// Same-origin URLs (desktop hosts, the docs site) construct as-is.
-const install_cross_origin_worker_guard = (): void => {
-  if (typeof Worker === `undefined`) return
-  const NativeWorker = Worker
-  globalThis.Worker = class extends NativeWorker {
-    constructor(script_url: string | URL, options?: WorkerOptions) {
-      const href = String(script_url)
-      if (/^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin) {
-        throw new DOMException(
-          `Workers cannot load ${href} inside a VS Code webview; computing on the main thread`,
-          `SecurityError`,
-        )
-      }
-      super(script_url, options)
+// from the webview document's origin. Webview resources are served by a service worker that
+// only intercepts the document's own requests, so a worker can neither be constructed from
+// that origin nor import() from it: Chromium resolves the fake host over DNS and hangs ~20 s
+// (#451). The document itself can fetch() the script, so cross-origin workers start from a
+// blob URL of the fetched script (the webview CSP allows `worker-src blob:`). That only works
+// for self-contained scripts, which is why the VS Code build disables code splitting in
+// workers. Same-origin and blob URLs (desktop hosts, the docs site) construct as-is.
+// Fetched once per script; the blob URLs live as long as the webview.
+const worker_blob_urls = new Map<string, Promise<string>>()
+const worker_blob_url = (href: string): Promise<string> => {
+  const cached = worker_blob_urls.get(href)
+  if (cached) return cached
+  const blob_url = fetch(href).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`Fetching worker script ${href} failed: HTTP ${response.status}`)
     }
+    const script = new Blob([await response.arrayBuffer()], { type: `text/javascript` })
+    return URL.createObjectURL(script)
+  })
+  // The next worker retries a failed fetch instead of inheriting its error
+  blob_url.catch(() => worker_blob_urls.delete(href))
+  worker_blob_urls.set(href, blob_url)
+  return blob_url
+}
+
+// Stands in for a Worker while its script is fetched, since the constructor must return
+// synchronously: queues posts until the real worker starts, then re-dispatches its events as
+// copies (an event that is being dispatched cannot be dispatched again).
+class FetchedScriptWorker extends EventTarget implements Worker {
+  onmessage: Worker[`onmessage`] = null
+  onmessageerror: Worker[`onmessageerror`] = null
+  onerror: Worker[`onerror`] = null
+  #worker: Worker | null = null
+  #queue: [unknown, StructuredSerializeOptions | undefined][] = []
+  #terminated = false
+
+  constructor(NativeWorker: typeof Worker, href: string, options?: WorkerOptions) {
+    super()
+    worker_blob_url(href)
+      .then((blob_url) => {
+        if (this.#terminated) return
+        const worker = new NativeWorker(blob_url, options)
+        for (const type of [`message`, `messageerror`] as const) {
+          worker.addEventListener(type, ({ data, ports }) => {
+            const event = new MessageEvent(type, { data, ports: [...ports] })
+            this.dispatchEvent(event)
+            this[`on${type}`]?.(event)
+          })
+        }
+        worker.addEventListener(`error`, (event) => {
+          if (this.#dispatch_error(event)) event.preventDefault()
+        })
+        for (const [message, post_options] of this.#queue)
+          worker.postMessage(message, post_options)
+        this.#queue = []
+        this.#worker = worker
+      })
+      .catch((error: unknown) => {
+        if (this.#terminated) return
+        this.#dispatch_error(
+          new ErrorEvent(`error`, { message: to_error(error).message, error }),
+        )
+      })
+  }
+
+  // Returns whether a listener called preventDefault()
+  #dispatch_error({ message, filename, lineno, colno, error }: ErrorEvent): boolean {
+    const event = new ErrorEvent(`error`, {
+      message,
+      filename,
+      lineno,
+      colno,
+      error,
+      cancelable: true,
+    })
+    this.dispatchEvent(event)
+    this.onerror?.(event)
+    return event.defaultPrevented
+  }
+
+  postMessage(message: unknown, options?: StructuredSerializeOptions | Transferable[]): void {
+    if (this.#terminated) return
+    const post_options = Array.isArray(options) ? { transfer: options } : options
+    if (this.#worker) this.#worker.postMessage(message, post_options)
+    else this.#queue.push([message, post_options])
+  }
+
+  terminate(): void {
+    this.#terminated = true
+    this.#queue = []
+    this.#worker?.terminate()
   }
 }
-if (vscode_api) install_cross_origin_worker_guard()
+
+const install_fetched_worker_scripts = (): void => {
+  if (typeof Worker === `undefined`) return
+  globalThis.Worker = new Proxy(Worker, {
+    construct: (NativeWorker, [script_url, options]: [string | URL, WorkerOptions?]) => {
+      const href = String(script_url)
+      return /^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin
+        ? new FetchedScriptWorker(NativeWorker, href, options)
+        : new NativeWorker(script_url, options)
+    },
+  })
+}
+if (vscode_api) install_fetched_worker_scripts()
 // Display state, with the invariant current_result ⇒ current_app ⇒ current_file:
 // - current_file: the file the host last asked to show (bootstrap payload or a fileUpdated
 //   body); null after fileDeleted/cleanup
@@ -132,16 +212,8 @@ export const setup_vscode_download = (): void => {
       console.error(`Invalid filename provided to download`)
       return
     }
-
-    const send_message = (content: string, is_binary: boolean) => {
-      vscode_api?.postMessage({
-        command: `saveAs`,
-        content,
-        filename,
-        is_binary,
-      })
-    }
-
+    const send_message = (content: string, is_binary: boolean) =>
+      vscode_api?.postMessage({ command: `saveAs`, content, filename, is_binary })
     try {
       if (typeof data === `string`) {
         send_message(data, false)
@@ -240,10 +312,7 @@ const remount_current = async (container: HTMLElement, gen: number): Promise<voi
   const dispose = display_disposers.get(app)
   display_disposers.delete(app)
   await unmount(app)
-  if (!is_current(gen)) {
-    dispose?.()
-    return
-  }
+  if (!is_current(gen)) return dispose?.()
   try {
     mount_result(container, result)
   } catch (error) {
@@ -370,10 +439,7 @@ export const create_display = (
     width: `100%`,
     height: `100%`,
     position: `absolute`,
-    top: `0`,
-    left: `0`,
-    right: `0`,
-    bottom: `0`,
+    inset: `0`,
     background: `var(--vscode-editor-background, var(--page-bg, var(--surface-bg, Canvas)))`,
     color: `var(--vscode-editor-foreground, var(--text-color, CanvasText))`,
     overflow: `hidden`,
@@ -539,9 +605,7 @@ const listen_to_host = (): void => {
 // Initialize the MatterViz application from data passed by the extension
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
-  const file_data = globalThis.matterviz_data?.data
-  const theme = globalThis.matterviz_data?.theme
-  const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
+  const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
   if (!file_data?.content || !file_data.filename) {
     throw new Error(`No data provided to MatterViz app`)
   }

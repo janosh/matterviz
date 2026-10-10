@@ -84,17 +84,13 @@
   <h2 id="with-handlers">With handlers</h2>
   <Sankey
     data={flow}
-    on_node_hover={(data) => {
-      hover_msg = data ? `Node: ${data.label} = ${data.value}` : `Hover over a node or link`
-    }}
-    on_link_hover={(data) => {
-      hover_msg = data
+    on_node_hover={(data) =>
+      (hover_msg = data ? `Node: ${data.label} = ${data.value}` : `Hover over a node or link`)}
+    on_link_hover={(data) =>
+      (hover_msg = data
         ? `Link: ${data.source_label} -> ${data.target_label} = ${data.value}`
-        : `Hover over a node or link`
-    }}
-    on_node_click={(data) => {
-      click_msg = `Clicked node: ${data.label}`
-    }}
+        : `Hover over a node or link`)}
+    on_node_click={(data) => (click_msg = `Clicked node: ${data.label}`)}
     controls_toggle_props={{ class: `sankey-controls-toggle` }}
     style="height: 360px"
   />

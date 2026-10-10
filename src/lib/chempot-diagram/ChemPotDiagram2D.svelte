@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { get_electro_neg_formula } from '#lib/composition/format.js'
   import { convex_hull_2d, type Vec2 } from '#lib/math.js'
   import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/utils'
@@ -15,13 +14,12 @@
   import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
-  import { container_pointer, create_chempot_state } from './controls-state.svelte'
   import {
-    apply_element_padding,
-    build_axis_ranges,
-    orthonormal_2d,
-    pad_domain_points,
-  } from './compute'
+    container_pointer,
+    create_chempot_state,
+    domain_formula_text,
+  } from './controls-state.svelte'
+  import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
   import { export_json_file, get_json_string } from './export'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
 
@@ -80,19 +78,17 @@
   }
   const draw_domains = $derived.by((): Record<string, number[][]> => {
     if (!diagram_data || plot_elements.length < 2) return {}
-    const indices = [0, 1]
-    const new_lims =
-      element_padding > 0 &&
-      apply_element_padding(diagram_data.domains, indices, element_padding, default_min_limit)
-    const result: Record<string, number[][]> = {}
-    for (const [formula, pts] of Object.entries(diagram_data.domains)) {
-      if (pts.length === 0) continue
-      const padded = new_lims
-        ? pad_domain_points(pts, indices, new_lims, default_min_limit)
-        : pts
-      result[formula] = outline(padded)
-    }
-    return result
+    const padded = pad_domains(
+      diagram_data.domains,
+      [0, 1],
+      element_padding,
+      default_min_limit,
+    )
+    return Object.fromEntries(
+      Object.entries(padded)
+        .filter(([, pts]) => pts.length > 0)
+        .map(([formula, pts]) => [formula, outline(pts)]),
+    )
   })
   const domain_entries = $derived(Object.entries(draw_domains))
 
@@ -114,11 +110,8 @@
     })),
   )
 
-  // Axis label text
-  function axis_label(element: string): string {
-    const prefix = formal_chempots ? `Δ` : ``
-    return `${prefix}μ<sub>${element}</sub> (eV)`
-  }
+  const axis_label = (element: string): string =>
+    `${formal_chempots ? `Δ` : ``}μ<sub>${element}</sub> (eV)`
 
   let x_axis = $state({ label: ``, label_shift: { y: -45 } })
   let y_axis = $state({ label: `` })
@@ -133,25 +126,17 @@
   // === Domain label annotations (in data coordinates) ===
   const annotations = $derived.by(() => {
     if (!label_stable) return []
-    const result: { formula: string; data_x: number; data_y: number }[] = []
-    for (const [formula, pts] of Object.entries(draw_domains)) {
-      if (pts.length === 0) continue
-      const center_x = pts.reduce((sum, point) => sum + point[0], 0) / pts.length
-      const center_y = pts.reduce((sum, point) => sum + point[1], 0) / pts.length
-      let offset_x = 0
-      let offset_y = 0
-      if (pts.length >= 2) {
-        const [normal_x, normal_y] = orthonormal_2d(pts)
-        offset_x = normal_x * 0.25
-        offset_y = normal_y * 0.25
-      }
-      result.push({
-        formula,
-        data_x: center_x + offset_x,
-        data_y: center_y + offset_y,
+    // coincident vertices can hull to an empty outline; a lone point gets no offset
+    return domain_entries
+      .filter(([, pts]) => pts.length > 0)
+      .map(([formula, pts]) => {
+        const [normal_x, normal_y] = pts.length >= 2 ? orthonormal_2d(pts) : [0, 0]
+        return {
+          formula,
+          data_x: pts.reduce((sum, point) => sum + point[0], 0) / pts.length + normal_x * 0.25,
+          data_y: pts.reduce((sum, point) => sum + point[1], 0) / pts.length + normal_y * 0.25,
+        }
       })
-    }
-    return result
   })
 
   // === Hover info for external consumers ===
@@ -267,11 +252,7 @@
       text-anchor="middle"
       class="domain-label"
     >
-      {get_electro_neg_formula(formula, {
-        plain_text: true,
-        delim: ``,
-        amount_format: `.3~s`,
-      })}
+      {domain_formula_text(formula)}
     </text>
   {/each}
 {/snippet}

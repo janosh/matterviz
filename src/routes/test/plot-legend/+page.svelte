@@ -57,12 +57,9 @@
   function handle_toggle(toggled_idx: number) {
     last_toggled_idx = toggled_idx
     last_isolated_idx = null // Reset isolation tracker
-
-    // Update the visibility of the toggled series
-    series_data = series_data.map((item) => {
-      if (item.series_idx === toggled_idx) return { ...item, visible: !item.visible }
-      return item
-    })
+    series_data = series_data.map((item) =>
+      item.series_idx === toggled_idx ? { ...item, visible: !item.visible } : item,
+    )
   }
 
   function handle_double_click(double_clicked_idx: number) {

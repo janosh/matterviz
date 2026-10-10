@@ -5,21 +5,18 @@ test.describe(`Sankey Component Tests`, () => {
     await page.goto(`/test/sankey`, { waitUntil: `networkidle` })
   })
 
-  test(`renders nodes, links and labels`, async ({ page }) => {
-    const plot = page.locator(`#basic-sankey .sankey`)
-    await expect(plot).toBeVisible()
-
+  // Counts are pinned in tests/vitest/plot/Sankey.test.ts; this checks the demos lay out
+  test(`basic and gradient demos render nodes, links, labels and a legend`, async ({
+    page,
+  }) => {
     // 6 nodes, 5 links in the basic flow fixture
+    const plot = page.locator(`#basic-sankey .sankey`)
     await expect(plot.locator(`.nodes rect`)).toHaveCount(6)
     await expect(plot.locator(`.links path`)).toHaveCount(5)
     await expect(plot.locator(`.node-label`).first()).toBeVisible()
-  })
-
-  test(`gradient mode emits one linearGradient per link and a legend`, async ({ page }) => {
-    const plot = page.locator(`#gradient-sankey .sankey`)
-    await expect(plot).toBeVisible()
-    await expect(plot.locator(`linearGradient`)).toHaveCount(5)
-    await expect(plot.locator(`.legend`)).toBeVisible()
+    const gradient_plot = page.locator(`#gradient-sankey .sankey`)
+    await expect(gradient_plot.locator(`linearGradient`)).toHaveCount(5)
+    await expect(gradient_plot.locator(`.legend`)).toBeVisible()
   })
 
   test(`shows tooltip and updates handler info on node hover`, async ({ page }) => {

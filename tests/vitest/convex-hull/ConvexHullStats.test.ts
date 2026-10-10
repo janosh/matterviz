@@ -73,6 +73,8 @@ const get_headers = () =>
   Array.from(document.querySelectorAll(`th`)).map((header_cell) =>
     header_cell.textContent?.trim(),
   )
+const first_formula_cell = () =>
+  document.querySelector(`tbody tr td:nth-child(${get_headers().indexOf(`Formula`) + 1})`)
 const normalize_text = (text: string): string => text.replaceAll(/\s+/g, ` `).trim()
 const get_table_filter_select = (label_text: string): HTMLSelectElement | null => {
   const filter_labels = Array.from(document.querySelectorAll(`.table-filters label`))
@@ -92,12 +94,6 @@ const mount_table_with_single_entry = (
 }
 
 describe(`ConvexHullStats`, () => {
-  const get_polymorph_select = (): HTMLSelectElement => {
-    const select = get_table_filter_select(`Polymorphs`)
-    if (!select) throw new Error(`Polymorphs select not rendered`)
-    return select
-  }
-
   test(`renders the Stats/Table toggle, chemical system, stability and energy stats`, () => {
     mount_stats({
       phase_stats: mock_stats({
@@ -325,41 +321,38 @@ describe(`ConvexHullStats`, () => {
       )
     })
 
-    test(`table excludes hidden entry groups`, () => {
-      const hidden_group_entry = mock_entry({
-        composition: { Zr: 1 },
-        reduced_formula: `Zr`,
-      })
-      mount_stats_table({
-        stable_entries: stable,
-        unstable_entries: [hidden_group_entry],
-        show_unstable: false,
-      })
-
+    test.each([
+      {
+        hidden: `stability group`,
+        props: {
+          stable_entries: stable,
+          unstable_entries: [mock_entry({ composition: { Zr: 1 }, entry_id: `id-zr` })],
+          show_unstable: false,
+        },
+        kept: [],
+        dropped: [`id-zr`],
+      },
+      {
+        hidden: `magnetic ordering`, // entries without an ordering are unaffected
+        props: {
+          stable_entries: [
+            mock_entry({ magnetic_ordering: `FM`, entry_id: `id-fm`, reduced_formula: `FeO` }),
+            // oxfmt-ignore
+            mock_entry({ magnetic_ordering: `AFM`, entry_id: `id-afm`, reduced_formula: `Fe2O3` }),
+          ],
+          unstable_entries: [mock_entry({ entry_id: `id-plain`, reduced_formula: `Fe3O4` })],
+          hidden_categories: [`FM`],
+        },
+        kept: [`id-afm`, `id-plain`],
+        dropped: [`id-fm`],
+      },
+    ])(`table excludes entries of a hidden $hidden`, ({ props, kept, dropped }) => {
+      mount_stats_table(props)
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
-      const cells = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim(),
-      )
-      expect(cells).not.toContain(`Zr`)
-    })
-
-    test(`table excludes entries with hidden magnetic orderings`, () => {
-      mount_stats_table({
-        stable_entries: [
-          mock_entry({ magnetic_ordering: `FM`, entry_id: `id-fm`, reduced_formula: `FeO` }),
-          // oxfmt-ignore
-          mock_entry({ magnetic_ordering: `AFM`, entry_id: `id-afm`, reduced_formula: `Fe2O3` }),
-        ],
-        // no ordering -> unaffected by category filter
-        unstable_entries: [mock_entry({ entry_id: `id-plain`, reduced_formula: `Fe3O4` })],
-        hidden_categories: [`FM`],
-      })
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
-      const table_text = doc_query(`tbody`).textContent ?? ``
-      expect(table_text).not.toContain(`id-fm`)
-      expect(table_text).toContain(`id-afm`)
-      expect(table_text).toContain(`id-plain`)
       expect(doc_query(`.filter-count`).textContent).toContain(`2 entries`)
+      const table_text = doc_query(`tbody`).textContent ?? ``
+      for (const id of kept) expect(table_text).toContain(id)
+      for (const id of dropped) expect(table_text).not.toContain(id)
     })
 
     // Optional columns only render when some entry carries the field. Cells render once: an
@@ -392,10 +385,9 @@ describe(`ConvexHullStats`, () => {
           }),
         ],
       })
-      const headers = get_headers()
-      const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
-      expect(formula_cell?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(`Ca Ti O<sub>3</sub>`)
+      expect(first_formula_cell()?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(
+        `Ca Ti O<sub>3</sub>`,
+      )
     })
 
     test.each([
@@ -405,9 +397,7 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({
         stable_entries: [mock_entry({ composition: { Fe: 2, O: 3 }, reduced_formula })],
       })
-      const formula_idx = get_headers().indexOf(`Formula`)
-      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
-      expect(normalize_text(formula_cell?.textContent ?? ``)).toMatch(
+      expect(normalize_text(first_formula_cell()?.textContent ?? ``)).toMatch(
         /Fe.*2.*O.*3|O.*3.*Fe.*2/,
       )
     })
@@ -425,19 +415,17 @@ describe(`ConvexHullStats`, () => {
     })
   })
 
-  describe(`side-by-side layout`, () => {
-    test(`renders both stats and table simultaneously`, () => {
-      mount_stats({
-        stable_entries: [mock_entry({ reduced_formula: `Fe` })],
-        layout: `side-by-side`,
-      })
-      // Both should be visible at once (no toggle)
-      expect(document.querySelector(`.info-row`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
-      expect(document.querySelector(`.side-by-side`)).toBeInstanceOf(HTMLElement)
-      // No toggle buttons in side-by-side
-      expect(document.querySelector(`.view-toggle`)).toBeNull()
+  test(`side-by-side layout renders both stats and table at once`, () => {
+    mount_stats({
+      stable_entries: [mock_entry({ reduced_formula: `Fe` })],
+      layout: `side-by-side`,
     })
+    // Both should be visible at once (no toggle)
+    expect(document.querySelector(`.info-row`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.side-by-side`)).toBeInstanceOf(HTMLElement)
+    // No toggle buttons in side-by-side
+    expect(document.querySelector(`.view-toggle`)).toBeNull()
   })
 
   describe(`min N_el filter`, () => {
@@ -575,20 +563,18 @@ describe(`ConvexHullStats`, () => {
     mock_entry({ composition: { Li: 2, O: 1 }, reduced_formula: `Li2O`, entry_id: `c` }),
   ]
 
-  describe(`Poly column (polymorph counting)`, () => {
-    const get_poly_values = () => {
-      const poly_idx = get_headers().indexOf(`Poly`)
-      return Array.from(document.querySelectorAll(`tbody tr`)).map(
-        (row) => row.querySelectorAll(`td`)[poly_idx]?.textContent?.trim() ?? ``,
-      )
-    }
+  const get_poly_values = () => {
+    const poly_idx = get_headers().indexOf(`Poly`)
+    return Array.from(document.querySelectorAll(`tbody tr`)).map(
+      (row) => row.querySelectorAll(`td`)[poly_idx]?.textContent?.trim() ?? ``,
+    )
+  }
 
-    test(`counts polymorphs per reduced formula (Fe4O6 groups with Fe2O3), 1 for unique`, () => {
-      const fe4o6 = mock_entry({ composition: { Fe: 4, O: 6 }, reduced_formula: `Fe4O6` })
-      mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6] })
-      expect(get_headers()).toContain(`Poly`)
-      expect(get_poly_values().toSorted()).toEqual([`1`, `3`, `3`, `3`])
-    })
+  test(`Poly column counts polymorphs per reduced formula (Fe4O6 groups with Fe2O3), 1 for unique`, () => {
+    const fe4o6 = mock_entry({ composition: { Fe: 4, O: 6 }, reduced_formula: `Fe4O6` })
+    mount_stats_table({ stable_entries: [...polymorph_entries, fe4o6] })
+    expect(get_headers()).toContain(`Poly`)
+    expect(get_poly_values().toSorted()).toEqual([`1`, `3`, `3`, `3`])
   })
 
   describe(`entry_href prop`, () => {
@@ -638,31 +624,30 @@ describe(`ConvexHullStats`, () => {
     )
   })
 
-  describe(`formula_filter (polymorphs dropdown)`, () => {
-    test(`lists only polymorph groups with counts; selecting one filters the table, an invalid value shows all`, () => {
-      mount_stats_table({ stable_entries: polymorph_entries })
+  test(`lists only polymorph groups with counts; selecting one filters the table, an invalid value shows all`, () => {
+    mount_stats_table({ stable_entries: polymorph_entries })
 
-      const poly_select = get_polymorph_select()
-      // Li2O has only 1 entry → not in dropdown
-      expect(
-        Array.from(poly_select.options).map((opt) => [opt.value, opt.textContent?.trim()]),
-      ).toEqual([
-        [``, `all`],
-        [`Fe2O3`, `Fe2O3 (2)`],
-      ])
+    const poly_select = get_table_filter_select(`Polymorphs`)
+    if (!poly_select) throw new Error(`Polymorphs select not rendered`)
+    // Li2O has only 1 entry → not in dropdown
+    expect(
+      Array.from(poly_select.options).map((opt) => [opt.value, opt.textContent?.trim()]),
+    ).toEqual([
+      [``, `all`],
+      [`Fe2O3`, `Fe2O3 (2)`],
+    ])
 
-      set_select(poly_select, `Fe2O3`)
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
-      expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`2 entries`)
-      expect(doc_query(`tbody`).textContent).not.toContain(`Li`)
+    set_select(poly_select, `Fe2O3`)
+    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+    expect(doc_query(`.filter-count`).textContent?.trim()).toBe(`2 entries`)
+    expect(doc_query(`tbody`).textContent).not.toContain(`Li`)
 
-      const invalid_option = document.createElement(`option`)
-      invalid_option.value = `nonexistent-formula`
-      invalid_option.textContent = `invalid`
-      poly_select.append(invalid_option)
-      set_select(poly_select, invalid_option.value)
-      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
-    })
+    const invalid_option = document.createElement(`option`)
+    invalid_option.value = `nonexistent-formula`
+    invalid_option.textContent = `invalid`
+    poly_select.append(invalid_option)
+    set_select(poly_select, invalid_option.value)
+    expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
   })
 
   describe(`subsystem_coverage`, () => {

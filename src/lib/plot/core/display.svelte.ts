@@ -1,5 +1,5 @@
 import { DEFAULTS } from '#lib/settings.js'
-import type { DisplayConfig } from './types'
+import type { DisplayConfig } from '#lib/plot/core/types.js'
 
 const category_zero_keys = {
   x: [`x_zero_line`, `x2_zero_line`],

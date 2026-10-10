@@ -90,17 +90,12 @@
   <Sunburst
     data={energy}
     tween={{ duration: 50 }}
-    on_node_hover={(data) => {
-      hover_msg = data
+    on_node_hover={(data) =>
+      (hover_msg = data
         ? `Node: ${data.label_path.join(` > `)} = ${data.value}`
-        : `Hover over an arc`
-    }}
-    on_node_click={(data) => {
-      click_msg = `Clicked: ${data.label}`
-    }}
-    on_zoom={(data) => {
-      zoom_msg = `Zoom root: ${data.root?.label ?? `(root)`}`
-    }}
+        : `Hover over an arc`)}
+    on_node_click={(data) => (click_msg = `Clicked: ${data.label}`)}
+    on_zoom={(data) => (zoom_msg = `Zoom root: ${data.root?.label ?? `(root)`}`)}
     style="height: 360px"
   />
   <div class="handler-info">

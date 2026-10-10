@@ -114,30 +114,15 @@
     track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
   )
   const appearance_settings = track_settings(
-    () => ({
-      color_property,
-      color_scale,
-      representation,
-      surface_opacity,
-    }),
+    () => ({ color_property, color_scale, representation, surface_opacity }),
     defaults,
   )
   const brillouin_zone_settings = track_settings(
-    () => ({
-      show_bz,
-      bz_opacity,
-      show_vectors,
-      tile_bz,
-    }),
+    () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
     defaults,
   )
   const clipping_plane_settings = track_settings(
-    () => ({
-      clip_enabled,
-      clip_axis,
-      clip_position,
-      clip_flip,
-    }),
+    () => ({ clip_enabled, clip_axis, clip_position, clip_flip }),
     defaults,
   )
   const interpolation_settings = track_settings(() => ({ interpolation_factor }), defaults)

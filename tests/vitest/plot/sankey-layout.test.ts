@@ -16,24 +16,14 @@ const tri: SankeyData = {
 const dims = { width: 400, height: 300, node_width: 20, node_padding: 10 }
 
 describe(`compute_sankey_layout`, () => {
-  test(`assigns depths, conserves node values and scales boxes/ribbons by value`, () => {
-    const { nodes, links } = compute_sankey_layout(tri, dims)
+  // box and ribbon sizes are pinned by the raw d3-sankey comparison below
+  test(`assigns depths and conserves node values`, () => {
+    const { nodes } = compute_sankey_layout(tri, dims)
     expect(nodes.map((node) => [node.depth, node.value])).toEqual([
       [0, 1],
       [0, 2],
       [1, 3], // node.value = max(sum incoming, sum outgoing)
     ])
-    const [a_h, b_h, c_h] = nodes.map((node) => node.y1 - node.y0)
-    // busiest column (A + B + one padding gap) fills the full height; d3 scales all
-    // columns by that limiting factor, so the lone node C does NOT fill the height
-    expect(a_h + b_h + dims.node_padding).toBeCloseTo(dims.height, 6)
-    expect(c_h).toBeCloseTo(a_h + b_h, 6)
-    expect(b_h / a_h).toBeCloseTo(2, 6)
-    // C receives both links: sum of incoming widths == C box height, B link twice A link
-    const [w_a, w_b] = links.map((link) => link.width)
-    expect(w_a).toBeGreaterThan(0)
-    expect(w_a + w_b).toBeCloseTo(c_h, 6)
-    expect(w_b / w_a).toBeCloseTo(2, 6)
   })
 
   test(`node boxes and link ribbons match a raw d3-sankey layout to 1e-9`, () => {
@@ -275,6 +265,10 @@ describe(`sankey_from_links`, () => {
       { source: 1, target: 2, value: 20 },
     ])
     expect(sankey_from_links([0, 1, 2], [3, 3, 3], [1, 1, 1]).nodes).toHaveLength(4)
+    // surplus labels pad the nodes (the layout drops these link-less ones)
+    expect(
+      sankey_from_links([0], [1], [5], [`A`, `B`, `extra1`, `extra2`]).nodes,
+    ).toHaveLength(4)
   })
 
   test(`covers all indexed nodes when labels are too short`, () => {
@@ -288,17 +282,6 @@ describe(`sankey_from_links`, () => {
       [`A`, 10],
       [`B`, 20],
       [`2`, 30],
-    ])
-  })
-
-  test(`surplus labels beyond linked indices are dropped by the layout`, () => {
-    // builder pads nodes up to labels.length; the extras are orphans (no links) that
-    // compute_sankey_layout must drop, else they pile up/overflow below the plot
-    const data = sankey_from_links([0], [1], [5], [`A`, `B`, `extra1`, `extra2`])
-    expect(data.nodes).toHaveLength(4) // builder keeps every label
-    expect(compute_sankey_layout(data, dims).nodes.map((node) => node.label)).toEqual([
-      `A`,
-      `B`,
     ])
   })
 

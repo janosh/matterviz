@@ -9,8 +9,12 @@
   import type { NucleonPaint, SymbolPaint } from '#lib/element/index.js'
   import type { SVGAttributes } from 'svelte/elements'
 
-  const DEFAULT_PROTON_PAINT = { fill: `cornflowerblue`, label: ` P` }
-  const DEFAULT_NEUTRON_PAINT = { fill: `orange`, label: ` N` }
+  // fill and label fall back per field, so a partial paint keeps the other defaults
+  const with_defaults = (paint: NucleonPaint, fill: string, label: string) => ({
+    fill: paint.fill ?? fill,
+    label: paint.label ?? label,
+    text: paint.text,
+  })
 
   let {
     protons,
@@ -41,16 +45,8 @@
 
   let node = $state<SVGSVGElement>()
   const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
-  const proton = $derived({
-    fill: proton_paint.fill ?? DEFAULT_PROTON_PAINT.fill,
-    label: proton_paint.label ?? DEFAULT_PROTON_PAINT.label,
-    text: proton_paint.text,
-  })
-  const neutron = $derived({
-    fill: neutron_paint.fill ?? DEFAULT_NEUTRON_PAINT.fill,
-    label: neutron_paint.label ?? DEFAULT_NEUTRON_PAINT.label,
-    text: neutron_paint.text,
-  })
+  const proton = $derived(with_defaults(proton_paint, `cornflowerblue`, ` P`))
+  const neutron = $derived(with_defaults(neutron_paint, `orange`, ` N`))
 
   const radius = $derived(size / 2)
   let proton_frac = $derived(protons / (protons + neutrons))
@@ -62,12 +58,9 @@
     { count: neutrons, fraction: neutron_frac, paint: neutron },
   ])
 
-  const paint_text_color = (paint: NucleonPaint & { fill: string }): string =>
-    paint.text ?? pick_contrast_color({ background: paint.fill, backdrop: backdrop.current })
-  const symbol_color = $derived(
-    symbol_paint.text ??
-      pick_contrast_color({ background: neutron.fill, backdrop: backdrop.current }),
-  )
+  const text_color = (fill: string, text: string | undefined): string =>
+    text ?? pick_contrast_color({ background: fill, backdrop: backdrop.current })
+  const symbol_color = $derived(text_color(neutron.fill, symbol_paint.text))
   const neutron_surface = $derived(
     is_opaque_color(neutron.fill)
       ? neutron.fill
@@ -106,10 +99,10 @@
         <text
           x={radius + (radius / 2) * Math.cos(Math.PI * fraction)}
           y={radius + (radius / 2) * Math.sin(Math.PI * fraction)}
-          fill={paint_text_color(paint)}
+          fill={text_color(paint.fill, paint.text)}
         >
           {count}
-          {paint.label ?? ``}
+          {paint.label}
         </text>
       {/if}
     {/each}

@@ -3,7 +3,6 @@
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
-    AxisConfig,
     BarHandlerProps,
     BarSeries,
     DataSeries,
@@ -147,8 +146,6 @@
     return pattern_entries.map((entry, entry_idx) => {
       const x_values = entry.pattern.x
       const y_values = entry.pattern.y.map((val) => ((val || 0) / global_max_intensity) * 100)
-      const metadata: Record<string, unknown>[] = []
-      const labels: (string | null)[] = []
 
       // Determine which peaks to annotate
       const selected_indices: number[] = []
@@ -173,18 +170,18 @@
         }
       }
       const selected = new Set(selected_indices)
-
-      for (let idx = 0; idx < x_values.length; idx++) {
-        const hkls: Hkl[] = entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
-        metadata.push({ hkls, d: entry.pattern.d_hkls?.[idx], label: entry.label })
-
-        if (selected.has(idx)) {
-          // Angles are shown by default only while the plot holds at most two patterns
-          const with_angle = show_angles ?? pattern_entries.length <= 2
-          const angle_text = with_angle ? `${format_value(x_values[idx], `.2f`)}°` : ``
-          labels.push([join_hkls(hkls), angle_text].filter(Boolean).join(` @ `))
-        } else labels.push(null)
-      }
+      // Angles are shown by default only while the plot holds at most two patterns
+      const with_angle = show_angles ?? pattern_entries.length <= 2
+      const metadata = x_values.map((_, idx) => ({
+        hkls: entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+        d: entry.pattern.d_hkls?.[idx],
+        label: entry.label,
+      }))
+      const labels = metadata.map(({ hkls }, idx) => {
+        if (!selected.has(idx)) return null
+        const angle_text = with_angle ? `${format_value(x_values[idx], `.2f`)}°` : ``
+        return [join_hkls(hkls), angle_text].filter(Boolean).join(` @ `)
+      })
 
       // A profile is a sampled curve, not a set of reflections: draw it as a line
       const shape = is_profile(entry.pattern)
@@ -275,6 +272,16 @@
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
   // In the horizontal layout the 2θ and intensity axes trade places
   const is_horizontal = $derived(orientation === `horizontal`)
+  const plot_x_axis = $derived({
+    label: is_horizontal ? intensity_label : angle_label,
+    ...(is_horizontal ? y_axis : x_axis),
+    range: is_horizontal ? intensity_range : angle_range,
+  })
+  const plot_y_axis = $derived({
+    label: is_horizontal ? angle_label : intensity_label,
+    ...(is_horizontal ? x_axis : y_axis),
+    range: is_horizontal ? angle_range : intensity_range,
+  })
 
   // [key, label, tooltip, step, min?, max?]
   type BroadeningInput = [keyof BroadeningParams, string, string, number, number?, number?]
@@ -403,16 +410,8 @@
       <ScatterPlot
         {...rest}
         series={scatter_series}
-        x_axis={{
-          label: is_horizontal ? intensity_label : angle_label,
-          ...(is_horizontal ? y_axis : x_axis),
-          range: is_horizontal ? intensity_range : angle_range,
-        }}
-        y_axis={{
-          label: is_horizontal ? angle_label : intensity_label,
-          ...(is_horizontal ? x_axis : y_axis),
-          range: is_horizontal ? angle_range : intensity_range,
-        }}
+        x_axis={plot_x_axis}
+        y_axis={plot_y_axis}
         {tooltip}
         {@attach drop_zone}
         class={rest.class}
@@ -435,17 +434,8 @@
         {...rest}
         series={bar_series}
         bind:orientation
-        x_axis={{
-          label: is_horizontal ? intensity_label : angle_label,
-          ...(is_horizontal ? y_axis : x_axis),
-          range: is_horizontal ? intensity_range : angle_range,
-        }}
-        y_axis={{
-          label: is_horizontal ? angle_label : intensity_label,
-          ...(is_horizontal ? x_axis : y_axis),
-          label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
-          range: is_horizontal ? angle_range : intensity_range,
-        }}
+        x_axis={plot_x_axis}
+        y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         {tooltip}
         {@attach drop_zone}
         class={rest.class}

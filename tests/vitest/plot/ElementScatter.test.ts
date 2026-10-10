@@ -110,7 +110,6 @@ describe(`ElementScatter`, () => {
     ],
     [`default value label`, {}, [`Value`]],
   ])(`tooltip shows %s`, async (_name, props, expected) => {
-    document.body.replaceChildren()
     mount(ElementScatter, {
       target: document.body,
       props: {
@@ -127,7 +126,6 @@ describe(`ElementScatter`, () => {
 
   test(`forwards flat control props and round-trips controls_open`, async () => {
     expect.hasAssertions()
-    document.body.replaceChildren()
     const controls_state = { controls_open: true }
     mount(ElementScatter, {
       target: document.body,
@@ -149,7 +147,6 @@ describe(`ElementScatter`, () => {
   // The plot styles a marker as hovered off `tooltip_point` alone, so leaving it set once the
   // pointer has left the periodic table strands that marker enlarged and brightened.
   test(`mirrors the hovered element tile onto tooltip_point and clears it again`, async () => {
-    document.body.replaceChildren()
     const state: { tooltip_point: InternalPoint | null } = { tooltip_point: null }
     mount(ElementScatter, {
       target: document.body,

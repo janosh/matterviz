@@ -71,30 +71,25 @@ const append_axis_title_segment = (
 
 const parse_axis_title_segments = (value: string): AxisTitleSegment[] => {
   const segments: AxisTitleSegment[] = []
-  const active_tags: (`sub` | `sup`)[] = []
+  // Shifts of the open <sub>/<sup> tags, innermost last
+  const active_shifts: NonNullable<AxisTitleSegment[`shift`]>[] = []
   const tag_pattern = /<(?<closing>\/?)(?<tag>sub|sup)\b[^>]*>/giu
   let cursor = 0
   for (const match of value.matchAll(tag_pattern)) {
     const match_idx = match.index ?? 0
-    const active_tag = active_tags.at(-1)
-    append_axis_title_segment(
-      segments,
-      html_to_text(value.slice(cursor, match_idx)),
-      active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
-    )
-    const tag = match.groups?.tag?.toLowerCase() as `sub` | `sup` | undefined
-    if (tag && match.groups?.closing) {
-      const tag_idx = active_tags.lastIndexOf(tag)
-      if (tag_idx !== -1) active_tags.splice(tag_idx, 1)
-    } else if (tag) active_tags.push(tag)
+    const text = html_to_text(value.slice(cursor, match_idx))
+    append_axis_title_segment(segments, text, active_shifts.at(-1))
+    const tag = match.groups?.tag?.toLowerCase()
+    if (tag) {
+      const shift = tag === `sub` ? `sub` : `super`
+      if (!match.groups?.closing) active_shifts.push(shift)
+      else if (active_shifts.includes(shift)) {
+        active_shifts.splice(active_shifts.lastIndexOf(shift), 1)
+      }
+    }
     cursor = match_idx + match[0].length
   }
-  const active_tag = active_tags.at(-1)
-  append_axis_title_segment(
-    segments,
-    html_to_text(value.slice(cursor)),
-    active_tag === `sub` ? `sub` : active_tag === `sup` ? `super` : undefined,
-  )
+  append_axis_title_segment(segments, html_to_text(value.slice(cursor)), active_shifts.at(-1))
 
   while (segments[0] && !segments[0].text.trimStart()) segments.shift()
   while (segments.at(-1) && !segments.at(-1)?.text.trimEnd()) segments.pop()
@@ -236,9 +231,8 @@ export function y_axis_label_x(
   const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
   const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
-  const title_center = title_height / 2
   return Math.max(
-    title_center,
+    title_height / 2,
     pad_l - tick_extent - LABEL_GAP_DEFAULT - title_height / 2 + (axis.label_shift?.x ?? 0),
   )
 }
@@ -340,7 +334,7 @@ const project_measured_axis = (
   target_end: number,
 ): MeasuredAxis => {
   const positions = axis.tick_positions
-  if (!positions || positions.length === 0) return axis
+  if (positions.length === 0) return axis
   const source_extent = axis.axis_extent ?? {
     start: Math.min(...positions),
     end: Math.max(...positions),
@@ -351,19 +345,14 @@ const project_measured_axis = (
     return axis.axis_extent ? axis : { ...axis, axis_extent: source_extent }
   }
   const source_span = source_extent.end - source_extent.start
-  if (source_span === 0) {
-    return {
-      ...axis,
-      tick_positions: positions.map(() => (target_start + target_end) / 2),
-      axis_extent: { start: target_start, end: target_end },
-    }
-  }
+  // A collapsed source puts every tick at the target's center
+  const project = (position: number) =>
+    source_span === 0
+      ? (target_start + target_end) / 2
+      : target_start + ((position - source_extent.start) / source_span) * target_span
   return {
     ...axis,
-    tick_positions: positions.map(
-      (position) =>
-        target_start + ((position - source_extent.start) / source_span) * target_span,
-    ),
+    tick_positions: positions.map(project),
     axis_extent: { start: target_start, end: target_end },
   }
 }
@@ -383,11 +372,6 @@ export const calc_auto_padding = ({
   height,
   controls_row = false,
 }: AutoPaddingConfig): Required<Sides> => {
-  const title_layout_for = (axis: MeasuredAxis, available_width: number): AxisTitleLayout =>
-    resolve_axis_title_layout(
-      axis,
-      available_width > 0 ? available_width : AXIS_TITLE_WRAP_WIDTH,
-    )
   // Resolve vertical density against the current drawable height. Explicit top/bottom padding
   // is stable; otherwise the default bands provide a deterministic first pass.
   const initial_plot_height =
@@ -463,7 +447,7 @@ export const calc_auto_padding = ({
     controls_row && y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
-    const title_layout = title_layout_for(x2_axis, available_width)
+    const title_layout = resolve_axis_title_layout(x2_axis, available_width)
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return Math.max(controls_floor, default_padding.t)
     const inside = x2_axis.tick_label?.inside ?? false
@@ -492,7 +476,7 @@ export const calc_auto_padding = ({
     const inside = x_axis.tick_label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
-    const title_layout = title_layout_for(x_axis, available_width)
+    const title_layout = resolve_axis_title_layout(x_axis, available_width)
     const title_height = title_layout.height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
     const band = has_outside_ticks
@@ -649,9 +633,10 @@ export function sample_series_obstacle_points(
       )
       for (let idx = 1; idx < n_samples; idx++) {
         const frac = idx / n_samples
-        const coord_x = previous.x + (point.x - previous.x) * frac
-        const coord_y = previous.y + (point.y - previous.y) * frac
-        obstacles.push({ x: coord_x, y: coord_y })
+        obstacles.push({
+          x: previous.x + (point.x - previous.x) * frac,
+          y: previous.y + (point.y - previous.y) * frac,
+        })
       }
     }
     previous = point

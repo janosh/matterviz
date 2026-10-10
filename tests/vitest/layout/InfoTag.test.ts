@@ -31,48 +31,55 @@ describe(`InfoTag`, () => {
     expect(tag.getAttribute(`role`)).toBe(`button`)
   })
 
-  // variant and size are passed straight through as classes
+  // variant, size and extra attributes pass straight through; disabled leaves the tab order
+  // and blocks click plus Enter/Space activation
   test.each([
-    [{ variant: `error`, size: `lg` }, [`error`, `lg`]],
-    [{}, [`default`, `md`]],
-  ] as const)(`props %j apply classes %j`, (props, classes) => {
-    mount(InfoTag, { target: document.body, props: { label: `Test`, value: 1, ...props } })
-    for (const cls of classes) expect(get_tag().classList.contains(cls)).toBe(true)
+    [`defaults`, {}, [`default`, `md`]],
+    [
+      `variant, size and spread attrs`,
+      { variant: `error`, size: `lg`, style: `color: red` },
+      [`error`, `lg`],
+    ],
+    [`disabled`, { disabled: true }, [`default`, `md`]],
+  ] as const)(`%s`, (_name, props, classes) => {
+    const onclick = vi.fn()
+    mount(InfoTag, {
+      target: document.body,
+      props: { label: `Test`, value: 1, onclick, ...props },
+    })
+    const tag = get_tag()
+    const disabled = `disabled` in props
+    for (const cls of classes) expect(tag.classList.contains(cls)).toBe(true)
+    expect(tag.classList.contains(`disabled`)).toBe(disabled)
+    expect(tag.getAttribute(`tabindex`)).toBe(disabled ? `-1` : `0`)
+    expect(tag.getAttribute(`aria-disabled`)).toBe(String(disabled))
+    expect(tag.style.color).toBe(`style` in props ? `red` : ``)
+    tag.click()
+    for (const key of [`Enter`, ` `])
+      tag.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    flushSync()
+    expect(onclick).toHaveBeenCalledTimes(disabled ? 0 : 3)
   })
 
+  // a tag is a copy button only when it has something to copy
   test.each([
-    { disabled: false, tabindex: `0`, has_class: false },
-    { disabled: true, tabindex: `-1`, has_class: true },
+    { value: undefined, copy_value: undefined, copied: undefined },
+    { value: `mp-1234`, copy_value: undefined, copied: `mp-1234` },
+    { value: 123.456, copy_value: undefined, copied: `123.456` },
+    { value: `abc123`, copy_value: `full-id-abc123`, copied: `full-id-abc123` },
+    { value: undefined, copy_value: `full-id-abc123`, copied: `full-id-abc123` },
   ])(
-    `disabled=$disabled → tabindex=$tabindex, class=$has_class`,
-    ({ disabled, tabindex, has_class }) => {
-      mount(InfoTag, {
-        target: document.body,
-        props: { label: `Test`, value: 1, disabled },
-      })
-      const tag = get_tag()
-      expect(tag.getAttribute(`tabindex`)).toBe(tabindex)
-      expect(tag.classList.contains(`disabled`)).toBe(has_class)
-      if (disabled) expect(tag.getAttribute(`aria-disabled`)).toBe(`true`)
-    },
-  )
-
-  test.each([
-    { value: `abc123`, copy_value: undefined, expected: `abc123` },
-    { value: `abc123`, copy_value: `full-id-abc123`, expected: `full-id-abc123` },
-    { value: undefined, copy_value: `full-id-abc123`, expected: `full-id-abc123` },
-  ])(
-    `copies $expected to clipboard (copy_value=$copy_value)`,
-    ({ value, copy_value, expected }) => {
+    `value=$value, copy_value=$copy_value copies $copied`,
+    ({ value, copy_value, copied }) => {
       const write_text_spy = mock_clipboard_write()
-      mount(InfoTag, {
-        target: document.body,
-        props: { label: `ID:`, value, copy_value },
-      })
-      expect(get_tag().getAttribute(`role`)).toBe(`button`)
-      get_tag().click()
+      mount(InfoTag, { target: document.body, props: { label: `ID:`, value, copy_value } })
+      const tag = get_tag()
+      expect(doc_query(`em`).textContent).toBe(value === undefined ? `` : String(value))
+      expect(tag.getAttribute(`role`)).toBe(copied ? `button` : null)
+      expect(tag.getAttribute(`tabindex`)).toBe(copied ? `0` : null)
+      tag.click()
       flushSync()
-      expect(write_text_spy).toHaveBeenCalledWith(expected)
+      expect(write_text_spy.mock.calls).toEqual(copied ? [[copied]] : [])
     },
   )
 
@@ -90,39 +97,18 @@ describe(`InfoTag`, () => {
     vi.useRealTimers()
   })
 
-  test(`custom onclick overrides copy; Enter/Space triggers click; disabled blocks both`, () => {
+  test(`custom onclick overrides copy`, () => {
     const write_text_spy = mock_clipboard_write()
-
-    // Custom onclick overrides copy
     const onclick = vi.fn()
     mount(InfoTag, {
       target: document.body,
-      props: { label: `Test`, value: undefined, onclick },
+      props: { label: `Test`, value: undefined, copy_value: `id`, onclick },
     })
     expect(get_tag().getAttribute(`role`)).toBe(`button`)
     get_tag().click()
     flushSync()
-    expect(onclick).toHaveBeenCalled()
+    expect(onclick).toHaveBeenCalledOnce()
     expect(write_text_spy).not.toHaveBeenCalled()
-
-    // Enter/Space triggers click
-    onclick.mockClear()
-    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
-    flushSync()
-    expect(onclick).toHaveBeenCalledTimes(2)
-
-    // Disabled blocks both click and keyboard
-    document.body.innerHTML = ``
-    const onclick2 = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, onclick: onclick2, disabled: true },
-    })
-    get_tag().click()
-    get_tag().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-    flushSync()
-    expect(onclick2).not.toHaveBeenCalled()
   })
 
   test.each([
@@ -158,30 +144,4 @@ describe(`InfoTag`, () => {
       expect(onclick).not.toHaveBeenCalled()
     },
   )
-
-  test.each([
-    { value: undefined, expected: `` },
-    { value: 123.456, expected: `123.456` },
-    { value: `mp-1234`, expected: `mp-1234` },
-  ])(`displays value $value as "$expected"`, ({ value, expected }) => {
-    mount(InfoTag, { target: document.body, props: { label: `Test:`, value } })
-    expect(doc_query(`em`).textContent).toBe(expected)
-    expect(get_tag().getAttribute(`role`)).toBe(value === undefined ? null : `button`)
-    expect(get_tag().getAttribute(`tabindex`)).toBe(value === undefined ? null : `0`)
-  })
-
-  test(`spreads additional attributes`, () => {
-    mount(InfoTag, {
-      target: document.body,
-      props: {
-        label: `Test`,
-        value: 1,
-        style: `background: red`,
-        'data-testid': `test-tag`,
-      },
-    })
-    const tag = doc_query(`[data-testid="test-tag"]`)
-    expect(tag.style.background).toBe(`red`)
-    expect(tag.classList.contains(`info-tag`)).toBe(true)
-  })
 })

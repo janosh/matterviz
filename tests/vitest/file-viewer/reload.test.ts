@@ -14,17 +14,37 @@ const test_mocks = vi.hoisted(() => {
   for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`]) {
     vi.stubGlobal(key, undefined)
   }
-  // jsdom has neither Worker nor object URLs; record what main.ts's guard hands the native
-  // constructor (and that it never turns a script into a blob)
-  const native_worker_calls: { url: string; options?: WorkerOptions }[] = []
+  // jsdom has neither Worker nor object URLs; record what main.ts hands the native
+  // constructor and which scripts it turns into blobs
+  const native_workers: {
+    url: string
+    options?: WorkerOptions
+    posted: { message: unknown; options?: StructuredSerializeOptions }[]
+    terminated: boolean
+    emit: (event: Event) => void
+  }[] = []
   const object_url_blobs: Blob[] = []
   vi.stubGlobal(
     `Worker`,
-    class FakeWorker {
+    class FakeWorker extends EventTarget {
+      record: (typeof native_workers)[number]
       constructor(url: string | URL, options?: WorkerOptions) {
-        native_worker_calls.push({ url: String(url), options })
+        super()
+        this.record = {
+          url: String(url),
+          options,
+          posted: [],
+          terminated: false,
+          emit: (event) => this.dispatchEvent(event),
+        }
+        native_workers.push(this.record)
       }
-      terminate(): void {}
+      postMessage(message: unknown, options?: StructuredSerializeOptions): void {
+        this.record.posted.push({ message, options })
+      }
+      terminate(): void {
+        this.record.terminated = true
+      }
     },
   )
   URL.createObjectURL = (blob: Blob) => {
@@ -33,7 +53,7 @@ const test_mocks = vi.hoisted(() => {
   }
   URL.revokeObjectURL = vi.fn()
   return {
-    native_worker_calls,
+    native_workers,
     object_url_blobs,
     mount: vi.fn((_component: unknown, _options: { props: Record<string, unknown> }) => ({})),
     parse_file_content: vi.fn(),
@@ -70,6 +90,8 @@ parse_in_worker.mockImplementation((content, filename, is_base64) =>
 afterEach(async () => {
   await cleanup_matterviz?.()
   vi.unstubAllGlobals()
+  test_mocks.native_workers.length = 0
+  test_mocks.object_url_blobs.length = 0
 })
 
 const result = (version: string): ParseResult => ({
@@ -542,26 +564,84 @@ test(`a bootstrap that fails before displaying still accepts host reloads`, asyn
   expect(last_mounted_props()?.value).toBe(`late`)
 })
 
-// #451: a worker script on the vscode-cdn resource origin cannot load from a worker context
-// (the webview service worker only serves the document). Reject it immediately so clients
-// report the failure instead of stalling ~20 s per file.
-test(`rejects cross-origin worker scripts synchronously and passes same-origin ones through`, () => {
-  const { native_worker_calls, object_url_blobs } = test_mocks
+// #451: a worker on the vscode-cdn resource origin can neither load its script nor import()
+// from that origin, since the webview service worker only serves the document. main.ts
+// fetches the script on the document and starts the worker from a blob URL instead.
+test(`starts cross-origin workers from fetched blob scripts`, async () => {
+  const { native_workers, object_url_blobs } = test_mocks
   const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/parse-worker.js`
-  for (const url of [resource_url, new URL(resource_url)]) {
-    expect(() => new ShimmedWorker(url, { type: `module` })).toThrow(
-      expect.objectContaining({
-        name: `SecurityError`,
-        message: expect.stringContaining(resource_url),
-      }),
-    )
-  }
-  const passed_through = [
+  const fetch_mock = vi.fn(async () => new Response(`self.onmessage = () => {}`))
+  vi.stubGlobal(`fetch`, fetch_mock)
+  const worker = new ShimmedWorker(new URL(resource_url), { type: `module` })
+  const transfer = [new ArrayBuffer(8)]
+  worker.postMessage(`queued`, transfer) // oxlint-disable-line unicorn/require-post-message-target-origin
+  const messages: unknown[] = []
+  const on_message = vi.fn()
+  worker.addEventListener(`message`, (event) => messages.push(event.data))
+  // oxlint-disable-next-line unicorn/prefer-add-event-listener -- on-handlers are part of Worker
+  worker.onmessage = on_message
+  await vi.waitFor(() => expect(native_workers).toHaveLength(1))
+  const [native] = native_workers
+  expect(fetch_mock).toHaveBeenCalledExactlyOnceWith(resource_url)
+  expect(await object_url_blobs[0].text()).toBe(`self.onmessage = () => {}`)
+  expect(native.url).toBe(`blob:${location.origin}/mock-1`)
+  expect(native.options).toEqual({ type: `module` })
+  worker.postMessage(`direct`) // oxlint-disable-line unicorn/require-post-message-target-origin
+  expect(native.posted).toEqual([
+    { message: `queued`, options: { transfer } },
+    { message: `direct`, options: undefined },
+  ])
+  native.emit(new MessageEvent(`message`, { data: `reply` }))
+  expect(messages).toEqual([`reply`])
+  // Not toHaveBeenCalledOnce: happy-dom's dispatchEvent also calls on-handlers itself,
+  // which browsers only do for IDL interfaces, not EventTarget subclasses
+  expect(on_message).toHaveBeenCalledWith(expect.objectContaining({ data: `reply` }))
+  // The worker's error is re-dispatched; preventing the copy prevents the original
+  const on_error = vi.fn((event: Event) => event.preventDefault())
+  worker.addEventListener(`error`, on_error)
+  const native_error = new ErrorEvent(`error`, { message: `boom`, cancelable: true })
+  native.emit(native_error)
+  expect(on_error).toHaveBeenCalledWith(expect.objectContaining({ message: `boom` }))
+  expect(native_error.defaultPrevented).toBe(true)
+  // The fetched script is reused, and terminate reaches the native worker
+  new ShimmedWorker(resource_url, { type: `module` }).terminate()
+  worker.terminate()
+  worker.postMessage(`dropped`) // oxlint-disable-line unicorn/require-post-message-target-origin
+  await Promise.resolve()
+  expect(fetch_mock).toHaveBeenCalledOnce()
+  expect(native.terminated).toBe(true)
+  expect(native.posted).toHaveLength(2)
+  expect(native_workers).toHaveLength(1)
+})
+
+test(`reports a failed worker script fetch as an error event and retries it`, async () => {
+  const { native_workers } = test_mocks
+  const resource_url = `https://file+.vscode-resource.vscode-cdn.net/ext/dist/assets/msd-worker.js`
+  const fetch_mock = vi.fn(async () => new Response(`missing`, { status: 404 }))
+  vi.stubGlobal(`fetch`, fetch_mock)
+  const on_error = vi.fn()
+  const failed = new ShimmedWorker(resource_url)
+  failed.addEventListener(`error`, on_error)
+  await vi.waitFor(() =>
+    expect(on_error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining(`HTTP 404`) }),
+    ),
+  )
+  const retried = new ShimmedWorker(resource_url)
+  await vi.waitFor(() => expect(fetch_mock).toHaveBeenCalledTimes(2))
+  retried.terminate()
+  expect(native_workers).toHaveLength(0)
+})
+
+test(`constructs same-origin and blob workers natively`, () => {
+  const { native_workers, object_url_blobs } = test_mocks
+  const workers = [
     new ShimmedWorker(`${location.origin}/assets/same-origin.js`, { type: `module` }),
     new ShimmedWorker(`blob:${location.origin}/already-a-blob`),
   ]
-  expect(passed_through).toHaveLength(2)
-  expect(native_worker_calls).toEqual([
+  // The proxy hands back the native instances, not stand-ins
+  for (const worker of workers) expect(worker).toBeInstanceOf(ShimmedWorker)
+  expect(native_workers.map(({ url, options }) => ({ url, options }))).toEqual([
     { url: `${location.origin}/assets/same-origin.js`, options: { type: `module` } },
     { url: `blob:${location.origin}/already-a-blob`, options: undefined },
   ])

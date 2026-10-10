@@ -601,7 +601,7 @@ describe(`marginal_hit`, () => {
 })
 
 // gaussian_kde takes no weights, so a weighted kde must throw rather than silently render the
-// unweighted density; histogram and cdf honour the weights
+// unweighted density (histogram and cdf weights are pinned by their exact-value tables above)
 describe(`weighted marginals`, () => {
   const positions = [1, 2]
   const weights = [1, 99]
@@ -610,13 +610,6 @@ describe(`weighted marginals`, () => {
     expect(() => compute(positions, { type: `kde` }, [0, 3], `linear`, weights)).toThrow(
       /cannot weight its samples/,
     )
-  })
-
-  // the 99:1 mass ratio has to change the curve, which it cannot if the weights are dropped
-  test.each([`histogram`, `cdf`] as const)(`honours weights for %s`, (type) => {
-    const curve_of = (wts: number[] | undefined) =>
-      JSON.stringify(compute(positions, { type, bins: 3 }, [0, 3], `linear`, wts))
-    expect(curve_of(weights)).not.toBe(curve_of(undefined))
   })
 })
 

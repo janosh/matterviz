@@ -55,44 +55,56 @@ describe(`CellSelect`, () => {
   describe(`dropdown menu`, () => {
     afterEach(() => vi.useRealTimers())
 
-    test(`opens on click/mouseenter (after hover-intent delay), closes on mouseleave`, async () => {
+    test(`opens on click/mouseenter (after hover-intent delay), closes on mouseleave or focus leaving`, async () => {
       vi.useFakeTimers()
       mount_select({ supercell_scaling: `1x1x1` })
 
+      const root = doc_query(`.cell-select`)
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
-      expect(doc_query(`.cell-select`).getAttribute(`role`)).toBe(`group`)
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      const dropdown = () => document.querySelector(`.dropdown`)
+      expect(root.getAttribute(`role`)).toBe(`group`)
+      expect(dropdown()).toBeNull()
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`false`)
 
       toggle.click()
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+      expect(dropdown()).toBeInstanceOf(HTMLElement)
       expect(toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseleave`))
+      // focus moving within the group keeps the menu, leaving it closes the menu
+      const focusout = (related_target: EventTarget | null) =>
+        root.dispatchEvent(
+          new FocusEvent(`focusout`, { bubbles: true, relatedTarget: related_target }),
+        )
+      focusout(doc_query(`.custom-input-row input`))
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      expect(dropdown()).toBeInstanceOf(HTMLElement)
+      focusout(document.body)
+      await tick()
+      expect(dropdown()).toBeNull()
+
+      toggle.click()
+      await tick()
+      root.dispatchEvent(mouse(`mouseleave`))
+      await tick()
+      expect(dropdown()).toBeNull()
+
+      // leaving during the hover-intent delay cancels opening
+      root.dispatchEvent(mouse(`mouseenter`))
+      root.dispatchEvent(mouse(`mouseleave`))
+      vi.advanceTimersByTime(250)
+      await tick()
+      expect(dropdown()).toBeNull()
 
       // mouseenter alone doesn't open it (hover-intent delay pending)...
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
+      root.dispatchEvent(mouse(`mouseenter`))
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      expect(dropdown()).toBeNull()
 
       // ...but a sustained hover does
       vi.advanceTimersByTime(250)
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`mouseleave during the hover-intent delay cancels opening`, async () => {
-      vi.useFakeTimers()
-      mount_select({ supercell_scaling: `1x1x1` })
-
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseleave`))
-      vi.advanceTimersByTime(250)
-      await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      expect(dropdown()).toBeInstanceOf(HTMLElement)
     })
 
     test(`suppress_hover blocks hover/focus opening and closes an open menu`, async () => {
@@ -220,13 +232,6 @@ describe(`CellSelect`, () => {
   })
 
   describe(`custom input`, () => {
-    test(`renders with placeholder and reflects current scaling`, async () => {
-      await mount_and_open({ supercell_scaling: `3x3x1` })
-      const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
-      expect(input.placeholder).toBe(`e.g. 2x2x2`)
-      expect(input.value).toBe(`3x3x1`)
-    })
-
     // validity itself is parse_supercell_scaling's job (supercell.test.ts); this is the
     // invalid class and the apply button, which also refuses the current scaling
     test.each([
@@ -240,6 +245,7 @@ describe(`CellSelect`, () => {
       async (input_val, invalid_class, apply_disabled) => {
         await mount_and_open({ supercell_scaling: `1x1x1` })
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
+        expect([input.placeholder, input.value]).toEqual([`e.g. 2x2x2`, `1x1x1`])
         set_input(input, input_val)
         await tick()
         expect(input.classList.contains(`invalid`)).toBe(invalid_class)

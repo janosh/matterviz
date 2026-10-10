@@ -78,26 +78,22 @@ const leading_number = (value: string): number => {
   return Number(match?.[0])
 }
 
-const parse_font_size = (value: string, fallback: number): number => {
-  const parsed = leading_number(value)
-  return positive_number(parsed, fallback)
-}
+const parse_font_size = (value: string, fallback: number): number =>
+  positive_number(leading_number(value), fallback)
 
 const parse_line_height = (
   value: string,
   font_size: number,
+  // Already normalized, so both fields are positive
   fallback: Readonly<FontSpec>,
 ): number => {
-  const fallback_ratio =
-    positive_number(fallback.line_height, DEFAULT_FONT_SPEC.line_height) /
-    positive_number(fallback.font_size, DEFAULT_FONT_SPEC.font_size)
+  const fallback_ratio = fallback.line_height / fallback.font_size
   const normalized = value.trim().toLowerCase()
   if (!normalized || normalized === `normal`) return font_size * fallback_ratio
 
   const parsed = leading_number(normalized)
   if (!(parsed > 0) || !Number.isFinite(parsed)) return font_size * fallback_ratio
-  if (/^[\d.]+$/u.test(normalized)) return parsed * font_size
-  if (normalized.endsWith(`em`)) return parsed * font_size
+  if (/^[\d.]+$/u.test(normalized) || normalized.endsWith(`em`)) return parsed * font_size
   if (normalized.endsWith(`%`)) return (parsed / 100) * font_size
   return parsed
 }
@@ -217,21 +213,6 @@ const uncached_line_metrics = (
   }
 }
 
-const cached_line_metrics = (
-  text: string,
-  font_css: string,
-  font: Readonly<FontSpec>,
-): TextLineMetrics => {
-  const cached = line_metrics_by_font[font_css]?.[text]
-  if (cached) return cached
-  // Panning a numeric axis mints new labels forever, so the cache needs a ceiling.
-  if (cached_line_count >= MAX_CACHED_LINES) clear_text_metrics_cache()
-  const metrics = uncached_line_metrics(text, font, font_css)
-  ;(line_metrics_by_font[font_css] ??= Object.create(null))[text] = metrics
-  cached_line_count += 1
-  return metrics
-}
-
 // Normalising a spec and joining its canvas shorthand costs more than the cache lookup it
 // guards, and tick wrapping measures hundreds of substrings against one stable font object.
 const css_by_font_spec = new WeakMap<Readonly<FontSpec>, string>()
@@ -257,11 +238,15 @@ export function measure_text_line(
   font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
 ): TextLineMetrics {
   const font_css = canonical_font_css(font)
+  const cached = line_metrics_by_font[font_css]?.[text]
+  if (cached) return cached
+  // Panning a numeric axis mints new labels forever, so the cache needs a ceiling.
+  if (cached_line_count >= MAX_CACHED_LINES) clear_text_metrics_cache()
   // Normalising is only needed to build fallback metrics, which a hit never reaches.
-  return (
-    line_metrics_by_font[font_css]?.[text] ??
-    cached_line_metrics(text, font_css, normalize_font_spec(font))
-  )
+  const metrics = uncached_line_metrics(text, normalize_font_spec(font), font_css)
+  ;(line_metrics_by_font[font_css] ??= Object.create(null))[text] = metrics
+  cached_line_count += 1
+  return metrics
 }
 
 const split_overlong_word = (

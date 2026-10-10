@@ -29,19 +29,32 @@
   // Wyckoff rows already re-expressed onto whatever cell the viewer renders
   // (conventional/primitive/supercell), read from the viewer analysis
   let top_viewer = $state<ReturnType<typeof Structure>>()
-  let two_col_viewer = $state<ReturnType<typeof Structure>>()
-  let stacked_viewer = $state<ReturnType<typeof Structure>>()
   const wyckoff_positions = $derived(top_viewer?.analysis.wyckoff_positions ?? [])
   let hovered_wyckoff_sites = $state<number[]>([])
   let active_wyckoff_sites = $state<number[]>([])
-  // Symmetry data for each example
   const top_ex_sym_data = $derived(top_viewer?.analysis.sym_data ?? null)
-  const two_col_sym_data = $derived(two_col_viewer?.analysis.sym_data ?? null)
-  const stacked_sym_data = $derived(stacked_viewer?.analysis.sym_data ?? null)
-  // Symmetry settings for layout examples (independent controls)
   let wide_example_symmetry_settings = $state<SymmetrySettings>(default_sym_settings)
-  let two_col_sym_settings = $state<SymmetrySettings>(default_sym_settings)
-  let stacked_sym_settings = $state<SymmetrySettings>(default_sym_settings)
+  // Layout examples, each with its own viewer and independent symmetry settings
+  const layout_examples = [
+    {
+      id: `two-column-stats-structure`,
+      title: `Two Column - Stats + Structure`,
+      layout: `two-column-layout`,
+      height: `300px`,
+      style: `height: 300px; border-radius: 8pt`,
+    },
+    {
+      id: `stacked-layout-stats-above-structure`,
+      title: `Stacked Layout - Stats Above Structure`,
+      layout: `stacked-layout`,
+      height: `400px`,
+      style: `height: 400px; border-radius: 8pt; margin-top: 1em`,
+    },
+  ]
+  let layout_viewers = $state<(ReturnType<typeof Structure> | undefined)[]>([])
+  let layout_sym_settings = $state<SymmetrySettings[]>(
+    layout_examples.map(() => default_sym_settings),
+  )
   let show_sym_elements = $state(false)
   // List unoccupied Wyckoff positions of the space group in the table
   let show_unoccupied_wyckoff = $state(false)
@@ -189,39 +202,26 @@
   <h2 id="layout-examples" style="text-align: center; margin-bottom: 2em">Layout Examples</h2>
 
   {#if top_ex_sym_data}
-    <!-- Example 3: Two Column - Stats Left, Structure Right -->
-    <div class="example-section">
-      <h3 id="two-column-stats-structure">Two Column - Stats + Structure</h3>
-      <LazyDemo label="Two Column - Stats + Structure" height="300px">
-        <div class="two-column-layout">
-          <SymmetryStats sym_data={two_col_sym_data} bind:settings={two_col_sym_settings} />
-          <Structure
-            source="/structures/{source_filename}"
-            show_controls={true}
-            bind:this={two_col_viewer}
-            bind:symmetry_settings={two_col_sym_settings}
-            style="height: 300px; border-radius: 8pt"
-          />
-        </div>
-      </LazyDemo>
-    </div>
-
-    <!-- Example 5: Grid Layout - Stats Above, Structure Below -->
-    <div class="example-section">
-      <h3 id="stacked-layout-stats-above-structure">Stacked Layout - Stats Above Structure</h3>
-      <LazyDemo label="Stacked Layout - Stats Above Structure" height="400px">
-        <div class="stacked-layout">
-          <SymmetryStats sym_data={stacked_sym_data} bind:settings={stacked_sym_settings} />
-          <Structure
-            source="/structures/{source_filename}"
-            show_controls={true}
-            bind:this={stacked_viewer}
-            bind:symmetry_settings={stacked_sym_settings}
-            style="height: 400px; border-radius: 8pt; margin-top: 1em"
-          />
-        </div>
-      </LazyDemo>
-    </div>
+    {#each layout_examples as { id, title, layout, height, style }, idx (id)}
+      <div class="example-section">
+        <h3 {id}>{title}</h3>
+        <LazyDemo label={title} {height}>
+          <div class={layout}>
+            <SymmetryStats
+              sym_data={layout_viewers[idx]?.analysis.sym_data ?? null}
+              bind:settings={layout_sym_settings[idx]}
+            />
+            <Structure
+              source="/structures/{source_filename}"
+              show_controls
+              bind:this={layout_viewers[idx]}
+              bind:symmetry_settings={layout_sym_settings[idx]}
+              {style}
+            />
+          </div>
+        </LazyDemo>
+      </div>
+    {/each}
   {:else}
     <p style="text-align: center; color: var(--text-muted, #666)">
       Load a structure above to see layout examples
@@ -248,7 +248,6 @@
     justify-content: center;
     min-height: 100%;
   }
-  /* layout example CSS */
   .example-section {
     margin: 3em 0;
   }

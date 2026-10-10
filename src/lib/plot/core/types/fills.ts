@@ -128,12 +128,7 @@ export interface FillRegion {
 // Convenience type for error bands (symmetric or asymmetric around a series)
 export interface ErrorBand {
   // Reference to the central series
-  series:
-    | { type: `series`; series_idx: number }
-    | {
-        type: `series`
-        series_id: string | number
-      }
+  series: Extract<FillBoundary, { type: `series` }>
 
   // Error values - can be symmetric (single value/array) or asymmetric (upper/lower)
   error:

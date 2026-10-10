@@ -6,16 +6,18 @@
   import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
   import { file_type_paint } from '#lib/io/index.js'
   import { format_num } from '#lib/labels.js'
-  import type { Vec3 } from '#lib/math.js'
+  import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import { Structure } from '#lib/structure/index.js'
-  import type { SaedOptions, SaedPatternData, XrdPattern } from '#lib/xrd/index.js'
+  import type { SaedOptions, XrdPattern } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern,
     compute_xrd_pattern,
     electron_wavelength,
     SaedPattern,
+    xrd_symmetry_rotations,
     XrdPlot,
   } from '#lib/xrd/index.js'
+  import { SvelteMap } from 'svelte/reactivity'
   import { structure_map, structures } from '#site/structures.js'
   import { to_error } from '#lib/utils.js'
   import { fixture_ext, site_file_info } from '#site/imports.js'
@@ -60,14 +62,33 @@
     return site_file_info(path, { type: ext, category, category_icon: icon })
   })
 
+  // Point-group rotations group each peak's hkls into symmetry-equivalent families. moyo-wasm
+  // analyzes asynchronously, so the first read of a structure requests them and returns null;
+  // patterns recompute once they land here. Requested on demand to keep the demos lazy.
+  const rotations_by_id = new SvelteMap<string, Matrix3x3[] | Error>()
+  const requested_ids = new Set<string>()
+  const rotations_for = (struct_id: string, struct: Crystal): Matrix3x3[] | null => {
+    const rotations = rotations_by_id.get(struct_id)
+    if (rotations instanceof Error) throw rotations
+    if (!rotations && !requested_ids.has(struct_id)) {
+      requested_ids.add(struct_id)
+      xrd_symmetry_rotations(struct).then(
+        (result) => rotations_by_id.set(struct_id, result),
+        (exc) => rotations_by_id.set(struct_id, to_error(exc)),
+      )
+    }
+    return rotations ?? null
+  }
+
   // Memoize fixture calculations; consumers stay lazy until their demo becomes visible.
   const xrd_cache = new Map<string, XrdPattern>()
   const ensure_pattern = (struct_id: string): XrdPattern | null => {
     const cached = xrd_cache.get(struct_id)
     if (cached) return cached
     const struct = structure_map.get(struct_id)
-    if (!struct) return null
-    const pattern = compute_xrd_pattern(struct)
+    const symmetry_rotations = struct && rotations_for(struct_id, struct)
+    if (!struct || !symmetry_rotations) return null
+    const pattern = compute_xrd_pattern(struct, { symmetry_rotations })
     xrd_cache.set(struct_id, pattern)
     return pattern
   }
@@ -76,13 +97,16 @@
   const compute_ids = structures.map((struct) => struct.id ?? ``)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<Crystal | null>(structure_map.get(compute_id) ?? null)
-  const computed = $derived.by(() => {
+  const try_compute = <Pattern>(
+    compute: () => Pattern | null,
+  ): { pattern: Pattern | null; error: string | null } => {
     try {
-      return { pattern: ensure_pattern(compute_id), error: null }
+      return { pattern: compute(), error: null }
     } catch (exc) {
       return { pattern: null, error: to_error(exc).message }
     }
-  })
+  }
+  const computed = $derived(try_compute(() => ensure_pattern(compute_id)))
 
   // Radiation comparison: the same structure probed with X-rays, neutrons and electrons.
   // XrdPlot already accepts an array of patterns, so overlaying them needs no plot changes.
@@ -94,6 +118,13 @@
     const entries: { label: string; pattern: XrdPattern; color: string }[] = []
     const errors: string[] = []
     if (!struct) return { entries, errors }
+    let symmetry_rotations: Matrix3x3[] | null = null
+    try {
+      symmetry_rotations = rotations_for(compute_id, struct)
+    } catch (exc) {
+      errors.push(`Symmetry analysis: ${to_error(exc).message}`)
+    }
+    if (!symmetry_rotations) return { entries, errors }
 
     const requested = [
       [`xray`, `X-ray`, PLOT_COLORS[0], true],
@@ -107,6 +138,7 @@
           radiation,
           wavelength: probe_wavelength,
           two_theta_range: [0, 90],
+          symmetry_rotations,
         })
         entries.push({ label: `${label} (λ = ${probe_wavelength} Å)`, pattern, color })
       } catch (exc) {
@@ -134,14 +166,9 @@
     const timer = setTimeout(() => (saed_options = next), 250)
     return () => clearTimeout(timer)
   })
-  const saed = $derived.by((): { pattern: SaedPatternData | null; error: string | null } => {
+  const saed = $derived.by(() => {
     const struct = computed_struct
-    if (!struct) return { pattern: null, error: null }
-    try {
-      return { pattern: compute_saed_pattern(struct, saed_options), error: null }
-    } catch (exc) {
-      return { pattern: null, error: to_error(exc).message }
-    }
+    return try_compute(() => struct && compute_saed_pattern(struct, saed_options))
   })
 
   // Multi-select demo: allow overlaying multiple structures
@@ -167,12 +194,7 @@
     <LazyDemo label="xrd" height="600px">
       <XrdPlot
         patterns={computed.pattern
-          ? [
-              {
-                label: `${compute_id} ${formula_for(compute_id)}`,
-                pattern: computed.pattern,
-              },
-            ]
+          ? [{ label: `${compute_id} ${formula_for(compute_id)}`, pattern: computed.pattern }]
           : []}
         annotate_peaks={3}
         hkl_format="compact"
@@ -265,11 +287,10 @@
       <div class="selected-structures-grid">
         {#each selected_ids as struct_id, idx (struct_id)}
           {@const struct_obj = structure_map.get(struct_id)}
-          {@const series_color = plot_color(idx)}
           {#if struct_obj}
             <div
               class="structure-tile"
-              style:background-color={hex_with_alpha(series_color, 0.15)}
+              style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
             >
               <h3>{struct_id}</h3>
               <Structure

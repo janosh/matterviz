@@ -103,24 +103,6 @@ describe(`reactive_widget`, () => {
     expect(props.hovered_site_idx).toBeNull() // no fallback given -> null
   })
 
-  test(`two-way sync does not loop (Python -> JS -> Python echo absorbed)`, () => {
-    const model = new MockModel({ current_step_idx: 0 })
-    const { props } = reactive_widget(as_model(model), [writeback_prop(`current_step_idx`, 0)])
-    flushSync() // initial writeback effect: value equals model -> no write
-
-    // Python pushes a new step; drive updates props, writeback must not echo back
-    model.push_from_python(`current_step_idx`, 5)
-    flushSync()
-    expect(props.current_step_idx).toBe(5)
-    expect(model.save_count).toBe(0)
-
-    // Local (component-style) mutation writes back exactly once
-    props.current_step_idx = 9
-    flushSync()
-    expect(model.state.current_step_idx).toBe(9)
-    expect(model.save_count).toBe(1)
-  })
-
   test(`dispose unregisters drive listeners and stops writeback effects`, () => {
     const model = new MockModel({ a: 0, current_step_idx: 0 })
     const { props, dispose } = reactive_widget(as_model(model), [
@@ -139,7 +121,8 @@ describe(`reactive_widget`, () => {
 
   // Exercises the real path the whole feature relies on: reactive_widget().props
   // passed into Svelte's mount(), a component $bindable mutation flowing back to
-  // the model, and a Python push flowing into the component.
+  // the model exactly once, and a Python push flowing into the component without
+  // echoing back (Python -> JS -> Python loop absorbed).
   test(`real mount(): $bindable writeback -> model, and drive -> component`, () => {
     const model = new MockModel({ current_step_idx: 0 })
     const reactive = reactive_widget(as_model(model), [writeback_prop(`current_step_idx`, 0)])
@@ -158,6 +141,7 @@ describe(`reactive_widget`, () => {
 
     model.push_from_python(`current_step_idx`, 5) // Python -> component
     flushSync()
+    expect(model.save_count).toBe(1) // the driven value is not echoed back
     inst.step() // proves the driven value reached the component: 5 -> 6
     flushSync()
     expect(model.state.current_step_idx).toBe(6)

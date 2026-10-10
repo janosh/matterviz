@@ -1,6 +1,5 @@
 import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
 import type { PlotTitleConfig } from '#lib/plot/core/plot-title.js'
-import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import type { ComponentProps } from 'svelte'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -19,16 +18,9 @@ const mount_title = (
   return { component, svg }
 }
 
-beforeEach(() => {
-  clear_text_metrics_cache()
-  mock_text_measurement(5)
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
-  clear_text_metrics_cache()
-  document.body.replaceChildren()
-})
+// The global setup clears the DOM and the text-metrics cache before each test
+beforeEach(() => mock_text_measurement(5))
+afterEach(() => vi.restoreAllMocks())
 
 describe(`PlotTitle`, () => {
   test(`renders wrapped title and subtitle as export-friendly SVG text`, async () => {

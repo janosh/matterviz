@@ -509,12 +509,6 @@ describe(`phonon band helpers`, () => {
     expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
   })
 
-  it(`rejects band conversion without path metadata`, () => {
-    expect(() => phonon_band_structure_from_modes(make_mode_data())).toThrow(
-      /no band path metadata/,
-    )
-  })
-
   it(`labels only the segment endpoints, last segment winning at shared indices`, () => {
     const data = make_mode_data()
     data.path_segments = [
@@ -523,7 +517,11 @@ describe(`phonon band helpers`, () => {
       { start_index: 5, end_index: 7, start_label: `R`, end_label: `` },
     ]
     expect(phonon_qpoint_labels(data)).toEqual({ 0: `GAMMA`, 2: `X`, 4: `M`, 5: `R` })
+    // without path metadata there are no labels and no band structure
     expect(phonon_qpoint_labels(make_mode_data())).toEqual({})
+    expect(() => phonon_band_structure_from_modes(make_mode_data())).toThrow(
+      /no band path metadata/,
+    )
   })
 
   it.each([

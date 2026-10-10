@@ -42,7 +42,6 @@ export interface TreemapLabelPlacement {
   lines: (TreemapLabelLine & { y: number })[]
   font_size: number
   header: boolean
-  dominant_baseline: `central`
   transform?: string
 }
 
@@ -153,7 +152,6 @@ export function place_treemap_label({
     lines: placed_lines,
     font_size,
     header,
-    dominant_baseline: `central`,
     ...(rotated ? { transform: `rotate(-90, ${center_x}, ${center_y})` } : {}),
   }
 }

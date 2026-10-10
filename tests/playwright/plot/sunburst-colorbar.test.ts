@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { require_bbox } from '../helpers'
 
 const padding_by_side = { left: 40, right: 24 } as const
 const colorbar_gap = 8
@@ -12,14 +13,9 @@ test.describe(`Sunburst vertical colorbars`, () => {
     test(`${colorbar_side} colorbar and ticks stay inside their reserve`, async ({ page }) => {
       const plot = page.locator(`#vertical-colorbar-${colorbar_side} .sunburst`)
       const colorbar = plot.locator(`.colorbar`)
-      const [plot_box, arcs_box, colorbar_box] = await Promise.all([
-        plot.boundingBox(),
-        plot.locator(`.arcs`).boundingBox(),
-        colorbar.boundingBox(),
-      ])
-      if (!plot_box || !arcs_box || !colorbar_box) {
-        throw new Error(`missing plot/arcs/colorbar bounding box`)
-      }
+      const [plot_box, arcs_box, colorbar_box] = await Promise.all(
+        [plot, plot.locator(`.arcs`), colorbar].map((locator) => require_bbox(locator)),
+      )
       const tick_boxes = await colorbar.locator(`.tick-label`).evaluateAll((elements) =>
         elements.map((element) => {
           const rect = element.getBoundingClientRect()

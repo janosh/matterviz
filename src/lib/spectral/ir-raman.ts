@@ -72,7 +72,7 @@ export function ir_intensity(
 export function raman_invariants(tensor: Matrix3x3) {
   const sym = (row: number, col: number) => (tensor[row][col] + tensor[col][row]) / 2
   const [tensor_xx, tensor_yy, tensor_zz] = [tensor[0][0], tensor[1][1], tensor[2][2]]
-  const [coords_xy, tilt_yz, tensor_zx] = [sym(0, 1), sym(1, 2), sym(2, 0)]
+  const [tensor_xy, tensor_yz, tensor_zx] = [sym(0, 1), sym(1, 2), sym(2, 0)]
 
   const isotropic = (tensor_xx + tensor_yy + tensor_zz) / 3 // a = trace/3
   // gamma^2
@@ -81,7 +81,7 @@ export function raman_invariants(tensor: Matrix3x3) {
       (tensor_yy - tensor_zz) ** 2 +
       (tensor_zz - tensor_xx) ** 2) /
       2 +
-    3 * (coords_xy ** 2 + tilt_yz ** 2 + tensor_zx ** 2)
+    3 * (tensor_xy ** 2 + tensor_yz ** 2 + tensor_zx ** 2)
   const denominator = 45 * isotropic ** 2 + 4 * anisotropy_sq
   return {
     isotropic,

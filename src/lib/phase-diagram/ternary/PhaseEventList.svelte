@@ -3,7 +3,7 @@
   // an event moves the temperature just above it so the section shows the products; clicking
   // a formula selects that phase.
   import { get_formula_label_segments } from '#lib/composition/format.js'
-  import { format_num } from '#lib/labels.js'
+  import { format_num, plural } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
   import { format_reaction_coeff, reaction_phase_label } from './compute'
@@ -123,9 +123,7 @@
             </span>
           {:else}
             <span class="reaction"
-              >{event.edges_removed.length} tie-line{event.edges_removed.length === 1
-                ? ``
-                : `s`} replaced</span
+              >{plural(event.edges_removed.length, `tie-line`)} replaced</span
             >
           {/each}
         </span>

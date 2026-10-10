@@ -122,7 +122,6 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
   dd {
     margin: 0 12pt 0 4pt;
     color: var(--text-color, #fff);
-
     &.ref {
       max-width: 200pt;
       overflow: hidden;
@@ -133,7 +132,6 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
     display: flex;
     flex-wrap: wrap;
     gap: 2pt;
-
     & > span {
       background: var(--accent-color, #6366f1);
       color: white;
@@ -146,7 +144,6 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
     padding: 6pt;
     border-radius: 6px;
     margin: 12pt 0 0;
-
     &.success {
       background: rgba(from var(--success-color) r g b / 0.15);
       border: 1px solid rgba(from var(--success-color) r g b / 0.3);

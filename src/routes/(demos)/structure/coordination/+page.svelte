@@ -15,10 +15,11 @@
 
   // Single structure example. Default to a complex oxide (Zr16Bi16O56) whose sites span
   // coordination numbers 4, 6 and 8, so the discrete color bar shows several segments.
+  const { value: default_strategy, enum: strategy_options } =
+    SETTINGS_CONFIG.structure.bonding_strategy
+  const strategies = strategy_options ?? {}
   let single_id = $state<string>(`mp-756175`)
-  let single_strategy = $state<BondingStrategy>(
-    SETTINGS_CONFIG.structure.bonding_strategy.value,
-  )
+  let single_strategy = $state<BondingStrategy>(default_strategy)
   let single_split_mode = $state<CoordinationSplitMode>(`by_element`)
 
   const single_struct = $derived<Crystal | null>(structure_map.get(single_id) ?? null)
@@ -42,17 +43,13 @@
     `mp-1183089-Ac4Mg2-monoclinic`,
   ])
   let multi_split_mode = $state<CoordinationSplitMode>(`by_element`)
-  let multi_strategy = $state<BondingStrategy>(
-    SETTINGS_CONFIG.structure.bonding_strategy.value,
-  )
+  let multi_strategy = $state<BondingStrategy>(default_strategy)
 
   // Overlay tiles share the same coordination coloring, linked to the multi strategy
   let multi_color_config = $state({ ...coord_coloring })
   let multi_scene_props = $derived({ bonding_strategy: multi_strategy, gizmo: false })
 
   const selected_structures = $derived(labeled_structures(selected_ids))
-
-  const strategies = SETTINGS_CONFIG.structure.bonding_strategy.enum ?? {}
 </script>
 
 <h1 id="coordination-number-histograms">Coordination Number Histograms</h1>
@@ -120,11 +117,10 @@
       <div class="selected-structures-grid">
         {#each selected_ids as struct_id, idx (struct_id)}
           {@const struct_obj = structure_map.get(struct_id)}
-          {@const series_color = plot_color(idx)}
           {#if struct_obj}
             <div
               class="structure-tile"
-              style:background-color={hex_with_alpha(series_color, 0.15)}
+              style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
             >
               <h3>{struct_id}</h3>
               <Structure

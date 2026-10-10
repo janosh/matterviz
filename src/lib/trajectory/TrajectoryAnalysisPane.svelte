@@ -351,7 +351,7 @@
   {:else}
     {#if disabled_reason}
       <small id={unavailable_hint_id}>{disabled_reason}</small>
-    {:else if suggest_stride && !can_collect && run}
+    {:else if suggest_stride && !can_collect}
       <StatusMessage
         type="warning"
         message={no_full_pass_message(run, analysis_name)}

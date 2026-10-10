@@ -78,19 +78,17 @@ describe(`thermal_properties`, () => {
       const k_b = BOLTZMANN_EV_PER_K
       // only the peak has a nonzero trapezoid weight (n_modes / h · 2h / 2 = n_modes), so every
       // integral is exactly n_modes · f(ω0) up to rounding in (ω0 + h) − (ω0 − h): measured 2e-12
-      expect(rel(zero_point_energy, (n_modes * energy) / 2)).toBeLessThan(1e-10)
-      expect(rel(internal_energy[0], n_modes * energy * (0.5 + occupation))).toBeLessThan(
-        1e-10,
-      )
-      expect(rel(free_energy[0], n_modes * (energy / 2 + k_b * temp * log_term))).toBeLessThan(
-        1e-10,
-      )
-      expect(rel(entropy[0], n_modes * k_b * (coord_x * occupation - log_term))).toBeLessThan(
-        1e-10,
-      )
       const cv_ref =
         (n_modes * k_b * coord_x ** 2 * Math.exp(coord_x)) / (Math.exp(coord_x) - 1) ** 2
-      expect(rel(heat_capacity[0], cv_ref)).toBeLessThan(1e-10)
+      for (const [label, ours, ref] of [
+        [`ZPE`, zero_point_energy, (n_modes * energy) / 2],
+        [`U`, internal_energy[0], n_modes * energy * (0.5 + occupation)],
+        [`F`, free_energy[0], n_modes * (energy / 2 + k_b * temp * log_term)],
+        [`S`, entropy[0], n_modes * k_b * (coord_x * occupation - log_term)],
+        [`C_v`, heat_capacity[0], cv_ref],
+      ] as const) {
+        expect(rel(ours, ref), label).toBeLessThan(1e-10)
+      }
     },
   )
 

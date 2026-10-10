@@ -82,9 +82,10 @@
       trajectory_property_config[prop_name.toLowerCase()]
     const label = axis ? `${prop_name} ${axis}` : (config?.label ?? prop_name)
     const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
+    const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
     return {
-      id: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
-      key: `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`,
+      id,
+      key: id,
       label: unit ? `${label} (${unit})` : label,
       description: prop_name,
     }
@@ -208,17 +209,13 @@
     }),
   )
 
+  const tab_item = (value: typeof active_tab, name: string, count: number) => {
+    const label = `${name} (${format_num(count, `,d`)})`
+    return { id: label, value, label }
+  }
   let tab_items = $derived([
-    {
-      id: `Frames (${format_num(frame_table.rows.length, `,d`)})`,
-      value: `frames` as const,
-      label: `Frames (${format_num(frame_table.rows.length, `,d`)})`,
-    },
-    {
-      id: `Atoms (${format_num(active_sites.length, `,d`)})`,
-      value: `atoms` as const,
-      label: `Atoms (${format_num(active_sites.length, `,d`)})`,
-    },
+    tab_item(`frames`, `Frames`, frame_table.rows.length),
+    tab_item(`atoms`, `Atoms`, active_sites.length),
   ])
 
   const table_props = {

@@ -69,14 +69,6 @@ const versioned_base_url = (base_url: string): string => {
   return /\/v\d+(?:\.\d+)*$/.test(clean) ? clean : `${clean}/v1`
 }
 
-async function resolve_provider_url(provider_base_url: string): Promise<string> {
-  const api_base = versioned_base_url(provider_base_url)
-  const links = await fetch_links(`${api_base}/links`)
-  const child = links.find((link) => link.attributes.link_type === `child`)
-  // Index providers point to a child database; database providers already serve structures.
-  return child ? versioned_base_url(child.attributes.base_url) : api_base
-}
-
 async function fetch_links(url: string): Promise<OptimadeProvider[]> {
   const cached = links_cache.get(url)
   if (cached && Date.now() < cached.expires) return cached.promise
@@ -114,8 +106,11 @@ export function detect_provider_from_id(structure_id: string, providers: Optimad
 async function get_api_base(provider: string, providers: OptimadeProvider[]): Promise<string> {
   const provider_config = providers.find((entry) => entry.id === provider)
   if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
-
-  return resolve_provider_url(provider_config.attributes.base_url)
+  const api_base = versioned_base_url(provider_config.attributes.base_url)
+  const links = await fetch_links(`${api_base}/links`)
+  const child = links.find((link) => link.attributes.link_type === `child`)
+  // Index providers point to a child database; database providers already serve structures.
+  return child ? versioned_base_url(child.attributes.base_url) : api_base
 }
 
 export async function fetch_optimade_structure(

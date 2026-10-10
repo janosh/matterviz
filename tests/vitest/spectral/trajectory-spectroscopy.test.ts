@@ -12,6 +12,7 @@ import { one_sided_periodogram } from '#lib/fft.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
 import { describe, expect, it } from 'vitest'
+import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const signal = (
   n_samples: number,
@@ -142,26 +143,13 @@ const tumbling_spectra = (
   ): TrajectorySpectroscopyInput => ({
     positions: position_stream(positions, elements, steps),
     masses: Float64Array.from(masses),
-    velocities: {
-      values: velocities,
-      sample_shape: [n_atoms, 3],
-      steps,
-    },
+    velocities: { values: velocities, sample_shape: [n_atoms, 3], steps },
     raman_signal: {
       kind: `polarizability`,
-      series: {
-        values: tensors,
-        sample_shape: [3, 3],
-        steps,
-      },
+      series: { values: tensors, sample_shape: [3, 3], steps },
     },
   })
-  const options = {
-    preprocessing: `body_fixed`,
-    frequency_unit: `1/step`,
-    window: `none`,
-    zero_pad_factor: 1,
-  } as const
+  const options = { ...RAW_SPECTRUM, preprocessing: `body_fixed` } as const
   return {
     rotating: calc_trajectory_spectroscopy(
       as_input(rotating_positions, rotating_velocities, rotating_tensors),
@@ -317,13 +305,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [
       `lattice count`,
       (input: TrajectorySpectroscopyInput) =>
-        (input.positions.lattice_matrices = [
-          [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-        ]),
+        (input.positions.lattice_matrices = [IDENTITY_MATRIX3]),
       /lattice matrices/,
     ],
     [
@@ -395,10 +377,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [
       `body-fixed current IR`,
       (input: TrajectorySpectroscopyInput) => {
-        input.infrared_signal = {
-          kind: `current`,
-          series: x_sinusoid(0.125),
-        }
+        input.infrared_signal = { kind: `current`, series: x_sinusoid(0.125) }
       },
       { preprocessing: `body_fixed` },
       /body_fixed current IR requires the time derivative of the rotating frame/,
@@ -471,18 +450,10 @@ describe(`calc_trajectory_spectroscopy`, () => {
       const input = make_input()
       input.time_step = time_step
       input.time_unit = time_unit
-      input.infrared_signal = {
-        kind: `dipole`,
-        series: x_sinusoid(0.125),
-      }
+      input.infrared_signal = { kind: `dipole`, series: x_sinusoid(0.125) }
       return input
     }
-    const options = {
-      preprocessing: `raw`,
-      frequency_unit: `THz`,
-      window: `none`,
-      zero_pad_factor: 1,
-    } as const
+    const options = { ...RAW_SPECTRUM, frequency_unit: `THz` } as const
     const femtoseconds = calc_trajectory_spectroscopy(make_timed_input(1, `fs`), options)
     const picoseconds = calc_trajectory_spectroscopy(make_timed_input(0.001, `ps`), options)
     expect(femtoseconds.ir?.frequencies).toEqual(picoseconds.ir?.frequencies)
@@ -562,10 +533,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
 
   it(`separates an IR-active response peak from an IR-inactive VDOS mode`, () => {
     const input = make_input(0.125)
-    input.infrared_signal = {
-      kind: `dipole`,
-      series: x_sinusoid(0.25),
-    }
+    input.infrared_signal = { kind: `dipole`, series: x_sinusoid(0.25) }
     const result = calc_trajectory_spectroscopy(input, RAW_SPECTRUM)
     expect(peak_near(result, 0.125).ir_activity).toBe(`inactive`)
     expect(peak_near(result, 0.25).ir_activity).toBe(`active`)

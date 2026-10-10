@@ -24,7 +24,7 @@ export const scene_registry = new WeakMap<
 // PNG DPI -> render scale relative to the 72 DPI baseline, capped at 10x. DPI floors
 // at 1 (non-finite -> 72) so bad inputs can't yield 0x0 canvases or NaN pixel ratios.
 export const dpi_to_scale = (png_dpi: number): number =>
-  Math.min(Math.max(1, Number.isFinite(png_dpi) ? png_dpi : 72) / 72, 10)
+  clamp(Number.isFinite(png_dpi) ? png_dpi : 72, 1, 720) / 72
 
 const device_timeout_ms = 5000
 // Encoding cost grows with image pixels or recording size, but stalled exports stay bounded.
@@ -215,24 +215,19 @@ function resolve_viewbox_padding(svg: SVGElement, options: SvgExportOptions): nu
   for (const element of [svg, ...svg.querySelectorAll(`*`)]) {
     const computed = getComputedStyle(element)
     const inline_style = (element as SVGElement).style
-    const stroke =
-      [
-        inline_style.stroke,
-        computed.getPropertyValue(`stroke`),
-        element.getAttribute(`stroke`),
-      ].find(Boolean) ?? ``
+    // Inline style wins over the computed value, which wins over the presentation attribute
+    const style_value = (inline_val: string, prop: string): string =>
+      [inline_val, computed.getPropertyValue(prop), element.getAttribute(prop)].find(
+        Boolean,
+      ) ?? ``
+    const stroke = style_value(inline_style.stroke, `stroke`)
     if (!stroke || stroke === `none` || stroke === `transparent`) continue
     // oxlint-disable-next-line unicorn/prefer-number-coercion -- CSS lengths include units
     const stroke_width = Number.parseFloat(
-      [
-        inline_style.strokeWidth,
-        computed.getPropertyValue(`stroke-width`),
-        element.getAttribute(`stroke-width`),
-      ].find(Boolean) ?? ``,
+      style_value(inline_style.strokeWidth, `stroke-width`),
     )
-    if (Number.isFinite(stroke_width)) {
+    if (Number.isFinite(stroke_width))
       max_stroke_width = Math.max(max_stroke_width, stroke_width)
-    }
   }
   return max_stroke_width / 2
 }
@@ -598,13 +593,9 @@ export async function render_video_frames(
     const view = scene_registry.get(canvas)
     const export_camera =
       view && (sample || width !== undefined) ? view.camera.clone() : view?.camera
-    if (
-      sample &&
-      !(
-        export_camera instanceof PerspectiveCamera ||
-        export_camera instanceof OrthographicCamera
-      )
-    )
+    const is_3d_camera =
+      export_camera instanceof PerspectiveCamera || export_camera instanceof OrthographicCamera
+    if (sample && !is_3d_camera)
       throw new Error(`A registered 3D camera is required to render a camera flight`)
     if (renderer && (width !== undefined || resolution_multiplier !== 1)) {
       const size = renderer.getSize(new Vector2())
@@ -624,10 +615,7 @@ export async function render_video_frames(
     const aspect = capture_canvas.width / capture_canvas.height
     const capture = (idx: number) => {
       signal?.throwIfAborted()
-      if (
-        export_camera instanceof PerspectiveCamera ||
-        export_camera instanceof OrthographicCamera
-      ) {
+      if (is_3d_camera) {
         const duration = camera_flight?.keyframes.at(-1)?.time ?? 0
         const pose = sample?.(total_frames <= 1 ? 0 : (duration * idx) / (total_frames - 1))
         if (pose) {
@@ -673,8 +661,10 @@ export async function render_video_frames(
     if (total_frames > 0) capture(0)
     await abortable(() => sink.start?.(capture_canvas), signal)
     for (let idx = 0; idx < total_frames; idx++) {
-      if (idx > 0) await prepare(idx)
-      if (idx > 0) capture(idx)
+      if (idx > 0) {
+        await prepare(idx)
+        capture(idx)
+      }
       await abortable(() => sink.frame(capture_canvas, idx, signal), signal)
       signal?.throwIfAborted()
     }
@@ -730,6 +720,10 @@ export async function export_trajectory_video(
   const stop_recorder = () => {
     if (recorder && recorder.state !== `inactive`) recorder.stop()
   }
+  const request_frame = () =>
+    (
+      stream?.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined
+    )?.requestFrame?.()
   signal?.addEventListener(`abort`, stop_recorder, { once: true })
   try {
     await render_video_frames(
@@ -749,19 +743,13 @@ export async function export_trajectory_video(
             if (event.data.size > 0) chunks.push(event.data)
           })
           await run_recorder_action(recorder, `start`, 5000, signal, () => {
-            const track = stream?.getVideoTracks()[0] as
-              | CanvasCaptureMediaStreamTrack
-              | undefined
-            if (total_frames > 0) track?.requestFrame?.()
+            if (total_frames > 0) request_frame()
           })
           recording_start = performance.now()
           frame_start = recording_start
         },
         frame: async (_canvas, idx) => {
-          const track = stream?.getVideoTracks()[0] as
-            | CanvasCaptureMediaStreamTrack
-            | undefined
-          if (idx > 0) track?.requestFrame?.()
+          if (idx > 0) request_frame()
           await wait_for_video_tick(
             signal,
             Math.max(0, 1000 / fps - (performance.now() - frame_start)),

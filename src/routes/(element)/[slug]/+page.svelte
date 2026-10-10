@@ -82,9 +82,13 @@
   })
 
   let head_title = $derived(`${element.name} • ${pkg.name}`)
+  let discoverer = $derived(
+    element.discoverer.startsWith(`unknown`) ? undefined : element.discoverer,
+  )
+  // a year (never 0) or a free-text date like `~5000 BC`; C and Au list `unknown`
+  let year = $derived(element.year === `unknown` ? undefined : element.year)
 
   let orbiting = $state(true)
-  let window_width: number = $state(0)
   let active_shell: number | null = $state(null)
 
   let scatter_plot_values = $derived(
@@ -104,8 +108,6 @@
   }
 </script>
 
-<svelte:window bind:innerWidth={window_width} />
-
 <svelte:head>
   <title>{head_title}</title>
   <meta property="og:title" content={head_title} />
@@ -113,14 +115,14 @@
 
 <ElementHeading {element} />
 
-{#if (element?.discoverer && !element.discoverer.startsWith(`unknown`)) || element?.year}
+{#if discoverer || year}
   <p style="text-align: center">
     Discovered
-    {#if element?.discoverer && !element.discoverer.startsWith(`unknown`)}
-      by <strong>{element.discoverer}</strong>
+    {#if discoverer}
+      by <strong>{discoverer}</strong>
     {/if}
-    {#if element?.year !== null}
-      in <strong>{element.year}</strong>
+    {#if year}
+      in <strong>{year}</strong>
     {/if}
   </p>
 {/if}

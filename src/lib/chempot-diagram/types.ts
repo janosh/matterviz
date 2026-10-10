@@ -13,7 +13,7 @@ type ChemPotProjectionMode = `single` | `grid`
 
 // Visual and behavioral configuration for the diagram
 export interface ChemPotDiagramConfig {
-  // Plot formal (reference) chemical potentials mu_X - mu_X^0, or absolute DFT energies mu_X
+  // Plot formal (reference) chemical potentials mu_X - mu_X^0, or absolute computed energies mu_X
   formal_chempots?: boolean // default true
   // Lower bound for unspecified element limits (eV)
   default_min_limit?: number // default -50

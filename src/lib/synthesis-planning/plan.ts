@@ -53,6 +53,8 @@ interface PlannerContext {
   target: PlannerPhase
   gases: PlannerPhase[]
   gas_species: GasSpecies[]
+  // Pressure (bar) of every open gas: the requested one, else the default
+  partial_pressures: Partial<Record<GasSpecies, number>>
   // Per element of the phase set: can it be supplied or removed by an open gas?
   open_elements: boolean[]
   competitor_phases: PlannerPhase[]
@@ -171,12 +173,7 @@ function evaluate_route(
   const reaction = make_reaction(precursors, product, gases, balanced)
   const thermodynamics = {
     temperature: conditions.temperature ?? 0,
-    partial_pressures: Object.fromEntries(
-      gas_species.map((species) => [
-        species,
-        conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species],
-      ]),
-    ),
+    partial_pressures: { ...ctx.partial_pressures },
     downhill_windows: windows,
     gas_exchange,
     atmosphere: describe_atmosphere(gas_exchange),
@@ -386,6 +383,12 @@ export function plan_synthesis(
     target,
     gases,
     gas_species,
+    partial_pressures: Object.fromEntries(
+      gas_species.map((species) => [
+        species,
+        conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species],
+      ]),
+    ),
     open_elements: phase_set.elements.map((_, el_idx) =>
       gases.some((gas) => gas.fractions[el_idx] > 0),
     ),
@@ -429,19 +432,10 @@ export function plan_synthesis(
     max_precursors,
     on_progress,
   )
-  if (request.two_step) {
-    routes.push(...two_step_routes(ctx, pool, max_precursors, on_progress))
-  }
+  if (request.two_step) routes.push(...two_step_routes(ctx, pool, max_precursors, on_progress))
   on_progress?.({ stage: `ranking`, current: 0, total: 1 })
   if (request.two_step) routes.sort((route_a, route_b) => route_b.score - route_a.score)
   on_progress?.({ stage: `ranking`, current: 1, total: 1 })
-
-  const partial_pressures = Object.fromEntries(
-    gas_species.map((species) => [
-      species,
-      conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species],
-    ]),
-  ) as Partial<Record<GasSpecies, number>>
 
   const kept_route_ids = new Set(request.keep_route_ids)
   return {
@@ -455,7 +449,7 @@ export function plan_synthesis(
     conditions: {
       temperature: conditions.temperature ?? 0,
       open_species: gas_species,
-      partial_pressures,
+      partial_pressures: ctx.partial_pressures,
     },
     target_stability: {
       e_above_hull,

@@ -1,5 +1,6 @@
 import type { HullModel } from '#lib/convex-hull/model.js'
 import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model.js'
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
@@ -22,9 +23,19 @@ describe(`compute_energy_mode_info`, () => {
       `on-the-fly`,
       true,
     ],
+    // build_hull_model fills missing hull distances from the precomputed E_form, so they
+    // don't force recomputing E_form (which overwrote E_form-only data with 0 eV energies)
     [
       `missing hull distances`,
       [...full_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { e_form_per_atom: -1 })],
+      `precomputed`,
+      false,
+      `precomputed`,
+      true,
+    ],
+    [
+      `missing E_form`,
+      [...full_refs, make_phase({ Fe: 1, O: 1 }, -7.5)],
       `precomputed`,
       false,
       `on-the-fly`,
@@ -122,6 +133,39 @@ describe(`compute_hull_model`, () => {
       { e_above_hull: 0.9 },
     ])
   })
+
+  // E_form-only data (no energy, or a 0 eV placeholder) keeps its E_form in either mode:
+  // recomputing it from 0 eV energies put every entry at E_form = 0 on a flat stable hull
+  test.each([
+    [`no energy`, `precomputed`],
+    [`no energy`, `on-the-fly`],
+    [`0 eV placeholder`, `precomputed`],
+    [`0 eV placeholder`, `on-the-fly`],
+  ] as const)(
+    `E_form-only entries keep their E_form (%s, %s)`,
+    (energy, energy_source_mode) => {
+      const entries = (
+        [
+          [{ Li: 1 }, 0],
+          [{ O: 1 }, 0],
+          [{ Li: 2, O: 1 }, -2],
+          [{ Li: 1, O: 1 }, -1],
+        ] as const
+      ).map(([composition, e_form_per_atom]) =>
+        energy === `no energy`
+          ? ({ composition, e_form_per_atom } as PhaseData)
+          : { composition, e_form_per_atom, energy: 0 },
+      )
+      const model = compute_hull_model(entries, { energy_source_mode })
+      // hull Li (0) → Li2O (−2 at x_O = 1/3) → O (0) is −1.5 at x_O = 1/2, so LiO sits 0.5 above
+      expect(model.entries).toMatchObject([
+        { e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+        { e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+        { e_form_per_atom: -2, e_above_hull: 0, is_stable: true },
+        { e_form_per_atom: -1, e_above_hull: expect.closeTo(0.5, 12), is_stable: false },
+      ])
+    },
+  )
 
   // An excluded unary is never a formation-energy reference: from absolute energies nothing
   // with Fe can be placed, while precomputed E_form still plots against a synthetic Fe corner

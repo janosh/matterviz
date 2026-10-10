@@ -206,13 +206,16 @@ export const dispose_run_port = (port: MessagePort | undefined): void => {
   port.close()
 }
 
+// A worker-backed run always prepares display frames next to its decoder.
+export type WorkerRun = TrajectoryRun & Required<Pick<TrajectoryRun, `prepare_frame`>>
+
 // Client side. `release` runs once on dispose (or a port failure) and is where the caller
 // terminates the worker that owns the other end.
 export const worker_run = (
   port: MessagePort,
   summary: TrajectoryRunSummary,
   release: () => void = () => {},
-): TrajectoryRun => {
+): WorkerRun => {
   const fields = run_fields_from_summary(summary)
   const { properties } = fields
   let next_id = 0

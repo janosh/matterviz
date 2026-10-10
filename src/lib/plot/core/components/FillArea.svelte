@@ -1,3 +1,7 @@
+<script module lang="ts">
+  export { fill_gradient_def }
+</script>
+
 <script lang="ts">
   // FillArea component for rendering fill-between regions in ScatterPlot
   // Supports gradients, hover/click interactions, and animated path transitions
@@ -7,7 +11,7 @@
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
-  import type { FillHandlerEvent, FillRegion } from '#lib/plot/core/types.js'
+  import type { FillGradient, FillHandlerEvent, FillRegion } from '#lib/plot/core/types.js'
   import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
   import { unique_id } from '#lib/plot/core/utils.js'
 
@@ -176,36 +180,12 @@
   aria-hidden={is_first_segment ? undefined : `true`}
   aria-label={region.label ?? `Fill region ${region_idx}`}
 >
-  {#snippet gradient_stops(stops: readonly [number, string][])}
-    {#each stops as [offset, color], idx (idx)}
-      <stop offset="{offset * 100}%" stop-color={color} />
-    {/each}
-  {/snippet}
-
   {#if pattern && is_first_segment}
     <defs><PatternDefs patterns={[pattern]} /></defs>
   {/if}
   <!-- Gradient defs -->
   {#if is_fill_gradient(region.fill) && is_first_segment}
-    <defs>
-      {#if region.fill.type === `linear`}
-        <linearGradient
-          id={gradient_id}
-          gradientTransform="rotate({region.fill.angle ?? 0}, 0.5, 0.5)"
-        >
-          {@render gradient_stops(region.fill.stops)}
-        </linearGradient>
-      {:else if region.fill.type === `radial`}
-        <radialGradient
-          id={gradient_id}
-          cx={region.fill.center?.x ?? 0.5}
-          cy={region.fill.center?.y ?? 0.5}
-          r="0.5"
-        >
-          {@render gradient_stops(region.fill.stops)}
-        </radialGradient>
-      {/if}
-    </defs>
+    <defs>{@render fill_gradient_def(gradient_id, region.fill)}</defs>
   {/if}
 
   <!-- Main fill path. On hover the opacity boost (effective_opacity) highlights the area. We do NOT
@@ -220,6 +200,23 @@
     stroke-width={hover_stroke ? (region.hover_style?.stroke_width ?? 1.5) : 0}
   />
 </g>
+
+<!-- A linear or radial gradient for <defs>, shared with PlotLegend's fill swatches -->
+{#snippet fill_gradient_def(id: string, gradient: FillGradient)}
+  {#if gradient.type === `linear`}
+    <linearGradient {id} gradientTransform="rotate({gradient.angle ?? 0}, 0.5, 0.5)">
+      {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
+        <stop offset="{offset * 100}%" stop-color={color} />
+      {/each}
+    </linearGradient>
+  {:else if gradient.type === `radial`}
+    <radialGradient {id} cx={gradient.center?.x ?? 0.5} cy={gradient.center?.y ?? 0.5} r="0.5">
+      {#each gradient.stops as [offset, color], stop_idx (stop_idx)}
+        <stop offset="{offset * 100}%" stop-color={color} />
+      {/each}
+    </radialGradient>
+  {/if}
+{/snippet}
 
 <style>
   .fill-region {

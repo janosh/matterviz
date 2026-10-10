@@ -9,15 +9,16 @@ import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   compute_gas_correction,
   DEFAULT_ELEMENT_TO_GAS,
-  GAS_STOICHIOMETRY,
-  gas_pressure_term,
   get_effective_pressures,
+  tabulated_reference_shift,
 } from '#lib/convex-hull/gas-thermodynamics.js'
 import { interpolate_energy_at_temperature } from '#lib/convex-hull/helpers.js'
 import {
+  absolute_energy_per_atom,
   compute_e_form_per_atom,
+  entry_has_temp_data,
   find_lowest_energy_unary_refs,
-  get_energy_per_atom as energy_per_atom,
+  has_absolute_energy,
 } from '#lib/convex-hull/thermodynamics.js'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -33,11 +34,6 @@ export const SISSO_T_RANGE: Vec2 = [
 type Fractions = [ElementSymbol, number][]
 
 // === Per-entry inputs ===
-
-const has_tabulated_g = (entry: PhaseData): boolean =>
-  Boolean(
-    entry.temperatures?.length && entry.temperatures.length === entry.free_energies?.length,
-  )
 
 // Volume per atom in A^3 from volume_per_atom, structure.lattice.volume / n_sites or
 // data.volume / n_atoms; null when none is available
@@ -132,7 +128,7 @@ type GasShift = (
   reference_has_entropy: boolean,
 ) => number
 
-// Per-atom shift of an element's chemical potential from the atmosphere. Against a 0 K DFT
+// Per-atom shift of an element's chemical potential from the atmosphere. Against a 0 K computed
 // reference that is the full mu(T, p) - mu(0 K, 1 bar); a reference that already carries its
 // own G(T) (tabulated entry, SISSO's experimental 1 bar gas) only lacks k_B T ln(p/p0), and
 // compound gases (CO2, CO, H2O) have no such reference at all
@@ -154,12 +150,8 @@ function build_gas_shift(
   return (element, temperature, reference_has_entropy) => {
     const gas = element_to_gas[element]
     if (!gas || !enabled.has(gas)) return 0
-    if (reference_has_entropy) {
-      // Only elemental gases (O2, N2, ...) map one element to one pressure term
-      return Object.keys(GAS_STOICHIOMETRY[gas]).length === 1
-        ? gas_pressure_term(gas, temperature, pressures[gas])
-        : 0
-    }
+    if (reference_has_entropy)
+      return tabulated_reference_shift(gas, temperature, pressures[gas])
     const memo = last.get(element)
     if (memo?.[0] === temperature) return memo[1]
     const shift = compute_gas_correction(
@@ -182,7 +174,7 @@ function pick_source(
   mode: FreeEnergyOptions[`mode`],
   compounds_use_sisso: boolean,
 ): FreeEnergySource {
-  const tabulated = has_tabulated_g(entry)
+  const tabulated = entry_has_temp_data(entry)
   if (mode === `static`) return `static`
   if (mode === `tabulated`) return tabulated ? `tabulated` : `static`
   if (mode === `sisso`) return sisso_supports(entry) ? `sisso` : `static`
@@ -243,29 +235,21 @@ export function build_free_energy_model(
     unary_refs[element] ??= { composition: { [element]: 1 }, energy: 0 }
   const gas_shift = build_gas_shift(options.gas_config, options.gas_pressures)
 
-  // Static energy per atom: the entry's own energy, else E_form on the references' scale
-  // (E_form + Σ x_e E_e; E_form alone for a reference itself), else throw rather than sit at 0
+  // Static energy per atom: the entry's own energy, else E_form on the references' scale (also
+  // for a 0 eV placeholder `energy`), else throw rather than sit at 0
   const static_energy = (entry: PhaseData): number => {
-    if (typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`)
-      return energy_per_atom(entry)
-    const e_form = entry.e_form_per_atom
-    if (typeof e_form !== `number` || !Number.isFinite(e_form)) {
+    if (!has_absolute_energy(entry) && !Number.isFinite(entry.e_form_per_atom)) {
       throw new TypeError(
         `Entry ${entry.entry_id ?? JSON.stringify(entry.composition)} has no energy, energy_per_atom or e_form_per_atom`,
       )
     }
-    const fractions = atomic_fractions(entry)
-    if (fractions.length === 1 && unary_refs[fractions[0][0]] === entry) return e_form
-    return fractions.reduce(
-      (sum, [element, frac]) => sum + frac * static_energy(unary_refs[element]),
-      e_form,
-    )
+    return absolute_energy_per_atom(entry, unary_refs)
   }
 
   // Reference G_e(T) per element from its lowest-energy unary entry
   const refs = elements.map((element) => {
     const ref = unary_refs[element]
-    const tabulated = mode !== `static` && has_tabulated_g(ref)
+    const tabulated = mode !== `static` && entry_has_temp_data(ref)
     return [
       element,
       own_g_per_atom(ref, tabulated, static_energy),

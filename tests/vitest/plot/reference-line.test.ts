@@ -14,6 +14,7 @@ import {
   resolve_line_endpoints,
   solve_reference_annotations,
 } from '#lib/plot/core/reference-line.js'
+import { create_scale } from '#lib/plot/core/scales.js'
 import type { RefLine } from '#lib/plot/core/types.js'
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -253,8 +254,72 @@ describe(`resolve_line_endpoints`, () => {
     { type: `segment`, p1: [-50, -50], p2: [-10, -10] },
     { type: `segment`, p1: [150, 50], p2: [200, 50] },
     { type: `segment`, p1: [50, 150], p2: [50, 200] },
+    // spans entirely outside the visible range
+    { type: `horizontal`, y: 50, x_span: [200, 300] },
+    { type: `vertical`, x: 50, y_span: [-300, -200] },
   ] as RefLine[])(`%o returns null`, (line) => {
     expect(resolve_line_endpoints(line, line_axes)).toBeNull()
+  })
+
+  // Lines are straight in pixel space, so on nonlinear axes they must be extended, clipped
+  // and interpolated there: data-space math bends them away from their defining points
+  describe(`nonlinear axes`, () => {
+    const log_axes = (x_domain: Vec2, y_domain: Vec2, x_log = true, y_log = false) => {
+      const x_scale = create_scale(x_log ? `log` : `linear`, x_domain, [0, 400])
+      const y_scale = create_scale(y_log ? `log` : `linear`, y_domain, [300, 0])
+      return {
+        x_min: x_domain[0],
+        x_max: x_domain[1],
+        y_min: y_domain[0],
+        y_max: y_domain[1],
+        x_scale,
+        y_scale,
+      }
+    }
+    // Pixel distance from (px_x, px_y) to the line through the drawn endpoints
+    const dist_to_line = ([x1, y1, x2, y2]: number[], px_x: number, px_y: number) =>
+      Math.abs((x2 - x1) * (y1 - px_y) - (x1 - px_x) * (y2 - y1)) /
+      Math.hypot(x2 - x1, y2 - y1)
+
+    test(`line on log x passes through both defining points`, () => {
+      const axes_log = log_axes([1, 100], [0, 20])
+      const endpoints = resolve_line_endpoints(
+        { type: `line`, p1: [1, 1], p2: [10, 2] },
+        axes_log,
+      )
+      if (!endpoints) throw new Error(`line not visible`)
+      for (const [px_x, px_y] of [
+        [1, 1],
+        [10, 2],
+      ]) {
+        const dist = dist_to_line(endpoints, axes_log.x_scale(px_x), axes_log.y_scale(px_y))
+        expect(dist).toBeLessThan(1e-9)
+      }
+    })
+
+    test(`segment on log x keeps its shape when zoomed`, () => {
+      const segment: RefLine = { type: `segment`, p1: [1, 0], p2: [100, 10] }
+      // full view: the segment crosses x=10 at y=5 (halfway in log space)
+      const zoomed = log_axes([1, 10], [0, 20])
+      const endpoints = resolve_line_endpoints(segment, zoomed)
+      if (!endpoints) throw new Error(`segment not visible`)
+      expect(endpoints[2]).toBeCloseTo(zoomed.x_scale(10), 9)
+      expect(endpoints[3]).toBeCloseTo(zoomed.y_scale(5), 9)
+    })
+
+    test.each([
+      [`horizontal`, { type: `horizontal`, y: 0.5, coord_mode: `relative` }, 1, 150],
+      [`vertical`, { type: `vertical`, x: 0.25, coord_mode: `relative` }, 0, 100],
+    ] as const)(
+      `relative %s line interpolates in pixel space`,
+      (_desc, line, coord_idx, expected_px) => {
+        const endpoints = resolve_line_endpoints(
+          line,
+          log_axes([1, 1000], [1, 100], true, true),
+        )
+        expect(endpoints?.[coord_idx]).toBeCloseTo(expected_px, 9)
+      },
+    )
   })
 })
 

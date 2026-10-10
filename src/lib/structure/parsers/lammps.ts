@@ -101,7 +101,7 @@ export const parse_lammps_data = (content: string): Crystal => {
   for (const line of lines) {
     const name = section_name_of(line)
     if (name) {
-      current = { style: comment_of(line).trim().split(/\s+/)[0] ?? ``, rows: [] }
+      current = { style: comment_of(line).split(/\s+/)[0], rows: [] }
       sections.set(name, current)
       continue
     }
@@ -118,11 +118,13 @@ export const parse_lammps_data = (content: string): Crystal => {
     Number(
       header_groups(new RegExp(`^\\s*(?<value>-?[\\d.eE+-]+)\\s+${suffix}\\s*$`, `i`))?.value,
     )
-  const box_bounds = (axis: string): [number, number] => {
-    const groups = header_groups(
-      new RegExp(`^\\s*(?<lo>\\S+)\\s+(?<hi>\\S+)\\s+${axis}lo\\s+${axis}hi\\s*$`, `i`),
-    )
-    return [Number(groups?.lo), Number(groups?.hi)]
+  // The `count` raw tokens before a header keyword (`0 4 xlo xhi`, `1 0 0 avec`), if present
+  const header_fields = (count: number, keyword: string): string[] | undefined => {
+    const fields = Array.from({ length: count }, (_, idx) => `(?<field${idx}>\\S+)\\s+`)
+    const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
+    const pattern = new RegExp(`^\\s*${fields.join(``)}${keyword_pattern}\\s*$`, `i`)
+    const groups = header_groups(pattern)
+    return groups && Object.values(groups)
   }
 
   const atoms_section = sections.get(`Atoms`)
@@ -135,33 +137,24 @@ export const parse_lammps_data = (content: string): Crystal => {
       `LAMMPS data file declares ${num_atoms} atoms but its Atoms section has ${atoms_section.rows.length} rows`,
     )
 
-  const general_box_keywords = [`avec`, `bvec`, `cvec`, `abc origin`] as const
-  const general_box = general_box_keywords.map((keyword) => {
-    const keyword_pattern = keyword.replaceAll(/\s+/g, `\\s+`)
-    const groups = header_groups(
-      new RegExp(
-        `^\\s*(?<x>\\S+)\\s+(?<y>\\S+)\\s+(?<z>\\S+)\\s+${keyword_pattern}\\s*$`,
-        `i`,
-      ),
-    )
-    return groups ? ([Number(groups.x), Number(groups.y), Number(groups.z)] as Vec3) : null
-  })
-  const has_general_box = general_box.some(Boolean)
+  const general_box = [`avec`, `bvec`, `cvec`, `abc origin`].map((keyword) =>
+    header_fields(3, keyword),
+  )
   let lattice_matrix: math.Matrix3x3
   let box_origin: Vec3
-  if (has_general_box) {
-    if (
-      general_box.some(
-        (row) => row === null || !row.every((coordinate) => Number.isFinite(coordinate)),
-      )
+  if (general_box.some(Boolean)) {
+    const [avec, bvec, cvec, origin] = general_box.map((row) =>
+      math.finite_vec3_from_values(row?.map(Number)),
     )
+    if (!avec || !bvec || !cvec || !origin)
       throw new Error(
         `LAMMPS general triclinic data requires finite avec, bvec, cvec, and abc origin rows`,
       )
-    const [avec, bvec, cvec, origin] = general_box as [Vec3, Vec3, Vec3, Vec3]
     lattice_matrix = [avec, bvec, cvec]
     box_origin = origin
   } else {
+    const box_bounds = (axis: string): number[] =>
+      header_fields(2, `${axis}lo ${axis}hi`)?.map(Number) ?? [NaN, NaN]
     const [xlo, xhi] = box_bounds(`x`)
     const [ylo, yhi] = box_bounds(`y`)
     const [zlo, zhi] = box_bounds(`z`)
@@ -170,13 +163,11 @@ export const parse_lammps_data = (content: string): Crystal => {
         `LAMMPS data file is missing or has invalid xlo/xhi, ylo/yhi or zlo/zhi box bounds`,
       )
     // Optional restricted-triclinic tilt factors: `xy xz yz` on one line
-    const tilt = header_groups(/^\s*(?<xy>\S+)\s+(?<xz>\S+)\s+(?<yz>\S+)\s+xy\s+xz\s+yz\s*$/i)
-    const [tilt_xy, tilt_xz, tilt_yz] = tilt
-      ? [Number(tilt.xy), Number(tilt.xz), Number(tilt.yz)]
-      : [0, 0, 0]
+    const tilt = header_fields(3, `xy xz yz`)
+    const [tilt_xy, tilt_xz, tilt_yz] = tilt?.map(Number) ?? [0, 0, 0]
     if (![tilt_xy, tilt_xz, tilt_yz].every(Number.isFinite))
       throw new Error(
-        `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.xy} ${tilt?.xz} ${tilt?.yz}'`,
+        `LAMMPS data file has invalid xy xz yz tilt factors: '${tilt?.join(` `)}'`,
       )
     // Restricted-triclinic lattice vectors: a=(lx,0,0), b=(xy,ly,0), c=(xz,yz,lz)
     lattice_matrix = [
@@ -255,6 +246,20 @@ export const parse_lammps_data = (content: string): Crystal => {
       `LAMMPS Atoms row ${row_idx + 1} coordinates`,
     )
     const xyz = math.subtract(absolute, box_origin)
+    // write_data stores wrapped coordinates plus trailing `ix iy iz` image flags; unwrap to
+    // x + ix·a + iy·b + iz·c like ASE and the dump reader, so a molecule split across the
+    // box keeps its bond lengths
+    const image_tokens = tokens.slice(coord_col + 3, coord_col + 6)
+    if (image_tokens.length === 3) {
+      if (!image_tokens.every((token) => is_num_token(token, true)))
+        throw new Error(
+          `LAMMPS Atoms row ${row_idx + 1} has non-integer image flags '${image_tokens.join(` `)}' ${row_suffix}`,
+        )
+      for (const [vec_idx, token] of image_tokens.entries()) {
+        for (let axis = 0; axis < 3; axis++)
+          xyz[axis] += Number(token) * lattice_matrix[vec_idx][axis]
+      }
+    }
     sites.push(make_site(element, cart_to_frac.convert(xyz), xyz, `${element}${row_idx + 1}`))
     record_atom_id(site_idx_by_atom_id, Number(tokens[0]), row_idx)
   }

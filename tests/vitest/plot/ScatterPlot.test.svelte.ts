@@ -15,11 +15,15 @@ import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
+import { rgb } from 'd3-color'
+import { scaleSequentialLog } from 'd3-scale'
+import { interpolateViridis } from 'd3-scale-chromatic'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   clip_rect,
   doc_query,
+  form_controls,
   keydown,
   marker_fill,
   marker_position,
@@ -496,12 +500,6 @@ describe(`ScatterPlot`, () => {
       size_values,
       ...extra,
     })
-    const decoration_rect = (el: Element): Rect => ({
-      x: Number(el.getAttribute(`data-decoration-x`)),
-      y: Number(el.getAttribute(`data-decoration-y`)),
-      width: Number(el.getAttribute(`data-decoration-width`)),
-      height: Number(el.getAttribute(`data-decoration-height`)),
-    })
 
     test(`draws reference circles at the radii the markers get`, async () => {
       // 20 and 60 are both data and legend values, so their markers must match the circles,
@@ -559,8 +557,8 @@ describe(`ScatterPlot`, () => {
       const plot = await mount_sized_scatter_plot({
         series: [bubbles([1, 4, 9, 16, 25], { color_values: [1, 2, 3, 4, 5] })],
       })
-      const size_rect = decoration_rect(query(plot, `.size-legend-wrapper`))
-      const colorbar_rect = decoration_rect(query(plot, `.colorbar-wrapper`))
+      const size_rect = solved_decoration_rect(query(plot, `.size-legend-wrapper`))
+      const colorbar_rect = solved_decoration_rect(query(plot, `.colorbar-wrapper`))
       expect(size_rect.width).toBeGreaterThan(0)
       expect(rects_overlap(size_rect, colorbar_rect)).toBe(false)
     })
@@ -684,19 +682,6 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.x-axis`)).toBeNull()
     expect(plot.querySelector(`.y-axis`)).not.toBeNull()
     expect(update_range).not.toHaveBeenCalled()
-  })
-
-  test(`unannotated series use a single unlabeled y-axis`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [
-        { x: [1, 2], y: [1, 2], label: `A` },
-        { x: [1, 2], y: [3, 4], label: `B` },
-      ],
-    })
-
-    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
-    expect(plot.querySelector(`.y-axis .axis-label`)).toBeNull()
-    expect(plot.querySelectorAll(`.marker`)).toHaveLength(4)
   })
 
   test.each([
@@ -977,6 +962,9 @@ describe(`ScatterPlot`, () => {
     expect(markers).toHaveLength(expected_markers)
     expect(markers.every((marker) => marker.closest(`[clip-path]`) === null)).toBe(true)
     if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
+    // series without unit or axis_group share one unlabeled y-axis
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+    expect(plot.querySelector(`.y-axis .axis-label`)).toBeNull()
   })
 
   // Auto visibility uses rendered entries after shared-identity and fill-region folding.
@@ -1208,17 +1196,9 @@ describe(`ScatterPlot`, () => {
           state,
         ),
       )
-      const series_select = [...plot.querySelectorAll<HTMLSelectElement>(`select`)].find(
-        (select) => select.parentElement?.textContent?.startsWith(`Series`),
-      )
-      if (!series_select) throw new Error(`Missing series selector for ${markers}`)
-      // happy-dom does not match :checked on options, which Svelte uses for select bindings.
-      vi.spyOn(series_select, `querySelector`).mockImplementation(
-        () => series_select.options[series_select.selectedIndex],
-      )
-      series_select.value = `1`
-      series_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-      await tick()
+      const { control, set_value } = form_controls(plot)
+      const series_select = control(`Series`)
+      await set_value(`Series`, `1`)
       expect(state.selected_series_idx).toBe(1)
       for (const [kind, selector, attribute] of [
         ...(markers.includes(`points`) ? [[`point`, `.marker`, `fill`]] : []),
@@ -1226,10 +1206,9 @@ describe(`ScatterPlot`, () => {
       ]) {
         const reset_style = `button[title="Clear ${kind} style overrides"]`
         expect(plot.querySelector(reset_style)).not.toBeNull()
-        const toggle = [...plot.querySelectorAll(`label`)]
-          .find((label) => label.textContent?.trim() === `Show ${kind}s`)
-          ?.querySelector(`input`)
-        if (!toggle) throw new Error(`Missing ${kind} visibility toggle`)
+        const toggle = control(`Show ${kind}s`)
+        if (!(toggle instanceof HTMLInputElement))
+          throw new Error(`Show ${kind}s not a checkbox`)
         toggle.click()
         await tick()
         expect(toggle.checked).toBe(false)
@@ -2426,6 +2405,31 @@ describe(`ScatterPlot`, () => {
     expect(fills[1]).not.toMatch(/NaN/)
   })
 
+  // A 0 has no log image: the smallest positive value is the auto floor, so 0 clamps to it
+  // instead of flooring at LOG_EPS and squashing 1..100 into the top of the ramp
+  test(`log color and size scales floor at the smallest positive value`, async () => {
+    const values = [0, 1, 10, 100]
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [1, 2, 3, 4], y: [1, 2, 3, 4], color_values: values, size_values: values },
+      ],
+      size_scale: { type: `log`, radius_range: [2, 10] },
+      color_scale: { type: `log`, scheme: `interpolateViridis` },
+      color_bar: {},
+      point_tween: { duration: 0 },
+      legend: null,
+      show_controls: false,
+    })
+    const markers = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
+    const expected_scale = scaleSequentialLog(interpolateViridis).domain([1, 100]).clamp(true)
+    expect(markers.map(marker_fill)).toEqual(
+      values.map((value) => rgb(expected_scale(value)).formatHex()),
+    )
+    expect(markers.map(marker_radius)).toEqual([2, 2, 6, 10])
+    const tick_labels = plot.querySelectorAll(`.colorbar .tick-label`)
+    expect(tick_labels[0]?.textContent).toBe(`1`)
+  })
+
   // Re-encoding colour or size (e.g. picking another column) glides markers like a data move.
   // Colours d3 can't parse (CSS variables) can't blend, so they switch at the start.
   test(`markers tween colour and size with the position`, async () => {
@@ -2587,11 +2591,8 @@ describe(`ScatterPlot`, () => {
     expect(state.y_axis.range).toEqual([0, 10])
     // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the
     // plot, x=90 at 65%, and the x ticks moved with them
-    const marker_xs = [...plot.querySelectorAll(`path.marker`)].map((marker) =>
-      Number(
-        /translate\((?<x>[-\d.]+)/.exec(marker.parentElement?.getAttribute(`transform`) ?? ``)
-          ?.groups?.x,
-      ),
+    const marker_xs = [...plot.querySelectorAll(`.marker`)].map(
+      (_, idx) => marker_position(plot, idx).x,
     )
     expect(marker_xs).toHaveLength(2)
     expect(marker_xs[0]).toBeCloseTo(clip.x + clip.width * 0.25, 6)

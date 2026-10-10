@@ -364,9 +364,9 @@ const parse_xml = (content: string, format: string): Document => {
   return doc
 }
 
-// Bruker .brml: a ZIP whose Experiment0/RawData0.xml holds the scan, either as <Datum>
-// rows (`time,flag,2theta,theta,…,intensity` — 2θ is column 3, intensity the last column)
-// or as an <Intensities>/<Counts> list on the <Start>/<Step> (or <Start>/<Stop>) grid.
+// Bruker .brml: a ZIP whose Experiment0/RawData0.xml holds the scan, either as <Datum> rows
+// whose columns <DataViews> declares (see brml_layout) or as an <Intensities>/<Counts> list on
+// the <Start>/<Step> (or <Start>/<Stop>) grid.
 export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern> {
   const { unzipSync } = await import(`fflate`) // lazy, keeps fflate out of SSR bundles
   let files: Record<string, Uint8Array>
@@ -388,20 +388,103 @@ export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern> {
   return parse_brml_xml(new TextDecoder().decode(files[raw_name]))
 }
 
+// Datum column layout. Bruker's DataViews give each view a Start column and a Length:
+// MeasuredTime (FixedRawDataView), the scan axes (VaryingRawDataView, LogicName="ScanAxes",
+// one column per FieldDefinitions entry) and the detector counts (RecordedRawDataView).
+// Without DataViews the default powder layout `time,absorption,2θ,θ,…,counts` is assumed.
+// two_theta_col is null when 2θ is not a column (a time+counts scan on the ScanAxisInfo grid).
+type BrmlLayout = {
+  time_col: number | null
+  two_theta_col: number | null
+  counts_col: number | null // null: last column
+  blank_values: number[]
+}
+const BRML_BLANK = -9999 // Bruker's <BlankingValue> default: never-measured step
+
+function brml_layout(doc: Document): BrmlLayout {
+  const views = Array.from(doc.querySelectorAll(`DataViews > RawDataView`))
+  const blank_values = Array.from(doc.querySelectorAll(`DataViews BlankingValue`), (el) =>
+    Number(el.textContent),
+  ).filter(Number.isFinite)
+  if (views.length === 0) {
+    return { time_col: 0, two_theta_col: 2, counts_col: null, blank_values: [BRML_BLANK] }
+  }
+  const start_of = (view: Element) => {
+    const start = Number(view.getAttribute(`Start`))
+    if (!Number.isInteger(start) || start < 0) {
+      throw new Error(
+        `BRML: DataViews view has no usable Start (${view.outerHTML.slice(0, 120)})`,
+      )
+    }
+    return start
+  }
+  const time_view = views.find((view) => view.getAttribute(`LogicName`) === `MeasuredTime`)
+  let two_theta_col: number | null = null
+  for (const view of views) {
+    const fields = view.querySelectorAll(`Varying[LogicName="ScanAxes"] > FieldDefinitions`)
+    const field_idx = Array.from(fields).findIndex(
+      (field) => field.getAttribute(`AxisId`) === `TwoTheta`,
+    )
+    if (field_idx !== -1) two_theta_col = start_of(view) + field_idx
+  }
+  const counts_view = views.find((view) =>
+    view.getAttribute(`xsi:type`)?.endsWith(`RecordedRawDataView`),
+  )
+  if (!counts_view) throw new Error(`BRML: DataViews declares no RecordedRawDataView (counts)`)
+  const counts_length = Number(counts_view.getAttribute(`Length`) ?? 1)
+  if (counts_length !== 1) {
+    throw new Error(
+      `BRML: counts view spans ${counts_length} columns (2D frames are not supported)`,
+    )
+  }
+  return {
+    time_col: time_view ? start_of(time_view) : null,
+    two_theta_col,
+    counts_col: start_of(counts_view),
+    blank_values: blank_values.length > 0 ? blank_values : [BRML_BLANK],
+  }
+}
+
+// 2θ of each Datum row from the <ScanAxisInfo AxisId="TwoTheta"> Start/Increment grid, used
+// only when the row count matches the grid's (Stop - Start) / Increment + 1 points
+function brml_scan_axis_grid(doc: Document, n_rows: number): number[] {
+  const axis = doc.querySelector(`ScanAxisInfo[AxisId="TwoTheta"]`)
+  const [start, stop, increment] = [`Start`, `Stop`, `Increment`].map((tag) => {
+    const text = axis?.querySelector(tag)?.textContent?.trim() ?? ``
+    return NUMBER_RE.test(text) ? Number(text) : NaN
+  })
+  const n_grid = Math.round((stop - start) / increment) + 1
+  if (!(increment !== 0 && n_grid === n_rows)) {
+    throw new Error(
+      `BRML: 2θ is not a Datum column and <ScanAxisInfo AxisId="TwoTheta"> (Start=${start}, Stop=${stop}, Increment=${increment}) does not describe the ${n_rows} rows`,
+    )
+  }
+  return uniform_grid(start, increment, n_rows)
+}
+
 function parse_brml_xml(xml_content: string): XrdPattern {
   const doc = parse_xml(xml_content, `BRML`)
-  const datum_rows = Array.from(doc.querySelectorAll(`Datum`), (element) =>
+  const rows = Array.from(doc.querySelectorAll(`Datum`), (element) =>
     (element.textContent ?? ``).trim().split(`,`).map(Number),
-  ).filter(
-    (row) =>
-      row.length >= 5 && Number.isFinite(row[2]) && Number.isFinite(row[row.length - 1]),
   )
-  if (datum_rows.length > 0) {
-    return finalize(
-      datum_rows.map((row) => row[2]),
-      datum_rows.map((row) => row[row.length - 1]),
-      `BRML`,
-    )
+  if (rows.length > 0) {
+    const { time_col, two_theta_col, counts_col, blank_values } = brml_layout(doc)
+    const two_thetas =
+      two_theta_col === null
+        ? brml_scan_axis_grid(doc, rows.length)
+        : rows.map((row) => row[two_theta_col])
+    const [x_values, y_values]: [number[], number[]] = [[], []]
+    for (const [row_idx, row] of rows.entries()) {
+      const two_theta = two_thetas[row_idx]
+      const counts = row[counts_col ?? row.length - 1]
+      // a measuring time of 0 or a blanking value marks a step that was never measured
+      if (time_col !== null && row[time_col] === 0) continue
+      if (blank_values.includes(counts) || blank_values.includes(two_theta)) continue
+      if (!Number.isFinite(two_theta) || !Number.isFinite(counts)) continue
+      x_values.push(two_theta)
+      y_values.push(counts)
+    }
+    return finalize(x_values, y_values, `BRML`)
   }
   const list_text =
     doc.querySelector(`Intensities`)?.textContent ?? doc.querySelector(`Counts`)?.textContent

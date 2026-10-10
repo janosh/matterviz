@@ -405,22 +405,39 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`legend interaction toggles and isolates series visibility`, async ({ page }) => {
+  test(`legend toggles and isolates series; axis ranges follow visible series and survive a full hide`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#legend-multi-default.scatter`)
+    const x_axis = plot.locator(`g.x-axis`)
+    const y_axis = plot.locator(`g.y-axis`)
     const series_a_item = legend_item(plot, `Series A`)
     const series_b_item = legend_item(plot, `Series B`)
     const markers = plot.locator(`g[data-series-id] .marker`)
+    const y_range = async () => (await get_tick_range(y_axis)).range
     await expect(markers).toHaveCount(4)
+    await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
     await expect(series_a_item).not.toHaveClass(/hidden/)
     await expect(series_b_item).not.toHaveClass(/hidden/)
 
-    // single click hides / shows
+    // Series A: x=[1,2] y=[3,4], Series B: x=[1,2] y=[1,2] -> combined y range spans [1,4]
+    const initial_x = await get_tick_range(x_axis)
+    const initial_y = await get_tick_range(y_axis)
+    expect(initial_x.range).toBeGreaterThan(0)
+    expect(initial_y.range).toBeGreaterThan(0)
+
+    // hiding Series A drops its markers and shrinks y to Series B; x stays (shared x)
     await series_a_item.click()
-    await expect(markers).toHaveCount(2)
     await expect(series_a_item).toHaveClass(/hidden/)
+    await expect(markers).toHaveCount(2)
+    await expect.poll(y_range).toBeLessThan(initial_y.range)
+    expect((await get_tick_range(x_axis)).range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
+
+    // showing it again expands the ranges back
     await series_a_item.click()
-    await expect(markers).toHaveCount(4)
     await expect(series_a_item).not.toHaveClass(/hidden/)
+    await expect(markers).toHaveCount(4)
+    await expect.poll(y_range).toBeGreaterThanOrEqual(initial_y.range * 0.95)
 
     // double click isolates, clicking the other restores it
     await series_a_item.dblclick()
@@ -430,51 +447,17 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await series_b_item.click()
     await expect(series_b_item).not.toHaveClass(/hidden/)
     await expect(markers).toHaveCount(4)
-  })
 
-  test(`axis ranges adapt to visible series and preserve on full hide`, async ({ page }) => {
-    // Ranges adopt visible data (shrink + expand) but don't snap to [0,1]
-    // default when all series are hidden
-    const plot = page.locator(`#legend-multi-default.scatter`)
-    const x_axis = plot.locator(`g.x-axis`)
-    const y_axis = plot.locator(`g.y-axis`)
-    const series_a_item = legend_item(plot, `Series A`)
-    const series_b_item = legend_item(plot, `Series B`)
-    await expect(plot.locator(`g[data-series-id] .marker`)).toHaveCount(4)
-    await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
-
-    // Series A: x=[1,2] y=[3,4], Series B: x=[1,2] y=[1,2] -> combined y range spans [1,4]
-    const initial_x = await get_tick_range(x_axis)
-    const initial_y = await get_tick_range(y_axis)
-    expect(initial_x.range).toBeGreaterThan(0)
-    expect(initial_y.range).toBeGreaterThan(0)
-
-    // Hide Series A - y range shrinks to Series B, x stays (both series share x)
-    await series_a_item.click()
-    await expect(series_a_item).toHaveClass(/hidden/)
-    await expect
-      .poll(async () => (await get_tick_range(y_axis)).range)
-      .toBeLessThan(initial_y.range)
-    expect((await get_tick_range(x_axis)).range).toBeGreaterThanOrEqual(initial_x.range * 0.95)
-
-    // Show Series A again - ranges expand back
-    await series_a_item.click()
-    await expect
-      .poll(async () => (await get_tick_range(y_axis)).range)
-      .toBeGreaterThanOrEqual(initial_y.range * 0.95)
-
-    // Hide both series - ranges stay at the last visible data range, not [0, 1]
+    // hiding both keeps the last visible data range instead of snapping to [0, 1]
     await series_a_item.click()
     await series_b_item.click()
     await expect(series_b_item).toHaveClass(/hidden/)
     expect((await get_tick_range(x_axis)).range).toBeGreaterThan(0)
-    expect((await get_tick_range(y_axis)).range).toBeGreaterThan(0)
+    expect(await y_range()).toBeGreaterThan(0)
 
     await series_a_item.click()
     await series_b_item.click()
-    await expect
-      .poll(async () => (await get_tick_range(y_axis)).range)
-      .toBeCloseTo(initial_y.range, 0)
+    await expect.poll(y_range).toBeCloseTo(initial_y.range, 0)
   })
 
   test(`legend line color reflects color scale for color-mapped series`, async ({ page }) => {
@@ -585,8 +568,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expected_text: `rgb(255, 255, 255)`,
     },
   ]
-  for (const { plot_id, expected_bg, expected_text } of tooltip_precedence_cases) {
-    test(`tooltip color follows ${plot_id}`, async ({ page }) => {
+  test(`tooltip color follows point fill, then stroke, then line color`, async ({ page }) => {
+    for (const { plot_id, expected_bg, expected_text } of tooltip_precedence_cases) {
       const plot = page.locator(`#tooltip-precedence-test #${plot_id}.scatter`)
       await plot.scrollIntoViewIfNeeded()
       const tooltip = await hover_to_show_tooltip(
@@ -595,10 +578,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
         plot.locator(`path.marker`).first(),
       )
       // toHaveCSS retries, avoiding flakes from reactive colors applied a tick after hover
-      await expect(tooltip).toHaveCSS(`background-color`, expected_bg)
-      await expect(tooltip).toHaveCSS(`color`, expected_text)
-    })
-  }
+      await expect(tooltip, plot_id).toHaveCSS(`background-color`, expected_bg)
+      await expect(tooltip, plot_id).toHaveCSS(`color`, expected_text)
+    }
+  })
 
   test(`tooltip appears on hover, updates across markers and stays inside the plot`, async ({
     page,
@@ -759,40 +742,29 @@ test.describe(`ScatterPlot Component Tests`, () => {
   // CONTROL PRECEDENCE TESTS - explicit styling wins on page load and only user-modified
   // controls override it
 
-  test(`explicit point and line styling is preserved on page load`, async ({ page }) => {
-    const plot = page.locator(`#control-precedence-plot.scatter`)
-    const crimson_markers = plot.locator(`g[data-series-id="0"] path.marker`)
-    const green_markers = plot.locator(`g[data-series-id="1"] path.marker`)
-    await expect(crimson_markers).toHaveCount(5)
-    await expect(green_markers).toHaveCount(5)
-
-    const first_crimson = crimson_markers.first()
-    expect(await first_crimson.getAttribute(`fill`)).toContain(`crimson`)
-    await expect(first_crimson).toHaveAttribute(`stroke`, `darkred`)
-    await expect(first_crimson).toHaveAttribute(`stroke-width`, `3`)
-    // radius 12 (not the control default 3) -> ~24px diameter plus stroke
-    const crimson_bbox = await first_crimson.boundingBox()
-    expect(crimson_bbox?.width).toBeGreaterThan(20)
-
-    const first_green = green_markers.first()
-    expect(await first_green.getAttribute(`fill`)).toContain(`forestgreen`)
-    await expect(first_green).toHaveAttribute(`stroke-width`, `2`)
-    // radius 8 < 12
-    expect((await first_green.boundingBox())?.width).toBeLessThan(crimson_bbox?.width ?? NaN)
-
-    const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
-    await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
-    await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
-  })
-
-  test(`sparse overrides change only their property; reset restores authored styles`, async ({
+  test(`explicit styling survives page load; sparse overrides change only their property and reset restores it`, async ({
     page,
   }) => {
     const plot = page.locator(`#control-precedence-plot.scatter`)
-    const crimson_marker = plot.locator(`g[data-series-id="0"] path.marker`).first()
-    const green_marker = plot.locator(`g[data-series-id="1"] path.marker`).first()
+    const series_markers = (series_idx: number) =>
+      plot.locator(`g[data-series-id="${series_idx}"] path.marker`)
+    const crimson_marker = series_markers(0).first()
+    const green_marker = series_markers(1).first()
     const green_line = plot.locator(`g[data-series-id="1"] path[fill="none"]`)
-    const initial_width = (await crimson_marker.boundingBox())?.width ?? NaN
+    for (const series_idx of [0, 1]) await expect(series_markers(series_idx)).toHaveCount(5)
+
+    // authored styles win on page load
+    await expect(crimson_marker).toHaveAttribute(`fill`, /crimson/)
+    await expect(crimson_marker).toHaveAttribute(`stroke`, `darkred`)
+    await expect(crimson_marker).toHaveAttribute(`stroke-width`, `3`)
+    await expect(green_marker).toHaveAttribute(`fill`, /forestgreen/)
+    await expect(green_marker).toHaveAttribute(`stroke-width`, `2`)
+    await expect(green_line).toHaveAttribute(`stroke`, `limegreen`)
+    await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
+    // radius 12 (not the control default 3) -> ~24px diameter plus stroke; green's 8 is smaller
+    const initial_width = (await require_bbox(crimson_marker)).width
+    expect(initial_width).toBeGreaterThan(20)
+    expect((await require_bbox(green_marker)).width).toBeLessThan(initial_width)
     const { pane } = await open_plot_controls(plot)
     await expect(pane.locator(`.style-row > [data-key]`).first()).toBeVisible()
 

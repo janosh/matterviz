@@ -111,7 +111,7 @@ function write_reference_bonds(
   }
 }
 
-describe(`quaternion_from_direction`, () => {
+describe(`quaternion_from_direction and rotation_from_direction`, () => {
   test.each([
     [`+Y axis`, [0, 1, 0]],
     [`zero-length → identity`, [0, 0, 0]],
@@ -119,30 +119,20 @@ describe(`quaternion_from_direction`, () => {
   ] as [string, Vec3][])(`%s`, (_desc, dir) => {
     const quat = quaternion_from_direction(dir)
     expect([quat.x, quat.y, quat.z, quat.w]).toEqual([0, 0, 0, 1])
+    for (const val of rotation_from_direction(dir)) expect(val).toBeCloseTo(0, 12)
   })
 
-  test.each([[[1, 0, 0]], [[0, 0, 1]], [[1, 1, 1]], [[-2, 3, -1]]] as [Vec3][])(
+  // rotation_from_direction is the same orientation as an Euler tuple for Threlte props
+  test.each([[[1, 0, 0]], [[0, 0, 1]], [[1, 1, 1]], [[-2, 3, -1]], [[1, 2, -2]]] as [Vec3][])(
     `rotates +Y onto the (normalized) direction %j`,
     (dir) => {
+      const unit = new Vector3(...dir).normalize()
       const rotated = new Vector3(0, 1, 0).applyQuaternion(quaternion_from_direction(dir))
-      expect(rotated.distanceTo(new Vector3(...dir).normalize())).toBeCloseTo(0, 10)
+      expect(rotated.distanceTo(unit)).toBeCloseTo(0, 10)
+      const euler = new Euler(...rotation_from_direction(dir))
+      expect(new Vector3(0, 1, 0).applyEuler(euler).distanceTo(unit)).toBeCloseTo(0, 10)
     },
   )
-})
-
-describe(`rotation_from_direction`, () => {
-  test.each([
-    [`+Y`, [0, 1, 0]],
-    [`zero-length`, [0, 0, 0]],
-  ] as [string, Vec3][])(`%s → no rotation`, (_desc, dir) => {
-    rotation_from_direction(dir).forEach((val) => expect(val).toBeCloseTo(0, 12))
-  })
-
-  test(`euler aligns a +Y vector with the direction`, () => {
-    const dir: Vec3 = [1, 2, -2]
-    const aligned = new Vector3(0, 1, 0).applyEuler(new Euler(...rotation_from_direction(dir)))
-    expect(aligned.distanceTo(new Vector3(...dir).normalize())).toBeCloseTo(0, 10)
-  })
 })
 
 test.each([

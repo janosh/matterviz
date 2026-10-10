@@ -56,9 +56,9 @@ const make_categorical = <T>(
   sort_fn?: (value_a: T, value_b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
   const interp_fn = get_d3_interpolator(scale)
-  const uniq = sort_fn
-    ? [...new Set(vals)].toSorted(sort_fn)
-    : [...new Set(vals)].toSorted((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
+  const uniq = [...new Set(vals)].toSorted(
+    sort_fn ?? ((val_a, val_b) => String(val_a).localeCompare(String(val_b))),
+  )
   const map = new Map(
     uniq.map((val, idx) => [
       val,
@@ -405,9 +405,8 @@ export function get_custom_colors(
   const is_num = vals.every((val) => typeof val === `number`)
 
   if (is_num) {
-    const nums = vals
-    const { colors, unique_values } = apply_color_scale(nums, scale, type)
-    return build_prop_colors(nums, colors, unique_values)
+    const { colors, unique_values } = apply_color_scale(vals, scale, type)
+    return build_prop_colors(vals, colors, unique_values)
   }
 
   const strs = vals.map(String)

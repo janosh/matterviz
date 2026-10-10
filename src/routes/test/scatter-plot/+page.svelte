@@ -2,29 +2,21 @@
   import { format_num, symbol_names } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import type {
-    DataSeries,
-    InternalPoint,
-    LabelStyle,
-    PointStyle,
-    ScaleType,
-  } from '#lib/plot/index.js'
+  import type { DataSeries, InternalPoint, LabelStyle, ScaleType } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+
+  const range = (length: number) => Array.from({ length }, (_, idx) => idx)
+  const one_to_ten = range(10).map((idx) => idx + 1)
 
   // === Basic Example Data ===
   const basic_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    x: one_to_ten,
     y: [10, 15, 13, 17, 20, 18, 22, 25, 23, 28],
-    point_style: {
-      fill: `steelblue`,
-      radius: 5,
-      stroke: `white`,
-      stroke_width: 1,
-    },
+    point_style: { fill: `steelblue`, radius: 5, stroke: `white`, stroke_width: 1 },
   }
   const canvas_auto_data = {
-    x: Array.from({ length: 10_001 }, (_, idx) => idx % 101),
-    y: Array.from({ length: 10_001 }, (_, idx) => Math.floor(idx / 101)),
+    x: range(10_001).map((idx) => idx % 101),
+    y: range(10_001).map((idx) => Math.floor(idx / 101)),
     point_style: { fill: `#1971c2`, stroke: `none` },
   }
 
@@ -40,124 +32,72 @@
 
   let color_scale = $state({ type: `linear` as const })
 
-  const color_scale_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    color_values: Array(10)
-      .fill(0)
-      .map((_, idx) => 2 ** idx),
+  const color_scale_series: DataSeries = {
+    x: one_to_ten,
+    y: one_to_ten,
+    color_values: range(10).map((idx) => 2 ** idx),
     point_style: { radius: 10, stroke: `black`, stroke_width: 1 },
+    markers: `points`,
   }
 
   let is_plot_hovered = $state(false)
-  const bind_hovered_data = {
+  const bind_hovered_series: DataSeries = {
     x: [10, 20, 30],
     y: [15, 25, 10],
     point_style: { fill: `orange`, radius: 5 },
+    markers: `points`,
   }
 
-  // --- Data for Auto Placement Test ---
-  const generate_cluster = (
-    center_x: number,
-    center_y: number,
-    count: number,
-    radius: number,
-    label_prefix: string,
-    auto_placement = true,
-  ) => {
-    const points = {
-      x: [] as number[],
-      y: [] as number[],
-      point_style: [] as object[],
-      point_label: [] as object[],
-    }
-    for (let data_idx = 0; data_idx < count; data_idx++) {
-      const angle = Math.random() * 2 * Math.PI
-      const dist = Math.random() * radius
-      points.x.push(center_x + Math.cos(angle) * dist)
-      points.y.push(center_y + Math.sin(angle) * dist)
-      points.point_style.push({ fill: `purple`, radius: 5 })
-      points.point_label.push({
-        text: `${label_prefix}-${data_idx + 1}`,
-        auto_placement,
-        font_size: `10px`,
-      })
-    }
-    return points
-  }
-
+  // === Label Auto Placement Test Data ===
+  type LabeledPoint = { x: number; y: number; fill: string; radius: number; label: LabelStyle }
   // Dense cluster where labels *should* repel
-  const dense_cluster = generate_cluster(30, 70, 8, 5, `Dense`)
-
-  // Sparse points where labels should *not* repel significantly
-  const sparse_points = {
-    x: [10, 90, 10, 90],
-    y: [10, 10, 90, 90],
-    point_style: { fill: `green`, radius: 6 },
-    point_label: [
-      {
-        text: `Sparse-TL`,
-        auto_placement: true,
-        font_size: `10px`,
-        offset: { x: 10 },
-      },
-      {
-        text: `Sparse-TR`,
-        auto_placement: true,
-        font_size: `10px`,
-        offset: { x: -40 },
-      },
-      {
-        text: `Sparse-BL`,
-        auto_placement: true,
-        font_size: `10px`,
-        offset: { y: -15 },
-      },
-      { text: `Sparse-BR`, auto_placement: true, font_size: `10px` },
-    ],
-  }
-
-  // Single point test
-  const single_point = {
-    x: [50],
-    y: [50],
-    point_style: { fill: `orange`, radius: 7 },
-    point_label: [{ text: `Single`, auto_placement: true, font_size: `10px` }],
-  }
-
-  const auto_placement_series_data: DataSeries[] = [
-    {
-      x: [...dense_cluster.x, ...sparse_points.x, ...single_point.x],
-      y: [...dense_cluster.y, ...sparse_points.y, ...single_point.y],
-      point_style: [
-        ...dense_cluster.point_style,
-        ...sparse_points.x.map(() => sparse_points.point_style),
-        ...single_point.x.map(() => single_point.point_style),
-      ],
-      point_label: [
-        ...dense_cluster.point_label,
-        ...sparse_points.point_label,
-        ...single_point.point_label,
-      ],
-    },
+  const dense_cluster: LabeledPoint[] = range(8).map((idx) => {
+    const angle = Math.random() * 2 * Math.PI
+    const dist = Math.random() * 5
+    return {
+      x: 30 + Math.cos(angle) * dist,
+      y: 70 + Math.sin(angle) * dist,
+      fill: `purple`,
+      radius: 5,
+      label: { text: `Dense-${idx + 1}` },
+    }
+  })
+  const labeled_points: LabeledPoint[] = [
+    ...dense_cluster,
+    // Sparse points where labels should *not* repel significantly
+    ...(
+      [
+        [10, 10, `Sparse-TL`, { x: 10, y: 0 }],
+        [90, 10, `Sparse-TR`, { x: -40, y: 0 }],
+        [10, 90, `Sparse-BL`, { x: 10, y: -15 }],
+        [90, 90, `Sparse-BR`, undefined],
+      ] as const
+    ).map(([coord_x, coord_y, text, offset]) => ({
+      x: coord_x,
+      y: coord_y,
+      fill: `green`,
+      radius: 6,
+      label: offset ? { text, offset } : { text },
+    })),
+    // Single point test
+    { x: 50, y: 50, fill: `orange`, radius: 7, label: { text: `Single` } },
   ]
 
   let enable_auto_placement = $state(true)
 
-  let auto_placement_test_series = $derived(
-    auto_placement_series_data.map((series) => ({
-      ...series,
-      point_label: (Array.isArray(series.point_label)
-        ? series.point_label
-        : series.point_label
-          ? [series.point_label]
-          : []
-      ).map((lbl): LabelStyle => ({
-        ...(typeof lbl === `object` && lbl !== null ? lbl : {}),
+  let auto_placement_test_series: DataSeries[] = $derived([
+    {
+      x: labeled_points.map((point) => point.x),
+      y: labeled_points.map((point) => point.y),
+      point_style: labeled_points.map(({ fill, radius }) => ({ fill, radius })),
+      point_label: labeled_points.map(({ label }) => ({
+        ...label,
+        font_size: `10px`,
         auto_placement: enable_auto_placement,
       })),
-    })),
-  )
+      markers: `points`,
+    },
+  ])
 
   let auto_placement_density = $state({
     top_left: 10,
@@ -166,85 +106,59 @@
     bottom_right: 10,
   })
 
-  // Function to generate points within a specific quadrant for the demo
+  // Random points within a quadrant of the 100x100 plot, color-valued with some variation
   const make_quadrant_points = (count: number, x_range: Vec2, y_range: Vec2) => {
-    const points = []
-    for (let idx = 0; idx < count; idx++) {
-      const x_val = x_range[0] + Math.random() * (x_range[1] - x_range[0])
-      const y_val = y_range[0] + Math.random() * (y_range[1] - y_range[0])
-      // Assign a color value (e.g. based on distance from origin)
-      const center_x = x_range[0] + (x_range[1] - x_range[0]) / 2
-      const center_y = y_range[0] + (y_range[1] - y_range[0]) / 2
-      const color_val = Math.hypot(center_x, center_y) * Math.random() * 2 // Add some variation
-
-      points.push({ x: x_val, y: y_val, color_value: color_val })
-    }
-    return points
+    const center_dist = Math.hypot(
+      (x_range[0] + x_range[1]) / 2,
+      (y_range[0] + y_range[1]) / 2,
+    )
+    return range(count).map(() => ({
+      x: x_range[0] + Math.random() * (x_range[1] - x_range[0]),
+      y: y_range[0] + Math.random() * (y_range[1] - y_range[0]),
+      color_value: center_dist * Math.random() * 2,
+    }))
   }
 
-  // Reactive generation of plot data based on densities for the demo
-  let auto_placement_plot_series = $derived.by(() => {
-    const plot_width = 100
-    const plot_height = 100
-    const center_x = plot_width / 2
-    const center_y = plot_height / 2
-
-    // Note: The demo markdown had reversed y-axis quadrants mapping (e.g. density.bottom_left -> [0, center_y])
-    // Correcting here for standard Cartesian mapping
-    const tl_points = make_quadrant_points(
-      auto_placement_density.top_left,
-      [0, center_x],
-      [center_y, plot_height],
-    )
-    const tr_points = make_quadrant_points(
-      auto_placement_density.top_right,
-      [center_x, plot_width],
-      [center_y, plot_height],
-    )
-    const bl_points = make_quadrant_points(
-      auto_placement_density.bottom_left,
-      [0, center_x],
-      [0, center_y],
-    )
-    const br_points = make_quadrant_points(
-      auto_placement_density.bottom_right,
-      [center_x, plot_width],
-      [0, center_y],
-    )
-
-    const all_points = [...tl_points, ...tr_points, ...bl_points, ...br_points]
-
+  let auto_placement_plot_series: DataSeries[] = $derived.by(() => {
+    const { top_left, top_right, bottom_left, bottom_right } = auto_placement_density
+    const all_points = [
+      ...make_quadrant_points(top_left, [0, 50], [50, 100]),
+      ...make_quadrant_points(top_right, [50, 100], [50, 100]),
+      ...make_quadrant_points(bottom_left, [0, 50], [0, 50]),
+      ...make_quadrant_points(bottom_right, [50, 100], [0, 50]),
+    ]
     return [
       {
         x: all_points.map((point) => point.x),
         y: all_points.map((point) => point.y),
         color_values: all_points.map((point) => point.color_value),
-        // point_label: all_points.map(p => ({ text: p.label, offset: { x: 0, y: -10 }, font_size: '14px' })),
         point_style: { radius: 5, stroke: `white`, stroke_width: 0.5 },
+        markers: `points`,
       },
     ]
   })
 
-  // Legend test data
   const legend_multi_series: DataSeries[] = [
     {
       x: [1, 2],
       y: [3, 4],
       metadata: { label: `Series A` },
       point_style: { fill: `red`, radius: 5 },
+      markers: `points`,
     },
     {
       x: [1, 2],
       y: [1, 2],
       metadata: { label: `Series B` },
       point_style: { fill: `blue`, radius: 5 },
+      markers: `points`,
     },
   ]
 
   // === Linear-to-Log Transition Test Data ===
   let lin_log_y_scale_type = $state<`linear` | `log`>(`linear`)
   const lin_log_transition_data = {
-    x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    x: one_to_ten,
     y: [100, 50, 10, 1, 0.1, 0.01, 0.001, 1e-4, 1e-6, 1e-8], // Include values very close to zero
     point_style: { fill: `darkcyan`, radius: 5, stroke: `white`, stroke_width: 1 },
   }
@@ -255,65 +169,39 @@
     type: `linear` as ScaleType,
   })
 
-  // Create a dataset with points arranged in a spiral pattern
+  // 40 points on a spiral whose radius drives size_values, with hue and symbol varying by index
   const n_points = 40
-
-  // Reactive generation of spiral data based on controls
-  let spiral_data = $derived.by(() => {
-    const data = {
-      x: [] as number[],
-      y: [] as number[],
-      size_values: [] as number[], // Array for size scaling
-      point_style: [] as PointStyle[], // Explicitly type as PointStyle[]
-      metadata: [] as Record<string, unknown>[], // Explicitly type as Record<string, unknown>[]
-    }
-
-    // Generate points in a spiral pattern
-    for (let idx = 0; idx < n_points; idx++) {
-      // Calculate angle and radius for spiral
-      const angle = idx * 0.5
-      const radius = 1 + idx * 0.3
-
-      // Convert to cartesian coordinates
-      const coord_x = Math.cos(angle) * radius
-      const coord_y = Math.sin(angle) * radius
-
-      data.x.push(coord_x)
-      data.y.push(coord_y)
-      data.size_values.push(radius) // Use spiral radius for sizing
-
-      // Store angle in metadata
-      data.metadata.push({ angle, radius } as Record<string, unknown>) // Cast pushed object
-      // Change color gradually along the spiral
-      const hue = (idx / n_points) * 360
-      // Change marker type based on index
-      const symbol_type = symbol_names[idx % symbol_names.length]
-
-      // Create the point style (radius is now controlled by size_values)
-      data.point_style.push({
-        fill: `hsl(${hue}, 80%, 50%)`,
-        stroke: `white`,
-        stroke_width: 1 + idx / 20, // Gradually thicker stroke
-        symbol_type,
-      } as PointStyle) // Cast pushed object
-    }
-    return data as DataSeries // Cast return value to satisfy the derived type
-  })
+  const spiral_points = range(n_points).map((idx) => ({
+    idx,
+    angle: idx * 0.5,
+    radius: 1 + idx * 0.3,
+  }))
+  const spiral_series: DataSeries = {
+    x: spiral_points.map(({ angle, radius }) => Math.cos(angle) * radius),
+    y: spiral_points.map(({ angle, radius }) => Math.sin(angle) * radius),
+    size_values: spiral_points.map(({ radius }) => radius),
+    metadata: spiral_points.map(({ angle, radius }) => ({ angle, radius })),
+    point_style: spiral_points.map(({ idx }) => ({
+      fill: `hsl(${(idx / n_points) * 360}, 80%, 50%)`,
+      stroke: `white`,
+      stroke_width: 1 + idx / 20,
+      symbol_type: symbol_names[idx % symbol_names.length],
+    })),
+    markers: `points`,
+  }
 
   let last_clicked_point_id = $state<string | null>(null)
   let last_double_clicked_point_id = $state<string | null>(null)
 
-  function on_point_click({ point }: { point: InternalPoint }) {
-    last_clicked_point_id = `Point: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
-  }
+  const describe_point = (point: InternalPoint) =>
+    `series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
 
-  function on_point_double_click({ point }: { point: InternalPoint }) {
-    last_double_clicked_point_id = `DblClick: series ${point.series_idx}, index ${point.point_idx} (x=${point.x}, y=${point.y})`
+  const point_event_series: DataSeries = {
+    x: [1, 2, 3],
+    y: [2, 4, 1],
+    point_style: { fill: `teal`, radius: 8 },
+    markers: `points`,
   }
-
-  const point_event_data: DataSeries[] = [
-    { x: [1, 2, 3], y: [2, 4, 1], point_style: { fill: `teal`, radius: 8 } },
-  ]
 
   // === Control Precedence Test Data ===
   // Tests that explicit styling wins on page load, but controls can override when touched
@@ -398,7 +286,7 @@
       {/each}
     </div>
     <ScatterPlot
-      series={[{ ...color_scale_data, markers: `points` }]}
+      series={[color_scale_series]}
       x_axis={{ label: `X Axis` }}
       y_axis={{ label: `Y Axis` }}
       {color_scale}
@@ -410,10 +298,7 @@
 <section id="bind-hovered">
   <h2 id="bind-hovered-example">bind:hovered Example</h2>
   <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
-  <ScatterPlot
-    series={[{ ...bind_hovered_data, markers: `points` }]}
-    bind:hovered={is_plot_hovered}
-  />
+  <ScatterPlot series={[bind_hovered_series]} bind:hovered={is_plot_hovered} />
 </section>
 
 <section
@@ -427,7 +312,7 @@
   </label>
   {#key enable_auto_placement}
     <ScatterPlot
-      series={auto_placement_test_series.map((srs) => ({ ...srs, markers: `points` }))}
+      series={auto_placement_test_series}
       x_axis={{ label: `X`, range: [0, 100] }}
       y_axis={{ label: `Y`, range: [0, 100] }}
       style="height: 450px; width: 100%"
@@ -454,7 +339,7 @@
   </div>
 
   <ScatterPlot
-    series={auto_placement_plot_series.map((srs) => ({ ...srs, markers: `points` }))}
+    series={auto_placement_plot_series}
     x_axis={{ label: `X Position`, range: [0, 100] }}
     y_axis={{ label: `Y Position`, range: [0, 100] }}
     color_scale={{ scheme: `interpolateTurbo` }}
@@ -473,7 +358,7 @@
     Multi Series (Default Legend) - Legend Expected
   </h3>
   <ScatterPlot
-    series={legend_multi_series.map((srs) => ({ ...srs, markers: `points` }))}
+    series={legend_multi_series}
     legend={{ draggable: true, style: `padding: 8px;` }}
     id="legend-multi-default"
     show_controls
@@ -510,7 +395,6 @@
   />
 </section>
 
-<!-- Added Point Sizing Example -->
 <section id="point-sizing-spiral-test">
   <h2 id="point-sizing-test-with-spiral-data">Point Sizing Test with Spiral Data</h2>
   <label>
@@ -546,7 +430,7 @@
   </label>
 
   <ScatterPlot
-    series={[{ ...spiral_data, markers: `points` }]}
+    series={[spiral_series]}
     x_axis={{ label: `X Axis`, range: [-15, 15] }}
     y_axis={{ label: `Y Axis`, range: [-15, 15] }}
     {size_scale}
@@ -563,7 +447,6 @@
   </ScatterPlot>
 </section>
 
-<!-- Added Tooltip Precedence Test -->
 <section id="tooltip-precedence-test">
   <h2 id="tooltip-background-color-precedence-test">
     Tooltip Background Color Precedence Test
@@ -616,17 +499,17 @@
   />
 </section>
 
-<!-- Point Event Test -->
 <section id="point-event-test">
   <h2 id="point-event-test-1">Point Event Test</h2>
   <p>Clicking a point should update the text below.</p>
   <ScatterPlot
-    series={point_event_data.map((srs) => ({ ...srs, markers: `points` }))}
+    series={[point_event_series]}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y` }}
     point_events={{
-      onclick: on_point_click,
-      ondblclick: on_point_double_click,
+      onclick: ({ point }) => (last_clicked_point_id = `Point: ${describe_point(point)}`),
+      ondblclick: ({ point }) =>
+        (last_double_clicked_point_id = `DblClick: ${describe_point(point)}`),
     }}
   />
   <p data-testid="last-clicked-point">
@@ -637,7 +520,6 @@
   </p>
 </section>
 
-<!-- Color-mapped Line Legend Test -->
 <section id="color-mapped-line-legend-test">
   <h2 id="color-mapped-line-legend-test-1">Color-mapped Line Legend Test</h2>
   <p>Tests that legend line color reflects the color scale for series with color_values.</p>

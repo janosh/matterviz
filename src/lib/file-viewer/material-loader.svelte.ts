@@ -111,7 +111,7 @@ export function create_material_loader<Value>(
     } finally {
       if (controller === active_controller) {
         if (!drop) inputs.set_loading?.(false)
-        if (controller === active_controller) active_controller = undefined
+        active_controller = undefined
       }
     }
   }

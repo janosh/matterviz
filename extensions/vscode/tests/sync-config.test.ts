@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import pkg_json from '../package.json' with { type: 'json' }
-import { build_custom_editor_selectors, build_vscode_settings } from '../scripts/sync-config'
+import {
+  build_custom_editor_selectors,
+  build_editor_associations,
+  build_vscode_settings,
+} from '../scripts/sync-config'
 
 describe(`sync-config`, () => {
   const generated = build_vscode_settings()
@@ -21,6 +25,16 @@ describe(`sync-config`, () => {
     }
     expect(pkg_json.contributes.customEditors[0].selector).toEqual(
       build_custom_editor_selectors(),
+    )
+    expect(pkg_json.contributes.configurationDefaults).toEqual({
+      'workbench.editorAssociations': {
+        '*.traj': `matterviz.viewer`,
+        '*.h5': `matterviz.viewer`,
+        '*.hdf5': `matterviz.viewer`,
+      },
+    })
+    expect(build_editor_associations()).toEqual(
+      pkg_json.contributes.configurationDefaults[`workbench.editorAssociations`],
     )
   })
 

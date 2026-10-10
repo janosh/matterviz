@@ -12,17 +12,14 @@ let next_frame_id = 1
 function install_animation_frame_mock(): void {
   requested_frames.clear()
   next_frame_id = 1
-  const request_frame = vi.fn((callback: FrameRequestCallback) => {
-    const frame_id = next_frame_id
-    next_frame_id += 1
+  vi.stubGlobal(`requestAnimationFrame`, (callback: FrameRequestCallback) => {
+    const frame_id = next_frame_id++
     requested_frames.set(frame_id, callback)
     return frame_id
   })
-  const cancel_frame = vi.fn((frame_id: number) => {
-    requested_frames.delete(frame_id)
-  })
-  vi.stubGlobal(`requestAnimationFrame`, request_frame)
-  vi.stubGlobal(`cancelAnimationFrame`, cancel_frame)
+  vi.stubGlobal(`cancelAnimationFrame`, (frame_id: number) =>
+    requested_frames.delete(frame_id),
+  )
 }
 
 function run_frame(frame_id: number): void {

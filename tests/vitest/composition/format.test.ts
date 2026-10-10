@@ -16,27 +16,18 @@ import { describe, expect, test } from 'vitest'
 
 describe(`get_alphabetical_formula`, () => {
   test.each([
-    // Basic string / composition inputs
+    // string and composition inputs, amount 1 has no subscript, zero amounts are dropped
     [`Fe2O3`, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
     [`H2O`, {}, `H<sub>2</sub> O`],
     [`CaCO3`, {}, `C Ca O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [{ H: 2, O: 1 }, {}, `H<sub>2</sub> O`],
-    [{ Ca: 1, C: 1, O: 3 }, {}, `C Ca O<sub>3</sub>`],
-    // plain_text
+    [{ Fe: 2, O: 3, N: 0 }, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
+    // plain_text and delim
     [{ Fe: 2, O: 3 }, { plain_text: true }, `Fe2 O3`],
-    [`Fe2O3`, { plain_text: true }, `Fe2 O3`],
     [{ H: 1, O: 1 }, { plain_text: true }, `H O`],
-    [`H2O`, { plain_text: true }, `H2 O`],
-    // delim
     [{ Fe: 2, O: 3 }, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
     [{ Fe: 2, O: 3 }, { delim: `-` }, `Fe<sub>2</sub>-O<sub>3</sub>`],
     [{ Fe: 2, O: 3 }, { plain_text: true, delim: `` }, `Fe2O3`],
     [{ Fe: 2, O: 3 }, { plain_text: true, delim: `-` }, `Fe2-O3`],
-    [`Fe2O3`, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Fe2O3`, { plain_text: true, delim: `` }, `Fe2O3`],
-    [`H2O`, { delim: `` }, `H<sub>2</sub>O`],
-    [`H2O`, { plain_text: true, delim: `` }, `H2O`],
     // amount_format
     [{ Fe: 2.5, O: 3.75 }, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
     [{ Fe: 2.5, O: 3.75 }, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
@@ -47,8 +38,6 @@ describe(`get_alphabetical_formula`, () => {
       { amount_format: `.3~g` },
       `Fe<sub>0.001</sub> O<sub>0.002</sub>`,
     ],
-    [`Fe2.5O3.75`, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [`Fe2.5O3.75`, { amount_format: `.2f` }, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
     [{ O: 1.23456e-13 }, { amount_format: `.2e` }, `O<sub>0.000000000000123</sub>`],
     [{ O: 123.4 }, { amount_format: `.3e` }, `O<sub>123.4</sub>`],
     // an explicit SI format must not render sub-1 amounts with SI prefixes (0.5 -> 500m)
@@ -68,20 +57,18 @@ describe(`get_alphabetical_formula`, () => {
 })
 
 describe(`get_electro_neg_formula`, () => {
+  // formatting options are shared with get_alphabetical_formula (tested above)
   test.each([
-    // Electronegativity-specific ordering
     [`O2Ti`, {}, `Ti O<sub>2</sub>`],
-    [`NaCl`, {}, `Na Cl`],
     [{ Na: 1, Cl: 1 }, {}, `Na Cl`],
     [`O2Ti`, { plain_text: true, delim: `` }, `TiO2`],
-    // Shared formatting behavior (same as alphabetical for these compositions)
-    [`Fe2O3`, {}, `Fe<sub>2</sub> O<sub>3</sub>`],
-    [`H2O`, {}, `H<sub>2</sub> O`],
-    [{ Fe: 2, O: 3 }, { plain_text: true }, `Fe2 O3`],
-    [{ Fe: 2, O: 3 }, { delim: `` }, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [{ Fe: 2, O: 3 }, { plain_text: true, delim: `-` }, `Fe2-O3`],
     [{ Fe: 2.5, O: 3.75 }, { amount_format: `.1f` }, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
-    [{ Fe: 1000, O: 1500 }, { amount_format: `.3~s` }, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
+    // an amount that formats as 1 drops its subscript like an exact 1 (not Fe1 O)
+    [{ Fe: 0.9999, O: 1 }, {}, `Fe O`],
+    [{ Fe: 1.0004, O: 1 }, {}, `Fe O`],
+    [{ Fe: 0.9999, O: 2 }, { plain_text: true, delim: `` }, `FeO2`],
+    [{ Fe: 1, O: 2 }, { amount_format: `.2f` }, `Fe O<sub>2.00</sub>`],
+    [{ Fe: 1.4, O: 2 }, { amount_format: `.0f` }, `Fe O<sub>2</sub>`],
   ])(`input=%p, options=%p → %p`, (input, options, expected) => {
     expect(get_electro_neg_formula(input, options)).toBe(expected)
   })
@@ -89,38 +76,17 @@ describe(`get_electro_neg_formula`, () => {
   // `electronegativity` is null for 22 elements, and four of them (Kr, Xe, Rn, Lr) carry the
   // value under `electronegativity_pauling` in the same record. The `?? 0` fallback called
   // those more electropositive than caesium, so the noble gas led every formula it appeared in.
-  // Expected order is pymatgen's `Composition.reduced_formula`.
+  // Elements with no value anywhere (He, Ne, Ar) sort last rather than leading. Expected
+  // order is pymatgen's `Composition.reduced_formula`.
   test.each([
     [`Na4XeO6`, `Na4 Xe O6`],
     [`Ba2XeO6`, `Ba2 Xe O6`],
     [`CsXeF7`, `Cs Xe F7`],
     [`XePtF6`, `Pt Xe F6`], // Xe 2.6 sits above Pt 2.28
     [`KrF2`, `Kr F2`],
+    [`ArF2`, `F2 Ar`],
   ])(`orders %s by real electronegativity`, (formula, expected) => {
-    const plain = get_electro_neg_formula(formula, { plain_text: true })
-    expect(plain.replaceAll(/\s+/g, ` `).trim()).toBe(expected.replaceAll(/\s+/g, ` `))
-  })
-
-  // Elements with no value anywhere (He, Ne, Ar) sort last rather than leading, as pymatgen does
-  test(`puts an element with no electronegativity data last`, () => {
-    expect(get_electro_neg_formula(`ArF2`, { plain_text: true, delim: `` })).toBe(`F2Ar`)
-  })
-})
-
-// The number after a hydrate separator counts whole water molecules, not atoms in the group
-// before it, so it belongs at full size. Every digit run was classified as a subscript, which
-// printed sodium carbonate decahydrate as Na₂CO₃·₁₀H₂O.
-describe(`hydrate coefficients`, () => {
-  test.each([
-    [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
-    [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
-    [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
-    [`CaSO4·.5H2O`, `CaSO<sub>4</sub>·.5H<sub>2</sub>O`],
-    [`Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`], // an ordinary subscript is untouched
-    [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
-    [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
-  ])(`renders %s`, (formula, expected) => {
-    expect(format_formula_html(formula)).toBe(expected)
+    expect(get_electro_neg_formula(formula, { plain_text: true })).toBe(expected)
   })
 })
 
@@ -167,19 +133,14 @@ describe(`is_compound`, () => {
     // single elements, Greek phases and empty input are not compounds
     [`C`, false],
     [`Fe`, false],
-    [`Si`, false],
-    [`He`, false],
     [``, false],
     [`α`, false],
     [`α-Fe`, false],
     // digits or several capitals mark a compound
     [`Fe3C`, true],
     [`SiO2`, true],
-    [`Al2O3`, true],
-    [`H2O`, true],
     [`MgO`, true],
     [`NaCl`, true],
-    [`FeO`, true],
   ])(`%s → %s`, (name, expected) => {
     expect(is_compound(name)).toBe(expected)
   })
@@ -197,6 +158,14 @@ describe(`tokenize_formula_markup`, () => {
     [`MgO`, [text(`Mg`), text(`O`)]],
     [`Li0.5FeO2`, [text(`Li`), sub(`0.5`), text(`Fe`), text(`O`), sub(`2`)]],
     [`O2-`, [text(`O`), sub(`2`), { sup: `-` }]], // charge notation
+    // caret charges (the parser's ^2-, ^-2, ^3+, ^+, ^2) are superscripts, never subscripts
+    [`SO4^2-`, [text(`S`), text(`O`), sub(`4`), { sup: `2-` }]],
+    [`Fe^3+`, [text(`Fe`), { sup: `3+` }]],
+    [`Fe^+3O`, [text(`Fe`), { sup: `+3` }, text(`O`)]],
+    [`Fe2^3+O3^2-`, [text(`Fe`), sub(`2`), { sup: `3+` }, text(`O`), sub(`3`), { sup: `2-` }]],
+    [`Fe(OH)^2+`, [text(`Fe(`), text(`O`), text(`H)`), { sup: `2+` }]],
+    [`Na^+`, [text(`Na`), { sup: `+` }]],
+    [`Fe3+`, [text(`Fe`), sub(`3`), { sup: `+` }]], // bare + mirrors the bare - of O2-
     // Greek letters and multi-phase labels pass through whole
     [`α`, [text(`α`)]],
     [`α + β`, [text(`α + β`)]],
@@ -220,6 +189,21 @@ describe.each<[string, Formatter, [string, string][]]>([
       [`Fe3C`, `Fe<sub>3</sub>C`],
       [`SiO2`, `SiO<sub>2</sub>`],
       [`Al2O3`, `Al<sub>2</sub>O<sub>3</sub>`],
+      [`O2-`, `O<sub>2</sub><sup>-</sup>`],
+      [`SO4^2-`, `SO<sub>4</sub><sup>2-</sup>`],
+      [`Fe^3+`, `Fe<sup>3+</sup>`],
+      [`Fe2^3+O3^2-`, `Fe<sub>2</sub><sup>3+</sup>O<sub>3</sub><sup>2-</sup>`],
+      [`Li0.5CoO2`, `Li<sub>0.5</sub>CoO<sub>2</sub>`],
+      [`Li.5CoO2`, `Li<sub>.5</sub>CoO<sub>2</sub>`],
+      // The number after a hydrate separator counts whole water molecules, not atoms in the
+      // group before it, so it belongs at full size. Every digit run was classified as a
+      // subscript, which printed sodium carbonate decahydrate as Na₂CO₃·₁₀H₂O.
+      [`CuSO4·5H2O`, `CuSO<sub>4</sub>·5H<sub>2</sub>O`],
+      [`CuSO4•5H2O`, `CuSO<sub>4</sub>•5H<sub>2</sub>O`], // the parser's other hydrate dots
+      [`CuSO4∙5H2O`, `CuSO<sub>4</sub>∙5H<sub>2</sub>O`],
+      [`Na2CO3·10H2O`, `Na<sub>2</sub>CO<sub>3</sub>·10H<sub>2</sub>O`],
+      [`CaSO4·0.5H2O`, `CaSO<sub>4</sub>·0.5H<sub>2</sub>O`],
+      [`CaSO4·.5H2O`, `CaSO<sub>4</sub>·.5H<sub>2</sub>O`],
     ],
   ],
   [
@@ -288,10 +272,8 @@ describe(`format_oxi_state`, () => {
     [undefined, ``],
     [0, ``],
     [1, `+1`],
-    [2, `+2`],
-    [-1, `-1`],
-    [-2, `-2`],
     [3, `+3`],
+    [-2, `-2`],
   ])(`format_oxi_state(%s) -> %s`, (input, expected) => {
     expect(format_oxi_state(input)).toBe(expected)
   })

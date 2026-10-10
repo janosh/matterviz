@@ -24,7 +24,7 @@
   <Spinner text={label} {...spinner_props} />
   {#if progress !== undefined}<Progress value={progress ?? undefined} {label} />{/if}
   {#if on_cancel}
-    <button type="button" aria-label={cancel_label} onclick={on_cancel}>Cancel</button>
+    <button type="button" aria-label={cancel_label} onclick={on_cancel}>{cancel_label}</button>
   {/if}
 </div>
 

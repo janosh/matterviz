@@ -740,7 +740,7 @@ test.describe(`File Drop Functionality Tests`, () => {
   })
 })
 
-test.describe(`Export Button Tests`, () => {
+test.describe(`Export and edit controls`, () => {
   test.beforeEach(async ({ page }) => {
     // Use show_controls=always so buttons are visible and clickable without hover
     await goto_structure_test(page, `/test/structure?show_controls=always`)
@@ -766,6 +766,28 @@ test.describe(`Export Button Tests`, () => {
       expect(download.suggestedFilename()).toMatch(new RegExp(`\\${extension}$`, `u`))
       await expect(export_btn).toBeEnabled()
     }
+  })
+
+  test(`keeps the bond-edit toolbar inside a narrow viewer on a second row`, async ({
+    page,
+  }) => {
+    const structure_div = page.locator(`#test-structure`)
+    await set_viewer_size(structure_div, 300, 500)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    const [structure_box, controls_box, toolbar_box] = await Promise.all([
+      require_bbox(structure_div, `structure`),
+      require_bbox(structure_div.locator(`section.control-buttons`), `control buttons`),
+      require_bbox(structure_div.locator(`.edit-mode-toolbar`), `edit toolbar`),
+    ])
+    expect(toolbar_box.x).toBeGreaterThanOrEqual(structure_box.x - 1)
+    expect(toolbar_box.x + toolbar_box.width).toBeLessThanOrEqual(
+      structure_box.x + structure_box.width + 1,
+    )
+    expect(toolbar_box.y).toBeGreaterThanOrEqual(controls_box.y + controls_box.height)
+    expect(toolbar_box.y + toolbar_box.height).toBeLessThanOrEqual(
+      structure_box.y + structure_box.height + 1,
+    )
   })
 })
 
@@ -1201,34 +1223,6 @@ test.describe(`Edit Atoms Mode`, () => {
   })
 })
 
-test.describe(`Responsive edit controls`, () => {
-  test.beforeEach(async ({ page }) => {
-    await goto_structure_test(page, `/test/structure?show_controls=always`)
-  })
-
-  test(`keeps the bond-edit toolbar inside a narrow viewer on a second row`, async ({
-    page,
-  }) => {
-    const structure_div = page.locator(`#test-structure`)
-    await set_viewer_size(structure_div, 300, 500)
-    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-
-    const [structure_box, controls_box, toolbar_box] = await Promise.all([
-      require_bbox(structure_div, `structure`),
-      require_bbox(structure_div.locator(`section.control-buttons`), `control buttons`),
-      require_bbox(structure_div.locator(`.edit-mode-toolbar`), `edit toolbar`),
-    ])
-    expect(toolbar_box.x).toBeGreaterThanOrEqual(structure_box.x - 1)
-    expect(toolbar_box.x + toolbar_box.width).toBeLessThanOrEqual(
-      structure_box.x + structure_box.width + 1,
-    )
-    expect(toolbar_box.y).toBeGreaterThanOrEqual(controls_box.y + controls_box.height)
-    expect(toolbar_box.y + toolbar_box.height).toBeLessThanOrEqual(
-      structure_box.y + structure_box.height + 1,
-    )
-  })
-})
-
 test.describe(`Multi-side view (2x2 grid)`, () => {
   test.beforeEach(async ({ page }) => {
     await goto_structure_test(page, `/test/structure?show_controls=always`)
@@ -1331,15 +1325,24 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   // Picking the grid from the layout menu removed the open (top-layer) menu under the pointer,
   // and Chromium then never re-hovered the viewer, so its hover-only chrome stayed hidden
   // (close_before_removal hides the menu first). Only DOM hit-testing here, so CI runs it too.
-  test(`legend controls stay interactive above active grid panes`, async ({ page }) => {
+  test(`active pane raises overlays over a clipped canvas; legend controls stay interactive`, async ({
+    page,
+  }) => {
     const webgpu_errors = collect_webgpu_errors(page)
     const structure_div = page.locator(`#test-structure`)
     await select_structure_layout(structure_div, `3D 2×2 grid`)
     // elementFromPoint only sees the viewport, and the legend row sits below the fold
     await structure_div.evaluate((element) => element.scrollIntoView({ block: `center` }))
     const cells = structure_div.locator(`.viewport-cell`)
+    await expect(cells).toHaveCount(4)
+    await cells.nth(0).hover({ position: { x: 20, y: 20 } })
+    await expect(cells.nth(0)).toHaveClass(/active/)
+    await expect(cells.nth(0)).toHaveCSS(`overflow`, `visible`)
+    await expect(cells.nth(0)).toHaveCSS(`z-index`, `1`)
+    await expect(cells.nth(0).locator(`canvas`).locator(`..`)).toHaveCSS(`overflow`, `hidden`)
     await cells.nth(3).hover({ position: { x: 20, y: 20 } })
     await expect(cells.nth(3)).toHaveClass(/active/)
+    await expect(cells.nth(3)).toHaveCSS(`z-index`, `1`)
 
     const receives_pointer_at_center = (locator: Locator): Promise<boolean> =>
       locator.evaluate((element) => {
@@ -1386,23 +1389,6 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await structure_div.click()
     await page.keyboard.press(`g`)
     await expect(structure_div).toHaveClass(/multi-view/)
-  })
-
-  test(`active pane raises overlays while its canvas stays clipped`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    await select_structure_layout(structure_div, `3D 2×2 grid`)
-    const cells = structure_div.locator(`.viewport-cell`)
-    await expect(cells).toHaveCount(4)
-
-    await cells.nth(0).hover({ position: { x: 20, y: 20 } })
-    await expect(cells.nth(0)).toHaveClass(/active/)
-    await expect(cells.nth(0)).toHaveCSS(`overflow`, `visible`)
-    await expect(cells.nth(0)).toHaveCSS(`z-index`, `1`)
-    await expect(cells.nth(0).locator(`canvas`).locator(`..`)).toHaveCSS(`overflow`, `hidden`)
-
-    await cells.nth(2).hover({ position: { x: 20, y: 20 } })
-    await expect(cells.nth(2)).toHaveClass(/active/)
-    await expect(cells.nth(2)).toHaveCSS(`z-index`, `1`)
   })
 
   test(`repeated toggling settles on the right canvas count without leaking contexts`, async ({

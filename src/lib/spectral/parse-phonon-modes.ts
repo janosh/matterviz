@@ -27,6 +27,8 @@ const EIGENVECTOR_NORM_TOL = 1e-3
 
 const is_finite_number = (val: unknown): val is number =>
   typeof val === `number` && Number.isFinite(val)
+const is_positive_int = (val: unknown): val is number =>
+  Number.isInteger(val) && Number(val) > 0
 
 // Read exactly `len` finite numbers out of an unknown value, else throw with context.
 // Shared by the YAML and BORN paths, which both consume fixed-length numeric rows.
@@ -68,7 +70,7 @@ function parse_path_segments(
     throw new Error(`phonopy YAML 'segment_nqpoint' must be a non-empty list`)
   }
   const lengths = raw_lengths.map((length, segment_idx) => {
-    if (!is_finite_number(length) || !Number.isInteger(length) || length <= 0) {
+    if (!is_positive_int(length)) {
       throw new Error(
         `phonopy YAML segment_nqpoint[${segment_idx}] must be a positive integer, got ${String(length)}`,
       )
@@ -76,7 +78,7 @@ function parse_path_segments(
     return length
   })
   if (raw_npath !== undefined) {
-    if (!is_finite_number(raw_npath) || !Number.isInteger(raw_npath) || raw_npath <= 0) {
+    if (!is_positive_int(raw_npath)) {
       throw new Error(
         `phonopy YAML 'npath' must be a positive integer, got ${JSON.stringify(raw_npath)}`,
       )

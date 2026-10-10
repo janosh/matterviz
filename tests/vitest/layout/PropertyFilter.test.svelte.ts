@@ -31,7 +31,7 @@ describe(`PropertyFilter`, () => {
   })
 
   test.each<[Partial<ComponentProps<typeof PropertyFilter>>, boolean, boolean]>([
-    [{ min_value: 5 }, true, true],
+    [{ min_value: 5, unit: `eV/atom` }, true, true],
     [{ max_value: 100 }, true, true],
     [{}, false, false],
     [{ min_value: 10, disabled: true }, true, false],
@@ -42,11 +42,7 @@ describe(`PropertyFilter`, () => {
     expect(container().classList.contains(`disabled`)).toBe(Boolean(props.disabled))
     expect(inputs()[0].disabled).toBe(Boolean(props.disabled))
     expect([...inputs()].map((input) => input.placeholder)).toEqual([`min`, `max`])
-  })
-
-  test.each([`eV/atom`, undefined])(`unit %p renders a matching unit label`, (unit) => {
-    mount_filter({ unit })
-    expect(document.querySelector(`.unit-label`)?.textContent ?? null).toBe(unit ?? null)
+    expect(document.querySelector(`.unit-label`)?.textContent ?? null).toBe(props.unit ?? null)
   })
 
   test(`clear button and Escape reset both bounds and fire on_clear before on_change, a cleared input unsets its bound`, () => {

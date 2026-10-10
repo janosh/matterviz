@@ -7,7 +7,7 @@ import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisConditions } from '#lib/synthesis-planning/types.js'
 import { mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { expect_module_worker, install_stub_worker, set_input } from '../setup'
+import { doc_query, expect_module_worker, install_stub_worker, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
@@ -51,8 +51,8 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   await vi.waitFor(() =>
     expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(81),
   )
-  const first = document.querySelector<HTMLButtonElement>(`.map-grid button`)
-  first?.focus()
+  const first = doc_query<HTMLButtonElement>(`.map-grid button`)
+  first.focus()
   await tick()
   const tooltip = document.querySelector(`.plot-tooltip`)
   for (const label of [
@@ -67,20 +67,20 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   expect(
     [...(tooltip?.querySelectorAll(`small`) ?? [])].map((node) => node.textContent),
   ).toEqual([`K`, `bar`, `meV/atom`, `meV/atom`, `meV/atom`])
-  first?.blur()
+  first.blur()
   expect_module_worker(stub.instances, `src/lib/synthesis-planning/opportunity-map-worker.ts`)
   expect(stub.posted[0].message.input.entries.at(-1)?.e_form_per_atom).toBeNaN()
   expect(document.querySelector(`.opportunity-map`)?.textContent).toContain(
     `Selectivity shown for: ${plan.routes[0].reaction.equation}`,
   )
   expect(document.querySelector<HTMLSelectElement>(`select`)?.value).toBe(`O2`)
-  first?.click()
+  first.click()
   await tick()
   expect(onconditionschange).toHaveBeenCalledWith(
     { ...initial, temperature: 300, partial_pressures: { O2: 1e-8 } },
     undefined,
   )
-  expect(first?.getAttribute(`aria-pressed`)).toBe(`true`)
+  expect(first.getAttribute(`aria-pressed`)).toBe(`true`)
   expect(stub.posted).toHaveLength(1)
   conditions = { ...initial, temperature: 300, partial_pressures: { O2: 1e-8, CO2: 0.01 } }
   await vi.waitFor(() => expect(stub.posted).toHaveLength(2))
@@ -94,11 +94,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   expect(document.querySelector(`.opportunity-map`)?.textContent).toContain(
     `weighted overall ranking`,
   )
-  const max_temperature = document.querySelector<HTMLInputElement>(
-    `[aria-label="Maximum map temperature"]`,
-  )
-  if (!max_temperature) throw new Error(`Map temperature control missing`)
-  set_input(max_temperature, `100`)
+  set_input(doc_query<HTMLInputElement>(`[aria-label="Maximum map temperature"]`), `100`)
   await tick()
   expect(document.querySelector(`[role="alert"]`)?.textContent).toContain(`minimum`)
   expect(stub.posted).toHaveLength(2)

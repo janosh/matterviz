@@ -146,7 +146,6 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
   `.json`,
 ])
 
-// Special regex patterns
 // Bare VASP filenames that the structure parser supports. INCAR, KPOINTS and POTCAR are
 // left out because advertising unparsable run inputs only earns the caller `Unable to
 // determine file format`; OUTCAR, XDATCAR and vasprun.xml are trajectories, not structures.

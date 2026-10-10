@@ -5,10 +5,9 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
-  import { array_max, type Vec2 } from '#lib/math.js'
+  import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-  import { extent } from 'd3-array'
   import {
     convert_frequencies,
     frequency_unit_label,
@@ -80,9 +79,9 @@
   // Pad the grid well beyond the outermost peak so tails are not clipped, and keep the
   // low-frequency edge at zero, as vibrational spectra are conventionally drawn.
   let plot_range = $derived.by((): Vec2 => {
-    // extent([]) is [undefined, undefined], which would make the whole range NaN
+    // array_extent([]) is [Infinity, -Infinity], which is no range at all
     if (sticks.x.length === 0) return [0, 1]
-    const [min_x, max_x] = extent(sticks.x) as [number, number]
+    const [min_x, max_x] = array_extent(sticks.x)
     const pad = Math.max(8 * display_fwhm, (max_x - min_x) * 0.1, 1e-6)
     return [Math.max(0, min_x - pad), max_x + pad]
   })
@@ -106,11 +105,10 @@
   // Sticks share the curve's y-scale so both are legible on one axis. In transmittance the
   // sticks hang down from the baseline at 1. (array_max: the curve grid can be huge.)
   let stick_scale = $derived.by(() => {
-    const max_stick = Math.max(array_max(sticks.y), 0)
-    if (max_stick <= 0) return 0
-    const max_curve = Math.max(array_max(curve_y), 0)
-    if (is_transmittance) return 1 / max_stick
-    return (max_curve > 0 ? max_curve : 1) / max_stick
+    const max_stick = array_max(sticks.y)
+    if (!(max_stick > 0)) return 0
+    const max_curve = array_max(curve_y)
+    return (is_transmittance || !(max_curve > 0) ? 1 : max_curve) / max_stick
   })
 
   let kind_label = $derived(kind === `ir` ? `IR` : `Raman`)
@@ -168,7 +166,7 @@
   // One percent of the unbroadened span; a single peak uses the initial 10 cm^-1 width.
   // Including the FWHM-dependent plot padding would move the target after every reset.
   const broadening_defaults = $derived.by(() => {
-    const [lower = 0, upper = 0] = extent(sticks.x)
+    const [lower, upper] = array_extent(sticks.x) // [Infinity, -Infinity] with no sticks
     const span_cm = convert_frequencies([upper - lower], `cm^-1`, unit)[0]
     return { fwhm: span_cm > 0 ? span_cm / 100 : 10, shape_factor: 0.5 }
   })
@@ -214,13 +212,9 @@
         title="Spectrum"
         class="ctrl-line"
         changed_keys={spectrum_settings.changed_keys}
-        on_reset={() => {
-          kind = `ir`
-          units = `cm^-1`
-          presentation = `absorbance`
-          show_sticks = true
-          normalize = `max`
-        }}
+        on_reset={() =>
+          ({ kind, units, presentation, show_sticks, normalize } =
+            spectrum_settings.snapshot())}
         layout="flow"
       >
         <label>

@@ -7,6 +7,7 @@
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { FrequencyUnit } from './frequency-units'
 import { convert_frequencies } from './frequency-units'
+import { trapezoid_weights } from './helpers'
 import type { PhononDos } from './types'
 
 export interface ThermalProperties {
@@ -57,11 +58,7 @@ export function thermal_properties(
   const grid = order.map((idx) => frequencies[idx])
   const mode_energies = convert_frequencies(grid, `eV`, unit)
   // trapezoid weights folded with the density, so every integral is one weighted sum
-  const last = grid.length - 1
-  const weights = order.map((idx, pos) => {
-    const segment = grid[Math.min(pos + 1, last)] - grid[Math.max(pos - 1, 0)]
-    return (densities[idx] * segment) / 2
-  })
+  const weights = trapezoid_weights(grid).map((weight, pos) => densities[order[pos]] * weight)
   const zero_point_energy = weights.reduce(
     (total, weight, idx) => total + weight * (mode_energies[idx] / 2),
     0,

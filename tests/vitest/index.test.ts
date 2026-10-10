@@ -12,16 +12,10 @@ test(`library exports all Svelte components from #lib/*.svelte`, () => {
   }
 })
 
-test(`element labels and categories are consistent with element_data`, () => {
-  expect(labels.ELEMENT_CATEGORIES).toHaveLength(10)
-  expect(labels.ELEMENT_CATEGORIES).toContain(`alkali metal`)
-  expect(labels.ELEMENT_CATEGORIES).toContain(`noble gas`)
-  expect(labels.ELEMENT_CATEGORIES).toContain(`transition metal`)
-
-  expect(labels.ELEM_SYMBOLS).toHaveLength(lib.element_data.length)
-  expect(labels.ELEM_SYMBOLS).toContain(`H`)
-  expect(labels.ELEM_SYMBOLS).toContain(`He`)
-  expect(labels.ELEM_SYMBOLS).toContain(`U`)
+test(`ELEMENT_CATEGORIES and ELEM_SYMBOLS match element_data`, () => {
+  const categories = new Set(lib.element_data.map((elem) => elem.category))
+  expect(categories).toEqual(new Set(labels.ELEMENT_CATEGORIES))
+  expect(labels.ELEM_SYMBOLS).toEqual(lib.element_data.map((elem) => elem.symbol))
 })
 
 test(`root exports is_binary without misclassifying sparse high bytes`, () => {

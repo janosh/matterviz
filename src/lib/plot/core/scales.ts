@@ -33,6 +33,13 @@ import {
 // Type for ticks parameter - can be count, array of values, time interval, or object mapping values to labels
 export type TicksOption = number | number[] | TimeInterval | Record<number, string>
 
+// A value -> label mapping (as opposed to a tick count, positions or a time interval). The
+// `& object` keeps TS from narrowing interval strings away (they have a numeric index too).
+export const is_tick_label_map = (
+  ticks: TicksOption | null | undefined,
+): ticks is Record<number, string> & object =>
+  ticks != null && typeof ticks === `object` && !Array.isArray(ticks)
+
 const MS_PER_DAY = 86_400_000
 
 // Every tick is measured and rendered, and a negative `axis.ticks` is a STEP whose count rides
@@ -88,12 +95,9 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   ]
 
   const scale = ((value: number): number => {
-    const [d_min, d_max] = current_domain
     const [r_min, r_max] = current_range
-    // Identical domain endpoints (degenerate case) map to the range midpoint
-    if (d_max === d_min) return (r_min + r_max) / 2
-
     const [t_min, t_max] = transformed_domain()
+    // A degenerate domain maps to the range midpoint
     if (t_max === t_min) return (r_min + r_max) / 2
     const frac = (arcsinh_transform(value) - t_min) / (t_max - t_min)
     return r_min + frac * (r_max - r_min)
@@ -153,17 +157,10 @@ export function generate_arcsinh_ticks(
   // across both sides (zero is shared/free) so e.g. count=4 yields ~5 ticks (0, ±a, ±b) rather
   // than collapsing to 3 — matching how linear/log colorbars render a similar count.
   const half_count = Math.floor(count / 2)
-  const ticks: number[] = [0]
-
-  // Add positive ticks
-  const pos_ticks = generate_positive_arcsinh_ticks(0, upper, threshold, half_count)
-  ticks.push(...pos_ticks.filter((tick) => tick > 0))
-
-  // Add negative ticks (mirror of positive)
-  const neg_ticks = generate_positive_arcsinh_ticks(0, -lower, threshold, half_count)
-  ticks.push(...neg_ticks.filter((tick) => tick > 0).map((tick) => -tick))
-
-  return dedupe_sort(ticks)
+  // Positive ticks up to `bound`; the negative side mirrors them
+  const side = (bound: number) =>
+    generate_positive_arcsinh_ticks(0, bound, threshold, half_count).filter((tick) => tick > 0)
+  return dedupe_sort([0, ...side(upper), ...side(-lower).map((tick) => -tick)])
 }
 
 // Generate positive arcsinh ticks (helper)
@@ -283,12 +280,14 @@ export function generate_ticks(
   // ascending bounds (a raw max_val < min_val collapses interval counts to zero ticks). Tick
   // order is irrelevant to rendering, so ascending output is fine.
   const [min_val, max_val] = range_bounds(domain)
-  if (typeof ticks_option === `number` && ticks_option > 0) {
-    assert_tick_count(ticks_option, `a tick count of ${ticks_option}`, max_val - min_val)
+  const positive_count =
+    typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : undefined
+  if (positive_count) {
+    assert_tick_count(positive_count, `a tick count of ${positive_count}`, max_val - min_val)
   }
 
   // If ticks_option is an object (value-to-label mapping), extract values
-  if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
+  if (is_tick_label_map(ticks_option)) {
     return Object.keys(ticks_option)
       .map(Number)
       .filter((val) => Number.isFinite(val) && val >= min_val && val <= max_val)
@@ -302,19 +301,18 @@ export function generate_ticks(
     // Interval requests (`day`/`month`/`year` or a negative day count) ask d3 for one tick per
     // interval in the domain, so it picks that interval; a positive number is a plain count.
     const INTERVAL_DAYS: Record<string, number> = { day: 1, month: 30, year: 365 }
-    const interval_days =
+    const interval_days: number | undefined =
       typeof ticks_option === `number` && ticks_option < 0
         ? -ticks_option
-        : ((typeof ticks_option === `string` ? INTERVAL_DAYS[ticks_option] : undefined) ??
-          null)
+        : typeof ticks_option === `string`
+          ? INTERVAL_DAYS[ticks_option]
+          : undefined
     const count =
-      interval_days !== null
+      interval_days !== undefined
         ? Math.max(1, Math.ceil((max_val - min_val) / (interval_days * MS_PER_DAY)))
-        : typeof ticks_option === `number` && ticks_option > 0
-          ? ticks_option
-          : 10
+        : (positive_count ?? 10)
     // Interval counts ride on the domain: `day` over two centuries asks for 73k ticks
-    if (interval_days !== null) {
+    if (interval_days !== undefined) {
       assert_tick_count(count, `a tick interval of ${interval_days} day(s)`, max_val - min_val)
     }
     const dates = scaleTime()
@@ -338,9 +336,7 @@ export function generate_ticks(
   // Arcsinh scale ticks
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    const tick_count =
-      typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : default_count
-    return generate_arcsinh_ticks(min_val, max_val, threshold, tick_count)
+    return generate_arcsinh_ticks(min_val, max_val, threshold, positive_count ?? default_count)
   }
 
   // Linear scale with interval (negative number indicates interval). The end is padded by a
@@ -357,10 +353,7 @@ export function generate_ticks(
   }
 
   // Default ticks using scale function
-  const tick_count =
-    typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : default_count
-
-  return scale_fn.ticks(tick_count).map(Number)
+  return scale_fn.ticks(positive_count ?? default_count).map(Number)
 }
 
 // Finite raw-array extent with a count for padding and renderability checks.
@@ -416,24 +409,38 @@ export function collect_series_extent(
   return extent
 }
 
+// Auto [min, max] of a colour/size extent, [0, 1] when no finite value was seen. On log
+// scales the smallest positive value stands in for a non-positive min: it has no log image,
+// and flooring it at LOG_EPS instead would squash every positive value into the ramp's top.
+export const auto_scale_range = (
+  { min = 0, max = 1, min_positive }: RunningExtent,
+  scale_type?: ScaleType,
+): Vec2 => [get_scale_type_name(scale_type) === `log` ? (min_positive ?? min) : min, max]
+
 // Finite colour and size extents without concatenating series. NaN/null entries
 // fall back to the series colour/radius per point, so they must not widen either scale.
-// `color_range` is [0, 1] when no finite colour value was seen.
-export function collect_scale_ranges(series: readonly ScaleValueSeries[]): {
+// Ranges follow auto_scale_range for the given colour/size scale types.
+export function collect_scale_ranges(
+  series: readonly ScaleValueSeries[],
+  scale_types: { color?: ScaleType; size?: ScaleType } = {},
+): {
   color_extent: RunningExtent
   color_range: Vec2
   size_range: Vec2
 } {
   const color_extent = collect_series_extent(series, `color_values`)
-  const { min = 0, max = 1 } = color_extent
-  return { color_extent, color_range: [min, max], size_range: collect_size_range(series) }
+  return {
+    color_extent,
+    color_range: auto_scale_range(color_extent, scale_types.color),
+    size_range: collect_size_range(series, scale_types.size),
+  }
 }
 
 // Size bounds without retaining a copy of every sample. Reuse across radius/type changes.
-export function collect_size_range(series: readonly ScaleValueSeries[]): Vec2 {
-  const { min = 0, max = 1 } = collect_series_extent(series, `size_values`)
-  return [min, max]
-}
+export const collect_size_range = (
+  series: readonly ScaleValueSeries[],
+  scale_type?: ScaleType,
+): Vec2 => auto_scale_range(collect_series_extent(series, `size_values`), scale_type)
 
 // Pixel scale that holds values below a log axis's domain floor at the floor: 0 and negatives
 // (bar baselines, whisker lows, line vertices) have no finite log pixel, so they land on the
@@ -564,31 +571,29 @@ export function generate_log_ticks(
   const max_power = Math.ceil(Math.log10(max))
   const in_range = (tick: number): boolean => tick >= min && tick <= max
   const powers = range(min_power, max_power + 1).map((power: number) => 10 ** power)
+  const in_range_powers = powers.filter(in_range)
+  const tick_count = typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : 5
+  // Powers of ten, or d3's fine mantissa ticks when fewer than two powers fall in range
+  const fine_ticks =
+    in_range_powers.length < 2 ? scaleLog().domain([min, max]).ticks(tick_count) : []
+  const base_ticks = fine_ticks.length > 0 ? fine_ticks : in_range_powers
   if (max_power - min_power < 3 && typeof ticks_option === `number` && ticks_option > 5) {
     const mantissa_ticks = powers
       .flatMap((power) => [power, power * 2, power * 5])
       .filter(in_range)
-    // A sub-decade domain between mantissas (e.g. [0.92, 0.99] or [7, 8]) fits fewer than two
-    // of them; fall through to d3's fine ticks instead of leaving the axis bare
-    if (mantissa_ticks.length >= 2) return mantissa_ticks
+    // A generous count densifies sparse powers with 1-2-5 mantissas, but never swaps in fewer
+    // ticks than a smaller count gets (e.g. [2, 5] instead of d3's [2..8] on [2, 8])
+    if (mantissa_ticks.length > base_ticks.length) return mantissa_ticks
   }
-  const in_range_powers = powers.filter(in_range)
-  if (in_range_powers.length >= 2) return in_range_powers
-  const tick_count = typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : 5
-  const fallback = scaleLog().domain([min, max]).ticks(tick_count)
-  return fallback.length > 0 ? fallback : in_range_powers
+  return base_ticks
 }
 
 // Get custom label for a tick value if provided, otherwise return null
-export function get_tick_label(
+export const get_tick_label = (
   tick_value: number,
   ticks_option: TicksOption | undefined,
-): string | null {
-  if (ticks_option && typeof ticks_option === `object` && !Array.isArray(ticks_option)) {
-    return ticks_option[tick_value] ?? null
-  }
-  return null
-}
+): string | null =>
+  is_tick_label_map(ticks_option) ? (ticks_option[tick_value] ?? null) : null
 
 // Log domain for colour ramps, shared by every colour-scale builder so they agree on the
 // floor: non-positive bounds fall back to LOG_EPS (a domain entirely <= 0 collapses to one
@@ -660,9 +665,6 @@ function create_arcsinh_color_scale(
   // Single scale function that reads current domain on each call
   const scale = ((value: number): string => {
     const [d_min, d_max] = current_domain
-    // Handle identical domain endpoints - return middle of color range
-    if (d_max === d_min) return interpolator(0.5)
-
     const t_min = Math.asinh(d_min / threshold)
     const t_max = Math.asinh(d_max / threshold)
     const t_val = Math.asinh(value / threshold)

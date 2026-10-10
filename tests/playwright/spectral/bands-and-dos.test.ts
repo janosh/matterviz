@@ -5,6 +5,7 @@ import {
   get_chart_svg,
   measure_plot_area,
   numeric_y_ticks,
+  require_bbox,
   reset_plot_area,
 } from '../helpers'
 
@@ -142,8 +143,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
 
     // Hover over DOS plot
     const dos_svg = get_chart_svg(dos_plot)
-    const dos_box = await dos_svg.boundingBox()
-    if (!dos_box) throw new Error(`Missing DOS plot geometry`)
+    const dos_box = await require_bbox(dos_svg, `DOS plot`)
     await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
 
     await expect(async () => {

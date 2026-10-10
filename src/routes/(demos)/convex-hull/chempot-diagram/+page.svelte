@@ -92,9 +92,7 @@
   <LazyDemo label="Temperature-dependent chemical potentials">
     <ChemPotDiagram3D
       entries={temp_ternary_entries}
-      config={{
-        elements: [`Li`, `Fe`, `O`],
-      }}
+      config={{ elements: [`Li`, `Fe`, `O`] }}
       bind:temperature={temp_demo_temperature}
       width={550}
       height={500}

@@ -316,12 +316,10 @@
     next_state.view = views.find((candidate) => candidate === view_param) ?? next_state.view
     next_state.amplitude = number_param(params, `amplitude`, DEFAULT_PHONON_AMPLITUDE, 0.02, 1)
     const supercell_param = params.get(`supercell`)
-    if (supercell_param) {
-      try {
-        next_state.supercell = parse_supercell_scaling(supercell_param)
-      } catch {
-        next_state.supercell = [...DEFAULT_PHONON_SUPERCELL]
-      }
+    try {
+      if (supercell_param) next_state.supercell = parse_supercell_scaling(supercell_param)
+    } catch {
+      // invalid supercell param: keep the default from initial_state
     }
     next_state.fps = number_param(params, `fps`, DEFAULT_PHONON_FPS, 0, 300)
     next_state.show_vectors = bool_from_param(params, `vectors`, DEFAULT_PHONON_SHOW_VECTORS)
@@ -358,16 +356,11 @@
   const mode_fixture_url_entries = (fixture: ModeFixture): UrlParamEntry[] => {
     const default_state = initial_state(fixture.dataset)
     return [
-      [
-        `qpoint`,
-        index_value(selection?.qpoint_idx),
-        index_value(default_state.selection?.qpoint_idx),
-      ],
-      [
-        `mode`,
-        index_value(selection?.mode_idx),
-        index_value(default_state.selection?.mode_idx),
-      ],
+      ...([`qpoint_idx`, `mode_idx`] as const).map((key): UrlParamEntry => [
+        key.replace(`_idx`, ``),
+        index_value(selection?.[key]),
+        index_value(default_state.selection?.[key]),
+      ]),
       [`view`, view ?? ``, default_state.view],
       [`amplitude`, String(amplitude), String(DEFAULT_PHONON_AMPLITUDE)],
       [`supercell`, supercell.join(`x`), DEFAULT_PHONON_SUPERCELL.join(`x`)],

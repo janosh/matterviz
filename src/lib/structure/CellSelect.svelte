@@ -56,17 +56,15 @@
   const supercell_presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
 
   // Always show all 3 cell types - Prim/Conv disabled without sym_data
-  const cell_types: CellType[] = [`original`, `primitive`, `conventional`]
-  const cell_labels: Record<CellType, string> = {
-    original: `Orig`,
-    primitive: `Prim`,
-    conventional: `Conv`,
-  }
-  const cell_tooltips: Record<CellType, string> = {
-    original: `Original unit cell (as provided)`,
-    primitive: `Primitive cell (smallest repeating unit)`,
-    conventional: `Conventional cell (standardized representation)`,
-  }
+  const cell_types: { type: CellType; label: string; tooltip: string }[] = [
+    { type: `original`, label: `Orig`, tooltip: `Original unit cell (as provided)` },
+    { type: `primitive`, label: `Prim`, tooltip: `Primitive cell (smallest repeating unit)` },
+    {
+      type: `conventional`,
+      label: `Conv`,
+      tooltip: `Conventional cell (standardized representation)`,
+    },
+  ]
   const hair_space = `\u200A`
 
   const format_supercell_label = (supercell_value: string): string =>
@@ -84,15 +82,12 @@
     }
   }
 
-  function handle_focus_out(event: FocusEvent) {
-    const next_target = event.relatedTarget
-    const current_target = event.currentTarget
-    if (
-      !(current_target instanceof Node) ||
-      !(next_target instanceof Node) ||
-      !current_target.contains(next_target)
-    )
-      close_menu()
+  function handle_focus_out({ currentTarget, relatedTarget }: FocusEvent) {
+    const stays_inside =
+      currentTarget instanceof Node &&
+      relatedTarget instanceof Node &&
+      currentTarget.contains(relatedTarget)
+    if (!stays_inside) close_menu()
   }
 
   function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
@@ -136,7 +131,8 @@
         style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
-      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{format_supercell_label(
+      {@const type_label = cell_types.find(({ type }) => type === cell_type)?.label}
+      {cell_type === `original` ? `` : `${type_label} `}{format_supercell_label(
         supercell_scaling,
       )}
     {/if}
@@ -148,12 +144,11 @@
       transition:fade={{ duration: 100 }}
     >
       <div class="cell-type-row">
-        {#each cell_types as type (type)}
+        {#each cell_types as { type, label, tooltip: cell_tooltip } (type)}
           {@const disabled = type !== `original` && !sym_data}
-          {@const label = cell_labels[type]}
           {@const tooltip_text = disabled
-            ? `${cell_tooltips[type]} - requires symmetry data`
-            : cell_tooltips[type]}
+            ? `${cell_tooltip} - requires symmetry data`
+            : cell_tooltip}
           <button
             class={['cell-type-btn', { selected: cell_type === type, disabled }]}
             {disabled}
@@ -295,27 +290,32 @@
     padding-bottom: 5px;
     border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
   }
-  .cell-type-btn {
-    flex: 1;
-    padding: 1px 3px;
+  .cell-type-btn,
+  .preset-btn {
     background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
-    transition: background 0.15s ease;
-    white-space: nowrap;
   }
   @media (hover: hover) {
-    .cell-type-btn:hover:not(.disabled) {
+    .cell-type-btn:hover:not(.disabled),
+    .preset-btn:hover {
       background: var(
         --btn-bg-hover,
         light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
       );
     }
   }
-  .cell-type-btn.selected {
+  .cell-type-btn.selected,
+  .preset-btn.selected {
     color: var(--cell-select-accent);
     background: color-mix(in srgb, var(--cell-select-accent) 18%, var(--cell-select-surface));
     border-color: color-mix(in srgb, var(--cell-select-accent) 45%, var(--cell-select-border));
+  }
+  .cell-type-btn {
+    flex: 1;
+    padding: 1px 3px;
+    transition: background 0.15s ease;
+    white-space: nowrap;
   }
   .cell-type-btn.disabled {
     opacity: 0.4;
@@ -329,22 +329,6 @@
   }
   .preset-btn {
     padding: 1px;
-    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius, 3pt);
-  }
-  @media (hover: hover) {
-    .preset-btn:hover {
-      background: var(
-        --btn-bg-hover,
-        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
-      );
-    }
-  }
-  .preset-btn.selected {
-    color: var(--cell-select-accent);
-    background: color-mix(in srgb, var(--cell-select-accent) 18%, var(--cell-select-surface));
-    border-color: color-mix(in srgb, var(--cell-select-accent) 45%, var(--cell-select-border));
   }
 
   .custom-input-row {

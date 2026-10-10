@@ -43,16 +43,13 @@ export function predict_demo(structure: AnyStructure) {
       positions: demo_frame_sites(structure, DEMO_FRAMES - 1).map(({ xyz }) => xyz),
     },
     volumes: [
-      {
-        ...make_volume(values, [12, 12, 12], {
-          id: `density`,
-          lattice,
-          origin: [0, 0, 0],
-          periodic: false,
-          label: `Predicted density`,
-        }),
+      make_volume(values, [12, 12, 12], {
         id: `density`,
-      },
+        lattice,
+        origin: [0, 0, 0],
+        periodic: false,
+        label: `Predicted density`,
+      }),
     ],
   }
 }

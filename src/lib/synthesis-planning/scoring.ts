@@ -7,6 +7,7 @@ import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
 import type {
   CompetingPhase,
+  PairwiseInterface,
   PracticalityAssessment,
   ScoreWeights,
   SelectivityMetrics,
@@ -108,6 +109,10 @@ export function assess_practicality(reaction: SynthesisReaction): PracticalityAs
 const name_with_force = (comp: CompetingPhase): string =>
   `${comp.phase.formula} (${format_mev(comp.driving_force)})`
 
+// `A|B → product` for what forms first where two precursor grains meet
+export const describe_interface = ({ precursors, first_product }: PairwiseInterface): string =>
+  `${precursors[0].formula}|${precursors[1].formula} → ${first_product?.phase.formula ?? `nothing`}`
+
 export function score_route(
   reaction: SynthesisReaction,
   selectivity: SelectivityMetrics,
@@ -160,12 +165,7 @@ export function score_route(
   const off_target = selectivity.interfaces.filter((iface) => !iface.forms_target)
   if (selectivity.interfaces.length > 1 && off_target.length) {
     rationale.push(
-      `${off_target.length} of ${selectivity.interfaces.length} precursor interfaces form something else first: ${off_target
-        .map(
-          (iface) =>
-            `${iface.precursors[0].formula}|${iface.precursors[1].formula} → ${iface.first_product?.phase.formula ?? `nothing`}`,
-        )
-        .join(`, `)}`,
+      `${off_target.length} of ${selectivity.interfaces.length} precursor interfaces form something else first: ${off_target.map(describe_interface).join(`, `)}`,
     )
   }
   if (practicality.notes.length) {

@@ -433,7 +433,7 @@ describe(`selection validity`, () => {
 })
 
 describe(`edit-atoms`, () => {
-  it(`deletes selected atoms (never images), remaps bonds and restores both on undo/redo`, () => {
+  it(`deletes selected atoms (never images), remaps bonds, undoes/redoes both and clears history on external changes`, () => {
     const bonds: StructureBond[] = [
       { site_idx_1: 0, site_idx_2: 1, order: 1 },
       { site_idx_1: 1, site_idx_2: 2, order: 2 },
@@ -466,6 +466,11 @@ describe(`edit-atoms`, () => {
     expect(session.history.redo_stack).toHaveLength(1)
     session.push_undo()
     expect(session.history.redo_stack, `a new edit invalidates redo`).toHaveLength(0)
+    // the session's own edits kept the history; an external structure change clears it
+    flushSync()
+    host.structure = crystal(4)
+    flushSync()
+    expect(session.history.undo_stack).toHaveLength(0)
   })
 
   it(`duplicates into a new selection, changes elements and adds atoms with fractional coords`, () => {
@@ -583,18 +588,6 @@ describe(`edit-atoms`, () => {
     session.move_sites([0], [1, 0, 0])
     flushSync()
     expect(notice_count()).toBe(2)
-  })
-
-  it(`clears history on an external structure change but not on its own edits`, () => {
-    const { host, session } = make_session({ measure_mode: `edit-atoms` })
-    host.selected_sites = [0]
-    flushSync()
-    session.delete_selected()
-    flushSync()
-    expect(session.history.undo_stack).toHaveLength(1)
-    host.structure = crystal(4)
-    flushSync()
-    expect(session.history.undo_stack).toHaveLength(0)
   })
 })
 

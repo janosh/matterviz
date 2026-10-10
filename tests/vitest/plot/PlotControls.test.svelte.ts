@@ -15,6 +15,13 @@ const type_into = (input: HTMLInputElement, value: string) => {
   set_input(input, value)
   flushSync()
 }
+// Click a settings section's "Restore <name> to initial values" button
+const restore = (name: string) => {
+  doc_query<HTMLButtonElement>(
+    `button[aria-label="Restore ${name} to initial values"]`,
+  ).click()
+  flushSync()
+}
 
 describe(`PlotControls`, () => {
   const mount_controls = (props: ComponentProps<typeof PlotControls> = {}) => {
@@ -109,10 +116,7 @@ describe(`PlotControls`, () => {
 
       await tick()
       flushSync(() => (x2_range = undefined))
-      doc_query<HTMLButtonElement>(
-        `button[aria-label="Restore axis range to initial values"]`,
-      ).click()
-      flushSync()
+      restore(`axis range`)
       expect(state.x_axis.range).toBeUndefined()
       expect(x_min.value).toBe(``)
       expect(x_max.value).toBe(``)
@@ -151,10 +155,7 @@ describe(`PlotControls`, () => {
       state.y_axis = { format: `.4f` }
       flushSync()
       expect(input.value).toBe(`invalid`)
-      doc_query<HTMLButtonElement>(
-        `button[aria-label="Restore tick format to initial values"]`,
-      ).click()
-      flushSync()
+      restore(`tick format`)
       expect(state.x_axis.format).toBe(`.3f`)
       expect(input.value).toBe(`.3f`)
       expect(input.classList.contains(`invalid`)).toBe(false)
@@ -198,10 +199,7 @@ describe(`PlotControls`, () => {
       expect(state.y_axis.ticks).toBeUndefined()
       // x2 has no binding here, so the input is still rendered and editable without throwing
       type_into(x2_input, `3`)
-      doc_query<HTMLButtonElement>(
-        `button[aria-label="Restore ticks to initial values"]`,
-      ).click()
-      flushSync()
+      restore(`ticks`)
       expect(state.x_axis.ticks).toBeUndefined()
       expect(state.y_axis.ticks).toBe(4)
     })
@@ -220,20 +218,14 @@ describe(`PlotControls`, () => {
         else if (typeof state.x_axis.ticks === `object`) state.x_axis.ticks[0] = `changed`
         else state.x_axis.ticks = `month`
         flushSync()
-        doc_query<HTMLButtonElement>(
-          `button[aria-label="Restore ticks to initial values"]`,
-        ).click()
-        flushSync()
+        restore(`ticks`)
         expect(state.x_axis.ticks).toEqual(initial_ticks)
         // Replacing a custom configuration with a count must preserve the same reset baseline.
         state.x_axis = { ticks: 7 }
         flushSync()
         expect(x_input.disabled).toBe(false)
         expect(x_input.value).toBe(`7`)
-        doc_query<HTMLButtonElement>(
-          `button[aria-label="Restore ticks to initial values"]`,
-        ).click()
-        flushSync()
+        restore(`ticks`)
         expect(state.x_axis.ticks).toEqual(initial_ticks)
         expect(x_input.disabled).toBe(true)
       },

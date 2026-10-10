@@ -39,6 +39,8 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 3. **Select "MatterViz: Open"** from the context menu
 4. **Or use the keyboard shortcut**: `Ctrl+Shift+V` (Windows/Linux) / `Cmd+Shift+V` (Mac)
 
+Binary files MatterViz can decode (ASE `.traj`, `.h5`/`.hdf5`) open in MatterViz directly. To use a different editor for them, override `workbench.editorAssociations`, e.g. `"*.h5": "default"`.
+
 ### Supported File Formats
 
 #### Structure Files
@@ -87,7 +89,7 @@ MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=
 - ✅ **No manual file transfer**: Files are read directly from the remote filesystem
 - ✅ **File watching**: Changes to remote files are automatically detected and reloaded
 - ⚠️ **File size limit**: Files are read into extension memory in one operation on both local and Remote SSH workspaces. Non-text files larger than 1 GiB are rejected to prevent memory issues. XYZ/EXTXYZ text trajectories are limited by Node.js text decoding and are currently rejected above about 512 MiB. Other text formats (e.g. JSON, POSCAR, CIF) above about 400 MiB are rejected because large-file loading currently supports trajectories only.
-- ℹ️ **Parsing runs off the UI thread**: files below the 400 MiB streaming threshold are parsed in a Web Worker inside the editor tab, so the webview stays responsive while a large file loads. Worker failures show an error; parsing in the webview requires a working Web Worker. Trajectories above 400 MiB stay in the extension host, which opens them as a lazily decoded run, sends the webview a summary plus per-frame plot rows as they are extracted, and serves frames on request.
+- ℹ️ **Parsing runs off the UI thread**: files below the 400 MiB streaming threshold are parsed in a Web Worker inside the editor tab, so the webview stays responsive while a large file loads. VS Code webviews cannot start workers from extension resources directly, so the webview fetches each worker script and starts it from a blob URL. Worker failures show an error. Trajectories above 400 MiB stay in the extension host, which opens them as a lazily decoded run, sends the webview a summary plus per-frame plot rows as they are extracted, and serves frames on request.
 
 ## ⚙️ Configuration & Customization
 

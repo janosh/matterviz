@@ -92,6 +92,50 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
+// Whether an entry carries an absolute energy, as opposed to E_form-only data: no energy at
+// all, or a 0 eV `energy` placeholder next to a nonzero e_form_per_atom (a real total energy
+// is essentially never exactly 0 eV, and a 0 eV unary reference has E_form 0 either way).
+export const has_absolute_energy = (entry: PhaseData): boolean =>
+  typeof entry.energy_per_atom === `number` ||
+  (typeof entry.energy === `number` &&
+    !(
+      entry.energy === 0 &&
+      typeof entry.e_form_per_atom === `number` &&
+      Number.isFinite(entry.e_form_per_atom) &&
+      entry.e_form_per_atom !== 0
+    ))
+
+// Absolute energy per atom: the entry's own, else its E_form on the references' scale
+// (E_form + Σ x_e E_e, and E_form alone for a reference that is E_form-only itself). NaN
+// when the entry has neither or an element lacks a reference.
+export function absolute_energy_per_atom(
+  entry: PhaseData,
+  unary_refs: Record<string, PhaseData>,
+): number {
+  if (has_absolute_energy(entry)) return get_energy_per_atom(entry)
+  const { e_form_per_atom: e_form } = entry
+  const atoms = count_atoms_in_composition(entry.composition)
+  if (typeof e_form !== `number` || !Number.isFinite(e_form) || !(atoms > 0)) return NaN
+  let energy = e_form
+  for (const [element, amount] of Object.entries(entry.composition)) {
+    if (!(amount > 0)) continue
+    const ref = unary_refs[element]
+    if (!ref) return NaN
+    if (ref !== entry) energy += (amount / atoms) * absolute_energy_per_atom(ref, unary_refs)
+  }
+  return energy
+}
+
+// Check if an entry has valid temperature-dependent data (matching array lengths, non-empty)
+export function entry_has_temp_data(entry: PhaseData): boolean {
+  const { temperatures, free_energies } = entry
+  return Boolean(
+    temperatures?.length &&
+    free_energies?.length &&
+    temperatures.length === free_energies.length,
+  )
+}
+
 // `e_above_hull_distances` prefers a cached e_form_per_atom over recomputing one, so any
 // transformation that changes energies or references must clear these or the stale cache
 // outranks the new energies.
@@ -134,8 +178,7 @@ export function find_lowest_energy_unary_refs(
   const refs: Record<string, Ref> = {}
   for (const entry of entries) {
     if (!is_unary_entry(entry) || entry.exclude_from_hull) continue
-    const absolute =
-      typeof entry.energy_per_atom === `number` || typeof entry.energy === `number`
+    const absolute = has_absolute_energy(entry)
     const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
     if (!Number.isFinite(score)) continue
     const element = Object.keys(entry.composition).find(

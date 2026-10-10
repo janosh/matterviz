@@ -3,7 +3,6 @@
   import { FullscreenButton } from '#lib/layout/index.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import type { FacetAxis } from '#lib/plot/core/facets.js'
   import type {
     MarginalAxis,
     MarginalAxisBinding,
@@ -155,18 +154,18 @@
     y2_range: frame.ranges.current.y2,
   })
   const title_pad = $derived(frame.effective_base_pad)
-  const get_marginal_axis = (axis: FacetAxis, binding: MarginalAxisBinding): MarginalAxis =>
+  const get_marginal_axis = (axis: MarginalAxisBinding): MarginalAxis =>
     marginal_axis(
       frame.scales[axis],
       frame.ranges.current[axis],
       frame.axes[axis],
-      marginal_tick_label[binding],
+      marginal_tick_label[axis],
     )
   const marginal_axes = $derived({
-    x: get_marginal_axis(`x`, `x`),
-    x2: get_marginal_axis(`x2`, `x2`),
-    y: get_marginal_axis(`y`, `y`),
-    y2: get_marginal_axis(`y2`, `y2`),
+    x: get_marginal_axis(`x`),
+    x2: get_marginal_axis(`x2`),
+    y: get_marginal_axis(`y`),
+    y2: get_marginal_axis(`y2`),
   })
 
   onDestroy(() => pan_zoom.destroy())
@@ -178,9 +177,7 @@
 </script>
 
 <svelte:window
-  onkeydown={(evt) => {
-    pan_zoom.on_window_key_down(evt)
-  }}
+  onkeydown={pan_zoom.on_window_key_down}
   onkeyup={pan_zoom.on_window_key_up}
   onblur={pan_zoom.on_window_blur}
 />

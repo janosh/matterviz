@@ -61,46 +61,38 @@ describe(`PhaseDiagramExportPane`, () => {
   })
 
   test.each([
-    { desc: `component filename`, props: {}, expected: `phase-diagram-AL-CU.svg` },
+    {
+      desc: `component filename`,
+      props: {},
+      button: `Download SVG`,
+      args: [`phase-diagram-AL-CU.svg`],
+    },
     {
       desc: `default filename without components`,
       props: {
         data: { ...mock_phase_data, components: undefined } as unknown as PhaseDiagramData,
       },
-      expected: `phase-diagram.svg`,
+      button: `Download SVG`,
+      args: [`phase-diagram.svg`],
     },
     {
       desc: `custom filename`,
       props: { filename: `custom-name` },
-      expected: `custom-name-AL-CU.svg`,
+      button: `Download SVG`,
+      args: [`custom-name-AL-CU.svg`],
     },
-  ])(`Download SVG uses $desc`, async ({ props, expected }) => {
+    {
+      desc: `the DPI for PNG`,
+      props: { png_dpi: 200 },
+      button: `PNG`,
+      args: [`phase-diagram-AL-CU.png`, 200],
+    },
+  ])(`$button download uses $desc`, async ({ props, button, args }) => {
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div, ...props })
-    get_button(`Download SVG`).click()
+    get_button(button).click()
+    const export_fn = button === `PNG` ? export_svg_as_png : export_svg_as_svg
     await vi.waitFor(() => {
-      expect(export_svg_as_svg).toHaveBeenCalledWith(
-        mock_svg,
-        expected,
-        [],
-        {},
-        expect.any(Function),
-      )
-    })
-  })
-
-  test(`PNG download button calls export_svg_as_png with DPI`, async () => {
-    const png_dpi = 200
-    mount_pane({ data: mock_phase_data, wrapper: wrapper_div, png_dpi })
-    get_button(`PNG`).click()
-    await vi.waitFor(() => {
-      expect(export_svg_as_png).toHaveBeenCalledWith(
-        mock_svg,
-        `phase-diagram-AL-CU.png`,
-        png_dpi,
-        [],
-        {},
-        expect.any(Function),
-      )
+      expect(export_fn).toHaveBeenCalledWith(mock_svg, ...args, [], {}, expect.any(Function))
     })
   })
 

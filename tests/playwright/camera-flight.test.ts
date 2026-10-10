@@ -4,6 +4,7 @@ import type { TrajectoryViewerController } from '#lib/trajectory/index.js'
 import { execFile } from 'node:child_process'
 import { readdir, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
+import { require_bbox } from './helpers'
 
 test(`movie CLI cancellation stops an encoder waiting for input and removes partial output`, async ({
   baseURL: base_url,
@@ -256,11 +257,9 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await markers.nth(2).hover()
     await expect_opaque_markers()
     if (kind === `trajectory`) {
-      const first = await flight.getByLabel(`First MD frame`, { exact: true }).boundingBox()
-      const last = await flight.getByLabel(`Last MD frame`, { exact: true }).boundingBox()
-      expect(first).not.toBeNull()
-      expect(last).not.toBeNull()
-      expect(first?.y).toBe(last?.y)
+      const first = await require_bbox(flight.getByLabel(`First MD frame`, { exact: true }))
+      const last = await require_bbox(flight.getByLabel(`Last MD frame`, { exact: true }))
+      expect(first.y).toBe(last.y)
     }
     await expect(flight.getByLabel(`Space views evenly`)).toBeChecked()
     await flight
@@ -308,8 +307,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect.poll(async () => (await read_pose()).position).not.toEqual(original.position)
     const playhead = flight.getByLabel(`Flight playhead`, { exact: true })
     await playhead.scrollIntoViewIfNeeded()
-    const track = await playhead.boundingBox()
-    if (!track) throw new Error(`Flight playhead is not laid out`)
+    const track = await require_bbox(playhead, `flight playhead`)
     await page.mouse.click(track.x + track.width / 2, track.y + track.height / 2)
     await expect(playhead).toHaveValue(`1`)
     const movie_time = flight.getByLabel(`Movie time`, { exact: true })
@@ -383,8 +381,10 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(flight.getByLabel(`Flight duration`, { exact: true })).toHaveValue(`2`)
     // Fullscreen changes the pane's coordinate system. Even a manually dragged pane must
     // return fully on screen, including its protruding reset/close tab.
-    const handle = await pane.locator(`.drag-handle`).boundingBox()
-    if (!handle) throw new Error(`Camera planner drag handle is not laid out`)
+    const handle = await require_bbox(
+      pane.locator(`.drag-handle`),
+      `camera planner drag handle`,
+    )
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
     await page.mouse.down()
     await page.mouse.move(handle.x + 2000, handle.y + 1500, { steps: 5 })
@@ -459,11 +459,9 @@ for (const kind of [`structure`, `trajectory`] as const) {
       .poll(() => flight.evaluate((node) => node.scrollWidth - node.clientWidth))
       .toBeLessThanOrEqual(1)
     if (kind === `trajectory`) {
-      const first = await flight.getByLabel(`First MD frame`, { exact: true }).boundingBox()
-      const last = await flight.getByLabel(`Last MD frame`, { exact: true }).boundingBox()
-      expect(first).not.toBeNull()
-      expect(last).not.toBeNull()
-      expect(last?.y).toBeGreaterThan(first?.y ?? Infinity)
+      const first = await require_bbox(flight.getByLabel(`First MD frame`, { exact: true }))
+      const last = await require_bbox(flight.getByLabel(`Last MD frame`, { exact: true }))
+      expect(last.y).toBeGreaterThan(first.y)
     }
     await preview.scrollIntoViewIfNeeded()
     await expect(preview).toBeInViewport()

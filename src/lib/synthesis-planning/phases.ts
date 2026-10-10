@@ -102,7 +102,8 @@ function make_phase(
 }
 
 // Gas species as phases in the formation-energy frame: μ(T, p) per atom relative to the
-// elemental references at 0 K, so O2 sits at 0 at 0 K and drops by T·S at temperature.
+// elemental references at 0 K, so O2 sits at 0 at 0 K and moves by H(T) - H(0 K) - T·S at
+// temperature.
 function gas_phases(
   conditions: SynthesisConditions,
   elements: ElementSymbol[],

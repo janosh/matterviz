@@ -382,6 +382,20 @@ describe(`PhaseEventList`, () => {
     })
     mount_it(PhaseEventList, { diagram: quiet, temperature: 600 })
     expect(text(`.phase-event-list .empty`)).toBe(`Notransitionsbetween500and700K`)
+    unmount_all()
+    // an event without balanced reactions counts the tie-lines it replaced
+    const [event] = diagram.events
+    const events = [1, 2].map((n_edges) => ({
+      ...event,
+      reactions: [],
+      edges_removed: Array.from({ length: n_edges }, (): Vec2 => [0, 1]),
+    }))
+    mount_it(PhaseEventList, { diagram: { ...diagram, events }, temperature: 600 })
+    const reactions = [...document.querySelectorAll(`.phase-event-list .reaction`)]
+    expect(reactions.map((node) => node.textContent)).toEqual([
+      `1 tie-line replaced`,
+      `2 tie-lines replaced`,
+    ])
   })
 })
 

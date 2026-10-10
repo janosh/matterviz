@@ -154,6 +154,7 @@ describe(`HeatmapTable`, () => {
       )
 
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
+      expect(document.querySelector(`tbody tr[tabindex]`)).toBeNull() // no on_row_click
       expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
       expect(
         [...document.querySelectorAll(`td.row-num-col`)].map((cell) =>
@@ -1120,7 +1121,12 @@ describe(`HeatmapTable`, () => {
       const state = $state({ data: sample_data, selected_ids: [] as string[] })
       mount_table(
         bind_props(
-          { columns: sample_columns, show_row_select: true, row_key: `Model` },
+          {
+            columns: sample_columns,
+            show_row_select: true,
+            row_key: `Model`,
+            style: `--accent-color: rgb(255 255 0)`,
+          },
           state,
         ),
       )
@@ -1149,24 +1155,11 @@ describe(`HeatmapTable`, () => {
       expect(state.selected_ids).toEqual([`Model A`, `Model B`, `Model C`])
       const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
       expect(badge?.textContent).toBe(`3`)
-      expect(badge?.style.color).toBe(`white`) // accent #4a9eff is a mid-tone blue
+      expect(badge?.style.color).toBe(`black`) // contrasts with the yellow --accent-color
 
       await click(doc_query<HTMLButtonElement>(`.selection-badge`))
       expect(state.selected_ids).toEqual([])
       expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
-    })
-
-    it(`contrasts selection badges against the accent color`, async () => {
-      mount_sample({
-        show_row_select: true,
-        row_key: `Model`,
-        style: `--accent-color: rgb(0 0 0)`,
-      })
-      await click(
-        document.querySelector<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
-      )
-      const badge = doc_query(`.selection-badge .badge`)
-      expect(badge.style.color).toBe(`white`)
     })
   })
 
@@ -1593,19 +1586,8 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Keyboard Navigation`, () => {
-    it.each([
-      { desc: `with on_row_click`, has_click: true, expected_tabindex: `0` },
-      { desc: `without on_row_click`, has_click: false, expected_tabindex: null },
-    ])(`tabindex $desc`, ({ has_click, expected_tabindex }) => {
-      mount_sample(has_click ? { on_row_click: () => {} } : {})
-
-      for (const row of Array.from(document.querySelectorAll(`tbody tr`))) {
-        expect(row.getAttribute(`tabindex`)).toBe(expected_tabindex)
-      }
-    })
-
     it.each([{ key: `Enter` }, { key: ` ` }])(
-      `triggers on_row_click on $key key`,
+      `focusable rows trigger on_row_click on $key key`,
       async ({ key }) => {
         const clicked: unknown[] = []
         mount_sample({
@@ -1613,8 +1595,9 @@ describe(`HeatmapTable`, () => {
             clicked.push(row),
         })
 
-        const first_row = document.querySelector(`tbody tr`) as HTMLElement
-        await fire(first_row, keydown(key))
+        const rows = document.querySelectorAll<HTMLElement>(`tbody tr`)
+        expect([...rows].map((row) => row.getAttribute(`tabindex`))).toEqual([`0`, `0`, `0`])
+        await fire(rows[0], keydown(key))
 
         expect(clicked).toHaveLength(1)
         expect(clicked[0]).toHaveProperty(`Model`, `Model A`)

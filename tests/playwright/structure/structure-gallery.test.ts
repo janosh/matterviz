@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { require_bbox } from '../helpers'
 
 test.beforeEach(async ({ page }) => {
   await page.goto(`/structure/gallery`, { waitUntil: `networkidle` })
@@ -59,8 +60,7 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
   await page.addStyleTag({ content: `[role='tooltip'] { min-width: 240px }` })
 
   const tooltip = active_card.locator(`[role='tooltip']:has(.coordinates)`)
-  const box = await active_canvas.boundingBox()
-  if (!box) throw new Error(`Gallery canvas has no bounding box`)
+  const box = await require_bbox(active_canvas, `gallery canvas`)
   const hover_positions = [
     [0.7, 0.4],
     [0.6, 0.4],

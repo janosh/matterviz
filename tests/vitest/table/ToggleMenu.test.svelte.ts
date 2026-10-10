@@ -225,6 +225,7 @@ describe(`ToggleMenu`, () => {
 
   describe(`column layout`, () => {
     it.each([
+      [0, 1],
       [1, 1],
       [2, 2],
       [20, 2],
@@ -232,6 +233,7 @@ describe(`ToggleMenu`, () => {
       [31, 3], // capped at three columns
     ])(`lays out %i items in %i columns`, (count, expected) => {
       mount_menu(make_many_columns(count))
+      expect(checkbox_states()).toHaveLength(count) // one toggle per column
       expect(doc_query(`.column-items`).style.gridTemplateColumns).toBe(
         `repeat(${expected}, max-content)`,
       )
@@ -319,10 +321,10 @@ describe(`ToggleMenu`, () => {
         section,
       ]),
       [
-        `duplicate data keys`,
+        `duplicate data keys and labels`,
         [
-          { id: `first`, key: `Value`, label: `Value A`, group: `A`, visible: true },
-          { id: `second`, key: `Value`, label: `Value B`, group: `B`, visible: false },
+          { id: `first`, key: `Value`, label: `Value`, group: `A`, visible: true },
+          { id: `second`, key: `Value`, label: `Value`, group: `B`, visible: false },
         ],
         [0, 1],
         [false, true],
@@ -427,20 +429,5 @@ describe(`ToggleMenu`, () => {
       await tick()
       expect(checkbox_states()).toEqual([true, false]) // G2 left untouched
     })
-  })
-
-  it.each([
-    { desc: `empty columns`, columns: [] as Column[], n_checkboxes: 0 },
-    {
-      desc: `same label, different keys`,
-      columns: [
-        { id: `value_a (A)`, key: `value_a`, label: `Value`, group: `A` },
-        { id: `value_b (B)`, key: `value_b`, label: `Value`, group: `B` },
-      ] as Column[],
-      n_checkboxes: 2,
-    },
-  ])(`renders one toggle per column for $desc`, ({ columns, n_checkboxes }) => {
-    mount_menu(columns)
-    expect(document.querySelectorAll(`input[type="checkbox"]`)).toHaveLength(n_checkboxes)
   })
 })

@@ -17,10 +17,9 @@ const make_slice = () => ({
 })
 
 describe(`slice rendering helpers`, () => {
-  // Asymmetric fixtures so the three symmetric modes give distinguishable answers
+  // Symmetry modes are fit_color_range's (coloring tests); these pin that each is forwarded
   test.each([
     [`auto`, [-1, 3], undefined, [-3, 3]], // signed data: centred on zero
-    [`auto`, [1, 3], undefined, [1, 3]], // positive-only data: left alone
     [false, [-1, 3], undefined, [-1, 3]],
     [true, [1, 3], undefined, [-3, 3]],
     [`auto`, [-2, 2], [3, -1], [3, -1]], // an explicit range wins as is

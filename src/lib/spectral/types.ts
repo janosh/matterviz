@@ -189,9 +189,7 @@ export interface VibrationalMode {
   is_imaginary: boolean
 }
 
-// Discrete vibrational spectrum. Deliberately NOT a DosData: DOS normalization applies a
-// cm^-1-vs-THz heuristic keyed on max frequency > 100, which would silently mangle
-// vibrational modes that legitimately reach 4000 cm^-1.
+// Discrete vibrational spectrum: per-mode activities, deliberately not a DosData density grid
 export interface VibrationalSpectrum {
   modes: VibrationalMode[]
   n_atoms: number

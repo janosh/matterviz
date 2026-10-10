@@ -83,11 +83,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   const cancel_rect_drag = () => {
     drag_state = null
-    if (typeof window !== `undefined`) {
-      window.removeEventListener(`mousemove`, on_window_mouse_move)
-      window.removeEventListener(`mouseup`, on_window_mouse_up)
-      document.body.style.cursor = ``
-    }
+    remove_drag_listeners([on_window_mouse_move], [on_window_mouse_up])
   }
 
   const on_window_mouse_move = (evt: MouseEvent) => {
@@ -97,12 +93,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       y: evt.clientY - drag_state.bounds.top,
     }
     drag_state.current = coords
-    const inside_svg =
-      coords.x >= 0 &&
-      coords.x <= drag_state.bounds.width &&
-      coords.y >= 0 &&
-      coords.y <= drag_state.bounds.height
-    opts.on_drag_move?.(coords, inside_svg)
+    const { width, height } = drag_state.bounds
+    opts.on_drag_move?.(coords, point_in_rect(coords, { x: 0, y: 0, width, height }))
   }
 
   const on_window_mouse_up = () => {
@@ -179,9 +171,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
   const on_pan_end = () => {
     pan_drag_state = null
-    document.body.style.cursor = ``
-    window.removeEventListener(`mousemove`, on_pan_move)
-    window.removeEventListener(`mouseup`, on_pan_end)
+    remove_drag_listeners([on_pan_move], [on_pan_end])
   }
 
   const on_mouse_down = (evt: MouseEvent) => {

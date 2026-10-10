@@ -24,6 +24,7 @@ import {
   mat3x3_vec3_multiply,
   median,
   partition_point,
+  same_values,
   transpose_3x3_matrix,
 } from '#lib/math.js'
 import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
@@ -155,11 +156,7 @@ const shape_text = (shape: number[]): string => `[${shape.join(`, `)}]`
 export const arrays_equal = <Value>(
   left: ArrayLike<Value> | undefined,
   right: ArrayLike<Value>,
-): boolean => {
-  if (!left || left.length !== right.length) return false
-  for (let idx = 0; idx < left.length; idx++) if (left[idx] !== right[idx]) return false
-  return true
-}
+): boolean => left !== undefined && same_values(left, right)
 
 const require_finite = (values: ArrayLike<number>, label: string, noun: string): void => {
   for (let idx = 0; idx < values.length; idx++) {
@@ -751,19 +748,19 @@ const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Flo
     const base = sample_idx * 9
     const [
       tensor_xx,
-      coords_xy,
-      tilt_xz,
+      tensor_xy,
+      tensor_xz,
       tensor_yx,
       tensor_yy,
-      tilt_yz,
+      tensor_yz,
       tensor_zx,
       tensor_zy,
       tensor_zz,
     ] = values.subarray(base, base + 9)
     const symmetric: Matrix3x3 = [
-      [tensor_xx, (coords_xy + tensor_yx) / 2, (tilt_xz + tensor_zx) / 2],
-      [(tensor_yx + coords_xy) / 2, tensor_yy, (tilt_yz + tensor_zy) / 2],
-      [(tensor_zx + tilt_xz) / 2, (tensor_zy + tilt_yz) / 2, tensor_zz],
+      [tensor_xx, (tensor_xy + tensor_yx) / 2, (tensor_xz + tensor_zx) / 2],
+      [(tensor_yx + tensor_xy) / 2, tensor_yy, (tensor_yz + tensor_zy) / 2],
+      [(tensor_zx + tensor_xz) / 2, (tensor_zy + tensor_yz) / 2, tensor_zz],
     ]
     const transformed = dot(
       dot(rotations[sample_idx], symmetric),
@@ -934,7 +931,7 @@ const calculate_raman = (
   const anisotropic_values = new Float64Array(n_samples * 6)
   for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
     const base = sample_idx * 9
-    const [tensor_xx, coords_xy, tilt_xz, , tensor_yy, tilt_yz, , , tensor_zz] =
+    const [tensor_xx, tensor_xy, tensor_xz, , tensor_yy, tensor_yz, , , tensor_zz] =
       rotated.subarray(base, base + 9)
     isotropic_values[sample_idx] = (tensor_xx + tensor_yy + tensor_zz) / 3
     anisotropic_values.set(
@@ -942,9 +939,9 @@ const calculate_raman = (
         tensor_xx - tensor_yy,
         tensor_yy - tensor_zz,
         tensor_zz - tensor_xx,
-        coords_xy,
-        tilt_yz,
-        tilt_xz,
+        tensor_xy,
+        tensor_yz,
+        tensor_xz,
       ],
       sample_idx * 6,
     )
@@ -1074,13 +1071,11 @@ const curve_score = (
 const extract_displacements = (
   positions: Float64Array,
   frequencies: number[],
-  input: TrajectorySpectroscopyInput,
+  stream: TrajectoryPositionStream,
   options: SpectrumOptions,
+  interval: number,
+  factor: number,
 ): Complex[][][] => {
-  const { frequency_unit } = options
-  const stream = input.positions
-  const interval = sample_interval(stream.steps, frequency_unit, input.time_step, `positions`)
-  const factor = frequency_factor(frequency_unit, input.time_unit)
   const weights = time_series_window(stream.n_frames, options.window)
   const weight_sum = weights.reduce((total, value) => total + value, 0)
   const n_components = stream.n_atoms * 3
@@ -1209,8 +1204,10 @@ const detect_peaks = (
   const displacements = extract_displacements(
     prepared_positions,
     frequencies_with_displacements,
-    input,
+    input.positions,
     options,
+    position_interval,
+    position_frequency_factor,
   )
   const displacement_by_frequency = new Map(
     frequencies_with_displacements.map((frequency, frequency_idx) => [

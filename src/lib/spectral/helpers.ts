@@ -221,10 +221,11 @@ interface PymatgenKpoint {
 const is_kpoint = (val: unknown): val is PymatgenKpoint =>
   val !== null && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
+const has_pymatgen_marker = (obj: Record<string, unknown>): boolean =>
+  typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string`
+
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
-  if (typeof obj[`@class`] === `string` || typeof obj[`@module`] === `string`) {
-    return true
-  }
+  if (has_pymatgen_marker(obj)) return true
   // Check for pymatgen-style qpoints (phonon) or kpoints (electronic) without branches
   const points = obj.qpoints ?? obj.kpoints
   if (Array.isArray(points) && points.length > 0 && !Array.isArray(obj.branches)) {
@@ -365,13 +366,8 @@ function convert_pymatgen_band_structure(
 
   // Use pymatgen's branches if valid; otherwise infer them from the path itself
   const pmg_branches = pmg.branches as types.Branch[] | undefined
-  let branches = (Array.isArray(pmg_branches) ? pmg_branches : []).filter(
-    (branch) =>
-      typeof branch.start_index === `number` &&
-      typeof branch.end_index === `number` &&
-      branch.start_index >= 0 &&
-      branch.end_index < qpoints.length &&
-      branch.start_index <= branch.end_index,
+  let branches = (Array.isArray(pmg_branches) ? pmg_branches : []).filter((branch) =>
+    is_valid_branch(branch, qpoints.length),
   )
   // No valid branches is the normal case, not a degraded one: pymatgen's phonon band
   // structures never serialise `branches` (only the electronic one does), so infer them.
@@ -427,6 +423,14 @@ function convert_pymatgen_band_structure(
   }
 }
 
+// Positive form, so NaN indices fail too
+const is_valid_branch = ({ start_index, end_index }: types.Branch, n_qpts: number): boolean =>
+  typeof start_index === `number` &&
+  typeof end_index === `number` &&
+  start_index >= 0 &&
+  start_index <= end_index &&
+  end_index < n_qpts
+
 // Returns null for shapes that are not a band structure at all. A pymatgen-shaped input that
 // lacks its reciprocal lattice throws an Error naming the missing key (see read_recip_lattice).
 export function normalize_band_structure(
@@ -455,14 +459,7 @@ export function normalize_band_structure(
     bands.length === 0 ||
     distance.length !== n_qpts ||
     bands.some((band) => !Array.isArray(band) || band.length !== n_qpts) ||
-    branches.some(
-      (branch) =>
-        typeof branch.start_index !== `number` ||
-        typeof branch.end_index !== `number` ||
-        branch.start_index < 0 ||
-        branch.end_index >= n_qpts ||
-        branch.start_index > branch.end_index,
-    )
+    !branches.every((branch) => is_valid_branch(branch, n_qpts))
   )
     return null
 
@@ -499,8 +496,6 @@ const electronic_dos = (
 // Dos.svelte can safely treat its default axis unit as THz.
 export function normalize_dos(dos: unknown): types.DosData | null {
   if (!is_plain_object(dos)) return null
-
-  const is_pymatgen = typeof dos[`@class`] === `string` || typeof dos[`@module`] === `string`
 
   const { frequencies, energies, spin_polarized } = dos
 
@@ -541,7 +536,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
   }
 
   // For pymatgen format, log a helpful message if format wasn't recognized
-  if (is_pymatgen) {
+  if (has_pymatgen_marker(dos)) {
     console.warn(
       `Pymatgen DOS format detected but missing required fields. ` +
         `Expected 'frequencies' (phonon) or 'energies' (electronic) arrays.`,
@@ -722,12 +717,9 @@ export function extract_pdos(
 ): Record<string, types.ElectronicDos> | null {
   if (!is_plain_object(dos)) return null
 
-  // Get the appropriate projected DOS dict
-  const pdos_dict =
-    pdos_type === `atom`
-      ? (dos.atom_dos as Record<string, PymatgenDos> | undefined)
-      : (dos.spd_dos as Record<string, PymatgenDos> | undefined)
-
+  const pdos_dict = (pdos_type === `atom` ? dos.atom_dos : dos.spd_dos) as
+    | Record<string, PymatgenDos>
+    | undefined
   if (!pdos_dict || typeof pdos_dict !== `object`) return null
 
   const result: Record<string, types.ElectronicDos> = {}
@@ -895,6 +887,32 @@ export function negative_fraction(values: number[]): number {
   return total > 0 ? neg / total : 0
 }
 
+// Frequencies (THz) below -ACOUSTIC_FREQ_THRESHOLD where a phonon DOS carries density, from
+// each DOS whose density there is at least IMAGINARY_MODE_NOISE_THRESHOLD of its total |density|.
+// The DOS counterpart of a band below the cutoff: a grid that merely extends below 0 at
+// (near-)zero density yields none, a real imaginary-mode peak yields its frequencies.
+export function dos_imaginary_frequencies(doses: Iterable<types.DosData>): number[] {
+  const imaginary: number[] = []
+  for (const dos of doses) {
+    if (dos.type !== `phonon`) continue
+    let [weight_below, weight_total] = [0, 0]
+    const freqs_below: number[] = []
+    for (const [idx, freq] of dos.frequencies.entries()) {
+      const weight = Math.abs(dos.densities[idx])
+      if (!Number.isFinite(weight) || !Number.isFinite(freq)) continue
+      weight_total += weight
+      if (freq < -ACOUSTIC_FREQ_THRESHOLD && weight > 0) {
+        weight_below += weight
+        freqs_below.push(freq)
+      }
+    }
+    if (weight_total > 0 && weight_below / weight_total >= IMAGINARY_MODE_NOISE_THRESHOLD) {
+      imaginary.push(...freqs_below)
+    }
+  }
+  return imaginary
+}
+
 // Whether raw band structure input carries electronic markers: an efermi field, pymatgen
 // kpoints (phonon input has qpoints), a BandStructure* (not Phonon*) @class or an
 // electronic_structure @module. Must run on the raw input: normalization strips these fields.
@@ -918,8 +936,8 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
 // negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0.
 // A genuine imaginary mode (any of `mode_values`, the band frequencies in THz, below
 // -ACOUSTIC_FREQ_THRESHOLD) is never noise, even when one soft branch in a large cell is a
-// tiny fraction of all values. DOS grids are no such signal
-// (they extend below 0 with zero density), so callers mixing them in pass the bands alone.
+// tiny fraction of all values. A DOS grid alone is no such signal (it extends below 0 with
+// zero density), so callers mixing one in pass the bands plus dos_imaginary_frequencies.
 export function padded_frequency_range(
   values: readonly number[],
   is_phonon: boolean,
@@ -958,7 +976,7 @@ export function compute_frequency_range(
     [...band_values, ...dos_values],
     type === `phonon`,
     padding_factor,
-    band_values,
+    [...band_values, ...dos_imaginary_frequencies(Object.values(doses))],
   )
 }
 

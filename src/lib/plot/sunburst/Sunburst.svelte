@@ -22,10 +22,7 @@
     node_display_name,
   } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { HierarchyChartProps } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-  import {
-    HierarchyChartState,
-    hierarchy_layout_options,
-  } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
+  import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
   import type { ScreenArc as ScreenArcOf, ViewWindow } from '#lib/plot/sunburst/render.js'
   import {
     arc_label_slots,
@@ -134,17 +131,14 @@
     // double-click on them must not compound a full reset on top of it
     dblclick_ignore: `.center-circle, .center-label`,
     data: () => data,
-    layout_options: () =>
-      hierarchy_layout_options({
-        value_mode,
-        sort,
-        level_lighten,
-        min_fraction,
-        max_children,
-        zoom_root_id,
-        expanded_parents: chart_state.expanded_parents,
-        other_label,
-      }),
+    layout_options: () => ({
+      value_mode,
+      sort,
+      level_lighten,
+      min_fraction,
+      max_children,
+      other_label,
+    }),
     label_text: () => (show_labels ? label_text : null),
     value_format: () => value_format,
     width: () => width,
@@ -167,12 +161,9 @@
     on_node_click: (payload) => on_node_click?.(payload),
     on_node_hover: (payload) => on_node_hover?.(payload),
     on_zoom: (payload) => on_zoom?.(payload),
-    clickable: (arc) => arc_clickable(arc),
+    clickable: (arc) => Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf),
     visible: (idx) => screen_arcs[idx]?.visible ?? false,
-    node_center: (idx) => {
-      const screen = screen_arcs[idx]
-      return screen ? arc_center(screen) : null
-    },
+    node_center: (idx) => (screen_arcs[idx] ? arc_center(screen_arcs[idx]) : null),
     // Place against the settled (target) geometry, not the animated view -
     // placement is stable during zoom tweens and runs once per zoom instead of
     // once per frame
@@ -341,9 +332,6 @@
     return { x: center_x + Math.sin(mid_a) * mid_r, y: center_y - Math.cos(mid_a) * mid_r }
   }
 
-  const arc_clickable = (arc: PositionedArc<Metadata>): boolean =>
-    Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf)
-
   function handle_center_keydown(event: KeyboardEvent) {
     if (!is_activation_key(event)) return
     event.preventDefault()
@@ -453,7 +441,6 @@
       {chart_transform}
       {show_breadcrumbs}
       crumb_separator
-      dblclick_target="group"
       {tooltip}
     >
       {#snippet marks()}

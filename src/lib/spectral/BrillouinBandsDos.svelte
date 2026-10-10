@@ -5,7 +5,6 @@
   import { reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { InternalPoint, ScatterHandlerEvent } from '#lib/plot/index.js'
-  import { axis_with_range } from '#lib/plot/core/shared-axes.js'
   import type { Crystal } from '#lib/structure/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -82,10 +81,8 @@
     doses: () => doses,
     units: () => units,
     fermi_level: () => fermi_level,
-    bands_y_axis: () => bands_props.y_axis,
-    dos_y_axis: () => dos_props.y_axis,
-    bands_padding: () => bands_props.padding,
-    dos_padding: () => dos_props.padding,
+    bands_props: () => bands_props,
+    dos_props: () => dos_props,
     side_by_side: () => is_desktop,
     sync_zoom: () => sync_y_zoom,
     base_padding: { t: 5, b: 50 },
@@ -143,10 +140,7 @@
     bind:units
     fermi_level={sync.fermi_level}
     orientation={is_desktop ? `horizontal` : `vertical`}
-    x_axis={{
-      ...axis_with_range(undefined, is_desktop ? undefined : sync.shared_range),
-      ...dos_props.x_axis,
-    }}
+    x_axis={sync.dos_x_axis}
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}

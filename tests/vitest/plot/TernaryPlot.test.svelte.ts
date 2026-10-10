@@ -4,8 +4,12 @@ import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  fire,
+  keydown,
   mount_sized,
+  mouse,
   one_tab_stop,
+  plot_svg,
   query,
   roving_tabindexes,
   translate_of,
@@ -103,13 +107,9 @@ describe(`TernaryPlot`, () => {
   test(`the controls pane toggles the grid off and Reset puts it back`, async () => {
     const plot = await mount_ternary({ series, controls_open: true })
     const [show_grid] = plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-    show_grid.click()
-    await tick()
+    await fire(show_grid)
     expect(plot.querySelectorAll(`.grid line`)).toHaveLength(0)
-    plot
-      .querySelector<HTMLButtonElement>(`button[aria-label="Reset grid to defaults"]`)
-      ?.click()
-    await tick()
+    await fire(plot.querySelector(`button[aria-label="Reset grid to defaults"]`))
     expect(plot.querySelectorAll(`.grid line`)).toHaveLength(27)
   })
 
@@ -134,12 +134,8 @@ describe(`TernaryPlot`, () => {
     const on_point_hover = vi.fn()
     const bound = $state({ series, labels: [`Fe`, `Ni`, `Cr`] as const })
     const plot = await mount_ternary(bind_props({ on_point_hover }, bound))
-    const hover = (element: Element | undefined, coord_x = 0, coord_y = 0) => {
-      element?.dispatchEvent(
-        new MouseEvent(`mousemove`, { bubbles: true, clientX: coord_x, clientY: coord_y }),
-      )
-      return tick()
-    }
+    const hover = (element: Element | undefined, coord_x = 0, coord_y = 0) =>
+      fire(element, mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
     await hover(markers(plot)[1], 100, 100)
     expect(tooltip()?.textContent).toMatch(/Oxides\s*Fe: 20 %\s*Ni: 30 %\s*Cr: 50 %/)
@@ -175,8 +171,7 @@ describe(`TernaryPlot`, () => {
     bound.series = [oxides]
     await tick()
     expect(tooltip()).toBeNull()
-    plot.querySelector(`svg[role="application"]`)?.dispatchEvent(new MouseEvent(`mouseleave`))
-    await tick()
+    await fire(plot_svg(plot), mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
@@ -184,10 +179,8 @@ describe(`TernaryPlot`, () => {
     const padding = { t: 20, b: 20, l: 60, r: 60 }
     const plot = await mount_ternary({ series, padding })
     const tooltip = () => plot.querySelector<HTMLElement>(`.plot-tooltip`)
-    const focus = (element: Element, type: string, relatedTarget: Element | null = null) => {
-      element.dispatchEvent(new FocusEvent(type, { bubbles: true, relatedTarget }))
-      return tick()
-    }
+    const focus = (element: Element, type: string, relatedTarget: Element | null = null) =>
+      fire(element, new FocusEvent(type, { bubbles: true, relatedTarget }))
     const pure_c = markers(plot)[4] // left corner: the marker sits at x = 0 inside the padded <g>
     const { x: marker_x } = translate_of(pure_c)
     expect(marker_x).toBeCloseTo(0, 6)
@@ -212,20 +205,13 @@ describe(`TernaryPlot`, () => {
     const marker_style = getComputedStyle(query(first, `.marker`))
     expect(marker_style.strokeWidth).toBe(`1.5px`)
     expect(marker_style.vectorEffect).toBe(`non-scaling-stroke`)
-    first.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    const canceled_event = new KeyboardEvent(`keydown`, {
-      key,
-      bubbles: true,
-      cancelable: true,
-    })
+    first.dispatchEvent(mouse(`click`))
+    const canceled_event = keydown(key, { cancelable: true })
     canceled_event.preventDefault()
     first.dispatchEvent(canceled_event)
-    first.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key, bubbles: true, isComposing: true }),
-    )
+    first.dispatchEvent(keydown(key, { isComposing: true }))
     expect(on_point_click).toHaveBeenCalledOnce()
-    first.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-    await tick()
+    await fire(first, keydown(key))
     expect(on_point_click).toHaveBeenCalledTimes(2)
     expect(on_point_click.mock.calls[0][0] as TernaryPointProps).toMatchObject({
       series_idx: 0,
@@ -281,17 +267,13 @@ describe(`TernaryPlot`, () => {
       bind_props({ legend: { on_toggle, on_double_click } }, bound),
     )
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
-    plot.querySelector<HTMLElement>(`.legend-item`)?.click() // hide Oxides
-    await tick()
+    await fire(plot.querySelector(`.legend-item`)) // hide Oxides
     expect(bound.series[0].visible).toBeUndefined()
     expect(bound.hidden_series).toEqual([0])
     expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
     expect(markers(plot)).toHaveLength(2)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1) // Path keeps its line
-    plot
-      .querySelector<HTMLElement>(`.legend-item`)
-      ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-    await tick()
+    await fire(plot.querySelector(`.legend-item`), mouse(`dblclick`))
     expect(on_double_click).toHaveBeenCalledExactlyOnceWith(0)
     expect(markers(plot)).toHaveLength(3)
     // the host overrides the toggle
@@ -304,8 +286,7 @@ describe(`TernaryPlot`, () => {
     const plot = await mount_ternary({ series: [series[0], { ...series[1], visible: false }] })
     expect(markers(plot)).toHaveLength(3)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(0) // the hidden line goes too
-    plot.querySelectorAll<HTMLElement>(`.legend-item`)[1]?.click()
-    await tick()
+    await fire(plot.querySelectorAll(`.legend-item`)[1])
     expect(markers(plot)).toHaveLength(5)
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
   })

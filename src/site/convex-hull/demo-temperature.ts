@@ -30,6 +30,18 @@ export function make_demo_phase(
   }
 }
 
+// An ordered polymorph plus a high-entropy one (entropy_boost) of the same composition, so
+// hull membership between them shifts with temperature
+export const make_polymorph_pair = (
+  composition: Composition,
+  seed: number,
+  high_entropy_seed: number,
+  entropy_boost: number,
+): PhaseData[] => [
+  make_demo_phase(composition, seed),
+  make_demo_phase(composition, high_entropy_seed, entropy_boost),
+]
+
 export const create_temp_ternary_entries_li_fe_o = (): PhaseData[] => [
   ...[`Li`, `Fe`, `O`].map((element, idx) => make_demo_phase({ [element]: 1 }, idx)),
   ...[
@@ -37,25 +49,19 @@ export const create_temp_ternary_entries_li_fe_o = (): PhaseData[] => [
     [`Li`, `O`],
     [`Fe`, `O`],
   ].flatMap(([element_a, element_b], idx) =>
-    [1 / 3, 1 / 2, 2 / 3].flatMap((fraction, jdx) => [
-      make_demo_phase(
+    [1 / 3, 1 / 2, 2 / 3].flatMap((fraction, jdx) =>
+      make_polymorph_pair(
         { [element_a]: fraction, [element_b]: 1 - fraction },
         100 + idx * 10 + jdx,
-      ),
-      make_demo_phase(
-        { [element_a]: fraction, [element_b]: 1 - fraction },
         200 + idx * 10 + jdx,
         3,
       ),
-    ]),
+    ),
   ),
   ...[
     { Li: 1 / 3, Fe: 1 / 3, O: 1 / 3 },
     { Li: 0.5, Fe: 0.25, O: 0.25 },
     { Li: 0.25, Fe: 0.5, O: 0.25 },
     { Li: 0.25, Fe: 0.25, O: 0.5 },
-  ].flatMap((composition, idx) => [
-    make_demo_phase(composition, 300 + idx),
-    make_demo_phase(composition, 400 + idx, 4),
-  ]),
+  ].flatMap((composition, idx) => make_polymorph_pair(composition, 300 + idx, 400 + idx, 4)),
 ]

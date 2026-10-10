@@ -1,6 +1,6 @@
 import * as math from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
-import { calculate_all_pair_rdfs, calculate_rdf } from '#lib/rdf/calc-rdf.js'
+import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import { neighbor_query } from '#lib/structure/bonding.js'
@@ -34,7 +34,7 @@ const shell_coordination = (
   pattern.r.reduce(
     (sum, rad, idx) =>
       rad > r_lo && rad < r_hi
-        ? sum + 4 * Math.PI * rad ** 2 * pattern.g_r[idx] * bin_width(pattern) * density
+        ? sum + shell_volume(rad, bin_width(pattern)) * pattern.g_r[idx] * density
         : sum,
     0,
   )
@@ -79,11 +79,11 @@ describe(`calculate_rdf`, () => {
     expect(pattern.r.every((rad, idx) => Math.abs(rad - (idx + 0.5) * delta_r) < 1e-12)).toBe(
       true,
     )
-    // Each shell lands wholly in the bin holding its radius, at height n / (ρ 4π r_bin² Δr)
+    // Each shell lands wholly in the bin holding its radius, at height n / (ρ · shell volume)
     const expected = Array<number>(n_bins).fill(0)
     for (const [dist, count] of simple_cubic_shells(a_len, cutoff)) {
       const bin = Math.floor(dist / delta_r + 1e-9)
-      expected[bin] += count / (density * 4 * Math.PI * pattern.r[bin] ** 2 * delta_r)
+      expected[bin] += count / (density * shell_volume(pattern.r[bin], delta_r))
     }
     expect(max_abs_diff(pattern.g_r, expected)).toBeLessThan(1e-9)
     expect(shell_coordination(pattern, density, 0, 1.2 * a_len)).toBeCloseTo(6, 9)
@@ -419,8 +419,7 @@ describe(`calculate_all_pair_rdfs`, () => {
           const relative_tolerance = 2 * distances.length * Number.EPSILON
           for (let bin = 0; bin < opts.n_bins; bin++) {
             if (pair_weight > 0)
-              expected[bin] /=
-                (pair_weight * 4 * Math.PI * radius[bin] ** 2 * bin_size) / volume
+              expected[bin] /= (pair_weight * shell_volume(radius[bin], bin_size)) / volume
             expect(Math.abs(g_r[bin] - expected[bin])).toBeLessThanOrEqual(
               relative_tolerance * Math.abs(expected[bin]),
             )

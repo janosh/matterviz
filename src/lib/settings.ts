@@ -13,12 +13,12 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import { is_plain_object } from '#lib/utils.js'
 
+// Constraints on a number setting, or on each item of an array setting (`items`)
+type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
 // One leaf of the settings schema. `web_only` settings (fullscreen toggles) are skipped
 // when the schema is synced into the VS Code extension's contributed configuration. A leaf
 // whose `value` is a plain object is a free-form map (JSON-schema `object`); `additionalProperties`
 // names its value type (string unless set).
-// Constraints on a number setting, or on each item of an array setting (`items`)
-type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
 export interface SettingType<T = unknown> extends NumberBounds {
   value: T
   description: string
@@ -38,10 +38,16 @@ export function enum_labels(setting: SettingType): Readonly<Record<string, strin
 
 export const SHOW_BONDS_OPTIONS = [`never`, `always`, `crystals`, `molecules`] as const
 export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
+// Enum labels that are just the capitalized option (`never` -> `Never`)
+const capitalized_enum = <const Value extends string>(
+  values: readonly Value[],
+): Readonly<Record<Value, string>> =>
+  Object.fromEntries(values.map((value) => [value, capitalize(value)])) as Record<
+    Value,
+    string
+  >
 // Shared enum labels for never|always|crystals|molecules settings (bonds, polyhedra)
-const SHOW_BONDS_ENUM = Object.fromEntries(
-  SHOW_BONDS_OPTIONS.map((key) => [key, capitalize(key)]),
-) as Readonly<Record<ShowBonds, string>>
+const SHOW_BONDS_ENUM = capitalized_enum(SHOW_BONDS_OPTIONS)
 const self_labeled_enum = <Value extends string>(
   values: readonly Value[],
 ): Readonly<Record<Value, Value>> =>
@@ -49,11 +55,8 @@ const self_labeled_enum = <Value extends string>(
 
 // Shared enum labels for the tri-state legend settings. 'auto' defers to the shared
 // resolve_legend_visibility rule so single-entry plots don't grow a pointless legend.
-const LEGEND_VISIBILITY_ENUM: Readonly<Record<LegendVisibilityMode, string>> = {
-  auto: `Auto`,
-  always: `Always`,
-  never: `Never`,
-}
+const LEGEND_VISIBILITY_ENUM: Readonly<Record<LegendVisibilityMode, string>> =
+  capitalized_enum([`auto`, `always`, `never`])
 const legend_visibility_setting = (plot: string): SettingType<LegendVisibilityMode> => ({
   value: `auto`,
   description: `Legend visibility in ${plot} plots. 'auto' shows one only when the plot renders more than one legend entry`,
@@ -1106,12 +1109,7 @@ export const SETTINGS_CONFIG = define_settings({
     label_rotation: {
       value: `auto` as const,
       description: `Arc label orientation (auto picks radial/tangential per arc)`,
-      enum: {
-        auto: `Auto`,
-        radial: `Radial`,
-        tangential: `Tangential`,
-        horizontal: `Horizontal`,
-      },
+      enum: capitalized_enum([`auto`, `radial`, `tangential`, `horizontal`]),
     },
   },
 

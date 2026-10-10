@@ -1,13 +1,15 @@
 import Treemap from '#lib/plot/treemap/Treemap.svelte'
 import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '#lib/plot/index.js'
 import { PLOT_COLORS } from '#lib/colors/index.js'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   fire,
+  flush_render,
   keydown,
   mount_sized,
   mouse,
+  pattern_id_of,
   query,
   resize_element,
   translate_of,
@@ -500,17 +502,10 @@ describe(`Treemap`, () => {
     ]
     const plot = await mount_sized_treemap({ data: patterned })
     // equal values keep input order -> pre-order node indices 1, 2, 3
-    const fill_of = (node_idx: number) =>
-      plot
-        .querySelector(`.cells [data-treemap-node-idx="${node_idx}"]`)
-        ?.getAttribute(`fill`) ?? ``
-    expect(fill_of(3)).toBe(PLOT_COLORS[2])
-    const pattern_ids = [1, 2].map((node_idx) => {
-      const match = /^url\(#(?<id>treemap-.+-pat-[0-9a-z]+)\)$/.exec(fill_of(node_idx))
-      if (!match?.groups)
-        throw new Error(`node ${node_idx} fill is no pattern: ${fill_of(node_idx)}`)
-      return match.groups.id
-    })
+    const cell = (node_idx: number) =>
+      plot.querySelector(`.cells [data-treemap-node-idx="${node_idx}"]`)
+    expect(cell(3)?.getAttribute(`fill`)).toBe(PLOT_COLORS[2])
+    const pattern_ids = [1, 2].map((node_idx) => pattern_id_of(cell(node_idx), `treemap`))
     expect(new Set(pattern_ids).size).toBe(2)
     // one <pattern> per distinct spec, each tiled with a bg rect under the texture path
     const defs = plot.querySelectorAll<SVGPatternElement>(`defs pattern`)
@@ -546,22 +541,17 @@ describe(`Treemap`, () => {
   })
 
   test(`swapping data clears stale hover/tooltip state`, async () => {
-    // mount directly (not via the spread helper) so the $state proxy stays live
-    const props = $state({
-      data: tree,
-      tween: { duration: 0 },
-      style: `width: 500px; height: 360px;`,
+    // mount the $state object itself (not via the spreading helper) so it stays live
+    const props = $state({ data: tree, tween: { duration: 0 } })
+    const plot = await mount_sized(Treemap, props, {
+      selector: `.treemap`,
+      width: 500,
+      height: 360,
     })
-    const target = document.createElement(`div`)
-    document.body.append(target)
-    mount(Treemap, { target, props })
-    const plot = query(target, `.treemap`)
-    await resize_element(plot, 500, 360)
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     props.data = [{ label: `fresh`, value: 1 }]
-    flushSync()
-    await tick()
+    await flush_render()
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
   })
 })

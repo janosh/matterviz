@@ -42,12 +42,15 @@ const formatter_for = (spec: string): ((num: number) => string) => {
   return formatter
 }
 
+// DEFAULT_FMT slot for num: the SI format for 1 <= |num| < 1e27, else the sub-1 format, which
+// goes scientific for huge values. d3's largest SI prefix is yotta (1e24), so past it `s`
+// writes 1e27 as 1,000Y and 1e100 as a 100-digit run.
+const default_fmt_idx = (num: number): 0 | 1 =>
+  Math.abs(num) >= 1 && Math.abs(num) < 1e27 ? 0 : 1
+
 // fmt as number allows [].map(format_num) without a type error.
 export const format_num = (num: number, fmt?: string | number): string => {
-  if (!fmt || typeof fmt !== `string`) {
-    const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
-    fmt = Math.abs(num) >= 1 ? gt_1_fmt : lt_1_fmt
-  }
+  if (!fmt || typeof fmt !== `string`) fmt = DEFAULT_FMT[default_fmt_idx(num)]
   return compact_scientific(formatter_for(fmt)(num), fmt, num)
 }
 
@@ -158,7 +161,7 @@ export const ELEM_PROPERTY_LABELS: Partial<
   protons: [`Protons`, null],
   shells: [`Electron Shell Occupations`, null],
   specific_heat: [`Specific Heat`, `J/(g K)`],
-} as const
+}
 
 export const ELEM_HEATMAP_KEYS: (keyof ChemicalElement)[] = [
   `atomic_mass`,
@@ -219,9 +222,35 @@ const labels_collide = (values: readonly number[], labels: readonly string[]): b
 const longest_label = (labels: readonly string[]): number =>
   labels.reduce((longest, label) => Math.max(longest, label.length), 0)
 
-// Retain compact adaptive labels until adjacent distinct tick values would render identically,
-// then add just enough precision to distinguish neighbouring ticks. Explicit formats remain
-// authoritative: callers may intentionally request rounded or categorical-looking labels.
+// Digits the labels need to resolve the smallest gap between adjacent ticks: significant
+// digits for the adaptive formats, decimals for the fixed one. Distinct neighbours alone are
+// not enough: ticks 998 … 1000, 1000.5 read 1k, 1.001k at 4 significant digits. With
+// ceil(log10(max|v| / step)) + 1 significant digits (or ceil(-log10(step)) decimals) the last
+// digit's unit is at most the step, and for d3's 1-2-5 steps it divides the step, so every
+// tick prints exactly. The 1e-9 slack keeps float noise in the step (0.30000000000000004 - 0.2)
+// from adding a digit at exact powers of ten.
+const tick_resolution_digits = (
+  values: readonly number[],
+): { significant: number; decimals: number } => {
+  let min_step = Infinity
+  let max_abs = 0
+  for (const [idx, value] of values.entries()) {
+    if (!Number.isFinite(value)) continue
+    max_abs = Math.max(max_abs, Math.abs(value))
+    const step = Math.abs(value - values[idx - 1])
+    if (step > 0 && step < min_step) min_step = step
+  }
+  if (!Number.isFinite(min_step) || max_abs === 0) return { significant: 0, decimals: 0 }
+  return {
+    significant: Math.ceil(Math.log10(max_abs / min_step) - 1e-9) + 1,
+    decimals: Math.max(0, Math.ceil(-Math.log10(min_step) - 1e-9)),
+  }
+}
+
+// Retain compact adaptive labels while adjacent distinct tick values render distinctly and
+// every label resolves the tick step, else add just enough precision for both. Explicit
+// formats remain authoritative: callers may intentionally request rounded or
+// categorical-looking labels.
 export const format_tick_values = (
   values: readonly number[],
   formatter?: string,
@@ -230,7 +259,7 @@ export const format_tick_values = (
     return values.map((value) => format_value_or_num(value, formatter))
 
   let labels = values.map(format_num)
-  if (!labels_collide(values, labels)) return labels
+  const resolution = tick_resolution_digits(values)
 
   const labels_with_precision = (precision: number, fixed = false): string[] =>
     values.map((value) =>
@@ -238,7 +267,7 @@ export const format_tick_values = (
         value,
         fixed
           ? `.${precision}~f`
-          : DEFAULT_FMT[Math.abs(value) >= 1 ? 0 : 1].replace(
+          : DEFAULT_FMT[default_fmt_idx(value)].replace(
               /(?:\.\d+)?(?=~?[a-z%]$)/iu,
               `.${precision}`,
             ),
@@ -250,11 +279,19 @@ export const format_tick_values = (
       Number(/\.(?<precision>\d+)/u.exec(fmt)?.groups?.precision ?? DEFAULT_TICK_PRECISION),
     ),
   )
-  for (let precision = minimum_precision + 1; precision <= MAX_TICK_PRECISION; precision++) {
+  if (resolution.significant <= minimum_precision && !labels_collide(values, labels)) {
+    return labels
+  }
+  const first_precision = Math.min(
+    MAX_TICK_PRECISION,
+    Math.max(minimum_precision + 1, resolution.significant),
+  )
+  for (let precision = first_precision; precision <= MAX_TICK_PRECISION; precision++) {
     labels = labels_with_precision(precision)
     if (!labels_collide(values, labels)) break
   }
-  for (let precision = 0; precision <= MAX_TICK_PRECISION; precision++) {
+  const first_decimals = Math.min(MAX_TICK_PRECISION, resolution.decimals)
+  for (let precision = first_decimals; precision <= MAX_TICK_PRECISION; precision++) {
     const fixed_labels = labels_with_precision(precision, true)
     if (!labels_collide(values, fixed_labels)) {
       return longest_label(fixed_labels) < longest_label(labels) ? fixed_labels : labels
@@ -277,8 +314,13 @@ export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
   const wrapped = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
+  // The zero glyph covers both sides of an integer (0.9995 and -1e-7 as well as 1.0005), so
+  // it measures the distance to the nearest integer on the value itself: `wrapped` picks up
+  // float noise (0.999 wraps to 0.9990000000000001, within eps of 1)
   const match = FRACTION_GLYPHS.find(([target]) =>
-    target === 0 ? wrapped <= eps : Math.abs(wrapped - target) < eps,
+    target === 0
+      ? Math.abs(value - Math.round(value)) <= eps
+      : Math.abs(wrapped - target) < eps,
   )
   return match?.[1] ?? format_num(value, `.4~`)
 }

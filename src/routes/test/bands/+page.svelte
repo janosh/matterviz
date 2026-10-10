@@ -110,7 +110,6 @@
     ],
   }
 
-  // Ribbon configuration for fat bands
   const fat_bands_config: RibbonConfig = {
     color: `#e74c3c`,
     opacity: 0.4,
@@ -120,8 +119,10 @@
 
   // Semiconducting electronic band structure with spin-up and spin-down channels
   // (no band crosses E_F = 0, so the gap annotation renders)
-  const electronic_bands_spin: BaseBandStructure = {
+  const electronic_bands_with_fermi: BaseBandStructure = {
     ...mock_band_structure,
+    type: `electronic`,
+    efermi: 0.0,
     bands: [
       [-1.2, -0.8, -0.5, -0.3],
       [-0.9, -0.6, -0.4, -0.2],
@@ -134,12 +135,6 @@
       [0.6, 1.0, 1.6, 2.2],
       [1.3, 1.9, 2.5, 3.1],
     ],
-  }
-
-  const electronic_bands_with_fermi = {
-    ...electronic_bands_spin,
-    type: `electronic` as const,
-    efermi: 0.0,
   }
 </script>
 

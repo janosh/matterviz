@@ -46,7 +46,7 @@ import {
   writeback_prop,
 } from './reactive.svelte'
 
-const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
+const styled_shadow_roots = new WeakSet<ShadowRoot>()
 
 // Widget chrome + bundled app styles. Theme-independent: every token in app.css is
 // light-dark(), resolved against the widget element's own color-scheme (set in render).
@@ -67,11 +67,11 @@ const widget_base_css = `
 function inject_app_css(target_element: HTMLElement): void {
   const root_node = target_element.getRootNode()
   if (root_node instanceof ShadowRoot) {
-    if (adopted_sheets.has(root_node)) return
+    if (styled_shadow_roots.has(root_node)) return
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(widget_base_css)
     root_node.adoptedStyleSheets = [...root_node.adoptedStyleSheets, sheet]
-    adopted_sheets.set(root_node, sheet)
+    styled_shadow_roots.add(root_node)
     return
   }
   const style_id = `matterviz-widget-styles`
@@ -351,7 +351,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // in-memory run; data_url is fetched and parsed by the file viewer itself
       derived_prop(`trajectory`, [`trajectory`], (model) => {
         const value = get_prop(model, `trajectory`)
-        if (value === undefined || value === null) return undefined
+        if (value == null) return undefined
         try {
           return trajectory_from_json(value, { format: `json` })
         } catch (error) {

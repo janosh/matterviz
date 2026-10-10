@@ -55,10 +55,13 @@ describe(`FormulaFilter`, () => {
     }
   }
 
-  test(`renders initial value, aria-label and spreads extra attributes onto the wrapper`, () => {
-    mount_filter({ value: `Fe,O`, 'data-testid': `test` })
+  test(`renders initial value, aria-label, binds input_element and spreads extra attributes onto the wrapper`, () => {
+    const state = $state({ input_element: null as HTMLInputElement | null })
+    mount_filter(bind_props({ value: `Fe,O`, 'data-testid': `test` }, state))
+    flushSync()
     expect(get_input().getAttribute(`aria-label`)).toBe(`Formula filter`)
     expect(get_input().value).toBe(`Fe,O`)
+    expect(state.input_element).toBe(get_input())
     expect(doc_query(`[data-testid="test"]`)).toBe(get_filter())
   })
 
@@ -72,6 +75,8 @@ describe(`FormulaFilter`, () => {
     [`Fe:1-2`, `elements`, `Fe:1-2`],
     [`Li,*,*`, `elements`, `Li,*,*`],
     [`*,O,Fe`, `elements`, `Fe,O,*`],
+    // includes before excludes, wildcards after elements, the explicit + dropped
+    [`-O,+Li,Fe:1-2,*`, `elements`, `Fe:1-2,Li,*,-O`],
     [`Li-Fe-O`, `chemsys`, `Fe-Li-O`],
     [`Fe:1-2-Li`, `chemsys`, `Fe:1-2-Li`],
     [`Li-*-*`, `chemsys`, `Li-*-*`],
@@ -115,7 +120,7 @@ describe(`FormulaFilter`, () => {
   })
 
   // Clicking the mode hint cycles exact -> elements -> chemsys -> exact, reformatting the
-  // value (wildcards included) and updating the hint at every step
+  // value (wildcards included) and updating the hint and search_mode binding at every step
   test.each([
     [
       `LiFePO4`,
@@ -135,12 +140,13 @@ describe(`FormulaFilter`, () => {
     ],
   ] as const)(`mode hint clicks cycle "%s" through every mode`, async (start, steps) => {
     const on_change = vi.fn()
-    await mount_bound(start, { on_change })
+    const state = await mount_bound(start, { on_change })
     for (const [value, mode] of steps) {
       get_mode_btn().click()
       flushSync()
       expect(on_change).toHaveBeenLastCalledWith(value, mode)
       expect(get_mode_btn().textContent).toContain(MODE_HINTS[mode])
+      expect(state.search_mode).toBe(mode)
     }
   })
 
@@ -166,52 +172,38 @@ describe(`FormulaFilter`, () => {
     expect(on_change).toHaveBeenLastCalledWith(expected, to_mode)
   })
 
-  test(`disabled state applies`, () => {
-    mount_filter({ value: ``, disabled: true })
-    expect(get_filter().classList.contains(`disabled`)).toBe(true)
-    expect(get_input().disabled).toBe(true)
+  // disabled hides every button and disables the input
+  test.each<[Partial<ComponentProps<typeof FormulaFilter>>, boolean, boolean]>([
+    [{ value: `Fe` }, true, true],
+    [{ value: `` }, false, true],
+    [{ value: `Fe`, show_clear_button: false }, false, true],
+    [{ value: `Fe`, show_examples: false }, true, false],
+    [{ value: `Fe`, disabled: true }, false, false],
+  ])(`%j shows clear button=%s, help button=%s`, (props, show_clear, show_help) => {
+    mount_filter(props)
+    expect(Boolean(document.querySelector(`.clear-btn`))).toBe(show_clear)
+    expect(Boolean(document.querySelector(`.help-btn`))).toBe(show_help)
+    const disabled = Boolean(props.disabled)
+    expect(Boolean(document.querySelector(`.lock-btn`))).toBe(!disabled)
+    expect(get_filter().classList.contains(`disabled`)).toBe(disabled)
+    expect(get_input().disabled).toBe(disabled)
   })
 
   test.each([
-    { value: `Fe`, show_clear_button: true, disabled: false, expected: true },
-    { value: ``, show_clear_button: true, disabled: false, expected: false },
-    { value: `Fe`, show_clear_button: false, disabled: false, expected: false },
-    { value: `Fe`, show_clear_button: true, disabled: true, expected: false },
-  ])(`clear button visible=$expected`, (params) => {
-    mount_filter(params)
-    expect(Boolean(document.querySelector(`.clear-btn`))).toBe(params.expected)
-  })
-
-  test(`clears value on click or Escape`, () => {
+    [
+      `clear button click`,
+      () => doc_query<HTMLButtonElement>(`[aria-label="Clear filter"]`).click(),
+    ],
+    [`Escape`, () => press(`Escape`)],
+  ])(`%s clears the value`, (_name, clear) => {
     const on_change = vi.fn()
     const on_clear = vi.fn()
     mount_filter({ value: `Fe`, on_change, on_clear })
-
-    // Click clear button
-    doc_query<HTMLButtonElement>(`.clear-btn`).click()
+    clear()
     flushSync()
-    expect(on_clear).toHaveBeenCalled()
-    expect(on_change).toHaveBeenCalledWith(``, `elements`)
-
-    // Reset for Escape test
-    document.body.innerHTML = ``
-    const onclear2 = vi.fn()
-    mount_filter({ value: `Fe`, on_clear: onclear2 })
-    press(`Escape`)
     expect(get_input().value).toBe(``)
-    expect(onclear2).toHaveBeenCalled()
-  })
-
-  test(`clear button accessibility and input_element binding`, () => {
-    mount_filter({ value: `Fe` })
-    expect(doc_query(`.clear-btn`).getAttribute(`aria-label`)).toBe(`Clear filter`)
-    expect(doc_query(`.clear-btn`).getAttribute(`title`)).toBe(`Clear (Escape)`)
-
-    document.body.innerHTML = ``
-    const state = $state({ input_element: null as HTMLInputElement | null })
-    mount_filter(bind_props({ value: `` }, state))
-    flushSync()
-    expect(state.input_element).toBe(get_input())
+    expect(on_clear).toHaveBeenCalledOnce()
+    expect(on_change).toHaveBeenCalledWith(``, `elements`)
   })
 
   test(`syncs external value changes and re-infers the mode`, async () => {
@@ -224,17 +216,6 @@ describe(`FormulaFilter`, () => {
     await tick()
     expect(get_input().value).toBe(`Fe,Li,O`)
     expect(state.search_mode).toBe(`elements`) // re-inferred from the new value format
-  })
-
-  test.each([
-    [`Li-Fe-O`, `chemsys`],
-    [`LiFePO4`, `exact`],
-    [`Li,Fe`, `elements`],
-  ])(`search_mode binding updates to %s for typed input "%s"`, (input, expected_mode) => {
-    const state: { search_mode: FormulaSearchMode } = $state({ search_mode: `elements` })
-    mount_filter(bind_props({ value: `` }, state))
-    submit_input(input)
-    expect(state.search_mode).toBe(expected_mode)
   })
 
   test(`placeholders show wildcard examples`, async () => {
@@ -257,15 +238,6 @@ describe(`FormulaFilter`, () => {
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
     }
-
-    test.each([
-      { show_examples: true, disabled: false, expected: true },
-      { show_examples: false, disabled: false, expected: false },
-      { show_examples: true, disabled: true, expected: false },
-    ])(`help button visible=$expected`, (params) => {
-      mount_filter({ value: ``, ...params })
-      expect(Boolean(document.querySelector(`.help-btn`))).toBe(params.expected)
-    })
 
     test(`toggles, lists wildcard examples and applies one on click`, () => {
       const on_change = vi.fn()
@@ -294,22 +266,17 @@ describe(`FormulaFilter`, () => {
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
     })
 
-    test(`Escape closes dropdown first, then clears value`, () => {
-      const on_clear = vi.fn()
-      mount_filter({ value: `Fe`, on_clear })
+    test(`flips the dropdown to the left edge when it would overflow the viewport`, async () => {
+      mount_filter({ value: `` })
+      const rect = vi
+        .spyOn(Element.prototype, `getBoundingClientRect`)
+        .mockReturnValue(new DOMRect(0, 0, window.innerWidth + 10, 100))
+      onTestFinished(() => rect.mockRestore())
       open_examples()
-      expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
-
-      // First Escape closes dropdown
-      press(`Escape`)
-      expect(document.querySelector(`.examples-dropdown`)).toBeNull()
-      expect(get_input().value).toBe(`Fe`)
-      expect(on_clear).not.toHaveBeenCalled()
-
-      // Second Escape clears value
-      press(`Escape`)
-      expect(get_input().value).toBe(``)
-      expect(on_clear).toHaveBeenCalled()
+      expect(doc_query(`.examples-dropdown`).classList.contains(`anchor-left`)).toBe(false)
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      flushSync()
+      expect(doc_query(`.examples-dropdown`).classList.contains(`anchor-left`)).toBe(true)
     })
 
     test(`supports custom examples prop and applies custom example`, () => {
@@ -448,15 +415,23 @@ describe(`FormulaFilter`, () => {
       expect(history_dropdown()).toBeNull()
     })
 
-    test(`remove button removes entry and updates localStorage`, () => {
+    test(`remove button removes entry, updates localStorage and closes on the last one`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
       expect(history_items()).toHaveLength(3)
-      remove_btns()[1].dispatchEvent(mouse(`mousedown`))
-      flushSync()
-      expect(history_values()).toHaveLength(2)
-      expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
-      expect(history_values()[1].textContent?.trim()).toBe(`Si,O`)
+      const remove_at = (idx: number) => {
+        remove_btns()[idx].dispatchEvent(mouse(`mousedown`))
+        flushSync()
+      }
+      remove_at(1)
+      expect([...history_values()].map((item) => item.textContent?.trim())).toEqual([
+        `Fe,O`,
+        `Si,O`,
+      ])
       expect(get_stored()).toEqual([`Fe,O`, `Si,O`])
+      remove_at(0)
+      remove_at(0)
+      expect(history_dropdown()).toBeNull()
+      expect(get_stored()).toEqual([])
     })
 
     test(`removing item clamps focused index to prevent out-of-bounds Enter`, () => {
@@ -475,62 +450,61 @@ describe(`FormulaFilter`, () => {
       expect(on_change).toHaveBeenLastCalledWith(`Si,O`, `elements`)
     })
 
-    test(`removing last entry closes dropdown`, () => {
-      seed_mount_focus([`Fe,O`])
-      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
-      remove_btns()[0].dispatchEvent(mouse(`mousedown`))
-      flushSync()
-      expect(history_dropdown()).toBeNull()
-    })
-
-    test(`ArrowDown cycles through items, ArrowUp from no selection goes to last`, () => {
+    // ArrowUp from no selection goes to the last item, ArrowDown wraps from it to the first
+    test(`arrow keys move the focused item`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      // ArrowDown: -1 → 0 → 1
-      press(`ArrowDown`)
-      flushSync()
-      expect(history_items()[0].classList.contains(`focused`)).toBe(true)
-      press(`ArrowDown`)
-      flushSync()
-      expect(history_items()[1].classList.contains(`focused`)).toBe(true)
-      // ArrowDown wraps: 1 → 2 → 0
-      press(`ArrowDown`)
-      press(`ArrowDown`)
-      flushSync()
-      expect(history_items()[0].classList.contains(`focused`)).toBe(true)
-
-      // Reset: re-mount to test ArrowUp from no selection
-      document.body.innerHTML = ``
-      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      press(`ArrowUp`)
-      flushSync()
-      expect(history_items()[2].classList.contains(`focused`)).toBe(true)
-      expect(history_items()[0].classList.contains(`focused`)).toBe(false)
+      const focused_idx = () =>
+        [...history_items()].findIndex((item) => item.classList.contains(`focused`))
+      expect(focused_idx()).toBe(-1)
+      for (const [key, expected_idx] of [
+        [`ArrowUp`, 2],
+        [`ArrowUp`, 1],
+        [`ArrowDown`, 2],
+        [`ArrowDown`, 0],
+        [`ArrowDown`, 1],
+      ] as const) {
+        press(key)
+        expect(focused_idx()).toBe(expected_idx)
+      }
     })
 
-    test(`Enter selects focused history item`, () => {
-      const on_change = vi.fn()
-      seed_mount_focus([`Fe,O`, `Li,Na`], { on_change })
-      press(`ArrowDown`)
-      press(`ArrowDown`)
-      press(`Enter`)
-      flushSync()
-      expect(on_change).toHaveBeenCalledWith(`Li,Na`, `elements`)
-    })
-
-    test(`Escape closes history dropdown before clearing value`, () => {
+    test.each([
+      [`history`, `.history-dropdown`, focus_input],
+      [
+        `examples`,
+        `.examples-dropdown`,
+        () => doc_query<HTMLButtonElement>(`.help-btn`).click(),
+      ],
+    ])(`Escape closes the %s dropdown before clearing the value`, (_name, selector, open) => {
       const on_clear = vi.fn()
-      seed_mount_focus([`Fe,O`], { value: `Li`, on_clear })
-      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
-      // First Escape closes history
-      press(`Escape`)
+      seed([`Fe,O`])
+      mount_with_history({ value: `Li`, on_clear })
+      open()
       flushSync()
-      expect(history_dropdown()).toBeNull()
+      expect(document.querySelector(selector)).toBeInstanceOf(HTMLElement)
+      press(`Escape`)
+      expect(document.querySelector(selector)).toBeNull()
       expect(get_input().value).toBe(`Li`)
       expect(on_clear).not.toHaveBeenCalled()
-      // Second Escape clears value
       press(`Escape`)
-      flushSync()
-      expect(on_clear).toHaveBeenCalled()
+      expect(get_input().value).toBe(``)
+      expect(on_clear).toHaveBeenCalledOnce()
+    })
+
+    test(`clicks outside the filter close its dropdowns, clicks inside keep them open`, () => {
+      seed_mount_focus([`Fe,O`])
+      const click = (target: HTMLElement) => {
+        target.click()
+        flushSync()
+      }
+      click(get_filter())
+      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
+      click(document.body)
+      expect(history_dropdown()).toBeNull()
+      click(doc_query(`.help-btn`))
+      expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
+      click(document.body)
+      expect(document.querySelector(`.examples-dropdown`)).toBeNull()
     })
 
     test(`examples and history are mutually exclusive`, () => {
@@ -568,16 +542,19 @@ describe(`FormulaFilter`, () => {
       expect(localStorage.getItem(HISTORY_KEY)).toBeNull()
     })
 
-    test(`pins history entries and keeps pinned entries first`, () => {
+    test(`pinned entries come first until unpinned`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      // Pin second entry
-      document
-        .querySelectorAll<HTMLButtonElement>(`.history-pin`)[1]
-        .dispatchEvent(mouse(`mousedown`))
-      flushSync()
-
-      const values = Array.from(history_values()).map((item) => item.textContent?.trim())
-      expect(values[0]).toBe(`Li,Na`)
+      const toggle_pin = (idx: number) => {
+        const pin_btns = document.querySelectorAll<HTMLButtonElement>(`.history-pin`)
+        pin_btns[idx].dispatchEvent(mouse(`mousedown`))
+        flushSync()
+      }
+      const values = () => [...history_values()].map((item) => item.textContent?.trim())
+      toggle_pin(1)
+      expect(values()).toEqual([`Li,Na`, `Fe,O`, `Si,O`])
+      expect(localStorage.getItem(`${HISTORY_KEY}-pins`)).toBe(JSON.stringify([`Li,Na`]))
+      toggle_pin(0)
+      expect(values()).toEqual([`Fe,O`, `Li,Na`, `Si,O`])
     })
 
     test(`clear-all button clears dropdown and persisted history`, () => {
@@ -591,14 +568,19 @@ describe(`FormulaFilter`, () => {
   })
 
   describe(`extended features`, () => {
-    test(`mode lock prevents automatic mode inference`, async () => {
+    test(`mode lock prevents mode inference and ignores mode hint clicks`, async () => {
+      const on_change = vi.fn()
       const state: { search_mode: FormulaSearchMode; mode_locked: boolean } = $state({
         search_mode: `elements`,
         mode_locked: true,
       })
-      mount_filter(bind_props({ value: `Li-Fe-O` }, state))
+      mount_filter(bind_props({ value: `Li-Fe-O`, on_change }, state))
       await tick()
       expect(state.search_mode).toBe(`elements`)
+      get_mode_btn().click()
+      flushSync()
+      expect(on_change).not.toHaveBeenCalled()
+      expect(get_mode_btn().classList.contains(`locked`)).toBe(true)
     })
 
     test(`on_parse emits structured token data`, () => {
@@ -701,19 +683,6 @@ describe(`FormulaFilter`, () => {
       expect(on_change).toHaveBeenLastCalledWith(expected, `exact`)
     })
 
-    test(`mode hint click is ignored while mode is locked`, () => {
-      const on_change = vi.fn()
-      mount_filter({
-        value: `Li,Fe`,
-        mode_locked: true,
-        on_change,
-      })
-      doc_query<HTMLButtonElement>(`.mode-hint.clickable`).click()
-      flushSync()
-      expect(on_change).not.toHaveBeenCalled()
-      expect(doc_query(`.mode-hint.clickable`).classList.contains(`locked`)).toBe(true)
-    })
-
     test(`lock button toggles mode_locked binding`, () => {
       const state = $state({ mode_locked: false })
       mount_filter(bind_props({ value: `Li,Fe` }, state))
@@ -741,14 +710,7 @@ describe(`FormulaFilter`, () => {
       expect(chips()[0].textContent).toContain(remaining)
     })
 
-    test(`normalizes and sorts constrained include/exclude token input`, () => {
-      const on_change = vi.fn()
-      mount_filter({ value: ``, on_change })
-      submit_input(`-O,+Li,Fe:1-2,*`)
-      expect(on_change).toHaveBeenLastCalledWith(`Fe:1-2,Li,*,-O`, `elements`)
-    })
-
-    test(`keeps chemsys ranges intact while tokenizing`, () => {
+    test(`locked chemsys mode keeps ranges intact while tokenizing`, () => {
       const on_change = vi.fn()
       mount_filter({ value: ``, on_change, search_mode: `chemsys`, mode_locked: true })
       submit_input(`Fe:1-2-Li`)

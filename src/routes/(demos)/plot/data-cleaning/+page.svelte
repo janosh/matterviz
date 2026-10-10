@@ -14,7 +14,7 @@
     clean_xyz,
     detect_instability,
   } from '#lib/plot/core/data-cleaning.js'
-  import type { DataSeries } from '#lib/plot/core/types.js'
+  import type { DataSeries, PointStyle } from '#lib/plot/core/types.js'
 
   // --- Synthetic Data Generators ---
 
@@ -119,52 +119,38 @@
   })
 
   // Derived: raw data - regenerates when counter, type, or generation params change
-  // All state reads happen directly in $derived.by to ensure proper dependency tracking
   let raw_data = $derived.by((): { x: number[]; y: number[] } => {
     void regenerate_counter // touch to trigger reactivity on button click
-    const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
-
     if (data_type === `unstable`) {
       return generate_unstable(Math.floor(data_length * 0.5), Math.ceil(data_length * 0.5))
-    } else if (data_type === `noisy`) {
-      const smooth = generate_smooth(data_length)
-      return { x: x_vals, y: add_noise(smooth, noise_level) }
-    } else if (data_type === `outliers`) {
-      const base = generate_smooth(data_length)
-      return {
-        x: x_vals,
-        y: add_outliers(base, outlier_probability, outlier_magnitude),
-      }
-    } else if (data_type === `nan_values`) {
-      const base = generate_smooth(data_length)
-      return { x: x_vals, y: add_nan_values(base, nan_probability) }
-    } else if (data_type === `jumpy`) {
-      return { x: x_vals, y: generate_jumpy(data_length, 4) }
     }
-    // combined
+    const x_vals = Array.from({ length: data_length }, (_, idx) => idx)
+    if (data_type === `jumpy`) return { x: x_vals, y: generate_jumpy(data_length, 4) }
+    // combined applies every defect at reduced strength
+    const combined = data_type === `combined`
+    const scale = combined ? 0.5 : 1
     let y_vals = generate_smooth(data_length)
-    y_vals = add_noise(y_vals, noise_level * 0.5)
-    y_vals = add_outliers(y_vals, outlier_probability * 0.5, outlier_magnitude * 0.7)
-    y_vals = add_nan_values(y_vals, nan_probability * 0.5)
+    if (combined || data_type === `noisy`) y_vals = add_noise(y_vals, noise_level * scale)
+    if (combined || data_type === `outliers`) {
+      const magnitude = outlier_magnitude * (combined ? 0.7 : 1)
+      y_vals = add_outliers(y_vals, outlier_probability * scale, magnitude)
+    }
+    if (combined || data_type === `nan_values`) {
+      y_vals = add_nan_values(y_vals, nan_probability * scale)
+    }
     return { x: x_vals, y: y_vals }
   })
 
-  // Derived: cleaned data
-  let cleaned_result = $derived.by(() => {
-    const series: DataSeries = {
-      x: [...raw_data.x],
-      y: [...raw_data.y],
-    }
-    return clean_series(series, cleaning_config)
-  })
+  let cleaned_result = $derived(
+    clean_series({ x: [...raw_data.x], y: [...raw_data.y] }, cleaning_config),
+  )
 
   // Derived: instability detection result
   let instability_result = $derived(
     detect_instability(raw_data.x, raw_data.y, { oscillation_threshold, window_size }),
   )
 
-  // Shared helper: find interpolated value at an index by averaging nearest valid neighbors
-  // Used by removed_points, find_nan_positions, and find_trajectory_nan_positions
+  // Interpolated value at an index: the average of its nearest valid neighbors
   function interpolate_at_index(values: number[], idx: number, fallback: number): number {
     let prev = fallback,
       next = fallback
@@ -203,40 +189,50 @@
     return { x: removed_x, y: removed_y }
   })
 
-  // Derived: series for plotting
-  let plot_series = $derived.by(() => {
-    const series: DataSeries[] = [
-      {
-        x: raw_data.x.filter((_, idx) => Number.isFinite(raw_data.y[idx])),
-        y: raw_data.y.filter((y_val) => Number.isFinite(y_val)),
-        label: `Raw Data (valid)`,
-        point_style: { fill: `#e74c3c`, radius: 4, fill_opacity: 0.6 },
-        line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
-        markers: `line+points` as const,
-      },
-      {
-        x: cleaned_result.series.x,
-        y: cleaned_result.series.y,
-        label: `Cleaned Data`,
-        point_style: { fill: `#2ecc71`, radius: 5 },
-        line_style: { stroke: `#2ecc71`, stroke_width: 2 },
-        markers: `line+points` as const,
-      },
-    ]
+  type Points = { x: number[]; y: number[] }
 
-    // Add removed points as a separate series if there are any
-    if (removed_points.x.length > 0) {
-      series.push({
-        x: removed_points.x,
-        y: removed_points.y,
-        label: `Removed/Invalid (${removed_points.x.length})`,
-        point_style: { fill: `#9b59b6`, radius: 7, symbol_type: `Cross` },
-        markers: `points` as const,
-      })
-    }
+  // Points where both coordinates are finite
+  const finite_points = (x_vals: number[], y_vals: number[]): Points => {
+    const keep = (_: number, idx: number) =>
+      Number.isFinite(x_vals[idx]) && Number.isFinite(y_vals[idx])
+    return { x: x_vals.filter(keep), y: y_vals.filter(keep) }
+  }
 
-    return series
+  const line_series = (
+    { x, y }: Points,
+    label: string,
+    color: string,
+    stroke_width = 1.5,
+    point_style: PointStyle = {},
+  ): DataSeries => ({
+    x,
+    y,
+    label,
+    point_style: { fill: color, radius: 4, ...point_style },
+    line_style: { stroke: color, stroke_width },
+    markers: `line+points`,
   })
+
+  // Cross markers at the given points, labeled with their count (no series when empty)
+  const cross_series = (points: Points, label: string, fill: string, radius: number) =>
+    points.x.length > 0
+      ? [
+          {
+            ...points,
+            label: `${label} (${points.x.length})`,
+            point_style: { fill, radius, symbol_type: `Cross` as const },
+            markers: `points` as const,
+          },
+        ]
+      : []
+
+  let plot_series = $derived([
+    line_series(finite_points(raw_data.x, raw_data.y), `Raw Data (valid)`, `#e74c3c`, 1.5, {
+      fill_opacity: 0.6,
+    }),
+    line_series(cleaned_result.series, `Cleaned Data`, `#2ecc71`, 2, { radius: 5 }),
+    ...cross_series(removed_points, `Removed/Invalid`, `#9b59b6`, 7),
+  ])
 
   // Multi-series demo: correlated sensor readings at same timestamps
   let multi_series_data = $derived.by(() => {
@@ -263,24 +259,16 @@
     }),
   )
 
-  // Helper: find interpolated y-value for NaN positions in an array
-  function find_nan_positions(
-    x_vals: number[],
-    y_vals: number[],
-    fallback: number,
-  ): { x: number; y: number }[] {
-    const result: { x: number; y: number }[] = []
-    for (let idx = 0; idx < y_vals.length; idx++) {
-      if (Number.isFinite(y_vals[idx])) continue
-      result.push({ x: x_vals[idx], y: interpolate_at_index(y_vals, idx, fallback) })
+  // Interpolated positions of the points with a non-finite coordinate, for marking them
+  const nan_markers = (x_vals: number[], y_vals: number[], fallback: number): Points => {
+    const nan_indices = x_vals.flatMap((_, idx) =>
+      Number.isFinite(x_vals[idx]) && Number.isFinite(y_vals[idx]) ? [] : [idx],
+    )
+    return {
+      x: nan_indices.map((idx) => interpolate_at_index(x_vals, idx, fallback)),
+      y: nan_indices.map((idx) => interpolate_at_index(y_vals, idx, fallback)),
     }
-    return result
   }
-
-  let multi_series_nan_markers = $derived({
-    temp_nan: find_nan_positions(multi_series_data.x, multi_series_data.y_arrays[0], 25),
-    pressure_nan: find_nan_positions(multi_series_data.x, multi_series_data.y_arrays[1], 101),
-  })
 
   // Trajectory demo data - a spiral path where NaN in any coordinate removes that point from all
   let xyz_data = $derived.by(() => {
@@ -308,56 +296,32 @@
     }),
   )
 
-  // Helper: find interpolated positions for NaN in 2D trajectory
-  function find_trajectory_nan_positions(
-    x_vals: number[],
-    y_vals: number[],
-    fallback = 10,
-  ): { x: number; y: number }[] {
-    const result: { x: number; y: number }[] = []
-    for (let idx = 0; idx < x_vals.length; idx++) {
-      if (Number.isFinite(x_vals[idx]) && Number.isFinite(y_vals[idx])) continue
-      result.push({
-        x: interpolate_at_index(x_vals, idx, fallback),
-        y: interpolate_at_index(y_vals, idx, fallback),
-      })
-    }
-    return result
-  }
-
-  let trajectory_nan_markers = $derived(find_trajectory_nan_positions(xyz_data.x, xyz_data.y))
-
-  // Reference lines for instability marker
-  let ref_lines = $derived.by(() => {
-    if (instability_result.detected && data_type === `unstable`) {
-      return [
-        {
-          type: `vertical` as const,
-          x: instability_result.onset_x,
-          label: `Instability Onset`,
-          style: { color: `#f39c12`, width: 2, dash: `6 3` },
-          annotation: {
-            text: `Onset x=${instability_result.onset_x.toFixed(0)}`,
-            position: `end` as const,
-            side: `right` as const,
+  // Instability onset marker
+  let ref_lines = $derived(
+    instability_result.detected && data_type === `unstable`
+      ? [
+          {
+            type: `vertical` as const,
+            x: instability_result.onset_x,
+            label: `Instability Onset`,
+            style: { color: `#f39c12`, width: 2, dash: `6 3` },
+            annotation: {
+              text: `Onset x=${instability_result.onset_x.toFixed(0)}`,
+              position: `end` as const,
+              side: `right` as const,
+            },
           },
-        },
-      ]
-    }
-    return []
-  })
+        ]
+      : [],
+  )
 
-  // Quality report formatting
-  function format_quality(quality: typeof cleaned_result.quality): string {
-    const parts = []
-    if (quality.points_removed > 0) parts.push(`${quality.points_removed} removed`)
-    if (quality.invalid_values_found > 0) {
-      parts.push(`${quality.invalid_values_found} invalid`)
-    }
-    if (quality.bounds_violations > 0) {
-      parts.push(`${quality.bounds_violations} bounds violations`)
-    }
-    if (quality.oscillation_detected) parts.push(`oscillation detected`)
+  const format_quality = (quality: typeof cleaned_result.quality): string => {
+    const parts = [
+      quality.points_removed > 0 && `${quality.points_removed} removed`,
+      quality.invalid_values_found > 0 && `${quality.invalid_values_found} invalid`,
+      quality.bounds_violations > 0 && `${quality.bounds_violations} bounds violations`,
+      quality.oscillation_detected && `oscillation detected`,
+    ].filter(Boolean)
     return parts.length > 0 ? parts.join(`, `) : `No issues found`
   }
 
@@ -646,58 +610,16 @@ const { series: cleaned, quality } = clean_series(series, config)
     <div>
       <h3 id="raw-data-nan-positions-marked">Raw Data (NaN positions marked)</h3>
       <LazyDemo label="Raw Data (NaN positions marked)" height="280px">
+        {@const {
+          x: time,
+          y_arrays: [temperature, pressure],
+        } = multi_series_data}
         <ScatterPlot
           series={[
-            {
-              x: multi_series_data.x.filter((_, idx) =>
-                Number.isFinite(multi_series_data.y_arrays[0][idx]),
-              ),
-              y: multi_series_data.y_arrays[0].filter((y_val) => Number.isFinite(y_val)),
-              label: `Temperature`,
-              point_style: { fill: `#e74c3c`, radius: 4 },
-              line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
-              markers: `line+points`,
-            },
-            {
-              x: multi_series_data.x.filter((_, idx) =>
-                Number.isFinite(multi_series_data.y_arrays[1][idx]),
-              ),
-              y: multi_series_data.y_arrays[1].filter((y_val) => Number.isFinite(y_val)),
-              label: `Pressure`,
-              point_style: { fill: `#3498db`, radius: 4 },
-              line_style: { stroke: `#3498db`, stroke_width: 1.5 },
-              markers: `line+points`,
-            },
-            ...(multi_series_nan_markers.temp_nan.length > 0
-              ? [
-                  {
-                    x: multi_series_nan_markers.temp_nan.map((point) => point.x),
-                    y: multi_series_nan_markers.temp_nan.map((point) => point.y),
-                    label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
-                    point_style: {
-                      fill: `#9b59b6`,
-                      radius: 8,
-                      symbol_type: `Cross` as const,
-                    },
-                    markers: `points` as const,
-                  },
-                ]
-              : []),
-            ...(multi_series_nan_markers.pressure_nan.length > 0
-              ? [
-                  {
-                    x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
-                    y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
-                    label: `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
-                    point_style: {
-                      fill: `#8e44ad`,
-                      radius: 8,
-                      symbol_type: `Cross` as const,
-                    },
-                    markers: `points` as const,
-                  },
-                ]
-              : []),
+            line_series(finite_points(time, temperature), `Temperature`, `#e74c3c`),
+            line_series(finite_points(time, pressure), `Pressure`, `#3498db`),
+            ...cross_series(nan_markers(time, temperature, 25), `Temp NaN`, `#9b59b6`, 8),
+            ...cross_series(nan_markers(time, pressure, 101), `Pressure NaN`, `#8e44ad`, 8),
           ]}
           x_axis={{ label: `Time (s)` }}
           y_axis={{ label: `Value` }}
@@ -709,24 +631,14 @@ const { series: cleaned, quality } = clean_series(series, config)
       <h3 id="cleaned-series-aligned">Cleaned (series aligned)</h3>
       <LazyDemo label="Cleaned (series aligned)" height="280px">
         <ScatterPlot
-          series={[
-            {
-              x: multi_series_cleaned.x,
-              y: multi_series_cleaned.cleaned_y[0],
-              label: `Temperature`,
-              point_style: { fill: `#27ae60`, radius: 4 },
-              line_style: { stroke: `#27ae60`, stroke_width: 2 },
-              markers: `line+points`,
-            },
-            {
-              x: multi_series_cleaned.x,
-              y: multi_series_cleaned.cleaned_y[1],
-              label: `Pressure`,
-              point_style: { fill: `#2980b9`, radius: 4 },
-              line_style: { stroke: `#2980b9`, stroke_width: 2 },
-              markers: `line+points`,
-            },
-          ]}
+          series={multi_series_cleaned.cleaned_y.map((y_vals, idx) =>
+            line_series(
+              { x: multi_series_cleaned.x, y: y_vals },
+              [`Temperature`, `Pressure`][idx],
+              [`#27ae60`, `#2980b9`][idx],
+              2,
+            ),
+          )}
           x_axis={{ label: `Time (s)` }}
           y_axis={{ label: `Value` }}
           style="height: 280px"
@@ -754,33 +666,13 @@ const { series: cleaned, quality } = clean_series(series, config)
       <LazyDemo label="Raw Data (NaN positions marked)" height="300px">
         <ScatterPlot
           series={[
-            {
-              x: xyz_data.x.filter(
-                (coord_x, idx) => Number.isFinite(coord_x) && Number.isFinite(xyz_data.y[idx]),
-              ),
-              y: xyz_data.y.filter(
-                (coord_y, idx) => Number.isFinite(coord_y) && Number.isFinite(xyz_data.x[idx]),
-              ),
-              label: `Trajectory`,
-              point_style: { fill: `#e74c3c`, radius: 4 },
-              line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
-              markers: `line+points`,
-            },
-            ...(trajectory_nan_markers.length > 0
-              ? [
-                  {
-                    x: trajectory_nan_markers.map((point) => point.x),
-                    y: trajectory_nan_markers.map((point) => point.y),
-                    label: `NaN points (${trajectory_nan_markers.length})`,
-                    point_style: {
-                      fill: `#9b59b6`,
-                      radius: 10,
-                      symbol_type: `Cross` as const,
-                    },
-                    markers: `points` as const,
-                  },
-                ]
-              : []),
+            line_series(finite_points(xyz_data.x, xyz_data.y), `Trajectory`, `#e74c3c`),
+            ...cross_series(
+              nan_markers(xyz_data.x, xyz_data.y, 10),
+              `NaN points`,
+              `#9b59b6`,
+              10,
+            ),
           ]}
           x_axis={{ label: `X position` }}
           y_axis={{ label: `Y position` }}
@@ -792,16 +684,7 @@ const { series: cleaned, quality } = clean_series(series, config)
       <h3 id="cleaned-nan-points-removed">Cleaned (NaN points removed)</h3>
       <LazyDemo label="Cleaned (NaN points removed)" height="300px">
         <ScatterPlot
-          series={[
-            {
-              x: xyz_cleaned.x,
-              y: xyz_cleaned.y,
-              label: `Cleaned trajectory`,
-              point_style: { fill: `#27ae60`, radius: 4 },
-              line_style: { stroke: `#27ae60`, stroke_width: 1.5 },
-              markers: `line+points`,
-            },
-          ]}
+          series={[line_series(xyz_cleaned, `Cleaned trajectory`, `#27ae60`)]}
           x_axis={{ label: `X position` }}
           y_axis={{ label: `Y position` }}
           style="height: 300px"

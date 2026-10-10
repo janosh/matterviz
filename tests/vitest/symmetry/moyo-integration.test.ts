@@ -263,6 +263,33 @@ describe(`reference structures`, () => {
       /requires a periodic structure/,
     )
   })
+
+  // moyo sees one label per distinct site composition, so a mixed site is never matched to a
+  // pure site of its majority element: majority labels made this CsCl-type cell bcc Cu (229)
+  test.each([
+    [`pure Cu + Cu0.6Au0.4`, 1, 221],
+    [`two Cu0.6Au0.4 sites`, 0.6, 229],
+  ])(`labels disordered sites by composition: %s`, async (_label, corner_cu, expected) => {
+    const corner =
+      corner_cu === 1
+        ? [{ element: `Cu`, abc: [0, 0, 0] as Vec3 }]
+        : [
+            { element: `Cu`, abc: [0, 0, 0] as Vec3, occu: 0.6 },
+            { element: `Au`, abc: [0, 0, 0] as Vec3, occu: 0.4 },
+          ]
+    const sym_data = await analyze_crystal(
+      make_crystal(3, [
+        ...corner,
+        { element: `Cu`, abc: [0.5, 0.5, 0.5], occu: 0.6 },
+        { element: `Au`, abc: [0.5, 0.5, 0.5], occu: 0.4 },
+      ]),
+    )
+    expect(sym_data.number).toBe(expected)
+    // labels stay internal: every cell reports atomic numbers of the majority element
+    for (const numbers of [sym_data.input_cell.numbers, sym_data.std_cell.numbers]) {
+      expect(new Set(numbers)).toEqual(new Set([29]))
+    }
+  })
 })
 
 describe(`moyo-wasm integration`, () => {

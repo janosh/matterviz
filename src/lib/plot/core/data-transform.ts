@@ -16,12 +16,12 @@ export const first_point_style = (
     ? series_data.point_style[0]
     : series_data?.point_style
 
-// Extract the primary color from a series data object.
-// Checks line stroke, then point fill (handling arrays), with fallback to default blue.
-export const extract_series_color = (series_data: DataSeries): string =>
-  series_data.line_style?.stroke ??
-  first_point_style(series_data)?.fill ??
-  DEFAULTS.scatter.point.color
+// A series' color as a whole: line stroke, else first point fill, else `fallback`
+export const extract_series_color = (
+  series_data: Pick<DataSeries, `line_style` | `point_style`> | null | undefined,
+  fallback: string = DEFAULTS.scatter.point.color,
+): string =>
+  series_data?.line_style?.stroke ?? first_point_style(series_data)?.fill ?? fallback
 
 // Minimal series shape every chart's legend entry is derived from.
 type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: string }
@@ -43,18 +43,6 @@ export function build_legend_items<Series extends LegendSeries>(
     display_style: display_style(series_data, series_idx),
   }))
 }
-
-// Swatch for charts whose legend shows a single symbol per series (Histogram, ...).
-export const series_symbol_swatch = (
-  series_data: DataSeries,
-): { symbol_type: D3SymbolName; symbol_color: string } => ({
-  // Prefer the series' symbol when present, falling back to settings. Per-point style
-  // arrays have no single symbol to show, so they always take the default.
-  symbol_type:
-    (Array.isArray(series_data.point_style) ? null : series_data.point_style?.symbol_type) ??
-    DEFAULTS.scatter.symbol_type,
-  symbol_color: extract_series_color(series_data),
-})
 
 // Per-point value of an array-or-scalar prop: the element at idx, or the scalar for every idx
 export const process_prop = <T>(

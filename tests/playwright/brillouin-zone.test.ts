@@ -92,8 +92,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
     // correct fit into a failure — and so the assertion says what invariant it is checking.
     const canvas = page.locator(`${BZ_SELECTOR} canvas`)
     const zoom_per_edge = async (): Promise<number> => {
-      const box = await canvas.boundingBox()
-      if (!box) throw new Error(`BZ canvas bounding box not found`)
+      const box = await require_bbox(canvas, `BZ canvas`)
       return ((await read_zoom()) ?? 0) / Math.min(box.width, box.height)
     }
 

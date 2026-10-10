@@ -201,15 +201,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test(`responsive: SVG resizes with viewport`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)
-    const initial = await svg.boundingBox()
-    if (!initial) throw new Error(`No initial bounding box`)
-
+    const initial = await require_bbox(svg)
     await page.setViewportSize({ width: 500, height: 400 })
-    const resized = await svg.boundingBox()
-    if (!resized) throw new Error(`No resized bounding box`)
-
-    expect(resized.width).toBeLessThan(initial.width)
-    await page.setViewportSize({ width: 1280, height: 720 })
+    expect((await require_bbox(svg)).width).toBeLessThan(initial.width)
   })
 
   test(`file picker switches diagrams`, async ({ page }) => {
@@ -249,8 +243,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await svg.scrollIntoViewIfNeeded()
 
     // Get SVG bounding box and scan for tie-line by hovering at grid positions
-    const box = await svg.boundingBox()
-    if (!box) throw new Error(`No SVG bounding box`)
+    const box = await require_bbox(svg)
 
     const tie_line = svg.locator(`.tie-line`)
 
@@ -286,44 +279,42 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     throw new Error(`No tie-line found in the two-phase scan positions`)
   })
 
-  for (const unlock of [`click`, `Escape`]) {
-    test(`click locks tooltip and ${unlock} unlocks it`, async ({ page }) => {
-      const { diagram, svg } = get_diagram_elements(page)
-      const region = svg.locator(`.phase-regions path`).first()
-      const tooltip = diagram.locator(`.tooltip-container`)
-      await region.hover()
-      await expect(tooltip).toBeVisible()
-      await expect(tooltip).not.toHaveClass(/locked/)
-      await region.click()
-      await expect(tooltip).toHaveClass(/locked/)
-      await expect(diagram.locator(`.tooltip-lock-indicator`)).toBeVisible()
-      if (unlock === `click`) {
-        await page.mouse.move(10, 10)
-        await expect(tooltip).toBeVisible()
-        await expect(tooltip).toHaveClass(/locked/)
-        await region.click()
-      } else await page.keyboard.press(`Escape`)
-      await expect(tooltip).not.toHaveClass(/locked/)
-      await page.mouse.move(10, 10)
-      await expect(tooltip).toHaveCount(0)
-    })
-  }
-
-  test(`Enter/Space toggles tooltip lock when SVG focused`, async ({ page }) => {
+  test(`click or Enter locks the tooltip; click, Escape or Space unlocks it`, async ({
+    page,
+  }) => {
     const { diagram, svg } = get_diagram_elements(page)
     const region = svg.locator(`.phase-regions path`).first()
-
-    await region.hover()
     const tooltip = diagram.locator(`.tooltip-container`)
+    const leave = async () => {
+      await page.mouse.move(10, 10)
+      await expect(tooltip).toHaveCount(0)
+    }
+    await region.hover()
     await expect(tooltip).toBeVisible()
     await expect(tooltip).not.toHaveClass(/locked/)
+    await region.click()
+    await expect(tooltip).toHaveClass(/locked/)
+    await expect(diagram.locator(`.tooltip-lock-indicator`)).toBeVisible()
+    // a locked tooltip outlives the pointer leaving; clicking the region again unlocks it
+    await page.mouse.move(10, 10)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveClass(/locked/)
+    await region.click()
+    await expect(tooltip).not.toHaveClass(/locked/)
+    await leave()
 
-    // Focus SVG and press Enter to lock
+    await region.click()
+    await expect(tooltip).toHaveClass(/locked/)
+    await page.keyboard.press(`Escape`)
+    await expect(tooltip).not.toHaveClass(/locked/)
+    await leave()
+
+    // Enter locks and Space unlocks while the SVG is focused
+    await region.hover()
+    await expect(tooltip).toBeVisible()
     await svg.focus()
     await page.keyboard.press(`Enter`)
     await expect(tooltip).toHaveClass(/locked/)
-
-    // Press Space to unlock
     await page.keyboard.press(`Space`)
     await expect(tooltip).not.toHaveClass(/locked/)
   })

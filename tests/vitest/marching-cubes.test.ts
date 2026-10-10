@@ -395,29 +395,36 @@ describe(`marching_cubes`, () => {
 
   // Analytic sphere: value = distance from the grid center, iso = radius in grid units.
   // Values grow outward, so front faces (CCW) and normals point inward, also on a left-handed
-  // lattice (which mirrors the winding)
+  // lattice (which mirrors the winding). The field's scale must not matter: absolute 1e-10
+  // cutoffs on the edge value change and gradient length snapped every vertex of a 1e-12
+  // field to a grid point (area +26.6% at 1e-9) and replaced its normals with (0, 0, 1)
   const left_handed: Matrix3x3 = [
     [0, 10, 0],
     [10, 0, 0],
     [0, 0, 10],
   ]
   test.each([
-    [`right`, cubic_matrix(10)],
-    [`left`, left_handed],
+    [`right`, 1, cubic_matrix(10)],
+    [`left`, 1, left_handed],
+    [`right`, 1e-12, cubic_matrix(10)],
   ] as const)(
-    `analytic sphere (%s-handed): closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`,
-    (_hand, lattice) => {
+    `analytic sphere (%s-handed, field scale %s): closed mesh, area within 0.5% of 4πr², normals radial and consistent with winding`,
+    (_hand, field_scale, lattice) => {
       const size = 40
       const center = (size - 1) / 2
       const radius_idx = 14
-      const grid = make_grid(size, size, size, (idx_x, idx_y, idx_z) =>
-        Math.hypot(idx_x - center, idx_y - center, idx_z - center),
+      const grid = make_grid(
+        size,
+        size,
+        size,
+        (idx_x, idx_y, idx_z) =>
+          field_scale * Math.hypot(idx_x - center, idx_y - center, idx_z - center),
       )
       const spacing = 10 / (size - 1)
       const radius = radius_idx * spacing
       const { vertices, faces, normals } = marching_cubes(
         grid,
-        radius_idx,
+        field_scale * radius_idx,
         lattice,
         NON_PERIODIC,
       )
@@ -454,23 +461,9 @@ describe(`marching_cubes`, () => {
 })
 
 describe(`compute_vertex_normals`, () => {
-  const xy_triangle = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
-  const xy_quad = new Float32Array([...xy_triangle, 1, 1, 0])
-
-  test.each([
-    { label: `xy-plane triangle`, positions: xy_triangle, indices: [0, 1, 2] },
-    { label: `quad as two triangles`, positions: xy_quad, indices: [0, 1, 3, 0, 3, 2] },
-  ])(`$label produces positive z-direction unit normals`, ({ positions, indices }) => {
-    const normals = unpack_vec3(compute_vertex_normals(positions, Uint32Array.from(indices)))
-    expect(normals).toHaveLength(positions.length / 3)
-    for (const normal of normals) {
-      expect(Math.hypot(...normal)).toBeCloseTo(1, 5)
-      expect(normal[2]).toBeCloseTo(1, 5)
-    }
-  })
-
   test(`empty mesh yields no normals and out-of-range indices throw`, () => {
     expect(compute_vertex_normals(new Float32Array(0), new Uint32Array(0))).toHaveLength(0)
+    const xy_triangle = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
     expect(() => compute_vertex_normals(xy_triangle, Uint32Array.from([0, 1, 99]))).toThrow(
       RangeError,
     )

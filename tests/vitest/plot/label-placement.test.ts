@@ -16,7 +16,7 @@ import {
   segments_intersect,
 } from '#lib/plot/core/utils/label-placement.js'
 import { describe, expect, test } from 'vitest'
-import { mock_text_measurement } from '../setup'
+import { with_measured_text } from '../setup'
 
 const make_rect = (x_pos: number, y_pos: number, width: number, height: number) => ({
   x: x_pos,
@@ -135,14 +135,10 @@ describe(`estimate_label_size`, () => {
     },
   )
 
-  test(`measures with the canvas 2D context when one exists`, () => {
-    const get_context = mock_text_measurement(9)
-    try {
-      // 9 px/char beats the 6 px/char fallback, so a fallback would report 34 here
-      expect(estimate_label_size(`abcd\nab`, `10px`)).toEqual({ width: 46, height: 24 })
-    } finally {
-      get_context.mockRestore()
-    }
+  // 9 px/char beats the 6 px/char fallback, so a fallback would report 34 here
+  test(`measures with the canvas 2D context when one exists`, async () => {
+    const size = await with_measured_text(() => estimate_label_size(`abcd\nab`, `10px`), 9)
+    expect(size).toEqual({ width: 46, height: 24 })
   })
 })
 

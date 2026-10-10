@@ -46,6 +46,21 @@ const energy_at = (
 describe(`parse_fermi_file`, () => {
   describe(`BXSF format`, () => {
     const sample_bxsf = make_bxsf(7.0)
+    // Single-band n³ grid on the unit lattice with `values_text` as the band body
+    const bxsf_block = (n_pts: number, values_text: string) => `BEGIN_BLOCK_BANDGRID_3D
+  band_energies
+  BEGIN_BANDGRID_3D
+    1
+    ${n_pts} ${n_pts} ${n_pts}
+    0.0 0.0 0.0
+    1.0 0.0 0.0
+    0.0 1.0 0.0
+    0.0 0.0 1.0
+    BAND:   1
+    ${values_text}
+  END_BANDGRID_3D
+END_BLOCK_BANDGRID_3D
+`
 
     test.each([`test.bxsf`, `TEST.BXSF.GZ`, `unknown.txt`, undefined])(
       `parses BXSF metadata, grid and energies with filename %s`,
@@ -110,20 +125,7 @@ describe(`parse_fermi_file`, () => {
       // limit for much larger grids, so the parser writes into a preallocated buffer instead
       const n_pts = 40
       const values = Array.from({ length: n_pts ** 3 }, (_, idx) => idx * 0.5)
-      const bxsf = `BEGIN_BLOCK_BANDGRID_3D
-  band_energies
-  BEGIN_BANDGRID_3D
-    1
-    ${n_pts} ${n_pts} ${n_pts}
-    0.0 0.0 0.0
-    1.0 0.0 0.0
-    0.0 1.0 0.0
-    0.0 0.0 1.0
-    BAND:   1
-    ${values.join(` `)}
-  END_BANDGRID_3D
-END_BLOCK_BANDGRID_3D`
-      const band_data = parse_grid(bxsf, `long.bxsf`)
+      const band_data = parse_grid(bxsf_block(n_pts, values.join(` `)), `long.bxsf`)
       expect(band_data.energies[0][0].values).toHaveLength(n_pts ** 3)
       expect(energy_at(band_data, n_pts - 1, n_pts - 1, n_pts - 1)).toBe(
         (n_pts ** 3 - 1) * 0.5,
@@ -142,24 +144,9 @@ END_BLOCK_BANDGRID_3D`
 
     // Without a filename the format is detected from the BEGIN_BLOCK_BANDGRID_3D marker
     test(`auto-detects BXSF by content and skips blank/comment lines before END_BANDGRID`, () => {
-      const bxsf_with_blanks = `BEGIN_BLOCK_BANDGRID_3D
-  band_energies
-  BEGIN_BANDGRID_3D
-    1
-    2 2 2
-    0.0 0.0 0.0
-    1.0 0.0 0.0
-    0.0 1.0 0.0
-    0.0 0.0 1.0
-    BAND:   1
-    1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0
-
-  # This is a comment that should be skipped
-
-  END_BANDGRID_3D
-END_BLOCK_BANDGRID_3D
-`
-      const band_data = parse_grid(bxsf_with_blanks)
+      const band_data = parse_grid(
+        bxsf_block(2, `1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0\n\n  # A comment to skip\n`),
+      )
       expect(band_data.n_bands).toBe(1)
       expect(band_data.k_grid).toEqual([2, 2, 2])
       expect(Array.from(band_data.energies[0][0].values)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
@@ -331,41 +318,49 @@ END_BLOCK_BANDGRID_3D
       expect(result.isosurfaces[0].indices).toHaveLength(0)
     })
 
-    test(`flattens nested BandGridData JSON energies into z-fastest Float64Array grids`, () => {
-      // energies[spin][band][kx][ky][kz] with a 2×1×3 grid: values 0..5 in z-fastest order
-      const content = JSON.stringify({
-        energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]],
-        k_grid: [2, 1, 3],
-        k_lattice: IDENTITY_MATRIX3,
-        fermi_energy: 2.5,
-        n_bands: 1,
-        n_spins: 1,
-      })
-      const band_data = parse_grid(content, `grid.json`)
-      const [grid] = band_data.energies[0]
-      expect(grid.values).toBeInstanceOf(Float64Array)
-      expect(Array.from(grid.values)).toEqual([0, 1, 2, 3, 4, 5])
-      expect(grid.dims).toEqual([2, 1, 3])
-      expect(grid.order).toBe(`z_fastest`)
-      expect(energy_at(band_data, 1, 0, 2)).toBe(5)
-      expect(band_data.fermi_energy).toBe(2.5)
-    })
-
-    test(`accepts band_structure-wrapped grids with alias keys`, () => {
-      const content = JSON.stringify({
-        band_structure: {
-          energies: [[[[[0, 1]], [[2, 3]]]]],
-          kgrid: [2, 1, 2],
-          reciprocal_lattice: IDENTITY_MATRIX3,
-          efermi: 1.5,
+    // energies[spin][band][kx][ky][kz] flatten to z-fastest order, so values read 0..n-1
+    test.each([
+      [
+        `plain BandGridData`,
+        {
+          energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]],
+          k_grid: [2, 1, 3],
+          k_lattice: IDENTITY_MATRIX3,
+          fermi_energy: 2.5,
+          n_bands: 1,
+          n_spins: 1,
         },
-      })
-      const band_data = parse_grid(content, `bs.json`)
-      expect(band_data.k_grid).toEqual([2, 1, 2])
-      expect(band_data.fermi_energy).toBe(1.5)
-      expect(band_data.n_bands).toBe(1)
-      expect(band_data.n_spins).toBe(1)
-      expect(Array.from(band_data.energies[0][0].values)).toEqual([0, 1, 2, 3])
+        [2, 1, 3],
+        2.5,
+      ],
+      [
+        `band_structure-wrapped alias keys`,
+        {
+          band_structure: {
+            energies: [[[[[0, 1]], [[2, 3]]]]],
+            kgrid: [2, 1, 2],
+            reciprocal_lattice: IDENTITY_MATRIX3,
+            efermi: 1.5,
+          },
+        },
+        [2, 1, 2],
+        1.5,
+      ],
+    ])(`flattens nested JSON energies of %s`, (_label, json, k_grid, fermi_energy) => {
+      const band_data = parse_grid(JSON.stringify(json), `grid.json`)
+      const [grid] = band_data.energies[0]
+      const n_points = k_grid[0] * k_grid[1] * k_grid[2]
+      expect(grid.values).toBeInstanceOf(Float64Array)
+      expect(Array.from(grid.values)).toEqual(
+        Array.from({ length: n_points }, (_, idx) => idx),
+      )
+      expect([grid.dims, grid.order, band_data.k_grid]).toEqual([k_grid, `z_fastest`, k_grid])
+      expect(energy_at(band_data, k_grid[0] - 1, 0, k_grid[2] - 1)).toBe(n_points - 1)
+      expect([band_data.fermi_energy, band_data.n_bands, band_data.n_spins]).toEqual([
+        fermi_energy,
+        1,
+        1,
+      ])
     })
 
     test.each([

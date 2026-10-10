@@ -95,9 +95,8 @@
     t_min + ((pixel_x - label_width) / plot_width) * (t_max - t_min)
   const row_top = (row: number) => top_pad + row * row_height
   const ramp = $derived(get_d3_interpolator(settings.color_scale))
-  const color_of = (e_above_hull: number) => {
-    return ramp(clamp01(e_above_hull / Math.max(settings.max_e_above_hull, 1e-9)))
-  }
+  const color_of = (e_above_hull: number) =>
+    ramp(clamp01(e_above_hull / Math.max(settings.max_e_above_hull, 1e-9)))
 
   // === Drawing ===
 
@@ -311,10 +310,7 @@
       // Plain arrows step here; shift+arrows bubble to a host that jumps between transitions
       const dir = { ArrowRight: 1, ArrowLeft: -1, ArrowUp: 1, ArrowDown: -1 }[event.key]
       if (!dir || event.shiftKey || is_modifier_chord(event)) return
-      temperature = Math.min(
-        t_max,
-        Math.max(t_min, temperature + (dir * (t_max - t_min)) / 100),
-      )
+      temperature = clamp(temperature + (dir * (t_max - t_min)) / 100, t_min, t_max)
       event.preventDefault()
       event.stopPropagation()
     }}

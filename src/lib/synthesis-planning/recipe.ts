@@ -34,35 +34,29 @@ export function build_recipe(
     const moles = coefficient * moles_per_coefficient
     items.push({ phase, role: `byproduct`, moles, mass_g: moles * phase.molar_mass })
   }
-  const precursor_mass = items
-    .filter((item) => item.role === `precursor`)
-    .reduce((sum, item) => sum + item.mass_g, 0)
+  const mass_by_role = (role: RecipeItem[`role`]): number =>
+    items.filter((item) => item.role === role).reduce((sum, item) => sum + item.mass_g, 0)
+  const precursor_mass = mass_by_role(`precursor`)
   for (const item of items) {
     if (item.role === `precursor`) item.mass_fraction = item.mass_g / precursor_mass
   }
   // Positive = mass lost as gas, negative = mass gained from the atmosphere
-  const mass_by_role = (role: RecipeItem[`role`]): number =>
-    items.filter((item) => item.role === role).reduce((sum, item) => sum + item.mass_g, 0)
   const mass_loss_percent =
     (100 * (mass_by_role(`byproduct`) - mass_by_role(`atmosphere`))) / precursor_mass
 
   const guidance = reaction.reactants.flatMap(({ phase }) => {
     const info = lookup_precursor_info(phase.formula)
     if (!info) return []
-    return [
-      ...(info.decomposition_K
-        ? [`${phase.formula}: approximate decomposition ${info.decomposition_K} K`]
-        : []),
-      ...(info.melting_K
-        ? [`${phase.formula}: approximate melting point ${info.melting_K} K`]
-        : []),
-      ...(info.hygroscopic ? [`${phase.formula}: hygroscopic`] : []),
-      ...(info.air_sensitive ? [`${phase.formula}: air-sensitive`] : []),
-      ...(info.hazards?.length
-        ? [`${phase.formula}: hazards — ${info.hazards.join(`, `)}`]
-        : []),
-      ...(info.notes ? [`${phase.formula}: ${info.notes}`] : []),
+    const { decomposition_K, melting_K, hazards, notes } = info
+    const lines: [shown: unknown, text: string | undefined][] = [
+      [decomposition_K, `approximate decomposition ${decomposition_K} K`],
+      [melting_K, `approximate melting point ${melting_K} K`],
+      [info.hygroscopic, `hygroscopic`],
+      [info.air_sensitive, `air-sensitive`],
+      [hazards?.length, `hazards — ${hazards?.join(`, `)}`],
+      [notes, notes],
     ]
+    return lines.filter(([shown]) => shown).map(([, text]) => `${phase.formula}: ${text}`)
   })
   return {
     target_mass_g,

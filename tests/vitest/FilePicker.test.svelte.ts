@@ -92,37 +92,27 @@ describe(`FilePicker`, () => {
     },
   )
 
+  // A filter with a single option could not narrow the list, so it is not offered
+  const two_cifs = (category_b: `crystal` | `molecule`) => [
+    mock_file(`a.cif`, `crystal`),
+    mock_file(`b.cif`, category_b),
+  ]
   it.each([
-    [`a single type`, false, [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `molecule`)]],
-    [
-      `a single category`,
-      true,
-      [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `crystal`)],
-    ],
-  ])(
-    `offers no filter for %s since it could not narrow the list`,
-    (_desc, show_cats, files) => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files, show_category_filters: show_cats },
-      })
-      expect(document.querySelector(`.legend`)).toBeNull()
-      expect(file_items()).toHaveLength(2)
-    },
-  )
-
-  it(`hides the type filters but keeps the category filters when only categories differ`, () => {
-    const files = [mock_file(`a.cif`, `crystal`), mock_file(`b.cif`, `molecule`)]
+    [`a single type`, false, two_cifs(`molecule`), []],
+    [`a single category`, true, two_cifs(`crystal`), []],
+    [`a single type but two categories`, true, two_cifs(`molecule`), [`crystal`, `molecule`]],
+  ])(`offers only narrowing filters for %s`, (_desc, show_cats, files, expected_labels) => {
     mount(FilePicker, {
       target: document.body,
-      props: { files, show_category_filters: true },
+      props: { files, show_category_filters: show_cats },
     })
-    expect(
-      [...document.querySelectorAll(`button.legend-item`)].map((btn) =>
-        btn.textContent?.trim(),
-      ),
-    ).toEqual([`crystal`, `molecule`])
+    const labels = [...document.querySelectorAll(`button.legend-item`)].map((btn) =>
+      btn.textContent?.trim(),
+    )
+    expect(labels).toEqual(expected_labels)
+    if (expected_labels.length === 0) expect(document.querySelector(`.legend`)).toBeNull()
     expect(document.querySelectorAll(`.divider, .format-circle`)).toHaveLength(0)
+    expect(file_items()).toHaveLength(2)
   })
 
   it(`shows and updates contrasting file type badges only when labels are set`, () => {

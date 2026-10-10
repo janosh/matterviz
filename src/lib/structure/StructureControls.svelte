@@ -184,6 +184,9 @@
     )
     atom_color_config = scale_type ? { ...next, scale_type } : next
   }
+  const set_atom_color_scale = (scale: AtomColorConfig[`scale`]): void => {
+    atom_color_config = { ...atom_color_config, scale }
+  }
 
   const apply_view_state = (state: StructureViewState): void => {
     const structure_settings = structuredClone(state.settings.structure)
@@ -868,12 +871,13 @@
   let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
 
   // Rotation is stored in radians; the sliders show degrees in [0, 360)
+  const wrap_degrees = (degrees: number): number => ((degrees % 360) + 360) % 360
   let rotation_degrees = $derived(
-    scene_props.rotation?.map((rad) => ((to_degrees(rad) % 360) + 360) % 360) ?? [0, 0, 0],
+    scene_props.rotation?.map((rad) => wrap_degrees(to_degrees(rad))) ?? [0, 0, 0],
   )
 
   function update_rotation(axis_idx: number, degrees: number) {
-    const radians = to_radians(((clamp(degrees, 0, 360) % 360) + 360) % 360)
+    const radians = to_radians(wrap_degrees(clamp(degrees, 0, 360)))
     update_scene({
       rotation: (scene_props.rotation ?? [0, 0, 0]).with(axis_idx, radians) as Vec3,
     })
@@ -1090,10 +1094,7 @@
             (value) => (color_scheme = value),
           ),
           atom_color_mode: atom_coloring,
-          atom_color_scale: local(
-            () => atom_color_config.scale,
-            (scale) => (atom_color_config = { ...atom_color_config, scale }),
-          ),
+          atom_color_scale: local(() => atom_color_config.scale, set_atom_color_scale),
           atom_color_property_key: atom_coloring,
         })}
       >
@@ -1171,10 +1172,7 @@
           <label {...setting_row(`atom_color_scale`)}>
             <span>Color scale</span>
             <ColorScaleSelect
-              bind:value={
-                () => atom_color_config.scale,
-                (scale) => (atom_color_config = { ...atom_color_config, scale })
-              }
+              bind:value={() => atom_color_config.scale, set_atom_color_scale}
               color_bar={{ tick_labels: 0, wrapper_style: `width: 100%;` }}
               style="min-width: 0; border: none"
               aria-label="Color scale"

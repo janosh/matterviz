@@ -76,31 +76,30 @@
   const hovered_elem_data = $derived(
     hovered_element ? (element_by_symbol.get(hovered_element) ?? null) : null,
   )
+  const element_color = (element: ElementSymbol): string =>
+    ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`
 
   // Use parseable bracket charges on the clipboard: "Li2 O" or "Fe[+3]2 O[-2]3".
   const plain_text_formula = $derived(
     sorted_elements
       .map(({ element, amount, oxidation_state }) => {
-        let text = element
-        if (oxidation_state !== undefined && oxidation_state !== 0) {
-          text += `[${format_oxi_state(oxidation_state)}]`
-        }
-        if (amount !== 1) text += format_amount(amount, `.12~g`)
-        return text
+        const oxi = format_oxi_state(oxidation_state)
+        return `${element}${oxi && `[${oxi}]`}${amount === 1 ? `` : format_amount(amount, `.12~g`)}`
       })
       .join(` `),
   )
 
   function handle_copy(event: ClipboardEvent & { currentTarget: HTMLElement }) {
     const selection = window.getSelection()
-    // Only intercept if user selected text fully within this formula
-    if (!selection || selection.isCollapsed) return
     const formula_el = event.currentTarget
+    // Only intercept a selection fully within this formula; otherwise the browser copies
     if (
+      !selection ||
+      selection.isCollapsed ||
       !formula_el.contains(selection.anchorNode) ||
       !formula_el.contains(selection.focusNode)
     )
-      return // Selection extends outside formula, let browser handle normally
+      return
     event.preventDefault()
     event.clipboardData?.setData(`text/plain`, plain_text_formula)
   }
@@ -131,9 +130,9 @@
   oncopy={handle_copy}
 >
   {#each sorted_elements as { element, amount, oxidation_state }, idx (idx)}
-    {@const color = ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`}
+    {@const color = element_color(element)}
     {@const brightness = perceived_brightness(color)}
-    {@const has_oxidation = oxidation_state !== undefined && oxidation_state !== 0}
+    {@const oxi = format_oxi_state(oxidation_state)}
     <span
       class="element-group"
       role="button"
@@ -156,15 +155,13 @@
       >
         {element}</span
       >
-      {#if has_oxidation || amount !== 1}
+      {#if oxi || amount !== 1}
         <span class="script-wrapper"
-          >{#if has_oxidation}
-            <sup class="oxi">{format_oxi_state(oxidation_state)}</sup>
+          >{#if oxi}
+            <sup class="oxi">{oxi}</sup>
           {/if}
           {#if amount !== 1}
-            <sub class="amt" class:no-sup={!has_oxidation}
-              >{format_amount(amount, amount_format)}</sub
-            >
+            <sub class="amt" class:no-sup={!oxi}>{format_amount(amount, amount_format)}</sub>
           {/if}
         </span>
       {/if}
@@ -174,8 +171,7 @@
 
 {#if hovered_elem_data}
   {@const { x: coord_x, y: coord_y } = tooltip_pos}
-  {@const tile_color =
-    ELEMENT_COLOR_SCHEMES[color_scheme]?.[hovered_elem_data.symbol] ?? `#666666`}
+  {@const tile_color = element_color(hovered_elem_data.symbol)}
   {@const transforms = {
     top: `translate(-50%, -100%)`,
     bottom: `translateX(-50%)`,

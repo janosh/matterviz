@@ -1,7 +1,7 @@
 import { readFile as read_file } from 'node:fs/promises'
 import { gunzipSync as gunzip_sync } from 'node:zlib'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { wait_for_3d_canvas } from '../helpers'
+import { require_bbox, wait_for_3d_canvas } from '../helpers'
 
 const extxyz_frame_coordinates = (content: string, frame_idx: number): number[][] => {
   const lines = content.trim().split(`\n`)
@@ -133,8 +133,7 @@ test.describe(`PhononModeExplorer`, () => {
     // markers are only a few px wide, so a click a few px off one still selects it, and the
     // cursor turns into a hand there. The LA branch is well separated from its neighbours
     const la_point = explorer.getByRole(`button`, { name: `Select band 3, q-point 4` })
-    const la_box = await la_point.boundingBox()
-    if (!la_box) throw new Error(`band 3 q-point 4 marker has no bounding box`)
+    const la_box = await require_bbox(la_point, `band 3 q-point 4 marker`)
     const plot_svg = explorer.getByRole(`application`, { name: /Wave Vector/ })
     const near_miss = [la_box.x + la_box.width + 3, la_box.y + la_box.height / 2] as const
     await page.mouse.move(...near_miss)

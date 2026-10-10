@@ -125,7 +125,7 @@
                 hint: `JSON with input structure, site properties, density grids, model/version, units and calculation settings`,
                 on_download: ({ filename, save }: FileExportContext) => {
                   const content = prediction_text()
-                  if (prediction && content)
+                  if (content)
                     return save(content, `${filename}-prediction.json`, `application/json`)
                 },
                 copy_text: prediction_text,

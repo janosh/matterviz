@@ -4,7 +4,7 @@ import { element_data } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_groups } from '#lib/element/groups.js'
 import { element_from_lammps_type } from '#lib/element/helpers.js'
-import { describe, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { CATEGORY_COUNTS as expected_counts } from '../test-fixtures'
 
 const get_element = (symbol: ElementSymbol) => {
@@ -33,16 +33,24 @@ test(`element data basics`, () => {
   expect(element_data).toHaveLength(118)
   expect(element_data[0].name).toBe(`Hydrogen`)
   expect(element_data[0].category).toBe(`diatomic nonmetal`)
-  expect(element_data[0].number).toBe(1)
   expect(element_data[0].atomic_mass).toBe(1.008)
   expect(element_data[0].electronegativity).toBe(2.2)
   expect(element_data[0].electron_configuration).toBe(`1s1`)
   expect(element_data[111].name).toBe(`Copernicium`)
   expect(element_data[111].summary).not.toMatch(/copernicum/i)
-  expect(element_data.every((element) => typeof element.density === `number`)).toBe(true)
   expect(element_by_symbol.size).toBe(element_data.length)
-  for (const element of element_data)
-    expect(element_by_symbol.get(element.symbol)).toBe(element)
+  for (const [idx, element] of element_data.entries()) {
+    const { symbol, period, column } = element
+    expect(element_by_symbol.get(symbol)).toBe(element)
+    expect(symbol, `element ${idx}`).toMatch(/^[A-Z][a-z]?$/)
+    expect(element.name, symbol).not.toBe(``)
+    expect(element.number, symbol).toBe(idx + 1)
+    expect(typeof element.density, symbol).toBe(`number`)
+    expect(period, symbol).toBeGreaterThanOrEqual(1)
+    expect(period, symbol).toBeLessThanOrEqual(7)
+    expect(column, symbol).toBeGreaterThanOrEqual(1)
+    expect(column, symbol).toBeLessThanOrEqual(18)
+  }
 })
 
 test(`category counts`, () => {
@@ -144,66 +152,82 @@ test(`fluorine has highest electronegativity`, () => {
   expect(get_element(`F`).electronegativity).toBe(max)
 })
 
-describe(`atomic_mass`, () => {
-  const to_key = (elem_a: ElementSymbol, elem_b: ElementSymbol) => `${elem_a}-${elem_b}`
-  const known_anomalies = new Set([
-    ...ATOMIC_MASS_INVERSIONS.map(([elem_a, elem_b]) => to_key(elem_a, elem_b)),
-    ...EQUAL_MASS_PAIRS.map(([elem_a, elem_b]) => to_key(elem_a, elem_b)),
-  ])
-
-  test(`anomalies match known set (detects data changes)`, () => {
-    const found_anomalies: string[] = []
-    for (let idx = 0; idx < element_data.length - 1; idx++) {
-      const current = element_data[idx]
-      const next = element_data[idx + 1]
-      if (next.atomic_mass <= current.atomic_mass) {
-        found_anomalies.push(to_key(current.symbol, next.symbol))
-      }
-    }
-    expect(found_anomalies.toSorted()).toEqual([...known_anomalies].toSorted())
-  })
+test(`atomic_mass anomalies match known set (detects data changes)`, () => {
+  const known_anomalies = [...ATOMIC_MASS_INVERSIONS, ...EQUAL_MASS_PAIRS].map(
+    ([elem_a, elem_b]) => `${elem_a}-${elem_b}`,
+  )
+  const found_anomalies = element_data
+    .slice(1)
+    .map((next, idx) => [element_data[idx], next] as const)
+    .filter(([prev, next]) => next.atomic_mass <= prev.atomic_mass)
+    .map(([prev, next]) => `${prev.symbol}-${next.symbol}`)
+  expect(found_anomalies.toSorted()).toEqual(known_anomalies.toSorted())
 })
 
-describe(`data completeness`, () => {
-  test(`all elements have valid structure`, () => {
-    for (const [idx, element] of element_data.entries()) {
-      expect(element.symbol, `element ${idx}`).toMatch(/^[A-Z][a-z]?$/)
-      expect(element.name, element.symbol).not.toBe(``)
-      expect(element.number, element.symbol).toBe(idx + 1)
-      expect(element.period, element.symbol).toBeGreaterThanOrEqual(1)
-      expect(element.period, element.symbol).toBeLessThanOrEqual(7)
-      expect(element.column, element.symbol).toBeGreaterThanOrEqual(1)
-      expect(element.column, element.symbol).toBeLessThanOrEqual(18)
-    }
-  })
+test(`main elements (Z <= 86) have required properties`, () => {
+  for (const element of element_data.filter((entry) => entry.number <= 86)) {
+    // All main elements need first_ionization
+    expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
-  test(`main elements (Z <= 86) have required properties`, () => {
-    for (const element of element_data.filter((entry) => entry.number <= 86)) {
-      // All main elements need first_ionization
-      expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
-
-      // Noble gases lack electronegativity; only Ar has a reported atomic radius.
-      if (element.category !== `noble gas`) {
-        expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
-      }
-      if (element.category === `noble gas` && element.symbol !== `Ar`) continue
-      if (element.symbol === `At` || element.symbol === `Fr`) continue
-      expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
+    // Noble gases lack electronegativity; only Ar has a reported atomic radius.
+    if (element.category !== `noble gas`) {
+      expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
     }
-  })
+    if (element.category === `noble gas` && element.symbol !== `Ar`) continue
+    if (element.symbol === `At` || element.symbol === `Fr`) continue
+    expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
+  }
 })
 
-describe(`element_from_lammps_type`, () => {
-  // LAMMPS types read as atomic numbers, wrapping past Og and clamping below 1 to H
-  test.each([
-    [1, `H`],
-    [14, `Si`],
-    [118, `Og`],
-    [119, `H`],
-    [120, `He`],
-    [0, `H`],
-    [-3, `H`],
-  ])(`type %d -> %s`, (atom_type, expected) => {
-    expect(element_from_lammps_type(atom_type)).toBe(expected)
-  })
+// Arsenic sublimes at 887 K at 1 atm; its 1090 K melting point needs 28 atm (triple point)
+test(`melting point is below boiling point wherever both are known (except subliming As)`, () => {
+  const inverted = element_data
+    .filter(({ melting_point: melt, boiling_point: boil }) => melt != null && boil != null)
+    .filter(({ melting_point: melt, boiling_point: boil }) => Number(melt) >= Number(boil))
+    .map(({ symbol }) => symbol)
+  expect(inverted).toEqual([`As`])
+})
+
+// neutrons describe the isotope whose mass number is the listed atomic mass (rounded): Mt
+// listed 278 u with 159 neutrons (Z + N = 268), Cf melted 750 K above its boiling point
+test.each(element_data.map((element) => [element.symbol, element] as const))(
+  `%s: protons, electrons and neutrons match Z and atomic mass`,
+  (_symbol, { number, protons, electrons, neutrons, atomic_mass }) => {
+    expect(protons).toBe(number)
+    expect(electrons).toBe(number)
+    expect(number + neutrons).toBe(Math.round(atomic_mass))
+  },
+)
+
+test.each([
+  [`La`, `[Xe] 5d1 6s2`, `5d1`, [2, 8, 18, 18, 9, 2]],
+  [`Ds`, `*[Rn] 5f14 6d8 7s2`, `6d8`, [2, 8, 18, 32, 32, 16, 2]],
+  [`Rg`, `*[Rn] 5f14 6d9 7s2`, `6d9`, [2, 8, 18, 32, 32, 17, 2]],
+])(`%s electron configurations agree`, (symbol, semantic, full_end, shells) => {
+  const element = get_element(symbol as ElementSymbol)
+  expect(element.electron_configuration_semantic).toBe(semantic)
+  expect(element.electron_configuration.endsWith(full_end)).toBe(true)
+  expect(element.shells).toEqual(shells)
+})
+
+test(`semantic electron configurations separate every subshell with a space`, () => {
+  const unspaced = element_data
+    .filter(({ electron_configuration_semantic: config }) =>
+      /\d[spdf]\d+(?=[1-7][spdf])/.test(config),
+    )
+    .map(({ symbol }) => symbol)
+  expect(unspaced).toEqual([])
+})
+
+// LAMMPS types read as atomic numbers, wrapping past Og and clamping below 1 to H
+test.each([
+  [1, `H`],
+  [14, `Si`],
+  [118, `Og`],
+  [119, `H`],
+  [120, `He`],
+  [0, `H`],
+  [-3, `H`],
+])(`element_from_lammps_type(%d) -> %s`, (atom_type, expected) => {
+  expect(element_from_lammps_type(atom_type)).toBe(expected)
 })

@@ -106,7 +106,6 @@
   let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
   let start_frame = $state(0)
   let end_frame = $derived(last_frame_idx)
-  // Validate and constrain frame range
   $effect(() => {
     start_frame = clamp(start_frame, 0, last_frame_idx)
     end_frame = clamp(end_frame, start_frame, last_frame_idx)
@@ -121,17 +120,11 @@
     running !== null || flight_running || !run || export_frame_count === 0,
   )
   // Preview is frame zero; only gate ranges containing it. Writers validate every frame.
-  let poscar_reason = $derived(
-    run && start_frame === 0
-      ? fractional_export_unavailable_reason(run.preview.structure)
-      : undefined,
+  const gated_preview = $derived(run && start_frame === 0 ? run.preview.structure : undefined)
+  const poscar_reason = $derived(
+    gated_preview && fractional_export_unavailable_reason(gated_preview),
   )
-
-  const xyz_reason = $derived(
-    run && start_frame === 0
-      ? xyz_export_unavailable_reason(run.preview.structure)
-      : undefined,
-  )
+  const xyz_reason = $derived(gated_preview && xyz_export_unavailable_reason(gated_preview))
 
   let canvas = $state.raw<HTMLCanvasElement | null>(null)
   $effect(() =>
@@ -144,11 +137,9 @@
     label: format === `webm` ? `WebM` : `MP4`,
     supported: is_video_export_supported(format),
   }))
-  // Estimated file size in MB
-  let file_size_mb = $derived.by(() => {
-    if (!canvas) return 0
-    return (bitrate_mbps * 1e6 * video_frame_count) / video_fps / 8 / 1024 / 1024
-  })
+  let file_size_mb = $derived(
+    canvas ? (bitrate_mbps * 1e6 * video_frame_count) / video_fps / 8 / 1024 / 1024 : 0,
+  )
 
   const frame_at: TrajectoryFrameResolver = (idx, signal) =>
     resolve_frame

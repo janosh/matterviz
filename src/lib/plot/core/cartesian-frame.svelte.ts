@@ -25,6 +25,7 @@ import {
   invert_rect_range,
   normalize_y2_sync,
   resolve_axis_ranges,
+  snapshot_ranges,
   sync_y2_range,
   vec2_equal,
 } from '#lib/plot/core/interactions.js'
@@ -156,9 +157,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // the reset target; `current` is the live view every gesture (pan, wheel, rect zoom) edits.
   // The frame never writes the chart's axis props, so a pinned range survives any gesture and
   // a reset lands back on it. The two must never share a Vec2: on_reset restores current from
-  // initial, so one in-place edit of a current range would silently rewrite the reset target.
-  const copy_axis_ranges = (src: AxisRanges): AxisRanges =>
-    Object.fromEntries(FACET_AXES.map((axis) => [axis, [...src[axis]] as Vec2])) as AxisRanges
+  // initial, so one in-place edit of a current range would silently rewrite the reset target
+  // (hence snapshot_ranges' fresh tuples).
 
   let ranges = $state<{ initial: AxisRanges; current: AxisRanges }>({
     initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
@@ -281,7 +281,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         ranges.current[axis] = [...range] as Vec2
       }
     } else if (!axis_ranges_equal(initial, next)) {
-      ranges = { initial: { ...next }, current: copy_axis_ranges(next) }
+      ranges = { initial: { ...next }, current: snapshot_ranges(next) }
     }
     // sync after the grid reconciles, or a facet panel derives y2 from the pre-grid y
     facet.apply_ranges()
@@ -431,15 +431,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   }
   // An explicitly styled or dragged legend stays outside solver ownership, but its measured
   // rectangle remains an exclusion for the automatic items
-  const legend_pinned_rects = $derived.by((): Rect[] => {
-    if (
-      !legend_element ||
-      !(legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
-    ) {
-      return []
-    }
-    return [{ ...(legend_manual_position ?? legend_offset), ...legend_footprint }]
-  })
+  const legend_pinned_rects: Rect[] = $derived(
+    legend_element && (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
+      ? [{ ...(legend_manual_position ?? legend_offset), ...legend_footprint }]
+      : [],
+  )
 
   const legend_item = $derived(
     create_legend_decoration_item({
@@ -584,7 +580,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     on_reset: () => {
       if (facet.reset_ranges()) return
-      ranges.current = copy_axis_ranges(ranges.initial)
+      ranges.current = snapshot_ranges(ranges.initial)
       apply_y2_sync()
     },
   })
@@ -636,6 +632,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     set hovered_series_idx(idx: number | null) {
       hovered_series_idx = idx
     },
+    // Opacity of a series' marks: faded while the legend hovers another series
+    series_opacity: (series_idx: number): number =>
+      hovered_series_idx !== null && hovered_series_idx !== series_idx ? 0.25 : 1,
     get hovered_ref_line_idx() {
       return hovered_ref_line_idx
     },
@@ -713,6 +712,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get has_y2() {
       return opts.has_y2()
+    },
+    // The controls' range reset targets: x2/y2 only while they carry data
+    get controls_auto_ranges() {
+      const auto = opts.auto_ranges()
+      return {
+        ...auto,
+        x2: opts.has_x2() ? auto.x2 : undefined,
+        y2: opts.has_y2() ? auto.y2 : undefined,
+      }
     },
     get legend_visible() {
       return opts.legend_visible()

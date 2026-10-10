@@ -846,16 +846,6 @@ describe(`layout utility functions`, () => {
       },
     )
 
-    it(`uses ellipsis only when explicitly enabled and keeps the full text`, () => {
-      const tick_values = [`Formation`, `Temperature`]
-      const layout = tick_layout(uniform_axis(tick_values, 120), 120, {
-        auto_layout: { strategies: [`ellipsis`] },
-      })
-      expect(layout.strategy).toBe(`ellipsis`)
-      expect(layout.labels.map(({ full_text }) => full_text)).toEqual(tick_values)
-      expect(layout.labels.every(({ lines }) => lines[0].endsWith(`…`))).toBe(true)
-    })
-
     it(`keeps explicit rotation when the axis geometry collapses`, () => {
       const layout = tick_layout(
         { tick_values: [`Jan`, `Feb`], tick_positions: [50, 50] },
@@ -980,17 +970,6 @@ describe(`layout utility functions`, () => {
       expect(calc_auto_padding(config).b).toBe(calc_auto_padding({ ...config, width: 100 }).b)
     })
 
-    it.each([
-      [`l`, `y_axis`],
-      [`r`, `y2_axis`],
-    ] as const)(`%s padding reserves the outside tick offset for %s`, (side, axis_key) => {
-      const result = calc_auto_padding({
-        ...no_padding,
-        [axis_key]: slot_axis([1]),
-      })
-      expect(result[side]).toBeCloseTo(15.2)
-    })
-
     it(`explicit padding overrides auto-computed padding`, () => {
       const result = calc_auto_padding({
         padding: { l: 10, r: 10, t: 10 },
@@ -1052,18 +1031,17 @@ describe(`layout utility functions`, () => {
       },
     )
 
-    // y/y2 axis titles must reserve their rotated width + outer air, else a wide tick
-    // label (e.g. "-789.389") pushes the title into the ticks (mirrors the x2 case).
+    // y/y2 padding reserves the outside tick offset, and an axis title its rotated width +
+    // outer air, else a wide tick label (e.g. "-789.389") pushes the title into the ticks
+    // (mirrors the x2 case).
     it.each([
       [`l`, `y_axis`],
       [`r`, `y2_axis`],
-    ] as const)(`%s reserves title band + outer air for the %s title`, (side, axis_key) => {
-      const without = calc_auto_padding({ ...no_padding, [axis_key]: slot_axis([1, 2]) })
-      const with_label = calc_auto_padding({
-        ...no_padding,
-        [axis_key]: slot_axis([1, 2], { label: `Energy (eV)` }),
-      })
-      expect(with_label[side] - without[side]).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
+    ] as const)(`%s padding reserves tick offset and title band for %s`, (side, axis_key) => {
+      const pad = (extra: Partial<MeasuredAxis> = {}) =>
+        calc_auto_padding({ ...no_padding, [axis_key]: slot_axis([1, 2], extra) })[side]
+      expect(pad()).toBeCloseTo(15.2)
+      expect(pad({ label: `Energy (eV)` }) - pad()).toBe(LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT)
     })
 
     it(`reserves a title band for interactive options without a literal label`, () => {

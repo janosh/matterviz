@@ -498,7 +498,7 @@
     new Set(selected_cells.map((pos) => cell_pos_key(pos.x_idx, pos.y_idx))),
   )
   let last_selected_cell: CellPos | null = null
-  let brush_start: CellPos | null = $state(null)
+  let brush_start: CellPos | null = null
   let brush_end: CellPos | null = null
 
   // Rectangle between two corners in rendered order and its cells, minus the hidden triangle.
@@ -565,17 +565,11 @@
     if (tooltip === false || !tooltip_div) return
     // Flip to the opposite side of the cursor near viewport edges; viewport coordinates avoid
     // forced layout reads on large grids
+    const flip = (pos: number, offset: number, size: number, limit: number) =>
+      Math.max(0, pos + offset + size > limit ? pos - offset - size : pos + offset)
     const { offsetWidth: width, offsetHeight: height } = tooltip_div
-    const left =
-      event.clientX + 10 + width > globalThis.innerWidth
-        ? event.clientX - 10 - width
-        : event.clientX + 10
-    const top =
-      event.clientY + 12 + height > globalThis.innerHeight
-        ? event.clientY - 12 - height
-        : event.clientY + 12
-    tooltip_div.style.left = `${Math.max(0, left)}px`
-    tooltip_div.style.top = `${Math.max(0, top)}px`
+    tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
+    tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
     tooltip_div.classList.add(`visible`)
     if (typeof tooltip === `function`) {
       tooltip_cell = context
@@ -1093,12 +1087,10 @@
     text-overflow: clip;
     align-items: flex-end;
     padding: 2px;
-    &.x-edge-top {
+    &:is(.x-edge-top, .x-edge-bottom) {
       min-height: 1.6em;
-      align-items: flex-end;
     }
     &.x-edge-bottom {
-      min-height: 1.6em;
       align-items: flex-start;
     }
   }

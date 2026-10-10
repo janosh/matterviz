@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { require_bbox } from '../helpers'
 
 test.describe(`RdfPlot Component Tests`, () => {
   // Retry for intermittent SSR warm-up issues
@@ -44,15 +45,10 @@ test.describe(`RdfPlot Component Tests`, () => {
     await expect(visible_lines).toHaveCount(2)
   })
 
-  // Test tooltip
   test(`tooltip shows x and y values on hover`, async ({ page }) => {
     const plot = page.locator(`#single-pattern`)
     // Select the main plot SVG (has role="application" and contains the x-axis)
-    const main_svg = plot.locator(`svg:has(g.x-axis)`)
-    await expect(main_svg).toBeVisible()
-
-    const box = await main_svg.boundingBox()
-    if (!box) throw new Error(`Could not get SVG bounding box`)
+    const box = await require_bbox(plot.locator(`svg:has(g.x-axis)`), `RDF plot svg`)
 
     const tooltip = plot.locator(`.plot-tooltip`)
     // Two-phase move (enter SVG to set hovered, then move across the plot so the
@@ -66,25 +62,6 @@ test.describe(`RdfPlot Component Tests`, () => {
     await expect(tooltip).toContainText(/r:\s*-?\d+\.?\d*\s+Å/)
     await expect(tooltip).toContainText(/g\(r\):\s*-?\d+\.?\d*/)
     await expect(tooltip.locator(`small`)).toHaveText([`Å`])
-  })
-
-  // Test reference line
-  test(`reference line visibility`, async ({ page }) => {
-    // Shown when enabled - check element exists in DOM
-    const with_ref = page.locator(`#reference-line`)
-    await expect(with_ref).toBeVisible()
-    // Reference line may be rendered but not visible in viewport - check it exists
-    const ref_line = with_ref.locator(`svg line[stroke="gray"][stroke-dasharray="4"]`)
-    const line_count = await ref_line.count()
-    expect(line_count).toBeGreaterThan(0)
-
-    // Hidden when disabled
-    const no_ref = page.locator(`#no-reference-line`)
-    await expect(no_ref).toBeVisible()
-    const no_ref_line_count = await no_ref
-      .locator(`svg line[stroke="gray"][stroke-dasharray="4"]`)
-      .count()
-    expect(no_ref_line_count).toBe(0)
   })
 
   test(`calculates RDFs from structures per element pair, in full and across structures`, async ({

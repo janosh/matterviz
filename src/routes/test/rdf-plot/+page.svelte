@@ -7,20 +7,19 @@
   import al2lu from '#site/structures/mp-1234.json'
   import palladium from '#site/structures/mp-2.json'
 
-  // Synthetic RDF patterns for testing
+  // Synthetic RDF patterns: decaying baseline plus Gaussian coordination-shell peaks
+  const r_vals = Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2)
+  const gauss = (r_val: number, center: number, width: number) =>
+    Math.exp(-((r_val - center) ** 2) / width)
+
   const synthetic_pattern: RdfEntry = {
     label: `Synthetic Li-O`,
     pattern: {
-      r: Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2),
-      g_r: Array.from({ length: 50 }, (_, idx) => {
-        const r_val = (idx + 1) * 0.2
-        return (
-          1 -
-          Math.exp(-r_val / 2) +
-          2.5 * Math.exp(-((r_val - 2) ** 2) / 0.3) +
-          1.8 * Math.exp(-((r_val - 4) ** 2) / 0.3)
-        )
-      }),
+      r: r_vals,
+      g_r: r_vals.map(
+        (r_val) =>
+          1 - Math.exp(-r_val / 2) + 2.5 * gauss(r_val, 2, 0.3) + 1.8 * gauss(r_val, 4, 0.3),
+      ),
       element_pair: [`Li`, `O`],
     },
     color: PLOT_COLORS[0],
@@ -31,16 +30,11 @@
     {
       label: `Synthetic O-O`,
       pattern: {
-        r: Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2),
-        g_r: Array.from({ length: 50 }, (_, idx) => {
-          const r_val = (idx + 1) * 0.2
-          return (
-            1 -
-            Math.exp(-r_val / 3) +
-            1.5 * Math.exp(-((r_val - 3) ** 2) / 0.4) +
-            1.2 * Math.exp(-((r_val - 6) ** 2) / 0.4)
-          )
-        }),
+        r: r_vals,
+        g_r: r_vals.map(
+          (r_val) =>
+            1 - Math.exp(-r_val / 3) + 1.5 * gauss(r_val, 3, 0.4) + 1.2 * gauss(r_val, 6, 0.4),
+        ),
         element_pair: [`O`, `O`],
       },
       color: PLOT_COLORS[1],

@@ -208,19 +208,8 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
           steps: [0, 4],
         },
         polarizability: {
-          values: Float64Array.from(
-            Array.from({ length: 3 }, (_unused, idx) => [
-              1 + idx,
-              0,
-              0,
-              0,
-              2,
-              0,
-              0,
-              0,
-              3,
-            ]).flat(),
-          ),
+          // diag(1 + idx, 2, 3) at each of the three samples
+          values: Float64Array.from([1, 2, 3].flatMap((xx) => [xx, 0, 0, 0, 2, 0, 0, 0, 3])),
           sample_shape: [3, 3],
           steps: [0, 2, 4],
         },

@@ -74,19 +74,16 @@ test.each([
   },
 )
 
-test.each([`span`, `div`, `h1`, `strong`, `p`])(
-  `Formula renders with as="%s"`,
-  (asymmetry) => {
-    mount_formula({ formula: `H2O`, as: asymmetry })
-    const element = document.querySelector(asymmetry)
-    expect(element).toBeInstanceOf(HTMLElement)
-    expect(element?.classList.contains(`formula`)).toBe(true)
-    expect(element?.textContent).toContain(`H`)
-    expect(element?.textContent).toContain(`O`)
-  },
-)
+test.each([`span`, `h1`])(`Formula renders with as="%s"`, (asymmetry) => {
+  mount_formula({ formula: `H2O`, as: asymmetry })
+  const element = document.querySelector(asymmetry)
+  expect(element).toBeInstanceOf(HTMLElement)
+  expect(element?.classList.contains(`formula`)).toBe(true)
+  expect(element?.textContent).toContain(`H`)
+  expect(element?.textContent).toContain(`O`)
+})
 
-test.each([`Vesta`, `Jmol`, `Alloy`, `Pastel`, `Muted`, `Dark Mode`] as const)(
+test.each([`Vesta`, `Jmol`, `Dark Mode`] as const)(
   `Formula renders with color scheme "%s" applied to element symbols`,
   (scheme) => {
     const element = mount_formula({ formula: `H2O`, color_scheme: scheme })

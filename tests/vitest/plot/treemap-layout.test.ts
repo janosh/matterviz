@@ -6,10 +6,7 @@ import {
   tile_rects,
   treemap_hover_veil,
 } from '#lib/plot/treemap/treemap.js'
-import {
-  compute_sunburst_layout,
-  sunburst_from_paths,
-} from '#lib/plot/core/utils/hierarchy-layout.js'
+import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
 import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
 import { DEFAULTS } from '#lib/settings.js'
 import {
@@ -188,27 +185,13 @@ describe(`compute_treemap_layout`, () => {
       { label: `s2`, value: 3 },
       { label: `s3`, value: 12 },
     ]
-    const { arcs, rects } = compute_treemap_layout(long_tail, size, {
+    const { rects } = compute_treemap_layout(long_tail, size, {
       min_fraction: 0.05,
       ...no_pad,
     })
-    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `big`, `s3`, `Other`])
-    expect(arcs[3]).toMatchObject({ is_other: true, value: 6 })
+    // labels/is_other come from the shared layout (sunburst-layout tests); rects[3] is
+    // Other (s1 + s2 = 6%)
     expect(area(rects[3])).toBeCloseTo(size.width * size.height * 0.06, 6)
-  })
-
-  test(`round-trips sunburst_from_paths data (shared builders)`, () => {
-    const data = sunburst_from_paths([
-      { path: [`cubic`, `225`], value: 12 },
-      { path: [`cubic`, `221`], value: 3 },
-      { path: [`hexagonal`, `194`], value: 5 },
-    ])
-    const { arcs, rects } = compute_treemap_layout(data, size, no_pad)
-    expect(arcs.filter((arc) => arc.depth === 2)).toHaveLength(3)
-    const leaf_area_sum = arcs
-      .filter((arc) => arc.is_leaf)
-      .reduce((sum, arc) => sum + area(rects[arc.node_idx]), 0)
-    expect(leaf_area_sum).toBeCloseTo(size.width * size.height, 4)
   })
 })
 

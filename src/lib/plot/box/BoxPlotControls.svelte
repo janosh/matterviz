@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import { track_settings } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import type {
@@ -11,7 +12,7 @@
   } from '#lib/plot/index.js'
   import { PlotControls } from '#lib/plot/index.js'
   import type { PlotControlsProps } from '#lib/plot/core/types.js'
-  import { DEFAULTS, enum_labels, SETTINGS_CONFIG } from '#lib/settings.js'
+  import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
 
   let {
@@ -59,13 +60,6 @@
   )
 </script>
 
-<!-- select options come from the settings schema so labels/values have a single source of truth -->
-{#snippet options(enum_map: Record<string, string>)}
-  {#each Object.entries(enum_map) as [value, label] (value)}
-    <option {value}>{label}</option>
-  {/each}
-{/snippet}
-
 <PlotControls
   bind:show_controls
   bind:controls_open
@@ -96,27 +90,27 @@
       <label>
         <span>Glyph</span>
         <select bind:value={kind}>
-          {@render options(enum_labels(SETTINGS_CONFIG.box.kind))}
+          {@render enum_options(SETTINGS_CONFIG.box.kind)}
         </select>
       </label>
       {#if kind !== `box`}
         <label>
           <span>Side</span>
           <select bind:value={side}>
-            {@render options(enum_labels(SETTINGS_CONFIG.box.side))}
+            {@render enum_options(SETTINGS_CONFIG.box.side)}
           </select>
         </label>
       {/if}
       <label>
         <span>Whiskers</span>
         <select bind:value={whisker_mode}>
-          {@render options(enum_labels(SETTINGS_CONFIG.box.whisker_mode))}
+          {@render enum_options(SETTINGS_CONFIG.box.whisker_mode)}
         </select>
       </label>
       <label>
         <span>Points</span>
         <select bind:value={points}>
-          {@render options(enum_labels(SETTINGS_CONFIG.box.points))}
+          {@render enum_options(SETTINGS_CONFIG.box.points)}
         </select>
       </label>
     </div>

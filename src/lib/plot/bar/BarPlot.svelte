@@ -433,19 +433,13 @@
 
         if (is_line) {
           const line_points = srs.x.map((x_val, point_idx) => {
-            const y_val = srs.y[point_idx]
-            const coord_x = vertical
-              ? category_scale(x_val) / base_w
-              : value_scale(y_val) / base_w
-            const coord_y = vertical
-              ? value_scale(y_val) / base_h
-              : category_scale(x_val) / base_h
-            return { x: clamp01(coord_x), y: clamp01(coord_y) }
+            const [cat_px, val_px] = [category_scale(x_val), value_scale(srs.y[point_idx])]
+            const [px_x, px_y] = vertical ? [cat_px, val_px] : [val_px, cat_px]
+            return { x: clamp01(px_x / base_w), y: clamp01(px_y / base_h) }
           })
-          const markers = srs.markers ?? DEFAULT_MARKERS
           obstacle_series.push({
             points: line_points,
-            draws_line: markers === `line` || markers === `line+points`,
+            draws_line: (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
           })
           return
         }
@@ -484,9 +478,17 @@
       y_axis: srs?.y_axis,
     })),
   )
-  // Finite color/size bounds of the visible line series drive the shared color/size scales
+  // Finite color/size bounds of the visible line series drive the shared color/size scales.
+  // Reads only the scale types, so scheme/radius changes don't re-scan the values.
+  const color_scale_type = $derived(
+    typeof color_scale === `string` ? undefined : color_scale.type,
+  )
+  const size_scale_type = $derived(size_scale.type)
   const scale_ranges = $derived(
-    collect_scale_ranges(visible_series.filter((srs) => srs.render_mode === `line`)),
+    collect_scale_ranges(
+      visible_series.filter((srs) => srs.render_mode === `line`),
+      { color: color_scale_type, size: size_scale_type },
+    ),
   )
   let color_scale_fn = $derived(create_color_scale(color_scale, scale_ranges.color_range))
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
@@ -506,10 +508,10 @@
     const point_style = first_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
-      ...(series_markers === `line` || series_markers === `line+points`
+      ...(series_markers.includes(`line`)
         ? { line_color: series_color, line_dash: srs.line_style?.line_dash }
         : {}),
-      ...(series_markers === `points` || series_markers === `line+points`
+      ...(series_markers.includes(`points`)
         ? {
             symbol_type: point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
             symbol_color:
@@ -699,10 +701,7 @@
           <g
             class={is_line ? `line-series` : `bar-series`}
             data-series-idx={series_idx}
-            opacity={frame.hovered_series_idx !== null &&
-            frame.hovered_series_idx !== series_idx
-              ? 0.25
-              : 1}
+            opacity={frame.series_opacity(series_idx)}
           >
             {#if is_line}
               <!-- Render as line -->
@@ -712,10 +711,8 @@
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
               {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
               {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
-              {@const show_line =
-                series_markers === `line` || series_markers === `line+points`}
-              {@const show_points =
-                series_markers === `points` || series_markers === `line+points`}
+              {@const show_line = series_markers.includes(`line`)}
+              {@const show_points = series_markers.includes(`points`)}
               {@const points = compute_line_points({
                 series: srs,
                 series_idx,
@@ -794,29 +791,25 @@
                       : null
                   return points_in_view.find((point) => point.idx === parseInt(attr ?? ``, 10))
                 }}
-                {@const leaving = (evt: MouseEvent | FocusEvent) =>
-                  (evt.relatedTarget instanceof Element
-                    ? evt.relatedTarget.closest(`.line-points`)
-                    : null) !== evt.currentTarget}
+                {@const hover_target = (evt: MouseEvent | FocusEvent) => {
+                  const point = get_pt(evt)
+                  if (point) set_hover(point, evt)
+                }}
+                {@const leave = (evt: MouseEvent | FocusEvent) => {
+                  const next = evt.relatedTarget instanceof Element ? evt.relatedTarget : null
+                  if (next?.closest(`.line-points`) !== evt.currentTarget) clear_point_hover()
+                }}
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
                 <g
                   class="line-points"
                   role="group"
-                  onmouseover={(evt) => {
-                    const point = get_pt(evt)
-                    if (point) set_hover(point, evt)
-                  }}
+                  onmouseover={hover_target}
                   onfocusin={(evt) => {
                     roving.focusin(evt)
-                    const point = get_pt(evt)
-                    if (point) set_hover(point, evt)
+                    hover_target(evt)
                   }}
-                  onmouseout={(evt) => {
-                    if (leaving(evt)) set_hover(null, evt)
-                  }}
-                  onfocusout={(evt) => {
-                    if (leaving(evt)) set_hover(null, evt)
-                  }}
+                  onmouseout={leave}
+                  onfocusout={leave}
                   onclick={(evt) => {
                     const point = get_pt(evt)
                     if (point && clickable) do_click(point, evt)
@@ -869,6 +862,8 @@
               {@const rect_at = bar_geometry(srs, series_idx)}
               {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
                 {@const color = srs.color ?? bar_state.color}
+                {@const click_bar = (event: MouseEvent | KeyboardEvent) =>
+                  on_bar_click?.({ ...get_bar_data(series_idx, bar_idx, color), event })}
                 {@const {
                   c0: cat_start,
                   c1: cat_end,
@@ -912,19 +907,12 @@
                     style:cursor={on_bar_click ? `pointer` : undefined}
                     onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
                     onmouseleave={clear_hover}
-                    onclick={(evt) =>
-                      on_bar_click?.({
-                        ...get_bar_data(series_idx, bar_idx, color),
-                        event: evt,
-                      })}
+                    onclick={click_bar}
                     onkeydown={(evt) => {
                       if (roving.handle_keydown(evt)) return
                       if (is_activation_key(evt)) {
                         evt.preventDefault()
-                        on_bar_click?.({
-                          ...get_bar_data(series_idx, bar_idx, color),
-                          event: evt,
-                        })
+                        click_bar(evt)
                       }
                     }}
                   />
@@ -994,11 +982,7 @@
       bind:y_axis
       bind:y2_axis={y2_axis_prop}
       bind:display
-      auto_ranges={{
-        ...auto_ranges,
-        x2: show_x2 ? auto_ranges.x2 : undefined,
-        y2: show_y2 ? auto_ranges.y2 : undefined,
-      }}
+      auto_ranges={frame.controls_auto_ranges}
       children={controls_extra}
     />
   {/snippet}

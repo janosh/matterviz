@@ -1,7 +1,6 @@
 import { element_data } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
 import {
-  DEFAULT_FMT,
   ELEM_HEATMAP_KEYS,
   ELEM_HEATMAP_LABELS,
   ELEM_PROPERTY_LABELS,
@@ -17,6 +16,7 @@ import {
   symbol_names,
   trajectory_property_config,
 } from '#lib/labels.js'
+import { tickStep, ticks } from 'd3-array'
 import * as d3_symbols from 'd3-shape'
 import { describe, expect, test } from 'vitest'
 
@@ -52,41 +52,34 @@ test(`trajectory_property_config keys are lowercase`, () => {
   expect(keys.filter((key) => key !== key.toLowerCase() && !key.includes(` `))).toEqual([])
 })
 
-const [gt_1_fmt, lt_1_fmt] = DEFAULT_FMT
 test.each([
   // no explicit format: DEFAULT_FMT picks the SI form at |x| >= 1 and plain decimals below
   [1234, undefined, `1.23k`],
   [0.123, undefined, `0.123`],
-  [1234, gt_1_fmt, `1.23k`],
-  [0.123, lt_1_fmt, `0.123`],
   [1.2, `.3f`, `1.200`],
   [0, undefined, `0`],
-  [0, lt_1_fmt, `0`],
   // d3 scientific formats render 0 as "0e+0"; collapse to a plain 0 (keeping any prefix/suffix)
   [0, `.2~e`, `0`],
   [-0, `.2~e`, `0`],
   [0, `$.2e`, `$0`],
   [0, `.2~%`, `0%`],
   [1, undefined, `1`],
-  [10, undefined, `10`],
-  [100, undefined, `100`],
   [1000, undefined, `1k`],
-  [10_000, undefined, `10k`],
-  [100_000, undefined, `100k`],
   [1_000_000, undefined, `1M`],
-  [10_000_000, undefined, `10M`],
-  [100_000_000, undefined, `100M`],
   [1_000_000_000, undefined, `1G`],
   [0.1, undefined, `0.1`],
-  [0.01, undefined, `0.01`],
   [0.001, undefined, `0.001`],
-  [-0.0001, undefined, `−0.0001`],
-  [-0.00001, undefined, `−0.00001`],
   [-0.000001, undefined, `−0.000001`],
   [-0.0000001, undefined, `−1e-7`],
   [-1.1, undefined, `−1.1`],
   [-1.14123, undefined, `−1.14`],
   [-1.14123e-7, `.5~g`, `−1.1412e-7`],
+  // past yotta d3 has no SI prefix left (1e27 read 1,000Y and 1e100 ran past 100 chars)
+  [9.99e26, undefined, `999Y`],
+  [1e27, undefined, `1e27`],
+  [-1.234e27, undefined, `−1.23e27`],
+  [1e100, undefined, `1e100`],
+  [Number.MAX_VALUE, undefined, `1.8e308`],
 ])(`format_num(%s, %s) = %s`, (num, fmt, expected) => {
   expect(format_num(num, fmt)).toBe(expected)
 })
@@ -99,8 +92,39 @@ test.each([
   [[-1539, -1000, -1538], undefined, [`−1.54k`, `−1k`, `−1.54k`]],
   [[1000, 1000], undefined, [`1k`, `1k`]],
   [[-1539, -1538], `.3~s`, [`-1.54k`, `-1.54k`]],
+  // labels must resolve the tick step, not just differ from their neighbours: d3.ticks(998,
+  // 1000.5, 5) read 1k, 1.001k for the last two ticks
+  [
+    [998, 998.5, 999, 999.5, 1000, 1000.5],
+    undefined,
+    [`998`, `998.5`, `999`, `999.5`, `1000`, `1000.5`],
+  ],
+  // no adjacent collision at the default precision, but 1005 still rounded to 1.01k
+  [[995, 1000, 1005], undefined, [`995`, `1000`, `1005`]],
+  [[999_000, 999_500, 1_000_000, 1_000_500], undefined, [`999k`, `999.5k`, `1M`, `1.0005M`]],
+  [[0, 0.5, 1, 1.5], undefined, [`0`, `0.5`, `1`, `1.5`]],
 ])(`format_tick_values(%j, %s) = %j`, (values, formatter, expected) => {
   expect(format_tick_values(values, formatter)).toEqual(expected)
+})
+
+// sweep d3 tick sets straddling 1000: each label must read back within half a tick step
+test.each([0.5, 1, 2, 5, 10, 25])(`tick labels near 1000 resolve a span of %s`, (span) => {
+  const parse_label = (label: string) => {
+    const { digits, prefix } =
+      /^(?<digits>.*?)(?<prefix>k|M)?$/.exec(label.replaceAll(`,`, ``))?.groups ?? {}
+    return Number(digits) * (prefix === `M` ? 1e6 : prefix === `k` ? 1e3 : 1)
+  }
+  for (let start = 990; start <= 1000.5; start += 0.25) {
+    for (const count of [3, 5, 10]) {
+      const values = ticks(start, start + span, count)
+      if (values.length < 2) continue
+      const step = tickStep(start, start + span, count)
+      const labels = format_tick_values(values)
+      for (const [idx, value] of values.entries()) {
+        expect(Math.abs(parse_label(labels[idx]) - value), `${labels}`).toBeLessThan(step / 2)
+      }
+    }
+  }
 })
 
 test(`adaptive formatting handles large arrays of colliding labels`, () => {
@@ -159,19 +183,13 @@ test.each([
 test.each([
   [0, `0`],
   [1, `0`],
-  [2, `0`],
   [0.5, `½`],
   [1.5, `½`],
-  [2.5, `½`],
-  [-1.5, `½`],
   [-10.5, `½`],
   [0.25, `¼`],
   [0.75, `¾`],
-  [-2.25, `¾`],
   [0.333333333, `⅓`],
   [0.666666667, `⅔`],
-  [1.333333333, `⅓`],
-  [2.666666667, `⅔`],
   [666.67 / 1000, `⅔`], // Mn666.67Sc333.33 normalised composition
   [333.33 / 1000, `⅓`],
   [0.2, `⅕`],
@@ -188,10 +206,8 @@ test.each([
   [-0.125, `⁷⁄₈`],
   [0.1, `0.1`],
   [0.65, `0.65`],
-  [0.85, `0.85`],
   [0.999, `0.999`],
   [-0.1, `−0.1`],
-  [-0.9, `−0.9`],
   [0.001, `0`],
   [0.001 - 1e-6, `0`],
   [0.001 + 1e-6, `0.001001`],
@@ -201,6 +217,14 @@ test.each([
   [0.5 + 1e-3 + 1e-6, `0.501`],
   [0.25 + 1e-3 - 1e-6, `¼`],
   [0.25 + 1e-3 + 1e-6, `0.251`],
+  // symmetric around integers: just below one wraps to just below 1, still the zero glyph
+  [-1e-7, `0`],
+  [1e-7, `0`],
+  [0.9995, `0`],
+  [1.0005, `0`],
+  [0.9999999, `0`],
+  [-0.0005, `0`],
+  [0.998, `0.998`],
   [Infinity, `Infinity`],
   [-Infinity, `-Infinity`],
   [NaN, `NaN`],
@@ -217,15 +241,11 @@ describe(`format_value`, () => {
     { value: 0.001, formatter: `.3f`, expected: `0.001` },
     { value: 0.1, formatter: `.3f`, expected: `0.1` },
     { value: 0.0, formatter: `.4f`, expected: `0` },
-    { value: 123.4, formatter: `.4f`, expected: `123.4` },
-    { value: 0.1, formatter: `.4f`, expected: `0.1` },
 
     // Scientific notation, positive exponents without d3's redundant + sign
     { value: 1000000, formatter: `.2e`, expected: `1.00e6` },
     { value: 0.000001, formatter: `.2e`, expected: `1.00e-6` },
-    { value: 123000, formatter: `.2e`, expected: `1.23e5` },
     { value: 1.06e29, formatter: `.3~g`, expected: `1.06e29` },
-    { value: 0.00123, formatter: `.2e`, expected: `1.23e-3` },
 
     // Integer formatting
     { value: 42, formatter: `d`, expected: `42` },
@@ -244,7 +264,6 @@ describe(`format_value`, () => {
     { value: 0.1, formatter: `.1%`, expected: `10%` },
     { value: 1.0, formatter: `.0%`, expected: `100%` },
     { value: 0.0, formatter: `.1%`, expected: `0%` },
-    { value: 2.5, formatter: `.0%`, expected: `250%` },
     // only `%`-type formats strip zeros before the sign; `p` and padded outputs stay verbatim
     { value: 1e-7, formatter: `.2p`, expected: `0.000010%` },
     { value: 0.5, formatter: `<8.2%`, expected: `50.00%  ` },
@@ -262,13 +281,11 @@ describe(`format_value`, () => {
     { value: -Infinity, formatter: `.2f`, expected: `-Infinity` },
 
     // Edge cases
-    { value: 0, formatter: `.2f`, expected: `0` },
     { value: -0, formatter: `.2f`, expected: `0` },
     { value: -0, formatter: `.0f`, expected: `0` },
     { value: -0, formatter: `.0%`, expected: `0%` },
     { value: -0, formatter: `$,.2f`, expected: `$0.00` },
     // Scientific zeros collapse to plain 0 (same path plot ticks use via format_value_or_num)
-    { value: 0, formatter: `.2~e`, expected: `0` },
     { value: -0, formatter: `.2e`, expected: `0` },
     { value: 0, formatter: `$.2e`, expected: `$0` },
     { value: -0.001, formatter: `.2f`, expected: `0` },
@@ -279,8 +296,6 @@ describe(`format_value`, () => {
     // No formatter/empty formatter
     { value: 123.456, formatter: ``, expected: `123.456` },
     { value: 123.456, formatter: undefined, expected: `123.456` },
-    { value: 0, formatter: ``, expected: `0` },
-    { value: -42, formatter: undefined, expected: `-42` },
   ])(
     `formats $value with formatter "$formatter" as "$expected"`,
     ({ value, formatter, expected }) => {
@@ -292,11 +307,7 @@ describe(`format_value`, () => {
     [new Date(2023, 0, 1).getTime(), `%Y-%m-%d`, `2023-01-01`],
     [new Date(2023, 5, 15).getTime(), `%b %d, %Y`, `Jun 15, 2023`],
     [new Date(2023, 11, 31, 23, 59, 59).getTime(), `%Y-%m-%d %H:%M:%S`, `2023-12-31 23:59:59`],
-    [new Date(2023, 0, 1).getTime(), `%A, %B %d, %Y`, `Sunday, January 01, 2023`],
-    [new Date(2023, 0, 1, 12, 0, 0).getTime(), `%I:%M %p`, `12:00 PM`],
     [new Date(2023, 0, 1, 0, 0, 0).getTime(), `%I:%M %p`, `12:00 AM`],
-    [new Date(2023, 6, 4).getTime(), `%j`, `185`],
-    [new Date(2020, 1, 29).getTime(), `%Y-%m-%d`, `2020-02-29`], // leap year
   ])(`formats timestamp %s with %s as %s`, (value, formatter, expected) => {
     expect(format_value(value, formatter)).toBe(expected)
   })

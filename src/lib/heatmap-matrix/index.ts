@@ -75,8 +75,8 @@ type ElementAxisOrdering =
   | ElementAxisOrderingKey
   | ((value_a: ChemicalElement, value_b: ChemicalElement) => number)
 
-// Shared types used by both HeatmapMatrix and HeatmapMatrixControls, prefixed to stay
-// unique across the #lib star exports.
+// Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Exported through the
+// #lib star exports, so new names must stay unique there.
 export type HeatmapNormalizeMode = `linear` | `log`
 // auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
 export type HeatmapDomainMode = `auto` | `robust` | `fixed`
@@ -119,12 +119,11 @@ export function elements_to_axis(
   symbols?: ElementSymbol[],
   ordering: ElementAxisOrdering = `atomic_number`,
 ): AxisItem<ChemicalElement>[] {
-  let elements = [...element_data]
-
-  if (symbols) {
-    const symbol_set = new Set(symbols)
-    elements = elements.filter((element) => symbol_set.has(element.symbol))
-  }
+  const symbol_set = symbols && new Set(symbols)
+  // A copy either way: the sort below must not reorder element_data
+  const elements = symbol_set
+    ? element_data.filter((element) => symbol_set.has(element.symbol))
+    : [...element_data]
 
   if (typeof ordering === `function`) {
     elements.sort(ordering)

@@ -69,19 +69,16 @@ describe(`sanitize_html`, () => {
     expect(sanitize_html(input)).toBe(input)
   })
 
-  test(`preserves safe link with rel=noopener`, () => {
-    const result = sanitize_html(`<a href="/materials/mp-123" target="_blank">mp-123</a>`)
-    expect(result).toContain(`href="/materials/mp-123"`)
-    expect(result).toContain(`target="_blank"`)
-    expect(result).toContain(`rel="noopener"`)
-    expect(result).toContain(`mp-123</a>`)
-  })
-
-  test(`merges noopener into existing rel without overwriting`, () => {
-    const result = sanitize_html(`<a href="/x" rel="noreferrer">x</a>`)
-    const rel_tokens = /rel="(?<rel>[^"]+)"/.exec(result)?.[1]?.split(/\s+/) ?? []
-    expect(rel_tokens).toContain(`noreferrer`)
-    expect(rel_tokens).toContain(`noopener`)
+  // links survive unchanged apart from noopener, merged into any rel already present
+  test.each([
+    [`<a href="/materials/mp-123" target="_blank">mp-123</a>`, [`noopener`]],
+    [`<a href="/x" rel="noreferrer">x</a>`, [`noopener`, `noreferrer`]],
+  ])(`preserves safe link %s with rel tokens %j`, (input, rel_tokens) => {
+    const result = sanitize_html(input)
+    const rel = /rel="(?<rel>[^"]+)"/.exec(result)?.groups?.rel.split(/\s+/)
+    expect(rel?.toSorted()).toEqual(rel_tokens)
+    const without_rel = (html: string) => html.replace(/ rel="[^"]*"/, ``)
+    expect(without_rel(result)).toBe(without_rel(input))
   })
 
   test.each([
@@ -310,6 +307,12 @@ describe(`sanitize_html_ssr escapes unterminated markup`, () => {
   test(`still passes allowlisted tags through`, () => {
     expect(sanitize_html_ssr(`<b>bold</b> and <i>it</i>`)).toBe(`<b>bold</b> and <i>it</i>`)
     expect(sanitize_html_ssr(`plain & text > here`)).toBe(`plain & text > here`)
+    // unsafe declarations drop, and a style with none left drops entirely
+    expect(
+      sanitize_html_ssr(
+        `<span style="color: red; position: fixed">x</span><i style="top: 0">y</i>`,
+      ),
+    ).toBe(`<span style="color: red">x</span><i>y</i>`)
   })
 
   // a `[^>]*` scan from every unterminated `<` makes a run of them quadratic
@@ -320,5 +323,31 @@ describe(`sanitize_html_ssr escapes unterminated markup`, () => {
       return performance.now() - start
     })
     expect(Math.max(...timings)).toBeLessThan(100) // quadratic would put 40k well past this
+  })
+
+  // A lazy `[\s\S]*?` scan from every unclosed `<script>` / `<!--` to the end of input, and
+  // a backtracking tag-name/attribute split on `<a-a-a…`, made these quadratic (128 KB of
+  // `<script>` took 175 ms, 200 KB of `a-` 15 s)
+  test.each([`<script>`, `<style x>`, `<!--`, `<a-`, `a-`, `<b:`, `<script></script `])(
+    `stays linear on 200 KB of %j`,
+    (unit) => {
+      const input = (unit === `a-` ? `<` : ``) + unit.repeat(Math.ceil(200_000 / unit.length))
+      const start = performance.now()
+      const sanitized = sanitize_html_ssr(input)
+      expect(performance.now() - start).toBeLessThan(200)
+      expect(sanitized).not.toMatch(/<(?!\/?(?:b|i)>)/)
+    },
+  )
+
+  test.each([
+    [`a<script>alert(1)</script>b`, `ab`],
+    [`a<SCRIPT type="x">alert(1)</script >b<style>p{}</style>c`, `abc`],
+    [`<script>x</script><script>y`, `y`], // the unclosed tag is dropped, its text kept
+    [`<style>a</style><script>b`, `b`],
+    [`a<!-- one -->b<!-- two -->c`, `abc`],
+    [`a<!-- open <b>b</b>`, `a&lt;!-- open <b>b</b>`],
+    [`<b->x</b->`, `x`], // tag `b-`, not `b` with an attribute `-`
+  ])(`removes blocks and comments: %j -> %j`, (input, expected) => {
+    expect(sanitize_html_ssr(input)).toBe(expected)
   })
 })

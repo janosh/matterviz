@@ -68,8 +68,7 @@
   let mesh = $derived(new BondMesh(cylinder_geometry, bond_material, capacity))
 
   $effect(() => {
-    const current = mesh
-    current.update(placements)
+    mesh.update(placements)
     invalidate()
   })
   $effect(() => {

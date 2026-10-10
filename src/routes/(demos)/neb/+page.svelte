@@ -15,11 +15,6 @@
   const direct = reaction_paths[`direct hop`]
   const analysis = analyze_barrier(direct)
   const spline = path_spline(direct)
-
-  // #lib/io's download attaches the anchor before clicking it, which the hand-rolled
-  // detached-anchor version here did not; Firefox ignores a click on a detached <a>
-  const download_fixture = () =>
-    download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)
 </script>
 
 <h1 id="reaction-paths-neb">Reaction Paths (NEB)</h1>
@@ -74,7 +69,9 @@
     <code>00/</code>, <code>01/</code> … directories first because browsers cannot ingest an ordered
     directory layout.
   </p>
-  <button onclick={download_fixture}>Download the synthetic demo fixture</button>
+  <button onclick={() => download(li_mgo_hop_json, LI_MGO_HOP_FILENAME, `application/json`)}>
+    Download the synthetic demo fixture
+  </button>
 </div>
 
 <style>

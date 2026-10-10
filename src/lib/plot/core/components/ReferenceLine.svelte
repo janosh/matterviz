@@ -59,6 +59,7 @@
 
 {#if endpoints && ref_line.visible !== false}
   {@const [coord_x_1, coord_y_1, coord_x_2, coord_y_2] = endpoints}
+  {@const line_ends = { x1: coord_x_1, y1: coord_y_1, x2: coord_x_2, y2: coord_y_2 }}
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <g
@@ -91,10 +92,7 @@
     <g clip-path="url(#{clip_path_id})">
       <!-- Invisible hit area for easier interaction (8px wide) -->
       <line
-        x1={coord_x_1}
-        y1={coord_y_1}
-        x2={coord_x_2}
-        y2={coord_y_2}
+        {...line_ends}
         stroke="transparent"
         stroke-width="8"
         style:pointer-events="stroke"
@@ -102,10 +100,7 @@
 
       <!-- Visible line -->
       <line
-        x1={coord_x_1}
-        y1={coord_y_1}
-        x2={coord_x_2}
-        y2={coord_y_2}
+        {...line_ends}
         stroke={style.color}
         stroke-width={style.width}
         stroke-dasharray={style.dash || null}

@@ -34,16 +34,6 @@ describe(`bar_path`, () => {
     [`height`, 40, 3, `M10,23V21.5A1.5,1.5 0 0 1 11.5,20H48.5A1.5,1.5 0 0 1 50,21.5V23Z`],
   ])(`clamps the radius to half the bar %s`, (_side, width_value, height_value, expected) => {
     expect(bar_path(10, 20, width_value, height_value, 5, true)).toBe(expected)
-    expect(bar_path(10, 20, width_value, height_value, 5, true)).toBe(
-      bar_path(
-        10,
-        20,
-        width_value,
-        height_value,
-        Math.min(width_value, height_value) / 2,
-        true,
-      ),
-    )
   })
 })
 

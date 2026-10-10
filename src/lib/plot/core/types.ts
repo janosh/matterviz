@@ -288,7 +288,7 @@ export interface ArcsinhScaleConfig {
 }
 
 // Scale type can be a simple string or arcsinh config object
-export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
+export type ScaleType = ScaleTypeName | ArcsinhScaleConfig
 
 // Color/size mapping configs shared by scatter, scatter-3d and binned-scatter plots
 export type ColorScaleConfig = {

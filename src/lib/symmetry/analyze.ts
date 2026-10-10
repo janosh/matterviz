@@ -83,6 +83,31 @@ function site_atomic_number(site: Site, site_idx: number): number {
   return atomic_number
 }
 
+// moyo compares sites only by their integer labels. Fully occupied single-element sites keep
+// their atomic number; every distinct partial composition gets its own label above the element
+// range (as moyopy's MoyoAdapter does), so a Cu0.5Au0.5 site is never mapped onto a pure Cu
+// site and no symmetry beyond the disordered crystal's own is found.
+const DISORDER_LABEL_BASE = 1000
+function moyo_site_labels(sites: Site[], numbers: number[]): number[] {
+  const label_by_composition = new Map<string, number>()
+  return sites.map((site, site_idx) => {
+    const species = site.species.filter(({ occu }) => occu > OCCUPANCY_EPS)
+    if (species.length === 1 && Math.abs(species[0].occu - 1) <= OCCUPANCY_EPS) {
+      return numbers[site_idx]
+    }
+    const composition = species
+      .map(({ element, occu }) => `${element}:${occu.toFixed(6)}`)
+      .toSorted()
+      .join(` `)
+    let label = label_by_composition.get(composition)
+    if (label === undefined) {
+      label = DISORDER_LABEL_BASE + label_by_composition.size
+      label_by_composition.set(composition, label)
+    }
+    return label
+  })
+}
+
 export async function analyze_structure_symmetry(
   structure: AnyStructure,
   settings: Partial<SymmetrySettings> = {},
@@ -94,13 +119,17 @@ export async function analyze_structure_symmetry(
   const merged = merge_split_partial_sites(structure.sites)
   const positions = merged.map(({ site }) => site.abc)
   const numbers = merged.map(({ site, site_idx }) => site_atomic_number(site, site_idx))
+  const labels = moyo_site_labels(
+    merged.map(({ site }) => site),
+    numbers,
+  )
   // nalgebra Matrix3 deserializes as a flat list in COLUMN-MAJOR of the internal basis B;
   // internal B = transpose(row-basis RB), so column-major(B) == row-major(RB): supply the
   // pymatgen-style lattice.matrix (rows = lattice vectors) flattened as is
   const cell: MoyoCell = {
     lattice: { basis: structure.lattice.matrix.flat() as MoyoCell[`lattice`][`basis`] },
     positions,
-    numbers,
+    numbers: labels,
   }
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   const sym_data = analyze_cell(
@@ -108,8 +137,20 @@ export async function analyze_structure_symmetry(
     symprec,
     algo === `Moyo` ? `Standard` : algo,
   )
+  // Standardized cells come back with moyo's labels; display them by majority element
+  const number_by_label = new Map(labels.map((label, idx) => [label, numbers[idx]]))
+  const to_numbers = (std_cell: MoyoCell): MoyoCell => ({
+    ...std_cell,
+    numbers: std_cell.numbers.map((label) => {
+      const number = number_by_label.get(label)
+      if (number === undefined) throw new Error(`moyo returned unknown site label ${label}`)
+      return number
+    }),
+  })
   return {
     ...sym_data,
+    std_cell: to_numbers(sym_data.std_cell),
+    prim_std_cell: to_numbers(sym_data.prim_std_cell),
     input_cell: { positions, numbers },
     orig_site_indices_by_input_idx: merged.map(
       ({ source_site_indices }) => source_site_indices,
@@ -129,6 +170,18 @@ export function count_symmetry_op_kinds(
     else counts.roto_translations++
   }
   return counts
+}
+
+// Distinct rotation parts W of space-group operations as row-major matrices in the fractional
+// basis of the analyzed (input) cell, x' = W·x + w: the crystal's point group in that basis.
+// Supercell inputs repeat each W once per lattice translation, hence the dedupe.
+export function point_group_rotations(
+  operations: MoyoDataset[`operations`],
+): math.Matrix3x3[] {
+  const by_key = new Map<string, math.Matrix3x3>()
+  for (const { rotation } of operations)
+    by_key.set(rotation.join(`,`), mat3_from_flat_col_major(rotation))
+  return [...by_key.values()]
 }
 
 // Whether `value` is an integer in [min, max]. The WASM entry points below take a u32/i32 and

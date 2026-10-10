@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import ExportButtons from '#lib/io/ExportButtons.svelte'
   import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
@@ -114,13 +115,6 @@
   )
 </script>
 
-<!-- snippets live at the template top level (not inside the components below) so
-  they're locally renderable rather than treated as ControlPane/SettingsSection props -->
-{#snippet options(enum_map: Record<string, string>)}
-  {#each Object.entries(enum_map) as [value, label] (value)}
-    <option {value}>{label}</option>
-  {/each}
-{/snippet}
 <ControlPane
   {show_controls}
   bind:controls_open
@@ -141,14 +135,14 @@
       <label>
         <span>Shape</span>
         <select bind:value={shape}>
-          {@render options(SETTINGS_CONFIG.sunburst.shape.enum ?? {})}
+          {@render enum_options(SETTINGS_CONFIG.sunburst.shape)}
         </select>
       </label>
     {/if}
     <label>
       <span>Value mode</span>
       <select bind:value={value_mode}>
-        {@render options(SETTINGS_CONFIG[chart].value_mode.enum ?? {})}
+        {@render enum_options(SETTINGS_CONFIG[chart].value_mode)}
       </select>
     </label>
     {#if chart === `sunburst` && shape === `sunburst`}
@@ -156,14 +150,14 @@
       <label>
         <span>Labels</span>
         <select bind:value={label_rotation}>
-          {@render options(SETTINGS_CONFIG.sunburst.label_rotation.enum ?? {})}
+          {@render enum_options(SETTINGS_CONFIG.sunburst.label_rotation)}
         </select>
       </label>
     {/if}
     <label>
       <span>Label text</span>
       <select bind:value={label_text}>
-        {@render options(SETTINGS_CONFIG[chart].label_text.enum ?? {})}
+        {@render enum_options(SETTINGS_CONFIG[chart].label_text)}
       </select>
     </label>
     <NumberRangeInput min={0} max={10} step={1} bind:value={max_depth}

@@ -11,7 +11,9 @@ import {
   element_from_candidates,
   is_cif_data_header,
   is_cif_loop_header,
+  is_cif_unset,
   iter_cif_loops,
+  leading_letters,
   normalize_cif_names,
   parsed_result,
   parse_cif_uncertain_number,
@@ -29,10 +31,6 @@ import {
 // service - 80 kB of them took 631 ms. The sibling LAMMPS sniffers had the same shape.
 export const is_mmcif_content = (content: string): boolean =>
   /^[ \t]*_atom_site\.cartn_[xyz]\b/im.test(content)
-
-// mmCIF writes unset values as `.` (inapplicable) or `?` (unknown)
-const is_missing = (token: string | undefined): boolean =>
-  token === undefined || token === `.` || token === `?`
 
 // Map the part after `_atom_site_` (names normalized from `_atom_site.`) to the field we need,
 // lowercased for case-insensitive matching (mmCIF mixes cases, e.g. `Cartn_x`)
@@ -63,13 +61,6 @@ const build_atom_site_indices = (headers: string[]): Record<string, number> => {
   return indices
 }
 
-// The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
-// placeholder MD and docking tools write for aperiodic systems
-const read_mmcif_cell = (lines: string[]): readonly number[] | null => {
-  const params = read_cell_params(lines, `mmCIF`)
-  return params && drop_placeholder_cell(params, `mmCIF`, `_cell`)
-}
-
 // type_symbol is an element symbol, so its two-character reading wins (`FE` is iron).
 // label_atom_id is the unpadded PDB atom name, where the element is the FIRST character
 // unless the two-character reading is the only valid one — a protein's `CA` is the alpha
@@ -79,8 +70,6 @@ const mmcif_element = (
   raw_label: string | undefined,
   atom_idx: number,
 ): ElementSymbol => {
-  const leading_letters = (raw: string | undefined): string =>
-    is_missing(raw) ? `` : (/^(?<letters>[A-Za-z]+)/.exec(raw ?? ``)?.groups?.letters ?? ``)
   const symbol = leading_letters(raw_symbol)
   const label = leading_letters(raw_label)
   return element_from_candidates(
@@ -167,7 +156,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
     alt_col === undefined
       ? model_rows
       : model_rows.filter(
-          (row) => is_missing(row[alt_col]) || row[alt_col].toUpperCase() === `A`,
+          (row) => is_cif_unset(row[alt_col]) || row[alt_col].toUpperCase() === `A`,
         )
   if (rows.length < model_rows.length) {
     console.warn(
@@ -196,7 +185,12 @@ export const parse_mmcif = (content: string): AnyStructure => {
     )
   }
 
-  const { lattice_matrix, to_frac } = cell_frame(read_mmcif_cell(block_lines), `mmCIF _cell`)
+  // The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
+  // placeholder MD and docking tools write for aperiodic systems
+  const { lattice_matrix, to_frac } = cell_frame(
+    drop_placeholder_cell(read_cell_params(block_lines, `mmCIF`), `mmCIF`, `_cell`),
+    `mmCIF _cell`,
+  )
   // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact
 
   // Read a row's value for a field the loop may not declare at all
@@ -210,7 +204,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
     const xyz = vec3_from_values(
       coord_indices.map((col_idx) => {
         const token = row[col_idx]
-        if (is_missing(token)) throw new Error(`Missing coordinate in row: ${row.join(` `)}`)
+        if (is_cif_unset(token)) throw new Error(`Missing coordinate in row: ${row.join(` `)}`)
         const value = parse_cif_uncertain_number(token)
         if (value === null) throw new Error(`Invalid coordinate '${token}'`)
         return value
@@ -225,8 +219,8 @@ export const parse_mmcif = (content: string): AnyStructure => {
     const residue = text_at(row, `residue`)
     const chain = text_at(row, `chain`)
     const properties: Record<string, unknown> = {
-      ...(!is_missing(residue) && { residue }),
-      ...(!is_missing(chain) && { chain }),
+      ...(!is_cif_unset(residue) && { residue }),
+      ...(!is_cif_unset(chain) && { chain }),
       ...(b_factor !== null && { b_factor }),
     }
 

@@ -10,8 +10,10 @@ export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value)
 
 // A tag opens with a letter, `/` or `!`: a bare `<[^>]*>` ate the prose between a comparison
 // pair, so `T < 300 K and P > 1 bar` read back as `T  1 bar`. Quoted attribute values may
-// hold `>` (`title="x>0"`), so they are skipped whole.
-export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)(?:[^>"']|"[^"]*"|'[^']*')*>`
+// hold `>` (`title="x>0"`), so they are skipped whole. Outside quotes the run stops at `<`:
+// with `[^>"']` every unclosed `<` rescanned to the end of input (quadratic, 48 KB of `<a `
+// took 631 ms), at the cost of reading a malformed `<b c <i>` as text up to the `<i>` tag.
+export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)(?:[^<>"']|"[^"]*"|'[^']*')*>`
 const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
 // Tags only, entities kept: still HTML, fit for {@html}. Plain-text sinks want html_to_text.
 export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
@@ -55,11 +57,11 @@ export const escape_html = (unsafe_string: string): string =>
     .replaceAll(`'`, `&#39;`)
 
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
-export const normalize_unicode_minus = (value: string): string => value.replaceAll('−', `-`)
+export const normalize_unicode_minus = (value: string): string => value.replaceAll(`−`, `-`)
 
 // Normalize scientific notation variants (d/D exponent, Mathematica *^).
 export const normalize_scientific_notation = (value: string): string =>
-  normalize_unicode_minus(value).toLowerCase().replaceAll('d', `e`).replaceAll('*^', `e`)
+  normalize_unicode_minus(value).toLowerCase().replaceAll(`d`, `e`).replaceAll(`*^`, `e`)
 
 // Number(token) that treats blank strings as NaN, not 0 like Number(``) does
 export const parse_num_token = (token: string): number =>

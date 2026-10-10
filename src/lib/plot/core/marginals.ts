@@ -3,7 +3,7 @@
 // kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
 // its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
 
-import { in_range, partition_point, type Vec2 } from '#lib/math.js'
+import { array_max, in_range, partition_point, type Vec2 } from '#lib/math.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import type { PlotScaleFn } from '#lib/plot/core/scales.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
@@ -449,15 +449,13 @@ export function normalize_marginals(
     const sides =
       Object.keys(default_sides).length > 0 ? default_sides : { top: true, right: true }
     for (const side of MARGINAL_SIDES) {
-      if (!(side in sides)) continue
-      result[side] = resolve_side(prop, default_sides[side])
+      if (side in sides) result[side] = resolve_side(prop, default_sides[side])
     }
     return result
   }
   // Explicit per-side map: only sides the user names become active
   for (const side of MARGINAL_SIDES) {
-    if (prop[side] === undefined) continue
-    result[side] = resolve_side(prop[side], default_sides[side])
+    if (prop[side] !== undefined) result[side] = resolve_side(prop[side], default_sides[side])
   }
   return result
 }
@@ -672,10 +670,8 @@ function compute_kde(
     // and two and a half decades of curve were drawn as one straight segment.
     grid_transform: bin_transform(scale_type),
   })
-  let max = 0
-  for (const density of kde.density) if (density > max) max = density
   const points = kde.grid.map((pos, idx) => ({ pos, value: kde.density[idx] }))
-  return { kind: `line`, points, max }
+  return { kind: `line`, points, max: Math.max(0, array_max(kde.density)) }
 }
 
 // Summarize 1-D values into a renderable curve per the marginal type. Filters non-finite

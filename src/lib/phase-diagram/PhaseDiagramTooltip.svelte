@@ -47,8 +47,10 @@
 
   const safe_formula = (comp: string) => sanitize_formula(comp, use_subscripts)
 
-  // Convert a temperature from data unit to display unit
+  // Convert a temperature from data unit to display unit (or `unit`), as a number or text
   const to_display = (temp: number): number => convert_temp(temp, data_unit, temperature_unit)
+  const fmt_temp = (temp: number, unit: TempUnit = temperature_unit): string =>
+    format_num(convert_temp(temp, data_unit, unit), `.0f`)
 
   // The complementary measure: hover_info.composition is a weight fraction under wt% and an
   // atomic fraction otherwise, so each case converts the other way. Null without atomic masses.
@@ -77,7 +79,7 @@
     if (!hover_info.special_point) return null
     const { type, position } = hover_info.special_point
     const [x_pos, temp_raw] = position
-    const temperature = format_num(to_display(temp_raw), `.0f`)
+    const temperature = fmt_temp(temp_raw)
 
     // Melting/congruent points at a composition edge belong to one pure component
     const is_at_edge = x_pos <= 0.01 || x_pos >= 0.99
@@ -104,14 +106,12 @@
 
     for (const boundary of boundaries) {
       if (![`liquidus`, `solidus`, `solvus`].includes(boundary.type)) continue
-      // Find the boundary point closest in composition
+      // Nearest-in-temperature boundary point within 2% composition of the cursor
       for (const [basis_x, boundary_temp] of boundary.points) {
-        if (Math.abs(basis_x - composition) < 0.02) {
-          // Within 2% composition
-          const delta = temperature - boundary_temp
-          if (!min_dist || Math.abs(delta) < Math.abs(min_dist.delta_t)) {
-            min_dist = { type: boundary.type, delta_t: delta }
-          }
+        if (Math.abs(basis_x - composition) >= 0.02) continue
+        const delta = temperature - boundary_temp
+        if (!min_dist || Math.abs(delta) < Math.abs(min_dist.delta_t)) {
+          min_dist = { type: boundary.type, delta_t: delta }
         }
       }
     }
@@ -145,16 +145,10 @@
     <dl>
       <dt>Temperature</dt>
       <dd>
-        <TooltipValue
-          value={format_num(to_display(hover_info.temperature), `.0f`)}
-          unit={temperature_unit}
-        />
+        <TooltipValue value={fmt_temp(hover_info.temperature)} unit={temperature_unit} />
         {#if temperature_unit !== `°C`}
           <small
-            >(<TooltipValue
-              value={format_num(convert_temp(hover_info.temperature, data_unit, `°C`), `.0f`)}
-              unit="°C"
-            />)</small
+            >(<TooltipValue value={fmt_temp(hover_info.temperature, `°C`)} unit="°C" />)</small
           >
         {/if}
       </dd>
@@ -187,17 +181,12 @@
       {#if stability}
         <dt>Stable</dt>
         <dd>
-          {format_num(to_display(stability.t_min), `.0f`)} – {format_num(
-            to_display(stability.t_max),
-            `.0f`,
-          )}
+          {fmt_temp(stability.t_min)} – {fmt_temp(stability.t_max)}
           <small>{temperature_unit}</small>
           {#if temperature_unit !== `°C`}
             <small
-              >({format_num(convert_temp(stability.t_min, data_unit, `°C`), `.0f`)} – {format_num(
-                convert_temp(stability.t_max, data_unit, `°C`),
-                `.0f`,
-              )} <small>°C</small>)</small
+              >({fmt_temp(stability.t_min, `°C`)} – {fmt_temp(stability.t_max, `°C`)}
+              <small>°C</small>)</small
             >
           {/if}
         </dd>

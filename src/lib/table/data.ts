@@ -283,9 +283,7 @@ const parse_datetime_string = (val: string): number | null => {
 // only count as timestamps in columns that declare a datetime format.
 export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): number | null => {
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
-  if (typeof val === `number`) {
-    return col.datetime_format ? normalize_timestamp(val) : null
-  }
+  if (typeof val === `number`) return col.datetime_format ? normalize_timestamp(val) : null
   if (typeof val !== `string`) return null
   const parsed_text = parse_datetime_string(val)
   if (parsed_text !== null) return parsed_text
@@ -300,9 +298,8 @@ export function infer_datetime_kind(
   col: Omit<Column, `cell`>,
   sample: CellVal[],
 ): DateTimeColumnKind | null {
-  if (col.datetime_format === `date`) return `date`
-  if (col.datetime_format === `time`) return `time`
-  if (col.datetime_format) return `datetime`
+  const mode = col.datetime_format
+  if (mode) return mode === `date` || mode === `time` ? mode : `datetime`
   let has_date_value = false
   for (const val of sample) {
     if (parse_datetime_val(val, col) === null) continue
@@ -318,7 +315,7 @@ const pad2 = (val: number) => String(val).padStart(2, `0`)
 // "2h 5m ago" / "3d from now": up to three leading non-zero units, minute granularity
 function format_since(timestamp: number, now_ms: number): string {
   const diff = now_ms - timestamp
-  let remaining_minutes = Math.max(0, Math.floor(Math.abs(diff) / 60_000))
+  let remaining_minutes = Math.floor(Math.abs(diff) / 60_000)
   const parts: string[] = []
   const units = [
     [`y`, 365 * 24 * 60],

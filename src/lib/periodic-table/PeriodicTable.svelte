@@ -152,6 +152,12 @@
         : links[element.symbol]
   const element_is_interactive = (element: ChemicalElement): boolean =>
     Boolean(element_href(element) || on_activate)
+  let active_symbols = $derived(
+    new Set(active_elements.map((elem) => (typeof elem === `string` ? elem : elem.symbol))),
+  )
+  // shared by the tiles and the tooltip snippet, so both agree on what is active
+  const is_active = ({ category, name, symbol }: ChemicalElement): boolean =>
+    active_category === category || active_element?.name === name || active_symbols.has(symbol)
   let focused_symbol = $state<ElementSymbol | null>(null)
   let first_interactive_symbol = $derived(
     element_data.find(element_is_interactive)?.symbol ?? null,
@@ -173,11 +179,10 @@
     }
   })
   $effect(() => {
-    if (links && on_activate) {
+    if (links && on_activate)
       console.warn(
         `PeriodicTable links use native link activation; on_activate applies only to unlinked tiles.`,
       )
-    }
   })
 
   let tooltip_element = $state<ChemicalElement | null>(null)
@@ -215,14 +220,14 @@
   function handle_key(event: KeyboardEvent & { currentTarget: HTMLDivElement }): void {
     on_table_keydown?.(event)
     if (disabled || event.defaultPrevented) return
-    const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
+    const row_step = event.key === `ArrowUp` ? -1 : event.key === `ArrowDown` ? 1 : 0
+    const col_step = event.key === `ArrowLeft` ? -1 : event.key === `ArrowRight` ? 1 : 0
     // Cmd/Ctrl+Arrow scrolls the page; only bare arrows walk tiles
-    if (!arrow_keys.includes(event.key) || is_modifier_chord(event)) return
+    if ((!row_step && !col_step) || is_modifier_chord(event)) return
 
-    const event_target = event.target
     const tile =
-      event_target instanceof Element
-        ? event_target.closest<HTMLElement>(`.element-tile`)
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(`.element-tile`)
         : null
     if (!tile || !event.currentTarget.contains(tile)) return
     const current_element = element_data.find(
@@ -234,11 +239,8 @@
     event.stopPropagation()
 
     // Walk the grid, including lanthanides (row 9) and actinides (row 10) below empty row 8
-    const { column: col, row } = current_element
-    const row_step = event.key === `ArrowUp` ? -1 : event.key === `ArrowDown` ? 1 : 0
-    const col_step = event.key === `ArrowLeft` ? -1 : event.key === `ArrowRight` ? 1 : 0
-    let target_row = row + row_step
-    let target_col = col + col_step
+    let target_row = current_element.row + row_step
+    let target_col = current_element.column + col_step
     // Sparse links and the table's empty grid cells must not strand keyboard focus.
     while (target_row >= 1 && target_row <= 10 && target_col >= 1 && target_col <= 18) {
       const target_element = element_data.find(
@@ -283,7 +285,6 @@
     return typeof num === `number` && Number.isFinite(num) && (!log || num > 0) ? num : null
   }
 
-  // finite numeric heat values usable by the active scale (log excludes non-positive)
   let heat_nums = $derived(
     heat_values
       .flat()
@@ -400,17 +401,14 @@
     {@render inset?.({ active_element })}
   {/if}
   {#each element_data as element (element.number)}
-    {@const { column, row, category, name, symbol } = element}
+    {@const { column, row, symbol } = element}
     {@const href = element_href(element)}
     {@const tile_activation = href ? undefined : on_activate}
     {@const value = heat_values[element.number - 1]}
     {@const override = color_overrides[symbol]}
     {@const tile_missing = heat_values.length > 0 && !override && value_is_missing(value)}
-    {@const is_active_elem = active_elements.some((active_elem) =>
-      typeof active_elem === `string` ? active_elem === symbol : active_elem.symbol === symbol,
-    )}
-    {@const active =
-      active_category === category || active_element?.name === name || is_active_elem}
+    {@const interactive = Boolean(href || on_activate)}
+    {@const active = is_active(element)}
     {@const style = `grid-column: ${column}; grid-row: ${row};${
       tile_props?.style ? ` ${tile_props.style}` : ``
     }${tile_missing && missing.style ? ` ${missing.style}` : ``}`}
@@ -441,13 +439,9 @@
         set_active_element(null)
       }}
       role={tile_activation ? `button` : href ? `link` : tile_props?.role}
-      tabindex={element_is_interactive(element)
-        ? roving_symbol === symbol
-          ? 0
-          : -1
-        : tile_props?.tabindex}
+      tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
-      onclick={element_is_interactive(element)
+      onclick={interactive
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>
             handle_tile_click(data, tile_activation)
         : tile_props?.onclick}
@@ -494,10 +488,9 @@
     >
       {#if typeof tooltip === `function`}
         {@render tooltip({
-          element: element,
+          element,
           value: tooltip_value ?? null,
-          active:
-            active_category === element.category || active_element?.name === element.name,
+          active: is_active(element),
           bg_color: color_overrides[element.symbol] ?? bg_color(tooltip_value, element),
           scale_context: { min: heat_range[0], max: heat_range[1], color_scale },
         })}

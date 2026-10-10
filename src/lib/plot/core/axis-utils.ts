@@ -1,6 +1,7 @@
 // Shared utilities for interactive axis functionality
 
 import { AXIS_TITLE_OFFSET } from '#lib/plot/core/layout.js'
+import { is_tick_label_map } from '#lib/plot/core/scales.js'
 import type { AxisConfig, AxisKey, AxisLoader } from '#lib/plot/core/types.js'
 
 // Shared axis defaults across plot components (single source of truth)
@@ -36,9 +37,7 @@ export const category_tick_labels = (
   user_ticks: AxisConfig[`ticks`],
 ): AxisConfig[`ticks`] => {
   if (categories.length === 0) return undefined
-  if (user_ticks != null && typeof user_ticks === `object` && !Array.isArray(user_ticks)) {
-    return user_ticks
-  }
+  if (is_tick_label_map(user_ticks)) return user_ticks
   return Object.fromEntries(categories.map((cat, idx) => [idx, cat]))
 }
 

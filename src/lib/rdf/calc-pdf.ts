@@ -3,7 +3,7 @@ import type { PdfWeighting } from '#lib/scattering/index.js'
 import { pdf_scattering_weights } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { to_error } from '#lib/utils.js'
-import { calculate_all_pair_rdfs, calculate_rdf } from './calc-rdf'
+import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from './calc-rdf'
 import type {
   PdfPattern,
   RdfOptions,
@@ -68,7 +68,8 @@ export function number_density(structure: Crystal): number {
 const reduced_pdf = (pattern: RdfPattern, rho_0: number): number[] =>
   pattern.r.map((radius, idx) => 4 * Math.PI * radius * rho_0 * (pattern.g_r[idx] - 1))
 
-// n = ∫ 4π·r²·ρ·g(r) dr over [r_min, r_max), the coordination number in that shell.
+// n = ∫ 4π·r²·ρ·g(r) dr over [r_min, r_max), the coordination number in that shell. Summed
+// with the same shell volumes calc-rdf normalized by, so it recovers the exact pair count.
 // We expose this integral rather than the radial distribution R(r) = 4π·r²·ρ·g(r) as an array:
 // R(r) carries no information beyond g(r) and ρ, and integrating it over a shell is the one
 // thing it is actually used for. Pass the TOTAL density for a total g(r), and the NEIGHBOUR
@@ -93,7 +94,7 @@ export function coordination_number(
   for (let bin_idx = 0; bin_idx < pattern.r.length; bin_idx++) {
     const radius = pattern.r[bin_idx]
     if (radius < r_min || radius >= r_max) continue
-    total += 4 * Math.PI * radius ** 2 * density * pattern.g_r[bin_idx] * bin_size
+    total += shell_volume(radius, bin_size) * density * pattern.g_r[bin_idx]
   }
   return total
 }

@@ -1,7 +1,7 @@
 import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { drop_cached_hull_data } from './thermodynamics'
+import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
 import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
 import { array_extent, array_max } from '#lib/math.js'
@@ -442,16 +442,6 @@ export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnaly
     has_temp_data: available_temperatures.length > 0,
     available_temperatures,
   }
-}
-
-// Check if an entry has valid temperature-dependent data (matching array lengths, non-empty)
-function entry_has_temp_data(entry: PhaseData): boolean {
-  const { temperatures, free_energies } = entry
-  return Boolean(
-    temperatures?.length &&
-    free_energies?.length &&
-    temperatures.length === free_energies.length,
-  )
 }
 
 // Linearly interpolated G(T) between the tightest tabulated temperatures bracketing

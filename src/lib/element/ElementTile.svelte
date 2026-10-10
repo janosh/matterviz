@@ -127,7 +127,6 @@
   // Resolve the split layout, warning and falling back when input is unsupported.
   const layout_config = $derived.by(() => {
     const count = rendered_segments.length
-    if (count < 2) return null
     const layouts = SPLIT_LAYOUTS[count]
     if (!layouts) return null
     const [default_layout] = Object.keys(layouts) as SplitLayout[]
@@ -143,14 +142,13 @@
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
-  {...href ? { href } : {}}
+  {...href ? { href, role: `link`, tabindex: 0 } : {}}
   class="element-tile"
   data-category={element.category}
   class:active
   class:clickable={Boolean(onclick)}
   style:background-color={fallback_bg_color}
   style:color={computed_text_color}
-  {...href ? { role: `link`, tabindex: 0 } : {}}
   onclick={(event: MouseEvent) => onclick?.({ element, event })}
   {...rest}
 >
@@ -250,7 +248,6 @@
   span.name {
     font-size: var(--elem-name-font-size, 12cqw);
   }
-
   /* Under ~36px the number (22cqw) and name/value (12-18cqw) labels are below 8px and read
      as specks; drop them so the symbol has the tile. Tiles in a desktop-width table are
      wider than this and keep every label. */
@@ -261,7 +258,6 @@
       display: none;
     }
   }
-
   /* Multi-value positioning */
   .multi-value {
     position: absolute;
@@ -269,17 +265,25 @@
     font-weight: 600;
     z-index: var(--elem-multi-value-z-index, 2);
   }
-
-  /* 2-value diagonal positions */
-  .top-left {
+  /* 2-value diagonal and 4-value quadrant positions */
+  .top-left,
+  .value-quadrant-tl {
     top: 4cqw;
     left: 4cqw;
   }
-  .bottom-right {
+  .value-quadrant-tr {
+    top: 4cqw;
+    right: 4cqw;
+  }
+  .value-quadrant-bl {
+    bottom: 4cqw;
+    left: 4cqw;
+  }
+  .bottom-right,
+  .value-quadrant-br {
     bottom: 4cqw;
     right: 4cqw;
   }
-
   /* 3-value horizontal bar positions */
   .bar-top-left {
     top: 8cqw;
@@ -293,7 +297,6 @@
     bottom: 8cqw;
     left: 4cqw;
   }
-
   /* 3-value vertical bar positions */
   .bar-left-top {
     top: 4cqw;
@@ -308,7 +311,6 @@
     top: 4cqw;
     right: 8cqw;
   }
-
   /* 4-value triangular positions (tips meet in center) */
   .triangle-top-pos {
     top: 3cqw;
@@ -328,31 +330,11 @@
     top: calc(50% - 7cqw);
     left: 3cqw;
   }
-
-  /* 4-value quadrant positions */
-  .value-quadrant-tl {
-    top: 4cqw;
-    left: 4cqw;
-  }
-  .value-quadrant-tr {
-    top: 4cqw;
-    right: 4cqw;
-  }
-  .value-quadrant-bl {
-    bottom: 4cqw;
-    left: 4cqw;
-  }
-  .value-quadrant-br {
-    bottom: 4cqw;
-    right: 4cqw;
-  }
-
-  /* Multi-segment backgrounds */
+  /* Multi-segment backgrounds; inset sets each slice's position and size */
   .segment {
     position: absolute;
     z-index: 1;
   }
-
   .diagonal-top,
   .diagonal-bottom,
   .triangle-top,
@@ -360,10 +342,7 @@
   .triangle-bottom,
   .triangle-left {
     inset: 0;
-    width: 100%;
-    height: 100%;
   }
-
   /* Diagonal split (2 values) */
   .diagonal-top {
     clip-path: polygon(0 0, 100% 0, 0 100%);
@@ -371,47 +350,26 @@
   .diagonal-bottom {
     clip-path: polygon(100% 0, 100% 100%, 0 100%);
   }
-
   /* Horizontal bars (3 values) */
   .horizontal-top {
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 33.33%;
+    inset: 0 0 66.67%;
   }
   .horizontal-middle {
-    top: 33.33%;
-    left: 0;
-    width: 100%;
-    height: 33.33%;
+    inset: 33.33% 0 33.34%;
   }
   .horizontal-bottom {
-    top: 66.66%;
-    left: 0;
-    width: 100%;
-    height: 33.34%;
+    inset: 66.66% 0 0;
   }
-
   /* Vertical bars (3 values) */
   .vertical-left {
-    top: 0;
-    left: 0;
-    width: 33.33%;
-    height: 100%;
+    inset: 0 66.67% 0 0;
   }
   .vertical-middle {
-    top: 0;
-    left: 33.33%;
-    width: 33.33%;
-    height: 100%;
+    inset: 0 33.34% 0 33.33%;
   }
   .vertical-right {
-    top: 0;
-    left: 66.66%;
-    width: 33.34%;
-    height: 100%;
+    inset: 0 0 0 66.66%;
   }
-
   /* Triangular segments (4 values) - tips meet in center */
   .triangle-top {
     clip-path: polygon(0 0, 100% 0, 50% 50%);
@@ -425,30 +383,17 @@
   .triangle-left {
     clip-path: polygon(0 100%, 0 0, 50% 50%);
   }
-
   /* Four quadrants (4 values) */
   .quadrant-tl {
-    top: 0;
-    left: 0;
-    width: 50%;
-    height: 50%;
+    inset: 0 50% 50% 0;
   }
   .quadrant-tr {
-    top: 0;
-    left: 50%;
-    width: 50%;
-    height: 50%;
+    inset: 0 0 50% 50%;
   }
   .quadrant-bl {
-    top: 50%;
-    left: 0;
-    width: 50%;
-    height: 50%;
+    inset: 50% 50% 0 0;
   }
   .quadrant-br {
-    top: 50%;
-    left: 50%;
-    width: 50%;
-    height: 50%;
+    inset: 50% 0 0 50%;
   }
 </style>

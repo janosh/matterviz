@@ -131,14 +131,11 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
         obstacles,
         exclusion_rects: decoration_rects,
       })
-      const footprint = {
-        width: candidate.rect.width,
-        height: candidate.rect.height,
-      }
+      const { width, height } = candidate.rect
       placements.push({
         id: item.id,
         kind: item.kind,
-        footprint,
+        footprint: { width, height },
         x: candidate.rect.x,
         y: candidate.rect.y,
         score,
@@ -156,7 +153,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       plot_bounds,
       element_size: item.footprint,
       axis_clearance: item.clearance,
-      exclude_rects: [...decoration_rects],
+      exclude_rects: decoration_rects,
       points: obstacles,
     })
     const placement: DecorationPlacement = {
@@ -175,7 +172,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
 
   return {
     base_pad: { ...scene.base_pad },
-    pad: { ...pad },
+    pad,
     plot_bounds,
     placements,
   }

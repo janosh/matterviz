@@ -609,7 +609,7 @@ export function clean_series<T extends DataSeries>(
   const drop = (removed: readonly number[]) => {
     if (removed.length === 0) return
     const removed_set = new Set(removed)
-    const survivors = kept.map((_, idx) => idx).filter((idx) => !removed_set.has(idx))
+    const survivors = index_range(kept.length).filter((idx) => !removed_set.has(idx))
     kept = pick(kept, survivors)
     y_arr = pick(y_arr, survivors)
     quality.points_removed += removed.length

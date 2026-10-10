@@ -1,7 +1,5 @@
-import type { Vec2 } from '#lib/math.js'
 import type {
   CompUnit,
-  LeverRuleResult,
   PhaseBoundary,
   PhaseHoverInfo,
   TempUnit,
@@ -10,7 +8,7 @@ import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { create_hover_info, pts } from './fixtures/test-data'
+import { create_hover_info, lever_rule, pts } from './fixtures/test-data'
 
 const mount_tooltip = (props: ComponentProps<typeof PhaseDiagramTooltip>) =>
   mount(PhaseDiagramTooltip, { target: document.body, props })
@@ -50,23 +48,15 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(document.querySelector(`dd small`)?.textContent).toBe(unit)
   })
 
-  test.each([
-    [0.35, `at%`, `Cu`, `35 at%`],
-    [0.456, `fraction`, `Zn`, `0.456`],
-    [0.25, `mol%`, `Fe`, `25 mol%`],
-  ])(
-    `displays composition %f as %s for component %s`,
-    (composition, unit, component_b, expected) => {
-      const hover_info = create_hover_info({ composition })
-      mount_tooltip({ hover_info, composition_unit: unit as CompUnit, component_b })
-
-      expect(tooltip_text()).toContain(expected)
-      expect(tooltip_text()).toContain(component_b)
-    },
-  )
-
   // Weight percentages need real elements (Al-Cu), unknown components (A-B) get none
-  test.each([
+  test.each<{
+    composition: number
+    unit?: CompUnit
+    components: string[]
+    contains?: string[]
+    absent?: string[]
+    matches?: RegExp
+  }>([
     {
       composition: 0.3,
       components: [`Al`, `Cu`],
@@ -74,12 +64,20 @@ describe(`PhaseDiagramTooltip`, () => {
       matches: /50\.\d % Cu/,
     },
     { composition: 0.5, components: [`A`, `B`], absent: [`Weight`] },
+    {
+      composition: 0.456,
+      unit: `fraction`,
+      components: [`A`, `Zn`],
+      contains: [`0.456`, `Zn`],
+    },
+    { composition: 0.25, unit: `mol%`, components: [`A`, `Fe`], contains: [`25 mol%`, `Fe`] },
   ])(
-    `composition $composition of $components shows $contains`,
-    ({ composition, components: [component_a, component_b], contains, absent, matches }) => {
+    `composition $composition $unit of $components shows $contains`,
+    ({ composition, unit = `at%`, components: [component_a, component_b], ...expected }) => {
+      const { contains, absent, matches } = expected
       mount_tooltip({
         hover_info: create_hover_info({ composition }),
-        composition_unit: `at%`,
+        composition_unit: unit,
         component_a,
         component_b,
       })
@@ -116,27 +114,17 @@ describe(`PhaseDiagramTooltip`, () => {
     },
   )
 
-  describe(`lever rule`, () => {
-    const lever_rule: LeverRuleResult = {
-      left_phase: `α`,
-      right_phase: `β`,
-      left_composition: 0.2,
-      right_composition: 0.8,
-      fraction_left: 0.6,
-      fraction_right: 0.4,
-    }
-    const two_phase = { id: `two_phase`, name: `α + L`, vertices: [] as Vec2[] }
-
-    test(`displays phase fractions and bars sized by fraction`, () => {
-      const hover_info = create_hover_info({ region: two_phase, lever_rule })
-      mount_tooltip({ hover_info, composition_unit: `at%` })
-
-      expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
-      for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
-        expect(lever_text()).toContain(part)
-      }
-      expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
+  test(`lever rule displays phase fractions and bars sized by fraction`, () => {
+    const region = { id: `two_phase`, name: `α + L`, vertices: [] }
+    mount_tooltip({
+      hover_info: create_hover_info({ region, lever_rule }),
+      composition_unit: `at%`,
     })
+    expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
+    for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
+      expect(lever_text()).toContain(part)
+    }
+    expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
   })
 
   describe(`boundary distance`, () => {

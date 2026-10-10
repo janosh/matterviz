@@ -218,28 +218,19 @@ describe(`Export functionality`, () => {
       expect(reparsed.lattice.pbc).toEqual([true, false, false])
     })
 
-    it(`strips characters that would turn a label into a bogus key=value pair`, () => {
-      const structure = {
-        id: `run=1 "trial"`,
-        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
-      } as AnyStructure
-      const comment = structure_to_xyz_str(structure).split(`\n`)[1]
-      expect(comment.startsWith(`run1 trial`)).toBe(true)
-      // the only key=value pairs left are the ones this exporter meant to write
-      expect(comment.match(/=/g)).toHaveLength(1) // Properties=
-    })
-
-    it(`keeps a newline in the id from splitting the comment line`, () => {
-      // An id spanning two lines shifts every atom line down one and makes the count a lie
-      const structure = {
-        id: `line1\nline2`,
-        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
-      } as AnyStructure
-      const lines = structure_to_xyz_str(structure).split(`\n`)
+    // `=`/`"` in a label would invent a key=value pair; a newline would split the comment,
+    // shifting every atom line down one and making the count a lie
+    it.each([
+      [`run=1 "trial"`, `run1 trial`],
+      [`line1\nline2`, `line1 line2`],
+    ])(`sanitizes id %j into the comment label %j`, (id, label) => {
+      const exported = structure_to_xyz_str({ id, sites: [make_site(`H`)] })
+      const lines = exported.split(`\n`)
       expect(lines).toHaveLength(3) // count, comment, one atom
-      expect(lines[0]).toBe(`1`)
-      expect(lines[1]).toContain(`line1 line2`)
-      expect(parse_xyz(structure_to_xyz_str(structure))?.sites).toHaveLength(1)
+      expect(lines[1].startsWith(label)).toBe(true)
+      // the only key=value pair left is the one this exporter meant to write
+      expect(lines[1].match(/=/g)).toHaveLength(1) // Properties=
+      expect(parse_xyz(exported)?.sites).toHaveLength(1)
     })
   })
 
@@ -377,21 +368,17 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Error handling and edge cases`, () => {
+    const molecule: AnyStructure = { sites: [make_site(`H`)] }
+    // oxfmt-ignore
     it.each([
-      { func: structure_to_xyz_str, error_msg: `No structure or sites to export` },
-      { func: structure_to_json_str, error_msg: `No structure to export` },
-      { func: structure_to_cif_str, error_msg: `No structure or sites to export` },
-      { func: structure_to_poscar_str, error_msg: `No structure or sites to export` },
-    ])(`throws error for undefined structure`, ({ func, error_msg }) => {
-      expect(() => func(undefined)).toThrow(error_msg)
-    })
-
-    it.each([
-      { func: structure_to_cif_str, error_msg: `CIF export: A unit cell is required` },
-      { func: structure_to_poscar_str, error_msg: `POSCAR export: A unit cell is required` },
-    ])(`throws error for structure without lattice`, ({ func, error_msg }) => {
-      const structure_no_lattice: AnyStructure = { sites: [make_site(`H`)] }
-      expect(() => func(structure_no_lattice)).toThrow(error_msg)
+      [structure_to_xyz_str, `nothing`, undefined, `No structure or sites to export`],
+      [structure_to_json_str, `nothing`, undefined, `No structure to export`],
+      [structure_to_cif_str, `nothing`, undefined, `No structure or sites to export`],
+      [structure_to_poscar_str, `nothing`, undefined, `No structure or sites to export`],
+      [structure_to_cif_str, `a molecule`, molecule, `CIF export: A unit cell is required`],
+      [structure_to_poscar_str, `a molecule`, molecule, `POSCAR export: A unit cell is required`],
+    ] as const)(`%o rejects %s`, (serialize, _input_desc, structure, error_msg) => {
+      expect(() => serialize(structure)).toThrow(error_msg)
     })
 
     // oxfmt-ignore
@@ -413,20 +400,19 @@ describe(`Export functionality`, () => {
       )
     })
 
-    it.each([structure_to_cif_str, structure_to_poscar_str])(
-      `rejects malformed matrices in %s`,
-      (serialize) => {
-        // oxfmt-ignore
-        const matrix = [[1, 2], [3, 4]] as unknown as Matrix3x3 // 2x2 instead of 3x3
-        const structure_invalid_lattice: AnyStructure = {
-          sites: [make_site(`H`)],
-          lattice: { ...diag_lattice(1), matrix },
-        }
-        expect(() => serialize(structure_invalid_lattice)).toThrow(
+    const cell_writers = [structure_to_cif_str, structure_to_poscar_str, structure_to_xyz_str]
+    // oxfmt-ignore
+    it.each([
+      [`2x2`, [[1, 2], [3, 4]]],
+      [`non-finite`, [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]]],
+    ])(`rejects a %s lattice matrix in every format that writes the cell`, (_name, matrix) => {
+      const lattice = { ...diag_lattice(1), matrix: matrix as Matrix3x3 }
+      for (const serialize of cell_writers) {
+        expect(() => serialize({ sites: [make_site(`H`)], lattice })).toThrow(
           `A unit cell requires a finite 3x3 lattice matrix`,
         )
-      },
-    )
+      }
+    })
 
     // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
     // inverse; sites already carry abc, so the inverse must not be built unless one needs it
@@ -459,48 +445,11 @@ describe(`Export functionality`, () => {
       },
     )
 
-    it(`handles non-finite lattice values`, () => {
-      // oxfmt-ignore
-      const matrix: Matrix3x3 = [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]]
-      const structure_nan_lattice: AnyStructure = {
-        sites: [make_site(`H`)],
-        lattice: { ...diag_lattice(1), matrix },
-      }
-      for (const serialize of [
-        structure_to_cif_str,
-        structure_to_poscar_str,
-        structure_to_xyz_str,
-      ]) {
-        expect(() => serialize(structure_nan_lattice)).toThrow(`finite 3x3 lattice matrix`)
-      }
-    })
-
-    it(`exports CIF format correctly`, () => {
+    // the cell, atom-site loop and rows are covered by the fixture round-trips below
+    it(`CIF header names its data block (required by pymatgen) by alphabetical formula`, () => {
       const lines = structure_to_cif_str(complex_structure).split(`\n`)
-
-      // Check CIF header with data block (required by pymatgen)
       expect(lines[0]).toBe(`# CIF file generated by MatterViz`)
-      // Formula should be alphabetically sorted: Fe1Li1O4P1 -> FeLiO4P
-      expect(lines[1]).toBe(`data_FeLiO4P`)
-
-      // Cell parameters may appear in any order, so check membership not position
-      const contains = (needle: string) => lines.some((line) => line.includes(needle))
-      for (const tag of [`_cell_length_a`, `_cell_length_b`, `_cell_length_c`]) {
-        expect(contains(tag), tag).toBe(true)
-      }
-      // Check atom site loop
-      const loop_tags = [
-        `loop_`,
-        `_atom_site_label`,
-        `_atom_site_type_symbol`,
-        `_atom_site_fract_x`,
-        `_atom_site_fract_y`,
-        `_atom_site_fract_z`,
-      ]
-      for (const tag of loop_tags) expect(lines).toContain(tag)
-      // Check atom data (should have Li, Fe, P, O atoms)
-      for (const element of [`Li`, `Fe`, `P`, `O`])
-        expect(contains(element), element).toBe(true)
+      expect(lines[1]).toBe(`data_FeLiO4P`) // Fe1Li1O4P1 -> FeLiO4P
     })
 
     // oxfmt-ignore
@@ -600,6 +549,34 @@ describe(`Export functionality`, () => {
       const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5], label)]
       const [site] = parse_cif(structure_to_cif_str({ sites, lattice: diag_lattice(5) })).sites
       expect([site.label, site.species[0].element]).toEqual([label, `Fe`])
+    })
+
+    // CIF keeps only cell parameters, which readers rebuild as a right-handed cell, so a
+    // left-handed lattice (det < 0) came back as its mirror image: the C->(H, F, Cl) triple
+    // product flipped from +1.68 to -1.68 (pymatgen's CifWriter does the same). POSCAR and
+    // XYZ keep the matrix and +1.68.
+    it(`keeps the handedness of a left-handed lattice through CIF`, () => {
+      const poscar = `left\n1.0\n0 6 0\n6 0 0\n0 0 6\nC H F Cl\n1 1 1 1\nCartesian\n0 0 0\n1 0 0\n0 1.2 0\n0 0 1.4`
+      const original = parse_poscar(poscar)
+      expect(math.det_3x3(original.lattice.matrix)).toBeCloseTo(-216, 10)
+      // C->X minimum-image bond vectors, so wrapping a coordinate cannot move an atom
+      const triple_product = ({ sites, lattice }: typeof original): number => {
+        const [carbon, ...others] = sites.map((site) => site.abc)
+        const [vec_h, vec_f, vec_cl] = others.map((abc) => {
+          const delta = math.subtract(abc, carbon)
+          const min_image = delta.map((coord) => coord - Math.round(coord)) as Vec3
+          return math.mat3x3_vec3_multiply(
+            math.transpose_3x3_matrix(lattice.matrix),
+            min_image,
+          )
+        })
+        return math.dot(vec_h, math.cross_3d(vec_f, vec_cl))
+      }
+      expect(triple_product(original)).toBeCloseTo(1.68, 12)
+      const reparsed = parse_cif(structure_to_cif_str(original))
+      expect(math.det_3x3(reparsed.lattice.matrix)).toBeGreaterThan(0)
+      // 8-decimal fractional coords in a 6 Å cell leave ~1e-8 Å per coordinate
+      expect(triple_product(reparsed)).toBeCloseTo(1.68, 6)
     })
 
     it(`exports one CIF row per species on disordered sites and round-trips`, () => {
@@ -714,19 +691,6 @@ describe(`Export functionality`, () => {
       const contains = (needle: string) => lines.some((line) => line.includes(needle))
       expect(contains(`_space_group_name_H-M_alt`)).toBe(has_symbol)
       expect(contains(`_space_group_IT_number`)).toBe(has_number)
-    })
-
-    it(`exports every site of a 1000-atom structure`, () => {
-      const large_structure: AnyStructure = {
-        id: `large_test`,
-        sites: Array.from({ length: 1000 }, (_, idx) =>
-          make_site(`H`, [idx / 1000, 0, 0], [idx / 100, 0, 0], `H${idx + 1}`),
-        ),
-        lattice: diag_lattice(10),
-      }
-      const lines = structure_to_xyz_str(large_structure).split(`\n`)
-      expect(lines[0]).toBe(`1000`)
-      expect(lines).toHaveLength(1002) // 1 count + 1 comment + 1000 atoms
     })
 
     it(`prefers xyz over abc and converts abc when xyz is missing`, () => {

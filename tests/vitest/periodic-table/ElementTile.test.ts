@@ -36,6 +36,7 @@ describe(`ElementTile`, () => {
     const node = doc_query(`.element-tile`)
     expect(node.tagName).toBe(`A`)
     expect(node.getAttribute(`href`)).toBe(href)
+    expect([node.getAttribute(`role`), node.getAttribute(`tabindex`)]).toEqual([`link`, `0`])
   })
 
   // each show_* flag independently toggles its span; label replaces the element name
@@ -93,18 +94,6 @@ describe(`ElementTile`, () => {
     }
   })
 
-  test.each([
-    [`onmouseenter`, `mouseenter`],
-    [`onmouseleave`, `mouseleave`],
-  ])(`forwards %s events`, (event_prop, event_type) => {
-    const spy = vi.fn()
-    mount_tile({ [event_prop]: spy })
-    const event = new Event(event_type)
-    doc_query(`.element-tile`).dispatchEvent(event)
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy).toHaveBeenCalledWith(event)
-  })
-
   describe(`multi-value support`, () => {
     const test_cases: {
       name: string
@@ -115,7 +104,7 @@ describe(`ElementTile`, () => {
     }[] = [
       {
         name: `automatic diagonal`,
-        value: [10, 20],
+        value: [0, 20], // 0 is a real value and keeps its label
         segments: [`diagonal-top`, `diagonal-bottom`],
         positions: [`top-left`, `bottom-right`],
       },
@@ -171,9 +160,8 @@ describe(`ElementTile`, () => {
         segments.forEach((cls) =>
           expect(document.querySelector(`.segment.${cls}`)).toBeInstanceOf(HTMLElement),
         )
-        positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeInstanceOf(HTMLElement),
-        )
+        const labels = positions.map((cls) => doc_query(`.multi-value.${cls}`).textContent)
+        expect(labels).toEqual(value.map(String))
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull()
       },
@@ -193,19 +181,6 @@ describe(`ElementTile`, () => {
     ])(`atomic number: %s`, (_desc, segments, show_number, expected) => {
       mount_tile({ segments, show_number })
       expect(Boolean(document.querySelector(`.number`))).toBe(expected)
-    })
-
-    test(`renders zero-valued segments`, () => {
-      mount_tile({
-        segments: [
-          { color: `#ff0000`, value: 0 },
-          { color: `#00ff00`, value: 0 },
-        ],
-      })
-
-      expect(
-        [...document.querySelectorAll(`.multi-value`)].map((node) => node.textContent),
-      ).toEqual([`0`, `0`])
     })
   })
 

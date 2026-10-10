@@ -13,7 +13,7 @@ import {
   one_tab_stop,
   pattern_id_of,
   query,
-  set_select,
+  form_controls,
   roving_tabindexes,
   svg_rect,
   with_measured_text,
@@ -380,19 +380,13 @@ describe(`BoxPlot`, () => {
           show_controls: true,
           controls_open: true,
         })
-        const select = [...plot.querySelectorAll(`select`)].find((el) =>
-          el.parentElement?.textContent?.includes(`Points`),
-        )
-        if (!select) throw new Error(`Points select not rendered`)
-        const outliers = [
-          ...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`),
-        ].find((input) => input.parentElement?.textContent?.includes(`Show outliers`))
-        expect([select.value, outliers?.disabled]).toEqual([`none`, false])
+        const { control, set_value } = form_controls(plot)
+        const outliers = control(`Show outliers`)
+        expect([control(`Points`).value, outliers.disabled]).toEqual([`none`, false])
         expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(0)
-        set_select(select, `swarm`)
-        await tick()
+        await set_value(`Points`, `swarm`)
         expect(plot.querySelectorAll(`circle.sample-point`)).toHaveLength(n_samples)
-        expect(outliers?.disabled).toBe(disabled_after)
+        expect(outliers.disabled).toBe(disabled_after)
       },
     )
   })
@@ -759,17 +753,11 @@ describe(`BoxPlot`, () => {
       show_controls: true,
       controls_open: true,
     })
-    const checkbox_by_label = (label: string): HTMLInputElement => {
-      const box = [...plot.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)].find(
-        (input) => input.parentElement?.textContent?.includes(label),
-      )
-      if (!box) throw new Error(`checkbox "${label}" not found`)
-      return box
+    const { control } = form_controls(plot)
+    const [mean, outliers] = [control(`Show mean`), control(`Show outliers`)]
+    if (!(mean instanceof HTMLInputElement && outliers instanceof HTMLInputElement)) {
+      throw new Error(`Show mean/outliers are not checkboxes`)
     }
-    const [mean, outliers] = [
-      checkbox_by_label(`Show mean`),
-      checkbox_by_label(`Show outliers`),
-    ]
     expect([mean.checked, outliers.checked]).toEqual([false, true])
     const initial_summary_calls = summary_spy.mock.calls.length
     expect(initial_summary_calls).toBeGreaterThan(0)

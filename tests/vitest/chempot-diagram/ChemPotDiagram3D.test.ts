@@ -228,6 +228,11 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   }>(bind_props({ entries, config: { default_min_limit: -25 } }, bound))
   const scene = get_scene()
   const [domain] = scene.hover_meshes
+  // every domain belongs to an entry formula, whose energy stats the hover info carries
+  const { info } = domain
+  if (info.view !== `3d`) throw new Error(`expected 3D hover info, got ${info.view}`)
+  expect(info.matching_entry_count).toBeGreaterThan(0)
+  expect(info.min_energy_per_atom).toBeLessThanOrEqual(info.max_energy_per_atom ?? -Infinity)
   const event = {
     nativeEvent: new PointerEvent(`pointerdown`),
     stopPropagation: () => undefined,

@@ -15,6 +15,7 @@ import {
 import type { Crystal } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { is_crystal } from '#lib/structure/validation.js'
+import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
 import { to_error } from '#lib/utils.js'
 import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
@@ -148,34 +149,86 @@ export function resolve_wavelength(
 const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
 
-// Sorted absolute indices, so every permutation and sign variant of a family collides.
-// Spelled out arithmetically on purpose: a map/toSorted/join version allocates two arrays per
-// call and benchmarked 25x slower, enough to time out the largest pymatgen parity fixture.
-function hkl_family_key([h_idx, k_idx, l_idx]: Hkl): string {
-  const abs_h = Math.abs(h_idx)
-  const abs_k = Math.abs(k_idx)
-  const abs_l = Math.abs(l_idx)
-  const min_abs = Math.min(abs_h, abs_k, abs_l)
-  const max_abs = Math.max(abs_h, abs_k, abs_l)
-  return `${min_abs},${abs_h + abs_k + abs_l - min_abs - max_abs},${max_abs}`
+// Miller indices transform under a direct-space rotation W (fractional basis, x' = W·x + w)
+// as h' = W⁻ᵀ·h. W is unimodular, so W⁻ᵀ is an integer matrix too. Returned flat (9 row-major
+// entries per distinct W⁻ᵀ) for the hot loop in get_unique_families; supercell operations
+// repeat every W once per lattice translation, hence the dedupe.
+function reciprocal_rotations(rotations: readonly math.Matrix3x3[]): number[] {
+  if (rotations.length === 0) {
+    throw new Error(
+      `symmetry_rotations is empty. Every point group contains the identity; omit the ` +
+        `option to group Friedel pairs only.`,
+    )
+  }
+  const flat: number[] = []
+  const seen = new Set<string>()
+  for (const rotation of rotations) {
+    const det = math.det_3x3(rotation)
+    if (!rotation.flat().every(Number.isInteger) || Math.abs(det) !== 1) {
+      throw new Error(
+        `symmetry_rotations must hold the integer rotation parts W (det ±1) of the ` +
+          `space-group operations in the structure's fractional basis, got ` +
+          `${JSON.stringify(rotation)} with det ${det}`,
+      )
+    }
+    const inv_transposed = math
+      .transpose_3x3_matrix(math.matrix_inverse_3x3(rotation))
+      .flat()
+      .map(Math.round)
+    const key = inv_transposed.join(`,`)
+    if (seen.has(key)) continue
+    seen.add(key)
+    flat.push(...inv_transposed)
+  }
+  return flat
 }
 
-// Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
-function get_unique_families(hkls: Hkl[]): HklObj[] {
-  const key_map = new Map<string, Hkl[]>()
+const compare_hkl = (hkl_1: Hkl, hkl_2: Hkl): number =>
+  hkl_1[0] - hkl_2[0] || hkl_1[1] - hkl_2[1] || hkl_1[2] - hkl_2[2]
+
+// The identity alone: point group 1, so families reduce to Friedel pairs
+const IDENTITY_ROTATION = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+// Group one peak's Miller indices into families of symmetry-equivalent reflections: hkl and
+// hkl' are one family when hkl' = ±W⁻ᵀ·hkl for a rotation W of the crystal's point group.
+// The ± folds in Friedel pairs (hkl, h̄k̄l̄), which coincide in a powder pattern. Grouping never
+// touches intensities: every reflection's intensity is computed and summed individually.
+// Family key = lexicographically smallest image, representative = lexicographically largest
+// member, families sorted by representative.
+function get_unique_families(hkls: Hkl[], recip_rotations: readonly number[]): HklObj[] {
+  const families = new Map<string, { hkl: Hkl; multiplicity: number }>()
   for (const hkl of hkls) {
-    const key = hkl_family_key(hkl)
-    const group = key_map.get(key)
-    if (group) group.push(hkl)
-    else key_map.set(key, [hkl])
+    const [h_idx, k_idx, l_idx] = hkl
+    let [min_h, min_k, min_l] = [Infinity, Infinity, Infinity]
+    for (let offset = 0; offset < recip_rotations.length; offset += 9) {
+      const img_h =
+        recip_rotations[offset] * h_idx +
+        recip_rotations[offset + 1] * k_idx +
+        recip_rotations[offset + 2] * l_idx
+      const img_k =
+        recip_rotations[offset + 3] * h_idx +
+        recip_rotations[offset + 4] * k_idx +
+        recip_rotations[offset + 5] * l_idx
+      const img_l =
+        recip_rotations[offset + 6] * h_idx +
+        recip_rotations[offset + 7] * k_idx +
+        recip_rotations[offset + 8] * l_idx
+      // the smaller of the image and its Friedel mate has a negative leading nonzero index
+      const sign = (img_h || img_k || img_l) > 0 ? -1 : 1
+      const [cand_h, cand_k, cand_l] = [sign * img_h, sign * img_k, sign * img_l]
+      if ((cand_h - min_h || cand_k - min_k || cand_l - min_l) < 0) {
+        ;[min_h, min_k, min_l] = [cand_h, cand_k, cand_l]
+      }
+    }
+    const key = `${min_h},${min_k},${min_l}`
+    const family = families.get(key)
+    if (!family) families.set(key, { hkl, multiplicity: 1 })
+    else {
+      family.multiplicity++
+      if (compare_hkl(hkl, family.hkl) > 0) family.hkl = hkl
+    }
   }
-  // Representative is the max tuple (lexicographic) like numpy max(val)
-  return Array.from(key_map.values(), (group) => ({
-    hkl: group.reduce((best, cand) =>
-      (cand[0] - best[0] || cand[1] - best[1] || cand[2] - best[2]) > 0 ? cand : best,
-    ),
-    multiplicity: group.length,
-  }))
+  return [...families.values()].toSorted((fam_1, fam_2) => compare_hkl(fam_1.hkl, fam_2.hkl))
 }
 
 // SAED restriction: only reflections whose Laue index n = h·u + k·v + l·w satisfies
@@ -472,6 +525,12 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     options.wavelength,
     options.accelerating_voltage,
   )
+  // Without the crystal's rotations, families fall back to point group 1 (Friedel pairs
+  // only) and the result says so in family_grouping
+  const { symmetry_rotations } = options
+  const recip_rotations = symmetry_rotations
+    ? reciprocal_rotations(symmetry_rotations)
+    : IDENTITY_ROTATION
 
   const recip_rows = math.reciprocal_lattice(structure.lattice.matrix)
 
@@ -557,7 +616,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const two_theta = math.to_degrees(2 * theta)
 
     // hkls stay 3-index (h, k, l) even for hexagonal systems where pymatgen presents
-    // Miller–Bravais (h, k, i, l), matching consumers.
+    // Miller–Bravais (h, k, i, l), matching consumers
     const last = peaks.at(-1)
     if (last && Math.abs(last.two_theta - two_theta) < merge_tol) {
       last.intensity += intensity_hkl
@@ -585,7 +644,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     if ((peak.intensity / max_intensity) * 100 <= scaled_tol) continue
     x_values.push(peak.two_theta)
     y_values.push(peak.intensity)
-    hkls_out.push(get_unique_families(peak.hkls))
+    hkls_out.push(get_unique_families(peak.hkls, recip_rotations))
     d_out.push(peak.d_hkl)
   }
 
@@ -600,7 +659,20 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
         y_values[idx] = (y_values[idx] / max_y) * 100
   }
 
-  return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out }
+  const family_grouping = symmetry_rotations ? `symmetry` : `friedel`
+  return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out, family_grouping }
+}
+
+// symprec in Å for xrd_symmetry_rotations. Tight on purpose: a looser tolerance can accept
+// near-symmetries that map reflections of different intensity onto each other, while one
+// too tight only splits a family into smaller ones.
+const XRD_SYMPREC = 1e-5
+
+// The structure's point-group rotations for options.symmetry_rotations of compute_xrd_pattern
+// (async because moyo-wasm initializes asynchronously)
+export async function xrd_symmetry_rotations(structure: Crystal): Promise<math.Matrix3x3[]> {
+  const { operations } = await analyze_structure_symmetry(structure, { symprec: XRD_SYMPREC })
+  return point_group_rotations(operations)
 }
 
 // Dropped file content as a plot entry: measured data files (.xy, .brml, …) are parsed,
@@ -633,6 +705,7 @@ export async function add_xrd_pattern(
   const pattern = compute_xrd_pattern(parsed_structure, {
     wavelength: typeof wavelength === `number` ? wavelength : undefined,
     radiation,
+    symmetry_rotations: await xrd_symmetry_rotations(parsed_structure),
   })
   return { label: filename || `Dropped structure`, pattern }
 }

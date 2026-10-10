@@ -144,6 +144,10 @@
   // computed against the page color behind the legend
   let property_legend_node = $state<HTMLDivElement>()
   const backdrop = resolve_backdrop(() => property_legend_node)
+  const property_text_color = (background: string): string =>
+    contrast_text_color({ background, backdrop: backdrop.current })
+  const toggle_label = (value: number | string, hidden: boolean): string =>
+    `${hidden ? `Show` : `Hide`} ${format_value(value)}`
 
   // The legend filter darkens saturated swatches, so their perceived brightness is a
   // better text-color signal than maximum contrast against the unfiltered CSS color.
@@ -175,6 +179,10 @@
   // Element remapping state
   let remap_menu_open = $state<ElementSymbol | null>(null)
   let remap_search = $state(``)
+  const close_remap_menu = (): void => {
+    remap_menu_open = null
+    remap_search = ``
+  }
 
   // Filtered elements based on search
   let filtered_elements = $derived.by(() => {
@@ -207,8 +215,7 @@
     } else if (from !== target) {
       element_mapping = { ...element_mapping, [from]: target }
     }
-    remap_menu_open = null
-    remap_search = ``
+    close_remap_menu()
   }
 
   // Radius bounds (Angstroms) - max accommodates largest atomic radii (~2.6Å for Cs)
@@ -319,11 +326,7 @@
             max={MAX_RADIUS}
             step={0.05}
             value={get_site_radius(site_idx)}
-            oninput={(event) => {
-              if (event.target instanceof HTMLInputElement) {
-                update_site_radius(site_idx, event.target.value)
-              }
-            }}
+            oninput={(event) => update_site_radius(site_idx, event.currentTarget.value)}
           />
           <span class="unit">Å</span>
         </label>
@@ -348,8 +351,8 @@
     {#each sorted_element_entries as [elem, amt] (elem)}
       <!-- The scene renders mapped species, so hiding and coloring act on the displayed
         element; only the remap menu addresses the element the file named -->
-      {@const displayed_elem = (element_mapping?.[elem as ElementSymbol] ||
-        elem) as ElementSymbol}
+      {@const symbol = elem as ElementSymbol}
+      {@const displayed_elem = element_mapping?.[symbol] || symbol}
       {@const is_hidden = hidden_elements.has(displayed_elem)}
       {@const color = palette.colors[displayed_elem]}
       {@const visibility_label = `${is_hidden ? `Show` : `Hide`} ${displayed_elem} atoms`}
@@ -369,7 +372,7 @@
           }}
           oncontextmenu={(event) => {
             event.preventDefault()
-            remap_menu_open = remap_menu_open === elem ? null : (elem as ElementSymbol)
+            remap_menu_open = remap_menu_open === symbol ? null : symbol
             remap_search = ``
           }}
         >
@@ -402,10 +405,7 @@
               // the opening press dismisses immediately and oncontextmenu reopens it, so
               // the swatch could never close it again.
               dismiss_on: `release`,
-              callback: () => {
-                remap_menu_open = null
-                remap_search = ``
-              },
+              callback: close_remap_menu,
             })}
           >
             <div class="radius-control">
@@ -421,19 +421,15 @@
                   min={MIN_RADIUS}
                   max={MAX_RADIUS}
                   step={0.05}
-                  value={get_element_radius(elem as ElementSymbol)}
-                  oninput={(event) => {
-                    if (event.target instanceof HTMLInputElement) {
-                      update_element_radius(elem as ElementSymbol, event.target.value)
-                    }
-                  }}
+                  value={get_element_radius(symbol)}
+                  oninput={(event) => update_element_radius(symbol, event.currentTarget.value)}
                 />
                 <span class="unit">Å</span>
               </label>
-              {#if element_radius_overrides[elem as ElementSymbol] !== undefined}
+              {#if element_radius_overrides[symbol] !== undefined}
                 <button
                   class="reset-btn"
-                  onclick={() => clear_element_radius(elem as ElementSymbol)}
+                  onclick={() => clear_element_radius(symbol)}
                   title="Reset to default radius"
                   {@attach tooltip({ placement: `top` })}
                 >
@@ -447,11 +443,9 @@
               placeholder="Search elements..."
               bind:value={remap_search}
               onkeydown={(event) => {
-                if (event.key === `Escape`) {
-                  remap_menu_open = null
-                  remap_search = ``
-                } else if (event.key === `Enter` && filtered_elements.length > 0) {
-                  remap_element(elem as ElementSymbol, filtered_elements[0])
+                if (event.key === `Escape`) close_remap_menu()
+                else if (event.key === `Enter` && filtered_elements.length > 0) {
+                  remap_element(symbol, filtered_elements[0])
                 }
               }}
             />
@@ -459,7 +453,7 @@
               {#if displayed_elem !== elem}
                 <button
                   class="remap-option reset"
-                  onclick={() => remap_element(elem as ElementSymbol, elem as ElementSymbol)}
+                  onclick={() => remap_element(symbol, symbol)}
                 >
                   Reset to {elem}
                 </button>
@@ -468,7 +462,7 @@
                 {@const elem_info = element_by_symbol.get(target_elem)}
                 <button
                   class={['remap-option', { selected: displayed_elem === target_elem }]}
-                  onclick={() => remap_element(elem as ElementSymbol, target_elem)}
+                  onclick={() => remap_element(symbol, target_elem)}
                   style:background-color={palette.colors[target_elem]}
                   style:color={element_text_color(palette.colors[target_elem])}
                 >
@@ -509,15 +503,10 @@
             aria-pressed={is_hidden}
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
-            aria-label={is_hidden
-              ? `Show ${format_value(value)}`
-              : `Hide ${format_value(value)}`}
+            title={toggle_label(value, is_hidden)}
+            aria-label={toggle_label(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
-            style:color={contrast_text_color({
-              background: color,
-              backdrop: backdrop.current,
-            })}
+            style:color={property_text_color(color)}
           >
             {format_value(value)}
           </button>
@@ -546,10 +535,7 @@
           <span
             class={['category-label color-swatch', { hidden: is_hidden }]}
             style:background-color={color}
-            style:color={contrast_text_color({
-              background: color,
-              backdrop: backdrop.current,
-            })}
+            style:color={property_text_color(color)}
           >
             {format_value(value)}
           </span>
@@ -557,10 +543,8 @@
             class={['toggle-visibility', { 'element-hidden': is_hidden }]}
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={is_hidden ? `Show ${format_value(value)}` : `Hide ${format_value(value)}`}
-            aria-label={is_hidden
-              ? `Show ${format_value(value)}`
-              : `Hide ${format_value(value)}`}
+            title={toggle_label(value, is_hidden)}
+            aria-label={toggle_label(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
             type="button"
           >

@@ -1,5 +1,5 @@
-// Tests for HTML rendering in ConvexHull component titles.
-// Verifies subscripts, superscripts, bold, italic render in diagram and controls pane titles.
+// Tests for HTML rendering in ConvexHull component titles. Every dim shares one
+// {@html sanitize_html(title)} path; the allowed tags are pinned in tests/vitest/sanitize.test.ts.
 
 import { expect, type Page, test } from '@playwright/test'
 import { dom_click } from './utils'
@@ -24,39 +24,13 @@ async function goto_with_title(page: Page, dim: keyof typeof DIMS, title: string
 }
 
 test.describe(`ConvexHull HTML Title Rendering`, () => {
-  // Every markup type on 2D (one shared rendering path), plus plain text and many subscripts
-  const TITLE_CASES = [
-    { dim: `2d`, title: `Li<sub>2</sub>O`, selector: `h3 sub`, expected: [`2`] },
-    { dim: `2d`, title: `Fe<sup>3+</sup>-O`, selector: `h3 sup`, expected: [`3+`] },
-    { dim: `2d`, title: `<b>Stable</b> Phases`, selector: `h3 b`, expected: [`Stable`] },
-    { dim: `2d`, title: `<i>Meta</i> Region`, selector: `h3 i`, expected: [`Meta`] },
-    {
-      dim: `2d`,
-      title: `Simple Plain Title`,
-      selector: `h3`,
-      expected: [`Simple Plain Title`],
-    },
-    {
-      dim: `3d`,
-      title: `Li<sub>3</sub>V<sub>2</sub>(PO<sub>4</sub>)<sub>3</sub>`,
-      selector: `h3 sub`,
-      expected: [`3`, `2`, `4`, `3`],
-    },
-  ] as const
-
-  for (const { dim, title, selector, expected } of TITLE_CASES) {
-    test(`${dim.toUpperCase()} title ${title} renders`, async ({ page }) => {
-      const diagram = await goto_with_title(page, dim, title)
-      await expect(diagram.locator(selector)).toHaveText(expected)
-    })
-  }
-
   for (const dim of Object.keys(DIMS) as (keyof typeof DIMS)[]) {
     test(`${dim.toUpperCase()} diagram and controls pane titles render HTML, toolbar icons match`, async ({
       page,
     }) => {
       const diagram = await goto_with_title(page, dim, `X<sub>a</sub>Y<sup>+</sup>`)
       await expect(diagram.locator(`h3 sub`)).toHaveText(`a`)
+      await expect(diagram.locator(`h3 sup`)).toHaveText(`+`)
       if (dim === `2d`) {
         const title_bottom = await diagram
           .locator(`h3`)

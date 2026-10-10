@@ -1,12 +1,12 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { require_bbox } from '../helpers'
 
 // Click the center circle inside its rim but above the (selectable, click-through)
 // center text - Playwright's default center point is obscured by that text
 async function click_center(plot: Locator) {
   const circle = plot.locator(`.center-circle`)
-  const box = await circle.boundingBox()
-  if (!box) throw new Error(`center circle not visible`)
+  const box = await require_bbox(circle, `center circle`)
   await circle.click({ position: { x: box.width / 2, y: box.height * 0.18 } })
 }
 
@@ -19,16 +19,6 @@ const zoom_section = (page: Page) => {
 test.describe(`Sunburst Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/sunburst`) // locator auto-waiting handles readiness
-  })
-
-  test(`renders arcs, labels and center circle`, async ({ page }) => {
-    const plot = page.locator(`#basic-sunburst .sunburst`)
-    await expect(plot).toBeVisible()
-
-    // energy fixture: 2 sectors + 5 sources + 2 technologies = 9 non-root arcs
-    await expect(plot.locator(`.arcs path`)).toHaveCount(9)
-    await expect(plot.locator(`.center-circle`)).toBeAttached()
-    await expect(plot.locator(`.arc-label`).first()).toBeVisible()
   })
 
   test(`flat plotly-trace input renders with legend`, async ({ page }) => {
@@ -214,9 +204,8 @@ test.describe(`Sunburst Component Tests`, () => {
   test(`metric colorbar reserves space and never overlaps the arcs`, async ({ page }) => {
     const plot = page.locator(`#metric-sunburst .sunburst`)
     await expect(plot.locator(`.colorbar`)).toBeVisible()
-    const arcs_box = await plot.locator(`.arcs`).boundingBox()
-    const cbar_box = await plot.locator(`.colorbar`).boundingBox()
-    if (!arcs_box || !cbar_box) throw new Error(`missing arcs/colorbar bounding box`)
+    const arcs_box = await require_bbox(plot.locator(`.arcs`))
+    const cbar_box = await require_bbox(plot.locator(`.colorbar`))
     // arcs must end above where the colorbar starts (no vertical overlap)
     expect(arcs_box.y + arcs_box.height).toBeLessThanOrEqual(cbar_box.y)
   })

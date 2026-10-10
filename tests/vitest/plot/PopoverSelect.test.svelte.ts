@@ -1,7 +1,7 @@
 import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, dismiss_popover, doc_query } from '../setup'
+import { bind_props, dismiss_popover, doc_query, fire, keydown } from '../setup'
 
 type Option = { key: string; label: string; unit?: string }
 const options: Option[] = [
@@ -64,15 +64,8 @@ describe(`PopoverSelect`, () => {
       await tick()
       const trigger = get_trigger()
       trigger.focus()
-      trigger.click()
-      await tick()
-      trigger.dispatchEvent(
-        new KeyboardEvent(`keydown`, {
-          key: `ArrowDown`,
-          bubbles: true,
-          cancelable: true,
-        }),
-      )
+      await fire(trigger)
+      trigger.dispatchEvent(keydown(`ArrowDown`, { cancelable: true }))
       expect(onkeydown).toHaveBeenCalledOnce()
       expect(document.activeElement).toBe(
         prevent_default ? trigger : document.querySelector(`[role="option"]`),
@@ -91,8 +84,7 @@ describe(`PopoverSelect`, () => {
     const state = $state({ selected_key: `energy` })
     mount_select(bind_props({ on_select }, state))
     await tick() // let bind:this land before the handler reads the trigger
-    get_trigger().click()
-    await tick()
+    await fire(get_trigger())
 
     // a native auto popover: the top layer escapes the plot's overflow clipping
     const dropdown = document.body.querySelector(`.popover-select-dropdown`)
@@ -114,8 +106,7 @@ describe(`PopoverSelect`, () => {
     ])
     expect(items[0].getAttribute(`aria-selected`)).toBe(`true`)
 
-    items[1].click()
-    await tick()
+    await fire(items[1])
     expect(document.body.querySelector(`.popover-select-dropdown`)).toBeNull()
     expect(on_select).toHaveBeenCalledWith(`volume`)
     expect(get_trigger().textContent).toContain(`Energy`)
@@ -129,8 +120,7 @@ describe(`PopoverSelect`, () => {
   test(`a browser dismissal closes the dropdown`, async () => {
     mount_select({ selected_key: `energy` })
     await tick() // let bind:this land before the handler reads the trigger
-    get_trigger().click()
-    await tick()
+    await fire(get_trigger())
     dismiss_popover(doc_query(`.popover-select-dropdown`))
     await tick()
     expect(document.querySelector(`.popover-select-dropdown`)).toBeNull()

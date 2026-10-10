@@ -395,7 +395,7 @@ describe(`click and dblclick handlers`, () => {
     },
   )
 
-  test(`arrow keys follow sorted display order`, async () => {
+  test(`x_order/y_order reorder labels and arrow keys follow the sorted order`, async () => {
     mount_matrix({
       x_items: [
         { label: `B`, sort_value: 2 },
@@ -406,10 +406,12 @@ describe(`click and dblclick handlers`, () => {
         { label: `X`, sort_value: 1 },
       ],
       x_order: `sort_value`,
-      y_order: `sort_value`,
+      y_order: `label`,
       on_click: () => {},
     })
     await tick()
+    expect(get_x_labels()[0].textContent?.trim()).toBe(`A`)
+    expect(get_y_labels()[0].textContent?.trim()).toBe(`X`)
     const start = cell_at(1, 1)
     start.focus()
     const arrow_right = keydown(`ArrowRight`, { cancelable: true })
@@ -578,23 +580,6 @@ describe(`milestone feature props`, () => {
     const cells = get_data_cells()
     expect(cells).toHaveLength(n_cells)
     expect(red_of(cells[0])).toBe(red) // the cell holding 5
-  })
-
-  test(`x_order and y_order reorder labels`, () => {
-    mount_matrix({
-      x_items: [
-        { label: `B`, sort_value: 2 },
-        { label: `A`, sort_value: 1 },
-      ],
-      y_items: [
-        { label: `Y`, sort_value: 2 },
-        { label: `X`, sort_value: 1 },
-      ],
-      x_order: `sort_value`,
-      y_order: `label`,
-    })
-    expect(get_x_labels()[0].textContent?.trim()).toBe(`A`)
-    expect(get_y_labels()[0].textContent?.trim()).toBe(`X`)
   })
 
   // HeatmapMatrix binds show_color_bar/color_bar_position into its controls pane, so both must

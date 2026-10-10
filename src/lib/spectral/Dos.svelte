@@ -6,17 +6,17 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'
-  import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
-  import { extent } from 'd3-array'
+  import type { AxisConfig, DataSeries, UserContentProps } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
     apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
     density_divisor,
+    dos_imaginary_frequencies,
     extract_efermi,
     spectral_type,
     format_dos_tooltip,
@@ -194,27 +194,27 @@
       dos.type === `phonon` ? dos.frequencies : dos.energies,
     ),
   )
+  // like padded_frequency_range for Bands: density below -ACOUSTIC_FREQ_THRESHOLD is a real
+  // imaginary mode and is never clamped away as noise
   let clamp_to_zero = $derived(
     is_phonon &&
-      all_freqs.length > 0 &&
-      (extent(all_freqs)[0] ?? 0) < 0 &&
-      negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD,
+      array_extent(all_freqs)[0] < 0 &&
+      negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD &&
+      dos_imaginary_frequencies(Object.values(doses)).length === 0,
   )
 
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 
   // Density axis starts at 0 (unless mirror mode needs negative values); frequency axis
   // clamps to 0 only when negative phonon frequencies are numerical noise.
-  // Prefer d3 extent over Math.min/max(...arr) — large DOS grids can blow the call stack.
   // Folds over each series' own array instead of concatenating them: this re-runs on every
   // sigma-slider tick and legend toggle over grids of up to 1e7 points.
   const compute_range = (axis: `x` | `y`, is_density_axis: boolean): Vec2 | undefined => {
     let acc = empty_extent()
     for (const srs of series_data) acc = accumulate_extent(acc, srs[axis])
     if (acc.min === undefined || acc.max === undefined) return undefined
-    if (is_density_axis && has_mirrored_spin) return [acc.min, acc.max]
-    if (is_density_axis || clamp_to_zero) return [0, acc.max]
-    return [acc.min, acc.max]
+    const from_zero = is_density_axis ? !has_mirrored_spin : clamp_to_zero
+    return [from_zero ? 0 : acc.min, acc.max]
   }
   let x_range = $derived(compute_range(`x`, is_horizontal))
   let y_range = $derived(compute_range(`y`, !is_horizontal))
@@ -239,13 +239,11 @@
     ...y_axis,
   })
 
-  let has_valid_data = $derived(series_data.length > 0)
-
   // Auto-detect sigma range based on frequency/energy range
   let effective_sigma_range = $derived.by((): Vec2 => {
     if (sigma_range) return sigma_range
     if (all_freqs.length === 0) return [0, 1]
-    const [min_freq, max_freq] = extent(all_freqs) as [number, number]
+    const [min_freq, max_freq] = array_extent(all_freqs)
     // Reasonable sigma range: 0 to ~5% of total range
     const max_sigma = Math.max(0.1, (max_freq - min_freq) * 0.05)
     return [0, max_sigma]
@@ -258,31 +256,23 @@
     area: StackedAreaData,
     x_scale_fn: (val: number) => number,
     y_scale_fn: (val: number) => number,
-    horizontal: boolean,
   ): string {
-    const pts = area.x_values.length
-    if (pts < 2) return ``
-
-    const upper_coords: string[] = []
-    const lower_coords: string[] = []
-
-    for (let idx = 0; idx < pts; idx++) {
-      const freq = area.x_values[idx]
-      const upper_dens = area.upper_densities[idx]
-      const lower_dens = area.lower_densities[idx]
-      // For vertical orientation: x = freq, y = density
-      // For horizontal orientation: x = density, y = freq
-      const [upper_x, upper_y] = horizontal
-        ? [x_scale_fn(upper_dens), y_scale_fn(freq)]
-        : [x_scale_fn(freq), y_scale_fn(upper_dens)]
-      const [lower_x, lower_y] = horizontal
-        ? [x_scale_fn(lower_dens), y_scale_fn(freq)]
-        : [x_scale_fn(freq), y_scale_fn(lower_dens)]
-      upper_coords.push(`${upper_x.toFixed(2)},${upper_y.toFixed(2)}`)
-      lower_coords.push(`${lower_x.toFixed(2)},${lower_y.toFixed(2)}`)
-    }
-    return closed_edge_path(upper_coords, lower_coords)
+    if (area.x_values.length < 2) return ``
+    // vertical: x = frequency, y = density; horizontal: the other way round
+    const edge = (densities: number[]): string[] =>
+      area.x_values.map((freq, idx) => {
+        const [coord_x, coord_y] = is_horizontal
+          ? [densities[idx], freq]
+          : [freq, densities[idx]]
+        return `${x_scale_fn(coord_x).toFixed(2)},${y_scale_fn(coord_y).toFixed(2)}`
+      })
+    return closed_edge_path(edge(area.upper_densities), edge(area.lower_densities))
   }
+  // Fermi/reference line endpoints across the plot at `pos` on the frequency axis
+  const value_line = (pos: number, { width, height, pad }: UserContentProps) =>
+    is_horizontal
+      ? { x1: pad.l, x2: width - pad.r, y1: pos, y2: pos }
+      : { x1: pos, x2: pos, y1: pad.t, y2: height - pad.b }
 
   const spin_display_settings = track_settings(() => ({ spin_mode }), { spin_mode: `mirror` })
   const smearing_settings = track_settings(() => ({ sigma }), { sigma: 0 })
@@ -295,7 +285,7 @@
   )
 </script>
 
-{#if has_valid_data}
+{#if series_data.length > 0}
   <ScatterPlot
     {...rest}
     series={series_data}
@@ -404,12 +394,13 @@
       {/if}
     {/snippet}
 
-    {#snippet user_content({ width, height, y_scale_fn, x_scale_fn, pad })}
+    {#snippet user_content(ctx)}
+      {@const { width, y_scale_fn, x_scale_fn, pad } = ctx}
       <!-- Stacked area fills (rendered first so they appear behind lines) -->
       {#if stack && stacked_areas.length > 0}
         {#each stacked_areas as area, area_idx (area_idx)}
           <path
-            d={build_stacked_area_path(area, x_scale_fn, y_scale_fn, is_horizontal)}
+            d={build_stacked_area_path(area, x_scale_fn, y_scale_fn)}
             fill={area.color}
             fill-opacity="var(--dos-stacked-area-opacity, 0.3)"
             stroke="none"
@@ -425,15 +416,9 @@
             : x_scale_fn(effective_fermi_level)
           : NaN}
       {#if Number.isFinite(fermi_pos)}
-        {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
-          ? [pad.l, width - pad.r, fermi_pos, fermi_pos]
-          : [fermi_pos, fermi_pos, pad.t, height - pad.b]}
         <line
           class="fermi-level-line"
-          x1={coord_x_1}
-          x2={coord_x}
-          y1={coord_y_1}
-          y2={coord_y_2}
+          {...value_line(fermi_pos, ctx)}
           stroke="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
           stroke-width="var(--dos-fermi-line-width, 1.5)"
           stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
@@ -460,14 +445,8 @@
       {@const ref_display = (reference_frequency ?? NaN) * display_factor}
       {@const ref_pos = is_horizontal ? y_scale_fn(ref_display) : x_scale_fn(ref_display)}
       {#if Number.isFinite(ref_pos)}
-        {@const [coord_x_1, coord_x, coord_y_1, coord_y_2] = is_horizontal
-          ? [pad.l, width - pad.r, ref_pos, ref_pos]
-          : [ref_pos, ref_pos, pad.t, height - pad.b]}
         <line
-          x1={coord_x_1}
-          x2={coord_x}
-          y1={coord_y_1}
-          y2={coord_y_2}
+          {...value_line(ref_pos, ctx)}
           stroke="var(--dos-reference-line-color, light-dark(#d48860, #c47850))"
           stroke-width="var(--dos-reference-line-width, 1)"
           stroke-dasharray="var(--dos-reference-line-dash, 4,3)"

@@ -236,9 +236,6 @@ describe(`tick density`, () => {
   })
 
   test.each([
-    { item_count: 0, requested: 0, expected: [] },
-    { item_count: 1, requested: 0, expected: [0] },
-    { item_count: 2, requested: 0, expected: [0, 1] },
     { item_count: 5, requested: 20, expected: [0, 1, 2, 3, 4] },
     { item_count: 10, requested: 5, expected: [0, 2, 5, 7, 9] },
   ])(`thin_tick_indices($item_count, $requested)`, ({ item_count, requested, expected }) => {

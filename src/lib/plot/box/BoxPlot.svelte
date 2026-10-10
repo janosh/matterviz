@@ -855,10 +855,7 @@
             }}
             onfocusout={clear_hover_on_exit}
             style:cursor={on_box_click ? `pointer` : undefined}
-            opacity={frame.hovered_series_idx !== null &&
-            frame.hovered_series_idx !== box_item.idx
-              ? 0.25
-              : 1}
+            opacity={frame.series_opacity(box_item.idx)}
             onmousemove={handle_box_hover(box_item, color)}
             onmouseleave={clear_hover}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
@@ -888,35 +885,20 @@
               />
             {/if}
             {#if draw_box}
-              {@const whisker_color = whisker_state.color}
-              {@const whisker_width = whisker_state.width}
               <!-- whiskers + caps -->
-              {@render seg(
-                point(c_center, v_q1),
-                point(c_center, v_wl),
-                whisker_color,
-                whisker_width,
-              )}
-              {@render seg(
-                point(c_center, v_q3),
-                point(c_center, v_wh),
-                whisker_color,
-                whisker_width,
-              )}
-              {#if cap > 0}
-                {@render seg(
-                  point(cap_lo, v_wl),
-                  point(cap_hi, v_wl),
-                  whisker_color,
-                  whisker_width,
-                )}
-                {@render seg(
-                  point(cap_lo, v_wh),
-                  point(cap_hi, v_wh),
-                  whisker_color,
-                  whisker_width,
-                )}
-              {/if}
+              {@const whiskers = [
+                [point(c_center, v_q1), point(c_center, v_wl)],
+                [point(c_center, v_q3), point(c_center, v_wh)],
+                ...(cap > 0
+                  ? [
+                      [point(cap_lo, v_wl), point(cap_hi, v_wl)],
+                      [point(cap_lo, v_wh), point(cap_hi, v_wh)],
+                    ]
+                  : []),
+              ]}
+              {#each whiskers as [from, to], whisker_idx (whisker_idx)}
+                {@render seg(from, to, whisker_state.color, whisker_state.width)}
+              {/each}
               <!-- IQR box -->
               <rect
                 class="iqr-box"
@@ -1019,11 +1001,7 @@
       bind:y_axis
       bind:y2_axis={y2_axis_prop}
       bind:display
-      auto_ranges={{
-        ...auto_ranges,
-        x2: show_x2 ? auto_ranges.x2 : undefined,
-        y2: show_y2 ? auto_ranges.y2 : undefined,
-      }}
+      auto_ranges={frame.controls_auto_ranges}
       children={controls_extra}
     />
   {/snippet}

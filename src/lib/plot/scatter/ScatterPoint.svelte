@@ -9,8 +9,7 @@
   } from '#lib/plot/core/utils/label-placement.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
-  import * as d3_symbols from 'd3-shape'
-  import { symbol } from 'd3-shape'
+  import { symbol, symbolCircle } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
@@ -107,15 +106,16 @@
   )
   const { radius, fill } = $derived(tweened.current)
 
-  // get the SVG path data as 'd' attribute
-  function get_symbol_path(): string {
+  // SVG path data for the marker's `d` attribute
+  let marker_path = $derived.by(() => {
     const symbol_key: D3SymbolName = style.symbol_type ?? DEFAULTS.scatter.symbol_type
-    const symbol_type = symbol_map[symbol_key] ?? d3_symbols.symbolCircle
     const size = style.symbol_size ?? Math.PI * (radius ?? 2) ** 2
-    return symbol().type(symbol_type).size(size)() || ``
-  }
-
-  let marker_path = $derived.by(get_symbol_path)
+    return (
+      symbol()
+        .type(symbol_map[symbol_key] ?? symbolCircle)
+        .size(size)() || ``
+    )
+  })
 </script>
 
 <g

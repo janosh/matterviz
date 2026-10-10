@@ -1,7 +1,6 @@
 import type { FileInfo, FileTypePaint } from '#lib'
 import { file_type_paint } from '#lib/io/file-type-paint.js'
 import { fixture_ext, site_file_info } from '#site/imports.js'
-import { SvelteSet } from 'svelte/reactivity'
 
 // The static symlink serves these fixtures at /fermi-surfaces/<name>.
 const fermi_file_modules = import.meta.glob(
@@ -11,7 +10,7 @@ const fermi_file_modules = import.meta.glob(
 
 // FRMSF files carrying per-k-point color data (Fermi velocity, orbital character) rather
 // than eigenvalues — labeled distinctly from plain FRMSF files in the picker.
-const FRMSF_COLOR_DATA_FILES = new SvelteSet([
+const FRMSF_COLOR_DATA_FILES = new Set([
   `mgb2_vfz.frmsf.gz`, // MgB2 with Fermi velocity z-component
   `mgb2_b2pz.frmsf.gz`, // MgB2 with B 2pz orbital projection
   `mgb2_vfermi.frmsf.gz`, // MgB2 with Fermi velocity magnitude

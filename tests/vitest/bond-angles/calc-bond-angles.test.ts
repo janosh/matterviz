@@ -320,12 +320,9 @@ describe(`binning`, () => {
     [`just below 180`, 179.999, { bin_width: 2 }, 89],
     [`exactly 180 with a single bin`, 180, { bin_width: 180 }, 0],
     [`exactly 0 with a single bin`, 0, { bin_width: 180 }, 0],
-    // 180/7 is not binary-exact, so 3 * bin_width evaluates to 77.14285714285714 while
-    // 3 * bin_width recomputed by the division lands a hair above it: the boundary falls one
-    // bin LOW rather than into the upper bin. Documented, not fixed — only exactly-on-boundary
-    // angles are affected, they move by a single bin, and every width the UI can produce
-    // (0.5 deg slider steps) is binary-exact.
-    [`a boundary of a non-binary-exact width`, 3 * (180 / 7), { n_bins: 7 }, 2],
+    // acos returns exact crystal angles a few ulp low; they still belong to the upper bin
+    [`60 deg from acos noise`, 59.99999999999993, { bin_width: 2 }, 30],
+    [`a boundary of a non-binary-exact width`, 3 * (180 / 7), { n_bins: 7 }, 3],
   ])(`%s lands in the expected bin`, (_name, angle, options, expected_bin) => {
     const { n_bins, bin_width } = resolve_angle_bins(options)
     expect(angle_bin_index(angle, n_bins, bin_width)).toBe(expected_bin)

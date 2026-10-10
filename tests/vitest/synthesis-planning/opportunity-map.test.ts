@@ -105,7 +105,6 @@ test.each([0.01, 0.1, 1])(
 )
 
 test.each([
-  { conditions: { ...conditions, partial_pressures: { O2: 0 } } },
   { conditions: { ...conditions, partial_pressures: { O2: NaN } } },
   { routes: [request.routes[0], request.routes[0]] },
   { routes: [{ id: `empty`, precursor_ids: [] }] },

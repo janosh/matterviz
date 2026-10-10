@@ -71,50 +71,39 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   if (!all_finite(y1_range, y2_base_range)) return y2_base_range
 
   // Synced: Y2 has exact same range as Y1
-  if (sync.mode === `synced`) {
-    return [y1_range[0], y1_range[1]]
-  }
+  if (sync.mode === `synced`) return [y1_range[0], y1_range[1]]
+  if (sync.mode !== `align`) return y2_base_range
 
   // Align: Position so align_val (default 0) is at same relative position on both axes
   // Y2 range expands as needed to show all data while maintaining alignment
-  if (sync.mode === `align`) {
-    const align_val = sync.align_value ?? 0
-    const y1_span = y1_range[1] - y1_range[0]
-    if (y1_span === 0) return y2_base_range
+  const align_val = sync.align_value ?? 0
+  const y1_span = y1_range[1] - y1_range[0]
+  if (y1_span === 0) return y2_base_range
 
-    // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
-    // below assumes value rises with the fraction, which only holds on an ascending axis, and
-    // a descending y1 is a supported mode: measuring from y1_range[0] there both mirrored y2
-    // against it (y2 counting up while y1 counted down) and sized the range off the wrong
-    // constraint, so y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead of [5, 0]. Solve
-    // in ascending space, then hand the pair back pointing y1's way.
-    const descending = y1_span < 0
-    const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
+  // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
+  // below assumes value rises with the fraction, which only holds on an ascending axis, and
+  // a descending y1 is a supported mode: measuring from y1_range[0] there both mirrored y2
+  // against it (y2 counting up while y1 counted down) and sized the range off the wrong
+  // constraint, so y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead of [5, 0]. Solve
+  // in ascending space, then hand the pair back pointing y1's way.
+  const descending = y1_span < 0
+  const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
-    // Ensure Y2 range includes both align_val and all data
-    const y2_min_data = Math.min(y2_base_range[0], align_val)
-    const y2_max_data = Math.max(y2_base_range[1], align_val)
+  // Ensure Y2 range includes both align_val and all data
+  const y2_min_data = Math.min(y2_base_range[0], align_val)
+  const y2_max_data = Math.max(y2_base_range[1], align_val)
 
-    // Calculate minimum span needed to fit all data while keeping align_val at frac
-    // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
-    let y2_span = y2_max_data - y2_min_data
-    if (frac > 0) {
-      y2_span = Math.max(y2_span, (align_val - y2_min_data) / frac)
-    }
-    if (frac < 1) {
-      y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - frac))
-    }
+  // Calculate minimum span needed to fit all data while keeping align_val at frac
+  // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data
+  let y2_span = y2_max_data - y2_min_data
+  if (frac > 0) y2_span = Math.max(y2_span, (align_val - y2_min_data) / frac)
+  if (frac < 1) y2_span = Math.max(y2_span, (y2_max_data - align_val) / (1 - frac))
 
-    const y2_min_computed = align_val - frac * y2_span
-    const y2_max_computed = align_val + (1 - frac) * y2_span
-    // When align_val is outside y1_range (frac < 0 or > 1), the formula can produce
-    // a range that omits y2_base_range or align_val. Ensure both are always included.
-    const y2_min = Math.min(y2_min_computed, y2_base_range[0], align_val)
-    const y2_max = Math.max(y2_max_computed, y2_base_range[1], align_val)
-    return descending ? [y2_max, y2_min] : [y2_min, y2_max]
-  }
-
-  return y2_base_range
+  // When align_val is outside y1_range (frac < 0 or > 1), the formula can produce
+  // a range that omits y2_base_range or align_val. Ensure both are always included.
+  const y2_min = Math.min(align_val - frac * y2_span, y2_min_data)
+  const y2_max = Math.max(align_val + (1 - frac) * y2_span, y2_max_data)
+  return descending ? [y2_max, y2_min] : [y2_min, y2_max]
 }
 
 // Forward/inverse transform pair mapping an axis's data values onto its visual
@@ -149,16 +138,11 @@ export function validate_log_range(range: Vec2): Vec2 {
 }
 
 // Snapshot the four axis ranges as fresh tuples at pan/zoom/touch interaction start
-export const snapshot_ranges = ({
-  x: coord_x,
-  x2: coord_x_2,
-  y: coord_y,
-  y2: coord_y_2,
-}: AxisRanges): AxisRanges => ({
-  x: [...coord_x],
-  x2: [...coord_x_2],
-  y: [...coord_y],
-  y2: [...coord_y_2],
+export const snapshot_ranges = (ranges: AxisRanges): AxisRanges => ({
+  x: [...ranges.x],
+  x2: [...ranges.x2],
+  y: [...ranges.y],
+  y2: [...ranges.y2],
 })
 
 // Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
@@ -207,12 +191,8 @@ export function remove_drag_listeners(
   up_handlers: ((evt: MouseEvent) => void)[],
 ): void {
   if (typeof window === `undefined`) return
-  for (const handler of move_handlers) {
-    window.removeEventListener(`mousemove`, handler as EventListener)
-  }
-  for (const handler of up_handlers) {
-    window.removeEventListener(`mouseup`, handler as EventListener)
-  }
+  for (const handler of move_handlers) window.removeEventListener(`mousemove`, handler)
+  for (const handler of up_handlers) window.removeEventListener(`mouseup`, handler)
   document.body.style.cursor = ``
 }
 

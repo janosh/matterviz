@@ -9,10 +9,12 @@ import type { ChemPotDiagramConfig, ChemPotDiagramData } from './types'
 
 // Only the fields the geometry depends on (energies, composition, hull flags and the
 // tie-break identifiers) cross the worker boundary; structures and metadata stay behind.
+// e_form_per_atom places E_form-only entries (no absolute energy) on the references' scale.
 const PAYLOAD_KEYS = [
   `energy`,
   `energy_per_atom`,
   `correction`,
+  `e_form_per_atom`,
   `exclude_from_hull`,
   `is_stable`,
   `e_above_hull`,

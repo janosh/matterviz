@@ -1,6 +1,9 @@
+import { normalize_show_controls } from '#lib/controls.js'
+import SequenceControls from '#lib/layout/SequenceControls.svelte'
 import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
-import { flushSync } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { bind_props, doc_query, set_input } from '../setup'
 
 type Host = {
   count: number
@@ -85,22 +88,23 @@ describe(`create_sequence_player`, () => {
     [`seek ignores NaN`, 2, (player: Player) => player.seek(Number.NaN), 2, 0],
     [`seek to the current index is a no-op`, 2, (player: Player) => player.seek(2), 2, 0],
     [`go_to seeks and pauses`, 1, (player: Player) => player.go_to(3), 3, 1],
+    [
+      `next after the sequence shrinks to 3 items`,
+      4,
+      (player: Player, host: Host) => {
+        host.count = 3
+        flushSync()
+        player.next()
+      },
+      2,
+      1,
+    ],
   ])(`%s clamps within [0, count)`, (_name, start, act, expected, set_calls) => {
     const { host, player, set_index } = make_player({ index: start })
-    act(player)
+    act(player, host)
     expect(host.index).toBe(expected)
     expect(set_index).toHaveBeenCalledTimes(set_calls)
     expect(flashed_controls(player)).toEqual([])
-  })
-
-  test(`stepping clamps to the shrunken range after the sequence loses items`, () => {
-    const { host, player } = make_player({ index: 4 })
-    host.count = 3
-    flushSync()
-    player.next()
-    expect(host.index).toBe(2)
-    player.seek(10)
-    expect(host.index).toBe(2)
   })
 
   test(`empty or single-item sequences cannot play and ignore seeks`, () => {
@@ -300,6 +304,45 @@ describe(`create_sequence_player`, () => {
     player.handle_keydown(new KeyboardEvent(`keydown`, { key }))
     expect(flashed_controls(player)).toEqual([])
   })
+})
+
+describe(`SequenceControls`, () => {
+  test.each([true, false])(
+    `slider scrub pauses and previews, then commits and restores playing=%s on release`,
+    (was_playing) => {
+      stub_animation_frames()
+      const { host, player } = make_player({ index: 1 })
+      if (was_playing) player.play()
+      const on_index_input = vi.fn()
+      // host supplies reactive index and count
+      const component = mount(SequenceControls, {
+        target: document.body,
+        props: bind_props(
+          { controls_config: normalize_show_controls(true), playback: player, on_index_input },
+          host,
+        ),
+      })
+      onTestFinished(() => unmount(component))
+      flushSync()
+      const [previous, play, next] = document.querySelectorAll(`.nav-section button`)
+      // stepping is locked while playing; the play button names the action it performs
+      for (const btn of [previous, next])
+        expect(btn.hasAttribute(`disabled`)).toBe(was_playing)
+      expect(play.getAttribute(`aria-label`)).toBe(was_playing ? `Pause` : `Play`)
+
+      const slider = doc_query<HTMLInputElement>(`.step-slider`)
+      slider.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+      set_input(slider, 3)
+      flushSync()
+      expect(player.is_playing).toBe(false)
+      expect(on_index_input).toHaveBeenCalledExactlyOnceWith(3)
+      expect(host.index).toBe(1) // the host's preview handler owns intermediate frames
+      slider.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true }))
+      flushSync()
+      expect(host.index).toBe(3)
+      expect(player.is_playing).toBe(was_playing)
+    },
+  )
 })
 
 type Player = ReturnType<typeof create_sequence_player>

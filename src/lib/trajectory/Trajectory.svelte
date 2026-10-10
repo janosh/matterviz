@@ -168,6 +168,7 @@
     { mode: `structure+plot`, icon: TwoColumns, label: `Structure + Plot` },
     { mode: `plot`, icon: ScatterPlotIcon, label: `Plot-only` },
   ] as const
+  const pane_props = { style: `--pane-max-height: var(--traj-pane-max-height)` }
   // Trails get a 64 MB position budget; larger runs trade smoothness for frame stride
   const TRAIL_POSITION_MAX_BYTES = 64 * 1024 * 1024
 
@@ -826,6 +827,9 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  // Hiding the viewer's controls hides those of the structure and plot inside it too
+  const nested_controls = <Prop>(prop: Prop): Prop | false =>
+    controls_config.mode === `never` ? false : prop
   let controls_height = $state(0)
   let content_size = $state({ width: 0, height: 0 })
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
@@ -1206,7 +1210,7 @@
     // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
     property_rows: session.property_rows,
     properties_complete: session.properties_complete,
-    pane_props: { style: `--pane-max-height: var(--traj-pane-max-height)` },
+    pane_props,
     toggle_props: {
       class: `analysis-toggle-anchor`,
       tabindex: -1,
@@ -1545,7 +1549,7 @@
               bind:pane_open={
                 () => active_pane === `info`, (open) => set_pane_open(`info`, open)
               }
-              pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
+              {pane_props}
             />
           {/if}
           {#if controls_config.visible(`export-pane`)}
@@ -1575,7 +1579,7 @@
                   if (was_playing) player.play()
                 }
               }}
-              pane_props={{ style: `--pane-max-height: var(--traj-pane-max-height)` }}
+              {pane_props}
             />
           {/if}
           <!-- Analyses plot their own x axis (MSD plots lag time, not frame index) so they
@@ -1723,9 +1727,7 @@
             analyze_symmetry: false,
             ...structure_props,
           }}
-          show_controls={controls_config.mode === `never`
-            ? false
-            : structure_props.show_controls}
+          show_controls={nested_controls(structure_props.show_controls)}
           bind:scene_props={trail_scene_props}
           bind:atom_color_config
           {atom_color_field}
@@ -1838,9 +1840,7 @@
         {:else if plot_type === `time-series`}
           <ScatterPlot
             {...scatter_props}
-            show_controls={controls_config.mode === `never`
-              ? false
-              : scatter_props.show_controls}
+            show_controls={nested_controls(scatter_props.show_controls)}
             series={scatter_series}
             bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
             {x_axis}
@@ -1887,9 +1887,7 @@
         {:else}
           <Histogram
             {...histogram_props}
-            show_controls={controls_config.mode === `never`
-              ? false
-              : histogram_props.show_controls}
+            show_controls={nested_controls(histogram_props.show_controls)}
             series={histogram_series}
             x_axis={distribution_axis}
             y_axis={distribution_count_axis}

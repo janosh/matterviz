@@ -37,11 +37,11 @@
 
   // one key, since a tag copies a single value; `copied` handles the timed reset
   const { copied, copy } = create_clipboard_feedback()
-  const has_action = $derived(Boolean(onclick) || (copy_value ?? value) !== undefined)
+  const to_copy = $derived(copy_value ?? value)
+  const has_action = $derived(Boolean(onclick) || to_copy !== undefined)
 
   function handle_click(event: MouseEvent): void {
     if (disabled) return
-    const to_copy = copy_value ?? value
     if (onclick) onclick(event)
     else if (to_copy !== undefined) void copy(String(to_copy), `value`)
   }

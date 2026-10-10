@@ -31,7 +31,6 @@ const mount_axis = async (props: Record<string, unknown>): Promise<SVGElement> =
 }
 
 afterEach(() => {
-  document.body.replaceChildren()
   vi.restoreAllMocks()
   if (fonts_descriptor) Object.defineProperty(document, `fonts`, fonts_descriptor)
   else Reflect.deleteProperty(document, `fonts`)

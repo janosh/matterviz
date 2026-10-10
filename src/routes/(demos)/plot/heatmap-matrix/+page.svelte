@@ -25,10 +25,8 @@
   let last_export_status = $state<string | null>(null)
   let brush_info = $state<string | null>(null)
 
-  function format_cell_value(value: number | string | null | undefined): string {
-    if (value === null || value === undefined) return `N/A`
-    return typeof value === `number` ? format_num(value) : value
-  }
+  const format_cell_value = (value: number | string | null | undefined): string =>
+    value == null ? `N/A` : typeof value === `number` ? format_num(value) : value
 
   // Compute pairwise |ΔEN| for a set of axis items
   const en_diff_matrix = (items: AxisItem<ChemicalElement>[]): (number | null)[][] =>
@@ -51,23 +49,17 @@
   let small_values = $derived(en_diff_matrix(small_axis))
 
   // === Demo 3: Non-element axis items (property ranges) ===
-  const property_bins: AxisItem[] = [
-    { label: `0-1`, key: `bin_0`, category: `low` },
-    { label: `1-2`, key: `bin_1`, category: `low` },
-    { label: `2-3`, key: `bin_2`, category: `medium` },
-    { label: `3-4`, key: `bin_3`, category: `medium` },
-    { label: `4-5`, key: `bin_4`, category: `high` },
-    { label: `5-6`, key: `bin_5`, category: `high` },
-    { label: `6-7`, key: `bin_6`, category: `high` },
-    { label: `7+`, key: `bin_7`, category: `extreme` },
-  ]
-  // Count element pairs falling into each EN-diff x density-ratio bin
+  const bin_categories = [`low`, `low`, `medium`, `medium`, `high`, `high`, `high`, `extreme`]
+  const property_bins: AxisItem[] = bin_categories.map((category, idx) => ({
+    label: idx < bin_categories.length - 1 ? `${idx}-${idx + 1}` : `${idx}+`,
+    key: `bin_${idx}`,
+    category,
+  }))
+  // Synthetic Gaussian-ish distribution centered near (3,3)
   const bin_values: number[][] = property_bins.map((_y_bin, y_idx) =>
-    property_bins.map((_x_bin, x_idx) => {
-      // Generate a synthetic heatmap: Gaussian-ish distribution centered near (3,3)
-      const dist = Math.hypot(x_idx - 3, y_idx - 3)
-      return Math.round(100 * Math.exp(-dist * 0.4))
-    }),
+    property_bins.map((_x_bin, x_idx) =>
+      Math.round(100 * Math.exp(-Math.hypot(x_idx - 3, y_idx - 3) * 0.4)),
+    ),
   )
 </script>
 

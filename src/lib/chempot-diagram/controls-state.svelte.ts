@@ -1,5 +1,7 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D } from '#lib/math.js'
 import { to_error } from '#lib/utils.js'
@@ -8,7 +10,12 @@ import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'
 import { get_energy_stats_by_formula, get_min_entries_and_el_refs } from './compute'
 import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
+import {
+  CHEMPOT_DEFAULTS,
+  type ChemPotColorMode,
+  type ChemPotDiagramConfig,
+  type ChemPotDiagramData,
+} from './types'
 
 // Per-key user overrides with `override ?? config ?? default` resolution; `reset()`
 // clears all overrides (the panes' "Clear overrides" buttons). Defaults come from
@@ -141,7 +148,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
   $effect(() => () => compute_chempot_async.release())
 
-  // Raw (non-renormalized) elemental references for true DFT formation energies; the
+  // Raw (non-renormalized) elemental references for true formation energies; the
   // formal-chempot pipeline renormalizes its own refs to zero. Memoized apart from the
   // colours so colour toggles don't re-scan the entries.
   const el_refs = $derived(get_min_entries_and_el_refs(slice.temp_filtered_entries).el_refs)
@@ -199,10 +206,6 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     get available_temperatures() {
       return slice.available_temperatures
     },
-    // Entries evaluated at the current temperature (the computation's input)
-    get entries() {
-      return slice.temp_filtered_entries
-    },
     get diagram_data() {
       return diagram_data
     },
@@ -235,6 +238,10 @@ export const container_pointer = (
   return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
 }
 
+// Plain-text formula of a domain label (electronegativity order, no delimiters)
+export const domain_formula_text = (formula: string): string =>
+  get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` })
+
 // [value, label] pairs for the color-mode and color-scale <select>s in both panes
 export const CHEMPOT_COLOR_MODE_OPTIONS = [
   [`none`, `None`],
@@ -242,7 +249,7 @@ export const CHEMPOT_COLOR_MODE_OPTIONS = [
   [`formation_energy`, `Formation energy`],
   [`arity`, `Element count`],
   [`entries`, `Entry count`],
-] as const
+] as const satisfies readonly (readonly [ChemPotColorMode, string])[]
 
 export const CHEMPOT_COLOR_SCALE_OPTIONS = [
   [`interpolateViridis`, `Viridis`],
@@ -253,4 +260,4 @@ export const CHEMPOT_COLOR_SCALE_OPTIONS = [
   [`interpolateTurbo`, `Turbo`],
   [`interpolateRdYlBu`, `RdYlBu`],
   [`interpolateSpectral`, `Spectral`],
-] as const
+] as const satisfies readonly (readonly [D3InterpolateName, string])[]

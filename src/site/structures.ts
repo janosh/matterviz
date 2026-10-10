@@ -9,7 +9,6 @@ import {
 } from '#lib/structure/parse.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { fixture_ext, glob_basename, glob_text, site_file_info } from '#site/imports.js'
-import { SvelteMap } from 'svelte/reactivity'
 
 export const structures = Object.entries(
   import.meta.glob<unknown>(`./structures/*.json`, { eager: true, import: `default` }),
@@ -33,7 +32,7 @@ export const structures = Object.entries(
       .localeCompare((struct_b.id?.split(`-`)[1] ?? ``).padStart(6, `0`)),
   )
 
-export const structure_map = new SvelteMap(structures.map((struct) => [struct.id, struct]))
+export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
 const raw_structure_modules = import.meta.glob(`#site/structures/*`, {
   eager: true,

@@ -463,22 +463,17 @@ describe(`get_all_site_vectors`, () => {
   })
 
   test.each([
-    [`empty props`, make_site({})],
-    [`non-vector keys only`, make_site({ charge: 1 })],
-    [`undefined properties`, make_site()],
-  ])(`returns [] for %s`, (_desc, site) => {
-    expect(get_all_site_vectors(site)).toEqual([])
-  })
-
-  test.each([
+    [`empty props`, {}],
+    [`non-vector keys only`, { charge: 1 }],
+    [`undefined properties`, undefined],
     [`non-finite component`, { force: [Infinity, 0, 0] }],
     [`wrong-length array`, { force: [1, 2] }],
     [`non-numeric value`, { force: `high` }],
     [`null value`, { force: null }],
     [`nested array`, { force: [[1, 0, 0]] }],
     [`non-finite scalar`, { spin: NaN }],
-  ])(`rejects invalid vector: %s`, (_label, properties) => {
-    expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
+  ])(`returns [] for %s`, (_label, properties) => {
+    expect(get_all_site_vectors(make_site(properties))).toEqual([])
   })
 
   test.each([
