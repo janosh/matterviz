@@ -36,6 +36,16 @@ try {
 
 export const get_vscode_api = (): VSCodeAPI | null => host_api
 
+// Distinguish the host's deliberate worker rejection from unrelated constructor failures.
+export class WebviewWorkerUnavailableError extends DOMException {
+  constructor(href: string) {
+    super(
+      `Workers cannot load ${href} inside a VS Code webview; computing on the main thread`,
+      `SecurityError`,
+    )
+  }
+}
+
 // Shared postMessage request/response plumbing for talking to the extension
 // host: tags the request with a UUID, forwards replies carrying that id to
 // on_response (which returns true once it settled the promise), and rejects

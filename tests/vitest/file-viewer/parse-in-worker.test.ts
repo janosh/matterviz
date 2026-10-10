@@ -1,6 +1,8 @@
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import * as preparation_module from '#lib/trajectory/prepare.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
+import * as parse_module from '#lib/file-viewer/parse.js'
+import { WebviewWorkerUnavailableError } from '#lib/file-viewer/host-bridge.js'
 import type {
   ParseWorkerRequest,
   ParseWorkerResponse,
@@ -468,6 +470,81 @@ describe(`parse_in_worker`, () => {
         load_options: { index_above_bytes: 4096 },
       }),
     ).rejects.toThrow(/blocked|404|deserialize/)
+  })
+
+  const unavailable_webview_worker = (): never => {
+    throw new WebviewWorkerUnavailableError(
+      `https://file+.vscode-resource.vscode-cdn.net/parse.js`,
+    )
+  }
+
+  it.each([
+    [`text`, () => `x`.repeat(25 * 1024 ** 2 + 1), false],
+    [`UTF-8 text`, () => `é`.repeat((25 * 1024 ** 2) / 2 + 1), false],
+    [`binary`, () => new ArrayBuffer(50 * 1024 ** 2 + 1), false],
+    [`Blob`, () => new Blob([new ArrayBuffer(50 * 1024 ** 2 + 1)]), false],
+    [`base64 binary`, () => `A`.repeat(Math.ceil((50 * 1024 ** 2 + 1) / 3) * 4), true],
+  ] as const)(
+    `bounds main-thread parsing for oversized %s`,
+    async (_label, source, base64) => {
+      const parse = vi.spyOn(parse_module, `parse_file_content`)
+      await expect(
+        parse_in_worker(source(), `large.xyz`, base64, {
+          worker_factory: unavailable_webview_worker,
+          owns_content: true,
+        }),
+      ).rejects.toThrow(/limited to 25 MiB text or 50 MiB decoded binary/)
+      expect(parse).not.toHaveBeenCalled()
+    },
+  )
+
+  it(`preserves unrelated SecurityErrors and invalid file errors`, async () => {
+    const security_error = new DOMException(`Unrelated security failure`, `SecurityError`)
+    await expect(
+      parse_in_worker(`1\nframe\nH 0 0 0\n`, `valid.xyz`, false, {
+        worker_factory: () => {
+          throw security_error
+        },
+      }),
+    ).rejects.toBe(security_error)
+    await expect(
+      parse_in_worker(`invalid XYZ`, `invalid.xyz`, false, {
+        worker_factory: unavailable_webview_worker,
+      }),
+    ).rejects.toThrow(/XYZ file has no complete frame/)
+  })
+
+  it(`passes options and progress to the bounded fallback`, async () => {
+    const parse = vi
+      .spyOn(parse_module, `parse_file_content`)
+      .mockResolvedValue(structure_result)
+    const on_progress = vi.fn()
+    const load_options = { index_above_bytes: 4096 }
+    await expect(
+      parse_in_worker(`data_si`, `si.cif`, false, {
+        worker_factory: unavailable_webview_worker,
+        on_progress,
+        load_options,
+      }),
+    ).resolves.toEqual(structure_result)
+    expect(parse).toHaveBeenCalledWith(`data_si`, `si.cif`, false, load_options, on_progress)
+  })
+
+  it(`disposes a fallback trajectory when parsing is aborted`, async () => {
+    const controller = new AbortController()
+    const run = trajectory_from_frames([frame])
+    const dispose = vi.spyOn(run, `dispose`)
+    vi.spyOn(parse_module, `parse_file_content`).mockImplementation(async () => {
+      controller.abort()
+      return { type: `trajectory`, filename: `movie.xyz`, data: run }
+    })
+    await expect(
+      parse_in_worker(`text`, `movie.xyz`, false, {
+        worker_factory: unavailable_webview_worker,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(/abort/i)
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   it(`aborting terminates the worker`, async () => {

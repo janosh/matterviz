@@ -761,6 +761,63 @@ describe(`LARGE_FILE markers`, () => {
   })
 })
 
+describe(`VS Code webview parsing`, () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test.each([
+    [`structure.xyz`, false],
+    [`movie.xyz`, false],
+    [`relax.traj`, false],
+    [`relax.traj`, true],
+  ])(
+    `opens %s (base64=%s) despite the cross-origin worker guard`,
+    async (filename, is_base64) => {
+      vi.resetModules()
+      // oxlint-disable-next-line eslint/prefer-arrow-callback -- Worker needs a constructable mock.
+      const native_worker = vi.fn(function () {
+        throw new Error(`Native worker should not be constructed`)
+      })
+      vi.stubGlobal(`Worker`, native_worker)
+      vi.stubGlobal(`acquireVsCodeApi`, () => ({ postMessage: vi.fn() }))
+      await import(`#lib/file-viewer/main.js`)
+      // Exercise the installed host guard and the real parser together.
+      expect(
+        () => new Worker(`https://file+.vscode-resource.vscode-cdn.net/parse.js`),
+      ).toThrow(/Workers cannot load/)
+      const { parse_in_worker } = await import(`#lib/file-viewer/parse-in-worker.js`)
+      const xyz = `1\nframe\nH 0 0 0\n`
+      const content = filename.endsWith(`.traj`)
+        ? read_binary_test_file(`ase-LiMnO2-chgnet-relax.traj`)
+        : filename === `movie.xyz`
+          ? xyz + xyz
+          : xyz
+      // Vitest uses file: import.meta URLs; use the resource URL emitted in a webview build.
+      const data =
+        is_base64 && content instanceof ArrayBuffer
+          ? Buffer.from(content).toString(`base64`)
+          : content
+      const result = await parse_in_worker(data, filename, is_base64, {
+        worker_factory: () =>
+          new Worker(`https://file+.vscode-resource.vscode-cdn.net/parse.js`),
+      })
+      try {
+        expect(result.type).toBe(filename === `structure.xyz` ? `structure` : `trajectory`)
+        if (result.type === `structure`) expect(result.data.sites).toHaveLength(1)
+        if (result.type === `trajectory`) {
+          expect(result.data.frame_count).toBeGreaterThan(1)
+          const frame = materialize_frame_result(await result.data.read_frame(0))
+          expect(frame.structure.sites.length).toBeGreaterThan(0)
+        }
+        expect(native_worker).not.toHaveBeenCalled()
+      } finally {
+        if (result.type === `trajectory`) result.data.dispose()
+      }
+    },
+  )
+})
+
 describe(`VSCode Download Integration`, () => {
   afterEach(() => {
     vi.useRealTimers()

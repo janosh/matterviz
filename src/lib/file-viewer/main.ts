@@ -23,7 +23,7 @@ import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
 import type { VSCodeAPI } from './host-bridge'
-import { get_vscode_api } from './host-bridge'
+import { get_vscode_api, WebviewWorkerUnavailableError } from './host-bridge'
 import type {
   FileChangeMessage,
   FileData,
@@ -80,10 +80,7 @@ const install_cross_origin_worker_guard = (): void => {
     constructor(script_url: string | URL, options?: WorkerOptions) {
       const href = String(script_url)
       if (/^https?:/i.test(href) && new URL(href).origin !== globalThis.location.origin) {
-        throw new DOMException(
-          `Workers cannot load ${href} inside a VS Code webview; computing on the main thread`,
-          `SecurityError`,
-        )
+        throw new WebviewWorkerUnavailableError(href)
       }
       super(script_url, options)
     }

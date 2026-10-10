@@ -87,7 +87,7 @@ MatterViz supports [VSCode](https://marketplace.visualstudio.com/items?itemName=
 - ✅ **No manual file transfer**: Files are read directly from the remote filesystem
 - ✅ **File watching**: Changes to remote files are automatically detected and reloaded
 - ⚠️ **File size limit**: Files are read into extension memory in one operation on both local and Remote SSH workspaces. Non-text files larger than 1 GiB are rejected to prevent memory issues. XYZ/EXTXYZ text trajectories are limited by Node.js text decoding and are currently rejected above about 512 MiB. Other text formats (e.g. JSON, POSCAR, CIF) above about 400 MiB are rejected because large-file loading currently supports trajectories only.
-- ℹ️ **Parsing runs off the UI thread**: files below the 400 MiB streaming threshold are parsed in a Web Worker inside the editor tab, so the webview stays responsive while a large file loads. Worker failures show an error; parsing in the webview requires a working Web Worker. Trajectories above 400 MiB stay in the extension host, which opens them as a lazily decoded run, sends the webview a summary plus per-frame plot rows as they are extracted, and serves frames on request.
+- ℹ️ **Parsing in VS Code**: cross-origin Web Workers cannot load extension resources in a webview, so files up to 25 MiB (text) / 50 MiB (decoded binary) are parsed on the main thread. Larger files below the 400 MiB host-streaming threshold report a size-limit error. Unrelated worker errors still report an error. Trajectories above 400 MiB stay in the extension host, which opens them as a lazily decoded run, sends the webview a summary plus per-frame plot rows as they are extracted, and serves frames on request.
 
 ## ⚙️ Configuration & Customization
 

@@ -7,9 +7,11 @@ import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { to_error } from '#lib/utils.js'
+import { content_byte_size } from '#lib/io/decompress.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
+import { WebviewWorkerUnavailableError } from './host-bridge'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 
@@ -30,6 +32,10 @@ interface ParseInWorkerOptions {
 let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
+
+// Keep the VS Code fallback bounded: a large eager parse would freeze the webview.
+const MAIN_THREAD_TEXT_MAX_BYTES = 25 * 1024 ** 2
+const MAIN_THREAD_BINARY_MAX_BYTES = 50 * 1024 ** 2
 
 const parse_file_worker = async (
   content: TrajectorySource,
@@ -66,6 +72,35 @@ const parse_file_worker = async (
     try {
       worker = worker_factory()
     } catch (error) {
+      if (error instanceof WebviewWorkerUnavailableError) {
+        signal?.throwIfAborted()
+        const binary = is_base64 || typeof content !== `string`
+        const byte_size =
+          is_base64 && typeof content === `string`
+            ? Math.floor((content.length * 3) / 4) -
+              (content.endsWith(`==`) ? 2 : content.endsWith(`=`) ? 1 : 0)
+            : content_byte_size(content)
+        const max_bytes = binary ? MAIN_THREAD_BINARY_MAX_BYTES : MAIN_THREAD_TEXT_MAX_BYTES
+        if (byte_size > max_bytes) {
+          reject(
+            new Error(
+              `Cannot parse ${filename} in this VS Code webview: main-thread parsing is limited to 25 MiB text or 50 MiB decoded binary`,
+              { cause: error },
+            ),
+          )
+          return
+        }
+        void parse_file_content(content, filename, is_base64, load_options, on_progress).then(
+          (result) => {
+            if (signal?.aborted) {
+              if (result.type === `trajectory`) result.data.dispose()
+              reject(to_error(signal.reason ?? parse_abort_error()))
+            } else resolve(result)
+          },
+          reject,
+        )
+        return
+      }
       reject(to_error(error))
       return
     }
