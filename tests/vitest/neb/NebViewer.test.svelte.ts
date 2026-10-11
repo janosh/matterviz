@@ -89,7 +89,12 @@ describe(`NebPlot`, () => {
     [`arc_length`, `initial`, `Reaction coordinate (Å)`, `Energy relative to initial state (eV)`],
     [`image_index`, `absolute`, `Image index`, `Energy (eV)`],
   ] as const)(`labels axes for %s mode and %s energy reference`, async (coord_mode, energy_reference, x_label, y_label) => {
-    const plot = await mount_plot({ paths: reaction_paths, coord_mode, energy_reference })
+    const plot = await mount_plot({
+      paths: reaction_paths,
+      coord_mode,
+      energy_reference,
+      controls_open: true,
+    })
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(x_label)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(y_label)
     expect(plot.querySelector<HTMLSelectElement>(`#neb-coord-mode`)?.value).toBe(coord_mode)
@@ -250,6 +255,8 @@ describe(`NebViewer`, () => {
     })
     const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
     expect(viewer.querySelectorAll(`.neb-controls select`)).toHaveLength(1)
+    viewer.querySelector<HTMLButtonElement>(`.plot-controls-toggle`)?.click()
+    await flush_render()
     const coord_select = viewer.querySelector<HTMLSelectElement>(`#neb-coord-mode`)
     const energy_select = viewer.querySelector<HTMLSelectElement>(`#neb-energy-reference`)
     const spline = viewer.querySelector<HTMLInputElement>(`#neb-show-spline`)

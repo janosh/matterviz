@@ -255,7 +255,12 @@ test.each([
     mount(FermiSurface, {
       target: document.body,
       props: bind_props(
-        { fermi_data: fermi_data as FermiSurfaceData, children, on_error },
+        {
+          fermi_data: fermi_data as FermiSurfaceData,
+          children,
+          on_error,
+          controls_open: true,
+        },
         props,
       ),
     }),

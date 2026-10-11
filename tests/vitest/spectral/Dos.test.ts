@@ -301,7 +301,12 @@ describe(`Dos component`, () => {
     }
     mount(Dos, {
       target: document.body,
-      props: { doses: multi_spin_dos, stack: true, spin_mode: `overlay` as SpinMode },
+      props: {
+        doses: multi_spin_dos,
+        stack: true,
+        spin_mode: `overlay` as SpinMode,
+        controls_open: true,
+      },
     })
     await tick()
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)

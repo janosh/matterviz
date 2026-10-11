@@ -20,6 +20,7 @@
     pane_style = ``,
     toggle_props = {},
     pane_props = {},
+    lazy = true,
     children,
     ...options
   }: ViewerPaneOptions & {
@@ -31,9 +32,18 @@
     toggle_title?: string
     toggle_style?: string
     pane_style?: string
+    // Mount children on first open (then keep them). Opt out when the children capture state
+    // at mount that must predate the first open, like reset baselines.
+    lazy?: boolean
     children?: Snippet
   } = $props()
   const controls_config = $derived(normalize_show_controls(show_controls))
+  // Lazy children mount on first open and stay mounted after, so closed panes cost nothing up
+  // front while reopening keeps their local state
+  let ever_opened = $state(false)
+  $effect.pre(() => {
+    if (controls_open) ever_opened = true
+  })
 </script>
 
 {#if controls_config.visible(`controls`)}
@@ -61,7 +71,9 @@
     closed_icon={Settings}
     {...options}
   >
-    {@render children?.()}
+    {#if !lazy || controls_open || ever_opened}
+      {@render children?.()}
+    {/if}
   </ViewerPane>
 {/if}
 

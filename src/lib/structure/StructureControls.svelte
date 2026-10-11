@@ -980,7 +980,9 @@
   {/each}
 {/snippet}
 
+<!-- Eager: each section's reset baseline is the mount snapshot (created as the section renders) -->
 <ControlPane
+  lazy={false}
   bind:controls_open
   bind:pane={controls_pane}
   resize="both"

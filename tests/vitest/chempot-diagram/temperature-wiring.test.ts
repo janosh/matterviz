@@ -135,6 +135,8 @@ describe(`ChemPot temperature config wiring`, () => {
       config: { ...base_config, interpolate_temperature: false },
     })
     expect(document.querySelector(`.error-state`)).toBeNull()
+    document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
+    await tick()
     const options = [...document.querySelectorAll(`#chempot-proj-x option`)].map(
       (option) => option.textContent,
     )

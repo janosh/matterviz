@@ -276,10 +276,12 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   await tick()
   await vi.waitFor(() => expect(inline_props.result).toBeDefined())
   expect(inline_target.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()
-  const settings_headings = [...inline_target.querySelectorAll(`h4`)].filter(
-    (heading) => heading.textContent === `Spectroscopy analysis settings`,
-  )
-  expect(settings_headings).toHaveLength(1)
+  const settings_headings = () =>
+    [...inline_target.querySelectorAll(`h4`)].filter(
+      (heading) => heading.textContent === `Spectroscopy analysis settings`,
+    )
+  // the settings live in the plot's controls pane, which mounts them on first open
+  expect(settings_headings()).toHaveLength(0)
   expect(inline_target.querySelectorAll(`.spectroscopy-details-toggle`)).toHaveLength(1)
   const settings_pane = inline_target.querySelector(`.plot-controls-pane`)
   expect(settings_pane?.classList).not.toContain(`pane-open`)
@@ -289,6 +291,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   settings_toggle.click()
   await tick()
   expect(settings_pane?.classList).toContain(`pane-open`)
+  expect(settings_headings()).toHaveLength(1)
   // Spectroscopy settings must sit above PlotControls' own Display section. Poll rather than
   // read the pane text once: under load the section headings were observed to fill in after
   // the tick that opened the pane.
