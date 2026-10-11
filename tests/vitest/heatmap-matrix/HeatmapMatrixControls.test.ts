@@ -78,8 +78,14 @@ describe(`HeatmapMatrixControls`, () => {
       return selects
     })
     const matrices = document.querySelectorAll(`.heatmap-controls-anchor .heatmap`)
+    // rendered order (DOM order is stable across reorders)
     const labels = (idx: number) =>
-      [...matrices[idx].querySelectorAll(`.x-label`)].map((label) => label.textContent)
+      [...matrices[idx].querySelectorAll<HTMLElement>(`.x-label`)]
+        .toSorted(
+          (label_a, label_b) =>
+            Number(label_a.style.gridColumn) - Number(label_b.style.gridColumn),
+        )
+        .map((label) => label.textContent)
     const initial_full = labels(0)
     const initial_subset = labels(1)
     expect(initial_full.length).toBeGreaterThan(0)

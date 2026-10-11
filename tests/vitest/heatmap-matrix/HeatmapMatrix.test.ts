@@ -55,8 +55,18 @@ const query_all = (sel: string): HTMLElement[] =>
   Array.from(document.querySelectorAll<HTMLElement>(sel))
 const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
-const get_x_labels = () => query_all(`.x-label`)
-const get_y_labels = () => query_all(`.y-label`)
+// DOM order is item order (a reorder moves no nodes); labels are read in rendered order
+const in_track_order = (labels: HTMLElement[], track: `gridColumn` | `gridRow`) =>
+  labels.toSorted(
+    (label_a, label_b) => Number(label_a.style[track]) - Number(label_b.style[track]),
+  )
+const get_x_labels = () => in_track_order(query_all(`.x-label`), `gridColumn`)
+const get_y_labels = () => in_track_order(query_all(`.y-label`), `gridRow`)
+// rendered [column, row] grid line of a cell: its column's --c<x_idx> on the grid, its row wrapper's --r
+const cell_track = (cell: HTMLElement): [number, number] => [
+  Number(doc_query(`.grid`).style.getPropertyValue(`--c${cell.dataset.x}`)),
+  Number(cell.closest<HTMLElement>(`.row`)?.style.getPropertyValue(`--r`)),
+]
 const cell_at = (x_idx: number, y_idx: number) =>
   doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 // color_scale whose red channel reads back the normalized position on the ramp
@@ -137,7 +147,7 @@ describe(`symmetric mode`, () => {
     expect(data_cells).toHaveLength(6)
     expect(empty_cells).toHaveLength(3)
     for (const cell of data_cells) {
-      const [col, row] = [Number(cell.style.gridColumn), Number(cell.style.gridRow)]
+      const [col, row] = cell_track(cell)
       const message = `(${cell.dataset.x},${cell.dataset.y})`
       if (mode === `lower`) expect(col, message).toBeLessThanOrEqual(row)
       else expect(col, message).toBeGreaterThanOrEqual(row)
@@ -381,19 +391,20 @@ describe(`click and dblclick handlers`, () => {
     }
   })
 
-  test.each([`Enter`, ` `])(
-    `keyboard %s plus native click synthesis triggers once`,
-    (key_name) => {
-      const click_handler = vi.fn()
-      mount_matrix({ values: [[1]], on_click: click_handler })
-      const cell = doc_query(`.cell:not(.empty)`)
-      expect(cell.tagName).toBe(`BUTTON`)
-      // Approximate native button activation: keydown then synthesized click.
-      cell.dispatchEvent(keydown(key_name))
-      cell.dispatchEvent(mouse(`click`))
-      expect(click_handler).toHaveBeenCalledOnce()
-    },
-  )
+  test.each([`Enter`, ` `])(`keyboard %s activates the focused grid cell once`, (key_name) => {
+    const click_handler = vi.fn()
+    mount_matrix({ values: [[1]], on_click: click_handler })
+    const cell = doc_query(`.cell:not(.empty)`)
+    expect([cell.getAttribute(`role`), doc_query(`.grid`).getAttribute(`role`)]).toEqual([
+      `gridcell`,
+      `grid`,
+    ])
+    cell.focus()
+    const event = keydown(key_name, { cancelable: true })
+    cell.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(click_handler).toHaveBeenCalledOnce()
+  })
 
   test(`x_order/y_order reorder labels and arrow keys follow the sorted order`, async () => {
     mount_matrix({
@@ -422,6 +433,47 @@ describe(`click and dblclick handlers`, () => {
     document.activeElement?.dispatchEvent(keydown(`ArrowDown`))
     await tick()
     expect(document.activeElement).toBe(cell_at(0, 0))
+  })
+
+  test(`reordering moves no cell nodes, only their grid lines`, async () => {
+    const x_order = fromStore(writable<`label` | undefined>(`label`))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: make_items([`C`, `A`, `B`]),
+        y_items: make_items([`X`]),
+        on_click: () => {},
+        get x_order() {
+          return x_order.current
+        },
+      },
+    })
+    await tick()
+    const nodes = get_data_cells()
+    const tracks = () => nodes.map((cell) => cell_track(cell)[0])
+    // nodes stay in first-render order (A B C); only their columns change
+    expect(tracks()).toEqual([2, 3, 4])
+    flushSync(() => (x_order.current = undefined)) // item order: C A B
+    await tick()
+    expect(get_data_cells()).toEqual(nodes)
+    expect(tracks()).toEqual([3, 4, 2])
+  })
+
+  test(`one tab stop that follows focus; static matrices are tables`, async () => {
+    mount_matrix({ on_click: () => {} })
+    await tick()
+    const tab_stops = () => get_data_cells().filter((cell) => cell.tabIndex === 0)
+    expect(tab_stops()).toEqual([cell_at(0, 0)])
+    cell_at(1, 1).focus()
+    expect(tab_stops()).toEqual([cell_at(1, 1)])
+    document.body.innerHTML = ``
+    mount_matrix()
+    await tick()
+    expect([
+      doc_query(`.grid`).getAttribute(`role`),
+      cell_at(0, 0).getAttribute(`role`),
+    ]).toEqual([`table`, `cell`])
+    expect(cell_at(0, 0).hasAttribute(`tabindex`)).toBe(false)
   })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
@@ -491,8 +543,16 @@ describe(`hide_empty`, () => {
         expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
         expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
         // Gaps retain the ordered A/X and C/Z tracks despite missing B/Y.
-        expect([cells[0].style.gridColumn, cells[0].style.gridRow]).toEqual([`2`, `2`])
-        expect([cells[3].style.gridColumn, cells[3].style.gridRow]).toEqual([`4`, `4`])
+        expect(
+          cells
+            .map(cell_track)
+            .toSorted(([col_a, row_a], [col_b, row_b]) => row_a - row_b || col_a - col_b),
+        ).toEqual([
+          [2, 2],
+          [4, 2],
+          [2, 4],
+          [4, 4],
+        ])
       }
     },
   )
