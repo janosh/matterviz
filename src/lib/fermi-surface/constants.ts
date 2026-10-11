@@ -14,3 +14,11 @@ export const BAND_COLORS = [
 
 // Flat colours of the spin channels in `spin` colouring mode, also FermiSurfaceTooltip's badge
 export const SPIN_COLORS = { up: BAND_COLORS[0], down: BAND_COLORS[1] } as const
+
+// Key of a per-vertex property its source leaves unnamed (an IFermi/JSON `properties` array,
+// a scalar FRMSF colour block). FermiSurface's custom_property_label relabels it for display.
+export const DEFAULT_PROPERTY_NAME = `Property`
+
+// Display label of a named property: the caller's label for the unnamed one, else its name
+export const property_label = (name: string, custom_label?: string): string =>
+  name === DEFAULT_PROPERTY_NAME ? (custom_label ?? name) : name

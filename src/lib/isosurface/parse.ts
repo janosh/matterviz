@@ -108,16 +108,31 @@ export function parse_decimal_token(text: string, start: number, end: number): n
   return negative ? -value : value
 }
 
+// `nan`/`NaN` with an optional sign, the token Python and Rust print for a missing value
+const is_nan_token = (text: string, start: number, end: number): boolean => {
+  const sign = text.charCodeAt(start) === 43 || text.charCodeAt(start) === 45 ? 1 : 0
+  return end - start === 3 + sign && text.slice(start + sign, end).toLowerCase() === `nan`
+}
+
+// Whether the line from `pos` opens with a bare `nan` token
+const starts_with_nan = (text: string, pos: number): boolean => {
+  let end = pos
+  while (end < text.length && text.charCodeAt(end) > 32) end++
+  return is_nan_token(text, pos, end)
+}
 // Parse whitespace-separated numbers directly from a string, starting at `pos`.
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
 // Stops at `max_count` numbers, end of string, or when encountering a line
 // starting with a letter (e.g. "augmentation" in CHGCAR, "BAND:" in BXSF).
+// `allow_nan` reads `nan` tokens as NaN (also at the start of a line) for blocks where NaN
+// marks a missing value; elsewhere they throw like any unreadable token.
 export function parse_float_block(
   text: string,
   pos: number,
   max_count: number,
   data: Float64Array,
   data_offset: number = 0,
+  allow_nan: boolean = false,
 ): { count: number; end_pos: number } {
   let idx = data_offset
   const target = data_offset + max_count
@@ -137,7 +152,9 @@ export function parse_float_block(
         if (peek < len) {
           const next_char = text.charCodeAt(peek)
           // Letter a-z or A-Z signals a non-numeric line (e.g. "augmentation")
-          if ((next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)) {
+          const is_letter =
+            (next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)
+          if (is_letter && !(allow_nan && starts_with_nan(text, peek))) {
             return { count: idx - data_offset, end_pos: pos }
           }
         }
@@ -152,7 +169,7 @@ export function parse_float_block(
 
     const num = parse_decimal_token(text, start, pos)
     // Skipping an unreadable token would shift every later value one grid point early
-    if (Number.isNaN(num)) {
+    if (Number.isNaN(num) && !(allow_nan && is_nan_token(text, start, pos))) {
       throw new TypeError(
         `Unreadable number '${text.slice(start, pos)}' at character ${start} (value ${idx - data_offset + 1} of ${max_count})`,
       )

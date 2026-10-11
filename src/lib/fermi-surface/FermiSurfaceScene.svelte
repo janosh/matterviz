@@ -36,12 +36,14 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import { BAND_COLORS, SPIN_COLORS } from './constants'
+  import { BAND_COLORS, property_label as display_label, SPIN_COLORS } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
-    has_vertex_properties,
     nearest_face_vertex,
+    property_color_range,
+    property_names,
+    vertex_property,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import type {
@@ -58,8 +60,12 @@
     // Fermi surface styling
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
-    // Name of the per-vertex property shown in the hover tooltip
-    property_label = `Property`,
+    // Per-vertex property the surfaces are coloured by in `property` mode (default: the first)
+    property_name: requested_property,
+    // [min, max] of the colour scale; undefined fits the property's finite values
+    color_range,
+    // Display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
+    property_label,
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
@@ -86,6 +92,8 @@
       bz_data?: BrillouinZoneData
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
+      property_name?: string
+      color_range?: Vec2
       property_label?: string
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
@@ -168,21 +176,14 @@
   // `property` maps the per-vertex scalars through the colour scale; band/spin colouring is a
   // single material colour per surface
   const use_vertex_colors = $derived(color_property === `property`)
+  const property_name = $derived(
+    requested_property ?? property_names(fermi_data?.isosurfaces ?? [])[0],
+  )
 
-  // Property range for color scaling across all visible surfaces
-  let property_range = $derived.by((): Vec2 => {
-    if (!use_vertex_colors) return [0, 1]
-    let [min_val, max_val] = [Infinity, -Infinity]
-    for (const surface of visible_surfaces) {
-      if (!surface.properties) continue
-      for (const prop of surface.properties) {
-        if (prop < min_val) min_val = prop
-        if (prop > max_val) max_val = prop
-      }
-    }
-    if (min_val === Infinity) return [0, 1]
-    return [min_val, max_val]
-  })
+  // Colour range of the property across all visible surfaces unless the caller fixed one
+  let property_range = $derived(
+    color_range ?? property_color_range(visible_surfaces, property_name),
+  )
 
   // Flat colour for a surface (material colour, tooltip background)
   function get_surface_color(surface: FermiIsosurface): string {
@@ -228,7 +229,8 @@
       ? { colormap: color_scale, color_range: property_range }
       : null
     for (const [idx, geometry] of geometries.entries()) {
-      if (geometry) apply_vertex_colors(geometry, visible_surfaces[idx], spec)
+      const values = vertex_property(visible_surfaces[idx], property_name)
+      if (geometry) apply_vertex_colors(geometry, values, spec)
     }
     threlte.invalidate()
   })
@@ -313,7 +315,8 @@
           })
     // A surface without per-vertex properties keeps its flat colour even in property mode,
     // otherwise vertexColors would read a missing attribute
-    material.vertexColors = use_vertex_colors && has_vertex_properties(surface)
+    material.vertexColors =
+      use_vertex_colors && vertex_property(surface, property_name) !== undefined
     if (!material.vertexColors) material.color.set(get_surface_color(surface))
     material.transparent = is_transparent
     // three draws a transparent DoubleSide material as back- then front-face passes, and one
@@ -370,12 +373,22 @@
 
     // The corner lookup happens in local space: the geometry's positions are the raw surface
     // vertices before sym_matrix
-    let property_value: number | undefined
+    let property_values: Record<string, number> | undefined
     if (surface.properties && event.face) {
       const local_point = event.point.clone().applyMatrix4(inverse_symmetry_ops[sym_idx])
-      property_value =
-        surface.properties[nearest_face_vertex(geometry, event.face, local_point)]
+      const vertex_idx = nearest_face_vertex(geometry, event.face, local_point)
+      property_values = Object.fromEntries(
+        Object.entries(surface.properties).map(([name, values]) => [
+          display_label(name, property_label),
+          values[vertex_idx],
+        ]),
+      )
     }
+    // The colouring property leads the tooltip, when this sheet has it
+    const active_label =
+      property_name !== undefined && surface.properties?.[property_name]
+        ? display_label(property_name, property_label)
+        : undefined
 
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
@@ -385,8 +398,9 @@
       position_fractional,
       screen_position: { x: clientX, y: clientY },
       surface_color,
-      property_value,
-      property_name: property_value === undefined ? undefined : property_label,
+      property_value: active_label === undefined ? undefined : property_values?.[active_label],
+      property_name: active_label,
+      property_values,
       is_tiled: effective_tile_bz,
       symmetry_index: sym_idx,
       n_symmetry_ops: symmetry_ops.length,

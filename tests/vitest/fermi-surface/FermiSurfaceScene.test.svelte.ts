@@ -179,3 +179,53 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   flushSync()
   expect(filter([inner, outer])).toStrictEqual([outer])
 })
+
+// Property mode colours each sheet by the selected named property; a sheet without it keeps
+// its flat colour, and the tooltip carries every property at the hit vertex
+test(`colours by the selected property and reports all properties on hover`, () => {
+  const with_props = (band_index: number, properties: Record<string, number[]>) => ({
+    ...sheet(band_index),
+    properties: Object.fromEntries(
+      Object.entries(properties).map(([name, values]) => [name, Float32Array.from(values)]),
+    ),
+  })
+  const data = make_fermi_surface([
+    with_props(0, { λ: [0, 0.5, 1], Δ: [1, 2, NaN] }),
+    with_props(2, { λ: [0.2, 0.2, 0.2] }),
+  ])
+  const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
+    fermi_data: data,
+    color_property: `property`,
+    property_name: `Δ`,
+    hover_data: null,
+  })
+  mount_scene(props)
+  const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
+  expect(vertex_colors()).toEqual([true, false]) // band 2 has no Δ
+  props.property_name = `λ`
+  flushSync()
+  expect(vertex_colors()).toEqual([true, true])
+
+  const mesh = threlte_stub.nodes.find(({ tag }) => tag === `Mesh`)
+  const on_move = mesh?.props.onpointermove as (event: unknown) => void
+  // nearest corner of face (0, 1, 2) to a point on vertex 1 of band 0's sheet (0, 4, 5)
+  on_move({
+    point: new Vector3(0, 4, 5),
+    face: { a: 0, b: 1, c: 2 },
+    nativeEvent: { clientX: 1, clientY: 2 },
+  })
+  expect(props.hover_data).toMatchObject({
+    property_name: `λ`,
+    property_value: 0.5,
+    property_values: { λ: 0.5, Δ: 2 },
+  })
+})
+
+// Used on its own, the scene colours by the first property when none is named
+test(`property mode without property_name colours by the first property`, () => {
+  const data = make_fermi_surface([
+    { ...sheet(0), properties: { λ: Float32Array.from([0, 0.5, 1]) } },
+  ])
+  mount_scene({ fermi_data: data, color_property: `property` })
+  expect(mesh_materials().map((material) => material.vertexColors)).toEqual([true])
+})

@@ -6,12 +6,14 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { read_text_line } from '#lib/structure/parsers/vasp-header.js'
 import { is_plain_object, normalize_scientific_notation, to_error } from '#lib/utils.js'
+import { DEFAULT_PROPERTY_NAME } from './constants'
 import type {
   BandEnergyGrid,
   BandGridData,
   FermiSurfaceData,
   FermiIsosurface,
   SpinChannel,
+  VertexProperties,
 } from './types'
 
 // Parse whitespace-separated floats from a line. Normalizes Fortran D-exponents
@@ -218,17 +220,111 @@ function parse_frmsf(content: string): BandGridData {
     n_spins: 1,
     periodic: true, // FRMSF stores k=i/n with no duplicated endpoint (unlike BXSF)
     grid_shift,
+    properties: parse_frmsf_colors(content, reader.position(), k_grid, n_bands),
   }
+}
+
+// Property names of an FRMSF colour block's components: real, complex or 3D vector (e.g. the
+// Fermi velocity), whose magnitude is added
+const FRMSF_COMPONENT_NAMES = [[DEFAULT_PROPERTY_NAME], [`Re`, `Im`], [`x`, `y`, `z`]]
+const FRMSF_MAGNITUDE_NAMES = [undefined, `|z|`, `|v|`]
+
+// FermiSurfer's optional colour block after the energies: 1 (real), 2 (complex) or 3 (vector)
+// values per grid point, stored component-major, i.e. [component][band][k] (checked on the Pb
+// velocity sample, whose components match the band-energy gradients). `nan` marks a missing
+// value. Undefined without a block; a partial block or a fourth component throws.
+function parse_frmsf_colors(
+  content: string,
+  start: number,
+  k_grid: Vec3,
+  n_bands: number,
+): BandGridData[`properties`] {
+  const n_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const block_size = n_bands * n_points
+  const skip_space = (pos: number) => {
+    while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
+    return pos
+  }
+  const next_token = (pos: number) => content.slice(pos).trim().split(/\s/, 1)[0]
+  const blocks: Float64Array[] = []
+  // Each block parses from the whitespace before it, so a text line there ends it as in
+  // parse_float_block rather than reading as an unreadable number
+  let pos = start
+  while (skip_space(pos) < content.length) {
+    if (blocks.length === 3) {
+      throw new Error(
+        `FRMSF colour block: more than 3 values per grid point at '${next_token(pos)}'`,
+      )
+    }
+    const block = new Float64Array(block_size)
+    const { count, end_pos } = parse_float_block(content, pos, block_size, block, 0, true)
+    if (count < block_size) {
+      const after = next_token(end_pos)
+      const followed_by = after ? ` followed by '${after}'` : ``
+      throw new Error(
+        `FRMSF colour block component ${blocks.length + 1}: expected ${block_size} values ` +
+          `(${n_bands} bands on ${k_grid.join(`×`)}), got ${count}${followed_by}`,
+      )
+    }
+    blocks.push(block)
+    pos = end_pos
+  }
+  if (blocks.length === 0) return undefined
+
+  // Band b of component c is a view into its block; only the magnitude is computed
+  const band_grids = (block: Float64Array) =>
+    Array.from({ length: n_bands }, (_, band_idx) =>
+      make_band_grid(block.subarray(band_idx * n_points, (band_idx + 1) * n_points), k_grid),
+    )
+  const names = FRMSF_COMPONENT_NAMES[blocks.length - 1]
+  const properties = Object.fromEntries(
+    blocks.map((block, comp_idx) => [names[comp_idx], [band_grids(block)]]),
+  )
+  const magnitude_name = FRMSF_MAGNITUDE_NAMES[blocks.length - 1]
+  if (magnitude_name) {
+    const magnitude = new Float64Array(block_size)
+    for (let idx = 0; idx < block_size; idx++) {
+      let sum_sq = 0
+      for (const block of blocks) sum_sq += block[idx] ** 2
+      magnitude[idx] = Math.sqrt(sum_sq)
+    }
+    properties[magnitude_name] = [band_grids(magnitude)]
+  }
+  return properties
 }
 
 // === JSON ===
 
-// Mesh fields as JSON producers (IFermi, pymatviz, our own exports) emit them
+// Mesh fields as JSON producers (IFermi, pymatviz, our own exports) emit them. `properties`
+// is one value per vertex, either a single unnamed array or arrays keyed by name (null for a
+// vertex without a value, as JSON has no NaN)
 interface JsonMesh {
   vertices: number[][]
   faces: number[][]
   normals?: number[][]
-  properties?: number[]
+  properties?: (number | null)[] | Record<string, (number | null)[]>
+}
+
+// Typed per-vertex properties of a JSON mesh; arrays of the wrong length throw rather than
+// colour the wrong vertices
+function vertex_properties_from_json(
+  properties: JsonMesh[`properties`],
+  n_vertices: number,
+): VertexProperties | undefined {
+  if (properties == null) return undefined
+  const named = Array.isArray(properties)
+    ? { [DEFAULT_PROPERTY_NAME]: properties }
+    : properties
+  return Object.fromEntries(
+    Object.entries(named).map(([name, values]) => {
+      if (!Array.isArray(values) || values.length !== n_vertices) {
+        throw new Error(
+          `Property '${name}' must hold one value per vertex (${n_vertices}), got ${Array.isArray(values) ? values.length : typeof values}`,
+        )
+      }
+      return [name, Float32Array.from(values, (value) => value ?? NaN)]
+    }),
+  )
 }
 
 const is_number_rows = (value: unknown, width: number): value is number[][] =>
@@ -272,8 +368,7 @@ function isosurface_from_json(
     mesh.normals?.length === n_vertices
       ? Float32Array.from(mesh.normals.flat())
       : compute_vertex_normals(positions, indices)
-  const properties =
-    mesh.properties?.length === n_vertices ? Float32Array.from(mesh.properties) : undefined
+  const properties = vertex_properties_from_json(mesh.properties, n_vertices)
 
   return { positions, indices, normals, properties, band_index, spin }
 }
@@ -313,8 +408,12 @@ const fermi_surface_from_json = (json: FermiSurfaceJson): FermiSurfaceData => ({
   ),
 })
 
-// BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays
-export type BandGridJson = Omit<BandGridData, `energies`> & { energies: number[][][][][] }
+// BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays,
+// properties the same per name with null for a missing value (JSON has no NaN)
+export type BandGridJson = Omit<BandGridData, `energies` | `properties`> & {
+  energies: number[][][][][]
+  properties?: Record<string, (number | null)[][][][][]>
+}
 
 // Validate the JSON BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
 function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
@@ -330,6 +429,8 @@ function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
   return math.is_square_matrix(k_lattice, 3)
 }
 
+const has_no_null = (row: (number | null)[]): row is number[] => !row.includes(null)
+
 // Flatten nested JSON band grids into BandEnergyGrid storage, checking that every band
 // matches k_grid (a ragged or mis-sized band would otherwise read garbage in marching cubes).
 // `source` names the offending input in the error for a malformed shape.
@@ -340,26 +441,60 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
     )
   }
   const { k_grid } = json
-  const energies = json.energies.map((bands, spin_idx) => {
-    if (!Array.isArray(bands)) {
-      throw new TypeError(`BandGridData JSON: energies[${spin_idx}] is not an array of bands`)
-    }
-    return bands.map((band, band_idx) => {
-      if (!Array.isArray(band)) {
+  // Flatten one [spin][band][kx][ky][kz] field. Properties map null (JSON's NaN, a point
+  // without a value) to NaN, which Float64Array.set would turn into 0.
+  const flatten_bands = (
+    field: unknown,
+    label: string,
+    nulls_to_nan = false,
+  ): BandEnergyGrid[][] => {
+    if (!Array.isArray(field))
+      throw new TypeError(`BandGridData JSON: ${label} is not an array`)
+    return field.map((bands, spin_idx) => {
+      if (!Array.isArray(bands)) {
         throw new TypeError(
-          `BandGridData JSON: energies[${spin_idx}][${band_idx}] is not a [kx][ky][kz] grid`,
+          `BandGridData JSON: ${label}[${spin_idx}] is not an array of bands`,
         )
       }
-      const grid = flatten_grid(band)
-      if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
-        throw new Error(
-          `BandGridData JSON: energies[${spin_idx}][${band_idx}] has shape ${grid.dims.join(`×`)} but k_grid is ${k_grid.join(`×`)}`,
+      return bands.map((band, band_idx) => {
+        const at = `${label}[${spin_idx}][${band_idx}]`
+        if (!Array.isArray(band)) {
+          throw new TypeError(`BandGridData JSON: ${at} is not a [kx][ky][kz] grid`)
+        }
+        const grid = flatten_grid(
+          nulls_to_nan
+            ? band.map((plane: (number | null)[][]) =>
+                plane.map((row) => (has_no_null(row) ? row : row.map((val) => val ?? NaN))),
+              )
+            : band,
         )
-      }
-      return grid
+        if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
+          throw new Error(
+            `BandGridData JSON: ${at} has shape ${grid.dims.join(`×`)} but k_grid is ${k_grid.join(`×`)}`,
+          )
+        }
+        return grid
+      })
     })
-  })
-  return { ...json, energies }
+  }
+  const energies = flatten_bands(json.energies, `energies`)
+  const properties =
+    json.properties &&
+    Object.fromEntries(
+      Object.entries(json.properties).map(([name, field]) => {
+        const bands = flatten_bands(field, `properties.${name}`, true)
+        if (
+          bands.length !== energies.length ||
+          bands.some((spin_bands, spin_idx) => spin_bands.length !== energies[spin_idx].length)
+        ) {
+          throw new Error(
+            `BandGridData JSON: properties.${name} needs the [spin][band] layout of energies`,
+          )
+        }
+        return [name, bands]
+      }),
+    )
+  return { ...json, energies, properties }
 }
 
 // First non-zero number in a fallback chain (an explicit 0 falls through like undefined)
@@ -530,7 +665,8 @@ function ifermi_vertex_properties(
       counts[vert_idx]++
     }
   }
-  return Array.from(sums, (sum, vert_idx) => (counts[vert_idx] ? sum / counts[vert_idx] : 0))
+  // NaN marks a vertex no face touches: it has no value
+  return Array.from(sums, (sum, vert_idx) => (counts[vert_idx] ? sum / counts[vert_idx] : NaN))
 }
 
 // Parse IFermi's JSON output format

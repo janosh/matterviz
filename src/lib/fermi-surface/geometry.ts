@@ -1,30 +1,66 @@
 // Three.js geometry construction for Fermi isosurfaces
-import { set_vertex_colors, type VertexColorOptions } from '#lib/isosurface/coloring.js'
+import {
+  compute_scalar_range,
+  set_vertex_colors,
+  type VertexColorOptions,
+} from '#lib/isosurface/coloring.js'
+import type { Vec2 } from '#lib/math.js'
 import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
 import type { HitFace } from '#lib/scene/props.svelte.js'
 import type { BufferGeometry } from 'three/webgpu'
-import type { FermiIsosurface } from './types'
+import type { BandGridData, FermiIsosurface, FermiSurfaceData } from './types'
+import { vertex_count } from './types'
 
 // Wrap a surface's typed arrays in an indexed BufferGeometry (buffers shared, not copied:
 // the surface already stores exactly the layout the GPU wants). Null when nothing is drawable.
 export const build_isosurface_geometry = (surface: FermiIsosurface): BufferGeometry | null =>
   indexed_mesh_geometry(surface.positions, surface.indices, surface.normals)
 
-// Whether a surface carries one scalar per vertex, i.e. can be vertex-coloured at all
-export const has_vertex_properties = (
+// Values of the named property on a surface when it holds one per vertex, i.e. when the
+// surface can be vertex-coloured by it
+export const vertex_property = (
   surface: FermiIsosurface,
-): surface is FermiIsosurface & { properties: Float32Array } =>
-  surface.properties?.length === surface.positions.length / 3
+  name: string | undefined,
+): Float32Array | undefined => {
+  const values = name === undefined ? undefined : surface.properties?.[name]
+  return values?.length === vertex_count(surface) ? values : undefined
+}
+
+// Names of the per-vertex properties the surfaces carry, in first-seen order
+export const property_names = (surfaces: readonly FermiIsosurface[]): string[] => [
+  ...new Set(surfaces.flatMap((surface) => Object.keys(surface.properties ?? {}))),
+]
+
+// Properties a viewer can colour by. A band grid names them before (and whatever) extraction
+// yields: every extracted sheet carries all of its fields, so the list neither empties while
+// the first extraction is pending nor when mu crosses no band
+export const available_property_names = (
+  fermi_data?: FermiSurfaceData,
+  band_data?: BandGridData,
+): string[] =>
+  band_data
+    ? Object.keys(band_data.properties ?? {})
+    : property_names(fermi_data?.isosurfaces ?? [])
+
+// [min, max] of a property's finite values over the surfaces (NaN marks vertices without one)
+export const property_color_range = (
+  surfaces: readonly FermiIsosurface[],
+  name: string | undefined,
+): Vec2 =>
+  compute_scalar_range(
+    surfaces.flatMap((surface) => vertex_property(surface, name) ?? []),
+    { symmetric: false },
+  )
 
 // Set, refresh or remove the per-vertex colour attribute so colormap/range changes never
-// rebuild the geometry (see set_vertex_colors)
+// rebuild the geometry (see set_vertex_colors). `values` is the colouring property's
+// per-vertex array (see vertex_property); without it the attribute is removed.
 export function apply_vertex_colors(
   geometry: BufferGeometry,
-  surface: FermiIsosurface,
+  values: Float32Array | undefined,
   spec: VertexColorOptions | null,
 ): void {
-  if (spec && has_vertex_properties(surface))
-    set_vertex_colors(geometry, surface.properties, spec)
+  if (spec && values) set_vertex_colors(geometry, values, spec)
   else if (geometry.hasAttribute(`color`)) geometry.deleteAttribute(`color`)
 }
 

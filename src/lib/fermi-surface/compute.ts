@@ -221,6 +221,8 @@ export function extract_fermi_surface(
       : auto_interpolation_factor(band_data.k_grid)
   const key = `${factor}|${periodic}|${index0_frac}`
   const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
+  // Vertices sit at k_latticeᵀ·frac; inverted once, only when there are properties to sample
+  let cart_to_frac: math.Matrix3x3 | undefined
 
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
     const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
@@ -242,7 +244,21 @@ export function extract_fermi_surface(
         position_offset: math.mat3x3_vec3_multiply(k_lattice_t, centered.index0_frac),
       })
       if (mesh.positions.length === 0) continue
-      isosurfaces.push({ ...mesh, band_index: band_idx, spin })
+      let properties: FermiIsosurface[`properties`]
+      if (band_data.properties) {
+        const fields = Object.entries(band_data.properties)
+        const sampled = sample_vertex_values(
+          mesh.positions,
+          fields.map(([, grids]) => grids[spin_idx][band_idx]),
+          {
+            cart_to_frac: (cart_to_frac ??= math.matrix_inverse_3x3(k_lattice_t)),
+            periodic,
+            index0_frac,
+          },
+        )
+        properties = Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
+      }
+      isosurfaces.push({ ...mesh, properties, band_index: band_idx, spin })
     }
   }
 
@@ -253,6 +269,77 @@ export function extract_fermi_surface(
     reciprocal_cell: `parallelepiped`,
     metadata: { n_bands: band_data.n_bands, n_surfaces: isosurfaces.length },
   }
+}
+
+// Values of band-grid fields at mesh vertices (Cartesian, Å⁻¹) by trilinear interpolation on
+// the source grid, one Float32Array per field (all fields share the grid's dims). Sampling the
+// raw grid rather than the upsampled one keeps the result independent of interpolation_factor
+// and never overshoots like the tricubic energies (a gap Δ_nk stays ≥ 0). Corners holding NaN
+// (no value there, e.g. outside a Fermi window) are left out and the remaining weights
+// renormalised, so a missing point next to the surface does not blank the vertices around it;
+// NaN only where all eight corners are missing.
+export function sample_vertex_values(
+  positions: Float32Array,
+  grids: BandEnergyGrid[],
+  {
+    cart_to_frac,
+    periodic,
+    index0_frac,
+  }: {
+    cart_to_frac: math.Matrix3x3 // inverse of k_latticeᵀ
+    periodic: boolean // false: endpoint-inclusive grid (last point duplicates the first)
+    index0_frac: Vec3 // fractional position of grid index 0
+  },
+): Float32Array[] {
+  const n_vertices = positions.length / 3
+  const outputs = grids.map(() => new Float32Array(n_vertices))
+  if (grids.length === 0) return outputs
+  const dims = grid_dimensions(grids[0])
+  const strides = scalar_grid_strides(grids[0])
+  const periods = dims.map((count) => Math.max(periodic ? count : count - 1, 1))
+  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = cart_to_frac
+  const base = [0, 0, 0]
+  const fractions = [0, 0, 0]
+  const corner_offsets = new Int32Array(8)
+  const corner_weights = new Float64Array(8)
+  for (let vert_idx = 0; vert_idx < n_vertices; vert_idx++) {
+    const pos_x = positions[3 * vert_idx]
+    const pos_y = positions[3 * vert_idx + 1]
+    const pos_z = positions[3 * vert_idx + 2]
+    base[0] = m00 * pos_x + m01 * pos_y + m02 * pos_z
+    base[1] = m10 * pos_x + m11 * pos_y + m12 * pos_z
+    base[2] = m20 * pos_x + m21 * pos_y + m22 * pos_z
+    for (let axis = 0; axis < 3; axis++) {
+      const coord = (base[axis] - index0_frac[axis]) * periods[axis]
+      base[axis] = Math.floor(coord)
+      fractions[axis] = coord - base[axis]
+    }
+    for (let corner = 0; corner < 8; corner++) {
+      let offset = 0
+      let weight = 1
+      for (let axis = 0; axis < 3; axis++) {
+        const upper = (corner >> axis) & 1
+        const period = periods[axis]
+        offset += ((((base[axis] + upper) % period) + period) % period) * strides[axis]
+        weight *= upper ? fractions[axis] : 1 - fractions[axis]
+      }
+      corner_offsets[corner] = offset
+      corner_weights[corner] = weight
+    }
+    for (const [grid_idx, { values }] of grids.entries()) {
+      let sum = 0
+      let weight_sum = 0
+      for (let corner = 0; corner < 8; corner++) {
+        const value = values[corner_offsets[corner]]
+        if (Number.isFinite(value)) {
+          sum += corner_weights[corner] * value
+          weight_sum += corner_weights[corner]
+        }
+      }
+      outputs[grid_idx][vert_idx] = weight_sum > 0 ? sum / weight_sum : NaN
+    }
+  }
+  return outputs
 }
 
 // Check if Fermi level intersects a band (has values both above and below)
@@ -273,6 +360,10 @@ export function compute_fermi_slice(
   options: FermiSliceOptions = {},
 ): FermiSliceData {
   const { miller_indices = [0, 0, 1], distance = 0 } = options
+  // Contours carry one property: the requested one, else the first any sheet has
+  const property =
+    options.property ??
+    fermi_data.isosurfaces.flatMap((surface) => Object.keys(surface.properties ?? {}))[0]
 
   if (miller_indices.every((miller_idx) => miller_idx === 0)) {
     throw new Error(
@@ -300,7 +391,14 @@ export function compute_fermi_slice(
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
   const isolines: Isoline[] = fermi_data.isosurfaces.flatMap((surface) =>
-    slice_surface_with_plane(surface, unit_normal, distance, in_plane_u, in_plane_v),
+    slice_surface_with_plane(
+      surface,
+      property === undefined ? undefined : surface.properties?.[property],
+      unit_normal,
+      distance,
+      in_plane_u,
+      in_plane_v,
+    ),
   )
 
   return {
@@ -330,12 +428,13 @@ export function slice_axis_label(direction: Vec3, fallback: string): string {
 // min·n_vertices + max so the map never builds strings in the per-triangle hot loop.
 function slice_surface_with_plane(
   surface: FermiIsosurface,
+  properties: Float32Array | undefined,
   plane_normal: Vec3,
   plane_distance: number,
   in_plane_u: Vec3,
   in_plane_v: Vec3,
 ): Isoline[] {
-  const { positions, indices, properties } = surface
+  const { positions, indices } = surface
   const n_vertices = vertex_count(surface)
   if (n_vertices === 0 || indices.length === 0) return []
   const [normal_x, normal_y, normal_z] = plane_normal

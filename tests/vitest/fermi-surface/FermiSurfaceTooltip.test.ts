@@ -76,6 +76,23 @@ describe(`FermiSurfaceTooltip`, () => {
     },
   )
 
+  // the colouring property leads; the others follow, NaN (no value at the vertex) as n/a
+  test(`lists the other properties at the vertex below the active one`, () => {
+    // a parenthesised suffix is the unit, as in every TooltipValue label
+    const property_values = { λ: 0.25, 'Δ (meV)': NaN, v: 3 }
+    mount_tooltip({
+      hover_data: mock_hover_data({
+        property_value: 0.25,
+        property_name: `λ`,
+        property_values,
+      }),
+    })
+    const text = document.body.textContent ?? ``
+    expect(text.match(/λ/g)).toHaveLength(1) // not repeated among the others
+    expect(text).toContain(`Δ: n/a meV`)
+    expect(text).toContain(`v: 3`)
+  })
+
   // only tiled copies past the identity (index 0) are labelled
   test.each([
     { is_tiled: true, symmetry_index: 5, n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },

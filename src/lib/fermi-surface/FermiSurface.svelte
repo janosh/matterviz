@@ -16,6 +16,8 @@
   import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
   import type { SceneExportFormat } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import type { Vec2 } from '#lib/math.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -27,6 +29,8 @@
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
+  import { property_label } from './constants'
+  import { available_property_names, property_color_range } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
@@ -59,6 +63,9 @@
     controls_open = $bindable(false),
     color_property = $bindable(DEFAULTS.fermi.color_property),
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
+    property_name = $bindable(),
+    color_range = $bindable(),
+    show_colorbar = true,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -102,7 +109,15 @@
     structure?: Crystal
     bz_data?: BrillouinZoneData
     controls_open?: boolean
-    // Label for the per-vertex property colouring (e.g. "Fermi velocity", "λ(k)", "DOS")
+    // Per-vertex property coloured by in `property` mode, e.g. `λ` or `Δ (10 K)` of a band grid's
+    // `properties`; defaults to the first one present
+    property_name?: string
+    // Fixed [min, max] of the property colour scale; undefined fits the visible surfaces
+    color_range?: Vec2
+    // Colour bar over the canvas while surfaces are coloured by a property
+    show_colorbar?: boolean
+    // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
+    // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
     selected_bands?: number[]
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
@@ -259,6 +274,26 @@
     }
   }
 
+  // Property colouring: the requested property when the surfaces have it, else the first one.
+  // The fitted range spans the visible sheets, so hiding a band rescales the colours.
+  const available_properties = $derived(available_property_names(surface_data, grid_data))
+  const active_property = $derived(
+    property_name !== undefined && available_properties.includes(property_name)
+      ? property_name
+      : available_properties[0],
+  )
+  const visible_surfaces = $derived(
+    surface_data?.isosurfaces.filter(
+      (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),
+    ) ?? [],
+  )
+  const fitted_color_range = $derived<Vec2>(
+    color_property === `property`
+      ? property_color_range(visible_surfaces, active_property)
+      : [0, 1],
+  )
+  const resolved_color_range = $derived(color_range ?? fitted_color_range)
+
   // BZ of whichever reciprocal lattice is available (priority order)
   const k_lattice = $derived(
     surface_data?.k_lattice ??
@@ -344,6 +379,9 @@
           bind:mu={mean}
           bind:color_property
           bind:color_scale
+          bind:property_name
+          bind:color_range
+          {fitted_color_range}
           {custom_property_label}
           bind:representation
           bind:surface_opacity
@@ -375,6 +413,8 @@
           {bz_data}
           {color_property}
           {color_scale}
+          property_name={active_property}
+          color_range={resolved_color_range}
           property_label={custom_property_label}
           {representation}
           {surface_opacity}
@@ -395,6 +435,20 @@
           bind:hover_data
         />
       </Canvas>
+
+      {#if show_colorbar && color_property === `property` && active_property !== undefined}
+        <ColorBar
+          title={property_label(active_property, custom_property_label)}
+          scale={color_scale}
+          range={resolved_color_range}
+          snap_ticks={false}
+          tick_labels={5}
+          orientation="horizontal"
+          class="property-colorbar"
+          --cbar-font-size="0.75em"
+          --cbar-tick-label-font-weight="normal"
+        />
+      {/if}
 
       <!-- Hover tooltip -->
       {#if hover_data}
@@ -458,5 +512,20 @@
   }
   .fermi-surface :global(canvas) {
     user-select: none;
+  }
+  .fermi-surface :global(.property-colorbar) {
+    position: absolute;
+    bottom: var(--fermi-colorbar-offset, 1rem);
+    left: 50%;
+    transform: translateX(-50%);
+    --cbar-width: var(--fermi-colorbar-width, min(60%, 320px));
+    z-index: 1;
+    pointer-events: none;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: var(
+      --fermi-colorbar-bg,
+      color-mix(in srgb, var(--fermi-bg, var(--surface-bg, #fff)) 75%, transparent)
+    );
   }
 </style>

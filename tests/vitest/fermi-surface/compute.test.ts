@@ -178,6 +178,77 @@ describe(`extract_fermi_surface`, () => {
   })
 })
 
+describe(`extract_fermi_surface vertex properties`, () => {
+  // Smooth periodic field (k-space period 1 per axis) so the min-image fold adds no kink
+  const two_pi = 2 * Math.PI
+  const field = (frac_x: number, frac_y: number, frac_z: number) =>
+    Math.cos(two_pi * frac_x) +
+    0.5 * Math.sin(two_pi * frac_y) +
+    0.25 * Math.cos(two_pi * frac_z)
+  const grid_n = 16
+  const with_field = (
+    opts: Parameters<typeof make_band_data>[2],
+    property = make_band_data(grid_n, field, opts).energies[0][0],
+  ): BandGridData => ({
+    ...make_band_data(grid_n, sphere, { ...opts, fermi_energy: 0.3 }),
+    properties: { field: [[property]] },
+  })
+  // Fractional k of every vertex (positions = k_latticeᵀ·frac)
+  const vertex_fracs = (surface: FermiIsosurface, k_lattice: Matrix3x3): Vec3[] => {
+    const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_lattice))
+    return vertices_of(surface).map((vertex) =>
+      math.mat3x3_vec3_multiply(cart_to_frac, vertex),
+    )
+  }
+
+  // Trilinear sampling on the raw grid errs by at most Σ amplitude·(2π h)²/8 = 1.75·(2π h)²/8
+  // for this field: 0.0337 at h = 1/16 (periodic), 0.0384 at h = 1/15 (endpoint-inclusive).
+  // Measured maxima at factor 1 / 2: 0.0135 / 0.0322 (periodic), 0.0131 / 0.0315
+  // (half-shifted), 0.0174 / 0.0370 (endpoint-inclusive hexagonal); factor 2 places vertices
+  // nearer cell centres. Sampling half a step off (a wrong shift or Γ-centring roll) errs by
+  // ~2π h/2 = 0.2 on the cos(2π k_x) term alone.
+  const trilinear_bound = (period: number) => (1.75 * (two_pi / period) ** 2) / 8
+  test.each([
+    { label: `periodic Γ-centred`, opts: { periodic: true } },
+    { label: `periodic half-shifted`, opts: { periodic: true, grid_shift: [0.5, 0.5, 0.5] } },
+    { label: `endpoint-inclusive hexagonal`, opts: { k_lattice: HEXAGONAL } },
+  ] as const)(`samples the field at each vertex's own k ($label)`, ({ opts }) => {
+    const band_data = with_field({
+      ...opts,
+      grid_shift: opts.grid_shift && [...opts.grid_shift],
+    })
+    for (const interpolation_factor of [1, 2]) {
+      const [surface] = extract_fermi_surface(band_data, { interpolation_factor }).isosurfaces
+      const values = surface.properties?.field
+      expect(values).toHaveLength(vertex_count(surface))
+      const errors = vertex_fracs(surface, band_data.k_lattice).map((frac, idx) =>
+        Math.abs((values?.[idx] ?? NaN) - field(...frac)),
+      )
+      const period = `periodic` in opts ? grid_n : grid_n - 1
+      expect(Math.max(...errors)).toBeLessThan(trilinear_bound(period))
+    }
+  })
+
+  // Grid points outside |k| < 0.35 hold no value; vertices at |k| = 0.3 still get one from
+  // their finite corners, and a field with no finite point gives NaN everywhere
+  test(`leaves NaN corners out and renormalises the trilinear weights`, () => {
+    const windowed = make_band_data(grid_n, (frac_x, frac_y, frac_z) =>
+      sphere(frac_x, frac_y, frac_z) < 0.35 ? 2 : NaN,
+    ).energies[0][0]
+    const [surface] = extract_fermi_surface(with_field({}, windowed)).isosurfaces
+    expect(surface.properties?.field.every((value) => value === 2)).toBe(true)
+    const empty = make_band_data(grid_n, () => NaN).energies[0][0]
+    const [blank] = extract_fermi_surface(with_field({}, empty)).isosurfaces
+    expect(blank.properties?.field.every(Number.isNaN)).toBe(true)
+    // no `properties` on the grid, none on the surface
+    const [plain] = extract_fermi_surface({
+      ...with_field({}),
+      properties: undefined,
+    }).isosurfaces
+    expect(plain.properties).toBeUndefined()
+  })
+})
+
 describe(`free-electron sphere (numerical verification)`, () => {
   // E(k) = ħ²k²/2m on a simple-cubic reciprocal lattice with |b| = 2π/a; the Fermi sphere
   // k_F = 0.6·π/a sits well inside the zone (|k_i| ≤ π/a). Exact area 4πk_F².
@@ -528,7 +599,11 @@ describe(`compute_fermi_slice`, () => {
     faces: number[][] = BOX_TRI_FACES,
     properties?: Float32Array,
   ): FermiSurfaceData =>
-    make_fermi_surface([make_fermi_isosurface(BOX_VERTICES, faces, { properties })])
+    make_fermi_surface([
+      make_fermi_isosurface(BOX_VERTICES, faces, {
+        properties: properties && { λ: properties },
+      }),
+    ])
 
   // Slicing the box at z=0.05 cuts its four side walls: one closed unit-square contour
   test.each([
@@ -573,6 +648,17 @@ describe(`compute_fermi_slice`, () => {
     const [isoline] = slice.isolines
     expect(isoline.properties).toHaveLength(isoline.points.length)
     for (const value of isoline.properties ?? []) expect(value).toBeCloseTo(0.5, 6)
+    // options.property picks the named property the contours carry (default: the first)
+    const two_properties = make_fermi_surface([
+      make_fermi_isosurface(BOX_VERTICES, BOX_TRI_FACES, {
+        properties: { λ: properties, Δ: Float32Array.from(BOX_VERTICES, () => 7) },
+      }),
+    ])
+    const contour_values = (property?: string) =>
+      compute_fermi_slice(two_properties, { distance: 0.05, property }).isolines[0].properties
+    expect(contour_values()?.[0]).toBeCloseTo(0.5, 6)
+    expect(contour_values(`Δ`)?.every((value) => value === 7)).toBe(true)
+    expect(contour_values(`missing`)).toBeUndefined()
   })
 
   const zero_lattice: Matrix3x3 = [

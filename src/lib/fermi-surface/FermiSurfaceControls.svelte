@@ -13,6 +13,9 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
   import { untrack, type Snippet } from 'svelte'
+  import type { Vec2 } from '#lib/math.js'
+  import { property_label } from './constants'
+  import { available_property_names } from './geometry'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
   const defaults = DEFAULTS.fermi
@@ -24,6 +27,9 @@
     mu: chemical_potential = $bindable(defaults.mu),
     color_property = $bindable(defaults.color_property),
     color_scale = $bindable(defaults.color_scale),
+    property_name = $bindable(),
+    color_range = $bindable(),
+    fitted_color_range,
     custom_property_label,
     representation = $bindable(defaults.representation),
     surface_opacity = $bindable(defaults.surface_opacity),
@@ -48,7 +54,13 @@
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    // Label for the per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
+    // Per-vertex property coloured by in `property` mode (defaults to the first one present)
+    property_name?: string
+    // Colour-scale [min, max] the user fixed; undefined fits the data
+    color_range?: Vec2
+    // The fitted range, shown as placeholder while color_range is unset
+    fitted_color_range?: Vec2
+    // Label for the unnamed per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
     custom_property_label?: string
     selected_bands?: number[]
     export_filename?: string
@@ -60,11 +72,10 @@
 
   const export_formats = { stl: `3D printing`, obj: `Wavefront`, glb: `web/AR` }
 
-  // Per-vertex scalars (Fermi velocity, orbital character, …) are only colourable when some
-  // sheet carries them
-  let has_property = $derived(
-    fermi_data?.isosurfaces.some((iso) => iso.properties?.length) ?? false,
-  )
+  // Per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) are only colourable when some sheet
+  // carries them
+  let available_properties = $derived(available_property_names(fermi_data, band_data))
+  let has_property = $derived(available_properties.length > 0)
 
   let available_bands = $derived(
     fermi_data
@@ -81,6 +92,11 @@
   const sync_bindable_defaults = (bands_changed = false): void => {
     if (color_property === `property` && !has_property)
       color_property = defaults.color_property
+    // A property the new data lacks falls back to the first one, and its fixed range with it
+    if (!available_properties.includes(property_name ?? ``)) {
+      if (property_name !== undefined) color_range = undefined
+      property_name = available_properties[0]
+    }
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       const selected = selected_bands
       const hidden = selected ? previous_bands.filter((band) => !selected.includes(band)) : []
@@ -91,6 +107,25 @@
 
   untrack(sync_bindable_defaults)
   $effect(() => sync_bindable_defaults(available_bands_changed(available_bands.join(`,`))))
+
+  // Typing a bound clears to auto when the field is emptied; one finite bound keeps the
+  // fitted value for the other
+  function set_color_bound(
+    bound_idx: 0 | 1,
+    event: Event & { currentTarget: HTMLInputElement },
+  ) {
+    // A partial entry (`-`, `1e`) also reads as ``, flagged by badInput: keep the range
+    const { value, validity } = event.currentTarget
+    if (validity.badInput) return
+    const parsed = parse_num_token(value)
+    const range: Vec2 = [...(color_range ?? fitted_color_range ?? [0, 1])]
+    if (!Number.isFinite(parsed)) {
+      if (value.trim() === ``) color_range = undefined
+      return
+    }
+    range[bound_idx] = parsed
+    color_range = range
+  }
 
   function toggle_band(band_idx: number): void {
     const bands = selected_bands ?? []
@@ -114,8 +149,8 @@
     track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
   )
   const appearance_settings = track_settings(
-    () => ({ color_property, color_scale, representation, surface_opacity }),
-    defaults,
+    () => ({ color_property, color_scale, representation, surface_opacity, color_range }),
+    { ...defaults, color_range: undefined },
   )
   const brillouin_zone_settings = track_settings(
     () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
@@ -200,8 +235,10 @@
     <SettingsSection
       title="Appearance"
       changed_keys={appearance_settings.changed_keys}
-      on_reset={() =>
-        ({ color_property, color_scale, representation, surface_opacity } = defaults)}
+      on_reset={() => {
+        ;({ color_property, color_scale, representation, surface_opacity } = defaults)
+        color_range = undefined
+      }}
       layout="grid"
     >
       <label>
@@ -210,11 +247,29 @@
           <option value="band">Band</option>
           <option value="spin">Spin</option>
           {#if has_property}
-            <option value="property">{custom_property_label ?? `Property`}</option>
+            <option value="property">
+              {available_properties.length === 1
+                ? property_label(available_properties[0], custom_property_label)
+                : `Property`}
+            </option>
           {/if}
         </select>
       </label>
       {#if color_property === `property`}
+        {#if available_properties.length > 1}
+          <label>
+            <span>Property</span>
+            <select
+              bind:value={property_name}
+              onchange={() => (color_range = undefined)}
+              aria-label="Fermi surface colouring property"
+            >
+              {#each available_properties as name (name)}
+                <option value={name}>{property_label(name, custom_property_label)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         <label>
           <span>Color scale</span>
           <ColorScaleSelect
@@ -222,6 +277,23 @@
             bind:value={color_scale}
             aria-label="Fermi surface color scale"
           />
+        </label>
+        <label title="Fixed colour-scale bounds; leave empty to fit the visible surfaces">
+          <span>Range</span>
+          <span class="range-inputs">
+            {#each [0, 1] as const as bound_idx (bound_idx)}
+              <input
+                type="number"
+                step="any"
+                value={color_range?.[bound_idx] ?? ``}
+                placeholder={fitted_color_range
+                  ? format_num(fitted_color_range[bound_idx], `.3~g`)
+                  : ``}
+                oninput={(event) => set_color_bound(bound_idx, event)}
+                aria-label={`Colour range ${bound_idx ? `max` : `min`}`}
+              />
+            {/each}
+          </span>
         </label>
       {/if}
       <label>
@@ -388,6 +460,13 @@
   small {
     color: var(--text-color-muted, #888);
     font-size: 0.85em;
+  }
+  .range-inputs {
+    display: flex;
+    gap: 0.3em;
+    input {
+      width: 4.5em;
+    }
   }
   .value {
     min-width: 3em;

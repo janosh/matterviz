@@ -13,6 +13,16 @@
     hover_data: FermiHoverData
     tooltip?: FermiTooltipProp
   } = $props()
+
+  // NaN marks a vertex without a value (e.g. outside the window a coupling was computed in)
+  const format_property = (value: number): string =>
+    Number.isFinite(value) ? format_num(value, `.4~`) : `n/a`
+  // The remaining properties at the vertex, below the one the surface is coloured by
+  let other_properties = $derived(
+    Object.entries(hover_data.property_values ?? {}).filter(
+      ([label]) => label !== hover_data.property_name,
+    ),
+  )
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
@@ -35,11 +45,16 @@
       <div style="margin-top: 4px; font-size: 0.9em">
         <TooltipValue
           label={hover_data.property_name || `Property`}
-          value={format_num(hover_data.property_value, `.4~`)}
+          value={format_property(hover_data.property_value)}
         />
         <span class="nearest-note">(nearest)</span>
       </div>
     {/if}
+    {#each other_properties as [label, value] (label)}
+      <div style="font-size: 0.85em; opacity: 0.85">
+        <TooltipValue {label} value={format_property(value)} />
+      </div>
+    {/each}
 
     {#if hover_data.is_tiled && hover_data.symmetry_index != null && hover_data.symmetry_index > 0}
       <div class="tiling-info">
