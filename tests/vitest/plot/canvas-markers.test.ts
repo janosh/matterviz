@@ -1,6 +1,7 @@
 import {
   type CanvasMarker,
   draw_markers,
+  MAX_SPRITE_CACHE,
   MAX_SPRITE_RUNS,
   MAX_SPRITE_SIDE,
   SPRITE_MIN_MARKERS,
@@ -330,6 +331,24 @@ describe(`canvas marker sprites (dense plots)`, () => {
     expect(ops(ctx, `drawImage`)).toHaveLength(0)
     expect(ops(ctx, `arc`)).toHaveLength(SPRITE_MIN_MARKERS)
     expect(ops(ctx, `save`)).toHaveLength(ops(ctx, `restore`).length)
+  })
+
+  test(`evicts the least recently used sprite once the cache is full`, () => {
+    const sprites = stub_offscreen()
+    const draw_style = (fill: string) =>
+      draw_markers(with_draw_image(), batch(SPRITE_MIN_MARKERS, { fill }), {
+        width: 9,
+        height: 9,
+      })
+    const fills = Array.from({ length: MAX_SPRITE_CACHE }, (_, idx) => `rgb(${idx}, 9, 9)`)
+    for (const fill of fills) draw_style(fill)
+    draw_style(fills[0]) // refresh the oldest, so the next insert evicts fills[1]
+    draw_style(`rgb(0, 0, 255)`)
+    const built = sprites.length
+    draw_style(fills[0])
+    expect(sprites).toHaveLength(built) // still cached
+    draw_style(fills[1])
+    expect(sprites).toHaveLength(built + 1) // evicted, rebuilt
   })
 
   test(`symbol sprites leave room for miter joins`, () => {

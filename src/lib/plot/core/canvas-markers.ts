@@ -117,17 +117,15 @@ export const SPRITE_MIN_MARKERS = 2000
 export const MAX_SPRITE_RUNS = 64
 // Device-px side of the largest sprite; bigger markers trace paths
 export const MAX_SPRITE_SIDE = 128
-// LRU byte budget for cached sprite bitmaps (RGBA)
-const MAX_SPRITE_BYTES = 16 * 1024 ** 2
+// LRU entries; with the side cap that bounds the cache at 16 MB of RGBA
+export const MAX_SPRITE_CACHE = 256
 // Canvas default miterLimit: a miter join reaches up to this many half stroke widths past a sharp vertex
 const MITER_LIMIT = 10
 interface Sprite {
   image: OffscreenCanvas
   half: number // CSS px from the sprite's top-left corner to the marker centre
-  bytes: number
 }
 const sprite_cache = new Map<string, Sprite>() // insertion order = recency
-let sprite_bytes = 0
 
 // The sprite for a marker style, or null when it exceeds MAX_SPRITE_SIDE or no offscreen 2D context exists
 const sprite_for = (
@@ -176,14 +174,10 @@ const sprite_for = (
     sprite_ctx.globalAlpha = paint.stroke_alpha
     sprite_ctx.stroke(outline)
   }
-  const sprite = { image, half, bytes: side * side * 4 }
+  const oldest = sprite_cache.keys().next()
+  if (sprite_cache.size >= MAX_SPRITE_CACHE && !oldest.done) sprite_cache.delete(oldest.value)
+  const sprite = { image, half }
   sprite_cache.set(key, sprite)
-  sprite_bytes += sprite.bytes
-  for (const [old_key, old] of sprite_cache) {
-    if (sprite_bytes <= MAX_SPRITE_BYTES) break
-    sprite_cache.delete(old_key)
-    sprite_bytes -= old.bytes
-  }
   return sprite
 }
 
