@@ -1001,6 +1001,77 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   return [u_vec, cross_3d(normal, u_vec)]
 }
 
+// === Plane sections ===
+
+// The 8 corners of the unit cube [0,1]³ (bit 0 of the index sets x, bit 1 y, bit 2 z) and its
+// 12 edges: every corner joins, along each of its zero coordinates, the corner with that
+// coordinate set to 1
+export const UNIT_CUBE_CORNERS: readonly Vec3[] = Array.from({ length: 8 }, (_, idx): Vec3 => [
+  idx & 1,
+  (idx >> 1) & 1,
+  (idx >> 2) & 1,
+])
+export const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = UNIT_CUBE_CORNERS.flatMap(
+  (corner) =>
+    corner.flatMap((val, dim) =>
+      val === 0 ? [[corner, corner.with(dim, 1) as Vec3] as const] : [],
+    ),
+)
+
+export interface PlaneSectionOptions {
+  // Edge endpoints with |normal·x − offset| below this lie on the plane. Default 1e-9 (relative
+  // once |offset| > 1).
+  plane_tol?: number
+  // Corners closer than this (Euclidean, in the edges' coordinates) merge into one. Default 1e-7.
+  merge_tol?: number
+}
+
+// Corners of the convex polygon where the plane normal·x = offset (normal need not be unit)
+// cuts a convex polyhedron given by its edge segments, ordered counter-clockwise about
+// `normal`. Empty when the plane misses it or only touches a vertex or an edge. Every caller
+// that clips a plane to a cell or zone goes through here: lattice and mirror planes
+// (fractional unit cube), volumetric slices (Cartesian cell) and Fermi slices (Brillouin zone).
+export function plane_polyhedron_section(
+  edges: readonly (readonly Vec3[])[],
+  normal: Vec3,
+  offset: number,
+  {
+    plane_tol = 1e-9 * Math.max(1, Math.abs(offset)),
+    merge_tol = 1e-7,
+  }: PlaneSectionOptions = {},
+): Vec3[] {
+  const corners: Vec3[] = []
+  const push_unique = (point: Vec3) => {
+    if (!corners.some((corner) => euclidean_dist(corner, point) < merge_tol)) {
+      corners.push(point)
+    }
+  }
+  for (const [start, end] of edges) {
+    const start_dist = dot(normal, start) - offset
+    const end_dist = dot(normal, end) - offset
+    const [start_on, end_on] = [
+      Math.abs(start_dist) < plane_tol,
+      Math.abs(end_dist) < plane_tol,
+    ]
+    if (start_on) push_unique(start)
+    if (end_on) push_unique(end)
+    // An edge with an endpoint on the plane contributes only that endpoint: its crossing
+    // could land just beyond merge_tol of it (edges nearly parallel to the plane) and add a
+    // near-duplicate sliver corner
+    if (!start_on && !end_on && start_dist * end_dist < 0) {
+      push_unique(lerp_vec3(start, end, start_dist / (start_dist - end_dist)))
+    }
+  }
+  if (corners.length < 3) return []
+  const [axis_u, axis_v] = compute_in_plane_basis(normalize_vec(normal))
+  const center = scale(add(...corners), 1 / corners.length)
+  const angle = (point: Vec3) => {
+    const rel = subtract(point, center)
+    return Math.atan2(dot(rel, axis_v), dot(rel, axis_u))
+  }
+  return corners.toSorted((first, second) => angle(first) - angle(second))
+}
+
 // Merge coplanar adjacent triangles in a flat non-indexed position array.
 // Takes 9 floats per triangle (3 vertices x 3 coords), groups adjacent coplanar
 // triangles via union-find, then re-triangulates each group with fan triangulation

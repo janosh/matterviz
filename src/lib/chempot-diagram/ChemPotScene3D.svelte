@@ -34,6 +34,8 @@
   type HoverMesh = { formula: string; geometry: BufferGeometry; info: ChemPotHoverInfo3D }
   type DomainLabel = VisibleDomainLabel & { segments: FormulaLabelSegment[] }
   const axis_indices = [0, 1, 2] as const
+  // Same red as ConvexHull's default highlight_style, so a linked hull and diagram match
+  const highlight_color = `#ff4444`
 
   let {
     render_domains,
@@ -60,6 +62,8 @@
     on_domain_press,
     on_domain_leave,
     on_camera_start,
+    highlighted_formula,
+    highlight_edges,
     formula_meshes,
     formula_edges,
     domain_labels,
@@ -93,6 +97,9 @@
     on_domain_leave: (mesh: HoverMesh) => void
     // fires when OrbitControls starts a gesture (drag or wheel zoom)
     on_camera_start: () => void
+    // Domain drawn highlighted (its pick hull filled, its outline in highlight_edges)
+    highlighted_formula: string | null
+    highlight_edges: BufferGeometry | null
     formula_meshes: OverlayGeometry[]
     formula_edges: OverlayGeometry[]
     domain_labels: DomainLabel[]
@@ -419,7 +426,7 @@
   <T.LineBasicMaterial color={0x333333} linewidth={1} />
 </T.LineSegments>
 
-<!-- Invisible pick meshes for per-phase hover tooltip -->
+<!-- Pick meshes for per-phase hover tooltip, invisible except for the highlighted domain -->
 {#each hover_meshes as hover_mesh (hover_mesh.formula)}
   <T.Mesh
     geometry={hover_mesh.geometry}
@@ -428,9 +435,21 @@
     onpointerdown={(event: unknown) => on_domain_press(hover_mesh, pointer_of(event))}
     onpointerleave={() => on_domain_leave(hover_mesh)}
   >
-    <T.MeshBasicMaterial transparent opacity={0} side={DoubleSide} depthWrite={false} />
+    <T.MeshBasicMaterial
+      color={highlight_color}
+      transparent
+      opacity={hover_mesh.formula === highlighted_formula ? 0.35 : 0}
+      side={DoubleSide}
+      depthWrite={false}
+    />
   </T.Mesh>
 {/each}
+
+{#if highlight_edges}
+  <T.LineSegments geometry={highlight_edges}>
+    <T.LineBasicMaterial color={highlight_color} />
+  </T.LineSegments>
+{/if}
 
 {#each formula_meshes as { geometry, color }, mesh_idx (mesh_idx)}
   <T.Mesh {geometry}>

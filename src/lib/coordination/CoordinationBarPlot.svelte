@@ -8,9 +8,12 @@
     compute_structure_entries,
     to_structure_entries,
   } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
+  import type {
+    StructureEntry,
+    StructureSiteHighlight,
+  } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
-  import { calc_coordination_nums } from './calc-coordination'
+  import { calc_coordination_nums, coordination_bar_sites } from './calc-coordination'
   import type { CoordinationSplitMode } from './index'
 
   // Series identity travels as string metadata, which StructureBarPlot turns into the tooltip
@@ -35,8 +38,14 @@
     error_msg = $bindable(),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    on_sites_hover,
     ...rest
-  }: StructurePlotProps & { split_mode?: CoordinationSplitMode } = $props()
+  }: StructurePlotProps & {
+    split_mode?: CoordinationSplitMode
+    // Sites the hovered bar counts (its CN within its element or structure), one entry per
+    // structure it draws from; null once the pointer leaves the bar
+    on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
+  } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
 
@@ -118,6 +127,21 @@
     range: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
     ticks: cn_ticks,
   })
+  const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
+    if (on_sites_hover) {
+      // Series metadata names the bar's element or structure (see `groups`)
+      const { element, structure_label } = bar?.metadata ?? {}
+      on_sites_hover(
+        bar &&
+          coordination_bar_sites(computed.entries, {
+            coordination_num: bar.x,
+            element: typeof element === `string` ? element : undefined,
+            structure_label: typeof structure_label === `string` ? structure_label : undefined,
+          }),
+      )
+    }
+    rest.on_bar_hover?.(bar)
+  }
   const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
 </script>
 
@@ -134,6 +158,7 @@
   bind:mode
   bind:loading
   bind:error_msg
+  on_bar_hover={on_sites_hover ? handle_bar_hover : rest.on_bar_hover}
 >
   {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
     CN: {format_value(info.x, `.0f`)}

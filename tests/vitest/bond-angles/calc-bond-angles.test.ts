@@ -1,6 +1,7 @@
 import {
   angle_bin_centers,
   angle_bin_index,
+  bond_angle_bin_sites,
   calc_bond_angle_distribution,
   calc_bond_angles,
   resolve_angle_bins,
@@ -14,7 +15,7 @@ import type { Molecule } from '#lib/structure/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
@@ -397,6 +398,48 @@ describe(`calc_bond_angle_distribution`, () => {
   })
 })
 
+describe(`bond_angle_bin_sites`, () => {
+  const rocksalt_triplets = calc_bond_angles(rocksalt)
+  // make_rocksalt puts Na on sites 0-3 and Cl on 4-7
+  const sites_of = (element: string) => (element === `Na` ? [0, 1, 2, 3] : [4, 5, 6, 7])
+  test.each<[string, Parameters<typeof bond_angle_bin_sites>[1], number[], number[]]>([
+    // every 90 deg angle of SF6 is subtended at S by two of the six F
+    [`octahedron 90 deg`, { bin_width: 2, bin_idx: 45 }, [0], [1, 2, 3, 4, 5, 6]],
+    [`octahedron 180 deg (last bin)`, { n_bins: 90, bin_idx: 89 }, [0], [1, 2, 3, 4, 5, 6]],
+    [`octahedron empty bin`, { bin_width: 2, bin_idx: 30 }, [], []],
+    [
+      `octahedron, triplet filter excludes`,
+      { bin_width: 2, bin_idx: 45, triplet: `F-Cl-F` },
+      [],
+      [],
+    ],
+  ])(`%s`, (_name, options, site_indices, neighbor_indices) => {
+    expect(bond_angle_bin_sites(calc_bond_angles(octahedron), options)).toEqual({
+      site_indices,
+      neighbor_indices,
+    })
+  })
+
+  test.each([
+    [`Cl-Na-Cl`, `Na`, `Cl`],
+    [`Na-Cl-Na`, `Cl`, `Na`],
+  ])(
+    `rocksalt %s right angles centre on every %s and reach every %s`,
+    (triplet, center, outer) => {
+      const bin_idx = angle_bin_index(90, 90, 2)
+      expect(
+        bond_angle_bin_sites(rocksalt_triplets, { bin_width: 2, bin_idx, triplet }),
+      ).toEqual({ site_indices: sites_of(center), neighbor_indices: sites_of(outer) })
+    },
+  )
+
+  test.each([-1, 90, 1.5])(`rejects bin_idx %s outside the 90-bin grid`, (bin_idx) => {
+    expect(() => bond_angle_bin_sites(rocksalt_triplets, { bin_width: 2, bin_idx })).toThrow(
+      `bin_idx must be an integer in [0, 90)`,
+    )
+  })
+})
+
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
 describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   // Water, so a lattice-less molecule exercises the single-structure input shape
@@ -424,6 +467,26 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     expect(root.querySelectorAll(`path, rect`).length).toBeGreaterThan(0)
     expect(root.textContent).toContain(`Bond Angle (°)`)
     expect(root.textContent).toContain(`Count`)
+  })
+
+  test(`hovering a per-triplet bar reports its centre atoms and their bonded neighbours`, async () => {
+    const on_sites_hover = vi.fn()
+    const root = await mount_plot({ structures: rocksalt, on_sites_hover })
+    // the 90 deg Cl-Na-Cl bar: every Na centre, every Cl partner
+    const bar = [...root.querySelectorAll(`path[role="button"]`)].find((path) =>
+      /of Cl-Na-Cl: [1-9]/.test(path.getAttribute(`aria-label`) ?? ``),
+    )
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    expect(on_sites_hover).toHaveBeenLastCalledWith([
+      {
+        label: `Structure`,
+        structure: rocksalt,
+        site_indices: [0, 1, 2, 3],
+        neighbor_indices: [4, 5, 6, 7],
+      },
+    ])
+    bar?.dispatchEvent(new MouseEvent(`mouseleave`))
+    expect(on_sites_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`normalize=density relabels the value axis`, async () => {

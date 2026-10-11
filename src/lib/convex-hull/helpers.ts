@@ -1,21 +1,31 @@
 import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
+import {
+  drop_cached_hull_data,
+  entry_has_temp_data,
+  get_hull_decomposition,
+  system_fractions,
+} from './thermodynamics'
+import { hull_plot_position } from './model'
 import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
-import { array_extent, array_max } from '#lib/math.js'
+import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import type {
   ConvexHullConfig,
+  ConvexHullEntry,
   EntryCategoryConfig,
   HighlightStyle,
+  HullAnnotations,
+  HullMark,
+  HullOverlay,
   MarkerSymbol,
   PhaseData,
 } from './types'
 import { DEFAULT_HULL_COLORS, MAGNETIC_ORDERING_CATEGORY } from './types'
-import { entry_is_stable, is_unary_entry } from './entry-stability'
+import { entry_is_stable, HULL_STABILITY_TOL, is_unary_entry } from './entry-stability'
 
 export {
   compute_hull_stability,
@@ -549,4 +559,53 @@ export function get_entry_label(
       Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_num(amt, `.2~`)}`,
     )
     .join(``)
+}
+
+export const HULL_OVERLAY_COLORS = Object.freeze({
+  decomposition: `#e8590c`,
+  annotation: `#c026d3`,
+})
+
+// What linked views draw over a hull, in plot coordinates: dashed tie-lines from `focus` (an
+// entry above the hull) to the stable phases it decomposes into, each ringed with its atom
+// fraction, plus the host's composition annotations. Annotations whose composition lies
+// outside the hull's system are skipped with a warning.
+export function build_hull_overlay(
+  model: { entries: readonly ConvexHullEntry[]; elements: readonly ElementSymbol[] },
+  focus: ConvexHullEntry | null,
+  annotations: HullAnnotations | undefined,
+): HullOverlay {
+  const elements = [...model.elements]
+  const dim = elements.length
+  const overlay: HullOverlay = { segments: [], rings: [] }
+  if (dim !== 2 && dim !== 3 && dim !== 4) return overlay
+  const color = HULL_OVERLAY_COLORS.decomposition
+  const decomposition =
+    focus && (focus.e_above_hull ?? 0) > HULL_STABILITY_TOL
+      ? get_hull_decomposition(focus, model.entries, elements)
+      : null
+  for (const { phase, atom_fraction } of decomposition?.decomposition ?? []) {
+    overlay.segments.push({ from: focus ?? phase, to: phase, color, dashed: true })
+    overlay.rings.push({ at: phase, color, label: format_num(atom_fraction, `.0%`) })
+  }
+  const position = (mark: HullMark): Point3D | null => {
+    if (!system_fractions(mark.composition, elements)) {
+      console.warn(
+        `ConvexHull: annotation composition ${JSON.stringify(mark.composition)} is outside the ${elements.join(`-`)} system`,
+      )
+      return null
+    }
+    return hull_plot_position(mark.composition, mark.e_form, elements, dim)
+  }
+  for (const line of annotations?.lines ?? []) {
+    const [from, to] = [position(line.from), position(line.to)]
+    const line_color = line.color ?? HULL_OVERLAY_COLORS.annotation
+    if (from && to) overlay.segments.push({ from, to, color: line_color, dashed: false })
+  }
+  for (const mark of annotations?.marks ?? []) {
+    const at = position(mark)
+    const { label, color: mark_color = HULL_OVERLAY_COLORS.annotation } = mark
+    if (at) overlay.rings.push({ at, color: mark_color, label })
+  }
+  return overlay
 }

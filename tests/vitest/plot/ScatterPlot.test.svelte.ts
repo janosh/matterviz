@@ -941,6 +941,54 @@ describe(`ScatterPlot`, () => {
       expect(handler_props?.cx).toBeCloseTo(coord_x)
       expect(handler_props?.cy).toBeCloseTo(coord_y)
     })
+
+    test(`paints link-dimmed markers first at 0.25 alpha, highlighted ones on top`, async () => {
+      const fill_alphas: number[] = []
+      const ctx = mock_canvas_context({ fill: vi.fn(() => fill_alphas.push(ctx.globalAlpha)) })
+      // Keep the highlighted ids at the front of the data so data order alone paints them first
+      const point_ids = dense.x.map((idx) => `p${idx}`)
+      await mount_canvas({
+        series: [{ ...dense, point_ids }],
+        highlighted_ids: new Set([`p0`, `p1`]),
+      })
+      const first_lit = fill_alphas.indexOf(1)
+      expect(fill_alphas.slice(0, first_lit).every((alpha) => alpha === 0.25)).toBe(true)
+      expect(fill_alphas.slice(first_lit)).toEqual([1, 1])
+    })
+  })
+
+  describe(`highlighted_ids`, () => {
+    const keyed = { x: [1, 2, 3, 4], y: [4, 1, 3, 2], point_ids: [`a`, `b`, 3, `d`] }
+    const unkeyed = { x: [1.5, 2.5], y: [2, 3] }
+
+    test(`dims keyed points outside the set and follows updates`, async () => {
+      const state = $state<{
+        highlighted_ids: ComponentProps<typeof ScatterPlot>[`highlighted_ids`]
+      }>({ highlighted_ids: null })
+      const plot = await mount_sized_scatter_plot(
+        bind_props({ series: [keyed, unkeyed], marker_renderer: `svg` as const }, state),
+      )
+      const dimmed = () =>
+        [...plot.querySelectorAll(`g[data-series-id] path.marker`)].map((marker) =>
+          marker.classList.contains(`is-dimmed`),
+        )
+      // Unkeyed points (the last two) never dim; an empty set dims every keyed point
+      for (const [highlighted_ids, expected] of [
+        [null, [false, false, false, false, false, false]],
+        [
+          [`b`, 3],
+          [true, false, false, true, false, false],
+        ],
+        [new Set([`a`]), [false, true, true, true, false, false]],
+        [[], [true, true, true, true, false, false]],
+        [undefined, [false, false, false, false, false, false]],
+      ] as const) {
+        state.highlighted_ids = highlighted_ids
+        flushSync()
+        await tick()
+        expect(dimmed()).toEqual(expected)
+      }
+    })
   })
 
   test.each([

@@ -1,4 +1,6 @@
 // Fermi surface computation and analysis functions
+import { get_d3_interpolator } from '#lib/colors/index.js'
+import { rgb } from 'd3-color'
 import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -200,6 +202,38 @@ function center_grid_on_gamma(
 // the upsampling that dominates each extraction
 const prepared_grids = new WeakMap<BandEnergyGrid, CenteredGrid & { key: string }>()
 
+// Grid convention of a band grid. BXSF grids are endpoint-inclusive (store both equivalent
+// k=0 and k=1 → periodic false); FRMSF grids store k=i/n without the duplicated endpoint.
+// Grid point i sits at index0_frac + i/period along each axis.
+const grid_layout = (band_data: BandGridData): { periodic: boolean; index0_frac: Vec3 } => {
+  const periodic = band_data.periodic ?? false
+  const index0_frac = band_data.k_grid.map(
+    (count, axis) => (band_data.grid_shift?.[axis] ?? 0) / (periodic ? count : count - 1),
+  ) as Vec3
+  return { periodic, index0_frac }
+}
+
+// One band's grid upsampled by interpolation_factor (0 = auto) and rolled to the Γ-centred
+// cell, cached per source grid so mu changes and slice shading reuse it
+function prepared_band_grid(
+  band_data: BandGridData,
+  raw_energies: BandEnergyGrid,
+  interpolation_factor: number,
+): CenteredGrid {
+  const { periodic, index0_frac } = grid_layout(band_data)
+  const factor =
+    interpolation_factor > 0
+      ? interpolation_factor
+      : auto_interpolation_factor(band_data.k_grid)
+  const key = `${factor}|${periodic}|${index0_frac}`
+  const cached = prepared_grids.get(raw_energies)
+  if (cached?.key === key) return cached
+  const upsampled = upsample_grid(raw_energies, factor, periodic)
+  const centered = { key, ...center_grid_on_gamma(upsampled, periodic, index0_frac) }
+  prepared_grids.set(raw_energies, centered)
+  return centered
+}
+
 // Extract the Fermi surface of every band the level E_F + mu crosses
 export function extract_fermi_surface(
   band_data: BandGridData,
@@ -208,18 +242,7 @@ export function extract_fermi_surface(
   const { mu: mean = 0, interpolation_factor = 1 } = options
   const isovalue = band_data.fermi_energy + mean
   const isosurfaces: FermiIsosurface[] = []
-  // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
-  // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
-  const periodic = band_data.periodic ?? false
-  // Where index 0 sits: grid point i is at (i + grid_shift)/period
-  const index0_frac = band_data.k_grid.map(
-    (count, axis) => (band_data.grid_shift?.[axis] ?? 0) / (periodic ? count : count - 1),
-  ) as Vec3
-  const factor =
-    interpolation_factor > 0
-      ? interpolation_factor
-      : auto_interpolation_factor(band_data.k_grid)
-  const key = `${factor}|${periodic}|${index0_frac}`
+  const { periodic, index0_frac } = grid_layout(band_data)
   const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
   // Vertices sit at k_latticeᵀ·frac; inverted once, only when there are properties to sample
   let cart_to_frac: math.Matrix3x3 | undefined
@@ -233,12 +256,7 @@ export function extract_fermi_surface(
 
       // Marching cubes output stays in the Γ-centred parallelepiped cell; the renderer's
       // symmetry tiling covers the full Wigner-Seitz zone.
-      let centered = prepared_grids.get(raw_energies)
-      if (centered?.key !== key) {
-        const upsampled = upsample_grid(raw_energies, factor, periodic)
-        centered = { key, ...center_grid_on_gamma(upsampled, periodic, index0_frac) }
-        prepared_grids.set(raw_energies, centered)
-      }
+      const centered = prepared_band_grid(band_data, raw_energies, interpolation_factor)
       const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {
         periodic,
         position_offset: math.mat3x3_vec3_multiply(k_lattice_t, centered.index0_frac),
@@ -374,42 +392,6 @@ export function slice_plane_normal(k_lattice: math.Matrix3x3, miller_indices: Ve
   return math.normalize_vec(plane_normal)
 }
 
-// Corners of the convex polygon where the plane normal·k = distance cuts a convex polyhedron
-// given by its edge segments (e.g. the Brillouin zone), ordered around the polygon. Empty when
-// the plane misses it or only touches a vertex or an edge.
-export function plane_polyhedron_section(
-  edges: readonly (readonly Vec3[])[],
-  normal: Vec3,
-  distance: number,
-): Vec3[] {
-  const corners: Vec3[] = []
-  // Endpoints within this distance of the plane count as on it; also merges the copies of a
-  // corner that every edge meeting at a polyhedron vertex on the plane contributes
-  const tolerance = 1e-9 * Math.max(1, Math.abs(distance))
-  const add = (point: Vec3) => {
-    if (!corners.some((corner) => math.euclidean_dist(corner, point) < 1e-7))
-      corners.push(point)
-  }
-  for (const [start, end] of edges) {
-    const start_dist = math.dot(normal, start) - distance
-    const end_dist = math.dot(normal, end) - distance
-    if (Math.abs(start_dist) < tolerance) add(start)
-    if (Math.abs(end_dist) < tolerance) add(end)
-    if (start_dist * end_dist < 0) {
-      const step = math.scale(math.subtract(end, start), start_dist / (start_dist - end_dist))
-      add(math.add(start, step))
-    }
-  }
-  if (corners.length < 3) return []
-  const [axis_u, axis_v] = math.compute_in_plane_basis(normal)
-  const center = math.scale(math.add(...corners), 1 / corners.length)
-  const angle = (point: Vec3) => {
-    const offset = math.subtract(point, center)
-    return Math.atan2(math.dot(offset, axis_v), math.dot(offset, axis_u))
-  }
-  return corners.toSorted((first, second) => angle(first) - angle(second))
-}
-
 // The 12 edges of the Γ-centred reciprocal cell (fractional coordinates in [−½, ½]³), where
 // marching cubes leaves band-grid surfaces
 export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
@@ -430,6 +412,129 @@ export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
     }
   }
   return edges
+}
+
+// ε_nk − (E_F + mu) of every band crossing E_F + mu, sampled on a width × height pixel grid
+// over the slice plane's in-plane rectangle `bounds` (the 2D coordinates compute_fermi_slice
+// uses; rows run top to bottom, i.e. from bounds.max[1] down). Energies come from the same
+// upsampled, Γ-centred grids extract_fermi_surface runs marching cubes on, so the zero level
+// of each layer traces that band's slice contour.
+export interface SliceEnergyMap {
+  width: number
+  height: number
+  layers: { band_index: number; spin: SpinChannel; values: Float32Array }[]
+}
+export function sample_slice_energies(
+  band_data: BandGridData,
+  options: {
+    miller_indices: Vec3
+    distance: number
+    bounds: { min: Vec2; max: Vec2 }
+    mu?: number
+    interpolation_factor?: number
+    resolution?: number // pixels along the longer side
+  },
+): SliceEnergyMap {
+  const { miller_indices, distance, bounds, mu = 0, interpolation_factor = 1 } = options
+  const { resolution = 256 } = options
+  const [span_x, span_y] = [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]]
+  const scale = resolution / Math.max(span_x, span_y)
+  const [width, height] = [span_x, span_y].map((span) => Math.max(1, Math.round(span * scale)))
+  const normal = slice_plane_normal(band_data.k_lattice, miller_indices)
+  const [axis_u, axis_v] = math.compute_in_plane_basis(normal)
+  const positions = new Float32Array(3 * width * height)
+  for (let row = 0; row < height; row++) {
+    const coord_y = bounds.max[1] - ((row + 0.5) / height) * span_y
+    for (let col = 0; col < width; col++) {
+      const coord_x = bounds.min[0] + ((col + 0.5) / width) * span_x
+      const offset = 3 * (row * width + col)
+      for (let axis = 0; axis < 3; axis++) {
+        positions[offset + axis] =
+          normal[axis] * distance + axis_u[axis] * coord_x + axis_v[axis] * coord_y
+      }
+    }
+  }
+  const isovalue = band_data.fermi_energy + mu
+  const { periodic } = grid_layout(band_data)
+  const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(band_data.k_lattice))
+  const layers: SliceEnergyMap[`layers`] = []
+  for (const [spin_idx, bands] of band_data.energies.entries()) {
+    const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
+    for (const [band_index, raw_energies] of bands.entries()) {
+      if (!band_intersects_fermi(raw_energies.values, isovalue)) continue
+      const centered = prepared_band_grid(band_data, raw_energies, interpolation_factor)
+      const [values] = sample_vertex_values(positions, [centered.grid], {
+        cart_to_frac,
+        periodic,
+        index0_frac: centered.index0_frac,
+      })
+      for (let idx = 0; idx < values.length; idx++) values[idx] -= isovalue
+      layers.push({ band_index, spin, values })
+    }
+  }
+  return { width, height, layers }
+}
+
+// RGBA pixels (row-major, as sample_slice_energies) shading a slice energy map. `occupied`
+// tints every layer's filled side (ε < E_F + mu) in its band colour, so electron and hole
+// pockets read apart and overlapping occupied bands darken. `energy` maps ε − E_F of the
+// band nearest the Fermi level at each pixel through a diverging scale symmetric about 0, so
+// near-crossings show up before a mu change makes them pockets.
+export function slice_shading_rgba(
+  energy_map: SliceEnergyMap,
+  mode: `occupied` | `energy`,
+  band_colors: readonly string[],
+  opacity = 0.22,
+): Uint8ClampedArray<ArrayBuffer> {
+  const { width, height, layers } = energy_map
+  const n_pixels = width * height
+  const pixels = new Uint8ClampedArray(4 * n_pixels)
+  if (layers.length === 0) return pixels
+  if (mode === `occupied`) {
+    // straight-alpha source-over of each occupied layer
+    const red = new Float32Array(n_pixels)
+    const green = new Float32Array(n_pixels)
+    const blue = new Float32Array(n_pixels)
+    const alpha = new Float32Array(n_pixels)
+    for (const { band_index, values } of layers) {
+      const color = rgb(band_colors[band_index % band_colors.length])
+      for (let idx = 0; idx < n_pixels; idx++) {
+        if (!(values[idx] < 0)) continue
+        // out_a = a_s + a_d (1 − a_s); out_c = (c_s a_s + c_d a_d (1 − a_s)) / out_a
+        const out_alpha = opacity + alpha[idx] * (1 - opacity)
+        const keep = (alpha[idx] * (1 - opacity)) / out_alpha
+        const add = opacity / out_alpha
+        red[idx] = color.r * add + red[idx] * keep
+        green[idx] = color.g * add + green[idx] * keep
+        blue[idx] = color.b * add + blue[idx] * keep
+        alpha[idx] = out_alpha
+      }
+    }
+    for (let idx = 0; idx < n_pixels; idx++) {
+      pixels.set([red[idx], green[idx], blue[idx], 255 * alpha[idx]], 4 * idx)
+    }
+    return pixels
+  }
+  const nearest = new Float32Array(n_pixels).fill(NaN)
+  for (const { values } of layers) {
+    for (let idx = 0; idx < n_pixels; idx++) {
+      const value = values[idx]
+      if (Number.isFinite(value) && !(Math.abs(value) >= Math.abs(nearest[idx])))
+        nearest[idx] = value
+    }
+  }
+  let abs_max = 0
+  for (const value of nearest)
+    if (Number.isFinite(value)) abs_max = Math.max(abs_max, Math.abs(value))
+  const interpolator = get_d3_interpolator(`interpolateRdBu`)
+  for (let idx = 0; idx < n_pixels; idx++) {
+    const value = nearest[idx]
+    if (!Number.isFinite(value) || abs_max === 0) continue
+    // RdBu: below E_F (occupied) red, above blue
+    const color = rgb(interpolator(0.5 + (0.5 * value) / abs_max))
+    pixels.set([color.r, color.g, color.b, 255 * opacity * 2], 4 * idx)
+  }
+  return pixels
 }
 
 // Compute 2D Fermi slice along a specified plane

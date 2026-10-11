@@ -1,4 +1,5 @@
 import type { PhaseData } from '#lib/convex-hull/types.js'
+import type { Vec2 } from '#lib/math.js'
 import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
 import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
 import {
@@ -8,7 +9,10 @@ import {
   decompose_composition,
   decompose_phase,
   format_reaction,
+  hits_pin,
   prepare_diagram,
+  prism_composition,
+  prism_position,
 } from '#lib/phase-diagram/ternary/compute.js'
 import type {
   TernaryPhaseDiagram,
@@ -216,6 +220,53 @@ describe(`compute_section`, () => {
     expect(excluded_li.phases).toHaveLength(8) // 4 toy + excluded Li + 3 synthetic corners
     const { stable, e_above_hull } = compute_section(excluded_li, 300)
     expect([stable, e_above_hull[4]]).toEqual([[0, 1, 2, 5, 6, 7], -3])
+  })
+})
+
+describe(`composition probes`, () => {
+  const height = Math.sqrt(3) / 2
+  test.each<[string, Vec2]>([
+    [`left corner`, [0, 0]],
+    [`right corner`, [1, 0]],
+    [`top corner`, [0.5, height]],
+    [`centroid`, [0.5, height / 3]],
+    [`edge midpoint`, [0.75, height / 2]],
+    [`interior point`, [0.4, 0.25]],
+  ])(`prism_composition inverts prism_position at the %s`, (_, coords_xy) => {
+    const [x, y, z] = prism_position(coords_xy, 0.3)
+    expect(y).toBe(0.3)
+    expect(prism_composition({ x, z })).toEqual(
+      coords_xy.map((val) => expect.closeTo(val, 12)),
+    )
+  })
+
+  test(`prism frame: centroid at the origin, triangle y along -z`, () => {
+    expect(prism_position([0.5, height / 3])).toEqual([0, 0, 0])
+    expect(prism_position([0.5, height])).toEqual([
+      0,
+      0,
+      expect.closeTo(-2 * (height / 3), 12),
+    ])
+  })
+
+  test.each<[Vec2]>([
+    [[-0.01, 0]],
+    [[1.01, 0]],
+    [[0.5, -0.01]],
+    [[0.5, height + 0.01]],
+    [[0.2, 0.5]], // past the left edge
+  ])(`prism_composition rejects scene points outside the triangle: %j`, (coords_xy) => {
+    const [x, , z] = prism_position(coords_xy)
+    expect(prism_composition({ x, z })).toBeNull()
+  })
+
+  test.each<[Vec2 | null, Vec2, boolean]>([
+    [null, [0.4, 0.25], false],
+    [[0.4, 0.25], [0.4, 0.25], true],
+    [[0.4, 0.25], [0.43, 0.289], true], // 0.049 away, just inside the 0.05 radius
+    [[0.4, 0.25], [0.43, 0.2901], false], // 0.0501 away
+  ])(`hits_pin(%j, %j, 0.05) = %s`, (pinned, coords_xy, hit) => {
+    expect(hits_pin(pinned, coords_xy, 0.05)).toBe(hit)
   })
 })
 

@@ -60,6 +60,18 @@ describe(`ElementScatter`, () => {
     expect(root.querySelectorAll(`.marker`)).toHaveLength(y_values.length)
   })
 
+  test(`keys points by element symbol for highlighted_ids`, async () => {
+    const root = await mount_sized(
+      ElementScatter,
+      { y: y_values, highlighted_ids: [`C`, `Ne`] },
+      { selector: `.scatter` },
+    )
+    const lit = [...root.querySelectorAll(`path.marker`)].flatMap((marker, idx) =>
+      marker.classList.contains(`is-dimmed`) ? [] : [element_data[idx].symbol],
+    )
+    expect(lit).toEqual([`C`, `Ne`])
+  })
+
   test(`forwards axis selection and visibility notifications`, async () => {
     const on_axis_change = vi.fn()
     const on_hidden_series_change = vi.fn()

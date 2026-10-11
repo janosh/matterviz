@@ -56,6 +56,9 @@
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
   import { is_vector_key } from '#lib/structure/vectors.js'
+  import { has_usable_lattice } from '#lib/structure/validation.js'
+  import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
+  import { element_site_indices, scene_site_indices } from './linked-sites'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
@@ -1223,11 +1226,58 @@
     default_dt: frame_time_step,
     default_time_unit: trajectory?.time_step?.unit,
   })
+  // === linked views: analyses point at atoms of the displayed frame ===
+  // A data-inspector row selects its atom the way a click in 3D does; hovering an analysis
+  // curve, bar or structure type highlights the atoms behind it. Structure resets both when
+  // the frame's topology changes, and the highlight with every new frame.
+  let selected_sites = $state<number[]>([])
+  let highlighted_sites = $state<number[]>([])
+  const select_source_atom = (atom_idx: number): void => {
+    const [site_idx] = scene_site_indices([atom_idx], current_frame)
+    if (site_idx === undefined) return
+    selected_sites =
+      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
+  }
+  const highlight_elements = (elements: readonly string[]): number[] => [
+    ...new Set(
+      elements.flatMap((element) => element_site_indices(session.current_structure, element)),
+    ),
+  ]
+  // MSD/VACF curves are labelled by element (or `Total`, which names none)
+  const highlight_curve = (label: string | null) =>
+    (highlighted_sites = label ? highlight_elements([label]) : [])
+  type RdfShellHover = Parameters<
+    NonNullable<ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`]>
+  >[0]
+  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
+  const rdf_shell_sites = (hover: NonNullable<RdfShellHover>): number[] => {
+    const structure = session.current_structure
+    if (hover.bin_idx === null) return highlight_elements(hover.element_pair)
+    if (!has_usable_lattice(structure)) return []
+    const { site_indices, neighbor_indices } = rdf_bin_sites(structure, {
+      cutoff: hover.cutoff,
+      n_bins: hover.n_bins,
+      bin_idx: hover.bin_idx,
+      element_pair: hover.element_pair,
+    })
+    return [...new Set([...site_indices, ...neighbor_indices])]
+  }
   const analysis_panes = $derived([
-    [`msd`, TrajectoryMsdPane, correlation_pane_props],
-    [`vacf`, TrajectoryVacfPane, correlation_pane_props],
-    [`rdf`, TrajectoryRdfPane, analysis_pane_props],
-    [`structure-id`, TrajectoryStructureIdPane, analysis_pane_props],
+    [`msd`, TrajectoryMsdPane, { ...correlation_pane_props, on_curve_hover: highlight_curve }],
+    [
+      `vacf`,
+      TrajectoryVacfPane,
+      { ...correlation_pane_props, on_curve_hover: highlight_curve },
+    ],
+    [
+      `rdf`,
+      TrajectoryRdfPane,
+      {
+        ...analysis_pane_props,
+        on_shell_hover: (hover: RdfShellHover) =>
+          (highlighted_sites = hover ? rdf_shell_sites(hover) : []),
+      },
+    ],
   ] as const)
   // oxfmt-ignore
   const ANALYSES = (
@@ -1620,6 +1670,21 @@
                     }
                   />
                 {/each}
+                <!-- Outside the loop: its playhead follows every frame, and a new props object
+                per frame would reset the panes' unbound results -->
+                <TrajectoryStructureIdPane
+                  {...analysis_pane_props}
+                  current_frame_idx={current_step_idx}
+                  on_frame_select={session.commit}
+                  on_atoms_hover={(hover) =>
+                    (highlighted_sites = hover
+                      ? scene_site_indices(hover.atom_indices, current_frame)
+                      : [])}
+                  bind:pane_open={
+                    () => active_pane === `structure-id`,
+                    (open) => set_pane_open(`structure-id`, open)
+                  }
+                />
                 <TrajectoryHotspotPane
                   bind:scale={hotspot_numeric_scale}
                   bind:cutaway={hotspot_cutaway}
@@ -1651,6 +1716,7 @@
                     (open) => set_pane_open(`data-inspector`, open)
                   }
                   on_step_change={session.commit}
+                  on_site_select={select_source_atom}
                 />
               {/snippet}
             </ToolbarMenu>
@@ -1767,6 +1833,8 @@
             }
           }
           bind:hidden_elements
+          bind:selected_sites
+          bind:highlighted_sites
         >
           {#snippet atom_tooltip({ site, site_idx })}
             {@render structure_props.atom_tooltip?.({ site, site_idx })}

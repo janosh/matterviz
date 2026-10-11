@@ -7,6 +7,8 @@ import {
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import { compute_hull_model } from '#lib/convex-hull/model.js'
+import { make_phase } from '../test-fixtures'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
@@ -763,5 +765,78 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
       helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` })),
     ).toContain(`Magnetic: FiM`)
     expect(helpers.build_entry_tooltip_text(mag_entry())).not.toContain(`Magnetic`)
+  })
+})
+
+describe(`helpers: build_hull_overlay`, () => {
+  const model = compute_hull_model(
+    [
+      make_phase({ Li: 1 }, 0, { entry_id: `li` }),
+      make_phase({ O: 1 }, 0, { entry_id: `o` }),
+      make_phase({ Li: 2, O: 1 }, -2, { entry_id: `li2o` }),
+      make_phase({ Li: 1, O: 2 }, -0.5, { entry_id: `lio2` }),
+    ],
+    { energy_source_mode: `on-the-fly` },
+  )
+  const entry = (identifier: string): ConvexHullEntry => {
+    const found = model.entries.find((candidate) => candidate.entry_id === identifier)
+    if (!found) throw new Error(`no entry ${identifier}`)
+    return found
+  }
+  const { decomposition, annotation } = helpers.HULL_OVERLAY_COLORS
+
+  test.each([
+    [`stable`, `li2o`],
+    [`nothing`, null],
+  ])(`a %s focus draws no decomposition`, (_desc, identifier) => {
+    const focus = identifier ? entry(identifier) : null
+    expect(helpers.build_hull_overlay(model, focus, undefined)).toEqual({
+      segments: [],
+      rings: [],
+    })
+  })
+
+  test(`an unstable focus is tied to its products, annotations resolve to plot coords`, () => {
+    const lio2 = entry(`lio2`)
+    const overlay = helpers.build_hull_overlay(model, lio2, {
+      lines: [
+        {
+          from: { composition: { Li: 1 }, e_form: 0 },
+          to: { composition: { Li: 2, O: 1 }, e_form: -2 },
+        },
+      ],
+      marks: [{ composition: { Li: 1, O: 1 }, e_form: -1, label: `LiO`, color: `red` }],
+    })
+    expect(overlay.segments).toEqual([
+      { from: lio2, to: entry(`o`), color: decomposition, dashed: true },
+      { from: lio2, to: entry(`li2o`), color: decomposition, dashed: true },
+      {
+        from: { x: 0, y: 0, z: 0 },
+        to: { x: expect.closeTo(1 / 3, 12), y: -2, z: 0 },
+        color: annotation,
+        dashed: false,
+      },
+    ])
+    expect(overlay.rings).toEqual([
+      { at: entry(`o`), color: decomposition, label: `50%` },
+      { at: entry(`li2o`), color: decomposition, label: `50%` },
+      { at: { x: 0.5, y: -1, z: 0 }, color: `red`, label: `LiO` },
+    ])
+  })
+
+  test(`annotations outside the system are skipped with a warning`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const overlay = helpers.build_hull_overlay(model, null, {
+      marks: [{ composition: { Na: 1 }, e_form: 0 }],
+      lines: [
+        {
+          from: { composition: { Li: 1 }, e_form: 0 },
+          to: { composition: { Li: 1, Cl: 1 }, e_form: 0 },
+        },
+      ],
+    })
+    expect(overlay).toEqual({ segments: [], rings: [] })
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn.mock.calls.flat().join(`\n`)).toContain(`{"Na":1} is outside the Li-O system`)
   })
 })

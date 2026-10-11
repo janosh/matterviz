@@ -37,6 +37,7 @@ import { bind_props } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
+  type Color,
   CylinderGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -1433,3 +1434,58 @@ test.each([false, true])(
       ).toHaveLength(2)
   },
 )
+
+test(`Scene marks a volumetric slice plane with a translucent fill and a closed outline`, () => {
+  // oxfmt-ignore
+  const slice_polygon: Vec3[] = [[0, 0, 1], [2, 0, 1], [2, 2, 1], [0, 2, 1]]
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
+      show_bonds: `never`,
+      show_polyhedra: `never`,
+      gizmo: false,
+      slice_polygon,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const [outline] = scene.getObjectsByProperty(`type`, `Line`) as Mesh[]
+  expect(outline?.geometry.getAttribute(`position`).count).toBe(5) // 4 corners + closing one
+  const fill = (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).find(
+    (mesh) => mesh.geometry.index?.count === 6, // the square's two fan triangles
+  )
+  expect(fill?.renderOrder).toBe(1000)
+})
+
+// The default active-site color is a CSS custom property, which THREE.Color cannot parse: it
+// used to warn on every highlight and keep the material's previous color
+test(`active-site highlights resolve the CSS color token where the canvas sits`, () => {
+  const warn = vi.spyOn(console, `warn`)
+  const state = $state({ active_sites: [] as number[] })
+  const { canvas, scene, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(anchor, {
+      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
+      get active_sites() {
+        return state.active_sites
+      },
+      show_bonds: `never`,
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  const host = document.createElement(`div`)
+  host.style.setProperty(`--struct-active-highlight-color`, `rgb(255, 0, 0)`)
+  host.append(canvas)
+  document.body.append(host)
+  state.active_sites = [0]
+  flushSync()
+  const highlight_colors: string[] = []
+  scene.traverse((object) => {
+    const { material } = object as { material?: { depthTest?: boolean; color?: Color } }
+    if (material?.depthTest === false && material.color) {
+      highlight_colors.push(material.color.getHexString())
+    }
+  })
+  expect(highlight_colors).toContain(`ff0000`)
+  expect(warn.mock.calls.flat().join(` `)).not.toContain(`Unknown color model`)
+})

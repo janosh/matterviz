@@ -7,9 +7,11 @@
     update_ordered_atom_positions,
   } from './atom-instances'
   import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
+  import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
   import { format_num } from '#lib/labels.js'
@@ -275,6 +277,7 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
+    slice_polygon = [],
     supercell_tiling = [1, 1, 1],
     interactive = true,
     fly_to_request = $bindable(undefined),
@@ -419,6 +422,9 @@
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    // Corners of a volumetric cross-section's plane clipped to the cell (Cartesian Å, see
+    // slice_cell_polygon), drawn as a translucent plane to show where a 2D slice cuts
+    slice_polygon?: Vec3[]
     // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
     // and the isosurface geometry; 1x1x1 until an applied supercell lands.
     supercell_tiling?: Vec3
@@ -1785,6 +1791,13 @@
     color: string
     radius: number
   }
+  // The default active color is a CSS custom property, which THREE.Color cannot parse (it
+  // warns and keeps its previous color), so let the browser resolve it where the canvas sits
+  const active_color = $derived(
+    active_sites.length > 0 && renderer.domElement.parentElement
+      ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
+      : active_highlight_color,
+  )
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
@@ -1801,7 +1814,7 @@
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
     for (const idx of selected_sites) add(`selected`, idx, selection_highlight_color)
-    for (const idx of active_sites) add(`active`, idx, active_highlight_color)
+    for (const idx of active_sites) add(`active`, idx, active_color)
     return targets
   })
 
@@ -2396,6 +2409,7 @@
           tiling={supercell_tiling}
         />
       {/if}
+      <SlicePlane polygon={slice_polygon} />
 
       <!-- Measurement overlays for measured sites -->
       {#if structure && measured_sites.length > 0}

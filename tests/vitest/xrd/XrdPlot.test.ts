@@ -1,8 +1,10 @@
 import XrdPlot from '#lib/xrd/XrdPlot.svelte'
 // static so loading the demo page (and the structures it ships) is not billed to the test timeout
 import Page from '#root/src/routes/(demos)/structure/xrd/+page.svelte'
+import { PLOT_COLORS } from '#lib/colors/index.js'
 import type { Matrix3x3 } from '#lib/math.js'
-import type { XrdPattern } from '#lib/xrd/index.js'
+import type { LatticePlane } from '#lib/structure/index.js'
+import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
 import * as xrd from '#lib/xrd/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -377,6 +379,98 @@ describe(`XrdPlot`, () => {
     expect(narrow).toBeGreaterThan(0)
     expect(wide / narrow).toBeCloseTo(2, 1)
   })
+
+  test(`hovered_peak and selected_peak report sticks, a pin is labelled and toggles off`, async () => {
+    const [on_bar_hover, on_bar_click] = [vi.fn(), vi.fn()]
+    const merged: XrdPattern = {
+      ...pattern,
+      hkls: pattern.hkls?.with(1, [{ hkl: [1, 1, 0] }, { hkl: [-1, 1, 0] }]),
+    }
+    const target = create_sized_container()
+    const harness = mount(XrdPlotHarness, {
+      target,
+      props: {
+        pattern: { First: { pattern }, Second: { pattern: merged } },
+        annotate_peaks: 1,
+        show_angles: false,
+        on_bar_hover,
+        on_bar_click,
+      },
+    })
+    await wait_for_plot_render(target)
+    const peaks = () => harness.get_peaks()
+    const labels = () =>
+      [...target.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim())
+    expect(labels()).toEqual([`200`, `200`])
+    const bars = target.querySelectorAll(`.bar-series`)[1].querySelectorAll(`path`)
+    bars[1].dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    // intensity on the plot scale: 200 of the global maximum 300
+    const second_peak: XrdPeak = {
+      pattern_idx: 1,
+      peak_idx: 1,
+      label: `Second`,
+      two_theta: 20,
+      intensity: (200 / 300) * 100,
+      hkls: [
+        [1, 1, 0],
+        [-1, 1, 0],
+      ],
+      d_spacing: 6.3,
+    }
+    expect(peaks().hovered_peak).toEqual(second_peak)
+    // host handlers still fire alongside the bindings
+    expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ bar_idx: 1 }))
+    bars[1].dispatchEvent(new MouseEvent(`mouseleave`))
+    expect(peaks().hovered_peak).toBeNull()
+
+    bars[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(peaks().selected_peak).toEqual(second_peak)
+    expect(on_bar_click).toHaveBeenCalledOnce()
+    expect(labels()).toEqual([`200`, `110, 1̅10`, `200`])
+    // another stick moves the pin, the pinned one releases it
+    bars[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    expect(peaks().selected_peak?.hkls).toEqual([[1, 0, 0]])
+    bars[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+    await tick()
+    expect(peaks().selected_peak).toBeNull()
+    expect(labels()).toEqual([`200`, `200`])
+  })
+
+  test.each([
+    [[], 3, []],
+    [[[2, 0, 0]], 3, [{ hkl: [2, 0, 0], color: PLOT_COLORS[1] }]],
+    [
+      [
+        [1, 1, 0],
+        [-1, 1, 0],
+        [0, 1, 1],
+        [1, 0, 1],
+      ],
+      undefined,
+      [
+        { hkl: [1, 1, 0], color: PLOT_COLORS[1] },
+        { hkl: [-1, 1, 0], color: PLOT_COLORS[2] },
+        { hkl: [0, 1, 1], color: PLOT_COLORS[4] },
+      ],
+    ],
+    [
+      [
+        [1, 1, 0],
+        [-1, 1, 0],
+      ],
+      1,
+      [{ hkl: [1, 1, 0], color: PLOT_COLORS[1] }],
+    ],
+  ] as [Hkl[], number | undefined, LatticePlane[]][])(
+    `diffraction_planes(%j, max %s) draws one coloured family per hkl`,
+    (hkls, max_families, expected) => {
+      const planes = xrd.diffraction_planes(hkls, max_families)
+      expect(planes).toEqual(expected)
+      // copies, so a consumer editing a plane never mutates the pattern's hkls
+      for (const [idx, plane] of planes.entries()) expect(plane.hkl).not.toBe(hkls[idx])
+    },
+  )
 
   test(`rendering: multiple patterns with colors`, async () => {
     const target = await mount_xrd({

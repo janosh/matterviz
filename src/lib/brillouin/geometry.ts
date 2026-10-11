@@ -89,6 +89,27 @@ export function k_path_segments(
   )
 }
 
+// Highlight of the k-path segment from point `idx` to `idx + 1`: `hover` for the (up to two)
+// segments touching the hovered q-point, `range` for the rest of the highlighted q-point range
+// (the hovered path branch, e.g. Γ→X), null otherwise
+export function k_path_segment_highlight(
+  idx: number,
+  hovered: number | null,
+  range: readonly [number, number] | null,
+): `hover` | `range` | null {
+  if (hovered !== null && (idx === hovered || idx === hovered - 1)) return `hover`
+  if (range && idx >= range[0] && idx < range[1]) return `range`
+  return null
+}
+
+// Index of the first k-path point within `tolerance` of `position` (-1 if none), mapping a
+// symmetry-point label back to its q-point
+export const k_path_point_index = (
+  points: readonly Vec3[],
+  position: Vec3,
+  tolerance: number,
+): number => points.findIndex((point) => math.euclidean_dist(point, position) < tolerance)
+
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({

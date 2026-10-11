@@ -1,9 +1,12 @@
 // Tests for HKL plane slicing and trilinear interpolation
 import { create_volume_sampler, trilinear_interpolate } from '#lib/isosurface/sampling.js'
 import {
+  hkl_slice_plane,
   resolve_slice_cartesian_point,
+  resolve_slice_plane,
   sample_hkl_slice,
   sample_plane_slice,
+  slice_cell_polygon,
   upsample_volume,
   volume_center,
 } from '#lib/isosurface/slice.js'
@@ -380,5 +383,87 @@ describe(`sample_plane_slice`, () => {
 
     expect(hkl_result.data).toEqual(cartesian_result.data)
     expect(hkl_result.mask).toEqual(cartesian_result.mask)
+  })
+
+  test(`slice_cell_polygon is the sampled cut lifted back to 3D`, () => {
+    const lattice: Matrix3x3 = [
+      [5.1, 0, 0],
+      [1.3, 4.7, 0],
+      [-0.8, 1.1, 6.2],
+    ]
+    const volume = linear_volume(lattice, [3, -2, 5])
+    const plane: CartesianPlane = { point: [5, 1, 8], normal: [1, 2, 3], up: [0, 0, 1] }
+    const { point, u_axis, v_axis, polygon } = plane_slice(plane, {}, volume)
+    const lifted = polygon.map(([u_coord, v_coord]) =>
+      math.add(point, math.scale(u_axis, u_coord), math.scale(v_axis, v_coord)),
+    )
+    const corners = slice_cell_polygon(volume, plane)
+    expect(corners.length).toBeGreaterThanOrEqual(3)
+    // lifting adds a few ulps of Å-scale coordinates (~1e-15) on top of the projection
+    expect(corners.flat()).toEqual(lifted.flat().map((coord) => expect.closeTo(coord, 12)))
+    for (const corner of corners) {
+      expect(math.dot(math.subtract(corner, plane.point), plane.normal)).toBeCloseTo(0, 12)
+    }
+  })
+
+  test.each([
+    [`a plane past the cell`, { point: [0, 0, 30], normal: [0, 0, 1] }],
+    [`a zero normal`, { point: [5, 5, 5], normal: [0, 0, 0] }],
+    [`a non-finite point`, { point: [Number.NaN, 5, 5], normal: [0, 0, 1] }],
+  ] as [string, CartesianPlane][])(`slice_cell_polygon is empty for %s`, (_name, plane) => {
+    expect(slice_cell_polygon(linear_volume(cubic), plane)).toEqual([])
+  })
+})
+
+describe(`hkl_slice_plane and resolve_slice_plane`, () => {
+  const volume = make_linear_volume(5, cubic_matrix(10), true, [3, -2, 5])
+
+  // (001) spans z = 5 to 15 over the cell, so position is the fraction of that span; the
+  // extreme positions only touch a face, which still cuts the full square
+  test.each([
+    [0, 5],
+    [0.25, 7.5],
+    [1, 15],
+  ])(`(001) at position %s lies at z = %s`, (position, z_coord) => {
+    const plane = hkl_slice_plane(volume, [0, 0, 1], position)
+    expect(plane?.normal).toEqual([0, 0, 1])
+    expect(plane?.point[2]).toBeCloseTo(z_coord, 12)
+    expect(plane && slice_cell_polygon(volume, plane)).toHaveLength(4)
+  })
+
+  test(`(111) at the extremes only touches a corner, at 0.5 cuts the hexagon through the center`, () => {
+    for (const position of [0, 1]) {
+      const plane = hkl_slice_plane(volume, [1, 1, 1], position)
+      expect(plane && slice_cell_polygon(volume, plane)).toEqual([])
+    }
+    const plane = hkl_slice_plane(volume, [1, 1, 1], 0.5)
+    if (!plane) throw new Error(`expected a (111) plane`)
+    expect(slice_cell_polygon(volume, plane)).toHaveLength(6)
+    const offset = math.dot(math.subtract(volume_center(volume), plane.point), plane.normal)
+    expect(offset).toBeCloseTo(0, 12)
+  })
+
+  test(`null for (000)`, () => {
+    expect(hkl_slice_plane(volume, [0, 0, 0], 0.5)).toBeNull()
+  })
+
+  test(`resolve_slice_plane follows the plane mode`, () => {
+    const hkl_settings = create_volume_slice_settings({
+      miller_indices: [1, 1, 0],
+      position: 0.3,
+    })
+    expect(resolve_slice_plane(volume, hkl_settings)).toEqual(
+      hkl_slice_plane(volume, [1, 1, 0], 0.3),
+    )
+    const cartesian_settings = create_volume_slice_settings({
+      plane_mode: `cartesian`,
+      cartesian_normal: [0, 1, 0],
+      cartesian_up: [0, 0, 1],
+    })
+    expect(resolve_slice_plane(volume, cartesian_settings)).toEqual({
+      point: volume_center(volume),
+      normal: [0, 1, 0],
+      up: [0, 0, 1],
+    })
   })
 })

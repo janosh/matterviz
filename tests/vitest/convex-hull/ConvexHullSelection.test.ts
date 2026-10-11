@@ -693,4 +693,54 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
     expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)
   })
+
+  // Linked views: an entry above the hull (hovered, else selected) is tied by dashed lines to
+  // the stable phases it decomposes into; host annotations add solid lines and rings
+  const overlay_entries: PhaseData[] = [
+    { ...compound({ Li: 1 }, `ref-li`, 0), e_form_per_atom: 0 },
+    { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
+    { ...compound({ Li: 1, O: 1 }, `lio`, 0), e_form_per_atom: -0.6 },
+    { ...compound({ Li: 1, O: 2 }, `lio2`, 0.2), e_form_per_atom: -0.2 },
+  ]
+  test.each([
+    [`nothing selected`, {}, { dashed: 0, solid: 0, labels: [] }],
+    // LiO2 = 2/3 LiO + 1/3 O by atoms
+    [
+      `an unstable entry`,
+      { selected_entry: overlay_entries[3] },
+      { dashed: 2, solid: 0, labels: [`67%`, `33%`] },
+    ],
+    [
+      `a stable entry and annotations`,
+      {
+        selected_entry: overlay_entries[2],
+        annotations: {
+          lines: [
+            {
+              from: { composition: { Li: 1 }, e_form: 0 },
+              to: { composition: { O: 1 }, e_form: 0 },
+            },
+          ],
+          marks: [{ composition: { Li: 1, O: 3 }, e_form: -0.1, label: `mixing point` }],
+        },
+      },
+      { dashed: 0, solid: 1, labels: [`mixing point`] },
+    ],
+  ] satisfies [string, Partial<ComponentProps<typeof ConvexHull>>, object][])(
+    `overlay with %s`,
+    async (_desc, props, expected) => {
+      const plot = await mount_sized(
+        ConvexHull,
+        { entries: overlay_entries, ...props },
+        { selector: `.scatter`, on_mount: track_component },
+      )
+      expect({
+        dashed: plot.querySelectorAll(`.hull-overlay line[stroke-dasharray]`).length,
+        solid: plot.querySelectorAll(`.hull-overlay line:not([stroke-dasharray])`).length,
+        labels: [...plot.querySelectorAll(`.hull-overlay text`)].map(
+          (node) => node.textContent,
+        ),
+      }).toEqual(expected)
+    },
+  )
 })

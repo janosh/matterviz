@@ -1,5 +1,12 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math.js'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
+import type {
+  AxisRanges,
+  LegendConfig,
+  LegendItem,
+  ScaleType,
+  Y2SyncConfig,
+  Y2SyncMode,
+} from '#lib/plot/core/types.js'
 import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
 
 // Get coordinates of a mouse event relative to an element (the event's
@@ -318,3 +325,36 @@ export function expand_range_if_needed(
   const changed = new_range[0] !== current[0] || new_range[1] !== current[1]
   return { range: new_range, changed }
 }
+
+// ScatterPlot/BarPlot props reporting which series the pointer is on, from its curve points
+// and from its legend entries alike, chained after whatever handlers the caller already set.
+// Spread after the caller's own props. Empty when nobody listens, so plots without a linked
+// view keep their handlers untouched.
+export const series_hover_props = <PointEvent extends { series_idx: number }>(
+  on_series_hover: ((series_idx: number | null) => void) | undefined,
+  {
+    on_point_hover,
+    legend = {},
+  }: {
+    on_point_hover?: (event: PointEvent | null) => void
+    legend?: LegendConfig | null
+  },
+): {
+  on_point_hover?: (event: PointEvent | null) => void
+  legend?: LegendConfig | null
+} =>
+  on_series_hover
+    ? {
+        on_point_hover: (event) => {
+          on_series_hover(event?.series_idx ?? null)
+          on_point_hover?.(event)
+        },
+        legend: legend && {
+          ...legend,
+          on_item_hover: (item: LegendItem | null) => {
+            on_series_hover(item && item.series_idx >= 0 ? item.series_idx : null)
+            legend.on_item_hover?.(item)
+          },
+        },
+      }
+    : {}

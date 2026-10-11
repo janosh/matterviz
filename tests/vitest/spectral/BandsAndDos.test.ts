@@ -4,7 +4,15 @@ import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/
 import { flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
-import { fire, clip_rect, mount_sized, plot_svg, translate_of } from '../setup'
+import {
+  clip_rect,
+  fire,
+  marker_position,
+  mount_sized,
+  mouse,
+  plot_svg,
+  translate_of,
+} from '../setup'
 import { make_crystal } from '../test-fixtures'
 
 const band_structs: BaseBandStructure = {
@@ -140,6 +148,45 @@ describe(`bands/DOS wrappers`, () => {
       }
     },
   )
+
+  // The bands report their own hover, the composite draws it in both panels: the DOS line
+  // lands on the hovered point's pixel row (shared y scale side by side), and leaving the bands
+  // clears both lines and, beside a BZ, the shaded branch
+  it.each([
+    [`.bands-and-dos`, BandsAndDos],
+    [`.bands-dos-brillouin`, BrillouinBandsDos],
+  ] as const)(`mirrors a bands hover into the DOS in %s`, async (selector, Component) => {
+    const root = await mount_sized(
+      Component,
+      {
+        ...pair_props,
+        bands_props: { on_point_click: vi.fn(), point_tween: { duration: 0 } },
+      },
+      { selector, width: 1200, height: 600 },
+    )
+    const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
+    const ref_line = (plot: Element, panel: string) =>
+      plot.querySelector(`line[stroke*="--${panel}-reference-line-color"]`)
+    const svg = plot_svg(bands_plot)
+    svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
+    const point = marker_position(bands_plot, 1) // band 1 at the middle q-point: 1 THz
+    svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    flushSync()
+    for (const [plot, panel] of [
+      [bands_plot, `bands`],
+      [dos_plot, `dos`],
+    ] as const) {
+      expect(Number(ref_line(plot, panel)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
+    }
+    const has_brillouin = Component === BrillouinBandsDos
+    expect(bands_plot.querySelector(`rect.highlighted-segment`) !== null).toBe(has_brillouin)
+
+    await fire(svg, mouse(`mouseleave`))
+    expect(ref_line(bands_plot, `bands`)).toBeNull()
+    expect(ref_line(dos_plot, `dos`)).toBeNull()
+    expect(bands_plot.querySelector(`rect.highlighted-segment`)).toBeNull()
+  })
 
   it(`passes the Brillouin panel's cell to the bands popup`, async () => {
     const root = await mount_sized(

@@ -64,6 +64,32 @@ test.describe(`Isosurface page`, () => {
   })
 
   test.describe(`Volumetric slices`, () => {
+    test(`split layout shows the 3D view beside the slice and marks its plane`, async ({
+      page,
+    }) => {
+      test.setTimeout(IS_CI ? 120_000 : 90_000)
+      await select_view_layout(page, `3D + 2D cross-section`)
+      const stage = page.locator(`.viewport-stage.split`)
+      const slice = stage.getByTestId(`volume-slice`)
+      await wait_for_canvas_rendered(slice.locator(`canvas`))
+      // the 3D canvas comes first, left of the cross-section
+      const scene_canvas = stage.locator(`canvas`).first()
+      await wait_for_canvas_rendered(scene_canvas)
+      const [scene_box, slice_box] = await Promise.all(
+        [scene_canvas, slice].map((locator) => require_bbox(locator)),
+      )
+      expect(scene_box.x + scene_box.width).toBeLessThanOrEqual(slice_box.x + 1)
+      await expect(page).toHaveURL(/[?&]view=split(?:&|$)/)
+
+      // hiding the plane repaints the 3D scene; the toggle only exists in split mode
+      const pane = await open_settings_pane(page)
+      const plane_toggle = pane.getByRole(`checkbox`, { name: `Show slice plane in 3D` })
+      await expect(plane_toggle).toBeChecked()
+      const with_plane = await canvas_screenshot(scene_canvas)
+      await plane_toggle.uncheck()
+      await expect_canvas_changed(scene_canvas, with_plane)
+    })
+
     test(`fills the viewer aspect ratio and overlays vertical chrome`, async ({ page }) => {
       test.setTimeout(IS_CI ? 120_000 : 90_000)
       await select_view_layout(page, `2D cross-section`)

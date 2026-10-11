@@ -4,6 +4,7 @@ import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { Vec2 } from '#lib/math.js'
+import type { InternalPoint } from '#lib/plot/core/types.js'
 import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { mount_sized, plot_svg, translate_of } from '../setup'
@@ -86,7 +87,9 @@ describe(`alt+drag rect selection`, () => {
   test(`selects the points inside the rect and leaves the axis range alone`, async () => {
     const on_select = vi.fn()
     const x_range: [number, number] = [-2, 4]
-    const svg = await mount_scatter({ on_select, x_axis: { range: x_range } })
+    // point_ids ride along so a host can link other views by key rather than by index
+    const series = [{ ...xy_series()[0], point_ids: [`a`, `b`, `c`] }]
+    const svg = await mount_scatter({ on_select, series, x_axis: { range: x_range } })
     const before = marker_xs(svg)
 
     await drag(svg, { x: 60, y: 40 }, { x: 380, y: 240 }, { alt: true })
@@ -94,6 +97,10 @@ describe(`alt+drag rect selection`, () => {
     expect(on_select).toHaveBeenCalledOnce()
     const [{ points, rect }] = on_select.mock.calls[0]
     expect(points.length).toBeGreaterThan(0)
+    const picked: InternalPoint[] = points
+    expect(picked.map(({ point_id }) => point_id)).toEqual(
+      picked.map(({ point_idx }) => series[0].point_ids[point_idx]),
+    )
     expect(rect).toEqual({ x: [60, 380], y: [40, 240] })
     // Alt+drag must not also zoom - markers stay exactly where they were
     expect(marker_xs(svg)).toEqual(before)

@@ -13,6 +13,11 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import * as plotting from '#lib/trajectory/plotting.js'
 import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
+import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
+import * as rdf_pane_module from '#lib/rdf/TrajectoryRdfPane.svelte'
+import type TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
+import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
+import type TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
 import type { StructureCutaway } from '#lib/structure/cutaway.js'
 import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
@@ -514,6 +519,80 @@ describe(`controls`, () => {
       )
       expect(target.querySelector(`.content-area .plot-toolbar`)).toBeNull()
     }
+  })
+
+  test(`linked views: inspector rows select atoms, analysis hovers highlight them, structure types seek`, async () => {
+    type SiteProps = { selected_sites?: number[]; highlighted_sites?: number[] }
+    const spy_default = <PaneProps extends Record<string, unknown>>(module: unknown) =>
+      vi.spyOn(module as { default: Component<PaneProps> }, `default`)
+    const render_structure = spy_default<SiteProps>(structure_component)
+    const msd_pane = spy_default<{ on_curve_hover?: (label: string | null) => void }>(
+      msd_pane_module,
+    )
+    const rdf_pane = spy_default<ComponentProps<typeof TrajectoryRdfPane>>(rdf_pane_module)
+    const structure_id_pane = spy_default<ComponentProps<typeof TrajectoryStructureIdPane>>(
+      structure_id_pane_module,
+    )
+    // two H atoms 1 A apart in a 5 A box
+    const props = $state(
+      default_props({
+        trajectory: make_shared_run(3, { lattice_params: { a: 5, b: 5, c: 5 } }),
+        active_pane: `data-inspector`,
+        current_step_idx: 0,
+      }),
+    )
+    mount_trajectory(props)
+    await vi.waitFor(() => expect(render_structure.mock.lastCall).toBeDefined())
+    const structure_props = () => render_structure.mock.lastCall?.[1] ?? {}
+
+    // an inspector row selects its atom like a click in 3D; clicking it again deselects
+    const atoms_tab = [...document.querySelectorAll<HTMLElement>(`[role="tab"]`)].find((tab) =>
+      tab.textContent?.startsWith(`Atoms`),
+    )
+    atoms_tab?.click()
+    await tick()
+    const atom_row = () => doc_query(`.trajectory-data-inspector-pane tbody tr:nth-child(2)`)
+    atom_row().click()
+    await tick()
+    expect(structure_props().selected_sites).toEqual([1])
+    atom_row().click()
+    await tick()
+    expect(structure_props().selected_sites).toEqual([])
+
+    const highlight_after = async (hover: () => void) => {
+      hover()
+      await tick()
+      return structure_props().highlighted_sites
+    }
+    const msd = () => msd_pane.mock.lastCall?.[1] ?? {}
+    const rdf = () => rdf_pane.mock.lastCall?.[1] ?? {}
+    const structure_id = () => structure_id_pane.mock.lastCall?.[1] ?? {}
+    expect(await highlight_after(() => msd().on_curve_hover?.(`H`))).toEqual([0, 1])
+    // the all-atom curve names no element
+    expect(await highlight_after(() => msd().on_curve_hover?.(`Total`))).toEqual([])
+    const shell = { element_pair: [`H`, `H`] as [string, string], cutoff: 2, n_bins: 4 }
+    // bin 2 spans [1, 1.5) A: the one H-H contact, seen from both atoms
+    expect(
+      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: 2 })),
+    ).toEqual([0, 1])
+    expect(
+      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: 0 })),
+    ).toEqual([])
+    expect(
+      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: null })),
+    ).toEqual([0, 1])
+    expect(
+      await highlight_after(() =>
+        structure_id().on_atoms_hover?.({ atom_indices: [1, 7], frame_number: 0 }),
+      ),
+    ).toEqual([1])
+    expect(await highlight_after(() => structure_id().on_atoms_hover?.(null))).toEqual([])
+
+    // the structure-type plot seeks like the time-series plot and follows the playhead
+    expect(structure_id().current_frame_idx).toBe(0)
+    structure_id().on_frame_select?.(2)
+    await vi.waitFor(() => expect(props.current_step_idx).toBe(2))
+    expect(structure_id().current_frame_idx).toBe(2)
   })
 
   test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {

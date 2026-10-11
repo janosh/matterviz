@@ -4,10 +4,13 @@
 import { to_structure_entries } from '#lib/plot/core/structure-input.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { StructureEntry, StructureInput } from '#lib'
-import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
+import {
+  calc_coordination_nums,
+  coordination_bar_sites,
+} from '#lib/coordination/calc-coordination.js'
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { mount_sized } from '../setup'
 import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
@@ -41,6 +44,56 @@ test.each([
   const entries: StructureEntry[] = to_structure_entries(input)
   expect(entries.map((entry) => entry.label)).toEqual(labels)
   expect(entries.every((entry) => entry.structure.sites.length > 0)).toBe(true)
+})
+
+describe(`coordination_bar_sites`, () => {
+  // Every rocksalt ion is CN 6: Na on sites 0-3, Cl on 4-7
+  const entries = [
+    { label: `small`, structure: make_rocksalt() },
+    { label: `large`, structure: make_rocksalt(6) },
+  ].map((entry) => ({ ...entry, data: calc_coordination_nums(entry.structure) }))
+  const all_sites = [0, 1, 2, 3, 4, 5, 6, 7]
+
+  test.each<[string, Parameters<typeof coordination_bar_sites>[1], [string, number[]][]]>([
+    [
+      `combined bar`,
+      { coordination_num: 6 },
+      [
+        [`small`, all_sites],
+        [`large`, all_sites],
+      ],
+    ],
+    [
+      `by_element bar`,
+      { coordination_num: 6, element: `Cl` },
+      [
+        [`small`, [4, 5, 6, 7]],
+        [`large`, [4, 5, 6, 7]],
+      ],
+    ],
+    [
+      `by_structure bar`,
+      { coordination_num: 6, structure_label: `large` },
+      [[`large`, all_sites]],
+    ],
+    [
+      `CN no site has`,
+      { coordination_num: 4 },
+      [
+        [`small`, []],
+        [`large`, []],
+      ],
+    ],
+  ])(`%s`, (_name, key, expected) => {
+    const highlights = coordination_bar_sites(entries, key)
+    expect(highlights.map(({ label, site_indices }) => [label, site_indices])).toEqual(
+      expected,
+    )
+    // each highlight hands back the input structure itself, so a linked viewer can match it
+    for (const { label, structure } of highlights) {
+      expect(structure).toBe(entries.find((entry) => entry.label === label)?.structure)
+    }
+  })
 })
 
 describe(`calc_coordination_nums`, () => {
@@ -175,14 +228,28 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // Series identity (element here, triplet in BondAnglePlot) reaches the tooltip as string
   // metadata that StructureBarPlot turns into a `value —` prefix. Both wrappers rely on the
   // shell for it, so nothing in either component would notice if the prefix disappeared.
-  test(`tooltip prefixes the hovered bar with its string metadata`, async () => {
-    const root = await mount_plot({ structures: simple_cubic })
+  // The same hover reports the bar's sites through on_sites_hover for a linked viewer.
+  test(`tooltip prefixes the hovered bar with its string metadata and reports its sites`, async () => {
+    const on_sites_hover = vi.fn()
+    const root = await mount_plot({ structures: simple_cubic, on_sites_hover })
     const bar = root.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    expect(tooltip).toMatch(/^\s*(?<element>Cl|Na)\s+—/)
+    const element = /^\s*(?<element>Cl|Na)\s+—/.exec(tooltip)?.groups?.element
+    expect(element).toBeDefined()
     expect(tooltip).toContain(`CN:`)
+    const cn = Number(/CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups?.cn)
+    const { coordination_nums } = calc_coordination_nums(simple_cubic)
+    const expected = simple_cubic.sites.flatMap(({ species }, idx) =>
+      species[0].element === element && coordination_nums[idx] === cn ? [idx] : [],
+    )
+    expect(expected.length).toBeGreaterThan(0)
+    expect(on_sites_hover).toHaveBeenLastCalledWith([
+      { label: `Structure`, structure: simple_cubic, site_indices: expected },
+    ])
+    bar?.dispatchEvent(new MouseEvent(`mouseleave`))
+    expect(on_sites_hover).toHaveBeenLastCalledWith(null)
   })
 })

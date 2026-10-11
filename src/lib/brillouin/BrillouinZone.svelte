@@ -10,7 +10,7 @@
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -98,6 +98,7 @@
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
+    highlighted_qpoint_range = null,
     on_kpath_hover,
     children,
     tooltip_config,
@@ -142,7 +143,10 @@
     highlighted_k_points?: Vec3[]
     // Index of the currently hovered q-point in the band structure
     hovered_qpoint_index?: number | null
-    // Called with the q-point index when the user hovers the k-path in the BZ (null on leave)
+    // First and last q-point index of a k-path stretch to tint, e.g. the hovered path branch
+    highlighted_qpoint_range?: Vec2 | null
+    // Called with the q-point index when the user hovers the k-path or a symmetry-point label
+    // in the BZ (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
     tooltip_config?: BZTooltipProp
@@ -354,6 +358,7 @@
           {hovered_k_point}
           {highlighted_k_points}
           {hovered_qpoint_index}
+          {highlighted_qpoint_range}
           {on_kpath_hover}
           {show_ibz}
           {ibz_data}

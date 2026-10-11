@@ -17,12 +17,14 @@ import {
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
+  k_path_point_index,
+  k_path_segment_highlight,
   k_path_segments,
   k_space_size,
   polyhedron_centroid,
   polyhedron_geometry,
 } from '#lib/brillouin/geometry.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
@@ -925,6 +927,33 @@ describe(`scene sizing helpers`, () => {
     expect(segments.map((segment) => segment.idx)).toEqual(kept)
     for (const { idx, from, to } of segments)
       expect([from, to]).toEqual([points[idx], points[idx + 1]])
+  })
+
+  // q-point 2 hovered inside the 0-4 branch: its two touching segments win over the range
+  test.each([
+    [2, [0, 4], [`range`, `hover`, `hover`, `range`, null]],
+    [null, [1, 3], [null, `range`, `range`, null, null]],
+    [0, null, [`hover`, null, null, null, null]],
+    [null, null, [null, null, null, null, null]],
+  ] as [number | null, Vec2 | null, (string | null)[]][])(
+    `k_path_segment_highlight with hovered %s, range %j`,
+    (hovered, range, expected) => {
+      const states = [0, 1, 2, 3, 4].map((idx) =>
+        k_path_segment_highlight(idx, hovered, range),
+      )
+      expect(states).toEqual(expected)
+    },
+  )
+
+  test(`k_path_point_index finds the first point within tolerance`, () => {
+    const points: Vec3[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 0, 0],
+    ]
+    expect(k_path_point_index(points, [1, 1e-9, 0], 1e-6)).toBe(1)
+    expect(k_path_point_index(points, [0, 0, 0], 1e-6)).toBe(0) // repeated Γ: first visit
+    expect(k_path_point_index(points, [0.5, 0, 0], 1e-6)).toBe(-1)
   })
 
   test(`bz_mark_sizes scale with the zone`, () => {

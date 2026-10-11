@@ -1102,15 +1102,21 @@
       <SettingsGroup
         title="Volumetric data"
         open
-        subtitle={display_mode === `slice` ? `cross-section` : `isosurface`}
+        subtitle={{
+          structure: `isosurface`,
+          slice: `cross-section`,
+          split: `isosurface + cross-section`,
+        }[display_mode]}
       >
-        {#if display_mode === `slice` && slice_settings}
+        {#if display_mode !== `structure` && slice_settings}
           <VolumeSliceControls
             bind:settings={slice_settings}
             volumes={volumetric_data}
             bind:active_volume_id
+            show_plane_toggle={display_mode === `split`}
           />
-        {:else if isosurface_settings}
+        {/if}
+        {#if display_mode !== `slice` && isosurface_settings}
           <IsosurfaceControls
             bind:settings={isosurface_settings}
             bind:volumes={volumetric_data}

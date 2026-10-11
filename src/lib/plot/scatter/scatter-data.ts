@@ -56,7 +56,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     const data_series = series[series_idx]
     // Missing series yield no points, and empty series are dropped when filtering
     if (!data_series) continue
-    const { x: x_values, y: y_values, color_values, size_values } = data_series
+    const { x: x_values, y: y_values, color_values, size_values, point_ids } = data_series
     if (!Array.isArray(x_values) || !Array.isArray(y_values)) continue
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
@@ -95,6 +95,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
         point_idx,
         size_value: size_values?.[point_idx],
       }
+      if (point_ids) point.point_id = point_ids[point_idx]
       if (get_x_error) point.x_error = get_x_error(point_idx)
       if (get_y_error) point.y_error = get_y_error(point_idx)
       points.push(point)

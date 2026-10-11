@@ -53,7 +53,9 @@
     x_positions = $bindable(),
     view = $bindable(),
     reference_frequency = null,
+    hovered_frequency = $bindable(null),
     highlighted_qpoint_index = null,
+    highlighted_qpoint_range = null,
     highlighted_band_index = null,
     ribbon_config = {},
     fermi_level = undefined,
@@ -88,8 +90,13 @@
     x_positions?: Record<string, Vec2>
     // Horizontal line in the data unit (THz or eV) whatever `units` displays, like Dos
     reference_frequency?: number | null
+    // Frequency/energy of the hovered band point in the data unit (THz or eV) like Dos', null
+    // when nothing is hovered (read-only output, e.g. to mark it in a DOS beside the bands)
+    hovered_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
+    // First and last q-point index of a path stretch to shade, e.g. the hovered branch
+    highlighted_qpoint_range?: Vec2 | null
     // Band index to emphasize together with the selected q-point marker
     highlighted_band_index?: number | null
     ribbon_config?: RibbonConfig
@@ -168,6 +175,9 @@
   let unit = $derived(parse_frequency_unit(units) ?? units)
   const convert_band_values = (values: number[]): number[] =>
     band_type === `phonon` ? convert_frequencies(values, unit) : values
+  // inverse of convert_band_values for one plotted value
+  const to_data_unit = (value: number): number =>
+    band_type === `phonon` ? convert_frequencies([value], `THz`, unit)[0] : value
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
@@ -505,15 +515,19 @@
     ) as HTMLAttributes<HTMLDivElement>,
   )
 
-  // X-position of the externally hovered q-point (from BZ k-path), for the highlight line
-  let highlight_x = $derived.by(() => {
+  // X-position of a q-point index on the first structure's plotted path
+  const qpoint_x = (qpoint_idx: number | null): number | null => {
     const band_structure = structures[0]?.bs
-    if (highlighted_qpoint_index == null || !band_structure) return null
-    return helpers.qpoint_x_position(
-      band_structure,
-      highlighted_qpoint_index,
-      internal_x_positions,
-    )
+    if (qpoint_idx == null || !band_structure) return null
+    return helpers.qpoint_x_position(band_structure, qpoint_idx, internal_x_positions)
+  }
+  // externally hovered q-point (from BZ k-path), for the highlight line
+  let highlight_x = $derived(qpoint_x(highlighted_qpoint_index))
+  // x-span of the highlighted path stretch, null unless both ends are plotted
+  let highlight_x_range = $derived.by((): Vec2 | null => {
+    if (!highlighted_qpoint_range) return null
+    const [x_start, x_end] = highlighted_qpoint_range.map(qpoint_x)
+    return x_start === null || x_end === null ? null : [x_start, x_end]
   })
 
   const path_settings = track_settings(
@@ -552,6 +566,11 @@
     bind:show_controls
     bind:controls_open
     bind:resolved_padding
+    on_point_hover={(event) => {
+      const point_y = event?.point?.y
+      hovered_frequency = point_y == null ? null : to_data_unit(point_y)
+      rest.on_point_hover?.(event)
+    }}
     children={frame_children}
   >
     {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
@@ -694,6 +713,23 @@
           opacity="var(--bands-symmetry-line-opacity, 0.5)"
         />
       {/each}
+
+      <!-- Highlighted path stretch, e.g. the branch hovered here or in the Brillouin zone -->
+      {#if highlight_x_range}
+        {@const [x_start, x_end] = highlight_x_range.map(x_scale_fn)}
+        {#if Number.isFinite(x_start) && Number.isFinite(x_end)}
+          <rect
+            class="highlighted-segment"
+            x={Math.min(x_start, x_end)}
+            y={pad.t}
+            width={Math.abs(x_end - x_start)}
+            height={Math.max(0, height - pad.t - pad.b)}
+            fill="var(--bands-segment-highlight-color, #ff9a3c)"
+            opacity="var(--bands-segment-highlight-opacity, 0.1)"
+            pointer-events="none"
+          />
+        {/if}
+      {/if}
 
       <!-- Hovered q-point vertical line (synced from Brillouin zone k-path hover) -->
       {#if highlight_x != null}

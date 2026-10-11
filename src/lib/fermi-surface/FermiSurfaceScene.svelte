@@ -27,7 +27,6 @@
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {
-    BufferAttribute,
     BufferGeometry,
     ClippingGroup,
     DoubleSide,
@@ -47,7 +46,9 @@
     vertex_property,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
-  import { centered_cell_edges, plane_polyhedron_section, slice_plane_normal } from './compute'
+  import { centered_cell_edges, slice_plane_normal } from './compute'
+  import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
+  import { plane_polyhedron_section } from '#lib/math.js'
   import type {
     FermiHoverData,
     FermiIsosurface,
@@ -83,6 +84,8 @@
     clip_flip = DEFAULTS.fermi.clip_flip,
     // 2D slice to mark in 3D: the plane (h k l)·k = distance, cut to the data's cell
     slice_plane,
+    // k-point (Cartesian Å⁻¹) to mark with a dot, e.g. the cursor on a FermiSlice
+    k_marker = null,
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
@@ -100,6 +103,7 @@
       color_range?: Vec2
       property_label?: string
       slice_plane?: { miller_indices: Vec3; distance: number }
+      k_marker?: Vec3 | null
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
     } = $props()
@@ -363,27 +367,6 @@
     const normal = slice_plane_normal(fermi_data.k_lattice, miller_indices)
     return plane_polyhedron_section(edges, normal, distance)
   })
-  // Fan-triangulated fill (convex polygon) and closed outline of the slice plane
-  const slice_geometries = $derived.by(() => {
-    if (slice_polygon.length < 3) return null
-    // corners plus the first again: the outline is a Line closed by hand, as WebGPURenderer
-    // does not support LineLoop; the fill's fan index never reaches the repeated corner
-    const closed = [...slice_polygon, slice_polygon[0]]
-    const position = new BufferAttribute(new Float32Array(closed.flat()), 3)
-    const fill = new BufferGeometry().setAttribute(`position`, position)
-    fill.setIndex(slice_polygon.slice(2).flatMap((_, idx) => [0, idx + 1, idx + 2]))
-    const outline = new BufferGeometry().setAttribute(`position`, position)
-    return { fill, outline }
-  })
-  $effect(() => {
-    const current = slice_geometries
-    threlte.invalidate()
-    return () => {
-      current?.fill.dispose()
-      current?.outline.dispose()
-    }
-  })
-
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
@@ -482,21 +465,14 @@
     <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
   {/if}
 
-  <!-- Drawn after the surfaces without writing depth. Translucent sheets still write depth, so
-  the parts of the plane behind one stay hidden rather than showing through -->
-  {#if slice_geometries}
-    <T.Mesh geometry={slice_geometries.fill} renderOrder={1000}>
-      <T.MeshBasicMaterial
-        color={SLICE_PLANE_COLOR}
-        transparent
-        opacity={0.4}
-        side={DoubleSide}
-        depthWrite={false}
-      />
+  <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
+
+  {#if k_marker}
+    <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->
+    <T.Mesh position={k_marker} renderOrder={1001}>
+      <T.SphereGeometry args={[0.015 * scene_size, 16, 12]} />
+      <T.MeshBasicMaterial color={SLICE_PLANE_COLOR} depthTest={false} transparent />
     </T.Mesh>
-    <T.Line geometry={slice_geometries.outline}>
-      <T.LineBasicMaterial color={SLICE_PLANE_COLOR} />
-    </T.Line>
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

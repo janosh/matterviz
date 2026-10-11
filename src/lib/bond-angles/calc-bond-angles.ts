@@ -256,3 +256,32 @@ export const calc_bond_angle_distribution = (
   structure: AnyStructure,
   options: BondAngleOptions = {},
 ): BondAngleData => bin_bond_angles(calc_bond_angles(structure, options), options)
+
+// Sites behind one histogram bar: the angles falling in bin `bin_idx` of the binning that
+// bin_width/n_bins resolve to, narrowed to one triplet label for per-triplet bars. Returns
+// the centre atoms and, separately, the outer atoms of those angles (base sites for
+// neighbours reached through a cell boundary), each sorted and deduplicated.
+export function bond_angle_bin_sites(
+  triplets: readonly BondAngleTriplet[],
+  options: Pick<BondAngleOptions, `bin_width` | `n_bins`> & {
+    bin_idx: number
+    triplet?: string
+  },
+): { site_indices: number[]; neighbor_indices: number[] } {
+  const { bin_idx, triplet: triplet_filter, ...bins } = options
+  const { n_bins, bin_width } = resolve_angle_bins(bins)
+  if (!Number.isInteger(bin_idx) || bin_idx < 0 || bin_idx >= n_bins) {
+    throw new Error(`bin_idx must be an integer in [0, ${n_bins}), got ${bin_idx}`)
+  }
+  const centers = new Set<number>()
+  const outers = new Set<number>()
+  for (const { center_idx, neighbor_idxs, triplet, angle } of triplets) {
+    if (triplet_filter !== undefined && triplet !== triplet_filter) continue
+    if (angle_bin_index(angle, n_bins, bin_width) !== bin_idx) continue
+    centers.add(center_idx)
+    for (const neighbor_idx of neighbor_idxs) outers.add(neighbor_idx)
+  }
+  const sorted = (indices: Set<number>) =>
+    [...indices].toSorted((idx_a, idx_b) => idx_a - idx_b)
+  return { site_indices: sorted(centers), neighbor_indices: sorted(outers) }
+}

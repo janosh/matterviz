@@ -5,7 +5,10 @@
   import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
   import type { AnalysisCollectOptions } from '#lib/trajectory/analysis.js'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import { cna_type_source_atoms } from '#lib/trajectory/linked-sites.js'
   import { Lattice } from 'svelte-widgets/icons'
+  import type { CnaTypeName } from './calc-cna'
+  import { CNA_TYPES } from './calc-cna'
   import type { StructureIdSweep } from './collect'
   import { collect_structure_id_sweep, DEFAULT_MAX_SWEEP_FRAMES } from './collect'
   import StructureTypePlot from './StructureTypePlot.svelte'
@@ -14,17 +17,39 @@
     run,
     pane_open = $bindable(false),
     result = $bindable(),
+    current_frame_idx = null,
+    on_frame_select,
+    on_atoms_hover,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
     pane_open?: boolean
     result?: StructureIdSweep
+    // Frame on display, marked on the plot with a playhead line
+    current_frame_idx?: number | null
+    // Clicking the plot picks the analysed frame nearest the pointer
+    on_frame_select?: (frame_idx: number) => void
+    // Source atoms of the structure type whose line or legend entry is hovered, classified in
+    // the analysed frame nearest the one on display (`frame_number`); null once it leaves
+    on_atoms_hover?: (hover: { atom_indices: number[]; frame_number: number } | null) => void
   } = $props()
 
   // null, not 0, is what <input type="number"> writes back when cleared
   let max_frames = $state<number | null>(DEFAULT_MAX_SWEEP_FRAMES)
   let normalize = $state(false)
   let error_msg = $state<string | undefined>(undefined)
+  // Analysed frame the hovered type's atoms were classified in, to say so when it is not the
+  // frame on display
+  let hover_frame = $state<number | null>(null)
+
+  const hover_type = (sweep: StructureIdSweep | undefined, type: CnaTypeName | null): void => {
+    const hover =
+      type && sweep && current_frame_idx !== null
+        ? cna_type_source_atoms(sweep, current_frame_idx, CNA_TYPES[type])
+        : null
+    hover_frame = hover?.frame_number ?? null
+    on_atoms_hover?.(hover)
+  }
 
   let safe_max_frames = $derived(positive_int(max_frames, DEFAULT_MAX_SWEEP_FRAMES))
 
@@ -92,6 +117,15 @@
       loading={collecting}
       {error_msg}
       allow_file_drop={false}
+      current_frame={current_frame_idx}
+      on_frame_click={on_frame_select}
+      on_type_hover={on_atoms_hover && ((type) => hover_type(input, type))}
     />
+    {#if hover_frame !== null && hover_frame !== current_frame_idx}
+      <p class="hint">
+        Highlighted atoms are classified in frame {hover_frame}, the analysed frame nearest the
+        one shown
+      </p>
+    {/if}
   {/snippet}
 </TrajectoryAnalysisPane>

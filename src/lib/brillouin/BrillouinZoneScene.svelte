@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Vec3 } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import {
     bind_renderer,
@@ -20,6 +20,8 @@
     cartesian_to_fractional,
     default_camera_position,
     k_lattice_inverse,
+    k_path_point_index,
+    k_path_segment_highlight,
     k_path_segments,
     bz_mark_sizes,
     k_space_size,
@@ -56,6 +58,7 @@
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
+    highlighted_qpoint_range = null,
     hover_data = $bindable<BZHoverData | null>(null),
     on_kpath_hover,
     width = 0,
@@ -74,6 +77,8 @@
       // Persistently marked k-points (Cartesian), e.g. the symmetry point a popup was opened for
       highlighted_k_points?: Vec3[]
       hovered_qpoint_index?: number | null
+      // First and last q-point index of a k-path stretch to tint, e.g. the hovered branch
+      highlighted_qpoint_range?: Vec2 | null
       hover_data?: BZHoverData | null
       on_kpath_hover?: (qpoint_index: number | null) => void
     } = $props()
@@ -205,6 +210,8 @@
   })
   const KPATH_COLOR = new Color(`#ffcc00`)
   const KPATH_HOVER_COLOR = new Color(`#ff6b35`)
+  const KPATH_RANGE_COLOR = new Color(`#ff9a3c`)
+  const KPATH_COLORS = { hover: KPATH_HOVER_COLOR, range: KPATH_RANGE_COLOR }
   $effect(() => () => {
     kpath_geometry.dispose()
     kpath_material.dispose()
@@ -232,14 +239,18 @@
       proxy.dispose()
     }
   })
-  // the (up to two) segments touching the hovered q-point
+  // the (up to two) segments touching the hovered q-point, and the highlighted stretch
   $effect(() => {
-    const [meshes, hovered] = [kpath_meshes, hovered_qpoint_index]
+    const [meshes, hovered, range] = [
+      kpath_meshes,
+      hovered_qpoint_index,
+      highlighted_qpoint_range,
+    ]
     if (!meshes?.line.instanceColor) return
     const segments = untrack(() => k_path_segs)
     for (const [instance_idx, { idx }] of segments.entries()) {
-      const is_hovered = hovered !== null && (idx === hovered || idx === hovered - 1)
-      meshes.line.setColorAt(instance_idx, is_hovered ? KPATH_HOVER_COLOR : KPATH_COLOR)
+      const highlight = k_path_segment_highlight(idx, hovered, range)
+      meshes.line.setColorAt(instance_idx, highlight ? KPATH_COLORS[highlight] : KPATH_COLOR)
     }
     meshes.line.instanceColor.needsUpdate = true
     invalidate()
@@ -313,15 +324,20 @@
     {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
       {#if label}
         {@const highlighted = is_highlighted(position)}
+        <!-- hovering a label reports its q-point, like hovering the path there -->
+        {@const qpoint_idx = k_path_point_index(k_path_points, position, 1e-6 * bz_size)}
         <T.Mesh position={[position[0], position[1], position[2]]}>
           <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
           <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
         </T.Mesh>
         <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
           <span
+            role="presentation"
             style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
             style:font-weight={highlighted ? `bold` : null}
             style="padding: 0 3px; border-radius: 2px; color: white"
+            onpointerenter={() => qpoint_idx !== -1 && on_kpath_hover?.(qpoint_idx)}
+            onpointerleave={() => qpoint_idx !== -1 && on_kpath_hover?.(null)}
           >
             {label}
           </span>

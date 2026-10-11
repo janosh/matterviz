@@ -281,7 +281,7 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
     await tick()
   }
   await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
-  await settle({ render_mode: `contours`, symmetric: true })
+  await settle({ render_mode: `contours`, symmetric: true, show_plane: false })
   expect(sample).toHaveBeenCalledTimes(1)
   // a pane slider drag (one edit per frame) resamples every frame, not once it rests
   for (const [idx, position] of [0.25, 0.3, 0.35].entries()) {

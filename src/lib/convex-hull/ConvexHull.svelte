@@ -29,6 +29,7 @@
   import type { BaseConvexHullProps, Hull3DProps } from './index'
   import MissingConvexHullData from './MissingConvexHullData.svelte'
   import { create_hull_data_pipeline } from './hull-state.svelte'
+  import { build_hull_overlay, current_entry, HULL_STABILITY_TOL } from './helpers'
 
   // One public viewer infers dimensionality; renderers only handle their plot geometry.
   type ConvexHullProps = BaseConvexHullProps &
@@ -81,6 +82,7 @@
     enable_click_selection = true,
     enable_structure_preview = true,
     hull_face_color_mode: hull_face_color_mode_prop,
+    annotations,
     tooltip,
     children,
     ...rest
@@ -197,6 +199,20 @@
     void renderer_key
     untrack(selection.reset)
   })
+  // Linked-view overlay: the hovered (else selected) entry above the hull is tied to the
+  // stable phases it decomposes into, plus the host's composition annotations. Built only when
+  // there is something to draw, so the common case never reads the hull pipeline from here.
+  const decomposition_focus = $derived(
+    [
+      selection.hover_data?.entry,
+      selected_entry && current_entry(selected_entry, hull_data.plot_entries),
+    ].find((entry) => entry && (entry.e_above_hull ?? 0) > HULL_STABILITY_TOL) ?? null,
+  )
+  const overlay = $derived(
+    decomposition_focus || annotations
+      ? build_hull_overlay(hull_data.model, decomposition_focus, annotations)
+      : undefined,
+  )
   const { config, highlight_style, gizmo, x_axis, y_axis, ...dom_attrs } = $derived(rest)
   const plot_props = $derived({
     ...dom_attrs,
@@ -208,6 +224,7 @@
     highlighted_entries,
     highlight_style,
     selected_entry,
+    overlay,
     children,
   })
   function reset_all(reset_camera?: () => void) {
@@ -355,16 +372,23 @@
     style="z-index: 1"
   />
 
-  {#if selection.modal_open && selection.selected_structure}
+  <!-- One popup for the pinned (clicked) entry and the hover preview, so pinning the
+  previewed entry keeps its structure viewer instead of remounting it -->
+  {@const pinned = selection.modal_open ? selection.selected_structure : null}
+  {@const popup = pinned ? { structure: pinned, entry: selected_entry } : selection.preview}
+  {#if popup}
     <StructurePopup
-      structure={selection.selected_structure}
+      structure={popup.structure}
       place_right={selection.modal_place_right}
       stats={{
-        id: selected_entry?.entry_id,
-        e_above_hull: selected_entry?.e_above_hull,
-        e_form: selected_entry?.e_form_per_atom,
+        id: popup.entry?.entry_id,
+        e_above_hull: popup.entry?.e_above_hull,
+        e_form: popup.entry?.e_form_per_atom,
       }}
-      on_close={selection.close_structure_popup}
+      on_close={pinned ? selection.close_structure_popup : selection.clear_preview}
+      show_drag_handle={Boolean(pinned)}
+      class={{ 'hover-preview': !pinned }}
+      style={pinned ? undefined : `pointer-events: none`}
     />
   {/if}
 

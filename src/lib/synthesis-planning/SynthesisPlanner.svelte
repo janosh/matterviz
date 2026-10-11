@@ -4,7 +4,7 @@
   // itself comes from `plan_synthesis`, the same pure function agents call.
   import { create_flash } from '#lib/effects.svelte.js'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/index.js'
-  import type { GasSpecies, PhaseData } from '#lib/convex-hull/index.js'
+  import type { GasSpecies, HullAnnotations, PhaseData } from '#lib/convex-hull/index.js'
   import { format_num, plural } from '#lib/labels.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
@@ -21,7 +21,11 @@
   import RecipeCard from './RecipeCard.svelte'
   import RouteTable from './RouteTable.svelte'
   import { DEFAULT_SCORE_WEIGHTS } from './scoring'
-  import { describe_downhill_windows } from './thermo'
+  import {
+    describe_downhill_windows,
+    reaction_slice_lines,
+    slice_point_on_hull,
+  } from './thermo'
   import type {
     PrecursorPoolOptions,
     RecipeAssumptions,
@@ -305,6 +309,27 @@
       : [],
   )
 
+  // The reaction slice on the full hull: the precursor tie-line(s), plus the composition of
+  // whichever slice point is hovered (kept per route, so a route switch drops a stale hover)
+  let slice_hover = $state.raw<{ route_id: string; entry: PhaseData } | null>(null)
+  const hull_annotations = $derived.by((): HullAnnotations | undefined => {
+    if (!selected_route) return undefined
+    const lines = reaction_slice_lines(selected_route)
+    if (slice_hover?.route_id !== selected_route.id) return { lines }
+    // slice entries carry their reaction energy as e_form_per_atom (see ReactionSlicePlot)
+    const { composition, e_form_per_atom, reduced_formula } = slice_hover.entry
+    if (typeof e_form_per_atom !== `number`) {
+      throw new TypeError(`Reaction slice entry ${reduced_formula} has no reaction energy`)
+    }
+    const mark = slice_point_on_hull(
+      selected_route,
+      composition,
+      e_form_per_atom,
+      reduced_formula,
+    )
+    return { lines, marks: [mark] }
+  })
+
   let atmosphere_open = $state(false)
   let options_open = $state(false)
   const atmosphere_summary = $derived.by(() => {
@@ -548,7 +573,11 @@
             <ul class="rationale">
               {#each selected_route.rationale as reason (reason)}<li>{reason}</li>{/each}
             </ul>
-            <ReactionSlicePlot route={selected_route} />
+            <ReactionSlicePlot
+              route={selected_route}
+              on_point_hover={(data: { entry: PhaseData } | null) =>
+                (slice_hover = data && { route_id, entry: data.entry })}
+            />
             {#if show_hull && n_elements >= 2 && n_elements <= 4}
               <details bind:open={hull_open} class="system-hull">
                 <summary>Explore the chemical-system hull</summary>
@@ -556,6 +585,7 @@
                   <ConvexHull
                     entries={hull_entries}
                     {highlighted_entries}
+                    annotations={hull_annotations}
                     show_unstable_labels={false}
                     style="flex: 1; min-height: 520px"
                   />

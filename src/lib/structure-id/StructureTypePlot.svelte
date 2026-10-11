@@ -4,8 +4,9 @@
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import { to_structure_entries } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry, StructureInput } from '#lib/plot/core/structure-input.js'
-  import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
+  import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types.js'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
+  import { series_hover_props } from '#lib/plot/core/interactions.js'
   import { calc_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
@@ -29,6 +30,9 @@
     error_msg = $bindable(),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    current_frame = null,
+    on_frame_click,
+    on_type_hover,
     // Includes the shared `x_axis`/`y_axis` overrides, which StructureBarPlot merges over the
     // layout's primary/value axis defaults below (so callers can set label, range or format)
     ...rest
@@ -45,6 +49,13 @@
     normalize?: boolean
     // x tick labels; defaults to the entry labels of `structures`, else the result index
     frame_labels?: (number | string)[]
+    // `over_frames` only: x value (source frame) to mark with the playhead line
+    current_frame?: number | null
+    // `over_frames` only: a click on the plot area or a line point reports the analysed frame
+    // nearest the pointer, so a host can seek its trajectory there
+    on_frame_click?: (frame: number) => void
+    // Structure type of the line or legend entry under the pointer; null once it leaves
+    on_type_hover?: (type: CnaTypeName | null) => void
   } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
@@ -100,6 +111,28 @@
         })),
   )
 
+  // Numeric frame x values the playhead and click-to-seek work in; empty for string labels
+  const frame_xs = $derived(
+    layout === `over_frames` && x_ticks.every((tick) => typeof tick === `number`)
+      ? (x_ticks as number[])
+      : [],
+  )
+  // Analysed frame whose x position is nearest `pixel_x`. Snapping in pixel space through the
+  // forward scale needs no inverse, so it holds however the axis is zoomed.
+  const nearest_frame = (scale: (value: number) => number, pixel_x: number): number | null => {
+    let [best, best_dist] = [null as number | null, Infinity]
+    for (const frame of frame_xs) {
+      const dist = Math.abs(scale(frame) - pixel_x)
+      if (dist < best_dist) [best, best_dist] = [frame, dist]
+    }
+    return best
+  }
+  const type_hover = $derived(
+    on_type_hover &&
+      ((series_idx: number | null) =>
+        on_type_hover(series_idx === null ? null : (live_types[series_idx] ?? null))),
+  )
+
   const value_label = $derived(normalize ? `Fraction of atoms` : `Atoms`)
   const primary_axis = $derived({ label: layout === `over_frames` ? `Frame` : `Structure` })
   const value_axis = $derived({
@@ -109,8 +142,60 @@
   })
 </script>
 
+{#snippet frame_overlay(ctx: UserContentProps)}
+  {@const { width, height, pad, x_scale_fn } = ctx}
+  {#if on_frame_click && frame_xs.length > 0}
+    <!-- Below the lines and points (user content renders first), so it only takes clicks on
+    the empty plot area; points seek through on_point_click -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <rect
+      class="frame-seek-area"
+      x={pad.l}
+      y={pad.t}
+      width={Math.max(0, width - pad.l - pad.r)}
+      height={Math.max(0, height - pad.t - pad.b)}
+      fill="transparent"
+      style:cursor="pointer"
+      onclick={(event) => {
+        const svg = event.currentTarget.ownerSVGElement
+        if (!svg) return
+        const frame = nearest_frame(
+          x_scale_fn,
+          event.clientX - svg.getBoundingClientRect().left,
+        )
+        if (frame !== null) on_frame_click(frame)
+      }}
+    />
+  {/if}
+  {#if current_frame != null && frame_xs.length > 0}
+    {@const current_pos = x_scale_fn(current_frame)}
+    {#if Number.isFinite(current_pos) && current_pos >= pad.l && current_pos <= width - pad.r}
+      <line
+        class="current-frame-guide"
+        x1={current_pos}
+        x2={current_pos}
+        y1={pad.t}
+        y2={height - pad.b}
+        stroke="var(--scatter-current-frame-color, #ff6b35)"
+        stroke-opacity="0.6"
+        stroke-dasharray="8 4"
+        pointer-events="none"
+      />
+    {/if}
+  {/if}
+  {@render rest.user_content?.(ctx)}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
+  {...series_hover_props(type_hover, rest)}
+  user_content={layout === `over_frames` ? frame_overlay : rest.user_content}
+  on_point_click={on_frame_click
+    ? (event) => {
+        if (frame_xs.includes(event.x)) on_frame_click(event.x)
+        rest.on_point_click?.(event)
+      }
+    : rest.on_point_click}
   bind:show_controls
   bind:controls_open
   {series}

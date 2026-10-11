@@ -293,3 +293,27 @@ test.each([
     )
   },
 )
+
+test.each([
+  [`by default`, {}, true],
+  [`unless disabled`, { show_bz_inset: false }, false],
+  [
+    `only with more than one q-point`,
+    {
+      dataset: { modes: { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] } },
+    },
+    false,
+  ],
+] as [string, Partial<ExplorerProps>, boolean][])(
+  `shows the Brillouin zone inset %s`,
+  async (_name, props, shown) => {
+    const target = render(props)
+    await vi.waitFor(() => expect(target.querySelector(`.trajectory-pane`)).not.toBeNull())
+    const inset = target.querySelector(
+      `.trajectory-pane .bz-inset[aria-label="Selected q-point in the Brillouin zone"]`,
+    )
+    expect(inset !== null).toBe(shown)
+    // the inset is a passive view: no file drop target, controls or fullscreen button
+    if (inset) expect(inset.querySelector(`button`)).toBeNull()
+  },
+)

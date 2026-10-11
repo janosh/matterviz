@@ -67,6 +67,7 @@
     color_range = $bindable(),
     show_colorbar = true,
     slice_plane,
+    k_marker = null,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -119,6 +120,8 @@
     show_colorbar?: boolean
     // 2D slice (e.g. a FermiSlice beside the viewer) to mark as a plane in the 3D view
     slice_plane?: { miller_indices: Vec3; distance: number }
+    // k-point (Cartesian Å⁻¹) to mark in 3D, e.g. the cursor position on a FermiSlice
+    k_marker?: Vec3 | null
     // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
     // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
@@ -420,6 +423,7 @@
           color_range={resolved_color_range}
           property_label={custom_property_label}
           {slice_plane}
+          {k_marker}
           {representation}
           {surface_opacity}
           {selected_bands}

@@ -1644,6 +1644,46 @@ describe(`Structure`, () => {
     }
   })
 
+  test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, async () => {
+    mock_gpu()
+    const props = mount_volumetric({
+      show_controls: `always`,
+      display_mode: `structure`,
+      slice_settings: { plane_mode: `hkl`, miller_indices: [0, 0, 1], position: 0.3 },
+    })
+    await tick()
+    expect(scene_stub.props?.slice_polygon).toEqual([])
+
+    await select_structure_layout(`3D + 2D cross-section`)
+    expect(props.display_mode).toBe(`split`)
+    expect(doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)).toBeInstanceOf(
+      HTMLElement,
+    )
+    // 3D chrome stays available next to the cross-section
+    expect(document.querySelector(`button[aria-label="Measure / Edit"]`)).toBeInstanceOf(
+      HTMLElement,
+    )
+    // (001) at 30% of the unit cell's height: the square z = 0.3
+    const square = scene_stub.props?.slice_polygon ?? []
+    expect(square).toHaveLength(4)
+    for (const corner of square) expect(corner[2]).toBeCloseTo(0.3, 12)
+
+    // both volume panes in the controls, plus the plane toggle that hides it from the scene
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
+    expect(document.querySelector(`select[aria-label="Slice plane mode"]`)).not.toBeNull()
+    expect(document.querySelector(`.controls-pane`)?.textContent).toContain(
+      `isosurface + cross-section`,
+    )
+    flushSync(() =>
+      doc_query<HTMLInputElement>(`input[aria-label="Show slice plane in 3D"]`).click(),
+    )
+    expect(props.slice_settings?.show_plane).toBe(false)
+    expect(scene_stub.props?.slice_polygon).toEqual([])
+
+    await select_structure_layout(`2D cross-section`)
+    expect(document.querySelector(`input[aria-label="Show slice plane in 3D"]`)).toBeNull()
+  })
+
   // volume-only data has no sites to show, and a stale volume ID falls back to the first one
   test.each([
     [`volume-only data with no atomic sites`, { structure: { ...structure, sites: [] } }],
@@ -2616,7 +2656,12 @@ describe(`Structure empty states`, () => {
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   mock_gpu()
-  const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
+  const camera_direction: Vec3 = [1, 2, 3]
+  const scene_props = {
+    camera_projection: `perspective` as const,
+    auto_rotate: 0.5,
+    camera_direction,
+  }
   mount_structure({
     structure,
     active_pane: `controls`,
@@ -2644,6 +2689,8 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
   expect(scene_stub.props?.auto_rotate).toBe(0.5)
+  // the single-pane view has no view direction of its own, so the caller's one applies
+  expect(scene_stub.props?.camera_direction).toEqual(camera_direction)
   if (!auto_rotate_input) throw new Error(`Missing auto-rotate input`)
   set_input(auto_rotate_input, `1.5`)
   await tick()

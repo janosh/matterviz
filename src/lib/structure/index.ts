@@ -70,7 +70,7 @@ export * from './validation'
 
 export type MeasureMode = `distance` | `angle` | `dihedral` | `edit-bonds` | `edit-atoms`
 export type BondEditMode = `add` | `delete`
-export type StructureDisplayMode = `structure` | `slice`
+export type StructureDisplayMode = `structure` | `slice` | `split`
 // The one floating pane a Structure viewer has open
 export type StructurePane = `controls` | `info` | `export` | `flight`
 

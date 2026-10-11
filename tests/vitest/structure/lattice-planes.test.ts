@@ -222,6 +222,23 @@ describe(`clip_frac_plane_to_cell`, () => {
     }
   })
 
+  // oxfmt-ignore
+  test.each([
+    [`right-handed`, triclinic],
+    [`left-handed (mirrored)`, [[0, 4, 0], [4.2, 0, 0], [0.3, 0.2, 3.9]] as Matrix3x3],
+  ])(`%s cell: polygon winds counter-clockwise about h·b₁ + k·b₂ + l·b₃`, (_name, lattice) => {
+    const hkl: Vec3 = [1, 2, -1]
+    const polygon = clip_frac_plane_to_cell(hkl, 0.3, lattice)
+    expect(polygon.length).toBeGreaterThanOrEqual(3)
+    const normal = math.miller_plane_normal(lattice, hkl)
+    for (const [idx, corner] of polygon.entries()) {
+      const next = polygon[(idx + 1) % polygon.length]
+      const after = polygon[(idx + 2) % polygon.length]
+      const turn = math.cross_3d(math.subtract(next, corner), math.subtract(after, next))
+      expect(math.dot(turn, normal)).toBeGreaterThan(0)
+    }
+  })
+
   test(`a plane just outside tolerance of a corner yields no sliver triangle`, () => {
     // (111) at level 3 - 5e-7 misses the corner (1,1,1) by more than the on-plane tolerance,
     // so it crosses all three edges meeting there ~5e-7 apart: one vertex, not a polygon

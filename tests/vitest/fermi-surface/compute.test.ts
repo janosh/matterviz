@@ -6,8 +6,9 @@ import {
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
-  plane_polyhedron_section,
+  sample_slice_energies,
   slice_plane_normal,
+  slice_shading_rgba,
   upsample_grid,
 } from '#lib/fermi-surface/compute.js'
 import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
@@ -264,7 +265,7 @@ describe(`slice plane section`, () => {
     { normal: diagonal, distance: Math.sqrt(3) / 2, n_corners: 0, side: 0 },
     { normal: diagonal, distance: 0.9, n_corners: 0, side: 0 },
   ])(`normal $normal at d=$distance`, ({ normal, distance, n_corners, side }) => {
-    const corners = plane_polyhedron_section(cube_edges, normal, distance)
+    const corners = math.plane_polyhedron_section(cube_edges, normal, distance)
     expect(corners).toHaveLength(n_corners)
     for (const [idx, corner] of corners.entries()) {
       expect(math.dot(normal, corner)).toBeCloseTo(distance, 12) // on the plane
@@ -297,6 +298,81 @@ describe(`slice plane section`, () => {
     expect(normal[0]).toBeCloseTo(0.5, 12)
     expect(normal[1]).toBeCloseTo(Math.sqrt(3) / 2, 12)
     expect(() => slice_plane_normal(HEXAGONAL, [0, 0, 0])).toThrow(/Invalid miller indices/)
+  })
+})
+
+describe(`slice energy shading`, () => {
+  // ε = |k| (reduced units, identity lattice) with E_F = 0.3, plus a band far above E_F
+  const band_data = make_band_data(16, sphere, { periodic: true, fermi_energy: 0.3 })
+  band_data.energies[0].push(make_band_grid([16, 16, 16], () => 5))
+  band_data.n_bands = 2
+
+  // The (001) slice through Γ samples ε − E_F = hypot(x, y) − 0.3. Trilinear sampling of the 16³
+  // grid (h = 1/16) measured a max error of 0.0086, largest near the cone tip where |k| is not
+  // smooth; sampling the wrong plane, axis or grid offset errs by about a grid step (≥ 0.06)
+  test(`samples ε − (E_F + mu) of the crossing bands on the plane`, () => {
+    const energy_map = sample_slice_energies(band_data, {
+      miller_indices: [0, 0, 1],
+      distance: 0,
+      bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
+      resolution: 64,
+    })
+    expect([energy_map.width, energy_map.height]).toEqual([64, 32])
+    expect(energy_map.layers.map(({ band_index }) => band_index)).toEqual([0]) // band 1 never crosses
+    const [{ values }] = energy_map.layers
+    let max_err = 0
+    for (let row = 0; row < 32; row++) {
+      for (let col = 0; col < 64; col++) {
+        const [coord_x, coord_y] = [-0.5 + (col + 0.5) / 64, 0.25 - (row + 0.5) / 64]
+        max_err = Math.max(
+          max_err,
+          Math.abs(values[row * 64 + col] - (Math.hypot(coord_x, coord_y) - 0.3)),
+        )
+      }
+    }
+    expect(max_err).toBeLessThan(0.0125)
+    // mu shifts the level: the centre pixel moves from −0.3 to −0.4
+    const shifted = sample_slice_energies(band_data, {
+      miller_indices: [0, 0, 1],
+      distance: 0,
+      bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
+      resolution: 64,
+      mu: 0.1,
+    })
+    const centre = 16 * 64 + 32
+    expect(shifted.layers[0].values[centre] - values[centre]).toBeCloseTo(-0.1, 6)
+  })
+
+  // Straight-alpha source-over: both bands occupied → α = ½ + ½·½, colour ⅓ red + ⅔ blue
+  test(`occupied mode tints and composites each band's filled side`, () => {
+    const energy_map = {
+      width: 3,
+      height: 1,
+      layers: [
+        { band_index: 0, spin: null, values: Float32Array.from([-1, 1, 1]) },
+        { band_index: 1, spin: null, values: Float32Array.from([-1, -1, 1]) },
+      ],
+    }
+    const pixels = slice_shading_rgba(energy_map, `occupied`, [`#ff0000`, `#0000ff`], 0.5)
+    expect(Array.from(pixels)).toEqual([85, 0, 170, 191, 0, 0, 255, 128, 0, 0, 0, 0])
+  })
+
+  // The band nearest E_F decides each pixel: occupied (ε < E_F) red, empty blue, none clear
+  test(`energy mode maps the band nearest E_F through a diverging scale`, () => {
+    const energy_map = {
+      width: 3,
+      height: 1,
+      layers: [
+        { band_index: 0, spin: null, values: Float32Array.from([-0.1, 0.4, NaN]) },
+        { band_index: 1, spin: null, values: Float32Array.from([0.5, 0.2, NaN]) },
+      ],
+    }
+    const pixels = slice_shading_rgba(energy_map, `energy`, [`#000`], 0.5)
+    const [red_0, , blue_0] = pixels.slice(0, 3)
+    const [red_1, , blue_1] = pixels.slice(4, 7)
+    expect(red_0).toBeGreaterThan(blue_0) // −0.1 beats 0.5
+    expect(blue_1).toBeGreaterThan(red_1) // 0.2 beats 0.4
+    expect(pixels[11]).toBe(0) // NaN everywhere: transparent
   })
 })
 

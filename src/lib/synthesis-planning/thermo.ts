@@ -5,14 +5,16 @@ import {
   get_default_gas_provider,
 } from '#lib/convex-hull/gas-thermodynamics.js'
 import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
-import type { GasSpecies } from '#lib/convex-hull/types.js'
+import type { GasSpecies, HullMark } from '#lib/convex-hull/types.js'
 import { solve_linear_program } from '#lib/math.js'
 import type { PlannerPhase } from './phases'
 import { ENERGY_TOL, to_phase_ref } from './phases'
 import type {
   CompetingPhase,
   PairwiseInterface,
+  PhaseRef,
   SynthesisReaction,
+  SynthesisRoute,
   ReactionSpecies,
   SelectivityMetrics,
   SynthesisConditions,
@@ -417,4 +419,60 @@ export function describe_downhill_windows(windows: [number, number][]): string {
       return `downhill from ${lower} to ${upper} K`
     })
     .join(` and `)
+}
+
+// === Reaction slice on the full hull ===
+
+const solid_reactants = (route: SynthesisRoute): PhaseRef[] =>
+  route.reaction.reactants.flatMap(({ phase }) => (phase.is_gas ? [] : [phase]))
+
+const as_mark = (phase: PhaseRef): HullMark => ({
+  composition: phase.composition,
+  e_form: phase.energy_per_atom,
+  label: phase.formula,
+})
+
+// Where a route's reaction slice cuts the full chemical-system hull: the tie-lines between
+// each pair of solid precursors (one line for two precursors, the simplex edges for more)
+export const reaction_slice_lines = (
+  route: SynthesisRoute,
+): { from: HullMark; to: HullMark }[] =>
+  solid_reactants(route).flatMap((from, idx, solids) =>
+    solids.slice(idx + 1).map((to) => ({ from: as_mark(from), to: as_mark(to) })),
+  )
+
+// A point of the reaction slice (atom fractions of the solid precursors, keyed by formula, and
+// the reaction energy per atom of mixture) placed on the full hull: the mixture's composition at
+// the mixed precursors' formation energy plus the reaction energy. In a closed system a product
+// lands exactly on its own entry.
+export function slice_point_on_hull(
+  route: SynthesisRoute,
+  mixture: Record<string, number>,
+  reaction_energy: number,
+  label?: string,
+): HullMark {
+  const solids = solid_reactants(route)
+  const unknown = Object.keys(mixture).filter(
+    (formula) => !solids.some((phase) => phase.formula === formula),
+  )
+  if (unknown.length > 0) {
+    throw new Error(
+      `slice_point_on_hull: ${unknown.join(`, `)} not among the solid precursors of ${route.reaction.equation}`,
+    )
+  }
+  const total = solids.reduce((sum, phase) => sum + (mixture[phase.formula] ?? 0), 0)
+  if (!(total > 0)) {
+    throw new Error(`slice_point_on_hull: empty mixture ${JSON.stringify(mixture)}`)
+  }
+  const composition: Record<string, number> = {}
+  let e_form = reaction_energy
+  for (const phase of solids) {
+    const weight = (mixture[phase.formula] ?? 0) / total
+    e_form += weight * phase.energy_per_atom
+    for (const [element, amount] of Object.entries(phase.composition)) {
+      composition[element] =
+        (composition[element] ?? 0) + (weight * amount) / phase.n_atoms_per_fu
+    }
+  }
+  return { composition, e_form, label }
 }

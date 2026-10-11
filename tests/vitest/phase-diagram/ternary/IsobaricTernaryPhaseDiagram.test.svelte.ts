@@ -8,6 +8,7 @@ import type {
 import {
   compute_section,
   compute_ternary_phase_diagram,
+  decompose_composition,
   prepare_diagram,
 } from '#lib/phase-diagram/ternary/compute.js'
 import IsobaricTernaryPhaseDiagram from '#lib/phase-diagram/ternary/IsobaricTernaryPhaseDiagram.svelte'
@@ -47,8 +48,15 @@ const temp_input = () =>
   doc_query<HTMLInputElement>(`input[aria-label="Temperature in Kelvin"]`)
 const text = (selector: string) => doc_query(selector).textContent?.replaceAll(/\s+/g, ``)
 const keydown = (target: Element, key: string, shiftKey = false) => {
-  target.dispatchEvent(new KeyboardEvent(`keydown`, { key, shiftKey, bubbles: true }))
+  const event = new KeyboardEvent(`keydown`, {
+    key,
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
+  })
+  target.dispatchEvent(event)
   flushSync()
+  return event
 }
 const press = (key: string, shiftKey = false) =>
   keydown(doc_query(`.ternary-phase-diagram`), key, shiftKey)
@@ -57,16 +65,21 @@ const brackets = () =>
     btn.disabled ? null : btn.textContent?.trim(),
   )
 const diagram = compute_ternary_phase_diagram(toy_entries, { elements: toy_elements })
-// pointermove over composition xy in the mocked 800×600 canvas (triangle 614.3 px, origin
-// 92.85/566)
-const move_to = ([x_pos, y_pos]: Vec2) =>
+// Composition xy → px in the mocked 800×600 canvas: the triangle fills the 532 px tall area
+// inside the 34 px padding (side 614.3 px, origin 92.85/566)
+const SIDE_PX = 532 / (Math.sqrt(3) / 2)
+const to_px = ([x_pos, y_pos]: readonly number[]): Vec2 => [
+  (800 - SIDE_PX) / 2 + x_pos * SIDE_PX,
+  566 - y_pos * SIDE_PX,
+]
+const pointer_at = (type: string, coords_xy: Vec2) => {
+  const [clientX, clientY] = to_px(coords_xy)
   doc_query(`.ternary-section canvas`).dispatchEvent(
-    new PointerEvent(`pointermove`, {
-      clientX: 92.85 + x_pos * 614.3,
-      clientY: 566 - y_pos * 614.3,
-      bubbles: true,
-    }),
+    new PointerEvent(type, { clientX, clientY, bubbles: true }),
   )
+  flushSync()
+}
+const move_to = (coords_xy: Vec2) => pointer_at(`pointermove`, coords_xy)
 
 describe(`IsobaricTernaryPhaseDiagram`, () => {
   test(`sweeps in the background, lists transitions, links them to the live section and releases the worker on unmount`, async () => {
@@ -195,6 +208,50 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     mount_diagram({ entries: [] })
     expect(doc_query(`.empty`).textContent).toMatch(/Drop a JSON file/)
   })
+
+  test(`a composition click pins it; the pin itself or Escape removes it, as does a new dataset`, () => {
+    const state = $state<{
+      entries: PhaseData[]
+      pinned_composition: Vec2 | null
+      selected_phase: number | null
+    }>({ entries: toy_entries, pinned_composition: null, selected_phase: null })
+    mount_it(
+      IsobaricTernaryPhaseDiagram,
+      bind_props({ options: { elements: toy_elements } }, state),
+    )
+    const click_at = (coords_xy: Vec2) => pointer_at(`click`, coords_xy)
+    const expect_pin = (expected: Vec2) =>
+      expect(state.pinned_composition).toEqual(expected.map((val) => expect.closeTo(val, 12)))
+    const pin: Vec2 = [0.4, 0.25]
+    click_at(pin)
+    expect_pin(pin)
+    click_at([pin[0] + 0.01, pin[1]]) // 6 px off, within the 8 px pin radius
+    expect(state.pinned_composition).toBeNull()
+    click_at(pin)
+    click_at([0.5, 0.05]) // elsewhere: the pin moves
+    expect_pin([0.5, 0.05])
+    // a phase click selects without touching the pin, an empty one clears the selection
+    const ab_xy = prepare_diagram(toy_entries, { elements: toy_elements }).phases[0].xy
+    click_at(ab_xy)
+    expect(state.selected_phase).toBe(0)
+    expect_pin([0.5, 0.05])
+    click_at(ab_xy)
+    expect(state.selected_phase).toBeNull()
+    click_at(ab_xy)
+    // Escape clears the selection first, then the pin, then leaves the key to the host
+    expect(press(`Escape`).defaultPrevented).toBe(true)
+    expect(state.selected_phase).toBeNull()
+    expect_pin([0.5, 0.05])
+    expect(press(`Escape`).defaultPrevented).toBe(true)
+    expect(state.pinned_composition).toBeNull()
+    expect(press(`Escape`).defaultPrevented).toBe(false)
+    click_at([0.05, 0.8]) // outside the triangle: nothing to pin
+    expect(state.pinned_composition).toBeNull()
+    click_at(pin)
+    state.entries = [...toy_entries]
+    flushSync()
+    expect(state.pinned_composition).toBeNull()
+  })
 })
 
 // Hovering the Li corner (xy [1, 0]) must hit the ground state
@@ -242,6 +299,9 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
   const clears = { base: 0, overlay: 0 }
   const fills = { base: 0, overlay: 0 }
   const face_tints = { base: 0, overlay: 0 } // draw_face is the overlay's only closePath
+  // Endpoints of the last overlay frame's pinned-probe spokes (its [5, 3] dash)
+  let overlay_dash = ``
+  let pin_spokes: Vec2[] = []
   vi.stubGlobal(
     `Path2D`,
     class {
@@ -256,9 +316,19 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
         get: (_target, prop) => {
           if (prop === `canvas`) return this
           if (prop === `measureText`) return () => ({ width: 20 })
-          if (prop === `clearRect`) return () => clears[layer]++
+          if (prop === `clearRect`)
+            return () => {
+              clears[layer]++
+              if (layer === `overlay`) pin_spokes = []
+            }
           if (prop === `fillText`) return () => fills[layer]++
           if (prop === `closePath`) return () => face_tints[layer]++
+          if (prop === `setLineDash` && layer === `overlay`)
+            return (dash: number[]) => (overlay_dash = dash.join(`,`))
+          if (prop === `lineTo` && layer === `overlay`)
+            return (x_pos: number, y_pos: number) => {
+              if (overlay_dash === `5,3`) pin_spokes.push([x_pos, y_pos])
+            }
           return vi.fn()
         },
       })
@@ -266,13 +336,14 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
   const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 40))
   try {
     const model = prepare_diagram(toy_entries, { elements: toy_elements })
-    const state = $state({ selected_phase: null as number | null })
+    const state = $state({
+      selected_phase: null as number | null,
+      pinned_composition: null as Vec2 | null,
+      section: compute_section(model, 300),
+    })
     mount_it(
       TernarySectionCanvas,
-      bind_props(
-        { model, section: compute_section(model, 300), settings: TERNARY_DISPLAY_DEFAULTS },
-        state,
-      ),
+      bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS }, state),
     )
     await let_frames_run()
     const painted = { ...clears }
@@ -309,6 +380,32 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     expect(clears.base - painted.base).toBe(0)
     expect(clears.overlay - painted.overlay).toBe(7)
     expect(fills.base).toBe(base_fills)
+    // A pin near AB keeps spokes to its assemblage, which follows the section: AB-AC-BC at
+    // 300 K, Li-Na-ABC once AB has vanished (1300 K)
+    expect(pin_spokes).toEqual([])
+    const pin: Vec2 = [0.9 * phase_ab[0] + 0.05, 0.9 * phase_ab[1] + 0.1 * (Math.sqrt(3) / 6)]
+    const spokes_at = (temperature: number) => {
+      const section = compute_section(model, temperature)
+      const phases = decompose_composition(model, section, pin)?.phases ?? []
+      return { section, phases, px: phases.map((idx) => to_px(model.phases[idx].xy)) }
+    }
+    const [cold, hot] = [spokes_at(300), spokes_at(1400)]
+    expect([cold.phases, hot.phases].map((phases) => phases.length)).toEqual([3, 3])
+    expect(cold.phases).not.toEqual(hot.phases)
+    state.pinned_composition = pin
+    flushSync()
+    await let_frames_run()
+    const close_px = (points: Vec2[]) =>
+      points.map((point) => point.map((val) => expect.closeTo(val, 9)))
+    expect(pin_spokes).toEqual(close_px(cold.px))
+    state.section = hot.section
+    flushSync()
+    await let_frames_run()
+    expect(pin_spokes).toEqual(close_px(hot.px))
+    state.pinned_composition = null
+    flushSync()
+    await let_frames_run()
+    expect(pin_spokes).toEqual([])
   } finally {
     get_context.mockRestore()
     vi.unstubAllGlobals()

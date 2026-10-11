@@ -279,20 +279,20 @@ export async function wait_for_3d_canvas(
   timeout?: number,
 ): Promise<Locator> {
   const effective_timeout = timeout ?? get_canvas_timeout()
-  // 2D scatter marker canvases (marker-canvas) are not the 3D scene
-  const canvas = page.locator(`${container_selector} canvas:not(.marker-canvas)`)
+  // Neither 2D scatter marker canvases (marker-canvas) nor a Brillouin-zone inset over the
+  // viewer (e.g. PhononModeExplorer's) are the 3D scene
+  const scene_canvas = `canvas:not(.marker-canvas):not(.bz-inset canvas)`
+  const canvas = page.locator(`${container_selector} ${scene_canvas}`)
   await expect(canvas).toBeVisible({ timeout: effective_timeout })
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
-      const canvas_el = document.querySelector<HTMLCanvasElement>(
-        `${selector} canvas:not(.marker-canvas)`,
-      )
+      const canvas_el = document.querySelector<HTMLCanvasElement>(selector)
       if (!canvas_el) return false
       const rect = canvas_el.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0
     },
-    container_selector,
+    `${container_selector} ${scene_canvas}`,
     { timeout: effective_timeout },
   )
   return canvas

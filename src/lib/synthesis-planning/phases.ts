@@ -13,13 +13,14 @@ import {
 import {
   compute_e_form_per_atom,
   find_lowest_energy_unary_refs,
+  lowest_energy_mixture,
   normalize_hull_composition_keys,
 } from '#lib/convex-hull/thermodynamics.js'
+import type { LowestEnergyMixture } from '#lib/convex-hull/thermodynamics.js'
 import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
 import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { ElementSymbol } from '#lib/element/types.js'
-import { solve_linear_program } from '#lib/math.js'
 import { lookup_precursor_info } from './precursor-library'
 import type { PhaseRef, SynthesisConditions } from './types'
 
@@ -202,37 +203,13 @@ export function prepare_phase_set(
 
 // === Convex hull ===
 
-const HULL_COEFF_TOL = 1e-7
-
-export interface HullPoint {
-  // Energy of the lowest-energy mixture with the query composition (eV/atom)
-  energy: number
-  decomposition: { phase: PlannerPhase; atom_fraction: number }[]
-}
+export type HullPoint = LowestEnergyMixture<PlannerPhase>
 
 // Lowest-energy combination of `phases` reproducing `fractions` (atom fractions over the phase
-// set's elements): the convex hull evaluated at that composition. Only phases whose elements are
-// a subset of the query's appear as LP columns. Returns null when no combination exists.
-export function hull_at(fractions: number[], phases: PlannerPhase[]): HullPoint | null {
-  const candidates = phases.filter((phase) =>
-    phase.fractions.every((fraction, el_idx) => fraction === 0 || fractions[el_idx] > 0),
-  )
-  if (candidates.length === 0) return null
-  const active_rows = fractions
-    .map((_, el_idx) => el_idx)
-    .filter((el_idx) => fractions[el_idx] > 0)
-  const result = solve_linear_program(
-    candidates.map((phase) => phase.energy_per_atom),
-    active_rows.map((el_idx) => candidates.map((phase) => phase.fractions[el_idx])),
-    active_rows.map((el_idx) => fractions[el_idx]),
-  )
-  if (result.status !== `optimal`) return null
-  const decomposition = result.solution
-    .map((atom_fraction, idx) => ({ phase: candidates[idx], atom_fraction }))
-    .filter(({ atom_fraction }) => atom_fraction > HULL_COEFF_TOL)
-    .toSorted((item_a, item_b) => item_b.atom_fraction - item_a.atom_fraction)
-  return { energy: result.objective, decomposition }
-}
+// set's elements): the convex hull evaluated at that composition. Returns null when no
+// combination exists.
+export const hull_at = (fractions: number[], phases: PlannerPhase[]): HullPoint | null =>
+  lowest_energy_mixture(fractions, phases)
 
 // Fill `e_above_hull` of every phase from the hull of the whole set (in place)
 export function assign_e_above_hull(phases: PlannerPhase[]): void {

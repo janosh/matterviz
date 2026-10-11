@@ -4,23 +4,10 @@ import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { lower_corner, safe_mod, upper_corner } from './grid'
 import type { DisplayRange } from './sampling'
+import type { VolumeSliceSettings } from './slice-settings'
 import { sanitize_display_range, UNIT_CELL_RANGE } from './sampling'
 import type { VolumetricData } from './types'
 
-const CELL_EDGES = [
-  [0, 1],
-  [0, 2],
-  [0, 4],
-  [1, 3],
-  [1, 5],
-  [2, 3],
-  [2, 6],
-  [3, 7],
-  [4, 5],
-  [4, 6],
-  [5, 7],
-  [6, 7],
-] as const
 const PLANE_TOLERANCE = 1e-9
 const DEFAULT_MAX_PIXELS = 1024 * 1024
 
@@ -142,32 +129,12 @@ export interface SliceResult {
   polygon: Vec2[] // exact convex cell/plane intersection in local (u, v)
 }
 
-const cell_corners = (volume: VolumetricData, bounds: DisplayRange): Vec3[] => {
+// Maps unit-cube corners (UNIT_CUBE_CORNERS) to the absolute Cartesian corners of the cell
+// block spanning `bounds` (fractional, per axis)
+const bounded_cell_corner = (volume: VolumetricData, bounds: DisplayRange) => {
   const frac_to_cart = math.create_frac_to_cart(volume.lattice)
-  return Array.from({ length: 8 }, (_, corner_idx) =>
-    math.add(
-      volume.origin,
-      frac_to_cart([
-        bounds[0][corner_idx & 1 ? 1 : 0],
-        bounds[1][corner_idx & 2 ? 1 : 0],
-        bounds[2][corner_idx & 4 ? 1 : 0],
-      ]),
-    ),
-  )
-}
-
-const add_unique_point = (points: Vec3[], point: Vec3): void => {
-  if (
-    points.some(
-      (existing) =>
-        (existing[0] - point[0]) ** 2 +
-          (existing[1] - point[1]) ** 2 +
-          (existing[2] - point[2]) ** 2 <
-        PLANE_TOLERANCE ** 2,
-    )
-  )
-    return
-  points.push(point)
+  return (unit: Vec3): Vec3 =>
+    math.add(volume.origin, frac_to_cart(unit.map((bit, axis) => bounds[axis][bit]) as Vec3))
 }
 
 const plane_basis = (normal: Vec3, up_vector?: Vec3): [Vec3, Vec3] => {
@@ -179,34 +146,6 @@ const plane_basis = (normal: Vec3, up_vector?: Vec3): [Vec3, Vec3] => {
   }
   const u_axis = math.normalize_vec(projected)
   return [u_axis, math.cross_3d(normal, u_axis)]
-}
-
-const intersect_plane_cell = (
-  corners: Vec3[],
-  point: Vec3,
-  normal: Vec3,
-  u_axis: Vec3,
-  v_axis: Vec3,
-): Vec2[] => {
-  const intersections: Vec3[] = []
-  for (const [start_idx, end_idx] of CELL_EDGES) {
-    const start = corners[start_idx]
-    const end = corners[end_idx]
-    const start_distance = math.dot(math.subtract(start, point), normal)
-    const end_distance = math.dot(math.subtract(end, point), normal)
-    if (Math.abs(start_distance) <= PLANE_TOLERANCE) add_unique_point(intersections, start)
-    if (Math.abs(end_distance) <= PLANE_TOLERANCE) add_unique_point(intersections, end)
-    if (start_distance * end_distance >= -(PLANE_TOLERANCE ** 2)) continue
-    const fraction = start_distance / (start_distance - end_distance)
-    add_unique_point(intersections, math.lerp_vec3(start, end, fraction))
-  }
-  return math.convex_hull_2d(
-    intersections.map((intersection) => {
-      const relative = math.subtract(intersection, point)
-      return [math.dot(relative, u_axis), math.dot(relative, v_axis)]
-    }),
-    PLANE_TOLERANCE,
-  )
 }
 
 // Edges as flat [start_u, start_v, delta_u, delta_v] quadruples, so the per-pixel test below
@@ -375,24 +314,51 @@ const resolve_resolution = (
   return counts
 }
 
+// Unit normal of a plane with a finite point and a finite, non-degenerate normal, else null
+const valid_unit_normal = ({ point, normal }: CartesianPlane): Vec3 | null =>
+  point.every(Number.isFinite) &&
+  normal.every(Number.isFinite) &&
+  Math.hypot(...normal) >= PLANE_TOLERANCE
+    ? math.normalize_vec(normal)
+    : null
+
+// Corners of the plane's cut through the volume's cell (or the cell block `fractional_bounds`
+// spans), as absolute Cartesian points counter-clockwise about the plane normal: the outline
+// sample_plane_slice fills, e.g. to mark the slice in a 3D view. Empty when the plane misses
+// the cell or is not finite.
+export function slice_cell_polygon(
+  volume: VolumetricData,
+  plane: CartesianPlane,
+  fractional_bounds: DisplayRange = UNIT_CELL_RANGE,
+): Vec3[] {
+  const normal = valid_unit_normal(plane)
+  if (!normal) return []
+  const corner = bounded_cell_corner(
+    volume,
+    sanitize_display_range(fractional_bounds, volume.periodic),
+  )
+  const edges = math.UNIT_CUBE_EDGES.map(([start, end]) => [corner(start), corner(end)])
+  return math.plane_polyhedron_section(edges, normal, math.dot(normal, plane.point), {
+    plane_tol: PLANE_TOLERANCE,
+    merge_tol: PLANE_TOLERANCE,
+  })
+}
+
 // Sample a scalar volume on an arbitrary absolute Cartesian plane.
 export function sample_plane_slice(
   volume: VolumetricData,
   plane: CartesianPlane,
   options: PlaneSliceOptions = {},
 ): SliceResult | null {
-  if (!plane.point.every(Number.isFinite) || !plane.normal.every(Number.isFinite)) return null
-  if (plane.up && !plane.up.every(Number.isFinite)) return null
-  if (Math.hypot(...plane.normal) < PLANE_TOLERANCE) return null // degenerate normal
-  const normal = math.normalize_vec(plane.normal)
-
+  const normal = valid_unit_normal(plane)
+  if (!normal || (plane.up && !plane.up.every(Number.isFinite))) return null
   const [u_axis, v_axis] = plane_basis(normal, plane.up)
-  const bounds = sanitize_display_range(
-    options.fractional_bounds ?? UNIT_CELL_RANGE,
-    volume.periodic,
+  const polygon = slice_cell_polygon(volume, plane, options.fractional_bounds).map(
+    (corner): Vec2 => {
+      const relative = math.subtract(corner, plane.point)
+      return [math.dot(relative, u_axis), math.dot(relative, v_axis)]
+    },
   )
-  const corners = cell_corners(volume, bounds)
-  const polygon = intersect_plane_cell(corners, plane.point, normal, u_axis, v_axis)
   if (polygon.length < 3) return null
 
   // Sampling bounds: the (u, v) bounding box of the cell/plane intersection
@@ -478,34 +444,53 @@ export function sample_plane_slice(
   }
 }
 
-// Sample a 2D slice through volumetric data along a Miller-index plane.
-// `miller_indices` [h,k,l] defines the plane normal in reciprocal space.
-// `distance` is fractional [0,1] along the normal direction within the cell.
-// Returns null if indices are all zero.
+// The Miller-index plane (h k l) at fraction `position` [0, 1] of the cell's extent along its
+// normal h·b₁ + k·b₂ + l·b₃ (cell corners at volume.origin + frac · lattice), so 0 and 1 touch
+// the outermost corners. Null for (0 0 0) or a degenerate normal.
+export function hkl_slice_plane(
+  volume: VolumetricData,
+  miller_indices: Vec3,
+  position: number,
+): CartesianPlane | null {
+  if (miller_indices.every((index) => index === 0)) return null
+  // normalized below, so the 2π convention of the reciprocal lattice is immaterial
+  const recip = math.reciprocal_lattice(volume.lattice)
+  const plane_normal = math.create_frac_to_cart(recip)(miller_indices)
+  if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
+  const normal = math.normalize_vec(plane_normal)
+  const corner = bounded_cell_corner(volume, UNIT_CELL_RANGE)
+  const projections = math.UNIT_CUBE_CORNERS.map((unit) => math.dot(corner(unit), normal))
+  const [normal_min, normal_max] = math.array_extent(projections)
+  return {
+    point: math.scale(normal, normal_min + position * (normal_max - normal_min)),
+    normal,
+  }
+}
+
+// The plane a VolumeSliceView samples for these settings: Miller indices and position, or a
+// Cartesian point (default: the cell center), normal and up vector
+export const resolve_slice_plane = (
+  volume: VolumetricData,
+  settings: VolumeSliceSettings,
+): CartesianPlane | null =>
+  settings.plane_mode === `hkl`
+    ? hkl_slice_plane(volume, settings.miller_indices, settings.position)
+    : {
+        point: resolve_slice_cartesian_point(settings.cartesian_point, volume),
+        normal: settings.cartesian_normal,
+        up: settings.cartesian_up,
+      }
+
+// Sample a 2D slice through volumetric data along a Miller-index plane (see hkl_slice_plane;
+// `distance` is its `position`). Returns null if indices are all zero.
 export function sample_hkl_slice(
   volume: VolumetricData,
   miller_indices: Vec3,
   distance: number,
   n_points?: number,
 ): SliceResult | null {
-  if (miller_indices.every((index) => index === 0)) return null
-
-  // Plane normal G = h*b1 + k*b2 + l*b3 where b_i are reciprocal lattice rows
-  // normalized below, so the 2π convention is immaterial
-  const recip = math.reciprocal_lattice(volume.lattice)
-  const plane_normal = math.create_frac_to_cart(recip)(miller_indices)
-  if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
-  const unit_normal = math.normalize_vec(plane_normal)
-  const corners = cell_corners(volume, UNIT_CELL_RANGE)
-  const projections = corners.map((corner) => math.dot(corner, unit_normal))
-  const [normal_min, normal_max] = math.array_extent(projections)
-
-  // Plane position: fractional distance [0,1] along the normal extent
-  const point = math.scale(unit_normal, normal_min + distance * (normal_max - normal_min))
+  const plane = hkl_slice_plane(volume, miller_indices, distance)
+  if (!plane) return null
   const resolution = n_points ?? Math.max(...volume.dims)
-  return sample_plane_slice(
-    volume,
-    { point, normal: unit_normal },
-    { resolution: [resolution, resolution] },
-  )
+  return sample_plane_slice(volume, plane, { resolution: [resolution, resolution] })
 }

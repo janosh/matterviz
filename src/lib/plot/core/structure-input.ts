@@ -15,6 +15,17 @@ export interface StructureEntry {
   color?: string
 }
 
+// Sites of one input structure that a hovered plot element (bar, bin, curve point) counts, so
+// a linked structure viewer can highlight them. `neighbor_indices` holds the partner atoms
+// where the quantity involves several sites (bond-angle outer atoms, RDF pair partners).
+// Indices refer to the input structure's own sites; a periodic partner maps to its base site.
+export interface StructureSiteHighlight {
+  label: string
+  structure: AnyStructure
+  site_indices: number[]
+  neighbor_indices?: number[]
+}
+
 // A Record value is either a bare structure or one tagged with a plot colour
 type RecordValue = AnyStructure | { structure: AnyStructure; color?: string }
 export type StructureInput = AnyStructure | Record<string, RecordValue> | StructureEntry[]

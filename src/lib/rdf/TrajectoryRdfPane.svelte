@@ -25,11 +25,22 @@
     run,
     pane_open = $bindable(false),
     result = $bindable(),
+    on_shell_hover,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
     pane_open?: boolean
     result?: TrajectoryRdf
+    // Element pair of the hovered curve and the r bin hovered on it (null for its legend
+    // entry), with the binning to find that bin's pairs in a frame; null once it leaves
+    on_shell_hover?: (
+      hover: {
+        element_pair: [string, string]
+        bin_idx: number | null
+        cutoff: number
+        n_bins: number
+      } | null,
+    ) => void
   } = $props()
 
   // null, not 0, is what <input type="number"> writes back when cleared
@@ -134,6 +145,20 @@
       loading={collecting}
       {error_msg}
       style="height: 320px"
+      on_bin_hover={on_shell_hover &&
+        ((hover) => {
+          const element_pair = hover?.entry.pattern.element_pair
+          on_shell_hover(
+            hover && element_pair && input
+              ? {
+                  element_pair,
+                  bin_idx: hover.bin_idx,
+                  cutoff: input.cutoff,
+                  n_bins: input.r.length,
+                }
+              : null,
+          )
+        })}
     />
     {#if input}
       <AnalysisSummary

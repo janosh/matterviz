@@ -296,3 +296,17 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
     expect(threlte_stub.nodes.some(({ tag }) => tag === `Line`)).toBe(false)
   }
 })
+
+// The cursor position on a FermiSlice shows as a dot at that k-point, drawn over the sheets
+test(`k_marker draws a dot at the k-point and clears with null`, () => {
+  const props = $state<{ k_marker: Vec3 | null }>({ k_marker: [0.1, -0.2, 0.3] })
+  mount_scene(props)
+  const dot = () =>
+    threlte_stub.nodes.find(
+      ({ tag, props: node }) => tag === `Mesh` && node.renderOrder === 1001,
+    )
+  expect(dot()?.props.position).toEqual([0.1, -0.2, 0.3])
+  props.k_marker = null
+  flushSync()
+  expect(dot()).toBeUndefined()
+})

@@ -157,3 +157,33 @@ test(`projections from a larger system draw closed straight outlines, switching 
   await resolve_latest()
   expect(line_paths()).not.toEqual(li_o_paths)
 })
+
+test(`highlighted_formula thickens its domain by reduced formula, a hovered domain overrides it`, async () => {
+  const props = $state({
+    entries: binary_temp_entries,
+    config: { default_min_limit: -25 },
+    highlighted_formula: `O2Li4`,
+    hover_info: null as ChemPotHoverInfo | null,
+  })
+  await mount_2d(props)
+  await resolve_latest()
+  await size_plot()
+  // the series' stroked outline paths (points render in their own groups)
+  const stroke_widths = () =>
+    Object.fromEntries(
+      [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map((path) => [
+        path.parentElement?.getAttribute(`data-series-id`),
+        path.getAttribute(`stroke-width`),
+      ]),
+    )
+  expect(stroke_widths()).toEqual({ Li2O: `6`, O: `3` })
+  props.highlighted_formula = `NaCl` // no domain here: nothing highlighted
+  flushSync()
+  expect(stroke_widths()).toEqual({ Li2O: `3`, O: `3` })
+  document
+    .querySelector(`g[data-series-id="O"] [role="button"]`)
+    ?.dispatchEvent(mouse(`click`))
+  flushSync()
+  expect(props.hover_info?.formula).toBe(`O`)
+  expect(stroke_widths()).toEqual({ Li2O: `3`, O: `6` })
+})

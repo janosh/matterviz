@@ -42,6 +42,12 @@
       icon: FacetGrid,
     },
     {
+      label: `Linked Brushing`,
+      href: `/plot/linked-brushing`,
+      description: `Alt+drag points in one plot to highlight the same items, keyed by point_ids, in other plots and a periodic table.`,
+      icon: ScatterPlot,
+    },
+    {
       label: `3D Scatter Plot`,
       href: `/plot/scatter-plot-3d`,
       description: `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,

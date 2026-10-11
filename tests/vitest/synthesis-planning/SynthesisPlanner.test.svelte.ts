@@ -1,6 +1,8 @@
 import type { PhaseData } from '#lib/convex-hull/index.js'
 import RecipeCard from '#lib/synthesis-planning/RecipeCard.svelte'
 import * as hull_thermo from '#lib/convex-hull/thermodynamics.js'
+import * as canvas_draw from '#lib/convex-hull/canvas-draw.js'
+import { HULL_OVERLAY_COLORS } from '#lib/convex-hull/helpers.js'
 import SynthesisPlanner from '#lib/synthesis-planning/SynthesisPlanner.svelte'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type {
@@ -30,7 +32,33 @@ test(
   { timeout: 20_000 },
   async () => {
     const hull_compute = vi.spyOn(hull_thermo, `compute_lower_hull_nd`)
-    onTestFinished(() => hull_compute.mockRestore())
+    // a drawing context, so the system hull paints and its overlay can be observed
+    vi.stubGlobal(
+      `Path2D`,
+      class {
+        arc(): void {}
+      },
+    )
+    const get_context = vi
+      .spyOn(HTMLCanvasElement.prototype, `getContext`)
+      .mockImplementation(function (this: HTMLCanvasElement) {
+        return new Proxy({} as CanvasRenderingContext2D, {
+          get: (_target, prop) => {
+            if (prop === `canvas`) return this
+            if (prop === `measureText`) return () => ({ width: 20 })
+            if (prop === `getLineDash`) return () => []
+            if (prop === `createLinearGradient`) return () => ({ addColorStop: vi.fn() })
+            return vi.fn()
+          },
+        })
+      })
+    const overlay_segments = vi.spyOn(canvas_draw, `draw_overlay_segments`)
+    onTestFinished(() => {
+      hull_compute.mockRestore()
+      get_context.mockRestore()
+      overlay_segments.mockRestore()
+      vi.unstubAllGlobals()
+    })
     mount_planner({ comparison_options: { max_cell_lines: 5 } })
     await vi.waitFor(() => expect(document.querySelector(`.system-hull`)).not.toBeNull())
     expect(doc_query(`.cell-preview`).style.getPropertyValue(`--max-cell-lines`)).toBe(`5`)
@@ -49,6 +77,14 @@ test(
       },
       { timeout: 15_000 },
     )
+    // the selected route's reaction slice is drawn on the system hull: one solid line between
+    // its two solid precursors (BaCO3 + TiO2 releases CO2, which is no slice corner)
+    await vi.waitFor(() => {
+      const segments = overlay_segments.mock.lastCall?.[1]
+      expect(segments).toEqual([
+        expect.objectContaining({ color: HULL_OVERLAY_COLORS.annotation, dashed: false }),
+      ])
+    })
     const calls = hull_compute.mock.calls.length
     expect(calls).toBeGreaterThan(0)
     const choice = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -8,6 +9,7 @@
   import { capitalize, format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
+  import { reciprocal_lattice } from '#lib/math.js'
   import type { Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
@@ -17,7 +19,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import { frequency_unit_per_thz } from './frequency-units'
-  import { are_qpoints_equivalent, phonon_explorer_views, pretty_sym_point } from './helpers'
+  import {
+    are_qpoints_equivalent,
+    extract_k_path_points,
+    frac_k_to_cartesian,
+    k_path_labels,
+    phonon_explorer_views,
+    pretty_sym_point,
+  } from './helpers'
   import IrRamanSpectrum from './IrRamanSpectrum.svelte'
   import {
     DEFAULT_PHONON_AMPLITUDE,
@@ -63,6 +72,7 @@
     vector_color = $bindable<string | null>(null),
     auto_play = true,
     pane_ratio = $bindable(1.15 / 2.1),
+    show_bz_inset = true,
     trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -79,6 +89,10 @@
     vector_color?: string | null
     auto_play?: boolean
     pane_ratio?: number
+    // Small Brillouin zone in a corner of the atomic-motion pane with the q-path and the
+    // selected q-point (and the q-point hovered on the dispersion); needs a lattice and more
+    // than one q-point
+    show_bz_inset?: boolean
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
@@ -171,6 +185,34 @@
   let character = $derived(
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
   )
+  // === Brillouin zone inset ===
+  let bz_inset = $derived.by(() => {
+    const { lattice, qpoints } = mode_data
+    if (!show_bz_inset || !lattice || qpoints.length < 2) return { value: null, error: null }
+    const band = band_result.value
+    return try_generate(() => {
+      const k_lattice = reciprocal_lattice(lattice, { two_pi: true })
+      const k_path_points = band ? extract_k_path_points(band, k_lattice) : []
+      return {
+        k_lattice,
+        bz_data: compute_brillouin_zone(k_lattice),
+        k_path_points,
+        k_path_labels: band ? k_path_labels(band, k_path_points) : [],
+      }
+    })
+  })
+  // q-point under the pointer on the dispersion; only read while the bands are on screen
+  let bands_hovered_qpoint_idx = $state<number | null>(null)
+  let hovered_qpoint_idx = $derived(view === `bands` ? bands_hovered_qpoint_idx : null)
+  const qpoint_k_position = (qpoint_idx: number | null | undefined): Vec3 | null => {
+    const [k_lattice, qpoint] = [
+      bz_inset.value?.k_lattice,
+      mode_data.qpoints[qpoint_idx ?? -1],
+    ]
+    return k_lattice && qpoint ? frac_k_to_cartesian(qpoint.q_position, k_lattice) : null
+  }
+  let selected_k_point = $derived(qpoint_k_position(selection?.qpoint_idx))
+
   const wavenumber = (thz: number): string =>
     `${format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)} cm⁻¹`
 
@@ -245,7 +287,25 @@
   }
 </script>
 
-{#snippet mode_picker()}
+<!-- rendered inside the structure viewer, so both overlays follow it into fullscreen and stay
+under its open panes -->
+{#snippet structure_overlays()}
+  {#if bz_inset.value}
+    <BrillouinZone
+      class="bz-inset"
+      aria-label="Selected q-point in the Brillouin zone"
+      bz_data={bz_inset.value.bz_data}
+      k_path_points={bz_inset.value.k_path_points}
+      k_path_labels={bz_inset.value.k_path_labels}
+      highlighted_k_points={selected_k_point ? [selected_k_point] : []}
+      hovered_k_point={qpoint_k_position(hovered_qpoint_idx)}
+      hovered_qpoint_index={hovered_qpoint_idx}
+      show_vectors={false}
+      show_controls={false}
+      fullscreen_toggle={false}
+      allow_file_drop={false}
+    />
+  {/if}
   <div class="mode-picker">
     <ToolbarMenu
       bind:open={modes_open}
@@ -382,6 +442,7 @@
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
   {#if generation_error}<StatusMessage message={generation_error} type="error" />{/if}
+  {#if bz_inset.error}<StatusMessage message={bz_inset.error} type="error" />{/if}
   {#if !commensurate}
     <StatusMessage
       message="This q-point is not commensurate with the selected supercell, so opposite box faces do not repeat periodically."
@@ -460,7 +521,7 @@
           extra_controls={phonon_settings}
           structure_series_key={supercell_result.value?.structure}
           structure_props={{
-            children: mode_picker,
+            children: structure_overlays,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
             show_image_atoms: false,
@@ -497,6 +558,10 @@
             highlighted_band_index={selection?.mode_idx ?? null}
             on_point_click={handle_band_click}
             on_plot_click={handle_band_click}
+            on_point_hover={(event) => {
+              const qpoint_idx = event?.metadata?.qpoint_idx
+              bands_hovered_qpoint_idx = typeof qpoint_idx === `number` ? qpoint_idx : null
+            }}
             show_controls={false}
           />
         {:else if (view === `ir` || view === `raman`) && active_spectrum}
@@ -587,6 +652,18 @@
     container-type: inline-size;
     --traj-border-radius: 0;
     --struct-border-radius: 0;
+    /* bottom-left is the one corner the structure viewer keeps free of controls */
+    :global(.structure .bz-inset) {
+      position: absolute;
+      left: 0.5em;
+      bottom: 0.5em;
+      z-index: 1;
+      --bz-width: var(--phonon-bz-inset-size, clamp(100px, 22cqi, 160px));
+      --bz-height: var(--phonon-bz-inset-size, clamp(100px, 22cqi, 160px));
+      --bz-min-width: 0;
+      --bz-bg: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
+      --bz-border-radius: var(--border-radius, 3pt);
+    }
   }
   /* the bar stays open while its step input has focus; hovering the plot pane hides it anyway
      so the spectra are never covered */

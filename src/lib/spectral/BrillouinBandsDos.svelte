@@ -68,6 +68,12 @@
   let hovered_k_point = $derived(
     active_qpoint_index !== null ? (k_path_points[active_qpoint_index] as Vec3) : null,
   )
+  // Whole path branch (e.g. Γ→X) around the hovered q-point, shaded in both bands and BZ
+  let hovered_qpoint_range = $derived(
+    active_qpoint_index !== null && first_band_struct
+      ? helpers.branch_qpoint_range(first_band_struct, active_qpoint_index)
+      : null,
+  )
   const [desktop_width, tablet_width] = [1200, 600]
   let clientWidth = $state(desktop_width)
   let is_desktop = $derived(clientWidth >= desktop_width)
@@ -88,7 +94,11 @@
     base_padding: { t: 5, b: 50 },
   })
 
-  let hovered_frequency = $state<number | null>(null)
+  // Each panel reports only its own pointer, never the shared line it is drawn, so the two
+  // directions cannot feed back into each other
+  let bands_hovered_frequency = $state<number | null>(null)
+  let dos_hovered_frequency = $state<number | null>(null)
+  let hovered_frequency = $derived(dos_hovered_frequency ?? bands_hovered_frequency)
 </script>
 
 <div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
@@ -110,8 +120,10 @@
     bind:view={sync.views[0]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:x_positions={bands_x_positions}
+    bind:hovered_frequency={bands_hovered_frequency}
     reference_frequency={hovered_frequency}
     highlighted_qpoint_index={active_qpoint_index}
+    highlighted_qpoint_range={hovered_qpoint_range}
     on_point_hover={(event: ScatterHandlerEvent | null) => {
       hovered_band_point = event?.point ?? null
       bands_props.on_point_hover?.(event)
@@ -129,6 +141,7 @@
       : []}
     {hovered_k_point}
     hovered_qpoint_index={active_qpoint_index}
+    highlighted_qpoint_range={hovered_qpoint_range}
     on_kpath_hover={(idx) => (bz_hovered_qpoint_index = idx)}
   />
 
@@ -144,7 +157,7 @@
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:hovered_frequency
+    bind:hovered_frequency={dos_hovered_frequency}
     reference_frequency={hovered_frequency}
     padding={{
       l: is_desktop ? 20 : undefined,

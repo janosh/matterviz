@@ -19,7 +19,9 @@ import {
   prepare_phase_set,
   reaction_energy_at_temperature,
   resolve_phase,
+  reaction_slice_lines,
   score_route,
+  slice_point_on_hull,
   SYNTHESIS_PLAN_REQUEST_SCHEMA,
   SYNTHESIS_PLANNER_TOOL,
 } from '#lib/synthesis-planning/index.js'
@@ -754,5 +756,71 @@ describe(`precursor library`, () => {
     expect(lookup_precursor_info(`O2Ti`)?.name).toBe(`titanium dioxide`)
     expect(lookup_precursor_info(`Xx9`)).toBeNull()
     expect(lookup_precursor_info(`BaTiO3`)).toBeNull()
+  })
+})
+
+// The reaction slice on the full hull: in a closed system every slice point (target and
+// competitors at their mixing fractions and reaction energies) lands on its own phase
+describe(`reaction slice on the full hull`, () => {
+  const plan = plan_synthesis({ entries: ba_ti_o, target: `BaTiO3` })
+  const route = plan.routes.find(
+    ({ reaction }) =>
+      reaction.reactants
+        .map(({ phase }) => phase.formula)
+        .toSorted()
+        .join(`+`) === `BaO+TiO2`,
+  )
+  if (!route) throw new Error(`no BaO + TiO2 route in ${plan.routes.map(({ id }) => id)}`)
+  const atom_fractions = (composition: Record<string, number>) => {
+    const total = Object.values(composition).reduce((sum, amount) => sum + amount, 0)
+    return Object.fromEntries(
+      Object.entries(composition).map(([element, amount]) => [element, amount / total]),
+    )
+  }
+
+  test(`precursor tie-line and slice points match their phases`, () => {
+    const [bao, tio2] = route.reaction.reactants.map(({ phase }) => phase)
+    expect(reaction_slice_lines(route)).toEqual([
+      {
+        from: { composition: bao.composition, e_form: bao.energy_per_atom, label: `BaO` },
+        to: { composition: tio2.composition, e_form: tio2.energy_per_atom, label: `TiO2` },
+      },
+    ])
+    const slice_points = [
+      {
+        phase: route.reaction.products[0].phase,
+        mixture: { BaO: 2 / 5, TiO2: 3 / 5 }, // 1 BaO (2 atoms) + 1 TiO2 (3 atoms)
+        energy: route.reaction.driving_force,
+      },
+      ...route.selectivity.competitors.map(({ phase, mixture, driving_force }) => ({
+        phase,
+        mixture,
+        energy: driving_force,
+      })),
+    ]
+    expect(slice_points.map(({ phase }) => phase.formula)).toContain(`Ba2TiO4`)
+    for (const { phase, mixture, energy } of slice_points) {
+      const mark = slice_point_on_hull(route, mixture, energy, phase.formula)
+      // sums of a few O(1) f64 terms: measured 4.4e-16 (BaTiO3), i.e. a few eps
+      expect(mark.e_form).toBeCloseTo(phase.energy_per_atom, 12)
+      const expected = atom_fractions(phase.composition)
+      expect(Object.keys(mark.composition).toSorted()).toEqual(
+        Object.keys(expected).toSorted(),
+      )
+      for (const [element, fraction] of Object.entries(expected)) {
+        expect(mark.composition[element as keyof typeof mark.composition]).toBeCloseTo(
+          fraction,
+          12,
+        )
+      }
+      expect(mark.label).toBe(phase.formula)
+    }
+  })
+
+  test.each([
+    [{ CaO: 1 }, `CaO not among the solid precursors`],
+    [{ BaO: 0, TiO2: 0 }, `empty mixture`],
+  ])(`slice_point_on_hull rejects %j`, (mixture, message) => {
+    expect(() => slice_point_on_hull(route, mixture, 0)).toThrow(message)
   })
 })

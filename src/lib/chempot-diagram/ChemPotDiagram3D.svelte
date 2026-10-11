@@ -44,6 +44,7 @@
     container_pointer,
     create_chempot_state,
     domain_formula_text,
+    formula_to_domain_key,
   } from './controls-state.svelte'
   import {
     export_glb_file,
@@ -98,6 +99,9 @@
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
+    // Domain to highlight when none is hovered here, in any formula spelling (matched by
+    // reduced formula): lets a host (e.g. a convex hull) or a sibling grid pane mark a phase
+    highlighted_formula = null,
   }: {
     entries: PhaseData[]
     show_controls?: ShowControlsProp<`controls` | `fullscreen` | `export` | `formulas`>
@@ -106,6 +110,7 @@
     height?: number
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
+    highlighted_formula?: string | null
   } = $props()
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
@@ -654,11 +659,11 @@
     formula_colors[formulas_to_draw.indexOf(formula) % formula_colors.length]
 
   // Formula overlay edges (crease edges, per formula)
-  const overlay_edge_geometries = memo_overlay_geometry((domain) =>
+  const domain_edge_geometry = (domain: RenderDomain): THREE.BufferGeometry =>
     position_geometry(
       domain.edges.flatMap(([pt_a, pt_b]) => [...to_render_xyz(pt_a), ...to_render_xyz(pt_b)]),
-    ),
-  )
+    )
+  const overlay_edge_geometries = memo_overlay_geometry(domain_edge_geometry)
   const formula_edge_data = $derived(
     overlay_edge_geometries(draw_formula_lines ? overlay_domains : []),
   )
@@ -782,7 +787,18 @@
     })
   })
 
+  // The hovered domain, else the external one; a phase with no domain here highlights nothing
+  const highlight_key = $derived(
+    hover_info?.formula ??
+      (highlighted_formula ? formula_to_domain_key(highlighted_formula) : null),
+  )
+  const highlight_edge_geometry = $derived.by(() => {
+    const domain = render_domains.find(({ formula }) => formula === highlight_key)
+    return domain ? domain_edge_geometry(domain) : null
+  })
+
   dispose_on_change(() => [edge_geometry])
+  dispose_on_change(() => [highlight_edge_geometry])
   dispose_on_change(() => [occlusion_hull_geometry])
   // formula_edge_data/formula_mesh_data geometries are owned by their per-formula caches
   dispose_on_change(() => hover_geometries.map((data) => data.geometry))
@@ -1360,6 +1376,8 @@
           on_domain_press={toggle_phase_lock}
           on_domain_leave={handle_phase_leave}
           on_camera_start={handle_camera_start}
+          highlighted_formula={highlight_key}
+          highlight_edges={highlight_edge_geometry}
           formula_meshes={formula_mesh_data}
           formula_edges={formula_edge_data}
           domain_labels={scene_domain_labels}

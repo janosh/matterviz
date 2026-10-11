@@ -29,7 +29,13 @@ import {
   same_entry,
 } from './helpers'
 import { CONVEX_HULL_STYLE } from './index'
-import type { ConvexHullEntry, HighlightStyle, HullFaceColorMode, MarkerSymbol } from './types'
+import type {
+  ConvexHullEntry,
+  HighlightStyle,
+  HullFaceColorMode,
+  HullOverlay,
+  MarkerSymbol,
+} from './types'
 
 export type Projected = { x: number; y: number; depth: number }
 export type ProjectPoint = (coord_x: number, coord_y: number, coord_z: number) => Projected
@@ -280,6 +286,49 @@ export function draw_dashed_edges(
   }
   ctx.stroke()
   ctx.setLineDash([]) // every later stroke sets its own strokeStyle
+}
+
+// Linked-view overlay (decomposition tie-lines, annotated compositions). Segments go under the
+// points so tie-lines end at their markers; rings go over them, labelled to the right.
+export function draw_overlay_segments(
+  ctx: CanvasRenderingContext2D,
+  segments: HullOverlay[`segments`],
+  project: ProjectPoint,
+): void {
+  ctx.lineWidth = 2
+  for (const { from, to, color, dashed } of segments) {
+    const [start, end] = [project(from.x, from.y, from.z), project(to.x, to.y, to.z)]
+    ctx.strokeStyle = color
+    ctx.setLineDash(dashed ? [6, 4] : [])
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(end.x, end.y)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+}
+
+export function draw_overlay_rings(
+  ctx: CanvasRenderingContext2D,
+  rings: HullOverlay[`rings`],
+  project: ProjectPoint,
+  scale: number,
+): void {
+  const radius = 10 * Math.max(scale, 0.6)
+  ctx.lineWidth = 2
+  ctx.font = `bold ${Math.round(12 * Math.max(scale, 0.8))}px sans-serif`
+  ctx.textAlign = `left`
+  ctx.textBaseline = `middle`
+  for (const { at, color, label } of rings) {
+    const point = project(at.x, at.y, at.z)
+    ctx.strokeStyle = color
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI)
+    ctx.stroke()
+    if (!label) continue
+    ctx.fillStyle = color
+    ctx.fillText(label, point.x + radius + 3, point.y)
+  }
 }
 
 type CornerLabelOpts = {

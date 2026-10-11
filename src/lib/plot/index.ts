@@ -153,6 +153,7 @@ export type ScatterPlotOptions = PlotElementOptions &
     | 'error_bar_cap'
     | 'point_hit_padding'
     | 'on_select'
+    | 'highlighted_ids'
   >
 
 export type BarPlotOptions = PlotElementOptions &

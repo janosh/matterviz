@@ -1,6 +1,8 @@
+import { PLOT_COLORS } from '#lib/colors/index.js'
 import type { CompositionType } from '#lib/composition/index.js'
 import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
+import type { LatticePlane } from '#lib/structure/index.js'
 import type { RadiationKey } from './calc-xrd'
 
 export * from './broadening'
@@ -163,3 +165,40 @@ export interface PatternEntry {
   pattern: XrdPattern
   color?: string
 }
+
+// One stick of an XrdPlot, as reported by its hovered_peak / selected_peak bindings
+export type XrdPeak = {
+  // Index of the pattern among the plotted entries, and of the peak within that pattern
+  pattern_idx: number
+  peak_idx: number
+  // Label of the pattern the peak belongs to
+  label: string
+  two_theta: number
+  // Intensity on the plot's scale (strongest peak over all patterns = 100)
+  intensity: number
+  // One representative hkl per family of reflections merged into this peak, in the basis
+  // of the input lattice the pattern was computed from (empty for measured patterns)
+  hkls: Hkl[]
+  d_spacing?: number
+}
+
+// Plane family colours, warm first (the first matches the LatticePlanes default) so the
+// translucent fills stand out against typical atom colours. Its length caps the families
+// drawn for one peak.
+export const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
+
+// Lattice planes to overlay on a Structure for a diffraction peak or spot: one family per
+// hkl, coloured by DIFFRACTION_PLANE_COLORS. A peak lists one representative per family of
+// symmetry-equivalent reflections (or per Friedel pair when the pattern was computed without
+// symmetry_rotations), so several entries are distinct families that coincide in 2θ; only
+// the first `max_families` are drawn to keep the cell readable. Indices are not reduced:
+// (200) draws planes d_200 = a/2 apart, the spacing that actually diffracts. Miller indices
+// refer to the input lattice, so the overlay is only valid in Structure's original cell.
+export const diffraction_planes = (
+  hkls: readonly Hkl[],
+  max_families: number = DIFFRACTION_PLANE_COLORS.length,
+): LatticePlane[] =>
+  hkls.slice(0, Math.max(0, max_families)).map((hkl, idx) => ({
+    hkl: [...hkl],
+    color: DIFFRACTION_PLANE_COLORS[idx % DIFFRACTION_PLANE_COLORS.length],
+  }))

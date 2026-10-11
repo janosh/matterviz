@@ -14,6 +14,7 @@
     result = $bindable(),
     default_dt = null,
     default_time_unit,
+    on_curve_hover,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
@@ -23,6 +24,8 @@
     // with a real time axis instead of lags in frames; the user can still override it.
     default_dt?: number | null
     default_time_unit?: string
+    // Curve under the pointer (element symbol or `Total`), for highlighting its atoms
+    on_curve_hover?: (label: string | null) => void
   } = $props()
 
   let max_lag_fraction = $state(0.5)
@@ -81,6 +84,7 @@
   {/snippet}
   {#snippet children(ctx)}
     <MsdPlot
+      {on_curve_hover}
       positions={ctx.input}
       msd_options={msd_options(ctx)}
       {fit_options}

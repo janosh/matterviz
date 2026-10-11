@@ -634,6 +634,22 @@ export function qpoint_x_position(
   return null
 }
 
+// First and last q-point index of the path branch (e.g. Γ→X) containing a q-point, for
+// highlighting the whole hovered segment in Bands and BrillouinZone. A symmetry point shared by
+// two branches belongs to the earlier one; discontinuity jumps are never a segment.
+export function branch_qpoint_range(
+  band_struct: types.BaseBandStructure,
+  qpoint_index: number,
+): Vec2 | null {
+  const branch = band_struct.branches.find(
+    (candidate) =>
+      !is_discontinuity_branch(candidate) &&
+      qpoint_index >= candidate.start_index &&
+      qpoint_index <= candidate.end_index,
+  )
+  return branch ? [branch.start_index, branch.end_index] : null
+}
+
 // Find q-point index from rescaled x-coordinate (used in band structure plots)
 // This handles the case where the plot uses custom x-axis scaling per segment
 export function find_qpoint_at_rescaled_x(

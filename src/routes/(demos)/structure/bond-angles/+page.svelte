@@ -10,6 +10,7 @@
     BOND_ANGLE_SPLIT_MODES,
   } from '#lib/bond-angles/index.js'
   import FilePicker from '#lib/FilePicker.svelte'
+  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import { Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_files, structure_map } from '#site/structures.js'
@@ -35,13 +36,20 @@
   let multi_strategy = $state<BondingStrategy>(default_strategy)
 
   const selected_structures = $derived(labeled_structures(selected_ids))
+
+  // Hovering a bar highlights the centre atoms of its angles and their bonded neighbours
+  let single_highlight = $state<number[]>([])
+  const angle_sites = (highlights: StructureSiteHighlight[] | null): number[] =>
+    highlights
+      ? [...new Set([highlights[0].site_indices, highlights[0].neighbor_indices ?? []].flat())]
+      : []
 </script>
 
 <h1 id="bond-angle-distributions-adf">Bond-Angle Distributions (ADF)</h1>
 
 <p class="demo-intro">
   Periodic image atoms are included in the bond search, so boundary sites remain correctly
-  coordinated.
+  coordinated. Hover a bar to highlight the atoms forming its angles.
 </p>
 
 <div class="bleed-1400">
@@ -72,9 +80,11 @@
           split_mode={single_split_mode}
           {bin_width}
           style="height: 500px"
+          on_sites_hover={(highlights) => (single_highlight = angle_sites(highlights))}
         />
         <Structure
           structure={single_struct}
+          bind:highlighted_sites={single_highlight}
           scene_props={single_scene_props}
           style="height: 500px"
         />

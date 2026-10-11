@@ -136,6 +136,28 @@ export interface ConvexHullControlsType {
   show_label_controls?: boolean
 }
 
+// A composition placed on a hull: simplex position from `composition`, energy axis from
+// `e_form` (eV/atom; quaternary hulls don't plot energy)
+export interface HullMark {
+  composition: CompositionType
+  e_form: number
+  label?: string
+  color?: string
+}
+
+// Composition-space annotations drawn over a hull by a linked view, e.g. a reaction's mixing
+// line between its precursors or the composition another plot is hovering
+export interface HullAnnotations {
+  lines?: { from: HullMark; to: HullMark; color?: string }[]
+  marks?: HullMark[]
+}
+
+// Annotations resolved to plot coordinates, as the renderers draw them
+export interface HullOverlay {
+  segments: { from: Point3D; to: Point3D; color: string; dashed: boolean }[]
+  rings: { at: Point3D; color: string; label?: string }[]
+}
+
 // Hover data for tooltips
 export interface HoverData3D<T = ConvexHullEntry> {
   entry: T

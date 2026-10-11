@@ -78,6 +78,19 @@ export const apply_formation_energies = (
         return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
       })
 
+// Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D;
+// quaternary hulls don't plot energy)
+export function hull_plot_position(
+  composition: CompositionType,
+  e_form: number,
+  elements: ElementSymbol[],
+  dim: 2 | 3 | 4,
+): { x: number; y: number; z: number } {
+  const [coord_x, coord_y = e_form, coord_z = dim === 3 ? e_form : 0] =
+    composition_to_simplex_coords(composition, elements)
+  return { x: coord_x, y: coord_y, z: coord_z }
+}
+
 const hull_point = (entry: ConvexHullEntry, dim: number): number[] =>
   [entry.x, entry.y, entry.z, entry.e_form_per_atom ?? NaN].slice(0, dim)
 
@@ -88,12 +101,8 @@ export function build_hull_model(
   dim: 2 | 3 | 4,
   energy_mode: EnergySourceMode,
 ) {
-  // Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D)
-  const plot_position = (composition: CompositionType, e_form: number) => {
-    const [coord_x, coord_y = e_form, coord_z = dim === 3 ? e_form : 0] =
-      composition_to_simplex_coords(composition, elements)
-    return { x: coord_x, y: coord_y, z: coord_z }
-  }
+  const plot_position = (composition: CompositionType, e_form: number) =>
+    hull_plot_position(composition, e_form, elements, dim)
 
   // Plot coordinates: entries with a finite formation energy placed in the simplex, plus
   // synthetic E_form = 0 corners for elements without a reference entry (closes the hull)

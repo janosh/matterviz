@@ -15,6 +15,8 @@
     // Bound temperature may be auto-corrected by 2D/3D child components.
     temperature = $bindable(),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
+    // Phase to highlight in every view while none is hovered, in any formula spelling
+    highlighted_formula = null,
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -22,6 +24,7 @@
     height?: number
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
+    highlighted_formula?: string | null
   } = $props()
 
   const all_elements = $derived(entry_elements(entries))
@@ -42,6 +45,22 @@
   // Scale down sub-diagrams in grid mode
   const grid_width = $derived(Math.max(280, Math.round(width * 0.48)))
   const grid_height = $derived(Math.max(240, Math.round(height * 0.48)))
+
+  // Each grid pane keeps its own hover, so only the hovered pane shows a tooltip. The grid's
+  // hover is the latest pane's (else one still pinned): its formula highlights that phase in
+  // every pane and it is what hover_info reports. Reset with the projections so removed panes
+  // leave no stale hover, keyed by a string so an update with the same projections keeps them.
+  const grid_key = $derived(ternary_combos.map((combo) => combo.join(`|`)).join(`,`))
+  let pane_hovers = $derived(grid_key.split(`,`).map((): ChemPotHoverInfo | null => null))
+  let last_hovered_pane = $state(0)
+  const grid_hover = $derived(
+    pane_hovers[last_hovered_pane] ?? pane_hovers.find(Boolean) ?? null,
+  )
+  const set_pane_hover = (pane_idx: number, info: ChemPotHoverInfo | null): void => {
+    pane_hovers = pane_hovers.with(pane_idx, info)
+    if (info) last_hovered_pane = pane_idx
+    hover_info = grid_hover
+  }
 </script>
 
 <div>
@@ -62,16 +81,32 @@
       </p>
     </div>
   {:else if n_display === 2}
-    <ChemPotDiagram2D {entries} {config} {width} {height} bind:temperature bind:hover_info />
+    <ChemPotDiagram2D
+      {entries}
+      {config}
+      {width}
+      {height}
+      {highlighted_formula}
+      bind:temperature
+      bind:hover_info
+    />
   {:else if n_display === 3 || !show_grid}
-    <ChemPotDiagram3D {entries} {config} {width} {height} bind:temperature bind:hover_info />
+    <ChemPotDiagram3D
+      {entries}
+      {config}
+      {width}
+      {height}
+      {highlighted_formula}
+      bind:temperature
+      bind:hover_info
+    />
   {:else}
     <p class="projection-info">
       Showing all {ternary_combos.length} ternary projections of the
       {display_elements.length}-element system ({display_elements.join(`-`)})
     </p>
     <div class="projection-grid">
-      {#each ternary_combos as combo (combo.join(`|`))}
+      {#each ternary_combos as combo, pane_idx (combo.join(`|`))}
         <div style="min-width: 0">
           <h4 class="projection-label">{combo.join(`-`)} projection</h4>
           <ChemPotDiagram3D
@@ -79,8 +114,11 @@
             config={{ ...config, elements: combo }}
             width={grid_width}
             height={grid_height}
+            highlighted_formula={grid_hover?.formula ?? highlighted_formula}
             bind:temperature
-            bind:hover_info
+            bind:hover_info={
+              () => pane_hovers[pane_idx], (info) => set_pane_hover(pane_idx, info)
+            }
           />
         </div>
       {/each}

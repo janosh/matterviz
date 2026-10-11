@@ -22,7 +22,7 @@
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import { decimate_pattern, format_hkl } from './index'
-  import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+  import type { Hkl, HklFormat, PatternEntry, XrdPattern, XrdPeak } from './index'
 
   // Measured scans can run to 10⁵ points; the stick/profile views stay responsive at this
   // budget while the peak-preserving thinning keeps every significant maximum
@@ -53,6 +53,10 @@
     error_msg = $bindable(),
     broadening_enabled = $bindable(false),
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
+    hovered_peak = $bindable(null),
+    selected_peak = $bindable(null),
+    on_bar_hover,
+    on_bar_click,
     ...rest
   }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
     patterns:
@@ -79,6 +83,13 @@
     error_msg?: string
     broadening_enabled?: boolean
     broadening_params?: BroadeningParams
+    // Stick under the pointer or keyboard focus, null otherwise. Lets a host link the plot
+    // to another view, e.g. draw diffraction_planes(peak.hkls) as a Structure's
+    // lattice_planes. Only sticks are peaks: profiles and the broadened view report none.
+    hovered_peak?: XrdPeak | null
+    // Stick pinned by a click (or Enter/Space on a focused stick), which also labels it;
+    // activating the pinned stick again unpins it
+    selected_peak?: XrdPeak | null
   } = $props()
 
   let dropped_entries = $state<PatternEntry[]>([])
@@ -169,6 +180,9 @@
           if (!too_close) selected_indices.push(idx)
         }
       }
+      // A pinned peak is always labelled so the plot shows which one is pinned
+      if (selected_peak?.pattern_idx === entry_idx)
+        selected_indices.push(selected_peak.peak_idx)
       const selected = new Set(selected_indices)
       // Angles are shown by default only while the plot holds at most two patterns
       const with_angle = show_angles ?? pattern_entries.length <= 2
@@ -198,6 +212,36 @@
       }
     })
   })
+
+  // The stick at (pattern_idx, peak_idx) of the plotted entries, null for a profile sample
+  const peak_at = (pattern_idx: number, peak_idx: number): XrdPeak | null => {
+    const entry = pattern_entries[pattern_idx]
+    if (!entry || is_profile(entry.pattern) || peak_idx >= entry.pattern.x.length) return null
+    const { x: x_vals, y: y_vals, hkls, d_hkls } = entry.pattern
+    return {
+      pattern_idx,
+      peak_idx,
+      label: entry.label,
+      two_theta: x_vals[peak_idx],
+      intensity: ((y_vals[peak_idx] || 0) / global_max_intensity) * 100,
+      hkls: hkls?.[peak_idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+      d_spacing: d_hkls?.[peak_idx],
+    }
+  }
+  const same_peak = (peak_a: XrdPeak | null, peak_b: XrdPeak | null): boolean =>
+    peak_a?.pattern_idx === peak_b?.pattern_idx && peak_a?.peak_idx === peak_b?.peak_idx
+
+  type BarHover = Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]
+  type BarClick = Parameters<NonNullable<BarPlotOptions[`on_bar_click`]>>[0]
+  const handle_bar_hover = (data: BarHover) => {
+    hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
+    on_bar_hover?.(data)
+  }
+  const handle_bar_click = (data: BarClick) => {
+    const peak = peak_at(data.series_idx, data.bar_idx)
+    selected_peak = peak && same_peak(peak, selected_peak) ? null : peak
+    on_bar_click?.(data)
+  }
 
   // compute_broadened_pattern throws when a Caglioti triple drives FWHM² non-positive inside
   // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static
@@ -437,6 +481,8 @@
         x_axis={plot_x_axis}
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         {tooltip}
+        on_bar_hover={handle_bar_hover}
+        on_bar_click={handle_bar_click}
         {@attach drop_zone}
         class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}

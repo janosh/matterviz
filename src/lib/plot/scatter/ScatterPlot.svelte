@@ -170,6 +170,7 @@
     selected_point = null,
     selected_points = $bindable([]),
     on_select,
+    highlighted_ids = null,
     hovered = $bindable(false),
     tooltip,
     user_content,
@@ -234,6 +235,11 @@
         points: InternalPoint<Metadata>[]
         rect: { x: Vec2; y: Vec2 }
       }) => void
+      // Linked highlighting by key: points whose series `point_ids` entry is missing from
+      // this collection are dimmed, so a selection made in another view (an Alt+drag here or
+      // in a second plot, clicks in a periodic table, ...) stands out. null turns it off, an
+      // empty collection dims every keyed point, and points without a point_id never dim.
+      highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
       tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
@@ -902,6 +908,13 @@
     }
   }
 
+  // Copied into a Set so the per-point membership test is O(1) for arrays too
+  const highlight_set = $derived(highlighted_ids == null ? null : new Set(highlighted_ids))
+  const is_link_dimmed = (point: InternalPoint<Metadata>): boolean =>
+    highlight_set !== null &&
+    point.point_id !== undefined &&
+    !highlight_set.has(point.point_id)
+
   // Points needing labels or effects remain in an SVG overlay. `selected` is passed in so
   // per-point loops read the prop once, not per point.
   const same_logical_point = (
@@ -946,20 +959,23 @@
     if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
+    // Link-dimmed markers paint first so the highlighted ones sit on top of them
+    const dimmed: CanvasMarker[] = []
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
       if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
       const { marker_of, canvas_safe } = series_appearance(series_data)
       const project = series_projector(series_data)
-      const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
+      const legend_dimmed = is_legend_dimmed(series_data.orig_series_idx)
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
         if (needs_static_svg_overlay(point, selected, keys)) continue
         const [cx, cy] = project.point(point)
-        markers.push(marker_of(point, cx, cy, opacity))
+        if (is_link_dimmed(point)) dimmed.push(marker_of(point, cx, cy, 0.25))
+        else markers.push(marker_of(point, cx, cy, legend_dimmed ? 0.25 : 1))
       }
     }
-    return markers
+    return dimmed.length > 0 ? [...dimmed, ...markers] : markers
   })
   const use_canvas_markers = $derived(canvas_markers !== null)
   // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart
@@ -1885,7 +1901,7 @@
               <ScatterPoint
                 x={center_x - offset.x}
                 y={center_y - offset.y}
-                is_dimmed={is_legend_dimmed(point.series_idx)}
+                is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
                 is_hovered={same_logical_point(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point) ||
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
