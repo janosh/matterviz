@@ -1264,6 +1264,7 @@ test.each([`Original`, `Prediction`])(
     const tool_props = await mount_host_structure(bind_props({ structure }, state))
     const overlay = { volumes: [prediction_volume] }
     flushSync(() => tool_props.on_overlay(overlay))
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
     const remove = doc_query<HTMLButtonElement>(
       `button[aria-label="Remove volume ${removed_label}"]`,
     )
@@ -1374,6 +1375,7 @@ test.each([false, true])(
     vi.stubEnv(`VITEST`, ``)
     const tool_props = await mount_host_structure(bind_props({}, state))
     await vi.waitFor(() => expect(document.querySelector(`.cell-select`)).not.toBeNull())
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
     await symmetry.analyze_structure_symmetry(crystal)
     await tick()
     const overlay = {

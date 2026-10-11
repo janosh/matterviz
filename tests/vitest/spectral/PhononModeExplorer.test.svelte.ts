@@ -69,6 +69,12 @@ test(`renders a typed phonon dataset`, async () => {
   expect(target.querySelector(`.phonon-modes-pane .control-tab`)).toBeNull()
   expect(target.querySelector(`.phonon-modes-pane .resize-handle`)).toBeNull()
   expect(target.querySelector(`.trajectory-controls .toolbar`)).not.toBeNull()
+  // structure settings mount on first open of the viewer's controls pane
+  const controls_toggle = await vi.waitFor(() =>
+    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
+  )
+  controls_toggle.click()
+  await tick()
   const eigenvectors = target.querySelector<HTMLInputElement>(`.checkbox input`)
   eigenvectors?.click()
   await vi.waitFor(() =>
@@ -131,6 +137,12 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
       0,
     )
 
+  // structure settings mount on first open of the viewer's controls pane
+  const controls_toggle = await vi.waitFor(() =>
+    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
+  )
+  controls_toggle.click()
+  await tick()
   await vi.waitFor(() => {
     expect(
       target.querySelector<HTMLSelectElement>(`[data-key="show_polyhedra"] select`)?.value,
