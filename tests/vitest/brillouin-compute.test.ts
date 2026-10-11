@@ -889,6 +889,27 @@ describe(`scene sizing helpers`, () => {
       ],
       [0, 1, 3],
     ],
+    // repeated branch-boundary points: zero-length steps neither draw nor shrink the median
+    [
+      [
+        [0, 0, 0],
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+      ],
+      [1],
+    ],
+    [
+      [
+        [0, 0, 0],
+        [0.1, 0, 0],
+        [0.1, 0, 0],
+        [0.1, 0, 0],
+        [0.1, 0, 0],
+        [0.2, 0, 0],
+      ],
+      [0, 4],
+    ],
     // two points: no median to judge against, so the one segment always draws
     [
       [
