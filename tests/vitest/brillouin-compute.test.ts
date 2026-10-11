@@ -17,6 +17,7 @@ import {
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
+  k_path_segments,
   k_space_size,
   polyhedron_centroid,
   polyhedron_geometry,
@@ -874,6 +875,35 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
     expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
+  })
+
+  test.each([
+    // dense path with a jump at a discontinuity (U|K): the bridging segment is skipped
+    [
+      [
+        [0, 0, 0],
+        [0.1, 0, 0],
+        [0.2, 0, 0],
+        [5, 0, 0],
+        [5.1, 0, 0],
+      ],
+      [0, 1, 3],
+    ],
+    // two points: no median to judge against, so the one segment always draws
+    [
+      [
+        [0, 0, 0],
+        [9, 0, 0],
+      ],
+      [0],
+    ],
+    [[[0, 0, 0]], []],
+    [[], []],
+  ] as [Vec3[], number[]][])(`k_path_segments keeps %j`, (points, kept) => {
+    const segments = k_path_segments(points)
+    expect(segments.map((segment) => segment.idx)).toEqual(kept)
+    for (const { idx, from, to } of segments)
+      expect([from, to]).toEqual([points[idx], points[idx + 1]])
   })
 
   test(`bz_mark_sizes scale with the zone`, () => {

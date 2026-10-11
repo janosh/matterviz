@@ -12,20 +12,23 @@
   import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
-  import Cylinder from '#lib/structure/Cylinder.svelte'
-  import { T } from '@threlte/core'
+  import { write_bond_transform } from '#lib/structure/bond-rendering.js'
+  import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
     default_camera_position,
     k_lattice_inverse,
+    k_path_segments,
     bz_mark_sizes,
     k_space_size,
     polyhedron_centroid,
   } from './geometry'
   import PolyhedronMesh from './PolyhedronMesh.svelte'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
+  import { untrack } from 'svelte'
+  import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
@@ -124,18 +127,6 @@
     },
   })
 
-  // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).
-  // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
-  // a fraction of the zone. Skip segments far longer than the median sampling step.
-  const k_path_seg_cutoff = $derived.by(() => {
-    if (k_path_points.length < 3) return Infinity
-    const lens = k_path_points
-      .slice(1)
-      .map((point, idx) => Math.hypot(...math.subtract(point, k_path_points[idx])))
-      .toSorted((len_a, len_b) => len_a - len_b)
-    return lens[Math.floor(lens.length / 2)] * 10
-  })
-
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
@@ -199,6 +190,61 @@
   }
 
   // K-path hover: report the nearer endpoint's q-point index of the hovered segment
+  // === K-path ===
+  // One instanced mesh for all segments plus a wider invisible one for hover, instead of two meshes (each with its
+  // own geometry and material) per segment: band paths run to hundreds of segments.
+  const { invalidate } = useThrelte()
+  const k_path_segs = $derived(k_path_segments(k_path_points))
+  const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
+  const kpath_material = new MeshStandardMaterial() // white, tinted per instance
+  // invisible but raycast: lets the cursor snap to the path within ~2× its radius
+  const kpath_proxy_material = new MeshStandardMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  })
+  const KPATH_COLOR = new Color(`#ffcc00`)
+  const KPATH_HOVER_COLOR = new Color(`#ff6b35`)
+  $effect(() => () => {
+    kpath_geometry.dispose()
+    kpath_material.dispose()
+    kpath_proxy_material.dispose()
+  })
+  let kpath_meshes = $state<{ line: InstancedMesh; proxy: InstancedMesh } | null>(null)
+  $effect(() => {
+    const [segments, radius] = [k_path_segs, mark_sizes.kpath]
+    if (segments.length === 0) {
+      kpath_meshes = null
+      return
+    }
+    const line = new InstancedMesh(kpath_geometry, kpath_material, segments.length)
+    const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, segments.length)
+    line.raycast = () => undefined
+    for (const mesh of [line, proxy]) mesh.frustumCulled = false
+    for (const [instance_idx, { from, to }] of segments.entries()) {
+      write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
+      write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, radius * 2)
+      line.setColorAt(instance_idx, KPATH_COLOR)
+    }
+    kpath_meshes = { line, proxy }
+    return () => {
+      line.dispose()
+      proxy.dispose()
+    }
+  })
+  // the (up to two) segments touching the hovered q-point
+  $effect(() => {
+    const [meshes, hovered] = [kpath_meshes, hovered_qpoint_index]
+    if (!meshes?.line.instanceColor) return
+    const segments = untrack(() => k_path_segs)
+    for (const [instance_idx, { idx }] of segments.entries()) {
+      const is_hovered = hovered !== null && (idx === hovered || idx === hovered - 1)
+      meshes.line.setColorAt(instance_idx, is_hovered ? KPATH_HOVER_COLOR : KPATH_COLOR)
+    }
+    meshes.line.instanceColor.needsUpdate = true
+    invalidate()
+  })
+
   function handle_kpath_hover(event: ThreltePointerEvent, seg_idx: number): void {
     const { point } = event
     const [from, target] = [k_path_points[seg_idx], k_path_points[seg_idx + 1]]
@@ -250,31 +296,17 @@
     {/if}
 
     <!-- K-path visualization -->
-    {#if k_path_points.length > 1}
-      {#each k_path_points.slice(0, -1) as from_point, idx (`${from_point}-${k_path_points[idx + 1]}#${idx}`)}
-        {@const to_point = k_path_points[idx + 1]}
-        {@const seg_len = Math.hypot(...math.subtract(to_point, from_point))}
-        {@const is_hovered =
-          hovered_qpoint_index !== null &&
-          (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
-        {#if seg_len <= k_path_seg_cutoff}
-          <Cylinder
-            from={from_point}
-            to={to_point}
-            thickness={mark_sizes.kpath}
-            color={is_hovered ? `#ff6b35` : `#ffcc00`}
-          />
-          <!-- Invisible wider proxy: lets the cursor snap to the path within ~2× its radius -->
-          <Cylinder
-            from={from_point}
-            to={to_point}
-            thickness={mark_sizes.kpath * 2}
-            opacity={0}
-            onpointermove={(event: ThreltePointerEvent) => handle_kpath_hover(event, idx)}
-            onpointerleave={() => on_kpath_hover?.(null)}
-          />
-        {/if}
-      {/each}
+    {#if kpath_meshes}
+      <T is={kpath_meshes.line} dispose={false} />
+      <T
+        is={kpath_meshes.proxy}
+        dispose={false}
+        onpointermove={(event: ThreltePointerEvent) => {
+          const segment = k_path_segs[event.instanceId ?? -1]
+          if (segment) handle_kpath_hover(event, segment.idx)
+        }}
+        onpointerleave={() => on_kpath_hover?.(null)}
+      />
     {/if}
 
     <!-- Symmetry point spheres + labels at labeled k-path points -->

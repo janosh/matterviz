@@ -70,6 +70,22 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
+// K-path segments to draw, as consecutive point pairs with the index of their first point. Band paths are densely
+// sampled, so real segments are tiny; a segment far longer than the median sampling step bridges a path
+// discontinuity (e.g. `U|K`) and is skipped.
+export function k_path_segments(
+  points: readonly Vec3[],
+): { idx: number; from: Vec3; to: Vec3 }[] {
+  const lengths = points
+    .slice(1)
+    .map((point, idx) => Math.hypot(...math.subtract(point, points[idx])))
+  const sorted = lengths.toSorted((len_a, len_b) => len_a - len_b)
+  const cutoff = points.length < 3 ? Infinity : sorted[Math.floor(sorted.length / 2)] * 10
+  return lengths.flatMap((length, idx) =>
+    length <= cutoff ? [{ idx, from: points[idx], to: points[idx + 1] }] : [],
+  )
+}
+
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
