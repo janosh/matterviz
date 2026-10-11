@@ -247,6 +247,21 @@ const tick_resolution_digits = (
   }
 }
 
+// Log-axis ticks: positive, spanning at least two decades and not evenly spaced. The linear
+// step-resolution logic below would give them a dozen digits (0.000001 next to 10).
+const is_log_spaced = (values: readonly number[]): boolean => {
+  if (!values.every((value) => Number.isFinite(value) && value > 0)) return false
+  const [min, max] = [Math.min(...values), Math.max(...values)]
+  if (max / min < 100) return false
+  const steps = values.slice(1).map((value, idx) => Math.abs(value - values[idx]))
+  return Math.max(...steps) > 1.5 * Math.min(...steps)
+}
+
+// below 0.01 a log tick reads as compact scientific (1e-6, 2.5e-5); otherwise the default
+// adaptive format (0.01, 0.5, 1, 100, 10k)
+const format_log_tick = (value: number): string =>
+  value < 1e-2 ? format_num(value, `.3~e`) : format_num(value)
+
 // Retain compact adaptive labels while adjacent distinct tick values render distinctly and
 // every label resolves the tick step, else add just enough precision for both. Explicit
 // formats remain authoritative: callers may intentionally request rounded or
@@ -257,6 +272,7 @@ export const format_tick_values = (
 ): string[] => {
   if (formatter || values.length < 2)
     return values.map((value) => format_value_or_num(value, formatter))
+  if (is_log_spaced(values)) return values.map(format_log_tick)
 
   let labels = values.map(format_num)
   const resolution = tick_resolution_digits(values)
