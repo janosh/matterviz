@@ -1,6 +1,10 @@
-import { resolve_backdrop, resolve_css_color } from '#lib/colors/backdrop.svelte.js'
+import {
+  resolve_backdrop,
+  resolve_color_token,
+  resolve_css_color,
+} from '#lib/colors/backdrop.svelte.js'
 import { flushSync } from 'svelte'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 let roots: (() => void)[] = []
 
@@ -74,6 +78,27 @@ test.each([
   const node = make_node(`--page-bg`, value)
   const backdrop = observe(() => resolve_backdrop(() => node))
   expect(backdrop.current).toBe(expected)
+})
+
+// A color-function token (matterviz's own --page-bg is light-dark(...)) computes to that literal string, which
+// only the browser turns into a color. happy-dom parses var() in style.color but not light-dark(), so a var()
+// value and a stubbed computed style stand in for the browser's resolution here.
+test(`resolve_color_token resolves color functions on a probe and passes colors through`, () => {
+  const node = make_node()
+  const real = globalThis.getComputedStyle
+  const spy = vi
+    .spyOn(globalThis, `getComputedStyle`)
+    .mockImplementation((element) =>
+      element.tagName === `SPAN`
+        ? ({ color: `rgb(24, 23, 28)` } as CSSStyleDeclaration)
+        : real(element),
+    )
+  expect(resolve_color_token(node, `var(--surface)`)).toBe(`rgb(24, 23, 28)`)
+  expect(node.querySelector(`span`)).toBeNull() // the probe is removed again
+  expect(resolve_color_token(node, `#123456`)).toBe(`#123456`)
+  // a value the browser rejects (happy-dom rejects light-dark()) stays as it was
+  expect(resolve_color_token(node, `light-dark(#fff, #000)`)).toBe(`light-dark(#fff, #000)`)
+  spy.mockRestore()
 })
 
 test.each([
