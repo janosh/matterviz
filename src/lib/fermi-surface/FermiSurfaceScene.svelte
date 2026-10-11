@@ -366,10 +366,12 @@
   // Fan-triangulated fill (convex polygon) and closed outline of the slice plane
   const slice_geometries = $derived.by(() => {
     if (slice_polygon.length < 3) return null
-    const position = new BufferAttribute(new Float32Array(slice_polygon.flat()), 3)
+    // corners plus the first again: the outline is a Line closed by hand, as WebGPURenderer
+    // does not support LineLoop; the fill's fan index never reaches the repeated corner
+    const closed = [...slice_polygon, slice_polygon[0]]
+    const position = new BufferAttribute(new Float32Array(closed.flat()), 3)
     const fill = new BufferGeometry().setAttribute(`position`, position)
     fill.setIndex(slice_polygon.slice(2).flatMap((_, idx) => [0, idx + 1, idx + 2]))
-    // the outline walks the corners in order, so it needs its own index-free geometry
     const outline = new BufferGeometry().setAttribute(`position`, position)
     return { fill, outline }
   })
@@ -492,9 +494,9 @@
         depthWrite={false}
       />
     </T.Mesh>
-    <T.LineLoop geometry={slice_geometries.outline}>
+    <T.Line geometry={slice_geometries.outline}>
       <T.LineBasicMaterial color={SLICE_PLANE_COLOR} />
-    </T.LineLoop>
+    </T.Line>
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

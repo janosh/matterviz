@@ -263,7 +263,7 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
   mount_scene(props)
   // outline corners as [x, y, z] rows
   const outline = (): Vec3[] => {
-    const node = threlte_stub.nodes.findLast(({ tag }) => tag === `LineLoop`)
+    const node = threlte_stub.nodes.findLast(({ tag }) => tag === `Line`)
     const positions = (node?.props.geometry as BufferGeometry | undefined)?.getAttribute(
       `position`,
     ).array
@@ -276,7 +276,9 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
       : []
   }
   const max_abs = (axis: number) => Math.max(...outline().map((row) => Math.abs(row[axis])))
-  expect(outline().map((row) => row[2])).toEqual([0.25, 0.25, 0.25, 0.25]) // z = 0.25
+  // a closed Line (WebGPU has no LineLoop): the square z = 0.25 with its first corner repeated
+  expect(outline().map((row) => row[2])).toEqual([0.25, 0.25, 0.25, 0.25, 0.25])
+  expect(outline().at(-1)).toEqual(outline()[0])
   expect(max_abs(0)).toBeCloseTo(0.3, 6) // the zone's half-width, not the unit cell's
   props.fermi_data = { ...fermi_data, reciprocal_cell: `parallelepiped` }
   flushSync()
@@ -291,6 +293,6 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
     // (0 0 0) defines no plane; (0 0 1) at 0.8 lies outside the cell
     props.slice_plane = { miller_indices, distance: 0.8 }
     flushSync()
-    expect(threlte_stub.nodes.some(({ tag }) => tag === `LineLoop`)).toBe(false)
+    expect(threlte_stub.nodes.some(({ tag }) => tag === `Line`)).toBe(false)
   }
 })
