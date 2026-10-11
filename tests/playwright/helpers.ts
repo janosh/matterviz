@@ -279,12 +279,15 @@ export async function wait_for_3d_canvas(
   timeout?: number,
 ): Promise<Locator> {
   const effective_timeout = timeout ?? get_canvas_timeout()
-  const canvas = page.locator(`${container_selector} canvas`)
+  // 2D scatter marker canvases (marker-canvas) are not the 3D scene
+  const canvas = page.locator(`${container_selector} canvas:not(.marker-canvas)`)
   await expect(canvas).toBeVisible({ timeout: effective_timeout })
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
-      const canvas_el = document.querySelector<HTMLCanvasElement>(`${selector} canvas`)
+      const canvas_el = document.querySelector<HTMLCanvasElement>(
+        `${selector} canvas:not(.marker-canvas)`,
+      )
       if (!canvas_el) return false
       const rect = canvas_el.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0

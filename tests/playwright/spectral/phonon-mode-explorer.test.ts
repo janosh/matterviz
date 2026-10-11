@@ -221,9 +221,16 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(
       explorer.getByLabel(`q-point`, { exact: true }).locator(`option:disabled`),
     ).toHaveCount(20)
-    await explorer
-      .getByRole(`button`, { name: `Select band 1, q-point 3`, exact: true })
-      .press(`Enter`)
+    // ~2100 band markers draw on canvas: walk the keyboard cursor to band 1, q-point 3
+    const band_plot = explorer.locator(`svg[role="application"]`).first()
+    const announced = band_plot.locator(`..`).locator(`[aria-live="polite"]`)
+    await band_plot.press(`Home`)
+    for (let step = 0; step < 5; step++) {
+      if ((await announced.textContent())?.includes(`Select band 1, q-point 3`)) break
+      await band_plot.press(`ArrowRight`)
+    }
+    await expect(announced).toContainText(`Select band 1, q-point 3`)
+    await band_plot.press(`Enter`)
     await expect(summary).toContainText(`Mode 1`)
     await expect(summary).toContainText(`q = [0.25, 0, 0]`)
     await expect.poll(() => url_params(page)).toMatchObject({ qpoint: `4`, mode: `1` })
