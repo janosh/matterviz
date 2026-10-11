@@ -120,9 +120,16 @@ function parse_bxsf(content: string): BandGridData {
     n_bands,
   )
 
+  const band_numbers: number[] = []
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     let band_line = reader.next()
     while (!band_line.startsWith(`BAND:`)) band_line = reader.next()
+    // `BAND: n` keeps the band's 1-based number in the full calculation
+    const band_number = Number(band_line.slice(`BAND:`.length))
+    if (!Number.isInteger(band_number) || band_number < 1) {
+      throw new Error(`BXSF band ${band_idx}: invalid band number in '${band_line}'`)
+    }
+    band_numbers.push(band_number)
 
     const energy_values = new Float64Array(total_points)
     const { count, end_pos } = parse_float_block(
@@ -145,6 +152,11 @@ function parse_bxsf(content: string): BandGridData {
     fermi_energy,
     n_bands,
     n_spins: 1,
+    // Files numbering each spin channel from 1 in one block repeat numbers, which then cannot
+    // identify bands: those keep positional indices
+    ...(new Set(band_numbers).size === n_bands && {
+      band_indices: band_numbers.map((band_number) => band_number - 1),
+    }),
   }
 }
 
@@ -494,6 +506,22 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
         return [name, bands]
       }),
     )
+  const { band_indices } = json
+  if (band_indices && energies.some((bands) => bands.length !== band_indices.length)) {
+    throw new Error(
+      `BandGridData JSON: band_indices lists ${band_indices.length} bands but energies hold ${energies.map((bands) => bands.length).join(`/`)}`,
+    )
+  }
+  const valid_index = (band_index: unknown) =>
+    Number.isInteger(band_index) && Number(band_index) >= 0
+  if (
+    band_indices &&
+    (!band_indices.every(valid_index) || new Set(band_indices).size !== band_indices.length)
+  ) {
+    throw new Error(
+      `BandGridData JSON: band_indices must be distinct non-negative integers, got [${band_indices.join(`, `)}]`,
+    )
+  }
   return { ...json, energies, properties }
 }
 
@@ -592,6 +620,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
     return band_grid_from_json(
       {
         energies: band_structure.energies,
+        band_indices: band_structure.band_indices,
         k_grid: band_structure.k_grid ?? band_structure.kgrid,
         k_lattice: band_structure.k_lattice ?? band_structure.reciprocal_lattice,
         fermi_energy: band_structure.fermi_energy ?? band_structure.efermi ?? 0,

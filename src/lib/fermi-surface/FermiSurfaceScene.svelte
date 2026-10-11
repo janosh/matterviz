@@ -49,6 +49,8 @@
   import { centered_cell_edges, slice_plane_normal } from './compute'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import { plane_polyhedron_section } from '#lib/math.js'
+  import KPath from '#lib/brillouin/KPath.svelte'
+  import type { ComponentProps } from 'svelte'
   import type {
     FermiHoverData,
     FermiIsosurface,
@@ -86,6 +88,7 @@
     slice_plane,
     // k-point (Cartesian Å⁻¹) to mark with a dot, e.g. the cursor on a FermiSlice
     k_marker = null,
+    k_path,
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
@@ -104,6 +107,9 @@
       property_label?: string
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
+      // a band structure's k-path to draw, e.g. from a band plot beside the viewer (KPath props;
+      // its hovered point is the k_marker dot, drawn over the sheets)
+      k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
     } = $props()
@@ -149,9 +155,13 @@
     threlte.invalidate()
   })
 
-  // Only the front-most visible sheet gets the pointer event (see front_hit)
+  // Only the front-most visible sheet gets the pointer event (see front_hit); a k-path drawn
+  // through the zone wins over sheets in front of it, or most of it could not be hovered
   const { enabled: hover_enabled } = extras.interactivity({
-    filter: (hits) => front_hit(hits, clip_plane),
+    filter: (hits) => {
+      const path_hit = hits.find((hit) => hit.object.userData.kpath_proxy)
+      return front_hit(path_hit ? [path_hit] : hits, clip_plane)
+    },
   })
 
   let visible_surfaces = $derived(
@@ -467,6 +477,9 @@
 
   <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
 
+  {#if k_path}
+    <KPath {...k_path} size={scene_size} edge_width={DEFAULTS.brillouin.edge_width} />
+  {/if}
   {#if k_marker}
     <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->
     <T.Mesh position={k_marker} renderOrder={1001}>

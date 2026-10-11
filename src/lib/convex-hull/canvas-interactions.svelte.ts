@@ -59,7 +59,9 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   const copy_feedback = create_flash({ visible: false, position: { x: 0, y: 0 } }, 1500)
   let dragover = $state(false)
   let modal_open = $state(false)
-  let selected_structure = $state<AnyStructure | null>(null)
+  // Raw: a deep proxy would hand Structure a different identity than the raw entry structure
+  // (and a fresh proxy per re-assignment), tripping its identity checks
+  let selected_structure = $state.raw<AnyStructure | null>(null)
   let modal_place_right = $state(true)
   let selection_version = 0
   // Hover preview: shown after HOVER_PREVIEW_DELAY_MS on one entry, then follows the pointer

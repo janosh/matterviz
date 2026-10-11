@@ -178,6 +178,16 @@ export function compute_saed_pattern(
   return { spots, zone_axis, wavelength, max_g, in_plane_basis }
 }
 
+// Camera pose for a 3D view whose screen axes match the drawn pattern. SaedPattern draws the
+// in-plane basis u right and v up, with u × v = +zone toward the viewer, so the camera sits on
+// +zone looking back at the cell with v as its up vector, which puts u on screen right.
+export const saed_camera_pose = (
+  pattern: Pick<SaedPatternData, `in_plane_basis`>,
+): { direction: Vec3; up: Vec3 } => {
+  const [basis_u, basis_v] = pattern.in_plane_basis
+  return { direction: math.cross_3d(basis_u, basis_v), up: basis_v }
+}
+
 // Convenience for renderers: the largest |position_2d| in the pattern, i.e. the radius the
 // view has to cover. Returns 0 for an empty pattern.
 export const saed_pattern_radius = (pattern: SaedPatternData): number =>

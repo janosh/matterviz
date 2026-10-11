@@ -2657,10 +2657,12 @@ describe(`Structure empty states`, () => {
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   mock_gpu()
   const camera_direction: Vec3 = [1, 2, 3]
+  const camera_up: Vec3 = [0, 3, -2]
   const scene_props = {
     camera_projection: `perspective` as const,
     auto_rotate: 0.5,
     camera_direction,
+    camera_up,
   }
   mount_structure({
     structure,
@@ -2691,6 +2693,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
   expect(scene_stub.props?.auto_rotate).toBe(0.5)
   // the single-pane view has no view direction of its own, so the caller's one applies
   expect(scene_stub.props?.camera_direction).toEqual(camera_direction)
+  expect(scene_stub.props?.camera_up).toEqual(camera_up) // and the roll paired with it
   if (!auto_rotate_input) throw new Error(`Missing auto-rotate input`)
   set_input(auto_rotate_input, `1.5`)
   await tick()

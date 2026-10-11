@@ -2152,6 +2152,32 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // y mode is the transposed rule: the point nearest in y wins however far away it lies in x
+  // (a spectrum drawn with its frequency axis vertical); every series is scanned, unordered too
+  test.each([
+    { label: `ascending`, y_values: [0, 0.5, 1], target_idx: 1 },
+    { label: `unordered`, y_values: [0, 1, 0.5], target_idx: 2 },
+  ])(`y hover finds the nearest $label point`, async ({ y_values, target_idx }) => {
+    const on_point_hover = vi.fn()
+    const x_values = [0, 1, 0] // a peak in x: the target sits far right of the pointer
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: x_values, y: y_values, markers: `points` }],
+      x_axis: { range: [0, 2] },
+      y_axis: { range: [0, 1] },
+      hover_config: { mode: `y`, threshold_px: 5, show_tooltip: false },
+      point_tween: { duration: 0 },
+      on_point_hover,
+      legend: null,
+    })
+    const { x: coord_x } = marker_position(plot, target_idx)
+    await move_to_marker(plot, target_idx, { dx: (coord_x < 200 ? 390 : 10) - coord_x })
+    expect(on_point_hover).toHaveBeenCalledOnce()
+    expect(on_point_hover.mock.calls[0][0]).toMatchObject({
+      x: x_values[target_idx],
+      y: y_values[target_idx],
+    })
+  })
+
   test(`cancels queued pointer hover when destroyed`, async () => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(400)
     vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(300)

@@ -1394,6 +1394,7 @@
           {on_camera_reset}
           {...shared_viewport_props}
           camera_direction={view.direction ?? scene_props.camera_direction}
+          camera_up={view.direction ? undefined : scene_props.camera_up}
           camera_projection={view.projection ?? scene_props.camera_projection}
           bind:camera_position
           bind:camera_target

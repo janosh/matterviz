@@ -177,11 +177,17 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
 test(`hover picks the front-most sheet that survives the clip plane`, () => {
   const props = $state({ clip_enabled: false, clip_axis: `z` as const, clip_position: 0 })
   mount_scene(props)
-  const { filter } = interactivity.mock.calls[0][0] as {
-    filter: (hits: { point: Vector3 }[]) => unknown[]
-  }
-  const [inner, outer] = [-1, 1].map((z_coord) => ({ point: new Vector3(0, 0, z_coord) }))
+  type Hit = { point: Vector3; object: { userData: Record<string, unknown> } }
+  const { filter } = interactivity.mock.calls[0][0] as { filter: (hits: Hit[]) => unknown[] }
+  const hit = (z_coord: number, userData = {}) => ({
+    point: new Vector3(0, 0, z_coord),
+    object: { userData },
+  })
+  const [inner, outer] = [hit(-1), hit(1)]
   expect(filter([inner, outer])).toStrictEqual([inner])
+  // a k-path drawn through the zone wins over a sheet in front of it
+  const path = hit(0.5, { kpath_proxy: true })
+  expect(filter([inner, path, outer])).toStrictEqual([path])
   props.clip_enabled = true // keeps z >= 0
   flushSync()
   expect(filter([inner, outer])).toStrictEqual([outer])
@@ -309,4 +315,26 @@ test(`k_marker draws a dot at the k-point and clears with null`, () => {
   props.k_marker = null
   flushSync()
   expect(dot()).toBeUndefined()
+})
+
+// A band structure's k-path drawn in 3D (shared KPath): hovering it reports the nearer q-point,
+// and the k_marker stays the on-top dot (KPath draws no sphere of its own here)
+test(`k_path draws the band path, reports path hovers and keeps the on-top marker`, () => {
+  const on_kpath_hover = vi.fn()
+  const k_path_points: Vec3[] = [
+    [0, 0, 0],
+    [0.5, 0, 0],
+    [0.5, 0.5, 0],
+  ]
+  mount_scene({ k_path: { k_path_points, on_kpath_hover }, k_marker: k_path_points[1] })
+  const proxy = threlte_stub.nodes.find(
+    ({ tag, props }) => tag === `T` && typeof props.onpointermove === `function`,
+  )
+  const on_move = proxy?.props.onpointermove as (event: unknown) => void
+  on_move({ instanceId: 0, point: new Vector3(0.4, 0, 0) }) // segment 0, nearer its end
+  expect(on_kpath_hover).toHaveBeenLastCalledWith(1)
+  const markers = threlte_stub.nodes.filter(
+    ({ tag, props }) => tag === `Mesh` && props.position === k_path_points[1],
+  )
+  expect(markers.map(({ props }) => props.renderOrder)).toEqual([1001])
 })

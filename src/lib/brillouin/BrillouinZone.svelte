@@ -41,6 +41,7 @@
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
+    KPathLabel,
   } from './types'
 
   type BrillouinControlName =
@@ -135,7 +136,7 @@
     k_path_points?: Vec3[]
     // K-path labels with positions in Cartesian reciprocal space coordinates
     // Each position should match a corresponding point in k_path_points
-    k_path_labels?: { position: Vec3; label: string | null }[]
+    k_path_labels?: KPathLabel[]
     // Currently hovered k-point in Cartesian reciprocal space coordinates
     hovered_k_point?: Vec3 | null
     // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the

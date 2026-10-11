@@ -37,6 +37,9 @@ test(`condition selection preserves the sweep and experiment edits without mobil
   expect(await popup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   await page.keyboard.press(`Escape`)
   await expect(popup).toBeHidden()
+  // The dismissed popup covered the next row's clipped cell; park the pointer off the table
+  // so that hover trigger doesn't open its own popover and light-dismiss this one.
+  await page.mouse.move(0, 0)
   await preview.focus()
   await expect(popup).toBeVisible()
   await page.keyboard.press(`Escape`)

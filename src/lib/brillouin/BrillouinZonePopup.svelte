@@ -11,7 +11,7 @@
   import BrillouinZone from './BrillouinZone.svelte'
   import { compute_brillouin_zone } from './compute'
   import { BZ_POPUP_DEFAULT_WIDTH } from './types'
-  import type { BZPopupPoint } from './types'
+  import type { BZPopupPoint, KPathLabel } from './types'
 
   let {
     k_lattice,
@@ -30,7 +30,7 @@
     points: BZPopupPoint[]
     // Full k-path (Cartesian) so the marked point is seen in context; see BrillouinZone
     k_path_points?: Vec3[]
-    k_path_labels?: { position: Vec3; label: string | null }[]
+    k_path_labels?: KPathLabel[]
     width?: number
     height?: number
     bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>

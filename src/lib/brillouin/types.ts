@@ -13,6 +13,10 @@ export type BZPopupPoint = { label: string; frac_coords: Vec3; position: Vec3 }
 // popup inside the plot before it has measured anything
 export const BZ_POPUP_DEFAULT_WIDTH = 320
 
+// Labelled point of a band-structure k-path drawn in a reciprocal-space scene (Cartesian Å⁻¹;
+// null label for unlabelled path points)
+export type KPathLabel = { position: Vec3; label: string | null }
+
 // Hover data for BZ tooltip
 export type BZHoverData = {
   position_cartesian: Vec3 // k-point in Cartesian coords (Å⁻¹)

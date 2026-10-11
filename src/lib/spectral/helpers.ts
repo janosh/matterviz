@@ -15,6 +15,7 @@ import {
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
+import type { KPathLabel } from '#lib/brillouin/types.js'
 import type * as types from './types'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
@@ -26,15 +27,6 @@ export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e
     const delta = coordinate - second[axis]
     return Math.abs(delta - Math.round(delta)) < tolerance
   })
-
-export const phonon_explorer_views = (
-  data: types.PhononModeData,
-  spectrum?: types.VibrationalSpectrum,
-): types.PhononExplorerView[] => [
-  ...(data.path_segments.length ? ([`bands`] as const) : []),
-  ...(spectrum ? ([`ir`] as const) : []),
-  ...(spectrum?.has_raman ? ([`raman`] as const) : []),
-]
 
 // Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
@@ -588,7 +580,7 @@ export function extract_k_path_points(
 export const k_path_labels = (
   band_struct: types.BaseBandStructure,
   k_path_points: Vec3[],
-): { position: Vec3; label: string | null }[] =>
+): KPathLabel[] =>
   k_path_points.map((position, idx) => {
     const label = band_struct.qpoints[idx]?.label
     return { position, label: label ? pretty_sym_point(label) : null }

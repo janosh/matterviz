@@ -86,9 +86,11 @@
   )
   const available_bands_changed = make_change_detector()
 
-  // Bands switched off stay off when a mu change alters which bands cross E_F; newly
-  // crossing bands start visible
+  // Bands switched off stay off when a mu change alters which bands cross E_F, also after one
+  // stops crossing and crosses again; newly crossing bands start visible. Plain Set: the
+  // memory only feeds the sync below, nothing renders it.
   let previous_bands: number[] = []
+  const hidden_bands = new Set<number>()
   const sync_bindable_defaults = (bands_changed = false): void => {
     if (color_property === `property` && !has_property)
       color_property = defaults.color_property
@@ -99,8 +101,11 @@
     }
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       const selected = selected_bands
-      const hidden = selected ? previous_bands.filter((band) => !selected.includes(band)) : []
-      selected_bands = available_bands.filter((band) => !hidden.includes(band))
+      for (const band of selected ? previous_bands : []) {
+        if (selected?.includes(band)) hidden_bands.delete(band)
+        else hidden_bands.add(band)
+      }
+      selected_bands = available_bands.filter((band) => !hidden_bands.has(band))
     }
     previous_bands = available_bands
   }
@@ -125,6 +130,12 @@
     }
     range[bound_idx] = parsed
     color_range = range
+  }
+
+  // also forgets bands hidden while they did not cross
+  function show_all_bands(): void {
+    hidden_bands.clear()
+    selected_bands = [...available_bands]
   }
 
   function toggle_band(band_idx: number): void {
@@ -208,7 +219,7 @@
       <SettingsSection
         title="Bands"
         changed_keys={bands_settings.changed_keys}
-        on_reset={() => (selected_bands = [...available_bands])}
+        on_reset={show_all_bands}
         layout="grid"
       >
         <div class="band-checkboxes">
@@ -219,14 +230,12 @@
                 checked={selected_bands?.includes(band_idx)}
                 onchange={() => toggle_band(band_idx)}
               />
-              <span>Band {band_idx}</span>
+              <span>Band {band_idx + 1}</span>
             </label>
           {/each}
         </div>
         <div class="band-actions">
-          <button type="button" onclick={() => (selected_bands = [...available_bands])}>
-            All
-          </button>
+          <button type="button" onclick={show_all_bands}> All </button>
           <button type="button" onclick={() => (selected_bands = [])}>None</button>
         </div>
       </SettingsSection>

@@ -416,8 +416,9 @@ export type HoverConfig = {
   click_threshold_px?: number
   // `x` ignores vertical distance and binary-searches monotonic series. This is useful for
   // time-series scrubbers where the horizontal coordinate selects a frame and avoids building
-  // a full 2D spatial index for tens of thousands of samples.
-  mode?: `nearest` | `x`
+  // a full 2D spatial index for tens of thousands of samples. `y` ignores horizontal distance,
+  // e.g. for a spectrum plotted with its frequency axis vertical beside a band structure.
+  mode?: `nearest` | `x` | `y`
   // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
   // this to keep pointer frames free of tooltip DOM work while another pane updates live.
   show_tooltip?: boolean

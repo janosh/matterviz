@@ -137,6 +137,9 @@ describe(`create_hull_selection hover preview`, () => {
     expect(preview_id(selection)).toBe(`a`)
     selection.select_entry(entry_a) // the pinned popup takes over
     expect([preview_id(selection), selection.modal_open]).toEqual([null, true])
+    flushSync() // re-run the selection effect, which re-assigns the pinned structure
+    // The raw entry structure, not a $state proxy of it: Structure compares identities
+    expect(selection.selected_structure).toBe(entries[0].structure)
     selection.set_hover(hover(entry_b))
     vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS)
     expect(preview_id(selection)).toBeNull() // no previews while a popup is pinned

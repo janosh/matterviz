@@ -56,6 +56,7 @@
     selected_phase = $bindable(null),
     hovered_phase = $bindable(null),
     pinned_composition = $bindable(null),
+    pin_color = TERNARY_COLORS.pin,
     text_color = `#ddd`,
     on_hover,
     on_section_hover,
@@ -67,6 +68,7 @@
     selected_phase?: number | null
     hovered_phase?: number | null
     pinned_composition?: Vec2 | null // composition probe shared with the 2D section
+    pin_color?: string // concrete colour (three.js can't parse var()/light-dark())
     text_color?: string
     on_hover?: (hover: PhaseTemperatureHover | null) => void
     on_section_hover?: (hover: SectionHover | null) => void // compositions on the plane
@@ -247,10 +249,10 @@
   const hover_probe = $derived(probe_of(hover_xy))
   dispose_on_change(() => [pinned_probe?.spokes])
   dispose_on_change(() => [hover_probe?.spokes])
-  // The pinned probe in the selection colour, the pointer's thinner in the text colour
+  // The pinned probe in the pin colour, the pointer's thinner in the text colour
   const probe_marks = $derived(
     [
-      { kind: `pinned`, probe: pinned_probe, color: TERNARY_COLORS.selected, radius: 0.005 },
+      { kind: `pinned`, probe: pinned_probe, color: pin_color, radius: 0.005 },
       { kind: `hover`, probe: hover_probe, color: text_color, radius: 0.0025 },
     ].flatMap(({ probe, ...mark }) => (probe ? [{ ...probe, ...mark }] : [])),
   )

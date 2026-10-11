@@ -33,18 +33,18 @@ export function shared_resolved_padding_floor() {
 
 interface BandsDosSyncInputs {
   band_structs: () => Record<string, BaseBandStructure>
-  doses: () => Record<string, DosData>
+  doses?: () => Record<string, DosData> // none: the panel beside the bands is not a DOS
   units: () => FrequencyUnit
   fermi_level?: () => number | undefined
   // the panels' caller props whose axes and padding the sync extends
-  bands_props: () => { y_axis?: AxisConfig; padding?: Sides }
-  dos_props: () => { x_axis?: AxisConfig; y_axis?: AxisConfig; padding?: Sides }
+  bands_props?: () => { y_axis?: AxisConfig; padding?: Sides }
+  dos_props?: () => { x_axis?: AxisConfig; y_axis?: AxisConfig; padding?: Sides }
   // DOS horizontal beside the bands (frequency on both y axes); false stacks it below with
   // density on y, where only the bands axis takes part in the link
   side_by_side: () => boolean
   // false keeps the two frequency axes independent (no shared range, no zoom link)
   shared_axis?: () => boolean
-  sync_zoom: () => boolean
+  sync_zoom?: () => boolean // default true
   // Top/bottom padding both side-by-side panels start from
   base_padding: Sides
 }
@@ -55,33 +55,34 @@ interface BandsDosSyncInputs {
 // BrillouinBandsDos).
 export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared = () => inputs.shared_axis?.() ?? true
+  const doses = () => inputs.doses?.() ?? {}
+  const bands_props = () => inputs.bands_props?.() ?? {}
+  const dos_props = () => inputs.dos_props?.() ?? {}
   const unit_factor = $derived.by(() => {
-    if (spectral_type(inputs.band_structs(), inputs.doses()) !== `phonon`) return 1
+    if (spectral_type(inputs.band_structs(), doses()) !== `phonon`) return 1
     const unit = inputs.units()
     return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
   })
   const shared_range = $derived.by(() => {
     if (!shared()) return undefined
-    const range = compute_frequency_range(inputs.band_structs(), inputs.doses())
+    const range = compute_frequency_range(inputs.band_structs(), doses())
     return range ? ([range[0] * unit_factor, range[1] * unit_factor] as Vec2) : undefined
   })
   const fermi_level = $derived(
-    inputs.fermi_level?.() ??
-      extract_efermi(inputs.band_structs()) ??
-      extract_efermi(inputs.doses()),
+    inputs.fermi_level?.() ?? extract_efermi(inputs.band_structs()) ?? extract_efermi(doses()),
   )
   // Side by side, the DOS axis label defaults to empty since the bands axis already names
   // the quantity; a caller's label still wins
   const y_axes = $derived<AxisConfig[]>([
-    axis_with_range(inputs.bands_props().y_axis, shared_range),
+    axis_with_range(bands_props().y_axis, shared_range),
     inputs.side_by_side()
-      ? axis_with_range({ label: ``, ...inputs.dos_props().y_axis }, shared_range)
-      : { ...inputs.dos_props().y_axis },
+      ? axis_with_range({ label: ``, ...dos_props().y_axis }, shared_range)
+      : { ...dos_props().y_axis },
   ])
   // Stacked, a vertical DOS plots frequency along x, so the shared range moves to its x axis
   const dos_x_axis = $derived<AxisConfig>({
     ...axis_with_range(undefined, inputs.side_by_side() ? undefined : shared_range),
-    ...inputs.dos_props().x_axis,
+    ...dos_props().x_axis,
   })
   // Each panel's `view` (bind:view). Side by side both y axes carry the frequency, so the
   // panel whose y view moved since the last agreed range leads and the other follows; a
@@ -102,7 +103,7 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
       synced_y = shared_range
     }
     previous_unit_factor = unit_factor
-    if (!inputs.sync_zoom() || !inputs.side_by_side() || !shared_range) {
+    if (!(inputs.sync_zoom?.() ?? true) || !inputs.side_by_side() || !shared_range) {
       synced_y = undefined
       return
     }
@@ -124,12 +125,7 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared_padding = $derived(
     inputs.side_by_side()
       ? max_side_padding(
-          [
-            inputs.base_padding,
-            inputs.bands_props().padding,
-            inputs.dos_props().padding,
-            floor.value,
-          ],
+          [inputs.base_padding, bands_props().padding, dos_props().padding, floor.value],
           [`t`, `b`],
         )
       : {},
@@ -151,7 +147,11 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     get shared_padding() {
       return shared_padding
     },
-    // bind:resolved_padding setter for both panels
-    raise_padding: (resolved: Required<Sides> | undefined) => floor.raise(resolved),
+    // bind:resolved_padding setter for both panels. Only side-by-side reports count: stacked
+    // panels share no padding, and their (larger) margins would otherwise stay in the floor
+    // and shrink both plots once they sit side by side again.
+    raise_padding: (resolved: Required<Sides> | undefined) => {
+      if (inputs.side_by_side()) floor.raise(resolved)
+    },
   }
 }

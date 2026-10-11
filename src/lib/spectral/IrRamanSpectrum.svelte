@@ -6,7 +6,12 @@
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
-  import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
+  import type {
+    AxisConfig,
+    DataSeries,
+    Orientation,
+    UserContentProps,
+  } from '#lib/plot/core/types.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import {
     convert_frequencies,
@@ -15,7 +20,13 @@
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import { density_divisor, NORMALIZATION_MODES } from './helpers'
-  import { broaden_spectrum, spectrum_sticks, to_transmittance } from './ir-raman'
+  import {
+    broaden_spectrum,
+    peak_mode_indices,
+    spectrum_kind_label,
+    spectrum_sticks,
+    to_transmittance,
+  } from './ir-raman'
   import type {
     FrequencyUnit,
     NormalizationMode,
@@ -33,14 +44,21 @@
     normalize = $bindable(`max`),
     presentation = $bindable(`absorbance`),
     show_sticks = $bindable(true),
+    orientation = `vertical`,
     x_axis = {},
     y_axis = {},
+    view = $bindable(),
     hovered_frequency = $bindable(null),
+    hovered_mode_indices = $bindable([]),
+    reference_frequency = null,
+    highlighted_mode_indices = [],
     selected_mode_idx = $bindable(null),
     on_mode_select,
     display = $bindable({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    // the padding the plot settled on, to align it with a band plot beside it
+    resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
     spectrum: VibrationalSpectrum
@@ -51,11 +69,18 @@
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
     show_sticks?: boolean
+    // horizontal puts frequency on the y axis, to sit beside a band structure
+    orientation?: Orientation
     hovered_frequency?: number | null // THz, like every frequency the spectral module passes
+    // Modes behind the peak under the pointer, empty between peaks (read-only output)
+    hovered_mode_indices?: number[]
+    reference_frequency?: number | null // THz, dashed line across the frequency axis
+    highlighted_mode_indices?: number[] // sticks to emphasize, e.g. a band hovered at Γ
     selected_mode_idx?: number | null
     on_mode_select?: (mode_idx: number) => void
   } = $props()
 
+  const is_horizontal = $derived(orientation === `horizontal`)
   // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
@@ -111,7 +136,7 @@
     return (is_transmittance || !(max_curve > 0) ? 1 : max_curve) / max_stick
   })
 
-  let kind_label = $derived(kind === `ir` ? `IR` : `Raman`)
+  let kind_label = $derived(spectrum_kind_label(kind))
   let intensity_label = $derived(
     kind === `ir` ? (is_transmittance ? `Transmittance` : `IR absorbance`) : `Raman activity`,
   )
@@ -120,21 +145,48 @@
   let series_data = $derived.by((): DataSeries[] => {
     if (curve_y.length === 0) return []
     const label = `${kind_label} spectrum`
-    return [{ x: broadened.x, y: curve_y, markers: `line`, label, line_style }]
+    const [x, y] = is_horizontal ? [curve_y, broadened.x] : [broadened.x, curve_y]
+    return [{ x, y, markers: `line`, label, line_style }]
   })
 
-  const internal_x_axis = $derived<AxisConfig>({
+  const frequency_axis = $derived<AxisConfig>({
     label: `Frequency (${frequency_unit_label(unit)})`,
     format: `.4~s`,
     range: plot_range,
-    ...x_axis,
   })
-  const internal_y_axis = $derived<AxisConfig>({
+  const intensity_axis = $derived<AxisConfig>({
     label: intensity_label,
     format: `.3~`,
     range: is_transmittance ? [0, 1.05] : undefined,
+  })
+  const internal_x_axis = $derived<AxisConfig>({
+    ...(is_horizontal ? intensity_axis : frequency_axis),
+    ...x_axis,
+  })
+  const internal_y_axis = $derived<AxisConfig>({
+    ...(is_horizontal ? frequency_axis : intensity_axis),
     ...y_axis,
   })
+  // Screen position of a (frequency, intensity) pair in either orientation
+  const to_px = (
+    frequency: number,
+    intensity: number,
+    { x_scale_fn, y_scale_fn }: UserContentProps,
+  ): [number, number] =>
+    is_horizontal
+      ? [x_scale_fn(intensity), y_scale_fn(frequency)]
+      : [x_scale_fn(frequency), y_scale_fn(intensity)]
+  // Line across the plot at a frequency (display unit)
+  const frequency_line = (frequency: number, ctx: UserContentProps) => {
+    const { width, height, pad } = ctx
+    const [x_px, y_px] = to_px(frequency, 0, ctx)
+    return is_horizontal
+      ? { x1: pad.l, x2: width - pad.r, y1: y_px, y2: y_px }
+      : { x1: x_px, x2: x_px, y1: pad.t, y2: height - pad.b }
+  }
+  let emphasized_modes = $derived(
+    new Set([...highlighted_mode_indices, ...hovered_mode_indices]),
+  )
 
   // Slider bounds scale with the plotted range so they stay sensible in every unit.
   let fwhm_input = $derived.by(() => {
@@ -186,12 +238,17 @@
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
     bind:display
+    bind:view
+    bind:resolved_padding
     legend={rest.legend === undefined ? null : rest.legend}
     hover_config={{ threshold_px: 30, ...rest.hover_config }}
     on_point_hover={(event) => {
-      const point_x = event?.point?.x
+      const position = is_horizontal ? event?.point?.y : event?.point?.x
       hovered_frequency =
-        point_x == null ? null : convert_frequencies([point_x], `THz`, unit)[0]
+        position == null ? null : convert_frequencies([position], `THz`, unit)[0]
+      const modes = position == null ? [] : peak_mode_indices(sticks, position, display_fwhm)
+      // a new array on every pointer move would re-run everything that reads it
+      if (modes.join() !== hovered_mode_indices.join()) hovered_mode_indices = modes
       rest.on_point_hover?.(event)
     }}
     range_padding={rest.range_padding ?? 0}
@@ -199,12 +256,15 @@
     bind:controls_open
   >
     {#snippet tooltip({ x_formatted, y_formatted })}
+      {@const [frequency_text, intensity_text] = is_horizontal
+        ? [y_formatted, x_formatted]
+        : [x_formatted, y_formatted]}
       <TooltipValue
         label="Frequency"
-        value={x_formatted}
+        value={frequency_text}
         unit={frequency_unit_label(unit)}
       /><br />
-      <TooltipValue label={intensity_label} value={y_formatted} />
+      <TooltipValue label={intensity_label} value={intensity_text} />
     {/snippet}
 
     {#snippet controls_extra()}
@@ -282,22 +342,26 @@
       </SettingsSection>
     {/snippet}
 
-    {#snippet user_content({ x_scale_fn, y_scale_fn })}
+    {#snippet user_content(ctx)}
+      {@const ref_display = convert_frequencies([reference_frequency ?? NaN], unit)[0]}
+      {#if Number.isFinite(ref_display)}
+        <line class="reference-line" {...frequency_line(ref_display, ctx)} />
+      {/if}
       {#if show_sticks && stick_scale > 0}
-        {@const baseline = y_scale_fn(is_transmittance ? 1 : 0)}
         {#each sticks.x as position, stick_idx (stick_idx)}
           {@const height = sticks.y[stick_idx] * stick_scale}
           {#if height > 0}
-            {@const x_px = x_scale_fn(position)}
-            {@const tip = y_scale_fn(is_transmittance ? 1 - height : height)}
+            {@const [x1, y1] = to_px(position, is_transmittance ? 1 : 0, ctx)}
+            {@const [x2, y2] = to_px(position, is_transmittance ? 1 - height : height, ctx)}
             {@const mode = sticks.modes[stick_idx]}
             <line
               class="mode-stick"
               class:selected={mode.mode_idx === selected_mode_idx}
-              x1={x_px}
-              x2={x_px}
-              y1={baseline}
-              y2={tip}
+              class:highlighted={emphasized_modes.has(mode.mode_idx)}
+              {x1}
+              {x2}
+              {y1}
+              {y2}
               role="button"
               tabindex="0"
               aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${frequency_unit_label(unit)}`}
@@ -327,6 +391,17 @@
   .mode-stick.selected {
     stroke: var(--ir-raman-selected-stick-color, light-dark(#e66101, #fdb863));
     stroke-width: var(--ir-raman-selected-stick-width, 2.5);
+  }
+  .mode-stick.highlighted {
+    stroke-width: var(--ir-raman-highlighted-stick-width, 3.5);
+    opacity: 1;
+  }
+  .reference-line {
+    stroke: var(--ir-raman-reference-line-color, light-dark(#d48860, #c47850));
+    stroke-width: var(--ir-raman-reference-line-width, 1);
+    stroke-dasharray: var(--ir-raman-reference-line-dash, 4 3);
+    opacity: var(--ir-raman-reference-line-opacity, 0.7);
+    pointer-events: none;
   }
   .value {
     font-family: var(--font-mono, monospace);

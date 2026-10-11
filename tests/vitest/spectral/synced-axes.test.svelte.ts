@@ -105,6 +105,39 @@ test.each([`phonon`, `electronic`] as const)(
   },
 )
 
+// A layout stacked for a while (narrow pane) must not leave its bottom margin in the shared
+// padding: only side-by-side reports raise it
+test(`stacked panels' padding reports leave the shared padding alone`, () => {
+  const inputs = $state({ side_by_side: true })
+  let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+  roots.push(
+    $effect.root(() => {
+      sync = create_bands_dos_sync({
+        band_structs: () => ({ '': band_structs }),
+        doses: () => ({ '': doses }),
+        units: () => `THz`,
+        bands_props: () => ({}),
+        dos_props: () => ({}),
+        side_by_side: () => inputs.side_by_side,
+        sync_zoom: () => true,
+        base_padding: { t: 20, b: 50 },
+      })
+    }),
+  )
+  flushSync()
+  if (!sync) throw new Error(`sync not created`)
+  expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
+  inputs.side_by_side = false
+  flushSync()
+  sync.raise_padding({ t: 20, b: 90, l: 40, r: 10 }) // a stacked panel's tall x-axis margin
+  inputs.side_by_side = true
+  flushSync()
+  expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
+  sync.raise_padding({ t: 20, b: 60, l: 40, r: 10 }) // side by side: raises as before
+  flushSync()
+  expect(sync.shared_padding).toEqual({ t: 20, b: 60 })
+})
+
 test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {
   const floor = shared_resolved_padding_floor()
   floor.raise(undefined)

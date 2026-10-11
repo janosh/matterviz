@@ -25,9 +25,10 @@ const mount_tooltip = (
   })
 
 describe(`FermiSurfaceTooltip`, () => {
-  test(`titles the tooltip with the band index`, () => {
+  // band_index is 0-based; the title counts from 1 like the band structure and BXSF `BAND: n`
+  test(`titles the tooltip with the 1-based band number`, () => {
     mount_tooltip({ hover_data: mock_hover_data({ band_index: 12 }) })
-    expect(doc_query(`.tooltip-content .tooltip-title`).textContent).toContain(`Band 12`)
+    expect(doc_query(`.tooltip-content .tooltip-title`).textContent).toContain(`Band 13`)
   })
 
   // the badge takes its colour from SPIN_COLORS, the same source as the surface tint

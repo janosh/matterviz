@@ -21,6 +21,7 @@
     near = 0.1,
     ortho_near = -100,
     far = 2000,
+    up = [0, 1, 0],
     orbit_props,
     gizmo = false,
     orbit_controls = $bindable(undefined),
@@ -34,6 +35,8 @@
     // clip; a positive value clips geometry nearer than that distance (ChemPotDiagram3D).
     ortho_near?: number
     far?: number // far plane for either projection (three's default when omitted)
+    // World direction drawn as screen up, also the axis OrbitControls orbits about
+    up?: Vec3
     orbit_props: ReturnType<typeof build_orbit_props> & { enabled?: boolean }
     gizmo?: boolean | GizmoOptions
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
@@ -105,31 +108,35 @@
   })
 </script>
 
+<!-- OrbitControls reads camera.up only when constructed (its orbit frame), so a new up vector
+rebuilds them. The camera applies its props before this child mounts. -->
 {#snippet camera_contents()}
-  <extras.OrbitControls
-    bind:ref={orbit_controls}
-    {...orbit_props}
-    enablePan={false}
-    enabled={!flight_active && (orbit_props.enabled ?? true)}
-    enableDamping={!flight_active && orbit_props.enableDamping}
-    autoRotate={!flight_active && orbit_props.autoRotate}
-  >
-    {#if gizmo && !flight_active}
-      <Gizmo
-        {...typeof gizmo === `object` ? gizmo : {}}
-        on_start={orbit_props.onstart}
-        on_end={orbit_props.onend}
-      />
-    {/if}
-  </extras.OrbitControls>
+  {#key up.join(`,`)}
+    <extras.OrbitControls
+      bind:ref={orbit_controls}
+      {...orbit_props}
+      enablePan={false}
+      enabled={!flight_active && (orbit_props.enabled ?? true)}
+      enableDamping={!flight_active && orbit_props.enableDamping}
+      autoRotate={!flight_active && orbit_props.autoRotate}
+    >
+      {#if gizmo && !flight_active}
+        <Gizmo
+          {...typeof gizmo === `object` ? gizmo : {}}
+          on_start={orbit_props.onstart}
+          on_end={orbit_props.onend}
+        />
+      {/if}
+    </extras.OrbitControls>
+  {/key}
 {/snippet}
 
 {#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault {position} {fov} {near} {far}>
+  <T.PerspectiveCamera makeDefault {position} {fov} {near} {far} {up}>
     {@render camera_contents()}
   </T.PerspectiveCamera>
 {:else}
-  <T.OrthographicCamera makeDefault {position} {zoom} near={ortho_near} {far}>
+  <T.OrthographicCamera makeDefault {position} {zoom} near={ortho_near} {far} {up}>
     {@render camera_contents()}
   </T.OrthographicCamera>
 {/if}

@@ -6,13 +6,16 @@
   import { untrack, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
+    band_carriers,
     centered_cell_edges,
     compute_fermi_slice,
+    pocket_carriers,
     sample_slice_energies,
     slice_axis_label,
     slice_shading_rgba,
   } from './compute'
   import { BAND_COLORS } from './constants'
+  import type { CarrierType, SliceShading } from './compute'
   import type { BandGridData, FermiSliceData, FermiSurfaceData } from './types'
   import { to_error } from '#lib/utils.js'
   import { format_num } from '#lib/labels.js'
@@ -22,7 +25,7 @@
     band_data,
     mu = 0,
     interpolation_factor = 1,
-    shading = `occupied`,
+    shading = `pockets`,
     selected_bands,
     marker = null,
     hovered_k = $bindable(null),
@@ -42,9 +45,10 @@
     band_data?: BandGridData
     mu?: number // chemical-potential offset the surface was extracted at
     interpolation_factor?: number // the surface's grid refinement, so shading matches it
+    // `pockets`: fill each band's pockets, electron solid, hole hatched (see pocket_carriers);
     // `occupied`: tint each band's filled side (ε < E_F + mu); `energy`: ε − E_F of the band
     // nearest E_F per point; `none`: contours only. Needs band_data.
-    shading?: `occupied` | `energy` | `none`
+    shading?: SliceShading | `none`
     selected_bands?: number[] // bands to show (e.g. the 3D viewer's), all when unset
     marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. hovered in the 3D viewer
     hovered_k?: Vec3 | null // Cartesian k under the cursor on the slice plane
@@ -90,6 +94,17 @@
   const shows_band = (band_index: number) =>
     selected_bands === undefined || selected_bands.includes(band_index)
 
+  // Electron or hole pockets per band from its slice contours, named in the legend and choosing
+  // which side the pocket shading fills
+  let carriers = $derived(
+    band_data && slice_data
+      ? band_carriers(
+          slice_data,
+          pocket_carriers(band_data, slice_data, { mu, interpolation_factor }),
+        )
+      : new Map<number, CarrierType>(),
+  )
+
   let series: DataSeries[] = $derived(
     slice_data?.isolines
       .filter((iso) => shows_band(iso.band_index))
@@ -99,7 +114,7 @@
         x: iso.points_2d.map((point) => point[0]),
         y: iso.points_2d.map((point) => point[1]),
         markers: `line` as const,
-        label: `Band ${iso.band_index + 1}`,
+        label: `Band ${iso.band_index + 1}${carriers.has(iso.band_index) ? ` · ${carriers.get(iso.band_index)}` : ``}`,
         line_style: {
           stroke: band_colors[iso.band_index % band_colors.length],
           stroke_width: line_width,
@@ -139,7 +154,7 @@
       interpolation_factor,
     })
     energy_map.layers = energy_map.layers.filter((layer) => shows_band(layer.band_index))
-    const pixels = slice_shading_rgba(energy_map, shading, band_colors)
+    const pixels = slice_shading_rgba(energy_map, shading, band_colors, { carriers })
     if (typeof document === `undefined`) return null // rendered client-side only
     const canvas = document.createElement(`canvas`)
     ;[canvas.width, canvas.height] = [energy_map.width, energy_map.height]

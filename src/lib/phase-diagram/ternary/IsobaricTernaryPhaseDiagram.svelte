@@ -5,7 +5,7 @@
   // balanced reactions. The 2D section and the prism take turns on screen, so they share a
   // pinned composition probe: click a composition in either to pin it (its assemblage follows
   // T in both), click the pin again or press Escape to drop it.
-  import { is_dark_mode, watch_dark_mode } from '#lib/colors/index.js'
+  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
@@ -52,7 +52,7 @@
     TernaryPhaseDiagram,
     TernaryPhaseDiagramOptions,
   } from './types'
-  import { TERNARY_DISPLAY_DEFAULTS } from './types'
+  import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from './types'
 
   type Hover =
     | { kind: `section`; data: SectionHover }
@@ -117,6 +117,13 @@
   $effect(() => {
     dark_mode = is_dark_mode(wrapper)
     return watch_dark_mode((dark) => (dark_mode = dark), wrapper)
+  })
+  // Pin colour from the theme-aware --ternary-pin token (overridable via --ternary-pin-color),
+  // resolved to a concrete colour for the section canvas and the prism's three.js materials
+  const pin_color = resolve_css_color(() => wrapper, {
+    css_var: `--ternary-pin`,
+    require_opaque: true,
+    fallback: TERNARY_COLORS.pin,
   })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
   let hover = $state<Hover | null>(null)
@@ -420,6 +427,7 @@
             {settings}
             bind:selected_phase
             bind:pinned_composition
+            pin_color={pin_color.current}
             highlighted_phases={hovered_phase === null ? [] : [hovered_phase]}
             {emphasized_phases}
             on_hover={(data) => (hover = data && { kind: `section`, data })}
@@ -437,6 +445,7 @@
                 bind:selected_phase
                 bind:hovered_phase
                 bind:pinned_composition
+                pin_color={pin_color.current}
                 text_color={canvas_text_color(wrapper, dark_mode)}
                 on_hover={(data) => (hover = data && { kind: `phase_t`, data })}
                 on_section_hover={(data) => (hover = data && { kind: `section`, data })}
@@ -621,6 +630,7 @@
     min-height: 480px;
     container-type: inline-size;
     background: var(--pd-bg, transparent);
+    --ternary-pin: var(--ternary-pin-color, light-dark(#c2185b, #ff4fa8));
     &.fullscreen {
       background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
     }

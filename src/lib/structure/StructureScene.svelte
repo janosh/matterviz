@@ -168,6 +168,7 @@
     camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
     camera_direction = undefined,
+    camera_up = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
@@ -310,6 +311,7 @@
     // When set (and camera_position is unset), auto-place the camera along this
     // direction from the structure center (used by the multi-side view for fixed angles)
     camera_direction?: Vec3
+    camera_up?: Vec3 // world direction drawn as screen up (default +y); not along camera_direction
     show_atoms?: boolean
     show_bonds?: ShowBonds
     defer_expensive_geometry?: boolean
@@ -2008,6 +2010,7 @@
   zoom={scene_camera.zoom}
   near={camera_near}
   far={camera_far}
+  up={camera_up}
   orbit_props={scene_camera.orbit_props}
   {gizmo}
   bind:orbit_controls

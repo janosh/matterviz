@@ -6,12 +6,16 @@ import {
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
+  band_carriers,
+  pocket_carriers,
+  polygon_interior_point,
   sample_slice_energies,
   slice_plane_normal,
   slice_shading_rgba,
   upsample_grid,
 } from '#lib/fermi-surface/compute.js'
 import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
+import type { SliceEnergyMap } from '#lib/fermi-surface/compute.js'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -20,7 +24,7 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { vertex_count } from '#lib/fermi-surface/types.js'
 import * as math from '#lib/math.js'
-import type { Matrix3x3, Matrix4Tuple, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
 import {
   BOX_TRI_FACES,
@@ -319,6 +323,17 @@ describe(`slice energy shading`, () => {
     })
     expect([energy_map.width, energy_map.height]).toEqual([64, 32])
     expect(energy_map.layers.map(({ band_index }) => band_index)).toEqual([0]) // band 1 never crosses
+    // a grid numbering its bands (BXSF `BAND: n`) labels the layers with those absolute indices
+    const numbered = sample_slice_energies(
+      { ...band_data, band_indices: [8, 9] },
+      {
+        miller_indices: [0, 0, 1],
+        distance: 0,
+        bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
+        resolution: 8,
+      },
+    )
+    expect(numbered.layers.map(({ band_index }) => band_index)).toEqual([8])
     const [{ values }] = energy_map.layers
     let max_err = 0
     for (let row = 0; row < 32; row++) {
@@ -345,34 +360,127 @@ describe(`slice energy shading`, () => {
 
   // Straight-alpha source-over: both bands occupied → α = ½ + ½·½, colour ⅓ red + ⅔ blue
   test(`occupied mode tints and composites each band's filled side`, () => {
-    const energy_map = {
+    const energy_map: SliceEnergyMap = {
       width: 3,
       height: 1,
       layers: [
-        { band_index: 0, spin: null, values: Float32Array.from([-1, 1, 1]) },
-        { band_index: 1, spin: null, values: Float32Array.from([-1, -1, 1]) },
+        {
+          band_index: 0,
+          spin: null,
+          values: Float32Array.from([-1, 1, 1]),
+        },
+        {
+          band_index: 1,
+          spin: null,
+          values: Float32Array.from([-1, -1, 1]),
+        },
       ],
     }
-    const pixels = slice_shading_rgba(energy_map, `occupied`, [`#ff0000`, `#0000ff`], 0.5)
+    const pixels = slice_shading_rgba(energy_map, `occupied`, [`#ff0000`, `#0000ff`], {
+      opacity: 0.5,
+    })
     expect(Array.from(pixels)).toEqual([85, 0, 170, 191, 0, 0, 255, 128, 0, 0, 0, 0])
+  })
+
+  // A band's majority carrier picks the pocket side: an electron band fills its occupied pixels
+  // solid, a hole band its empty ones in diagonal stripes ((row + col) mod 6 < 3)
+  test(`pockets mode fills electron bands' occupied side, hole bands' empty side striped`, () => {
+    const values = Float32Array.from({ length: 24 }, (_, idx) => (idx % 12 < 6 ? -1 : 1))
+    const shaded = (carrier: `electron` | `hole`) => {
+      const energy_map = {
+        width: 12,
+        height: 2,
+        layers: [{ band_index: 0, spin: null, values }],
+      }
+      const carriers = new Map([[0, carrier]])
+      const pixels = slice_shading_rgba(energy_map, `pockets`, [`#f00`], { carriers })
+      return Array.from({ length: 24 }, (_, idx) => pixels[4 * idx + 3] > 0)
+    }
+    const pixels = Array.from({ length: 24 }, (_, idx) => [Math.floor(idx / 12), idx % 12])
+    expect(shaded(`electron`)).toEqual(pixels.map(([, col]) => col < 6))
+    expect(shaded(`hole`)).toEqual(pixels.map(([row, col]) => col >= 6 && (row + col) % 6 < 3))
   })
 
   // The band nearest E_F decides each pixel: occupied (ε < E_F) red, empty blue, none clear
   test(`energy mode maps the band nearest E_F through a diverging scale`, () => {
-    const energy_map = {
+    const energy_map: SliceEnergyMap = {
       width: 3,
       height: 1,
       layers: [
-        { band_index: 0, spin: null, values: Float32Array.from([-0.1, 0.4, NaN]) },
-        { band_index: 1, spin: null, values: Float32Array.from([0.5, 0.2, NaN]) },
+        {
+          band_index: 0,
+          spin: null,
+          values: Float32Array.from([-0.1, 0.4, NaN]),
+        },
+        {
+          band_index: 1,
+          spin: null,
+          values: Float32Array.from([0.5, 0.2, NaN]),
+        },
       ],
     }
-    const pixels = slice_shading_rgba(energy_map, `energy`, [`#000`], 0.5)
+    const pixels = slice_shading_rgba(energy_map, `energy`, [`#000`], { opacity: 0.5 })
     const [red_0, , blue_0] = pixels.slice(0, 3)
     const [red_1, , blue_1] = pixels.slice(4, 7)
     expect(red_0).toBeGreaterThan(blue_0) // −0.1 beats 0.5
     expect(blue_1).toBeGreaterThan(red_1) // 0.2 beats 0.4
     expect(pixels[11]).toBe(0) // NaN everywhere: transparent
+  })
+})
+
+describe(`pocket classification`, () => {
+  // A centroid inside a convex loop is returned as is; for a C-shape whose centroid falls in
+  // the notch, the midpoint of the first inside stretch of its horizontal line is
+  test.each([
+    {
+      label: `square`,
+      points: [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 2],
+      ],
+      inside: [1, 1],
+    },
+    {
+      label: `C-shape`,
+      points: [
+        [0, 0],
+        [3, 0],
+        [3, 1],
+        [1, 1],
+        [1, 2],
+        [3, 2],
+        [3, 3],
+        [0, 3],
+      ],
+      inside: [0.5, 1.5],
+    },
+  ] as { label: string; points: Vec2[]; inside: Vec2 }[])(
+    `interior point of a $label`,
+    ({ points, inside }) => {
+      const [coord_x, coord_y] = polygon_interior_point(points)
+      expect(coord_x).toBeCloseTo(inside[0], 12)
+      expect(coord_y).toBeCloseTo(inside[1], 12)
+    },
+  )
+
+  // ε = ±|k| with E_F = ±0.3: the (001) slice through Γ is one closed circle, enclosing
+  // occupied states (electron pocket) for +|k| and empty ones (hole pocket) for −|k|
+  test.each([
+    [1, `electron`],
+    [-1, `hole`],
+  ] as const)(`a closed contour of sign %i encloses an %s pocket`, (sign, carrier) => {
+    const band_data = make_band_data(16, (fx, fy, fz) => sign * sphere(fx, fy, fz), {
+      periodic: true,
+      fermi_energy: sign * 0.3,
+    })
+    const fermi_data = extract_fermi_surface(band_data)
+    const slice = compute_fermi_slice(fermi_data, { miller_indices: [0, 0, 1], distance: 0 })
+    const carriers = pocket_carriers(band_data, slice)
+    expect(carriers.length).toBeGreaterThan(0)
+    expect(carriers.every((pocket) => pocket === carrier)).toBe(true)
+    expect(band_carriers(slice, carriers)).toEqual(new Map([[0, carrier]]))
   })
 })
 

@@ -36,6 +36,7 @@
     settings,
     selected_phase = $bindable(null),
     pinned_composition = $bindable(null),
+    pin_color = TERNARY_COLORS.pin,
     highlighted_phases = [],
     emphasized_phases = [],
     on_hover,
@@ -46,6 +47,7 @@
     settings: TernaryDisplay
     selected_phase?: number | null
     pinned_composition?: Vec2 | null // composition probe kept across hovers (triangle xy)
+    pin_color?: string // concrete colour (canvas can't resolve var()/light-dark())
     highlighted_phases?: number[]
     emphasized_phases?: number[] // ringed, e.g. phases that change at the next transition
     on_hover?: (hover: SectionHover | null) => void
@@ -300,15 +302,15 @@
     // Pinned probe: spokes to its assemblage at this temperature, ringed marker
     if (pinned_composition) {
       const point = project(...pinned_composition)
-      ctx.strokeStyle = TERNARY_COLORS.selected
+      ctx.strokeStyle = pin_color
       ctx.lineWidth = 1.5
       ctx.setLineDash([5, 3])
       for (const idx of pinned_decomposition?.phases ?? []) {
         stroke_path(ctx, [point, project(...model.phases[idx].xy)])
       }
       ctx.setLineDash([])
-      ring(ctx, point, 7 * scale, TERNARY_COLORS.selected)
-      ctx.fillStyle = TERNARY_COLORS.selected
+      ring(ctx, point, 7 * scale, pin_color)
+      ctx.fillStyle = pin_color
       ctx.beginPath()
       ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI)
       ctx.fill()
@@ -366,6 +368,7 @@
       hover_composition,
       pinned_composition,
       pinned_decomposition,
+      pin_color,
       selected_phase,
       highlighted_phases,
       emphasized_phases,

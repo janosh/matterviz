@@ -276,7 +276,8 @@ export function extract_fermi_surface(
         )
         properties = Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
       }
-      isosurfaces.push({ ...mesh, properties, band_index: band_idx, spin })
+      const band_index = band_data.band_indices?.[band_idx] ?? band_idx
+      isosurfaces.push({ ...mesh, properties, band_index, spin })
     }
   }
 
@@ -419,6 +420,9 @@ export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
 // uses; rows run top to bottom, i.e. from bounds.max[1] down). Energies come from the same
 // upsampled, Γ-centred grids extract_fermi_surface runs marching cubes on, so the zero level
 // of each layer traces that band's slice contour.
+export type CarrierType = `electron` | `hole`
+// FermiSlice shading: band pockets (electron solid, hole hatched), occupied side, ε − E_F
+export type SliceShading = `pockets` | `occupied` | `energy`
 export interface SliceEnergyMap {
   width: number
   height: number
@@ -460,8 +464,9 @@ export function sample_slice_energies(
   const layers: SliceEnergyMap[`layers`] = []
   for (const [spin_idx, bands] of band_data.energies.entries()) {
     const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
-    for (const [band_index, raw_energies] of bands.entries()) {
+    for (const [band_idx, raw_energies] of bands.entries()) {
       if (!band_intersects_fermi(raw_energies.values, isovalue)) continue
+      const band_index = band_data.band_indices?.[band_idx] ?? band_idx
       const centered = prepared_band_grid(band_data, raw_energies, interpolation_factor)
       const [values] = sample_vertex_values(positions, [centered.grid], {
         cart_to_frac,
@@ -475,31 +480,38 @@ export function sample_slice_energies(
   return { width, height, layers }
 }
 
-// RGBA pixels (row-major, as sample_slice_energies) shading a slice energy map. `occupied`
-// tints every layer's filled side (ε < E_F + mu) in its band colour, so electron and hole
-// pockets read apart and overlapping occupied bands darken. `energy` maps ε − E_F of the
-// band nearest the Fermi level at each pixel through a diverging scale symmetric about 0, so
-// near-crossings show up before a mu change makes them pockets.
+// RGBA pixels (row-major, as sample_slice_energies) shading a slice energy map:
+// - `pockets` fills each band's pockets (see band_carriers): the occupied side of an electron
+//   band in its colour, the empty side of a hole band hatched in diagonal stripes
+// - `occupied` tints every band's filled side (ε < E_F + mu) in its colour, overlapping bands
+//   darkening
+// - `energy` maps ε − E_F of the band nearest the Fermi level at each pixel through a
+//   diverging scale symmetric about 0, so near-crossings show before a mu change makes pockets
 export function slice_shading_rgba(
   energy_map: SliceEnergyMap,
-  mode: `occupied` | `energy`,
+  mode: SliceShading,
   band_colors: readonly string[],
-  opacity = 0.22,
+  {
+    opacity = 0.22,
+    carriers = new Map(),
+  }: { opacity?: number; carriers?: Map<number, CarrierType> } = {},
 ): Uint8ClampedArray<ArrayBuffer> {
   const { width, height, layers } = energy_map
   const n_pixels = width * height
   const pixels = new Uint8ClampedArray(4 * n_pixels)
   if (layers.length === 0) return pixels
-  if (mode === `occupied`) {
-    // straight-alpha source-over of each occupied layer
+  if (mode !== `energy`) {
+    // straight-alpha source-over of each layer's shaded side
     const red = new Float32Array(n_pixels)
     const green = new Float32Array(n_pixels)
     const blue = new Float32Array(n_pixels)
     const alpha = new Float32Array(n_pixels)
     for (const { band_index, values } of layers) {
       const color = rgb(band_colors[band_index % band_colors.length])
+      const hole = mode === `pockets` && carriers.get(band_index) === `hole`
       for (let idx = 0; idx < n_pixels; idx++) {
-        if (!(values[idx] < 0)) continue
+        if (!(hole ? values[idx] > 0 : values[idx] < 0)) continue
+        if (hole && (Math.floor(idx / width) + (idx % width)) % 6 >= 3) continue // stripes
         // out_a = a_s + a_d (1 − a_s); out_c = (c_s a_s + c_d a_d (1 − a_s)) / out_a
         const out_alpha = opacity + alpha[idx] * (1 - opacity)
         const keep = (alpha[idx] * (1 - opacity)) / out_alpha
@@ -535,6 +547,81 @@ export function slice_shading_rgba(
     pixels.set([color.r, color.g, color.b, 255 * opacity * 2], 4 * idx)
   }
   return pixels
+}
+
+// A point strictly inside a simple polygon (slice coordinates): its centroid when that lies
+// inside, else the midpoint of the first inside stretch of the horizontal line through it
+export function polygon_interior_point(points: readonly Vec2[]): Vec2 {
+  const n_points = points.length
+  const centroid: Vec2 = [0, 1].map(
+    (axis) => points.reduce((sum, point) => sum + point[axis], 0) / n_points,
+  ) as Vec2
+  const crossings: number[] = []
+  for (let idx = 0; idx < n_points; idx++) {
+    const [x_1, y_1] = points[idx]
+    const [x_2, y_2] = points[(idx + 1) % n_points]
+    if (y_1 > centroid[1] !== y_2 > centroid[1]) {
+      crossings.push(x_1 + ((centroid[1] - y_1) / (y_2 - y_1)) * (x_2 - x_1))
+    }
+  }
+  crossings.sort((left, right) => left - right)
+  // even-odd: the centroid is inside when an odd number of crossings lie left of it (a
+  // degenerate polygon with fewer than two crossings keeps its centroid)
+  const n_left = crossings.filter((cross_x) => cross_x < centroid[0]).length
+  if (n_left % 2 === 1 || crossings.length < 2) return centroid
+  return [(crossings[0] + crossings[1]) / 2, centroid[1]]
+}
+
+// Electron or hole pocket per slice contour (aligned with slice_data.isolines): the band's
+// energy at a point inside the contour, below E_F + mu for an electron pocket (encloses occupied
+// states), above for a hole pocket. A contour cut open by the cell boundary is closed by its
+// chord, which keeps the point on its concave side, inside the pocket for the usual convex
+// pocket. Sampled on the grid the surface was extracted from; null when too short or its band
+// is not in the grid.
+export function pocket_carriers(
+  band_data: BandGridData,
+  slice_data: FermiSliceData,
+  { mu = 0, interpolation_factor = 1 }: { mu?: number; interpolation_factor?: number } = {},
+): (CarrierType | null)[] {
+  const { plane_normal, plane_distance, in_plane_basis } = slice_data
+  const [axis_u, axis_v] = in_plane_basis
+  const { periodic } = grid_layout(band_data)
+  const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(band_data.k_lattice))
+  return slice_data.isolines.map(({ points_2d, band_index, spin }) => {
+    if (points_2d.length < 3) return null
+    const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
+    const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
+    if (!grid) return null
+    const [coord_x, coord_y] = polygon_interior_point(points_2d)
+    const k_point = Float32Array.from(
+      [0, 1, 2],
+      (axis) =>
+        plane_normal[axis] * plane_distance + axis_u[axis] * coord_x + axis_v[axis] * coord_y,
+    )
+    const centered = prepared_band_grid(band_data, grid, interpolation_factor)
+    const [[energy]] = sample_vertex_values(k_point, [centered.grid], {
+      cart_to_frac,
+      periodic,
+      index0_frac: centered.index0_frac,
+    })
+    return energy < band_data.fermi_energy + mu ? `electron` : `hole`
+  })
+}
+
+// Carrier per band: the majority of its contours' pockets (ties go to electron)
+export const band_carriers = (
+  slice_data: FermiSliceData,
+  carriers: readonly (CarrierType | null)[],
+): Map<number, CarrierType> => {
+  const hole_votes = new Map<number, number>()
+  for (const [idx, carrier] of carriers.entries()) {
+    if (!carrier) continue
+    const band = slice_data.isolines[idx].band_index
+    hole_votes.set(band, (hole_votes.get(band) ?? 0) + (carrier === `hole` ? 1 : -1))
+  }
+  return new Map(
+    [...hole_votes].map(([band, votes]) => [band, votes > 0 ? `hole` : `electron`]),
+  )
 }
 
 // Compute 2D Fermi slice along a specified plane

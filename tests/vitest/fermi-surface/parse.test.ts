@@ -1,5 +1,6 @@
 // Tests for Fermi surface file parsing via parse_fermi_file, the parsed-data type guards
 // and the demo fixture registry
+import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
 import {
   normalize_band_grid,
   normalize_fermi_surface,
@@ -151,6 +152,39 @@ END_BLOCK_BANDGRID_3D
       expect(band_data.k_grid).toEqual([2, 2, 2])
       expect(Array.from(band_data.energies[0][0].values)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
     })
+  })
+
+  // BXSF `BAND: n` numbers bands in the full calculation: kept (0-based) so surfaces and slice
+  // layers match a band structure of the same run; an invalid number throws
+  test(`keeps BXSF band numbers as absolute band indices`, () => {
+    const bxsf = make_bxsf(6.5).replace(`BAND:   1`, `BAND:   9`)
+    const band_data = parse_grid(bxsf, `cu.bxsf`)
+    expect(band_data.band_indices).toEqual([8])
+    expect(extract_fermi_surface(band_data).isosurfaces.map((iso) => iso.band_index)).toEqual([
+      8,
+    ])
+    // two bands both numbered 1 (each spin channel counted from 1): numbers can't identify
+    // bands, so positions stand in
+    const bxsf_2 = make_bxsf().replace(`    1\n    3 3 3`, `    2\n    3 3 3`)
+    const band_block = /BAND:[^]*?(?=\s*END_BANDGRID_3D)/.exec(bxsf_2)?.[0] ?? ``
+    const repeated = parse_grid(bxsf_2.replace(band_block, `${band_block}\n    ${band_block}`))
+    expect([repeated.n_bands, repeated.band_indices]).toEqual([2, undefined])
+    for (const label of [`BAND:   0`, `BAND:   x`]) {
+      expect(() =>
+        parse_fermi_file(make_bxsf().replace(`BAND:   1`, label), `bad.bxsf`),
+      ).toThrow(/invalid band number/)
+    }
+  })
+
+  test(`JSON band_indices must list every band`, () => {
+    const json = { ...mock_band_grid, k_grid: [1, 1, 2] as const, energies: [[[[[3, 4]]]]] }
+    expect(normalize_band_grid({ ...json, band_indices: [5] }).band_indices).toEqual([5])
+    expect(() => normalize_band_grid({ ...json, band_indices: [5, 6] })).toThrow(
+      /band_indices lists 2 bands but energies hold 1/,
+    )
+    expect(() => normalize_band_grid({ ...json, band_indices: [-1] })).toThrow(
+      /distinct non-negative integers/,
+    )
   })
 
   describe(`FRMSF format`, () => {

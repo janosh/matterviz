@@ -68,6 +68,7 @@
     show_colorbar = true,
     slice_plane,
     k_marker = null,
+    k_path,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -122,6 +123,8 @@
     slice_plane?: { miller_indices: Vec3; distance: number }
     // k-point (Cartesian Å⁻¹) to mark in 3D, e.g. the cursor position on a FermiSlice
     k_marker?: Vec3 | null
+    // band-structure k-path to draw in 3D, e.g. from a band plot beside the viewer
+    k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`]
     // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
     // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
@@ -424,6 +427,7 @@
           property_label={custom_property_label}
           {slice_plane}
           {k_marker}
+          {k_path}
           {representation}
           {surface_opacity}
           {selected_bands}

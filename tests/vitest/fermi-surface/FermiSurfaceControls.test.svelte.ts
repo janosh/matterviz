@@ -191,5 +191,14 @@ describe(`FermiSurfaceControls`, () => {
     state.fermi_data = make_fermi_data([4, 5, 6])
     await tick()
     expect(state.selected_bands).toEqual([5, 6])
+    // band 4, switched off, stops crossing and crosses again: it stays off (a hover preview
+    // sweeping mu does this on every pointer move)
+    state.fermi_data = make_fermi_data([5, 6])
+    await tick()
+    state.fermi_data = make_fermi_data([4, 5, 6])
+    await tick()
+    expect(state.selected_bands).toEqual([5, 6])
+    await reset_section(`bands`) // reset forgets the hidden bands
+    expect(state.selected_bands).toEqual([4, 5, 6])
   })
 })

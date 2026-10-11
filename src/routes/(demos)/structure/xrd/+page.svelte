@@ -7,7 +7,6 @@
   import { file_type_paint } from '#lib/io/index.js'
   import { format_num } from '#lib/labels.js'
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
-  import { zone_axis_direction } from '#lib/scene/index.js'
   import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import type { SaedOptions, SaedSpot, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
@@ -17,6 +16,7 @@
     diffraction_planes,
     electron_wavelength,
     format_hkl,
+    saed_camera_pose,
     SaedPattern,
     xrd_symmetry_rotations,
     XrdPlot,
@@ -193,14 +193,9 @@
   })
   const active_spot = $derived(hovered_spot ?? selected_spot)
   const saed_planes = $derived(diffraction_planes(active_spot ? [active_spot.hkl] : []))
-  // Zone axis [uvw] is a direct-lattice direction (u·a + v·b + w·c). The camera sits on +[uvw]
-  // looking back at the cell, the same side as the pattern's viewer: its in-plane basis
-  // (u, v) is drawn right/up with u × v = +[uvw] toward the eye.
-  const saed_camera_direction = $derived(
-    computed_struct && saed.pattern
-      ? zone_axis_direction(computed_struct.lattice.matrix, saed.pattern.zone_axis, `uvw`)
-      : undefined,
-  )
+  // The camera sits on +[uvw] looking back at the cell, the same side as the pattern's viewer,
+  // and rolled so the pattern's right/up in-plane axes are the structure view's too
+  const saed_camera = $derived(saed.pattern && saed_camera_pose(saed.pattern))
 
   // Multi-select demo: allow overlaying multiple structures
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
@@ -331,7 +326,8 @@
             style="height: 520px"
             scene_props={{
               lattice_planes: saed_planes,
-              camera_direction: saed_camera_direction,
+              camera_direction: saed_camera?.direction,
+              camera_up: saed_camera?.up,
               camera_projection: `orthographic`,
               // Bonds would hide the edge-on traces of zero-order-zone planes
               show_bonds: `never`,

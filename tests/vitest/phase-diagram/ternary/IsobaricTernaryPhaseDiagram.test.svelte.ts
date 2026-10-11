@@ -302,6 +302,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
   // Endpoints of the last overlay frame's pinned-probe spokes (its [5, 3] dash)
   let overlay_dash = ``
   let pin_spokes: Vec2[] = []
+  const pin_strokes = new Set<unknown>() // strokeStyle while drawing the pin's spokes
   vi.stubGlobal(
     `Path2D`,
     class {
@@ -313,7 +314,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     .mockImplementation(function (this: HTMLCanvasElement) {
       const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
       return new Proxy({} as CanvasRenderingContext2D, {
-        get: (_target, prop) => {
+        get: (target, prop) => {
           if (prop === `canvas`) return this
           if (prop === `measureText`) return () => ({ width: 20 })
           if (prop === `clearRect`)
@@ -327,7 +328,9 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
             return (dash: number[]) => (overlay_dash = dash.join(`,`))
           if (prop === `lineTo` && layer === `overlay`)
             return (x_pos: number, y_pos: number) => {
-              if (overlay_dash === `5,3`) pin_spokes.push([x_pos, y_pos])
+              if (overlay_dash !== `5,3`) return
+              pin_spokes.push([x_pos, y_pos])
+              pin_strokes.add(target.strokeStyle)
             }
           return vi.fn()
         },
@@ -343,7 +346,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     })
     mount_it(
       TernarySectionCanvas,
-      bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS }, state),
+      bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS, pin_color: `#123456` }, state),
     )
     await let_frames_run()
     const painted = { ...clears }
@@ -398,6 +401,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     const close_px = (points: Vec2[]) =>
       points.map((point) => point.map((val) => expect.closeTo(val, 9)))
     expect(pin_spokes).toEqual(close_px(cold.px))
+    expect([...pin_strokes]).toEqual([`#123456`]) // spokes in the pin colour prop
     state.section = hot.section
     flushSync()
     await let_frames_run()

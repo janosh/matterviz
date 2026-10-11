@@ -1190,7 +1190,7 @@
   // Screen-space grid over every visible marker so a pointer move probes nearby cells only.
   // Lazy: built on the first hover after a data/scale change, not per frame.
   const hover_index = $derived.by(() => {
-    if (hover_config.mode === `x`) return null
+    if (hover_config.mode === `x` || hover_config.mode === `y`) return null
     function* entries() {
       for (const series_data of filtered_series) {
         const project = series_projector(series_data)
@@ -1204,17 +1204,19 @@
   })
 
   // Nearest point along x within the hover radius, plus that x distance for the click radius
-  const x_hover_candidate = (x_rel: number, y_rel: number) => {
+  // Nearest point along one screen axis (`x` or `y` hover mode), ties broken by the other.
+  // Only x-monotonic series are binary-searched; `y` mode scans every point.
+  const axis_hover_candidate = (axis: `x` | `y`, x_rel: number, y_rel: number) => {
     let best_point: InternalPoint<Metadata> | null = null
-    let best_x_distance = Number.POSITIVE_INFINITY
-    let best_y_distance = Number.POSITIVE_INFINITY
+    let best_axis_distance = Number.POSITIVE_INFINITY
+    let best_cross_distance = Number.POSITIVE_INFINITY
     for (const series_data of filtered_series) {
       const { filtered_data: points, x_direction: direction } = series_data
       if (points.length === 0) continue
       const project = series_projector(series_data)
       const target_x = Number(project.x_scale.invert(x_rel))
       let [candidate_start, candidate_end] = [0, points.length]
-      if (direction !== 0) {
+      if (axis === `x` && direction !== 0) {
         const lower_idx = partition_point(points, (point) =>
           direction > 0 ? point.x < target_x : point.x > target_x,
         )
@@ -1236,26 +1238,30 @@
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
         const point = points[point_idx]
         const [cx, cy] = project.point(point)
-        const x_distance = Math.abs(cx - x_rel)
-        const y_distance = Math.abs(cy - y_rel)
+        const [axis_distance, cross_distance] =
+          axis === `x`
+            ? [Math.abs(cx - x_rel), Math.abs(cy - y_rel)]
+            : [Math.abs(cy - y_rel), Math.abs(cx - x_rel)]
         if (
-          x_distance < best_x_distance ||
-          (x_distance === best_x_distance && y_distance < best_y_distance)
+          axis_distance < best_axis_distance ||
+          (axis_distance === best_axis_distance && cross_distance < best_cross_distance)
         ) {
           best_point = point
-          best_x_distance = x_distance
-          best_y_distance = y_distance
+          best_axis_distance = axis_distance
+          best_cross_distance = cross_distance
         }
       }
     }
-    return best_point && best_x_distance <= hover_radius
-      ? { point: best_point, distance: best_x_distance }
+    return best_point && best_axis_distance <= hover_radius
+      ? { point: best_point, distance: best_axis_distance }
       : null
   }
 
-  // Nearest point within the hover radius and its screen distance (along x only in `x` mode)
+  // Nearest point within the hover radius and its screen distance (along one axis only in the
+  // `x` and `y` modes)
   const closest_hit_at = (x_rel: number, y_rel: number) => {
-    if (hover_config.mode === `x`) return x_hover_candidate(x_rel, y_rel)
+    const { mode } = hover_config
+    if (mode === `x` || mode === `y`) return axis_hover_candidate(mode, x_rel, y_rel)
     const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel })
     return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
   }

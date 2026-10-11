@@ -3,7 +3,11 @@
   import { open_material, type FileInfo } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/index.js'
+  import type {
+    BandGridData,
+    FermiSurfaceData,
+    SliceShading,
+  } from '#lib/fermi-surface/index.js'
   import { FermiSlice, FermiSurface, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import type { Vec3 } from '#lib/math.js'
   import { format_num } from '#lib/labels.js'
@@ -33,7 +37,7 @@
   let loading = $state(false)
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
-  let slice_shading = $state<`occupied` | `energy` | `none`>(`occupied`)
+  let slice_shading = $state<SliceShading | `none`>(`pockets`)
   // Shared with the slice so its contours, shading and bands match the 3D view
   let mu = $state(0)
   let interpolation_factor = $state(DEFAULTS.fermi.interpolation_factor)
@@ -145,6 +149,7 @@
         <label>
           Shading
           <select bind:value={slice_shading}>
+            <option value="pockets">Pockets (holes hatched)</option>
             <option value="occupied">Occupied side</option>
             <option value="energy">ε − E_F</option>
             <option value="none">None</option>

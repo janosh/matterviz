@@ -169,9 +169,31 @@ test.describe(`PhononModeExplorer`, () => {
     await qpoint_select.selectOption(`2`)
     await expect(summary).toContainText(`q = [0.25, 0, 0.25]`)
 
-    await open_menu(explorer, `Modes`)
-    await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
+    // the IR spectrum sits beside the dispersion: hovering a peak rings its Γ modes on the
+    // bands, and hovering a band at Γ lights up its stick (bands 4 and 5 are the degenerate TO
+    // pair there, so either may win the hover)
     const stick = explorer.locator(`line.mode-stick`).nth(1)
+    const stick_box = await require_bbox(stick, `second IR stick`)
+    await page.mouse.move(
+      stick_box.x + stick_box.width - 2,
+      stick_box.y + stick_box.height / 2,
+    )
+    await expect(explorer.locator(`.peak-band-marker`).first()).toBeVisible()
+    await expect(stick).toHaveClass(/highlighted/)
+    await page.mouse.move(0, 0)
+    await expect(explorer.locator(`.peak-band-marker`)).toHaveCount(0)
+    const gamma_point = explorer.getByRole(`button`, { name: `Select band 5, q-point 1` })
+    const gamma_box = await require_bbox(gamma_point, `band 5 Γ marker`)
+    await page.mouse.move(
+      gamma_box.x + gamma_box.width / 2,
+      gamma_box.y + gamma_box.height / 2,
+    )
+    await expect(explorer.locator(`line.mode-stick.highlighted`)).toHaveAttribute(
+      `aria-label`,
+      /^Select mode [45] at/,
+    )
+    await expect(explorer.locator(`line.reference-line`)).toHaveCount(1)
+
     await stick.click({ force: true })
     await expect(summary).toContainText(`Mode 5`)
     await expect(stick).toHaveClass(/selected/)
@@ -243,7 +265,9 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(detail).toContainText(`Γ-only file with Born charges and Raman tensors`)
     await expect(summary).toContainText(`q = [0, 0, 0]`)
     await open_menu(explorer, `Modes`)
-    await expect(explorer.getByRole(`button`, { name: `Raman`, exact: true })).toBeVisible()
+    await explorer.getByRole(`button`, { name: `Raman`, exact: true }).click()
+    await expect.poll(() => url_params(page).spectrum).toBe(`raman`)
+    await expect(explorer.locator(`.plot-pane`)).toContainText(`Raman activity`)
 
     const co2_yaml = gunzip_sync(
       await read_file(`src/site/phonons/ir-raman/CO2-gamma.yaml.gz`),
@@ -283,8 +307,6 @@ test.describe(`PhononModeExplorer`, () => {
     await explorer.getByLabel(`Mode`, { exact: true }).selectOption(`4`)
     await explorer.locator(`.amplitude-control input`).fill(`0.42`)
     await explorer.getByLabel(`Eigenvectors`).check()
-    await open_menu(explorer, `Modes`)
-    await explorer.getByRole(`button`, { name: `IR`, exact: true }).click()
     await explorer.locator(`.fps-section input`).fill(`18`)
     await select_supercell(explorer, 2)
 
@@ -294,7 +316,6 @@ test.describe(`PhononModeExplorer`, () => {
         file: `NaCl-Gamma-X-band.yaml`,
         qpoint: `4`,
         mode: `5`,
-        view: `ir`,
         amplitude: `0.42`,
         supercell: `2x2x2`,
         fps: `18`,
@@ -308,10 +329,6 @@ test.describe(`PhononModeExplorer`, () => {
     const restored_summary = restored.getByTestId(`phonon-mode-summary`)
     await expect(restored_summary).toContainText(`Mode 5`)
     await expect(restored_summary).toContainText(`q = [0.375, 0, 0.375]`)
-    await open_menu(restored, `Modes`)
-    await expect(restored.getByRole(`button`, { name: `IR`, exact: true })).toHaveClass(
-      /active/,
-    )
     await open_menu(restored, `Phonon settings`)
     await expect(restored.locator(`.amplitude-control input`)).toHaveValue(`0.42`)
     await expect(restored.locator(`.fps-section input`)).toHaveValue(`18`)

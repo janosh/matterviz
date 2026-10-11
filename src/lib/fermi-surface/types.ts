@@ -71,6 +71,10 @@ export interface BandGridData {
   // n, or n − 1 for endpoint-inclusive grids). Unset/0 for Γ-centred meshes (index 0 is Γ),
   // 0.5 for FRMSF lshift=2, ½ − n/2 for lshift=0 meshes that start near −½.
   grid_shift?: Vec3
+  // Absolute 0-based index of each band in `energies` (BXSF `BAND: n` → n − 1), so surfaces can
+  // be matched to a band structure of the same calculation; array positions when unset (FRMSF
+  // and JSON grids that list only some bands without numbering them)
+  band_indices?: number[]
   // Named scalar fields on the same grid, [spin][band] like `energies` (FRMSF colour block,
   // λ_nk, Δ_nk, Fermi velocity). Extraction samples them onto every surface vertex; NaN marks
   // grid points without a value, e.g. outside the window a coupling was computed in.

@@ -259,6 +259,35 @@ export function spectrum_sticks(
   }
 }
 
+// Display name of a spectrum kind
+export const spectrum_kind_label = (kind: SpectrumKind): string =>
+  kind === `ir` ? `IR` : `Raman`
+
+// Modes behind the broadened peak nearest `position` (in the sticks' own unit): the closest
+// active stick within `max_distance`, plus every active stick within half that distance of it,
+// since (near-)degenerate modes merge into one peak. Empty when no active stick is that close,
+// e.g. on the baseline between peaks.
+export function peak_mode_indices(
+  sticks: SpectrumCurve & { modes: VibrationalMode[] },
+  position: number,
+  max_distance: number,
+): number[] {
+  const is_active = (stick_idx: number): boolean => sticks.y[stick_idx] > 0
+  let [center, min_distance] = [NaN, max_distance]
+  for (const [stick_idx, stick_x] of sticks.x.entries()) {
+    const distance = Math.abs(stick_x - position)
+    if (is_active(stick_idx) && distance <= min_distance) {
+      ;[center, min_distance] = [stick_x, distance]
+    }
+  }
+  if (Number.isNaN(center)) return []
+  return sticks.modes.flatMap((mode, stick_idx) =>
+    is_active(stick_idx) && Math.abs(sticks.x[stick_idx] - center) <= max_distance / 2
+      ? [mode.mode_idx]
+      : [],
+  )
+}
+
 export interface BroadenOptions {
   fwhm?: number // constant FWHM in the stick spectrum's own x units
   fwhm_fn?: (peak_center: number) => number // frequency-dependent width, wins over fwhm
