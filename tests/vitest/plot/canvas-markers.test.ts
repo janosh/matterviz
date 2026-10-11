@@ -1,4 +1,8 @@
-import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
+import {
+  type CanvasMarker,
+  draw_markers,
+  SPRITE_MIN_MARKERS,
+} from '#lib/plot/core/canvas-markers.js'
 import { prepare_canvas } from '#lib/plot/core/utils.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -223,5 +227,89 @@ describe(`canvas markers`, () => {
     )
     expect(ops(mixed, `arc`)).toHaveLength(2)
     expect(ops(mixed, `fill`)).toHaveLength(2)
+  })
+})
+
+describe(`canvas marker sprites (dense plots)`, () => {
+  // jsdom has no OffscreenCanvas: a stub records sprite creation and the paint calls made on each sprite
+  const stub_offscreen = () => {
+    const sprites: { width: number; height: number; ctx: ReturnType<typeof fake_ctx> }[] = []
+    class StubOffscreenCanvas {
+      width: number
+      height: number
+      ctx = fake_ctx()
+      constructor(width: number, height: number) {
+        this.width = width
+        this.height = height
+        sprites.push(this)
+      }
+      getContext() {
+        return this.ctx
+      }
+    }
+    vi.stubGlobal(`OffscreenCanvas`, StubOffscreenCanvas)
+    class SpritePath2D extends StubPath2D {
+      arcs: unknown[][] = []
+      arc(...args: unknown[]) {
+        this.arcs.push(args)
+      }
+    }
+    vi.stubGlobal(`Path2D`, SpritePath2D)
+    return sprites
+  }
+  const with_draw_image = () => {
+    const ctx = fake_ctx() as ReturnType<typeof fake_ctx> & {
+      drawImage: (...args: unknown[]) => void
+    }
+    ctx.drawImage = (...args: unknown[]) => void ctx.calls.push({ op: `drawImage`, args })
+    return ctx
+  }
+
+  test(`stamps one cached sprite per style, one drawImage per valid marker, snapped to device pixels`, () => {
+    const sprites = stub_offscreen()
+    const markers = [
+      ...batch(SPRITE_MIN_MARKERS, { fill: `red` }),
+      ...batch(5, { fill: `blue` }),
+      marker({ cx: NaN }), // invalid: skipped
+    ]
+    const ctx = with_draw_image()
+    draw_markers(ctx, markers, { width: 100, height: 100, pixel_ratio: 2 })
+    expect(ops(ctx, `drawImage`)).toHaveLength(SPRITE_MIN_MARKERS + 5)
+    expect(ops(ctx, `arc`)).toHaveLength(0) // no per-marker path tracing
+    expect(sprites).toHaveLength(2) // red and blue styles
+    // radius 3 + stroke 1/2 + 1 antialias px = 4.5 CSS px half-extent, 18 device px side at DPR 2
+    expect([sprites[0].width, sprites[0].height]).toEqual([18, 18])
+    // marker 7 at (7, 7): top-left (7 - 4.5) * 2 = 5 device px
+    expect(ops(ctx, `drawImage`)[7].args.slice(1)).toEqual([5, 5])
+    // each sprite paints fill then stroke with their own alphas, like the path renderer
+    const paint_ops = sprites[0].ctx.calls
+      .filter((call) => [`fill`, `stroke`].includes(call.op))
+      .map((call) => call.op)
+    expect(paint_ops).toEqual([`fill`, `stroke`])
+  })
+
+  test(`reuses sprites across redraws and draws nothing for invisible styles`, () => {
+    const sprites = stub_offscreen()
+    const visible = batch(SPRITE_MIN_MARKERS, { fill: `#123456`, stroke_width: 0 })
+    draw_markers(with_draw_image(), visible, { width: 100, height: 100 })
+    draw_markers(with_draw_image(), visible, { width: 100, height: 100 })
+    expect(sprites).toHaveLength(1)
+    const invisible = with_draw_image()
+    draw_markers(invisible, batch(SPRITE_MIN_MARKERS, { fill: `none`, stroke: `none` }), {
+      width: 100,
+      height: 100,
+    })
+    expect(ops(invisible, `drawImage`)).toHaveLength(0)
+  })
+
+  test(`plots below the sprite threshold keep vector paths`, () => {
+    stub_offscreen()
+    const ctx = with_draw_image()
+    draw_markers(ctx, batch(SPRITE_MIN_MARKERS - 1, { fill: `green` }), {
+      width: 100,
+      height: 100,
+    })
+    expect(ops(ctx, `drawImage`)).toHaveLength(0)
+    expect(ops(ctx, `arc`)).toHaveLength(SPRITE_MIN_MARKERS - 1)
   })
 })

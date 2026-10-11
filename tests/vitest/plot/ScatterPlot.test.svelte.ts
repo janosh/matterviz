@@ -737,6 +737,15 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(svg_count)
     })
 
+    test.each([
+      [1000, false],
+      [1001, true],
+    ])(`auto draws %i markers on canvas: %s`, async (n_points, canvas) => {
+      const x = Array.from({ length: n_points }, (_, idx) => idx)
+      const plot = await mount_sized_scatter_plot({ series: [{ x, y: x }] })
+      expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
+    })
+
     test(`renders SVG overlays without redrawing the base canvas on hover`, async () => {
       let arcs_since_clear = 0
       const canvas_clip = vi.fn()

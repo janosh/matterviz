@@ -144,7 +144,7 @@
   // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
   const OBSTACLE_SAMPLE_LIMIT = 500
-  const CANVAS_MARKER_THRESHOLD = 10_000
+  const CANVAS_MARKER_THRESHOLD = 1000
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
@@ -1610,8 +1610,8 @@
   // the cursor had been used at all.
   let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
-  // One tab stop for the whole point cloud instead of one per point: a 10k-point
-  // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
+  // One tab stop for the whole point cloud instead of one per point: a 1k-point
+  // scatter would otherwise take 1k presses to tab past. Arrow keys walk the marks.
   // Only interactive points carry roving keys, so a plain plot needs no roving group. The
   // hover overlay list only decides which marks exist in canvas mode.
   const roving = create_roving_focus({
