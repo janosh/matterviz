@@ -272,7 +272,11 @@ export const format_tick_values = (
 ): string[] => {
   if (formatter || values.length < 2)
     return values.map((value) => format_value_or_num(value, formatter))
-  if (is_log_spaced(values)) return values.map(format_log_tick)
+  if (is_log_spaced(values)) {
+    const log_labels = values.map(format_log_tick)
+    // near-coincident ticks fall through to the precision search below
+    if (!labels_collide(values, log_labels)) return log_labels
+  }
 
   let labels = values.map(format_num)
   const resolution = tick_resolution_digits(values)

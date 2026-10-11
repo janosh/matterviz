@@ -121,6 +121,11 @@ test.each([
   expect(format_tick_values(values, formatter)).toEqual(expected)
 })
 
+test(`near-coincident log ticks keep distinct labels`, () => {
+  const labels = format_tick_values([1e-6, 1.0001e-6, 1e-3])
+  expect(new Set(labels).size).toBe(3)
+})
+
 // sweep d3 tick sets straddling 1000: each label must read back within half a tick step
 test.each([0.5, 1, 2, 5, 10, 25])(`tick labels near 1000 resolve a span of %s`, (span) => {
   const parse_label = (label: string) => {
