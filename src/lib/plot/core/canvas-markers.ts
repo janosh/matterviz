@@ -113,32 +113,55 @@ const valid_marker = (marker: CanvasMarker): boolean => {
 // stamp paints a whole marker (fill then stroke) over the ones before it, which is exactly SVG's per-marker order,
 // so translucent overlaps composite as in SVG. Stamps snap to device pixels (≤ half a device pixel of shift).
 export const SPRITE_MIN_MARKERS = 2000
+// Style changes per draw past which tracing paths beats building bitmaps (per-point colours, say)
+export const MAX_SPRITE_RUNS = 64
+// Device-px side of the largest sprite; bigger markers trace paths
+export const MAX_SPRITE_SIDE = 128
+// LRU byte budget for cached sprite bitmaps (RGBA)
+const MAX_SPRITE_BYTES = 16 * 1024 ** 2
+// Canvas default miterLimit: a miter join reaches up to this many half stroke widths past a sharp vertex
+const MITER_LIMIT = 10
 interface Sprite {
   image: OffscreenCanvas
   half: number // CSS px from the sprite's top-left corner to the marker centre
+  bytes: number
 }
-const sprite_cache = new Map<string, Sprite>()
-const MAX_SPRITE_CACHE = 256
+const sprite_cache = new Map<string, Sprite>() // insertion order = recency
+let sprite_bytes = 0
 
-const sprite_for = (marker: CanvasMarker, paint: MarkerPaint, pixel_ratio: number): Sprite => {
+// The sprite for a marker style, or null when it exceeds MAX_SPRITE_SIDE or no offscreen 2D context exists
+const sprite_for = (
+  marker: CanvasMarker,
+  paint: MarkerPaint,
+  pixel_ratio: number,
+): Sprite | null => {
   const key = `${marker.fill}|${marker.stroke}|${marker.fill_opacity}|${marker.stroke_width}|${marker.stroke_opacity}|${marker.opacity}|${marker.symbol_type}|${marker.symbol_size}|${marker.radius}|${pixel_ratio}`
   const cached = sprite_cache.get(key)
-  if (cached) return cached
-  // half-extent: circle radius, or a symbol's bounding radius (d3 sizes are areas), plus stroke and an antialias pixel
-  const shape_radius = is_circle(marker)
+  if (cached) {
+    sprite_cache.delete(key)
+    sprite_cache.set(key, cached)
+    return cached
+  }
+  // half-extent: circle radius, or a symbol's bounding radius (d3 sizes are areas), plus the stroke's reach (round
+  // for circles, up to a miter at symbol vertices) and an antialias pixel
+  const circle = is_circle(marker)
+  const shape_radius = circle
     ? marker.radius
     : Math.sqrt(marker.symbol_size ?? Math.PI * marker.radius ** 2)
-  const half = shape_radius + paint.line_width / 2 + 1
+  const stroke_reach =
+    paint.stroke_alpha > 0 ? (paint.line_width / 2) * (circle ? 1 : MITER_LIMIT) : 0
+  const half = shape_radius + stroke_reach + 1
   const side = Math.max(1, Math.ceil(2 * half * pixel_ratio))
+  if (side > MAX_SPRITE_SIDE) return null
   const image = new OffscreenCanvas(side, side)
   const sprite_ctx = image.getContext(`2d`)
-  if (!sprite_ctx) throw new Error(`OffscreenCanvas 2d context unavailable for marker sprites`)
+  if (!sprite_ctx) return null
   sprite_ctx.scale(pixel_ratio, pixel_ratio)
   sprite_ctx.fillStyle = paint.fill_style
   sprite_ctx.strokeStyle = paint.stroke_style
   sprite_ctx.lineWidth = paint.line_width
   const outline = new Path2D()
-  if (is_circle(marker)) outline.arc(half, half, marker.radius, 0, Math.PI * 2)
+  if (circle) outline.arc(half, half, marker.radius, 0, Math.PI * 2)
   else
     outline.addPath(
       symbol_path(marker.symbol_type, marker.radius, marker.symbol_size),
@@ -153,34 +176,58 @@ const sprite_for = (marker: CanvasMarker, paint: MarkerPaint, pixel_ratio: numbe
     sprite_ctx.globalAlpha = paint.stroke_alpha
     sprite_ctx.stroke(outline)
   }
-  if (sprite_cache.size >= MAX_SPRITE_CACHE) sprite_cache.clear()
-  const sprite = { image, half }
+  const sprite = { image, half, bytes: side * side * 4 }
   sprite_cache.set(key, sprite)
+  sprite_bytes += sprite.bytes
+  for (const [old_key, old] of sprite_cache) {
+    if (sprite_bytes <= MAX_SPRITE_BYTES) break
+    sprite_cache.delete(old_key)
+    sprite_bytes -= old.bytes
+  }
   return sprite
 }
 
-const draw_sprites = (
-  ctx: CanvasRenderingContext2D,
+const same_sprite = (marker: CanvasMarker, other: CanvasMarker | null): boolean =>
+  same_style(marker, other) &&
+  marker.radius === other?.radius &&
+  marker.symbol_type === other.symbol_type &&
+  marker.symbol_size === other.symbol_size
+
+// Sprites by the index of the valid marker opening each style run (null: the style paints nothing), or null when
+// paths are the better renderer: too many runs, an oversized marker or no offscreen 2D context. Decided before
+// anything is drawn, so the fallback never repaints.
+const plan_sprites = (
   markers: readonly CanvasMarker[],
   pixel_ratio: number,
-): void => {
+): Map<number, Sprite | null> | null => {
+  const runs = new Map<number, Sprite | null>()
   let open_marker: CanvasMarker | null = null
-  let sprite: Sprite | null = null
-  for (const marker of markers) {
-    if (!valid_marker(marker)) continue
-    if (
-      !same_style(marker, open_marker) ||
-      marker.radius !== open_marker?.radius ||
-      marker.symbol_type !== open_marker.symbol_type ||
-      marker.symbol_size !== open_marker.symbol_size
-    ) {
-      const paint = marker_paint(marker)
-      sprite =
-        paint.fill_alpha > 0 || paint.stroke_alpha > 0
-          ? sprite_for(marker, paint, pixel_ratio)
-          : null
-      open_marker = marker
+  for (const [idx, marker] of markers.entries()) {
+    if (!valid_marker(marker) || same_sprite(marker, open_marker)) continue
+    if (runs.size === MAX_SPRITE_RUNS) return null
+    open_marker = marker
+    const paint = marker_paint(marker)
+    if (paint.fill_alpha === 0 && paint.stroke_alpha === 0) runs.set(idx, null)
+    else {
+      const sprite = sprite_for(marker, paint, pixel_ratio)
+      if (!sprite) return null
+      runs.set(idx, sprite)
     }
+  }
+  return runs
+}
+
+const stamp_sprites = (
+  ctx: CanvasRenderingContext2D,
+  markers: readonly CanvasMarker[],
+  runs: Map<number, Sprite | null>,
+  pixel_ratio: number,
+): void => {
+  let sprite: Sprite | null = null
+  for (const [idx, marker] of markers.entries()) {
+    if (!valid_marker(marker)) continue
+    const run_sprite = runs.get(idx)
+    if (run_sprite !== undefined) sprite = run_sprite
     if (!sprite) continue
     // device-pixel snapped top-left corner, in the identity transform
     const left = Math.round((marker.cx - sprite.half) * pixel_ratio)
@@ -200,8 +247,12 @@ export function draw_markers(
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, width * pixel_ratio, height * pixel_ratio)
-  if (markers.length >= SPRITE_MIN_MARKERS && typeof OffscreenCanvas !== `undefined`) {
-    draw_sprites(ctx, markers, pixel_ratio)
+  const runs =
+    markers.length >= SPRITE_MIN_MARKERS && typeof OffscreenCanvas !== `undefined`
+      ? plan_sprites(markers, pixel_ratio)
+      : null
+  if (runs) {
+    stamp_sprites(ctx, markers, runs, pixel_ratio)
     ctx.restore()
     return
   }

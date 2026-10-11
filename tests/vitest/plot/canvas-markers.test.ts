@@ -1,6 +1,8 @@
 import {
   type CanvasMarker,
   draw_markers,
+  MAX_SPRITE_RUNS,
+  MAX_SPRITE_SIDE,
   SPRITE_MIN_MARKERS,
 } from '#lib/plot/core/canvas-markers.js'
 import { prepare_canvas } from '#lib/plot/core/utils.js'
@@ -232,7 +234,7 @@ describe(`canvas markers`, () => {
 
 describe(`canvas marker sprites (dense plots)`, () => {
   // jsdom has no OffscreenCanvas: a stub records sprite creation and the paint calls made on each sprite
-  const stub_offscreen = () => {
+  const stub_offscreen = ({ context = true } = {}) => {
     const sprites: { width: number; height: number; ctx: ReturnType<typeof fake_ctx> }[] = []
     class StubOffscreenCanvas {
       width: number
@@ -244,7 +246,7 @@ describe(`canvas marker sprites (dense plots)`, () => {
         sprites.push(this)
       }
       getContext() {
-        return this.ctx
+        return context ? this.ctx : null
       }
     }
     vi.stubGlobal(`OffscreenCanvas`, StubOffscreenCanvas)
@@ -300,6 +302,48 @@ describe(`canvas marker sprites (dense plots)`, () => {
       height: 100,
     })
     expect(ops(invisible, `drawImage`)).toHaveLength(0)
+  })
+
+  // Sprites are planned before anything is drawn, so each fallback traces every marker as a path exactly once
+  test.each([
+    [
+      `per-point colours exceed the style-run cap`,
+      Array.from({ length: SPRITE_MIN_MARKERS }, (_, idx) =>
+        marker({ cx: idx, fill: `rgb(${idx % (MAX_SPRITE_RUNS + 1)}, 1, 2)` }),
+      ),
+      true,
+    ],
+    [
+      `markers exceed the sprite size cap`,
+      batch(SPRITE_MIN_MARKERS, { fill: `olive`, radius: MAX_SPRITE_SIDE }),
+      true,
+    ],
+    [
+      `the offscreen canvas has no 2D context`,
+      batch(SPRITE_MIN_MARKERS, { fill: `teal` }),
+      false,
+    ],
+  ])(`falls back to paths when %s`, (_label, markers, context) => {
+    stub_offscreen({ context })
+    const ctx = with_draw_image()
+    draw_markers(ctx, markers, { width: 100, height: 100 })
+    expect(ops(ctx, `drawImage`)).toHaveLength(0)
+    expect(ops(ctx, `arc`)).toHaveLength(SPRITE_MIN_MARKERS)
+    expect(ops(ctx, `save`)).toHaveLength(ops(ctx, `restore`).length)
+  })
+
+  test(`symbol sprites leave room for miter joins`, () => {
+    const sprites = stub_offscreen()
+    draw_markers(
+      with_draw_image(),
+      batch(SPRITE_MIN_MARKERS, { fill: `navy`, symbol_type: `Triangle` }),
+      {
+        width: 100,
+        height: 100,
+      },
+    )
+    // sqrt(π·3²) bounding radius + 10 miter half-widths of the 1 px stroke + 1 antialias px, per side
+    expect(sprites[0].width).toBe(Math.ceil(2 * (Math.sqrt(Math.PI * 9) + 5 + 1)))
   })
 
   test(`plots below the sprite threshold keep vector paths`, () => {
