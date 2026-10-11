@@ -5,6 +5,7 @@
   import * as math from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { dispose_on_change } from '#lib/scene/geometry.svelte.js'
+  import { cell_vector_origin } from '#lib/structure/geometry.js'
   import { CanvasTooltip } from '#lib/structure/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { supercell_grid_edges } from '#lib/structure/supercell.js'
@@ -42,9 +43,6 @@
     show_cell_vectors?: boolean // whether to show the lattice vectors
   } = $props()
 
-  // Lattice vector arrows all start from this corner, just outside the cell, in the same a/b/c
-  // colors as the orientation gizmo and the rotation sliders
-  const VECTOR_ORIGIN: Vec3 = [-1, -1, -1]
   // Emphasize the origin cell relative to the tiled block.
   const TILE_EDGE_DIM = 0.45
   const TILE_EDGE_THINNING = 0.6
@@ -68,6 +66,9 @@
     matrix ? math.scale_lattice_matrix(matrix, tile_counts) : null,
   )
   let lattice_center: Vec3 = $derived(cell_center(matrix ?? null))
+  // Lattice vector arrows all start just outside the origin corner, in the same a/b/c colors as the
+  // orientation gizmo and the rotation sliders
+  let vector_origin: Vec3 = $derived(matrix ? cell_vector_origin(matrix) : [0, 0, 0])
   let block_center: Vec3 = $derived(cell_center(block_matrix))
 
   let tile_edges = $derived(supercell_grid_edges(tile_counts))
@@ -223,7 +224,7 @@
     <!-- Stable A/B/C slot keys preserve Arrow instances; vector props update reactively. -->
     {#each matrix as vec, idx (idx)}
       <Arrow
-        position={VECTOR_ORIGIN}
+        position={vector_origin}
         vector={vec}
         scale={0.5}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
@@ -235,7 +236,7 @@
     <!-- Tooltip for hovered vector -->
     {#if hovered_idx !== null && matrix}
       {@const hovered_vec = matrix[hovered_idx]}
-      {@const tooltip_position = math.add(VECTOR_ORIGIN, hovered_vec)}
+      {@const tooltip_position = math.add(vector_origin, hovered_vec)}
       <CanvasTooltip position={tooltip_position}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
         ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) <small>Å</small>

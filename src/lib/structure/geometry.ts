@@ -1,9 +1,18 @@
 // Three.js orientation helpers shared by 3D components (Arrow, Cylinder, Lattice,
 // SymmetryElements). Kept out of #lib/math, which is pure TS with no three.js dependency.
-import { add, EPS, scale, subtract, type Vec3 } from '#lib/math.js'
+import { add, EPS, type Matrix3x3, scale, subtract, type Vec3 } from '#lib/math.js'
 import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 
 const UP_VECTOR = new Vector3(0, 1, 0)
+
+// Start of the lattice-vector arrows: `offset` Å behind the origin corner along -(a+b+c). All its fractional
+// coordinates are negative, so it, and every arrow drawn from it along a, b or c, stays outside the cell whatever
+// the vectors' signs; a fixed Cartesian offset lands inside cells whose vectors have negative components.
+export function cell_vector_origin(matrix: Matrix3x3, offset = Math.sqrt(3)): Vec3 {
+  const diagonal = add(...matrix)
+  const length = Math.hypot(...diagonal)
+  return length < EPS ? [0, 0, 0] : scale(diagonal, -offset / length) // a+b+c = 0 only for a degenerate cell
+}
 
 // Quaternion rotating the +Y axis onto `direction` (zero-length → identity). Cylinder and
 // cone geometries run along +Y, so this orients them toward an arbitrary direction.
