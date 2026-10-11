@@ -16,7 +16,7 @@
   import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
   import type { SceneExportFormat } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { Vec2 } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
@@ -66,6 +66,7 @@
     property_name = $bindable(),
     color_range = $bindable(),
     show_colorbar = true,
+    slice_plane,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -116,6 +117,8 @@
     color_range?: Vec2
     // Colour bar over the canvas while surfaces are coloured by a property
     show_colorbar?: boolean
+    // 2D slice (e.g. a FermiSlice beside the viewer) to mark as a plane in the 3D view
+    slice_plane?: { miller_indices: Vec3; distance: number }
     // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
     // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
@@ -416,6 +419,7 @@
           property_name={active_property}
           color_range={resolved_color_range}
           property_label={custom_property_label}
+          {slice_plane}
           {representation}
           {surface_opacity}
           {selected_bands}
@@ -442,7 +446,7 @@
           scale={color_scale}
           range={resolved_color_range}
           snap_ticks={false}
-          tick_labels={5}
+          tick_labels={3}
           orientation="horizontal"
           class="property-colorbar"
           --cbar-font-size="0.75em"
@@ -513,19 +517,15 @@
   .fermi-surface :global(canvas) {
     user-select: none;
   }
+  /* bottom-right corner, placed like the structure viewer's atom legend */
   .fermi-surface :global(.property-colorbar) {
     position: absolute;
-    bottom: var(--fermi-colorbar-offset, 1rem);
-    left: 50%;
-    transform: translateX(-50%);
-    --cbar-width: var(--fermi-colorbar-width, min(60%, 320px));
+    bottom: var(--fermi-colorbar-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--fermi-colorbar-right, clamp(4pt, 3cqmin, 8pt));
+    --cbar-width: var(--fermi-colorbar-width, 140px);
+    /* tick labels centre on their ticks: room for the half of the last one past the bar */
+    padding-right: 1em;
     z-index: 1;
     pointer-events: none;
-    padding: 4px 6px;
-    border-radius: 4px;
-    background: var(
-      --fermi-colorbar-bg,
-      color-mix(in srgb, var(--fermi-bg, var(--surface-bg, #fff)) 75%, transparent)
-    );
   }
 </style>

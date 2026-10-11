@@ -100,6 +100,9 @@
   bind:band_data
   bind:error_msg
   bind:loading
+  slice_plane={show_slice
+    ? { miller_indices: slice_miller, distance: slice_distance }
+    : undefined}
   show_controls="hover"
   on_file_load={({ source_filename }) => {
     error_msg = undefined

@@ -673,7 +673,7 @@ function ifermi_vertex_properties(
 function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   const isosurfaces_obj = data.isosurfaces as Record<string, IFermiIsosurface[]>
   const reciprocal_space = data.reciprocal_space as
-    | { reciprocal_lattice?: number[][] }
+    | { reciprocal_lattice?: number[][]; '@class'?: string }
     | undefined
 
   const k_lattice: Matrix3x3 = reciprocal_space?.reciprocal_lattice
@@ -707,7 +707,9 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
     isosurfaces,
     k_lattice,
     fermi_energy: 0, // IFermi surfaces are typically relative to Fermi level
-    reciprocal_cell: `wigner_seitz`, // IFermi typically uses Wigner-Seitz cells
+    // IFermi's ReciprocalCell is the Γ-centred parallelepiped, its WignerSeitzCell the zone
+    reciprocal_cell:
+      reciprocal_space?.[`@class`] === `ReciprocalCell` ? `parallelepiped` : `wigner_seitz`,
     metadata: {
       n_bands: band_indices.size,
       n_surfaces: isosurfaces.length,

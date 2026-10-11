@@ -354,6 +354,84 @@ function band_intersects_fermi(energies: Float64Array, isovalue: number): boolea
   return false
 }
 
+// Unit Cartesian normal of the slice plane with Miller indices (h k l): h·b₁ + k·b₂ + l·b₃
+export function slice_plane_normal(k_lattice: math.Matrix3x3, miller_indices: Vec3): Vec3 {
+  if (miller_indices.every((miller_idx) => miller_idx === 0)) {
+    throw new Error(
+      `Invalid miller indices [0, 0, 0]: at least one index must be non-zero to define a plane`,
+    )
+  }
+  const plane_normal = math.add(
+    math.scale(k_lattice[0], miller_indices[0]),
+    math.scale(k_lattice[1], miller_indices[1]),
+    math.scale(k_lattice[2], miller_indices[2]),
+  )
+  if (Math.hypot(...plane_normal) < EPS) {
+    throw new Error(
+      `Degenerate plane normal: k_lattice vectors produce a zero-length normal for miller indices [${miller_indices.join(`, `)}]`,
+    )
+  }
+  return math.normalize_vec(plane_normal)
+}
+
+// Corners of the convex polygon where the plane normal·k = distance cuts a convex polyhedron
+// given by its edge segments (e.g. the Brillouin zone), ordered around the polygon. Empty when
+// the plane misses it or only touches a vertex or an edge.
+export function plane_polyhedron_section(
+  edges: readonly (readonly Vec3[])[],
+  normal: Vec3,
+  distance: number,
+): Vec3[] {
+  const corners: Vec3[] = []
+  // Endpoints within this distance of the plane count as on it; also merges the copies of a
+  // corner that every edge meeting at a polyhedron vertex on the plane contributes
+  const tolerance = 1e-9 * Math.max(1, Math.abs(distance))
+  const add = (point: Vec3) => {
+    if (!corners.some((corner) => math.euclidean_dist(corner, point) < 1e-7))
+      corners.push(point)
+  }
+  for (const [start, end] of edges) {
+    const start_dist = math.dot(normal, start) - distance
+    const end_dist = math.dot(normal, end) - distance
+    if (Math.abs(start_dist) < tolerance) add(start)
+    if (Math.abs(end_dist) < tolerance) add(end)
+    if (start_dist * end_dist < 0) {
+      const step = math.scale(math.subtract(end, start), start_dist / (start_dist - end_dist))
+      add(math.add(start, step))
+    }
+  }
+  if (corners.length < 3) return []
+  const [axis_u, axis_v] = math.compute_in_plane_basis(normal)
+  const center = math.scale(math.add(...corners), 1 / corners.length)
+  const angle = (point: Vec3) => {
+    const offset = math.subtract(point, center)
+    return Math.atan2(math.dot(offset, axis_v), math.dot(offset, axis_u))
+  }
+  return corners.toSorted((first, second) => angle(first) - angle(second))
+}
+
+// The 12 edges of the Γ-centred reciprocal cell (fractional coordinates in [−½, ½]³), where
+// marching cubes leaves band-grid surfaces
+export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
+  const frac_to_cart = math.transpose_3x3_matrix(k_lattice)
+  const corner = (frac: Vec3): Vec3 => math.mat3x3_vec3_multiply(frac_to_cart, frac)
+  const edges: [Vec3, Vec3][] = []
+  for (let axis = 0; axis < 3; axis++) {
+    for (const first of [-0.5, 0.5]) {
+      for (const second of [-0.5, 0.5]) {
+        const start: Vec3 = [0, 0, 0]
+        start[(axis + 1) % 3] = first
+        start[(axis + 2) % 3] = second
+        const end: Vec3 = [...start]
+        start[axis] = -0.5
+        end[axis] = 0.5
+        edges.push([corner(start), corner(end)])
+      }
+    }
+  }
+  return edges
+}
+
 // Compute 2D Fermi slice along a specified plane
 export function compute_fermi_slice(
   fermi_data: FermiSurfaceData,
@@ -365,29 +443,7 @@ export function compute_fermi_slice(
     options.property ??
     fermi_data.isosurfaces.flatMap((surface) => Object.keys(surface.properties ?? {}))[0]
 
-  if (miller_indices.every((miller_idx) => miller_idx === 0)) {
-    throw new Error(
-      `Invalid miller indices [0, 0, 0]: at least one index must be non-zero to define a plane`,
-    )
-  }
-
-  // Compute plane normal in Cartesian coordinates
-  const plane_normal = math.add(
-    math.scale(fermi_data.k_lattice[0], miller_indices[0]),
-    math.scale(fermi_data.k_lattice[1], miller_indices[1]),
-    math.scale(fermi_data.k_lattice[2], miller_indices[2]),
-  )
-
-  const normal_len = Math.hypot(...plane_normal)
-  if (normal_len < EPS) {
-    throw new Error(
-      `Degenerate plane normal: k_lattice vectors produce a zero-length normal for miller indices [${miller_indices.join(
-        `, `,
-      )}]`,
-    )
-  }
-  const unit_normal = math.normalize_vec(plane_normal)
-
+  const unit_normal = slice_plane_normal(fermi_data.k_lattice, miller_indices)
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
   const isolines: Isoline[] = fermi_data.isosurfaces.flatMap((surface) =>

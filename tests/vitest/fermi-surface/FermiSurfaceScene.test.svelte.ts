@@ -5,7 +5,14 @@ import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import { DoubleSide, type MeshStandardMaterial, Vector3 } from 'three/webgpu'
+import {
+  type BufferGeometry,
+  DoubleSide,
+  type MeshStandardMaterial,
+  Vector3,
+} from 'three/webgpu'
+import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
@@ -228,4 +235,62 @@ test(`property mode without property_name colours by the first property`, () => 
   ])
   mount_scene({ fermi_data: data, color_property: `property` })
   expect(mesh_materials().map((material) => material.vertexColors)).toEqual([true])
+})
+
+// The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:
+// the Brillouin zone for a Wigner-Seitz mesh (here a 0.6-wide cube, so it differs from the
+// unit cell), the Γ-centred unit cell for band-grid (parallelepiped) surfaces. Moving it
+// rebuilds the geometry; (0 0 0) or a plane outside the cell draws nothing.
+test(`marks the slice plane where it cuts the data's cell`, () => {
+  const zone_lattice: Matrix3x3 = [
+    [0.6, 0, 0],
+    [0, 0.6, 0],
+    [0, 0, 0.6],
+  ]
+  const bz_data = {
+    vertices: [],
+    faces: [],
+    order: 1,
+    volume: 0.216,
+    edges: centered_cell_edges(zone_lattice),
+    k_lattice: zone_lattice,
+  }
+  const props = $state({
+    fermi_data,
+    bz_data,
+    slice_plane: { miller_indices: [0, 0, 1] as Vec3, distance: 0.25 },
+  })
+  mount_scene(props)
+  // outline corners as [x, y, z] rows
+  const outline = (): Vec3[] => {
+    const node = threlte_stub.nodes.findLast(({ tag }) => tag === `LineLoop`)
+    const positions = (node?.props.geometry as BufferGeometry | undefined)?.getAttribute(
+      `position`,
+    ).array
+    return positions
+      ? Array.from({ length: positions.length / 3 }, (_, idx) => [
+          positions[3 * idx],
+          positions[3 * idx + 1],
+          positions[3 * idx + 2],
+        ])
+      : []
+  }
+  const max_abs = (axis: number) => Math.max(...outline().map((row) => Math.abs(row[axis])))
+  expect(outline().map((row) => row[2])).toEqual([0.25, 0.25, 0.25, 0.25]) // z = 0.25
+  expect(max_abs(0)).toBeCloseTo(0.3, 6) // the zone's half-width, not the unit cell's
+  props.fermi_data = { ...fermi_data, reciprocal_cell: `parallelepiped` }
+  flushSync()
+  expect(max_abs(0)).toBeCloseTo(0.5, 6) // band-grid surfaces fill the Γ-centred unit cell
+  props.slice_plane = { miller_indices: [0, 0, 1], distance: -0.4 }
+  flushSync()
+  expect(outline().every((row) => Math.abs(row[2] + 0.4) < 1e-6)).toBe(true)
+  for (const miller_indices of [
+    [0, 0, 0],
+    [0, 0, 1],
+  ] as Vec3[]) {
+    // (0 0 0) defines no plane; (0 0 1) at 0.8 lies outside the cell
+    props.slice_plane = { miller_indices, distance: 0.8 }
+    flushSync()
+    expect(threlte_stub.nodes.some(({ tag }) => tag === `LineLoop`)).toBe(false)
+  }
 })

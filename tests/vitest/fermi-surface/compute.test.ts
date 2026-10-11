@@ -2,9 +2,12 @@
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
   auto_interpolation_factor,
+  centered_cell_edges,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
+  plane_polyhedron_section,
+  slice_plane_normal,
   upsample_grid,
 } from '#lib/fermi-surface/compute.js'
 import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
@@ -246,6 +249,54 @@ describe(`extract_fermi_surface vertex properties`, () => {
       properties: undefined,
     }).isosurfaces
     expect(plain.properties).toBeUndefined()
+  })
+})
+
+describe(`slice plane section`, () => {
+  const cube_edges = centered_cell_edges(IDENTITY_MATRIX3)
+  const diagonal = math.normalize_vec<Vec3>([1, 1, 1])
+  // (0 0 1) through Γ cuts the unit cube in its middle square; (1 1 1) through Γ in the regular
+  // hexagon of edge √2/2; past the corner √3/2 nothing, and exactly at it only a point
+  test.each([
+    { normal: [0, 0, 1] as Vec3, distance: 0, n_corners: 4, side: 1 },
+    { normal: [0, 0, 1] as Vec3, distance: 0.5, n_corners: 4, side: 1 }, // the top face
+    { normal: diagonal, distance: 0, n_corners: 6, side: Math.SQRT1_2 },
+    { normal: diagonal, distance: Math.sqrt(3) / 2, n_corners: 0, side: 0 },
+    { normal: diagonal, distance: 0.9, n_corners: 0, side: 0 },
+  ])(`normal $normal at d=$distance`, ({ normal, distance, n_corners, side }) => {
+    const corners = plane_polyhedron_section(cube_edges, normal, distance)
+    expect(corners).toHaveLength(n_corners)
+    for (const [idx, corner] of corners.entries()) {
+      expect(math.dot(normal, corner)).toBeCloseTo(distance, 12) // on the plane
+      // ordered around the polygon: consecutive corners are one side apart
+      const next = corners[(idx + 1) % corners.length]
+      expect(math.euclidean_dist(corner, next)).toBeCloseTo(side, 12)
+    }
+  })
+
+  test(`centered_cell_edges spans the Γ-centred cell of a skew lattice`, () => {
+    const edges = centered_cell_edges(HEXAGONAL)
+    expect(edges).toHaveLength(12)
+    const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(HEXAGONAL))
+    const fracs = edges.flat().map((point) => math.mat3x3_vec3_multiply(cart_to_frac, point))
+    for (const frac of fracs)
+      for (const coord of frac) expect(Math.abs(coord)).toBeCloseTo(0.5, 12)
+    // each edge runs along one lattice vector
+    for (const [start, end] of edges) {
+      const step = math.mat3x3_vec3_multiply(cart_to_frac, math.subtract(end, start))
+      expect(
+        step
+          .map((coord) => Math.round(Math.abs(coord)))
+          .toSorted((left, right) => left - right),
+      ).toEqual([0, 0, 1])
+    }
+  })
+
+  test(`slice_plane_normal is the normalised h·b₁ + k·b₂ + l·b₃ and rejects degenerate planes`, () => {
+    const normal = slice_plane_normal(HEXAGONAL, [1, 1, 0])
+    expect(normal[0]).toBeCloseTo(0.5, 12)
+    expect(normal[1]).toBeCloseTo(Math.sqrt(3) / 2, 12)
+    expect(() => slice_plane_normal(HEXAGONAL, [0, 0, 0])).toThrow(/Invalid miller indices/)
   })
 })
 

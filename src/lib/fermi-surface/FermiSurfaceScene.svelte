@@ -27,6 +27,7 @@
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {
+    BufferAttribute,
     BufferGeometry,
     ClippingGroup,
     DoubleSide,
@@ -46,6 +47,7 @@
     vertex_property,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
+  import { centered_cell_edges, plane_polyhedron_section, slice_plane_normal } from './compute'
   import type {
     FermiHoverData,
     FermiIsosurface,
@@ -79,6 +81,8 @@
     clip_axis = DEFAULTS.fermi.clip_axis,
     clip_position = DEFAULTS.fermi.clip_position,
     clip_flip = DEFAULTS.fermi.clip_flip,
+    // 2D slice to mark in 3D: the plane (h k l)·k = distance, cut to the data's cell
+    slice_plane,
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
@@ -95,11 +99,13 @@
       property_name?: string
       color_range?: Vec2
       property_label?: string
+      slice_plane?: { miller_indices: Vec3; distance: number }
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
+  const SLICE_PLANE_COLOR = `#f59e0b`
 
   // Transparent surfaces depth-sort correctly because renderer.sortObjects defaults to true
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
@@ -342,6 +348,40 @@
     threlte.invalidate()
   })
 
+  // Where the 2D slice cuts the cell the surfaces live in: the Γ-centred parallelepiped for
+  // band grids, the Brillouin zone for precomputed Wigner-Seitz meshes. Empty when the plane
+  // misses the cell or its Miller indices are degenerate.
+  const slice_polygon = $derived.by((): Vec3[] => {
+    if (!slice_plane || !fermi_data) return []
+    const { miller_indices, distance } = slice_plane
+    const edges =
+      fermi_data.reciprocal_cell === `parallelepiped`
+        ? centered_cell_edges(fermi_data.k_lattice)
+        : bz_data?.edges
+    // (0 0 0) defines no plane; FermiSlice reports that error
+    if (!edges || miller_indices.every((idx) => idx === 0)) return []
+    const normal = slice_plane_normal(fermi_data.k_lattice, miller_indices)
+    return plane_polyhedron_section(edges, normal, distance)
+  })
+  // Fan-triangulated fill (convex polygon) and closed outline of the slice plane
+  const slice_geometries = $derived.by(() => {
+    if (slice_polygon.length < 3) return null
+    const position = new BufferAttribute(new Float32Array(slice_polygon.flat()), 3)
+    const fill = new BufferGeometry().setAttribute(`position`, position)
+    fill.setIndex(slice_polygon.slice(2).flatMap((_, idx) => [0, idx + 1, idx + 2]))
+    // the outline walks the corners in order, so it needs its own index-free geometry
+    const outline = new BufferGeometry().setAttribute(`position`, position)
+    return { fill, outline }
+  })
+  $effect(() => {
+    const current = slice_geometries
+    threlte.invalidate()
+    return () => {
+      current?.fill.dispose()
+      current?.outline.dispose()
+    }
+  })
+
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
@@ -438,6 +478,23 @@
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
     <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
+  {/if}
+
+  <!-- Drawn after the surfaces without writing depth. Translucent sheets still write depth, so
+  the parts of the plane behind one stay hidden rather than showing through -->
+  {#if slice_geometries}
+    <T.Mesh geometry={slice_geometries.fill} renderOrder={1000}>
+      <T.MeshBasicMaterial
+        color={SLICE_PLANE_COLOR}
+        transparent
+        opacity={0.4}
+        side={DoubleSide}
+        depthWrite={false}
+      />
+    </T.Mesh>
+    <T.LineLoop geometry={slice_geometries.outline}>
+      <T.LineBasicMaterial color={SLICE_PLANE_COLOR} />
+    </T.LineLoop>
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

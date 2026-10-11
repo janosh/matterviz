@@ -746,6 +746,16 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
     expect(Array.from(iso.properties?.Property ?? [])).toEqual([5, 5, 5, NaN])
   })
 
+  // The cell IFermi stored the surface in (its reciprocal_space @class) decides where the 3D
+  // slice plane is cut: the shipped _reciprocal file spans the Γ-centred parallelepiped
+  test.each([
+    [`fs_BaFe2As2_reciprocal.json.gz`, `parallelepiped`],
+    [`fs_BaFe2As2_wigner.json.gz`, `wigner_seitz`],
+  ])(`IFermi %s is in the %s cell`, (name, cell) => {
+    const parsed = parse_fermi_file(read_maybe_gz(`src/site/fermi-surfaces/${name}`), name)
+    expect(is_fermi_surface_data(parsed) && parsed.reciprocal_cell).toBe(cell)
+  })
+
   test.each([
     [`a band grid`, { ...mock_band_grid, energies: [[[[[0]]]]] }, /pass it as band_data/],
     [`garbage`, { isosurfaces: [{ vertices: `x` }] }, /missing required fields/],
