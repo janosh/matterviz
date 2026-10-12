@@ -753,11 +753,13 @@ export const DEFAULT_GRID_STYLE = {
 } as const
 
 export const DEFAULT_MARKERS = `line+points` as const
-// Whether a series draws its `points` or its `line` (markers default to DEFAULT_MARKERS)
+// Whether a series draws its `points` or its `line`, for plots whose unset markers mean
+// `fallback` (ternary series default to points only)
 export const has_marker = (
   series: { markers?: Markers | null } | undefined,
   part: `points` | `line`,
-): boolean => (series?.markers ?? DEFAULT_MARKERS).includes(part)
+  fallback: Markers = DEFAULT_MARKERS,
+): boolean => (series?.markers ?? fallback).includes(part)
 
 // Default series symbols for auto-differentiation (cycling through distinct shapes)
 export const DEFAULT_SERIES_SYMBOLS = [

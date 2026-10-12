@@ -19,6 +19,7 @@
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import { has_marker } from '#lib/plot/core/types.js'
   import {
     closest_data_idx,
     focus_left,
@@ -233,7 +234,7 @@
   // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
     series.flatMap((srs, series_idx) => {
-      if (!is_visible(series_idx) || !srs.markers?.includes(`line`)) return []
+      if (!is_visible(series_idx) || !has_marker(srs, `line`, `points`)) return []
       const points = (placed.groups[series_idx] ?? []).map(pixel)
       if (points.length < 2) return []
       const line_style = srs.line_style ?? {}
@@ -249,7 +250,7 @@
     }),
   )
   const draws_points = (series_idx: number): boolean =>
-    (series[series_idx]?.markers ?? `points`).includes(`points`)
+    has_marker(series[series_idx], `points`, `points`)
 
   const point_props = (point: PlacedPoint): TernaryPointProps<Metadata> => {
     const srs = series[point.series_idx]
@@ -323,7 +324,7 @@
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
       symbol_color: series_color(series_idx),
-      line_color: srs.markers?.includes(`line`)
+      line_color: has_marker(srs, `line`, `points`)
         ? (srs.line_style?.color ?? series_color(series_idx))
         : undefined,
       line_dash: srs.line_style?.dash,
