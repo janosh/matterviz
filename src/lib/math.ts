@@ -116,6 +116,26 @@ export const clamp = (value: number, lower: number, upper: number): number =>
 export const in_range = (value: number, [bound_a, bound_b]: Vec2): boolean =>
   value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
 
+// Whether idx is an integer in [0, length), i.e. a valid index into that many items
+export const is_valid_index = (idx: number, length: number): boolean =>
+  Number.isInteger(idx) && idx >= 0 && idx < length
+
+// Ascending array of the given numbers, e.g. a Set of site indices
+export const sorted_numbers = (values: Iterable<number>): number[] =>
+  [...values].toSorted((val_a, val_b) => val_a - val_b)
+
+// Index of the value closest to `target` (ties go to the earlier index). Maps a hovered plot
+// position on a non-index axis (reaction coordinates, sampled frame numbers) back to its
+// nearest data point, where rounding would only be right if the axis were the index.
+export function nearest_value_idx(values: readonly number[], target: number): number {
+  if (values.length === 0) throw new Error(`nearest_value_idx got an empty array`)
+  return values.reduce(
+    (best, val, idx) =>
+      Math.abs(val - target) < Math.abs(values[best] - target) ? idx : best,
+    0,
+  )
+}
+
 // Index of the first value for which an initial-prefix predicate is false.
 export const partition_point = <Value>(
   values: ArrayLike<Value>,

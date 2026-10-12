@@ -7,10 +7,18 @@
   import { format_formula_html } from '#lib/composition/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
   import type { PhaseData } from '#lib/convex-hull/index.js'
+  import type { ComponentProps } from 'svelte'
   import { reaction_slice_points } from './thermo'
   import type { SynthesisRoute } from './types'
 
-  let { route, ...rest }: { route: SynthesisRoute; [key: string]: unknown } = $props()
+  // entries and components come from the route; every other ConvexHull prop passes through
+  let {
+    route,
+    ...rest
+  }: { route: SynthesisRoute } & Omit<
+    ComponentProps<typeof ConvexHull>,
+    `entries` | `components`
+  > = $props()
 
   // edits that rebuild the route object keep these, so the hull isn't recomputed
   const reaction = $derived(route.reaction)

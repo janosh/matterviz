@@ -25,6 +25,14 @@ export interface StructureSiteHighlight {
   neighbor_indices?: number[]
 }
 
+// Deduped union of a highlight's sites and their partners, for a viewer that rings both
+export const highlight_site_union = (
+  highlight: Pick<StructureSiteHighlight, `site_indices` | `neighbor_indices`> | undefined,
+): number[] =>
+  highlight
+    ? [...new Set([...highlight.site_indices, ...(highlight.neighbor_indices ?? [])])]
+    : []
+
 // A Record value is either a bare structure or one tagged with a plot colour
 type RecordValue = AnyStructure | { structure: AnyStructure; color?: string }
 export type StructureInput = AnyStructure | Record<string, RecordValue> | StructureEntry[]

@@ -39,7 +39,7 @@
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
-  import { clamp, same_values } from '#lib/math.js'
+  import { clamp, is_valid_index, same_values } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
@@ -48,6 +48,7 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -622,7 +623,7 @@
   const prepare_movie_frame = async (idx: number, cancellation?: AbortSignal) => {
     const timeout = AbortSignal.timeout(120_000)
     const signal = cancellation ? AbortSignal.any([cancellation, timeout]) : timeout
-    if (!trajectory || !Number.isInteger(idx) || idx < 0 || idx >= trajectory.frame_count)
+    if (!trajectory || !is_valid_index(idx, trajectory.frame_count))
       throw new RangeError(`Movie source frame ${idx} is unavailable`)
     if (!uses_structure_renderer())
       throw new Error(`Select a view mode containing the structure before rendering a movie`)
@@ -1228,8 +1229,7 @@
     if (!hover || !has_usable_lattice(structure)) return highlight([])
     const { bin_idx, element_pair } = hover
     if (bin_idx === null) return highlight(element_site_indices(structure, element_pair))
-    const sites = rdf_bin_sites(structure, { ...hover, bin_idx })
-    highlight([...new Set([...sites.site_indices, ...sites.neighbor_indices])])
+    highlight(highlight_site_union(rdf_bin_sites(structure, { ...hover, bin_idx })))
   }
 
   // === analysis menu ===

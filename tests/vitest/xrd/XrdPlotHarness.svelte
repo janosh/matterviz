@@ -3,7 +3,10 @@
   import type { XrdPeak } from '#lib/xrd/index.js'
   import type { ComponentProps } from 'svelte'
 
-  let props: ComponentProps<typeof XrdPlot> = $props()
+  let { patterns: initial_patterns, ...props }: ComponentProps<typeof XrdPlot> = $props()
+  // Writable, so a test can swap the patterns under the peak bindings
+  let patterns = $derived(initial_patterns)
+  export const set_patterns = (next: typeof patterns) => (patterns = next)
   let orientation = $state<`vertical` | `horizontal`>(`vertical`)
   // Reactive owners for the peak bindings, read back through the export
   let hovered_peak = $state<XrdPeak | null>(null)
@@ -16,6 +19,7 @@
 </button>
 <XrdPlot
   {...props}
+  {patterns}
   {orientation}
   style="width: 800px; height: 600px;"
   bind:hovered_peak

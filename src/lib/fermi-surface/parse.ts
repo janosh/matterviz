@@ -353,7 +353,7 @@ function isosurface_from_json(
   let n_indices = 0
   for (const face of faces) {
     for (const idx of face) {
-      if (!Number.isInteger(idx) || idx < 0 || idx >= n_vertices) {
+      if (!math.is_valid_index(idx, n_vertices)) {
         throw new RangeError(`Face references vertex ${idx} of a ${n_vertices}-vertex mesh`)
       }
     }

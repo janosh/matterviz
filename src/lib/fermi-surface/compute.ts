@@ -1,6 +1,7 @@
 // Fermi surface computation and analysis functions
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import { rgb } from 'd3-color'
+import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -295,7 +296,7 @@ export function extract_fermi_surface(
   const isovalue = band_data.fermi_energy + mean
   const isosurfaces: FermiIsosurface[] = []
   const { index0_frac } = grid_layout(band_data)
-  const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
+  const frac_to_cart = math.create_frac_to_cart(band_data.k_lattice)
 
   for (const { spin_idx, band_idx, spin, band_index, grid } of crossing_bands(
     band_data,
@@ -306,7 +307,7 @@ export function extract_fermi_surface(
     const centered = prepared_band_grid(band_data, grid, interpolation_factor)
     const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {
       periodic: band_data.periodic ?? false,
-      position_offset: math.mat3x3_vec3_multiply(k_lattice_t, centered.index0_frac),
+      position_offset: frac_to_cart(centered.index0_frac),
     })
     if (mesh.positions.length === 0) continue
     const fields = Object.entries(band_data.properties ?? {})
@@ -331,38 +332,39 @@ export function extract_fermi_surface(
 
 // Move a band-grid surface from the Γ-centred cell into the Wigner-Seitz zone, so sheets line
 // up with a k-path drawn through it: each triangle shifts by the lattice vector nearest its
-// centroid. Triangles stay whole (the zone boundary steps at mesh resolution); vertices shared
-// by triangles that shift differently are duplicated.
+// centroid, i.e. by centroid minus its minimum image from Γ. min_image_displacement searches
+// in a reduced basis, so this stays exact for sheared or supercell bases, whose nearest lattice
+// vector can have indices beyond ±1. Triangles stay whole (the zone boundary steps at mesh
+// resolution); vertices shared by triangles that shift differently are duplicated.
 export function fold_to_wigner_seitz(
   surface: FermiIsosurface,
   k_lattice: math.Matrix3x3,
 ): FermiIsosurface {
   const { positions, indices, normals, properties } = surface
-  // n·b for n ∈ {−1, 0, 1}³ covers the [−½, ½)³ cell of a reduced lattice; index 13 is G = 0
-  const k_lattice_t = math.transpose_3x3_matrix(k_lattice)
-  const shifts = Array.from({ length: 27 }, (_, idx) =>
-    math.mat3x3_vec3_multiply(
-      k_lattice_t,
-      [idx / 9, idx / 3, idx].map((n) => (Math.floor(n) % 3) - 1) as Vec3,
-    ),
-  )
+  // built once per surface: caches the reduced search basis for every triangle
+  const converters = math.create_lattice_converters(k_lattice)
+  const shifts: Vec3[] = [] // distinct lattice vectors G, exact from their integer indices
+  const shift_ids = new Map<string, number>() // indices `n1,n2,n3` → position in shifts
   const n_vertices = vertex_count(surface)
-  const shifted_vertex = new Map<number, number>() // vertex · 27 + shift → appended vertex
+  const shifted_vertex = new Map<number, number>() // shift · n_vertices + vertex → appended vertex
   const out_indices = indices.slice()
   for (let tri = 0; tri < indices.length; tri += 3) {
     const offsets = [0, 1, 2].map((corner) => 3 * indices[tri + corner])
     const centroid = [0, 1, 2].map(
       (axis) => offsets.reduce((sum, offset) => sum + positions[offset + axis], 0) / 3,
-    )
+    ) as Vec3
+    const image = math.min_image_displacement([0, 0, 0], centroid, k_lattice, converters)
     // ties stay at G = 0
-    let [best_shift, best_dist] = [13, math.euclidean_dist(centroid, shifts[13])]
-    for (const [shift_idx, shift] of shifts.entries()) {
-      const dist = math.euclidean_dist(centroid, shift)
-      if (dist < best_dist - 1e-6) [best_shift, best_dist] = [shift_idx, dist]
+    if (Math.hypot(...image) >= Math.hypot(...centroid) - 1e-6) continue
+    const n_frac = converters.cart_to_frac(math.subtract(centroid, image)).map(Math.round)
+    const n_key = n_frac.join(`,`)
+    const shift_id = shift_ids.get(n_key) ?? shifts.length
+    if (shift_id === shifts.length) {
+      shift_ids.set(n_key, shift_id)
+      shifts.push(converters.frac_to_cart(n_frac as Vec3))
     }
-    if (best_shift === 13) continue
     for (let corner = tri; corner < tri + 3; corner++) {
-      const key = indices[corner] * 27 + best_shift
+      const key = shift_id * n_vertices + indices[corner]
       const shifted = shifted_vertex.get(key) ?? n_vertices + shifted_vertex.size
       shifted_vertex.set(key, shifted)
       out_indices[corner] = shifted
@@ -375,7 +377,7 @@ export function fold_to_wigner_seitz(
     const out = new Float32Array(stride * (n_vertices + shifted_vertex.size))
     out.set(values)
     for (const [key, shifted] of shifted_vertex) {
-      const vertex = Math.floor(key / 27)
+      const vertex = key % n_vertices
       out.set(values.subarray(stride * vertex, stride * (vertex + 1)), stride * shifted)
     }
     return out
@@ -383,7 +385,7 @@ export function fold_to_wigner_seitz(
   const out_positions = extend(positions, 3)
   for (const [key, shifted] of shifted_vertex) {
     for (let axis = 0; axis < 3; axis++)
-      out_positions[3 * shifted + axis] -= shifts[key % 27][axis]
+      out_positions[3 * shifted + axis] -= shifts[Math.floor(key / n_vertices)][axis]
   }
   return {
     ...surface,
@@ -412,8 +414,7 @@ function sample_vertex_values(
   const n_vertices = positions.length / 3
   const outputs = grids.map(() => new Float32Array(n_vertices))
   if (grids.length === 0) return outputs
-  // vertices sit at k_latticeᵀ·frac
-  const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(band_data.k_lattice))
+  const cart_to_frac = math.create_cart_to_frac(band_data.k_lattice)
   const strides = scalar_grid_strides(grids[0])
   const periods = grid_dimensions(grids[0]).map((count) =>
     Math.max(band_data.periodic ? count : count - 1, 1),
@@ -425,7 +426,7 @@ function sample_vertex_values(
   for (let vert_idx = 0; vert_idx < n_vertices; vert_idx++) {
     const offset = 3 * vert_idx
     const point: Vec3 = [positions[offset], positions[offset + 1], positions[offset + 2]]
-    math.mat3x3_vec3_multiply(cart_to_frac, point, base)
+    cart_to_frac(point, base)
     for (let axis = 0; axis < 3; axis++) {
       const coord = (base[axis] - index0_frac[axis]) * periods[axis]
       base[axis] = Math.floor(coord)
@@ -477,10 +478,7 @@ export function slice_plane_normal(k_lattice: math.Matrix3x3, miller_indices: Ve
       `Invalid miller indices [0, 0, 0]: at least one index must be non-zero to define a plane`,
     )
   }
-  const plane_normal = math.mat3x3_vec3_multiply(
-    math.transpose_3x3_matrix(k_lattice),
-    miller_indices,
-  )
+  const plane_normal = math.create_frac_to_cart(k_lattice)(miller_indices)
   if (Math.hypot(...plane_normal) < EPS) {
     throw new Error(
       `Degenerate plane normal: k_lattice vectors produce a zero-length normal for miller indices [${miller_indices.join(`, `)}]`,
@@ -491,10 +489,25 @@ export function slice_plane_normal(k_lattice: math.Matrix3x3, miller_indices: Ve
 
 // The 12 edges of the Γ-centred reciprocal cell [−½, ½]³ where band-grid surfaces live
 export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
-  const frac_to_cart = math.transpose_3x3_matrix(k_lattice)
-  const corner = (frac: Vec3) =>
-    math.mat3x3_vec3_multiply(frac_to_cart, math.subtract(frac, [0.5, 0.5, 0.5]))
+  const frac_to_cart = math.create_frac_to_cart(k_lattice)
+  const corner = (frac: Vec3) => frac_to_cart(math.subtract(frac, [0.5, 0.5, 0.5]))
   return math.UNIT_CUBE_EDGES.map(([start, end]) => [corner(start), corner(end)])
+}
+
+// Where the plane normal·k = distance cuts the cell the data's surfaces live in: the
+// Wigner–Seitz zone (`zone_edges` when given, else computed) or the Γ-centred parallelepiped.
+// Empty when the plane misses it.
+export function reciprocal_cell_section(
+  { k_lattice, reciprocal_cell }: Pick<FermiSurfaceData, `k_lattice` | `reciprocal_cell`>,
+  normal: Vec3,
+  distance: number,
+  zone_edges?: readonly (readonly Vec3[])[],
+): Vec3[] {
+  const edges =
+    reciprocal_cell === `parallelepiped`
+      ? centered_cell_edges(k_lattice)
+      : (zone_edges ?? compute_brillouin_zone(k_lattice, 1).edges)
+  return math.plane_polyhedron_section(edges, normal, distance)
 }
 
 export type CarrierType = `electron` | `hole`

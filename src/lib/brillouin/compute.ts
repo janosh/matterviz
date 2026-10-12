@@ -45,8 +45,8 @@ export function fractional_to_cartesian_rotation(
 ): Matrix3x3 {
   const B_T = math.transpose_3x3_matrix(k_lattice)
   const W_inv_T = math.transpose_3x3_matrix(math.matrix_inverse_3x3(rotation_matrix))
-  // R_cart = Bᵀ · W^{-T} · B^{-T}
-  return math.dot(math.dot(B_T, W_inv_T), math.matrix_inverse_3x3(B_T))
+  // R_cart = Bᵀ · W^{-T} · B^{-T}, where B^{-T} is the reciprocal of B
+  return math.dot(math.dot(B_T, W_inv_T), math.reciprocal_lattice(k_lattice))
 }
 
 // Bragg plane of reciprocal lattice vector G: its perpendicular bisector n·x = |G|/2

@@ -15,8 +15,10 @@ vi.mock(`@threlte/core`, async (original) => ({
 
 // Threlte dispatches a pointer move to every hit along the ray, near to far: where the path
 // crosses itself on screen, the front segment wins. Segments touching the hovered q-point
-// tint over the highlighted range, and a new path frees the old meshes.
-test(`k-path hover, segment tints and mesh disposal`, async () => {
+// tint over the highlighted range, and a new path frees the old meshes. Threlte drops an
+// unregistered mesh's handlers without a pointerleave, so a rebuild or unmount while hovered
+// must clear the hover itself.
+test(`k-path hover, segment tints, mesh disposal and hover reset`, async () => {
   const on_kpath_hover = vi.fn()
   // oxfmt-ignore
   const k_path_points: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1]]
@@ -51,6 +53,12 @@ test(`k-path hover, segment tints and mesh disposal`, async () => {
   flushSync()
   expect(disposed.toSorted()).toEqual([`line`, `proxy`])
   expect(meshes().map((node_props) => (node_props.is as InstancedMesh).count)).toEqual([2, 2])
+  expect(on_kpath_hover.mock.calls).toEqual([[3], [null]])
+
+  const on_new_move = meshes()[1].onpointermove as (event: unknown) => void
+  const point = new Vector3(...k_path_points[0])
+  on_new_move({ point, instanceId: 0, nativeEvent: new PointerEvent(`pointermove`) })
   await unmount(component)
   expect(threlte_stub.nodes).toEqual([])
+  expect(on_kpath_hover.mock.calls).toEqual([[3], [null], [0], [null]])
 })

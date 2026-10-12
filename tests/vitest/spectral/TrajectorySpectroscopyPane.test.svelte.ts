@@ -9,7 +9,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, query, set_select, set_input } from '../setup'
+import { bind_props, click_when_ready, query, set_select, set_input } from '../setup'
 import { make_position_stream } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
@@ -109,13 +109,8 @@ const set_timing = async (target: HTMLElement, label: string, value: string) => 
   await tick()
 }
 // Inline settings sit in the result plot's controls pane, which mounts them on first open
-const open_settings = async (target: HTMLElement) => {
-  const toggle = await vi.waitFor(() =>
-    query<HTMLButtonElement>(target, `.plot-controls-toggle`),
-  )
-  toggle.click()
-  await tick()
-}
+const open_settings = (target: HTMLElement) =>
+  click_when_ready(target, `.plot-controls-toggle`)
 const calculation_button = (target: HTMLElement, text = `Recompute spectroscopy`) => {
   const button = query<HTMLButtonElement>(
     target,

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
   import * as math from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { DataSeries } from '#lib/plot/index.js'
@@ -8,8 +7,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     band_carriers,
-    centered_cell_edges,
     compute_fermi_slice,
+    reciprocal_cell_section,
     sample_slice_energies,
     slice_axis_label,
     slice_point_to_k,
@@ -162,12 +161,7 @@
   let cell_section = $derived.by((): Vec2[] | null => {
     if (!slice_data || !fermi_data || !shading_image) return null
     const { plane_normal, plane_distance, in_plane_basis } = slice_data
-    const { k_lattice, reciprocal_cell } = fermi_data
-    const edges =
-      reciprocal_cell === `wigner_seitz`
-        ? compute_brillouin_zone(k_lattice, 1).edges
-        : centered_cell_edges(k_lattice)
-    const corners = math.plane_polyhedron_section(edges, plane_normal, plane_distance)
+    const corners = reciprocal_cell_section(fermi_data, plane_normal, plane_distance)
     return corners.length
       ? corners.map((corner) => in_plane_basis.map((axis) => math.dot(corner, axis)) as Vec2)
       : null

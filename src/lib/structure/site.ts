@@ -2,6 +2,7 @@
 // plus the site-provenance reads every consumer of supercell/image-atom copies shares
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
+import { is_valid_index } from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { PreparedVectorGeometry } from './vectors'
@@ -71,7 +72,7 @@ export class NumericSites {
     ])
   }
   get(idx: number): Site | undefined {
-    if (!Number.isInteger(idx) || idx < 0 || idx >= this.length) return undefined
+    if (!is_valid_index(idx, this.length)) return undefined
     if (this.records[idx]) return this.records[idx]
     let identity = this.identities[idx]
     if (!identity) {

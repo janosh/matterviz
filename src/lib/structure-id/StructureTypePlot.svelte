@@ -1,12 +1,13 @@
 <script lang="ts">
   import { format_num } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import { to_structure_entries } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry, StructureInput } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types.js'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
-  import { series_hover_props } from '#lib/plot/core/interactions.js'
+  import { is_drag, series_hover_props } from '#lib/plot/core/interactions.js'
   import { calc_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
@@ -122,7 +123,7 @@
       Math.abs(scale(frame) - pixel_x) < Math.abs(scale(best) - pixel_x) ? frame : best,
     )
   // Where the last press on the seek area started (plain memory, read only by its click)
-  let press_xy: [number, number] | null = null
+  let press_xy: Vec2 | null = null
   const type_hover = $derived(
     on_type_hover &&
       ((series_idx: number | null) =>
@@ -157,8 +158,7 @@
       onclick={(event) => {
         const svg = event.currentTarget.ownerSVGElement
         // the click that ends a drag (zoom rectangle, pan) is not a seek
-        const [press_x, press_y] = press_xy ?? [event.clientX, event.clientY]
-        if (!svg || Math.hypot(event.clientX - press_x, event.clientY - press_y) > 5) return
+        if (!svg || (press_xy && is_drag(press_xy, event))) return
         on_frame_click(
           nearest_frame(x_scale_fn, event.clientX - svg.getBoundingClientRect().left),
         )

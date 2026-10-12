@@ -199,7 +199,7 @@ export function remap_bonds_after_deletion(
 ): StructureBond[] {
   // Sort the deleted indices once; shift each surviving index down by the count of deleted
   // indices below it via binary search (O(log m) per lookup vs re-filtering the set each call).
-  const sorted = [...deleted_indices].toSorted((idx_a, idx_b) => idx_a - idx_b)
+  const sorted = math.sorted_numbers(deleted_indices)
   const shift = (idx: number) => {
     let [lower, upper] = [0, sorted.length]
     while (lower < upper) {

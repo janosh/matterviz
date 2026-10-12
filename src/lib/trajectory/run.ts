@@ -1,3 +1,4 @@
+import { is_valid_index } from '#lib/math.js'
 import {
   materialize_frame,
   select_frame_channels,
@@ -245,7 +246,7 @@ export const run_fields_from_summary = (
 })
 
 export const assert_frame_idx = (run: { frame_count: number }, frame_idx: number): void => {
-  if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= run.frame_count) {
+  if (!is_valid_index(frame_idx, run.frame_count)) {
     throw new RangeError(`Frame index ${frame_idx} is outside 0..${run.frame_count - 1}`)
   }
 }

@@ -7,7 +7,7 @@
 import { blur2 } from 'd3-array'
 import { contours } from 'd3-contour'
 import type { ContourMultiPolygon } from 'd3-contour'
-import { quantile_unordered } from '#lib/math.js'
+import { quantile_unordered, sorted_numbers } from '#lib/math.js'
 
 // Cells the series-wide level grid may hold per frame; past this its cells double, up to the
 // kernel's own scale
@@ -85,7 +85,7 @@ export function density_level_fractions(
   if (bad !== undefined) {
     throw new RangeError(`density level fractions must lie in (0, 1), got ${bad}`)
   }
-  return [...new Set(levels)].toSorted((left, right) => left - right)
+  return sorted_numbers(new Set(levels))
 }
 
 // Density threshold whose superlevel set {cells >= threshold} holds each `fraction` of the

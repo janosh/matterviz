@@ -10,6 +10,7 @@
     BOND_ANGLE_SPLIT_MODES,
   } from '#lib/bond-angles/index.js'
   import FilePicker from '#lib/FilePicker.svelte'
+  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import { Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_files, structure_map } from '#site/structures.js'
@@ -74,12 +75,8 @@
           split_mode={single_split_mode}
           {bin_width}
           style="height: 500px"
-          on_sites_hover={(highlights) => {
-            const [hovered] = highlights ?? []
-            single_highlight = hovered
-              ? [...new Set([...hovered.site_indices, ...(hovered.neighbor_indices ?? [])])]
-              : []
-          }}
+          on_sites_hover={(highlights) =>
+            (single_highlight = highlight_site_union(highlights?.[0]))}
         />
         <Structure
           structure={single_struct}

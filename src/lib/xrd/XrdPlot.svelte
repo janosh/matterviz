@@ -11,6 +11,7 @@
   import { add_alpha, plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import { untrack } from 'svelte'
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -223,6 +224,22 @@
       d_spacing: pattern.d_hkls?.[peak_idx],
     }
   }
+
+  // A hovered or pinned peak names a reflection, its indices only locate it: on new patterns
+  // re-read it there (fresh intensity scale) while the same stick still sits at them, else
+  // drop it rather than label whatever peak those indices now name
+  const resolve_peak = (peak: XrdPeak | null): XrdPeak | null => {
+    if (!peak || peak.pattern_idx >= pattern_entries.length) return null
+    const fresh = peak_at(peak.pattern_idx, peak.peak_idx)
+    return fresh?.label === peak.label && fresh.two_theta === peak.two_theta ? fresh : null
+  }
+  $effect.pre(() => {
+    void pattern_entries
+    untrack(() => {
+      hovered_peak = resolve_peak(hovered_peak)
+      selected_peak = resolve_peak(selected_peak)
+    })
+  })
 
   // compute_broadened_pattern throws when a Caglioti triple drives FWHM² non-positive inside
   // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static

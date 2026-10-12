@@ -10,6 +10,7 @@ import {
   fold_to_wigner_seitz,
   polygon_interior_point,
   preview_interpolation_factor,
+  reciprocal_cell_section,
   sample_slice_energies,
   slice_plane_normal,
   slice_shading_rgba,
@@ -256,6 +257,24 @@ test(`slice_plane_normal is the normalised h·b₁ + k·b₂ + l·b₃`, () => {
   expect(normal[1]).toBeCloseTo(Math.sqrt(3) / 2, 12)
 })
 
+// The basal plane cuts a hexagonal zone in a hexagon but the Γ-centred cell in a parallelogram;
+// given zone edges (the drawn zone) replace the computed ones
+test(`reciprocal_cell_section cuts the data's cell`, () => {
+  const section = (
+    reciprocal_cell: `wigner_seitz` | `parallelepiped`,
+    zone_edges?: [Vec3, Vec3][],
+  ) =>
+    reciprocal_cell_section(
+      { k_lattice: HEXAGONAL, reciprocal_cell },
+      [0, 0, 1],
+      0,
+      zone_edges,
+    )
+  expect(section(`wigner_seitz`)).toHaveLength(6)
+  expect(section(`parallelepiped`)).toHaveLength(4)
+  expect(section(`wigner_seitz`, [])).toEqual([])
+})
+
 describe(`slice energy shading`, () => {
   // ε = |k| (reduced units, identity lattice) with E_F = 0.3, plus a band far above E_F
   const band_data = make_band_data(16, sphere, { periodic: true, fermi_energy: 0.3 })
@@ -371,62 +390,83 @@ describe(`pocket classification`, () => {
 })
 
 describe(`Wigner-Seitz folding and preview resolution`, () => {
-  // fcc reciprocal lattice (bcc-like vectors), whose Wigner-Seitz zone differs from the cell
+  // fcc reciprocal lattice (bcc-like vectors), whose Wigner-Seitz zone differs from the cell,
+  // and the same lattice in the sheared basis (b₁, b₂ + 2b₁, b₃ + 2b₁), where the lattice point
+  // nearest to 12% of its Γ-centred cell has an index beyond ±1
   // oxfmt-ignore
   const FCC_RECIPROCAL: Matrix3x3 = [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
-  const k_t = math.transpose_3x3_matrix(FCC_RECIPROCAL)
-  // a sphere |k| = E_F around Γ in Cartesian units, large enough to reach past the zone faces
-  const fcc_data = (fermi_energy: number) =>
-    make_band_data(
-      16,
-      (fx, fy, fz) => Math.hypot(...math.mat3x3_vec3_multiply(k_t, [fx, fy, fz])),
-      { periodic: true, k_lattice: FCC_RECIPROCAL, fermi_energy },
-    )
+  // oxfmt-ignore
+  const SHEARED_FCC: Matrix3x3 = [[-1, 1, 1], [-1, 1, 3], [-1, 3, 1]]
+  // a sphere |k| = E_F around every lattice point (ε = distance to the nearest one, so both
+  // bases sample the same periodic field), large enough to reach past the hexagonal zone faces
+  // (|G|/2 = √3/2)
+  const sphere_data = (k_lattice: Matrix3x3, fermi_energy: number) => {
+    const converters = math.create_lattice_converters(k_lattice)
+    const energy = (frac: Vec3) =>
+      Math.hypot(
+        ...math.min_image_displacement(
+          [0, 0, 0],
+          converters.frac_to_cart(frac),
+          k_lattice,
+          converters,
+        ),
+      )
+    return make_band_data(16, (fx, fy, fz) => energy([fx, fy, fz]), {
+      periodic: true,
+      k_lattice,
+      fermi_energy,
+    })
+  }
 
   // Folding moves whole triangles by lattice vectors: the area is unchanged and every triangle
-  // centroid ends nearer Γ than any other lattice point (inside the zone). A cubic lattice's
-  // zone is its cell: folding moves nothing.
-  test(`folds a band-grid surface into the Wigner-Seitz zone`, () => {
-    const band_data = fcc_data(1.1)
-    const cell = extract_fermi_surface(band_data)
-    const folded = extract_fermi_surface(band_data, { wigner_seitz: true })
-    expect([cell.reciprocal_cell, folded.reciprocal_cell]).toEqual([
-      `parallelepiped`,
-      `wigner_seitz`,
-    ])
-    // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.9e-9 off
-    expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
-    const lattice_points = Array.from({ length: 27 }, (_, idx) =>
-      math.mat3x3_vec3_multiply(
-        k_t,
-        [idx / 9, idx / 3, idx].map((n) => (Math.floor(n) % 3) - 1) as Vec3,
-      ),
-    )
-    let n_moved = 0
-    for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
-      if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
-      const { indices } = surface
-      for (let tri = 0; tri < indices.length; tri += 3) {
-        const corners = [0, 1, 2].map((corner) => vertex_at(surface, indices[tri + corner]))
-        const centroid = math.scale(math.add(...corners), 1 / 3)
-        const nearest = Math.min(
-          ...lattice_points.map((point) => math.euclidean_dist(centroid, point)),
-        )
-        expect(Math.hypot(...centroid)).toBeLessThanOrEqual(nearest + 1e-6)
+  // centroid ends nearer Γ than any other lattice point (inside the zone), checked against
+  // n ∈ {−3..3}³. A cubic lattice's zone is its cell: folding moves nothing.
+  test.each([
+    [`fcc`, FCC_RECIPROCAL],
+    [`sheared fcc`, SHEARED_FCC],
+  ])(
+    `folds a band-grid surface into the Wigner-Seitz zone (%s basis)`,
+    (_basis, k_lattice) => {
+      const band_data = sphere_data(k_lattice, 0.9)
+      const cell = extract_fermi_surface(band_data)
+      const folded = extract_fermi_surface(band_data, { wigner_seitz: true })
+      expect([cell.reciprocal_cell, folded.reciprocal_cell]).toEqual([
+        `parallelepiped`,
+        `wigner_seitz`,
+      ])
+      // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.7e-9 (fcc),
+      // 1.2e-8 (sheared) off; translating in f64 instead preserves the area exactly
+      expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
+      const frac_to_cart = math.create_frac_to_cart(k_lattice)
+      const lattice_points = Array.from({ length: 7 ** 3 }, (_, idx) =>
+        frac_to_cart([idx / 49, idx / 7, idx].map((n) => (Math.floor(n) % 7) - 3) as Vec3),
+      )
+      let n_moved = 0
+      for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
+        if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
+        const { indices } = surface
+        for (let tri = 0; tri < indices.length; tri += 3) {
+          const corners = [0, 1, 2].map((corner) => vertex_at(surface, indices[tri + corner]))
+          const centroid = math.scale(math.add(...corners), 1 / 3)
+          const nearest = Math.min(
+            ...lattice_points.map((point) => math.euclidean_dist(centroid, point)),
+          )
+          expect(Math.hypot(...centroid)).toBeLessThanOrEqual(nearest + 1e-6)
+        }
       }
-    }
-    expect(n_moved).toBeGreaterThan(0) // the sphere crosses the zone faces
-    const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
-    const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
-    expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
-  })
+      expect(n_moved).toBeGreaterThan(0) // the sphere crosses the zone faces
+      const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
+      const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
+      expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
+    },
+  )
 
   // previews cap the factor at the mesh's auto factor (16 points → 3), never raise it; two
   // upsampled grids per band stay cached, so a preview and the full surface do not evict each
   // other while a third factor evicts the oldest
   test(`preview factor and the two-factor grid cache`, () => {
     const previews = [4, 3, 2, 0].map((factor) =>
-      preview_interpolation_factor(fcc_data(1), factor),
+      preview_interpolation_factor(sphere_data(FCC_RECIPROCAL, 1), factor),
     )
     expect(previews).toEqual([3, 3, 2, 3])
     const band_data = make_band_data(8, sphere, { periodic: true, fermi_energy: 0.3 })

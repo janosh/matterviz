@@ -7,6 +7,7 @@ import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { flushSync, mount, tick, type ComponentProps, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import {
+  click_when_ready,
   fire,
   mouse,
   plot_svg,
@@ -48,13 +49,8 @@ const open_menu = async (target: HTMLElement, label: string): Promise<void> => {
 }
 
 // structure settings mount on first open of the viewer's controls pane
-const open_structure_controls = async (target: HTMLElement): Promise<void> => {
-  const toggle = await vi.waitFor(() =>
-    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
-  )
-  toggle.click()
-  await tick()
-}
+const open_structure_controls = (target: HTMLElement) =>
+  click_when_ready(target, `button.structure-controls-toggle`)
 
 test(`renders a typed phonon dataset`, async () => {
   const props = $state<ExplorerProps>({

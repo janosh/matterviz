@@ -7,7 +7,7 @@ import {
 } from '#lib/constants.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { yield_turn } from '#lib/utils.js'
-import { is_finite_vec3_like, is_pbc, matrix_inverse_3x3 } from '#lib/math.js'
+import { is_finite_vec3_like, is_pbc, is_valid_index, matrix_inverse_3x3 } from '#lib/math.js'
 import type { FrameRange, ParseProgress } from './index'
 import { ATOM_BATCH_SIZE, type AtomBatch, type ReadAtoms } from './atom-batches'
 
@@ -283,10 +283,7 @@ async function reduce_hotspots(
     throw new Error(
       `Invalid hotspot frame range or batch size: ${start_frame}:${end_frame}:${frame_stride}, batch=${batch_size}`,
     )
-  if (
-    preview_frame !== undefined &&
-    (!Number.isInteger(preview_frame) || preview_frame < 0 || preview_frame >= frame_count)
-  )
+  if (preview_frame !== undefined && !is_valid_index(preview_frame, frame_count))
     throw new Error(`Invalid hotspot preview frame ${preview_frame}`)
   if (
     ![2, 3].includes(dimensions) ||

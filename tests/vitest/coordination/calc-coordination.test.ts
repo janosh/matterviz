@@ -1,7 +1,7 @@
 // to_structure_entries and its two types are imported from the package ROOT on purpose: they
 // are the headline prop type of CoordinationBarPlot and BondAnglePlot, and the rest of
 // #lib/plot/core is deliberately not published.
-import { to_structure_entries } from '#lib/plot/core/structure-input.js'
+import { highlight_site_union, to_structure_entries } from '#lib/plot/core/structure-input.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { StructureEntry, StructureInput } from '#lib'
 import {
@@ -44,6 +44,14 @@ test.each([
   const entries: StructureEntry[] = to_structure_entries(input)
   expect(entries.map((entry) => entry.label)).toEqual(labels)
   expect(entries.every((entry) => entry.structure.sites.length > 0)).toBe(true)
+})
+
+test.each([
+  [undefined, []],
+  [{ site_indices: [3, 1] }, [3, 1]],
+  [{ site_indices: [3, 1], neighbor_indices: [1, 4, 4] }, [3, 1, 4]],
+])(`highlight_site_union(%o) = %o`, (highlight, expected) => {
+  expect(highlight_site_union(highlight)).toEqual(expected)
 })
 
 describe(`coordination_bar_sites`, () => {

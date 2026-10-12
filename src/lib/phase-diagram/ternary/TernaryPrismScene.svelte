@@ -9,7 +9,8 @@
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import { format_num } from '#lib/labels.js'
-  import { clamp, euclidean_dist, type Vec2, type Vec3 } from '#lib/math.js'
+  import { clamp, type Vec2, type Vec3 } from '#lib/math.js'
+  import { is_drag } from '#lib/plot/core/interactions.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
     build_orbit_props,
@@ -283,9 +284,8 @@
 
   let camera_is_moving = false
   let dragging_plane = $state(false)
-  // A release within CLICK_SLOP_PX of a plane press pins the pressed composition (a click)
+  // A release that never strayed from a plane press (is_drag) pins the pressed composition
   let press: { client: Vec2; coords_xy: Vec2 | null; moved: boolean } | null = null
-  const CLICK_SLOP_PX = 4
   const PIN_HIT_RADIUS = 0.025 // triangle units: a click this close to the pin removes it
   const clear_plane_hover = () => {
     if (!hover_xy) return
@@ -343,8 +343,13 @@
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
-  const end_plane_drag = (event?: Event) => {
-    const click_xy = event?.type === `pointerup` && !press?.moved ? press?.coords_xy : null
+  // A release can land far from the press without any move reaching the scene (a flick out
+  // of the canvas), so its own distance counts too
+  const end_plane_drag = (event?: PointerEvent) => {
+    const click_xy =
+      event?.type === `pointerup` && press && !press.moved && !is_drag(press.client, event)
+        ? press.coords_xy
+        : null
     if (click_xy) {
       const on_pin = hits_pin(pinned_composition, click_xy, PIN_HIT_RADIUS)
       pinned_composition = on_pin ? null : click_xy
@@ -352,7 +357,7 @@
     press = null
     dragging_plane = false
     if (orbit_controls) orbit_controls.enabled = true
-    for (const type of [`pointerup`, `pointercancel`])
+    for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.removeEventListener(type, end_plane_drag)
   }
   function start_plane_drag(event: unknown): void {
@@ -369,15 +374,14 @@
     if (orbit_controls) orbit_controls.enabled = false
     hover_xy = null
     on_hover?.(null)
-    for (const type of [`pointerup`, `pointercancel`])
+    for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.addEventListener(type, end_plane_drag)
   }
   $effect(() => end_plane_drag) // a view switch mid-drag must not leave global listeners
   const drag_plane = (event: unknown) => {
     if (!dragging_plane || !press) return
     const { point, nativeEvent } = pointer_of(event)
-    const client: Vec2 = [nativeEvent.clientX, nativeEvent.clientY]
-    press.moved ||= euclidean_dist(press.client, client) >= CLICK_SLOP_PX
+    press.moved ||= is_drag(press.client, nativeEvent)
     if (press.moved) temperature = clamp(t_of(point.y), t_min, t_max)
   }
   function hover_plane(event: unknown): void {

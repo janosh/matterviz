@@ -15,7 +15,7 @@
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
-  import { series_hover_props } from '#lib/plot/core/interactions.js'
+  import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
   import {
     calculate_all_pair_rdfs,
     calculate_rdf,
@@ -134,22 +134,20 @@
       ? [{ ...highlight, site_indices: element_site_indices(structure, element_pair) }]
       : null
   }
-  // Pointer moves within one bin repeat the same hover, so only a change is reported (and,
-  // for on_sites_hover, recomputed)
-  let last_hover_key: string | null = null
-  const report_hover = (entry_idx: number | null, bin_idx: number | null): void => {
-    const key = entry_idx === null ? null : `${entry_idx}:${bin_idx}`
-    if (key === last_hover_key) return
-    last_hover_key = key
-    on_bin_hover?.(entry_idx === null ? null : { entry: entries[entry_idx], bin_idx })
-    on_sites_hover?.(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
-  }
+  const report_hover = on_change(
+    ([entry_idx, bin_idx]: [number | null, number | null]) =>
+      entry_idx === null ? null : `${entry_idx}:${bin_idx}`,
+    ([entry_idx, bin_idx]) => {
+      on_bin_hover?.(entry_idx === null ? null : { entry: entries[entry_idx], bin_idx })
+      on_sites_hover?.(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
+    },
+  )
   const hover_props = $derived<Pick<ScatterPlotOptions, `on_point_hover` | `legend`>>(
     on_bin_hover || on_sites_hover
       ? {
-          ...series_hover_props((series_idx) => report_hover(series_idx, null), rest),
+          ...series_hover_props((series_idx) => report_hover([series_idx, null]), rest),
           on_point_hover: (event) => {
-            report_hover(event?.series_idx ?? null, event?.point.point_idx ?? null)
+            report_hover([event?.series_idx ?? null, event?.point.point_idx ?? null])
             rest.on_point_hover?.(event)
           },
         }

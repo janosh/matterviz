@@ -121,9 +121,9 @@ export function wyckoff_positions_from_moyo(
       .reduce((best, pos) =>
         simplicity_score(pos) < simplicity_score(best) - 1e-9 ? pos : best,
       )
-    const site_indices = [
-      ...new Set(members.flatMap((idx) => orig_site_indices_by_input_idx[idx])),
-    ].toSorted((idx_a, idx_b) => idx_a - idx_b)
+    const site_indices = math.sorted_numbers(
+      new Set(members.flatMap((idx) => orig_site_indices_by_input_idx[idx])),
+    )
     const site_symmetry = site_symmetry_symbols?.[rep]
     return {
       wyckoff: `${multiplicity}${letter}`,
@@ -418,7 +418,7 @@ export function map_wyckoff_to_all_atoms(
       if (matched.size > 0) any_matched = true
       return {
         ...wyckoff_pos,
-        site_indices: [...matched].toSorted((idx_a, idx_b) => idx_a - idx_b),
+        site_indices: math.sorted_numbers(matched),
       }
     })
     return any_matched || displayed_structure.sites.length === 0 ? rows : null

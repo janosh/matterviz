@@ -1,7 +1,7 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
-import { calc_lattice_params } from '#lib/math.js'
+import { calc_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { visit_neighbor_distances } from '#lib/structure/bonding.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
@@ -119,7 +119,7 @@ export function rdf_bin_sites(
 ): { site_indices: number[]; neighbor_indices: number[]; n_pairs: number } {
   const { bin_idx, element_pair } = options
   const prepared = prepare_rdf(structure, options)
-  if (!Number.isInteger(bin_idx) || bin_idx < 0 || bin_idx >= prepared.n_bins) {
+  if (!is_valid_index(bin_idx, prepared.n_bins)) {
     throw new Error(`bin_idx must be an integer in [0, ${prepared.n_bins}), got ${bin_idx}`)
   }
   const center_weights = species_weights(structure.sites, element_pair?.[0])
@@ -136,9 +136,11 @@ export function rdf_bin_sites(
     centers.add(center)
     neighbors.add(neighbor)
   })
-  const sorted = (indices: Set<number>) =>
-    [...indices].toSorted((idx_a, idx_b) => idx_a - idx_b)
-  return { site_indices: sorted(centers), neighbor_indices: sorted(neighbors), n_pairs }
+  return {
+    site_indices: sorted_numbers(centers),
+    neighbor_indices: sorted_numbers(neighbors),
+    n_pairs,
+  }
 }
 
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>

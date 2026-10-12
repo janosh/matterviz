@@ -1,6 +1,6 @@
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
-import { calc_lattice_params, first_non_increasing_index } from '#lib/math.js'
+import { calc_lattice_params, first_non_increasing_index, is_valid_index } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import { convert_atomic_numbers, values_per_sample } from '#lib/trajectory/helpers.js'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '#lib/trajectory/index.js'
@@ -432,7 +432,7 @@ export const parse_reference_md_h5_file = (
     }
   })
   const assert_frame_number = (frame_number: number): void => {
-    if (!Number.isInteger(frame_number) || frame_number < 0 || frame_number >= n_frames) {
+    if (!is_valid_index(frame_number, n_frames)) {
       throw new Error(
         `Reference MD frame ${frame_number} is outside 0..${Math.max(n_frames - 1, 0)}`,
       )

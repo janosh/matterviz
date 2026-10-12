@@ -3,6 +3,7 @@
   import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import { PdfPlot, RdfPlot } from '#lib/rdf/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
@@ -115,11 +116,8 @@
       style="height: 100%"
       on_sites_hover={(highlights) => {
         // both ends of the hovered pairs (one structure per section)
-        const [hovered] = highlights ?? []
-        const sites = hovered
-          ? [...hovered.site_indices, ...(hovered.neighbor_indices ?? [])]
-          : []
-        rdf_highlights = new Map(rdf_highlights).set(structure, [...new Set(sites)])
+        const sites = highlight_site_union(highlights?.[0])
+        rdf_highlights = new Map(rdf_highlights).set(structure, sites)
       }}
     />
   </section>

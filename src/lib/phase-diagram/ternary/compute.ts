@@ -17,7 +17,14 @@ import {
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
-import { array_min, euclidean_dist, partition_point, type Vec2, type Vec3 } from '#lib/math.js'
+import {
+  array_min,
+  euclidean_dist,
+  partition_point,
+  sorted_numbers,
+  type Vec2,
+  type Vec3,
+} from '#lib/math.js'
 import { inside_triangle, ternary_to_xy, xy_to_ternary } from '#lib/plot/ternary/ternary.js'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
@@ -213,7 +220,7 @@ function hull_topology(
   )
   // Coplanar input (only the corners, or everything at dG_f = 0): the hull is one triangle
   const facets = hull.length > 0 ? hull : [corners]
-  const stable = [...new Set(facets.flat())].toSorted((lhs, rhs) => lhs - rhs)
+  const stable = sorted_numbers(new Set(facets.flat()))
   return { temperature, dg_form, facets, stable, edges: facet_edges(facets), valid: true }
 }
 
@@ -612,9 +619,9 @@ function sample_temperatures(
     // Tabulated knots keep piecewise-linear G(T) exact between samples
     ...model.phases.flatMap((phase) => phase.entry.temperatures ?? []),
   ]
-  return [
-    ...new Set([t_min, t_max, ...samples.filter((temp) => temp >= t_min && temp <= t_max)]),
-  ].toSorted((lhs, rhs) => lhs - rhs)
+  return sorted_numbers(
+    new Set([t_min, t_max, ...samples.filter((temp) => temp >= t_min && temp <= t_max)]),
+  )
 }
 
 // Per phase: maximal [T_lo, T_hi] intervals on the hull. Transitions give exact bounds; at the

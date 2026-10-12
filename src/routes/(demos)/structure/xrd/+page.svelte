@@ -112,12 +112,9 @@
   }
   const computed = $derived(try_compute(() => ensure_pattern(compute_id)))
 
-  // The hovered (else pinned) peak's planes; a new structure drops the pin (other lattice)
+  // The hovered (else pinned) peak's planes; XrdPlot drops the pin with the structure's pattern
   let hovered_peak = $state<XrdPeak | null>(null)
-  let selected_peak = $derived.by<XrdPeak | null>(() => {
-    void compute_id
-    return null
-  })
+  let selected_peak = $state<XrdPeak | null>(null)
   const xrd_planes = $derived(diffraction_planes((hovered_peak ?? selected_peak)?.hkls ?? []))
 
   // Radiation comparison: the same structure probed with X-rays, neutrons and electrons.

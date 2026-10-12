@@ -326,6 +326,21 @@ export function expand_range_if_needed(
   return { range: new_range, changed }
 }
 
+// Plots report a hover on every pointer move: wrap a handler to run only when the hovered item,
+// named by key_of (null for none), changes, e.g. to skip repeated site searches
+export const on_change = <Value>(
+  key_of: (value: Value) => string | null,
+  handler: (value: Value) => void,
+): ((value: Value) => void) => {
+  let last_key: string | null = null
+  return (value) => {
+    const key = key_of(value)
+    if (key === last_key) return
+    last_key = key
+    handler(value)
+  }
+}
+
 // Plot props reporting the series under the pointer (curve point or legend entry), chained after
 // the caller's handlers; spread them last. Empty when nobody listens.
 type SeriesHoverProps<PointEvent> = {
@@ -351,3 +366,8 @@ export const series_hover_props = <PointEvent extends { series_idx: number }>(
         },
       }
     : {}
+
+// Whether a pointer released (or moved) more than 5 px from where it was pressed, i.e. the
+// gesture was a drag (pan, orbit, zoom rectangle) rather than a click
+export const is_drag = (press: Vec2, { clientX, clientY }: MouseEvent): boolean =>
+  Math.hypot(clientX - press[0], clientY - press[1]) > 5

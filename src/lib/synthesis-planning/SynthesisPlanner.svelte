@@ -567,7 +567,7 @@
             </ul>
             <ReactionSlicePlot
               route={selected_route}
-              on_point_hover={(data: { entry: PhaseData } | null) => {
+              on_point_hover={(data) => {
                 // fires per pointermove: only a new point re-annotates the system hull
                 const phase_id = data?.entry.entry_id
                 if (phase_id === slice_hover?.phase_id && route_id === slice_hover?.route_id)

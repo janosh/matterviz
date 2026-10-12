@@ -13,6 +13,7 @@
     UserContentProps,
   } from '#lib/plot/core/types.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+  import { plot_area_line } from '#lib/plot/core/layout.js'
   import {
     convert_frequencies,
     frequency_unit_label,
@@ -161,14 +162,6 @@
     is_horizontal
       ? [ctx.x_scale_fn(intensity), ctx.y_scale_fn(frequency)]
       : [ctx.x_scale_fn(frequency), ctx.y_scale_fn(intensity)]
-  // Line across the plot at a frequency (display unit)
-  const frequency_line = (frequency: number, ctx: UserContentProps) => {
-    const { width, height, pad } = ctx
-    const [x_px, y_px] = to_px(frequency, 0, ctx)
-    return is_horizontal
-      ? { x1: pad.l, x2: width - pad.r, y1: y_px, y2: y_px }
-      : { x1: x_px, x2: x_px, y1: pad.t, y2: height - pad.b }
-  }
   let emphasized_modes = $derived(
     new Set([...highlighted_mode_indices, ...hovered_mode_indices]),
   )
@@ -330,7 +323,8 @@
     {#snippet user_content(ctx)}
       {@const ref_display = convert_frequencies([reference_frequency ?? NaN], unit)[0]}
       {#if Number.isFinite(ref_display)}
-        <line class="reference-line" {...frequency_line(ref_display, ctx)} />
+        {@const ref_px = to_px(ref_display, 0, ctx)[is_horizontal ? 1 : 0]}
+        <line class="reference-line" {...plot_area_line(ref_px, is_horizontal, ctx)} />
       {/if}
       {#if show_sticks && stick_scale > 0}
         {#each sticks.x as position, stick_idx (stick_idx)}

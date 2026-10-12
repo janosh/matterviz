@@ -3,6 +3,7 @@
 // Third member of the local-structure family alongside #lib/rdf and #lib/coordination.
 
 import type { Vec3 } from '#lib/math.js'
+import { is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
@@ -268,7 +269,7 @@ export function bond_angle_bin_sites(
 ): { site_indices: number[]; neighbor_indices: number[] } {
   const { bin_idx, triplet: triplet_filter, ...bins } = options
   const { n_bins, bin_width } = resolve_angle_bins(bins)
-  if (!Number.isInteger(bin_idx) || bin_idx < 0 || bin_idx >= n_bins) {
+  if (!is_valid_index(bin_idx, n_bins)) {
     throw new Error(`bin_idx must be an integer in [0, ${n_bins}), got ${bin_idx}`)
   }
   const centers = new Set<number>()
@@ -279,7 +280,5 @@ export function bond_angle_bin_sites(
     centers.add(center_idx)
     for (const neighbor_idx of neighbor_idxs) outers.add(neighbor_idx)
   }
-  const sorted = (indices: Set<number>) =>
-    [...indices].toSorted((idx_a, idx_b) => idx_a - idx_b)
-  return { site_indices: sorted(centers), neighbor_indices: sorted(outers) }
+  return { site_indices: sorted_numbers(centers), neighbor_indices: sorted_numbers(outers) }
 }

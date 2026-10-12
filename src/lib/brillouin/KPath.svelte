@@ -72,11 +72,20 @@
     }
     return { line, proxy }
   })
+  // Threlte drops a replaced or unmounted mesh without a pointerleave, so a rebuild or unmount
+  // while hovered clears the hover here, or the parent keeps a stale q-point. Null, as the old
+  // index may name another k-point on the new path; the next pointer move reports the new one.
+  let reported_qpoint: number | null = null
+  const report_hover = (qpoint_idx: number | null) => {
+    reported_qpoint = qpoint_idx
+    on_kpath_hover?.(qpoint_idx)
+  }
   $effect(() => {
     const { line, proxy } = kpath_meshes
     return () => {
       line.dispose()
       proxy.dispose()
+      if (reported_qpoint !== null) report_hover(null)
     }
   })
   // tint the (up to two) segments touching the hovered q-point, then the highlighted stretch
@@ -106,7 +115,7 @@
     const { idx, from, to } = segment
     const cursor: Vec3 = [point.x, point.y, point.z]
     const nearer_from = math.euclidean_dist(cursor, from) <= math.euclidean_dist(cursor, to)
-    on_kpath_hover?.(nearer_from ? idx : idx + 1)
+    report_hover(nearer_from ? idx : idx + 1)
   }
 </script>
 
@@ -116,7 +125,7 @@
     is={kpath_meshes.proxy}
     dispose={false}
     onpointermove={handle_kpath_hover}
-    onpointerleave={() => on_kpath_hover?.(null)}
+    onpointerleave={() => report_hover(null)}
   />
 {/if}
 
@@ -137,8 +146,8 @@
         style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
         style:font-weight={highlighted ? `bold` : null}
         style="padding: 0 3px; border-radius: 2px; color: white"
-        onpointerenter={() => qpoint_idx !== -1 && on_kpath_hover?.(qpoint_idx)}
-        onpointerleave={() => qpoint_idx !== -1 && on_kpath_hover?.(null)}
+        onpointerenter={() => qpoint_idx !== -1 && report_hover(qpoint_idx)}
+        onpointerleave={() => qpoint_idx !== -1 && report_hover(null)}
       >
         {label}
       </span>

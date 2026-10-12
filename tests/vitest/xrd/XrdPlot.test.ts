@@ -400,9 +400,11 @@ describe(`XrdPlot`, () => {
     const labels = () =>
       [...target.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim())
     expect(labels()).toEqual([`200`, `200`])
-    const bars = target.querySelectorAll(`.bar-series`)[1].querySelectorAll(`path`)
-    const fire = (bar_idx: number, type: string) =>
+    // re-queried: swapping the patterns below re-renders the bars
+    const fire = (bar_idx: number, type: string) => {
+      const bars = target.querySelectorAll(`.bar-series`)[1].querySelectorAll(`path`)
       bars[bar_idx].dispatchEvent(new MouseEvent(type, { bubbles: true }))
+    }
     // intensity on the plot scale: 200 of the global maximum 300
     const second_peak: XrdPeak = {
       pattern_idx: 1,
@@ -432,6 +434,37 @@ describe(`XrdPlot`, () => {
     await tick()
     expect(harness.get_peaks().selected_peak).toBeNull()
     expect(labels()).toEqual([`200`, `200`])
+
+    // A pin names a reflection, its indices only locate it: rebuilt patterns keep it (on the
+    // rescaled intensity of a taller newcomer), moved or missing peaks drop it, hover alike
+    fire(1, `click`)
+    const tall = { ...pattern, y: pattern.y.map((val) => val * 2) }
+    harness.set_patterns([
+      { label: `First`, pattern: { ...pattern } },
+      { label: `Second`, pattern: { ...merged } },
+      { label: `Tall`, pattern: tall },
+    ])
+    await tick()
+    expect(harness.get_peaks().selected_peak).toEqual({
+      ...second_peak,
+      intensity: (200 / 600) * 100,
+    })
+    expect(labels()).toContain(`110, 1̅10`)
+    const shifted = { ...merged, x: merged.x.map((val) => val + 5) }
+    const swaps: Record<string, { pattern: typeof pattern }>[] = [
+      { First: { pattern }, Second: { pattern: shifted } },
+      { First: { pattern }, Other: { pattern: merged } },
+      { First: { pattern } },
+    ]
+    for (const swapped of swaps) {
+      harness.set_patterns({ First: { pattern }, Second: { pattern: merged } })
+      await tick()
+      fire(1, `click`)
+      fire(1, `mousemove`)
+      harness.set_patterns(swapped)
+      await tick()
+      expect(harness.get_peaks()).toEqual({ hovered_peak: null, selected_peak: null })
+    }
   })
 
   test(`diffraction_planes copies the first three hkls, coloured warm first`, () => {

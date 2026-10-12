@@ -46,9 +46,8 @@
     vertex_property,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
-  import { centered_cell_edges, slice_plane_normal } from './compute'
+  import { reciprocal_cell_section, slice_plane_normal } from './compute'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
-  import { plane_polyhedron_section } from '#lib/math.js'
   import KPath from '#lib/brillouin/KPath.svelte'
   import type { ComponentProps } from 'svelte'
   import type {
@@ -361,14 +360,11 @@
   const slice_polygon = $derived.by((): Vec3[] => {
     if (!slice_plane || !fermi_data) return []
     const { miller_indices, distance } = slice_plane
-    const edges =
-      fermi_data.reciprocal_cell === `parallelepiped`
-        ? centered_cell_edges(fermi_data.k_lattice)
-        : bz_data?.edges
     // (0 0 0) defines no plane; FermiSlice reports that error
-    if (!edges || miller_indices.every((idx) => idx === 0)) return []
+    if (miller_indices.every((idx) => idx === 0)) return []
     const normal = slice_plane_normal(fermi_data.k_lattice, miller_indices)
-    return plane_polyhedron_section(edges, normal, distance)
+    // the drawn zone, nothing while it is missing
+    return reciprocal_cell_section(fermi_data, normal, distance, bz_data?.edges ?? [])
   })
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))

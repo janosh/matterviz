@@ -2,6 +2,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
+  import { sorted_numbers } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
@@ -101,7 +102,7 @@
   // split mode partitions the same sites, so this union equals the one over cn_histogram.
   const cns = $derived.by(() => {
     const seen = new Set(groups.flatMap((group) => [...group.histogram.keys()]))
-    return Array.from(seen).toSorted((cn1, cn2) => cn1 - cn2)
+    return sorted_numbers(seen)
   })
   const bar_series = $derived<BarSeries<PlotMetadata>[]>(
     groups.map(({ label, histogram, color, metadata }, idx) => ({
@@ -126,13 +127,7 @@
     range: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
     ticks: cn_ticks,
   })
-  // BarPlot reports a hover on every pointer move: recompute only for a different bar
-  let hovered_bar: string | null = null
-  const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
-    rest.on_bar_hover?.(bar)
-    const bar_key = bar && `${bar.series_idx}:${bar.bar_idx}`
-    if (bar_key === hovered_bar) return
-    hovered_bar = bar_key
+  const report_sites: StructurePlotProps[`on_bar_change`] = (bar) => {
     // Series metadata names the bar's element or structure (see `groups`)
     const { element, structure_label } = bar?.metadata ?? {}
     on_sites_hover?.(
@@ -160,7 +155,7 @@
   bind:mode
   bind:loading
   bind:error_msg
-  on_bar_hover={on_sites_hover ? handle_bar_hover : rest.on_bar_hover}
+  on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
 >
   {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
     CN: {format_value(info.x, `.0f`)}

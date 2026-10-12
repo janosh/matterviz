@@ -9,6 +9,7 @@
   import { format_num } from '#lib/labels.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { HklFormat, SaedPatternData, SaedSpot } from './index'
   import { format_hkl } from './index'
@@ -97,6 +98,17 @@
   const toggle_selected = (spot: SaedSpot) => {
     selected_spot = hkl_key(spot) === selected_key ? null : spot
   }
+  // A new pattern hands back its own spot for the hovered and pinned hkl, or drops it once
+  // that reflection is gone (a removed circle never fires mouseleave)
+  const resolve_spot = (spot: SaedSpot | null): SaedSpot | null =>
+    spot && (pattern.spots.find((candidate) => hkl_key(candidate) === hkl_key(spot)) ?? null)
+  $effect.pre(() => {
+    void pattern
+    untrack(() => {
+      hovered_spot = resolve_spot(hovered_spot)
+      selected_spot = resolve_spot(selected_spot)
+    })
+  })
 
   // One tab stop for all spots, arrow keys step through them strongest-first
   let svg_element = $state<SVGSVGElement>()

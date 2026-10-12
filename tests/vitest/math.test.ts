@@ -1594,6 +1594,40 @@ describe(`array_min, array_max and array_extent`, () => {
   })
 })
 
+describe(`index helpers`, () => {
+  // Reaction coordinates are physical distances, so a hovered x maps back by nearest
+  // image — rounding would only be correct if x were the image index.
+  const coords = [0, 0.25, 0.5, 1.75, 3.0]
+
+  // oxfmt-ignore
+  test.each(
+    [[0.0, 0], [0.3, 1], [0.4, 2], [1.2, 3], [2.9, 4], [-5, 0], [99, 4], [0.125, 0]],
+  )(`nearest_value_idx maps %f to index %i (ties to the earlier)`, (coord, expected_idx) => {
+    expect(math.nearest_value_idx(coords, coord)).toBe(expected_idx)
+  })
+
+  test(`nearest_value_idx throws on an empty array`, () => {
+    expect(() => math.nearest_value_idx([], 0)).toThrow(/empty array/)
+  })
+
+  test.each([
+    [0, 3, true],
+    [2, 3, true],
+    [3, 3, false],
+    [-1, 3, false],
+    [1.5, 3, false],
+    [Number.NaN, 3, false],
+    [0, 0, false],
+  ])(`is_valid_index(%f, %i) is %s`, (idx, length, expected) => {
+    expect(math.is_valid_index(idx, length)).toBe(expected)
+  })
+
+  test(`sorted_numbers sorts any iterable numerically`, () => {
+    expect(math.sorted_numbers(new Set([10, 2, 33, 1]))).toEqual([1, 2, 10, 33])
+    expect(math.sorted_numbers([])).toEqual([])
+  })
+})
+
 describe(`quantile_unordered`, () => {
   const sorted = Array.from({ length: 11 }, (_, idx) => idx * 3)
 

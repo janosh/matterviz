@@ -1,4 +1,4 @@
-import { nearest_image_idx } from '#lib/neb/reaction-path.js'
+import { nearest_value_idx } from '#lib/math.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { TrajectoryFrame } from './index'
@@ -43,7 +43,7 @@ export const cna_type_source_atoms = (
   type_code: number,
 ): { frame_number: number; atom_indices: number[] } | null => {
   if (sweep.frame_numbers.length === 0) return null
-  const position = nearest_image_idx(sweep.frame_numbers, frame_idx)
+  const position = nearest_value_idx(sweep.frame_numbers, frame_idx)
   const cna_types = sweep.results[position]?.cna_types
   if (!cna_types) return null
   // no full-length keys() copy: this runs per hover over every source atom

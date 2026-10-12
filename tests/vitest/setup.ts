@@ -104,6 +104,18 @@ export const doc_query = <T extends Element = HTMLElement>(
   element_constructor?: Element_constructor<T>,
 ): T => query(document, selector, element_constructor)
 
+// Wait for a button to render (e.g. a controls-pane toggle whose content mounts on first
+// open), click it and flush the update. Returns the button for follow-up assertions.
+export const click_when_ready = async (
+  root: ParentNode,
+  selector: string,
+): Promise<HTMLButtonElement> => {
+  const button = await vi.waitFor(() => query<HTMLButtonElement>(root, selector))
+  button.click()
+  await tick()
+  return button
+}
+
 // Close a native popover as the browser's light dismiss or Escape would: happy-dom has no
 // popover API, so fire the `beforetoggle` event the browser sends
 export const dismiss_popover = (node: Element): void => {

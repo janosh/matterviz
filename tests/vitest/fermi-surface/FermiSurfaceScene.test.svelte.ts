@@ -8,6 +8,7 @@ import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   type BufferGeometry,
   DoubleSide,
+  type InstancedMesh,
   type MeshStandardMaterial,
   Vector3,
 } from 'three/webgpu'
@@ -282,24 +283,22 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
   }
 })
 
-// A band structure's k-path drawn in 3D (shared KPath): hovering it reports the nearer q-point,
-// and the k_marker (e.g. the cursor on a FermiSlice) stays the one on-top dot (KPath draws no
-// sphere of its own here) until it clears with null
-test(`k_path draws the band path, reports path hovers and keeps the on-top marker`, () => {
-  const on_kpath_hover = vi.fn()
+// The Scene hands k_path to the shared KPath (hover, tints and disposal are covered in
+// KPath.test) and draws the k_marker (e.g. the cursor on a FermiSlice) as the one on-top dot
+// (KPath draws no sphere of its own here) until it clears with null
+test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
   // oxfmt-ignore
   const k_path_points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]]
   const scene_props = $state<ComponentProps<typeof FermiSurfaceScene>>({
-    k_path: { k_path_points, on_kpath_hover },
+    k_path: { k_path_points },
     k_marker: k_path_points[1],
   })
   mount_scene(scene_props)
+  // KPath's hover proxy has one instance per path segment
   const proxy = threlte_stub.nodes.find(
     ({ tag, props }) => tag === `T` && typeof props.onpointermove === `function`,
   )
-  const on_move = proxy?.props.onpointermove as (event: unknown) => void
-  on_move({ instanceId: 0, point: new Vector3(0.4, 0, 0) }) // segment 0, nearer its end
-  expect(on_kpath_hover).toHaveBeenLastCalledWith(1)
+  expect((proxy?.props.is as InstancedMesh | undefined)?.count).toBe(2)
   const markers = threlte_stub.nodes.filter(
     ({ tag, props }) => tag === `Mesh` && props.position === scene_props.k_marker,
   )
