@@ -44,7 +44,7 @@
     container_pointer,
     create_chempot_state,
     domain_formula_text,
-    formula_to_domain_key,
+    highlight_key_of,
   } from './controls-state.svelte'
   import {
     export_glb_file,
@@ -99,8 +99,7 @@
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    // Domain to highlight when none is hovered here, in any formula spelling (matched by
-    // reduced formula): lets a host (e.g. a convex hull) or a sibling grid pane mark a phase
+    // Domain to highlight while none is hovered here, any formula spelling (e.g. a linked hull's)
     highlighted_formula = null,
   }: {
     entries: PhaseData[]
@@ -787,11 +786,7 @@
     })
   })
 
-  // The hovered domain, else the external one; a phase with no domain here highlights nothing
-  const highlight_key = $derived(
-    hover_info?.formula ??
-      (highlighted_formula ? formula_to_domain_key(highlighted_formula) : null),
-  )
+  const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
   const highlight_edge_geometry = $derived.by(() => {
     const domain = render_domains.find(({ formula }) => formula === highlight_key)
     return domain ? domain_edge_geometry(domain) : null

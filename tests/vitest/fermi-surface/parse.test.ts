@@ -286,62 +286,29 @@ END_BLOCK_BANDGRID_3D
       }).join(`\n`)
     const frmsf_with = (block: string) =>
       parse_grid(`${two_band_header.join(`\n`)}\n${two_band_energies}\n${block}\n`)
-    const norm = (...values: number[]) =>
-      Math.sqrt(values.reduce((sum, val) => sum + val ** 2, 0))
+    // the value colour_block writes for point p of band b in component c
+    const slot = (comp: number, band: number, point: number) =>
+      comp === 0 && band === 0 && point < 2 ? NaN : 100 * comp + 10 * band + point / 100
     test.each([
-      [
-        1,
-        {
-          Property: [
-            [NaN, NaN, 0.02],
-            [10, 10.01, 10.02],
-          ],
-        },
-      ],
-      [
-        2,
-        {
-          Re: [
-            [NaN, NaN, 0.02],
-            [10, 10.01, 10.02],
-          ],
-          Im: [
-            [100, 100.01, 100.02],
-            [110, 110.01, 110.02],
-          ],
-          '|z|': [
-            [NaN, NaN, norm(0.02, 100.02)],
-            [norm(10, 110), norm(10.01, 110.01), norm(10.02, 110.02)],
-          ],
-        },
-      ],
-      [
-        3,
-        {
-          y: [
-            [100, 100.01, 100.02],
-            [110, 110.01, 110.02],
-          ],
-          z: [
-            [200, 200.01, 200.02],
-            [210, 210.01, 210.02],
-          ],
-          '|v|': [
-            [NaN, NaN, norm(0.02, 100.02, 200.02)],
-            [norm(10, 110, 210), norm(10.01, 110.01, 210.01), norm(10.02, 110.02, 210.02)],
-          ],
-        },
-      ],
-    ])(`reads a %i-component colour block`, (n_components, expected) => {
+      [1, [`Property`]],
+      [2, [`Re`, `Im`, `|z|`]],
+      [3, [`x`, `y`, `z`, `|v|`]],
+    ])(`reads a %i-component colour block`, (n_components, names) => {
       const band_data = frmsf_with(colour_block(n_components))
-      expect(Object.keys(band_data.properties ?? {})).toHaveLength(
-        n_components === 1 ? 1 : n_components + 1,
-      )
-      for (const [name, bands] of Object.entries(expected)) {
-        for (const [band_idx, values] of bands.entries()) {
-          const grid = band_data.properties?.[name][0][band_idx]
-          expect(Array.from(grid?.values.slice(0, 3) ?? [])).toEqual(values)
-        }
+      expect(Object.keys(band_data.properties ?? {})).toEqual(names)
+      for (const [band_idx, point] of [0, 1].flatMap((band) =>
+        [0, 1, 2].map((pt) => [band, pt]),
+      )) {
+        const comps = Array.from({ length: n_components }, (_, comp) =>
+          slot(comp, band_idx, point),
+        )
+        // 2 and 3 components add their magnitude, summed in the same order as the parser
+        const norm = Math.sqrt(comps.reduce((sum, val) => sum + val ** 2, 0))
+        const expected = n_components === 1 ? comps : [...comps, norm]
+        const values = names.map(
+          (name) => band_data.properties?.[name][0][band_idx].values[point],
+        )
+        expect(values).toEqual(expected)
       }
       expect(energy_at(band_data, 1, 1, 1, 1)).toBe(0.4) // energies unaffected
     })

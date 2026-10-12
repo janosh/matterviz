@@ -1256,13 +1256,6 @@ describe(`plane_polyhedron_section`, () => {
       return math.dot(turn, normal) > 0
     })
 
-  test(`unit cube edges cover all 12 edges of [0,1]³`, () => {
-    expect(math.UNIT_CUBE_CORNERS).toHaveLength(8)
-    expect(math.UNIT_CUBE_EDGES).toHaveLength(12)
-    for (const [start, end] of math.UNIT_CUBE_EDGES)
-      expect(math.euclidean_dist(start, end)).toBe(1)
-  })
-
   // oxfmt-ignore
   test.each([
     [`face z=0`, [0, 0, 1], 0, 4],

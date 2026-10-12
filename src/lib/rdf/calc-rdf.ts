@@ -107,15 +107,12 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 }
 
 // Atoms behind one bin of an RDF curve, for highlighting a hovered bin in a structure viewer.
-// The RDF kernels above keep only the histogram (no pair lists), so this re-runs the
-// neighbour search on demand for the one bin, out to that bin's upper edge only: a
-// short-range bin costs a small fraction of the full RDF. Uses the same bin_of as the
-// histogram, so the pairs found are exactly the ones counted there. With `element_pair`
-// [a, b] only centres carrying a and neighbours carrying b count (as in the partial g_ab);
-// without it every pair counts (the full RDF). `site_indices` are the centres,
-// `neighbor_indices` their partners (a periodic image maps to its base site), both sorted;
-// `n_pairs` is the number of ordered (centre, neighbour image) contacts in the bin, not
-// weighted by occupancy (on a disordered site it differs from the histogram's weighted count).
+// The RDF kernels keep only the histogram, so this re-runs the neighbour search for the one
+// bin, out to its upper edge only, with the histogram's own bin_of so the pairs found are
+// exactly the ones counted there. With `element_pair` [a, b] only centres carrying a and
+// neighbours carrying b count (partial g_ab); without it every pair counts. `site_indices` are
+// the centres, `neighbor_indices` their partners (images map to base sites), both sorted;
+// `n_pairs` counts ordered (centre, neighbour image) contacts, not weighted by occupancy.
 export function rdf_bin_sites(
   structure: Crystal,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {

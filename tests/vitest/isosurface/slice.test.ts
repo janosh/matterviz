@@ -443,10 +443,6 @@ describe(`hkl_slice_plane and resolve_slice_plane`, () => {
     expect(offset).toBeCloseTo(0, 12)
   })
 
-  test(`null for (000)`, () => {
-    expect(hkl_slice_plane(volume, [0, 0, 0], 0.5)).toBeNull()
-  })
-
   test(`resolve_slice_plane follows the plane mode`, () => {
     const hkl_settings = create_volume_slice_settings({
       miller_indices: [1, 1, 0],

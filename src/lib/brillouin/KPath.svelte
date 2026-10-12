@@ -1,9 +1,7 @@
 <script lang="ts">
-  // A band structure's k-path inside a reciprocal-space scene (Brillouin zone, Fermi surface):
-  // the path as instanced cylinders with a wider invisible hover proxy, symmetry-point spheres
-  // and labels, the hovered k-point, and the segments touching the hovered q-point and the
-  // highlighted stretch (e.g. the hovered branch) tinted. Hovering the path or a label reports
-  // the nearer q-point index, so a band plot beside the scene can mark it.
+  // A band structure's k-path in a reciprocal-space scene (Brillouin zone, Fermi surface) with
+  // symmetry-point labels, hovered k-point and tinted hovered/highlighted segments. Hovering the
+  // path or a label reports the nearer q-point index, so a band plot beside it can mark it.
   import type { Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
@@ -64,8 +62,11 @@
     opacity: 0,
     depthWrite: false,
   })
-  const KPATH_COLOR = new Color(`#ffcc00`)
-  const KPATH_COLORS = { hover: new Color(`#ff6b35`), range: new Color(`#ff9a3c`) }
+  const KPATH_COLORS = {
+    base: new Color(`#ffcc00`),
+    hover: new Color(`#ff6b35`),
+    range: new Color(`#ff9a3c`),
+  }
   $effect(() => () => {
     kpath_geometry.dispose()
     kpath_material.dispose()
@@ -74,7 +75,7 @@
   let kpath_meshes = $state<{ line: InstancedMesh; proxy: InstancedMesh } | null>(null)
   $effect(() => {
     const [segments, radius] = [k_path_segs, mark_sizes.kpath]
-    if (segments.length === 0) {
+    if (!segments.length) {
       kpath_meshes = null
       return
     }
@@ -87,7 +88,7 @@
     for (const [instance_idx, { from, to }] of segments.entries()) {
       write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
       write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, radius * 2)
-      line.setColorAt(instance_idx, KPATH_COLOR)
+      line.setColorAt(instance_idx, KPATH_COLORS.base)
     }
     kpath_meshes = { line, proxy }
     return () => {
@@ -97,29 +98,28 @@
   })
   // the (up to two) segments touching the hovered q-point, and the highlighted stretch
   $effect(() => {
-    const [meshes, hovered, range] = [
-      kpath_meshes,
+    const [line, hovered, range] = [
+      kpath_meshes?.line,
       hovered_qpoint_index,
       highlighted_qpoint_range,
     ]
-    if (!meshes?.line.instanceColor) return
-    const segments = untrack(() => k_path_segs)
-    for (const [instance_idx, { idx }] of segments.entries()) {
-      const highlight = k_path_segment_highlight(idx, hovered, range)
-      meshes.line.setColorAt(instance_idx, highlight ? KPATH_COLORS[highlight] : KPATH_COLOR)
+    if (!line?.instanceColor) return
+    for (const [instance_idx, { idx }] of untrack(() => k_path_segs).entries()) {
+      const highlight = k_path_segment_highlight(idx, hovered, range) ?? `base`
+      line.setColorAt(instance_idx, KPATH_COLORS[highlight])
     }
-    meshes.line.instanceColor.needsUpdate = true
+    line.instanceColor.needsUpdate = true
     invalidate()
   })
 
   // K-path hover: report the nearer endpoint's q-point index of the hovered segment
-  function handle_kpath_hover(event: ThreltePointerEvent, seg_idx: number): void {
-    const { point } = event
-    const [from, target] = [k_path_points[seg_idx], k_path_points[seg_idx + 1]]
-    if (!from || !target) return
-    const dist_sq = (point_2: Vec3) =>
-      (point.x - point_2[0]) ** 2 + (point.y - point_2[1]) ** 2 + (point.z - point_2[2]) ** 2
-    on_kpath_hover?.(dist_sq(from) <= dist_sq(target) ? seg_idx : seg_idx + 1)
+  function handle_kpath_hover({ point, instanceId }: ThreltePointerEvent): void {
+    const segment = k_path_segs[instanceId ?? -1]
+    if (!segment) return
+    const { idx, from, to } = segment
+    const cursor: Vec3 = [point.x, point.y, point.z]
+    const nearer_from = math.euclidean_dist(cursor, from) <= math.euclidean_dist(cursor, to)
+    on_kpath_hover?.(nearer_from ? idx : idx + 1)
   }
 </script>
 
@@ -128,10 +128,7 @@
   <T
     is={kpath_meshes.proxy}
     dispose={false}
-    onpointermove={(event: ThreltePointerEvent) => {
-      const segment = k_path_segs[event.instanceId ?? -1]
-      if (segment) handle_kpath_hover(event, segment.idx)
-    }}
+    onpointermove={handle_kpath_hover}
     onpointerleave={() => on_kpath_hover?.(null)}
   />
 {/if}

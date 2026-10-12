@@ -99,12 +99,12 @@ const is_circle = (marker: CanvasMarker): boolean =>
   marker.symbol_size == null
 
 const valid_marker = (marker: CanvasMarker): boolean => {
-  const marker_size = marker.symbol_size ?? marker.radius
+  const size = marker.symbol_size ?? marker.radius
   return (
     Number.isFinite(marker.cx) &&
     Number.isFinite(marker.cy) &&
-    Number.isFinite(marker_size) &&
-    marker_size > 0
+    Number.isFinite(size) &&
+    size > 0
   )
 }
 
@@ -154,26 +154,12 @@ const sprite_for = (
   const image = new OffscreenCanvas(side, side)
   const sprite_ctx = image.getContext(`2d`)
   if (!sprite_ctx) return null
-  sprite_ctx.scale(pixel_ratio, pixel_ratio)
-  sprite_ctx.fillStyle = paint.fill_style
-  sprite_ctx.strokeStyle = paint.stroke_style
-  sprite_ctx.lineWidth = paint.line_width
-  const outline = new Path2D()
-  if (circle) outline.arc(half, half, marker.radius, 0, Math.PI * 2)
-  else
-    outline.addPath(
-      symbol_path(marker.symbol_type, marker.radius, marker.symbol_size),
-      new DOMMatrix([1, 0, 0, 1, half, half]),
-    )
-  if (paint.fill_alpha > 0) {
-    sprite_ctx.globalAlpha = paint.fill_alpha
-    // oxlint-disable-next-line eslint-plugin-unicorn/no-array-fill-with-reference-type -- canvas fill, not Array.fill
-    sprite_ctx.fill(outline)
-  }
-  if (paint.stroke_alpha > 0) {
-    sprite_ctx.globalAlpha = paint.stroke_alpha
-    sprite_ctx.stroke(outline)
-  }
+  // a single marker always takes the path renderer, so sprites paint exactly like it
+  draw_markers(sprite_ctx, [{ ...marker, cx: half, cy: half }], {
+    width: 2 * half,
+    height: 2 * half,
+    pixel_ratio,
+  })
   const oldest = sprite_cache.keys().next()
   if (sprite_cache.size >= MAX_SPRITE_CACHE && !oldest.done) sprite_cache.delete(oldest.value)
   const sprite = { image, half }
@@ -212,7 +198,7 @@ const plan_sprites = (
 }
 
 const stamp_sprites = (
-  ctx: CanvasRenderingContext2D,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   markers: readonly CanvasMarker[],
   runs: Map<number, Sprite | null>,
   pixel_ratio: number,
@@ -232,7 +218,7 @@ const stamp_sprites = (
 
 // Clear and draw markers. The backing store uses CSS size * pixel_ratio.
 export function draw_markers(
-  ctx: CanvasRenderingContext2D,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   markers: readonly CanvasMarker[],
   options: { width: number; height: number; pixel_ratio?: number },
 ): void {
@@ -245,12 +231,8 @@ export function draw_markers(
     markers.length >= SPRITE_MIN_MARKERS && typeof OffscreenCanvas !== `undefined`
       ? plan_sprites(markers, pixel_ratio)
       : null
-  if (runs) {
-    stamp_sprites(ctx, markers, runs, pixel_ratio)
-    ctx.restore()
-    return
-  }
-  if (markers.length === 0) {
+  if (runs || markers.length === 0) {
+    if (runs) stamp_sprites(ctx, markers, runs, pixel_ratio)
     ctx.restore()
     return
   }

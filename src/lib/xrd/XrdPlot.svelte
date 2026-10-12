@@ -231,18 +231,6 @@
   const same_peak = (peak_a: XrdPeak | null, peak_b: XrdPeak | null): boolean =>
     peak_a?.pattern_idx === peak_b?.pattern_idx && peak_a?.peak_idx === peak_b?.peak_idx
 
-  type BarHover = Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]
-  type BarClick = Parameters<NonNullable<BarPlotOptions[`on_bar_click`]>>[0]
-  const handle_bar_hover = (data: BarHover) => {
-    hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
-    on_bar_hover?.(data)
-  }
-  const handle_bar_click = (data: BarClick) => {
-    const peak = peak_at(data.series_idx, data.bar_idx)
-    selected_peak = peak && same_peak(peak, selected_peak) ? null : peak
-    on_bar_click?.(data)
-  }
-
   // compute_broadened_pattern throws when a Caglioti triple drives FWHM² non-positive inside
   // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static
   // input `min` enforces it). Uncaught in a $derived the throw blanks the whole component, so
@@ -481,8 +469,15 @@
         x_axis={plot_x_axis}
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         {tooltip}
-        on_bar_hover={handle_bar_hover}
-        on_bar_click={handle_bar_click}
+        on_bar_hover={(data) => {
+          hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
+          on_bar_hover?.(data)
+        }}
+        on_bar_click={(data) => {
+          const peak = peak_at(data.series_idx, data.bar_idx)
+          selected_peak = peak && same_peak(peak, selected_peak) ? null : peak
+          on_bar_click?.(data)
+        }}
         {@attach drop_zone}
         class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}

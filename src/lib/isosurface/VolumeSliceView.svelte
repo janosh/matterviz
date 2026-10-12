@@ -3,12 +3,7 @@
   import { format_num } from '#lib/labels.js'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import {
-    resolve_slice_cartesian_point,
-    sample_hkl_slice,
-    sample_plane_slice,
-    upsample_volume,
-  } from './slice'
+  import { resolve_slice_plane, sample_plane_slice, upsample_volume } from './slice'
   import { create_volume_slice_settings, type VolumeSliceSettings } from './slice-settings'
   import type { VolumetricData } from './types'
   import VolumeSlice from './VolumeSlice.svelte'
@@ -72,21 +67,15 @@
 
   let computed_slice = $derived.by(() => {
     if (!fine_volume || !sampling_key) return null
-    const plane = untrack(() => sampling_settings)
-    if (!plane) return null
-    const resolution = plane.resolution > 0 ? plane.resolution : Math.max(...fine_volume.dims)
-    if (plane.plane_mode === `hkl`) {
-      return sample_hkl_slice(fine_volume, plane.miller_indices, plane.position, resolution)
-    }
-    return sample_plane_slice(
-      fine_volume,
-      {
-        point: resolve_slice_cartesian_point(plane.cartesian_point, fine_volume),
-        normal: plane.cartesian_normal,
-        up: plane.cartesian_up,
-      },
-      { resolution },
-    )
+    const sampled = untrack(() => sampling_settings)
+    const plane = sampled && resolve_slice_plane(fine_volume, sampled)
+    if (!sampled || !plane) return null
+    const resolution =
+      sampled.resolution > 0 ? sampled.resolution : Math.max(...fine_volume.dims)
+    // hkl slices sample a square grid, Cartesian ones size the longer side by `resolution`
+    return sample_plane_slice(fine_volume, plane, {
+      resolution: sampled.plane_mode === `hkl` ? [resolution, resolution] : resolution,
+    })
   })
 </script>
 

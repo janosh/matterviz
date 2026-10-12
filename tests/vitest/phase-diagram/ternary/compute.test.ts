@@ -225,18 +225,24 @@ describe(`compute_section`, () => {
 
 describe(`composition probes`, () => {
   const height = Math.sqrt(3) / 2
-  test.each<[string, Vec2]>([
-    [`left corner`, [0, 0]],
-    [`right corner`, [1, 0]],
-    [`top corner`, [0.5, height]],
-    [`centroid`, [0.5, height / 3]],
-    [`edge midpoint`, [0.75, height / 2]],
-    [`interior point`, [0.4, 0.25]],
-  ])(`prism_composition inverts prism_position at the %s`, (_, coords_xy) => {
+  // inside points round-trip through the prism frame, outside ones map to null
+  test.each<[string, Vec2, boolean]>([
+    [`left corner`, [0, 0], true],
+    [`right corner`, [1, 0], true],
+    [`top corner`, [0.5, height], true],
+    [`centroid`, [0.5, height / 3], true],
+    [`edge midpoint`, [0.75, height / 2], true],
+    [`interior point`, [0.4, 0.25], true],
+    [`left of the left corner`, [-0.01, 0], false],
+    [`right of the right corner`, [1.01, 0], false],
+    [`below the base`, [0.5, -0.01], false],
+    [`above the top corner`, [0.5, height + 0.01], false],
+    [`past the left edge`, [0.2, 0.5], false],
+  ])(`prism_composition inverts prism_position at the %s`, (_, coords_xy, inside) => {
     const [x, y, z] = prism_position(coords_xy, 0.3)
     expect(y).toBe(0.3)
     expect(prism_composition({ x, z })).toEqual(
-      coords_xy.map((val) => expect.closeTo(val, 12)),
+      inside ? coords_xy.map((val) => expect.closeTo(val, 12)) : null,
     )
   })
 
@@ -247,17 +253,6 @@ describe(`composition probes`, () => {
       0,
       expect.closeTo(-2 * (height / 3), 12),
     ])
-  })
-
-  test.each<[Vec2]>([
-    [[-0.01, 0]],
-    [[1.01, 0]],
-    [[0.5, -0.01]],
-    [[0.5, height + 0.01]],
-    [[0.2, 0.5]], // past the left edge
-  ])(`prism_composition rejects scene points outside the triangle: %j`, (coords_xy) => {
-    const [x, , z] = prism_position(coords_xy)
-    expect(prism_composition({ x, z })).toBeNull()
   })
 
   test.each<[Vec2 | null, Vec2, boolean]>([

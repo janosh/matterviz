@@ -99,28 +99,25 @@
         fit.lag_window[0] * delta_time,
         fit.lag_window[1] * delta_time,
       ]
-      const fit_series: DataSeries = {
-        x: [fit_start, fit_end],
-        y: [fit.intercept + fit.slope * fit_start, fit.intercept + fit.slope * fit_end],
-        label: `${curve.label} fit`,
-        legend_group: `Einstein fits`,
-        visible,
-        markers: `line`,
-        line_style: { stroke: color, stroke_width: 1, line_dash: `5,4` },
-      }
       return [
-        { srs: msd_series, curve_label: curve.label },
-        { srs: fit_series, curve_label: curve.label },
-      ]
+        msd_series,
+        {
+          x: [fit_start, fit_end],
+          y: [fit.intercept + fit.slope * fit_start, fit.intercept + fit.slope * fit_end],
+          label: `${curve.label} fit`,
+          legend_group: `Einstein fits`,
+          visible,
+          markers: `line` as const,
+          line_style: { stroke: color, stroke_width: 1, line_dash: `5,4` },
+        },
+      ].map((srs) => ({ srs, curve_label: curve.label }))
     })
   })
   let series = $derived(plotted.map(({ srs }) => srs))
   const curve_hover = $derived(
     on_curve_hover &&
       ((series_idx: number | null) =>
-        on_curve_hover(
-          series_idx === null ? null : (plotted[series_idx]?.curve_label ?? null),
-        )),
+        on_curve_hover(plotted[series_idx ?? -1]?.curve_label ?? null)),
   )
 </script>
 

@@ -1203,7 +1203,6 @@
     return build_spatial_index(entries(), hover_radius)
   })
 
-  // Nearest point along x within the hover radius, plus that x distance for the click radius
   // Nearest point along one screen axis (`x` or `y` hover mode), ties broken by the other.
   // Only x-monotonic series are binary-searched; `y` mode scans every point.
   const axis_hover_candidate = (axis: `x` | `y`, x_rel: number, y_rel: number) => {
@@ -1257,8 +1256,7 @@
       : null
   }
 
-  // Nearest point within the hover radius and its screen distance (along one axis only in the
-  // `x` and `y` modes)
+  // Nearest point within the hover radius and its screen distance (along one axis in x/y modes)
   const closest_hit_at = (x_rel: number, y_rel: number) => {
     const { mode } = hover_config
     if (mode === `x` || mode === `y`) return axis_hover_candidate(mode, x_rel, y_rel)

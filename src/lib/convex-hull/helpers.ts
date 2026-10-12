@@ -25,7 +25,7 @@ import type {
   PhaseData,
 } from './types'
 import { DEFAULT_HULL_COLORS, MAGNETIC_ORDERING_CATEGORY } from './types'
-import { entry_is_stable, HULL_STABILITY_TOL, is_unary_entry } from './entry-stability'
+import { entry_is_stable, is_unary_entry } from './entry-stability'
 
 export {
   compute_hull_stability,
@@ -566,10 +566,9 @@ export const HULL_OVERLAY_COLORS = Object.freeze({
   annotation: `#c026d3`,
 })
 
-// What linked views draw over a hull, in plot coordinates: dashed tie-lines from `focus` (an
-// entry above the hull) to the stable phases it decomposes into, each ringed with its atom
-// fraction, plus the host's composition annotations. Annotations whose composition lies
-// outside the hull's system are skipped with a warning.
+// What linked views draw over a hull, in plot coordinates: dashed tie-lines from `focus` (if
+// above the hull) to the stable phases it decomposes into, each ringed with its atom fraction,
+// plus the host's composition annotations (skipped with a warning when outside the system).
 export function build_hull_overlay(
   model: { entries: readonly ConvexHullEntry[]; elements: readonly ElementSymbol[] },
   focus: ConvexHullEntry | null,
@@ -579,14 +578,14 @@ export function build_hull_overlay(
   const dim = elements.length
   const overlay: HullOverlay = { segments: [], rings: [] }
   if (dim !== 2 && dim !== 3 && dim !== 4) return overlay
-  const color = HULL_OVERLAY_COLORS.decomposition
-  const decomposition =
-    focus && (focus.e_above_hull ?? 0) > HULL_STABILITY_TOL
-      ? get_hull_decomposition(focus, model.entries, elements)
-      : null
-  for (const { phase, atom_fraction } of decomposition?.decomposition ?? []) {
-    overlay.segments.push({ from: focus ?? phase, to: phase, color, dashed: true })
-    overlay.rings.push({ at: phase, color, label: format_num(atom_fraction, `.0%`) })
+  const { decomposition: tie_color, annotation } = HULL_OVERLAY_COLORS
+  if (focus) {
+    const mixture = get_hull_decomposition(focus, model.entries, elements)
+    for (const { phase, atom_fraction } of mixture?.decomposition ?? []) {
+      overlay.segments.push({ from: focus, to: phase, color: tie_color, dashed: true })
+      const label = format_num(atom_fraction, `.0%`)
+      overlay.rings.push({ at: phase, color: tie_color, label })
+    }
   }
   const position = (mark: HullMark): Point3D | null => {
     if (!system_fractions(mark.composition, elements)) {
@@ -597,15 +596,13 @@ export function build_hull_overlay(
     }
     return hull_plot_position(mark.composition, mark.e_form, elements, dim)
   }
-  for (const line of annotations?.lines ?? []) {
-    const [from, to] = [position(line.from), position(line.to)]
-    const line_color = line.color ?? HULL_OVERLAY_COLORS.annotation
-    if (from && to) overlay.segments.push({ from, to, color: line_color, dashed: false })
+  for (const { from, to, color = annotation } of annotations?.lines ?? []) {
+    const [start, end] = [position(from), position(to)]
+    if (start && end) overlay.segments.push({ from: start, to: end, color, dashed: false })
   }
   for (const mark of annotations?.marks ?? []) {
     const at = position(mark)
-    const { label, color: mark_color = HULL_OVERLAY_COLORS.annotation } = mark
-    if (at) overlay.rings.push({ at, color: mark_color, label })
+    if (at) overlay.rings.push({ at, color: mark.color ?? annotation, label: mark.label })
   }
   return overlay
 }

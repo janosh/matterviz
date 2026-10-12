@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
   import * as math from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { DataSeries } from '#lib/plot/index.js'
@@ -12,6 +13,7 @@
     pocket_carriers,
     sample_slice_energies,
     slice_axis_label,
+    slice_point_to_k,
     slice_shading_rgba,
   } from './compute'
   import { BAND_COLORS } from './constants'
@@ -147,8 +149,7 @@
   let shading_image = $derived.by(() => {
     if (!band_data || shading === `none` || !slice_data) return null
     const energy_map = sample_slice_energies(band_data, {
-      miller_indices,
-      distance,
+      plane: slice_data,
       bounds,
       mu,
       interpolation_factor,
@@ -164,23 +165,20 @@
     return canvas.toDataURL()
   })
 
-  // Where the plane cuts the Γ-centred cell, in slice coordinates: band-grid contours exist
-  // only inside it, so the (periodic) shading is clipped to it to cover the same area
+  // Where the plane cuts the cell the surfaces live in (Γ-centred parallelepiped, or the
+  // Wigner-Seitz zone for folded surfaces), in slice coordinates: contours exist only inside
+  // it, so the (periodic) shading is clipped to it to cover the same area
   let cell_section = $derived.by((): Vec2[] | null => {
     if (!slice_data || !fermi_data || !shading_image) return null
     const { plane_normal, plane_distance, in_plane_basis } = slice_data
-    const corners = math.plane_polyhedron_section(
-      centered_cell_edges(fermi_data.k_lattice),
-      plane_normal,
-      plane_distance,
-    )
-    const project = (corner: Vec3, axis: Vec3) =>
-      corner[0] * axis[0] + corner[1] * axis[1] + corner[2] * axis[2]
+    const { k_lattice, reciprocal_cell } = fermi_data
+    const edges =
+      reciprocal_cell === `wigner_seitz`
+        ? compute_brillouin_zone(k_lattice, 1).edges
+        : centered_cell_edges(k_lattice)
+    const corners = math.plane_polyhedron_section(edges, plane_normal, plane_distance)
     return corners.length
-      ? corners.map((corner) => [
-          project(corner, in_plane_basis[0]),
-          project(corner, in_plane_basis[1]),
-        ])
+      ? corners.map((corner) => in_plane_basis.map((axis) => math.dot(corner, axis)) as Vec2)
       : null
   })
 
@@ -188,12 +186,11 @@
   let marker_2d = $derived.by(() => {
     if (!marker || !slice_data) return null
     const { plane_normal, plane_distance, in_plane_basis } = slice_data
-    const dot = (vec: Vec3) => vec[0] * marker[0] + vec[1] * marker[1] + vec[2] * marker[2]
     const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1])
-    const off_plane = dot(plane_normal) - plane_distance
+    const off_plane = math.dot(plane_normal, marker) - plane_distance
     return {
-      x: dot(in_plane_basis[0]),
-      y: dot(in_plane_basis[1]),
+      x: math.dot(in_plane_basis[0], marker),
+      y: math.dot(in_plane_basis[1], marker),
       off_plane,
       on_plane: Math.abs(off_plane) < 0.01 * span,
     }
@@ -214,12 +211,7 @@
     }
     const coord_x = invert(scale_x, event.clientX - svg_box.left)
     const coord_y = invert(scale_y, event.clientY - svg_box.top)
-    const { plane_normal, plane_distance, in_plane_basis } = slice_data
-    const [axis_u, axis_v] = in_plane_basis
-    hovered_k = [0, 1, 2].map(
-      (axis) =>
-        plane_normal[axis] * plane_distance + axis_u[axis] * coord_x + axis_v[axis] * coord_y,
-    ) as Vec3
+    hovered_k = slice_point_to_k(slice_data, coord_x, coord_y)
   }
 
   // Returns null if SVG not found, making export failures explicit

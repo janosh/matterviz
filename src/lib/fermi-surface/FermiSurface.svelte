@@ -24,7 +24,12 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
-  import { detect_irreducible_bz, extract_fermi_surface } from './compute'
+  import {
+    band_grids_prepared,
+    detect_irreducible_bz,
+    extract_fermi_surface,
+    preview_interpolation_factor,
+  } from './compute'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
@@ -69,6 +74,8 @@
     slice_plane,
     k_marker = null,
     k_path,
+    wigner_seitz = false,
+    previewing = false,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -125,6 +132,11 @@
     k_marker?: Vec3 | null
     // band-structure k-path to draw in 3D, e.g. from a band plot beside the viewer
     k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`]
+    // fold band-grid surfaces into the Wigner-Seitz zone, e.g. to match a k-path through it
+    wigner_seitz?: boolean
+    // a pointer-driven preview (e.g. hovering a band plot): extract at no more than the
+    // k-mesh's auto resolution so updates keep up, then at full resolution once it ends
+    previewing?: boolean
     // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
     // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
@@ -229,8 +241,6 @@
   // of unmounting it.
   let extraction_job_id = 0
   let extracting = $state(false)
-  // grid + factor of the last extraction: their upsampled band grids are cached
-  let extracted: { grid: BandGridData; interpolation_factor: number } | undefined
   $effect(() => {
     const job_id = ++extraction_job_id
     if (!grid_data) {
@@ -238,12 +248,14 @@
       return
     }
     const grid = grid_data
-    const options = { mu: mean, interpolation_factor }
+    const factor = previewing
+      ? preview_interpolation_factor(grid, interpolation_factor)
+      : interpolation_factor
+    const options = { mu: mean, interpolation_factor: factor, wigner_seitz }
     const extract = () => {
       if (job_id !== extraction_job_id) return
       try {
         fermi_data = extract_fermi_surface(grid, options)
-        extracted = { grid, interpolation_factor }
         error_msg = undefined
       } catch (err) {
         const message = `Fermi surface extraction failed: ${to_error(err).message}`
@@ -254,11 +266,10 @@
       }
     }
     // A mu change only reruns marching cubes on the cached grids (~1-12 ms on the demo files),
-    // so it extracts next frame and a mu drag tracks the pointer. A new grid or factor first
-    // upsamples every band, which takes a while at high factors: the spinner gets one painted
-    // frame before that blocks.
-    const upsamples =
-      extracted?.grid !== grid || extracted.interpolation_factor !== interpolation_factor
+    // so it extracts next frame and a mu drag tracks the pointer. A grid or factor not yet
+    // upsampled first upsamples every band, which takes a while at high factors: the spinner
+    // gets one painted frame before that blocks.
+    const upsamples = !band_grids_prepared(grid, factor)
     if (upsamples) extracting = true
     let frame = requestAnimationFrame(() => {
       if (upsamples) frame = requestAnimationFrame(extract)

@@ -741,18 +741,14 @@
       return
     }
     const active_el = document.activeElement
+    if (!(active_el instanceof HTMLElement) || !active_el.dataset.x) return
     // Enter and Space activate the focused cell like a click (cells are not buttons)
-    if (
-      (event.key === `Enter` || event.key === ` `) &&
-      active_el instanceof HTMLElement &&
-      active_el.dataset.x
-    ) {
+    if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
-      active_el.click()
-      return
+      return active_el.click()
     }
     const step = ARROW_STEPS[event.key]
-    if (!step || !(active_el instanceof HTMLElement) || !active_el.dataset.x) return
+    if (!step) return
     const x_idx = Number(active_el.dataset.x)
     const y_idx = Number(active_el.dataset.y)
     event.preventDefault()

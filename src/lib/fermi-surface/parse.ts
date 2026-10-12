@@ -441,8 +441,6 @@ function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
   return math.is_square_matrix(k_lattice, 3)
 }
 
-const has_no_null = (row: (number | null)[]): row is number[] => !row.includes(null)
-
 // Flatten nested JSON band grids into BandEnergyGrid storage, checking that every band
 // matches k_grid (a ragged or mis-sized band would otherwise read garbage in marching cubes).
 // `source` names the offending input in the error for a malformed shape.
@@ -476,7 +474,7 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
         const grid = flatten_grid(
           nulls_to_nan
             ? band.map((plane: (number | null)[][]) =>
-                plane.map((row) => (has_no_null(row) ? row : row.map((val) => val ?? NaN))),
+                plane.map((row) => row.map((val) => val ?? NaN)),
               )
             : band,
         )
@@ -506,18 +504,16 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
         return [name, bands]
       }),
     )
-  const { band_indices } = json
-  if (band_indices && energies.some((bands) => bands.length !== band_indices.length)) {
+  const band_indices = json.band_indices ?? []
+  if (json.band_indices && energies.some((bands) => bands.length !== band_indices.length)) {
     throw new Error(
       `BandGridData JSON: band_indices lists ${band_indices.length} bands but energies hold ${energies.map((bands) => bands.length).join(`/`)}`,
     )
   }
-  const valid_index = (band_index: unknown) =>
-    Number.isInteger(band_index) && Number(band_index) >= 0
-  if (
-    band_indices &&
-    (!band_indices.every(valid_index) || new Set(band_indices).size !== band_indices.length)
-  ) {
+  const valid = band_indices.every(
+    (band_index) => Number.isInteger(band_index) && band_index >= 0,
+  )
+  if (!valid || new Set(band_indices).size !== band_indices.length) {
     throw new Error(
       `BandGridData JSON: band_indices must be distinct non-negative integers, got [${band_indices.join(`, `)}]`,
     )

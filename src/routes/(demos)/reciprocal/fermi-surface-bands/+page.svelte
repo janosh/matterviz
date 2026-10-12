@@ -3,24 +3,20 @@
   import type { BandGridData } from '#lib/fermi-surface/index.js'
   import { FermiSurfaceBands, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import { to_error } from '#lib/utils.js'
-  import { cu_fcc_bands } from '#site/electronic/cu-fcc-bands.js'
+  import { cu_fcc_bands as band_struct } from '#site/electronic/cu-fcc-bands.js'
   import { fermi_surface_files } from '#site/fermi-surfaces.js'
   import { onMount } from 'svelte'
 
   // fcc Cu from one simulated calculation: the band grid (BXSF, bands numbered as in the run)
   // and the band structure along the fcc path share their band indices and Fermi level
   const grid_name = `cu_fcc_bands.bxsf.gz`
-  const band_struct = cu_fcc_bands
   let band_data = $state.raw<BandGridData>()
   let error_msg = $state<string>()
 
   onMount(async () => {
-    const url = fermi_surface_files.find((file) => file.name === grid_name)?.url
-    if (!url) {
-      error_msg = `Demo file ${grid_name} not found`
-      return
-    }
     try {
+      const url = fermi_surface_files.find((file) => file.name === grid_name)?.url
+      if (!url) throw new Error(`Demo file ${grid_name} not found`)
       const opened = await open_material(url)
       try {
         if (opened.type !== `fermi_surface` || is_fermi_surface_data(opened.data)) {

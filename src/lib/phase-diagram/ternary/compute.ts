@@ -320,12 +320,9 @@ export const prism_position = ([x_pos, y_pos]: readonly number[], y_scene = 0): 
 ]
 // Composition under a prism scene point (inverse of prism_position, height ignored); null
 // outside the Gibbs triangle
-export function prism_composition(
-  { x, z }: { x: number; z: number },
-  tolerance = 1e-6,
-): Vec2 | null {
+export function prism_composition({ x, z }: { x: number; z: number }): Vec2 | null {
   const coords_xy: Vec2 = [x + PRISM_CENTER[0], PRISM_CENTER[1] - z]
-  return inside_triangle(xy_to_ternary(coords_xy), tolerance) ? coords_xy : null
+  return inside_triangle(xy_to_ternary(coords_xy), 1e-6) ? coords_xy : null
 }
 // Whether coords_xy lies within `radius` (triangle units, side 1) of a pinned probe: a click
 // there removes the pin, anywhere else moves it

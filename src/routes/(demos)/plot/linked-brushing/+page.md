@@ -36,14 +36,18 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
       selected = points.length > 0 ? symbols.filter((symbol) => ids.has(symbol)) : null
       clear_other()
     }
-  const toggle_element = ({ symbol }: ChemicalElement) => {
-    const current = selected ?? []
-    const next = current.includes(symbol)
-      ? current.filter((other) => other !== symbol)
-      : [...current, symbol]
+  const set_selection = (next: ElementSymbol[]) => {
     selected = next.length > 0 ? next : null
     radius_rings = []
     melting_rings = []
+  }
+  const toggle_element = ({ symbol }: ChemicalElement) => {
+    const current = selected ?? []
+    set_selection(
+      current.includes(symbol)
+        ? current.filter((other) => other !== symbol)
+        : [...current, symbol],
+    )
   }
   // Grey out the tiles outside the selection so the table reads like the dimmed plots
   const dimmed_tiles = $derived(
@@ -53,18 +57,13 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
         .map((symbol) => [symbol, `#8884`]),
     ),
   )
-  const clear = () => {
-    selected = null
-    radius_rings = []
-    melting_rings = []
-  }
 </script>
 
 <p style="display: flex; gap: 1em; align-items: center; min-height: 2em">
   {#if selected}
     <strong>{selected.length} selected:</strong>
     <span style="flex: 1">{selected.join(`, `)}</span>
-    <button onclick={clear}>Clear</button>
+    <button onclick={() => set_selection([])}>Clear</button>
   {:else}
     Alt+drag a rectangle in either plot, or click periodic table tiles.
   {/if}

@@ -24,12 +24,11 @@ test(`draws a fan-triangulated fill and a closed outline in the slice-plane styl
   const component = mount(SlicePlane, { target: document.body, props })
   flushSync()
   const fill = geometry_of(`Mesh`)
-  // corners plus the first repeated, fanned into n - 2 triangles from corner 0
-  expect([...fill.getAttribute(`position`).array]).toEqual([...square, square[0]].flat())
+  // corners plus the first repeated (fill and outline), fanned into n - 2 triangles from corner 0
+  const closed = [...square, square[0]].flat()
+  expect([...fill.getAttribute(`position`).array]).toEqual(closed)
+  expect([...geometry_of(`Line`).getAttribute(`position`).array]).toEqual(closed)
   expect([...(fill.index?.array ?? [])]).toEqual([0, 1, 2, 0, 2, 3])
-  expect([...geometry_of(`Line`).getAttribute(`position`).array]).toEqual(
-    [...square, square[0]].flat(),
-  )
   expect(node_props(`MeshBasicMaterial`)).toMatchObject({
     color: `#f59e0b`,
     opacity: 0.4,

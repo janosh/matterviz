@@ -51,6 +51,15 @@ const open_menu = async (target: HTMLElement, label: string): Promise<void> => {
   await tick()
 }
 
+// structure settings mount on first open of the viewer's controls pane
+const open_structure_controls = async (target: HTMLElement): Promise<void> => {
+  const toggle = await vi.waitFor(() =>
+    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
+  )
+  toggle.click()
+  await tick()
+}
+
 test(`renders a typed phonon dataset`, async () => {
   const props = $state<ExplorerProps>({
     ...explorer_defaults,
@@ -82,12 +91,7 @@ test(`renders a typed phonon dataset`, async () => {
   expect(target.querySelector(`.phonon-modes-pane .control-tab`)).toBeNull()
   expect(target.querySelector(`.phonon-modes-pane .resize-handle`)).toBeNull()
   expect(target.querySelector(`.trajectory-controls .toolbar`)).not.toBeNull()
-  // structure settings mount on first open of the viewer's controls pane
-  const controls_toggle = await vi.waitFor(() =>
-    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
-  )
-  controls_toggle.click()
-  await tick()
+  await open_structure_controls(target)
   const eigenvectors = target.querySelector<HTMLInputElement>(`.checkbox input`)
   eigenvectors?.click()
   await vi.waitFor(() =>
@@ -149,12 +153,7 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
       0,
     )
 
-  // structure settings mount on first open of the viewer's controls pane
-  const controls_toggle = await vi.waitFor(() =>
-    query<HTMLButtonElement>(target, `button.structure-controls-toggle`),
-  )
-  controls_toggle.click()
-  await tick()
+  await open_structure_controls(target)
   await vi.waitFor(() => {
     expect(
       target.querySelector<HTMLSelectElement>(`[data-key="show_polyhedra"] select`)?.value,
@@ -359,8 +358,8 @@ test.each([
       )
       expect(plot_pane.querySelectorAll(`line.mode-stick`).length).toBeGreaterThan(0)
     })
-    const has_bands = !layout_classes.length ? 0 : 1
-    expect(plot_pane.querySelectorAll(`.scatter`)).toHaveLength(1 + has_bands)
+    // bands beside or above the spectrum make a second plot
+    expect(plot_pane.querySelectorAll(`.scatter`)).toHaveLength(layout_classes.length ? 2 : 1)
     // rotated beside the bands, sticks run along the intensity (x) axis at their frequency
     const stick = query(plot_pane, `line.mode-stick`)
     const [x1, x2, y1, y2] = [`x1`, `x2`, `y1`, `y2`].map((attr) =>

@@ -30,14 +30,14 @@ export const scene_site_indices = (
   )
 }
 
-// Sites carrying `element` (the per-element curves of MSD/VACF are labelled by symbol). A
-// label that names no element, like the all-atom `Total` curve, matches nothing.
+// Sites carrying any of `elements` (the per-element curves of MSD/VACF are labelled by
+// symbol). A label that names no element, like the all-atom `Total` curve, matches nothing.
 export const element_site_indices = (
   structure: AnyStructure | undefined,
-  element: string,
+  elements: readonly string[],
 ): number[] =>
   (structure?.sites ?? []).flatMap(({ species }, site_idx) =>
-    species.some((spec) => spec.element === element) ? [site_idx] : [],
+    species.some(({ element }) => elements.includes(element)) ? [site_idx] : [],
   )
 
 // Position in `frame_numbers` (ascending source frame indices) closest to `frame_idx`, ties
@@ -45,17 +45,15 @@ export const element_site_indices = (
 export const nearest_frame_position = (
   frame_numbers: readonly number[],
   frame_idx: number,
-): number => {
-  let best = -1
-  for (const [position, frame_number] of frame_numbers.entries()) {
-    if (
+): number =>
+  frame_numbers.reduce(
+    (best, frame_number, position) =>
       best < 0 ||
       Math.abs(frame_number - frame_idx) < Math.abs(frame_numbers[best] - frame_idx)
-    )
-      best = position
-  }
-  return best
-}
+        ? position
+        : best,
+    -1,
+  )
 
 // Source atoms of one CNA type in the analysed frame nearest `frame_idx`: a sweep samples a
 // subset of frames, so the shown frame may not have been classified itself. Returns the
@@ -68,9 +66,8 @@ export const cna_type_source_atoms = (
   const position = nearest_frame_position(sweep.frame_numbers, frame_idx)
   const cna_types = sweep.results[position]?.cna_types
   if (position < 0 || !cna_types) return null
-  const atom_indices: number[] = []
-  for (const [atom_idx, code] of cna_types.entries()) {
-    if (code === type_code) atom_indices.push(atom_idx)
-  }
+  const atom_indices = [...cna_types.keys()].filter(
+    (atom_idx) => cna_types[atom_idx] === type_code,
+  )
   return { frame_number: sweep.frame_numbers[position], atom_indices }
 }

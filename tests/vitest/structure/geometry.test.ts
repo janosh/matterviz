@@ -24,31 +24,11 @@ import { BondMesh } from '#lib/structure/bond-mesh.js'
 
 // Arrows from the origin along a, b and c must run outside the cell: the origin's fractional coordinates are all
 // negative. The fixed [-1, -1, -1] origin it replaced sat inside cells with negative vector components.
+// oxfmt-ignore
 test.each([
-  [
-    [
-      [3, 0, 0],
-      [0, 4, 0],
-      [0, 0, 5],
-    ],
-    true,
-  ],
-  [
-    [
-      [2.9, 0, 0],
-      [-1.45, 2.51, 0],
-      [0, 0, 7.1],
-    ],
-    true,
-  ],
-  [
-    [
-      [3.4, -3.4, 0],
-      [3.4, 3.4, 0],
-      [-1.7, 0, -6.2],
-    ],
-    false,
-  ],
+  [[[3, 0, 0], [0, 4, 0], [0, 0, 5]], true],
+  [[[2.9, 0, 0], [-1.45, 2.51, 0], [0, 0, 7.1]], true],
+  [[[3.4, -3.4, 0], [3.4, 3.4, 0], [-1.7, 0, -6.2]], false],
 ] as [Matrix3x3, boolean][])(
   `cell_vector_origin lies outside the cell behind its origin corner: %j`,
   (matrix, fixed_origin_outside) => {

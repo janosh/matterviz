@@ -12,6 +12,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { parse_structure_file } from '#lib/structure/parse.js'
   import { is_crystal } from '#lib/structure/validation.js'
+  import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import { series_hover_props } from '#lib/plot/core/interactions.js'
@@ -135,10 +136,7 @@
     if (bin_idx === null) {
       // The full RDF's legend entry stands for every atom, which highlights nothing useful
       if (!pair) return null
-      const site_indices = struct.sites.flatMap(({ species }, site_idx) =>
-        species.some(({ element }) => pair.includes(element)) ? [site_idx] : [],
-      )
-      return [{ label, structure: struct, site_indices }]
+      return [{ label, structure: struct, site_indices: element_site_indices(struct, pair) }]
     }
     const { site_indices, neighbor_indices } = rdf_bin_sites(struct, {
       cutoff,
@@ -158,17 +156,13 @@
     last_hover_key = key
     const entry = entry_idx === null ? undefined : entries[entry_idx]
     on_bin_hover?.(entry ? { entry, bin_idx } : null)
-    if (on_sites_hover) {
-      on_sites_hover(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
-    }
+    on_sites_hover?.(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
   }
-  const hover_props = $derived(
+  const hover_props = $derived<Pick<ScatterPlotOptions, `on_point_hover` | `legend`>>(
     on_bin_hover || on_sites_hover
       ? {
           ...series_hover_props((series_idx) => report_hover(series_idx, null), rest),
-          on_point_hover: (
-            event: Parameters<NonNullable<ScatterPlotOptions[`on_point_hover`]>>[0],
-          ) => {
+          on_point_hover: (event) => {
             report_hover(event?.series_idx ?? null, event?.point.point_idx ?? null)
             rest.on_point_hover?.(event)
           },

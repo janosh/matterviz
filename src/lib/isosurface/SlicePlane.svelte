@@ -21,10 +21,10 @@
     if (polygon.length < 3) return null
     // corners plus the first again: the outline is a Line closed by hand, as WebGPURenderer
     // does not support LineLoop; the fill's fan index never reaches the repeated corner
-    const fill = positions_geometry([...polygon, polygon[0]].flat())
+    const closed = [...polygon, polygon[0]].flat()
+    const fill = positions_geometry(closed)
     fill.setIndex(polygon.slice(2).flatMap((_, idx) => [0, idx + 1, idx + 2]))
-    const outline = positions_geometry([...polygon, polygon[0]].flat())
-    return { fill, outline }
+    return { fill, outline: positions_geometry(closed) }
   })
   dispose_on_change(() => [geometries?.fill, geometries?.outline])
 </script>

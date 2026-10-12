@@ -119,14 +119,11 @@
   )
   // Analysed frame whose x position is nearest `pixel_x`. Snapping in pixel space through the
   // forward scale needs no inverse, so it holds however the axis is zoomed.
-  const nearest_frame = (scale: (value: number) => number, pixel_x: number): number | null => {
-    let [best, best_dist] = [null as number | null, Infinity]
-    for (const frame of frame_xs) {
-      const dist = Math.abs(scale(frame) - pixel_x)
-      if (dist < best_dist) [best, best_dist] = [frame, dist]
-    }
-    return best
-  }
+  // Only called while frame_xs is non-empty (the seek area renders only then).
+  const nearest_frame = (scale: (value: number) => number, pixel_x: number): number =>
+    frame_xs.reduce((best, frame) =>
+      Math.abs(scale(frame) - pixel_x) < Math.abs(scale(best) - pixel_x) ? frame : best,
+    )
   const type_hover = $derived(
     on_type_hover &&
       ((series_idx: number | null) =>
@@ -159,11 +156,9 @@
       onclick={(event) => {
         const svg = event.currentTarget.ownerSVGElement
         if (!svg) return
-        const frame = nearest_frame(
-          x_scale_fn,
-          event.clientX - svg.getBoundingClientRect().left,
+        on_frame_click(
+          nearest_frame(x_scale_fn, event.clientX - svg.getBoundingClientRect().left),
         )
-        if (frame !== null) on_frame_click(frame)
       }}
     />
   {/if}

@@ -1,0 +1,110 @@
+// Links a band plot to the band structure's k-path drawn in a Brillouin zone: hovering a band
+// point marks its k-point and shades its path branch (e.g. Γ→X) on the k-path, hovering the
+// k-path marks the q-point on the bands (BrillouinBandsDos, PhononModeExplorer,
+// FermiSurfaceBands).
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { BandPointMeta } from './helpers'
+import {
+  branch_qpoint_range,
+  extract_k_path_points,
+  find_qpoint_at_rescaled_x,
+  k_path_labels,
+} from './helpers'
+import type { BaseBandStructure } from './types'
+
+export type BandPointRef = Pick<BandPointMeta, `band_idx` | `qpoint_idx` | `frac_coords`>
+
+// The band and q-point a Bands point stands for, read from its metadata (null for points
+// without band metadata, e.g. a caller's own series)
+export const band_point_meta = (
+  metadata: Record<string, unknown> | null | undefined,
+): BandPointRef | null => {
+  const { band_idx, qpoint_idx, frac_coords } = metadata ?? {}
+  if (typeof band_idx !== `number` || typeof qpoint_idx !== `number`) return null
+  const is_vec3 =
+    Array.isArray(frac_coords) &&
+    frac_coords.length === 3 &&
+    frac_coords.every((coord) => typeof coord === `number`)
+  return { band_idx, qpoint_idx, frac_coords: is_vec3 ? (frac_coords as Vec3) : null }
+}
+
+// The parts of a Bands on_point_hover event the link reads (a ScatterHandlerEvent fits)
+export interface BandHover {
+  x: number
+  metadata?: Record<string, unknown> | null
+}
+
+export interface BandPathLinkInputs {
+  band_struct: () => BaseBandStructure | null | undefined // whose k-path the zone draws
+  k_lattice: () => Matrix3x3 | undefined // reciprocal lattice incl. 2π, as the zone's
+  // Bands' x_positions. Needed only when Bands plots more structures than band_struct: their
+  // points carry their own q-point indices, so they are mapped onto band_struct's path by x
+  x_positions?: () => Record<string, Vec2> | undefined
+}
+
+export function create_band_path_link(inputs: BandPathLinkInputs) {
+  const k_path_points = $derived.by((): Vec3[] => {
+    const [band_struct, k_lattice] = [inputs.band_struct(), inputs.k_lattice()]
+    return band_struct && k_lattice ? extract_k_path_points(band_struct, k_lattice) : []
+  })
+  const labels = $derived.by(() => {
+    const band_struct = inputs.band_struct()
+    return band_struct ? k_path_labels(band_struct, k_path_points) : []
+  })
+
+  let band_hover = $state.raw<BandHover | null>(null)
+  let path_qpoint = $state<number | null>(null)
+  // q-point of band_struct under the hovered band point
+  const band_qpoint = $derived.by((): number | null => {
+    const band_struct = inputs.band_struct()
+    if (!band_hover || !band_struct) return null
+    const point = band_point_meta(band_hover.metadata)
+    if (!point) return null
+    // a point of band_struct itself names its q-point exactly
+    const own_coords = band_struct.qpoints[point.qpoint_idx]?.frac_coords
+    const is_own =
+      own_coords && point.frac_coords?.every((coord, idx) => coord === own_coords[idx])
+    if (is_own) return point.qpoint_idx
+    const x_positions = inputs.x_positions?.()
+    return x_positions && Object.keys(x_positions).length > 0
+      ? find_qpoint_at_rescaled_x(band_struct, band_hover.x, x_positions)
+      : null
+  })
+  // a band hover wins over a k-path hover
+  const active_qpoint = $derived(band_qpoint ?? path_qpoint)
+  const hovered_k_point = $derived(
+    active_qpoint === null ? null : (k_path_points[active_qpoint] ?? null),
+  )
+  const highlighted_qpoint_range = $derived.by((): Vec2 | null => {
+    const band_struct = inputs.band_struct()
+    return active_qpoint === null || !band_struct
+      ? null
+      : branch_qpoint_range(band_struct, active_qpoint)
+  })
+
+  return {
+    get k_path_points(): Vec3[] {
+      return k_path_points
+    },
+    get k_path_labels() {
+      return labels
+    },
+    get active_qpoint(): number | null {
+      return active_qpoint
+    },
+    get hovered_k_point(): Vec3 | null {
+      return hovered_k_point
+    },
+    get highlighted_qpoint_range(): Vec2 | null {
+      return highlighted_qpoint_range
+    },
+    // Bands on_point_hover (null when the pointer leaves the bands)
+    hover_band: (event: BandHover | null): void => {
+      band_hover = event
+    },
+    // BrillouinZone on_kpath_hover
+    hover_path: (qpoint_idx: number | null): void => {
+      path_qpoint = qpoint_idx
+    },
+  }
+}

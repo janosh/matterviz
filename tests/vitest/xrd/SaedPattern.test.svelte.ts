@@ -19,24 +19,19 @@ afterEach(async () => {
   document.body.innerHTML = ``
 })
 
-const mount_saed = async (state: {
-  hovered_spot: SaedSpot | null
-  selected_spot: SaedSpot | null
-}): Promise<SVGCircleElement[]> => {
+// Mounts the pattern with bound hover/pin state, returning that state and the spot circles
+const mount_saed = async (selected_spot: SaedSpot | null = null) => {
+  const state = $state({ hovered_spot: null as SaedSpot | null, selected_spot })
   component = mount(SaedPattern, {
     target: document.body,
     props: bind_props({ pattern }, state),
   })
   await resize_element(query(document.body, `.saed-pattern`), 400, 400)
-  return [...document.querySelectorAll<SVGCircleElement>(`circle.spot`)]
+  return { state, circles: [...document.querySelectorAll<SVGCircleElement>(`circle.spot`)] }
 }
 
 test(`spots expose hover and a toggling pin with their hkl, by pointer and keyboard`, async () => {
-  const state = $state<{ hovered_spot: SaedSpot | null; selected_spot: SaedSpot | null }>({
-    hovered_spot: null,
-    selected_spot: null,
-  })
-  const circles = await mount_saed(state)
+  const { state, circles } = await mount_saed()
   expect(circles).toHaveLength(pattern.spots.length)
   expect(pattern.spots.length).toBeGreaterThan(4)
   // every spot lies in the zero-order zone of [001], so its hkl has l = 0
@@ -79,12 +74,8 @@ test(`spots expose hover and a toggling pin with their hkl, by pointer and keybo
 })
 
 test(`a pin is matched by hkl, so it survives a recomputed pattern`, async () => {
-  const state = $state<{ hovered_spot: SaedSpot | null; selected_spot: SaedSpot | null }>({
-    hovered_spot: null,
-    // a structurally equal copy, as a recomputed pattern would hand back
-    selected_spot: { ...pattern.spots[2], hkl: [...pattern.spots[2].hkl] },
-  })
-  const circles = await mount_saed(state)
+  // a structurally equal copy, as a recomputed pattern would hand back
+  const { circles } = await mount_saed({ ...pattern.spots[2], hkl: [...pattern.spots[2].hkl] })
   expect(circles.map((circle) => circle.classList.contains(`selected`))).toEqual(
     circles.map((_, idx) => idx === 2),
   )

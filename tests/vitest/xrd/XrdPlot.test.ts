@@ -437,31 +437,17 @@ describe(`XrdPlot`, () => {
     expect(labels()).toEqual([`200`, `200`])
   })
 
+  const [warm_1, warm_2, warm_3] = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
+  // oxfmt-ignore
   test.each([
     [[], 3, []],
-    [[[2, 0, 0]], 3, [{ hkl: [2, 0, 0], color: PLOT_COLORS[1] }]],
+    [[[2, 0, 0]], 3, [{ hkl: [2, 0, 0], color: warm_1 }]],
     [
-      [
-        [1, 1, 0],
-        [-1, 1, 0],
-        [0, 1, 1],
-        [1, 0, 1],
-      ],
+      [[1, 1, 0], [-1, 1, 0], [0, 1, 1], [1, 0, 1]],
       undefined,
-      [
-        { hkl: [1, 1, 0], color: PLOT_COLORS[1] },
-        { hkl: [-1, 1, 0], color: PLOT_COLORS[2] },
-        { hkl: [0, 1, 1], color: PLOT_COLORS[4] },
-      ],
+      [{ hkl: [1, 1, 0], color: warm_1 }, { hkl: [-1, 1, 0], color: warm_2 }, { hkl: [0, 1, 1], color: warm_3 }],
     ],
-    [
-      [
-        [1, 1, 0],
-        [-1, 1, 0],
-      ],
-      1,
-      [{ hkl: [1, 1, 0], color: PLOT_COLORS[1] }],
-    ],
+    [[[1, 1, 0], [-1, 1, 0]], 1, [{ hkl: [1, 1, 0], color: warm_1 }]],
   ] as [Hkl[], number | undefined, LatticePlane[]][])(
     `diffraction_planes(%j, max %s) draws one coloured family per hkl`,
     (hkls, max_families, expected) => {

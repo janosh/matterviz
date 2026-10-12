@@ -123,13 +123,11 @@
     const { value, validity } = event.currentTarget
     if (validity.badInput) return
     const parsed = parse_num_token(value)
-    const range: Vec2 = [...(color_range ?? fitted_color_range ?? [0, 1])]
-    if (!Number.isFinite(parsed)) {
-      if (value.trim() === ``) color_range = undefined
-      return
-    }
-    range[bound_idx] = parsed
-    color_range = range
+    if (Number.isFinite(parsed)) {
+      const range: Vec2 = [...(color_range ?? fitted_color_range ?? [0, 1])]
+      range[bound_idx] = parsed
+      color_range = range
+    } else if (value.trim() === ``) color_range = undefined
   }
 
   // also forgets bands hidden while they did not cross
@@ -235,7 +233,7 @@
           {/each}
         </div>
         <div class="band-actions">
-          <button type="button" onclick={show_all_bands}> All </button>
+          <button type="button" onclick={show_all_bands}>All</button>
           <button type="button" onclick={() => (selected_bands = [])}>None</button>
         </div>
       </SettingsSection>

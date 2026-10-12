@@ -1205,6 +1205,31 @@
     return true
   }
 
+  // === linked views: analyses point at atoms of the displayed frame ===
+  // A data-inspector row selects its atom the way a click in 3D does; hovering an analysis
+  // curve, bar or structure type highlights the atoms behind it. Structure resets both when
+  // the frame's topology changes, and the highlight with every new frame.
+  let selected_sites = $state<number[]>([])
+  let highlighted_sites = $state<number[]>([])
+  const select_source_atom = (atom_idx: number): void => {
+    const [site_idx] = scene_site_indices([atom_idx], current_frame)
+    if (site_idx === undefined) return
+    selected_sites =
+      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
+  }
+  type RdfShellHover = Parameters<
+    NonNullable<ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`]>
+  >[0]
+  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
+  const rdf_shell_sites = (hover: NonNullable<RdfShellHover>): number[] => {
+    const { bin_idx, element_pair } = hover
+    const structure = session.current_structure
+    if (bin_idx === null) return element_site_indices(structure, element_pair)
+    if (!has_usable_lattice(structure)) return []
+    const { site_indices, neighbor_indices } = rdf_bin_sites(structure, { ...hover, bin_idx })
+    return [...new Set([...site_indices, ...neighbor_indices])]
+  }
+
   // === analysis menu ===
   // Each floating pane keeps its ViewerPane toggle for layout anchoring but hides it, since
   // the analysis menu owns the clicks. Spectroscopy renders inline in the plot region.
@@ -1225,50 +1250,15 @@
     ...analysis_pane_props,
     default_dt: frame_time_step,
     default_time_unit: trajectory?.time_step?.unit,
+    // MSD/VACF curves are labelled by element (or `Total`, which names none)
+    on_curve_hover: (label: string | null) =>
+      (highlighted_sites = label
+        ? element_site_indices(session.current_structure, [label])
+        : []),
   })
-  // === linked views: analyses point at atoms of the displayed frame ===
-  // A data-inspector row selects its atom the way a click in 3D does; hovering an analysis
-  // curve, bar or structure type highlights the atoms behind it. Structure resets both when
-  // the frame's topology changes, and the highlight with every new frame.
-  let selected_sites = $state<number[]>([])
-  let highlighted_sites = $state<number[]>([])
-  const select_source_atom = (atom_idx: number): void => {
-    const [site_idx] = scene_site_indices([atom_idx], current_frame)
-    if (site_idx === undefined) return
-    selected_sites =
-      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
-  }
-  const highlight_elements = (elements: readonly string[]): number[] => [
-    ...new Set(
-      elements.flatMap((element) => element_site_indices(session.current_structure, element)),
-    ),
-  ]
-  // MSD/VACF curves are labelled by element (or `Total`, which names none)
-  const highlight_curve = (label: string | null) =>
-    (highlighted_sites = label ? highlight_elements([label]) : [])
-  type RdfShellHover = Parameters<
-    NonNullable<ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`]>
-  >[0]
-  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
-  const rdf_shell_sites = (hover: NonNullable<RdfShellHover>): number[] => {
-    const structure = session.current_structure
-    if (hover.bin_idx === null) return highlight_elements(hover.element_pair)
-    if (!has_usable_lattice(structure)) return []
-    const { site_indices, neighbor_indices } = rdf_bin_sites(structure, {
-      cutoff: hover.cutoff,
-      n_bins: hover.n_bins,
-      bin_idx: hover.bin_idx,
-      element_pair: hover.element_pair,
-    })
-    return [...new Set([...site_indices, ...neighbor_indices])]
-  }
   const analysis_panes = $derived([
-    [`msd`, TrajectoryMsdPane, { ...correlation_pane_props, on_curve_hover: highlight_curve }],
-    [
-      `vacf`,
-      TrajectoryVacfPane,
-      { ...correlation_pane_props, on_curve_hover: highlight_curve },
-    ],
+    [`msd`, TrajectoryMsdPane, correlation_pane_props],
+    [`vacf`, TrajectoryVacfPane, correlation_pane_props],
     [
       `rdf`,
       TrajectoryRdfPane,

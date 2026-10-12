@@ -298,26 +298,14 @@ describe(`compute_saed_pattern validation`, () => {
 
   // A camera at +direction looking back with this up vector has screen right = up × direction.
   // Projecting each reflection's g onto (right, up) must land it where the pattern draws it.
+  // oxfmt-ignore
   const lattices: Record<string, Matrix3x3> = {
     cubic: cubic_matrix(4),
-    hexagonal: [
-      [3, 0, 0],
-      [-1.5, 1.5 * Math.sqrt(3), 0],
-      [0, 0, 5],
-    ],
-    monoclinic: [
-      [4, 0, 0],
-      [0, 5, 0],
-      [-1.2, 0, 6],
-    ],
+    hexagonal: [[3, 0, 0], [-1.5, 1.5 * Math.sqrt(3), 0], [0, 0, 5]],
+    monoclinic: [[4, 0, 0], [0, 5, 0], [-1.2, 0, 6]],
   }
-  const zone_axes: Vec3[] = [
-    [0, 0, 1],
-    [1, 1, 0],
-    [1, 1, 1],
-    [0, 1, 0],
-    [2, -1, 3],
-  ]
+  // oxfmt-ignore
+  const zone_axes: Vec3[] = [[0, 0, 1], [1, 1, 0], [1, 1, 1], [0, 1, 0], [2, -1, 3]]
   test.each(
     Object.entries(lattices).flatMap(([name, matrix]) =>
       zone_axes.map((zone_axis) => ({ name, matrix, zone_axis })),
@@ -335,13 +323,9 @@ describe(`compute_saed_pattern validation`, () => {
       expect(math.dot(up, direction)).toBeCloseTo(0, 14)
       expect(Math.hypot(...up)).toBeCloseTo(1, 14)
       const right = math.cross_3d(up, direction)
-      const recip = math.reciprocal_lattice(matrix)
+      const hkl_to_g = math.create_frac_to_cart(math.reciprocal_lattice(matrix))
       for (const { hkl, position_2d } of pattern.spots) {
-        const g_cart = math.add(
-          math.scale(recip[0], hkl[0]),
-          math.scale(recip[1], hkl[1]),
-          math.scale(recip[2], hkl[2]),
-        )
+        const g_cart = hkl_to_g(hkl)
         // |g| ≤ max_g = 2 1/Å: 1e-12 is ~1e4 ulps of headroom over the f64 projection sums
         expect(math.dot(g_cart, right)).toBeCloseTo(position_2d[0], 12)
         expect(math.dot(g_cart, up)).toBeCloseTo(position_2d[1], 12)

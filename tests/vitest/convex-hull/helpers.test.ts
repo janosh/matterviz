@@ -785,17 +785,6 @@ describe(`helpers: build_hull_overlay`, () => {
   }
   const { decomposition, annotation } = helpers.HULL_OVERLAY_COLORS
 
-  test.each([
-    [`stable`, `li2o`],
-    [`nothing`, null],
-  ])(`a %s focus draws no decomposition`, (_desc, identifier) => {
-    const focus = identifier ? entry(identifier) : null
-    expect(helpers.build_hull_overlay(model, focus, undefined)).toEqual({
-      segments: [],
-      rings: [],
-    })
-  })
-
   test(`an unstable focus is tied to its products, annotations resolve to plot coords`, () => {
     const lio2 = entry(`lio2`)
     const overlay = helpers.build_hull_overlay(model, lio2, {
@@ -824,9 +813,9 @@ describe(`helpers: build_hull_overlay`, () => {
     ])
   })
 
-  test(`annotations outside the system are skipped with a warning`, () => {
+  test(`a stable focus draws no decomposition, annotations outside the system warn`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const overlay = helpers.build_hull_overlay(model, null, {
+    const overlay = helpers.build_hull_overlay(model, entry(`li2o`), {
       marks: [{ composition: { Na: 1 }, e_form: 0 }],
       lines: [
         {

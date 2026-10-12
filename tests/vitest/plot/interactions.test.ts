@@ -479,11 +479,12 @@ describe(`series_hover_props`, () => {
 
   test.each([
     [`a hidden legend stays hidden`, null, null],
-    [`an unset legend gets the default config`, undefined, {}],
+    [
+      `an unset legend gets the default config`,
+      undefined,
+      { on_item_hover: expect.any(Function) },
+    ],
   ])(`%s`, (_name, legend, expected) => {
-    const props = series_hover_props(vi.fn(), { legend })
-    expect(props.legend && { ...props.legend, on_item_hover: undefined }).toEqual(
-      expected && { ...expected, on_item_hover: undefined },
-    )
+    expect(series_hover_props(vi.fn(), { legend }).legend).toEqual(expected)
   })
 })

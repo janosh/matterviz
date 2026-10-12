@@ -407,12 +407,7 @@ describe(`bond_angle_bin_sites`, () => {
     [`octahedron 90 deg`, { bin_width: 2, bin_idx: 45 }, [0], [1, 2, 3, 4, 5, 6]],
     [`octahedron 180 deg (last bin)`, { n_bins: 90, bin_idx: 89 }, [0], [1, 2, 3, 4, 5, 6]],
     [`octahedron empty bin`, { bin_width: 2, bin_idx: 30 }, [], []],
-    [
-      `octahedron, triplet filter excludes`,
-      { bin_width: 2, bin_idx: 45, triplet: `F-Cl-F` },
-      [],
-      [],
-    ],
+    [`octahedron, other triplet`, { bin_width: 2, bin_idx: 45, triplet: `F-Cl-F` }, [], []],
   ])(`%s`, (_name, options, site_indices, neighbor_indices) => {
     expect(bond_angle_bin_sites(calc_bond_angles(octahedron), options)).toEqual({
       site_indices,

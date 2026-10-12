@@ -786,9 +786,7 @@ describe(`hull decomposition`, () => {
           0,
         ),
       )
-      expect(mixed.map((val, idx) => Math.abs(val - target[idx]))).toSatisfy(
-        (diffs: number[]) => Math.max(...diffs) < 1e-9,
-      )
+      expect(mixed).toEqual(target.map((val) => expect.closeTo(val, 9))) // |diff| < 5e-10
     }
     // LP pivots vs facet-plane solves on O(1) energies: measured ≤ 1.3e-15 (a few f64 eps)
     expect(max_energy_err).toBeLessThan(1e-12)

@@ -1018,19 +1018,13 @@ export const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = UNIT_CUBE_COR
     ),
 )
 
-export interface PlaneSectionOptions {
-  // Edge endpoints with |normal·x − offset| below this lie on the plane. Default 1e-9 (relative
-  // once |offset| > 1).
-  plane_tol?: number
-  // Corners closer than this (Euclidean, in the edges' coordinates) merge into one. Default 1e-7.
-  merge_tol?: number
-}
-
 // Corners of the convex polygon where the plane normal·x = offset (normal need not be unit)
 // cuts a convex polyhedron given by its edge segments, ordered counter-clockwise about
 // `normal`. Empty when the plane misses it or only touches a vertex or an edge. Every caller
 // that clips a plane to a cell or zone goes through here: lattice and mirror planes
 // (fractional unit cube), volumetric slices (Cartesian cell) and Fermi slices (Brillouin zone).
+// Edge endpoints with |normal·x − offset| < plane_tol lie on the plane (relative once
+// |offset| > 1); corners closer than merge_tol (Euclidean, in the edges' coordinates) merge.
 export function plane_polyhedron_section(
   edges: readonly (readonly Vec3[])[],
   normal: Vec3,
@@ -1038,7 +1032,7 @@ export function plane_polyhedron_section(
   {
     plane_tol = 1e-9 * Math.max(1, Math.abs(offset)),
     merge_tol = 1e-7,
-  }: PlaneSectionOptions = {},
+  }: { plane_tol?: number; merge_tol?: number } = {},
 ): Vec3[] {
   const corners: Vec3[] = []
   const push_unique = (point: Vec3) => {
@@ -1049,10 +1043,8 @@ export function plane_polyhedron_section(
   for (const [start, end] of edges) {
     const start_dist = dot(normal, start) - offset
     const end_dist = dot(normal, end) - offset
-    const [start_on, end_on] = [
-      Math.abs(start_dist) < plane_tol,
-      Math.abs(end_dist) < plane_tol,
-    ]
+    const start_on = Math.abs(start_dist) < plane_tol
+    const end_on = Math.abs(end_dist) < plane_tol
     if (start_on) push_unique(start)
     if (end_on) push_unique(end)
     // An edge with an endpoint on the plane contributes only that endpoint: its crossing

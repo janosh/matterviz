@@ -193,8 +193,9 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   expect(filter([inner, outer])).toStrictEqual([outer])
 })
 
-// Property mode colours each sheet by the selected named property; a sheet without it keeps
-// its flat colour, and the tooltip carries every property at the hit vertex
+// Property mode colours each sheet by the selected named property (the first when none is
+// named); a sheet without it keeps its flat colour, and the tooltip carries every property at
+// the hit vertex
 test(`colours by the selected property and reports all properties on hover`, () => {
   const with_props = (band_index: number, properties: Record<string, number[]>) => ({
     ...sheet(band_index),
@@ -209,11 +210,14 @@ test(`colours by the selected property and reports all properties on hover`, () 
   const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
     fermi_data: data,
     color_property: `property`,
-    property_name: `Δ`,
+    property_name: undefined,
     hover_data: null,
   })
   mount_scene(props)
   const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
+  expect(vertex_colors()).toEqual([true, true]) // first property λ: both sheets have it
+  props.property_name = `Δ`
+  flushSync()
   expect(vertex_colors()).toEqual([true, false]) // band 2 has no Δ
   props.property_name = `λ`
   flushSync()
@@ -232,15 +236,6 @@ test(`colours by the selected property and reports all properties on hover`, () 
     property_value: 0.5,
     property_values: { λ: 0.5, Δ: 2 },
   })
-})
-
-// Used on its own, the scene colours by the first property when none is named
-test(`property mode without property_name colours by the first property`, () => {
-  const data = make_fermi_surface([
-    { ...sheet(0), properties: { λ: Float32Array.from([0, 0.5, 1]) } },
-  ])
-  mount_scene({ fermi_data: data, color_property: `property` })
-  expect(mesh_materials().map((material) => material.vertexColors)).toEqual([true])
 })
 
 // The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:
@@ -303,22 +298,9 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
   }
 })
 
-// The cursor position on a FermiSlice shows as a dot at that k-point, drawn over the sheets
-test(`k_marker draws a dot at the k-point and clears with null`, () => {
-  const props = $state<{ k_marker: Vec3 | null }>({ k_marker: [0.1, -0.2, 0.3] })
-  mount_scene(props)
-  const dot = () =>
-    threlte_stub.nodes.find(
-      ({ tag, props: node }) => tag === `Mesh` && node.renderOrder === 1001,
-    )
-  expect(dot()?.props.position).toEqual([0.1, -0.2, 0.3])
-  props.k_marker = null
-  flushSync()
-  expect(dot()).toBeUndefined()
-})
-
 // A band structure's k-path drawn in 3D (shared KPath): hovering it reports the nearer q-point,
-// and the k_marker stays the on-top dot (KPath draws no sphere of its own here)
+// and the k_marker (e.g. the cursor on a FermiSlice) stays the one on-top dot (KPath draws no
+// sphere of its own here) until it clears with null
 test(`k_path draws the band path, reports path hovers and keeps the on-top marker`, () => {
   const on_kpath_hover = vi.fn()
   const k_path_points: Vec3[] = [
@@ -326,7 +308,11 @@ test(`k_path draws the band path, reports path hovers and keeps the on-top marke
     [0.5, 0, 0],
     [0.5, 0.5, 0],
   ]
-  mount_scene({ k_path: { k_path_points, on_kpath_hover }, k_marker: k_path_points[1] })
+  const scene_props = $state<ComponentProps<typeof FermiSurfaceScene>>({
+    k_path: { k_path_points, on_kpath_hover },
+    k_marker: k_path_points[1],
+  })
+  mount_scene(scene_props)
   const proxy = threlte_stub.nodes.find(
     ({ tag, props }) => tag === `T` && typeof props.onpointermove === `function`,
   )
@@ -334,7 +320,10 @@ test(`k_path draws the band path, reports path hovers and keeps the on-top marke
   on_move({ instanceId: 0, point: new Vector3(0.4, 0, 0) }) // segment 0, nearer its end
   expect(on_kpath_hover).toHaveBeenLastCalledWith(1)
   const markers = threlte_stub.nodes.filter(
-    ({ tag, props }) => tag === `Mesh` && props.position === k_path_points[1],
+    ({ tag, props }) => tag === `Mesh` && props.position === scene_props.k_marker,
   )
   expect(markers.map(({ props }) => props.renderOrder)).toEqual([1001])
+  scene_props.k_marker = null
+  flushSync()
+  expect(threlte_stub.nodes.some(({ props }) => props.renderOrder === 1001)).toBe(false)
 })

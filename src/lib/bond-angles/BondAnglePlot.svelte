@@ -87,25 +87,23 @@
 
   // bar_idx is the angle bin: every series shares the bin_width binning on one x axis
   const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
-    if (on_sites_hover) {
-      const { structure_label, triplet } = bar?.metadata ?? {}
-      on_sites_hover(
-        bar &&
-          computed.entries
-            .filter(
-              ({ label }) => typeof structure_label !== `string` || label === structure_label,
-            )
-            .map(({ label, structure, data }) => ({
-              label,
-              structure,
-              ...bond_angle_bin_sites(data, {
-                bin_width,
-                bin_idx: bar.bar_idx,
-                triplet: typeof triplet === `string` ? triplet : undefined,
-              }),
-            })),
-      )
-    }
+    const { structure_label, triplet } = bar?.metadata ?? {}
+    on_sites_hover?.(
+      bar &&
+        computed.entries
+          .filter(
+            ({ label }) => typeof structure_label !== `string` || label === structure_label,
+          )
+          .map(({ label, structure, data }) => ({
+            label,
+            structure,
+            ...bond_angle_bin_sites(data, {
+              bin_width,
+              bin_idx: bar.bar_idx,
+              triplet: typeof triplet === `string` ? triplet : undefined,
+            }),
+          })),
+    )
     rest.on_bar_hover?.(bar)
   }
 

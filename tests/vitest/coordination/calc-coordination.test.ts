@@ -53,44 +53,19 @@ describe(`coordination_bar_sites`, () => {
     { label: `large`, structure: make_rocksalt(6) },
   ].map((entry) => ({ ...entry, data: calc_coordination_nums(entry.structure) }))
   const all_sites = [0, 1, 2, 3, 4, 5, 6, 7]
+  const both = [`small`, `large`]
 
-  test.each<[string, Parameters<typeof coordination_bar_sites>[1], [string, number[]][]]>([
-    [
-      `combined bar`,
-      { coordination_num: 6 },
-      [
-        [`small`, all_sites],
-        [`large`, all_sites],
-      ],
-    ],
-    [
-      `by_element bar`,
-      { coordination_num: 6, element: `Cl` },
-      [
-        [`small`, [4, 5, 6, 7]],
-        [`large`, [4, 5, 6, 7]],
-      ],
-    ],
-    [
-      `by_structure bar`,
-      { coordination_num: 6, structure_label: `large` },
-      [[`large`, all_sites]],
-    ],
-    [
-      `CN no site has`,
-      { coordination_num: 4 },
-      [
-        [`small`, []],
-        [`large`, []],
-      ],
-    ],
-  ])(`%s`, (_name, key, expected) => {
+  test.each<[string, Parameters<typeof coordination_bar_sites>[1], string[], number[]]>([
+    [`combined`, { coordination_num: 6 }, both, all_sites],
+    [`by_element`, { coordination_num: 6, element: `Cl` }, both, [4, 5, 6, 7]],
+    [`by_structure`, { coordination_num: 6, structure_label: `large` }, [`large`], all_sites],
+    [`CN no site has`, { coordination_num: 4 }, both, []],
+  ])(`%s`, (_name, key, labels, site_indices) => {
     const highlights = coordination_bar_sites(entries, key)
-    expect(highlights.map(({ label, site_indices }) => [label, site_indices])).toEqual(
-      expected,
-    )
-    // each highlight hands back the input structure itself, so a linked viewer can match it
-    for (const { label, structure } of highlights) {
+    expect(highlights.map(({ label }) => label)).toEqual(labels)
+    for (const { label, structure, site_indices: found } of highlights) {
+      expect(found).toEqual(site_indices)
+      // each highlight hands back the input structure itself, so a linked viewer can match it
       expect(structure).toBe(entries.find((entry) => entry.label === label)?.structure)
     }
   })

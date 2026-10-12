@@ -17,13 +17,12 @@
   import { to_error } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { band_point_meta, create_band_path_link } from './band-path-link.svelte'
   import Bands from './Bands.svelte'
   import { frequency_unit_per_thz } from './frequency-units'
   import {
     are_qpoints_equivalent,
-    extract_k_path_points,
     frac_k_to_cartesian,
-    k_path_labels,
     pretty_sym_point,
     qpoint_x_position,
   } from './helpers'
@@ -188,17 +187,15 @@
   let bz_inset = $derived.by(() => {
     const { lattice, qpoints } = mode_data
     if (!show_bz_inset || !lattice || qpoints.length < 2) return { value: null, error: null }
-    const band = band_result.value
     return try_generate(() => {
       const k_lattice = reciprocal_lattice(lattice, { two_pi: true })
-      const k_path_points = band ? extract_k_path_points(band, k_lattice) : []
-      return {
-        k_lattice,
-        bz_data: compute_brillouin_zone(k_lattice),
-        k_path_points,
-        k_path_labels: band ? k_path_labels(band, k_path_points) : [],
-      }
+      return { k_lattice, bz_data: compute_brillouin_zone(k_lattice) }
     })
+  })
+  // the q-point hovered on the dispersion, marked on the inset's k-path
+  const path_link = create_band_path_link({
+    band_struct: () => band_structure,
+    k_lattice: () => bz_inset.value?.k_lattice,
   })
   // === Dispersion and spectrum side by side ===
   // Below this plot-pane width a spectrum column would squeeze the bands, so the spectrum turns
@@ -234,7 +231,6 @@
     )
   })
   // Each panel reports only its own pointer, so the two directions cannot feed back
-  let bands_hovered_qpoint_idx = $state<number | null>(null)
   let bands_hovered_band_idx = $state<number | null>(null)
   let bands_hovered_frequency = $state<number | null>(null)
   let spectrum_hovered_frequency = $state<number | null>(null)
@@ -243,7 +239,7 @@
   // a band hovered at Γ lights up its stick in the spectrum
   let band_hovered_spectrum_modes = $derived(
     bands_hovered_band_idx !== null &&
-      spectrum_qpoint_indices.includes(bands_hovered_qpoint_idx ?? -1)
+      spectrum_qpoint_indices.includes(path_link.active_qpoint ?? -1)
       ? [bands_hovered_band_idx]
       : [],
   )
@@ -260,14 +256,12 @@
       })
     })
   })
-  const qpoint_k_position = (qpoint_idx: number | null | undefined): Vec3 | null => {
-    const [k_lattice, qpoint] = [
-      bz_inset.value?.k_lattice,
-      mode_data.qpoints[qpoint_idx ?? -1],
-    ]
-    return k_lattice && qpoint ? frac_k_to_cartesian(qpoint.q_position, k_lattice) : null
-  }
-  let selected_k_point = $derived(qpoint_k_position(selection?.qpoint_idx))
+  // from the mode data, not the k-path: q-point-only files (no band path) still mark it
+  let selected_k_points = $derived.by(() => {
+    const k_lattice = bz_inset.value?.k_lattice
+    const qpoint = mode_data.qpoints[selection?.qpoint_idx ?? -1]
+    return k_lattice && qpoint ? [frac_k_to_cartesian(qpoint.q_position, k_lattice)] : []
+  })
 
   const wavenumber = (thz: number): string =>
     `${format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)} cm⁻¹`
@@ -324,15 +318,11 @@
 
   const select_spectrum_mode = (mode_idx: number): void => {
     if (!active_spectrum) return
+    // stay at the selected q-point if it is a visit of the spectrum's, else jump to the first
     const selected_qpoint_idx = selection?.qpoint_idx ?? -1
-    const current_qpoint = mode_data.qpoints[selected_qpoint_idx]
-    const qpoint_idx =
-      current_qpoint &&
-      are_qpoints_equivalent(current_qpoint.q_position, active_spectrum.q_position)
-        ? selected_qpoint_idx
-        : mode_data.qpoints.findIndex(({ q_position }) =>
-            are_qpoints_equivalent(q_position, active_spectrum.q_position),
-          )
+    const qpoint_idx = spectrum_qpoint_indices.includes(selected_qpoint_idx)
+      ? selected_qpoint_idx
+      : (spectrum_qpoint_indices[0] ?? -1)
     if (qpoint_idx === -1) {
       report_error(
         `Spectrum q-point [${active_spectrum.q_position.join(`, `)}] is absent from mode data`,
@@ -351,11 +341,11 @@ under its open panes -->
       class="bz-inset"
       aria-label="Selected q-point in the Brillouin zone"
       bz_data={bz_inset.value.bz_data}
-      k_path_points={bz_inset.value.k_path_points}
-      k_path_labels={bz_inset.value.k_path_labels}
-      highlighted_k_points={selected_k_point ? [selected_k_point] : []}
-      hovered_k_point={qpoint_k_position(bands_hovered_qpoint_idx)}
-      hovered_qpoint_index={bands_hovered_qpoint_idx}
+      k_path_points={path_link.k_path_points}
+      k_path_labels={path_link.k_path_labels}
+      highlighted_k_points={selected_k_points}
+      hovered_k_point={path_link.hovered_k_point}
+      hovered_qpoint_index={path_link.active_qpoint}
       show_vectors={false}
       show_controls={false}
       fullscreen_toggle={false}
@@ -629,9 +619,8 @@ under its open panes -->
             on_point_click={handle_band_click}
             on_plot_click={handle_band_click}
             on_point_hover={(event) => {
-              const { qpoint_idx, band_idx } = event?.metadata ?? {}
-              bands_hovered_qpoint_idx = typeof qpoint_idx === `number` ? qpoint_idx : null
-              bands_hovered_band_idx = typeof band_idx === `number` ? band_idx : null
+              path_link.hover_band(event)
+              bands_hovered_band_idx = band_point_meta(event?.metadata)?.band_idx ?? null
             }}
             show_controls={false}
           >

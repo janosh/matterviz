@@ -40,13 +40,16 @@ describe(`scene_site_indices`, () => {
 })
 
 test.each([
-  [`Li`, [0, 2]],
-  [`Si`, [1, 3]],
+  [[`Li`], [0, 2]],
+  [
+    [`Si`, `Li`],
+    [0, 1, 2, 3],
+  ],
   // the all-atom MSD/VACF curve is labelled Total, which names no element
-  [`Total`, []],
-])(`element_site_indices(%s)`, (element, expected) => {
-  expect(element_site_indices(structure, element)).toEqual(expected)
-  expect(element_site_indices(undefined, element)).toEqual([])
+  [[`Total`], []],
+])(`element_site_indices(%j)`, (elements, expected) => {
+  expect(element_site_indices(structure, elements)).toEqual(expected)
+  expect(element_site_indices(undefined, elements)).toEqual([])
 })
 
 test.each([

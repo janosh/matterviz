@@ -6,10 +6,9 @@
   // pins the energy as mu and isolates the band's sheet (click it again for all).
   import Bands from '#lib/spectral/Bands.svelte'
   import {
-    branch_qpoint_range,
-    extract_k_path_points,
-    k_path_labels as path_labels,
-  } from '#lib/spectral/helpers.js'
+    band_point_meta,
+    create_band_path_link,
+  } from '#lib/spectral/band-path-link.svelte.js'
   import type { BaseBandStructure } from '#lib/spectral/types.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -32,7 +31,14 @@
     selected_bands?: number[] // bands whose Fermi sheets are shown (all when unset)
     fermi_props?: Omit<
       ComponentProps<typeof FermiSurface>,
-      `band_data` | `fermi_data` | `mu` | `selected_bands` | `k_marker` | `k_path`
+      | `band_data`
+      | `fermi_data`
+      | `mu`
+      | `selected_bands`
+      | `k_marker`
+      | `k_path`
+      | `wigner_seitz`
+      | `previewing`
     >
     bands_props?: Omit<
       ComponentProps<typeof Bands>,
@@ -44,23 +50,23 @@
     >
   } = $props()
 
-  // the band structure's k-path in the grid's reciprocal space (same calculation, same lattice)
-  const k_path_points = $derived(extract_k_path_points(band_struct, band_data.k_lattice))
-  const k_path_labels = $derived(path_labels(band_struct, k_path_points))
+  // the band structure's k-path in the grid's reciprocal space (same calculation, same lattice),
+  // with the hovered q-point and its branch shared by both views
+  const link = create_band_path_link({
+    band_struct: () => band_struct,
+    k_lattice: () => band_data.k_lattice,
+  })
   // bands the grid holds: only these have a Fermi surface to preview, pin or isolate
   const grid_bands = $derived(
     new Set(band_data.band_indices ?? band_data.energies[0].map((_, band_idx) => band_idx)),
   )
 
   let hovered_band = $state<number | null>(null)
-  // band point under the pointer, previewed until the pointer leaves the bands
-  let hovered_point = $state<{ energy: number; qpoint_idx: number } | null>(null)
-  let path_hovered_qpoint = $state<number | null>(null)
-  const active_qpoint = $derived(hovered_point?.qpoint_idx ?? path_hovered_qpoint)
-  const hovered_qpoint_range = $derived(
-    active_qpoint === null ? null : branch_qpoint_range(band_struct, active_qpoint),
+  // energy of the band point under the pointer, previewed until the pointer leaves the bands
+  let hovered_energy = $state<number | null>(null)
+  const shown_mu = $derived(
+    hovered_energy === null ? mu : hovered_energy - band_data.fermi_energy,
   )
-  const shown_mu = $derived(hovered_point ? hovered_point.energy - band_data.fermi_energy : mu)
   // The isolated band overrides the shown bands while set, so the controls' band syncing (on
   // every mu change) cannot end it; new data resets it
   let clicked_band = $derived.by((): number | null => {
@@ -68,13 +74,6 @@
     return null
   })
   let surface = $state.raw<FermiSurfaceData>()
-
-  const band_point = (metadata: Record<string, unknown> | undefined) => {
-    const { band_idx, qpoint_idx } = metadata ?? {}
-    return typeof band_idx === `number` && typeof qpoint_idx === `number`
-      ? { band_idx, qpoint_idx }
-      : null
-  }
 </script>
 
 <div {...rest} class={[`fermi-surface-bands`, rest.class]}>
@@ -83,18 +82,20 @@
     {...fermi_props}
     {band_data}
     bind:fermi_data={surface}
+    wigner_seitz
+    previewing={hovered_energy !== null}
     bind:mu={() => shown_mu, (value) => (mu = value)}
     bind:selected_bands={
       () => (clicked_band === null ? selected_bands : [clicked_band]),
       (bands) => (selected_bands = bands)
     }
-    k_marker={active_qpoint === null ? null : (k_path_points[active_qpoint] ?? null)}
+    k_marker={link.hovered_k_point}
     k_path={{
-      k_path_points,
-      k_path_labels,
-      hovered_qpoint_index: active_qpoint,
-      highlighted_qpoint_range: hovered_qpoint_range,
-      on_kpath_hover: (qpoint_idx) => (path_hovered_qpoint = qpoint_idx),
+      k_path_points: link.k_path_points,
+      k_path_labels: link.k_path_labels,
+      hovered_qpoint_index: link.active_qpoint,
+      highlighted_qpoint_range: link.highlighted_qpoint_range,
+      on_kpath_hover: link.hover_path,
     }}
     on_point_hover={(hover) => {
       hovered_band = hover?.band_index ?? null
@@ -105,23 +106,23 @@
     {...bands_props}
     band_structs={{ bands: band_struct }}
     highlighted_band_index={hovered_band ?? clicked_band}
-    highlighted_qpoint_index={active_qpoint}
-    highlighted_qpoint_range={hovered_qpoint_range}
+    highlighted_qpoint_index={link.active_qpoint}
+    highlighted_qpoint_range={link.highlighted_qpoint_range}
     reference_frequency={shown_mu === 0 ? null : band_data.fermi_energy + shown_mu}
     hover_config={{ threshold_px: 50, click_threshold_px: 50, ...bands_props.hover_config }}
     on_point_hover={(event) => {
-      const point = band_point(event?.point.metadata)
+      const point = band_point_meta(event?.point.metadata)
       hovered_band = point?.band_idx ?? null
-      hovered_point =
-        event && point && grid_bands.has(point.band_idx)
-          ? { energy: event.point.y, qpoint_idx: point.qpoint_idx }
-          : null
+      // only bands the grid holds have a surface to preview
+      const in_grid = event && point && grid_bands.has(point.band_idx) ? event : null
+      link.hover_band(in_grid)
+      hovered_energy = in_grid ? in_grid.point.y : null
       bands_props.on_point_hover?.(event)
     }}
     on_plot_click={(event) => {
       // plot clicks reach the nearest band point within the tooltip's radius, so Bands keeps
       // plain lines (on_point_click would draw a marker per k-point)
-      const point = band_point(event.point.metadata)
+      const point = band_point_meta(event.point.metadata)
       if (point && grid_bands.has(point.band_idx)) {
         const sheets = new Set(surface?.isosurfaces.map((iso) => iso.band_index))
         const isolate = clicked_band !== point.band_idx && sheets.has(point.band_idx)

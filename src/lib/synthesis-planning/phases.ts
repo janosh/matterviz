@@ -205,11 +205,8 @@ export function prepare_phase_set(
 
 export type HullPoint = LowestEnergyMixture<PlannerPhase>
 
-// Lowest-energy combination of `phases` reproducing `fractions` (atom fractions over the phase
-// set's elements): the convex hull evaluated at that composition. Returns null when no
-// combination exists.
-export const hull_at = (fractions: number[], phases: PlannerPhase[]): HullPoint | null =>
-  lowest_energy_mixture(fractions, phases)
+// The phase set's convex hull at `fractions` (atom fractions over its elements), null if none
+export const hull_at = lowest_energy_mixture<PlannerPhase>
 
 // Fill `e_above_hull` of every phase from the hull of the whole set (in place)
 export function assign_e_above_hull(phases: PlannerPhase[]): void {

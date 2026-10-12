@@ -18,7 +18,7 @@
     container_pointer,
     create_chempot_state,
     domain_formula_text,
-    formula_to_domain_key,
+    highlight_key_of,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
   import { export_json_file, get_json_string } from './export'
@@ -32,8 +32,7 @@
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    // Domain to highlight when none is hovered here, in any formula spelling (matched by
-    // reduced formula), e.g. the phase hovered in a linked convex hull
+    // Domain to highlight while none is hovered here, any formula spelling (e.g. a linked hull's)
     highlighted_formula = null,
   }: {
     entries: PhaseData[]
@@ -97,16 +96,13 @@
   })
   const domain_entries = $derived(Object.entries(draw_domains))
 
-  // The hovered domain, else the external one; a phase with no domain here highlights nothing
-  const highlight_key = $derived(
-    hover_info?.formula ??
-      (highlighted_formula ? formula_to_domain_key(highlighted_formula) : null),
-  )
+  const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
 
   // === Convert domains to ScatterPlot DataSeries ===
   const series = $derived<DataSeries[]>(
     domain_entries.map(([formula, pts]) => {
       const highlighted = formula === highlight_key
+      const color = domain_colors.get(formula) ?? `black`
       return {
         id: formula,
         label: formula,
@@ -115,14 +111,11 @@
         markers: `line+points` as const,
         // a spline would bow polygon outlines
         line_style: {
-          stroke: domain_colors.get(formula) ?? `black`,
+          stroke: color,
           stroke_width: highlighted ? 6 : 3,
           curve: `linear` as const,
         },
-        point_style: {
-          fill: domain_colors.get(formula) ?? `black`,
-          radius: highlighted ? 5 : 3,
-        },
+        point_style: { fill: color, radius: highlighted ? 5 : 3 },
       }
     }),
   )

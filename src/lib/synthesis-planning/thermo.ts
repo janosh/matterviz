@@ -434,9 +434,7 @@ const as_mark = (phase: PhaseRef): HullMark => ({
 
 // Where a route's reaction slice cuts the full chemical-system hull: the tie-lines between
 // each pair of solid precursors (one line for two precursors, the simplex edges for more)
-export const reaction_slice_lines = (
-  route: SynthesisRoute,
-): { from: HullMark; to: HullMark }[] =>
+export const reaction_slice_lines = (route: SynthesisRoute) =>
   solid_reactants(route).flatMap((from, idx, solids) =>
     solids.slice(idx + 1).map((to) => ({ from: as_mark(from), to: as_mark(to) })),
   )

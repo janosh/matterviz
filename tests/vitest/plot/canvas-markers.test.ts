@@ -30,7 +30,7 @@ type Call = { op: string; args: unknown[] }
 const fake_ctx = () => {
   const calls: Call[] = []
   const ctx: Record<string, unknown> = { calls }
-  for (const operation of `setTransform clearRect scale beginPath moveTo arc fill stroke save restore`.split(
+  for (const operation of `setTransform clearRect scale beginPath moveTo arc fill stroke save restore drawImage`.split(
     ` `,
   )) {
     ctx[operation] = (...args: unknown[]) => void calls.push({ op: operation, args })
@@ -238,12 +238,11 @@ describe(`canvas marker sprites (dense plots)`, () => {
   const stub_offscreen = ({ context = true } = {}) => {
     const sprites: { width: number; height: number; ctx: ReturnType<typeof fake_ctx> }[] = []
     class StubOffscreenCanvas {
-      width: number
-      height: number
       ctx = fake_ctx()
-      constructor(width: number, height: number) {
-        this.width = width
-        this.height = height
+      constructor(
+        public width: number,
+        public height: number,
+      ) {
         sprites.push(this)
       }
       getContext() {
@@ -251,21 +250,7 @@ describe(`canvas marker sprites (dense plots)`, () => {
       }
     }
     vi.stubGlobal(`OffscreenCanvas`, StubOffscreenCanvas)
-    class SpritePath2D extends StubPath2D {
-      arcs: unknown[][] = []
-      arc(...args: unknown[]) {
-        this.arcs.push(args)
-      }
-    }
-    vi.stubGlobal(`Path2D`, SpritePath2D)
     return sprites
-  }
-  const with_draw_image = () => {
-    const ctx = fake_ctx() as ReturnType<typeof fake_ctx> & {
-      drawImage: (...args: unknown[]) => void
-    }
-    ctx.drawImage = (...args: unknown[]) => void ctx.calls.push({ op: `drawImage`, args })
-    return ctx
   }
 
   test(`stamps one cached sprite per style, one drawImage per valid marker, snapped to device pixels`, () => {
@@ -275,8 +260,7 @@ describe(`canvas marker sprites (dense plots)`, () => {
       ...batch(5, { fill: `blue` }),
       marker({ cx: NaN }), // invalid: skipped
     ]
-    const ctx = with_draw_image()
-    draw_markers(ctx, markers, { width: 100, height: 100, pixel_ratio: 2 })
+    const ctx = draw(markers, { width: 100, height: 100, pixel_ratio: 2 })
     expect(ops(ctx, `drawImage`)).toHaveLength(SPRITE_MIN_MARKERS + 5)
     expect(ops(ctx, `arc`)).toHaveLength(0) // no per-marker path tracing
     expect(sprites).toHaveLength(2) // red and blue styles
@@ -284,24 +268,21 @@ describe(`canvas marker sprites (dense plots)`, () => {
     expect([sprites[0].width, sprites[0].height]).toEqual([18, 18])
     // marker 7 at (7, 7): top-left (7 - 4.5) * 2 = 5 device px
     expect(ops(ctx, `drawImage`)[7].args.slice(1)).toEqual([5, 5])
-    // each sprite paints fill then stroke with their own alphas, like the path renderer
-    const paint_ops = sprites[0].ctx.calls
-      .filter((call) => [`fill`, `stroke`].includes(call.op))
-      .map((call) => call.op)
-    expect(paint_ops).toEqual([`fill`, `stroke`])
+    // each sprite is painted by the path renderer: centred circle, fill then stroke
+    const sprite_ops = sprites[0].ctx.calls.filter((call) =>
+      [`arc`, `fill`, `stroke`].includes(call.op),
+    )
+    expect(sprite_ops.map((call) => call.op)).toEqual([`arc`, `fill`, `stroke`])
+    expect(sprite_ops[0].args.slice(0, 3)).toEqual([4.5, 4.5, 3])
   })
 
   test(`reuses sprites across redraws and draws nothing for invisible styles`, () => {
     const sprites = stub_offscreen()
     const visible = batch(SPRITE_MIN_MARKERS, { fill: `#123456`, stroke_width: 0 })
-    draw_markers(with_draw_image(), visible, { width: 100, height: 100 })
-    draw_markers(with_draw_image(), visible, { width: 100, height: 100 })
+    draw(visible)
+    draw(visible)
     expect(sprites).toHaveLength(1)
-    const invisible = with_draw_image()
-    draw_markers(invisible, batch(SPRITE_MIN_MARKERS, { fill: `none`, stroke: `none` }), {
-      width: 100,
-      height: 100,
-    })
+    const invisible = draw(batch(SPRITE_MIN_MARKERS, { fill: `none`, stroke: `none` }))
     expect(ops(invisible, `drawImage`)).toHaveLength(0)
   })
 
@@ -324,22 +305,22 @@ describe(`canvas marker sprites (dense plots)`, () => {
       batch(SPRITE_MIN_MARKERS, { fill: `teal` }),
       false,
     ],
+    [
+      `plots are below the sprite threshold`,
+      batch(SPRITE_MIN_MARKERS - 1, { fill: `green` }),
+      true,
+    ],
   ])(`falls back to paths when %s`, (_label, markers, context) => {
     stub_offscreen({ context })
-    const ctx = with_draw_image()
-    draw_markers(ctx, markers, { width: 100, height: 100 })
+    const ctx = draw(markers)
     expect(ops(ctx, `drawImage`)).toHaveLength(0)
-    expect(ops(ctx, `arc`)).toHaveLength(SPRITE_MIN_MARKERS)
+    expect(ops(ctx, `arc`)).toHaveLength(markers.length)
     expect(ops(ctx, `save`)).toHaveLength(ops(ctx, `restore`).length)
   })
 
   test(`evicts the least recently used sprite once the cache is full`, () => {
     const sprites = stub_offscreen()
-    const draw_style = (fill: string) =>
-      draw_markers(with_draw_image(), batch(SPRITE_MIN_MARKERS, { fill }), {
-        width: 9,
-        height: 9,
-      })
+    const draw_style = (fill: string) => draw(batch(SPRITE_MIN_MARKERS, { fill }))
     const fills = Array.from({ length: MAX_SPRITE_CACHE }, (_, idx) => `rgb(${idx}, 9, 9)`)
     for (const fill of fills) draw_style(fill)
     draw_style(fills[0]) // refresh the oldest, so the next insert evicts fills[1]
@@ -353,26 +334,8 @@ describe(`canvas marker sprites (dense plots)`, () => {
 
   test(`symbol sprites leave room for miter joins`, () => {
     const sprites = stub_offscreen()
-    draw_markers(
-      with_draw_image(),
-      batch(SPRITE_MIN_MARKERS, { fill: `navy`, symbol_type: `Triangle` }),
-      {
-        width: 100,
-        height: 100,
-      },
-    )
+    draw(batch(SPRITE_MIN_MARKERS, { fill: `navy`, symbol_type: `Triangle` }))
     // sqrt(π·3²) bounding radius + 10 miter half-widths of the 1 px stroke + 1 antialias px, per side
     expect(sprites[0].width).toBe(Math.ceil(2 * (Math.sqrt(Math.PI * 9) + 5 + 1)))
-  })
-
-  test(`plots below the sprite threshold keep vector paths`, () => {
-    stub_offscreen()
-    const ctx = with_draw_image()
-    draw_markers(ctx, batch(SPRITE_MIN_MARKERS - 1, { fill: `green` }), {
-      width: 100,
-      height: 100,
-    })
-    expect(ops(ctx, `drawImage`)).toHaveLength(0)
-    expect(ops(ctx, `arc`)).toHaveLength(SPRITE_MIN_MARKERS - 1)
   })
 })

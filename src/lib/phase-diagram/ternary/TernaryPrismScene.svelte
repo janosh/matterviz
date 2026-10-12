@@ -166,11 +166,7 @@
       diagram.stability_windows[idx].map(([lower, upper], window_idx) => ({
         key: `${idx}-${window_idx}`,
         phase: idx,
-        position: [
-          prism_position(coords_xy)[0],
-          (y_of(lower) + y_of(upper)) / 2,
-          prism_position(coords_xy)[2],
-        ] as Vec3,
+        position: prism_position(coords_xy, (y_of(lower) + y_of(upper)) / 2),
         length: y_of(upper) - y_of(lower),
         is_element,
       })),
@@ -236,14 +232,14 @@
   const probe_of = (coords_xy: Vec2 | null) => {
     if (!coords_xy) return null
     const decomposition = decompose_composition(diagram, { facets: section_facets }, coords_xy)
-    const [x_pos, , z_pos] = prism_position(coords_xy)
+    const position = prism_position(coords_xy)
     const spokes = buffer_geom(
       (decomposition?.phases ?? []).flatMap((idx) => [
-        ...prism_position(coords_xy),
+        ...position,
         ...prism_position(diagram.phases[idx].xy),
       ]),
     )
-    return { x_pos, z_pos, spokes }
+    return { position, spokes }
   }
   const pinned_probe = $derived(probe_of(pinned_composition))
   const hover_probe = $derived(probe_of(hover_xy))
@@ -269,11 +265,8 @@
     phase === selected_phase || phase === hovered_phase ? 0.0126 : 0.007
 
   // Labels: temperature ticks up the left edge, elements past the bottom corners
-  const tick_pos = (temp: number): Vec3 => [
-    prism_position(corners[2])[0] - 0.07,
-    y_of(temp),
-    prism_position(corners[2])[2] + 0.04,
-  ]
+  const tick_pos = (temp: number) =>
+    prism_position([corners[2][0] - 0.07, corners[2][1] - 0.04], y_of(temp))
   const corner_labels = $derived(
     diagram.elements.map((element, idx) => {
       const [x_pos, , z_pos] = prism_position(corners[idx])
@@ -510,11 +503,11 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
   <T.LineSegments geometry={tie_line_geometry}>
     <T.LineBasicMaterial color={text_color} />
   </T.LineSegments>
-  {#each probe_marks as { kind, spokes, x_pos, z_pos, color } (kind)}
+  {#each probe_marks as { kind, spokes, position, color } (kind)}
     <T.LineSegments geometry={spokes}>
       <T.LineBasicMaterial {color} />
     </T.LineSegments>
-    <T.Mesh geometry={unit_sphere} position={[x_pos, 0, z_pos]} scale={0.013}>
+    <T.Mesh geometry={unit_sphere} {position} scale={0.013}>
       <T.MeshBasicMaterial {color} />
     </T.Mesh>
   {/each}
@@ -540,12 +533,8 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 </T.Group>
 
 <!-- Probe lines through the whole temperature range -->
-{#each probe_marks as { kind, x_pos, z_pos, color, radius } (kind)}
-  <T.Mesh
-    geometry={unit_cylinder}
-    position={[x_pos, 0, z_pos]}
-    scale={[radius, HEIGHT, radius]}
-  >
+{#each probe_marks as { kind, position, color, radius } (kind)}
+  <T.Mesh geometry={unit_cylinder} {position} scale={[radius, HEIGHT, radius]}>
     <T.MeshBasicMaterial {color} />
   </T.Mesh>
 {/each}

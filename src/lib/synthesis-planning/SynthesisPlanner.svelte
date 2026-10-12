@@ -317,17 +317,11 @@
     const lines = reaction_slice_lines(selected_route)
     if (slice_hover?.route_id !== selected_route.id) return { lines }
     // slice entries carry their reaction energy as e_form_per_atom (see ReactionSlicePlot)
-    const { composition, e_form_per_atom, reduced_formula } = slice_hover.entry
-    if (typeof e_form_per_atom !== `number`) {
-      throw new TypeError(`Reaction slice entry ${reduced_formula} has no reaction energy`)
+    const { composition, e_form_per_atom: energy, reduced_formula: label } = slice_hover.entry
+    if (typeof energy !== `number`) {
+      throw new TypeError(`Reaction slice entry ${label} has no reaction energy`)
     }
-    const mark = slice_point_on_hull(
-      selected_route,
-      composition,
-      e_form_per_atom,
-      reduced_formula,
-    )
-    return { lines, marks: [mark] }
+    return { lines, marks: [slice_point_on_hull(selected_route, composition, energy, label)] }
   })
 
   let atmosphere_open = $state(false)

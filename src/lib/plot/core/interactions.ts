@@ -330,19 +330,14 @@ export function expand_range_if_needed(
 // and from its legend entries alike, chained after whatever handlers the caller already set.
 // Spread after the caller's own props. Empty when nobody listens, so plots without a linked
 // view keep their handlers untouched.
-export const series_hover_props = <PointEvent extends { series_idx: number }>(
-  on_series_hover: ((series_idx: number | null) => void) | undefined,
-  {
-    on_point_hover,
-    legend = {},
-  }: {
-    on_point_hover?: (event: PointEvent | null) => void
-    legend?: LegendConfig | null
-  },
-): {
+type SeriesHoverProps<PointEvent> = {
   on_point_hover?: (event: PointEvent | null) => void
   legend?: LegendConfig | null
-} =>
+}
+export const series_hover_props = <PointEvent extends { series_idx: number }>(
+  on_series_hover: ((series_idx: number | null) => void) | undefined,
+  { on_point_hover, legend = {} }: SeriesHoverProps<PointEvent>,
+): SeriesHoverProps<PointEvent> =>
   on_series_hover
     ? {
         on_point_hover: (event) => {

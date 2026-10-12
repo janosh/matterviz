@@ -81,13 +81,17 @@ export interface BandGridData {
   properties?: Record<string, BandEnergyGrid[][]>
 }
 
-// 2D Fermi slice data (cross-section through the BZ)
-export interface FermiSliceData {
-  isolines: Isoline[]
+// Slice plane normal·k = distance, with the orthonormal Cartesian (u, v) directions that 2D
+// slice coordinates (e.g. points_2d) are expressed in
+export interface FermiSlicePlane {
   plane_normal: Vec3
   plane_distance: number
-  // Orthonormal Cartesian (u, v) directions that points_2d are expressed in
   in_plane_basis: [Vec3, Vec3]
+}
+
+// 2D Fermi slice data (cross-section through the BZ)
+export interface FermiSliceData extends FermiSlicePlane {
+  isolines: Isoline[]
   metadata: {
     n_lines: number
     has_properties: boolean
@@ -108,6 +112,9 @@ export interface Isoline {
 export interface FermiSurfaceOptions {
   mu?: number // chemical potential offset from fermi_energy (default 0)
   interpolation_factor?: number // tricubic upsampling factor (default 1 = none; 0 = auto)
+  // fold the surfaces into the Wigner-Seitz zone (see fold_to_wigner_seitz), e.g. to line them
+  // up with a band-structure k-path drawn through the zone
+  wigner_seitz?: boolean
 }
 
 // Options for Fermi slice computation

@@ -774,7 +774,10 @@ describe(`reaction slice on the full hull`, () => {
   const atom_fractions = (composition: Record<string, number>) => {
     const total = Object.values(composition).reduce((sum, amount) => sum + amount, 0)
     return Object.fromEntries(
-      Object.entries(composition).map(([element, amount]) => [element, amount / total]),
+      Object.entries(composition).map(([element, amount]) => [
+        element,
+        expect.closeTo(amount / total, 12),
+      ]),
     )
   }
 
@@ -800,20 +803,12 @@ describe(`reaction slice on the full hull`, () => {
     ]
     expect(slice_points.map(({ phase }) => phase.formula)).toContain(`Ba2TiO4`)
     for (const { phase, mixture, energy } of slice_points) {
-      const mark = slice_point_on_hull(route, mixture, energy, phase.formula)
       // sums of a few O(1) f64 terms: measured 4.4e-16 (BaTiO3), i.e. a few eps
-      expect(mark.e_form).toBeCloseTo(phase.energy_per_atom, 12)
-      const expected = atom_fractions(phase.composition)
-      expect(Object.keys(mark.composition).toSorted()).toEqual(
-        Object.keys(expected).toSorted(),
-      )
-      for (const [element, fraction] of Object.entries(expected)) {
-        expect(mark.composition[element as keyof typeof mark.composition]).toBeCloseTo(
-          fraction,
-          12,
-        )
-      }
-      expect(mark.label).toBe(phase.formula)
+      expect(slice_point_on_hull(route, mixture, energy, phase.formula)).toEqual({
+        composition: atom_fractions(phase.composition),
+        e_form: expect.closeTo(phase.energy_per_atom, 12),
+        label: phase.formula,
+      })
     }
   })
 

@@ -2,13 +2,16 @@
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
   auto_interpolation_factor,
+  band_carriers,
+  band_grids_prepared,
   centered_cell_edges,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
-  band_carriers,
+  fold_to_wigner_seitz,
   pocket_carriers,
   polygon_interior_point,
+  preview_interpolation_factor,
   sample_slice_energies,
   slice_plane_normal,
   slice_shading_rgba,
@@ -310,31 +313,43 @@ describe(`slice energy shading`, () => {
   const band_data = make_band_data(16, sphere, { periodic: true, fermi_energy: 0.3 })
   band_data.energies[0].push(make_band_grid([16, 16, 16], () => 5))
   band_data.n_bands = 2
+  // the (001) plane through Γ over x ∈ [−½, ½], y ∈ [−¼, ¼]
+  const slice_energies = (data: BandGridData, resolution: number, mu = 0) =>
+    sample_slice_energies(data, {
+      plane: {
+        plane_normal: [0, 0, 1],
+        plane_distance: 0,
+        in_plane_basis: [
+          [1, 0, 0],
+          [0, 1, 0],
+        ],
+      },
+      bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
+      resolution,
+      mu,
+    })
+  // one-row energy maps with a layer of values per band
+  const energy_map = (...layers: number[][]): SliceEnergyMap => ({
+    width: layers[0].length,
+    height: 1,
+    layers: layers.map((values, band_index) => ({
+      band_index,
+      spin: null,
+      values: Float32Array.from(values),
+    })),
+  })
 
   // The (001) slice through Γ samples ε − E_F = hypot(x, y) − 0.3. Trilinear sampling of the 16³
   // grid (h = 1/16) measured a max error of 0.0086, largest near the cone tip where |k| is not
   // smooth; sampling the wrong plane, axis or grid offset errs by about a grid step (≥ 0.06)
   test(`samples ε − (E_F + mu) of the crossing bands on the plane`, () => {
-    const energy_map = sample_slice_energies(band_data, {
-      miller_indices: [0, 0, 1],
-      distance: 0,
-      bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
-      resolution: 64,
-    })
-    expect([energy_map.width, energy_map.height]).toEqual([64, 32])
-    expect(energy_map.layers.map(({ band_index }) => band_index)).toEqual([0]) // band 1 never crosses
+    const sampled = slice_energies(band_data, 64)
+    expect([sampled.width, sampled.height]).toEqual([64, 32])
+    expect(sampled.layers.map(({ band_index }) => band_index)).toEqual([0]) // band 1 never crosses
     // a grid numbering its bands (BXSF `BAND: n`) labels the layers with those absolute indices
-    const numbered = sample_slice_energies(
-      { ...band_data, band_indices: [8, 9] },
-      {
-        miller_indices: [0, 0, 1],
-        distance: 0,
-        bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
-        resolution: 8,
-      },
-    )
+    const numbered = slice_energies({ ...band_data, band_indices: [8, 9] }, 8)
     expect(numbered.layers.map(({ band_index }) => band_index)).toEqual([8])
-    const [{ values }] = energy_map.layers
+    const [{ values }] = sampled.layers
     let max_err = 0
     for (let row = 0; row < 32; row++) {
       for (let col = 0; col < 64; col++) {
@@ -347,36 +362,15 @@ describe(`slice energy shading`, () => {
     }
     expect(max_err).toBeLessThan(0.0125)
     // mu shifts the level: the centre pixel moves from −0.3 to −0.4
-    const shifted = sample_slice_energies(band_data, {
-      miller_indices: [0, 0, 1],
-      distance: 0,
-      bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
-      resolution: 64,
-      mu: 0.1,
-    })
+    const shifted = slice_energies(band_data, 64, 0.1)
     const centre = 16 * 64 + 32
     expect(shifted.layers[0].values[centre] - values[centre]).toBeCloseTo(-0.1, 6)
   })
 
   // Straight-alpha source-over: both bands occupied → α = ½ + ½·½, colour ⅓ red + ⅔ blue
   test(`occupied mode tints and composites each band's filled side`, () => {
-    const energy_map: SliceEnergyMap = {
-      width: 3,
-      height: 1,
-      layers: [
-        {
-          band_index: 0,
-          spin: null,
-          values: Float32Array.from([-1, 1, 1]),
-        },
-        {
-          band_index: 1,
-          spin: null,
-          values: Float32Array.from([-1, -1, 1]),
-        },
-      ],
-    }
-    const pixels = slice_shading_rgba(energy_map, `occupied`, [`#ff0000`, `#0000ff`], {
+    const occupied = energy_map([-1, 1, 1], [-1, -1, 1])
+    const pixels = slice_shading_rgba(occupied, `occupied`, [`#ff0000`, `#0000ff`], {
       opacity: 0.5,
     })
     expect(Array.from(pixels)).toEqual([85, 0, 170, 191, 0, 0, 255, 128, 0, 0, 0, 0])
@@ -387,13 +381,13 @@ describe(`slice energy shading`, () => {
   test(`pockets mode fills electron bands' occupied side, hole bands' empty side striped`, () => {
     const values = Float32Array.from({ length: 24 }, (_, idx) => (idx % 12 < 6 ? -1 : 1))
     const shaded = (carrier: `electron` | `hole`) => {
-      const energy_map = {
+      const pocket_map = {
         width: 12,
         height: 2,
         layers: [{ band_index: 0, spin: null, values }],
       }
       const carriers = new Map([[0, carrier]])
-      const pixels = slice_shading_rgba(energy_map, `pockets`, [`#f00`], { carriers })
+      const pixels = slice_shading_rgba(pocket_map, `pockets`, [`#f00`], { carriers })
       return Array.from({ length: 24 }, (_, idx) => pixels[4 * idx + 3] > 0)
     }
     const pixels = Array.from({ length: 24 }, (_, idx) => [Math.floor(idx / 12), idx % 12])
@@ -403,23 +397,8 @@ describe(`slice energy shading`, () => {
 
   // The band nearest E_F decides each pixel: occupied (ε < E_F) red, empty blue, none clear
   test(`energy mode maps the band nearest E_F through a diverging scale`, () => {
-    const energy_map: SliceEnergyMap = {
-      width: 3,
-      height: 1,
-      layers: [
-        {
-          band_index: 0,
-          spin: null,
-          values: Float32Array.from([-0.1, 0.4, NaN]),
-        },
-        {
-          band_index: 1,
-          spin: null,
-          values: Float32Array.from([0.5, 0.2, NaN]),
-        },
-      ],
-    }
-    const pixels = slice_shading_rgba(energy_map, `energy`, [`#000`], { opacity: 0.5 })
+    const near = energy_map([-0.1, 0.4, NaN], [0.5, 0.2, NaN])
+    const pixels = slice_shading_rgba(near, `energy`, [`#000`], { opacity: 0.5 })
     const [red_0, , blue_0] = pixels.slice(0, 3)
     const [red_1, , blue_1] = pixels.slice(4, 7)
     expect(red_0).toBeGreaterThan(blue_0) // −0.1 beats 0.5
@@ -481,6 +460,97 @@ describe(`pocket classification`, () => {
     expect(carriers.length).toBeGreaterThan(0)
     expect(carriers.every((pocket) => pocket === carrier)).toBe(true)
     expect(band_carriers(slice, carriers)).toEqual(new Map([[0, carrier]]))
+  })
+})
+
+describe(`Wigner-Seitz folding and preview resolution`, () => {
+  // fcc reciprocal lattice (bcc-like vectors), whose Wigner-Seitz zone differs from the cell
+  const FCC_RECIPROCAL: Matrix3x3 = [
+    [-1, 1, 1],
+    [1, -1, 1],
+    [1, 1, -1],
+  ]
+  const k_t = math.transpose_3x3_matrix(FCC_RECIPROCAL)
+  // a sphere |k| = E_F around Γ in Cartesian units, large enough to reach past the zone faces
+  const fcc_data = (fermi_energy: number) =>
+    make_band_data(
+      16,
+      (fx, fy, fz) => Math.hypot(...math.mat3x3_vec3_multiply(k_t, [fx, fy, fz])),
+      {
+        periodic: true,
+        k_lattice: FCC_RECIPROCAL,
+        fermi_energy,
+      },
+    )
+  const lattice_points = [-1, 0, 1].flatMap((n_a) =>
+    [-1, 0, 1].flatMap((n_b) =>
+      [-1, 0, 1].map((n_c) => math.mat3x3_vec3_multiply(k_t, [n_a, n_b, n_c])),
+    ),
+  )
+
+  // Folding moves whole triangles by lattice vectors: the area is unchanged and every triangle
+  // centroid ends nearer Γ than any other lattice point (inside the zone)
+  test(`folds a band-grid surface into the Wigner-Seitz zone`, () => {
+    const band_data = fcc_data(1.1)
+    const cell = extract_fermi_surface(band_data)
+    const folded = extract_fermi_surface(band_data, { wigner_seitz: true })
+    expect([cell.reciprocal_cell, folded.reciprocal_cell]).toEqual([
+      `parallelepiped`,
+      `wigner_seitz`,
+    ])
+    // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.9e-9 off
+    expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
+    let n_moved = 0
+    for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
+      if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
+      const { indices } = surface
+      for (let tri = 0; tri < indices.length; tri += 3) {
+        const corners = [0, 1, 2].map((corner) => vertex_at(surface, indices[tri + corner]))
+        const centroid = math.scale(math.add(...corners), 1 / 3)
+        const to_gamma = Math.hypot(...centroid)
+        for (const lattice_point of lattice_points) {
+          expect(to_gamma).toBeLessThanOrEqual(
+            math.euclidean_dist(centroid, lattice_point) + 1e-6,
+          )
+        }
+      }
+    }
+    expect(n_moved).toBeGreaterThan(0) // the sphere crosses the zone faces
+  })
+
+  test(`a cubic lattice's zone is its cell: folding moves nothing`, () => {
+    const band_data = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
+    const [cell] = extract_fermi_surface(band_data).isosurfaces
+    expect(fold_to_wigner_seitz(cell, IDENTITY_MATRIX3)).toBe(cell)
+  })
+
+  // previews cap the factor at the mesh's auto factor (16 points → 3), never raise it
+  test.each([
+    [4, 3],
+    [3, 3],
+    [2, 2],
+    [0, 3],
+  ])(`preview_interpolation_factor(%s) on a 16³ mesh = %s`, (factor, expected) => {
+    expect(preview_interpolation_factor(fcc_data(1), factor)).toBe(expected)
+  })
+
+  // two upsampled grids per band stay cached: a preview and the full surface do not evict
+  // each other, a third factor evicts the oldest
+  test(`band_grids_prepared tracks the two most recent factors per band`, () => {
+    const band_data = make_band_data(8, sphere, { periodic: true, fermi_energy: 0.3 })
+    expect(band_grids_prepared(band_data, 2)).toBe(false)
+    extract_fermi_surface(band_data, { interpolation_factor: 2 })
+    extract_fermi_surface(band_data, { interpolation_factor: 3 })
+    expect([2, 3].map((factor) => band_grids_prepared(band_data, factor))).toEqual([
+      true,
+      true,
+    ])
+    extract_fermi_surface(band_data, { interpolation_factor: 4 })
+    expect([2, 3, 4].map((factor) => band_grids_prepared(band_data, factor))).toEqual([
+      false,
+      true,
+      true,
+    ])
   })
 })
 

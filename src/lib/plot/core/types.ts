@@ -180,16 +180,8 @@ type AlignedSeries = {
 } & Partial<Record<(typeof PER_POINT_KEYS)[number], unknown>>
 
 export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
-  const {
-    id: identifier,
-    label,
-    x: coord_x,
-    y: coord_y,
-    z: coord_z,
-    raw_y,
-    point_ids,
-  } = series
-  const name = identifier ?? label
+  const { x: coord_x, y: coord_y, z: coord_z, raw_y, point_ids } = series
+  const name = series.id ?? series.label
   const where =
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`

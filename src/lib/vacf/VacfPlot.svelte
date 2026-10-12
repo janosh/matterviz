@@ -97,9 +97,7 @@
   const curve_hover = $derived(
     on_curve_hover &&
       ((series_idx: number | null) =>
-        on_curve_hover(
-          series_idx === null ? null : (result?.curves[series_idx]?.label ?? null),
-        )),
+        on_curve_hover(result?.curves[series_idx ?? -1]?.label ?? null)),
   )
 
   let show_vacf = $derived(panel !== `vdos` && vacf_series.length > 0)

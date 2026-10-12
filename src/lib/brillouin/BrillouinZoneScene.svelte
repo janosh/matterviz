@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Vec2, Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -26,7 +25,6 @@
   import KPath from './KPath.svelte'
   import PolyhedronMesh from './PolyhedronMesh.svelte'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
-  import { MeshStandardMaterial } from 'three/webgpu'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,

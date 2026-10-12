@@ -128,18 +128,16 @@
     ticks: cn_ticks,
   })
   const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
-    if (on_sites_hover) {
-      // Series metadata names the bar's element or structure (see `groups`)
-      const { element, structure_label } = bar?.metadata ?? {}
-      on_sites_hover(
-        bar &&
-          coordination_bar_sites(computed.entries, {
-            coordination_num: bar.x,
-            element: typeof element === `string` ? element : undefined,
-            structure_label: typeof structure_label === `string` ? structure_label : undefined,
-          }),
-      )
-    }
+    // Series metadata names the bar's element or structure (see `groups`)
+    const { element, structure_label } = bar?.metadata ?? {}
+    on_sites_hover?.(
+      bar &&
+        coordination_bar_sites(computed.entries, {
+          coordination_num: bar.x,
+          element: typeof element === `string` ? element : undefined,
+          structure_label: typeof structure_label === `string` ? structure_label : undefined,
+        }),
+    )
     rest.on_bar_hover?.(bar)
   }
   const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
