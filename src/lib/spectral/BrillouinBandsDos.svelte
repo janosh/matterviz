@@ -72,17 +72,11 @@
     sync_zoom: () => sync_y_zoom,
     base_padding: { t: 5, b: 50 },
   })
-
-  // Each panel reports only its own pointer, never the shared line it is drawn, so the two
-  // directions cannot feed back into each other
-  let bands_hovered_frequency = $state<number | null>(null)
-  let dos_hovered_frequency = $state<number | null>(null)
-  let hovered_frequency = $derived(dos_hovered_frequency ?? bands_hovered_frequency)
 </script>
 
 <div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
   {@render children?.({
-    hovered_frequency,
+    hovered_frequency: sync.hovered_frequency,
     hovered_band_point,
     hovered_qpoint_index: link.active_qpoint,
   })}
@@ -99,8 +93,8 @@
     bind:view={sync.views[0]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:x_positions={bands_x_positions}
-    bind:hovered_frequency={bands_hovered_frequency}
-    reference_frequency={hovered_frequency}
+    bind:hovered_frequency={sync.hovered.bands}
+    reference_frequency={sync.hovered_frequency}
     highlighted_qpoint_index={link.active_qpoint}
     highlighted_qpoint_range={link.highlighted_qpoint_range}
     on_point_hover={(event: ScatterHandlerEvent | null) => {
@@ -135,8 +129,8 @@
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:hovered_frequency={dos_hovered_frequency}
-    reference_frequency={hovered_frequency}
+    bind:hovered_frequency={sync.hovered.dos}
+    reference_frequency={sync.hovered_frequency}
     padding={{
       l: is_desktop ? 20 : undefined,
       r: is_mobile ? 0 : undefined,

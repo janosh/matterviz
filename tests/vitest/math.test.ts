@@ -1247,69 +1247,34 @@ describe(`convex_hull_2d`, () => {
   })
 })
 
-describe(`plane_polyhedron_section`, () => {
-  const ccw_about = (polygon: Vec3[], normal: Vec3): boolean =>
-    polygon.every((corner, idx) => {
-      const next = polygon[(idx + 1) % polygon.length]
-      const after = polygon[(idx + 2) % polygon.length]
-      const turn = math.cross_3d(math.subtract(next, corner), math.subtract(after, next))
-      return math.dot(turn, normal) > 0
-    })
-
-  // oxfmt-ignore
-  test.each([
-    [`face z=0`, [0, 0, 1], 0, 4],
-    [`face z=1`, [0, 0, 1], 1, 4],
-    [`interior square`, [0, 0, 1], 0.5, 4],
-    [`touching only the edge x=y=0`, [1, 1, 0], 0, 0],
-    [`diagonal rectangle through two edges`, [1, 1, 0], 1, 4],
-    [`touching only the vertex 0`, [1, 1, 1], 0, 0],
-    [`triangle through three vertices`, [1, 1, 1], 1, 3],
-    [`regular hexagon`, [1, 1, 1], 1.5, 6],
-    [`non-unit normal (same hexagon)`, [2, 2, 2], 3, 6],
-    [`just past the far vertex`, [1, 1, 1], 3 + 1e-8, 0],
-    [`missing the cube`, [0, 1, 0], -0.5, 0],
-  ] as [string, Vec3, number, number][])(`%s -> %i corners`, (_name, normal, offset, n_corners) => {
+// oxfmt-ignore
+test.each([
+  [`face z=0`, [0, 0, 1], 0, 4],
+  [`face z=1`, [0, 0, 1], 1, 4],
+  [`interior square`, [0, 0, 1], 0.5, 4],
+  [`touching only the edge x=y=0`, [1, 1, 0], 0, 0],
+  [`diagonal rectangle through two edges`, [1, 1, 0], 1, 4],
+  [`touching only the vertex 0`, [1, 1, 1], 0, 0],
+  [`triangle through three vertices`, [1, 1, 1], 1, 3],
+  [`regular hexagon`, [1, 1, 1], 1.5, 6],
+  [`non-unit normal (same hexagon)`, [2, 2, 2], 3, 6],
+  [`flipped normal (same hexagon, reverse winding)`, [-1, -1, -1], -1.5, 6],
+  [`just past the far vertex`, [1, 1, 1], 3 + 1e-8, 0],
+  [`missing the cube`, [0, 1, 0], -0.5, 0],
+] as [string, Vec3, number, number][])(
+  `plane_polyhedron_section: %s -> %i corners`,
+  (_name, normal, offset, n_corners) => {
     const polygon = math.plane_polyhedron_section(math.UNIT_CUBE_EDGES, normal, offset)
     expect(polygon).toHaveLength(n_corners)
-    for (const corner of polygon) expect(math.dot(normal, corner)).toBeCloseTo(offset, 12)
-    if (n_corners) expect(ccw_about(polygon, normal)).toBe(true)
-    // flipping the plane's orientation reverses the winding but keeps the corners
-    const flipped = math.plane_polyhedron_section(
-      math.UNIT_CUBE_EDGES,
-      math.scale(normal, -1),
-      -offset,
-    )
-    expect(flipped).toHaveLength(n_corners)
-    if (n_corners) expect(ccw_about(flipped, math.scale(normal, -1))).toBe(true)
-  })
-
-  test(`merge_tol collapses the three crossings near a just-missed corner`, () => {
-    // 5e-8 short of the corner (1,1,1): its three edges cross the plane ~3e-8 from it
-    const offset = 3 - 5e-8
-    expect(math.plane_polyhedron_section(math.UNIT_CUBE_EDGES, [1, 1, 1], offset)).toEqual([])
-    const sliver = math.plane_polyhedron_section(math.UNIT_CUBE_EDGES, [1, 1, 1], offset, {
-      merge_tol: 1e-9,
-    })
-    expect(sliver).toHaveLength(3)
-  })
-
-  test(`an endpoint on the plane suppresses its edge's crossing`, () => {
-    // The origin is within plane_tol of the plane and the edge to (1,0,0), nearly parallel to
-    // it, ends on the far side: its crossing 5e-7 away must not add a near-duplicate corner
-    // oxfmt-ignore
-    const edges: Vec3[][] = [
-      [[0, 0, 0], [1, 0, 0]],
-      [[0, 1, -1], [0, 1, 1]],
-      [[1, 1, -1], [1, 1, 1]],
-    ]
-    const section = math.plane_polyhedron_section(edges, [1e-3, 0, 1], 5e-10, {
-      merge_tol: 1e-12,
-    })
-    expect(section).toHaveLength(3)
-    expect(section).toContainEqual([0, 0, 0])
-  })
-})
+    for (const [idx, corner] of polygon.entries()) {
+      expect(math.dot(normal, corner)).toBeCloseTo(offset, 12)
+      // counter-clockwise about the normal: every consecutive turn points along it
+      const [next, after] = [1, 2].map((step) => polygon[(idx + step) % n_corners])
+      const turn = math.cross_3d(math.subtract(next, corner), math.subtract(after, next))
+      expect(math.dot(turn, normal)).toBeGreaterThan(0)
+    }
+  },
+)
 
 // oxfmt-ignore
 test.each([

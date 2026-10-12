@@ -54,14 +54,10 @@
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    // Per-vertex property coloured by in `property` mode (defaults to the first one present)
-    property_name?: string
-    // Colour-scale [min, max] the user fixed; undefined fits the data
-    color_range?: Vec2
-    // The fitted range, shown as placeholder while color_range is unset
-    fitted_color_range?: Vec2
-    // Label for the unnamed per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
-    custom_property_label?: string
+    property_name?: string // coloured by in `property` mode (default: the first present)
+    color_range?: Vec2 // fixed colour-scale [min, max]; unset fits the data
+    fitted_color_range?: Vec2 // shown as placeholder while color_range is unset
+    custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
     export_filename?: string
     on_export?: (format: SceneExportFormat, context: FileExportContext) => void | Promise<void>
@@ -72,8 +68,7 @@
 
   const export_formats = { stl: `3D printing`, obj: `Wavefront`, glb: `web/AR` }
 
-  // Per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) are only colourable when some sheet
-  // carries them
+  // per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) the data carries
   let available_properties = $derived(available_property_names(fermi_data, band_data))
   let has_property = $derived(available_properties.length > 0)
 
@@ -86,9 +81,8 @@
   )
   const available_bands_changed = make_change_detector()
 
-  // Bands switched off stay off when a mu change alters which bands cross E_F, also after one
-  // stops crossing and crosses again; newly crossing bands start visible. Plain Set: the
-  // memory only feeds the sync below, nothing renders it.
+  // Bands switched off stay off when a mu change alters which bands cross E_F, even after one
+  // stops crossing and crosses again; newly crossing bands start visible
   let previous_bands: number[] = []
   const hidden_bands = new Set<number>()
   const sync_bindable_defaults = (bands_changed = false): void => {
@@ -113,13 +107,12 @@
   untrack(sync_bindable_defaults)
   $effect(() => sync_bindable_defaults(available_bands_changed(available_bands.join(`,`))))
 
-  // Typing a bound clears to auto when the field is emptied; one finite bound keeps the
-  // fitted value for the other
+  // An emptied field returns to auto; one typed bound keeps the fitted value for the other. A
+  // partial entry (`-`, `1e`) also reads as `` but is flagged by badInput: keep the range.
   function set_color_bound(
     bound_idx: 0 | 1,
     event: Event & { currentTarget: HTMLInputElement },
   ) {
-    // A partial entry (`-`, `1e`) also reads as ``, flagged by badInput: keep the range
     const { value, validity } = event.currentTarget
     if (validity.badInput) return
     const parsed = parse_num_token(value)
@@ -287,11 +280,12 @@
         </label>
         <label title="Fixed colour-scale bounds; leave empty to fit the visible surfaces">
           <span>Range</span>
-          <span class="range-inputs">
+          <span style="display: flex; gap: 0.3em">
             {#each [0, 1] as const as bound_idx (bound_idx)}
               <input
                 type="number"
                 step="any"
+                style="width: 4.5em"
                 value={color_range?.[bound_idx] ?? ``}
                 placeholder={fitted_color_range
                   ? format_num(fitted_color_range[bound_idx], `.3~g`)
@@ -467,13 +461,6 @@
   small {
     color: var(--text-color-muted, #888);
     font-size: 0.85em;
-  }
-  .range-inputs {
-    display: flex;
-    gap: 0.3em;
-    input {
-      width: 4.5em;
-    }
   }
   .value {
     min-width: 3em;

@@ -10,7 +10,6 @@
     BOND_ANGLE_SPLIT_MODES,
   } from '#lib/bond-angles/index.js'
   import FilePicker from '#lib/FilePicker.svelte'
-  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import { Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_files, structure_map } from '#site/structures.js'
@@ -37,12 +36,7 @@
 
   const selected_structures = $derived(labeled_structures(selected_ids))
 
-  // Hovering a bar highlights the centre atoms of its angles and their bonded neighbours
   let single_highlight = $state<number[]>([])
-  const angle_sites = (highlights: StructureSiteHighlight[] | null): number[] =>
-    highlights
-      ? [...new Set([highlights[0].site_indices, highlights[0].neighbor_indices ?? []].flat())]
-      : []
 </script>
 
 <h1 id="bond-angle-distributions-adf">Bond-Angle Distributions (ADF)</h1>
@@ -80,7 +74,12 @@
           split_mode={single_split_mode}
           {bin_width}
           style="height: 500px"
-          on_sites_hover={(highlights) => (single_highlight = angle_sites(highlights))}
+          on_sites_hover={(highlights) => {
+            const [hovered] = highlights ?? []
+            single_highlight = hovered
+              ? [...new Set([...hovered.site_indices, ...(hovered.neighbor_indices ?? [])])]
+              : []
+          }}
         />
         <Structure
           structure={single_struct}

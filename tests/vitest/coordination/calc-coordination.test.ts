@@ -61,13 +61,9 @@ describe(`coordination_bar_sites`, () => {
     [`by_structure`, { coordination_num: 6, structure_label: `large` }, [`large`], all_sites],
     [`CN no site has`, { coordination_num: 4 }, both, []],
   ])(`%s`, (_name, key, labels, site_indices) => {
-    const highlights = coordination_bar_sites(entries, key)
-    expect(highlights.map(({ label }) => label)).toEqual(labels)
-    for (const { label, structure, site_indices: found } of highlights) {
-      expect(found).toEqual(site_indices)
-      // each highlight hands back the input structure itself, so a linked viewer can match it
-      expect(structure).toBe(entries.find((entry) => entry.label === label)?.structure)
-    }
+    expect(coordination_bar_sites(entries, key)).toMatchObject(
+      labels.map((label) => ({ label, site_indices })),
+    )
   })
 })
 
@@ -203,7 +199,6 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // Series identity (element here, triplet in BondAnglePlot) reaches the tooltip as string
   // metadata that StructureBarPlot turns into a `value —` prefix. Both wrappers rely on the
   // shell for it, so nothing in either component would notice if the prefix disappeared.
-  // The same hover reports the bar's sites through on_sites_hover for a linked viewer.
   test(`tooltip prefixes the hovered bar with its string metadata and reports its sites`, async () => {
     const on_sites_hover = vi.fn()
     const root = await mount_plot({ structures: simple_cubic, on_sites_hover })
@@ -212,13 +207,11 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    const element = /^\s*(?<element>Cl|Na)\s+—/.exec(tooltip)?.groups?.element
-    expect(element).toBeDefined()
-    expect(tooltip).toContain(`CN:`)
-    const cn = Number(/CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups?.cn)
+    const { element, cn } =
+      /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}
     const { coordination_nums } = calc_coordination_nums(simple_cubic)
     const expected = simple_cubic.sites.flatMap(({ species }, idx) =>
-      species[0].element === element && coordination_nums[idx] === cn ? [idx] : [],
+      species[0].element === element && coordination_nums[idx] === Number(cn) ? [idx] : [],
     )
     expect(expected.length).toBeGreaterThan(0)
     expect(on_sites_hover).toHaveBeenLastCalledWith([

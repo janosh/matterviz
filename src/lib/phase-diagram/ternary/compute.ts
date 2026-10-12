@@ -17,13 +17,8 @@ import {
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
-import { array_min, partition_point, type Vec2, type Vec3 } from '#lib/math.js'
-import {
-  inside_triangle,
-  TRIANGLE_HEIGHT,
-  ternary_to_xy,
-  xy_to_ternary,
-} from '#lib/plot/ternary/ternary.js'
+import { array_min, euclidean_dist, partition_point, type Vec2, type Vec3 } from '#lib/math.js'
+import { inside_triangle, ternary_to_xy, xy_to_ternary } from '#lib/plot/ternary/ternary.js'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,
@@ -310,24 +305,21 @@ export function decompose_phase(
 // === Composition probes ===
 
 // Gibbs-triangle centroid: the origin of the prism's XZ plane
-const PRISM_CENTER: Vec2 = [0.5, TRIANGLE_HEIGHT / 3]
-// Triangle xy → prism scene [x, y, z] at height y_scene (z flipped so the triangle seen from
-// above reads like the 2D section)
+const PRISM_CENTER: Vec2 = [0.5, Math.sqrt(3) / 6]
+// Triangle xy → prism scene xyz at height y_scene (z flipped: seen from above, like the 2D view)
 export const prism_position = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
   x_pos - PRISM_CENTER[0],
   y_scene,
   PRISM_CENTER[1] - y_pos,
 ]
-// Composition under a prism scene point (inverse of prism_position, height ignored); null
-// outside the Gibbs triangle
+// Inverse of prism_position (height ignored), null outside the Gibbs triangle
 export function prism_composition({ x, z }: { x: number; z: number }): Vec2 | null {
   const coords_xy: Vec2 = [x + PRISM_CENTER[0], PRISM_CENTER[1] - z]
   return inside_triangle(xy_to_ternary(coords_xy), 1e-6) ? coords_xy : null
 }
-// Whether coords_xy lies within `radius` (triangle units, side 1) of a pinned probe: a click
-// there removes the pin, anywhere else moves it
+// Whether coords_xy is within `radius` (triangle side = 1) of the pin, i.e. a click unpins
 export const hits_pin = (pinned: Vec2 | null, coords_xy: Vec2, radius: number): boolean =>
-  pinned !== null && Math.hypot(coords_xy[0] - pinned[0], coords_xy[1] - pinned[1]) <= radius
+  pinned !== null && euclidean_dist(coords_xy, pinned) <= radius
 
 // Energy above the hull of every phase: dG - sum_k w_k dG_k over its containing facet
 function e_above_hull_of(

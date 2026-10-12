@@ -122,8 +122,7 @@ test.each([
 })
 
 test(`near-coincident log ticks keep distinct labels`, () => {
-  const labels = format_tick_values([1e-6, 1.0001e-6, 1e-3])
-  expect(new Set(labels).size).toBe(3)
+  expect(new Set(format_tick_values([1e-6, 1.0001e-6, 1e-3])).size).toBe(3)
 })
 
 // sweep d3 tick sets straddling 1000: each label must read back within half a tick step

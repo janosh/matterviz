@@ -37,9 +37,8 @@
     spot_radius_range?: [number, number]
     show_scale_bar?: boolean
     margin?: number
-    // Spot under the pointer or keyboard focus, null otherwise. Lets a host link the pattern
-    // to another view, e.g. draw the spot's (hkl) planes in a Structure looking down
-    // pattern.zone_axis. hkl and zone axis both refer to the input lattice.
+    // Spot under the pointer or keyboard focus, e.g. for a host to draw its (hkl) planes in a
+    // Structure looking down pattern.zone_axis (both refer to the input lattice)
     hovered_spot?: SaedSpot | null
     // Spot pinned by a click (or Enter/Space on a focused spot); activating it again unpins it
     selected_spot?: SaedSpot | null
@@ -91,8 +90,7 @@
 
   const zone_text = $derived(`[${pattern.zone_axis.join(` `)}]`)
 
-  // Spots are matched by hkl, not identity, so a pin survives a recomputed pattern that
-  // still contains the reflection (e.g. a thickness change)
+  // Matched by hkl, not identity, so a pin survives a recomputed pattern (e.g. new thickness)
   const hkl_key = (spot: SaedSpot | null): string => spot?.hkl.join(`,`) ?? ``
   const selected_key = $derived(hkl_key(selected_spot))
   const hovered_key = $derived(hkl_key(hovered_spot))
@@ -130,14 +128,10 @@
         cy={center_y}
         r={radius}
         {opacity}
-        class={[
-          'spot',
-          {
-            'higher-zone': spot.laue_zone > 0,
-            selected: spot_key === selected_key,
-            hovered: spot_key === hovered_key,
-          },
-        ]}
+        class="spot"
+        class:higher-zone={spot.laue_zone > 0}
+        class:selected={spot_key === selected_key}
+        class:hovered={spot_key === hovered_key}
         role="button"
         aria-label="{format_hkl(spot.hkl, `full`)}, {laue_zone_label(spot.laue_zone)}"
         aria-pressed={spot_key === selected_key}
@@ -152,11 +146,9 @@
         onfocusout={() => (hovered_spot = null)}
         onclick={() => toggle_selected(spot)}
         onkeydown={(event) => {
-          if (roving.handle_keydown(event)) return
-          if (is_activation_key(event)) {
-            event.preventDefault()
-            toggle_selected(spot)
-          }
+          if (roving.handle_keydown(event) || !is_activation_key(event)) return
+          event.preventDefault()
+          toggle_selected(spot)
         }}
       >
         <title

@@ -57,8 +57,7 @@
     display = $bindable({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    // the padding the plot settled on, to align it with a band plot beside it
-    resolved_padding = $bindable(),
+    resolved_padding = $bindable(), // to align the plot with a band plot beside it
     ...rest
   }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
     spectrum: VibrationalSpectrum
@@ -69,11 +68,9 @@
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
     show_sticks?: boolean
-    // horizontal puts frequency on the y axis, to sit beside a band structure
-    orientation?: Orientation
+    orientation?: Orientation // horizontal: frequency on y, to sit beside a band structure
     hovered_frequency?: number | null // THz, like every frequency the spectral module passes
-    // Modes behind the peak under the pointer, empty between peaks (read-only output)
-    hovered_mode_indices?: number[]
+    hovered_mode_indices?: number[] // modes behind the hovered peak (read-only output)
     reference_frequency?: number | null // THz, dashed line across the frequency axis
     highlighted_mode_indices?: number[] // sticks to emphasize, e.g. a band hovered at Γ
     selected_mode_idx?: number | null
@@ -159,23 +156,11 @@
     format: `.3~`,
     range: is_transmittance ? [0, 1.05] : undefined,
   })
-  const internal_x_axis = $derived<AxisConfig>({
-    ...(is_horizontal ? intensity_axis : frequency_axis),
-    ...x_axis,
-  })
-  const internal_y_axis = $derived<AxisConfig>({
-    ...(is_horizontal ? frequency_axis : intensity_axis),
-    ...y_axis,
-  })
   // Screen position of a (frequency, intensity) pair in either orientation
-  const to_px = (
-    frequency: number,
-    intensity: number,
-    { x_scale_fn, y_scale_fn }: UserContentProps,
-  ): [number, number] =>
+  const to_px = (frequency: number, intensity: number, ctx: UserContentProps): Vec2 =>
     is_horizontal
-      ? [x_scale_fn(intensity), y_scale_fn(frequency)]
-      : [x_scale_fn(frequency), y_scale_fn(intensity)]
+      ? [ctx.x_scale_fn(intensity), ctx.y_scale_fn(frequency)]
+      : [ctx.x_scale_fn(frequency), ctx.y_scale_fn(intensity)]
   // Line across the plot at a frequency (display unit)
   const frequency_line = (frequency: number, ctx: UserContentProps) => {
     const { width, height, pad } = ctx
@@ -235,8 +220,8 @@
   <ScatterPlot
     {...rest}
     series={series_data}
-    x_axis={internal_x_axis}
-    y_axis={internal_y_axis}
+    x_axis={{ ...(is_horizontal ? intensity_axis : frequency_axis), ...x_axis }}
+    y_axis={{ ...(is_horizontal ? frequency_axis : intensity_axis), ...y_axis }}
     bind:display
     bind:view
     bind:resolved_padding

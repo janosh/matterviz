@@ -326,10 +326,8 @@ export function expand_range_if_needed(
   return { range: new_range, changed }
 }
 
-// ScatterPlot/BarPlot props reporting which series the pointer is on, from its curve points
-// and from its legend entries alike, chained after whatever handlers the caller already set.
-// Spread after the caller's own props. Empty when nobody listens, so plots without a linked
-// view keep their handlers untouched.
+// Plot props reporting the series under the pointer (curve point or legend entry), chained after
+// the caller's handlers; spread them last. Empty when nobody listens.
 type SeriesHoverProps<PointEvent> = {
   on_point_hover?: (event: PointEvent | null) => void
   legend?: LegendConfig | null

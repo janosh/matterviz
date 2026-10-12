@@ -22,23 +22,18 @@ import { describe, expect, test, vi } from 'vitest'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
 
-// Arrows from the origin along a, b and c must run outside the cell: the origin's fractional coordinates are all
-// negative. The fixed [-1, -1, -1] origin it replaced sat inside cells with negative vector components.
+// Arrows from it along a, b, c run outside the cell, also for negative vector components (last
+// cell), where the fixed [-1, -1, -1] origin it replaced sat inside
 // oxfmt-ignore
 test.each([
-  [[[3, 0, 0], [0, 4, 0], [0, 0, 5]], true],
-  [[[2.9, 0, 0], [-1.45, 2.51, 0], [0, 0, 7.1]], true],
-  [[[3.4, -3.4, 0], [3.4, 3.4, 0], [-1.7, 0, -6.2]], false],
-] as [Matrix3x3, boolean][])(
-  `cell_vector_origin lies outside the cell behind its origin corner: %j`,
-  (matrix, fixed_origin_outside) => {
-    const to_frac = create_cart_to_frac(matrix)
-    const origin = cell_vector_origin(matrix)
-    expect(Math.hypot(...origin)).toBeCloseTo(Math.sqrt(3), 12)
-    for (const frac of to_frac(origin)) expect(frac).toBeLessThan(0)
-    expect(to_frac([-1, -1, -1]).every((frac) => frac < 0)).toBe(fixed_origin_outside)
-  },
-)
+  [[[3, 0, 0], [0, 4, 0], [0, 0, 5]]],
+  [[[2.9, 0, 0], [-1.45, 2.51, 0], [0, 0, 7.1]]],
+  [[[3.4, -3.4, 0], [3.4, 3.4, 0], [-1.7, 0, -6.2]]],
+] as [Matrix3x3][])(`cell_vector_origin lies outside the cell behind its origin corner: %j`, (matrix) => {
+  const origin = cell_vector_origin(matrix)
+  expect(Math.hypot(...origin)).toBeCloseTo(Math.sqrt(3), 12)
+  for (const frac of create_cart_to_frac(matrix)(origin)) expect(frac).toBeLessThan(0)
+})
 
 const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
 

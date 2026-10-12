@@ -72,7 +72,6 @@
       // Persistently marked k-points (Cartesian), e.g. the symmetry point a popup was opened for
       highlighted_k_points?: Vec3[]
       hovered_qpoint_index?: number | null
-      // First and last q-point index of a k-path stretch to tint, e.g. the hovered branch
       highlighted_qpoint_range?: Vec2 | null
       hover_data?: BZHoverData | null
       on_kpath_hover?: (qpoint_index: number | null) => void

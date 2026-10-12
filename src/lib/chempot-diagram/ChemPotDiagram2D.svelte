@@ -32,8 +32,7 @@
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    // Domain to highlight while none is hovered here, any formula spelling (e.g. a linked hull's)
-    highlighted_formula = null,
+    highlighted_formula = null, // shown while none is hovered here, any formula spelling
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig

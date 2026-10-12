@@ -43,9 +43,8 @@
     bin_width?: number
     center_elements?: readonly string[]
     neighbor_elements?: readonly string[]
-    // Atoms behind the hovered bar, one entry per structure it draws from: the centre atoms
-    // of its angles (site_indices) and their bonded outer atoms (neighbor_indices); null
-    // once the pointer leaves the bar
+    // Per structure behind the hovered bar: its angles' centre atoms (site_indices) and
+    // bonded outer atoms (neighbor_indices); null once the pointer leaves
     on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } = $props()
 

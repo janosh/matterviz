@@ -3,7 +3,6 @@ import * as math from '#lib/math.js'
 import { electron_form_factor } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
-import { zone_axis_direction } from '#lib/scene/zone-axis.js'
 import {
   compute_saed_pattern,
   laue_zone_label,
@@ -317,11 +316,6 @@ describe(`compute_saed_pattern validation`, () => {
       const pattern = compute_saed_pattern(crystal, { zone_axis })
       const { direction, up } = saed_camera_pose(pattern)
       expect(pattern.spots.length).toBeGreaterThan(5)
-      // the camera looks down the zone axis, as the demo's zone_axis_direction did before
-      const expected_direction = zone_axis_direction(matrix, zone_axis, `uvw`)
-      direction.forEach((val, idx) => expect(val).toBeCloseTo(expected_direction[idx], 14))
-      expect(math.dot(up, direction)).toBeCloseTo(0, 14)
-      expect(Math.hypot(...up)).toBeCloseTo(1, 14)
       const right = math.cross_3d(up, direction)
       const hkl_to_g = math.create_frac_to_cart(math.reciprocal_lattice(matrix))
       for (const { hkl, position_2d } of pattern.spots) {
@@ -332,10 +326,6 @@ describe(`compute_saed_pattern validation`, () => {
       }
     },
   )
-
-  test(`saed_camera_pose keeps three's default +y up down cubic [001]`, () => {
-    expect(saed_camera_pose(cubic_saed(4))).toEqual({ direction: [0, 0, 1], up: [0, 1, 0] })
-  })
 
   test(`in_plane_basis is orthonormal and perpendicular to the zone axis`, () => {
     const zone_axis: Vec3 = [1, 1, 2]

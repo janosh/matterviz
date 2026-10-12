@@ -127,48 +127,36 @@ test(`hovering a structure type reports its atoms from the analysed frame neares
   const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
   const on_atoms_hover = vi.fn()
   const state = $state({ current_frame_idx: 3 })
+  const result = {
+    frame_numbers: [0, 10],
+    results: [fcc_result, fcc_result],
+    frame_stride: 10,
+  }
   mounted_component = mount(TrajectoryStructureIdPane, {
     target: document.body,
-    props: bind_props(
-      {
-        pane_open: true,
-        run: make_run(20),
-        result: {
-          frame_numbers: [0, 10],
-          results: [fcc_result, fcc_result],
-          frame_stride: 10,
-        },
-        on_atoms_hover,
-      },
-      state,
-    ),
+    props: bind_props({ pane_open: true, run: make_run(20), result, on_atoms_hover }, state),
   })
   await settle()
   const fcc_item = [...document.querySelectorAll(`.legend-item`)].find((item) =>
     item.textContent?.includes(`FCC`),
   )
-  if (!fcc_item) throw new Error(`no FCC legend entry`)
-  const hint = `Highlighted atoms are classified in frame 0`
-  fcc_item.dispatchEvent(new MouseEvent(`mouseenter`))
-  await tick()
-  // every atom of the conventional fcc cell is fcc
-  expect(on_atoms_hover).toHaveBeenLastCalledWith({
-    frame_number: 0,
-    atom_indices: [0, 1, 2, 3],
-  })
-  expect(document.body.textContent).toContain(hint)
-  fcc_item.dispatchEvent(new MouseEvent(`mouseleave`))
-  await tick()
-  expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
-  expect(document.body.textContent).not.toContain(hint)
-  // shown frame analysed itself: no hint
-  state.current_frame_idx = 10
-  await tick()
-  fcc_item.dispatchEvent(new MouseEvent(`mouseenter`))
-  await tick()
-  expect(on_atoms_hover).toHaveBeenLastCalledWith({
-    frame_number: 10,
-    atom_indices: [0, 1, 2, 3],
-  })
-  expect(document.body.textContent).not.toContain(`Highlighted atoms are classified`)
+  const hover = async (type: string) => {
+    fcc_item?.dispatchEvent(new MouseEvent(type))
+    await tick()
+  }
+  const hint = `Highlighted atoms are classified in frame`
+  // every atom of the conventional fcc cell is fcc; frame 3 was not analysed, so say which was
+  for (const [shown, analysed] of [
+    [3, 0],
+    [10, 10],
+  ]) {
+    state.current_frame_idx = shown
+    await hover(`mouseenter`)
+    const atoms = { frame_number: analysed, atom_indices: [0, 1, 2, 3] }
+    expect(on_atoms_hover).toHaveBeenLastCalledWith(atoms)
+    expect(document.body.textContent?.includes(`${hint} ${analysed}`)).toBe(shown !== analysed)
+    await hover(`mouseleave`)
+    expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
+    expect(document.body.textContent).not.toContain(hint)
+  }
 })

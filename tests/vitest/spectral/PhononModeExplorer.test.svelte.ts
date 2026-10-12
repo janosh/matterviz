@@ -1,12 +1,7 @@
 import type { PhononModeDataset } from '#lib/spectral/index.js'
 import { parse_born, parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
 import PhononModeExplorer from '#lib/spectral/PhononModeExplorer.svelte'
-import { convert_frequencies } from '#lib/spectral/frequency-units.js'
-import {
-  peak_mode_indices,
-  spectrum_from_phonon_data,
-  spectrum_sticks,
-} from '#lib/spectral/ir-raman.js'
+import { spectrum_from_phonon_data } from '#lib/spectral/ir-raman.js'
 import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { flushSync, mount, tick, type ComponentProps, unmount } from 'svelte'
@@ -26,6 +21,7 @@ type ExplorerProps = ComponentProps<typeof PhononModeExplorer>
 const modes = parse_phonon_modes(band_yaml)
 const spectrum = spectrum_from_phonon_data(modes, parse_born(born_file))
 const dataset: PhononModeDataset = { modes, spectrum, filename: `NaCl-band.yaml` }
+const gamma_modes = { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] }
 const explorer_defaults = {
   dataset,
   auto_play: false,
@@ -91,6 +87,11 @@ test(`renders a typed phonon dataset`, async () => {
   expect(target.querySelector(`.phonon-modes-pane .control-tab`)).toBeNull()
   expect(target.querySelector(`.phonon-modes-pane .resize-handle`)).toBeNull()
   expect(target.querySelector(`.trajectory-controls .toolbar`)).not.toBeNull()
+  // the Brillouin zone inset is a passive view: no file drop target, controls or fullscreen
+  const inset = await vi.waitFor(() => query(target, `.trajectory-pane .bz-inset`))
+  expect(inset.querySelector(`button`)).toBeNull()
+  props.show_bz_inset = false
+  await vi.waitFor(() => expect(target.querySelector(`.bz-inset`)).toBeNull())
   await open_structure_controls(target)
   const eigenvectors = target.querySelector<HTMLInputElement>(`.checkbox input`)
   eigenvectors?.click()
@@ -212,14 +213,11 @@ test(`offers the spectrum type only with Raman data and follows the dataset`, as
   expect(target.querySelector(`[aria-label="q-point"]`)).not.toBeNull()
 
   // a Γ-only file has nothing to pick between, so the q-point chooser disappears
-  props.dataset = {
-    modes: { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] },
-    filename: `modes-only.yaml`,
-  }
+  props.dataset = { modes: gamma_modes, filename: `modes-only.yaml` }
   await vi.waitFor(() => {
     expect(kind_states()).toEqual([])
+    expect(target.querySelector(`.bz-inset`)).toBeNull() // needs more than one q-point
     expect(target.querySelector(`.plot-pane`)).toBeNull()
-    expect(target.querySelector(`.panes`)?.classList.contains(`structure_only`)).toBe(true)
     expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
       `true`,
     )
@@ -312,63 +310,23 @@ test.each([
 )
 
 test.each([
-  [`by default`, {}, true],
-  [`unless disabled`, { show_bz_inset: false }, false],
-  [
-    `only with more than one q-point`,
-    {
-      dataset: { modes: { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] } },
-    },
-    false,
-  ],
-] as [string, Partial<ExplorerProps>, boolean][])(
-  `shows the Brillouin zone inset %s`,
-  async (_name, props, shown) => {
-    const target = render(props)
-    await vi.waitFor(() => expect(target.querySelector(`.trajectory-pane`)).not.toBeNull())
-    const inset = target.querySelector(
-      `.trajectory-pane .bz-inset[aria-label="Selected q-point in the Brillouin zone"]`,
-    )
-    expect(inset !== null).toBe(shown)
-    // the inset is a passive view: no file drop target, controls or fullscreen button
-    if (inset) expect(inset.querySelector(`button`)).toBeNull()
-  },
-)
-
-test.each([
-  [`beside the bands on a wide plot pane`, {}, 800, [`side_by_side`]],
-  [`below the bands on a narrow plot pane`, {}, 300, [`spectrum_stacked`]],
-  [
-    `alone for a Γ-only file`,
-    { dataset: { ...dataset, modes: { ...modes, path_segments: [] } } },
-    800,
-    [],
-  ],
-] as [string, Partial<ExplorerProps>, number, string[]][])(
-  `draws the spectrum %s`,
-  async (_name, props, width, layout_classes) => {
-    const target = render(props)
-    const plot_pane = await vi.waitFor(() => query(target, `.plot-pane`))
-    await resize_element(plot_pane, width, 400)
-    trigger_resize_observer(plot_pane)
-    await vi.waitFor(() => {
-      const classes = [`side_by_side`, `spectrum_stacked`]
-      expect(classes.filter((name) => plot_pane.classList.contains(name))).toEqual(
-        layout_classes,
-      )
-      expect(plot_pane.querySelectorAll(`line.mode-stick`).length).toBeGreaterThan(0)
-    })
-    // bands beside or above the spectrum make a second plot
-    expect(plot_pane.querySelectorAll(`.scatter`)).toHaveLength(layout_classes.length ? 2 : 1)
-    // rotated beside the bands, sticks run along the intensity (x) axis at their frequency
-    const stick = query(plot_pane, `line.mode-stick`)
-    const [x1, x2, y1, y2] = [`x1`, `x2`, `y1`, `y2`].map((attr) =>
-      Number(stick.getAttribute(attr)),
-    )
-    const side_by_side = layout_classes.includes(`side_by_side`)
-    expect(side_by_side ? y1 === y2 && x1 !== x2 : x1 === x2 && y1 !== y2).toBe(true)
-  },
-)
+  { name: `beside the bands when wide`, width: 800, layout: `side_by_side`, modes },
+  { name: `below the bands when narrow`, width: 300, layout: `spectrum_stacked`, modes },
+  { name: `alone for a Γ-only file`, width: 800, layout: null, modes: gamma_modes },
+])(`draws the spectrum $name`, async ({ width, layout, modes: dataset_modes }) => {
+  const target = render({ dataset: { ...dataset, modes: dataset_modes } })
+  const plot_pane = await vi.waitFor(() => query(target, `.plot-pane`))
+  await resize_element(plot_pane, width, 400)
+  trigger_resize_observer(plot_pane)
+  await vi.waitFor(() => {
+    const classes = [`side_by_side`, `spectrum_stacked`]
+    const active = classes.filter((name) => plot_pane.classList.contains(name))
+    expect(active).toEqual(layout ? [layout] : [])
+    expect(plot_pane.querySelectorAll(`line.mode-stick`).length).toBeGreaterThan(0)
+  })
+  // bands beside or above the spectrum make a second plot
+  expect(plot_pane.querySelectorAll(`.scatter`)).toHaveLength(layout ? 2 : 1)
+})
 
 test(`links spectrum peaks and Γ-point bands on hover`, async () => {
   // an acoustic selection keeps the resting reference line at 0 THz, away from every peak
@@ -379,9 +337,8 @@ test(`links spectrum peaks and Γ-point bands on hover`, async () => {
   )
   const [bands_plot, spectrum_plot] = [...plot_pane.querySelectorAll(`.scatter`)]
   // pointer coordinates below are plot pixels, so put each plot at the viewport origin
-  for (const svg of [plot_svg(bands_plot), plot_svg(spectrum_plot)]) {
+  for (const svg of [plot_svg(bands_plot), plot_svg(spectrum_plot)])
     svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
-  }
   const settle = async () => {
     await new Promise((resolve) => requestAnimationFrame(resolve))
     flushSync()
@@ -398,26 +355,21 @@ test(`links spectrum peaks and Γ-point bands on hover`, async () => {
     mouse(`mousemove`, { clientX: coord(peak_stick, `x2`), clientY: peak_y }),
   )
   await settle()
-  const thz_sticks = spectrum_sticks(spectrum, `ir`, { unit: `THz` })
-  const peak_idx = sticks.indexOf(peak_stick)
-  const peak_modes = peak_mode_indices(
-    thz_sticks,
-    thz_sticks.x[peak_idx],
-    convert_frequencies([10], `THz`, `cm^-1`)[0],
-  )
-  expect(peak_modes.length).toBeGreaterThan(0)
+  // stick labels read `Select mode <n> at <frequency> THz`
+  const label_num = (stick: Element, pattern: RegExp) =>
+    Number(pattern.exec(stick.getAttribute(`aria-label`) ?? ``)?.groups?.num)
+  const highlighted = [...spectrum_plot.querySelectorAll(`line.mode-stick.highlighted`)]
+  expect(highlighted).toContain(peak_stick)
+  const peak_modes = highlighted.map((stick) => label_num(stick, /mode (?<num>\d+)/) - 1)
   // rotated, the tooltip still reads the frequency off the y axis, not the intensity
   const tooltip_text = query(spectrum_plot, `.plot-tooltip`).textContent ?? ``
   const tooltip_freq = Number(/Frequency\D*?(?<freq>[\d.]+)/.exec(tooltip_text)?.groups?.freq)
-  expect(tooltip_freq).toBeCloseTo(thz_sticks.x[peak_idx], 1)
+  expect(tooltip_freq).toBeCloseTo(label_num(peak_stick, /at (?<num>[\d.]+)/), 1)
   // NaCl's Γ–X path visits Γ once: one ring per mode behind the peak
   expect(bands_plot.querySelectorAll(`.peak-band-marker`)).toHaveLength(peak_modes.length)
   const bands_ref = bands_plot.querySelector(`line[stroke*="--bands-reference-line-color"]`)
   // the peak's frequency lands on the same pixel row in both panels (shared y scale)
   expect(Number(bands_ref?.getAttribute(`y1`))).toBeCloseTo(peak_y, 0)
-  expect(spectrum_plot.querySelectorAll(`line.mode-stick.highlighted`)).toHaveLength(
-    peak_modes.length,
-  )
 
   await fire(plot_svg(spectrum_plot), mouse(`mouseleave`))
   expect(bands_plot.querySelector(`.peak-band-marker`)).toBeNull()

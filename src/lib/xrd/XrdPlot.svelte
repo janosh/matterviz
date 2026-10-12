@@ -83,13 +83,10 @@
     error_msg?: string
     broadening_enabled?: boolean
     broadening_params?: BroadeningParams
-    // Stick under the pointer or keyboard focus, null otherwise. Lets a host link the plot
-    // to another view, e.g. draw diffraction_planes(peak.hkls) as a Structure's
-    // lattice_planes. Only sticks are peaks: profiles and the broadened view report none.
+    // Stick under the pointer or keyboard focus (e.g. to draw diffraction_planes(peak.hkls) in a
+    // Structure); profiles and the broadened view report none
     hovered_peak?: XrdPeak | null
-    // Stick pinned by a click (or Enter/Space on a focused stick), which also labels it;
-    // activating the pinned stick again unpins it
-    selected_peak?: XrdPeak | null
+    selected_peak?: XrdPeak | null // pinned (and labelled) by a click, unpinned by another
   } = $props()
 
   let dropped_entries = $state<PatternEntry[]>([])
@@ -180,7 +177,6 @@
           if (!too_close) selected_indices.push(idx)
         }
       }
-      // A pinned peak is always labelled so the plot shows which one is pinned
       if (selected_peak?.pattern_idx === entry_idx)
         selected_indices.push(selected_peak.peak_idx)
       const selected = new Set(selected_indices)
@@ -215,17 +211,16 @@
 
   // The stick at (pattern_idx, peak_idx) of the plotted entries, null for a profile sample
   const peak_at = (pattern_idx: number, peak_idx: number): XrdPeak | null => {
-    const entry = pattern_entries[pattern_idx]
-    if (!entry || is_profile(entry.pattern) || peak_idx >= entry.pattern.x.length) return null
-    const { x: x_vals, y: y_vals, hkls, d_hkls } = entry.pattern
+    const { pattern, label } = pattern_entries[pattern_idx]
+    if (is_profile(pattern)) return null
     return {
       pattern_idx,
       peak_idx,
-      label: entry.label,
-      two_theta: x_vals[peak_idx],
-      intensity: ((y_vals[peak_idx] || 0) / global_max_intensity) * 100,
-      hkls: hkls?.[peak_idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
-      d_spacing: d_hkls?.[peak_idx],
+      label,
+      two_theta: pattern.x[peak_idx],
+      intensity: ((pattern.y[peak_idx] || 0) / global_max_intensity) * 100,
+      hkls: pattern.hkls?.[peak_idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+      d_spacing: pattern.d_hkls?.[peak_idx],
     }
   }
   const same_peak = (peak_a: XrdPeak | null, peak_b: XrdPeak | null): boolean =>

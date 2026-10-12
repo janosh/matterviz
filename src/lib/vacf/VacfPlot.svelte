@@ -40,8 +40,7 @@
     error_msg?: string
     vacf_controls_open?: boolean
     vdos_controls_open?: boolean
-    // Label of the curve (element symbol or `Total`) under the pointer in either panel, from
-    // its line or legend entry; null once the pointer leaves
+    // Hovered curve's label (element or `Total`) in either panel, null on leave
     on_curve_hover?: (label: string | null) => void
   } & Omit<ScatterPlotOptions, `controls_open`> = $props()
 

@@ -2,14 +2,17 @@
   import { open_material } from '#lib'
   import type { BandGridData } from '#lib/fermi-surface/index.js'
   import { FermiSurfaceBands, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
+  import { normalize_band_structure } from '#lib/spectral/helpers.js'
   import { to_error } from '#lib/utils.js'
-  import { cu_fcc_bands as band_struct } from '#site/electronic/cu-fcc-bands.js'
+  import raw_bands from '#site/electronic/cu-fcc-bands.json.gz'
   import { fermi_surface_files } from '#site/fermi-surfaces.js'
   import { onMount } from 'svelte'
 
-  // fcc Cu from one simulated calculation: the band grid (BXSF, bands numbered as in the run)
-  // and the band structure along the fcc path share their band indices and Fermi level
+  // fcc Cu band grid and band structure (rows = the grid's band numbers − 1) from one simulated
+  // calculation. The bands stay out of the electronic glob, which band demos parse eagerly.
   const grid_name = `cu_fcc_bands.bxsf.gz`
+  const band_struct = normalize_band_structure(raw_bands)
+  if (!band_struct) throw new Error(`Invalid band structure in cu-fcc-bands.json.gz`)
   let band_data = $state.raw<BandGridData>()
   let error_msg = $state<string>()
 
@@ -47,7 +50,7 @@
 </p>
 
 {#if error_msg}
-  <p class="error">{error_msg}</p>
+  <p style="color: var(--error-color, crimson)">{error_msg}</p>
 {:else if band_data}
   <FermiSurfaceBands
     {band_data}
@@ -65,9 +68,3 @@
 {:else}
   <p>Loading Cu band grid…</p>
 {/if}
-
-<style>
-  .error {
-    color: var(--error-color, crimson);
-  }
-</style>

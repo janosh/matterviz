@@ -257,10 +257,8 @@ export const calc_bond_angle_distribution = (
   options: BondAngleOptions = {},
 ): BondAngleData => bin_bond_angles(calc_bond_angles(structure, options), options)
 
-// Sites behind one histogram bar: the angles falling in bin `bin_idx` of the binning that
-// bin_width/n_bins resolve to, narrowed to one triplet label for per-triplet bars. Returns
-// the centre atoms and, separately, the outer atoms of those angles (base sites for
-// neighbours reached through a cell boundary), each sorted and deduplicated.
+// Sites behind one histogram bar (bin `bin_idx`, optionally one triplet label): the sorted
+// centre atoms and outer atoms (base sites for neighbours across a cell boundary) of its angles
 export function bond_angle_bin_sites(
   triplets: readonly BondAngleTriplet[],
   options: Pick<BondAngleOptions, `bin_width` | `n_bins`> & {

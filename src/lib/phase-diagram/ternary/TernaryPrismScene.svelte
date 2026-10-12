@@ -2,15 +2,14 @@
   // Inside the prism <Canvas>: the Gibbs triangle extruded along T, stable phases as rods over
   // their stability windows, tie-lines as the vertical sheets they sweep between transitions,
   // transition outlines and a draggable isothermal cutting plane carrying the current section.
-  // Composition probes (the pinned one shared with the 2D section, and one under the pointer
-  // on the plane) show as a vertical line through the prism plus spokes to their assemblage on
-  // the plane; a click on the plane without dragging pins its composition.
+  // Composition probes (pinned, or under the pointer) are vertical lines plus spokes to their
+  // assemblage on the plane; a click on the plane without dragging pins one.
   // Nothing is rebuilt while dragging: rods/sheets are static and split at the plane by GPU
   // clipping planes; the section geometry is memoized on the (interval-constant) topology.
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import { format_num } from '#lib/labels.js'
-  import { clamp, type Vec2, type Vec3 } from '#lib/math.js'
+  import { clamp, euclidean_dist, type Vec2, type Vec3 } from '#lib/math.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
     build_orbit_props,
@@ -82,7 +81,6 @@
   const [t_min, t_max] = $derived(diagram.t_range)
   const y_of = (temp: number) => ((temp - t_min) / (t_max - t_min) - 0.5) * HEIGHT
   const t_of = (y_pos: number) => (y_pos / HEIGHT + 0.5) * (t_max - t_min) + t_min
-  // Triangle xy → scene xz via prism_position; at_t places it at a temperature
   const at_t = (coords_xy: readonly number[], temp: number): Vec3 =>
     prism_position(coords_xy, y_of(temp))
   const corners = TRIANGLE_VERTICES
@@ -245,7 +243,6 @@
   const hover_probe = $derived(probe_of(hover_xy))
   dispose_on_change(() => [pinned_probe?.spokes])
   dispose_on_change(() => [hover_probe?.spokes])
-  // The pinned probe in the pin colour, the pointer's thinner in the text colour
   const probe_marks = $derived(
     [
       { kind: `pinned`, probe: pinned_probe, color: pin_color, radius: 0.005 },
@@ -286,9 +283,7 @@
 
   let camera_is_moving = false
   let dragging_plane = $state(false)
-  let rod_hovered = false
-  // A press on the plane: a release within CLICK_SLOP_PX of it pins the composition pressed
-  // (no drag moves the plane before the pointer leaves that radius)
+  // A release within CLICK_SLOP_PX of a plane press pins the pressed composition (a click)
   let press: { client: Vec2; coords_xy: Vec2 | null; moved: boolean } | null = null
   const CLICK_SLOP_PX = 4
   const PIN_HIT_RADIUS = 0.025 // triangle units: a click this close to the pin removes it
@@ -327,7 +322,6 @@
     pointer.stopPropagation()
     const { point, nativeEvent } = pointer
     hovered_phase = phase
-    rod_hovered = true
     hover_xy = null // the rod's tooltip replaces the plane's
     on_hover?.({
       phase,
@@ -340,7 +334,6 @@
     onpointermove: (event: unknown) => handle_rod_hover(phase, event),
     onpointerleave: () => {
       hovered_phase = null
-      rod_hovered = false
       on_hover?.(null)
     },
     onclick: (event: unknown) => {
@@ -351,11 +344,10 @@
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
   const end_plane_drag = (event?: Event) => {
-    if (event?.type === `pointerup` && press?.coords_xy && !press.moved) {
-      const { coords_xy } = press
-      pinned_composition = hits_pin(pinned_composition, coords_xy, PIN_HIT_RADIUS)
-        ? null
-        : coords_xy
+    const click_xy = event?.type === `pointerup` && !press?.moved ? press?.coords_xy : null
+    if (click_xy) {
+      const on_pin = hits_pin(pinned_composition, click_xy, PIN_HIT_RADIUS)
+      pinned_composition = on_pin ? null : click_xy
     }
     press = null
     dragging_plane = false
@@ -370,7 +362,7 @@
     // a press on a rod (which doesn't claim pointerdown) drags but pins nothing
     press = {
       client: [nativeEvent.clientX, nativeEvent.clientY],
-      coords_xy: rod_hovered ? null : prism_composition(point),
+      coords_xy: hovered_phase === null ? prism_composition(point) : null,
       moved: false,
     }
     dragging_plane = true
@@ -384,14 +376,10 @@
   const drag_plane = (event: unknown) => {
     if (!dragging_plane || !press) return
     const { point, nativeEvent } = pointer_of(event)
-    press.moved ||=
-      Math.hypot(
-        nativeEvent.clientX - press.client[0],
-        nativeEvent.clientY - press.client[1],
-      ) >= CLICK_SLOP_PX
+    const client: Vec2 = [nativeEvent.clientX, nativeEvent.clientY]
+    press.moved ||= euclidean_dist(press.client, client) >= CLICK_SLOP_PX
     if (press.moved) temperature = clamp(t_of(point.y), t_min, t_max)
   }
-  // Hovering the plane probes the composition under the pointer
   function hover_plane(event: unknown): void {
     if (dragging_plane) return drag_plane(event)
     if (camera_is_moving) return

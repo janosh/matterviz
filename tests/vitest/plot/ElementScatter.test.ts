@@ -54,18 +54,12 @@ describe(`ElementScatter`, () => {
       y: y_values,
       series: [{ x: [999], y: [999], label: `injected data` }],
       show_legend: true,
+      highlighted_ids: [`C`, `Ne`],
     }
     const root = await mount_sized(ElementScatter, props, { selector: `.scatter` })
     expect(root.textContent).not.toContain(`injected data`)
     expect(root.querySelectorAll(`.marker`)).toHaveLength(y_values.length)
-  })
-
-  test(`keys points by element symbol for highlighted_ids`, async () => {
-    const root = await mount_sized(
-      ElementScatter,
-      { y: y_values, highlighted_ids: [`C`, `Ne`] },
-      { selector: `.scatter` },
-    )
+    // points are keyed by element symbol, so highlighted_ids links element views
     const lit = [...root.querySelectorAll(`path.marker`)].flatMap((marker, idx) =>
       marker.classList.contains(`is-dimmed`) ? [] : [element_data[idx].symbol],
     )

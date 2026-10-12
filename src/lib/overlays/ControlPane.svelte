@@ -34,13 +34,11 @@
     children?: Snippet
   } = $props()
   const controls_config = $derived(normalize_show_controls(show_controls))
-  // Children mount on first open and stay mounted after, so closed panes cost nothing up front
-  // while reopening keeps their local state. State they must capture at mount (reset baselines)
-  // belongs in the owning component's script, which still runs eagerly.
-  let ever_opened = $state(false)
-  $effect.pre(() => {
-    if (controls_open) ever_opened = true
-  })
+  // Children mount on first open and stay mounted, so closed panes cost nothing up front while
+  // reopening keeps their state. Mount-time snapshots (reset baselines) belong in the owner's
+  // script. `ever_opened` is plain memory the derived latches into.
+  let ever_opened = false
+  const children_mounted = $derived((ever_opened ||= controls_open))
 </script>
 
 {#if controls_config.visible(`controls`)}
@@ -68,7 +66,7 @@
     closed_icon={Settings}
     {...options}
   >
-    {#if controls_open || ever_opened}
+    {#if children_mounted}
       {@render children?.()}
     {/if}
   </ViewerPane>

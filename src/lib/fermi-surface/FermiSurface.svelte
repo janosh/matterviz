@@ -119,26 +119,16 @@
     structure?: Crystal
     bz_data?: BrillouinZoneData
     controls_open?: boolean
-    // Per-vertex property coloured by in `property` mode, e.g. `λ` or `Δ (10 K)` of a band grid's
-    // `properties`; defaults to the first one present
-    property_name?: string
-    // Fixed [min, max] of the property colour scale; undefined fits the visible surfaces
-    color_range?: Vec2
-    // Colour bar over the canvas while surfaces are coloured by a property
+    property_name?: string // coloured by in `property` mode (default: the first present)
+    color_range?: Vec2 // fixed [min, max] of the property scale; unset fits visible sheets
     show_colorbar?: boolean
-    // 2D slice (e.g. a FermiSlice beside the viewer) to mark as a plane in the 3D view
-    slice_plane?: { miller_indices: Vec3; distance: number }
-    // k-point (Cartesian Å⁻¹) to mark in 3D, e.g. the cursor position on a FermiSlice
-    k_marker?: Vec3 | null
-    // band-structure k-path to draw in 3D, e.g. from a band plot beside the viewer
-    k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`]
-    // fold band-grid surfaces into the Wigner-Seitz zone, e.g. to match a k-path through it
-    wigner_seitz?: boolean
-    // a pointer-driven preview (e.g. hovering a band plot): extract at no more than the
-    // k-mesh's auto resolution so updates keep up, then at full resolution once it ends
+    slice_plane?: { miller_indices: Vec3; distance: number } // e.g. a FermiSlice's, drawn in 3D
+    k_marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. a FermiSlice's cursor
+    k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`] // e.g. a band plot's path
+    wigner_seitz?: boolean // fold band-grid surfaces into the zone, e.g. to match a k-path
+    // pointer-driven preview (e.g. band plot hover): extract at most at the auto resolution
     previewing?: boolean
-    // Label for the unnamed per-vertex property (an IFermi/JSON `properties` array or a scalar
-    // FRMSF colour block), e.g. "Fermi velocity", "λ(k)", "DOS"
+    // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
     selected_bands?: number[]
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
@@ -294,22 +284,21 @@
     }
   }
 
-  // Property colouring: the requested property when the surfaces have it, else the first one.
-  // The fitted range spans the visible sheets, so hiding a band rescales the colours.
+  // The requested property when present, else the first; the fitted range spans visible sheets
   const available_properties = $derived(available_property_names(surface_data, grid_data))
   const active_property = $derived(
     property_name !== undefined && available_properties.includes(property_name)
       ? property_name
       : available_properties[0],
   )
-  const visible_surfaces = $derived(
-    surface_data?.isosurfaces.filter(
-      (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),
-    ) ?? [],
-  )
   const fitted_color_range = $derived<Vec2>(
     color_property === `property`
-      ? property_color_range(visible_surfaces, active_property)
+      ? property_color_range(
+          surface_data?.isosurfaces.filter(
+            ({ band_index }) => selected_bands?.includes(band_index) ?? true,
+          ) ?? [],
+          active_property,
+        )
       : [0, 1],
   )
   const resolved_color_range = $derived(color_range ?? fitted_color_range)

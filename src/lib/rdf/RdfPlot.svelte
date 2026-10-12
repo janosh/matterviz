@@ -64,13 +64,11 @@
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
-    // Curve under the pointer and the r bin hovered on it (bin_idx = index into the
-    // pattern's r grid, null when the curve's legend entry is hovered); null once it leaves
+    // Hovered curve and r-grid bin (null for its legend entry); null once the pointer leaves
     on_bin_hover?: (hover: { entry: RdfEntry; bin_idx: number | null } | null) => void
     // Atoms behind the hovered curve of a structure computed here (not `patterns`): for an r
-    // bin, the centre atoms (site_indices) and partners (neighbor_indices) of the pairs in
-    // that bin, recomputed for that one bin on hover so plain RDFs never store pair lists;
-    // for a legend entry, every atom of the curve's element pair. null once the pointer leaves.
+    // bin, the centres (site_indices) and partners (neighbor_indices) of its pairs, found on
+    // hover so RDFs never store pair lists; for a legend entry, every atom of its element pair
     on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } & Omit<ScatterPlotOptions, `children`> = $props()
 
@@ -95,28 +93,27 @@
   })
 
   // Each plotted entry with the structure it was computed from (none for `patterns`)
-  const sourced = $derived.by((): { entry: RdfEntry; struct?: Crystal }[] => {
+  const sourced = $derived.by((): { entry: RdfEntry; structure?: Crystal }[] => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
       ...label_structures(structures),
       ...drag_dropped.map((struct, idx) => ({ struct, label: `Dropped ${idx + 1}` })),
-    ].map(({ struct, label }) => {
-      const formula = get_electro_neg_formula(struct)
-      return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
+    ].map(({ struct: structure, label }) => {
+      const formula = get_electro_neg_formula(structure)
+      return { structure, label: formula && label ? `${formula}: ${label}` : formula || label }
     })
 
-    const computed = struct_list.flatMap(({ struct, label }) => {
+    const computed = struct_list.flatMap(({ structure, label }) => {
       const options = { cutoff, n_bins, pbc }
-      if (mode === `full`) {
-        return [{ entry: { label, pattern: calculate_rdf(struct, options) }, struct }]
-      }
-      return calculate_all_pair_rdfs(struct, options).map((pair) => ({
+      if (mode === `full`)
+        return [{ entry: { label, pattern: calculate_rdf(structure, options) }, structure }]
+      return calculate_all_pair_rdfs(structure, options).map((pair) => ({
         entry: {
           label: pair.element_pair?.join(`-`) ?? label,
           legend_group: label, // Group by structure name for multi-structure plots
           pattern: pair,
         },
-        struct,
+        structure,
       }))
     })
     // Explicitly supplied patterns come first, in the order they were given
@@ -124,28 +121,21 @@
   })
   const entries = $derived(sourced.map(({ entry }) => entry))
 
-  // Sites behind one hovered curve point or legend entry, see on_sites_hover
-  const hovered_sites = (
-    entry_idx: number,
-    bin_idx: number | null,
-  ): StructureSiteHighlight[] | null => {
-    const { entry, struct } = sourced[entry_idx] ?? {}
-    if (!entry || !struct) return null
+  // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
+  const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
+    const { entry, structure } = sourced[entry_idx]
+    if (!structure) return null
     const label = entry.legend_group ?? entry.label
     const pair = entry.pattern.element_pair
-    if (bin_idx === null) {
-      // The full RDF's legend entry stands for every atom, which highlights nothing useful
-      if (!pair) return null
-      return [{ label, structure: struct, site_indices: element_site_indices(struct, pair) }]
+    if (bin_idx !== null) {
+      const options = { cutoff, n_bins, pbc, bin_idx, element_pair: pair }
+      const { site_indices, neighbor_indices } = rdf_bin_sites(structure, options)
+      return [{ label, structure, site_indices, neighbor_indices }]
     }
-    const { site_indices, neighbor_indices } = rdf_bin_sites(struct, {
-      cutoff,
-      n_bins,
-      pbc,
-      bin_idx,
-      element_pair: pair,
-    })
-    return [{ label, structure: struct, site_indices, neighbor_indices }]
+    // the full RDF's legend entry stands for every atom, which highlights nothing useful
+    return pair
+      ? [{ label, structure, site_indices: element_site_indices(structure, pair) }]
+      : null
   }
   // Pointer moves within one bin repeat the same hover, so only a change is reported (and,
   // for on_sites_hover, recomputed)
@@ -154,8 +144,7 @@
     const key = entry_idx === null ? null : `${entry_idx}:${bin_idx}`
     if (key === last_hover_key) return
     last_hover_key = key
-    const entry = entry_idx === null ? undefined : entries[entry_idx]
-    on_bin_hover?.(entry ? { entry, bin_idx } : null)
+    on_bin_hover?.(entry_idx === null ? null : { entry: entries[entry_idx], bin_idx })
     on_sites_hover?.(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
   }
   const hover_props = $derived<Pick<ScatterPlotOptions, `on_point_hover` | `legend`>>(

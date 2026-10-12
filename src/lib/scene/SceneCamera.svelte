@@ -108,8 +108,7 @@
   })
 </script>
 
-<!-- OrbitControls reads camera.up only when constructed (its orbit frame), so a new up vector
-rebuilds them. The camera applies its props before this child mounts. -->
+<!-- OrbitControls reads camera.up only when constructed, so a new up vector rebuilds them -->
 {#snippet camera_contents()}
   {#key up.join(`,`)}
     <extras.OrbitControls

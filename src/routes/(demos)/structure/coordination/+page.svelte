@@ -52,7 +52,6 @@
 
   const selected_structures = $derived(labeled_structures(selected_ids))
 
-  // Hovering a bar highlights the sites it counts in the structure viewer(s) beside it
   let single_highlight = $state<number[]>([])
   let multi_highlights = $state.raw<StructureSiteHighlight[]>([])
   const highlight_of = (structure: AnyStructure): number[] =>

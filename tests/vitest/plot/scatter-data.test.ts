@@ -149,13 +149,12 @@ describe(`filter_series_to_ranges`, () => {
   test.each<[string, DataSeries, string, string?]>([
     [`short y`, { id: `energy`, x: [0, 1], y: [2] }, `x=2, y=1`],
     [`long y`, { id: `energy`, x: [0], y: [1, 2] }, `x=1, y=2`],
-    [`short raw_y`, { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] }, `x=2, y=2, raw_y=1`],
-    [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
     [
-      `short point_ids`,
-      { id: `energy`, x: [0, 1], y: [2, 3], point_ids: [`a`] },
-      `x=2, y=2, point_ids=1`,
+      `short raw_y and point_ids`,
+      { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2], point_ids: [`a`] },
+      `x=2, y=2, raw_y=1, point_ids=1`,
     ],
+    [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
     [`hidden series`, { id: `energy`, x: [0, 1], y: [2], visible: false }, `x=2, y=1`],
     [
       `short and long per-point arrays`,

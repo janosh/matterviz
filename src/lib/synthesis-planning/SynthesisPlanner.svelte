@@ -309,8 +309,7 @@
       : [],
   )
 
-  // The reaction slice on the full hull: the precursor tie-line(s), plus the composition of
-  // whichever slice point is hovered (kept per route, so a route switch drops a stale hover)
+  // Reaction slice on the full hull: precursor tie-lines plus the hovered point (per route)
   let slice_hover = $state.raw<{ route_id: string; entry: PhaseData } | null>(null)
   const hull_annotations = $derived.by((): HullAnnotations | undefined => {
     if (!selected_route) return undefined

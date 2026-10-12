@@ -60,16 +60,14 @@ const resolve_live_color = (
 }
 
 // Live CSS color token on `node`, re-read after theme and ancestor-attribute changes.
-// A token defined as a color function (matterviz's own `--page-bg: light-dark(...)`, or var()/color-mix()) has
-// that literal string as its computed value, not a color, so it would be rejected and the fallback used. Let
-// the browser resolve it as a hidden probe's `color`: the probe inherits the node's color-scheme, which picks the
-// light-dark() branch. Values the browser rejects stay as they are.
+// A token defined as a color function (`--page-bg: light-dark(...)`, var(), color-mix()) computes
+// to that literal string, not a color. Resolve it as a probe's `color`: the probe inherits the
+// node's color-scheme, which picks the light-dark() branch. Rejected values stay as they are.
 export const resolve_color_token = (node: Element, value: string): string => {
   if (!value || is_concrete_color(value)) return value
   const probe = document.createElement(`span`)
   probe.style.color = value
   if (!probe.style.color) return value
-  probe.style.display = `none`
   const host = node instanceof HTMLElement ? node : (node.parentElement ?? document.body)
   host.append(probe)
   const color = getComputedStyle(probe).color

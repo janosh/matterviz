@@ -257,11 +257,6 @@ const is_log_spaced = (values: readonly number[]): boolean => {
   return Math.max(...steps) > 1.5 * Math.min(...steps)
 }
 
-// below 0.01 a log tick reads as compact scientific (1e-6, 2.5e-5); otherwise the default
-// adaptive format (0.01, 0.5, 1, 100, 10k)
-const format_log_tick = (value: number): string =>
-  value < 1e-2 ? format_num(value, `.3~e`) : format_num(value)
-
 // Retain compact adaptive labels while adjacent distinct tick values render distinctly and
 // every label resolves the tick step, else add just enough precision for both. Explicit
 // formats remain authoritative: callers may intentionally request rounded or
@@ -273,7 +268,10 @@ export const format_tick_values = (
   if (formatter || values.length < 2)
     return values.map((value) => format_value_or_num(value, formatter))
   if (is_log_spaced(values)) {
-    const log_labels = values.map(format_log_tick)
+    // compact scientific below 0.01 (1e-6, 2.5e-5), else adaptive (0.01, 0.5, 1, 100, 10k)
+    const log_labels = values.map((value) =>
+      value < 1e-2 ? format_num(value, `.3~e`) : format_num(value),
+    )
     // near-coincident ticks fall through to the precision search below
     if (!labels_collide(values, log_labels)) return log_labels
   }

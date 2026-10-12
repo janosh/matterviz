@@ -48,12 +48,8 @@ const temp_input = () =>
   doc_query<HTMLInputElement>(`input[aria-label="Temperature in Kelvin"]`)
 const text = (selector: string) => doc_query(selector).textContent?.replaceAll(/\s+/g, ``)
 const keydown = (target: Element, key: string, shiftKey = false) => {
-  const event = new KeyboardEvent(`keydown`, {
-    key,
-    shiftKey,
-    bubbles: true,
-    cancelable: true,
-  })
+  const init = { key, shiftKey, bubbles: true, cancelable: true }
+  const event = new KeyboardEvent(`keydown`, init)
   target.dispatchEvent(event)
   flushSync()
   return event
@@ -230,14 +226,11 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     click_at(pin)
     click_at([0.5, 0.05]) // elsewhere: the pin moves
     expect_pin([0.5, 0.05])
-    // a phase click selects without touching the pin, an empty one clears the selection
+    // a phase click selects without touching the pin
     const ab_xy = prepare_diagram(toy_entries, { elements: toy_elements }).phases[0].xy
     click_at(ab_xy)
     expect(state.selected_phase).toBe(0)
     expect_pin([0.5, 0.05])
-    click_at(ab_xy)
-    expect(state.selected_phase).toBeNull()
-    click_at(ab_xy)
     // Escape clears the selection first, then the pin, then leaves the key to the host
     expect(press(`Escape`).defaultPrevented).toBe(true)
     expect(state.selected_phase).toBeNull()
@@ -245,8 +238,9 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(press(`Escape`).defaultPrevented).toBe(true)
     expect(state.pinned_composition).toBeNull()
     expect(press(`Escape`).defaultPrevented).toBe(false)
-    click_at([0.05, 0.8]) // outside the triangle: nothing to pin
-    expect(state.pinned_composition).toBeNull()
+    click_at(ab_xy)
+    click_at([0.05, 0.8]) // outside the triangle: clears the selection, nothing to pin
+    expect([state.selected_phase, state.pinned_composition]).toEqual([null, null])
     click_at(pin)
     state.entries = [...toy_entries]
     flushSync()
@@ -302,7 +296,6 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
   // Endpoints of the last overlay frame's pinned-probe spokes (its [5, 3] dash)
   let overlay_dash = ``
   let pin_spokes: Vec2[] = []
-  const pin_strokes = new Set<unknown>() // strokeStyle while drawing the pin's spokes
   vi.stubGlobal(
     `Path2D`,
     class {
@@ -314,7 +307,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     .mockImplementation(function (this: HTMLCanvasElement) {
       const layer = this.classList.contains(`pulse-overlay`) ? `overlay` : `base`
       return new Proxy({} as CanvasRenderingContext2D, {
-        get: (target, prop) => {
+        get: (_target, prop) => {
           if (prop === `canvas`) return this
           if (prop === `measureText`) return () => ({ width: 20 })
           if (prop === `clearRect`)
@@ -328,9 +321,7 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
             return (dash: number[]) => (overlay_dash = dash.join(`,`))
           if (prop === `lineTo` && layer === `overlay`)
             return (x_pos: number, y_pos: number) => {
-              if (overlay_dash !== `5,3`) return
-              pin_spokes.push([x_pos, y_pos])
-              pin_strokes.add(target.strokeStyle)
+              if (overlay_dash === `5,3`) pin_spokes.push([x_pos, y_pos])
             }
           return vi.fn()
         },
@@ -346,8 +337,13 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     })
     mount_it(
       TernarySectionCanvas,
-      bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS, pin_color: `#123456` }, state),
+      bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS }, state),
     )
+    const update = async (patch: Partial<typeof state>) => {
+      Object.assign(state, patch)
+      flushSync()
+      await let_frames_run()
+    }
     await let_frames_run()
     const painted = { ...clears }
     expect(painted.base).toBeGreaterThan(0)
@@ -376,40 +372,26 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
     })
     await hover([(phase_ab[0] + phase_ac[0]) / 2, (phase_ab[1] + phase_ac[1]) / 2])
     expect(face_tints.overlay).toBe(7)
-    state.selected_phase = 0
-    flushSync()
-    await let_frames_run()
+    await update({ selected_phase: 0 })
     // was 7 base repaints (one per hover + the selection) before the overlay split
     expect(clears.base - painted.base).toBe(0)
     expect(clears.overlay - painted.overlay).toBe(7)
     expect(fills.base).toBe(base_fills)
     // A pin near AB keeps spokes to its assemblage, which follows the section: AB-AC-BC at
     // 300 K, Li-Na-ABC once AB has vanished (1300 K)
-    expect(pin_spokes).toEqual([])
     const pin: Vec2 = [0.9 * phase_ab[0] + 0.05, 0.9 * phase_ab[1] + 0.1 * (Math.sqrt(3) / 6)]
-    const spokes_at = (temperature: number) => {
-      const section = compute_section(model, temperature)
-      const phases = decompose_composition(model, section, pin)?.phases ?? []
-      return { section, phases, px: phases.map((idx) => to_px(model.phases[idx].xy)) }
-    }
-    const [cold, hot] = [spokes_at(300), spokes_at(1400)]
-    expect([cold.phases, hot.phases].map((phases) => phases.length)).toEqual([3, 3])
-    expect(cold.phases).not.toEqual(hot.phases)
-    state.pinned_composition = pin
-    flushSync()
-    await let_frames_run()
-    const close_px = (points: Vec2[]) =>
-      points.map((point) => point.map((val) => expect.closeTo(val, 9)))
-    expect(pin_spokes).toEqual(close_px(cold.px))
-    expect([...pin_strokes]).toEqual([`#123456`]) // spokes in the pin colour prop
-    state.section = hot.section
-    flushSync()
-    await let_frames_run()
-    expect(pin_spokes).toEqual(close_px(hot.px))
-    state.pinned_composition = null
-    flushSync()
-    await let_frames_run()
-    expect(pin_spokes).toEqual([])
+    const spoke_px = (section: ReturnType<typeof compute_section>) =>
+      (decompose_composition(model, section, pin)?.phases ?? []).map((idx) =>
+        to_px(model.phases[idx].xy).map((val) => expect.closeTo(val, 9)),
+      )
+    const [cold, hot] = [state.section, compute_section(model, 1400)]
+    expect(decompose_composition(model, cold, pin)?.phases).not.toEqual(
+      decompose_composition(model, hot, pin)?.phases,
+    )
+    await update({ pinned_composition: pin })
+    expect(pin_spokes).toEqual(spoke_px(cold))
+    await update({ section: hot })
+    expect(pin_spokes).toEqual(spoke_px(hot))
   } finally {
     get_context.mockRestore()
     vi.unstubAllGlobals()

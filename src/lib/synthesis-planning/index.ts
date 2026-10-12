@@ -30,8 +30,6 @@ export {
   downhill_windows,
   make_reaction,
   reaction_energy_at_temperature,
-  reaction_slice_lines,
-  slice_point_on_hull,
 } from './thermo'
 export type { BalancedReaction, BalanceFailure } from './thermo'
 export type * from './types'

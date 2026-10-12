@@ -436,16 +436,6 @@ describe(`calculate_all_pair_rdfs`, () => {
 })
 
 describe(`rdf_bin_sites`, () => {
-  // Undo the ideal-gas normalisation: the raw (ordered-pair) count the histogram binned
-  const raw_counts = (pattern: RdfPattern, structure: Crystal, pair_weight: number) => {
-    const { volume } = math.calc_lattice_params(structure.lattice.matrix)
-    const width = bin_width(pattern)
-    return pattern.g_r.map(
-      (g_val, idx) => (g_val * pair_weight * shell_volume(pattern.r[idx], width)) / volume,
-    )
-  }
-  const count = (structure: Crystal, element: string) =>
-    structure.sites.filter(({ species }) => species[0].element === element).length
   const options = { cutoff: 8, n_bins: 80 }
 
   // Re-finding a bin's pairs with a search cut at that bin's upper edge must recover exactly
@@ -457,46 +447,30 @@ describe(`rdf_bin_sites`, () => {
     [`Lu-Al partial Al-Lu`, lu_al_structure, [`Al`, `Lu`]],
     [`Lu-Al partial Al-Al`, lu_al_structure, [`Al`, `Al`]],
     [`rocksalt partial Cl-Na`, make_rocksalt(), [`Cl`, `Na`]],
-  ])(
-    `%s: n_pairs per bin equals the histogram's raw count`,
-    (_name, structure, element_pair) => {
-      const pattern = element_pair
-        ? calculate_all_pair_rdfs(structure, options).find(
-            (pair) => pair.element_pair?.join(`-`) === element_pair.join(`-`),
-          )
-        : calculate_rdf(structure, options)
-      if (!pattern) throw new Error(`no ${element_pair} pattern`)
-      const n_sites = structure.sites.length
-      const pair_weight = element_pair
-        ? count(structure, element_pair[0]) * count(structure, element_pair[1])
-        : n_sites * n_sites
-      const expected = raw_counts(pattern, structure, pair_weight)
-      const found = expected.map(
-        (_count, bin_idx) =>
-          rdf_bin_sites(structure, { ...options, bin_idx, element_pair }).n_pairs,
-      )
-      expect(
-        Math.max(...found.map((n_pairs, idx) => Math.abs(n_pairs - expected[idx]))),
-      ).toBeLessThan(1e-9)
-      expect(found.some((n_pairs) => n_pairs > 0)).toBe(true)
-    },
-  )
-
-  test(`partial bin lists centres of the first element and partners of the second`, () => {
-    const pattern = calculate_all_pair_rdfs(lu_al_structure, options).find(
-      (pair) => pair.element_pair?.join(`-`) === `Al-Lu`,
-    )
-    const bin_idx = pattern?.g_r.findIndex((g_val) => g_val > 0) ?? -1
-    const { site_indices, neighbor_indices, n_pairs } = rdf_bin_sites(lu_al_structure, {
-      ...options,
-      bin_idx,
-      element_pair: [`Al`, `Lu`],
-    })
-    const element_of = (idx: number) => lu_al_structure.sites[idx].species[0].element
-    expect(n_pairs).toBeGreaterThan(0)
-    expect(site_indices.every((idx) => element_of(idx) === `Al`)).toBe(true)
-    expect(neighbor_indices.every((idx) => element_of(idx) === `Lu`)).toBe(true)
-    expect(site_indices).toEqual(site_indices.toSorted((idx_a, idx_b) => idx_a - idx_b))
+  ])(`%s: each bin's pairs are the ones the histogram counted`, (_name, structure, pair) => {
+    const [center_species, neighbor_species] = pair ?? []
+    const pattern = calculate_rdf(structure, { ...options, center_species, neighbor_species })
+    const element_of = (idx: number) => structure.sites[idx].species[0].element
+    const count = (element: string) =>
+      structure.sites.filter((_site, idx) => element_of(idx) === element).length
+    const pair_weight = pair ? count(pair[0]) * count(pair[1]) : structure.sites.length ** 2
+    const { volume } = math.calc_lattice_params(structure.lattice.matrix)
+    let [max_err, total_pairs] = [0, 0]
+    for (const [bin_idx, g_val] of pattern.g_r.entries()) {
+      // undo the ideal-gas normalisation: the raw (ordered-pair) count the histogram binned
+      const shell = shell_volume(pattern.r[bin_idx], bin_width(pattern))
+      const raw_count = (g_val * pair_weight * shell) / volume
+      const found = rdf_bin_sites(structure, { ...options, bin_idx, element_pair: pair })
+      max_err = Math.max(max_err, Math.abs(found.n_pairs - raw_count))
+      total_pairs += found.n_pairs
+      // a partial's centres carry its first element, their partners its second
+      if (pair) {
+        expect(found.site_indices.every((idx) => element_of(idx) === pair[0])).toBe(true)
+        expect(found.neighbor_indices.every((idx) => element_of(idx) === pair[1])).toBe(true)
+      }
+    }
+    expect(max_err).toBeLessThan(1e-9)
+    expect(total_pairs).toBeGreaterThan(0)
   })
 
   test.each([-1, 80, 2.5])(`rejects bin_idx %s outside the 80-bin grid`, (bin_idx) => {

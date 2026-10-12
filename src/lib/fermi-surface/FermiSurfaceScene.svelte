@@ -65,12 +65,9 @@
     // Fermi surface styling
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
-    // Per-vertex property the surfaces are coloured by in `property` mode (default: the first)
-    property_name: requested_property,
-    // [min, max] of the colour scale; undefined fits the property's finite values
-    color_range,
-    // Display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
-    property_label,
+    property_name: requested_property, // coloured by in `property` mode (default: the first)
+    color_range, // colour-scale [min, max]; unset fits the property's finite values
+    property_label, // display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
@@ -84,10 +81,8 @@
     clip_axis = DEFAULTS.fermi.clip_axis,
     clip_position = DEFAULTS.fermi.clip_position,
     clip_flip = DEFAULTS.fermi.clip_flip,
-    // 2D slice to mark in 3D: the plane (h k l)·k = distance, cut to the data's cell
-    slice_plane,
-    // k-point (Cartesian Å⁻¹) to mark with a dot, e.g. the cursor on a FermiSlice
-    k_marker = null,
+    slice_plane, // the 2D slice plane (h k l)·k = distance to mark, cut to the data's cell
+    k_marker = null, // k-point (Cartesian Å⁻¹) to mark with a dot, e.g. a FermiSlice's cursor
     k_path,
     scene = $bindable(),
     camera = $bindable(),
@@ -107,8 +102,7 @@
       property_label?: string
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
-      // a band structure's k-path to draw, e.g. from a band plot beside the viewer (KPath props;
-      // its hovered point is the k_marker dot, drawn over the sheets)
+      // a band structure's k-path to draw (its hovered point is the k_marker dot)
       k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
@@ -362,9 +356,8 @@
     threlte.invalidate()
   })
 
-  // Where the 2D slice cuts the cell the surfaces live in: the Γ-centred parallelepiped for
-  // band grids, the Brillouin zone for precomputed Wigner-Seitz meshes. Empty when the plane
-  // misses the cell or its Miller indices are degenerate.
+  // Where the 2D slice cuts the cell the surfaces live in (Γ-centred parallelepiped or zone);
+  // empty when the plane misses it
   const slice_polygon = $derived.by((): Vec3[] => {
     if (!slice_plane || !fermi_data) return []
     const { miller_indices, distance } = slice_plane

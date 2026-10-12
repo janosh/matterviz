@@ -1,8 +1,8 @@
 // Links a band plot to the band structure's k-path drawn in a Brillouin zone: hovering a band
-// point marks its k-point and shades its path branch (e.g. Γ→X) on the k-path, hovering the
-// k-path marks the q-point on the bands (BrillouinBandsDos, PhononModeExplorer,
-// FermiSurfaceBands).
+// point marks its k-point and shades its path branch (e.g. Γ→X), hovering the k-path marks the
+// q-point on the bands
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import { is_finite_vec3 } from '#lib/math.js'
 import type { BandPointMeta } from './helpers'
 import {
   branch_qpoint_range,
@@ -12,20 +12,18 @@ import {
 } from './helpers'
 import type { BaseBandStructure } from './types'
 
-export type BandPointRef = Pick<BandPointMeta, `band_idx` | `qpoint_idx` | `frac_coords`>
-
 // The band and q-point a Bands point stands for, read from its metadata (null for points
 // without band metadata, e.g. a caller's own series)
 export const band_point_meta = (
   metadata: Record<string, unknown> | null | undefined,
-): BandPointRef | null => {
+): Pick<BandPointMeta, `band_idx` | `qpoint_idx` | `frac_coords`> | null => {
   const { band_idx, qpoint_idx, frac_coords } = metadata ?? {}
   if (typeof band_idx !== `number` || typeof qpoint_idx !== `number`) return null
-  const is_vec3 =
-    Array.isArray(frac_coords) &&
-    frac_coords.length === 3 &&
-    frac_coords.every((coord) => typeof coord === `number`)
-  return { band_idx, qpoint_idx, frac_coords: is_vec3 ? (frac_coords as Vec3) : null }
+  return {
+    band_idx,
+    qpoint_idx,
+    frac_coords: is_finite_vec3(frac_coords) ? frac_coords : null,
+  }
 }
 
 // The parts of a Bands on_point_hover event the link reads (a ScatterHandlerEvent fits)
@@ -34,15 +32,13 @@ export interface BandHover {
   metadata?: Record<string, unknown> | null
 }
 
-export interface BandPathLinkInputs {
+export function create_band_path_link(inputs: {
   band_struct: () => BaseBandStructure | null | undefined // whose k-path the zone draws
   k_lattice: () => Matrix3x3 | undefined // reciprocal lattice incl. 2π, as the zone's
-  // Bands' x_positions. Needed only when Bands plots more structures than band_struct: their
-  // points carry their own q-point indices, so they are mapped onto band_struct's path by x
+  // Bands' x_positions, needed only when Bands plots more structures than band_struct: their
+  // points carry their own q-point indices, so they map onto band_struct's path by x
   x_positions?: () => Record<string, Vec2> | undefined
-}
-
-export function create_band_path_link(inputs: BandPathLinkInputs) {
+}) {
   const k_path_points = $derived.by((): Vec3[] => {
     const [band_struct, k_lattice] = [inputs.band_struct(), inputs.k_lattice()]
     return band_struct && k_lattice ? extract_k_path_points(band_struct, k_lattice) : []
@@ -99,12 +95,8 @@ export function create_band_path_link(inputs: BandPathLinkInputs) {
       return highlighted_qpoint_range
     },
     // Bands on_point_hover (null when the pointer leaves the bands)
-    hover_band: (event: BandHover | null): void => {
-      band_hover = event
-    },
+    hover_band: (event: BandHover | null) => (band_hover = event),
     // BrillouinZone on_kpath_hover
-    hover_path: (qpoint_idx: number | null): void => {
-      path_qpoint = qpoint_idx
-    },
+    hover_path: (qpoint_idx: number | null) => (path_qpoint = qpoint_idx),
   }
 }

@@ -197,15 +197,10 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
 // named); a sheet without it keeps its flat colour, and the tooltip carries every property at
 // the hit vertex
 test(`colours by the selected property and reports all properties on hover`, () => {
-  const with_props = (band_index: number, properties: Record<string, number[]>) => ({
-    ...sheet(band_index),
-    properties: Object.fromEntries(
-      Object.entries(properties).map(([name, values]) => [name, Float32Array.from(values)]),
-    ),
-  })
+  const f32 = (values: number[]) => Float32Array.from(values)
   const data = make_fermi_surface([
-    with_props(0, { λ: [0, 0.5, 1], Δ: [1, 2, NaN] }),
-    with_props(2, { λ: [0.2, 0.2, 0.2] }),
+    { ...sheet(0), properties: { λ: f32([0, 0.5, 1]), Δ: f32([1, 2, NaN]) } },
+    { ...sheet(2), properties: { λ: f32([0.2, 0.2, 0.2]) } },
   ])
   const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
     fermi_data: data,
@@ -243,17 +238,15 @@ test(`colours by the selected property and reports all properties on hover`, () 
 // unit cell), the Γ-centred unit cell for band-grid (parallelepiped) surfaces. Moving it
 // rebuilds the geometry; (0 0 0) or a plane outside the cell draws nothing.
 test(`marks the slice plane where it cuts the data's cell`, () => {
-  const zone_lattice: Matrix3x3 = [
-    [0.6, 0, 0],
-    [0, 0.6, 0],
-    [0, 0, 0.6],
-  ]
+  // oxfmt-ignore
+  const zone_lattice: Matrix3x3 = [[0.6, 0, 0], [0, 0.6, 0], [0, 0, 0.6]]
+  const edges = centered_cell_edges(zone_lattice)
   const bz_data = {
     vertices: [],
     faces: [],
     order: 1,
     volume: 0.216,
-    edges: centered_cell_edges(zone_lattice),
+    edges,
     k_lattice: zone_lattice,
   }
   const props = $state({
@@ -262,36 +255,27 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
     slice_plane: { miller_indices: [0, 0, 1] as Vec3, distance: 0.25 },
   })
   mount_scene(props)
-  // outline corners as [x, y, z] rows
-  const outline = (): Vec3[] => {
+  // flat [x, y, z, ...] outline positions and their values along one axis
+  const outline = () => {
     const node = threlte_stub.nodes.findLast(({ tag }) => tag === `Line`)
-    const positions = (node?.props.geometry as BufferGeometry | undefined)?.getAttribute(
-      `position`,
-    ).array
-    return positions
-      ? Array.from({ length: positions.length / 3 }, (_, idx) => [
-          positions[3 * idx],
-          positions[3 * idx + 1],
-          positions[3 * idx + 2],
-        ])
-      : []
+    const geometry = node?.props.geometry as BufferGeometry | undefined
+    return Array.from(geometry?.getAttribute(`position`).array ?? [])
   }
-  const max_abs = (axis: number) => Math.max(...outline().map((row) => Math.abs(row[axis])))
+  const along = (axis: number) => outline().filter((_, idx) => idx % 3 === axis)
+  const max_abs_x = () => Math.max(...along(0).map(Math.abs))
   // a closed Line (WebGPU has no LineLoop): the square z = 0.25 with its first corner repeated
-  expect(outline().map((row) => row[2])).toEqual([0.25, 0.25, 0.25, 0.25, 0.25])
-  expect(outline().at(-1)).toEqual(outline()[0])
-  expect(max_abs(0)).toBeCloseTo(0.3, 6) // the zone's half-width, not the unit cell's
+  expect(along(2)).toEqual([0.25, 0.25, 0.25, 0.25, 0.25])
+  expect(outline().slice(-3)).toEqual(outline().slice(0, 3))
+  expect(max_abs_x()).toBeCloseTo(0.3, 6) // the zone's half-width, not the unit cell's
   props.fermi_data = { ...fermi_data, reciprocal_cell: `parallelepiped` }
   flushSync()
-  expect(max_abs(0)).toBeCloseTo(0.5, 6) // band-grid surfaces fill the Γ-centred unit cell
+  expect(max_abs_x()).toBeCloseTo(0.5, 6) // band-grid surfaces fill the Γ-centred unit cell
   props.slice_plane = { miller_indices: [0, 0, 1], distance: -0.4 }
   flushSync()
-  expect(outline().every((row) => Math.abs(row[2] + 0.4) < 1e-6)).toBe(true)
-  for (const miller_indices of [
-    [0, 0, 0],
-    [0, 0, 1],
-  ] as Vec3[]) {
-    // (0 0 0) defines no plane; (0 0 1) at 0.8 lies outside the cell
+  expect(along(2).every((coord) => Math.abs(coord + 0.4) < 1e-6)).toBe(true)
+  // (0 0 0) defines no plane; (0 0 1) at 0.8 lies outside the cell
+  // oxfmt-ignore
+  for (const miller_indices of [[0, 0, 0], [0, 0, 1]] as Vec3[]) {
     props.slice_plane = { miller_indices, distance: 0.8 }
     flushSync()
     expect(threlte_stub.nodes.some(({ tag }) => tag === `Line`)).toBe(false)
@@ -303,11 +287,8 @@ test(`marks the slice plane where it cuts the data's cell`, () => {
 // sphere of its own here) until it clears with null
 test(`k_path draws the band path, reports path hovers and keeps the on-top marker`, () => {
   const on_kpath_hover = vi.fn()
-  const k_path_points: Vec3[] = [
-    [0, 0, 0],
-    [0.5, 0, 0],
-    [0.5, 0.5, 0],
-  ]
+  // oxfmt-ignore
+  const k_path_points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]]
   const scene_props = $state<ComponentProps<typeof FermiSurfaceScene>>({
     k_path: { k_path_points, on_kpath_hover },
     k_marker: k_path_points[1],

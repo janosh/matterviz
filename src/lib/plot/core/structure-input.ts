@@ -15,10 +15,9 @@ export interface StructureEntry {
   color?: string
 }
 
-// Sites of one input structure that a hovered plot element (bar, bin, curve point) counts, so
-// a linked structure viewer can highlight them. `neighbor_indices` holds the partner atoms
-// where the quantity involves several sites (bond-angle outer atoms, RDF pair partners).
-// Indices refer to the input structure's own sites; a periodic partner maps to its base site.
+// Sites of one input structure counted by a hovered plot element, for a linked structure viewer
+// to highlight. `neighbor_indices`: partner atoms (bond-angle outer atoms, RDF pair partners),
+// with periodic images mapped to their base site.
 export interface StructureSiteHighlight {
   label: string
   structure: AnyStructure

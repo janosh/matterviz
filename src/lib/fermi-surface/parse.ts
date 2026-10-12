@@ -152,8 +152,7 @@ function parse_bxsf(content: string): BandGridData {
     fermi_energy,
     n_bands,
     n_spins: 1,
-    // Files numbering each spin channel from 1 in one block repeat numbers, which then cannot
-    // identify bands: those keep positional indices
+    // numbers repeated (each spin channel counted from 1) cannot identify bands: keep positions
     ...(new Set(band_numbers).size === n_bands && {
       band_indices: band_numbers.map((band_number) => band_number - 1),
     }),
@@ -236,15 +235,13 @@ function parse_frmsf(content: string): BandGridData {
   }
 }
 
-// Property names of an FRMSF colour block's components: real, complex or 3D vector (e.g. the
-// Fermi velocity), whose magnitude is added
-const FRMSF_COMPONENT_NAMES = [[DEFAULT_PROPERTY_NAME], [`Re`, `Im`], [`x`, `y`, `z`]]
-const FRMSF_MAGNITUDE_NAMES = [undefined, `|z|`, `|v|`]
+// Property names of a real, complex or 3D-vector FRMSF colour block, then its magnitude
+const FRMSF_NAMES = [[DEFAULT_PROPERTY_NAME], [`Re`, `Im`, `|z|`], [`x`, `y`, `z`, `|v|`]]
 
-// FermiSurfer's optional colour block after the energies: 1 (real), 2 (complex) or 3 (vector)
-// values per grid point, stored component-major, i.e. [component][band][k] (checked on the Pb
-// velocity sample, whose components match the band-energy gradients). `nan` marks a missing
-// value. Undefined without a block; a partial block or a fourth component throws.
+// FermiSurfer's optional colour block after the energies: 1-3 values per grid point stored
+// component-major, [component][band][k] (checked on the Pb velocity sample, whose components
+// match the band-energy gradients); `nan` marks a missing value. A partial block or a fourth
+// component throws.
 function parse_frmsf_colors(
   content: string,
   start: number,
@@ -253,16 +250,12 @@ function parse_frmsf_colors(
 ): BandGridData[`properties`] {
   const n_points = k_grid[0] * k_grid[1] * k_grid[2]
   const block_size = n_bands * n_points
-  const skip_space = (pos: number) => {
-    while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
-    return pos
-  }
   const next_token = (pos: number) => content.slice(pos).trim().split(/\s/, 1)[0]
   const blocks: Float64Array[] = []
   // Each block parses from the whitespace before it, so a text line there ends it as in
   // parse_float_block rather than reading as an unreadable number
   let pos = start
-  while (skip_space(pos) < content.length) {
+  while (next_token(pos)) {
     if (blocks.length === 3) {
       throw new Error(
         `FRMSF colour block: more than 3 values per grid point at '${next_token(pos)}'`,
@@ -288,19 +281,15 @@ function parse_frmsf_colors(
     Array.from({ length: n_bands }, (_, band_idx) =>
       make_band_grid(block.subarray(band_idx * n_points, (band_idx + 1) * n_points), k_grid),
     )
-  const names = FRMSF_COMPONENT_NAMES[blocks.length - 1]
+  const names = FRMSF_NAMES[blocks.length - 1]
   const properties = Object.fromEntries(
     blocks.map((block, comp_idx) => [names[comp_idx], [band_grids(block)]]),
   )
-  const magnitude_name = FRMSF_MAGNITUDE_NAMES[blocks.length - 1]
-  if (magnitude_name) {
-    const magnitude = new Float64Array(block_size)
-    for (let idx = 0; idx < block_size; idx++) {
-      let sum_sq = 0
-      for (const block of blocks) sum_sq += block[idx] ** 2
-      magnitude[idx] = Math.sqrt(sum_sq)
-    }
-    properties[magnitude_name] = [band_grids(magnitude)]
+  if (blocks.length > 1) {
+    const magnitude = Float64Array.from({ length: block_size }, (_, idx) =>
+      Math.sqrt(blocks.reduce((sum_sq, block) => sum_sq + block[idx] ** 2, 0)),
+    )
+    properties[names[blocks.length]] = [band_grids(magnitude)]
   }
   return properties
 }
@@ -451,13 +440,9 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
     )
   }
   const { k_grid } = json
-  // Flatten one [spin][band][kx][ky][kz] field. Properties map null (JSON's NaN, a point
-  // without a value) to NaN, which Float64Array.set would turn into 0.
-  const flatten_bands = (
-    field: unknown,
-    label: string,
-    nulls_to_nan = false,
-  ): BandEnergyGrid[][] => {
+  // Flatten one [spin][band][kx][ky][kz] field, null (JSON's NaN: no value) to NaN, which
+  // Float64Array.set would turn into 0
+  const flatten_bands = (field: unknown, label: string): BandEnergyGrid[][] => {
     if (!Array.isArray(field))
       throw new TypeError(`BandGridData JSON: ${label} is not an array`)
     return field.map((bands, spin_idx) => {
@@ -472,11 +457,9 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
           throw new TypeError(`BandGridData JSON: ${at} is not a [kx][ky][kz] grid`)
         }
         const grid = flatten_grid(
-          nulls_to_nan
-            ? band.map((plane: (number | null)[][]) =>
-                plane.map((row) => row.map((val) => val ?? NaN)),
-              )
-            : band,
+          band.map((plane: (number | null)[][]) =>
+            plane.map((row) => row.map((val) => val ?? NaN)),
+          ),
         )
         if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
           throw new Error(
@@ -488,15 +471,13 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
     })
   }
   const energies = flatten_bands(json.energies, `energies`)
+  const layout = (field: BandEnergyGrid[][]) => field.map((bands) => bands.length).join(`/`)
   const properties =
     json.properties &&
     Object.fromEntries(
       Object.entries(json.properties).map(([name, field]) => {
-        const bands = flatten_bands(field, `properties.${name}`, true)
-        if (
-          bands.length !== energies.length ||
-          bands.some((spin_bands, spin_idx) => spin_bands.length !== energies[spin_idx].length)
-        ) {
+        const bands = flatten_bands(field, `properties.${name}`)
+        if (layout(bands) !== layout(energies)) {
           throw new Error(
             `BandGridData JSON: properties.${name} needs the [spin][band] layout of energies`,
           )
@@ -507,7 +488,7 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
   const band_indices = json.band_indices ?? []
   if (json.band_indices && energies.some((bands) => bands.length !== band_indices.length)) {
     throw new Error(
-      `BandGridData JSON: band_indices lists ${band_indices.length} bands but energies hold ${energies.map((bands) => bands.length).join(`/`)}`,
+      `BandGridData JSON: band_indices lists ${band_indices.length} bands but energies hold ${layout(energies)}`,
     )
   }
   const valid = band_indices.every(

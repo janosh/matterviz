@@ -432,17 +432,14 @@ const as_mark = (phase: PhaseRef): HullMark => ({
   label: phase.formula,
 })
 
-// Where a route's reaction slice cuts the full chemical-system hull: the tie-lines between
-// each pair of solid precursors (one line for two precursors, the simplex edges for more)
+// Where a route's reaction slice cuts the full hull: tie-lines between each solid precursor pair
 export const reaction_slice_lines = (route: SynthesisRoute) =>
   solid_reactants(route).flatMap((from, idx, solids) =>
     solids.slice(idx + 1).map((to) => ({ from: as_mark(from), to: as_mark(to) })),
   )
 
-// A point of the reaction slice (atom fractions of the solid precursors, keyed by formula, and
-// the reaction energy per atom of mixture) placed on the full hull: the mixture's composition at
-// the mixed precursors' formation energy plus the reaction energy. In a closed system a product
-// lands exactly on its own entry.
+// A slice point (precursor fractions by formula, reaction energy/atom) on the full hull: the
+// mix's composition at its precursors' E_form plus the reaction energy
 export function slice_point_on_hull(
   route: SynthesisRoute,
   mixture: Record<string, number>,
@@ -450,18 +447,7 @@ export function slice_point_on_hull(
   label?: string,
 ): HullMark {
   const solids = solid_reactants(route)
-  const unknown = Object.keys(mixture).filter(
-    (formula) => !solids.some((phase) => phase.formula === formula),
-  )
-  if (unknown.length > 0) {
-    throw new Error(
-      `slice_point_on_hull: ${unknown.join(`, `)} not among the solid precursors of ${route.reaction.equation}`,
-    )
-  }
   const total = solids.reduce((sum, phase) => sum + (mixture[phase.formula] ?? 0), 0)
-  if (!(total > 0)) {
-    throw new Error(`slice_point_on_hull: empty mixture ${JSON.stringify(mixture)}`)
-  }
   const composition: Record<string, number> = {}
   let e_form = reaction_energy
   for (const phase of solids) {

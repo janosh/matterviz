@@ -247,14 +247,10 @@ export const container_pointer = (
 export const domain_formula_text = (formula: string): string =>
   get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` })
 
-// Domain key (reduced formula, elements sorted) of any formula spelling, so hosts can name a
-// domain the way they display it: Li2O2, O2Li2 and LiO all key the LiO domain. Lives here, not
-// in compute.ts, since parsing pulls element data into the worker bundle. Throws when unparsable.
-export const formula_to_domain_key = (formula: string): string =>
-  formula_key_from_composition(parse_formula(formula))
-// Hovered domain, else the host's highlighted formula (no domain here: highlights none)
+// Hovered domain, else the domain key (reduced formula) of the host's formula in any spelling
+// (Li2O2 → LiO). Not in compute.ts: parsing pulls element data into the worker bundle.
 export const highlight_key_of = (hovered?: string, external?: string | null): string | null =>
-  hovered ?? (external ? formula_to_domain_key(external) : null)
+  hovered ?? (external ? formula_key_from_composition(parse_formula(external)) : null)
 
 // [value, label] pairs for the color-mode and color-scale <select>s in both panes
 export const CHEMPOT_COLOR_MODE_OPTIONS = [

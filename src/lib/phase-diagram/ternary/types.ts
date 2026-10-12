@@ -171,9 +171,7 @@ export const TERNARY_COLORS = Object.freeze({
   stable: DEFAULT_HULL_COLORS.stable,
   face: `#4caf50`,
   selected: `#66f0ff`,
-  // Pinned composition probe: magenta, a hue no phase colour uses (blue stable phases, green
-  // tie-triangles, viridis unstable phases, orange highlights, yellow cutting plane, cyan
-  // selection). IsobaricTernaryPhaseDiagram passes a theme-tuned shade from CSS instead.
+  // Pinned probe: magenta, a hue no other ternary colour uses (overridden by a CSS theme shade)
   pin: `#c2185b`,
   highlight: `#ff9800`,
   element: `#9e9e9e`,

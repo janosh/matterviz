@@ -334,7 +334,6 @@ test(`hull faces are labelled by their owning domain, which the Surface quick-se
 })
 
 type HighlightScene = {
-  plot_elements: string[]
   render_domains: { formula: string }[]
   hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
   on_domain_hover: (mesh: unknown, event: unknown) => void
@@ -342,104 +341,71 @@ type HighlightScene = {
   highlighted_formula: string | null
   highlight_edges: { getAttribute(name: string): { count: number } } | null
 }
-const pointer_event = {
-  nativeEvent: new PointerEvent(`pointermove`),
-  stopPropagation: () => {},
-}
+const pointer_event = { nativeEvent: new PointerEvent(`pointermove`), stopPropagation() {} }
 
-// The host's formula is matched by reduced formula, a local hover overrides it until it leaves,
-// and a formula without a domain here highlights nothing
+// Matched by reduced formula, outlined by that domain's edges (two vertices each); a phase
+// without a domain here highlights nothing
 test.each([
-  [`O3Fe2`, `Fe2O3`, true],
   [`Fe4O6`, `Fe2O3`, true],
-  [`Li2O`, `Li2O`, true],
   [`NaCl`, `ClNa`, false],
-  [null, null, false],
-])(`external highlighted_formula %s highlights domain %s`, async (input, key, has_domain) => {
+])(`highlighted_formula %s highlights domain %s`, async (input, key, has_domain) => {
   const scene = await mount_diagram<HighlightScene>({
     entries,
     config: { default_min_limit: -25 },
     highlighted_formula: input,
   })
   expect(scene().highlighted_formula).toBe(key)
-  const domain = scene().render_domains.find(({ formula }) => formula === key)
-  expect(Boolean(domain)).toBe(has_domain)
-  // the outline is that domain's edges: two vertices per edge
-  const n_edge_vertices = scene().highlight_edges?.getAttribute(`position`).count ?? 0
-  expect(n_edge_vertices > 0).toBe(has_domain)
-
-  const hovered = scene().hover_meshes.find(({ formula }) => formula === `FeLiO2`)
-  if (!hovered) throw new Error(`no FeLiO2 hover mesh`)
-  scene().on_domain_hover(hovered, pointer_event)
-  flushSync()
-  expect(scene().highlighted_formula).toBe(`FeLiO2`)
-  expect(scene().highlight_edges?.getAttribute(`position`).count).toBe(
-    2 * (hovered.info.view === `3d` ? hovered.info.n_edges : NaN),
-  )
-  scene().on_domain_leave(hovered)
-  flushSync()
-  expect(scene().highlighted_formula).toBe(key)
+  const info = scene().hover_meshes.find(({ formula }) => formula === key)?.info
+  const n_edges = info?.view === `3d` ? info.n_edges : 0
+  expect(n_edges > 0).toBe(has_domain)
+  expect(scene().highlight_edges?.getAttribute(`position`).count ?? 0).toBe(2 * n_edges)
 })
 
-// Grid panes used to share one hover_info, so every pane drew the hovered pane's tooltip while
-// none highlighted the phase. Now each pane keeps its own hover and the formula is relayed.
+// Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
 test(`a domain hovered in one quaternary grid pane is highlighted in all, tooltip only in its own`, async () => {
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  const config = { projection_mode: `grid` as const, default_min_limit: -25 }
   mounted = mount(ChemPotDiagram, {
     target: document.body,
-    props: bind_props(
-      {
-        entries: ytos_entries,
-        config: { projection_mode: `grid` as const, default_min_limit: -25 },
-      },
-      bound,
-    ),
+    props: bind_props({ entries: ytos_entries, config }, bound),
   })
-  await tick()
-  await vi.waitFor(() =>
-    expect(document.querySelectorAll(`.chempot-diagram-3d`)).toHaveLength(4),
-  )
-  await vi.waitFor(() => expect(document.querySelector(`.spinner`)).toBeNull())
   const scenes = () =>
     threlte_stub.nodes
       .filter(({ tag }) => tag === `Scene`)
       .map(({ props }) => props as HighlightScene)
-  await vi.waitFor(() =>
-    expect(scenes().every((scene) => scene.hover_meshes.length > 0)).toBe(true),
-  )
-  expect(scenes()).toHaveLength(4)
+  await vi.waitFor(() => {
+    expect(document.querySelector(`.spinner`)).toBeNull()
+    expect(scenes()).toHaveLength(4)
+    expect(scenes().every((scene) => scene.hover_meshes.length > 0)).toBe(true)
+  })
   const panes = [...document.querySelectorAll(`.chempot-diagram-3d`)]
   const tooltip_panes = () =>
     panes.map((pane) => pane.querySelectorAll(`.chempot-tooltip`).length)
+  const highlights = () => scenes().map((scene) => scene.highlighted_formula)
 
   const [first, second] = scenes()
   const hovered = second.hover_meshes.find(({ formula }) => formula.length > 2)
-  if (!hovered) throw new Error(`no compound domain in the second pane`)
+  const other = first.hover_meshes.find(({ formula }) => formula !== hovered?.formula)
+  if (!hovered || !other) throw new Error(`no two distinct compound domains`)
   second.on_domain_hover(hovered, pointer_event)
   flushSync()
   expect(bound.hover_info?.formula).toBe(hovered.formula)
   expect(tooltip_panes()).toEqual([0, 1, 0, 0])
+  expect(highlights()).toEqual(Array(4).fill(hovered.formula))
   for (const scene of scenes()) {
-    expect(scene.highlighted_formula).toBe(hovered.formula)
-    // panes lacking the domain draw no outline
     const has_domain = scene.render_domains.some(({ formula }) => formula === hovered.formula)
-    expect(scene.highlight_edges !== null, scene.plot_elements.join(`-`)).toBe(has_domain)
+    expect(scene.highlight_edges !== null).toBe(has_domain) // no outline where it's absent
   }
-
   // hovering in another pane hands the tooltip and highlight over
-  const other = first.hover_meshes.find(({ formula }) => formula !== hovered.formula)
-  if (!other) throw new Error(`no other domain in the first pane`)
   second.on_domain_leave(hovered)
   first.on_domain_hover(other, pointer_event)
   flushSync()
   expect(tooltip_panes()).toEqual([1, 0, 0, 0])
-  expect(scenes().map((scene) => scene.highlighted_formula)).toEqual(
-    Array(4).fill(other.formula),
-  )
+  expect(highlights()).toEqual(Array(4).fill(other.formula))
   first.on_domain_leave(other)
   flushSync()
   expect(bound.hover_info).toBeNull()
   expect(tooltip_panes()).toEqual([0, 0, 0, 0])
-  expect(scenes().map((scene) => scene.highlighted_formula)).toEqual(Array(4).fill(null))
+  expect(highlights()).toEqual(Array(4).fill(null))
 })

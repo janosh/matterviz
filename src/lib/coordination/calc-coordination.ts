@@ -61,26 +61,22 @@ export function calc_coordination_nums(
 }
 
 // Sites a CoordinationBarPlot bar counts, one highlight per structure the bar draws from:
-// every site with the bar's coordination number, narrowed to the bar's series (`element` for
-// by_element, `structure_label` for by_structure, neither for combined). Elements are matched
-// by majority species, as cn_histogram_by_element buckets them.
+// every site with the bar's CN, narrowed to its series (`element` for by_element,
+// `structure_label` for by_structure). Elements are matched by majority species, as
+// cn_histogram_by_element buckets them.
 export const coordination_bar_sites = (
   entries: readonly (StructureEntry & { data: CoordinationData })[],
-  {
-    coordination_num,
-    element,
-    structure_label,
-  }: { coordination_num: number; element?: string; structure_label?: string },
+  bar: { coordination_num: number; element?: string; structure_label?: string },
 ): StructureSiteHighlight[] =>
   entries
-    .filter(({ label }) => structure_label === undefined || label === structure_label)
+    .filter(({ label }) => bar.structure_label === undefined || label === bar.structure_label)
     .map(({ label, structure, data }) => ({
       label,
       structure,
       site_indices: data.coordination_nums.flatMap((site_cn, site_idx) =>
-        site_cn === coordination_num &&
-        (element === undefined ||
-          (get_majority_element(structure.sites[site_idx]) ?? `Unknown`) === element)
+        site_cn === bar.coordination_num &&
+        (bar.element === undefined ||
+          (get_majority_element(structure.sites[site_idx]) ?? `Unknown`) === bar.element)
           ? [site_idx]
           : [],
       ),

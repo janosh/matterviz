@@ -64,12 +64,9 @@ describe(`HeatmapMatrixControls`, () => {
       elements_to_axis(symbols ?? [`H`, `Li`, `Be`, `Co`, `Ni`, `Cu`], ordering),
     )
     mount(HeatmapDemo, { target: document.body })
-    const toggles = await vi.waitFor(() => {
-      const found = document.querySelectorAll<HTMLButtonElement>(toggle_sel)
-      expect(found.length).toBeGreaterThanOrEqual(2)
-      return found
-    })
-    for (const toggle of toggles) await fire(toggle)
+    // open both panes: their settings mount on first open
+    await vi.waitFor(() => expect(document.querySelectorAll(toggle_sel)).toHaveLength(2))
+    for (const toggle of document.querySelectorAll<HTMLElement>(toggle_sel)) await fire(toggle)
     const orderings = await vi.waitFor(() => {
       const selects = [
         ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
@@ -82,8 +79,7 @@ describe(`HeatmapMatrixControls`, () => {
     const labels = (idx: number) =>
       [...matrices[idx].querySelectorAll<HTMLElement>(`.x-label`)]
         .toSorted(
-          (label_a, label_b) =>
-            Number(label_a.style.gridColumn) - Number(label_b.style.gridColumn),
+          (lbl_a, lbl_b) => Number(lbl_a.style.gridColumn) - Number(lbl_b.style.gridColumn),
         )
         .map((label) => label.textContent)
     const initial_full = labels(0)

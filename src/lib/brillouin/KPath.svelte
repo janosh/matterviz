@@ -8,15 +8,9 @@
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { untrack } from 'svelte'
   import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
   import type { KPathLabel } from './types'
-  import {
-    bz_mark_sizes,
-    k_path_point_index,
-    k_path_segment_highlight,
-    k_path_segments,
-  } from './geometry'
+  import { bz_mark_sizes, k_path_segment_highlight, k_path_segments } from './geometry'
 
   let {
     k_path_points,
@@ -32,10 +26,8 @@
     k_path_points: Vec3[] // Cartesian k-points (Å⁻¹) along the path
     k_path_labels?: KPathLabel[]
     hovered_k_point?: Vec3 | null
-    // Persistently marked k-points: their label chips are tinted
     highlighted_k_points?: Vec3[]
     hovered_qpoint_index?: number | null
-    // First and last q-point index of a k-path stretch to tint, e.g. the hovered branch
     highlighted_qpoint_range?: Vec2 | null
     on_kpath_hover?: (qpoint_index: number | null) => void
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
@@ -44,15 +36,13 @@
 
   const { invalidate } = useThrelte()
   const mark_sizes = $derived(bz_mark_sizes(size, edge_width))
-  // Label chips are HTML drawn over the canvas and cover the sphere at their point, so a
-  // highlighted point also tints its chip (tolerance scaled to the zone: positions come from
-  // the same fold but may be recomputed by the caller)
-  const is_highlighted = (position: Vec3) =>
-    highlighted_k_points.some((point) => math.euclidean_dist(point, position) < 1e-6 * size)
+  // Same k-point, with a tolerance scaled to the zone: positions come from the same fold but
+  // may be recomputed by the caller
+  const same_point = (point_a: Vec3, point_b: Vec3) =>
+    math.euclidean_dist(point_a, point_b) < 1e-6 * size
 
   // One instanced mesh for all segments plus a wider invisible one for hover, instead of two
-  // meshes (each with its own geometry and material) per segment: band paths run to hundreds
-  // of segments.
+  // meshes per segment: band paths run to hundreds of segments.
   const k_path_segs = $derived(k_path_segments(k_path_points))
   const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
@@ -72,43 +62,39 @@
     kpath_material.dispose()
     kpath_proxy_material.dispose()
   })
-  let kpath_meshes = $state<{ line: InstancedMesh; proxy: InstancedMesh } | null>(null)
-  $effect(() => {
-    const [segments, radius] = [k_path_segs, mark_sizes.kpath]
-    if (!segments.length) {
-      kpath_meshes = null
-      return
-    }
-    const line = new InstancedMesh(kpath_geometry, kpath_material, segments.length)
-    const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, segments.length)
+  const kpath_meshes = $derived.by(() => {
+    const [count, radius] = [k_path_segs.length, mark_sizes.kpath]
+    const line = new InstancedMesh(kpath_geometry, kpath_material, count)
+    const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, count)
     line.raycast = () => undefined
     // lets a host scene give path hovers priority over geometry in front (see FermiSurfaceScene)
     proxy.userData.kpath_proxy = true
     for (const mesh of [line, proxy]) mesh.frustumCulled = false
-    for (const [instance_idx, { from, to }] of segments.entries()) {
+    for (const [instance_idx, { from, to }] of k_path_segs.entries()) {
       write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
       write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, radius * 2)
-      line.setColorAt(instance_idx, KPATH_COLORS.base)
     }
-    kpath_meshes = { line, proxy }
+    return { line, proxy }
+  })
+  $effect(() => {
+    const { line, proxy } = kpath_meshes
     return () => {
       line.dispose()
       proxy.dispose()
     }
   })
-  // the (up to two) segments touching the hovered q-point, and the highlighted stretch
+  // tint the (up to two) segments touching the hovered q-point and the highlighted stretch
   $effect(() => {
-    const [line, hovered, range] = [
-      kpath_meshes?.line,
-      hovered_qpoint_index,
-      highlighted_qpoint_range,
-    ]
-    if (!line?.instanceColor) return
-    for (const [instance_idx, { idx }] of untrack(() => k_path_segs).entries()) {
-      const highlight = k_path_segment_highlight(idx, hovered, range) ?? `base`
-      line.setColorAt(instance_idx, KPATH_COLORS[highlight])
+    const { line } = kpath_meshes
+    for (const [instance_idx, { idx }] of k_path_segs.entries()) {
+      const highlight = k_path_segment_highlight(
+        idx,
+        hovered_qpoint_index,
+        highlighted_qpoint_range,
+      )
+      line.setColorAt(instance_idx, KPATH_COLORS[highlight ?? `base`])
     }
-    line.instanceColor.needsUpdate = true
+    if (line.instanceColor) line.instanceColor.needsUpdate = true
     invalidate()
   })
 
@@ -123,7 +109,7 @@
   }
 </script>
 
-{#if kpath_meshes}
+{#if k_path_segs.length}
   <T is={kpath_meshes.line} dispose={false} />
   <T
     is={kpath_meshes.proxy}
@@ -136,9 +122,10 @@
 <!-- Symmetry point spheres + labels at labeled k-path points -->
 {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
   {#if label}
-    {@const highlighted = is_highlighted(position)}
-    <!-- hovering a label reports its q-point, like hovering the path there -->
-    {@const qpoint_idx = k_path_point_index(k_path_points, position, 1e-6 * size)}
+    <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
+    tints its chip, and hovering one reports its q-point like hovering the path there -->
+    {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
+    {@const qpoint_idx = k_path_points.findIndex((point) => same_point(point, position))}
     <T.Mesh position={[position[0], position[1], position[2]]}>
       <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
       <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />

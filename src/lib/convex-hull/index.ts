@@ -43,7 +43,6 @@ export {
   get_composition_label_entries,
   get_energy_color_scale,
   get_entry_category,
-  HULL_OVERLAY_COLORS,
   get_entry_label,
   get_point_color_for_entry,
   HULL_STABILITY_TOL,
@@ -67,13 +66,11 @@ export {
   compute_quickhull_nd,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
-  get_hull_decomposition,
-  lowest_energy_mixture,
   normalize_hull_composition_keys,
   process_hull_entries,
   process_hull_for_stats,
 } from './thermodynamics'
-export type { HighDimHullResult, HullFacet, LowestEnergyMixture } from './thermodynamics'
+export type { HighDimHullResult, HullFacet } from './thermodynamics'
 export * from './types'
 
 interface BaseConvexHullChildrenProps<AnyDimEntry = PhaseData> {

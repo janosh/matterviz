@@ -10,7 +10,6 @@
     band_carriers,
     centered_cell_edges,
     compute_fermi_slice,
-    pocket_carriers,
     sample_slice_energies,
     slice_axis_label,
     slice_point_to_k,
@@ -43,13 +42,10 @@
     ...rest
   }: {
     fermi_data?: FermiSurfaceData
-    // Band grid the surface was extracted from: enables shading by band energy
+    // the grid, mu and factor the surface was extracted with: enable band-energy shading
     band_data?: BandGridData
-    mu?: number // chemical-potential offset the surface was extracted at
-    interpolation_factor?: number // the surface's grid refinement, so shading matches it
-    // `pockets`: fill each band's pockets, electron solid, hole hatched (see pocket_carriers);
-    // `occupied`: tint each band's filled side (ε < E_F + mu); `energy`: ε − E_F of the band
-    // nearest E_F per point; `none`: contours only. Needs band_data.
+    mu?: number
+    interpolation_factor?: number
     shading?: SliceShading | `none`
     selected_bands?: number[] // bands to show (e.g. the 3D viewer's), all when unset
     marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. hovered in the 3D viewer
@@ -96,14 +92,10 @@
   const shows_band = (band_index: number) =>
     selected_bands === undefined || selected_bands.includes(band_index)
 
-  // Electron or hole pockets per band from its slice contours, named in the legend and choosing
-  // which side the pocket shading fills
+  // Electron or hole carrier per band, named in the legend and picking the side pockets shade
   let carriers = $derived(
     band_data && slice_data
-      ? band_carriers(
-          slice_data,
-          pocket_carriers(band_data, slice_data, { mu, interpolation_factor }),
-        )
+      ? band_carriers(band_data, slice_data, { mu, interpolation_factor })
       : new Map<number, CarrierType>(),
   )
 
@@ -165,9 +157,8 @@
     return canvas.toDataURL()
   })
 
-  // Where the plane cuts the cell the surfaces live in (Γ-centred parallelepiped, or the
-  // Wigner-Seitz zone for folded surfaces), in slice coordinates: contours exist only inside
-  // it, so the (periodic) shading is clipped to it to cover the same area
+  // Where the plane cuts the cell the surfaces live in, in slice coordinates: the (periodic)
+  // shading is clipped to it to cover the same area as the contours
   let cell_section = $derived.by((): Vec2[] | null => {
     if (!slice_data || !fermi_data || !shading_image) return null
     const { plane_normal, plane_distance, in_plane_basis } = slice_data
@@ -260,7 +251,7 @@
         width={right - left}
         height={bottom - top}
         preserveAspectRatio="none"
-        class="fermi-shading"
+        pointer-events="none"
       />
     {/if}
     {#if width && height}
@@ -324,9 +315,6 @@
     stroke: var(--fermi-surface-axis-color, #888);
     stroke-dasharray: 4, 4;
     stroke-width: 1;
-  }
-  .fermi-shading {
-    pointer-events: none;
   }
   .fermi-marker {
     fill: none;

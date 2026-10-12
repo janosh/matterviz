@@ -3,7 +3,6 @@
   import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import { PLOT_COLORS } from '#lib/colors/index.js'
-  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import { PdfPlot, RdfPlot } from '#lib/rdf/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
@@ -74,14 +73,8 @@
   // sign to x-rays, while the Ni-Ni shell stays positive for both
   const nickel_hydride = rock_salt(`Ni`, `H`, 3.73)
 
-  // Hovering an RDF bin highlights the atom pairs behind it, a legend entry the pair's atoms.
-  // One slot per linked structure/RDF section.
-  let rdf_highlights = $state<Record<string, number[]>>({})
-  // Both ends of the hovered pairs (a single structure per linked section)
-  const pair_sites = (highlights: StructureSiteHighlight[] | null): number[] =>
-    highlights
-      ? [...new Set([highlights[0].site_indices, highlights[0].neighbor_indices ?? []].flat())]
-      : []
+  // Hovering an RDF bin highlights the atom pairs behind it, a legend entry the pair's atoms
+  let rdf_highlights = $state.raw(new Map<Crystal, number[]>())
 
   // Amorphous structure
   let n_atoms = $state(200)
@@ -107,14 +100,13 @@
 </script>
 
 {#snippet structure_rdf(
-  key: string,
   structure: Crystal,
   rdf_mode: RdfMode,
   rdf_cutoff: number,
   rdf_bins: number,
 )}
   <section class="demo-2col">
-    <Structure {structure} highlighted_sites={rdf_highlights[key] ?? []} />
+    <Structure {structure} highlighted_sites={rdf_highlights.get(structure) ?? []} />
     <RdfPlot
       structures={structure}
       mode={rdf_mode}
@@ -122,7 +114,12 @@
       n_bins={rdf_bins}
       style="height: 100%"
       on_sites_hover={(highlights) => {
-        rdf_highlights[key] = pair_sites(highlights)
+        // both ends of the hovered pairs (one structure per section)
+        const [hovered] = highlights ?? []
+        const sites = hovered
+          ? [...hovered.site_indices, ...(hovered.neighbor_indices ?? [])]
+          : []
+        rdf_highlights = new Map(rdf_highlights).set(structure, [...new Set(sites)])
       }}
     />
   </section>
@@ -133,7 +130,7 @@
 <div class="bleed-1400">
   <h2 id="element-pair-rdfs">Element-Pair RDFs</h2>
   <LazyDemo label="Element-Pair RDFs">
-    {@render structure_rdf(`al2lu`, structures[`Al₂Lu`], `element_pairs`, cutoff, n_bins)}
+    {@render structure_rdf(structures[`Al₂Lu`], `element_pairs`, cutoff, n_bins)}
   </LazyDemo>
 
   <h2 id="full-rdf">Full RDF</h2>
@@ -185,13 +182,7 @@
 
   <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
   <LazyDemo label="Complex: Bi₂Zr₂O₈">
-    {@render structure_rdf(
-      `bi2zr2o8`,
-      structures[`Bi₂Zr₂O₈`],
-      `element_pairs`,
-      cutoff,
-      n_bins,
-    )}
+    {@render structure_rdf(structures[`Bi₂Zr₂O₈`], `element_pairs`, cutoff, n_bins)}
   </LazyDemo>
 
   <h2 id="compare-structures">Compare Structures</h2>
@@ -254,7 +245,7 @@
   </div>
 
   <LazyDemo label="Amorphous Structure">
-    {@render structure_rdf(`amorphous`, amorphous, amorphous_mode, 10, 100)}
+    {@render structure_rdf(amorphous, amorphous_mode, 10, 100)}
   </LazyDemo>
 
   <h2 id="try-your-own-structure">Try Your Own Structure</h2>

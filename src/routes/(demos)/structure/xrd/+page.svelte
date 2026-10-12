@@ -112,8 +112,7 @@
   }
   const computed = $derived(try_compute(() => ensure_pattern(compute_id)))
 
-  // Linked views: the hovered (else pinned) peak's (hkl) planes are drawn in the structure.
-  // A pin is dropped when another structure is picked, its hkls index a different lattice.
+  // The hovered (else pinned) peak's planes; a new structure drops the pin (other lattice)
   let hovered_peak = $state<XrdPeak | null>(null)
   let selected_peak = $derived.by<XrdPeak | null>(() => {
     void compute_id
@@ -183,8 +182,7 @@
     const struct = computed_struct
     return try_compute(() => struct && compute_saed_pattern(struct, saed_options))
   })
-  // Hovered (else pinned) spot's planes, seen down the zone axis the pattern was computed for.
-  // A pin is dropped with a new structure or zone axis, not with a thickness or kV change.
+  // Likewise for SAED spots, seen down the zone axis; a thickness or kV change keeps the pin
   let hovered_spot = $state<SaedSpot | null>(null)
   const saed_zone_key = $derived(`${compute_id} ${saed.pattern?.zone_axis.join(`,`)}`)
   let selected_spot = $derived.by<SaedSpot | null>(() => {
@@ -193,8 +191,6 @@
   })
   const active_spot = $derived(hovered_spot ?? selected_spot)
   const saed_planes = $derived(diffraction_planes(active_spot ? [active_spot.hkl] : []))
-  // The camera sits on +[uvw] looking back at the cell, the same side as the pattern's viewer,
-  // and rolled so the pattern's right/up in-plane axes are the structure view's too
   const saed_camera = $derived(saed.pattern && saed_camera_pose(saed.pattern))
 
   // Multi-select demo: allow overlaying multiple structures

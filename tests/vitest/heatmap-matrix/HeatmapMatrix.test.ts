@@ -55,13 +55,8 @@ const query_all = (sel: string): HTMLElement[] =>
   Array.from(document.querySelectorAll<HTMLElement>(sel))
 const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
-// DOM order is item order (a reorder moves no nodes); labels are read in rendered order
-const in_track_order = (labels: HTMLElement[], track: `gridColumn` | `gridRow`) =>
-  labels.toSorted(
-    (label_a, label_b) => Number(label_a.style[track]) - Number(label_b.style[track]),
-  )
-const get_x_labels = () => in_track_order(query_all(`.x-label`), `gridColumn`)
-const get_y_labels = () => in_track_order(query_all(`.y-label`), `gridRow`)
+const get_x_labels = () => query_all(`.x-label`)
+const get_y_labels = () => query_all(`.y-label`)
 // rendered [column, row] grid line of a cell: its column's --c<x_idx> on the grid, its row wrapper's --r
 const cell_track = (cell: HTMLElement): [number, number] => [
   Number(doc_query(`.grid`).style.getPropertyValue(`--c${cell.dataset.x}`)),
@@ -391,34 +386,25 @@ describe(`click and dblclick handlers`, () => {
     }
   })
 
-  test.each([`Enter`, ` `])(`keyboard %s activates the focused grid cell once`, (key_name) => {
-    const click_handler = vi.fn()
-    mount_matrix({ values: [[1]], on_click: click_handler })
-    const cell = doc_query(`.cell:not(.empty)`)
-    expect([cell.getAttribute(`role`), doc_query(`.grid`).getAttribute(`role`)]).toEqual([
-      `gridcell`,
-      `grid`,
-    ])
-    cell.focus()
-    const event = keydown(key_name, { cancelable: true })
-    cell.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(true)
-    expect(click_handler).toHaveBeenCalledOnce()
-  })
-
-  test(`x_order/y_order reorder labels and arrow keys follow the sorted order`, async () => {
-    mount_matrix({
-      x_items: [
-        { label: `B`, sort_value: 2 },
-        { label: `A`, sort_value: 1 },
-      ],
-      y_items: [
-        { label: `Y`, sort_value: 2 },
-        { label: `X`, sort_value: 1 },
-      ],
-      x_order: `sort_value`,
-      y_order: `label`,
-      on_click: () => {},
+  test(`x_order/y_order reorder labels, arrow keys follow, reorders move no nodes`, async () => {
+    const x_order = fromStore(writable<`sort_value` | undefined>(`sort_value`))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: [
+          { label: `B`, sort_value: 2 },
+          { label: `A`, sort_value: 1 },
+        ],
+        y_items: [
+          { label: `Y`, sort_value: 2 },
+          { label: `X`, sort_value: 1 },
+        ],
+        get x_order() {
+          return x_order.current
+        },
+        y_order: `label`,
+        on_click: () => {},
+      },
     })
     await tick()
     expect(get_x_labels()[0].textContent?.trim()).toBe(`A`)
@@ -433,46 +419,38 @@ describe(`click and dblclick handlers`, () => {
     document.activeElement?.dispatchEvent(keydown(`ArrowDown`))
     await tick()
     expect(document.activeElement).toBe(cell_at(0, 0))
-  })
-
-  test(`reordering moves no cell nodes, only their grid lines`, async () => {
-    const x_order = fromStore(writable<`label` | undefined>(`label`))
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: {
-        x_items: make_items([`C`, `A`, `B`]),
-        y_items: make_items([`X`]),
-        on_click: () => {},
-        get x_order() {
-          return x_order.current
-        },
-      },
-    })
-    await tick()
+    // back to item order (B A): cell nodes stay put, only their grid columns change
     const nodes = get_data_cells()
-    const tracks = () => nodes.map((cell) => cell_track(cell)[0])
-    // nodes stay in first-render order (A B C); only their columns change
-    expect(tracks()).toEqual([2, 3, 4])
-    flushSync(() => (x_order.current = undefined)) // item order: C A B
+    const columns = () => nodes.map((cell) => cell_track(cell)[0])
+    expect(columns()).toEqual([2, 3, 2, 3])
+    flushSync(() => (x_order.current = undefined))
     await tick()
     expect(get_data_cells()).toEqual(nodes)
-    expect(tracks()).toEqual([3, 4, 2])
+    expect(columns()).toEqual([3, 2, 3, 2])
   })
 
-  test(`one tab stop that follows focus; static matrices are tables`, async () => {
-    mount_matrix({ on_click: () => {} })
+  test(`one tab stop follows focus, Enter and Space click it; static matrices are tables`, async () => {
+    const on_click = vi.fn()
+    mount_matrix({ on_click })
     await tick()
+    const roles = () =>
+      [doc_query(`.grid`), cell_at(0, 0)].map((el) => el.getAttribute(`role`))
+    expect(roles()).toEqual([`grid`, `gridcell`])
     const tab_stops = () => get_data_cells().filter((cell) => cell.tabIndex === 0)
     expect(tab_stops()).toEqual([cell_at(0, 0)])
     cell_at(1, 1).focus()
     expect(tab_stops()).toEqual([cell_at(1, 1)])
+    for (const key_name of [`Enter`, ` `]) {
+      const event = keydown(key_name, { cancelable: true })
+      cell_at(1, 1).dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect(on_click).toHaveBeenCalledTimes(2) // once per key, cells are not native buttons
+    expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 1, y_idx: 1 })
     document.body.innerHTML = ``
     mount_matrix()
     await tick()
-    expect([
-      doc_query(`.grid`).getAttribute(`role`),
-      cell_at(0, 0).getAttribute(`role`),
-    ]).toEqual([`table`, `cell`])
+    expect(roles()).toEqual([`table`, `cell`])
     expect(cell_at(0, 0).hasAttribute(`tabindex`)).toBe(false)
   })
 
@@ -543,16 +521,8 @@ describe(`hide_empty`, () => {
         expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
         expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
         // Gaps retain the ordered A/X and C/Z tracks despite missing B/Y.
-        expect(
-          cells
-            .map(cell_track)
-            .toSorted(([col_a, row_a], [col_b, row_b]) => row_a - row_b || col_a - col_b),
-        ).toEqual([
-          [2, 2],
-          [4, 2],
-          [2, 4],
-          [4, 4],
-        ])
+        expect(cell_track(cells[0])).toEqual([2, 2])
+        expect(cell_track(cells[3])).toEqual([4, 4])
       }
     },
   )

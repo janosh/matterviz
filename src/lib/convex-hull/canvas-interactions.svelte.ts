@@ -49,8 +49,7 @@ interface HullSelectionInputs {
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
 }
 
-// Hovering an entry this long opens its structure as a preview (a click pins it)
-export const HOVER_PREVIEW_DELAY_MS = 600
+export const HOVER_PREVIEW_DELAY_MS = 600 // hover this long to preview an entry's structure
 
 export function create_hull_selection(inputs: HullSelectionInputs) {
   let hover_data = $state.raw<HoverData3D | null>(null)
@@ -59,13 +58,11 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   const copy_feedback = create_flash({ visible: false, position: { x: 0, y: 0 } }, 1500)
   let dragover = $state(false)
   let modal_open = $state(false)
-  // Raw: a deep proxy would hand Structure a different identity than the raw entry structure
-  // (and a fresh proxy per re-assignment), tripping its identity checks
+  // Raw: a deep proxy (fresh per re-assignment) would trip Structure's identity checks
   let selected_structure = $state.raw<AnyStructure | null>(null)
   let modal_place_right = $state(true)
   let selection_version = 0
-  // Hover preview: shown after HOVER_PREVIEW_DELAY_MS on one entry, then follows the pointer
-  // from entry to entry at once until it leaves the points; never while a popup is pinned
+  // Hover preview: opens after a delay, then follows the pointer instantly; never while pinned
   let preview = $state.raw<{ entry: ConvexHullEntry; structure: AnyStructure } | null>(null)
   let preview_key: string | undefined // entry_id the pending or shown preview is for
   let preview_timer: ReturnType<typeof setTimeout> | undefined
@@ -116,18 +113,13 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   function schedule_preview(entry: ConvexHullEntry | null): void {
     if (entry?.entry_id !== undefined && entry.entry_id === preview_key) return // same point
     const structure =
-      entry && !modal_open && inputs.enable_structure_preview()
-        ? extract_structure(entry)
-        : null
+      entry && !modal_open && inputs.enable_structure_preview() && extract_structure(entry)
     if (!entry || !structure) return clear_preview()
     clearTimeout(preview_timer)
     preview_key = entry.entry_id
-    if (preview) preview = { entry, structure }
-    else
-      preview_timer = setTimeout(
-        () => (preview = { entry, structure }),
-        HOVER_PREVIEW_DELAY_MS,
-      )
+    const show = () => (preview = { entry, structure })
+    if (preview) show()
+    else preview_timer = setTimeout(show, HOVER_PREVIEW_DELAY_MS)
   }
 
   // Shared selection logic for click and Enter key. The popup opens on whichever side of

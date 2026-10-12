@@ -81,8 +81,7 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     const t_before = Number(await kelvin.inputValue())
     const box = await require_bbox(canvas, `prism canvas`)
     const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
-    // hovering the plane probes the composition under the pointer; a click that doesn't drag
-    // pins it (shared with the 2D section) and leaves the temperature alone
+    // hovering the plane probes a composition, a click without dragging pins it (T unchanged)
     await page.mouse.move(center_x + 40, center_y + 15, { steps: 4 })
     await expect(page.locator(`.ternary-tooltip`)).toContainText(/Li\s*[\d.]+\s*%/)
     await page.mouse.click(center_x + 40, center_y + 15)

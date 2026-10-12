@@ -199,13 +199,12 @@ function center_grid_on_gamma(
   return { grid: { values, dims, order: `z_fastest` }, index0_frac: new_index0 }
 }
 
-// Upsampled, Γ-centred grids per source grid and key: mu changes reuse them and skip the
-// upsampling that dominates each extraction
+// Upsampled, Γ-centred grids per source grid and key, so mu changes skip the upsampling that
+// dominates each extraction
 const prepared_grids = new WeakMap<BandEnergyGrid, Map<string, CenteredGrid>>()
 
-// Grid convention of a band grid. BXSF grids are endpoint-inclusive (store both equivalent
-// k=0 and k=1 → periodic false); FRMSF grids store k=i/n without the duplicated endpoint.
-// Grid point i sits at index0_frac + i/period along each axis.
+// BXSF grids are endpoint-inclusive (k=0 and k=1 both stored → periodic false), FRMSF grids
+// store k=i/n. Grid point i sits at index0_frac + i/period along each axis.
 const grid_layout = (band_data: BandGridData): { periodic: boolean; index0_frac: Vec3 } => {
   const periodic = band_data.periodic ?? false
   const index0_frac = band_data.k_grid.map(
@@ -214,15 +213,14 @@ const grid_layout = (band_data: BandGridData): { periodic: boolean; index0_frac:
   return { periodic, index0_frac }
 }
 
-// interpolation_factor 0 means auto (auto_interpolation_factor of the k-mesh)
+// interpolation_factor 0 means auto
 const resolved_factor = (band_data: BandGridData, factor: number): number =>
   factor > 0 ? factor : auto_interpolation_factor(band_data.k_grid)
 const grid_key = (band_data: BandGridData, factor: number): string =>
   `${resolved_factor(band_data, factor)}|${band_data.periodic}|${band_data.grid_shift}`
 
-// One band's grid upsampled by interpolation_factor and rolled to the Γ-centred cell, cached so
-// mu changes and slice shading reuse it. Two per grid, so a hover preview and the
-// full-resolution surface do not evict each other.
+// One band's grid upsampled and rolled to the Γ-centred cell. Two cached per grid, so a hover
+// preview and the full-resolution surface do not evict each other.
 function prepared_band_grid(
   band_data: BandGridData,
   raw_energies: BandEnergyGrid,
@@ -231,29 +229,24 @@ function prepared_band_grid(
   const cache = prepared_grids.get(raw_energies) ?? new Map<string, CenteredGrid>()
   prepared_grids.set(raw_energies, cache)
   const key = grid_key(band_data, interpolation_factor)
-  let centered = cache.get(key)
-  if (!centered) {
-    const { periodic, index0_frac } = grid_layout(band_data)
-    const factor = resolved_factor(band_data, interpolation_factor)
-    centered = center_grid_on_gamma(
-      upsample_grid(raw_energies, factor, periodic),
-      periodic,
-      index0_frac,
-    )
-    cache.set(key, centered)
-    const [oldest] = cache.keys() // Maps iterate in insertion order
-    if (cache.size > 2) cache.delete(oldest)
-  }
+  const cached = cache.get(key)
+  if (cached) return cached
+  const { periodic, index0_frac } = grid_layout(band_data)
+  const factor = resolved_factor(band_data, interpolation_factor)
+  const upsampled = upsample_grid(raw_energies, factor, periodic)
+  const centered = center_grid_on_gamma(upsampled, periodic, index0_frac)
+  cache.set(key, centered)
+  const [oldest] = cache.keys() // Maps iterate in insertion order
+  if (cache.size > 2) cache.delete(oldest)
   return centered
 }
 
-// Interpolation factor for a quick preview (e.g. while hovering a band plot): capped at the
-// k-mesh's auto factor, so high factors do not stall pointer-driven updates
+// Factor for a pointer-driven preview: capped at the k-mesh's auto factor so updates keep up
 export const preview_interpolation_factor = (band_data: BandGridData, factor: number) =>
   Math.min(resolved_factor(band_data, factor), auto_interpolation_factor(band_data.k_grid))
 
-// Whether every band is already upsampled at this factor, so extracting only reruns marching
-// cubes (cheap) instead of first upsampling (slow at high factors)
+// Whether every band is upsampled at this factor already, so extracting only reruns marching
+// cubes (cheap) instead of upsampling first (slow at high factors)
 export const band_grids_prepared = (band_data: BandGridData, factor: number): boolean =>
   band_data.energies.every((bands) =>
     bands.every((grid) => prepared_grids.get(grid)?.has(grid_key(band_data, factor))),
@@ -271,8 +264,7 @@ function* crossing_bands(band_data: BandGridData, isovalue: number) {
   }
 }
 
-// One band's energies at Cartesian points, sampled on the same upsampled, Γ-centred grid
-// extract_fermi_surface runs marching cubes on, so their E_F + mu level traces its surface
+// One band's energies at Cartesian points, from the same grid marching cubes runs on
 function sample_band_energies(
   band_data: BandGridData,
   raw_energies: BandEnergyGrid,
@@ -280,9 +272,7 @@ function sample_band_energies(
   positions: ArrayLike<number>,
 ): Float32Array {
   const { grid, index0_frac } = prepared_band_grid(band_data, raw_energies, factor)
-  const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(band_data.k_lattice))
-  const periodic = band_data.periodic ?? false
-  return sample_vertex_values(positions, [grid], { cart_to_frac, periodic, index0_frac })[0]
+  return sample_vertex_values(positions, [grid], band_data, index0_frac)[0]
 }
 
 // Cartesian k of the in-plane coordinates (x, y) on a slice plane
@@ -304,35 +294,27 @@ export function extract_fermi_surface(
   const { mu: mean = 0, interpolation_factor = 1, wigner_seitz = false } = options
   const isovalue = band_data.fermi_energy + mean
   const isosurfaces: FermiIsosurface[] = []
-  const { periodic, index0_frac } = grid_layout(band_data)
+  const { index0_frac } = grid_layout(band_data)
   const k_lattice_t = math.transpose_3x3_matrix(band_data.k_lattice)
-  // Vertices sit at k_latticeᵀ·frac; inverted once, only when there are properties to sample
-  let cart_to_frac: math.Matrix3x3 | undefined
 
-  const crossing = crossing_bands(band_data, isovalue)
-  for (const { spin_idx, band_idx, spin, band_index, grid } of crossing) {
+  for (const { spin_idx, band_idx, spin, band_index, grid } of crossing_bands(
+    band_data,
+    isovalue,
+  )) {
     // Marching cubes output stays in the Γ-centred parallelepiped cell; the renderer's
     // symmetry tiling covers the full Wigner-Seitz zone.
     const centered = prepared_band_grid(band_data, grid, interpolation_factor)
     const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {
-      periodic,
+      periodic: band_data.periodic ?? false,
       position_offset: math.mat3x3_vec3_multiply(k_lattice_t, centered.index0_frac),
     })
     if (mesh.positions.length === 0) continue
-    let properties: FermiIsosurface[`properties`]
-    if (band_data.properties) {
-      const fields = Object.entries(band_data.properties)
-      const sampled = sample_vertex_values(
-        mesh.positions,
-        fields.map(([, grids]) => grids[spin_idx][band_idx]),
-        {
-          cart_to_frac: (cart_to_frac ??= math.matrix_inverse_3x3(k_lattice_t)),
-          periodic,
-          index0_frac,
-        },
-      )
-      properties = Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
-    }
+    const fields = Object.entries(band_data.properties ?? {})
+    const grids = fields.map(([, field]) => field[spin_idx][band_idx])
+    const sampled = sample_vertex_values(mesh.positions, grids, band_data, index0_frac)
+    const properties = band_data.properties
+      ? Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
+      : undefined
     isosurfaces.push({ ...mesh, properties, band_index, spin })
   }
 
@@ -347,18 +329,16 @@ export function extract_fermi_surface(
   }
 }
 
-// Move a band-grid surface from the Γ-centred parallelepiped into the Wigner-Seitz zone: each
-// triangle shifts by the reciprocal lattice vector nearest its centroid (the zone holds the
-// points nearer Γ than any other lattice point), so sheets line up with a k-path drawn through
-// the zone. Triangles stay whole, which steps the zone boundary at mesh resolution; vertices
-// shared by triangles that shift differently are duplicated.
+// Move a band-grid surface from the Γ-centred cell into the Wigner-Seitz zone, so sheets line
+// up with a k-path drawn through it: each triangle shifts by the lattice vector nearest its
+// centroid. Triangles stay whole (the zone boundary steps at mesh resolution); vertices shared
+// by triangles that shift differently are duplicated.
 export function fold_to_wigner_seitz(
   surface: FermiIsosurface,
   k_lattice: math.Matrix3x3,
 ): FermiIsosurface {
   const { positions, indices, normals, properties } = surface
-  // lattice vectors n·b with n ∈ {−1, 0, 1}³: enough for a point in the [−½, ½)³ cell of a
-  // reduced lattice; index 13 is G = 0
+  // n·b for n ∈ {−1, 0, 1}³ covers the [−½, ½)³ cell of a reduced lattice; index 13 is G = 0
   const k_lattice_t = math.transpose_3x3_matrix(k_lattice)
   const shifts = Array.from({ length: 27 }, (_, idx) =>
     math.mat3x3_vec3_multiply(
@@ -370,12 +350,9 @@ export function fold_to_wigner_seitz(
   const shifted_vertex = new Map<number, number>() // vertex · 27 + shift → appended vertex
   const out_indices = indices.slice()
   for (let tri = 0; tri < indices.length; tri += 3) {
+    const offsets = [0, 1, 2].map((corner) => 3 * indices[tri + corner])
     const centroid = [0, 1, 2].map(
-      (axis) =>
-        (positions[3 * indices[tri] + axis] +
-          positions[3 * indices[tri + 1] + axis] +
-          positions[3 * indices[tri + 2] + axis]) /
-        3,
+      (axis) => offsets.reduce((sum, offset) => sum + positions[offset + axis], 0) / 3,
     )
     // ties stay at G = 0
     let [best_shift, best_dist] = [13, math.euclidean_dist(centroid, shifts[13])]
@@ -421,64 +398,53 @@ export function fold_to_wigner_seitz(
   }
 }
 
-// Values of band-grid fields at mesh vertices (Cartesian, Å⁻¹) by trilinear interpolation on
-// the source grid, one Float32Array per field (all fields share the grid's dims). Sampling the
-// raw grid rather than the upsampled one keeps the result independent of interpolation_factor
-// and never overshoots like the tricubic energies (a gap Δ_nk stays ≥ 0). Corners holding NaN
-// (no value there, e.g. outside a Fermi window) are left out and the remaining weights
-// renormalised, so a missing point next to the surface does not blank the vertices around it;
-// NaN only where all eight corners are missing.
-export function sample_vertex_values(
+// Band-grid field values at Cartesian points (Å⁻¹), trilinear on a grid of band_data's layout
+// whose index 0 sits at index0_frac; one Float32Array per grid. Sampling the raw grid keeps
+// properties independent of interpolation_factor and free of tricubic overshoot (a gap Δ_nk
+// stays ≥ 0). NaN corners (no value, e.g. outside a Fermi window) drop out and the other
+// weights renormalise; NaN only where all eight are missing.
+function sample_vertex_values(
   positions: ArrayLike<number>,
   grids: BandEnergyGrid[],
-  {
-    cart_to_frac,
-    periodic,
-    index0_frac,
-  }: {
-    cart_to_frac: math.Matrix3x3 // inverse of k_latticeᵀ
-    periodic: boolean // false: endpoint-inclusive grid (last point duplicates the first)
-    index0_frac: Vec3 // fractional position of grid index 0
-  },
+  band_data: Pick<BandGridData, `k_lattice` | `periodic`>,
+  index0_frac: Vec3,
 ): Float32Array[] {
   const n_vertices = positions.length / 3
   const outputs = grids.map(() => new Float32Array(n_vertices))
   if (grids.length === 0) return outputs
-  const dims = grid_dimensions(grids[0])
+  // vertices sit at k_latticeᵀ·frac
+  const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(band_data.k_lattice))
   const strides = scalar_grid_strides(grids[0])
-  const periods = dims.map((count) => Math.max(periodic ? count : count - 1, 1))
-  const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = cart_to_frac
-  const base = [0, 0, 0]
+  const periods = grid_dimensions(grids[0]).map((count) =>
+    Math.max(band_data.periodic ? count : count - 1, 1),
+  )
+  const base: Vec3 = [0, 0, 0]
   const fractions = [0, 0, 0]
   const corner_offsets = new Int32Array(8)
   const corner_weights = new Float64Array(8)
   for (let vert_idx = 0; vert_idx < n_vertices; vert_idx++) {
-    const pos_x = positions[3 * vert_idx]
-    const pos_y = positions[3 * vert_idx + 1]
-    const pos_z = positions[3 * vert_idx + 2]
-    base[0] = m00 * pos_x + m01 * pos_y + m02 * pos_z
-    base[1] = m10 * pos_x + m11 * pos_y + m12 * pos_z
-    base[2] = m20 * pos_x + m21 * pos_y + m22 * pos_z
+    const offset = 3 * vert_idx
+    const point: Vec3 = [positions[offset], positions[offset + 1], positions[offset + 2]]
+    math.mat3x3_vec3_multiply(cart_to_frac, point, base)
     for (let axis = 0; axis < 3; axis++) {
       const coord = (base[axis] - index0_frac[axis]) * periods[axis]
       base[axis] = Math.floor(coord)
       fractions[axis] = coord - base[axis]
     }
     for (let corner = 0; corner < 8; corner++) {
-      let offset = 0
+      let corner_offset = 0
       let weight = 1
       for (let axis = 0; axis < 3; axis++) {
         const upper = (corner >> axis) & 1
         const period = periods[axis]
-        offset += ((((base[axis] + upper) % period) + period) % period) * strides[axis]
+        corner_offset += ((((base[axis] + upper) % period) + period) % period) * strides[axis]
         weight *= upper ? fractions[axis] : 1 - fractions[axis]
       }
-      corner_offsets[corner] = offset
+      corner_offsets[corner] = corner_offset
       corner_weights[corner] = weight
     }
     for (const [grid_idx, { values }] of grids.entries()) {
-      let sum = 0
-      let weight_sum = 0
+      let [sum, weight_sum] = [0, 0]
       for (let corner = 0; corner < 8; corner++) {
         const value = values[corner_offsets[corner]]
         if (Number.isFinite(value)) {
@@ -523,21 +489,12 @@ export function slice_plane_normal(k_lattice: math.Matrix3x3, miller_indices: Ve
   return math.normalize_vec(plane_normal)
 }
 
-// The 12 edges of the Γ-centred reciprocal cell (fractional coordinates in [−½, ½]³), where
-// marching cubes leaves band-grid surfaces
+// The 12 edges of the Γ-centred reciprocal cell [−½, ½]³ where band-grid surfaces live
 export function centered_cell_edges(k_lattice: math.Matrix3x3): [Vec3, Vec3][] {
   const frac_to_cart = math.transpose_3x3_matrix(k_lattice)
-  const corner = (frac: Vec3) => math.mat3x3_vec3_multiply(frac_to_cart, frac)
-  // edge idx runs along axis ⌊idx/4⌋, at ±½ on the other two axes (bits 1 and 0 of idx)
-  return Array.from({ length: 12 }, (_, idx) => {
-    const axis = Math.floor(idx / 4)
-    const start: Vec3 = [0, 0, 0]
-    start[(axis + 1) % 3] = idx & 2 ? 0.5 : -0.5
-    start[(axis + 2) % 3] = idx & 1 ? 0.5 : -0.5
-    const end: Vec3 = [...start]
-    ;[start[axis], end[axis]] = [-0.5, 0.5]
-    return [corner(start), corner(end)]
-  })
+  const corner = (frac: Vec3) =>
+    math.mat3x3_vec3_multiply(frac_to_cart, math.subtract(frac, [0.5, 0.5, 0.5]))
+  return math.UNIT_CUBE_EDGES.map(([start, end]) => [corner(start), corner(end)])
 }
 
 export type CarrierType = `electron` | `hole`
@@ -548,10 +505,9 @@ export interface SliceEnergyMap {
   height: number
   layers: { band_index: number; spin: SpinChannel; values: Float32Array }[]
 }
-// ε_nk − (E_F + mu) of every band crossing E_F + mu, sampled on a width × height pixel grid
-// over the in-plane rectangle `bounds` of `plane` (e.g. a compute_fermi_slice result, whose
-// points_2d share these coordinates; rows run top to bottom, i.e. from bounds.max[1] down). The zero level of each layer
-// traces that band's slice contour (see sample_band_energies).
+// ε_nk − (E_F + mu) of every band crossing E_F + mu on a width × height pixel grid over the
+// rectangle `bounds` in the plane's 2D coordinates (rows top to bottom). The zero level of each
+// layer traces that band's slice contour.
 export function sample_slice_energies(
   band_data: BandGridData,
   options: {
@@ -583,13 +539,11 @@ export function sample_slice_energies(
   return { width, height, layers }
 }
 
-// RGBA pixels (row-major, as sample_slice_energies) shading a slice energy map:
-// - `pockets` fills each band's pockets (see band_carriers): the occupied side of an electron
-//   band in its colour, the empty side of a hole band hatched in diagonal stripes
-// - `occupied` tints every band's filled side (ε < E_F + mu) in its colour, overlapping bands
-//   darkening
-// - `energy` maps ε − E_F of the band nearest the Fermi level at each pixel through a
-//   diverging scale symmetric about 0, so near-crossings show before a mu change makes pockets
+// RGBA pixels (row-major) shading a slice energy map:
+// - `pockets`: an electron band's occupied side in its colour, a hole band's empty side hatched
+// - `occupied`: every band's filled side (ε < E_F + mu), overlapping bands darkening
+// - `energy`: ε − E_F of the band nearest E_F per pixel on a diverging scale, so near-crossings
+//   show before a mu change makes pockets
 export function slice_shading_rgba(
   energy_map: SliceEnergyMap,
   mode: SliceShading,
@@ -649,8 +603,8 @@ export function slice_shading_rgba(
   return pixels
 }
 
-// A point strictly inside a simple polygon (slice coordinates): its centroid when that lies
-// inside, else the midpoint of the first inside stretch of the horizontal line through it
+// A point strictly inside a simple polygon: its centroid when inside, else the midpoint of the
+// first inside stretch of the horizontal line through it
 export function polygon_interior_point(points: readonly Vec2[]): Vec2 {
   const n_points = points.length
   const centroid: Vec2 = [0, 1].map(
@@ -665,45 +619,31 @@ export function polygon_interior_point(points: readonly Vec2[]): Vec2 {
     }
   }
   crossings.sort((left, right) => left - right)
-  // even-odd: the centroid is inside when an odd number of crossings lie left of it (a
-  // degenerate polygon with fewer than two crossings keeps its centroid)
+  // even-odd: inside when an odd number of crossings lie left of it (fewer than two crossings:
+  // a degenerate polygon keeps its centroid)
   const n_left = crossings.filter((cross_x) => cross_x < centroid[0]).length
   if (n_left % 2 === 1 || crossings.length < 2) return centroid
   return [(crossings[0] + crossings[1]) / 2, centroid[1]]
 }
 
-// Electron or hole pocket per slice contour (aligned with slice_data.isolines): the band's
-// energy at a point inside the contour, below E_F + mu for an electron pocket (encloses occupied
-// states), above for a hole pocket. A contour cut open by the cell boundary is closed by its
-// chord, which keeps the point on its concave side, inside the pocket for the usual convex
-// pocket. Sampled on the grid the surface was extracted from; null when too short or its band
-// is not in the grid.
-export function pocket_carriers(
+// Electron or hole carrier per band from its slice contours: the band's energy at a point inside
+// each contour is below E_F + mu for an electron pocket, above for a hole pocket, and the band
+// takes its contours' majority (ties go to electron). A contour cut open by the cell boundary is
+// closed by its chord, which keeps the point inside the usual convex pocket.
+export function band_carriers(
   band_data: BandGridData,
   slice_data: FermiSliceData,
   { mu = 0, interpolation_factor = 1 }: { mu?: number; interpolation_factor?: number } = {},
-): (CarrierType | null)[] {
-  return slice_data.isolines.map(({ points_2d, band_index, spin }) => {
-    if (points_2d.length < 3) return null
+): Map<number, CarrierType> {
+  const hole_votes = new Map<number, number>()
+  for (const { points_2d, band_index, spin } of slice_data.isolines) {
     const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
     const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
-    if (!grid) return null
+    if (points_2d.length < 3 || !grid) continue
     const k_point = slice_point_to_k(slice_data, ...polygon_interior_point(points_2d))
     const [energy] = sample_band_energies(band_data, grid, interpolation_factor, k_point)
-    return energy < band_data.fermi_energy + mu ? `electron` : `hole`
-  })
-}
-
-// Carrier per band: the majority of its contours' pockets (ties go to electron)
-export const band_carriers = (
-  slice_data: FermiSliceData,
-  carriers: readonly (CarrierType | null)[],
-): Map<number, CarrierType> => {
-  const hole_votes = new Map<number, number>()
-  for (const [idx, carrier] of carriers.entries()) {
-    if (!carrier) continue
-    const band = slice_data.isolines[idx].band_index
-    hole_votes.set(band, (hole_votes.get(band) ?? 0) + (carrier === `hole` ? 1 : -1))
+    const vote = energy < band_data.fermi_energy + mu ? -1 : 1
+    hole_votes.set(band_index, (hole_votes.get(band_index) ?? 0) + vote)
   }
   return new Map(
     [...hole_votes].map(([band, votes]) => [band, votes > 0 ? `hole` : `electron`]),

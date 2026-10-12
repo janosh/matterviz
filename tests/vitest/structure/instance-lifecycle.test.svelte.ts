@@ -1435,44 +1435,51 @@ test.each([false, true])(
   },
 )
 
-test(`Scene marks a volumetric slice plane with a translucent fill and a closed outline`, () => {
-  // oxfmt-ignore
-  const slice_polygon: Vec3[] = [[0, 0, 1], [2, 0, 1], [2, 2, 1], [0, 2, 1]]
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
-      show_bonds: `never`,
-      show_polyhedra: `never`,
-      gizmo: false,
-      slice_polygon,
-    }),
+// A lone carbon atom with its other props bound to `state`, unmounted after the test
+const mount_carbon = (state: Partial<ComponentProps<typeof StructureScene>>) => {
+  const structure = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
+  const props = { structure, show_bonds: `never` as const, show_polyhedra: `never` as const }
+  const mounted = mount_scene((anchor) =>
+    StructureScene(anchor, bind_props({ ...props, gizmo: false }, state)),
   )
-  onTestFinished(unmount_scene)
+  onTestFinished(mounted.unmount_scene)
   flushSync()
-  const [outline] = scene.getObjectsByProperty(`type`, `Line`) as Mesh[]
-  expect(outline?.geometry.getAttribute(`position`).count).toBe(5) // 4 corners + closing one
-  const fill = (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).find(
-    (mesh) => mesh.geometry.index?.count === 6, // the square's two fan triangles
-  )
-  expect(fill?.renderOrder).toBe(1000)
+  return mounted
+}
+
+test(`Scene marks a volumetric slice plane with a translucent fan fill and a closed outline`, () => {
+  // oxfmt-ignore
+  const square: Vec3[] = [[0, 0, 1], [2, 0, 1], [2, 2, 1], [0, 2, 1]]
+  const state = $state({ slice_polygon: square })
+  const { scene } = mount_carbon(state)
+  const plane_meshes = () => ({
+    outlines: scene.getObjectsByProperty(`type`, `Line`) as Mesh[],
+    fill: (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).find(
+      (mesh) => mesh.renderOrder === 1000,
+    ),
+  })
+  const { outlines, fill } = plane_meshes()
+  // the corners plus the first again, closing the outline by hand
+  const closed = [...square, square[0]].flat()
+  expect([...outlines[0].geometry.getAttribute(`position`).array]).toEqual(closed)
+  expect([...(fill?.geometry.index?.array ?? [])]).toEqual([0, 1, 2, 0, 2, 3])
+  expect(fill?.material).toMatchObject({ transparent: true, opacity: 0.4, depthWrite: false })
+
+  // a new polygon rebuilds and releases the old buffers; fewer than 3 corners draw nothing
+  const dispose = fill && vi.spyOn(fill.geometry, `dispose`)
+  state.slice_polygon = square.slice(0, 3)
+  flushSync()
+  expect(dispose).toHaveBeenCalledOnce()
+  state.slice_polygon = square.slice(0, 2)
+  flushSync()
+  expect(plane_meshes()).toEqual({ outlines: [], fill: undefined })
 })
 
-// The default active-site color is a CSS custom property, which THREE.Color cannot parse: it
-// used to warn on every highlight and keep the material's previous color
+// THREE.Color cannot parse the default CSS-variable color: it warned and kept the old color
 test(`active-site highlights resolve the CSS color token where the canvas sits`, () => {
   const warn = vi.spyOn(console, `warn`)
   const state = $state({ active_sites: [] as number[] })
-  const { canvas, scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
-      get active_sites() {
-        return state.active_sites
-      },
-      show_bonds: `never`,
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
+  const { canvas, scene } = mount_carbon(state)
   const host = document.createElement(`div`)
   host.style.setProperty(`--struct-active-highlight-color`, `rgb(255, 0, 0)`)
   host.append(canvas)

@@ -11,6 +11,7 @@
   import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import type { FrameRdfOptions } from './calc-rdf'
   import type { TrajectoryRdf } from './calc-trajectory-rdf'
   import {
     collect_trajectory_rdf,
@@ -31,15 +32,11 @@
     run?: TrajectoryRun
     pane_open?: boolean
     result?: TrajectoryRdf
-    // Element pair of the hovered curve and the r bin hovered on it (null for its legend
-    // entry), with the binning to find that bin's pairs in a frame; null once it leaves
+    // Hovered curve's element pair, r bin (null for its legend entry) and binning
     on_shell_hover?: (
-      hover: {
-        element_pair: [string, string]
-        bin_idx: number | null
-        cutoff: number
-        n_bins: number
-      } | null,
+      hover:
+        | ({ element_pair: [string, string]; bin_idx: number | null } & FrameRdfOptions)
+        | null,
     ) => void
   } = $props()
 

@@ -173,14 +173,10 @@ describe(`bands/DOS wrappers`, () => {
     svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
     await new Promise((resolve) => requestAnimationFrame(resolve))
     flushSync()
-    for (const [plot, panel] of [
-      [bands_plot, `bands`],
-      [dos_plot, `dos`],
-    ] as const) {
-      expect(Number(ref_line(plot, panel)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
-    }
-    const has_brillouin = Component === BrillouinBandsDos
-    expect(bands_plot.querySelector(`rect.highlighted-segment`) !== null).toBe(has_brillouin)
+    expect(Number(ref_line(bands_plot, `bands`)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
+    expect(Number(ref_line(dos_plot, `dos`)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
+    const shaded = bands_plot.querySelector(`rect.highlighted-segment`)
+    expect(shaded !== null).toBe(Component === BrillouinBandsDos)
 
     await fire(svg, mouse(`mouseleave`))
     expect(ref_line(bands_plot, `bands`)).toBeNull()

@@ -46,7 +46,7 @@ function mount_selection(
   return { selection, destroy }
 }
 
-describe(`create_hull_selection copy feedback`, () => {
+describe(`create_hull_selection timers: copy feedback and hover preview`, () => {
   beforeEach(() => {
     vi.useFakeTimers()
     Object.defineProperty(navigator, `clipboard`, {
@@ -87,78 +87,64 @@ describe(`create_hull_selection copy feedback`, () => {
       if (action === `reset`) destroy()
     },
   )
-})
 
-describe(`create_hull_selection hover preview`, () => {
-  beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
-  const structure = (label: string) =>
-    ({ sites: [], lattice: undefined, label }) as unknown as AnyStructure
-  const [entry_a, entry_b, no_structure] = [`a`, `b`, `c`].map(
-    (entry_id): ConvexHullEntry => ({ ...entry, entry_id }),
-  )
-  const entries = [
-    { ...entry_a, structure: structure(`a`) },
-    { ...entry_b, structure: structure(`b`) },
-    no_structure,
-  ]
+  // === Hover preview ===
+  const with_structure = (entry_id: string) => ({
+    ...entry,
+    entry_id,
+    structure: { sites: [], entry_id } as unknown as AnyStructure,
+  })
+  const [entry_a, entry_b] = [with_structure(`a`), with_structure(`b`)]
+  const no_structure = { ...entry, entry_id: `c` }
+  const entries = [entry_a, entry_b, no_structure]
   const hover = (target: ConvexHullEntry, x_pos = 1) => ({
     entry: target,
     position: { x: x_pos, y: 2 },
   })
-  const preview_id = (selection: ReturnType<typeof create_hull_selection>) =>
-    selection.preview?.entry.entry_id ?? null
 
-  it(`opens after the delay, follows the pointer between entries, closes on leave and pin`, () => {
+  it(`opens after the delay, follows the pointer between entries, closes on leave, reset and pin`, () => {
+    let enabled = false
     let selected: ConvexHullEntry | null = null
     const { selection, destroy } = mount_selection(
       {
-        enable_structure_preview: () => true,
+        enable_structure_preview: () => enabled,
         selected_entry: () => selected,
         set_selected_entry: (value) => (selected = value),
       },
       entries,
     )
+    const wait_for_preview = () => vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS)
+    const preview_id = () => selection.preview?.entry.entry_id ?? null
     selection.set_hover(hover(entry_a))
+    wait_for_preview()
+    expect(preview_id()).toBeNull() // previews disabled
+    enabled = true
+    selection.set_hover(hover(entry_b))
     vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS - 1)
-    selection.set_hover(hover(entry_a, 5)) // moving within one point keeps the timer
-    expect(preview_id(selection)).toBeNull()
+    selection.set_hover(hover(entry_b, 5)) // moving within one point keeps the timer
+    expect(preview_id()).toBeNull()
     vi.advanceTimersByTime(1)
-    expect([preview_id(selection), selection.modal_open]).toEqual([`a`, false])
-    expect(selection.preview?.structure).toBe(entries[0].structure)
-    selection.set_hover(hover(entry_b)) // already showing: switches without a delay
-    expect(preview_id(selection)).toBe(`b`)
+    expect([preview_id(), selection.modal_open]).toEqual([`b`, false])
+    expect(selection.preview?.structure).toBe(entry_b.structure)
+    selection.set_hover(hover(entry_a)) // already showing: switches without a delay
+    expect(preview_id()).toBe(`a`)
     selection.set_hover(hover(no_structure))
-    expect(preview_id(selection)).toBeNull()
-    selection.set_hover(null)
-    selection.set_hover(hover(entry_a)) // a fresh hover waits again
-    expect(preview_id(selection)).toBeNull()
-    vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS)
-    expect(preview_id(selection)).toBe(`a`)
+    expect(preview_id()).toBeNull()
+    selection.set_hover(hover(entry_a)) // a fresh hover waits again, a reset cancels it
+    selection.reset()
+    wait_for_preview()
+    expect(preview_id()).toBeNull()
+    selection.set_hover(hover(entry_a))
+    wait_for_preview()
     selection.select_entry(entry_a) // the pinned popup takes over
-    expect([preview_id(selection), selection.modal_open]).toEqual([null, true])
+    expect([preview_id(), selection.modal_open]).toEqual([null, true])
     flushSync() // re-run the selection effect, which re-assigns the pinned structure
     // The raw entry structure, not a $state proxy of it: Structure compares identities
-    expect(selection.selected_structure).toBe(entries[0].structure)
+    expect(selection.selected_structure).toBe(entry_a.structure)
     selection.set_hover(hover(entry_b))
-    vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS)
-    expect(preview_id(selection)).toBeNull() // no previews while a popup is pinned
+    wait_for_preview()
+    expect(preview_id()).toBeNull() // no previews while a popup is pinned
     destroy()
     expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it.each([
-    [`disabled previews`, false, `set_hover`],
-    [`reset`, true, `reset`],
-  ] as const)(`%s leave no preview`, (_desc, enabled, action) => {
-    const { selection, destroy } = mount_selection(
-      { enable_structure_preview: () => enabled },
-      entries,
-    )
-    selection.set_hover(hover(entry_a))
-    if (action === `reset`) selection.reset()
-    vi.advanceTimersByTime(HOVER_PREVIEW_DELAY_MS)
-    expect(preview_id(selection)).toBeNull()
-    destroy()
   })
 })

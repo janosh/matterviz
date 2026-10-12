@@ -49,12 +49,10 @@
     normalize?: boolean
     // x tick labels; defaults to the entry labels of `structures`, else the result index
     frame_labels?: (number | string)[]
-    // `over_frames` only: x value (source frame) to mark with the playhead line
-    current_frame?: number | null
-    // `over_frames` only: a click on the plot area or a line point reports the analysed frame
-    // nearest the pointer, so a host can seek its trajectory there
+    current_frame?: number | null // `over_frames` only: x value marked with the playhead
+    // `over_frames` only: the analysed frame nearest a click on the plot area or a point
     on_frame_click?: (frame: number) => void
-    // Structure type of the line or legend entry under the pointer; null once it leaves
+    // Type of the line or legend entry under the pointer; null once it leaves
     on_type_hover?: (type: CnaTypeName | null) => void
   } = $props()
 
@@ -117,9 +115,8 @@
       ? (x_ticks as number[])
       : [],
   )
-  // Analysed frame whose x position is nearest `pixel_x`. Snapping in pixel space through the
-  // forward scale needs no inverse, so it holds however the axis is zoomed.
-  // Only called while frame_xs is non-empty (the seek area renders only then).
+  // Analysed frame nearest `pixel_x`, snapped in pixel space (no inverse scale needed, so it
+  // holds under zoom). frame_xs is non-empty whenever the seek area calling this renders.
   const nearest_frame = (scale: (value: number) => number, pixel_x: number): number =>
     frame_xs.reduce((best, frame) =>
       Math.abs(scale(frame) - pixel_x) < Math.abs(scale(best) - pixel_x) ? frame : best,
@@ -141,7 +138,8 @@
 
 {#snippet frame_overlay(ctx: UserContentProps)}
   {@const { width, height, pad, x_scale_fn } = ctx}
-  {#if on_frame_click && frame_xs.length > 0}
+  {@const playhead_x = current_frame == null ? NaN : x_scale_fn(current_frame)}
+  {#if frame_xs.length > 0 && on_frame_click}
     <!-- Below the lines and points (user content renders first), so it only takes clicks on
     the empty plot area; points seek through on_point_click -->
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -162,21 +160,18 @@
       }}
     />
   {/if}
-  {#if current_frame != null && frame_xs.length > 0}
-    {@const current_pos = x_scale_fn(current_frame)}
-    {#if Number.isFinite(current_pos) && current_pos >= pad.l && current_pos <= width - pad.r}
-      <line
-        class="current-frame-guide"
-        x1={current_pos}
-        x2={current_pos}
-        y1={pad.t}
-        y2={height - pad.b}
-        stroke="var(--scatter-current-frame-color, #ff6b35)"
-        stroke-opacity="0.6"
-        stroke-dasharray="8 4"
-        pointer-events="none"
-      />
-    {/if}
+  {#if frame_xs.length > 0 && playhead_x >= pad.l && playhead_x <= width - pad.r}
+    <line
+      class="current-frame-guide"
+      x1={playhead_x}
+      x2={playhead_x}
+      y1={pad.t}
+      y2={height - pad.b}
+      stroke="var(--scatter-current-frame-color, #ff6b35)"
+      stroke-opacity="0.6"
+      stroke-dasharray="8 4"
+      pointer-events="none"
+    />
   {/if}
   {@render rest.user_content?.(ctx)}
 {/snippet}

@@ -146,8 +146,7 @@
     hovered_qpoint_index?: number | null
     // First and last q-point index of a k-path stretch to tint, e.g. the hovered path branch
     highlighted_qpoint_range?: Vec2 | null
-    // Called with the q-point index when the user hovers the k-path or a symmetry-point label
-    // in the BZ (null on leave)
+    // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
     tooltip_config?: BZTooltipProp

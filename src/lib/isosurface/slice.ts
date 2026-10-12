@@ -129,7 +129,7 @@ export interface SliceResult {
   polygon: Vec2[] // exact convex cell/plane intersection in local (u, v)
 }
 
-// Maps unit-cube corners (UNIT_CUBE_CORNERS) to the absolute Cartesian corners of the cell
+// Maps unit-cube corners to the absolute Cartesian corners of the cell
 // block spanning `bounds` (fractional, per axis)
 const bounded_cell_corner = (volume: VolumetricData, bounds: DisplayRange) => {
   const frac_to_cart = math.create_frac_to_cart(volume.lattice)
@@ -322,10 +322,8 @@ const valid_unit_normal = ({ point, normal }: CartesianPlane): Vec3 | null =>
     ? math.normalize_vec(normal)
     : null
 
-// Corners of the plane's cut through the volume's cell (or the cell block `fractional_bounds`
-// spans), as absolute Cartesian points counter-clockwise about the plane normal: the outline
-// sample_plane_slice fills, e.g. to mark the slice in a 3D view. Empty when the plane misses
-// the cell or is not finite.
+// Cartesian corners (counter-clockwise about the normal) of the plane's cut through the cell
+// block `fractional_bounds` spans: the outline sample_plane_slice fills. Empty on a miss.
 export function slice_cell_polygon(
   volume: VolumetricData,
   plane: CartesianPlane,
@@ -444,9 +442,8 @@ export function sample_plane_slice(
   }
 }
 
-// The Miller-index plane (h k l) at fraction `position` [0, 1] of the cell's extent along its
-// normal h·b₁ + k·b₂ + l·b₃ (cell corners at volume.origin + frac · lattice), so 0 and 1 touch
-// the outermost corners. Null for (0 0 0) or a degenerate normal.
+// The (h k l) plane at fraction `position` of the cell's extent along h·b₁ + k·b₂ + l·b₃, so 0
+// and 1 touch the outermost corners. Null for (0 0 0) or a degenerate normal.
 export function hkl_slice_plane(
   volume: VolumetricData,
   miller_indices: Vec3,
@@ -459,7 +456,7 @@ export function hkl_slice_plane(
   if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
   const normal = math.normalize_vec(plane_normal)
   const corner = bounded_cell_corner(volume, UNIT_CELL_RANGE)
-  const projections = math.UNIT_CUBE_CORNERS.map((unit) => math.dot(corner(unit), normal))
+  const projections = math.UNIT_CUBE_EDGES.flat().map((unit) => math.dot(corner(unit), normal))
   const [normal_min, normal_max] = math.array_extent(projections)
   return {
     point: math.scale(normal, normal_min + position * (normal_max - normal_min)),
@@ -467,8 +464,7 @@ export function hkl_slice_plane(
   }
 }
 
-// The plane a VolumeSliceView samples for these settings: Miller indices and position, or a
-// Cartesian point (default: the cell center), normal and up vector
+// The plane a VolumeSliceView samples: hkl + position, or Cartesian point (default: cell center)
 export const resolve_slice_plane = (
   volume: VolumetricData,
   settings: VolumeSliceSettings,

@@ -43,8 +43,7 @@
     max_visible_curves?: number
     loading?: boolean
     error_msg?: string
-    // Label of the curve (element symbol or `Total`) under the pointer, from its line or
-    // legend entry (an Einstein fit counts as its curve); null once the pointer leaves
+    // Hovered curve's label (element or `Total`; a fit counts as its curve), null on leave
     on_curve_hover?: (label: string | null) => void
   } & ScatterPlotOptions = $props()
 

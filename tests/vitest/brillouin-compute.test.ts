@@ -17,7 +17,6 @@ import {
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
-  k_path_point_index,
   k_path_segment_highlight,
   k_path_segments,
   k_space_size,
@@ -879,41 +878,16 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
   })
 
+  // points along x: a jump at a discontinuity (U|K) is skipped; repeated branch-boundary points
+  // neither draw nor shrink the median; with one step there is no median to judge against
   test.each([
-    // dense path with a jump at a discontinuity (U|K): the bridging segment is skipped
-    [
-      [
-        [0, 0, 0],
-        [0.1, 0, 0],
-        [0.2, 0, 0],
-        [5, 0, 0],
-        [5.1, 0, 0],
-      ],
-      [0, 1, 3],
-    ],
-    // repeated branch-boundary points: zero-length steps neither draw nor shrink the median
-    [
-      [
-        [0, 0, 0],
-        [0.1, 0, 0],
-        [0.1, 0, 0],
-        [0.1, 0, 0],
-        [0.1, 0, 0],
-        [0.2, 0, 0],
-      ],
-      [0, 4],
-    ],
-    // two points: no median to judge against, so the one segment always draws
-    [
-      [
-        [0, 0, 0],
-        [9, 0, 0],
-      ],
-      [0],
-    ],
-    [[[0, 0, 0]], []],
-    [[], []],
-  ] as [Vec3[], number[]][])(`k_path_segments keeps %j`, (points, kept) => {
+    { xs: [0, 0.1, 0.2, 5, 5.1], kept: [0, 1, 3] },
+    { xs: [0, 0.1, 0.1, 0.1, 0.1, 0.2], kept: [0, 4] },
+    { xs: [0, 9], kept: [0] },
+    { xs: [0], kept: [] },
+    { xs: [], kept: [] },
+  ])(`k_path_segments of x = $xs keeps $kept`, ({ xs, kept }) => {
+    const points = xs.map((x_coord): Vec3 => [x_coord, 0, 0])
     const segments = k_path_segments(points)
     expect(segments.map((segment) => segment.idx)).toEqual(kept)
     for (const { idx, from, to } of segments)
@@ -935,17 +909,6 @@ describe(`scene sizing helpers`, () => {
       expect(states).toEqual(expected)
     },
   )
-
-  test(`k_path_point_index finds the first point within tolerance`, () => {
-    const points: Vec3[] = [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 0, 0],
-    ]
-    expect(k_path_point_index(points, [1, 1e-9, 0], 1e-6)).toBe(1)
-    expect(k_path_point_index(points, [0, 0, 0], 1e-6)).toBe(0) // repeated Γ: first visit
-    expect(k_path_point_index(points, [0.5, 0, 0], 1e-6)).toBe(-1)
-  })
 
   test(`bz_mark_sizes scale with the zone`, () => {
     const [si, supercell] = [2, 0.0628].map((size) =>

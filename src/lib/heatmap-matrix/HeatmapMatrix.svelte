@@ -797,13 +797,9 @@
         tooltip_mode !== `hover`),
   )
   // An interactive matrix is a grid widget (one tab stop, arrow keys); otherwise a static table
-  let roles = $derived(
-    has_interaction_handlers
-      ? { grid: `grid`, cell: `gridcell` }
-      : { grid: `table`, cell: `cell` },
-  )
-  // Roving tab stop: every cell has tabindex -1 and exactly one, the last focused (else the first in visual order),
-  // 0. Set imperatively so moving focus touches two cells instead of re-rendering all of them.
+  let cell_role = $derived(has_interaction_handlers ? `gridcell` : `cell`)
+  // Roving tab stop: one cell (the last focused, else the first rendered) has tabindex 0, the
+  // rest -1. Set imperatively so moving focus touches two cells instead of re-rendering all.
   let tab_cell: HTMLElement | null = null
   const set_tab_cell = (cell_el: HTMLElement | null): void => {
     if (cell_el === tab_cell) return
@@ -811,22 +807,14 @@
     cell_el?.setAttribute(`tabindex`, `0`)
     tab_cell = cell_el
   }
-  const handle_focusin = (event: FocusEvent): void => {
-    const cell_el =
-      event.target instanceof HTMLElement ? event.target.closest(`[data-x][data-y]`) : null
+  const handle_focusin = ({ target }: FocusEvent): void => {
+    const cell_el = target instanceof Element && target.closest(`[data-x][data-y]`)
     if (cell_el instanceof HTMLElement) set_tab_cell(cell_el)
   }
   $effect(() => {
-    void [render_vis_x, render_vis_y]
-    if (!has_interaction_handlers || !matrix_el || tab_cell?.isConnected) return
-    const first = render_vis_y
-      .flatMap((y_idx) => render_vis_x.map((x_idx) => [x_idx, y_idx]))
-      .find(([x_idx, y_idx]) => !is_hidden_cell(x_idx, y_idx))
-    set_tab_cell(
-      first
-        ? matrix_el.querySelector<HTMLElement>(`[data-x="${first[0]}"][data-y="${first[1]}"]`)
-        : null,
-    )
+    void [render_vis_x, render_vis_y] // re-pick once virtualization unmounts the tab stop
+    if (has_interaction_handlers && matrix_el && !tab_cell?.isConnected)
+      set_tab_cell(matrix_el.querySelector<HTMLElement>(`.cell[data-x][data-y]`))
   })
 
   // Reset index-based interaction state when the axis keys change. Element-wise compare beats
@@ -886,7 +874,7 @@
     {...rest}
     bind:this={matrix_el}
     class={[`grid`, rest.class]}
-    role={roles.grid}
+    role={has_interaction_handlers ? `grid` : `table`}
     style={[rest.style, column_vars].filter(Boolean).join(`; `)}
     style:--n-cols={col_count + (show_row_summaries && !gaps_mode ? 1 : 0)}
     style:--n-rows={row_count + (show_col_summaries && !gaps_mode ? 1 : 0)}
@@ -924,7 +912,7 @@
       {@const summary = axis_mean(axis, idx)}
       <div
         class={[`summary`, axis === `x` ? `summary-col` : `summary-row`]}
-        role={roles.cell}
+        role={cell_role}
         style:grid-column={axis === `x` ? grid_line(`x`, idx) : col_count + 2}
         style:grid-row={axis === `x` ? row_count + 2 : grid_line(`y`, idx)}
       >
@@ -948,7 +936,7 @@
           {#if is_hidden_cell(x_idx, y_idx)}
             <div
               class="cell empty"
-              role={roles.cell}
+              role={cell_role}
               style:grid-column="var(--c{x_idx})"
               style:grid-row="var(--r)"
             ></div>
@@ -961,7 +949,7 @@
             <div
               class={[`cell`, { interactive: has_interaction_handlers }]}
               class:selected
-              role={roles.cell}
+              role={cell_role}
               tabindex={has_interaction_handlers ? -1 : undefined}
               aria-selected={has_interaction_handlers ? selected : undefined}
               data-x={x_idx}

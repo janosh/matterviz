@@ -4,42 +4,35 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
 
 ```svelte example
 <script lang="ts">
-  import { element_data, PeriodicTable, ScatterPlot } from 'matterviz'
+  import { element_data, ELEM_PROPERTY_LABELS, PeriodicTable, ScatterPlot } from 'matterviz'
   import type { ChemicalElement, ElementSymbol, InternalPoint } from 'matterviz'
 
-  type NumericKey = `electronegativity_pauling` | `atomic_radius` | `density` | `melting_point`
-
   const symbols = element_data.map(({ symbol }) => symbol)
-  // Missing values become NaN, which the plot drops, so ids stay aligned with x and y
-  const element_series = (x_key: NumericKey, y_key: NumericKey) => [
-    {
-      x: element_data.map((elem) => elem[x_key] ?? NaN),
-      y: element_data.map((elem) => elem[y_key] ?? NaN),
-      point_ids: symbols,
-      metadata: element_data.map(({ name, symbol }) => ({ name, symbol })),
-      markers: `points` as const,
-    },
-  ]
-  const radius_series = element_series(`electronegativity_pauling`, `atomic_radius`)
-  const melting_series = element_series(`density`, `melting_point`)
+  const names = element_data.map(({ name, symbol }) => ({ name, symbol }))
+  const plots = [
+    [`electronegativity`, `atomic_radius`, `linear`],
+    [`density`, `melting_point`, `log`],
+  ] as const
+  const axis_label = (key: keyof ChemicalElement) => {
+    const [label, unit] = ELEM_PROPERTY_LABELS[key] ?? [key]
+    return unit ? `${label} (${unit})` : label
+  }
 
   // null = nothing brushed, so no view dims anything
   let selected = $state<ElementSymbol[] | null>(null)
-  // The Alt+drag rings of each plot; cleared once the selection comes from elsewhere
-  let radius_rings = $state<{ series_idx: number; point_idx: number }[]>([])
-  let melting_rings = $state<{ series_idx: number; point_idx: number }[]>([])
+  // Each plot's Alt+drag rings; cleared once the selection comes from elsewhere
+  let rings = $state<{ series_idx: number; point_idx: number }[][]>([[], []])
 
   const on_brush =
-    (clear_other: () => void) =>
+    (plot_idx: number) =>
     ({ points }: { points: InternalPoint[] }) => {
       const ids = new Set(points.map(({ point_id }) => point_id))
       selected = points.length > 0 ? symbols.filter((symbol) => ids.has(symbol)) : null
-      clear_other()
+      rings[1 - plot_idx] = []
     }
   const set_selection = (next: ElementSymbol[]) => {
     selected = next.length > 0 ? next : null
-    radius_rings = []
-    melting_rings = []
+    rings = [[], []]
   }
   const toggle_element = ({ symbol }: ChemicalElement) => {
     const current = selected ?? []
@@ -72,34 +65,32 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
 <div
   style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1em"
 >
-  <ScatterPlot
-    series={radius_series}
-    highlighted_ids={selected}
-    bind:selected_points={radius_rings}
-    on_select={on_brush(() => (melting_rings = []))}
-    x_axis={{ label: `Pauling electronegativity` }}
-    y_axis={{ label: `Atomic radius (Å)` }}
-    style="height: 320px"
-  >
-    {#snippet tooltip({ metadata, x_formatted, y_formatted })}
-      <strong>{metadata?.symbol} {metadata?.name}</strong><br />
-      EN {x_formatted}, radius {y_formatted} Å
-    {/snippet}
-  </ScatterPlot>
-  <ScatterPlot
-    series={melting_series}
-    highlighted_ids={selected}
-    bind:selected_points={melting_rings}
-    on_select={on_brush(() => (radius_rings = []))}
-    x_axis={{ label: `Density (g/cm³)`, scale_type: `log` }}
-    y_axis={{ label: `Melting point (K)` }}
-    style="height: 320px"
-  >
-    {#snippet tooltip({ metadata, x_formatted, y_formatted })}
-      <strong>{metadata?.symbol} {metadata?.name}</strong><br />
-      {x_formatted} g/cm³, melts at {y_formatted} K
-    {/snippet}
-  </ScatterPlot>
+  {#each plots as [x_key, y_key, scale_type], plot_idx (x_key)}
+    {@const [x_label, y_label] = [axis_label(x_key), axis_label(y_key)]}
+    <!-- Missing values become NaN, which the plot drops, so ids stay aligned with x and y -->
+    <ScatterPlot
+      series={[
+        {
+          x: element_data.map((elem) => elem[x_key] ?? NaN),
+          y: element_data.map((elem) => elem[y_key] ?? NaN),
+          point_ids: symbols,
+          metadata: names,
+          markers: `points`,
+        },
+      ]}
+      highlighted_ids={selected}
+      bind:selected_points={rings[plot_idx]}
+      on_select={on_brush(plot_idx)}
+      x_axis={{ label: x_label, scale_type }}
+      y_axis={{ label: y_label }}
+      style="height: 320px"
+    >
+      {#snippet tooltip({ metadata, x_formatted, y_formatted })}
+        <strong>{metadata?.symbol} {metadata?.name}</strong><br />
+        {x_label}: {x_formatted}<br />{y_label}: {y_formatted}
+      {/snippet}
+    </ScatterPlot>
+  {/each}
 </div>
 
 <PeriodicTable

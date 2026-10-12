@@ -106,13 +106,10 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   )
 }
 
-// Atoms behind one bin of an RDF curve, for highlighting a hovered bin in a structure viewer.
-// The RDF kernels keep only the histogram, so this re-runs the neighbour search for the one
-// bin, out to its upper edge only, with the histogram's own bin_of so the pairs found are
-// exactly the ones counted there. With `element_pair` [a, b] only centres carrying a and
-// neighbours carrying b count (partial g_ab); without it every pair counts. `site_indices` are
-// the centres, `neighbor_indices` their partners (images map to base sites), both sorted;
-// `n_pairs` counts ordered (centre, neighbour image) contacts, not weighted by occupancy.
+// Atoms behind one RDF bin (centres and their partners, images mapped to base sites, sorted)
+// for highlighting a hovered bin. The kernels keep only the histogram, so this re-runs the
+// neighbour search for the one bin with the histogram's own bin_of and weights, so it finds
+// exactly the pairs counted there. `n_pairs` counts contacts, not weighted by occupancy.
 export function rdf_bin_sites(
   structure: Crystal,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {
@@ -125,24 +122,16 @@ export function rdf_bin_sites(
   if (!Number.isInteger(bin_idx) || bin_idx < 0 || bin_idx >= prepared.n_bins) {
     throw new Error(`bin_idx must be an integer in [0, ${prepared.n_bins}), got ${bin_idx}`)
   }
-  const has_element = (element: string | undefined): Uint8Array =>
-    Uint8Array.from(structure.sites, ({ species }) =>
-      !element || species.some((spec) => spec.element === element && spec.occu > 0) ? 1 : 0,
-    )
-  const is_center = has_element(element_pair?.[0])
-  const is_neighbor = has_element(element_pair?.[1])
+  const center_weights = species_weights(structure.sites, element_pair?.[0])
+  const neighbor_weights = species_weights(structure.sites, element_pair?.[1])
   const centers = new Set<number>()
   const neighbors = new Set<number>()
   let n_pairs = 0
-  // Every distance binned into bin_idx lies below its upper edge (bin_of floors), so the
-  // search never needs to reach further
-  const search = {
-    ...prepared,
-    cutoff: Math.min(prepared.cutoff, (bin_idx + 1) * prepared.bin_size),
-  }
-  visit_neighbor_distances(structure, search, (center, neighbor, distance) => {
-    if (!is_center[center] || !is_neighbor[neighbor]) return
-    if (prepared.bin_of(distance) !== bin_idx) return
+  // bin_of floors, so the search never needs to reach past the bin's upper edge
+  const cutoff = Math.min(prepared.cutoff, (bin_idx + 1) * prepared.bin_size)
+  visit_neighbor_distances(structure, { ...prepared, cutoff }, (center, neighbor, dist) => {
+    if (!center_weights[center] || !neighbor_weights[neighbor]) return
+    if (prepared.bin_of(dist) !== bin_idx) return
     n_pairs++
     centers.add(center)
     neighbors.add(neighbor)

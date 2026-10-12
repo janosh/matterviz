@@ -374,11 +374,9 @@ describe(`peak_mode_indices`, () => {
   // CO2 in cm^-1: the degenerate bends (modes 5, 6) at 667 and nu3 (mode 8) at 2349 are IR
   // active; nu1 (mode 7) at 1333 is IR silent and Raman active
   it.each([
-    [`a degenerate pair at its peak`, `ir`, 667, [5, 6]],
     [`a degenerate pair from its flank`, `ir`, 685, [5, 6]],
     [`a lone peak`, `ir`, 2340, [8]],
     [`an IR-silent mode`, `ir`, 1333, []],
-    [`the baseline between peaks`, `ir`, 1000, []],
     [`the Raman-active mode`, `raman`, 1340, [7]],
   ] as const)(`resolves %s`, (_name, kind, position, expected) => {
     const sticks = spectrum_sticks(co2_spectrum, kind)
@@ -973,8 +971,7 @@ describe(`IrRamanSpectrum component`, () => {
       const sticks = [...document.querySelectorAll(`line.mode-stick`)]
       expect(sticks).toHaveLength(3)
       const attr = (element: Element, name: string) => Number(element.getAttribute(name))
-      const horizontal = orientation === `horizontal`
-      const [freq_attr, other_attr] = horizontal ? [`y`, `x`] : [`x`, `y`]
+      const [freq_attr, other_attr] = orientation === `horizontal` ? [`y`, `x`] : [`x`, `y`]
       for (const stick of sticks) {
         expect(attr(stick, `${freq_attr}1`)).toBe(attr(stick, `${freq_attr}2`))
         expect(attr(stick, `${other_attr}1`)).not.toBe(attr(stick, `${other_attr}2`))

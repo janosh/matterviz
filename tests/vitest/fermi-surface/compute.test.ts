@@ -4,12 +4,10 @@ import {
   auto_interpolation_factor,
   band_carriers,
   band_grids_prepared,
-  centered_cell_edges,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
   fold_to_wigner_seitz,
-  pocket_carriers,
   polygon_interior_point,
   preview_interpolation_factor,
   sample_slice_energies,
@@ -204,21 +202,12 @@ describe(`extract_fermi_surface vertex properties`, () => {
     ...make_band_data(grid_n, sphere, { ...opts, fermi_energy: 0.3 }),
     properties: { field: [[property]] },
   })
-  // Fractional k of every vertex (positions = k_latticeᵀ·frac)
-  const vertex_fracs = (surface: FermiIsosurface, k_lattice: Matrix3x3): Vec3[] => {
-    const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_lattice))
-    return vertices_of(surface).map((vertex) =>
-      math.mat3x3_vec3_multiply(cart_to_frac, vertex),
-    )
-  }
 
   // Trilinear sampling on the raw grid errs by at most Σ amplitude·(2π h)²/8 = 1.75·(2π h)²/8
   // for this field: 0.0337 at h = 1/16 (periodic), 0.0384 at h = 1/15 (endpoint-inclusive).
   // Measured maxima at factor 1 / 2: 0.0135 / 0.0322 (periodic), 0.0131 / 0.0315
-  // (half-shifted), 0.0174 / 0.0370 (endpoint-inclusive hexagonal); factor 2 places vertices
-  // nearer cell centres. Sampling half a step off (a wrong shift or Γ-centring roll) errs by
-  // ~2π h/2 = 0.2 on the cos(2π k_x) term alone.
-  const trilinear_bound = (period: number) => (1.75 * (two_pi / period) ** 2) / 8
+  // (half-shifted), 0.0174 / 0.0370 (endpoint-inclusive hexagonal). Sampling half a step off
+  // (a wrong shift or Γ-centring roll) errs by ~2π h/2 = 0.2 on the cos(2π k_x) term alone.
   test.each([
     { label: `periodic Γ-centred`, opts: { periodic: true } },
     { label: `periodic half-shifted`, opts: { periodic: true, grid_shift: [0.5, 0.5, 0.5] } },
@@ -228,15 +217,20 @@ describe(`extract_fermi_surface vertex properties`, () => {
       ...opts,
       grid_shift: opts.grid_shift && [...opts.grid_shift],
     })
+    const cart_to_frac = math.matrix_inverse_3x3(
+      math.transpose_3x3_matrix(band_data.k_lattice),
+    )
+    const period = `periodic` in opts ? grid_n : grid_n - 1
     for (const interpolation_factor of [1, 2]) {
       const [surface] = extract_fermi_surface(band_data, { interpolation_factor }).isosurfaces
       const values = surface.properties?.field
       expect(values).toHaveLength(vertex_count(surface))
-      const errors = vertex_fracs(surface, band_data.k_lattice).map((frac, idx) =>
-        Math.abs((values?.[idx] ?? NaN) - field(...frac)),
+      const errors = vertices_of(surface).map((vertex, idx) =>
+        Math.abs(
+          (values?.[idx] ?? NaN) - field(...math.mat3x3_vec3_multiply(cart_to_frac, vertex)),
+        ),
       )
-      const period = `periodic` in opts ? grid_n : grid_n - 1
-      expect(Math.max(...errors)).toBeLessThan(trilinear_bound(period))
+      expect(Math.max(...errors)).toBeLessThan((1.75 * (two_pi / period) ** 2) / 8)
     }
   })
 
@@ -251,61 +245,15 @@ describe(`extract_fermi_surface vertex properties`, () => {
     const empty = make_band_data(grid_n, () => NaN).energies[0][0]
     const [blank] = extract_fermi_surface(with_field({}, empty)).isosurfaces
     expect(blank.properties?.field.every(Number.isNaN)).toBe(true)
-    // no `properties` on the grid, none on the surface
-    const [plain] = extract_fermi_surface({
-      ...with_field({}),
-      properties: undefined,
-    }).isosurfaces
-    expect(plain.properties).toBeUndefined()
+    const plain = { ...with_field({}), properties: undefined }
+    expect(extract_fermi_surface(plain).isosurfaces[0].properties).toBeUndefined()
   })
 })
 
-describe(`slice plane section`, () => {
-  const cube_edges = centered_cell_edges(IDENTITY_MATRIX3)
-  const diagonal = math.normalize_vec<Vec3>([1, 1, 1])
-  // (0 0 1) through Γ cuts the unit cube in its middle square; (1 1 1) through Γ in the regular
-  // hexagon of edge √2/2; past the corner √3/2 nothing, and exactly at it only a point
-  test.each([
-    { normal: [0, 0, 1] as Vec3, distance: 0, n_corners: 4, side: 1 },
-    { normal: [0, 0, 1] as Vec3, distance: 0.5, n_corners: 4, side: 1 }, // the top face
-    { normal: diagonal, distance: 0, n_corners: 6, side: Math.SQRT1_2 },
-    { normal: diagonal, distance: Math.sqrt(3) / 2, n_corners: 0, side: 0 },
-    { normal: diagonal, distance: 0.9, n_corners: 0, side: 0 },
-  ])(`normal $normal at d=$distance`, ({ normal, distance, n_corners, side }) => {
-    const corners = math.plane_polyhedron_section(cube_edges, normal, distance)
-    expect(corners).toHaveLength(n_corners)
-    for (const [idx, corner] of corners.entries()) {
-      expect(math.dot(normal, corner)).toBeCloseTo(distance, 12) // on the plane
-      // ordered around the polygon: consecutive corners are one side apart
-      const next = corners[(idx + 1) % corners.length]
-      expect(math.euclidean_dist(corner, next)).toBeCloseTo(side, 12)
-    }
-  })
-
-  test(`centered_cell_edges spans the Γ-centred cell of a skew lattice`, () => {
-    const edges = centered_cell_edges(HEXAGONAL)
-    expect(edges).toHaveLength(12)
-    const cart_to_frac = math.matrix_inverse_3x3(math.transpose_3x3_matrix(HEXAGONAL))
-    const fracs = edges.flat().map((point) => math.mat3x3_vec3_multiply(cart_to_frac, point))
-    for (const frac of fracs)
-      for (const coord of frac) expect(Math.abs(coord)).toBeCloseTo(0.5, 12)
-    // each edge runs along one lattice vector
-    for (const [start, end] of edges) {
-      const step = math.mat3x3_vec3_multiply(cart_to_frac, math.subtract(end, start))
-      expect(
-        step
-          .map((coord) => Math.round(Math.abs(coord)))
-          .toSorted((left, right) => left - right),
-      ).toEqual([0, 0, 1])
-    }
-  })
-
-  test(`slice_plane_normal is the normalised h·b₁ + k·b₂ + l·b₃ and rejects degenerate planes`, () => {
-    const normal = slice_plane_normal(HEXAGONAL, [1, 1, 0])
-    expect(normal[0]).toBeCloseTo(0.5, 12)
-    expect(normal[1]).toBeCloseTo(Math.sqrt(3) / 2, 12)
-    expect(() => slice_plane_normal(HEXAGONAL, [0, 0, 0])).toThrow(/Invalid miller indices/)
-  })
+test(`slice_plane_normal is the normalised h·b₁ + k·b₂ + l·b₃`, () => {
+  const normal = slice_plane_normal(HEXAGONAL, [1, 1, 0])
+  expect(normal[0]).toBeCloseTo(0.5, 12)
+  expect(normal[1]).toBeCloseTo(Math.sqrt(3) / 2, 12)
 })
 
 describe(`slice energy shading`, () => {
@@ -319,10 +267,7 @@ describe(`slice energy shading`, () => {
       plane: {
         plane_normal: [0, 0, 1],
         plane_distance: 0,
-        in_plane_basis: [
-          [1, 0, 0],
-          [0, 1, 0],
-        ],
+        in_plane_basis: IDENTITY_MATRIX3.slice(0, 2) as [Vec3, Vec3],
       },
       bounds: { min: [-0.5, -0.25], max: [0.5, 0.25] },
       resolution,
@@ -350,34 +295,37 @@ describe(`slice energy shading`, () => {
     const numbered = slice_energies({ ...band_data, band_indices: [8, 9] }, 8)
     expect(numbered.layers.map(({ band_index }) => band_index)).toEqual([8])
     const [{ values }] = sampled.layers
-    let max_err = 0
-    for (let row = 0; row < 32; row++) {
-      for (let col = 0; col < 64; col++) {
-        const [coord_x, coord_y] = [-0.5 + (col + 0.5) / 64, 0.25 - (row + 0.5) / 64]
-        max_err = Math.max(
-          max_err,
-          Math.abs(values[row * 64 + col] - (Math.hypot(coord_x, coord_y) - 0.3)),
-        )
-      }
-    }
-    expect(max_err).toBeLessThan(0.0125)
+    const errors = Array.from(values, (value, idx) => {
+      const [coord_x, coord_y] = [
+        -0.5 + ((idx % 64) + 0.5) / 64,
+        0.25 - (Math.floor(idx / 64) + 0.5) / 64,
+      ]
+      return Math.abs(value - (Math.hypot(coord_x, coord_y) - 0.3))
+    })
+    expect(Math.max(...errors)).toBeLessThan(0.0125)
     // mu shifts the level: the centre pixel moves from −0.3 to −0.4
-    const shifted = slice_energies(band_data, 64, 0.1)
     const centre = 16 * 64 + 32
-    expect(shifted.layers[0].values[centre] - values[centre]).toBeCloseTo(-0.1, 6)
+    const shifted = slice_energies(band_data, 64, 0.1).layers[0].values[centre]
+    expect(shifted - values[centre]).toBeCloseTo(-0.1, 6)
   })
 
-  // Straight-alpha source-over: both bands occupied → α = ½ + ½·½, colour ⅓ red + ⅔ blue
-  test(`occupied mode tints and composites each band's filled side`, () => {
+  test(`occupied and energy modes`, () => {
+    // straight-alpha source-over: both bands occupied → α = ½ + ½·½, colour ⅓ red + ⅔ blue
     const occupied = energy_map([-1, 1, 1], [-1, -1, 1])
-    const pixels = slice_shading_rgba(occupied, `occupied`, [`#ff0000`, `#0000ff`], {
+    const tinted = slice_shading_rgba(occupied, `occupied`, [`#ff0000`, `#0000ff`], {
       opacity: 0.5,
     })
-    expect(Array.from(pixels)).toEqual([85, 0, 170, 191, 0, 0, 255, 128, 0, 0, 0, 0])
+    expect(Array.from(tinted)).toEqual([85, 0, 170, 191, 0, 0, 255, 128, 0, 0, 0, 0])
+    // the band nearest E_F decides each pixel: occupied (ε < E_F) red, empty blue, none clear
+    const near = energy_map([-0.1, 0.4, NaN], [0.5, 0.2, NaN])
+    const pixels = slice_shading_rgba(near, `energy`, [`#000`], { opacity: 0.5 })
+    expect(pixels[0]).toBeGreaterThan(pixels[2]) // −0.1 beats 0.5: red
+    expect(pixels[6]).toBeGreaterThan(pixels[4]) // 0.2 beats 0.4: blue
+    expect(pixels[11]).toBe(0) // NaN everywhere: transparent
   })
 
-  // A band's majority carrier picks the pocket side: an electron band fills its occupied pixels
-  // solid, a hole band its empty ones in diagonal stripes ((row + col) mod 6 < 3)
+  // A band's carrier picks the pocket side: an electron band fills its occupied pixels solid,
+  // a hole band its empty ones in diagonal stripes ((row + col) mod 6 < 3)
   test(`pockets mode fills electron bands' occupied side, hole bands' empty side striped`, () => {
     const values = Float32Array.from({ length: 24 }, (_, idx) => (idx % 12 < 6 ? -1 : 1))
     const shaded = (carrier: `electron` | `hole`) => {
@@ -394,55 +342,18 @@ describe(`slice energy shading`, () => {
     expect(shaded(`electron`)).toEqual(pixels.map(([, col]) => col < 6))
     expect(shaded(`hole`)).toEqual(pixels.map(([row, col]) => col >= 6 && (row + col) % 6 < 3))
   })
-
-  // The band nearest E_F decides each pixel: occupied (ε < E_F) red, empty blue, none clear
-  test(`energy mode maps the band nearest E_F through a diverging scale`, () => {
-    const near = energy_map([-0.1, 0.4, NaN], [0.5, 0.2, NaN])
-    const pixels = slice_shading_rgba(near, `energy`, [`#000`], { opacity: 0.5 })
-    const [red_0, , blue_0] = pixels.slice(0, 3)
-    const [red_1, , blue_1] = pixels.slice(4, 7)
-    expect(red_0).toBeGreaterThan(blue_0) // −0.1 beats 0.5
-    expect(blue_1).toBeGreaterThan(red_1) // 0.2 beats 0.4
-    expect(pixels[11]).toBe(0) // NaN everywhere: transparent
-  })
 })
 
 describe(`pocket classification`, () => {
-  // A centroid inside a convex loop is returned as is; for a C-shape whose centroid falls in
-  // the notch, the midpoint of the first inside stretch of its horizontal line is
-  test.each([
-    {
-      label: `square`,
-      points: [
-        [0, 0],
-        [2, 0],
-        [2, 2],
-        [0, 2],
-      ],
-      inside: [1, 1],
-    },
-    {
-      label: `C-shape`,
-      points: [
-        [0, 0],
-        [3, 0],
-        [3, 1],
-        [1, 1],
-        [1, 2],
-        [3, 2],
-        [3, 3],
-        [0, 3],
-      ],
-      inside: [0.5, 1.5],
-    },
-  ] as { label: string; points: Vec2[]; inside: Vec2 }[])(
-    `interior point of a $label`,
-    ({ points, inside }) => {
-      const [coord_x, coord_y] = polygon_interior_point(points)
-      expect(coord_x).toBeCloseTo(inside[0], 12)
-      expect(coord_y).toBeCloseTo(inside[1], 12)
-    },
-  )
+  // a C-shape's centroid (1.25, 1.5) falls in its notch: the midpoint of the first inside
+  // stretch of its horizontal line is inside
+  test(`polygon_interior_point of a concave polygon`, () => {
+    // oxfmt-ignore
+    const c_shape: Vec2[] = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3]]
+    const [coord_x, coord_y] = polygon_interior_point(c_shape)
+    expect(coord_x).toBeCloseTo(0.5, 12)
+    expect(coord_y).toBeCloseTo(1.5, 12)
+  })
 
   // ε = ±|k| with E_F = ±0.3: the (001) slice through Γ is one closed circle, enclosing
   // occupied states (electron pocket) for +|k| and empty ones (hole pocket) for −|k|
@@ -454,42 +365,27 @@ describe(`pocket classification`, () => {
       periodic: true,
       fermi_energy: sign * 0.3,
     })
-    const fermi_data = extract_fermi_surface(band_data)
-    const slice = compute_fermi_slice(fermi_data, { miller_indices: [0, 0, 1], distance: 0 })
-    const carriers = pocket_carriers(band_data, slice)
-    expect(carriers.length).toBeGreaterThan(0)
-    expect(carriers.every((pocket) => pocket === carrier)).toBe(true)
-    expect(band_carriers(slice, carriers)).toEqual(new Map([[0, carrier]]))
+    const slice = compute_fermi_slice(extract_fermi_surface(band_data))
+    expect(band_carriers(band_data, slice)).toEqual(new Map([[0, carrier]]))
   })
 })
 
 describe(`Wigner-Seitz folding and preview resolution`, () => {
   // fcc reciprocal lattice (bcc-like vectors), whose Wigner-Seitz zone differs from the cell
-  const FCC_RECIPROCAL: Matrix3x3 = [
-    [-1, 1, 1],
-    [1, -1, 1],
-    [1, 1, -1],
-  ]
+  // oxfmt-ignore
+  const FCC_RECIPROCAL: Matrix3x3 = [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
   const k_t = math.transpose_3x3_matrix(FCC_RECIPROCAL)
   // a sphere |k| = E_F around Γ in Cartesian units, large enough to reach past the zone faces
   const fcc_data = (fermi_energy: number) =>
     make_band_data(
       16,
       (fx, fy, fz) => Math.hypot(...math.mat3x3_vec3_multiply(k_t, [fx, fy, fz])),
-      {
-        periodic: true,
-        k_lattice: FCC_RECIPROCAL,
-        fermi_energy,
-      },
+      { periodic: true, k_lattice: FCC_RECIPROCAL, fermi_energy },
     )
-  const lattice_points = [-1, 0, 1].flatMap((n_a) =>
-    [-1, 0, 1].flatMap((n_b) =>
-      [-1, 0, 1].map((n_c) => math.mat3x3_vec3_multiply(k_t, [n_a, n_b, n_c])),
-    ),
-  )
 
   // Folding moves whole triangles by lattice vectors: the area is unchanged and every triangle
-  // centroid ends nearer Γ than any other lattice point (inside the zone)
+  // centroid ends nearer Γ than any other lattice point (inside the zone). A cubic lattice's
+  // zone is its cell: folding moves nothing.
   test(`folds a band-grid surface into the Wigner-Seitz zone`, () => {
     const band_data = fcc_data(1.1)
     const cell = extract_fermi_surface(band_data)
@@ -500,6 +396,12 @@ describe(`Wigner-Seitz folding and preview resolution`, () => {
     ])
     // shifted vertices are re-stored as Float32 (relative eps 6e-8): measured 1.9e-9 off
     expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
+    const lattice_points = Array.from({ length: 27 }, (_, idx) =>
+      math.mat3x3_vec3_multiply(
+        k_t,
+        [idx / 9, idx / 3, idx].map((n) => (Math.floor(n) % 3) - 1) as Vec3,
+      ),
+    )
     let n_moved = 0
     for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
       if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
@@ -507,50 +409,35 @@ describe(`Wigner-Seitz folding and preview resolution`, () => {
       for (let tri = 0; tri < indices.length; tri += 3) {
         const corners = [0, 1, 2].map((corner) => vertex_at(surface, indices[tri + corner]))
         const centroid = math.scale(math.add(...corners), 1 / 3)
-        const to_gamma = Math.hypot(...centroid)
-        for (const lattice_point of lattice_points) {
-          expect(to_gamma).toBeLessThanOrEqual(
-            math.euclidean_dist(centroid, lattice_point) + 1e-6,
-          )
-        }
+        const nearest = Math.min(
+          ...lattice_points.map((point) => math.euclidean_dist(centroid, point)),
+        )
+        expect(Math.hypot(...centroid)).toBeLessThanOrEqual(nearest + 1e-6)
       }
     }
     expect(n_moved).toBeGreaterThan(0) // the sphere crosses the zone faces
+    const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
+    const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
+    expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
   })
 
-  test(`a cubic lattice's zone is its cell: folding moves nothing`, () => {
-    const band_data = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
-    const [cell] = extract_fermi_surface(band_data).isosurfaces
-    expect(fold_to_wigner_seitz(cell, IDENTITY_MATRIX3)).toBe(cell)
-  })
-
-  // previews cap the factor at the mesh's auto factor (16 points → 3), never raise it
-  test.each([
-    [4, 3],
-    [3, 3],
-    [2, 2],
-    [0, 3],
-  ])(`preview_interpolation_factor(%s) on a 16³ mesh = %s`, (factor, expected) => {
-    expect(preview_interpolation_factor(fcc_data(1), factor)).toBe(expected)
-  })
-
-  // two upsampled grids per band stay cached: a preview and the full surface do not evict
-  // each other, a third factor evicts the oldest
-  test(`band_grids_prepared tracks the two most recent factors per band`, () => {
+  // previews cap the factor at the mesh's auto factor (16 points → 3), never raise it; two
+  // upsampled grids per band stay cached, so a preview and the full surface do not evict each
+  // other while a third factor evicts the oldest
+  test(`preview factor and the two-factor grid cache`, () => {
+    const previews = [4, 3, 2, 0].map((factor) =>
+      preview_interpolation_factor(fcc_data(1), factor),
+    )
+    expect(previews).toEqual([3, 3, 2, 3])
     const band_data = make_band_data(8, sphere, { periodic: true, fermi_energy: 0.3 })
-    expect(band_grids_prepared(band_data, 2)).toBe(false)
+    const prepared = (...factors: number[]) =>
+      factors.map((factor) => band_grids_prepared(band_data, factor))
+    expect(prepared(2)).toEqual([false])
     extract_fermi_surface(band_data, { interpolation_factor: 2 })
     extract_fermi_surface(band_data, { interpolation_factor: 3 })
-    expect([2, 3].map((factor) => band_grids_prepared(band_data, factor))).toEqual([
-      true,
-      true,
-    ])
+    expect(prepared(2, 3)).toEqual([true, true])
     extract_fermi_surface(band_data, { interpolation_factor: 4 })
-    expect([2, 3, 4].map((factor) => band_grids_prepared(band_data, factor))).toEqual([
-      false,
-      true,
-      true,
-    ])
+    expect(prepared(2, 3, 4)).toEqual([false, true, true])
   })
 })
 
@@ -902,13 +789,9 @@ describe(`compute_fermi_slice`, () => {
 
   const make_box_fermi_data = (
     faces: number[][] = BOX_TRI_FACES,
-    properties?: Float32Array,
+    properties?: Record<string, Float32Array>,
   ): FermiSurfaceData =>
-    make_fermi_surface([
-      make_fermi_isosurface(BOX_VERTICES, faces, {
-        properties: properties && { λ: properties },
-      }),
-    ])
+    make_fermi_surface([make_fermi_isosurface(BOX_VERTICES, faces, { properties })])
 
   // Slicing the box at z=0.05 cuts its four side walls: one closed unit-square contour
   test.each([
@@ -943,9 +826,13 @@ describe(`compute_fermi_slice`, () => {
   })
 
   test(`interpolates per-vertex properties along the contour`, () => {
-    // property = z·10 → every contour point at z=0.05 must carry 0.5
-    const properties = Float32Array.from(BOX_VERTICES, (vertex) => vertex[2] * 10)
-    const slice = compute_fermi_slice(make_box_fermi_data(BOX_TRI_FACES, properties), {
+    // λ = z·10 → every contour point at z=0.05 must carry 0.5
+    const lambda = Float32Array.from(BOX_VERTICES, (vertex) => vertex[2] * 10)
+    const two_properties = make_box_fermi_data(BOX_TRI_FACES, {
+      λ: lambda,
+      Δ: Float32Array.from(BOX_VERTICES, () => 7),
+    })
+    const slice = compute_fermi_slice(two_properties, {
       miller_indices: [0, 0, 1],
       distance: 0.05,
     })
@@ -953,15 +840,9 @@ describe(`compute_fermi_slice`, () => {
     const [isoline] = slice.isolines
     expect(isoline.properties).toHaveLength(isoline.points.length)
     for (const value of isoline.properties ?? []) expect(value).toBeCloseTo(0.5, 6)
-    // options.property picks the named property the contours carry (default: the first)
-    const two_properties = make_fermi_surface([
-      make_fermi_isosurface(BOX_VERTICES, BOX_TRI_FACES, {
-        properties: { λ: properties, Δ: Float32Array.from(BOX_VERTICES, () => 7) },
-      }),
-    ])
+    // options.property picks the named property the contours carry (default: the first, λ)
     const contour_values = (property?: string) =>
       compute_fermi_slice(two_properties, { distance: 0.05, property }).isolines[0].properties
-    expect(contour_values()?.[0]).toBeCloseTo(0.5, 6)
     expect(contour_values(`Δ`)?.every((value) => value === 7)).toBe(true)
     expect(contour_values(`missing`)).toBeUndefined()
   })

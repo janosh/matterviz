@@ -232,8 +232,7 @@ describe(`clip_frac_plane_to_cell`, () => {
     expect(polygon.length).toBeGreaterThanOrEqual(3)
     const normal = math.miller_plane_normal(lattice, hkl)
     for (const [idx, corner] of polygon.entries()) {
-      const next = polygon[(idx + 1) % polygon.length]
-      const after = polygon[(idx + 2) % polygon.length]
+      const [next, after] = [1, 2].map((step) => polygon[(idx + step) % polygon.length])
       const turn = math.cross_3d(math.subtract(next, corner), math.subtract(after, next))
       expect(math.dot(turn, normal)).toBeGreaterThan(0)
     }

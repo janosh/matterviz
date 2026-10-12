@@ -1003,28 +1003,21 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
 
 // === Plane sections ===
 
-// The 8 corners of the unit cube [0,1]³ (bit 0 of the index sets x, bit 1 y, bit 2 z) and its
-// 12 edges: every corner joins, along each of its zero coordinates, the corner with that
-// coordinate set to 1
-export const UNIT_CUBE_CORNERS: readonly Vec3[] = Array.from({ length: 8 }, (_, idx): Vec3 => [
-  idx & 1,
-  (idx >> 1) & 1,
-  (idx >> 2) & 1,
-])
-export const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = UNIT_CUBE_CORNERS.flatMap(
-  (corner) =>
-    corner.flatMap((val, dim) =>
-      val === 0 ? [[corner, corner.with(dim, 1) as Vec3] as const] : [],
-    ),
+// The 12 edges of the unit cube [0,1]³: each corner (bit 0 of its index sets x, bit 1 y, bit 2
+// z) joins, along each of its zero coordinates, the corner with that coordinate set to 1
+export const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = Array.from(
+  { length: 8 },
+  (_, idx): Vec3 => [idx & 1, (idx >> 1) & 1, (idx >> 2) & 1],
+).flatMap((corner) =>
+  corner.flatMap((val, dim) =>
+    val === 0 ? [[corner, corner.with(dim, 1) as Vec3] as const] : [],
+  ),
 )
 
 // Corners of the convex polygon where the plane normal·x = offset (normal need not be unit)
-// cuts a convex polyhedron given by its edge segments, ordered counter-clockwise about
-// `normal`. Empty when the plane misses it or only touches a vertex or an edge. Every caller
-// that clips a plane to a cell or zone goes through here: lattice and mirror planes
-// (fractional unit cube), volumetric slices (Cartesian cell) and Fermi slices (Brillouin zone).
-// Edge endpoints with |normal·x − offset| < plane_tol lie on the plane (relative once
-// |offset| > 1); corners closer than merge_tol (Euclidean, in the edges' coordinates) merge.
+// cuts a convex polyhedron given by its edges, counter-clockwise about `normal`. Empty when the
+// plane misses it or only touches a vertex or an edge. Endpoints with |normal·x − offset| <
+// plane_tol lie on the plane; corners closer than merge_tol merge.
 export function plane_polyhedron_section(
   edges: readonly (readonly Vec3[])[],
   normal: Vec3,

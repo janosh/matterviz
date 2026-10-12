@@ -834,9 +834,6 @@
     Boolean(volumetric_data?.length || display_mode === `slice`) &&
       controls_config.visible(`view-mode`),
   )
-  let split_layout_available = $derived(
-    Boolean(volumetric_data?.length) && controls_config.visible(`view-mode`),
-  )
   // Split mode shows the 3D scene next to the cross-section, so 3D-only chrome stays on
   let has_3d_view = $derived(display_mode !== `slice`)
   let multi_layout_available = $derived(
@@ -903,7 +900,7 @@
       ? undefined
       : volume_by_id.get(active_volume_id ?? ``),
   )
-  // Split mode marks the cross-section's plane in the 3D scene, clipped to the sliced cell
+  // Split mode marks the cross-section's plane in the 3D scene
   let slice_polygon = $derived.by(() => {
     const settings = create_volume_slice_settings(slice_settings)
     if (display_mode !== `split` || !settings.show_plane || !slice_volume) return []
@@ -1228,7 +1225,7 @@
           >
             {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
             {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
-              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available) || (mode === `split` && split_layout_available)}
+              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available) || (mode === `split` && slice_layout_available && Boolean(volumetric_data?.length))}
                 <button
                   type="button"
                   class={['view-mode-option', { selected: current_layout.mode === mode }]}
@@ -1432,10 +1429,9 @@
         <!-- no GPU adapter in SSR and the vitest runner -->
       {:else if webgpu_available()}
         <div
-          class={[
-            `viewport-stage`,
-            { multi: is_multi_view_active, split: display_mode === `split` },
-          ]}
+          class="viewport-stage"
+          class:multi={is_multi_view_active}
+          class:split={display_mode === `split`}
         >
           {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
           {#if is_multi_view_active}
@@ -1538,22 +1534,19 @@
     height: 100%;
     width: 100%;
   }
-  /* Two-column multi-side view grid. Implicit rows divide the available height
+  /* Two-column grid of the multi-side views or of the 3D scene beside the 2D cross-section
+    (stacked when the viewer is taller than wide). Implicit rows divide the available height
     equally, including when a custom `views` array changes the number of panes. */
-  .viewport-stage.multi {
+  .viewport-stage.multi,
+  .viewport-stage.split {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap);
   }
-  /* 3D scene and 2D cross-section side by side, stacked when the viewer is taller than wide */
-  .viewport-stage.split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--struct-viewport-gap);
-    @container (aspect-ratio < 1) {
+  @container (aspect-ratio < 1) {
+    .viewport-stage.split {
       grid-template-columns: 1fr;
-      grid-template-rows: 1fr 1fr;
     }
   }
   /* keep the atom legend on the 3D half instead of over the cross-section */

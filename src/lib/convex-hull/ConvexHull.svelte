@@ -199,9 +199,7 @@
     void renderer_key
     untrack(selection.reset)
   })
-  // Linked-view overlay: the hovered (else selected) entry above the hull is tied to the
-  // stable phases it decomposes into, plus the host's composition annotations. Built only when
-  // there is something to draw, so the common case never reads the hull pipeline from here.
+  // Linked-view overlay: products of the hovered (else selected) above-hull entry, annotations
   const decomposition_focus = $derived(
     [
       selection.hover_data?.entry,
@@ -372,8 +370,7 @@
     style="z-index: 1"
   />
 
-  <!-- One popup for the pinned (clicked) entry and the hover preview, so pinning the
-  previewed entry keeps its structure viewer instead of remounting it -->
+  <!-- One popup for pinned and previewed entries, so pinning a preview doesn't remount it -->
   {@const pinned = selection.modal_open ? selection.selected_structure : null}
   {@const popup = pinned ? { structure: pinned, entry: selected_entry } : selection.preview}
   {#if popup}
@@ -387,7 +384,6 @@
       }}
       on_close={pinned ? selection.close_structure_popup : selection.clear_preview}
       show_drag_handle={Boolean(pinned)}
-      class={{ 'hover-preview': !pinned }}
       style={pinned ? undefined : `pointer-events: none`}
     />
   {/if}

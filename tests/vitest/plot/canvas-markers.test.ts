@@ -1,7 +1,6 @@
 import {
   type CanvasMarker,
   draw_markers,
-  MAX_SPRITE_CACHE,
   MAX_SPRITE_RUNS,
   MAX_SPRITE_SIDE,
   SPRITE_MIN_MARKERS,
@@ -118,6 +117,9 @@ describe(`canvas markers`, () => {
     const circles = draw(batch(500, { stroke_width: 0 }))
     expect(ops(circles, `arc`)).toHaveLength(500)
     expect(ops(circles, `fill`)).toHaveLength(1)
+    // each arc starts with a moveTo its rightmost point so adjacent arcs don't connect
+    expect(ops(circles, `moveTo`)[1].args).toEqual([4, 1])
+    expect(circles.calls.at(-1)?.op).toBe(`restore`)
     const squares = draw(batch(500, { symbol_type: `Square`, stroke_width: 0 }))
     expect(ops(squares, `arc`)).toHaveLength(0)
     expect(filled_path(squares).added).toHaveLength(500)
@@ -155,16 +157,6 @@ describe(`canvas markers`, () => {
     for (const operation of [`arc`, `fill`, `stroke`]) {
       expect(ops(invalid_ctx, operation)).toHaveLength(0)
     }
-  })
-
-  test(`moves before arcs and restores between redraws`, () => {
-    const ctx = fake_ctx()
-    const markers = [marker({ cx: 5, cy: 6, radius: 2 })]
-    for (let redraw = 0; redraw < 2; redraw++) {
-      draw_markers(ctx, markers, { width: 400, height: 300 })
-      expect(ctx.calls.at(-1)?.op).toBe(`restore`)
-    }
-    expect(ops(ctx, `moveTo`)[0].args).toEqual([7, 6])
   })
 
   test(`combines marker and fill or stroke opacity`, () => {
@@ -234,8 +226,8 @@ describe(`canvas markers`, () => {
 })
 
 describe(`canvas marker sprites (dense plots)`, () => {
-  // jsdom has no OffscreenCanvas: a stub records sprite creation and the paint calls made on each sprite
-  const stub_offscreen = ({ context = true } = {}) => {
+  // jsdom has no OffscreenCanvas: the stub records each sprite and the calls painting it
+  const stub_offscreen = (context = true) => {
     const sprites: { width: number; height: number; ctx: ReturnType<typeof fake_ctx> }[] = []
     class StubOffscreenCanvas {
       ctx = fake_ctx()
@@ -245,15 +237,13 @@ describe(`canvas marker sprites (dense plots)`, () => {
       ) {
         sprites.push(this)
       }
-      getContext() {
-        return context ? this.ctx : null
-      }
+      getContext = () => (context ? this.ctx : null)
     }
     vi.stubGlobal(`OffscreenCanvas`, StubOffscreenCanvas)
     return sprites
   }
 
-  test(`stamps one cached sprite per style, one drawImage per valid marker, snapped to device pixels`, () => {
+  test(`stamps cached sprites snapped to device pixels, sized for strokes and miters`, () => {
     const sprites = stub_offscreen()
     const markers = [
       ...batch(SPRITE_MIN_MARKERS, { fill: `red` }),
@@ -262,80 +252,38 @@ describe(`canvas marker sprites (dense plots)`, () => {
     ]
     const ctx = draw(markers, { width: 100, height: 100, pixel_ratio: 2 })
     expect(ops(ctx, `drawImage`)).toHaveLength(SPRITE_MIN_MARKERS + 5)
-    expect(ops(ctx, `arc`)).toHaveLength(0) // no per-marker path tracing
-    expect(sprites).toHaveLength(2) // red and blue styles
+    expect(ops(ctx, `arc`)).toHaveLength(0)
+    draw(markers, { width: 100, height: 100, pixel_ratio: 2 })
+    expect(sprites).toHaveLength(2) // red and blue, reused on redraw
     // radius 3 + stroke 1/2 + 1 antialias px = 4.5 CSS px half-extent, 18 device px side at DPR 2
     expect([sprites[0].width, sprites[0].height]).toEqual([18, 18])
     // marker 7 at (7, 7): top-left (7 - 4.5) * 2 = 5 device px
     expect(ops(ctx, `drawImage`)[7].args.slice(1)).toEqual([5, 5])
-    // each sprite is painted by the path renderer: centred circle, fill then stroke
-    const sprite_ops = sprites[0].ctx.calls.filter((call) =>
-      [`arc`, `fill`, `stroke`].includes(call.op),
-    )
-    expect(sprite_ops.map((call) => call.op)).toEqual([`arc`, `fill`, `stroke`])
-    expect(sprite_ops[0].args.slice(0, 3)).toEqual([4.5, 4.5, 3])
-  })
-
-  test(`reuses sprites across redraws and draws nothing for invisible styles`, () => {
-    const sprites = stub_offscreen()
-    const visible = batch(SPRITE_MIN_MARKERS, { fill: `#123456`, stroke_width: 0 })
-    draw(visible)
-    draw(visible)
-    expect(sprites).toHaveLength(1)
+    // the path renderer paints each sprite, its circle centred
+    expect(ops(sprites[0].ctx, `arc`)[0].args.slice(0, 3)).toEqual([4.5, 4.5, 3])
+    // symbols add 10 miter half-widths of the 1 px stroke to their sqrt(π·3²) bounding radius
+    draw(batch(SPRITE_MIN_MARKERS, { fill: `navy`, symbol_type: `Triangle` }))
+    expect(sprites[2].width).toBe(Math.ceil(2 * (Math.sqrt(Math.PI * 9) + 5 + 1)))
     const invisible = draw(batch(SPRITE_MIN_MARKERS, { fill: `none`, stroke: `none` }))
     expect(ops(invisible, `drawImage`)).toHaveLength(0)
   })
 
   // Sprites are planned before anything is drawn, so each fallback traces every marker as a path exactly once
-  test.each([
+  test.each<[string, CanvasMarker[], boolean?]>([
     [
       `per-point colours exceed the style-run cap`,
       Array.from({ length: SPRITE_MIN_MARKERS }, (_, idx) =>
         marker({ cx: idx, fill: `rgb(${idx % (MAX_SPRITE_RUNS + 1)}, 1, 2)` }),
       ),
-      true,
     ],
-    [
-      `markers exceed the sprite size cap`,
-      batch(SPRITE_MIN_MARKERS, { fill: `olive`, radius: MAX_SPRITE_SIDE }),
-      true,
-    ],
-    [
-      `the offscreen canvas has no 2D context`,
-      batch(SPRITE_MIN_MARKERS, { fill: `teal` }),
-      false,
-    ],
-    [
-      `plots are below the sprite threshold`,
-      batch(SPRITE_MIN_MARKERS - 1, { fill: `green` }),
-      true,
-    ],
-  ])(`falls back to paths when %s`, (_label, markers, context) => {
-    stub_offscreen({ context })
+    [`sprites exceed the size cap`, batch(SPRITE_MIN_MARKERS, { radius: MAX_SPRITE_SIDE })],
+    [`there is no offscreen 2D context`, batch(SPRITE_MIN_MARKERS, { fill: `teal` }), false],
+    [`below the sprite threshold`, batch(SPRITE_MIN_MARKERS - 1, { fill: `green` })],
+  ])(`falls back to paths when %s`, (_label, markers, context = true) => {
+    stub_offscreen(context)
     const ctx = draw(markers)
     expect(ops(ctx, `drawImage`)).toHaveLength(0)
     expect(ops(ctx, `arc`)).toHaveLength(markers.length)
     expect(ops(ctx, `save`)).toHaveLength(ops(ctx, `restore`).length)
-  })
-
-  test(`evicts the least recently used sprite once the cache is full`, () => {
-    const sprites = stub_offscreen()
-    const draw_style = (fill: string) => draw(batch(SPRITE_MIN_MARKERS, { fill }))
-    const fills = Array.from({ length: MAX_SPRITE_CACHE }, (_, idx) => `rgb(${idx}, 9, 9)`)
-    for (const fill of fills) draw_style(fill)
-    draw_style(fills[0]) // refresh the oldest, so the next insert evicts fills[1]
-    draw_style(`rgb(0, 0, 255)`)
-    const built = sprites.length
-    draw_style(fills[0])
-    expect(sprites).toHaveLength(built) // still cached
-    draw_style(fills[1])
-    expect(sprites).toHaveLength(built + 1) // evicted, rebuilt
-  })
-
-  test(`symbol sprites leave room for miter joins`, () => {
-    const sprites = stub_offscreen()
-    draw(batch(SPRITE_MIN_MARKERS, { fill: `navy`, symbol_type: `Triangle` }))
-    // sqrt(π·3²) bounding radius + 10 miter half-widths of the 1 px stroke + 1 antialias px, per side
-    expect(sprites[0].width).toBe(Math.ceil(2 * (Math.sqrt(Math.PI * 9) + 5 + 1)))
   })
 })

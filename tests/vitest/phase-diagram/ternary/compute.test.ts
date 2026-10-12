@@ -9,7 +9,6 @@ import {
   decompose_composition,
   decompose_phase,
   format_reaction,
-  hits_pin,
   prepare_diagram,
   prism_composition,
   prism_position,
@@ -225,20 +224,15 @@ describe(`compute_section`, () => {
 
 describe(`composition probes`, () => {
   const height = Math.sqrt(3) / 2
-  // inside points round-trip through the prism frame, outside ones map to null
-  test.each<[string, Vec2, boolean]>([
-    [`left corner`, [0, 0], true],
-    [`right corner`, [1, 0], true],
-    [`top corner`, [0.5, height], true],
-    [`centroid`, [0.5, height / 3], true],
-    [`edge midpoint`, [0.75, height / 2], true],
-    [`interior point`, [0.4, 0.25], true],
-    [`left of the left corner`, [-0.01, 0], false],
-    [`right of the right corner`, [1.01, 0], false],
-    [`below the base`, [0.5, -0.01], false],
-    [`above the top corner`, [0.5, height + 0.01], false],
-    [`past the left edge`, [0.2, 0.5], false],
-  ])(`prism_composition inverts prism_position at the %s`, (_, coords_xy, inside) => {
+  test.each<[Vec2, boolean]>([
+    [[0, 0], true],
+    [[1, 0], true],
+    [[0.5, height], true],
+    [[0.4, 0.25], true],
+    [[-0.01, 0], false],
+    [[0.5, -0.01], false],
+    [[0.2, 0.5], false], // past the left edge
+  ])(`prism_composition inverts prism_position at %j (inside: %s)`, (coords_xy, inside) => {
     const [x, y, z] = prism_position(coords_xy, 0.3)
     expect(y).toBe(0.3)
     expect(prism_composition({ x, z })).toEqual(
@@ -248,20 +242,7 @@ describe(`composition probes`, () => {
 
   test(`prism frame: centroid at the origin, triangle y along -z`, () => {
     expect(prism_position([0.5, height / 3])).toEqual([0, 0, 0])
-    expect(prism_position([0.5, height])).toEqual([
-      0,
-      0,
-      expect.closeTo(-2 * (height / 3), 12),
-    ])
-  })
-
-  test.each<[Vec2 | null, Vec2, boolean]>([
-    [null, [0.4, 0.25], false],
-    [[0.4, 0.25], [0.4, 0.25], true],
-    [[0.4, 0.25], [0.43, 0.289], true], // 0.049 away, just inside the 0.05 radius
-    [[0.4, 0.25], [0.43, 0.2901], false], // 0.0501 away
-  ])(`hits_pin(%j, %j, 0.05) = %s`, (pinned, coords_xy, hit) => {
-    expect(hits_pin(pinned, coords_xy, 0.05)).toBe(hit)
+    expect(prism_position([0.5, height])[2]).toBeCloseTo(-2 * (height / 3), 12)
   })
 })
 

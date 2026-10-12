@@ -169,9 +169,8 @@ test.describe(`PhononModeExplorer`, () => {
     await qpoint_select.selectOption(`2`)
     await expect(summary).toContainText(`q = [0.25, 0, 0.25]`)
 
-    // the IR spectrum sits beside the dispersion: hovering a peak rings its Γ modes on the
-    // bands, and hovering a band at Γ lights up its stick (bands 4 and 5 are the degenerate TO
-    // pair there, so either may win the hover)
+    // the IR spectrum sits beside the dispersion: hovering a peak rings its Γ modes on the bands
+    // (the reverse band → stick link is covered in PhononModeExplorer.test.svelte.ts)
     const stick = explorer.locator(`line.mode-stick`).nth(1)
     const stick_box = await require_bbox(stick, `second IR stick`)
     await page.mouse.move(
@@ -182,17 +181,6 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(stick).toHaveClass(/highlighted/)
     await page.mouse.move(0, 0)
     await expect(explorer.locator(`.peak-band-marker`)).toHaveCount(0)
-    const gamma_point = explorer.getByRole(`button`, { name: `Select band 5, q-point 1` })
-    const gamma_box = await require_bbox(gamma_point, `band 5 Γ marker`)
-    await page.mouse.move(
-      gamma_box.x + gamma_box.width / 2,
-      gamma_box.y + gamma_box.height / 2,
-    )
-    await expect(explorer.locator(`line.mode-stick.highlighted`)).toHaveAttribute(
-      `aria-label`,
-      /^Select mode [45] at/,
-    )
-    await expect(explorer.locator(`line.reference-line`)).toHaveCount(1)
 
     await stick.click({ force: true })
     await expect(summary).toContainText(`Mode 5`)

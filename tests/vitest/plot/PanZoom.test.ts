@@ -87,7 +87,6 @@ describe(`alt+drag rect selection`, () => {
   test(`selects the points inside the rect and leaves the axis range alone`, async () => {
     const on_select = vi.fn()
     const x_range: [number, number] = [-2, 4]
-    // point_ids ride along so a host can link other views by key rather than by index
     const series = [{ ...xy_series()[0], point_ids: [`a`, `b`, `c`] }]
     const svg = await mount_scatter({ on_select, series, x_axis: { range: x_range } })
     const before = marker_xs(svg)
@@ -97,10 +96,8 @@ describe(`alt+drag rect selection`, () => {
     expect(on_select).toHaveBeenCalledOnce()
     const [{ points, rect }] = on_select.mock.calls[0]
     expect(points.length).toBeGreaterThan(0)
-    const picked: InternalPoint[] = points
-    expect(picked.map(({ point_id }) => point_id)).toEqual(
-      picked.map(({ point_idx }) => series[0].point_ids[point_idx]),
-    )
+    for (const { point_id, point_idx } of points as InternalPoint[])
+      expect(point_id).toBe(series[0].point_ids[point_idx])
     expect(rect).toEqual({ x: [60, 380], y: [40, 240] })
     // Alt+drag must not also zoom - markers stay exactly where they were
     expect(marker_xs(svg)).toEqual(before)

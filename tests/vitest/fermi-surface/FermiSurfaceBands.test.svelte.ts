@@ -46,24 +46,8 @@ const band_data: BandGridData = {
   band_indices: [8, 9],
 }
 
-// mu = 0 leaves only the E_F line; an offset adds the dashed E_F + mu reference line
-test(`FermiSurfaceBands renders both views and marks E_F + mu on the bands`, async () => {
-  const props = $state({ band_data, band_struct, mu: 0 })
-  const wrapper = await mount_sized(FermiSurfaceBands, props, {
-    selector: `.fermi-surface-bands`,
-  })
-  const reference_line = () =>
-    wrapper.querySelector(`line[stroke*="bands-reference-line-color"]`)
-  expect(wrapper.querySelector(`.fermi-surface`)).toBeInstanceOf(HTMLElement)
-  expect(wrapper.querySelector(`svg`)).toBeInstanceOf(SVGElement)
-  expect(reference_line()).toBeNull()
-  props.mu = 2
-  flushSync()
-  expect(reference_line()).toBeInstanceOf(SVGLineElement)
-})
-
-// Hover previews a band point's energy (the E_F + mu line follows it, mu itself stays), a click
-// pins that energy as mu and isolates the band, a second click ends the isolation
+// Hover previews a band point's energy (the dashed E_F + mu line follows it, mu itself stays), a
+// click pins that energy as mu and isolates the band, a second click ends the isolation
 test(`hover previews a band point's energy, a click pins it and isolates the band`, async () => {
   // extraction runs on animation frames: fake them to step it deterministically
   vi.useFakeTimers({
@@ -114,6 +98,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   }
   const leave = async () => {
     await fire(svg, mouse(`mouseleave`))
+    await vi.advanceTimersByTimeAsync(50) // re-extraction at the pinned mu
     flushSync()
   }
   const click = async (band: number) => {
@@ -126,6 +111,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   const selected_strokes = () =>
     wrapper.querySelectorAll(`svg path[fill="none"][stroke*="--bands-selected-color"]`).length
   expect(wrapper.querySelectorAll(`.marker`)).toHaveLength(0) // lines only
+  expect(reference_y()).toBeUndefined() // mu = 0: only the E_F line
 
   await hover(8) // band 8 at Γ: 0.1 eV, 0.2 below E_F
   expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
@@ -137,11 +123,8 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   expect(wrapper.querySelector(`rect.highlighted-segment`)).toBeNull()
 
   // band 3 is not in the grid: no preview, and a click pins nothing
-  await hover(3)
-  expect(reference_y()).toBeUndefined()
-  svg.dispatchEvent(mouse(`click`, band_vertex(3)))
-  flushSync()
-  expect(props.mu).toBe(0)
+  await click(3)
+  expect([reference_y(), props.mu]).toEqual([undefined, 0])
   await leave()
 
   // the 3D controls list the sheets shown: both, then band 8 alone once isolated
@@ -154,16 +137,12 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   expect(props.mu).toBeCloseTo(-0.2, 12) // the clicked energy, pinned
   expect(on_plot_click).toHaveBeenCalledTimes(2)
   await leave()
-  await vi.advanceTimersByTimeAsync(50)
-  flushSync()
   expect(shown_bands()).toEqual([true, false])
   expect(selected_strokes()).toBe(1) // isolated, still emphasised without hover
   expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
 
   await click(8) // again: isolation ends, both sheets return
   await leave()
-  await vi.advanceTimersByTimeAsync(50)
-  flushSync()
   expect(selected_strokes()).toBe(0)
   expect(shown_bands()).toEqual([true, true])
 })

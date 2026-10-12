@@ -566,9 +566,8 @@ export const HULL_OVERLAY_COLORS = Object.freeze({
   annotation: `#c026d3`,
 })
 
-// What linked views draw over a hull, in plot coordinates: dashed tie-lines from `focus` (if
-// above the hull) to the stable phases it decomposes into, each ringed with its atom fraction,
-// plus the host's composition annotations (skipped with a warning when outside the system).
+// Linked-view overlay in plot coords: dashed tie-lines from an above-hull `focus` to its ringed
+// products (atom fractions), plus host annotations (skipped with a warning outside the system)
 export function build_hull_overlay(
   model: { entries: readonly ConvexHullEntry[]; elements: readonly ElementSymbol[] },
   focus: ConvexHullEntry | null,

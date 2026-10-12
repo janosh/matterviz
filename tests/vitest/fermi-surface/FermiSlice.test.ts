@@ -104,17 +104,16 @@ describe(`FermiSlice`, () => {
 })
 
 describe(`FermiSlice linked views`, () => {
-  // selected_bands hides the other bands' contours (the 3D viewer's band toggles)
-  test(`selected_bands filters the drawn contours`, async () => {
+  // `bound` props are two-way bound (see bind_props)
+  const mount_slice = async (props: Record<string, unknown>, bound = {}) => {
     const plot = await mount_sized(
       FermiSlice,
-      { fermi_data: create_mock_fermi_data([0, 1, 2]), distance: 0.05, selected_bands: [1] },
+      bind_props({ fermi_data: create_mock_fermi_data([0]), distance: 0.05, ...props }, bound),
       { selector: `.fermi-slice` },
     )
     await tick()
-    const drawn = [...plot.querySelectorAll(`g[data-series-id^="iso-"]`)]
-    expect(drawn.map((group) => group.getAttribute(`data-series-id`))).toEqual([`iso-1-0`])
-  })
+    return plot
+  }
 
   // A k-point from the 3D viewer projects onto the (001) plane at z = 0.05: filled on the plane,
   // a dashed ring with its offset in the title when off it
@@ -122,33 +121,25 @@ describe(`FermiSlice linked views`, () => {
     { marker: [0.2, -0.1, 0.05] as Vec3, on_plane: true, title: /On the slice plane/ },
     { marker: [0.2, -0.1, 0.45] as Vec3, on_plane: false, title: /0\.4 Å⁻¹ off/ },
   ])(`marks $marker (on plane: $on_plane)`, async ({ marker, on_plane, title }) => {
-    const plot = await mount_sized(
-      FermiSlice,
-      { fermi_data: create_mock_fermi_data([0]), distance: 0.05, marker },
-      { selector: `.fermi-slice` },
-    )
-    await tick()
-    const circle = plot.querySelector(`circle.fermi-marker`)
+    const circle = (await mount_slice({ marker })).querySelector(`circle.fermi-marker`)
     expect(circle?.classList.contains(`on_plane`)).toBe(on_plane)
     expect(circle?.textContent).toMatch(title)
   })
 
-  // The cursor maps back to the Cartesian k on the plane (normal·k = distance)
-  test(`binds hovered_k to the cursor's k-point on the plane`, async () => {
+  // selected_bands hides the other bands' contours (the 3D viewer's band toggles); the cursor
+  // maps back to the Cartesian k on the plane (normal·k = distance)
+  test(`filters contours by selected_bands and binds hovered_k on the plane`, async () => {
     const props: { hovered_k: Vec3 | null } = { hovered_k: null }
-    const plot = await mount_sized(
-      FermiSlice,
-      bind_props({ fermi_data: create_mock_fermi_data([0]), distance: 0.05 }, props),
-      { selector: `.fermi-slice` },
-    )
-    await tick()
+    const fermi_data = create_mock_fermi_data([0, 1, 2])
+    const plot = await mount_slice({ fermi_data, selected_bands: [1] }, props)
+    const drawn = [...plot.querySelectorAll(`g[data-series-id^="iso-"]`)]
+    expect(drawn.map((group) => group.getAttribute(`data-series-id`))).toEqual([`iso-1-0`])
     const rect = plot.querySelector(`rect[role="presentation"]`)
-    if (!rect) throw new Error(`no hover rect`)
-    rect.dispatchEvent(
+    rect?.dispatchEvent(
       new PointerEvent(`pointermove`, { clientX: 120, clientY: 90, bubbles: true }),
     )
     expect(props.hovered_k?.[2]).toBeCloseTo(0.05, 12)
-    rect.dispatchEvent(new PointerEvent(`pointerleave`))
+    rect?.dispatchEvent(new PointerEvent(`pointerleave`))
     expect(props.hovered_k).toBeNull()
   })
 })

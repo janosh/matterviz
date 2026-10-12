@@ -272,19 +272,16 @@ export function peak_mode_indices(
   position: number,
   max_distance: number,
 ): number[] {
-  const is_active = (stick_idx: number): boolean => sticks.y[stick_idx] > 0
-  let [center, min_distance] = [NaN, max_distance]
-  for (const [stick_idx, stick_x] of sticks.x.entries()) {
-    const distance = Math.abs(stick_x - position)
-    if (is_active(stick_idx) && distance <= min_distance) {
-      ;[center, min_distance] = [stick_x, distance]
-    }
-  }
-  if (Number.isNaN(center)) return []
-  return sticks.modes.flatMap((mode, stick_idx) =>
-    is_active(stick_idx) && Math.abs(sticks.x[stick_idx] - center) <= max_distance / 2
-      ? [mode.mode_idx]
-      : [],
+  const active = sticks.modes.flatMap((mode, idx) =>
+    sticks.y[idx] > 0 ? [{ x: sticks.x[idx], mode_idx: mode.mode_idx }] : [],
+  )
+  const near = active.filter(({ x }) => Math.abs(x - position) <= max_distance)
+  if (!near.length) return []
+  const center = near.reduce((best, stick) =>
+    Math.abs(stick.x - position) <= Math.abs(best.x - position) ? stick : best,
+  ).x
+  return active.flatMap(({ x, mode_idx }) =>
+    Math.abs(x - center) <= max_distance / 2 ? [mode_idx] : [],
   )
 }
 

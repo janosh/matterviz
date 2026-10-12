@@ -66,8 +66,7 @@
     matrix ? math.scale_lattice_matrix(matrix, tile_counts) : null,
   )
   let lattice_center: Vec3 = $derived(cell_center(matrix ?? null))
-  // Lattice vector arrows all start just outside the origin corner, in the same a/b/c colors as the
-  // orientation gizmo and the rotation sliders
+  // Lattice vector arrows start just outside the origin corner, colored like the gizmo's a/b/c
   let vector_origin: Vec3 = $derived(matrix ? cell_vector_origin(matrix) : [0, 0, 0])
   let block_center: Vec3 = $derived(cell_center(block_matrix))
 

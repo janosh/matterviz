@@ -15,10 +15,7 @@ import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
 import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
 import * as rdf_pane_module from '#lib/rdf/TrajectoryRdfPane.svelte'
-import type TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
 import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
-import type TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
-import type { StructureCutaway } from '#lib/structure/cutaway.js'
 import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
@@ -129,6 +126,13 @@ test(`trajectory page initializes without reading query parameters during preren
     vi.doUnmock(`#lib/trajectory/index.js`)
   }
 })
+
+// Getter for the props a spied-on component module last rendered with
+const last_props = <CompProps extends Record<string, unknown>>(module: unknown) => {
+  const spy = vi.spyOn(module as { default: Component<CompProps> }, `default`)
+  return (): Partial<CompProps> => spy.mock.lastCall?.[1] ?? {}
+}
+type StructureProps = ComponentProps<typeof structure_component.default>
 
 // Structure renders its own view-mode/fullscreen buttons, so control queries stay in the bar
 const CONTROLS = `.trajectory-controls`
@@ -522,15 +526,10 @@ describe(`controls`, () => {
   })
 
   test(`linked views: inspector rows select atoms, analysis hovers highlight them, structure types seek`, async () => {
-    type SiteProps = { selected_sites?: number[]; highlighted_sites?: number[] }
-    const spy_default = <PaneProps extends Record<string, unknown>>(module: unknown) =>
-      vi.spyOn(module as { default: Component<PaneProps> }, `default`)
-    const render_structure = spy_default<SiteProps>(structure_component)
-    const msd_pane = spy_default<{ on_curve_hover?: (label: string | null) => void }>(
-      msd_pane_module,
-    )
-    const rdf_pane = spy_default<ComponentProps<typeof TrajectoryRdfPane>>(rdf_pane_module)
-    const structure_id_pane = spy_default<ComponentProps<typeof TrajectoryStructureIdPane>>(
+    const structure_props = last_props<StructureProps>(structure_component)
+    const msd = last_props<ComponentProps<typeof msd_pane_module.default>>(msd_pane_module)
+    const rdf = last_props<ComponentProps<typeof rdf_pane_module.default>>(rdf_pane_module)
+    const structure_id = last_props<ComponentProps<typeof structure_id_pane_module.default>>(
       structure_id_pane_module,
     )
     // two H atoms 1 A apart in a 5 A box
@@ -542,8 +541,7 @@ describe(`controls`, () => {
       }),
     )
     mount_trajectory(props)
-    await vi.waitFor(() => expect(render_structure.mock.lastCall).toBeDefined())
-    const structure_props = () => render_structure.mock.lastCall?.[1] ?? {}
+    await vi.waitFor(() => expect(structure_props().selected_sites).toBeDefined())
 
     // an inspector row selects its atom like a click in 3D; clicking it again deselects
     const atoms_tab = [...document.querySelectorAll<HTMLElement>(`[role="tab"]`)].find((tab) =>
@@ -559,34 +557,25 @@ describe(`controls`, () => {
     await tick()
     expect(structure_props().selected_sites).toEqual([])
 
-    const highlight_after = async (hover: () => void) => {
+    const shell_hover = (bin_idx: number | null) =>
+      rdf().on_shell_hover?.({ element_pair: [`H`, `H`], cutoff: 2, n_bins: 4, bin_idx })
+    const atoms_hover = (atom_indices: number[] | null) =>
+      structure_id().on_atoms_hover?.(atom_indices && { atom_indices, frame_number: 0 })
+    const hovers: [string, () => void, number[]][] = [
+      [`MSD curve`, () => msd().on_curve_hover?.(`H`), [0, 1]],
+      [`all-atom curve names no element`, () => msd().on_curve_hover?.(`Total`), []],
+      // bin 2 spans [1, 1.5) A: the one H-H contact, seen from both atoms
+      [`RDF bin`, () => shell_hover(2), [0, 1]],
+      [`empty RDF bin`, () => shell_hover(0), []],
+      [`RDF legend`, () => shell_hover(null), [0, 1]],
+      [`structure type`, () => atoms_hover([1, 7]), [1]],
+      [`structure type left`, () => atoms_hover(null), []],
+    ]
+    for (const [name, hover, expected] of hovers) {
       hover()
       await tick()
-      return structure_props().highlighted_sites
+      expect(structure_props().highlighted_sites, name).toEqual(expected)
     }
-    const msd = () => msd_pane.mock.lastCall?.[1] ?? {}
-    const rdf = () => rdf_pane.mock.lastCall?.[1] ?? {}
-    const structure_id = () => structure_id_pane.mock.lastCall?.[1] ?? {}
-    expect(await highlight_after(() => msd().on_curve_hover?.(`H`))).toEqual([0, 1])
-    // the all-atom curve names no element
-    expect(await highlight_after(() => msd().on_curve_hover?.(`Total`))).toEqual([])
-    const shell = { element_pair: [`H`, `H`] as [string, string], cutoff: 2, n_bins: 4 }
-    // bin 2 spans [1, 1.5) A: the one H-H contact, seen from both atoms
-    expect(
-      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: 2 })),
-    ).toEqual([0, 1])
-    expect(
-      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: 0 })),
-    ).toEqual([])
-    expect(
-      await highlight_after(() => rdf().on_shell_hover?.({ ...shell, bin_idx: null })),
-    ).toEqual([0, 1])
-    expect(
-      await highlight_after(() =>
-        structure_id().on_atoms_hover?.({ atom_indices: [1, 7], frame_number: 0 }),
-      ),
-    ).toEqual([1])
-    expect(await highlight_after(() => structure_id().on_atoms_hover?.(null))).toEqual([])
 
     // the structure-type plot seeks like the time-series plot and follows the playhead
     expect(structure_id().current_frame_idx).toBe(0)
@@ -596,16 +585,7 @@ describe(`controls`, () => {
   })
 
   test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {
-    const render_structure = vi.spyOn(
-      structure_component as unknown as {
-        default: Component<{
-          atom_opacity?: number
-          volume_color_field?: unknown
-          cutaway?: StructureCutaway
-        }>
-      },
-      `default`,
-    )
+    const render_structure = last_props<StructureProps>(structure_component)
     const run = trajectory_from_frames(
       [0, 10, 20].map((step) => {
         const frame = make_trajectory_frame(step, 3)
@@ -665,7 +645,7 @@ describe(`controls`, () => {
     expect(target.querySelector(`.hotspot-overlay`)).toBeNull()
     expect(pane.textContent).toContain(`Heatmap on atoms`)
     expect(target.querySelector(`.structure`)).toBe(structure)
-    const structure_props = render_structure.mock.lastCall?.[1]
+    const structure_props = render_structure()
     expect(structure_props?.cutaway).toEqual(props.structure_props?.cutaway)
     await set_value(`Cutaway mode`, `plane`)
     expect(structure_props?.cutaway?.mode).toBe(`plane`)

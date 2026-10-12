@@ -49,16 +49,10 @@
     sync_zoom: () => sync_y_zoom,
     base_padding: { t: 20, b: 50 },
   })
-
-  // Each panel reports only its own pointer, never the shared line it is drawn, so the two
-  // directions cannot feed back into each other
-  let bands_hovered_frequency = $state<number | null>(null)
-  let dos_hovered_frequency = $state<number | null>(null)
-  let hovered_frequency = $derived(dos_hovered_frequency ?? bands_hovered_frequency)
 </script>
 
 <div {...rest} class={[`bands-and-dos`, { stacked }, rest.class]} bind:clientWidth>
-  {@render children?.({ hovered_frequency })}
+  {@render children?.({ hovered_frequency: sync.hovered_frequency })}
   <Bands
     {...bands_props}
     {band_structs}
@@ -67,8 +61,8 @@
     y_axis={sync.y_axes[0]}
     bind:view={sync.views[0]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:hovered_frequency={bands_hovered_frequency}
-    reference_frequency={hovered_frequency}
+    bind:hovered_frequency={sync.hovered.bands}
+    reference_frequency={sync.hovered_frequency}
     padding={{ r: 15, ...bands_props.padding, ...sync.shared_padding }}
   />
 
@@ -82,8 +76,8 @@
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:hovered_frequency={dos_hovered_frequency}
-    reference_frequency={hovered_frequency}
+    bind:hovered_frequency={sync.hovered.dos}
+    reference_frequency={sync.hovered_frequency}
     padding={{ l: stacked ? undefined : 15, ...dos_props.padding, ...sync.shared_padding }}
   />
 </div>

@@ -115,9 +115,8 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   x_error?: ErrorValues
   y_error?: ErrorValues
   metadata?: Metadata[] | Metadata // Can be array or single object
-  // Stable per-point keys shared with other views (material IDs, element symbols, ...).
-  // ScatterPlot reports them as `point_id` on rect-selected points and dims every keyed point
-  // missing from its `highlighted_ids`, so several plots can link by key, not by index.
+  // Stable per-point keys (material IDs, element symbols, ...) that link views: points carry
+  // them as `point_id`, and ScatterPlot's `highlighted_ids` matches against them
   point_ids?: readonly (string | number)[]
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
@@ -408,8 +407,8 @@ export type HoverConfig = {
   click_threshold_px?: number
   // `x` ignores vertical distance and binary-searches monotonic series. This is useful for
   // time-series scrubbers where the horizontal coordinate selects a frame and avoids building
-  // a full 2D spatial index for tens of thousands of samples. `y` ignores horizontal distance,
-  // e.g. for a spectrum plotted with its frequency axis vertical beside a band structure.
+  // a full 2D spatial index for tens of thousands of samples. `y` ignores horizontal distance
+  // (e.g. a spectrum with a vertical frequency axis).
   mode?: `nearest` | `x` | `y`
   // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
   // this to keep pointer frames free of tooltip DOM work while another pane updates live.

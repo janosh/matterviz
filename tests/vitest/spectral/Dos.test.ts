@@ -8,7 +8,7 @@ import {
   normalize_dos,
   validate_sigma_range,
 } from '#lib/spectral/helpers.js'
-import type { ElectronicDos, FrequencyUnit, PhononDos, SpinMode } from '#lib/spectral/types.js'
+import type { ElectronicDos, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import {
@@ -301,12 +301,7 @@ describe(`Dos component`, () => {
     }
     mount(Dos, {
       target: document.body,
-      props: {
-        doses: multi_spin_dos,
-        stack: true,
-        spin_mode: `overlay` as SpinMode,
-        controls_open: true,
-      },
+      props: { doses: multi_spin_dos, stack: true, spin_mode: `overlay`, controls_open: true },
     })
     await tick()
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)

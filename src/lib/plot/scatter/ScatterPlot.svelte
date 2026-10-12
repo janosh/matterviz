@@ -235,10 +235,8 @@
         points: InternalPoint<Metadata>[]
         rect: { x: Vec2; y: Vec2 }
       }) => void
-      // Linked highlighting by key: points whose series `point_ids` entry is missing from
-      // this collection are dimmed, so a selection made in another view (an Alt+drag here or
-      // in a second plot, clicks in a periodic table, ...) stands out. null turns it off, an
-      // empty collection dims every keyed point, and points without a point_id never dim.
+      // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
+      // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
       tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
@@ -908,12 +906,9 @@
     }
   }
 
-  // Copied into a Set so the per-point membership test is O(1) for arrays too
   const highlight_set = $derived(highlighted_ids == null ? null : new Set(highlighted_ids))
-  const is_link_dimmed = (point: InternalPoint<Metadata>): boolean =>
-    highlight_set !== null &&
-    point.point_id !== undefined &&
-    !highlight_set.has(point.point_id)
+  const is_link_dimmed = ({ point_id }: InternalPoint<Metadata>): boolean =>
+    point_id !== undefined && highlight_set?.has(point_id) === false
 
   // Points needing labels or effects remain in an SVG overlay. `selected` is passed in so
   // per-point loops read the prop once, not per point.

@@ -78,8 +78,7 @@ export const apply_formation_energies = (
         return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
       })
 
-// Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D;
-// quaternary hulls don't plot energy)
+// Simplex position with E_form on the last plotted axis (y in 2D, z in 3D, none in 4D)
 export function hull_plot_position(
   composition: CompositionType,
   e_form: number,

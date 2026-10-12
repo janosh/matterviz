@@ -1,20 +1,21 @@
 // Tests for indexed BufferGeometry construction and colouring of Fermi isosurfaces
 import {
   apply_vertex_colors,
+  available_property_names,
   property_color_range,
   property_names,
   vertex_property,
   build_isosurface_geometry,
   nearest_face_vertex,
 } from '#lib/fermi-surface/geometry.js'
-import type { FermiIsosurface } from '#lib/fermi-surface/types.js'
+import type { BandEnergyGrid, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import type { VertexColorOptions } from '#lib/isosurface/coloring.js'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import type { Vec3 } from '#lib/math.js'
 import type { BufferAttribute } from 'three/webgpu'
 import { describe, expect, onTestFinished, test } from 'vitest'
-import { make_fermi_isosurface } from '../test-fixtures'
+import { make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // Unit-square sheet at z=0 plus one vertex lifted to z=1
 const vertices: Vec3[] = [
@@ -116,17 +117,25 @@ describe(`named vertex properties`, () => {
     make_surface(),
   ]
 
-  test(`vertex_property only returns arrays with one value per vertex`, () => {
+  // vertex_property only returns arrays with one value per vertex; property_names lists every
+  // name once in first-seen order
+  test(`vertex_property and property_names`, () => {
     expect(vertex_property(surfaces[0], `λ`)).toBe(lambda)
-    expect(vertex_property(surfaces[0], `short`)).toBeUndefined()
-    expect(vertex_property(surfaces[0], `Δ`)).toBeUndefined()
-    expect(vertex_property(surfaces[2], `λ`)).toBeUndefined()
-    expect(vertex_property(surfaces[0], undefined)).toBeUndefined()
-  })
-
-  test(`property_names lists every name once in first-seen order`, () => {
+    // oxfmt-ignore
+    for (const [surface, name] of [[0, `short`], [0, `Δ`], [2, `λ`], [0, undefined]] as const)
+      expect(vertex_property(surfaces[surface], name)).toBeUndefined()
     expect(property_names(surfaces)).toEqual([`λ`, `short`, `Δ`])
-    expect(property_names([])).toEqual([])
+    // a band grid's properties count before (and whatever) extraction yields
+    const grid: BandEnergyGrid = {
+      values: new Float64Array(1),
+      dims: [1, 1, 1],
+      order: `z_fastest`,
+    }
+    const properties = { A: [[grid]], B: [[grid]] }
+    expect(available_property_names(make_fermi_surface([]), { properties })).toEqual([
+      `A`,
+      `B`,
+    ])
   })
 
   // NaN vertices are skipped; the range stays [min, max] even when it straddles zero, so a gap

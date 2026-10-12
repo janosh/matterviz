@@ -31,12 +31,11 @@ export const property_names = (surfaces: readonly FermiIsosurface[]): string[] =
   ...new Set(surfaces.flatMap((surface) => Object.keys(surface.properties ?? {}))),
 ]
 
-// Properties a viewer can colour by. A band grid names them before (and whatever) extraction
-// yields: every extracted sheet carries all of its fields, so the list neither empties while
-// the first extraction is pending nor when mu crosses no band
+// Properties a viewer can colour by. A band grid names them up front (every sheet gets all of
+// them), so the list neither empties while extraction is pending nor when mu crosses no band.
 export const available_property_names = (
   fermi_data?: FermiSurfaceData,
-  band_data?: BandGridData,
+  band_data?: Pick<BandGridData, `properties`>,
 ): string[] =>
   band_data
     ? Object.keys(band_data.properties ?? {})

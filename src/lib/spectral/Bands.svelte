@@ -90,8 +90,7 @@
     x_positions?: Record<string, Vec2>
     // Horizontal line in the data unit (THz or eV) whatever `units` displays, like Dos
     reference_frequency?: number | null
-    // Frequency/energy of the hovered band point in the data unit (THz or eV) like Dos', null
-    // when nothing is hovered (read-only output, e.g. to mark it in a DOS beside the bands)
+    // Hovered band point's frequency/energy in the data unit (THz or eV) like Dos' (read-only)
     hovered_frequency?: number | null
     // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
     highlighted_qpoint_index?: number | null
@@ -717,18 +716,16 @@
       <!-- Highlighted path stretch, e.g. the branch hovered here or in the Brillouin zone -->
       {#if highlight_x_range}
         {@const [x_start, x_end] = highlight_x_range.map(x_scale_fn)}
-        {#if Number.isFinite(x_start) && Number.isFinite(x_end)}
-          <rect
-            class="highlighted-segment"
-            x={Math.min(x_start, x_end)}
-            y={pad.t}
-            width={Math.abs(x_end - x_start)}
-            height={Math.max(0, height - pad.t - pad.b)}
-            fill="var(--bands-segment-highlight-color, #ff9a3c)"
-            opacity="var(--bands-segment-highlight-opacity, 0.1)"
-            pointer-events="none"
-          />
-        {/if}
+        <rect
+          class="highlighted-segment"
+          x={Math.min(x_start, x_end)}
+          y={pad.t}
+          width={Math.abs(x_end - x_start)}
+          height={Math.max(0, height - pad.t - pad.b)}
+          fill="var(--bands-segment-highlight-color, #ff9a3c)"
+          opacity="var(--bands-segment-highlight-opacity, 0.1)"
+          pointer-events="none"
+        />
       {/if}
 
       <!-- Hovered q-point vertical line (synced from Brillouin zone k-path hover) -->

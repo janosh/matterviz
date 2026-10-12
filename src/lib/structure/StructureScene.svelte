@@ -424,9 +424,7 @@
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
-    // Corners of a volumetric cross-section's plane clipped to the cell (Cartesian Å, see
-    // slice_cell_polygon), drawn as a translucent plane to show where a 2D slice cuts
-    slice_polygon?: Vec3[]
+    slice_polygon?: Vec3[] // where a 2D volume slice cuts the cell (see slice_cell_polygon)
     // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
     // and the isosurface geometry; 1x1x1 until an applied supercell lands.
     supercell_tiling?: Vec3

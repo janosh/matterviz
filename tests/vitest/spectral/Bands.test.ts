@@ -16,7 +16,6 @@ import {
   mount_sized,
   mouse,
   plot_svg,
-  query,
   svg_rect,
   translate_of,
 } from '../setup'
@@ -171,20 +170,25 @@ describe(`Bands component`, () => {
     expect(line_count()).toBe(expected_line_count)
   })
 
-  it(`honors legend, display, and hover presentation options`, async () => {
+  it(`honors legend, display, and hover options, reports the hover in THz`, async () => {
     const on_point_hover = vi.fn()
+    const state = { hovered_frequency: null as number | null }
     const plot = await mount_sized(
       Bands,
-      {
-        band_structs: { '': base_band_structure },
-        show_legend: true,
-        legend: {},
-        display: { x_grid: false, y_grid: false },
-        hover_config: { show_tooltip: false },
-        on_point_click: vi.fn(),
-        on_point_hover,
-        point_tween: { duration: 0 },
-      },
+      bind_props(
+        {
+          band_structs: { '': base_band_structure },
+          units: `cm^-1` as const,
+          show_legend: true,
+          legend: {},
+          display: { x_grid: false, y_grid: false },
+          hover_config: { show_tooltip: false },
+          on_point_click: vi.fn(),
+          on_point_hover,
+          point_tween: { duration: 0 },
+        },
+        state,
+      ),
       { selector: `.scatter` },
     )
     expect(plot.querySelector(`.legend`)).not.toBeNull()
@@ -193,41 +197,16 @@ describe(`Bands component`, () => {
     }
     const svg = plot_svg(plot)
     svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
-    const point = marker_position(plot, 1)
+    const point = marker_position(plot, 1) // band 1 at the second q-point: 0.5 THz
     svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
     await new Promise((resolve) => requestAnimationFrame(resolve))
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
+    // one cm⁻¹ round trip (x · k / k): a few ulp at most
+    expect(state.hovered_frequency).toBeCloseTo(0.5, 12)
+    await fire(svg, mouse(`mouseleave`))
+    expect(state.hovered_frequency).toBeNull()
   })
-
-  it.each([`THz`, `cm^-1`] as const)(
-    `reports the hovered band point in THz while showing %s, null on leave`,
-    async (units) => {
-      const state = { hovered_frequency: null as number | null }
-      const plot = await mount_sized(
-        Bands,
-        bind_props(
-          {
-            band_structs: { '': base_band_structure },
-            units,
-            on_point_click: vi.fn(),
-            point_tween: { duration: 0 },
-          },
-          state,
-        ),
-        { selector: `.scatter` },
-      )
-      const svg = plot_svg(plot)
-      svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 400, height: 300 })
-      const point = marker_position(plot, 1) // band 1 at the second q-point: 0.5 THz
-      svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-      // one unit round trip (x · k / k): a few ulp at most
-      expect(state.hovered_frequency).toBeCloseTo(0.5, 12)
-      await fire(svg, mouse(`mouseleave`))
-      expect(state.hovered_frequency).toBeNull()
-    },
-  )
 
   it(`keeps material/spin visibility through reorder, band/branch changes and spin modes`, async () => {
     const state = fromStore(
@@ -494,57 +473,30 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  // Γ→X over q-points 0-3 and X→K over 3-5: the shaded rect spans exactly the ticks of the
-  // highlighted branch, and a range off the plotted path draws nothing
+  // the shaded rect spans exactly the ticks of the highlighted branch, and a range off the
+  // plotted path draws nothing
   it.each([
-    [
-      [0, 3],
-      [`Γ`, `X`],
-    ],
-    [
-      [3, 5],
-      [`X`, `K`],
-    ],
-    [[2, 9], null],
-  ] as [Vec2, [string, string] | null][])(
-    `shades the highlighted q-point range %j`,
-    async (highlighted_qpoint_range, tick_labels) => {
-      const two_branches: BaseBandStructure = {
-        ...base_band_structure,
-        qpoints: [
-          ...base_band_structure.qpoints,
-          { label: null, frac_coords: [0.75, 0.25, 0] },
-          { label: `K`, frac_coords: [0.75, 0.5, 0] },
-        ],
-        branches: [
-          { start_index: 0, end_index: 3, name: `GAMMA-X` },
-          { start_index: 3, end_index: 5, name: `X-K` },
-        ],
-        distance: [0, 1, 2, 3, 4, 5],
-        bands: base_band_structure.bands.map((band) => [...band, band[3], band[3]]),
-      }
-      const plot = await mount_sized(
-        Bands,
-        { band_structs: { '': two_branches }, highlighted_qpoint_range },
-        { selector: `.scatter` },
-      )
-      if (!tick_labels) {
-        expect(plot.querySelector(`rect.highlighted-segment`)).toBeNull()
-        return
-      }
-      const tick_x = (label: string): number =>
-        translate_of(
-          [...plot.querySelectorAll(`.x-axis .tick`)].find(
-            (node) => node.querySelector(`text`)?.textContent === label,
-          ),
-        ).x
-      const { x: rect_x, width: rect_width } = svg_rect(
-        query(plot, `rect.highlighted-segment`),
-      )
-      expect(rect_x).toBeCloseTo(tick_x(tick_labels[0]), 6)
-      expect(rect_x + rect_width).toBeCloseTo(tick_x(tick_labels[1]), 6)
-    },
-  )
+    [[0, 3], true],
+    [[2, 9], false],
+  ] as [Vec2, boolean][])(`shades q-point range %j: %s`, async (range, on_path) => {
+    const plot = await mount_sized(
+      Bands,
+      { band_structs: { '': base_band_structure }, highlighted_qpoint_range: range },
+      { selector: `.scatter` },
+    )
+    const rect = plot.querySelector(`rect.highlighted-segment`)
+    expect(rect !== null).toBe(on_path)
+    if (!rect) return
+    const tick_x = (label: string): number =>
+      translate_of(
+        [...plot.querySelectorAll(`.x-axis .tick`)].find(
+          (node) => node.querySelector(`text`)?.textContent === label,
+        ),
+      ).x
+    const { x: rect_x, width } = svg_rect(rect)
+    expect(rect_x).toBeCloseTo(tick_x(`Γ`), 6)
+    expect(rect_x + width).toBeCloseTo(tick_x(`X`), 6)
+  })
 
   // Bands 0 and 1 of the fixture cross E_F = 0 (a metal). Occupations decide filling over E_F:
   // a non-SCF line-mode VBM can rise above the SCF E_F (here by 30 meV)

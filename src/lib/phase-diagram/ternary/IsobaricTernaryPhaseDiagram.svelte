@@ -2,9 +2,8 @@
   // Isobaric ternary composition-temperature phase diagram: candidate phases with G(T) swept
   // over temperature. Linked views: the isothermal section (2D Gibbs triangle or 3D prism with a
   // draggable cutting plane), a phase × T stability map and the list of transitions with
-  // balanced reactions. The 2D section and the prism take turns on screen, so they share a
-  // pinned composition probe: click a composition in either to pin it (its assemblage follows
-  // T in both), click the pin again or press Escape to drop it.
+  // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
+  // pin (its assemblage follows T), click the pin again or press Escape to drop it.
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
@@ -118,8 +117,7 @@
     dark_mode = is_dark_mode(wrapper)
     return watch_dark_mode((dark) => (dark_mode = dark), wrapper)
   })
-  // Pin colour from the theme-aware --ternary-pin token (overridable via --ternary-pin-color),
-  // resolved to a concrete colour for the section canvas and the prism's three.js materials
+  // Theme-aware --ternary-pin resolved to a concrete colour for canvas and three.js materials
   const pin_color = resolve_css_color(() => wrapper, {
     css_var: `--ternary-pin`,
     require_opaque: true,
@@ -132,9 +130,8 @@
     if (entries_prop) dropped_entries = null
   })
   const entries = $derived(dropped_entries ?? entries_prop ?? [])
-  // Phase indices belong to one entry set: a new dataset invalidates the selection (and the
-  // pin, whose corners may now be other elements). Hover also ends whenever the view changes,
-  // since an unmounting view fires no pointerleave.
+  // Phase indices and pin corners belong to one entry set: a new dataset clears both. Hover
+  // also ends whenever the view changes, since an unmounting view fires no pointerleave.
   let last_entries: PhaseData[] | null = null
   $effect(() => {
     void [settings.view, settings.show_map, settings.show_events]

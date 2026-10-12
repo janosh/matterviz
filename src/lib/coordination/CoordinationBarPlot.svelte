@@ -42,8 +42,7 @@
     ...rest
   }: StructurePlotProps & {
     split_mode?: CoordinationSplitMode
-    // Sites the hovered bar counts (its CN within its element or structure), one entry per
-    // structure it draws from; null once the pointer leaves the bar
+    // Sites the hovered bar counts, per structure it draws from; null once the pointer leaves
     on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } = $props()
 

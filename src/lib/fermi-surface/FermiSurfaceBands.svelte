@@ -1,9 +1,8 @@
 <script lang="ts">
-  // A Fermi surface beside the band structure of the same calculation, bands matched by their
-  // absolute index (a band grid's band_indices, e.g. BXSF `BAND: n` → n − 1, is the band
-  // structure's row). Hovering a band point previews the surface at its energy and marks its
-  // k-point and branch on the k-path drawn in 3D; hovering that path marks the bands. A click
-  // pins the energy as mu and isolates the band's sheet (click it again for all).
+  // A Fermi surface beside the band structure of the same calculation, bands matched by absolute
+  // index (band_indices, e.g. BXSF `BAND: n` → n − 1). Hovering a band point previews the surface
+  // at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click
+  // pins the energy as mu and isolates the band's sheet (click again for all).
   import Bands from '#lib/spectral/Bands.svelte'
   import {
     band_point_meta,
@@ -29,29 +28,12 @@
     band_struct: BaseBandStructure
     mu?: number
     selected_bands?: number[] // bands whose Fermi sheets are shown (all when unset)
-    fermi_props?: Omit<
-      ComponentProps<typeof FermiSurface>,
-      | `band_data`
-      | `fermi_data`
-      | `mu`
-      | `selected_bands`
-      | `k_marker`
-      | `k_path`
-      | `wigner_seitz`
-      | `previewing`
-    >
-    bands_props?: Omit<
-      ComponentProps<typeof Bands>,
-      | `band_structs`
-      | `highlighted_band_index`
-      | `highlighted_qpoint_index`
-      | `highlighted_qpoint_range`
-      | `reference_frequency`
-    >
+    // extra props of each view; the linked ones (band data, mu, highlights, k-path) override them
+    fermi_props?: ComponentProps<typeof FermiSurface>
+    bands_props?: Partial<ComponentProps<typeof Bands>>
   } = $props()
 
-  // the band structure's k-path in the grid's reciprocal space (same calculation, same lattice),
-  // with the hovered q-point and its branch shared by both views
+  // the band structure's k-path in the grid's reciprocal space (same calculation and lattice)
   const link = create_band_path_link({
     band_struct: () => band_struct,
     k_lattice: () => band_data.k_lattice,
@@ -124,8 +106,8 @@
       // plain lines (on_point_click would draw a marker per k-point)
       const point = band_point_meta(event.point.metadata)
       if (point && grid_bands.has(point.band_idx)) {
-        const sheets = new Set(surface?.isosurfaces.map((iso) => iso.band_index))
-        const isolate = clicked_band !== point.band_idx && sheets.has(point.band_idx)
+        const has_sheet = surface?.isosurfaces.some((iso) => iso.band_index === point.band_idx)
+        const isolate = clicked_band !== point.band_idx && has_sheet
         clicked_band = isolate ? point.band_idx : null
         mu = event.point.y - band_data.fermi_energy
       }
@@ -139,6 +121,5 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
     gap: var(--fermi-bands-gap, 1em);
-    align-items: stretch;
   }
 </style>

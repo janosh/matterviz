@@ -15,8 +15,7 @@
     // Bound temperature may be auto-corrected by 2D/3D child components.
     temperature = $bindable(),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    // Phase to highlight in every view while none is hovered, in any formula spelling
-    highlighted_formula = null,
+    highlighted_formula = null, // shown in every view while none is hovered, any spelling
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -46,10 +45,8 @@
   const grid_width = $derived(Math.max(280, Math.round(width * 0.48)))
   const grid_height = $derived(Math.max(240, Math.round(height * 0.48)))
 
-  // Each grid pane keeps its own hover, so only the hovered pane shows a tooltip. The grid's
-  // hover is the latest pane's (else one still pinned): its formula highlights that phase in
-  // every pane and it is what hover_info reports. Reset with the projections so removed panes
-  // leave no stale hover, keyed by a string so an update with the same projections keeps them.
+  // Per-pane hovers so only the hovered pane shows a tooltip; the grid's hover (latest pane's,
+  // else one still pinned) highlights in all. Keyed by projections, so removed panes reset.
   const grid_key = $derived(ternary_combos.map((combo) => combo.join(`|`)).join(`,`))
   let pane_hovers = $derived(grid_key.split(`,`).map((): ChemPotHoverInfo | null => null))
   let last_hovered_pane = $state(0)
@@ -80,18 +77,9 @@
         {display_elements.join(`, `) || `none`}
       </p>
     </div>
-  {:else if n_display === 2}
-    <ChemPotDiagram2D
-      {entries}
-      {config}
-      {width}
-      {height}
-      {highlighted_formula}
-      bind:temperature
-      bind:hover_info
-    />
-  {:else if n_display === 3 || !show_grid}
-    <ChemPotDiagram3D
+  {:else if n_display <= 3 || !show_grid}
+    {@const Diagram = n_display === 2 ? ChemPotDiagram2D : ChemPotDiagram3D}
+    <Diagram
       {entries}
       {config}
       {width}

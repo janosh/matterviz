@@ -130,6 +130,12 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
         )
       : {},
   )
+  // Frequency (data unit) under each panel's own pointer. Each panel reports only its own,
+  // never the shared line it is drawn, so the two directions cannot feed back into each other
+  const hovered = $state<{ bands: number | null; dos: number | null }>({
+    bands: null,
+    dos: null,
+  })
   return {
     get shared_range() {
       return shared_range
@@ -144,6 +150,11 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
       return dos_x_axis
     },
     views,
+    hovered, // bind:hovered_frequency targets
+    // the line both panels draw: the DOS pointer, else the bands pointer
+    get hovered_frequency() {
+      return hovered.dos ?? hovered.bands
+    },
     get shared_padding() {
       return shared_padding
     },

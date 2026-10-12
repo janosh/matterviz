@@ -288,8 +288,7 @@ export function draw_dashed_edges(
   ctx.setLineDash([]) // every later stroke sets its own strokeStyle
 }
 
-// Linked-view overlay (decomposition tie-lines, annotated compositions). Segments go under the
-// points so tie-lines end at their markers; rings go over them, labelled to the right.
+// Linked-view overlay: segments under the points (tie-lines end at markers), labelled rings over
 export function draw_overlay_segments(
   ctx: CanvasRenderingContext2D,
   segments: HullOverlay[`segments`],
@@ -325,9 +324,8 @@ export function draw_overlay_rings(
     ctx.beginPath()
     ctx.arc(point.x, point.y, radius, 0, 2 * Math.PI)
     ctx.stroke()
-    if (!label) continue
     ctx.fillStyle = color
-    ctx.fillText(label, point.x + radius + 3, point.y)
+    if (label) ctx.fillText(label, point.x + radius + 3, point.y)
   }
 }
 

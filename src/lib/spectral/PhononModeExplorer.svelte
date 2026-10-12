@@ -11,7 +11,7 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import { in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
-  import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
+  import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import { to_error } from '#lib/utils.js'
@@ -89,9 +89,8 @@
     vector_color?: string | null
     auto_play?: boolean
     pane_ratio?: number
-    // Small Brillouin zone in a corner of the atomic-motion pane with the q-path and the
-    // selected q-point (and the q-point hovered on the dispersion); needs a lattice and more
-    // than one q-point
+    // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
+    // q-points on the path; needs a lattice and more than one q-point
     show_bz_inset?: boolean
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
@@ -198,12 +197,11 @@
     k_lattice: () => bz_inset.value?.k_lattice,
   })
   // === Dispersion and spectrum side by side ===
-  // Below this plot-pane width a spectrum column would squeeze the bands, so the spectrum turns
-  // vertical and stacks underneath, as in BandsAndDos
-  const stack_spectrum_below_width = 480
   let plot_width = $state(800)
   let both_plots = $derived(Boolean(band_structure && active_spectrum))
-  let side_by_side = $derived(both_plots && plot_width >= stack_spectrum_below_width)
+  // Below 480px a spectrum column would squeeze the bands, so the spectrum turns vertical and
+  // stacks underneath, as in BandsAndDos
+  let side_by_side = $derived(both_plots && plot_width >= 480)
   // One frequency axis for both panels: a rotated spectrum shares the bands' y range, zoom and
   // vertical padding; stacked underneath, it plots the same range along x
   const plot_sync = create_bands_dos_sync({
@@ -211,16 +209,6 @@
     units: () => `THz`,
     side_by_side: () => side_by_side,
     base_padding: { t: 20, b: 50 },
-  })
-  // Hover follows the pointer along the frequency axis alone, anywhere in the spectrum panel, so
-  // a stick tip far from its broadened peak still links to the bands
-  let spectrum_hover_config = $derived<HoverConfig>({
-    threshold_px: 30,
-    mode: side_by_side ? `y` : `x`,
-  })
-  let spectrum_x_axis = $derived({
-    ...(side_by_side && { ticks: 3 }),
-    ...plot_sync.dos_x_axis,
   })
   // Every visit of the spectrum's q-point (Γ) on the path, where bands and peaks are the same modes
   let spectrum_qpoint_indices = $derived.by(() => {
@@ -230,10 +218,8 @@
       are_qpoints_equivalent(qpoint.q_position, q_position) ? [qpoint_idx] : [],
     )
   })
-  // Each panel reports only its own pointer, so the two directions cannot feed back
+  // under each panel's own pointer, so the two directions cannot feed back
   let bands_hovered_band_idx = $state<number | null>(null)
-  let bands_hovered_frequency = $state<number | null>(null)
-  let spectrum_hovered_frequency = $state<number | null>(null)
   let spectrum_hovered_modes = $state<number[]>([])
   let band_x_positions = $state<Record<string, Vec2>>()
   // a band hovered at Γ lights up its stick in the spectrum
@@ -610,10 +596,8 @@ under its open panes -->
             bind:resolved_padding={() => undefined, plot_sync.raise_padding}
             padding={side_by_side ? { r: 10, ...plot_sync.shared_padding } : undefined}
             bind:x_positions={band_x_positions}
-            bind:hovered_frequency={bands_hovered_frequency}
-            reference_frequency={spectrum_hovered_frequency ??
-              selected_mode?.frequency ??
-              null}
+            bind:hovered_frequency={plot_sync.hovered.bands}
+            reference_frequency={plot_sync.hovered.dos ?? selected_mode?.frequency ?? null}
             highlighted_qpoint_index={selection?.qpoint_idx ?? null}
             highlighted_band_index={selection?.mode_idx ?? null}
             on_point_click={handle_band_click}
@@ -625,44 +609,47 @@ under its open panes -->
             show_controls={false}
           >
             {#snippet children({ width, height, x_scale_fn, y_scale_fn, x_range, y_range })}
-              {#if peak_band_points.length > 0}
-                <svg class="peak-band-markers" {width} {height} aria-hidden="true">
-                  {#each peak_band_points as { qpoint_idx, mode_idx, x_pos, frequency } (`${qpoint_idx}:${mode_idx}`)}
-                    {#if in_range(x_pos, x_range) && in_range(frequency, y_range)}
-                      <circle
-                        class="peak-band-marker"
-                        cx={x_scale_fn(x_pos)}
-                        cy={y_scale_fn(frequency)}
-                        r="7"
-                      />
-                    {/if}
-                  {/each}
-                </svg>
-              {/if}
+              <svg class="peak-band-markers" {width} {height} aria-hidden="true">
+                {#each peak_band_points as { qpoint_idx, mode_idx, x_pos, frequency } (`${qpoint_idx}:${mode_idx}`)}
+                  {#if in_range(x_pos, x_range) && in_range(frequency, y_range)}
+                    <circle
+                      class="peak-band-marker"
+                      cx={x_scale_fn(x_pos)}
+                      cy={y_scale_fn(frequency)}
+                      r="7"
+                      fill="none"
+                      stroke="var(--phonon-peak-marker-color, light-dark(#c44e52, #e07b7e))"
+                      stroke-width="2"
+                    />
+                  {/if}
+                {/each}
+              </svg>
             {/snippet}
           </Bands>
         {/if}
         {#if active_spectrum}
+          <!-- hover tracks the frequency axis alone, so a stick tip far from its broadened peak
+          still links to the bands -->
           <IrRamanSpectrum
             spectrum={active_spectrum}
             kind={shown_kind}
             units="THz"
             orientation={side_by_side ? `horizontal` : `vertical`}
-            x_axis={spectrum_x_axis}
+            x_axis={{ ...(side_by_side && { ticks: 3 }), ...plot_sync.dos_x_axis }}
             y_axis={plot_sync.y_axes[1]}
             bind:view={plot_sync.views[1]}
             bind:resolved_padding={() => undefined, plot_sync.raise_padding}
             padding={side_by_side ? { l: 15, ...plot_sync.shared_padding } : undefined}
-            bind:hovered_frequency={spectrum_hovered_frequency}
+            bind:hovered_frequency={plot_sync.hovered.dos}
             bind:hovered_mode_indices={spectrum_hovered_modes}
-            reference_frequency={bands_hovered_frequency}
+            reference_frequency={plot_sync.hovered.bands}
             highlighted_mode_indices={band_hovered_spectrum_modes}
             selected_mode_idx={selection &&
             spectrum_qpoint_indices.includes(selection.qpoint_idx)
               ? selection.mode_idx
               : null}
             on_mode_select={select_spectrum_mode}
-            hover_config={spectrum_hover_config}
+            hover_config={{ threshold_px: 30, mode: side_by_side ? `y` : `x` }}
             show_controls={false}
           />
         {/if}
@@ -756,11 +743,6 @@ under its open panes -->
     inset: 0;
     overflow: visible;
     pointer-events: none;
-    circle {
-      fill: none;
-      stroke: var(--phonon-peak-marker-color, light-dark(#c44e52, #e07b7e));
-      stroke-width: 2;
-    }
   }
   .trajectory-pane {
     position: relative;

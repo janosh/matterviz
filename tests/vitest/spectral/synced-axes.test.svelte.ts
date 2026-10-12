@@ -28,28 +28,6 @@ const band_structs: BaseBandStructure = {
 }
 const doses: PhononDos = { type: `phonon`, frequencies: [0, 2, 4], densities: [0, 1, 0] }
 
-// a sync over the fixtures in THz, with `inputs` overriding any of them
-const mount_sync = (
-  inputs: Pick<Parameters<typeof create_bands_dos_sync>[0], `side_by_side`> &
-    Partial<Parameters<typeof create_bands_dos_sync>[0]>,
-) => {
-  let sync: ReturnType<typeof create_bands_dos_sync> | undefined
-  roots.push(
-    $effect.root(() => {
-      sync = create_bands_dos_sync({
-        band_structs: () => ({ '': band_structs }),
-        doses: () => ({ '': doses }),
-        units: () => `THz`,
-        base_padding: { t: 20, b: 50 },
-        ...inputs,
-      })
-    }),
-  )
-  flushSync()
-  if (!sync) throw new Error(`sync not created`)
-  return sync
-}
-
 // Each panel binds its `view`; the sync mirrors the y view of whichever panel moved into
 // the other, so a zoom or reset in either panel reaches both
 test.each([`phonon`, `electronic`] as const)(
@@ -57,18 +35,26 @@ test.each([`phonon`, `electronic`] as const)(
   (type) => {
     const inputs = $state({ side_by_side: true, sync_zoom: true })
     let units = $state<FrequencyUnit>(`meV`)
-    const sync = mount_sync({
-      band_structs: () => ({ '': { ...band_structs, type } }),
-      doses: () => ({
-        '':
-          type === `phonon`
-            ? doses
-            : { type, energies: doses.frequencies, densities: doses.densities },
+    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+    roots.push(
+      $effect.root(() => {
+        sync = create_bands_dos_sync({
+          band_structs: () => ({ '': { ...band_structs, type } }),
+          doses: () => ({
+            '':
+              type === `phonon`
+                ? doses
+                : { type, energies: doses.frequencies, densities: doses.densities },
+          }),
+          units: () => units,
+          side_by_side: () => inputs.side_by_side,
+          sync_zoom: () => inputs.sync_zoom,
+          base_padding: { t: 20, b: 50 },
+        })
       }),
-      units: () => units,
-      side_by_side: () => inputs.side_by_side,
-      sync_zoom: () => inputs.sync_zoom,
-    })
+    )
+    flushSync()
+    if (!sync) throw new Error(`sync not created`)
     expect(sync.shared_range?.[1]).toBeCloseTo(type === `phonon` ? 16.8735242034493 : 4.08, 12)
     units = `THz`
     flushSync()
@@ -114,25 +100,18 @@ test.each([`phonon`, `electronic`] as const)(
     sync.views[0] = { x: [0, 1], y: [2, 3] }
     flushSync()
     expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
+
+    // a stacked panel's tall x-axis margin must not stay in the shared padding and shrink both
+    // plots once side by side again; side-by-side reports raise it
+    sync.raise_padding({ t: 20, b: 90, l: 40, r: 10 })
+    inputs.side_by_side = true
+    flushSync()
+    expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
+    sync.raise_padding({ t: 20, b: 60, l: 40, r: 10 })
+    flushSync()
+    expect(sync.shared_padding).toEqual({ t: 20, b: 60 })
   },
 )
-
-// A layout stacked for a while (narrow pane) must not leave its bottom margin in the shared
-// padding: only side-by-side reports raise it
-test(`stacked panels' padding reports leave the shared padding alone`, () => {
-  const inputs = $state({ side_by_side: true })
-  const sync = mount_sync({ side_by_side: () => inputs.side_by_side })
-  expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
-  inputs.side_by_side = false
-  flushSync()
-  sync.raise_padding({ t: 20, b: 90, l: 40, r: 10 }) // a stacked panel's tall x-axis margin
-  inputs.side_by_side = true
-  flushSync()
-  expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
-  sync.raise_padding({ t: 20, b: 60, l: 40, r: 10 }) // side by side: raises as before
-  flushSync()
-  expect(sync.shared_padding).toEqual({ t: 20, b: 60 })
-})
 
 test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {
   const floor = shared_resolved_padding_floor()

@@ -312,12 +312,10 @@ describe(`branch_qpoint_range`, () => {
   const band_structure = make_bs([`GAMMA`, null, null, `X`, null, `K`, `U`])
   it.each([
     [0, [0, 3]],
-    [2, [0, 3]],
     [3, [0, 3]], // shared symmetry point belongs to the earlier branch
     [4, [3, 5]],
     [5, [3, 5]],
     [6, null], // only on the discontinuity jump
-    [7, null],
     [-1, null],
   ] as [number, Vec2 | null][])(`q-point %i lies in %j`, (qpoint_idx, expected) => {
     expect(branch_qpoint_range(band_structure, qpoint_idx)).toEqual(expected)

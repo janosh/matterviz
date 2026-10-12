@@ -1206,9 +1206,8 @@
   }
 
   // === linked views: analyses point at atoms of the displayed frame ===
-  // A data-inspector row selects its atom the way a click in 3D does; hovering an analysis
-  // curve, bar or structure type highlights the atoms behind it. Structure resets both when
-  // the frame's topology changes, and the highlight with every new frame.
+  // Inspector rows select atoms like a 3D click; hovering an analysis curve, bar or structure
+  // type highlights its atoms. Structure resets both on topology change, the highlight per frame.
   let selected_sites = $state<number[]>([])
   let highlighted_sites = $state<number[]>([])
   const select_source_atom = (atom_idx: number): void => {
@@ -1217,17 +1216,18 @@
     selected_sites =
       selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
   }
-  type RdfShellHover = Parameters<
-    NonNullable<ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`]>
-  >[0]
   // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
-  const rdf_shell_sites = (hover: NonNullable<RdfShellHover>): number[] => {
-    const { bin_idx, element_pair } = hover
+  const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
+    hover,
+  ) => {
     const structure = session.current_structure
-    if (bin_idx === null) return element_site_indices(structure, element_pair)
-    if (!has_usable_lattice(structure)) return []
-    const { site_indices, neighbor_indices } = rdf_bin_sites(structure, { ...hover, bin_idx })
-    return [...new Set([...site_indices, ...neighbor_indices])]
+    if (!hover || !has_usable_lattice(structure)) highlighted_sites = []
+    else if (hover.bin_idx === null) {
+      highlighted_sites = element_site_indices(structure, hover.element_pair)
+    } else {
+      const sites = rdf_bin_sites(structure, { ...hover, bin_idx: hover.bin_idx })
+      highlighted_sites = [...new Set([...sites.site_indices, ...sites.neighbor_indices])]
+    }
   }
 
   // === analysis menu ===
@@ -1259,15 +1259,7 @@
   const analysis_panes = $derived([
     [`msd`, TrajectoryMsdPane, correlation_pane_props],
     [`vacf`, TrajectoryVacfPane, correlation_pane_props],
-    [
-      `rdf`,
-      TrajectoryRdfPane,
-      {
-        ...analysis_pane_props,
-        on_shell_hover: (hover: RdfShellHover) =>
-          (highlighted_sites = hover ? rdf_shell_sites(hover) : []),
-      },
-    ],
+    [`rdf`, TrajectoryRdfPane, { ...analysis_pane_props, on_shell_hover }],
   ] as const)
   // oxfmt-ignore
   const ANALYSES = (

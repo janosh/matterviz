@@ -11,7 +11,7 @@ import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
-import { build_positions, drift_positions } from './helpers'
+import { drift_positions } from './helpers'
 
 const stub = install_stub_worker<{
   id: number
@@ -84,32 +84,18 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
 
 // Fits belong to their curve: hovering `Li fit` in the legend reports Li like `Li` itself
 it(`MsdPlot reports the element curve under a legend entry`, async () => {
-  const positions = build_positions(
-    Array.from({ length: 30 }, (_unused, frame_idx) => [
-      [0.2 * frame_idx, 0, 0],
-      [1, 0.1 * frame_idx, 0],
-    ]),
-    { elements: [`Li`, `Si`] },
-  )
   const on_curve_hover = vi.fn()
-  const component = mount(MsdPlot, {
+  const result = calc_msd({ ...drift_positions(), elements: [`Li`, `Si`] })
+  mount(MsdPlot, {
     target: document.body,
-    props: {
-      result: calc_msd(positions),
-      on_curve_hover,
-      style: `width: 400px; height: 300px`,
-    },
+    props: { result, on_curve_hover, style: `width: 400px; height: 300px` },
   })
-  try {
-    await settle()
-    const items = [...document.querySelectorAll(`.legend-item`)]
-    for (const label of [`Li (1 atoms)`, `Li fit`, `Si (1 atoms)`]) {
-      const item = items.find((node) => node.textContent?.includes(label))
-      item?.dispatchEvent(new MouseEvent(`mouseenter`))
-      item?.dispatchEvent(new MouseEvent(`mouseleave`))
-    }
-    expect(on_curve_hover.mock.calls).toEqual([[`Li`], [null], [`Li`], [null], [`Si`], [null]])
-  } finally {
-    await unmount(component)
+  await settle()
+  const items = [...document.querySelectorAll(`.legend-item`)]
+  for (const label of [`Li (1 atoms)`, `Li fit`, `Si (1 atoms)`]) {
+    const item = items.find((node) => node.textContent?.includes(label))
+    item?.dispatchEvent(new MouseEvent(`mouseenter`))
+    item?.dispatchEvent(new MouseEvent(`mouseleave`))
   }
+  expect(on_curve_hover.mock.calls.flat()).toEqual([`Li`, null, `Li`, null, `Si`, null])
 })

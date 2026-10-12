@@ -124,14 +124,14 @@ describe(`FermiSurfaceControls`, () => {
       fitted_color_range: [0.1, 0.9],
     })
     await render_controls(state)
-    expect(state.property_name).toBe(`λ`)
-    expect(state.color_range).toEqual([0, 2]) // a range passed with no property survives init
-    const select = doc_query<HTMLSelectElement>(
-      `select[aria-label="Fermi surface colouring property"]`,
-    )
+    // a range passed with no property survives init
+    expect([state.property_name, state.color_range]).toEqual([`λ`, [0, 2]])
+    const select_css = `select[aria-label="Fermi surface colouring property"]`
+    const select = doc_query<HTMLSelectElement>(select_css)
     expect(Array.from(select.options, (option) => option.value)).toEqual([`λ`, `Δ`])
-    const [min_input, max_input] =
-      document.querySelectorAll<HTMLInputElement>(`.range-inputs input`)
+    const [min_input, max_input] = document.querySelectorAll<HTMLInputElement>(
+      `input[aria-label^="Colour range"]`,
+    )
     expect([min_input.value, max_input.placeholder]).toEqual([`0`, `0.9`])
     set_input(max_input, `5`)
     expect(state.color_range).toEqual([0, 5])
@@ -153,9 +153,7 @@ describe(`FermiSurfaceControls`, () => {
     state.fermi_data = named([`v`]) // Δ gone: first property, fitted range, no selector
     await tick()
     expect([state.property_name, state.color_range]).toEqual([`v`, undefined])
-    expect(
-      document.querySelector(`select[aria-label="Fermi surface colouring property"]`),
-    ).toBeNull()
+    expect(document.querySelector(select_css)).toBeNull()
   })
 
   test(`resets authored appearance and bands against the current dataset`, async () => {

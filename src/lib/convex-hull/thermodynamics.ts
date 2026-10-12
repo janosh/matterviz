@@ -687,10 +687,7 @@ export interface LowestEnergyMixture<Phase> {
   decomposition: { phase: Phase; atom_fraction: number }[] // largest fraction first
 }
 
-// Lowest-energy combination of `phases` reproducing `fractions` (atom fractions over a shared
-// element list): the lower convex hull evaluated at that composition, as a linear program over
-// the phases' atom fractions. Only phases whose elements are a subset of the query's enter as
-// LP columns. Returns null when no combination exists.
+// Lower hull of `phases` at atom `fractions` (shared element order) via an LP, null if unmixable
 export function lowest_energy_mixture<
   Phase extends { fractions: readonly number[]; energy_per_atom: number },
 >(fractions: readonly number[], phases: readonly Phase[]): LowestEnergyMixture<Phase> | null {
@@ -712,8 +709,7 @@ export function lowest_energy_mixture<
   return { energy: result.objective, decomposition }
 }
 
-// Atom fractions of a composition over `elements`, null when it is empty or has amounts
-// outside them (no place on that system's hull)
+// Atom fractions of a composition over `elements`, null when empty or partly outside them
 export function system_fractions(
   composition: PhaseData[`composition`],
   elements: readonly ElementSymbol[],
@@ -724,9 +720,7 @@ export function system_fractions(
   return elements.map((element) => (composition[element] ?? 0) / total)
 }
 
-// Stable phases an entry above the hull decomposes into, with their atom fractions: the hull
-// vertices (stable, not excluded) mixing to its composition at the lowest formation energy.
-// Null for entries on the hull, without a finite formation energy or outside `elements`.
+// Hull vertices an above-hull entry decomposes into (null on the hull, no E_form or outside)
 export function get_hull_decomposition<Entry extends PhaseData>(
   entry: PhaseData,
   entries: readonly Entry[],

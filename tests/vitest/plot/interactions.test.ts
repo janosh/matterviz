@@ -14,14 +14,8 @@ import {
 } from '#lib/plot/core/interactions.js'
 import { create_scale } from '#lib/plot/core/scales.js'
 import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
-import type {
-  AxisRanges,
-  LegendItem,
-  ScaleType,
-  Y2SyncConfig,
-  Y2SyncMode,
-} from '#lib/plot/core/types.js'
-import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
+import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 it.each([`wheel_x`, `wheel_y`, `drag`, `touch_pan`, `pinch`] as const)(
   `%s validates every axis before writing ranges and can recover after rejection`,
@@ -444,47 +438,29 @@ describe(`resolve_axis_ranges`, () => {
   })
 })
 
-describe(`series_hover_props`, () => {
-  const legend_item = (series_idx: number): LegendItem => ({
-    label: `series ${series_idx}`,
-    visible: true,
-    series_idx,
-    display_style: {},
+it(`series_hover_props reports point and legend hovers, chained after the caller's handlers`, () => {
+  expect(series_hover_props(undefined, { on_point_hover: vi.fn(), legend: {} })).toEqual({})
+  const item = { label: `series`, visible: true, series_idx: 1, display_style: {} }
+  const on_series_hover = vi.fn()
+  const on_point_hover = vi.fn()
+  const on_item_hover = vi.fn()
+  const props = series_hover_props(on_series_hover, {
+    on_point_hover,
+    legend: { on_item_hover, layout: `vertical` },
   })
-
-  test(`no listener leaves the caller's handlers alone`, () => {
-    expect(series_hover_props(undefined, { on_point_hover: vi.fn(), legend: {} })).toEqual({})
-  })
-
-  test(`points and legend entries report the series, chained after caller handlers`, () => {
-    const on_series_hover = vi.fn()
-    const on_point_hover = vi.fn()
-    const on_item_hover = vi.fn()
-    const props = series_hover_props(on_series_hover, {
-      on_point_hover,
-      legend: { on_item_hover, layout: `vertical` },
-    })
-    props.on_point_hover?.({ series_idx: 2 })
-    props.on_point_hover?.(null)
-    props.legend?.on_item_hover?.(legend_item(1))
-    // fill entries carry a negative series_idx and stand for no series
-    props.legend?.on_item_hover?.(legend_item(-1))
-    props.legend?.on_item_hover?.(null)
-    expect(on_series_hover.mock.calls).toEqual([[2], [null], [1], [null], [null]])
-    expect(on_point_hover.mock.calls).toEqual([[{ series_idx: 2 }], [null]])
-    expect(on_item_hover).toHaveBeenCalledTimes(3)
-    // the caller's other legend options survive
-    expect(props.legend?.layout).toBe(`vertical`)
-  })
-
-  test.each([
-    [`a hidden legend stays hidden`, null, null],
-    [
-      `an unset legend gets the default config`,
-      undefined,
-      { on_item_hover: expect.any(Function) },
-    ],
-  ])(`%s`, (_name, legend, expected) => {
-    expect(series_hover_props(vi.fn(), { legend }).legend).toEqual(expected)
+  props.on_point_hover?.({ series_idx: 2 })
+  props.on_point_hover?.(null)
+  props.legend?.on_item_hover?.(item)
+  // fill entries carry a negative series_idx and stand for no series
+  props.legend?.on_item_hover?.({ ...item, series_idx: -1 })
+  props.legend?.on_item_hover?.(null)
+  expect(on_series_hover.mock.calls).toEqual([[2], [null], [1], [null], [null]])
+  expect(on_point_hover.mock.calls).toEqual([[{ series_idx: 2 }], [null]])
+  expect(on_item_hover).toHaveBeenCalledTimes(3)
+  expect(props.legend?.layout).toBe(`vertical`)
+  // a hidden legend stays hidden, an unset one gets a default config
+  expect(series_hover_props(vi.fn(), { legend: null }).legend).toBeNull()
+  expect(series_hover_props(vi.fn(), {}).legend).toEqual({
+    on_item_hover: expect.any(Function),
   })
 })

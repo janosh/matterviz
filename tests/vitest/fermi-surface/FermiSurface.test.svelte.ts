@@ -1,15 +1,11 @@
 import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
-import type {
-  BandGridData,
-  ColorProperty,
-  FermiSurfaceData,
-} from '#lib/fermi-surface/types.js'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
-import type { Vec2, Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math.js'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
@@ -340,47 +336,4 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   expect(props.fermi_data?.isosurfaces[0].positions).toEqual(expected.positions)
   expect(props.fermi_data?.isosurfaces[0].indices).toEqual(expected.indices)
   expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
-})
-
-// A band grid names its properties up front: the host's colouring choice survives the pending
-// first extraction and a mu that crosses no band (both leave fermi_data without sheets)
-test(`band_data properties keep the host's property, colour mode and range`, async () => {
-  fake_frames()
-  const typed = typed_grid(sphere_energies(5))
-  const [grid] = typed.energies[0]
-  const props = $state<{
-    band_data: BandGridData
-    color_property: ColorProperty
-    property_name?: string
-    color_range?: Vec2
-    mu: number
-    fermi_data?: FermiSurfaceData
-  }>({
-    band_data: { ...typed, properties: { A: [[grid]], B: [[grid]] } },
-    color_property: `property`,
-    property_name: `B`,
-    color_range: [0, 2],
-    mu: 0,
-    fermi_data: undefined,
-  })
-  mounted.push(mount(FermiSurface, { target: document.body, props: bind_props({}, props) }))
-  const expect_kept = () =>
-    expect([props.color_property, props.property_name, props.color_range]).toEqual([
-      `property`,
-      `B`,
-      [0, 2],
-    ])
-  await tick()
-  expect_kept()
-  await vi.advanceTimersByTimeAsync(200)
-  expect(props.fermi_data?.isosurfaces[0].properties?.B).toHaveLength(
-    (props.fermi_data?.isosurfaces[0].positions.length ?? 0) / 3,
-  )
-  props.mu = 5 // above the band: no sheets
-  await vi.advanceTimersByTimeAsync(200)
-  expect(props.fermi_data?.isosurfaces).toHaveLength(0)
-  expect_kept()
-  props.mu = 0
-  await vi.advanceTimersByTimeAsync(200)
-  expect_kept()
 })

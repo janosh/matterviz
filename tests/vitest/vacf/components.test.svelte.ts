@@ -112,22 +112,12 @@ describe(`VacfPlot`, () => {
     const on_curve_hover = vi.fn()
     await mount_plot({ result, on_curve_hover })
     const items = [...document.querySelectorAll(`.legend-item`)]
-    const hover = (label: string, panel_idx: number) => {
-      const item = items.filter((node) => node.textContent?.includes(label))[panel_idx]
+    for (const [label, panel_idx] of Object.entries({ Li: 0, Si: 1, Total: 1 })) {
+      const item = items.filter((node) => node.textContent?.includes(`${label} (`))[panel_idx]
       item?.dispatchEvent(new MouseEvent(`mouseenter`))
       item?.dispatchEvent(new MouseEvent(`mouseleave`))
     }
-    hover(`Li (1 atoms)`, 0)
-    hover(`Si (1 atoms)`, 1)
-    hover(`Total (2 atoms)`, 1)
-    expect(on_curve_hover.mock.calls).toEqual([
-      [`Li`],
-      [null],
-      [`Si`],
-      [null],
-      [`Total`],
-      [null],
-    ])
+    expect(on_curve_hover.mock.calls.flat()).toEqual([`Li`, null, `Si`, null, `Total`, null])
   })
 
   it(`keeps VACF and VDOS control panes independent`, async () => {

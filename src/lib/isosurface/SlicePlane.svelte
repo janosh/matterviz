@@ -1,26 +1,19 @@
 <script lang="ts">
-  // Marks where a 2D cross-section cuts a 3D view: the convex polygon of the plane clipped
-  // to the cell as a translucent fill with a closed outline (same look as the Fermi slice
-  // plane). Pass e.g. slice_cell_polygon() of the sampled plane.
+  // Marks where a 2D cross-section cuts a 3D view: the plane clipped to the cell (e.g.
+  // slice_cell_polygon()) as a translucent fill with a closed outline
   import type { Vec3 } from '#lib/math.js'
   import { dispose_on_change, positions_geometry } from '#lib/scene/geometry.svelte.js'
   import { T } from '@threlte/core'
   import { DoubleSide } from 'three/webgpu'
 
-  let {
-    polygon,
-    color = `#f59e0b`,
-    opacity = 0.4,
-  }: {
-    polygon: Vec3[] // convex polygon corners in order (fewer than 3 draws nothing)
-    color?: string
-    opacity?: number // of the fill; the outline stays opaque
-  } = $props()
+  // polygon: convex corners in order (fewer than 3 draw nothing)
+  let { polygon, color = `#f59e0b` }: { polygon: Vec3[]; color?: string } = $props()
+  const opacity = 0.4 // of the fill; the outline stays opaque
 
   const geometries = $derived.by(() => {
     if (polygon.length < 3) return null
-    // corners plus the first again: the outline is a Line closed by hand, as WebGPURenderer
-    // does not support LineLoop; the fill's fan index never reaches the repeated corner
+    // first corner repeated to close the outline by hand (WebGPU has no LineLoop); the fill's
+    // fan index never reaches it
     const closed = [...polygon, polygon[0]].flat()
     const fill = positions_geometry(closed)
     fill.setIndex(polygon.slice(2).flatMap((_, idx) => [0, idx + 1, idx + 2]))

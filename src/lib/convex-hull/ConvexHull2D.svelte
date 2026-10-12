@@ -217,8 +217,7 @@
   {/if}
 {/snippet}
 
-<!-- Dashed guides at x = 0, x = 1 and the bottom of the y range, then the linked-view overlay
-(decomposition tie-lines, annotated compositions) -->
+<!-- Dashed guides at x = 0, x = 1 and the y-range bottom, then the linked-view overlay -->
 {#snippet user_content({
   x_scale_fn,
   pad,
@@ -255,16 +254,14 @@
     {#each overlay.rings as { at, color, label }, idx (idx)}
       {@const [ring_x, ring_y] = [x_scale_fn(at.x), y_scale_fn(at.y)]}
       <circle cx={ring_x} cy={ring_y} r="10" fill="none" stroke={color} stroke-width="2" />
-      {#if label}
-        <text
-          x={ring_x + 13}
-          y={ring_y}
-          fill={color}
-          dominant-baseline="middle"
-          font-size="12"
-          font-weight="bold">{label}</text
-        >
-      {/if}
+      <text
+        x={ring_x + 13}
+        y={ring_y}
+        fill={color}
+        dominant-baseline="middle"
+        font-size="12"
+        font-weight="bold">{label ?? ``}</text
+      >
     {/each}
   </g>
 {/snippet}

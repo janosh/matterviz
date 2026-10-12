@@ -5,9 +5,8 @@ import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 
 const UP_VECTOR = new Vector3(0, 1, 0)
 
-// Start of the lattice-vector arrows: `offset` Å behind the origin corner along -(a+b+c). All its fractional
-// coordinates are negative, so it, and every arrow drawn from it along a, b or c, stays outside the cell whatever
-// the vectors' signs; a fixed Cartesian offset lands inside cells whose vectors have negative components.
+// Start of the lattice-vector arrows, `offset` Å along -(a+b+c): all-negative fractional
+// coordinates keep it and its a/b/c arrows outside the cell whatever the vectors' signs
 export function cell_vector_origin(matrix: Matrix3x3, offset = Math.sqrt(3)): Vec3 {
   const diagonal = add(...matrix)
   const length = Math.hypot(...diagonal)
