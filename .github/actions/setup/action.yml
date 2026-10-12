@@ -26,6 +26,10 @@ runs:
         echo "NODE_COMPILE_CACHE=$HOME/.cache/node-compile" >> "$GITHUB_ENV"
         # Install explicitly below; don't resolve dependencies again before every command.
         echo "PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false" >> "$GITHUB_ENV"
+        # vite-plus 1.1's Rolldown deadlocks on this site's client build with its default pool on
+        # 4-vCPU runners (all workers idle on futexes); a larger pool builds in seconds. Rolldown
+        # reads it at startup, so it must be in the environment, not vite.config.ts.
+        echo "ROLLDOWN_WORKER_THREADS=16" >> "$GITHUB_ENV"
     - name: Cache dependency downloads
       uses: actions/cache@v6
       with:
