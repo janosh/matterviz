@@ -10,7 +10,7 @@
     PlotControlsProps,
     StyleOverrides,
   } from '#lib/plot/core/types.js'
-  import { DEFAULT_MARKERS } from '#lib/plot/core/types.js'
+  import { has_marker } from '#lib/plot/core/types.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -66,8 +66,7 @@
     style_sections.filter(({ kind }) =>
       non_null_series.some(
         (srs) =>
-          (srs.visible ?? true) &&
-          (srs.markers ?? DEFAULT_MARKERS).includes(kind === `point` ? `points` : `line`),
+          (srs.visible ?? true) && has_marker(srs, kind === `point` ? `points` : `line`),
       ),
     ),
   )

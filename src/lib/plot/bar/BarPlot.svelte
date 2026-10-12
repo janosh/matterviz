@@ -66,7 +66,7 @@
     create_size_scale,
     log_floor_scale,
   } from '#lib/plot/core/scales.js'
-  import { DEFAULT_MARKERS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { clamp01 } from '#lib/utils.js'
@@ -439,7 +439,7 @@
           })
           obstacle_series.push({
             points: line_points,
-            draws_line: (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+            draws_line: has_marker(srs, `line`),
           })
           return
         }
@@ -504,14 +504,13 @@
     if (srs.render_mode !== `line`) {
       return { symbol_type: `Square`, symbol_color: series_color, pattern: srs.pattern }
     }
-    const series_markers = srs.markers ?? DEFAULT_MARKERS
     const point_style = first_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
-      ...(series_markers.includes(`line`)
+      ...(has_marker(srs, `line`)
         ? { line_color: series_color, line_dash: srs.line_style?.line_dash }
         : {}),
-      ...(series_markers.includes(`points`)
+      ...(has_marker(srs, `points`)
         ? {
             symbol_type: point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
             symbol_color:
@@ -710,9 +709,8 @@
               {@const line_dash = srs.line_style?.line_dash ?? `none`}
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
               {@const x_scale = srs.x_axis === `x2` ? frame.scales.x2 : frame.scales.x}
-              {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
-              {@const show_line = series_markers.includes(`line`)}
-              {@const show_points = series_markers.includes(`points`)}
+              {@const show_line = has_marker(srs, `line`)}
+              {@const show_points = has_marker(srs, `points`)}
               {@const points = compute_line_points({
                 series: srs,
                 series_idx,

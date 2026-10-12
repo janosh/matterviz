@@ -54,11 +54,12 @@ export function build_spatial_index<T extends Positioned>(
   return { cells, items: indexed_items, cell_size, radius_px, count }
 }
 
-// Nearest indexed item within `radius_px` of `pointer` (inclusive), or null. Exact
-// distance ties always resolve to the earlier-indexed item, including across cells.
+// Nearest indexed item within `radius_px` of `pointer` (inclusive) that `accept` allows, or
+// null. Exact distance ties always resolve to the earlier-indexed item, including across cells.
 export function query_nearest<T extends Positioned>(
   index: SpatialIndex<T>,
   pointer: Point2D,
+  accept?: (item: T) => boolean,
 ): T | null {
   const { cells, items, cell_size, radius_px } = index
   if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null
@@ -87,6 +88,7 @@ export function query_nearest<T extends Positioned>(
       if (!bucket) continue
       for (const idx of bucket) {
         const item = items[idx]
+        if (accept && !accept(item)) continue
         const delta_x = pointer.x - item.cx
         const delta_y = pointer.y - item.cy
         const dist_sq = delta_x * delta_x + delta_y * delta_y

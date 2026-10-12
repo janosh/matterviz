@@ -867,34 +867,45 @@ describe(`ScatterPlot`, () => {
       expect(arc).not.toHaveBeenCalled()
     })
 
-    test(`keeps canvas markers with click handlers and routes clicks to the nearest point`, async () => {
-      const on_point_click = vi.fn()
-      const on_plot_click = vi.fn()
-      const plot = await mount_canvas({
-        on_point_click,
-        on_plot_click,
-        point_tween: { duration: 0 },
-      })
-      expect(plot.querySelector(`canvas.marker-canvas`)).not.toBeNull()
-      const svg = plot_svg(plot)
-      stub_svg_rect(svg)
-      // the keyboard cursor draws point 5's overlay, which tells us where it sits on screen
-      for (let step = 0; step < 5; step++) svg.dispatchEvent(keydown(`ArrowRight`))
-      await tick()
-      const position = marker_position(plot, 0)
-      // the click goes to the plot surface itself, not to that overlay marker
-      svg.dispatchEvent(mouse(`mousemove`, { clientX: position.x + 2, clientY: position.y }))
-      await next_animation_frame()
-      expect(svg.style.cursor).toBe(`pointer`)
-      click_at(svg, { x: position.x + 2, y: position.y })
-      expect(on_point_click).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ x: dense.x[4], y: dense.y[4], point: expect.anything() }),
-      )
-      expect(on_plot_click).not.toHaveBeenCalled()
-      // a click far from every point activates nothing
-      click_at(svg, { x: 1, y: 1 })
-      expect(on_point_click).toHaveBeenCalledOnce()
-    })
+    // a line-only copy painted first ties every marker: its unmarked points must not win clicks
+    test.each([
+      { desc: `markers only`, series: [dense], series_idx: 0 },
+      {
+        desc: `under a line-only copy`,
+        series: [{ ...dense, markers: `line` as const }, dense],
+        series_idx: 1,
+      },
+    ])(
+      `keeps canvas markers with click handlers and routes clicks to the nearest marker ($desc)`,
+      async ({ series, series_idx }) => {
+        const on_point_click = vi.fn()
+        const on_plot_click = vi.fn()
+        const plot = await mount_canvas({
+          series,
+          on_point_click,
+          on_plot_click,
+          point_tween: { duration: 0 },
+          // its overlay tells us where marker 4 sits on screen
+          selected_point: { series_idx, point_idx: 4 },
+        })
+        expect(plot.querySelector(`canvas.marker-canvas`)).not.toBeNull()
+        const svg = plot_svg(plot)
+        stub_svg_rect(svg)
+        const position = marker_position(plot, 0)
+        // the click goes to the plot surface itself, not to that overlay marker
+        svg.dispatchEvent(mouse(`mousemove`, { clientX: position.x + 2, clientY: position.y }))
+        await next_animation_frame()
+        expect(svg.style.cursor).toBe(`pointer`)
+        click_at(svg, { x: position.x + 2, y: position.y })
+        expect(on_point_click).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ x: dense.x[4], y: dense.y[4], series_idx }),
+        )
+        expect(on_plot_click).not.toHaveBeenCalled()
+        // a click far from every point activates nothing
+        click_at(svg, { x: 1, y: 1 })
+        expect(on_point_click).toHaveBeenCalledOnce()
+      },
+    )
 
     test(`keeps SVG markers when point handlers require DOM events`, async () => {
       const on_keydown = vi.fn()
