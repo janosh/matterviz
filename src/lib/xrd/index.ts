@@ -184,14 +184,10 @@ export type XrdPeak = {
 export const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
 
 // Lattice planes to overlay on a Structure for a diffraction peak or spot, one family per hkl
-// (a peak's hkls are distinct families coinciding in 2θ), capped at `max_families` to keep the
-// cell readable. Unreduced: (200) draws planes d_200 apart, the spacing that diffracts. Valid
-// only in the input cell the indices refer to.
-export const diffraction_planes = (
-  hkls: readonly Hkl[],
-  max_families: number = DIFFRACTION_PLANE_COLORS.length,
-): LatticePlane[] =>
-  hkls.slice(0, max_families).map((hkl, idx) => ({
-    hkl: [...hkl],
-    color: DIFFRACTION_PLANE_COLORS[idx % DIFFRACTION_PLANE_COLORS.length],
-  }))
+// (a peak's hkls are distinct families coinciding in 2θ), one per color to keep the cell
+// readable. Unreduced: (200) draws planes d_200 apart, the spacing that diffracts. Valid only in
+// the input cell the indices refer to.
+export const diffraction_planes = (hkls: readonly Hkl[]): LatticePlane[] =>
+  hkls
+    .slice(0, DIFFRACTION_PLANE_COLORS.length)
+    .map((hkl, idx) => ({ hkl: [...hkl], color: DIFFRACTION_PLANE_COLORS[idx] }))

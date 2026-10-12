@@ -1,56 +1,34 @@
 <script lang="ts">
   // The reaction slice of a route rendered as a convex hull in pseudo-component space: the solid
   // precursors are the corners at 0, every reachable phase sits at its mixing fractions with its
-  // driving force per atom of mixture as "formation energy" (pymatgen InterfacialReactivity view).
+  // driving force per atom of reacting mixture (precursors plus consumed gas) as "formation
+  // energy" (pymatgen InterfacialReactivity view).
   // 2 precursors give a pseudo-binary, 3 a pseudo-ternary, 4 a pseudo-quaternary hull.
   import { format_formula_html } from '#lib/composition/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
   import type { PhaseData } from '#lib/convex-hull/index.js'
+  import { reaction_slice_points } from './thermo'
   import type { SynthesisRoute } from './types'
 
   let { route, ...rest }: { route: SynthesisRoute; [key: string]: unknown } = $props()
 
+  // edits that rebuild the route object keep these, so the hull isn't recomputed
   const reaction = $derived(route.reaction)
   const selectivity = $derived(route.selectivity)
   const solids = $derived(reaction.reactants.filter(({ phase }) => !phase.is_gas))
   const components = $derived(solids.map(({ phase }) => phase.formula))
 
-  const pseudo_entry = (
-    entry_id: string,
-    reduced_formula: string,
-    composition: Record<string, number>,
-    e_form_per_atom: number,
-  ): PhaseData => ({
-    entry_id,
-    reduced_formula,
-    composition,
-    energy: e_form_per_atom,
-    e_form_per_atom,
-  })
-
-  const entries = $derived.by((): PhaseData[] => {
-    const solid_atoms = solids.map(
-      ({ phase, coefficient }) => coefficient * phase.n_atoms_per_fu,
-    )
-    const total_atoms = solid_atoms.reduce((sum, atoms) => sum + atoms, 0)
-    const target = reaction.products[0].phase
-    return [
-      ...solids.map(({ phase }) =>
-        pseudo_entry(phase.id, phase.formula, { [phase.formula]: 1 }, 0),
-      ),
-      pseudo_entry(
-        target.id,
-        target.formula,
-        Object.fromEntries(
-          components.map((formula, idx) => [formula, solid_atoms[idx] / total_atoms]),
-        ),
-        reaction.driving_force,
-      ),
-      ...selectivity.competitors.map((comp) =>
-        pseudo_entry(comp.phase.id, comp.phase.formula, comp.mixture, comp.driving_force),
-      ),
-    ]
-  })
+  const entries = $derived(
+    reaction_slice_points({ reaction, selectivity }).map(
+      ({ phase, mixture, driving_force }): PhaseData => ({
+        entry_id: phase.id,
+        reduced_formula: phase.formula,
+        composition: mixture,
+        energy: driving_force,
+        e_form_per_atom: driving_force,
+      }),
+    ),
+  )
   const formulas_html = $derived(components.map((formula) => format_formula_html(formula)))
 </script>
 

@@ -84,8 +84,14 @@
 
   const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))
 
-  // bar_idx is the angle bin: every series shares the bin_width binning on one x axis
+  // BarPlot reports a hover on every pointer move: recompute only for a different bar.
+  // bar_idx is the angle bin: every series shares the bin_width binning on one x axis.
+  let hovered_bar: string | null = null
   const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
+    rest.on_bar_hover?.(bar)
+    const bar_key = bar && `${bar.series_idx}:${bar.bar_idx}`
+    if (bar_key === hovered_bar) return
+    hovered_bar = bar_key
     const { structure_label, triplet } = bar?.metadata ?? {}
     on_sites_hover?.(
       bar &&
@@ -103,7 +109,6 @@
             }),
           })),
     )
-    rest.on_bar_hover?.(bar)
   }
 
   const angle_axis = {

@@ -205,7 +205,9 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     const bar = root.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
+    expect(on_sites_hover).toHaveBeenCalledOnce()
     const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
     const { element, cn } =
       /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}

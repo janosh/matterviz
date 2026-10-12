@@ -561,29 +561,24 @@ export function get_entry_label(
     .join(``)
 }
 
-export const HULL_OVERLAY_COLORS = Object.freeze({
-  decomposition: `#e8590c`,
-  annotation: `#c026d3`,
-})
+const [TIE_LINE_COLOR, ANNOTATION_COLOR] = [`#e8590c`, `#c026d3`]
 
 // Linked-view overlay in plot coords: dashed tie-lines from an above-hull `focus` to its ringed
 // products (atom fractions), plus host annotations (skipped with a warning outside the system)
 export function build_hull_overlay(
-  model: { entries: readonly ConvexHullEntry[]; elements: readonly ElementSymbol[] },
+  { entries, elements }: { entries: readonly ConvexHullEntry[]; elements: ElementSymbol[] },
   focus: ConvexHullEntry | null,
   annotations: HullAnnotations | undefined,
 ): HullOverlay {
-  const elements = [...model.elements]
   const dim = elements.length
   const overlay: HullOverlay = { segments: [], rings: [] }
   if (dim !== 2 && dim !== 3 && dim !== 4) return overlay
-  const { decomposition: tie_color, annotation } = HULL_OVERLAY_COLORS
   if (focus) {
-    const mixture = get_hull_decomposition(focus, model.entries, elements)
-    for (const { phase, atom_fraction } of mixture?.decomposition ?? []) {
-      overlay.segments.push({ from: focus, to: phase, color: tie_color, dashed: true })
+    const products = get_hull_decomposition(focus, entries, elements)?.decomposition ?? []
+    for (const { phase, atom_fraction } of products) {
+      overlay.segments.push({ from: focus, to: phase, color: TIE_LINE_COLOR, dashed: true })
       const label = format_num(atom_fraction, `.0%`)
-      overlay.rings.push({ at: phase, color: tie_color, label })
+      overlay.rings.push({ at: phase, color: TIE_LINE_COLOR, label })
     }
   }
   const position = (mark: HullMark): Point3D | null => {
@@ -595,13 +590,14 @@ export function build_hull_overlay(
     }
     return hull_plot_position(mark.composition, mark.e_form, elements, dim)
   }
-  for (const { from, to, color = annotation } of annotations?.lines ?? []) {
+  for (const { from, to, color = ANNOTATION_COLOR } of annotations?.lines ?? []) {
     const [start, end] = [position(from), position(to)]
     if (start && end) overlay.segments.push({ from: start, to: end, color, dashed: false })
   }
   for (const mark of annotations?.marks ?? []) {
     const at = position(mark)
-    if (at) overlay.rings.push({ at, color: mark.color ?? annotation, label: mark.label })
+    if (at)
+      overlay.rings.push({ at, color: mark.color ?? ANNOTATION_COLOR, label: mark.label })
   }
   return overlay
 }

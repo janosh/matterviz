@@ -1,6 +1,6 @@
 # Linked Brushing
 
-Brushing one view highlights the same items in every other view. Each `ScatterPlot` series carries `point_ids` (here element symbols), and every plot receives the shared selection as `highlighted_ids`: keyed points outside it are dimmed, the rest stay at full strength on top. The selection itself comes from `on_select`, which fires after every Alt+drag (Option+drag on macOS) and reports the brushed points with their `point_id`. The periodic table joins in through its existing `active_elements` and `color_overrides` props, and clicking a tile adds or removes that element.
+Brushing one view highlights the same items in every other view. Each `ScatterPlot` series carries `point_ids` (here element symbols), and every plot receives the shared selection as `highlighted_ids`: keyed points outside it are dimmed. The selection itself comes from `on_select`, which fires after every Alt+drag (Option+drag on macOS) and reports the brushed points with their `point_id`. The periodic table joins in through its existing `active_elements` and `color_overrides` props, and clicking a tile adds or removes that element.
 
 ```svelte example
 <script lang="ts">
@@ -8,7 +8,6 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
   import type { ChemicalElement, ElementSymbol, InternalPoint } from 'matterviz'
 
   const symbols = element_data.map(({ symbol }) => symbol)
-  const names = element_data.map(({ name, symbol }) => ({ name, symbol }))
   const plots = [
     [`electronegativity`, `atomic_radius`, `linear`],
     [`density`, `melting_point`, `log`],
@@ -74,7 +73,7 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
           x: element_data.map((elem) => elem[x_key] ?? NaN),
           y: element_data.map((elem) => elem[y_key] ?? NaN),
           point_ids: symbols,
-          metadata: names,
+          metadata: element_data,
           markers: `points`,
         },
       ]}

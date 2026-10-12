@@ -223,8 +223,6 @@
       d_spacing: pattern.d_hkls?.[peak_idx],
     }
   }
-  const same_peak = (peak_a: XrdPeak | null, peak_b: XrdPeak | null): boolean =>
-    peak_a?.pattern_idx === peak_b?.pattern_idx && peak_a?.peak_idx === peak_b?.peak_idx
 
   // compute_broadened_pattern throws when a Caglioti triple drives FWHM² non-positive inside
   // `angle_range`, reachable from the spinners alone (V² <= 4UW couples all three, so no static
@@ -469,8 +467,10 @@
           on_bar_hover?.(data)
         }}
         on_bar_click={(data) => {
-          const peak = peak_at(data.series_idx, data.bar_idx)
-          selected_peak = peak && same_peak(peak, selected_peak) ? null : peak
+          const { series_idx, bar_idx } = data
+          const pinned =
+            selected_peak?.pattern_idx === series_idx && selected_peak.peak_idx === bar_idx
+          selected_peak = pinned ? null : peak_at(series_idx, bar_idx)
           on_bar_click?.(data)
         }}
         {@attach drop_zone}

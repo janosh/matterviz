@@ -902,9 +902,9 @@
   )
   // Split mode marks the cross-section's plane in the 3D scene
   let slice_polygon = $derived.by(() => {
+    if (display_mode !== `split` || !slice_volume) return []
     const settings = create_volume_slice_settings(slice_settings)
-    if (display_mode !== `split` || !settings.show_plane || !slice_volume) return []
-    const plane = resolve_slice_plane(slice_volume, settings)
+    const plane = settings.show_plane && resolve_slice_plane(slice_volume, settings)
     return plane ? slice_cell_polygon(slice_volume, plane) : []
   })
   let displacement_summary = $state<DisplacementSummary | null>(null)
@@ -1225,7 +1225,7 @@
           >
             {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
             {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
-              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available) || (mode === `split` && slice_layout_available && Boolean(volumetric_data?.length))}
+              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available) || (mode === `split` && slice_layout_available && volumetric_data?.length)}
                 <button
                   type="button"
                   class={['view-mode-option', { selected: current_layout.mode === mode }]}

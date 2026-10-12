@@ -729,22 +729,19 @@ export function get_hull_decomposition<Entry extends PhaseData>(
   if (is_on_hull(entry) || !Number.isFinite(entry.e_form_per_atom)) return null
   const fractions = system_fractions(entry.composition, elements)
   if (!fractions) return null
-  const vertices = entries.flatMap((candidate) => {
-    const candidate_fractions =
-      is_on_hull(candidate) && system_fractions(candidate.composition, elements)
-    const energy_per_atom = candidate.e_form_per_atom
-    return candidate_fractions && typeof energy_per_atom === `number`
-      ? [{ entry: candidate, fractions: candidate_fractions, energy_per_atom }]
+  const vertices = entries.flatMap((vertex) => {
+    const vertex_fractions =
+      is_on_hull(vertex) && system_fractions(vertex.composition, elements)
+    const energy_per_atom = vertex.e_form_per_atom
+    return vertex_fractions && typeof energy_per_atom === `number`
+      ? [{ vertex, fractions: vertex_fractions, energy_per_atom }]
       : []
   })
   const mixture = lowest_energy_mixture(fractions, vertices)
-  return (
-    mixture && {
-      energy: mixture.energy,
-      decomposition: mixture.decomposition.map(({ phase, atom_fraction }) => ({
-        phase: phase.entry,
-        atom_fraction,
-      })),
-    }
-  )
+  if (!mixture) return null
+  const decomposition = mixture.decomposition.map(({ phase, atom_fraction }) => ({
+    phase: phase.vertex,
+    atom_fraction,
+  }))
+  return { energy: mixture.energy, decomposition }
 }

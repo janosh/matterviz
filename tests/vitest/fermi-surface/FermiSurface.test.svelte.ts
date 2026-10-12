@@ -142,6 +142,11 @@ test.each([`http://x/a.bxsf`, new URL(`http://x/a.bxsf`)])(
 test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`, async () => {
   fake_frames()
   const band_data = typed_grid(sphere_energies(6))
+  // a band far below E_F never crosses, so it is never upsampled: it must not count as a grid
+  // still to upsample (that put every mu change behind the spinner)
+  const [sphere] = band_data.energies[0]
+  band_data.energies[0].push({ ...sphere, values: sphere.values.map((energy) => energy - 5) })
+  band_data.n_bands = 2
   const props = $state<{
     band_data?: BandGridData
     fermi_data?: FermiSurfaceData
@@ -336,4 +341,9 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   expect(props.fermi_data?.isosurfaces[0].positions).toEqual(expected.positions)
   expect(props.fermi_data?.isosurfaces[0].indices).toEqual(expected.indices)
   expect(document.body.textContent).not.toContain(`Invalid Fermi surface data`)
+  // committing fermi_data must not re-normalise the JSON grid into a new object: that re-ran
+  // the extraction (and its upsampling) every frame
+  const committed = props.fermi_data
+  await vi.advanceTimersByTimeAsync(200)
+  expect(props.fermi_data).toBe(committed)
 })

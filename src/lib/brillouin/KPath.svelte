@@ -10,7 +10,7 @@
   import * as extras from '@threlte/extras'
   import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
   import type { KPathLabel } from './types'
-  import { bz_mark_sizes, k_path_segment_highlight, k_path_segments } from './geometry'
+  import { bz_mark_sizes, k_path_segments } from './geometry'
 
   let {
     k_path_points,
@@ -46,12 +46,8 @@
   const k_path_segs = $derived(k_path_segments(k_path_points))
   const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
-  // invisible but raycast: lets the cursor snap to the path within ~2× its radius
-  const kpath_proxy_material = new MeshStandardMaterial({
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-  })
+  // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
+  const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
   const KPATH_COLORS = {
     base: new Color(`#ffcc00`),
     hover: new Color(`#ff6b35`),
@@ -83,23 +79,28 @@
       proxy.dispose()
     }
   })
-  // tint the (up to two) segments touching the hovered q-point and the highlighted stretch
+  // tint the (up to two) segments touching the hovered q-point, then the highlighted stretch
+  // (e.g. the hovered path branch Γ→X)
   $effect(() => {
     const { line } = kpath_meshes
+    const [hovered, range] = [hovered_qpoint_index, highlighted_qpoint_range]
     for (const [instance_idx, { idx }] of k_path_segs.entries()) {
-      const highlight = k_path_segment_highlight(
-        idx,
-        hovered_qpoint_index,
-        highlighted_qpoint_range,
-      )
-      line.setColorAt(instance_idx, KPATH_COLORS[highlight ?? `base`])
+      const is_hovered = hovered !== null && (idx === hovered || idx === hovered - 1)
+      const in_stretch = range !== null && idx >= range[0] && idx < range[1]
+      const color = is_hovered ? `hover` : in_stretch ? `range` : `base`
+      line.setColorAt(instance_idx, KPATH_COLORS[color])
     }
     if (line.instanceColor) line.instanceColor.needsUpdate = true
     invalidate()
   })
 
-  // K-path hover: report the nearer endpoint's q-point index of the hovered segment
-  function handle_kpath_hover({ point, instanceId }: ThreltePointerEvent): void {
+  // K-path hover: report the nearer endpoint's q-point index of the hovered segment. Threlte
+  // sends a pointer move to every segment along the ray, near to far (at joints, or where the
+  // path crosses itself on screen), so only the first, nearest one answers.
+  let last_move: PointerEvent | null = null
+  function handle_kpath_hover({ point, instanceId, nativeEvent }: ThreltePointerEvent): void {
+    if (nativeEvent === last_move) return
+    last_move = nativeEvent
     const segment = k_path_segs[instanceId ?? -1]
     if (!segment) return
     const { idx, from, to } = segment

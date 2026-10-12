@@ -2110,13 +2110,7 @@ describe(`ScatterPlot`, () => {
     { mode: `x`, label: `ascending`, x_values: [0, 1, 2], y_values: peak, target_idx: 1 },
     { mode: `x`, label: `descending`, x_values: [2, 1, 0], y_values: peak, target_idx: 1 },
     { mode: `x`, label: `unordered`, x_values: [0, 2, 1], y_values: peak, target_idx: 2 },
-    {
-      mode: `x`,
-      label: `duplicate-x`,
-      x_values: [1, 1, 1],
-      y_values: [0, 0.5, 1],
-      target_idx: 2,
-    },
+    { mode: `x`, label: `tied-x`, x_values: [1, 1, 1], y_values: [0, 0.5, 1], target_idx: 2 },
     { mode: `y`, label: `ascending`, x_values: peak, y_values: [0, 0.5, 1], target_idx: 1 },
     { mode: `y`, label: `unordered`, x_values: peak, y_values: [0, 1, 0.5], target_idx: 2 },
   ] as const)(
@@ -2135,7 +2129,7 @@ describe(`ScatterPlot`, () => {
       // hover far off-axis from distinct targets
       const { x: coord_x, y: coord_y } = marker_position(plot, target_idx)
       const offset =
-        label === `duplicate-x`
+        label === `tied-x`
           ? {}
           : mode === `x`
             ? { dy: (coord_y < 150 ? 290 : 10) - coord_y }

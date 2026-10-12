@@ -465,7 +465,10 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     const bar = [...root.querySelectorAll(`path[role="button"]`)].find((path) =>
       /of Cl-Na-Cl: [0-9.]*[1-9]/.test(path.getAttribute(`aria-label`) ?? ``),
     )
+    // every pointer move over the bar repeats the hover, the sites are found once
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    expect(on_sites_hover).toHaveBeenCalledOnce()
     expect(on_sites_hover).toHaveBeenLastCalledWith([
       {
         label: `Structure`,

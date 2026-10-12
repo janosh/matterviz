@@ -431,7 +431,16 @@ describe(`click and dblclick handlers`, () => {
 
   test(`one tab stop follows focus, Enter and Space click it; static matrices are tables`, async () => {
     const on_click = vi.fn()
-    mount_matrix({ on_click })
+    const disabled = fromStore(writable(false))
+    const props = {
+      x_items,
+      y_items,
+      on_click,
+      get disabled() {
+        return disabled.current
+      },
+    }
+    mount(HeatmapMatrix, { target: document.body, props })
     await tick()
     const roles = () =>
       [doc_query(`.grid`), cell_at(0, 0)].map((el) => el.getAttribute(`role`))
@@ -447,11 +456,14 @@ describe(`click and dblclick handlers`, () => {
     }
     expect(on_click).toHaveBeenCalledTimes(2) // once per key, cells are not native buttons
     expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 1, y_idx: 1 })
-    document.body.innerHTML = ``
-    mount_matrix()
-    await tick()
+    // disabled matrices are static tables; re-enabling restores exactly one tab stop
+    flushSync(() => (disabled.current = true))
     expect(roles()).toEqual([`table`, `cell`])
-    expect(cell_at(0, 0).hasAttribute(`tabindex`)).toBe(false)
+    // focus reaching a static cell (e.g. a button in a `cell` snippet) adds no tab stop
+    cell_at(0, 0).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    expect(query_all(`[tabindex]`)).toEqual([])
+    flushSync(() => (disabled.current = false))
+    expect(tab_stops()).toEqual([cell_at(1, 1)])
   })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {

@@ -801,20 +801,23 @@
   // Roving tab stop: one cell (the last focused, else the first rendered) has tabindex 0, the
   // rest -1. Set imperatively so moving focus touches two cells instead of re-rendering all.
   let tab_cell: HTMLElement | null = null
-  const set_tab_cell = (cell_el: HTMLElement | null): void => {
-    if (cell_el === tab_cell) return
-    tab_cell?.setAttribute(`tabindex`, `-1`)
-    cell_el?.setAttribute(`tabindex`, `0`)
-    tab_cell = cell_el
-  }
   const handle_focusin = ({ target }: FocusEvent): void => {
     const cell_el = target instanceof Element && target.closest(`[data-x][data-y]`)
-    if (cell_el instanceof HTMLElement) set_tab_cell(cell_el)
+    if (!(cell_el instanceof HTMLElement) || cell_el === tab_cell) return
+    tab_cell?.setAttribute(`tabindex`, `-1`)
+    cell_el.setAttribute(`tabindex`, `0`)
+    tab_cell = cell_el
   }
+  // Re-pick once virtualization unmounts the tab stop; re-assert it since re-enabling resets
+  // every cell to -1
   $effect(() => {
-    void [render_vis_x, render_vis_y] // re-pick once virtualization unmounts the tab stop
-    if (has_interaction_handlers && matrix_el && !tab_cell?.isConnected)
-      set_tab_cell(matrix_el.querySelector<HTMLElement>(`.cell[data-x][data-y]`))
+    void [render_vis_x, render_vis_y]
+    if (!has_interaction_handlers || !matrix_el) return
+    const cell_el = tab_cell?.isConnected
+      ? tab_cell
+      : matrix_el.querySelector<HTMLElement>(`.cell[data-x][data-y]`)
+    cell_el?.setAttribute(`tabindex`, `0`)
+    tab_cell = cell_el
   })
 
   // Reset index-based interaction state when the axis keys change. Element-wise compare beats
@@ -891,7 +894,7 @@
     ondblclick={handle_dblclick}
     oncontextmenu={handle_contextmenu}
     onkeydown={handle_keydown}
-    onfocusin={handle_focusin}
+    onfocusin={has_interaction_handlers ? handle_focusin : undefined}
     onscroll={virtualize ? sync_scroll : undefined}
   >
     {#snippet axis_label(axis: Axis, idx: number)}
@@ -934,12 +937,7 @@
         {#if show_y_labels}{@render axis_label(`y`, y_idx)}{/if}
         {#each dom_x as x_idx (x_keys[x_idx])}
           {#if is_hidden_cell(x_idx, y_idx)}
-            <div
-              class="cell empty"
-              role={cell_role}
-              style:grid-column="var(--c{x_idx})"
-              style:grid-row="var(--r)"
-            ></div>
+            <div class="cell empty" role={cell_role} style:grid-column="var(--c{x_idx})"></div>
           {:else}
             {@const bg_color = background_at(x_idx, y_idx)}
             {@const raw = get_value(x_idx, y_idx)}
@@ -961,7 +959,6 @@
                 ? contrast_for_bg(bg_color)
                 : undefined}
               style:grid-column="var(--c{x_idx})"
-              style:grid-row="var(--r)"
             >
               {#if cell}
                 {@render cell(build_cell_context(x_idx, y_idx))}
@@ -1082,8 +1079,9 @@
     min-width: 0; /* spacer in top-left when both axes have labels */
   }
   .cell {
-    /* Recolor dense grids immediately; theme/button transitions create one animation per cell. */
+    /* Recolor dense grids immediately; theme transitions create one animation per cell. */
     transition: none;
+    grid-row: var(--r); /* set on the row wrapper */
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -1098,10 +1096,6 @@
     justify-content: center;
     cursor: default;
     &.interactive {
-      border: none;
-      padding: 0;
-      font: inherit;
-      line-height: inherit;
       cursor: pointer;
     }
     &.selected {

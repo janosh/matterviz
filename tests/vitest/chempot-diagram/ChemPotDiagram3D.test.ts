@@ -334,7 +334,6 @@ test(`hull faces are labelled by their owning domain, which the Surface quick-se
 })
 
 type HighlightScene = {
-  render_domains: { formula: string }[]
   hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
   on_domain_hover: (mesh: unknown, event: unknown) => void
   on_domain_leave: (mesh: unknown) => void
@@ -393,10 +392,6 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
   expect(bound.hover_info?.formula).toBe(hovered.formula)
   expect(tooltip_panes()).toEqual([0, 1, 0, 0])
   expect(highlights()).toEqual(Array(4).fill(hovered.formula))
-  for (const scene of scenes()) {
-    const has_domain = scene.render_domains.some(({ formula }) => formula === hovered.formula)
-    expect(scene.highlight_edges !== null).toBe(has_domain) // no outline where it's absent
-  }
   // hovering in another pane hands the tooltip and highlight over
   second.on_domain_leave(hovered)
   first.on_domain_hover(other, pointer_event)

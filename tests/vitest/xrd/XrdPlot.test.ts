@@ -434,12 +434,11 @@ describe(`XrdPlot`, () => {
     expect(labels()).toEqual([`200`, `200`])
   })
 
-  // copies of the first max_families hkls, coloured warm first
-  test.each([undefined, 1])(`diffraction_planes(hkls, max %s)`, (max_families) => {
+  test(`diffraction_planes copies the first three hkls, coloured warm first`, () => {
     // oxfmt-ignore
     const hkls: Hkl[] = [[1, 1, 0], [-1, 1, 0], [0, 1, 1], [1, 0, 1]]
-    const planes = xrd.diffraction_planes(hkls, max_families)
-    const colors = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]].slice(0, max_families)
+    const planes = xrd.diffraction_planes(hkls)
+    const colors = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
     expect(planes).toEqual(colors.map((color, idx) => ({ hkl: hkls[idx], color })))
     for (const [idx, plane] of planes.entries()) expect(plane.hkl).not.toBe(hkls[idx])
   })

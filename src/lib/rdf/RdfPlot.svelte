@@ -92,49 +92,46 @@
     },
   })
 
-  // Each plotted entry with the structure it was computed from (none for `patterns`)
-  const sourced = $derived.by((): { entry: RdfEntry; structure?: Crystal }[] => {
+  // Computed entries keep the structure they came from, for the atoms behind a hover
+  const entries = $derived.by((): (RdfEntry & { structure?: Crystal })[] => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
       ...label_structures(structures),
       ...drag_dropped.map((struct, idx) => ({ struct, label: `Dropped ${idx + 1}` })),
-    ].map(({ struct: structure, label }) => {
-      const formula = get_electro_neg_formula(structure)
-      return { structure, label: formula && label ? `${formula}: ${label}` : formula || label }
+    ].map(({ struct, label }) => {
+      const formula = get_electro_neg_formula(struct)
+      return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
     })
 
-    const computed = struct_list.flatMap(({ structure, label }) => {
+    const computed = struct_list.flatMap(({ struct, label }) => {
       const options = { cutoff, n_bins, pbc }
       if (mode === `full`)
-        return [{ entry: { label, pattern: calculate_rdf(structure, options) }, structure }]
-      return calculate_all_pair_rdfs(structure, options).map((pair) => ({
-        entry: {
-          label: pair.element_pair?.join(`-`) ?? label,
-          legend_group: label, // Group by structure name for multi-structure plots
-          pattern: pair,
-        },
-        structure,
+        return [{ label, pattern: calculate_rdf(struct, options), structure: struct }]
+      return calculate_all_pair_rdfs(struct, options).map((pair) => ({
+        label: pair.element_pair?.join(`-`) ?? label,
+        legend_group: label, // Group by structure name for multi-structure plots
+        pattern: pair,
+        structure: struct,
       }))
     })
     // Explicitly supplied patterns come first, in the order they were given
-    return [...(patterns ? [patterns].flat() : []).map((entry) => ({ entry })), ...computed]
+    return [...(patterns ? [patterns].flat() : []), ...computed]
   })
-  const entries = $derived(sourced.map(({ entry }) => entry))
 
   // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
   const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
-    const { entry, structure } = sourced[entry_idx]
+    const { structure, legend_group, label, pattern } = entries[entry_idx]
     if (!structure) return null
-    const label = entry.legend_group ?? entry.label
-    const pair = entry.pattern.element_pair
+    const highlight = { label: legend_group ?? label, structure }
+    const element_pair = pattern.element_pair
     if (bin_idx !== null) {
-      const options = { cutoff, n_bins, pbc, bin_idx, element_pair: pair }
+      const options = { cutoff, n_bins, pbc, bin_idx, element_pair }
       const { site_indices, neighbor_indices } = rdf_bin_sites(structure, options)
-      return [{ label, structure, site_indices, neighbor_indices }]
+      return [{ ...highlight, site_indices, neighbor_indices }]
     }
     // the full RDF's legend entry stands for every atom, which highlights nothing useful
-    return pair
-      ? [{ label, structure, site_indices: element_site_indices(structure, pair) }]
+    return element_pair
+      ? [{ ...highlight, site_indices: element_site_indices(structure, element_pair) }]
       : null
   }
   // Pointer moves within one bin repeat the same hover, so only a change is reported (and,

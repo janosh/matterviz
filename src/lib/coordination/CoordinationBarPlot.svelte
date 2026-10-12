@@ -126,7 +126,13 @@
     range: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
     ticks: cn_ticks,
   })
+  // BarPlot reports a hover on every pointer move: recompute only for a different bar
+  let hovered_bar: string | null = null
   const handle_bar_hover: StructurePlotProps[`on_bar_hover`] = (bar) => {
+    rest.on_bar_hover?.(bar)
+    const bar_key = bar && `${bar.series_idx}:${bar.bar_idx}`
+    if (bar_key === hovered_bar) return
+    hovered_bar = bar_key
     // Series metadata names the bar's element or structure (see `groups`)
     const { element, structure_label } = bar?.metadata ?? {}
     on_sites_hover?.(
@@ -137,7 +143,6 @@
           structure_label: typeof structure_label === `string` ? structure_label : undefined,
         }),
     )
-    rest.on_bar_hover?.(bar)
   }
   const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
 </script>

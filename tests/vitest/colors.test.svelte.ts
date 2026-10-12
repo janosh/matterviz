@@ -14,6 +14,7 @@ afterEach(() => {
   document.body.innerHTML = ``
   delete document.documentElement.dataset.theme
   document.documentElement.removeAttribute(`style`)
+  vi.restoreAllMocks() // even when an assertion threw mid-test
 })
 
 // Let the observer/storage callback land, then flush the effect it invalidated
@@ -94,7 +95,6 @@ test(`resolve_color_token resolves color functions on a removed probe and passes
   expect(node.querySelector(`span`)).toBeNull()
   expect(resolve_color_token(node, `#123456`)).toBe(`#123456`)
   expect(resolve_color_token(node, `light-dark(#fff, #000)`)).toBe(`light-dark(#fff, #000)`)
-  vi.restoreAllMocks()
 })
 
 test.each([

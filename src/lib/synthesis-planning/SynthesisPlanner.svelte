@@ -24,6 +24,7 @@
   import {
     describe_downhill_windows,
     reaction_slice_lines,
+    reaction_slice_points,
     slice_point_on_hull,
   } from './thermo'
   import type {
@@ -310,17 +311,15 @@
   )
 
   // Reaction slice on the full hull: precursor tie-lines plus the hovered point (per route)
-  let slice_hover = $state.raw<{ route_id: string; entry: PhaseData } | null>(null)
+  let slice_hover = $state.raw<{ route_id: string; phase_id: string } | null>(null)
   const hull_annotations = $derived.by((): HullAnnotations | undefined => {
     if (!selected_route) return undefined
     const lines = reaction_slice_lines(selected_route)
-    if (slice_hover?.route_id !== selected_route.id) return { lines }
-    // slice entries carry their reaction energy as e_form_per_atom (see ReactionSlicePlot)
-    const { composition, e_form_per_atom: energy, reduced_formula: label } = slice_hover.entry
-    if (typeof energy !== `number`) {
-      throw new TypeError(`Reaction slice entry ${label} has no reaction energy`)
-    }
-    return { lines, marks: [slice_point_on_hull(selected_route, composition, energy, label)] }
+    const hovered = slice_hover?.route_id === selected_route.id ? slice_hover.phase_id : null
+    const point = reaction_slice_points(selected_route).find(
+      ({ phase }) => phase.id === hovered,
+    )
+    return point ? { lines, marks: [slice_point_on_hull(selected_route, point)] } : { lines }
   })
 
   let atmosphere_open = $state(false)
@@ -568,8 +567,13 @@
             </ul>
             <ReactionSlicePlot
               route={selected_route}
-              on_point_hover={(data: { entry: PhaseData } | null) =>
-                (slice_hover = data && { route_id, entry: data.entry })}
+              on_point_hover={(data: { entry: PhaseData } | null) => {
+                // fires per pointermove: only a new point re-annotates the system hull
+                const phase_id = data?.entry.entry_id
+                if (phase_id === slice_hover?.phase_id && route_id === slice_hover?.route_id)
+                  return
+                slice_hover = phase_id ? { route_id, phase_id } : null
+              }}
             />
             {#if show_hull && n_elements >= 2 && n_elements <= 4}
               <details bind:open={hull_open} class="system-hull">

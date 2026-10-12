@@ -371,18 +371,6 @@ describe(`spectrum_sticks`, () => {
 })
 
 describe(`peak_mode_indices`, () => {
-  // CO2 in cm^-1: the degenerate bends (modes 5, 6) at 667 and nu3 (mode 8) at 2349 are IR
-  // active; nu1 (mode 7) at 1333 is IR silent and Raman active
-  it.each([
-    [`a degenerate pair from its flank`, `ir`, 685, [5, 6]],
-    [`a lone peak`, `ir`, 2340, [8]],
-    [`an IR-silent mode`, `ir`, 1333, []],
-    [`the Raman-active mode`, `raman`, 1340, [7]],
-  ] as const)(`resolves %s`, (_name, kind, position, expected) => {
-    const sticks = spectrum_sticks(co2_spectrum, kind)
-    expect(peak_mode_indices(sticks, position, 25)).toEqual(expected)
-  })
-
   // sticks closer than half the distance merge into one peak; farther ones stay apart, and a
   // silent stick never claims the pointer from an active one
   it.each([

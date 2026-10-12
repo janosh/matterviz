@@ -574,14 +574,24 @@ describe(`controls`, () => {
     for (const [name, hover, expected] of hovers) {
       hover()
       await tick()
-      expect(structure_props().highlighted_sites, name).toEqual(expected)
+      const sites = structure_props().highlighted_sites
+      expect(sites, name).toEqual(expected)
+      // plots repeat a hover on every pointer move: an unchanged set keeps its identity
+      hover()
+      expect(structure_props().highlighted_sites, name).toBe(sites)
     }
 
-    // the structure-type plot seeks like the time-series plot and follows the playhead
+    // the structure-type plot seeks like the time-series plot and follows the playhead; a
+    // highlight belongs to the frame it was found in, the same hover re-finds it in the next
+    msd().on_curve_hover?.(`H`)
+    expect(structure_props().highlighted_sites).toEqual([0, 1])
     expect(structure_id().current_frame_idx).toBe(0)
     structure_id().on_frame_select?.(2)
     await vi.waitFor(() => expect(props.current_step_idx).toBe(2))
     expect(structure_id().current_frame_idx).toBe(2)
+    expect(structure_props().highlighted_sites).toEqual([])
+    msd().on_curve_hover?.(`H`)
+    expect(structure_props().highlighted_sites).toEqual([0, 1])
   })
 
   test(`the slider marks completed hotspot samples, stops animating on cancel and clears on source change`, async () => {

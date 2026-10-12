@@ -1208,9 +1208,9 @@
       const { filtered_data: points, x_direction: direction } = series_data
       if (points.length === 0) continue
       const project = series_projector(series_data)
-      const target_x = Number(project.x_scale.invert(x_rel))
       let [candidate_start, candidate_end] = [0, points.length]
       if (axis === `x` && direction !== 0) {
+        const target_x = Number(project.x_scale.invert(x_rel))
         const lower_idx = partition_point(points, (point) =>
           direction > 0 ? point.x < target_x : point.x > target_x,
         )

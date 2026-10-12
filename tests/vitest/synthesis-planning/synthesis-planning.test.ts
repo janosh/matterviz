@@ -26,6 +26,7 @@ import {
 import type {
   CompetingPhase,
   PlannerPhase,
+  ReactionSpecies,
   SynthesisPlanProgress,
   SynthesisPlanRequest,
   SynthesisReaction,
@@ -33,6 +34,7 @@ import type {
 import {
   create_thermo_cache,
   reaction_slice_lines,
+  reaction_slice_points,
   slice_point_on_hull,
 } from '#lib/synthesis-planning/thermo.js'
 import { fractional_composition } from '#lib/composition/parse.js'
@@ -762,40 +764,75 @@ describe(`precursor library`, () => {
   })
 })
 
-// The reaction slice on the full hull: in a closed system every slice point (target and
-// competitors at their mixing fractions and reaction energies) lands on its own phase
+// A slice point on the full hull is its reacting mixture (precursors plus consumed gas, the basis
+// of driving_force) at the reactants' mean E_form plus the driving force, so it lands where that
+// mixture reacts to: the products (incl. released gas), else each phase itself
 describe(`reaction slice on the full hull`, () => {
-  const plan = plan_synthesis({ entries: ba_ti_o, target: `BaTiO3` })
-  const route = plan.routes.find(
-    ({ reaction }) =>
-      reaction.reactants
-        .map(({ phase }) => phase.formula)
-        .toSorted()
-        .join(`+`) === `BaO+TiO2`,
-  )
-  if (!route) throw new Error(`no BaO + TiO2 route in ${plan.routes.map(({ id }) => id)}`)
-
-  test(`precursor tie-line and slice points match their phases`, () => {
-    const lines = reaction_slice_lines(route)
-    expect(lines.map(({ from, to }) => [from.label, to.label])).toEqual([[`BaO`, `TiO2`]])
-    const { products, driving_force } = route.reaction
-    const target = {
-      phase: products[0].phase,
-      mixture: { BaO: 2 / 5, TiO2: 3 / 5 }, // 1 BaO (2 atoms) + 1 TiO2 (3 atoms)
-      driving_force,
+  // Atom-weighted mean of reaction species as the mark they make on the full hull
+  const mark_of = (species: ReactionSpecies[]) => {
+    const atoms = species.map(({ phase, coefficient }) => coefficient * phase.n_atoms_per_fu)
+    const total = atoms.reduce((sum, count) => sum + count, 0)
+    const composition: Record<string, number> = {}
+    let e_form = 0
+    for (const [idx, { phase }] of species.entries()) {
+      e_form += (atoms[idx] / total) * phase.energy_per_atom
+      for (const [element, frac] of Object.entries(
+        fractional_composition(phase.composition),
+      )) {
+        composition[element] = (composition[element] ?? 0) + (atoms[idx] / total) * frac
+      }
     }
-    const slice_points = [target, ...route.selectivity.competitors]
-    expect(slice_points.map(({ phase }) => phase.formula)).toContain(`Ba2TiO4`)
-    for (const { phase, mixture, driving_force: energy } of slice_points) {
-      const fractions = Object.entries(fractional_composition(phase.composition))
-      // sums of a few O(1) f64 terms: measured 4.4e-16 (BaTiO3), i.e. a few eps
-      expect(slice_point_on_hull(route, mixture, energy, phase.formula)).toEqual({
-        composition: Object.fromEntries(
-          fractions.map(([element, frac]) => [element, expect.closeTo(frac, 12)]),
-        ),
-        e_form: expect.closeTo(phase.energy_per_atom, 12),
-        label: phase.formula,
-      })
+    // a few O(1) f64 terms per path: measured max |Δe_form| 8.9e-16, |Δx| 1.1e-16
+    const close = (val: number) => expect.closeTo(val, 12)
+    return {
+      composition: Object.fromEntries(
+        Object.entries(composition).map(([el, val]) => [el, close(val)]),
+      ),
+      e_form: close(e_form),
+      label: species[0].phase.formula,
+    }
+  }
+
+  test.each([
+    [`closed`, `BaO + TiO2 → BaTiO3`, ba_ti_o, { open_species: [] }],
+    // regression: the consumed O2 was left out, placing BaTiO3 at BaTiO, -4.1291 eV/atom
+    [
+      `O2 uptake`,
+      `BaO + Ti + O2 → BaTiO3`,
+      ba_ti_o,
+      { open_species: [`O2`], temperature: 300 },
+    ],
+    [`CO2 release`, `BaCO3 + TiO2 → BaTiO3 + CO2`, ba_ti_c_o, { open_species: [`CO2`] }],
+  ] as const)(`%s: %s`, (label, equation, entries, conditions) => {
+    const plan = plan_synthesis({
+      entries,
+      target: `BaTiO3`,
+      conditions: { ...conditions, open_species: [...conditions.open_species] },
+    })
+    const route = plan.routes.find(({ reaction }) => reaction.equation === equation)
+    if (!route) throw new Error(`no ${equation} in ${plan.routes.map(({ id }) => id)}`)
+    const solids = route.reaction.reactants.filter(({ phase }) => !phase.is_gas)
+    const lines = reaction_slice_lines(route).map(({ from, to }) => [from.label, to.label])
+    expect(lines).toEqual([solids.map(({ phase }) => phase.formula)])
+    const [corners, target, competitors] = [
+      solids.map(({ phase }) => mark_of([{ phase, coefficient: 1 }])),
+      mark_of(route.reaction.products),
+      route.selectivity.competitors.map(({ phase }) => mark_of([{ phase, coefficient: 1 }])),
+    ]
+    const marks = reaction_slice_points(route).map((point) =>
+      slice_point_on_hull(route, point),
+    )
+    expect(marks.slice(0, solids.length + 1)).toEqual([...corners, target])
+    // without gas release, every competitor lands on its own phase
+    if (label !== `CO2 release`) {
+      expect(competitors.map(({ label: formula }) => formula)).toContain(`Ba2TiO4`)
+      expect(marks.slice(solids.length + 1)).toEqual(competitors)
+    }
+    if (label === `O2 uptake`) {
+      const { composition, e_form } = marks[solids.length]
+      const close = (val: number) => expect.closeTo(val, 4)
+      expect(composition).toEqual({ Ba: close(0.2), O: close(0.6), Ti: close(0.2) })
+      expect(e_form).toBeCloseTo(-3.4936, 4)
     }
   })
 })

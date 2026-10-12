@@ -269,9 +269,7 @@ export const format_tick_values = (
     return values.map((value) => format_value_or_num(value, formatter))
   if (is_log_spaced(values)) {
     // compact scientific below 0.01 (1e-6, 2.5e-5), else adaptive (0.01, 0.5, 1, 100, 10k)
-    const log_labels = values.map((value) =>
-      value < 1e-2 ? format_num(value, `.3~e`) : format_num(value),
-    )
+    const log_labels = values.map((value) => format_num(value, value < 1e-2 ? `.3~e` : ``))
     // near-coincident ticks fall through to the precision search below
     if (!labels_collide(values, log_labels)) return log_labels
   }

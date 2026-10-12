@@ -21,14 +21,18 @@ export const scene_site_indices = (
 }
 
 // Sites carrying any of `elements`. A curve label that names no element, like the all-atom
-// `Total` curve of MSD/VACF, matches nothing.
+// `Total` curve of MSD/VACF, matches nothing. Runs per hover, so push instead of flatMap
+// (2-3x faster on 1e5-1e6 sites).
 export const element_site_indices = (
   structure: AnyStructure | undefined,
   elements: readonly string[],
-): number[] =>
-  (structure?.sites ?? []).flatMap(({ species }, site_idx) =>
-    species.some(({ element }) => elements.includes(element)) ? [site_idx] : [],
-  )
+): number[] => {
+  const site_indices: number[] = []
+  structure?.sites.forEach(({ species }, site_idx) => {
+    if (species.some(({ element }) => elements.includes(element))) site_indices.push(site_idx)
+  })
+  return site_indices
+}
 
 // Source atoms of one CNA type in the analysed frame nearest `frame_idx` (ties go to the
 // earlier frame): a sweep samples a subset of frames, so the shown frame may not have been
@@ -42,8 +46,10 @@ export const cna_type_source_atoms = (
   const position = nearest_image_idx(sweep.frame_numbers, frame_idx)
   const cna_types = sweep.results[position]?.cna_types
   if (!cna_types) return null
-  const atom_indices = [...cna_types.keys()].filter(
-    (atom_idx) => cna_types[atom_idx] === type_code,
-  )
+  // no full-length keys() copy: this runs per hover over every source atom
+  const atom_indices: number[] = []
+  cna_types.forEach((code, atom_idx) => {
+    if (code === type_code) atom_indices.push(atom_idx)
+  })
   return { frame_number: sweep.frame_numbers[position], atom_indices }
 }

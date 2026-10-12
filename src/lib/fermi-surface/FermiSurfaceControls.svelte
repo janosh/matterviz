@@ -94,10 +94,10 @@
       property_name = available_properties[0]
     }
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
-      const selected = selected_bands
-      for (const band of selected ? previous_bands : []) {
-        if (selected?.includes(band)) hidden_bands.delete(band)
-        else hidden_bands.add(band)
+      // a band crossing before but not shown now was hidden; one shown now is not
+      if (selected_bands) {
+        for (const band of previous_bands) hidden_bands.add(band)
+        for (const band of selected_bands) hidden_bands.delete(band)
       }
       selected_bands = available_bands.filter((band) => !hidden_bands.has(band))
     }

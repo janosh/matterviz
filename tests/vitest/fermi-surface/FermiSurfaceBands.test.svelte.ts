@@ -140,6 +140,14 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   expect(shown_bands()).toEqual([true, false])
   expect(selected_strokes()).toBe(1) // isolated, still emphasised without hover
   expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
+  // a mu change while isolated that drops band 9 (ε ≥ 0.05 eV) and restores it must not leak
+  // the isolation into the bands the user hid
+  for (const mu of [-0.28, -0.2]) {
+    props.mu = mu
+    await vi.advanceTimersByTimeAsync(50)
+    flushSync()
+  }
+  expect(shown_bands()).toEqual([true, false])
 
   await click(8) // again: isolation ends, both sheets return
   await leave()

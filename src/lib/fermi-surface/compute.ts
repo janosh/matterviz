@@ -245,11 +245,11 @@ function prepared_band_grid(
 export const preview_interpolation_factor = (band_data: BandGridData, factor: number) =>
   Math.min(resolved_factor(band_data, factor), auto_interpolation_factor(band_data.k_grid))
 
-// Whether every band is upsampled at this factor already, so extracting only reruns marching
-// cubes (cheap) instead of upsampling first (slow at high factors)
-export const band_grids_prepared = (band_data: BandGridData, factor: number): boolean =>
-  band_data.energies.every((bands) =>
-    bands.every((grid) => prepared_grids.get(grid)?.has(grid_key(band_data, factor))),
+// Whether every band crossing E_F + mu is upsampled at this factor already, so extracting only
+// reruns marching cubes (cheap) instead of upsampling first (slow at high factors)
+export const band_grids_prepared = (band_data: BandGridData, factor: number, mu = 0) =>
+  [...crossing_bands(band_data, band_data.fermi_energy + mu)].every(({ grid }) =>
+    prepared_grids.get(grid)?.has(grid_key(band_data, factor)),
   )
 
 // Every band the level `isovalue` crosses, with its spin channel and absolute band index
@@ -312,9 +312,9 @@ export function extract_fermi_surface(
     const fields = Object.entries(band_data.properties ?? {})
     const grids = fields.map(([, field]) => field[spin_idx][band_idx])
     const sampled = sample_vertex_values(mesh.positions, grids, band_data, index0_frac)
-    const properties = band_data.properties
-      ? Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
-      : undefined
+    const properties =
+      band_data.properties &&
+      Object.fromEntries(fields.map(([name], idx) => [name, sampled[idx]]))
     isosurfaces.push({ ...mesh, properties, band_index, spin })
   }
 

@@ -100,9 +100,6 @@ export function build_hull_model(
   dim: 2 | 3 | 4,
   energy_mode: EnergySourceMode,
 ) {
-  const plot_position = (composition: CompositionType, e_form: number) =>
-    hull_plot_position(composition, e_form, elements, dim)
-
   // Plot coordinates: entries with a finite formation energy placed in the simplex, plus
   // synthetic E_form = 0 corners for elements without a reference entry (closes the hull)
   const entries: ConvexHullEntry[] = []
@@ -110,8 +107,11 @@ export function build_hull_model(
     for (const entry of effective_entries) {
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number` || !Number.isFinite(e_form)) continue
-      const is_element = is_unary_entry(entry)
-      entries.push({ ...entry, ...plot_position(entry.composition, e_form), is_element })
+      entries.push({
+        ...entry,
+        ...hull_plot_position(entry.composition, e_form, elements, dim),
+        is_element: is_unary_entry(entry),
+      })
     }
     for (const element of elements) {
       // An excluded unary is drawn but cannot anchor the hull, so it still needs the corner
@@ -126,7 +126,7 @@ export function build_hull_model(
         e_above_hull: 0,
         is_stable: true,
         entry_id: `synthetic-element:${element}`,
-        ...plot_position(composition, 0),
+        ...hull_plot_position(composition, 0, elements, dim),
         is_element: true,
         is_synthetic: true,
       })

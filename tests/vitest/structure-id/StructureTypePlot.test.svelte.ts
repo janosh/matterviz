@@ -130,6 +130,12 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
       seek_area?.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX }))
     }
     expect(on_frame_click.mock.calls).toEqual([[10], [20], [30]])
+    // the click a browser fires after a drag (e.g. a zoom rectangle) on the area is no seek
+    const drag_x = svg_left + mid_x
+    seek_area?.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: drag_x }))
+    globalThis.dispatchEvent(new MouseEvent(`mouseup`, { clientX: drag_x + 80 }))
+    seek_area?.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: drag_x + 80 }))
+    expect(on_frame_click).toHaveBeenCalledTimes(3)
 
     const hcp_item = [...root.querySelectorAll(`.legend-item`)].find((item) =>
       item.textContent?.includes(`HCP`),

@@ -139,6 +139,9 @@ export interface CompetingPhase {
   // Atom fraction of each precursor (by formula) in the mixture that forms this phase, i.e. where
   // along the precursor tie-line/simplex it sits. Precursors not involved are absent.
   mixture: Record<string, number>
+  // Open gas consumed along with that mixture (atoms of gas per precursor atom): the reacting
+  // mixture driving_force is normalized by. Empty when no gas is consumed.
+  consumed_gas: { phase: PhaseRef; atoms: number }[]
 }
 
 // What forms first where two precursor grains touch: the phase with the largest driving force

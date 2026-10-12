@@ -156,22 +156,33 @@ export function make_reaction(
 
 // === Selectivity ===
 
-// Atom fraction of each solid precursor in the reacting mixture of a balanced reaction
-const mixture_fractions = (
+// Atom fraction of each solid precursor in the reacting mixture of a balanced reaction, and the
+// consumed gas in atoms per precursor atom
+const reacting_mixture = (
   precursors: PlannerPhase[],
-  balanced: BalancedReaction,
-): Record<string, number> => {
+  gases: PlannerPhase[],
+  { coefficients, gas_exchange }: BalancedReaction,
+): Pick<CompetingPhase, `mixture` | `consumed_gas`> => {
   const solid_atoms = precursors.reduce(
-    (sum, phase, idx) => sum + balanced.coefficients[idx] * phase.n_atoms_per_fu,
+    (sum, phase, idx) => sum + coefficients[idx] * phase.n_atoms_per_fu,
     0,
   )
-  return Object.fromEntries(
-    precursors.flatMap((phase, idx) =>
-      balanced.coefficients[idx] > COEFF_TOL
-        ? [[phase.formula, (balanced.coefficients[idx] * phase.n_atoms_per_fu) / solid_atoms]]
+  const per_solid_atom = (fu: number, phase: PlannerPhase) =>
+    (fu * phase.n_atoms_per_fu) / solid_atoms
+  return {
+    mixture: Object.fromEntries(
+      precursors.flatMap((phase, idx) =>
+        coefficients[idx] > COEFF_TOL
+          ? [[phase.formula, per_solid_atom(coefficients[idx], phase)]]
+          : [],
+      ),
+    ),
+    consumed_gas: gases.flatMap((gas, idx) =>
+      gas_exchange[idx] < -COEFF_TOL
+        ? [{ phase: to_phase_ref(gas), atoms: per_solid_atom(-gas_exchange[idx], gas) }]
         : [],
     ),
-  )
+  }
 }
 
 interface Competitor {
@@ -219,13 +230,14 @@ function find_competitors(
 
 const to_competing_phase = (
   precursors: PlannerPhase[],
+  gases: PlannerPhase[],
   { phase, balanced, driving_force }: Competitor,
   target_driving_force: number,
 ): CompetingPhase => ({
   phase: to_phase_ref(phase),
   driving_force,
   more_favorable_than_target: driving_force < target_driving_force - ENERGY_TOL,
-  mixture: mixture_fractions(precursors, balanced),
+  ...reacting_mixture(precursors, gases, balanced),
 })
 
 // What forms first where two precursor grains meet: the target if it is reachable and at least as
@@ -246,11 +258,12 @@ function pairwise_interface(
     typeof target_balance !== `string` && forms_target
       ? to_competing_phase(
           pair,
+          gases,
           { phase: target, balanced: target_balance, driving_force: target_force },
           target_force,
         )
       : strongest
-        ? to_competing_phase(pair, strongest, target_force)
+        ? to_competing_phase(pair, gases, strongest, target_force)
         : null
   return {
     precursors: [to_phase_ref(pair[0]), to_phase_ref(pair[1])],
@@ -334,7 +347,7 @@ export function analyze_selectivity(
       competitors.map((comp) => comp.phase),
     ),
     competitors: competitors.map((comp) =>
-      to_competing_phase(precursors, comp, target_driving_force),
+      to_competing_phase(precursors, gases, comp, target_driving_force),
     ),
     selectivity_margin: target_driving_force - (competitors[0]?.driving_force ?? 0),
     n_more_favorable: more_favorable.length,
@@ -438,25 +451,71 @@ export const reaction_slice_lines = (route: SynthesisRoute) =>
     solids.slice(idx + 1).map((to) => ({ from: as_mark(from), to: as_mark(to) })),
   )
 
-// A slice point (precursor fractions by formula, reaction energy/atom) on the full hull: the
-// mix's composition at its precursors' E_form plus the reaction energy
+// A phase on a route's reaction slice at its precursor mixture, with the gas that mixture consumes
+export type SlicePoint = Pick<
+  CompetingPhase,
+  `phase` | `mixture` | `driving_force` | `consumed_gas`
+>
+
+// The slice's points: solid precursors (corners at 0), the target and its competitors
+export function reaction_slice_points({
+  reaction,
+  selectivity,
+}: Pick<SynthesisRoute, `reaction` | `selectivity`>): SlicePoint[] {
+  const { reactants, products, driving_force } = reaction
+  const solids = reactants.filter(({ phase }) => !phase.is_gas)
+  const solid_atoms = solids.reduce(
+    (sum, { phase, coefficient }) => sum + coefficient * phase.n_atoms_per_fu,
+    0,
+  )
+  const per_solid_atom = ({ phase, coefficient }: ReactionSpecies) =>
+    (coefficient * phase.n_atoms_per_fu) / solid_atoms
+  const target = {
+    phase: products[0].phase,
+    mixture: Object.fromEntries(
+      solids.map((solid) => [solid.phase.formula, per_solid_atom(solid)]),
+    ),
+    driving_force,
+    consumed_gas: reactants.flatMap((gas) =>
+      gas.phase.is_gas ? [{ phase: gas.phase, atoms: per_solid_atom(gas) }] : [],
+    ),
+  }
+  return [
+    ...solids.map(({ phase }) => ({
+      phase,
+      mixture: { [phase.formula]: 1 },
+      driving_force: 0,
+      consumed_gas: [],
+    })),
+    target,
+    ...selectivity.competitors,
+  ]
+}
+
+// A slice point on the full hull: its reacting mixture (precursors plus consumed gas, the basis of
+// driving_force) at the reactants' mean E_form plus the driving force, i.e. where it reacts to
 export function slice_point_on_hull(
   route: SynthesisRoute,
-  mixture: Record<string, number>,
-  reaction_energy: number,
-  label?: string,
+  { phase, mixture, driving_force, consumed_gas }: SlicePoint,
 ): HullMark {
-  const solids = solid_reactants(route)
-  const total = solids.reduce((sum, phase) => sum + (mixture[phase.formula] ?? 0), 0)
+  // precursors absent from the mixture (e.g. at a corner) contribute no elements
+  const parts = [
+    ...solid_reactants(route).flatMap((solid) => {
+      const atoms = mixture[solid.formula]
+      return atoms ? [{ phase: solid, atoms }] : []
+    }),
+    ...consumed_gas,
+  ]
+  const total = parts.reduce((sum, { atoms }) => sum + atoms, 0)
   const composition: Record<string, number> = {}
-  let e_form = reaction_energy
-  for (const phase of solids) {
-    const weight = (mixture[phase.formula] ?? 0) / total
-    e_form += weight * phase.energy_per_atom
-    for (const [element, amount] of Object.entries(phase.composition)) {
+  let e_form = driving_force
+  for (const { phase: part, atoms } of parts) {
+    const weight = atoms / total
+    e_form += weight * part.energy_per_atom
+    for (const [element, amount] of Object.entries(part.composition)) {
       composition[element] =
-        (composition[element] ?? 0) + (weight * amount) / phase.n_atoms_per_fu
+        (composition[element] ?? 0) + (weight * amount) / part.n_atoms_per_fu
     }
   }
-  return { composition, e_form, label }
+  return { composition, e_form, label: phase.formula }
 }

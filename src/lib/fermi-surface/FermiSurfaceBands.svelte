@@ -50,7 +50,7 @@
     hovered_energy === null ? mu : hovered_energy - band_data.fermi_energy,
   )
   // The isolated band overrides the shown bands while set, so the controls' band syncing (on
-  // every mu change) cannot end it; new data resets it
+  // every mu change) can neither end it nor write it into selected_bands; new data resets it
   let clicked_band = $derived.by((): number | null => {
     void band_data
     return null
@@ -69,7 +69,9 @@
     bind:mu={() => shown_mu, (value) => (mu = value)}
     bind:selected_bands={
       () => (clicked_band === null ? selected_bands : [clicked_band]),
-      (bands) => (selected_bands = bands)
+      (bands) => {
+        if (clicked_band === null) selected_bands = bands
+      }
     }
     k_marker={link.hovered_k_point}
     k_path={{

@@ -237,7 +237,7 @@
         ...prism_position(diagram.phases[idx].xy),
       ]),
     )
-    return { position, spokes }
+    return { position, spokes, decomposition }
   }
   const pinned_probe = $derived(probe_of(pinned_composition))
   const hover_probe = $derived(probe_of(hover_xy))
@@ -389,7 +389,7 @@
       hover_xy && {
         kind: `composition`,
         barycentric: xy_to_ternary(hover_xy),
-        decomposition: decompose_composition(diagram, section, hover_xy),
+        decomposition: hover_probe?.decomposition ?? null,
         position: [nativeEvent.clientX, nativeEvent.clientY],
       },
     )

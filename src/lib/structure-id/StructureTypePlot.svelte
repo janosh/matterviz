@@ -121,6 +121,8 @@
     frame_xs.reduce((best, frame) =>
       Math.abs(scale(frame) - pixel_x) < Math.abs(scale(best) - pixel_x) ? frame : best,
     )
+  // Where the last press on the seek area started (plain memory, read only by its click)
+  let press_xy: [number, number] | null = null
   const type_hover = $derived(
     on_type_hover &&
       ((series_idx: number | null) =>
@@ -151,9 +153,12 @@
       height={Math.max(0, height - pad.t - pad.b)}
       fill="transparent"
       style:cursor="pointer"
+      onmousedown={(event) => (press_xy = [event.clientX, event.clientY])}
       onclick={(event) => {
         const svg = event.currentTarget.ownerSVGElement
-        if (!svg) return
+        // the click that ends a drag (zoom rectangle, pan) is not a seek
+        const [press_x, press_y] = press_xy ?? [event.clientX, event.clientY]
+        if (!svg || Math.hypot(event.clientX - press_x, event.clientY - press_y) > 5) return
         on_frame_click(
           nearest_frame(x_scale_fn, event.clientX - svg.getBoundingClientRect().left),
         )
