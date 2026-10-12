@@ -103,8 +103,26 @@ test.each([
   [[995, 1000, 1005], undefined, [`995`, `1000`, `1005`]],
   [[999_000, 999_500, 1_000_000, 1_000_500], undefined, [`999k`, `999.5k`, `1M`, `1.0005M`]],
   [[0, 0.5, 1, 1.5], undefined, [`0`, `0.5`, `1`, `1.5`]],
+  // log-axis decades: compact scientific below 0.01 instead of 0.000001, SI above 1
+  [
+    [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10],
+    undefined,
+    [`1e-9`, `1e-8`, `1e-7`, `1e-6`, `1e-5`, `1e-4`, `1e-3`, `0.01`, `0.1`, `1`, `10`],
+  ],
+  [
+    [1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4],
+    undefined,
+    [`1e-6`, `2e-6`, `5e-6`, `1e-5`, `2e-5`, `5e-5`, `1e-4`],
+  ],
+  [[1, 10, 100, 1000, 10_000], undefined, [`1`, `10`, `100`, `1k`, `10k`]],
+  // evenly spaced ticks over a wide range stay linear-formatted
+  [[0, 2000, 4000, 6000], undefined, [`0`, `2k`, `4k`, `6k`]],
 ])(`format_tick_values(%j, %s) = %j`, (values, formatter, expected) => {
   expect(format_tick_values(values, formatter)).toEqual(expected)
+})
+
+test(`near-coincident log ticks keep distinct labels`, () => {
+  expect(new Set(format_tick_values([1e-6, 1.0001e-6, 1e-3])).size).toBe(3)
 })
 
 // sweep d3 tick sets straddling 1000: each label must read back within half a tick step

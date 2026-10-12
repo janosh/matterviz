@@ -37,6 +37,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
   '/reciprocal/ir-raman': `IR + Raman`,
   '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
+  '/reciprocal/fermi-surface-bands': `Fermi Surface + Bands`,
 }
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))

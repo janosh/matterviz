@@ -23,7 +23,7 @@
   import { CONVEX_HULL_STYLE, merge_hull_config } from './index'
   import type { Snippet } from 'svelte'
   import type { HullSelection, create_canvas_interactions } from './canvas-interactions.svelte'
-  import type { ConvexHullEntry } from './types'
+  import type { ConvexHullEntry, HullOverlay } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
@@ -43,6 +43,7 @@
     x_axis = {},
     y_axis = {},
     selected_entry = null,
+    overlay = { segments: [], rings: [] },
     children,
     tooltip: custom_tooltip,
     title,
@@ -67,6 +68,7 @@
     selection: HullSelection
     chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
     title_height: number
+    overlay?: HullOverlay
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
@@ -215,7 +217,7 @@
   {/if}
 {/snippet}
 
-<!-- Dashed guides at x = 0, x = 1 and the bottom of the y range -->
+<!-- Dashed guides at x = 0, x = 1 and the y-range bottom, then the linked-view overlay -->
 {#snippet user_content({
   x_scale_fn,
   pad,
@@ -237,6 +239,31 @@
   <line y1={pad.t} y2={height - pad.b} x1={coord_x_0} x2={coord_x_0} {...stroke} />
   <line y1={pad.t} y2={height - pad.b} x1={coord_x_1} x2={coord_x_1} {...stroke} />
   <line x1={pad.l} x2={width - pad.r} y1={coord_y_0} y2={coord_y_0} {...stroke} />
+  <g class="hull-overlay" pointer-events="none">
+    {#each overlay.segments as { from, to, color, dashed }, idx (idx)}
+      <line
+        x1={x_scale_fn(from.x)}
+        y1={y_scale_fn(from.y)}
+        x2={x_scale_fn(to.x)}
+        y2={y_scale_fn(to.y)}
+        stroke={color}
+        stroke-width="2"
+        stroke-dasharray={dashed ? `6 4` : undefined}
+      />
+    {/each}
+    {#each overlay.rings as { at, color, label }, idx (idx)}
+      {@const [ring_x, ring_y] = [x_scale_fn(at.x), y_scale_fn(at.y)]}
+      <circle cx={ring_x} cy={ring_y} r="10" fill="none" stroke={color} stroke-width="2" />
+      <text
+        x={ring_x + 13}
+        y={ring_y}
+        fill={color}
+        dominant-baseline="middle"
+        font-size="12"
+        font-weight="bold">{label ?? ``}</text
+      >
+    {/each}
+  </g>
 {/snippet}
 
 <ScatterPlot

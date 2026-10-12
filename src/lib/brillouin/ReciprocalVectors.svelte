@@ -11,7 +11,9 @@
   }: {
     k_lattice: Matrix3x3
     vector_scale?: number
-    size?: number // characteristic scene size used to scale arrow proportions
+    // characteristic scene size: sets all arrow proportions, so a short b (long real-space axis)
+    // keeps the same head as the others instead of a flattened one
+    size?: number
   } = $props()
 
   const vector_colors = [`red`, `green`, `blue`]
@@ -28,7 +30,7 @@
     scale={1}
     shaft_radius={size * 0.008}
     arrow_head_radius={size * 0.028}
-    arrow_head_length={-0.1}
+    arrow_head_length={size * 0.1}
   />
   <!-- Vector label beyond tip -->
   <extras.HTML center position={label_position}>

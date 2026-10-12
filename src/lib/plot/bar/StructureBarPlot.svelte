@@ -12,6 +12,7 @@
     BarSeries,
     Orientation,
   } from '#lib/plot/core/types.js'
+  import { on_change } from '#lib/plot/core/interactions.js'
   import { create_structure_drop_handler } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { Snippet } from 'svelte'
@@ -36,6 +37,7 @@
     error_msg = $bindable(),
     show_controls = $bindable(`hover`),
     controls_open = $bindable(false),
+    on_bar_change,
     ...rest
   }: Omit<BarPlotOptions, `tooltip`> & {
     // Not generic over the metadata type: BarPlot's snippet prop is invariant in it, so a
@@ -66,6 +68,8 @@
     // Empty-state text while `loading`; wrappers that compute asynchronously name their job
     loading_message?: string
     error_msg?: string
+    // on_bar_hover, but only when the hovered bar changes (BarPlot reports every pointer move)
+    on_bar_change?: BarPlotOptions[`on_bar_hover`]
   } = $props()
 
   let dragover = $state(false)
@@ -82,6 +86,11 @@
       if (val) [error_msg, dragover] = [undefined, false]
     },
   })
+  const report_bar_change = on_change(
+    (bar: Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]) =>
+      bar && `${bar.series_idx}:${bar.bar_idx}`,
+    (bar) => on_bar_change?.(bar),
+  )
   const drag_handlers = drag_over_handlers({
     allow: () => allow_file_drop,
     set_dragover: (over) => (dragover = over),
@@ -127,6 +136,12 @@
     }}
     bind:display
     tooltip={labelled_tooltip}
+    on_bar_hover={on_bar_change
+      ? (bar) => {
+          rest.on_bar_hover?.(bar)
+          report_bar_change(bar)
+        }
+      : rest.on_bar_hover}
     ondrop={handle_file_drop}
     {...drag_handlers}
     class={[rest.class, dragover && `dragover`]}

@@ -11,6 +11,7 @@
   import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
+  import type { FrameRdfOptions } from './calc-rdf'
   import type { TrajectoryRdf } from './calc-trajectory-rdf'
   import {
     collect_trajectory_rdf,
@@ -25,11 +26,18 @@
     run,
     pane_open = $bindable(false),
     result = $bindable(),
+    on_shell_hover,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
     pane_open?: boolean
     result?: TrajectoryRdf
+    // Hovered curve's element pair, r bin (null for its legend entry) and binning
+    on_shell_hover?: (
+      hover:
+        | ({ element_pair: [string, string]; bin_idx: number | null } & FrameRdfOptions)
+        | null,
+    ) => void
   } = $props()
 
   // null, not 0, is what <input type="number"> writes back when cleared
@@ -134,6 +142,20 @@
       loading={collecting}
       {error_msg}
       style="height: 320px"
+      on_bin_hover={on_shell_hover &&
+        ((hover) => {
+          const element_pair = hover?.entry.pattern.element_pair
+          on_shell_hover(
+            hover && element_pair && input
+              ? {
+                  element_pair,
+                  bin_idx: hover.bin_idx,
+                  cutoff: input.cutoff,
+                  n_bins: input.r.length,
+                }
+              : null,
+          )
+        })}
     />
     {#if input}
       <AnalysisSummary

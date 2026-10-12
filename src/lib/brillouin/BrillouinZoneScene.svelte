@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { Vec3 } from '#lib/math.js'
-  import * as math from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -12,7 +11,6 @@
   import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
-  import Cylinder from '#lib/structure/Cylinder.svelte'
   import { T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import {
@@ -24,6 +22,7 @@
     k_space_size,
     polyhedron_centroid,
   } from './geometry'
+  import KPath from './KPath.svelte'
   import PolyhedronMesh from './PolyhedronMesh.svelte'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
   import type {
@@ -31,6 +30,7 @@
     BrillouinZoneSettings,
     BZHoverData,
     IrreducibleBZData,
+    KPathLabel,
   } from './types'
 
   let {
@@ -53,6 +53,7 @@
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
+    highlighted_qpoint_range = null,
     hover_data = $bindable<BZHoverData | null>(null),
     on_kpath_hover,
     width = 0,
@@ -66,11 +67,12 @@
       height?: number
       ibz_data?: IrreducibleBZData | null
       k_path_points?: Vec3[]
-      k_path_labels?: { position: Vec3; label: string | null }[]
+      k_path_labels?: KPathLabel[]
       hovered_k_point?: Vec3 | null
       // Persistently marked k-points (Cartesian), e.g. the symmetry point a popup was opened for
       highlighted_k_points?: Vec3[]
       hovered_qpoint_index?: number | null
+      highlighted_qpoint_range?: Vec2 | null
       hover_data?: BZHoverData | null
       on_kpath_hover?: (qpoint_index: number | null) => void
     } = $props()
@@ -89,12 +91,6 @@
   const bz_size = $derived(k_space_size(bz_data?.k_lattice))
   const mark_sizes = $derived(bz_mark_sizes(bz_size, edge_width))
   const computed_camera_position = $derived(default_camera_position(bz_size))
-  // Label chips are HTML drawn over the canvas and cover the sphere at their point, so a
-  // highlighted point also tints its chip (tolerance scaled to the zone: positions come from
-  // the same fold but may be recomputed by the caller)
-  const is_highlighted = (position: Vec3) =>
-    highlighted_k_points.some((point) => math.euclidean_dist(point, position) < 1e-6 * bz_size)
-
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
   // renders the zone several times too small.
@@ -122,18 +118,6 @@
       hover_data = null
       on_kpath_hover?.(null)
     },
-  })
-
-  // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).
-  // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
-  // a fraction of the zone. Skip segments far longer than the median sampling step.
-  const k_path_seg_cutoff = $derived.by(() => {
-    if (k_path_points.length < 3) return Infinity
-    const lens = k_path_points
-      .slice(1)
-      .map((point, idx) => Math.hypot(...math.subtract(point, k_path_points[idx])))
-      .toSorted((len_a, len_b) => len_a - len_b)
-    return lens[Math.floor(lens.length / 2)] * 10
   })
 
   // Inverse of k_lattice for Cartesian->fractional conversion
@@ -197,16 +181,6 @@
     if (is_ibz) ibz_hovered = false
     if (is_ibz || !ibz_hovered) hover_data = null
   }
-
-  // K-path hover: report the nearer endpoint's q-point index of the hovered segment
-  function handle_kpath_hover(event: ThreltePointerEvent, seg_idx: number): void {
-    const { point } = event
-    const [from, target] = [k_path_points[seg_idx], k_path_points[seg_idx + 1]]
-    if (!from || !target) return
-    const dist_sq = (point_2: Vec3) =>
-      (point.x - point_2[0]) ** 2 + (point.y - point_2[1]) ** 2 + (point.z - point_2[2]) ** 2
-    on_kpath_hover?.(dist_sq(from) <= dist_sq(target) ? seg_idx : seg_idx + 1)
-  }
 </script>
 
 <SceneCamera
@@ -249,61 +223,17 @@
       <ReciprocalVectors k_lattice={bz_data.k_lattice} {vector_scale} size={bz_size} />
     {/if}
 
-    <!-- K-path visualization -->
-    {#if k_path_points.length > 1}
-      {#each k_path_points.slice(0, -1) as from_point, idx (`${from_point}-${k_path_points[idx + 1]}#${idx}`)}
-        {@const to_point = k_path_points[idx + 1]}
-        {@const seg_len = Math.hypot(...math.subtract(to_point, from_point))}
-        {@const is_hovered =
-          hovered_qpoint_index !== null &&
-          (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
-        {#if seg_len <= k_path_seg_cutoff}
-          <Cylinder
-            from={from_point}
-            to={to_point}
-            thickness={mark_sizes.kpath}
-            color={is_hovered ? `#ff6b35` : `#ffcc00`}
-          />
-          <!-- Invisible wider proxy: lets the cursor snap to the path within ~2× its radius -->
-          <Cylinder
-            from={from_point}
-            to={to_point}
-            thickness={mark_sizes.kpath * 2}
-            opacity={0}
-            onpointermove={(event: ThreltePointerEvent) => handle_kpath_hover(event, idx)}
-            onpointerleave={() => on_kpath_hover?.(null)}
-          />
-        {/if}
-      {/each}
-    {/if}
-
-    <!-- Symmetry point spheres + labels at labeled k-path points -->
-    {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
-      {#if label}
-        {@const highlighted = is_highlighted(position)}
-        <T.Mesh position={[position[0], position[1], position[2]]}>
-          <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
-          <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
-        </T.Mesh>
-        <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
-          <span
-            style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
-            style:font-weight={highlighted ? `bold` : null}
-            style="padding: 0 3px; border-radius: 2px; color: white"
-          >
-            {label}
-          </span>
-        </extras.HTML>
-      {/if}
-    {/each}
-
-    <!-- Hovered k-point highlight -->
-    {#if hovered_k_point}
-      <T.Mesh position={hovered_k_point}>
-        <T.SphereGeometry args={[mark_sizes.hovered_point, 16, 16]} />
-        <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
-      </T.Mesh>
-    {/if}
+    <KPath
+      {k_path_points}
+      {k_path_labels}
+      {hovered_k_point}
+      {highlighted_k_points}
+      {hovered_qpoint_index}
+      {highlighted_qpoint_range}
+      {on_kpath_hover}
+      size={bz_size}
+      {edge_width}
+    />
 
     <!-- Pinned k-points: sized with the zone and drawn over its faces, edges and labels so they
     stay legible at popup scale (symmetry points sit on the zone surface, half inside it) -->

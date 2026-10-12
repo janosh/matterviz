@@ -99,6 +99,7 @@
     property_colors = null,
     active_sites = [],
     camera_direction = undefined,
+    camera_up = undefined,
     camera_projection = `orthographic`,
     camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
@@ -144,6 +145,7 @@
     property_colors?: AtomPropertyColors | null
     active_sites?: number[]
     camera_direction?: Vec3
+    camera_up?: Vec3 // overrides scene_props.camera_up, which pairs with its camera_direction
     camera_projection?: CameraProjection
     camera_position?: Vec3
     camera_target?: Vec3
@@ -493,6 +495,7 @@
         bind:displacement_summary
         {camera_projection}
         {camera_direction}
+        {camera_up}
         {interactive}
         gizmo={gizmo_prop}
         {volumetric_data}

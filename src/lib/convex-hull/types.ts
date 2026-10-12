@@ -136,6 +136,26 @@ export interface ConvexHullControlsType {
   show_label_controls?: boolean
 }
 
+// A composition placed on a hull at formation energy `e_form` (eV/atom; unused in 4D)
+export interface HullMark {
+  composition: CompositionType
+  e_form: number
+  label?: string
+  color?: string
+}
+
+// Annotations a linked view draws over a hull, e.g. a precursor tie-line or a hovered point
+export interface HullAnnotations {
+  lines?: { from: HullMark; to: HullMark; color?: string }[]
+  marks?: HullMark[]
+}
+
+// Annotations resolved to plot coordinates
+export interface HullOverlay {
+  segments: { from: Point3D; to: Point3D; color: string; dashed: boolean }[]
+  rings: { at: Point3D; color: string; label?: string }[]
+}
+
 // Hover data for tooltips
 export interface HoverData3D<T = ConvexHullEntry> {
   entry: T

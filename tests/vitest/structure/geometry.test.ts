@@ -1,4 +1,4 @@
-import type { Vec3 } from '#lib/math.js'
+import { create_cart_to_frac, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { BondOrder, BondPair } from '#lib/structure/index.js'
 import {
   count_bond_instances,
@@ -11,6 +11,8 @@ import {
 } from '#lib/structure/bond-rendering.js'
 import {
   arrow_axis_geometry,
+  cell_vector_arrow_sizes,
+  cell_vector_origin,
   cylinder_between,
   quaternion_from_direction,
   rotation_from_direction,
@@ -20,6 +22,37 @@ import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
+
+// Arrows from it along a, b, c run outside the cell, also for negative vector components (last
+// cell), where the fixed [-1, -1, -1] origin it replaced sat inside
+// oxfmt-ignore
+test.each([
+  [[[3, 0, 0], [0, 4, 0], [0, 0, 5]]],
+  [[[2.9, 0, 0], [-1.45, 2.51, 0], [0, 0, 7.1]]],
+  [[[3.4, -3.4, 0], [3.4, 3.4, 0], [-1.7, 0, -6.2]]],
+] as [Matrix3x3][])(`cell_vector_origin lies outside the cell behind its origin corner: %j`, (matrix) => {
+  const origin = cell_vector_origin(matrix)
+  expect(Math.hypot(...origin)).toBeCloseTo(Math.sqrt(3), 12)
+  for (const frac of create_cart_to_frac(matrix)(origin)) expect(frac).toBeLessThan(0)
+})
+
+// A slab's long vacuum axis must not make its arrow fatter than the in-plane ones
+test(`cell_vector_arrow_sizes are absolute and set by the shortest vector`, () => {
+  const slab: Matrix3x3 = [
+    [3.5, 0, 0],
+    [0, 3.5, 0],
+    [0, 0, 40],
+  ]
+  const cube: Matrix3x3 = [
+    [3.5, 0, 0],
+    [0, 3.5, 0],
+    [0, 0, 3.5],
+  ]
+  const sizes = cell_vector_arrow_sizes(slab, 0.5)
+  expect(sizes).toEqual(cell_vector_arrow_sizes(cube, 0.5))
+  expect(sizes.shaft_radius).toBeCloseTo(0.0175, 12) // 0.5 * 3.5 Å * 0.01
+  for (const size of Object.values(sizes)) expect(size).toBeGreaterThan(0)
+})
 
 const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
 

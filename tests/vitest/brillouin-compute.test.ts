@@ -17,6 +17,7 @@ import {
   default_camera_position,
   k_cell_fit_extent,
   k_lattice_inverse,
+  k_path_segments,
   k_space_size,
   polyhedron_centroid,
   polyhedron_geometry,
@@ -874,6 +875,22 @@ describe(`scene sizing helpers`, () => {
     expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
     expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
+  })
+
+  // points along x: a jump at a discontinuity (U|K) is skipped; repeated branch-boundary points
+  // neither draw nor shrink the median; with one step there is no median to judge against
+  test.each([
+    { xs: [0, 0.1, 0.2, 5, 5.1], kept: [0, 1, 3] },
+    { xs: [0, 0.1, 0.1, 0.1, 0.1, 0.2], kept: [0, 4] },
+    { xs: [0, 9], kept: [0] },
+    { xs: [0], kept: [] },
+    { xs: [], kept: [] },
+  ])(`k_path_segments of x = $xs keeps $kept`, ({ xs, kept }) => {
+    const points = xs.map((x_coord): Vec3 => [x_coord, 0, 0])
+    const segments = k_path_segments(points)
+    expect(segments.map((segment) => segment.idx)).toEqual(kept)
+    for (const { idx, from, to } of segments)
+      expect([from, to]).toEqual([points[idx], points[idx + 1]])
   })
 
   test(`bz_mark_sizes scale with the zone`, () => {

@@ -149,7 +149,11 @@ describe(`filter_series_to_ranges`, () => {
   test.each<[string, DataSeries, string, string?]>([
     [`short y`, { id: `energy`, x: [0, 1], y: [2] }, `x=2, y=1`],
     [`long y`, { id: `energy`, x: [0], y: [1, 2] }, `x=1, y=2`],
-    [`short raw_y`, { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2] }, `x=2, y=2, raw_y=1`],
+    [
+      `short raw_y and point_ids`,
+      { id: `energy`, x: [0, 1], y: [2, 3], raw_y: [2], point_ids: [`a`] },
+      `x=2, y=2, raw_y=1, point_ids=1`,
+    ],
     [`long raw_y`, { id: `energy`, x: [0], y: [1], raw_y: [1, 2] }, `x=1, y=1, raw_y=2`],
     [`hidden series`, { id: `energy`, x: [0, 1], y: [2], visible: false }, `x=2, y=1`],
     [
@@ -200,6 +204,7 @@ describe(`filter_series_to_ranges`, () => {
           size_values: [7, 9],
           point_style: [{ fill: `red` }, { fill: `blue` }],
           metadata: [{ tag: `a` }, { tag: `b` }],
+          point_ids: [`Fe`, 26],
           point_label: [], // empty means none, like an absent prop: passes the length check
           x_error: [0.1, 0.2],
           y_error: { lower: [0.3, 0.4], upper: [0.5, 0.6] },
@@ -213,6 +218,7 @@ describe(`filter_series_to_ranges`, () => {
       color_value: 0.9,
       size_value: 9,
       point_idx: 1,
+      point_id: 26,
       point_style: { fill: `blue` },
       metadata: { tag: `b` },
       x_error: [0.2, 0.2],

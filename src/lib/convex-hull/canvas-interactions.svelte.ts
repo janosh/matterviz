@@ -49,6 +49,8 @@ interface HullSelectionInputs {
   actions: () => Record<string, () => void> // keydown actions map (thunk avoids TDZ)
 }
 
+export const HOVER_PREVIEW_DELAY_MS = 600 // hover this long to preview an entry's structure
+
 export function create_hull_selection(inputs: HullSelectionInputs) {
   let hover_data = $state.raw<HoverData3D | null>(null)
   // Hiding drops the position with it: ClickFeedback unmounts the node when `visible` goes
@@ -56,9 +58,20 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   const copy_feedback = create_flash({ visible: false, position: { x: 0, y: 0 } }, 1500)
   let dragover = $state(false)
   let modal_open = $state(false)
-  let selected_structure = $state<AnyStructure | null>(null)
+  // Raw: a deep proxy (fresh per re-assignment) would trip Structure's identity checks
+  let selected_structure = $state.raw<AnyStructure | null>(null)
   let modal_place_right = $state(true)
   let selection_version = 0
+  // Hover preview: opens after a delay, then follows the pointer instantly; never while pinned
+  let preview = $state.raw<{ entry: ConvexHullEntry; structure: AnyStructure } | null>(null)
+  let preview_key: string | undefined // entry_id the pending or shown preview is for
+  let preview_timer: ReturnType<typeof setTimeout> | undefined
+  const clear_preview = () => {
+    clearTimeout(preview_timer)
+    preview_key = undefined
+    preview = null
+  }
+  $effect(() => clear_preview)
 
   // Original (un-projected) entry's structure, for the click-to-preview popup
   const extract_structure = (entry: ConvexHullEntry): AnyStructure | null => {
@@ -94,6 +107,19 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
   function set_hover(data: HoverData3D | null) {
     hover_data = data
     inputs.on_point_hover()?.(data)
+    schedule_preview(data?.entry ?? null)
+  }
+
+  function schedule_preview(entry: ConvexHullEntry | null): void {
+    if (entry?.entry_id !== undefined && entry.entry_id === preview_key) return // same point
+    const structure =
+      entry && !modal_open && inputs.enable_structure_preview() && extract_structure(entry)
+    if (!entry || !structure) return clear_preview()
+    clearTimeout(preview_timer)
+    preview_key = entry.entry_id
+    const show = () => (preview = { entry, structure })
+    if (preview) show()
+    else preview_timer = setTimeout(show, HOVER_PREVIEW_DELAY_MS)
   }
 
   // Shared selection logic for click and Enter key. The popup opens on whichever side of
@@ -102,6 +128,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     inputs.on_point_click()?.(entry)
     if (!inputs.enable_click_selection()) return
     inputs.set_selected_entry(entry)
+    clear_preview() // the pinned popup takes over
     if (!inputs.enable_structure_preview()) return
     const structure = extract_structure(entry)
     if (!structure) return
@@ -193,8 +220,12 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     get modal_place_right() {
       return modal_place_right
     },
+    get preview() {
+      return preview
+    },
     reset() {
       selection_version++
+      clear_preview()
       hover_data = null
       modal_open = false
       selected_structure = null
@@ -202,6 +233,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
       copy_feedback.reset()
     },
     set_hover,
+    clear_preview,
     select_entry,
     close_structure_popup,
     copy_entry_data,

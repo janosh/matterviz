@@ -18,6 +18,7 @@
     container_pointer,
     create_chempot_state,
     domain_formula_text,
+    highlight_key_of,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
   import { export_json_file, get_json_string } from './export'
@@ -31,6 +32,7 @@
     // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
+    highlighted_formula = null, // shown while none is hovered here, any formula spelling
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -38,6 +40,7 @@
     height?: number
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
+    highlighted_formula?: string | null
   } = $props()
   // Plot wrapper element (export and pointer hit-testing), bound from the ScatterPlot
   let wrapper = $state<HTMLDivElement>()
@@ -92,22 +95,28 @@
   })
   const domain_entries = $derived(Object.entries(draw_domains))
 
+  const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
+
   // === Convert domains to ScatterPlot DataSeries ===
   const series = $derived<DataSeries[]>(
-    domain_entries.map(([formula, pts]) => ({
-      id: formula,
-      label: formula,
-      x: pts.map((point) => point[0]),
-      y: pts.map((point) => point[1]),
-      markers: `line+points` as const,
-      // a spline would bow polygon outlines
-      line_style: {
-        stroke: domain_colors.get(formula) ?? `black`,
-        stroke_width: 3,
-        curve: `linear` as const,
-      },
-      point_style: { fill: domain_colors.get(formula) ?? `black`, radius: 3 },
-    })),
+    domain_entries.map(([formula, pts]) => {
+      const highlighted = formula === highlight_key
+      const color = domain_colors.get(formula) ?? `black`
+      return {
+        id: formula,
+        label: formula,
+        x: pts.map((point) => point[0]),
+        y: pts.map((point) => point[1]),
+        markers: `line+points` as const,
+        // a spline would bow polygon outlines
+        line_style: {
+          stroke: color,
+          stroke_width: highlighted ? 6 : 3,
+          curve: `linear` as const,
+        },
+        point_style: { fill: color, radius: highlighted ? 5 : 3 },
+      }
+    }),
   )
 
   const axis_label = (element: string): string =>

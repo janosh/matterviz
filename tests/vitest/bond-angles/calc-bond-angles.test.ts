@@ -1,6 +1,7 @@
 import {
   angle_bin_centers,
   angle_bin_index,
+  bond_angle_bin_sites,
   calc_bond_angle_distribution,
   calc_bond_angles,
   resolve_angle_bins,
@@ -14,7 +15,7 @@ import type { Molecule } from '#lib/structure/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
@@ -88,7 +89,10 @@ const linear_triatomic = make_molecule([
 
 // Rocksalt NaCl: every Na is octahedrally surrounded by Cl and vice versa. 8 sites x
 // C(6, 2) = 120 angles, split evenly between the two centre elements.
+// make_rocksalt puts Na on sites 0-3 and Cl on 4-7
 const rocksalt = make_rocksalt()
+const na_sites = [0, 1, 2, 3]
+const cl_sites = [4, 5, 6, 7]
 const palladium = fixture(`mp-2`)
 
 describe(`calc_bond_angles analytic geometry`, () => {
@@ -397,6 +401,28 @@ describe(`calc_bond_angle_distribution`, () => {
   })
 })
 
+describe(`bond_angle_bin_sites`, () => {
+  const [sf6, nacl] = [calc_bond_angles(octahedron), calc_bond_angles(rocksalt)]
+  const fluorines = [1, 2, 3, 4, 5, 6]
+  const na_cl_na = { bin_width: 2, bin_idx: 45, triplet: `Na-Cl-Na` }
+  test.each<[string, ...Parameters<typeof bond_angle_bin_sites>, number[], number[]]>([
+    // every 90 deg angle of SF6 is subtended at S by two of the six F
+    [`SF6 90 deg`, sf6, { bin_width: 2, bin_idx: 45 }, [0], fluorines],
+    [`SF6 180 deg (last bin)`, sf6, { n_bins: 90, bin_idx: 89 }, [0], fluorines],
+    [`SF6 empty bin`, sf6, { bin_width: 2, bin_idx: 30 }, [], []],
+    [`SF6 other triplet`, sf6, { bin_width: 2, bin_idx: 45, triplet: `F-Cl-F` }, [], []],
+    [`rocksalt Na-Cl-Na 90 deg`, nacl, na_cl_na, cl_sites, na_sites],
+  ])(`%s`, (_name, triplets, options, site_indices, neighbor_indices) => {
+    expect(bond_angle_bin_sites(triplets, options)).toEqual({ site_indices, neighbor_indices })
+  })
+
+  test.each([-1, 90, 1.5])(`rejects bin_idx %s outside the 90-bin grid`, (bin_idx) => {
+    expect(() => bond_angle_bin_sites(nacl, { bin_width: 2, bin_idx })).toThrow(
+      `bin_idx must be an integer in [0, 90)`,
+    )
+  })
+})
+
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
 describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   // Water, so a lattice-less molecule exercises the single-structure input shape
@@ -426,10 +452,33 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     expect(root.textContent).toContain(`Count`)
   })
 
-  test(`normalize=density relabels the value axis`, async () => {
-    const root = await mount_plot({ structures: rocksalt, normalize: `density` })
+  test(`normalize=density relabels the value axis, bar hover reports its atoms`, async () => {
+    const on_sites_hover = vi.fn()
+    const root = await mount_plot({
+      structures: rocksalt,
+      normalize: `density`,
+      on_sites_hover,
+    })
     expect(root.textContent).toContain(`Density (1/°)`)
     expect(root.textContent).not.toContain(`Count`)
+    // the 90 deg Cl-Na-Cl bar: every Na centre, every Cl partner
+    const bar = [...root.querySelectorAll(`path[role="button"]`)].find((path) =>
+      /of Cl-Na-Cl: [0-9.]*[1-9]/.test(path.getAttribute(`aria-label`) ?? ``),
+    )
+    // every pointer move over the bar repeats the hover, the sites are found once
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    expect(on_sites_hover).toHaveBeenCalledOnce()
+    expect(on_sites_hover).toHaveBeenLastCalledWith([
+      {
+        label: `Structure`,
+        structure: rocksalt,
+        site_indices: na_sites,
+        neighbor_indices: cl_sites,
+      },
+    ])
+    bar?.dispatchEvent(new MouseEvent(`mouseleave`))
+    expect(on_sites_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`forwards flat control props and binding through StructureBarPlot`, async () => {

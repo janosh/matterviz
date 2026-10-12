@@ -266,7 +266,7 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
   vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
     mock_context() as unknown as CanvasRenderingContext2D,
   )
-  const sample = vi.spyOn(slice_module, `sample_hkl_slice`)
+  const sample = vi.spyOn(slice_module, `sample_plane_slice`)
   const volume = make_volume(
     make_grid(6, 6, 6, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
   )
@@ -281,7 +281,7 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
     await tick()
   }
   await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
-  await settle({ render_mode: `contours`, symmetric: true })
+  await settle({ render_mode: `contours`, symmetric: true, show_plane: false })
   expect(sample).toHaveBeenCalledTimes(1)
   // a pane slider drag (one edit per frame) resamples every frame, not once it rests
   for (const [idx, position] of [0.25, 0.3, 0.35].entries()) {
@@ -299,7 +299,7 @@ test(`VolumeSliceView keeps full resolution during rapid plane changes`, async (
   vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
     mock_context() as unknown as CanvasRenderingContext2D,
   )
-  const sample = vi.spyOn(slice_module, `sample_hkl_slice`)
+  const sample = vi.spyOn(slice_module, `sample_plane_slice`)
   const volume = make_volume(
     make_grid(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
   )
@@ -309,17 +309,20 @@ test(`VolumeSliceView keeps full resolution during rapid plane changes`, async (
   // other tests' still-mounted views (6³ grids, refined to 66³) may resample; this view's 4³
   // grid is refined to 64³ before sampling, so pick its calls by grid size
   const resolutions = () =>
-    sample.mock.calls.filter(([sampled]) => sampled.dims[0] === 64).map((args) => args[3])
-  expect(resolutions()).toEqual([1024])
+    sample.mock.calls
+      .filter(([sampled]) => sampled.dims[0] === 64)
+      .map(([, , options]) => options?.resolution)
+  const full = [1024, 1024]
+  expect(resolutions()).toEqual([full])
   for (const position of [0.25, 0.3, 0.35]) {
     props.settings = { ...props.settings, position }
     await tick()
     await vi.advanceTimersByTimeAsync(16)
     await tick()
   }
-  expect(resolutions()).toEqual([1024, 1024, 1024, 1024])
+  expect(resolutions()).toEqual([full, full, full, full])
   // no extra full-resolution resample once the drag rests
   await vi.advanceTimersByTimeAsync(200)
   await tick()
-  expect(resolutions()).toEqual([1024, 1024, 1024, 1024])
+  expect(resolutions()).toEqual([full, full, full, full])
 })

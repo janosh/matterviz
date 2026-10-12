@@ -15,7 +15,7 @@
 import { default_element_colors, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { clamp, create_cart_to_frac } from '#lib/math.js'
+import { clamp, create_cart_to_frac, is_valid_index } from '#lib/math.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
@@ -285,7 +285,7 @@ export class TrajectoryTrail {
     const { n_frames, n_atoms } = this.stream
     const { trail_frames = null, anchor_positions = null } = window
     const end_frame = window.end_frame ?? n_frames - 1
-    if (!Number.isInteger(end_frame) || end_frame < 0 || end_frame >= n_frames) {
+    if (!is_valid_index(end_frame, n_frames)) {
       fail(`end_frame must be an integer in [0, ${n_frames - 1}], got ${end_frame}`)
     }
     if (trail_frames !== null && (!Number.isInteger(trail_frames) || trail_frames < 1)) {

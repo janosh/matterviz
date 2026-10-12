@@ -12,11 +12,19 @@
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
-  import { BrillouinZone, Grid2x2, HeatmapMatrix, Reset } from 'svelte-widgets/icons'
+  import {
+    BrillouinZone,
+    Grid2x2,
+    HeatmapMatrix,
+    Reset,
+    TwoColumns,
+  } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
+  import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
+  import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
   import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
   import type {
     IsosurfaceLayer,
@@ -108,7 +116,7 @@
     | `export-pane`
     | `controls`
   type EventHandler = (data: StructureHandlerData) => void
-  type StructureLayoutMode = `single` | `multi` | `slice`
+  type StructureLayoutMode = `single` | `multi` | `slice` | `split`
 
   // Each multi-view pane needs room for orbit controls, labels and atom picking
   const MULTI_VIEW_COLUMNS = 2
@@ -120,6 +128,7 @@
     single: { mode: `single`, icon: BrillouinZone, label: `3D single view` },
     multi: { mode: `multi`, icon: Grid2x2, label: `3D 2×2 grid` },
     slice: { mode: `slice`, icon: HeatmapMatrix, label: `2D cross-section` },
+    split: { mode: `split`, icon: TwoColumns, label: `3D + 2D cross-section` },
   } as const
   let {
     structure = $bindable(),
@@ -280,7 +289,7 @@
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     slice_settings?: Partial<VolumeSliceSettings>
-    display_mode?: StructureDisplayMode // 3D structure/isosurface or 2D cross-section
+    display_mode?: StructureDisplayMode // 3D structure/isosurface, 2D cross-section or both side by side
     active_volume_id?: string
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     top_right_controls?: Snippet // rendered at the end of the control buttons row
@@ -825,17 +834,19 @@
     Boolean(volumetric_data?.length || display_mode === `slice`) &&
       controls_config.visible(`view-mode`),
   )
+  // Split mode shows the 3D scene next to the cross-section, so 3D-only chrome stays on
+  let has_3d_view = $derived(display_mode !== `slice`)
   let multi_layout_available = $derived(
     multi_view_available && controls_config.visible(`multi-view`),
   )
   let layout_control_visible = $derived(
-    (display_mode === `slice` && !volumetric_data?.length) ||
+    (display_mode !== `structure` && !volumetric_data?.length) ||
       slice_layout_available ||
       (display_mode === `structure` && multi_layout_available),
   )
   let current_layout = $derived(
     STRUCTURE_LAYOUTS[
-      display_mode === `slice` ? `slice` : is_multi_view_active ? `multi` : `single`
+      display_mode === `structure` ? (is_multi_view_active ? `multi` : `single`) : display_mode
     ],
   )
   let multi_view_unavailable_reason = $derived(
@@ -855,7 +866,7 @@
     else if (active_pane === pane) active_pane = null
   }
   function select_structure_layout(mode: StructureLayoutMode): void {
-    if (mode === `slice`) display_mode = `slice`
+    if (mode === `slice` || mode === `split`) display_mode = mode
     else {
       display_mode = `structure`
       multi_view = mode === `multi`
@@ -884,13 +895,23 @@
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let slice_canvas = $state<HTMLCanvasElement | undefined>(undefined)
+  let slice_volume = $derived(
+    hidden_volume_ids.has(active_volume_id ?? ``)
+      ? undefined
+      : volume_by_id.get(active_volume_id ?? ``),
+  )
+  // Split mode marks the cross-section's plane in the 3D scene
+  let slice_polygon = $derived.by(() => {
+    if (display_mode !== `split` || !slice_volume) return []
+    const settings = create_volume_slice_settings(slice_settings)
+    const plane = settings.show_plane && resolve_slice_plane(slice_volume, settings)
+    return plane ? slice_cell_polygon(slice_volume, plane) : []
+  })
   let displacement_summary = $state<DisplacementSummary | null>(null)
   let polyhedra_rendered_elements = $state<string[]>([])
   let trajectory_lines_result = $state<TrajectoryLinesStats | null>(null)
   let reset_camera_available = $derived(
-    display_mode === `structure` &&
-      session.any_camera_moved &&
-      controls_config.visible(`reset-camera`),
+    has_3d_view && session.any_camera_moved && controls_config.visible(`reset-camera`),
   )
   // Inputs shared by every StructureViewport; camera bindings and chrome differ per pane
   const viewport_states: NonNullable<
@@ -937,6 +958,7 @@
         : { trajectory_line_end_frame }),
       defer_expensive_geometry,
       sphere_segments: effective_sphere_segments,
+      slice_polygon,
     },
     gizmo: scene_gizmo_props,
     volumetric_data,
@@ -1083,7 +1105,7 @@
     // View toggles are plain letters everywhere; typing is already excluded by the editable
     // guard above. `f` is owned by FullscreenButton, which arbitrates it between nested
     // viewers. Chords stay the browser's and the host's.
-    if (key === `i` && plain_press && display_mode === `structure` && enable_info_pane) {
+    if (key === `i` && plain_press && has_3d_view && enable_info_pane) {
       set_pane_open(`info`, !is_pane_open(`info`))
       shortcut_flash.show(`info`)
       return true
@@ -1203,7 +1225,7 @@
           >
             {#snippet button()}<Icon icon={current_layout.icon} />{/snippet}
             {#each Object.values(STRUCTURE_LAYOUTS) as { mode, icon, label } (mode)}
-              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available)}
+              {#if mode === `single` || (mode === `multi` && multi_layout_available) || (mode === `slice` && slice_layout_available) || (mode === `split` && slice_layout_available && volumetric_data?.length)}
                 <button
                   type="button"
                   class={['view-mode-option', { selected: current_layout.mode === mode }]}
@@ -1235,11 +1257,11 @@
           </ToolbarMenu>
         {/if}
 
-        {#if display_mode === `structure` && enable_measure_mode && controls_config.visible(`measure-mode`)}
+        {#if has_3d_view && enable_measure_mode && controls_config.visible(`measure-mode`)}
           <StructureEditToolbar {session} shortcut_style={shortcut_flash.style} />
         {/if}
 
-        {#if display_mode === `structure` && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
+        {#if has_3d_view && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
           <StructureInfoPane
             structure={session.base_structure}
             displayed_structure={session.render_structure}
@@ -1274,7 +1296,7 @@
             image_filename={display_mode === `slice`
               ? `${volume_by_id.get(active_volume_id ?? ``)?.label ?? `volume`}-slice`
               : undefined}
-            enable_3d_export={display_mode === `structure`}
+            enable_3d_export={has_3d_view}
             bind:png_dpi
             pane_props={{ style: `--pane-max-height: var(--struct-pane-max-height)` }}
           />
@@ -1327,7 +1349,7 @@
         {@render top_right_controls?.()}
       </ViewerChrome>
 
-      {#if display_mode === `structure` && structure && site_count(structure)}
+      {#if has_3d_view && structure && site_count(structure)}
         <AtomLegend
           bind:atom_color_config
           property_colors={session.property_colors}
@@ -1368,7 +1390,8 @@
           {on_camera_move}
           {on_camera_reset}
           {...shared_viewport_props}
-          camera_direction={view.direction}
+          camera_direction={view.direction ?? scene_props.camera_direction}
+          camera_up={view.direction ? undefined : scene_props.camera_up}
           camera_projection={view.projection ?? scene_props.camera_projection}
           bind:camera_position
           bind:camera_target
@@ -1393,23 +1416,30 @@
         />
       {/snippet}
 
-      {#if display_mode === `slice`}
+      {#snippet slice_view()}
         <VolumeSliceView
-          volume={hidden_volume_ids.has(active_volume_id ?? ``)
-            ? undefined
-            : volume_by_id.get(active_volume_id ?? ``)}
+          volume={slice_volume}
           bind:settings={slice_settings}
           bind:canvas={slice_canvas}
         />
+      {/snippet}
+
+      {#if display_mode === `slice`}
+        {@render slice_view()}
         <!-- no GPU adapter in SSR and the vitest runner -->
       {:else if webgpu_available()}
-        <div class:multi={is_multi_view_active} class="viewport-stage">
+        <div
+          class="viewport-stage"
+          class:multi={is_multi_view_active}
+          class:split={display_mode === `split`}
+        >
           {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
           {#if is_multi_view_active}
             {#each views.slice(1) as view, idx (idx)}
               {@render extra_viewport(view, idx + 1)}
             {/each}
           {/if}
+          {#if display_mode === `split`}{@render slice_view()}{/if}
         </div>
       {/if}
 
@@ -1504,13 +1534,28 @@
     height: 100%;
     width: 100%;
   }
-  /* Two-column multi-side view grid. Implicit rows divide the available height
+  /* Two-column grid of the multi-side views or of the 3D scene beside the 2D cross-section
+    (stacked when the viewer is taller than wide). Implicit rows divide the available height
     equally, including when a custom `views` array changes the number of panes. */
-  .viewport-stage.multi {
+  .viewport-stage.multi,
+  .viewport-stage.split {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: 1fr;
     gap: var(--struct-viewport-gap);
+  }
+  @container (aspect-ratio < 1) {
+    .viewport-stage.split {
+      grid-template-columns: 1fr;
+    }
+  }
+  /* keep the atom legend on the 3D half instead of over the cross-section */
+  .structure:has(> .viewport-stage.split) > :global(.atom-legend) {
+    right: calc(50% + clamp(4pt, 3cqmin, 8pt));
+    @container (aspect-ratio < 1) {
+      right: clamp(4pt, 3cqmin, 8pt);
+      bottom: calc(50% + clamp(4pt, 3cqmin, 8pt));
+    }
   }
   /* Ensure canvas is transparent so the themed --struct-bg shows through */
   .structure :global(canvas) {

@@ -2,13 +2,15 @@
   // Inside the prism <Canvas>: the Gibbs triangle extruded along T, stable phases as rods over
   // their stability windows, tie-lines as the vertical sheets they sweep between transitions,
   // transition outlines and a draggable isothermal cutting plane carrying the current section.
+  // Composition probes (pinned, or under the pointer) are vertical lines plus spokes to their
+  // assemblage on the plane; a click on the plane without dragging pins one.
   // Nothing is rebuilt while dragging: rods/sheets are static and split at the plane by GPU
   // clipping planes; the section geometry is memoized on the (interval-constant) topology.
-  import { add_alpha } from '#lib/colors/index.js'
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import { format_num } from '#lib/labels.js'
   import { clamp, type Vec2, type Vec3 } from '#lib/math.js'
+  import { is_drag } from '#lib/plot/core/interactions.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
     build_orbit_props,
@@ -19,6 +21,7 @@
   import { T, useThrelte } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'
+  import { xy_to_ternary } from '#lib/plot/ternary/ternary.js'
   import { ticks as d3_ticks } from 'd3-array'
   import {
     BufferGeometry,
@@ -30,9 +33,16 @@
     SphereGeometry,
     Vector3,
   } from 'three/webgpu'
+  import {
+    decompose_composition,
+    hits_pin,
+    prism_composition,
+    prism_position,
+  } from './compute'
   import type {
     IsothermalSection,
     PhaseTemperatureHover,
+    SectionHover,
     TernaryDisplay,
     TernaryPhaseDiagram,
   } from './types'
@@ -45,8 +55,11 @@
     temperature = $bindable(),
     selected_phase = $bindable(null),
     hovered_phase = $bindable(null),
+    pinned_composition = $bindable(null),
+    pin_color = TERNARY_COLORS.pin,
     text_color = `#ddd`,
     on_hover,
+    on_section_hover,
   }: {
     diagram: TernaryPhaseDiagram
     section: IsothermalSection
@@ -54,8 +67,11 @@
     temperature: number
     selected_phase?: number | null
     hovered_phase?: number | null
+    pinned_composition?: Vec2 | null // composition probe shared with the 2D section
+    pin_color?: string // concrete colour (three.js can't parse var()/light-dark())
     text_color?: string
     on_hover?: (hover: PhaseTemperatureHover | null) => void
+    on_section_hover?: (hover: SectionHover | null) => void // compositions on the plane
   } = $props()
 
   const { enabled: hover_enabled } = extras.interactivity()
@@ -63,19 +79,11 @@
   // === Frame: composition in XZ (centred), temperature along Y ===
 
   const HEIGHT = 1.25
-  const CENTER: Vec2 = [0.5, Math.sqrt(3) / 6]
   const [t_min, t_max] = $derived(diagram.t_range)
   const y_of = (temp: number) => ((temp - t_min) / (t_max - t_min) - 0.5) * HEIGHT
   const t_of = (y_pos: number) => (y_pos / HEIGHT + 0.5) * (t_max - t_min) + t_min
-  // Triangle xy → scene xz at height y (z flipped so the triangle reads like the 2D section
-  // from above); at_t places it at a temperature
-  const position_2 = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
-    x_pos - CENTER[0],
-    y_scene,
-    CENTER[1] - y_pos,
-  ]
   const at_t = (coords_xy: readonly number[], temp: number): Vec3 =>
-    position_2(coords_xy, y_of(temp))
+    prism_position(coords_xy, y_of(temp))
   const corners = TRIANGLE_VERTICES
   const cycle = (idx: number) => corners[(idx + 1) % 3]
 
@@ -108,7 +116,7 @@
     ]),
   )
   const plane_geometry = buffer_geom(
-    corners.flatMap((corner) => position_2(corner)),
+    corners.flatMap((corner) => prism_position(corner)),
     [0, 1, 2],
   )
   const unit_cylinder = new CylinderGeometry(1, 1, 1, 10)
@@ -157,11 +165,7 @@
       diagram.stability_windows[idx].map(([lower, upper], window_idx) => ({
         key: `${idx}-${window_idx}`,
         phase: idx,
-        position: [
-          position_2(coords_xy)[0],
-          (y_of(lower) + y_of(upper)) / 2,
-          position_2(coords_xy)[2],
-        ] as Vec3,
+        position: prism_position(coords_xy, (y_of(lower) + y_of(upper)) / 2),
         length: y_of(upper) - y_of(lower),
         is_element,
       })),
@@ -183,21 +187,23 @@
   })
   const build_facets = memo((facets: number[][]) =>
     buffer_geom(
-      facets.flatMap((facet) => facet.flatMap((idx) => position_2(diagram.phases[idx].xy))),
+      facets.flatMap((facet) =>
+        facet.flatMap((idx) => prism_position(diagram.phases[idx].xy)),
+      ),
       facets.flatMap((_, idx) => [3 * idx, 3 * idx + 1, 3 * idx + 2]),
     ),
   )
   const build_tie_lines = memo((edges: Vec2[]) =>
     buffer_geom(
       edges.flatMap(([idx_a, idx_b]) => [
-        ...position_2(diagram.phases[idx_a].xy),
-        ...position_2(diagram.phases[idx_b].xy),
+        ...prism_position(diagram.phases[idx_a].xy),
+        ...prism_position(diagram.phases[idx_b].xy),
       ]),
     ),
   )
   const build_points = memo((stable: number[]) =>
     stable.map((idx) => {
-      const [x_pos, , z_pos] = position_2(diagram.phases[idx].xy)
+      const [x_pos, , z_pos] = prism_position(diagram.phases[idx].xy)
       return {
         phase: idx,
         position: [x_pos, 0, z_pos] as Vec3,
@@ -217,6 +223,34 @@
   dispose_on_change(() => [facet_geometry])
   dispose_on_change(() => [tie_line_geometry])
 
+  // === Composition probes ===
+
+  let hover_xy = $state<Vec2 | null>(null)
+  // Facets are constant between transitions: no spoke rebuild while only T moves
+  const section_facets = $derived(section.facets)
+  const probe_of = (coords_xy: Vec2 | null) => {
+    if (!coords_xy) return null
+    const decomposition = decompose_composition(diagram, { facets: section_facets }, coords_xy)
+    const position = prism_position(coords_xy)
+    const spokes = buffer_geom(
+      (decomposition?.phases ?? []).flatMap((idx) => [
+        ...position,
+        ...prism_position(diagram.phases[idx].xy),
+      ]),
+    )
+    return { position, spokes, decomposition }
+  }
+  const pinned_probe = $derived(probe_of(pinned_composition))
+  const hover_probe = $derived(probe_of(hover_xy))
+  dispose_on_change(() => [pinned_probe?.spokes])
+  dispose_on_change(() => [hover_probe?.spokes])
+  const probe_marks = $derived(
+    [
+      { kind: `pinned`, probe: pinned_probe, color: pin_color, radius: 0.005 },
+      { kind: `hover`, probe: hover_probe, color: text_color, radius: 0.0025 },
+    ].flatMap(({ probe, ...mark }) => (probe ? [{ ...probe, ...mark }] : [])),
+  )
+
   const color_of = (phase: number, is_element: boolean) =>
     phase === selected_phase
       ? TERNARY_COLORS.selected
@@ -229,14 +263,11 @@
     phase === selected_phase || phase === hovered_phase ? 0.0126 : 0.007
 
   // Labels: temperature ticks up the left edge, elements past the bottom corners
-  const tick_pos = (temp: number): Vec3 => [
-    position_2(corners[2])[0] - 0.07,
-    y_of(temp),
-    position_2(corners[2])[2] + 0.04,
-  ]
+  const tick_pos = (temp: number) =>
+    prism_position([corners[2][0] - 0.07, corners[2][1] - 0.04], y_of(temp))
   const corner_labels = $derived(
     diagram.elements.map((element, idx) => {
-      const [x_pos, , z_pos] = position_2(corners[idx])
+      const [x_pos, , z_pos] = prism_position(corners[idx])
       const len = Math.hypot(x_pos, z_pos) || 1
       return {
         element,
@@ -253,6 +284,14 @@
 
   let camera_is_moving = false
   let dragging_plane = $state(false)
+  // A release that never strayed from a plane press (is_drag) pins the pressed composition
+  let press: { client: Vec2; coords_xy: Vec2 | null; moved: boolean } | null = null
+  const PIN_HIT_RADIUS = 0.025 // triangle units: a click this close to the pin removes it
+  const clear_plane_hover = () => {
+    if (!hover_xy) return
+    hover_xy = null
+    on_section_hover?.(null)
+  }
   const orbit_props = build_orbit_props({
     camera_projection: `perspective`,
     target: [0, 0, 0],
@@ -267,7 +306,10 @@
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
       hover_enabled.set(!moving)
-      if (moving) on_hover?.(null)
+      if (moving) {
+        hover_xy = null
+        on_hover?.(null)
+      }
     },
   })
   let orbit_controls = $state<ComponentProps<typeof extras.OrbitControls>[`ref`]>()
@@ -280,6 +322,7 @@
     pointer.stopPropagation()
     const { point, nativeEvent } = pointer
     hovered_phase = phase
+    hover_xy = null // the rod's tooltip replaces the plane's
     on_hover?.({
       phase,
       temperature: clamp(t_of(point.y), t_min, t_max),
@@ -300,24 +343,60 @@
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
-  const end_plane_drag = () => {
+  // A release can land far from the press without any move reaching the scene (a flick out
+  // of the canvas), so its own distance counts too
+  const end_plane_drag = (event?: PointerEvent) => {
+    const click_xy =
+      event?.type === `pointerup` && press && !press.moved && !is_drag(press.client, event)
+        ? press.coords_xy
+        : null
+    if (click_xy) {
+      const on_pin = hits_pin(pinned_composition, click_xy, PIN_HIT_RADIUS)
+      pinned_composition = on_pin ? null : click_xy
+    }
+    press = null
     dragging_plane = false
     if (orbit_controls) orbit_controls.enabled = true
-    for (const type of [`pointerup`, `pointercancel`])
+    for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.removeEventListener(type, end_plane_drag)
   }
   function start_plane_drag(event: unknown): void {
-    if (pointer_of(event).nativeEvent.button !== 0) return // right/middle button orbit and pan
-    pointer_of(event).stopPropagation()
+    const { nativeEvent, point, stopPropagation } = pointer_of(event)
+    if (nativeEvent.button !== 0) return // right/middle button orbit and pan
+    stopPropagation()
+    // a press on a rod (which doesn't claim pointerdown) drags but pins nothing
+    press = {
+      client: [nativeEvent.clientX, nativeEvent.clientY],
+      coords_xy: hovered_phase === null ? prism_composition(point) : null,
+      moved: false,
+    }
     dragging_plane = true
     if (orbit_controls) orbit_controls.enabled = false
+    hover_xy = null
     on_hover?.(null)
-    for (const type of [`pointerup`, `pointercancel`])
+    for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.addEventListener(type, end_plane_drag)
   }
   $effect(() => end_plane_drag) // a view switch mid-drag must not leave global listeners
   const drag_plane = (event: unknown) => {
-    if (dragging_plane) temperature = clamp(t_of(pointer_of(event).point.y), t_min, t_max)
+    if (!dragging_plane || !press) return
+    const { point, nativeEvent } = pointer_of(event)
+    press.moved ||= is_drag(press.client, nativeEvent)
+    if (press.moved) temperature = clamp(t_of(point.y), t_min, t_max)
+  }
+  function hover_plane(event: unknown): void {
+    if (dragging_plane) return drag_plane(event)
+    if (camera_is_moving) return
+    const { point, nativeEvent } = pointer_of(event)
+    hover_xy = prism_composition(point)
+    on_section_hover?.(
+      hover_xy && {
+        kind: `composition`,
+        barycentric: xy_to_ternary(hover_xy),
+        decomposition: hover_probe?.decomposition ?? null,
+        position: [nativeEvent.clientX, nativeEvent.clientY],
+      },
+    )
   }
 </script>
 
@@ -345,7 +424,7 @@
 />
 
 <T.LineSegments geometry={wire_geometry}>
-  <T.LineBasicMaterial color={add_alpha(text_color, 0.7)} transparent />
+  <T.LineBasicMaterial color={text_color} transparent opacity={0.7} />
 </T.LineSegments>
 {#if settings.show_event_rings}
   <T.LineSegments geometry={event_ring_geometry}>
@@ -389,7 +468,8 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
   <T.Mesh
     geometry={plane_geometry}
     onpointerdown={start_plane_drag}
-    onpointermove={drag_plane}
+    onpointermove={hover_plane}
+    onpointerleave={clear_plane_hover}
   >
     <T.MeshStandardMaterial
       color="#fff59d"
@@ -415,6 +495,14 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
   <T.LineSegments geometry={tie_line_geometry}>
     <T.LineBasicMaterial color={text_color} />
   </T.LineSegments>
+  {#each probe_marks as { kind, spokes, position, color } (kind)}
+    <T.LineSegments geometry={spokes}>
+      <T.LineBasicMaterial {color} />
+    </T.LineSegments>
+    <T.Mesh geometry={unit_sphere} {position} scale={0.013}>
+      <T.MeshBasicMaterial {color} />
+    </T.Mesh>
+  {/each}
   {#each section_points as point (point.phase)}
     <T.Mesh geometry={unit_sphere} position={point.position} scale={0.014}>
       <T.MeshStandardMaterial color={color_of(point.phase, point.is_element)} />
@@ -435,6 +523,13 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
     {/if}
   {/each}
 </T.Group>
+
+<!-- Probe lines through the whole temperature range -->
+{#each probe_marks as { kind, position, color, radius } (kind)}
+  <T.Mesh geometry={unit_cylinder} {position} scale={[radius, HEIGHT, radius]}>
+    <T.MeshBasicMaterial {color} />
+  </T.Mesh>
+{/each}
 
 {#if dragging_plane}
   <extras.Billboard>

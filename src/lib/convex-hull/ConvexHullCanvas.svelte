@@ -17,6 +17,8 @@
     draw_corner_labels,
     draw_dashed_edges,
     draw_hull_faces,
+    draw_overlay_rings,
+    draw_overlay_segments,
     energy_range_of,
     HULL_CANVAS_STRATEGIES,
     simplex_centroid,
@@ -29,7 +31,7 @@
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
   import type { HullSelection } from './canvas-interactions.svelte'
-  import type { ConvexHullControlsType } from './types'
+  import type { ConvexHullControlsType, HullOverlay } from './types'
 
   let {
     dim,
@@ -52,6 +54,7 @@
     highlighted_entries = [],
     highlight_style = {},
     selected_entry = null,
+    overlay = { segments: [], rings: [] },
     gizmo = true,
     children,
     ...rest
@@ -77,6 +80,7 @@
       chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
       merged_controls: ConvexHullControlsType
       controls_config: ShowControlsState
+      overlay?: HullOverlay
       hull_face_color: string
       hull_face_opacity: number
     } = $props()
@@ -132,7 +136,7 @@
     project_point,
     render_frame,
     // oxfmt-ignore
-    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config],
+    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config, overlay],
   })
   export const get_actions = (): Record<string, () => void> => ({
     r: interactions.reset_camera,
@@ -175,7 +179,9 @@
       font_size: merged_config.font_size ?? 12,
       scale: interactions.canvas_dims.scale,
     })
+    draw_overlay_segments(ctx, overlay.segments, project_point)
     interactions.draw_points(ctx)
+    draw_overlay_rings(ctx, overlay.rings, project_point, interactions.canvas_dims.scale)
     interactions.draw_labels(ctx)
     draw_corner_labels(ctx, strategy.corners, centroid, {
       project: project_point,

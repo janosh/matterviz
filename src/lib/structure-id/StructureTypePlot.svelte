@@ -1,11 +1,13 @@
 <script lang="ts">
   import { format_num } from '#lib/labels.js'
+  import type { Vec2 } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import { to_structure_entries } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry, StructureInput } from '#lib/plot/core/structure-input.js'
-  import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
+  import type { BarHandlerProps, BarSeries, UserContentProps } from '#lib/plot/core/types.js'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
+  import { is_drag, series_hover_props } from '#lib/plot/core/interactions.js'
   import { calc_structure_id_async } from './async-compute.svelte'
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
@@ -29,6 +31,9 @@
     error_msg = $bindable(),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    current_frame = null,
+    on_frame_click,
+    on_type_hover,
     // Includes the shared `x_axis`/`y_axis` overrides, which StructureBarPlot merges over the
     // layout's primary/value axis defaults below (so callers can set label, range or format)
     ...rest
@@ -45,6 +50,11 @@
     normalize?: boolean
     // x tick labels; defaults to the entry labels of `structures`, else the result index
     frame_labels?: (number | string)[]
+    current_frame?: number | null // `over_frames` only: x value marked with the playhead
+    // `over_frames` only: the analysed frame nearest a click on the plot area or a point
+    on_frame_click?: (frame: number) => void
+    // Type of the line or legend entry under the pointer; null once it leaves
+    on_type_hover?: (type: CnaTypeName | null) => void
   } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
@@ -100,6 +110,26 @@
         })),
   )
 
+  // Numeric frame x values the playhead and click-to-seek work in; empty for string labels
+  const frame_xs = $derived(
+    layout === `over_frames` && x_ticks.every((tick) => typeof tick === `number`)
+      ? (x_ticks as number[])
+      : [],
+  )
+  // Analysed frame nearest `pixel_x`, snapped in pixel space (no inverse scale needed, so it
+  // holds under zoom). frame_xs is non-empty whenever the seek area calling this renders.
+  const nearest_frame = (scale: (value: number) => number, pixel_x: number): number =>
+    frame_xs.reduce((best, frame) =>
+      Math.abs(scale(frame) - pixel_x) < Math.abs(scale(best) - pixel_x) ? frame : best,
+    )
+  // Where the last press on the seek area started (plain memory, read only by its click)
+  let press_xy: Vec2 | null = null
+  const type_hover = $derived(
+    on_type_hover &&
+      ((series_idx: number | null) =>
+        on_type_hover(series_idx === null ? null : (live_types[series_idx] ?? null))),
+  )
+
   const value_label = $derived(normalize ? `Fraction of atoms` : `Atoms`)
   const primary_axis = $derived({ label: layout === `over_frames` ? `Frame` : `Structure` })
   const value_axis = $derived({
@@ -109,8 +139,58 @@
   })
 </script>
 
+{#snippet frame_overlay(ctx: UserContentProps)}
+  {@const { width, height, pad, x_scale_fn } = ctx}
+  {@const playhead_x = current_frame == null ? NaN : x_scale_fn(current_frame)}
+  {#if frame_xs.length > 0 && on_frame_click}
+    <!-- Below the lines and points (user content renders first), so it only takes clicks on
+    the empty plot area; points seek through on_point_click -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <rect
+      class="frame-seek-area"
+      x={pad.l}
+      y={pad.t}
+      width={Math.max(0, width - pad.l - pad.r)}
+      height={Math.max(0, height - pad.t - pad.b)}
+      fill="transparent"
+      style:cursor="pointer"
+      onmousedown={(event) => (press_xy = [event.clientX, event.clientY])}
+      onclick={(event) => {
+        const svg = event.currentTarget.ownerSVGElement
+        // the click that ends a drag (zoom rectangle, pan) is not a seek
+        if (!svg || (press_xy && is_drag(press_xy, event))) return
+        on_frame_click(
+          nearest_frame(x_scale_fn, event.clientX - svg.getBoundingClientRect().left),
+        )
+      }}
+    />
+  {/if}
+  {#if frame_xs.length > 0 && playhead_x >= pad.l && playhead_x <= width - pad.r}
+    <line
+      class="current-frame-guide"
+      x1={playhead_x}
+      x2={playhead_x}
+      y1={pad.t}
+      y2={height - pad.b}
+      stroke="var(--scatter-current-frame-color, #ff6b35)"
+      stroke-opacity="0.6"
+      stroke-dasharray="8 4"
+      pointer-events="none"
+    />
+  {/if}
+  {@render rest.user_content?.(ctx)}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
+  {...series_hover_props(type_hover, rest)}
+  user_content={layout === `over_frames` ? frame_overlay : rest.user_content}
+  on_point_click={on_frame_click
+    ? (event) => {
+        if (frame_xs.includes(event.x)) on_frame_click(event.x)
+        rest.on_point_click?.(event)
+      }
+    : rest.on_point_click}
   bind:show_controls
   bind:controls_open
   {series}

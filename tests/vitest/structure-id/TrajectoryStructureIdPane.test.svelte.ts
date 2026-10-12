@@ -2,6 +2,7 @@
 // tests/vitest/trajectory/TrajectoryAnalysisPane.test.svelte.ts; this pins what structure-id
 // layers on top: the max-frames cap and CSP skip it hands the sweep, its progress relay, and
 // the sweep landing in the bound `result`.
+import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
 import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
 import * as collect from '#lib/structure-id/collect.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
@@ -120,4 +121,42 @@ test(`keeps a caller-supplied result across mount; a failed sweep surfaces in th
   button.click()
   await vi.waitFor(() => expect(document.body.textContent).toContain(`sweep failure`))
   expect(state.result).toBeUndefined()
+})
+
+test(`hovering a structure type reports its atoms from the analysed frame nearest the one shown`, async () => {
+  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
+  const on_atoms_hover = vi.fn()
+  const state = $state({ current_frame_idx: 3 })
+  const result = {
+    frame_numbers: [0, 10],
+    results: [fcc_result, fcc_result],
+    frame_stride: 10,
+  }
+  mounted_component = mount(TrajectoryStructureIdPane, {
+    target: document.body,
+    props: bind_props({ pane_open: true, run: make_run(20), result, on_atoms_hover }, state),
+  })
+  await settle()
+  const fcc_item = [...document.querySelectorAll(`.legend-item`)].find((item) =>
+    item.textContent?.includes(`FCC`),
+  )
+  const hover = async (type: string) => {
+    fcc_item?.dispatchEvent(new MouseEvent(type))
+    await tick()
+  }
+  const hint = `Highlighted atoms are classified in frame`
+  // every atom of the conventional fcc cell is fcc; frame 3 was not analysed, so say which was
+  for (const [shown, analysed] of [
+    [3, 0],
+    [10, 10],
+  ]) {
+    state.current_frame_idx = shown
+    await hover(`mouseenter`)
+    const atoms = { frame_number: analysed, atom_indices: [0, 1, 2, 3] }
+    expect(on_atoms_hover).toHaveBeenLastCalledWith(atoms)
+    expect(document.body.textContent?.includes(`${hint} ${analysed}`)).toBe(shown !== analysed)
+    await hover(`mouseleave`)
+    expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
+    expect(document.body.textContent).not.toContain(hint)
+  }
 })

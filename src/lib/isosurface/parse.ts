@@ -108,16 +108,23 @@ export function parse_decimal_token(text: string, start: number, end: number): n
   return negative ? -value : value
 }
 
+// Whether an optionally signed `nan` token (any case) starts at `start`, what Python and Rust
+// print for a missing value
+const nan_token_at = (text: string, start: number): boolean =>
+  /^[+-]?nan(?:\s|$)/i.test(text.slice(start, start + 5))
+
 // Parse whitespace-separated numbers directly from a string, starting at `pos`.
 // Writes into a pre-allocated Float64Array and returns { count, end_pos }.
 // Stops at `max_count` numbers, end of string, or when encountering a line
 // starting with a letter (e.g. "augmentation" in CHGCAR, "BAND:" in BXSF).
+// `allow_nan` reads `nan` tokens (also line-leading) as NaN; otherwise they throw.
 export function parse_float_block(
   text: string,
   pos: number,
   max_count: number,
   data: Float64Array,
   data_offset: number = 0,
+  allow_nan: boolean = false,
 ): { count: number; end_pos: number } {
   let idx = data_offset
   const target = data_offset + max_count
@@ -137,7 +144,9 @@ export function parse_float_block(
         if (peek < len) {
           const next_char = text.charCodeAt(peek)
           // Letter a-z or A-Z signals a non-numeric line (e.g. "augmentation")
-          if ((next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)) {
+          const is_letter =
+            (next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)
+          if (is_letter && !(allow_nan && nan_token_at(text, peek))) {
             return { count: idx - data_offset, end_pos: pos }
           }
         }
@@ -152,7 +161,7 @@ export function parse_float_block(
 
     const num = parse_decimal_token(text, start, pos)
     // Skipping an unreadable token would shift every later value one grid point early
-    if (Number.isNaN(num)) {
+    if (Number.isNaN(num) && !(allow_nan && nan_token_at(text, start))) {
       throw new TypeError(
         `Unreadable number '${text.slice(start, pos)}' at character ${start} (value ${idx - data_offset + 1} of ${max_count})`,
       )

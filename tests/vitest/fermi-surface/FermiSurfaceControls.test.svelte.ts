@@ -6,7 +6,7 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, set_input } from '../setup'
+import { bind_props, doc_query, set_input, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // One single-vertex sheet per band, optionally carrying a per-vertex property
@@ -15,7 +15,7 @@ const make_fermi_data = (band_indices = [0, 1], with_properties = false): FermiS
     band_indices.map((band_index) =>
       make_fermi_isosurface([[0, 0, 0]], [], {
         band_index,
-        ...(with_properties && { properties: new Float32Array(1) }),
+        ...(with_properties && { properties: { Property: new Float32Array(1) } }),
       }),
     ),
   )
@@ -110,6 +110,52 @@ describe(`FermiSurfaceControls`, () => {
     }
   })
 
+  // Several named properties get a selector; switching property or data drops a fixed range
+  test(`selects among named properties and resets the fixed colour range`, async () => {
+    const named = (names: string[]) => {
+      const properties = Object.fromEntries(names.map((name) => [name, new Float32Array(1)]))
+      return make_fermi_surface([make_fermi_isosurface([[0, 0, 0]], [], { properties })])
+    }
+    const state = $state<ComponentProps<typeof FermiSurfaceControls>>({
+      fermi_data: named([`λ`, `Δ`]),
+      color_property: `property`,
+      property_name: undefined,
+      color_range: [0, 2],
+      fitted_color_range: [0.1, 0.9],
+    })
+    await render_controls(state)
+    // a range passed with no property survives init
+    expect([state.property_name, state.color_range]).toEqual([`λ`, [0, 2]])
+    const select_css = `select[aria-label="Fermi surface colouring property"]`
+    const select = doc_query<HTMLSelectElement>(select_css)
+    expect(Array.from(select.options, (option) => option.value)).toEqual([`λ`, `Δ`])
+    const [min_input, max_input] = document.querySelectorAll<HTMLInputElement>(
+      `input[aria-label^="Colour range"]`,
+    )
+    expect([min_input.value, max_input.placeholder]).toEqual([`0`, `0.9`])
+    set_input(max_input, `5`)
+    expect(state.color_range).toEqual([0, 5])
+    // a partial entry (`-` on the way to `-3`) reads as `` with badInput: the range stays
+    Object.defineProperty(min_input, `validity`, {
+      value: { badInput: true },
+      configurable: true,
+    })
+    set_input(min_input, ``)
+    expect(state.color_range).toEqual([0, 5])
+    Reflect.deleteProperty(min_input, `validity`)
+    set_input(max_input, ``) // emptied → back to fitting the data
+    expect(state.color_range).toBeUndefined()
+    state.color_range = [0, 2]
+    set_select(select, `Δ`)
+    await tick()
+    expect([state.property_name, state.color_range]).toEqual([`Δ`, undefined])
+    state.color_range = [0, 2]
+    state.fermi_data = named([`v`]) // Δ gone: first property, fitted range, no selector
+    await tick()
+    expect([state.property_name, state.color_range]).toEqual([`v`, undefined])
+    expect(document.querySelector(select_css)).toBeNull()
+  })
+
   test(`resets authored appearance and bands against the current dataset`, async () => {
     const state = $state<ComponentProps<typeof FermiSurfaceControls>>({
       fermi_data: make_fermi_data([0, 1], true),
@@ -143,5 +189,23 @@ describe(`FermiSurfaceControls`, () => {
     state.fermi_data = make_fermi_data([4, 5, 6])
     await tick()
     expect(state.selected_bands).toEqual([5, 6])
+    // band 4, switched off, stops crossing and crosses again: it stays off (a hover preview
+    // sweeping mu does this on every pointer move)
+    state.fermi_data = make_fermi_data([5, 6])
+    await tick()
+    state.fermi_data = make_fermi_data([4, 5, 6])
+    await tick()
+    expect(state.selected_bands).toEqual([5, 6])
+    await reset_section(`bands`) // reset forgets the hidden bands
+    expect(state.selected_bands).toEqual([4, 5, 6])
+    // a parent re-showing band 4 while it does not cross (FermiSurfaceBands ending an
+    // isolation) shows it once it crosses again
+    // oxfmt-ignore
+    for (const bands of [[5, 6], [4, 5, 6]]) {
+      state.selected_bands = bands
+      state.fermi_data = make_fermi_data(bands)
+      await tick()
+    }
+    expect(state.selected_bands).toEqual([4, 5, 6])
   })
 })

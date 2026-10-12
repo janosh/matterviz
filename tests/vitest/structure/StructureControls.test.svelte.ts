@@ -24,6 +24,7 @@ import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  click_when_ready,
   doc_query,
   expect_labelled_settings_grid,
   query,
@@ -578,11 +579,7 @@ describe(`StructureControls layout`, () => {
     ])
     expect(groups[0]?.matches(`:first-of-type`)).toBe(true)
     expect(groups[3]?.matches(`:first-of-type`)).toBe(false)
-    const descriptions = await vi.waitFor(() =>
-      query<HTMLButtonElement>(target, `.description-toggle`),
-    )
-    descriptions.click()
-    await tick()
+    const descriptions = await click_when_ready(target, `.description-toggle`)
     expect(descriptions.getAttribute(`aria-expanded`)).toBe(`true`)
 
     doc_query<HTMLButtonElement>(`.open-search`).click()

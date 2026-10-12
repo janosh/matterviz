@@ -1,24 +1,33 @@
 <script lang="ts">
+  import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
-  import { capitalize, format_num } from '#lib/labels.js'
+  import { format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import type { Vec3 } from '#lib/math.js'
+  import { in_range, reciprocal_lattice } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import { to_error } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { band_point_meta, create_band_path_link } from './band-path-link.svelte'
   import Bands from './Bands.svelte'
   import { frequency_unit_per_thz } from './frequency-units'
-  import { are_qpoints_equivalent, phonon_explorer_views, pretty_sym_point } from './helpers'
+  import {
+    are_qpoints_equivalent,
+    frac_k_to_cartesian,
+    pretty_sym_point,
+    qpoint_x_position,
+  } from './helpers'
   import IrRamanSpectrum from './IrRamanSpectrum.svelte'
+  import { spectrum_kind_label } from './ir-raman'
   import {
     DEFAULT_PHONON_AMPLITUDE,
     DEFAULT_PHONON_FPS,
@@ -37,23 +46,22 @@
     phonon_supercell,
     qpoint_has_eigenvectors,
   } from './phonon-modes'
+  import { create_bands_dos_sync } from './synced-axes.svelte'
   import type {
-    PhononExplorerView,
+    BaseBandStructure,
     PhononModeData,
     PhononModeDataset,
     PhononModeSelection,
     SpectrumKind,
   } from './types'
 
-  const view_label = (candidate: PhononExplorerView): string =>
-    candidate === `ir` ? `IR` : capitalize(candidate)
   const format_qpoint = (q_position: Vec3, fmt: string): string =>
     q_position.map((coordinate) => format_num(coordinate, fmt)).join(`, `)
 
   let {
     dataset,
     selection = $bindable(),
-    view = $bindable(),
+    spectrum_kind = $bindable(`ir`),
     amplitude = $bindable(DEFAULT_PHONON_AMPLITUDE),
     supercell = $bindable([...DEFAULT_PHONON_SUPERCELL] as Vec3),
     n_frames = $bindable(DEFAULT_PHONON_FRAMES),
@@ -63,12 +71,14 @@
     vector_color = $bindable<string | null>(null),
     auto_play = true,
     pane_ratio = $bindable(1.15 / 2.1),
+    show_bz_inset = true,
     trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     dataset: PhononModeDataset
     selection?: PhononModeSelection
-    view?: PhononExplorerView
+    // Activity the spectrum beside the dispersion shows; Raman needs polarizability data
+    spectrum_kind?: SpectrumKind
     amplitude?: number
     supercell?: Vec3
     n_frames?: number
@@ -79,6 +89,9 @@
     vector_color?: string | null
     auto_play?: boolean
     pane_ratio?: number
+    // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
+    // q-points on the path; needs a lattice and more than one q-point
+    show_bz_inset?: boolean
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
@@ -125,15 +138,13 @@
       ? try_generate(() => phonon_band_structure_from_modes(mode_data))
       : { value: null, error: null },
   )
-  let visible_views = $derived(
-    phonon_explorer_views(mode_data, active_spectrum).filter(
-      (candidate) => candidate !== `bands` || band_result.value,
-    ),
+  let band_structure = $derived(band_result.value)
+  let band_structs = $derived<Record<string, BaseBandStructure>>(
+    band_structure ? { '': band_structure } : {},
   )
-  $effect(() => {
-    if (!view || !visible_views.includes(view)) view = visible_views[0]
-  })
-  let modes_open = $derived(visible_views.length === 0)
+  let shown_kind = $derived<SpectrumKind>(active_spectrum?.has_raman ? spectrum_kind : `ir`)
+  let has_plot = $derived(Boolean(band_structure || active_spectrum))
+  let modes_open = $derived(!has_plot)
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
   // survives mode and amplitude changes and keys the camera framing, the displacement pattern
   // survives amplitude changes, and frames are synthesised on read
@@ -171,6 +182,73 @@
   let character = $derived(
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
   )
+  // === Brillouin zone inset ===
+  let bz_inset = $derived.by(() => {
+    const { lattice, qpoints } = mode_data
+    if (!show_bz_inset || !lattice || qpoints.length < 2) return { value: null, error: null }
+    return try_generate(() => {
+      const k_lattice = reciprocal_lattice(lattice, { two_pi: true })
+      return { k_lattice, bz_data: compute_brillouin_zone(k_lattice) }
+    })
+  })
+  // the q-point hovered on the dispersion, marked on the inset's k-path
+  const path_link = create_band_path_link({
+    band_struct: () => band_structure,
+    k_lattice: () => bz_inset.value?.k_lattice,
+  })
+  // === Dispersion and spectrum side by side ===
+  let plot_width = $state(800)
+  let both_plots = $derived(Boolean(band_structure && active_spectrum))
+  // Below 480px a spectrum column would squeeze the bands, so the spectrum turns vertical and
+  // stacks underneath, as in BandsAndDos
+  let side_by_side = $derived(both_plots && plot_width >= 480)
+  // One frequency axis for both panels: a rotated spectrum shares the bands' y range, zoom and
+  // vertical padding; stacked underneath, it plots the same range along x
+  const plot_sync = create_bands_dos_sync({
+    band_structs: () => band_structs,
+    units: () => `THz`,
+    side_by_side: () => side_by_side,
+    base_padding: { t: 20, b: 50 },
+  })
+  // Every visit of the spectrum's q-point (Γ) on the path, where bands and peaks are the same modes
+  let spectrum_qpoint_indices = $derived.by(() => {
+    const q_position = active_spectrum?.q_position
+    if (!q_position) return []
+    return mode_data.qpoints.flatMap((qpoint, qpoint_idx) =>
+      are_qpoints_equivalent(qpoint.q_position, q_position) ? [qpoint_idx] : [],
+    )
+  })
+  // under each panel's own pointer, so the two directions cannot feed back
+  let bands_hovered_band_idx = $state<number | null>(null)
+  let spectrum_hovered_modes = $state<number[]>([])
+  let band_x_positions = $state<Record<string, Vec2>>()
+  // a band hovered at Γ lights up its stick in the spectrum
+  let band_hovered_spectrum_modes = $derived(
+    bands_hovered_band_idx !== null &&
+      spectrum_qpoint_indices.includes(path_link.active_qpoint ?? -1)
+      ? [bands_hovered_band_idx]
+      : [],
+  )
+  // the modes behind the hovered peak, ringed on the dispersion at every visit of Γ
+  let peak_band_points = $derived.by(() => {
+    if (!band_structure || !band_x_positions) return []
+    const x_positions = band_x_positions
+    return spectrum_qpoint_indices.flatMap((qpoint_idx) => {
+      const x_pos = qpoint_x_position(band_structure, qpoint_idx, x_positions)
+      if (x_pos === null) return []
+      return spectrum_hovered_modes.flatMap((mode_idx) => {
+        const frequency = mode_data.qpoints[qpoint_idx]?.modes[mode_idx]?.frequency
+        return frequency === undefined ? [] : [{ qpoint_idx, mode_idx, x_pos, frequency }]
+      })
+    })
+  })
+  // from the mode data, not the k-path: q-point-only files (no band path) still mark it
+  let selected_k_points = $derived.by(() => {
+    const k_lattice = bz_inset.value?.k_lattice
+    const qpoint = mode_data.qpoints[selection?.qpoint_idx ?? -1]
+    return k_lattice && qpoint ? [frac_k_to_cartesian(qpoint.q_position, k_lattice)] : []
+  })
+
   const wavenumber = (thz: number): string =>
     `${format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)} cm⁻¹`
 
@@ -226,15 +304,11 @@
 
   const select_spectrum_mode = (mode_idx: number): void => {
     if (!active_spectrum) return
+    // stay at the selected q-point if it is a visit of the spectrum's, else jump to the first
     const selected_qpoint_idx = selection?.qpoint_idx ?? -1
-    const current_qpoint = mode_data.qpoints[selected_qpoint_idx]
-    const qpoint_idx =
-      current_qpoint &&
-      are_qpoints_equivalent(current_qpoint.q_position, active_spectrum.q_position)
-        ? selected_qpoint_idx
-        : mode_data.qpoints.findIndex(({ q_position }) =>
-            are_qpoints_equivalent(q_position, active_spectrum.q_position),
-          )
+    const qpoint_idx = spectrum_qpoint_indices.includes(selected_qpoint_idx)
+      ? selected_qpoint_idx
+      : (spectrum_qpoint_indices[0] ?? -1)
     if (qpoint_idx === -1) {
       report_error(
         `Spectrum q-point [${active_spectrum.q_position.join(`, `)}] is absent from mode data`,
@@ -245,7 +319,25 @@
   }
 </script>
 
-{#snippet mode_picker()}
+<!-- rendered inside the structure viewer, so both overlays follow it into fullscreen and stay
+under its open panes -->
+{#snippet structure_overlays()}
+  {#if bz_inset.value}
+    <BrillouinZone
+      class="bz-inset"
+      aria-label="Selected q-point in the Brillouin zone"
+      bz_data={bz_inset.value.bz_data}
+      k_path_points={path_link.k_path_points}
+      k_path_labels={path_link.k_path_labels}
+      highlighted_k_points={selected_k_points}
+      hovered_k_point={path_link.hovered_k_point}
+      hovered_qpoint_index={path_link.active_qpoint}
+      show_vectors={false}
+      show_controls={false}
+      fullscreen_toggle={false}
+      allow_file_drop={false}
+    />
+  {/if}
   <div class="mode-picker">
     <ToolbarMenu
       bind:open={modes_open}
@@ -254,13 +346,13 @@
       menu_class="phonon-modes-pane"
     >
       {#snippet button()}Modes{/snippet}
-      {#if visible_views.length > 1}
-        <div class="tabs" role="group" aria-label="Phonon explorer plot">
-          {#each visible_views as candidate}
+      {#if active_spectrum?.has_raman}
+        <div class="tabs" role="group" aria-label="Spectrum type">
+          {#each [`ir`, `raman`] as const as kind (kind)}
             <button
-              aria-pressed={view === candidate}
-              class:active={view === candidate}
-              onclick={() => (view = candidate)}>{view_label(candidate)}</button
+              aria-pressed={shown_kind === kind}
+              class:active={shown_kind === kind}
+              onclick={() => (spectrum_kind = kind)}>{spectrum_kind_label(kind)}</button
             >
           {/each}
         </div>
@@ -382,6 +474,7 @@
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
   {#if generation_error}<StatusMessage message={generation_error} type="error" />{/if}
+  {#if bz_inset.error}<StatusMessage message={bz_inset.error} type="error" />{/if}
   {#if !commensurate}
     <StatusMessage
       message="This q-point is not commensurate with the selected supercell, so opposite box faces do not repeat periodically."
@@ -429,7 +522,7 @@
       </div>
     {/if}
   </div>
-  <div class="panes" class:structure_only={!view}>
+  <div class="panes" class:structure_only={!has_plot}>
     <section class="trajectory-pane" aria-label="Atomic motion">
       {#if trajectory_result.value}
         <Trajectory
@@ -460,7 +553,7 @@
           extra_controls={phonon_settings}
           structure_series_key={supercell_result.value?.structure}
           structure_props={{
-            children: mode_picker,
+            children: structure_overlays,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
             show_image_atoms: false,
@@ -482,29 +575,81 @@
         />
       {/if}
     </section>
-    {#if view}
+    {#if has_plot}
       <PaneDivider
         orientation="horizontal"
         bind:ratio={pane_ratio}
         aria-label="Resize atomic motion and phonon plot panes"
       />
-      <section class="plot-pane" aria-label="Phonon mode plot">
-        {#if view === `bands` && band_result.value}
+      <section
+        class="plot-pane"
+        class:side_by_side
+        class:spectrum_stacked={both_plots && !side_by_side}
+        aria-label="Phonon mode plot"
+        bind:clientWidth={plot_width}
+      >
+        {#if band_structure}
           <Bands
-            band_structs={{ '': band_result.value }}
-            reference_frequency={selected_mode?.frequency ?? null}
+            {band_structs}
+            y_axis={plot_sync.y_axes[0]}
+            bind:view={plot_sync.views[0]}
+            bind:resolved_padding={() => undefined, plot_sync.raise_padding}
+            padding={side_by_side ? { r: 10, ...plot_sync.shared_padding } : undefined}
+            bind:x_positions={band_x_positions}
+            bind:hovered_frequency={plot_sync.hovered.bands}
+            reference_frequency={plot_sync.hovered.dos ?? selected_mode?.frequency ?? null}
             highlighted_qpoint_index={selection?.qpoint_idx ?? null}
             highlighted_band_index={selection?.mode_idx ?? null}
             on_point_click={handle_band_click}
             on_plot_click={handle_band_click}
+            on_point_hover={(event) => {
+              path_link.hover_band(event)
+              bands_hovered_band_idx = band_point_meta(event?.metadata)?.band_idx ?? null
+            }}
             show_controls={false}
-          />
-        {:else if (view === `ir` || view === `raman`) && active_spectrum}
+          >
+            {#snippet children({ width, height, x_scale_fn, y_scale_fn, x_range, y_range })}
+              <svg class="peak-band-markers" {width} {height} aria-hidden="true">
+                {#each peak_band_points as { qpoint_idx, mode_idx, x_pos, frequency } (`${qpoint_idx}:${mode_idx}`)}
+                  {#if in_range(x_pos, x_range) && in_range(frequency, y_range)}
+                    <circle
+                      class="peak-band-marker"
+                      cx={x_scale_fn(x_pos)}
+                      cy={y_scale_fn(frequency)}
+                      r="7"
+                      fill="none"
+                      stroke="var(--phonon-peak-marker-color, light-dark(#c44e52, #e07b7e))"
+                      stroke-width="2"
+                    />
+                  {/if}
+                {/each}
+              </svg>
+            {/snippet}
+          </Bands>
+        {/if}
+        {#if active_spectrum}
+          <!-- hover tracks the frequency axis alone, so a stick tip far from its broadened peak
+          still links to the bands -->
           <IrRamanSpectrum
             spectrum={active_spectrum}
-            kind={view as SpectrumKind}
-            selected_mode_idx={selection?.mode_idx ?? null}
+            kind={shown_kind}
+            units="THz"
+            orientation={side_by_side ? `horizontal` : `vertical`}
+            x_axis={{ ...(side_by_side && { ticks: 3 }), ...plot_sync.dos_x_axis }}
+            y_axis={plot_sync.y_axes[1]}
+            bind:view={plot_sync.views[1]}
+            bind:resolved_padding={() => undefined, plot_sync.raise_padding}
+            padding={side_by_side ? { l: 15, ...plot_sync.shared_padding } : undefined}
+            bind:hovered_frequency={plot_sync.hovered.dos}
+            bind:hovered_mode_indices={spectrum_hovered_modes}
+            reference_frequency={plot_sync.hovered.bands}
+            highlighted_mode_indices={band_hovered_spectrum_modes}
+            selected_mode_idx={selection &&
+            spectrum_qpoint_indices.includes(selection.qpoint_idx)
+              ? selection.mode_idx
+              : null}
             on_mode_select={select_spectrum_mode}
+            hover_config={{ threshold_px: 30, mode: side_by_side ? `y` : `x` }}
             show_controls={false}
           />
         {/if}
@@ -576,10 +721,28 @@
     min-height: 0;
   }
   .plot-pane {
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    position: relative;
     overflow: hidden;
     /* Bands and IrRamanSpectrum both use ScatterPlot's public sizing contract. */
     --scatter-height: 100%;
     --scatter-min-height: 0;
+    &.side_by_side {
+      grid-template-columns: minmax(0, 1fr) var(
+          --phonon-spectrum-width,
+          clamp(120px, 28%, 220px)
+        );
+    }
+    &.spectrum_stacked {
+      grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+    }
+  }
+  .peak-band-markers {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
   }
   .trajectory-pane {
     position: relative;
@@ -587,6 +750,18 @@
     container-type: inline-size;
     --traj-border-radius: 0;
     --struct-border-radius: 0;
+    /* bottom-left is the one corner the structure viewer keeps free of controls */
+    :global(.structure .bz-inset) {
+      position: absolute;
+      left: 0.5em;
+      bottom: 0.5em;
+      z-index: 1;
+      --bz-width: var(--phonon-bz-inset-size, clamp(100px, 22cqi, 160px));
+      --bz-height: var(--phonon-bz-inset-size, clamp(100px, 22cqi, 160px));
+      --bz-min-width: 0;
+      --bz-bg: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
+      --bz-border-radius: var(--border-radius, 3pt);
+    }
   }
   /* the bar stays open while its step input has focus; hovering the plot pane hides it anyway
      so the spectra are never covered */
@@ -702,6 +877,10 @@
     .panes {
       grid-template-columns: 1fr;
       grid-template-rows: minmax(340px, 1fr) minmax(340px, 1fr);
+      /* bands and spectrum stacked inside the plot pane need room for both */
+      &:has(.spectrum_stacked) {
+        grid-template-rows: minmax(340px, 1fr) minmax(520px, 1fr);
+      }
       border-block: 0;
       > :global(.pane-divider) {
         display: none;

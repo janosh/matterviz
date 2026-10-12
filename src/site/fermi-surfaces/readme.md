@@ -16,6 +16,7 @@ This directory contains example Fermi surface data files for testing and demonst
 | `mgb2_b2pz.frmsf.gz`             | FRMSF  | 16×16×12   | 3     | [QEF/q-e](https://github.com/QEF/q-e/blob/develop/PP/examples/fermisurf_example/reference/)      | B 2pz orbital projection coloring                  |
 | `mgb2_vfermi.frmsf.gz`           | FRMSF  | 16×16×12   | 3     | [QEF/q-e](https://github.com/QEF/q-e/blob/develop/PP/examples/fermisurf_example/reference/)      | Fermi velocity magnitude coloring                  |
 | `srvo3_orb.frmsf.gz`             | FRMSF  | 32³        | 3     | [FermiSurfer](https://github.com/mitsuaki1987/fermisurfer/blob/master/examples/srvo3_orb.frmsf)  | Orbital character coloring (t₂g)                   |
+| `cu_fcc_bands.bxsf.gz`           | BXSF   | 25³        | 4     | simulated (PBE, one SCF with `../electronic/cu-fcc-bands.json.gz`)                               | Bands keep run numbers (3-6), Fermi + bands demo   |
 | `fs_BaFe2As2_reciprocal.json.gz` | IFermi | pre-meshed | 2     | [IFermi](https://github.com/fermisurfaces/IFermi/blob/main/tests/fs_BaFe2As2_reciprocal.json.gz) | 10 surfaces, parallelepiped cell, iron pnictide    |
 | `fs_BaFe2As2_wigner.json.gz`     | IFermi | pre-meshed | 2     | [IFermi](https://github.com/fermisurfaces/IFermi/blob/main/tests/fs_BaFe2As2_wigner.json.gz)     | Same as above with Wigner-Seitz clipping           |
 

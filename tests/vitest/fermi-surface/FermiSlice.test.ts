@@ -3,7 +3,7 @@ import type { FermiSliceData, FermiSurfaceData } from '#lib/fermi-surface/types.
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, mount_sized } from '../setup'
+import { bind_props, doc_query, mount_sized } from '../setup'
 import {
   BOX_TRI_FACES,
   BOX_VERTICES,
@@ -100,5 +100,46 @@ describe(`FermiSlice`, () => {
     const plot = await mount_sized(FermiSlice, props, { selector: `.fermi-slice` })
     await tick()
     for (const label of labels) expect(plot.textContent).toContain(label)
+  })
+})
+
+describe(`FermiSlice linked views`, () => {
+  // `bound` props are two-way bound (see bind_props)
+  const mount_slice = async (props: Record<string, unknown>, bound = {}) => {
+    const plot = await mount_sized(
+      FermiSlice,
+      bind_props({ fermi_data: create_mock_fermi_data([0]), distance: 0.05, ...props }, bound),
+      { selector: `.fermi-slice` },
+    )
+    await tick()
+    return plot
+  }
+
+  // A k-point from the 3D viewer projects onto the (001) plane at z = 0.05: filled on the plane,
+  // a dashed ring with its offset in the title when off it
+  test.each([
+    { marker: [0.2, -0.1, 0.05] as Vec3, on_plane: true, title: /On the slice plane/ },
+    { marker: [0.2, -0.1, 0.45] as Vec3, on_plane: false, title: /0\.4 Å⁻¹ off/ },
+  ])(`marks $marker (on plane: $on_plane)`, async ({ marker, on_plane, title }) => {
+    const circle = (await mount_slice({ marker })).querySelector(`circle.fermi-marker`)
+    expect(circle?.classList.contains(`on_plane`)).toBe(on_plane)
+    expect(circle?.textContent).toMatch(title)
+  })
+
+  // selected_bands hides the other bands' contours (the 3D viewer's band toggles); the cursor
+  // maps back to the Cartesian k on the plane (normal·k = distance)
+  test(`filters contours by selected_bands and binds hovered_k on the plane`, async () => {
+    const props: { hovered_k: Vec3 | null } = { hovered_k: null }
+    const fermi_data = create_mock_fermi_data([0, 1, 2])
+    const plot = await mount_slice({ fermi_data, selected_bands: [1] }, props)
+    const drawn = [...plot.querySelectorAll(`g[data-series-id^="iso-"]`)]
+    expect(drawn.map((group) => group.getAttribute(`data-series-id`))).toEqual([`iso-1-0`])
+    const rect = plot.querySelector(`rect[role="presentation"]`)
+    rect?.dispatchEvent(
+      new PointerEvent(`pointermove`, { clientX: 120, clientY: 90, bubbles: true }),
+    )
+    expect(props.hovered_k?.[2]).toBeCloseTo(0.05, 12)
+    rect?.dispatchEvent(new PointerEvent(`pointerleave`))
+    expect(props.hovered_k).toBeNull()
   })
 })

@@ -8,9 +8,9 @@
   import type { Vec3 } from '#lib/math.js'
   import type {
     IrRamanOptions,
-    PhononExplorerView,
     PhononModeDataset,
     PhononModeSelection,
+    SpectrumKind,
   } from '#lib/spectral/index.js'
   import {
     DEFAULT_PHONON_AMPLITUDE,
@@ -20,7 +20,6 @@
     default_phonon_mode_selection,
     parse_born,
     parse_phonon_modes,
-    phonon_explorer_views,
     PhononModeExplorer,
     qpoint_has_eigenvectors,
     spectrum_from_phonon_data,
@@ -205,7 +204,7 @@
 
   type ExplorerState = {
     selection?: PhononModeSelection
-    view?: PhononExplorerView
+    spectrum_kind: SpectrumKind
     amplitude: number
     supercell: Vec3
     fps: number
@@ -213,7 +212,7 @@
   }
   const initial_state = (dataset: PhononModeDataset): ExplorerState => ({
     selection: default_phonon_mode_selection(dataset.modes),
-    view: phonon_explorer_views(dataset.modes, dataset.spectrum)[0],
+    spectrum_kind: `ir`,
     amplitude: DEFAULT_PHONON_AMPLITUDE,
     supercell: [...DEFAULT_PHONON_SUPERCELL],
     fps: DEFAULT_PHONON_FPS,
@@ -227,7 +226,7 @@
   let selected_fixture = $state.raw<ModeFixture>()
   let fixture_loading = $state(false)
   let selection = $state<PhononModeSelection>()
-  let view = $state<PhononExplorerView>()
+  let spectrum_kind = $state<SpectrumKind>(`ir`)
   let amplitude = $state(DEFAULT_PHONON_AMPLITUDE)
   let supercell = $state<Vec3>([...DEFAULT_PHONON_SUPERCELL])
   let fps = $state(DEFAULT_PHONON_FPS)
@@ -294,7 +293,7 @@
   const index_value = (index?: number): string =>
     index === undefined ? `` : String(index + 1)
   const apply_explorer_state = (next_state: ExplorerState): void => {
-    ;({ selection, view, amplitude, supercell, fps, show_vectors } = next_state)
+    ;({ selection, spectrum_kind, amplitude, supercell, fps, show_vectors } = next_state)
   }
 
   const apply_url_state = async (params: QueryParams): Promise<void> => {
@@ -311,9 +310,9 @@
       next_state.selection = { qpoint_idx, mode_idx }
     }
 
-    const view_param = params.get(`view`)
-    const views = phonon_explorer_views(fixture.dataset.modes, fixture.dataset.spectrum)
-    next_state.view = views.find((candidate) => candidate === view_param) ?? next_state.view
+    if (params.get(`spectrum`) === `raman` && fixture.dataset.spectrum?.has_raman) {
+      next_state.spectrum_kind = `raman`
+    }
     next_state.amplitude = number_param(params, `amplitude`, DEFAULT_PHONON_AMPLITUDE, 0.02, 1)
     const supercell_param = params.get(`supercell`)
     try {
@@ -361,7 +360,7 @@
         index_value(selection?.[key]),
         index_value(default_state.selection?.[key]),
       ]),
-      [`view`, view ?? ``, default_state.view],
+      [`spectrum`, spectrum_kind, default_state.spectrum_kind],
       [`amplitude`, String(amplitude), String(DEFAULT_PHONON_AMPLITUDE)],
       [`supercell`, supercell.join(`x`), DEFAULT_PHONON_SUPERCELL.join(`x`)],
       [`fps`, String(fps), String(DEFAULT_PHONON_FPS)],
@@ -370,7 +369,7 @@
   }
 
   $effect(() => {
-    // while a fixture downloads, selection/view still belong to the previous one
+    // while a fixture downloads, selection/spectrum_kind still belong to the previous one
     if (!url_initialized || fixture_loading || !selected_fixture) return
     const explorer_entries = mode_fixture_url_entries(selected_fixture).map(
       (entry): UrlParamEntry => (uploaded_dataset ? [entry[0], ``] : entry),
@@ -446,7 +445,7 @@
       id="phonon-mode-explorer"
       dataset={active_dataset}
       bind:selection
-      bind:view
+      bind:spectrum_kind
       bind:amplitude
       bind:supercell
       bind:fps

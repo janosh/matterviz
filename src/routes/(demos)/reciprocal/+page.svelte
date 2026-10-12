@@ -48,6 +48,12 @@
       icon: FermiSurface,
     },
     {
+      label: `Fermi Surface + Bands`,
+      href: `/reciprocal/fermi-surface-bands`,
+      description: `Fermi surface beside the band structure of the same calculation: hover or click a band in one to find it in the other.`,
+      icon: FermiSurface,
+    },
+    {
       label: `Phonon Mode Explorer`,
       href: `/reciprocal/phonon-mode-explorer`,
       description: `Click phonon-band points to animate their atomic eigenvectors in a configurable 3D supercell.`,

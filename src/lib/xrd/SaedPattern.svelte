@@ -7,8 +7,12 @@
   // axes). Rather than ship a pattern that shears with the container, the geometry is laid out
   // here from one shared px-per-(1/Å) factor.
   import { format_num } from '#lib/labels.js'
+  import { is_activation_key } from '#lib/plot/core/interactions.js'
+  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { format_hkl, type HklFormat, type SaedPatternData } from './index'
+  import type { HklFormat, SaedPatternData, SaedSpot } from './index'
+  import { format_hkl } from './index'
   import { laue_zone_label, saed_pattern_radius } from './saed'
 
   let {
@@ -19,6 +23,8 @@
     spot_radius_range = [1.5, 9],
     show_scale_bar = true,
     margin = 28,
+    hovered_spot = $bindable(null),
+    selected_spot = $bindable(null),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     pattern: SaedPatternData
@@ -32,6 +38,11 @@
     spot_radius_range?: [number, number]
     show_scale_bar?: boolean
     margin?: number
+    // Spot under the pointer or keyboard focus, e.g. for a host to draw its (hkl) planes in a
+    // Structure looking down pattern.zone_axis (both refer to the input lattice)
+    hovered_spot?: SaedSpot | null
+    // Spot pinned by a click (or Enter/Space on a focused spot); activating it again unpins it
+    selected_spot?: SaedSpot | null
   } = $props()
 
   let width = $state(0)
@@ -79,6 +90,32 @@
   })
 
   const zone_text = $derived(`[${pattern.zone_axis.join(` `)}]`)
+
+  // Matched by hkl, not identity, so a pin survives a recomputed pattern (e.g. new thickness)
+  const hkl_key = (spot: SaedSpot | null): string => spot?.hkl.join(`,`) ?? ``
+  const selected_key = $derived(hkl_key(selected_spot))
+  const hovered_key = $derived(hkl_key(hovered_spot))
+  const toggle_selected = (spot: SaedSpot) => {
+    selected_spot = hkl_key(spot) === selected_key ? null : spot
+  }
+  // A new pattern hands back its own spot for the hovered and pinned hkl, or drops it once
+  // that reflection is gone (a removed circle never fires mouseleave)
+  const resolve_spot = (spot: SaedSpot | null): SaedSpot | null =>
+    spot && (pattern.spots.find((candidate) => hkl_key(candidate) === hkl_key(spot)) ?? null)
+  $effect.pre(() => {
+    void pattern
+    untrack(() => {
+      hovered_spot = resolve_spot(hovered_spot)
+      selected_spot = resolve_spot(selected_spot)
+    })
+  })
+
+  // One tab stop for all spots, arrow keys step through them strongest-first
+  let svg_element = $state<SVGSVGElement>()
+  const roving = create_roving_focus({
+    container: () => svg_element,
+    items: () => placed_spots,
+  })
 </script>
 
 <div
@@ -87,16 +124,44 @@
   {...rest}
   class={[`saed-pattern`, rest.class]}
 >
-  <svg {width} {height} role="img" aria-label="Electron diffraction pattern down {zone_text}">
+  <svg
+    bind:this={svg_element}
+    {width}
+    {height}
+    role="group"
+    aria-label="Electron diffraction pattern down {zone_text}"
+  >
     <!-- Direct beam (000), drawn as a ring so it is not mistaken for a reflection -->
     <circle class="direct-beam" cx={center.x} cy={center.y} r={max_radius * 0.9} />
-    {#each placed_spots as { spot, cx: center_x, cy: center_y, radius, opacity, label } (spot.hkl.join(`,`))}
+    {#each placed_spots as { spot, cx: center_x, cy: center_y, radius, opacity, label } (hkl_key(spot))}
+      {@const spot_key = hkl_key(spot)}
       <circle
         cx={center_x}
         cy={center_y}
         r={radius}
         {opacity}
-        class={['spot', { 'higher-zone': spot.laue_zone > 0 }]}
+        class="spot"
+        class:higher-zone={spot.laue_zone > 0}
+        class:selected={spot_key === selected_key}
+        class:hovered={spot_key === hovered_key}
+        role="button"
+        aria-label="{format_hkl(spot.hkl, `full`)}, {laue_zone_label(spot.laue_zone)}"
+        aria-pressed={spot_key === selected_key}
+        tabindex={roving.tabindex(spot_key)}
+        {...{ [ROVING_ATTR]: spot_key }}
+        onmouseenter={() => (hovered_spot = spot)}
+        onmouseleave={() => (hovered_spot = null)}
+        onfocusin={(event) => {
+          roving.focusin(event)
+          hovered_spot = spot
+        }}
+        onfocusout={() => (hovered_spot = null)}
+        onclick={() => toggle_selected(spot)}
+        onkeydown={(event) => {
+          if (roving.handle_keydown(event) || !is_activation_key(event)) return
+          event.preventDefault()
+          toggle_selected(spot)
+        }}
       >
         <title
           >{format_hkl(spot.hkl, `full`)} · {laue_zone_label(spot.laue_zone)}
@@ -143,9 +208,21 @@
   }
   .spot {
     fill: light-dark(#1c2b4a, #d8e4ff);
-  }
-  .spot.higher-zone {
-    fill: var(--accent-color, #4e79a7);
+    cursor: pointer;
+    outline: none;
+    stroke: var(--saed-highlight-color, #f28e2b);
+    stroke-width: 0;
+    &.higher-zone {
+      fill: var(--accent-color, #4e79a7);
+    }
+    &.hovered,
+    &:focus-visible {
+      stroke-width: 2;
+    }
+    &.selected {
+      stroke-width: 3;
+      opacity: 1;
+    }
   }
   .direct-beam {
     fill: none;

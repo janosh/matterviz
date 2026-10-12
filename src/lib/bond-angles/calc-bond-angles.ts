@@ -3,6 +3,7 @@
 // Third member of the local-structure family alongside #lib/rdf and #lib/coordination.
 
 import type { Vec3 } from '#lib/math.js'
+import { is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
@@ -256,3 +257,28 @@ export const calc_bond_angle_distribution = (
   structure: AnyStructure,
   options: BondAngleOptions = {},
 ): BondAngleData => bin_bond_angles(calc_bond_angles(structure, options), options)
+
+// Sites behind one histogram bar (bin `bin_idx`, optionally one triplet label): the sorted
+// centre atoms and outer atoms (base sites for neighbours across a cell boundary) of its angles
+export function bond_angle_bin_sites(
+  triplets: readonly BondAngleTriplet[],
+  options: Pick<BondAngleOptions, `bin_width` | `n_bins`> & {
+    bin_idx: number
+    triplet?: string
+  },
+): { site_indices: number[]; neighbor_indices: number[] } {
+  const { bin_idx, triplet: triplet_filter, ...bins } = options
+  const { n_bins, bin_width } = resolve_angle_bins(bins)
+  if (!is_valid_index(bin_idx, n_bins)) {
+    throw new Error(`bin_idx must be an integer in [0, ${n_bins}), got ${bin_idx}`)
+  }
+  const centers = new Set<number>()
+  const outers = new Set<number>()
+  for (const { center_idx, neighbor_idxs, triplet, angle } of triplets) {
+    if (triplet_filter !== undefined && triplet !== triplet_filter) continue
+    if (angle_bin_index(angle, n_bins, bin_width) !== bin_idx) continue
+    centers.add(center_idx)
+    for (const neighbor_idx of neighbor_idxs) outers.add(neighbor_idx)
+  }
+  return { site_indices: sorted_numbers(centers), neighbor_indices: sorted_numbers(outers) }
+}

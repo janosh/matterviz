@@ -22,6 +22,12 @@ const VECTOR_KEY_PREFIXES = [
   `dipole`,
 ] as const
 
+// Arrow size convention shared by every arrow renderer: negative sizes are fractions of
+// `ref_len` (the arrow's own length, or a common spacing for uniform thickness), positive
+// sizes are absolute Å
+export const resolve_arrow_size = (size: number, ref_len: number): number =>
+  size < 0 ? ref_len * -size : size
+
 const has_key_prefix = (key: string, prefix: string): boolean =>
   key === prefix || key.startsWith(`${prefix}_`)
 
@@ -251,7 +257,7 @@ export function prepare_vector_geometry(
   const auto_scale = effective_max > 1e-10 ? (spacing * 1.8) / effective_max : 1
   const global_scale = auto_scale * vector_scale
   const uniform_size = (size: number): number =>
-    vector_uniform_thickness && size < 0 ? spacing * -size : size
+    vector_uniform_thickness ? resolve_arrow_size(size, spacing) : size
   const layers = sources.map((source) => {
     const defaults = vector_display_defaults(source.key)
     return {
@@ -465,9 +471,7 @@ export function write_arrow_placement(
     rotations[idx * 4 + 3] = 1
     return
   }
-  const head_length = dimensions[2]
-  const head_len = head_length < 0 ? length * -head_length : head_length
-  const shaft_len = Math.max(0, length - head_len * 0.5)
+  const shaft_len = Math.max(0, length - resolve_arrow_size(dimensions[2], length) * 0.5)
   // Preserve the f64 shaft-visibility decision in the sign; the shader uses |length|.
   lengths[idx] = shaft_len > 0.01 ? length : -length
   // Quaternion.setFromUnitVectors(+Y, direction), including its antiparallel branch.

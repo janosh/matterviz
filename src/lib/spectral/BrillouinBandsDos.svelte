@@ -3,14 +3,14 @@
   import type { BrillouinZoneOptions } from '#lib/brillouin/index.js'
   import { BrillouinZone } from '#lib/brillouin/index.js'
   import { reciprocal_lattice } from '#lib/math.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math.js'
   import type { InternalPoint, ScatterHandlerEvent } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
-  import * as helpers from './helpers'
+  import { create_band_path_link } from './band-path-link.svelte'
   import { create_bands_dos_sync } from './synced-axes.svelte'
   import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
 
@@ -41,33 +41,18 @@
 
   const first_band_struct = $derived(Object.values(band_structs)[0])
 
-  // Convert fractional k-point coordinates to Cartesian reciprocal space
-  // using the structure's reciprocal lattice (consistent with BZ computation)
-  let k_path_points = $derived.by(() => {
-    if (!first_band_struct?.qpoints || !structure?.lattice?.matrix) return []
-
-    const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-    return helpers.extract_k_path_points(first_band_struct, k_lattice)
-  })
-
   let hovered_band_point = $state<InternalPoint | null>(null)
   let bands_x_positions = $state<Record<string, Vec2>>({})
-  let hovered_qpoint_index = $derived(
-    hovered_band_point && first_band_struct && Object.keys(bands_x_positions).length > 0
-      ? helpers.find_qpoint_at_rescaled_x(
-          first_band_struct,
-          hovered_band_point.x,
-          bands_x_positions,
-        )
-      : null,
-  )
-  // Q-point hovered directly on the BZ k-path (reverse direction: BZ -> bands/DOS)
-  let bz_hovered_qpoint_index = $state<number | null>(null)
-  // Unified hovered q-point: a band-point hover takes priority, else a BZ k-path hover
-  let active_qpoint_index = $derived(hovered_qpoint_index ?? bz_hovered_qpoint_index)
-  let hovered_k_point = $derived(
-    active_qpoint_index !== null ? (k_path_points[active_qpoint_index] as Vec3) : null,
-  )
+  // The k-path is the first structure's, in the structure's reciprocal lattice (as the BZ);
+  // points of further structures map onto it by x
+  const link = create_band_path_link({
+    band_struct: () => first_band_struct,
+    k_lattice: () =>
+      structure?.lattice?.matrix
+        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+        : undefined,
+    x_positions: () => bands_x_positions,
+  })
   const [desktop_width, tablet_width] = [1200, 600]
   let clientWidth = $state(desktop_width)
   let is_desktop = $derived(clientWidth >= desktop_width)
@@ -87,15 +72,13 @@
     sync_zoom: () => sync_y_zoom,
     base_padding: { t: 5, b: 50 },
   })
-
-  let hovered_frequency = $state<number | null>(null)
 </script>
 
 <div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
   {@render children?.({
-    hovered_frequency,
+    hovered_frequency: sync.hovered_frequency,
     hovered_band_point,
-    hovered_qpoint_index: active_qpoint_index,
+    hovered_qpoint_index: link.active_qpoint,
   })}
   <Bands
     {...bands_props}
@@ -110,10 +93,13 @@
     bind:view={sync.views[0]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
     bind:x_positions={bands_x_positions}
-    reference_frequency={hovered_frequency}
-    highlighted_qpoint_index={active_qpoint_index}
+    bind:hovered_frequency={sync.hovered.bands}
+    reference_frequency={sync.hovered_frequency}
+    highlighted_qpoint_index={link.active_qpoint}
+    highlighted_qpoint_range={link.highlighted_qpoint_range}
     on_point_hover={(event: ScatterHandlerEvent | null) => {
       hovered_band_point = event?.point ?? null
+      link.hover_band(event)
       bands_props.on_point_hover?.(event)
     }}
   />
@@ -123,13 +109,12 @@
     style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%; {bz_props.style ??
       ``}"
     {structure}
-    {k_path_points}
-    k_path_labels={first_band_struct
-      ? helpers.k_path_labels(first_band_struct, k_path_points)
-      : []}
-    {hovered_k_point}
-    hovered_qpoint_index={active_qpoint_index}
-    on_kpath_hover={(idx) => (bz_hovered_qpoint_index = idx)}
+    k_path_points={link.k_path_points}
+    k_path_labels={link.k_path_labels}
+    hovered_k_point={link.hovered_k_point}
+    hovered_qpoint_index={link.active_qpoint}
+    highlighted_qpoint_range={link.highlighted_qpoint_range}
+    on_kpath_hover={link.hover_path}
   />
 
   <Dos
@@ -144,8 +129,8 @@
     y_axis={sync.y_axes[1]}
     bind:view={sync.views[1]}
     bind:resolved_padding={() => undefined, sync.raise_padding}
-    bind:hovered_frequency
-    reference_frequency={hovered_frequency}
+    bind:hovered_frequency={sync.hovered.dos}
+    reference_frequency={sync.hovered_frequency}
     padding={{
       l: is_desktop ? 20 : undefined,
       r: is_mobile ? 0 : undefined,

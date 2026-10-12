@@ -1,6 +1,10 @@
-import { resolve_backdrop, resolve_css_color } from '#lib/colors/backdrop.svelte.js'
+import {
+  resolve_backdrop,
+  resolve_color_token,
+  resolve_css_color,
+} from '#lib/colors/backdrop.svelte.js'
 import { flushSync } from 'svelte'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 let roots: (() => void)[] = []
 
@@ -10,6 +14,7 @@ afterEach(() => {
   document.body.innerHTML = ``
   delete document.documentElement.dataset.theme
   document.documentElement.removeAttribute(`style`)
+  vi.restoreAllMocks() // even when an assertion threw mid-test
 })
 
 // Let the observer/storage callback land, then flush the effect it invalidated
@@ -74,6 +79,22 @@ test.each([
   const node = make_node(`--page-bg`, value)
   const backdrop = observe(() => resolve_backdrop(() => node))
   expect(backdrop.current).toBe(expected)
+})
+
+// Color-function tokens like light-dark() compute to that literal string, which only the browser
+// resolves. happy-dom can't, so a var() value and a stubbed probe style stand in for it.
+test(`resolve_color_token resolves color functions on a removed probe and passes colors through`, () => {
+  const node = make_node()
+  const real = globalThis.getComputedStyle
+  vi.spyOn(globalThis, `getComputedStyle`).mockImplementation((element) =>
+    element.tagName === `SPAN`
+      ? ({ color: `rgb(24, 23, 28)` } as CSSStyleDeclaration)
+      : real(element),
+  )
+  expect(resolve_color_token(node, `var(--surface)`)).toBe(`rgb(24, 23, 28)`)
+  expect(node.querySelector(`span`)).toBeNull()
+  expect(resolve_color_token(node, `#123456`)).toBe(`#123456`)
+  expect(resolve_color_token(node, `light-dark(#fff, #000)`)).toBe(`light-dark(#fff, #000)`)
 })
 
 test.each([

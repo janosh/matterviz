@@ -7,9 +7,11 @@
     update_ordered_atom_positions,
   } from './atom-instances'
   import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
+  import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
   import { format_num } from '#lib/labels.js'
@@ -66,6 +68,7 @@
     structure_fit_frame,
   } from '#lib/structure/index.js'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
+  import { resolve_arrow_size } from './vectors'
   import ArrowInstances from './ArrowInstances.svelte'
   import InstancedAtoms from './InstancedAtoms.svelte'
   import type { LatticePlane } from './lattice-planes'
@@ -166,6 +169,7 @@
     camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
     camera_direction = undefined,
+    camera_up = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
@@ -275,6 +279,7 @@
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
+    slice_polygon = [],
     supercell_tiling = [1, 1, 1],
     interactive = true,
     fly_to_request = $bindable(undefined),
@@ -307,6 +312,7 @@
     // When set (and camera_position is unset), auto-place the camera along this
     // direction from the structure center (used by the multi-side view for fixed angles)
     camera_direction?: Vec3
+    camera_up?: Vec3 // world direction drawn as screen up (default +y); not along camera_direction
     show_atoms?: boolean
     show_bonds?: ShowBonds
     defer_expensive_geometry?: boolean
@@ -419,6 +425,7 @@
     // Loaded volumetric datasets for isosurface rendering
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    slice_polygon?: Vec3[] // where a 2D volume slice cuts the cell (see slice_cell_polygon)
     // How many unit cells the displayed structure spans along a/b/c. Tiles the drawn cell
     // and the isosurface geometry; 1x1x1 until an applied supercell lands.
     supercell_tiling?: Vec3
@@ -1122,14 +1129,6 @@
     structure ? characteristic_atom_spacing(structure) : structure_size,
   )
 
-  // Uniform thickness turns negative (length-relative) arrow sizes into absolute ones scaled
-  // by the inter-atomic spacing; positive (already absolute) values pass through
-  const uniform_arrow_size = (size: number): number =>
-    vector_uniform_thickness && size < 0 ? char_atom_spacing * -size : size
-  let eff_shaft_radius = $derived(uniform_arrow_size(vector_shaft_radius))
-  let eff_head_radius = $derived(uniform_arrow_size(vector_arrow_head_radius))
-  let eff_head_length = $derived(uniform_arrow_size(vector_arrow_head_length))
-
   // Compute dynamic camera clipping planes based on structure size
   // This prevents z-fighting and disappearing objects when zooming in close on large supercells
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
@@ -1785,6 +1784,13 @@
     color: string
     radius: number
   }
+  // The default active color is a CSS custom property, which THREE.Color cannot parse (it
+  // warns and keeps its previous color), so let the browser resolve it where the canvas sits
+  const active_color = $derived(
+    active_sites.length > 0 && renderer.domElement.parentElement
+      ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
+      : active_highlight_color,
+  )
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
@@ -1801,7 +1807,7 @@
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
     for (const idx of selected_sites) add(`selected`, idx, selection_highlight_color)
-    for (const idx of active_sites) add(`active`, idx, active_highlight_color)
+    for (const idx of active_sites) add(`active`, idx, active_color)
     return targets
   })
 
@@ -1894,11 +1900,15 @@
     // displacement_arrow_scale multiplies on top of this.
     const auto_scale = max_mag > math.EPS ? (char_atom_spacing * 0.9) / max_mag : 1
     const scale = auto_scale * displacement_arrow_scale
+    // Uniform thickness turns negative (length-relative) sizes into absolute ones scaled by
+    // the inter-atomic spacing; positive (already absolute) values pass through
+    const size = (value: number): number =>
+      vector_uniform_thickness ? resolve_arrow_size(value, char_atom_spacing) : value
     return pack_arrows(
       visible.map((arrow) => ({ ...arrow, scale, color: displacement_arrow_color })),
-      eff_shaft_radius,
-      eff_head_radius,
-      eff_head_length,
+      size(vector_shaft_radius),
+      size(vector_arrow_head_radius),
+      size(vector_arrow_head_length),
     )
   })
 
@@ -1995,6 +2005,7 @@
   zoom={scene_camera.zoom}
   near={camera_near}
   far={camera_far}
+  up={camera_up}
   orbit_props={scene_camera.orbit_props}
   {gizmo}
   bind:orbit_controls
@@ -2396,6 +2407,7 @@
           tiling={supercell_tiling}
         />
       {/if}
+      <SlicePlane polygon={slice_polygon} />
 
       <!-- Measurement overlays for measured sites -->
       {#if structure && measured_sites.length > 0}

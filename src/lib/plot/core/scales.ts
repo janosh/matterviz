@@ -54,8 +54,7 @@ const assert_tick_count = (count: number, requested: string, span: number): void
 }
 
 // Dedupe and sort numeric array (used in tick generation)
-const dedupe_sort = (arr: number[]): number[] =>
-  [...new Set(arr)].toSorted((left_value, right_value) => left_value - right_value)
+const dedupe_sort = (arr: number[]): number[] => math.sorted_numbers(new Set(arr))
 
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and

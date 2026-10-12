@@ -9,7 +9,7 @@ import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { mount, unmount } from 'svelte'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { drift_positions } from './helpers'
 
@@ -80,4 +80,22 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
   } finally {
     await unmount(component)
   }
+})
+
+// Fits belong to their curve: hovering `Li fit` in the legend reports Li like `Li` itself
+it(`MsdPlot reports the element curve under a legend entry`, async () => {
+  const on_curve_hover = vi.fn()
+  const result = calc_msd({ ...drift_positions(), elements: [`Li`, `Si`] })
+  mount(MsdPlot, {
+    target: document.body,
+    props: { result, on_curve_hover, style: `width: 400px; height: 300px` },
+  })
+  await settle()
+  const items = [...document.querySelectorAll(`.legend-item`)]
+  for (const label of [`Li (1 atoms)`, `Li fit`, `Si (1 atoms)`]) {
+    const item = items.find((node) => node.textContent?.includes(label))
+    item?.dispatchEvent(new MouseEvent(`mouseenter`))
+    item?.dispatchEvent(new MouseEvent(`mouseleave`))
+  }
+  expect(on_curve_hover.mock.calls.flat()).toEqual([`Li`, null, `Li`, null, `Si`, null])
 })

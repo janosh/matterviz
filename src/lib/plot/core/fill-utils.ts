@@ -5,7 +5,7 @@
 // overlap), inserted endpoints are evaluated on a monotone-cubic approximation: sub-pixel for
 // monotoneX/linear/step, but natural/basis/catmullRom edges can deviate more at the clip points.
 
-import { partition_point, type Vec2 } from '#lib/math.js'
+import { partition_point, sorted_numbers, type Vec2 } from '#lib/math.js'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -405,7 +405,7 @@ function where_intervals(
     const last = partition_point(points, (point) => point.x < end_x)
     for (let idx = first; idx < last; idx++) knots.add(points[idx].x)
   }
-  const grid = [...knots].toSorted((left, right) => left - right)
+  const grid = sorted_numbers(knots)
 
   const intervals: Vec2[] = []
   // carry the previous grid sample so each point's two evals + where() run once, not twice

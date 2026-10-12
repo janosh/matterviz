@@ -6,12 +6,14 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { read_text_line } from '#lib/structure/parsers/vasp-header.js'
 import { is_plain_object, normalize_scientific_notation, to_error } from '#lib/utils.js'
+import { DEFAULT_PROPERTY_NAME } from './constants'
 import type {
   BandEnergyGrid,
   BandGridData,
   FermiSurfaceData,
   FermiIsosurface,
   SpinChannel,
+  VertexProperties,
 } from './types'
 
 // Parse whitespace-separated floats from a line. Normalizes Fortran D-exponents
@@ -118,9 +120,16 @@ function parse_bxsf(content: string): BandGridData {
     n_bands,
   )
 
+  const band_numbers: number[] = []
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
     let band_line = reader.next()
     while (!band_line.startsWith(`BAND:`)) band_line = reader.next()
+    // `BAND: n` keeps the band's 1-based number in the full calculation
+    const band_number = Number(band_line.slice(`BAND:`.length))
+    if (!Number.isInteger(band_number) || band_number < 1) {
+      throw new Error(`BXSF band ${band_idx}: invalid band number in '${band_line}'`)
+    }
+    band_numbers.push(band_number)
 
     const energy_values = new Float64Array(total_points)
     const { count, end_pos } = parse_float_block(
@@ -143,6 +152,10 @@ function parse_bxsf(content: string): BandGridData {
     fermi_energy,
     n_bands,
     n_spins: 1,
+    // numbers repeated (each spin channel counted from 1) cannot identify bands: keep positions
+    ...(new Set(band_numbers).size === n_bands && {
+      band_indices: band_numbers.map((band_number) => band_number - 1),
+    }),
   }
 }
 
@@ -218,17 +231,101 @@ function parse_frmsf(content: string): BandGridData {
     n_spins: 1,
     periodic: true, // FRMSF stores k=i/n with no duplicated endpoint (unlike BXSF)
     grid_shift,
+    properties: parse_frmsf_colors(content, reader.position(), k_grid, n_bands),
   }
+}
+
+// Property names of a real, complex or 3D-vector FRMSF colour block, then its magnitude
+const FRMSF_NAMES = [[DEFAULT_PROPERTY_NAME], [`Re`, `Im`, `|z|`], [`x`, `y`, `z`, `|v|`]]
+
+// FermiSurfer's optional colour block after the energies: 1-3 values per grid point stored
+// component-major, [component][band][k] (checked on the Pb velocity sample, whose components
+// match the band-energy gradients); `nan` marks a missing value. A partial block or a fourth
+// component throws.
+function parse_frmsf_colors(
+  content: string,
+  start: number,
+  k_grid: Vec3,
+  n_bands: number,
+): BandGridData[`properties`] {
+  const n_points = k_grid[0] * k_grid[1] * k_grid[2]
+  const block_size = n_bands * n_points
+  const next_token = (pos: number) => content.slice(pos).trim().split(/\s/, 1)[0]
+  const blocks: Float64Array[] = []
+  // Each block parses from the whitespace before it, so a text line there ends it as in
+  // parse_float_block rather than reading as an unreadable number
+  let pos = start
+  while (next_token(pos)) {
+    if (blocks.length === 3) {
+      throw new Error(
+        `FRMSF colour block: more than 3 values per grid point at '${next_token(pos)}'`,
+      )
+    }
+    const block = new Float64Array(block_size)
+    const { count, end_pos } = parse_float_block(content, pos, block_size, block, 0, true)
+    if (count < block_size) {
+      const after = next_token(end_pos)
+      const followed_by = after ? ` followed by '${after}'` : ``
+      throw new Error(
+        `FRMSF colour block component ${blocks.length + 1}: expected ${block_size} values ` +
+          `(${n_bands} bands on ${k_grid.join(`×`)}), got ${count}${followed_by}`,
+      )
+    }
+    blocks.push(block)
+    pos = end_pos
+  }
+  if (blocks.length === 0) return undefined
+
+  // Band b of component c is a view into its block; only the magnitude is computed
+  const band_grids = (block: Float64Array) =>
+    Array.from({ length: n_bands }, (_, band_idx) =>
+      make_band_grid(block.subarray(band_idx * n_points, (band_idx + 1) * n_points), k_grid),
+    )
+  const names = FRMSF_NAMES[blocks.length - 1]
+  const properties = Object.fromEntries(
+    blocks.map((block, comp_idx) => [names[comp_idx], [band_grids(block)]]),
+  )
+  if (blocks.length > 1) {
+    const magnitude = Float64Array.from({ length: block_size }, (_, idx) =>
+      Math.sqrt(blocks.reduce((sum_sq, block) => sum_sq + block[idx] ** 2, 0)),
+    )
+    properties[names[blocks.length]] = [band_grids(magnitude)]
+  }
+  return properties
 }
 
 // === JSON ===
 
-// Mesh fields as JSON producers (IFermi, pymatviz, our own exports) emit them
+// Mesh fields as JSON producers (IFermi, pymatviz, our own exports) emit them. `properties`
+// is one value per vertex, either a single unnamed array or arrays keyed by name (null for a
+// vertex without a value, as JSON has no NaN)
 interface JsonMesh {
   vertices: number[][]
   faces: number[][]
   normals?: number[][]
-  properties?: number[]
+  properties?: (number | null)[] | Record<string, (number | null)[]>
+}
+
+// Typed per-vertex properties of a JSON mesh; arrays of the wrong length throw rather than
+// colour the wrong vertices
+function vertex_properties_from_json(
+  properties: JsonMesh[`properties`],
+  n_vertices: number,
+): VertexProperties | undefined {
+  if (properties == null) return undefined
+  const named = Array.isArray(properties)
+    ? { [DEFAULT_PROPERTY_NAME]: properties }
+    : properties
+  return Object.fromEntries(
+    Object.entries(named).map(([name, values]) => {
+      if (!Array.isArray(values) || values.length !== n_vertices) {
+        throw new Error(
+          `Property '${name}' must hold one value per vertex (${n_vertices}), got ${Array.isArray(values) ? values.length : typeof values}`,
+        )
+      }
+      return [name, Float32Array.from(values, (value) => value ?? NaN)]
+    }),
+  )
 }
 
 const is_number_rows = (value: unknown, width: number): value is number[][] =>
@@ -256,7 +353,7 @@ function isosurface_from_json(
   let n_indices = 0
   for (const face of faces) {
     for (const idx of face) {
-      if (!Number.isInteger(idx) || idx < 0 || idx >= n_vertices) {
+      if (!math.is_valid_index(idx, n_vertices)) {
         throw new RangeError(`Face references vertex ${idx} of a ${n_vertices}-vertex mesh`)
       }
     }
@@ -272,8 +369,7 @@ function isosurface_from_json(
     mesh.normals?.length === n_vertices
       ? Float32Array.from(mesh.normals.flat())
       : compute_vertex_normals(positions, indices)
-  const properties =
-    mesh.properties?.length === n_vertices ? Float32Array.from(mesh.properties) : undefined
+  const properties = vertex_properties_from_json(mesh.properties, n_vertices)
 
   return { positions, indices, normals, properties, band_index, spin }
 }
@@ -313,8 +409,12 @@ const fermi_surface_from_json = (json: FermiSurfaceJson): FermiSurfaceData => ({
   ),
 })
 
-// BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays
-export type BandGridJson = Omit<BandGridData, `energies`> & { energies: number[][][][][] }
+// BandGridData as it appears in JSON: energies are nested [spin][band][kx][ky][kz] arrays,
+// properties the same per name with null for a missing value (JSON has no NaN)
+export type BandGridJson = Omit<BandGridData, `energies` | `properties`> & {
+  energies: number[][][][][]
+  properties?: Record<string, (number | null)[][][][][]>
+}
 
 // Validate the JSON BandGridData shape: non-empty energies grid, 3 k-grid dims, 3x3 k-lattice
 function is_valid_band_grid_json(obj: unknown): obj is BandGridJson {
@@ -340,26 +440,66 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
     )
   }
   const { k_grid } = json
-  const energies = json.energies.map((bands, spin_idx) => {
-    if (!Array.isArray(bands)) {
-      throw new TypeError(`BandGridData JSON: energies[${spin_idx}] is not an array of bands`)
-    }
-    return bands.map((band, band_idx) => {
-      if (!Array.isArray(band)) {
+  // Flatten one [spin][band][kx][ky][kz] field, null (JSON's NaN: no value) to NaN, which
+  // Float64Array.set would turn into 0
+  const flatten_bands = (field: unknown, label: string): BandEnergyGrid[][] => {
+    if (!Array.isArray(field))
+      throw new TypeError(`BandGridData JSON: ${label} is not an array`)
+    return field.map((bands, spin_idx) => {
+      if (!Array.isArray(bands)) {
         throw new TypeError(
-          `BandGridData JSON: energies[${spin_idx}][${band_idx}] is not a [kx][ky][kz] grid`,
+          `BandGridData JSON: ${label}[${spin_idx}] is not an array of bands`,
         )
       }
-      const grid = flatten_grid(band)
-      if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
-        throw new Error(
-          `BandGridData JSON: energies[${spin_idx}][${band_idx}] has shape ${grid.dims.join(`×`)} but k_grid is ${k_grid.join(`×`)}`,
+      return bands.map((band, band_idx) => {
+        const at = `${label}[${spin_idx}][${band_idx}]`
+        if (!Array.isArray(band)) {
+          throw new TypeError(`BandGridData JSON: ${at} is not a [kx][ky][kz] grid`)
+        }
+        const grid = flatten_grid(
+          band.map((plane: (number | null)[][]) =>
+            plane.map((row) => row.map((val) => val ?? NaN)),
+          ),
         )
-      }
-      return grid
+        if (grid.dims.some((dim, axis) => dim !== k_grid[axis])) {
+          throw new Error(
+            `BandGridData JSON: ${at} has shape ${grid.dims.join(`×`)} but k_grid is ${k_grid.join(`×`)}`,
+          )
+        }
+        return grid
+      })
     })
-  })
-  return { ...json, energies }
+  }
+  const energies = flatten_bands(json.energies, `energies`)
+  const layout = (field: BandEnergyGrid[][]) => field.map((bands) => bands.length).join(`/`)
+  const properties =
+    json.properties &&
+    Object.fromEntries(
+      Object.entries(json.properties).map(([name, field]) => {
+        const bands = flatten_bands(field, `properties.${name}`)
+        if (layout(bands) !== layout(energies)) {
+          throw new Error(
+            `BandGridData JSON: properties.${name} needs the [spin][band] layout of energies`,
+          )
+        }
+        return [name, bands]
+      }),
+    )
+  const band_indices = json.band_indices ?? []
+  if (json.band_indices && energies.some((bands) => bands.length !== band_indices.length)) {
+    throw new Error(
+      `BandGridData JSON: band_indices lists ${band_indices.length} bands but energies hold ${layout(energies)}`,
+    )
+  }
+  const valid = band_indices.every(
+    (band_index) => Number.isInteger(band_index) && band_index >= 0,
+  )
+  if (!valid || new Set(band_indices).size !== band_indices.length) {
+    throw new Error(
+      `BandGridData JSON: band_indices must be distinct non-negative integers, got [${band_indices.join(`, `)}]`,
+    )
+  }
+  return { ...json, energies, properties }
 }
 
 // First non-zero number in a fallback chain (an explicit 0 falls through like undefined)
@@ -457,6 +597,7 @@ function fermi_data_from_json(data: Record<string, unknown>): FermiSurfaceData |
     return band_grid_from_json(
       {
         energies: band_structure.energies,
+        band_indices: band_structure.band_indices,
         k_grid: band_structure.k_grid ?? band_structure.kgrid,
         k_lattice: band_structure.k_lattice ?? band_structure.reciprocal_lattice,
         fermi_energy: band_structure.fermi_energy ?? band_structure.efermi ?? 0,
@@ -530,14 +671,15 @@ function ifermi_vertex_properties(
       counts[vert_idx]++
     }
   }
-  return Array.from(sums, (sum, vert_idx) => (counts[vert_idx] ? sum / counts[vert_idx] : 0))
+  // NaN marks a vertex no face touches: it has no value
+  return Array.from(sums, (sum, vert_idx) => (counts[vert_idx] ? sum / counts[vert_idx] : NaN))
 }
 
 // Parse IFermi's JSON output format
 function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   const isosurfaces_obj = data.isosurfaces as Record<string, IFermiIsosurface[]>
   const reciprocal_space = data.reciprocal_space as
-    | { reciprocal_lattice?: number[][] }
+    | { reciprocal_lattice?: number[][]; '@class'?: string }
     | undefined
 
   const k_lattice: Matrix3x3 = reciprocal_space?.reciprocal_lattice
@@ -571,7 +713,9 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
     isosurfaces,
     k_lattice,
     fermi_energy: 0, // IFermi surfaces are typically relative to Fermi level
-    reciprocal_cell: `wigner_seitz`, // IFermi typically uses Wigner-Seitz cells
+    // IFermi's ReciprocalCell is the Γ-centred parallelepiped, its WignerSeitzCell the zone
+    reciprocal_cell:
+      reciprocal_space?.[`@class`] === `ReciprocalCell` ? `parallelepiped` : `wigner_seitz`,
     metadata: {
       n_bands: band_indices.size,
       n_surfaces: isosurfaces.length,

@@ -8,16 +8,20 @@
   import { plural } from '#lib/labels.js'
   import { array_max } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { parse_structure_file } from '#lib/structure/parse.js'
   import { is_crystal } from '#lib/structure/validation.js'
+  import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
+  import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
   import {
     calculate_all_pair_rdfs,
     calculate_rdf,
     label_structures,
     rdf_baseline,
+    rdf_bin_sites,
   } from './index'
   import type { RdfEntry } from './index'
 
@@ -40,6 +44,8 @@
     drag_dropped = $bindable([]),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    on_bin_hover,
+    on_sites_hover,
     ...rest
   }: {
     patterns?: RdfEntry | RdfEntry[]
@@ -58,6 +64,12 @@
     error_msg?: string
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
     drag_dropped?: Crystal[]
+    // Hovered curve and r-grid bin (null for its legend entry); null once the pointer leaves
+    on_bin_hover?: (hover: { entry: RdfEntry; bin_idx: number | null } | null) => void
+    // Atoms behind the hovered curve of a structure computed here (not `patterns`): for an r
+    // bin, the centres (site_indices) and partners (neighbor_indices) of its pairs, found on
+    // hover so RDFs never store pair lists; for a legend entry, every atom of its element pair
+    on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } & Omit<ScatterPlotOptions, `children`> = $props()
 
   const drop_zone = file_drop_zone({
@@ -80,7 +92,8 @@
     },
   })
 
-  const entries = $derived.by(() => {
+  // Computed entries keep the structure they came from, for the atoms behind a hover
+  const entries = $derived.by((): (RdfEntry & { structure?: Crystal })[] => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
       ...label_structures(structures),
@@ -90,18 +103,56 @@
       return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
     })
 
-    const computed = struct_list.flatMap(({ struct, label }): RdfEntry[] => {
+    const computed = struct_list.flatMap(({ struct, label }) => {
       const options = { cutoff, n_bins, pbc }
-      if (mode === `full`) return [{ label, pattern: calculate_rdf(struct, options) }]
+      if (mode === `full`)
+        return [{ label, pattern: calculate_rdf(struct, options), structure: struct }]
       return calculate_all_pair_rdfs(struct, options).map((pair) => ({
         label: pair.element_pair?.join(`-`) ?? label,
         legend_group: label, // Group by structure name for multi-structure plots
         pattern: pair,
+        structure: struct,
       }))
     })
     // Explicitly supplied patterns come first, in the order they were given
     return [...(patterns ? [patterns].flat() : []), ...computed]
   })
+
+  // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
+  const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
+    const { structure, legend_group, label, pattern } = entries[entry_idx]
+    if (!structure) return null
+    const highlight = { label: legend_group ?? label, structure }
+    const element_pair = pattern.element_pair
+    if (bin_idx !== null) {
+      const options = { cutoff, n_bins, pbc, bin_idx, element_pair }
+      const { site_indices, neighbor_indices } = rdf_bin_sites(structure, options)
+      return [{ ...highlight, site_indices, neighbor_indices }]
+    }
+    // the full RDF's legend entry stands for every atom, which highlights nothing useful
+    return element_pair
+      ? [{ ...highlight, site_indices: element_site_indices(structure, element_pair) }]
+      : null
+  }
+  const report_hover = on_change(
+    ([entry_idx, bin_idx]: [number | null, number | null]) =>
+      entry_idx === null ? null : `${entry_idx}:${bin_idx}`,
+    ([entry_idx, bin_idx]) => {
+      on_bin_hover?.(entry_idx === null ? null : { entry: entries[entry_idx], bin_idx })
+      on_sites_hover?.(entry_idx === null ? null : hovered_sites(entry_idx, bin_idx))
+    },
+  )
+  const hover_props = $derived<Pick<ScatterPlotOptions, `on_point_hover` | `legend`>>(
+    on_bin_hover || on_sites_hover
+      ? {
+          ...series_hover_props((series_idx) => report_hover([series_idx, null]), rest),
+          on_point_hover: (event) => {
+            report_hover([event?.series_idx ?? null, event?.point.point_idx ?? null])
+            rest.on_point_hover?.(event)
+          },
+        }
+      : {},
+  )
 
   // array_max per curve, not Math.max(...all): a fine RDF grid over many pairs blows the
   // argument limit, and flattening every curve into one array to reduce it is wasted copies
@@ -162,6 +213,7 @@
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
     styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 400px;`}
+    {...hover_props}
     {@attach drop_zone}
   >
     {@render children?.({ drag_dropped })}

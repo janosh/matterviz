@@ -3,9 +3,15 @@
   import { open_material, type FileInfo } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
-  import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/index.js'
+  import type {
+    BandGridData,
+    FermiSurfaceData,
+    SliceShading,
+  } from '#lib/fermi-surface/index.js'
   import { FermiSlice, FermiSurface, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import type { Vec3 } from '#lib/math.js'
+  import { format_num } from '#lib/labels.js'
+  import { DEFAULTS } from '#lib/settings.js'
   import { fermi_file_paints, fermi_surface_files } from '#site/fermi-surfaces.js'
   import { file_param, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
@@ -31,6 +37,14 @@
   let loading = $state(false)
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
+  let slice_shading = $state<SliceShading | `none`>(`pockets`)
+  // Shared with the slice so its contours, shading and bands match the 3D view
+  let mu = $state(0)
+  let interpolation_factor = $state(DEFAULTS.fermi.interpolation_factor)
+  let selected_bands = $state<number[] | undefined>(undefined)
+  // Cursor on the slice → dot in 3D; hovered 3D point → marker in the slice
+  let slice_hovered_k = $state<Vec3 | null>(null)
+  let surface_hovered_k = $state<Vec3 | null>(null)
 
   const load_file = async (file: FileInfo) => {
     if (!file.url) return
@@ -100,6 +114,14 @@
   bind:band_data
   bind:error_msg
   bind:loading
+  bind:mu
+  bind:interpolation_factor
+  bind:selected_bands
+  k_marker={show_slice ? slice_hovered_k : null}
+  on_point_hover={(hover) => (surface_hovered_k = hover?.position_cartesian ?? null)}
+  slice_plane={show_slice
+    ? { miller_indices: slice_miller, distance: slice_distance }
+    : undefined}
   show_controls="hover"
   on_file_load={({ source_filename }) => {
     error_msg = undefined
@@ -121,10 +143,32 @@
       <label>
         d:
         <input type="range" bind:value={slice_distance} min="-1" max="1" step="0.05" />
-        <code>{slice_distance.toFixed(2)}</code>
+        <code>{format_num(slice_distance, `.2f`)}</code>
       </label>
+      {#if band_data}
+        <label>
+          Shading
+          <select bind:value={slice_shading}>
+            <option value="pockets">Pockets (holes hatched)</option>
+            <option value="occupied">Occupied side</option>
+            <option value="energy">ε − E_F</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+      {/if}
     </header>
-    <FermiSlice {fermi_data} miller_indices={slice_miller} distance={slice_distance} />
+    <FermiSlice
+      {fermi_data}
+      {band_data}
+      {mu}
+      {interpolation_factor}
+      {selected_bands}
+      shading={slice_shading}
+      marker={surface_hovered_k}
+      bind:hovered_k={slice_hovered_k}
+      miller_indices={slice_miller}
+      distance={slice_distance}
+    />
   </section>
 {/if}
 

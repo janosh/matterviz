@@ -11,6 +11,7 @@ import {
 } from 'd3-sankey'
 import type { SankeyLink as D3Link, SankeyNode as D3Node } from 'd3-sankey'
 import type { Vec2 } from '#lib/math.js'
+import { is_valid_index } from '#lib/math.js'
 import type { Orientation } from '#lib/plot/core/types.js'
 import type { SankeyData, SankeyLink, SankeyNode, SankeyNodeAlign } from './sankey-types'
 import { DEFAULTS } from '#lib/settings.js'
@@ -81,9 +82,7 @@ function resolve_node_ref(
 ): number {
   const by_id = id_to_idx.get(ref)
   if (by_id !== undefined) return by_id
-  if (typeof ref === `number` && Number.isInteger(ref) && ref >= 0 && ref < n_nodes) {
-    return ref
-  }
+  if (typeof ref === `number` && is_valid_index(ref, n_nodes)) return ref
   throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
 }
 

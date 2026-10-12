@@ -728,13 +728,19 @@ describe(`ScatterPlot`, () => {
     const mount_canvas = (props: Partial<ComponentProps<typeof ScatterPlot>> = {}) =>
       mount_sized_scatter_plot({ series: [dense], marker_renderer: `canvas`, ...props })
     test.each([
-      [`auto`, false, 40],
-      [`svg`, false, 40],
-      [`canvas`, true, 0],
-    ] as const)(`selects the %s marker layer`, async (marker_renderer, canvas, svg_count) => {
-      const plot = await mount_sized_scatter_plot({ series: [dense], marker_renderer })
+      [`auto`, 40, false],
+      [`svg`, 40, false],
+      [`canvas`, 40, true],
+      [`auto`, 1000, false],
+      [`auto`, 1001, true],
+    ] as const)(`%s, %i points: canvas %s`, async (renderer, n_points, canvas) => {
+      const coords = Array.from({ length: n_points }, (_, idx) => idx)
+      const plot = await mount_sized_scatter_plot({
+        series: [{ x: coords, y: coords }],
+        marker_renderer: renderer,
+      })
       expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
-      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(svg_count)
+      expect(plot.querySelectorAll(`path.marker`)).toHaveLength(canvas ? 0 : n_points)
     })
 
     test(`renders SVG overlays without redrawing the base canvas on hover`, async () => {
@@ -861,34 +867,45 @@ describe(`ScatterPlot`, () => {
       expect(arc).not.toHaveBeenCalled()
     })
 
-    test(`keeps canvas markers with click handlers and routes clicks to the nearest point`, async () => {
-      const on_point_click = vi.fn()
-      const on_plot_click = vi.fn()
-      const plot = await mount_canvas({
-        on_point_click,
-        on_plot_click,
-        point_tween: { duration: 0 },
-      })
-      expect(plot.querySelector(`canvas.marker-canvas`)).not.toBeNull()
-      const svg = plot_svg(plot)
-      stub_svg_rect(svg)
-      // the keyboard cursor draws point 5's overlay, which tells us where it sits on screen
-      for (let step = 0; step < 5; step++) svg.dispatchEvent(keydown(`ArrowRight`))
-      await tick()
-      const position = marker_position(plot, 0)
-      // the click goes to the plot surface itself, not to that overlay marker
-      svg.dispatchEvent(mouse(`mousemove`, { clientX: position.x + 2, clientY: position.y }))
-      await next_animation_frame()
-      expect(svg.style.cursor).toBe(`pointer`)
-      click_at(svg, { x: position.x + 2, y: position.y })
-      expect(on_point_click).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ x: dense.x[4], y: dense.y[4], point: expect.anything() }),
-      )
-      expect(on_plot_click).not.toHaveBeenCalled()
-      // a click far from every point activates nothing
-      click_at(svg, { x: 1, y: 1 })
-      expect(on_point_click).toHaveBeenCalledOnce()
-    })
+    // a line-only copy painted first ties every marker: its unmarked points must not win clicks
+    test.each([
+      { desc: `markers only`, series: [dense], series_idx: 0 },
+      {
+        desc: `under a line-only copy`,
+        series: [{ ...dense, markers: `line` as const }, dense],
+        series_idx: 1,
+      },
+    ])(
+      `keeps canvas markers with click handlers and routes clicks to the nearest marker ($desc)`,
+      async ({ series, series_idx }) => {
+        const on_point_click = vi.fn()
+        const on_plot_click = vi.fn()
+        const plot = await mount_canvas({
+          series,
+          on_point_click,
+          on_plot_click,
+          point_tween: { duration: 0 },
+          // its overlay tells us where marker 4 sits on screen
+          selected_point: { series_idx, point_idx: 4 },
+        })
+        expect(plot.querySelector(`canvas.marker-canvas`)).not.toBeNull()
+        const svg = plot_svg(plot)
+        stub_svg_rect(svg)
+        const position = marker_position(plot, 0)
+        // the click goes to the plot surface itself, not to that overlay marker
+        svg.dispatchEvent(mouse(`mousemove`, { clientX: position.x + 2, clientY: position.y }))
+        await next_animation_frame()
+        expect(svg.style.cursor).toBe(`pointer`)
+        click_at(svg, { x: position.x + 2, y: position.y })
+        expect(on_point_click).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ x: dense.x[4], y: dense.y[4], series_idx }),
+        )
+        expect(on_plot_click).not.toHaveBeenCalled()
+        // a click far from every point activates nothing
+        click_at(svg, { x: 1, y: 1 })
+        expect(on_point_click).toHaveBeenCalledOnce()
+      },
+    )
 
     test(`keeps SVG markers when point handlers require DOM events`, async () => {
       const on_keydown = vi.fn()
@@ -932,6 +949,42 @@ describe(`ScatterPlot`, () => {
       expect(handler_props?.cx).toBeCloseTo(coord_x)
       expect(handler_props?.cy).toBeCloseTo(coord_y)
     })
+
+    test(`paints link-dimmed markers first at 0.25 alpha, highlighted ones on top`, async () => {
+      const fill_alphas: number[] = []
+      const ctx = mock_canvas_context({ fill: vi.fn(() => fill_alphas.push(ctx.globalAlpha)) })
+      // p0 and p1 lead the data, so data order alone would paint them first
+      const point_ids = dense.x.map((idx) => `p${idx}`)
+      await mount_canvas({ series: [{ ...dense, point_ids }], highlighted_ids: [`p0`, `p1`] })
+      expect(fill_alphas).toEqual([...Array.from({ length: 38 }, () => 0.25), 1, 1])
+    })
+  })
+
+  test(`highlighted_ids dims keyed points outside the set and follows updates`, async () => {
+    const keyed = { x: [1, 2, 3, 4], y: [4, 1, 3, 2], point_ids: [`a`, `b`, 3, `d`] }
+    const state = $state<Pick<ComponentProps<typeof ScatterPlot>, `highlighted_ids`>>({
+      highlighted_ids: null,
+    })
+    const series = [keyed, { x: [1.5, 2.5], y: [2, 3] }]
+    const plot = await mount_sized_scatter_plot(
+      bind_props({ series, marker_renderer: `svg` as const }, state),
+    )
+    // x = dimmed marker; unkeyed points (the last two) never dim, an empty set dims all keyed ones
+    for (const [highlighted_ids, expected] of [
+      [null, `......`],
+      [[`b`, 3], `x..x..`],
+      [new Set([`a`]), `.xxx..`],
+      [[], `xxxx..`],
+    ] as const) {
+      state.highlighted_ids = highlighted_ids
+      flushSync()
+      await tick()
+      const markers = [...plot.querySelectorAll(`g[data-series-id] path.marker`)]
+      const dimmed = markers.map((marker) =>
+        marker.classList.contains(`is-dimmed`) ? `x` : `.`,
+      )
+      expect(dimmed.join(``)).toBe(expected)
+    }
   })
 
   test.each([
@@ -2061,30 +2114,38 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
-  // x mode ignores vertical distance, except to break ties between duplicate x-values
+  // x mode ignores vertical distance, except to break ties between duplicate x-values. y mode is
+  // the transposed rule (a spectrum with a vertical frequency axis) and scans every series.
   const peak = [0, 1, 0]
   test.each([
-    { label: `ascending`, x_values: [0, 1, 2], y_values: peak, target_idx: 1 },
-    { label: `descending`, x_values: [2, 1, 0], y_values: peak, target_idx: 1 },
-    { label: `unordered`, x_values: [0, 2, 1], y_values: peak, target_idx: 2 },
-    { label: `duplicate-x`, x_values: [1, 1, 1], y_values: [0, 0.5, 1], target_idx: 2 },
-  ])(
-    `x hover finds the nearest $label point`,
-    async ({ label, x_values, y_values, target_idx }) => {
+    { mode: `x`, label: `ascending`, x_values: [0, 1, 2], y_values: peak, target_idx: 1 },
+    { mode: `x`, label: `descending`, x_values: [2, 1, 0], y_values: peak, target_idx: 1 },
+    { mode: `x`, label: `unordered`, x_values: [0, 2, 1], y_values: peak, target_idx: 2 },
+    { mode: `x`, label: `tied-x`, x_values: [1, 1, 1], y_values: [0, 0.5, 1], target_idx: 2 },
+    { mode: `y`, label: `ascending`, x_values: peak, y_values: [0, 0.5, 1], target_idx: 1 },
+    { mode: `y`, label: `unordered`, x_values: peak, y_values: [0, 1, 0.5], target_idx: 2 },
+  ] as const)(
+    `$mode hover finds the nearest $label point`,
+    async ({ mode, label, x_values, y_values, target_idx }) => {
       const on_point_hover = vi.fn()
       const plot = await mount_sized_scatter_plot({
-        series: [{ x: x_values, y: y_values, markers: `points` }],
+        series: [{ x: [...x_values], y: [...y_values], markers: `points` }],
         x_axis: { range: [0, 2] },
         y_axis: { range: [0, 1] },
-        hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+        hover_config: { mode, threshold_px: 5, show_tooltip: false },
         point_tween: { duration: 0 },
         on_point_hover,
         legend: null,
       })
-      // hover far above/below distinct-x targets
-      const { y: coord_y } = marker_position(plot, target_idx)
-      const delta_y = label === `duplicate-x` ? 0 : (coord_y < 150 ? 290 : 10) - coord_y
-      await move_to_marker(plot, target_idx, { dy: delta_y })
+      // hover far off-axis from distinct targets
+      const { x: coord_x, y: coord_y } = marker_position(plot, target_idx)
+      const offset =
+        label === `tied-x`
+          ? {}
+          : mode === `x`
+            ? { dy: (coord_y < 150 ? 290 : 10) - coord_y }
+            : { dx: (coord_x < 200 ? 390 : 10) - coord_x }
+      await move_to_marker(plot, target_idx, offset)
 
       expect(on_point_hover).toHaveBeenCalledOnce()
       expect(on_point_hover.mock.calls[0][0]).toMatchObject({

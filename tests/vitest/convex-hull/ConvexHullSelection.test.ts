@@ -693,4 +693,43 @@ describe(`magnetic ordering rendering (ConvexHull)`, () => {
     // a monotone spline would emit cubic (C) commands; facets must be M followed by L only
     expect(hull_path).toMatch(/^M[-\d.,]+(?:L[-\d.,]+){4}$/)
   })
+
+  // Linked views: a selected entry above the hull is tied by dashed lines to the stable phases
+  // it decomposes into (LiO2 = 2/3 LiO + 1/3 O by atoms); annotations add solid lines and rings
+  test(`binary hull draws the decomposition and host annotations`, async () => {
+    const lio2 = { ...compound({ Li: 1, O: 2 }, `lio2`, 0.2), e_form_per_atom: -0.2 }
+    const entries: PhaseData[] = [
+      { ...compound({ Li: 1 }, `ref-li`, 0), e_form_per_atom: 0 },
+      { ...compound({ O: 1 }, `ref-o`, 0), e_form_per_atom: 0 },
+      { ...compound({ Li: 1, O: 1 }, `lio`, 0), e_form_per_atom: -0.6 },
+      lio2,
+    ]
+    const annotations = {
+      lines: [
+        {
+          from: { composition: { Li: 1 }, e_form: 0 },
+          to: { composition: { O: 1 }, e_form: 0 },
+        },
+      ],
+      marks: [
+        { composition: { Li: 1, O: 3 }, e_form: -0.1, label: `mixing point` },
+        { composition: { Na: 1 }, e_form: 0, label: `outside` }, // skipped with a warning
+      ],
+    }
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const plot = await mount_sized(
+      ConvexHull,
+      { entries, selected_entry: lio2, annotations },
+      { selector: `.scatter`, on_mount: track_component },
+    )
+    const count = (selector: string) =>
+      plot.querySelectorAll(`.hull-overlay ${selector}`).length
+    expect([count(`line[stroke-dasharray]`), count(`line:not([stroke-dasharray])`)]).toEqual([
+      2, 1,
+    ])
+    expect(
+      [...plot.querySelectorAll(`.hull-overlay text`)].map((node) => node.textContent),
+    ).toEqual([`67%`, `33%`, `mixing point`])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`{"Na":1} is outside the Li-O`))
+  })
 })

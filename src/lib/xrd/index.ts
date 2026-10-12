@@ -1,6 +1,8 @@
+import { PLOT_COLORS } from '#lib/colors/index.js'
 import type { CompositionType } from '#lib/composition/index.js'
 import { array_max, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
+import type { LatticePlane } from '#lib/structure/index.js'
 import type { RadiationKey } from './calc-xrd'
 
 export * from './broadening'
@@ -163,3 +165,29 @@ export interface PatternEntry {
   pattern: XrdPattern
   color?: string
 }
+
+// One stick of an XrdPlot, as reported by its hovered_peak / selected_peak bindings
+export type XrdPeak = {
+  pattern_idx: number // among the plotted entries
+  peak_idx: number // within that pattern
+  label: string // of the pattern
+  two_theta: number
+  // Intensity on the plot's scale (strongest peak over all patterns = 100)
+  intensity: number
+  // One representative hkl per family of reflections merged into this peak, in the basis
+  // of the input lattice the pattern was computed from (empty for measured patterns)
+  hkls: Hkl[]
+  d_spacing?: number
+}
+
+// Warm first (the first is the LatticePlanes default) to stand out against atom colours
+export const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
+
+// Lattice planes to overlay on a Structure for a diffraction peak or spot, one family per hkl
+// (a peak's hkls are distinct families coinciding in 2θ), one per color to keep the cell
+// readable. Unreduced: (200) draws planes d_200 apart, the spacing that diffracts. Valid only in
+// the input cell the indices refer to.
+export const diffraction_planes = (hkls: readonly Hkl[]): LatticePlane[] =>
+  hkls
+    .slice(0, DIFFRACTION_PLANE_COLORS.length)
+    .map((hkl, idx) => ({ hkl: [...hkl], color: DIFFRACTION_PLANE_COLORS[idx] }))

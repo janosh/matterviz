@@ -116,6 +116,26 @@ export const clamp = (value: number, lower: number, upper: number): number =>
 export const in_range = (value: number, [bound_a, bound_b]: Vec2): boolean =>
   value >= Math.min(bound_a, bound_b) && value <= Math.max(bound_a, bound_b)
 
+// Whether idx is an integer in [0, length), i.e. a valid index into that many items
+export const is_valid_index = (idx: number, length: number): boolean =>
+  Number.isInteger(idx) && idx >= 0 && idx < length
+
+// Ascending array of the given numbers, e.g. a Set of site indices
+export const sorted_numbers = (values: Iterable<number>): number[] =>
+  [...values].toSorted((val_a, val_b) => val_a - val_b)
+
+// Index of the value closest to `target` (ties go to the earlier index). Maps a hovered plot
+// position on a non-index axis (reaction coordinates, sampled frame numbers) back to its
+// nearest data point, where rounding would only be right if the axis were the index.
+export function nearest_value_idx(values: readonly number[], target: number): number {
+  if (values.length === 0) throw new Error(`nearest_value_idx got an empty array`)
+  return values.reduce(
+    (best, val, idx) =>
+      Math.abs(val - target) < Math.abs(values[best] - target) ? idx : best,
+    0,
+  )
+}
+
 // Index of the first value for which an initial-prefix predicate is false.
 export const partition_point = <Value>(
   values: ArrayLike<Value>,
@@ -999,6 +1019,62 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   const u_raw = subtract(ref_vec, scale(normal, dot(normal, ref_vec)))
   const u_vec = normalize_vec(u_raw, [0, 1, 0])
   return [u_vec, cross_3d(normal, u_vec)]
+}
+
+// === Plane sections ===
+
+// The 12 edges of the unit cube [0,1]³: each corner (bit 0 of its index sets x, bit 1 y, bit 2
+// z) joins, along each of its zero coordinates, the corner with that coordinate set to 1
+export const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = Array.from(
+  { length: 8 },
+  (_, idx): Vec3 => [idx & 1, (idx >> 1) & 1, (idx >> 2) & 1],
+).flatMap((corner) =>
+  corner.flatMap((val, dim) =>
+    val === 0 ? [[corner, corner.with(dim, 1) as Vec3] as const] : [],
+  ),
+)
+
+// Corners of the convex polygon where the plane normal·x = offset (normal need not be unit)
+// cuts a convex polyhedron given by its edges, counter-clockwise about `normal`. Empty when the
+// plane misses it or only touches a vertex or an edge. Endpoints with |normal·x − offset| <
+// plane_tol lie on the plane; corners closer than merge_tol merge.
+export function plane_polyhedron_section(
+  edges: readonly (readonly Vec3[])[],
+  normal: Vec3,
+  offset: number,
+  {
+    plane_tol = 1e-9 * Math.max(1, Math.abs(offset)),
+    merge_tol = 1e-7,
+  }: { plane_tol?: number; merge_tol?: number } = {},
+): Vec3[] {
+  const corners: Vec3[] = []
+  const push_unique = (point: Vec3) => {
+    if (!corners.some((corner) => euclidean_dist(corner, point) < merge_tol)) {
+      corners.push(point)
+    }
+  }
+  for (const [start, end] of edges) {
+    const start_dist = dot(normal, start) - offset
+    const end_dist = dot(normal, end) - offset
+    const start_on = Math.abs(start_dist) < plane_tol
+    const end_on = Math.abs(end_dist) < plane_tol
+    if (start_on) push_unique(start)
+    if (end_on) push_unique(end)
+    // An edge with an endpoint on the plane contributes only that endpoint: its crossing
+    // could land just beyond merge_tol of it (edges nearly parallel to the plane) and add a
+    // near-duplicate sliver corner
+    if (!start_on && !end_on && start_dist * end_dist < 0) {
+      push_unique(lerp_vec3(start, end, start_dist / (start_dist - end_dist)))
+    }
+  }
+  if (corners.length < 3) return []
+  const [axis_u, axis_v] = compute_in_plane_basis(normalize_vec(normal))
+  const center = scale(add(...corners), 1 / corners.length)
+  const angle = (point: Vec3) => {
+    const rel = subtract(point, center)
+    return Math.atan2(dot(rel, axis_v), dot(rel, axis_u))
+  }
+  return corners.toSorted((first, second) => angle(first) - angle(second))
 }
 
 // Merge coplanar adjacent triangles in a flat non-indexed position array.

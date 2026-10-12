@@ -1,4 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
+import { is_valid_index } from '#lib/math.js'
 import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight.js'
 import { validate_camera_flight } from '#lib/scene/camera-flight.js'
 import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
@@ -213,7 +214,7 @@ export function plan_movie(
 // Include both endpoints in the picture sequence; timestamps remain idx / fps. This also
 // makes a one-frame source useful for a full camera flight without synthesizing atom motion.
 export const movie_frame = (plan: MoviePlan, idx: number) => {
-  if (!Number.isInteger(idx) || idx < 0 || idx >= plan.video.frame_count)
+  if (!is_valid_index(idx, plan.video.frame_count))
     throw new RangeError(`Movie frame ${idx} is outside 0..${plan.video.frame_count - 1}`)
   const progress = plan.video.frame_count === 1 ? 0 : idx / (plan.video.frame_count - 1)
   return {

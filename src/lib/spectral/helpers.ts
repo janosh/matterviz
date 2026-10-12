@@ -4,17 +4,18 @@ import { is_plain_object } from '#lib/utils.js'
 import {
   array_extent,
   array_max,
+  create_frac_to_cart,
   dot,
   euclidean_dist,
   is_finite_matrix3x3,
-  mat3x3_vec3_multiply,
   min_image_displacement,
+  sorted_numbers,
   subtract,
-  transpose_3x3_matrix,
 } from '#lib/math.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
+import type { KPathLabel } from '#lib/brillouin/types.js'
 import type * as types from './types'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
@@ -26,15 +27,6 @@ export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e
     const delta = coordinate - second[axis]
     return Math.abs(delta - Math.round(delta)) < tolerance
   })
-
-export const phonon_explorer_views = (
-  data: types.PhononModeData,
-  spectrum?: types.VibrationalSpectrum,
-): types.PhononExplorerView[] => [
-  ...(data.path_segments.length ? ([`bands`] as const) : []),
-  ...(spectrum ? ([`ir`] as const) : []),
-  ...(spectrum?.has_raman ? ([`raman`] as const) : []),
-]
 
 // Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
@@ -337,16 +329,11 @@ function convert_pymatgen_band_structure(
   // Step lengths are Cartesian reciprocal-space distances |Mᵀ·Δq| (like pymatgen/phonopy);
   // a fractional metric would distort every non-cubic path. Transpose once, not per step.
   const recip_lattice = read_recip_lattice(pmg)
-  const recip_T = transpose_3x3_matrix(recip_lattice)
+  const frac_to_cart = create_frac_to_cart(recip_lattice)
   const steps = qpoints
     .slice(1)
     .map((qpoint, idx) =>
-      Math.hypot(
-        ...mat3x3_vec3_multiply(
-          recip_T,
-          subtract(qpoint.frac_coords, qpoints[idx].frac_coords),
-        ),
-      ),
+      Math.hypot(...frac_to_cart(subtract(qpoint.frac_coords, qpoints[idx].frac_coords))),
     )
   // Like pymatgen, any step between two labelled q-points is a segment boundary, not path: a
   // jump (`Z|X`) or the zero-length duplicate at a junction (`X, X`). Step size is no signal:
@@ -375,14 +362,14 @@ function convert_pymatgen_band_structure(
     // Branch boundaries are the path ends, every labeled q-point (Bands only draws tick labels
     // at branch ends, so a label mid-branch would vanish) and both sides of every jump. The
     // jump itself (the two-point span ending on a discontinuity index) is not a branch.
-    const boundaries = [
-      ...new Set([
+    const boundaries = sorted_numbers(
+      new Set([
         0,
         ...qpoints.flatMap((qpoint, idx) => (qpoint.label ? [idx] : [])),
         ...disc_indices.flatMap((idx) => [idx - 1, idx]),
         qpoints.length - 1,
       ]),
-    ].toSorted((left_value, right_value) => left_value - right_value)
+    )
     branches = boundaries.slice(1).flatMap((end_index, idx) => {
       const start_index = boundaries[idx]
       if (disc_set.has(end_index)) return []
@@ -557,7 +544,7 @@ export function frac_k_to_cartesian(
   wrap_to_bz = true,
 ): Vec3 {
   // k = Σ f_i b_i, i.e. Bᵀ·f with the b_i as rows of B
-  const cart = mat3x3_vec3_multiply(transpose_3x3_matrix(recip_lattice_matrix), frac_coords)
+  const cart = create_frac_to_cart(recip_lattice_matrix)(frac_coords)
   return wrap_to_bz ? fold_to_first_bz(cart, recip_lattice_matrix) : cart
 }
 
@@ -588,7 +575,7 @@ export function extract_k_path_points(
 export const k_path_labels = (
   band_struct: types.BaseBandStructure,
   k_path_points: Vec3[],
-): { position: Vec3; label: string | null }[] =>
+): KPathLabel[] =>
   k_path_points.map((position, idx) => {
     const label = band_struct.qpoints[idx]?.label
     return { position, label: label ? pretty_sym_point(label) : null }
@@ -632,6 +619,22 @@ export function qpoint_x_position(
     return x_start + ratio * (x_end - x_start)
   }
   return null
+}
+
+// First and last q-point index of the path branch (e.g. Γ→X) containing a q-point, for
+// highlighting the whole hovered segment in Bands and BrillouinZone. A symmetry point shared by
+// two branches belongs to the earlier one; discontinuity jumps are never a segment.
+export function branch_qpoint_range(
+  band_struct: types.BaseBandStructure,
+  qpoint_index: number,
+): Vec2 | null {
+  const branch = band_struct.branches.find(
+    (candidate) =>
+      !is_discontinuity_branch(candidate) &&
+      qpoint_index >= candidate.start_index &&
+      qpoint_index <= candidate.end_index,
+  )
+  return branch ? [branch.start_index, branch.end_index] : null
 }
 
 // Find q-point index from rescaled x-coordinate (used in band structure plots)
@@ -1064,7 +1067,7 @@ const compute_slope = (x_vals: number[], y_vals: number[], idx: number): number 
 
 // A q-point counts as Gamma when every fractional coordinate is within 0.01 of an integer
 export const is_gamma_point = (frac_coords: Vec3): boolean =>
-  frac_coords.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)
+  are_qpoints_equivalent(frac_coords, [0, 0, 0], 0.01)
 
 // Indices of the Gamma points (q ≈ integer lattice point) in a band structure
 export const find_gamma_indices = (band_structure: types.BaseBandStructure): number[] =>

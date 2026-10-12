@@ -153,6 +153,25 @@ END_BLOCK_BANDGRID_3D
     })
   })
 
+  // BXSF `BAND: n` numbers bands in the full calculation: kept 0-based to match a band structure
+  // of the same run; an invalid number throws
+  test(`keeps BXSF band numbers as absolute band indices`, () => {
+    const bxsf = make_bxsf(6.5).replace(`BAND:   1`, `BAND:   9`)
+    const band_data = parse_grid(bxsf, `cu.bxsf`)
+    expect(band_data.band_indices).toEqual([8])
+    // two bands both numbered 1 (each spin channel counted from 1): numbers can't identify
+    // bands, so positions stand in
+    const bxsf_2 = make_bxsf().replace(`    1\n    3 3 3`, `    2\n    3 3 3`)
+    const band_block = /BAND:[^]*?(?=\s*END_BANDGRID_3D)/.exec(bxsf_2)?.[0] ?? ``
+    const repeated = parse_grid(bxsf_2.replace(band_block, `${band_block}\n    ${band_block}`))
+    expect([repeated.n_bands, repeated.band_indices]).toEqual([2, undefined])
+    for (const label of [`BAND:   0`, `BAND:   x`]) {
+      expect(() =>
+        parse_fermi_file(make_bxsf().replace(`BAND:   1`, label), `bad.bxsf`),
+      ).toThrow(/invalid band number/)
+    }
+  })
+
   describe(`FRMSF format`, () => {
     // FRMSF format: grid dims, lshift, n_bands, reciprocal vectors, then one energy per line
     const frmsf_energies = `0.1 0.2 0.1 0.2 0.3 0.2 0.1 0.2 0.1 0.2 0.3 0.2 0.3 0.4
@@ -229,6 +248,72 @@ END_BLOCK_BANDGRID_3D
       expect(energy_at(band_data, 0, 0, 1)).toBe(0.2)
       expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
       expect(energy_at(band_data, 2, 2, 2)).toBe(0.1)
+      expect(Object.keys(band_data.properties ?? {})).toEqual([`Property`])
+      expect(band_data.properties?.Property[0][0].values.every((val) => val === 9.9)).toBe(
+        true,
+      )
+      expect(parse_grid(sample_frmsf, `test.frmsf`).properties).toBeUndefined()
+    })
+
+    // Colour blocks are component-major ([component][band][k]): with two bands, point p of
+    // band b in component c is written as 100c + 10b + p/100 so every value names its slot (a
+    // band-major reader puts 110 where 10 belongs). `nan` (Python) and `NaN` (Rust) mark
+    // missing values, also as the first token of a line.
+    const two_band_header = sample_frmsf.split(`\n`).slice(0, 6)
+    two_band_header[2] = `2`
+    const two_band_energies = `${frmsf_energies}\n${frmsf_energies}`
+    const colour_block = (n_components: number) =>
+      Array.from({ length: n_components * 54 }, (_, idx) => {
+        if (idx === 0) return `nan`
+        if (idx === 1) return `-NaN`
+        const [comp, band, point] = [Math.floor(idx / 54), Math.floor(idx / 27) % 2, idx % 27]
+        return `${100 * comp + 10 * band + point / 100}`
+      }).join(`\n`)
+    const frmsf_with = (block: string) =>
+      parse_grid(`${two_band_header.join(`\n`)}\n${two_band_energies}\n${block}\n`)
+    // the value colour_block writes for point p of band b in component c
+    const slot = (comp: number, band: number, point: number) =>
+      comp === 0 && band === 0 && point < 2 ? NaN : 100 * comp + 10 * band + point / 100
+    test.each([
+      [1, [`Property`]],
+      [2, [`Re`, `Im`, `|z|`]],
+      [3, [`x`, `y`, `z`, `|v|`]],
+    ])(`reads a %i-component colour block`, (n_components, names) => {
+      const band_data = frmsf_with(colour_block(n_components))
+      expect(Object.keys(band_data.properties ?? {})).toEqual(names)
+      for (const flat_idx of [0, 1, 2, 27, 28, 29]) {
+        const [band_idx, point] = [Math.floor(flat_idx / 27), flat_idx % 27]
+        const comps = Array.from({ length: n_components }, (_, comp) =>
+          slot(comp, band_idx, point),
+        )
+        // 2 and 3 components add their magnitude, summed in the same order as the parser
+        const norm = Math.sqrt(comps.reduce((sum, val) => sum + val ** 2, 0))
+        const values = names.map(
+          (name) => band_data.properties?.[name][0][band_idx].values[point],
+        )
+        expect(values).toEqual(n_components === 1 ? comps : [...comps, norm])
+      }
+      expect(energy_at(band_data, 1, 1, 1, 1)).toBe(0.4) // energies unaffected
+    })
+
+    // oxfmt-ignore
+    test.each([
+      [`a partial block`, `1 2 3`, /component 1: expected 54 values \(2 bands on 3×3×3\), got 3$/],
+      [`four components`, colour_block(4), /more than 3 values per grid point at '300'$/],
+      [`trailing text`, `${colour_block(1)}\nEND`, /component 2: expected 54 values .*got 0 followed by 'END'$/],
+      [`a word mid-block`, colour_block(1).replace(`0.05`, `abc`), /got 5 followed by 'abc'$/],
+      [`a garbage token`, colour_block(1).replace(`0.05`, `1.2.3`), /Unreadable number '1.2.3'/],
+    ])(`rejects an FRMSF colour block with %s`, (_label, block, message) => {
+      expect(() => frmsf_with(block)).toThrow(message)
+    })
+
+    // FermiSurfer's Pb sample carries the Fermi velocity (vx, vy, vz) per point
+    test(`reads the 3-component velocity of the Pb sample`, () => {
+      const band_data = parse_grid(read_maybe_gz(`src/site/fermi-surfaces/pb_vf3D.frmsf.gz`))
+      expect(Object.keys(band_data.properties ?? {})).toEqual([`x`, `y`, `z`, `|v|`])
+      expect(Math.max(...(band_data.properties?.[`|v|`][0][2].values ?? []))).toBeGreaterThan(
+        1,
+      )
     })
 
     test.each([
@@ -271,8 +356,8 @@ END_BLOCK_BANDGRID_3D
       expect(Array.from(iso.indices)).toEqual([0, 1, 2, 0, 2, 3])
       // Normals were empty, so they are recomputed: the quad faces +z
       expect(Array.from(iso.normals)).toEqual([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])
-      expect(iso.properties).toBeInstanceOf(Float32Array)
-      expect(Array.from(iso.properties ?? [])).toEqual([1, 2, 3, 4])
+      expect(iso.properties?.Property).toBeInstanceOf(Float32Array)
+      expect(Array.from(iso.properties?.Property ?? [])).toEqual([1, 2, 3, 4])
       expect([iso.band_index, iso.spin]).toEqual([2, `down`])
     })
 
@@ -444,7 +529,7 @@ END_BLOCK_BANDGRID_3D
       const [spin_up] = result.isosurfaces
       expect(Array.from(spin_up.indices)).toEqual([0, 1, 2])
       expect(spin_up.normals).toHaveLength(9)
-      expect(Array.from(spin_up.properties ?? [])).toEqual([5, 5, 5])
+      expect(Array.from(spin_up.properties?.Property ?? [])).toEqual([5, 5, 5])
       expect(result.isosurfaces[1].properties).toBeUndefined()
 
       expect(result.metadata).toEqual({
@@ -606,6 +691,28 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
     expect([iso.band_index, iso.spin]).toEqual([band_index, spin])
   })
 
+  // IFermi face values average onto their vertices (vectors by magnitude); a vertex no face
+  // touches has no value
+  test(`IFermi face properties: vertex averages, NaN for an untouched vertex`, () => {
+    const vertices = [...json_surface.isosurfaces[0].vertices, [1, 1, 1]]
+    const surface = { vertices, faces: [[0, 1, 2]], band_idx: 0, properties: [[3, 4, 0]] }
+    const [iso] = normalize_fermi_surface({
+      ...ifermi_surface,
+      isosurfaces: { '1': [surface] },
+    }).isosurfaces
+    expect(Array.from(iso.properties?.Property ?? [])).toEqual([5, 5, 5, NaN])
+  })
+
+  // The cell IFermi stored the surface in (its reciprocal_space @class) decides where the 3D
+  // slice plane is cut: the shipped _reciprocal file spans the Γ-centred parallelepiped
+  test.each([
+    [`fs_BaFe2As2_reciprocal.json.gz`, `parallelepiped`],
+    [`fs_BaFe2As2_wigner.json.gz`, `wigner_seitz`],
+  ])(`IFermi %s is in the %s cell`, (name, cell) => {
+    const parsed = parse_fermi_file(read_maybe_gz(`src/site/fermi-surfaces/${name}`), name)
+    expect(is_fermi_surface_data(parsed) && parsed.reciprocal_cell).toBe(cell)
+  })
+
   test.each([
     [`a band grid`, { ...mock_band_grid, energies: [[[[[0]]]]] }, /pass it as band_data/],
     [`garbage`, { isosurfaces: [{ vertices: `x` }] }, /missing required fields/],
@@ -623,6 +730,50 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
     expect(result.energies[0][0].dims).toEqual([1, 1, 2])
     expect(() => normalize_band_grid({ ...nested, k_grid: [2, 1, 1] })).toThrow(/shape/)
     expect(() => normalize_band_grid({ energies: [] })).toThrow(/Invalid band_data/)
+  })
+
+  // Named property grids share the energies' [spin][band] layout, JSON null (NaN) → NaN;
+  // band_indices list every band once
+  test(`band grid JSON properties and band_indices are validated against energies`, () => {
+    const nested = { ...mock_band_grid, k_grid: [1, 1, 2] as const, energies: [[[[[3, 4]]]]] }
+    expect(normalize_band_grid({ ...nested, band_indices: [5] }).band_indices).toEqual([5])
+    expect(() => normalize_band_grid({ ...nested, band_indices: [5, 6] })).toThrow(
+      /band_indices lists 2 bands but energies hold 1/,
+    )
+    expect(() => normalize_band_grid({ ...nested, band_indices: [-1] })).toThrow(
+      /distinct non-negative integers/,
+    )
+    const result = normalize_band_grid({ ...nested, properties: { λ: [[[[[0.5, null]]]]] } })
+    expect(Array.from(result.properties?.λ[0][0].values ?? [])).toEqual([0.5, NaN])
+    expect(() =>
+      normalize_band_grid({ ...nested, properties: { λ: [[[[[1, 2]]], [[[3, 4]]]]] } }),
+    ).toThrow(/properties.λ needs the \[spin\]\[band\] layout/)
+    expect(() =>
+      normalize_band_grid({ ...nested, properties: { λ: [[[[[1, 2, 3]]]]] } }),
+    ).toThrow(/properties.λ\[0\]\[0\] has shape 1×1×3/)
+  })
+
+  // Mesh properties: one unnamed array (key `Property`) or arrays keyed by name, each with one
+  // value per vertex (null → NaN)
+  test(`packs JSON mesh properties`, () => {
+    const pack = (properties: (number | null)[] | Record<string, (number | null)[]>) => {
+      const iso = { ...json_surface.isosurfaces[0], properties }
+      const [{ properties: packed = {} }] = normalize_fermi_surface({
+        ...json_surface,
+        isosurfaces: [iso],
+      }).isosurfaces
+      return Object.fromEntries(
+        Object.entries(packed).map(([name, vals]) => [name, [...vals]]),
+      )
+    }
+    expect(pack([1, 2, 3])).toEqual({ Property: [1, 2, 3] })
+    expect(pack({ λ: [1, 2, 3], Δ: [0.5, null, 2] })).toEqual({
+      λ: [1, 2, 3],
+      Δ: [0.5, NaN, 2],
+    })
+    expect(() => pack({ λ: [1, 2] })).toThrow(
+      /Property 'λ' must hold one value per vertex \(3\), got 2/,
+    )
   })
 })
 

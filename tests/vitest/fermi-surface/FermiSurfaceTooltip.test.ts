@@ -25,9 +25,10 @@ const mount_tooltip = (
   })
 
 describe(`FermiSurfaceTooltip`, () => {
-  test(`titles the tooltip with the band index`, () => {
+  // band_index is 0-based; the title counts from 1 like the band structure and BXSF `BAND: n`
+  test(`titles the tooltip with the 1-based band number`, () => {
     mount_tooltip({ hover_data: mock_hover_data({ band_index: 12 }) })
-    expect(doc_query(`.tooltip-content .tooltip-title`).textContent).toContain(`Band 12`)
+    expect(doc_query(`.tooltip-content .tooltip-title`).textContent).toContain(`Band 13`)
   })
 
   // the badge takes its colour from SPIN_COLORS, the same source as the surface tint
@@ -75,6 +76,23 @@ describe(`FermiSurfaceTooltip`, () => {
       if (expected) expect(text).toContain(expected)
     },
   )
+
+  // the colouring property leads; the others follow, NaN (no value at the vertex) as n/a
+  test(`lists the other properties at the vertex below the active one`, () => {
+    // a parenthesised suffix is the unit, as in every TooltipValue label
+    const property_values = { λ: 0.25, 'Δ (meV)': NaN, v: 3 }
+    mount_tooltip({
+      hover_data: mock_hover_data({
+        property_value: 0.25,
+        property_name: `λ`,
+        property_values,
+      }),
+    })
+    const text = document.body.textContent ?? ``
+    expect(text.match(/λ/g)).toHaveLength(1) // not repeated among the others
+    expect(text).toContain(`Δ: n/a meV`)
+    expect(text).toContain(`v: 3`)
+  })
 
   // only tiled copies past the identity (index 0) are labelled
   test.each([

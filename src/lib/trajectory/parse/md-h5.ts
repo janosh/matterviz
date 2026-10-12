@@ -3,7 +3,7 @@ import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from 
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import { element_by_symbol } from '#lib/element/data.js'
-import { calc_lattice_params, det_3x3, is_pbc } from '#lib/math.js'
+import { calc_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
 import { convert_atomic_numbers, create_sampled_frame } from '../helpers'
@@ -246,7 +246,7 @@ export const parse_md_h5_file = (
       )
   }
   const check_frame = (frame_idx: number): void => {
-    if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= frame_count)
+    if (!is_valid_index(frame_idx, frame_count))
       throw new Error(`${FORMAT} frame ${frame_idx} is outside the committed prefix`)
   }
   const channels: Record<string, { name: string; width: number; unit: string }> =

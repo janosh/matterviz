@@ -61,6 +61,8 @@ test(`domain and normalization changes recolor cells without per-cell animations
   await page.goto(`/plot/heatmap-matrix`, { waitUntil: `networkidle` })
   const cells = page.locator(`.heatmap`).first().locator(`.cell`)
   await expect(cells).toHaveCount(10_000)
+  // pane contents mount on first open
+  await page.locator(`button.heatmap-matrix-controls-toggle`).first().click({ force: true })
   for (const [option, values] of [
     [`robust`, [`fixed`, `robust`, `auto`]],
     [`log`, [`log`, `linear`]],

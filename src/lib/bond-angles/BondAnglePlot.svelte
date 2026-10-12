@@ -6,11 +6,15 @@
     compute_structure_entries,
     to_structure_entries,
   } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
+  import type {
+    StructureEntry,
+    StructureSiteHighlight,
+  } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps } from '#lib/plot/core/types.js'
   import { to_error } from '#lib/utils.js'
   import {
     bin_bond_angles,
+    bond_angle_bin_sites,
     calc_bond_angles,
     BOND_ANGLE_DEFAULT_BIN_WIDTH,
     MAX_BOND_ANGLE,
@@ -31,6 +35,7 @@
     error_msg = $bindable(),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    on_sites_hover,
     ...rest
   }: StructurePlotProps & {
     split_mode?: BondAngleSplitMode
@@ -38,6 +43,9 @@
     bin_width?: number
     center_elements?: readonly string[]
     neighbor_elements?: readonly string[]
+    // Per structure behind the hovered bar: its angles' centre atoms (site_indices) and
+    // bonded outer atoms (neighbor_indices); null once the pointer leaves
+    on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
@@ -76,6 +84,27 @@
 
   const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))
 
+  // bar_idx is the angle bin: every series shares the bin_width binning on one x axis
+  const report_sites: StructurePlotProps[`on_bar_change`] = (bar) => {
+    const { structure_label, triplet } = bar?.metadata ?? {}
+    on_sites_hover?.(
+      bar &&
+        computed.entries
+          .filter(
+            ({ label }) => typeof structure_label !== `string` || label === structure_label,
+          )
+          .map(({ label, structure, data }) => ({
+            label,
+            structure,
+            ...bond_angle_bin_sites(data, {
+              bin_width,
+              bin_idx: bar.bar_idx,
+              triplet: typeof triplet === `string` ? triplet : undefined,
+            }),
+          })),
+    )
+  }
+
   const angle_axis = {
     label: `Bond Angle (°)`,
     range: [0, MAX_BOND_ANGLE] as [number, number],
@@ -98,6 +127,7 @@
   bind:mode
   bind:loading
   bind:error_msg
+  on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
 >
   {#snippet tooltip(info: BarHandlerProps<BondAngleMetadata>)}
     {@const half_width = (info.metadata?.bin_width ?? bin_width) / 2}

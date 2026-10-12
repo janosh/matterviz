@@ -19,7 +19,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three/webgpu'
-import type { ArrowPlacements } from './vectors'
+import { type ArrowPlacements, resolve_arrow_size } from './vectors'
 import { InstanceColors } from './instance-colors'
 
 // Both primitives share eight placement floats per arrow. Their dimensions are uniforms;
@@ -64,7 +64,7 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
     const encoded_length = this.lengths.getX(idx)
     const length = Math.abs(encoded_length)
     const [shaft_size, head_size, head_length] = this.dimensions.map(Math.fround)
-    const head_len = head_length < 0 ? length * -head_length : head_length
+    const head_len = resolve_arrow_size(head_length, length)
     const shaft_len = Math.max(0, length - head_len * 0.5)
     const rotation = new Quaternion().fromArray(this.rotations.array, idx * 4)
     const position = new Vector3().fromBufferAttribute(this.origins, idx)
@@ -75,12 +75,12 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
       if (this.part === 0) {
         offset = shaft_len * 0.5
         if (encoded_length > 0) {
-          radius = shaft_size < 0 ? shaft_len * -shaft_size : shaft_size
+          radius = resolve_arrow_size(shaft_size, shaft_len)
           extent = shaft_len
         }
       } else {
         offset = shaft_len + head_len * 0.5
-        radius = head_len > 0 ? (head_size < 0 ? shaft_len * -head_size : head_size) : 0
+        radius = head_len > 0 ? resolve_arrow_size(head_size, shaft_len) : 0
         extent = head_len
       }
       position.add(new Vector3(0, offset, 0).applyQuaternion(rotation))

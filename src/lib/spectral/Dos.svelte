@@ -9,7 +9,8 @@
   import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'
-  import type { AxisConfig, DataSeries, UserContentProps } from '#lib/plot/core/types.js'
+  import { plot_area_line } from '#lib/plot/core/layout.js'
+  import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
     apply_gaussian_smearing,
@@ -268,11 +269,6 @@
       })
     return closed_edge_path(edge(area.upper_densities), edge(area.lower_densities))
   }
-  // Fermi/reference line endpoints across the plot at `pos` on the frequency axis
-  const value_line = (pos: number, { width, height, pad }: UserContentProps) =>
-    is_horizontal
-      ? { x1: pad.l, x2: width - pad.r, y1: pos, y2: pos }
-      : { x1: pos, x2: pos, y1: pad.t, y2: height - pad.b }
 
   const spin_display_settings = track_settings(() => ({ spin_mode }), { spin_mode: `mirror` })
   const smearing_settings = track_settings(() => ({ sigma }), { sigma: 0 })
@@ -418,7 +414,7 @@
       {#if Number.isFinite(fermi_pos)}
         <line
           class="fermi-level-line"
-          {...value_line(fermi_pos, ctx)}
+          {...plot_area_line(fermi_pos, is_horizontal, ctx)}
           stroke="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
           stroke-width="var(--dos-fermi-line-width, 1.5)"
           stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
@@ -446,7 +442,7 @@
       {@const ref_pos = is_horizontal ? y_scale_fn(ref_display) : x_scale_fn(ref_display)}
       {#if Number.isFinite(ref_pos)}
         <line
-          {...value_line(ref_pos, ctx)}
+          {...plot_area_line(ref_pos, is_horizontal, ctx)}
           stroke="var(--dos-reference-line-color, light-dark(#d48860, #c47850))"
           stroke-width="var(--dos-reference-line-width, 1)"
           stroke-dasharray="var(--dos-reference-line-dash, 4,3)"

@@ -455,6 +455,22 @@
   let render_vis_y = $derived(
     window_axis(`y`, scroll_top - grid_offset_top, viewport_height, row_count),
   )
+  // DOM order: each item key keeps the rank it got when first rendered, so reordering (x_order, or a caller handing
+  // over re-sorted items) moves no nodes; grid lines place them. Plain maps: bookkeeping, not reactive state.
+  const key_ranks = { x: new Map<string, number>(), y: new Map<string, number>() }
+  const in_dom_order = (axis: Axis, idxs: number[], keys: string[]): number[] => {
+    const first_seen = key_ranks[axis]
+    for (const idx of idxs)
+      if (!first_seen.has(keys[idx])) first_seen.set(keys[idx], first_seen.size)
+    const rank = (idx: number) => first_seen.get(keys[idx]) ?? 0
+    return idxs.toSorted((idx_a, idx_b) => rank(idx_a) - rank(idx_b))
+  }
+  let dom_x = $derived(in_dom_order(`x`, render_vis_x, x_keys))
+  let dom_y = $derived(in_dom_order(`y`, render_vis_y, y_keys))
+  // Each column's grid line as --c<item index> on the grid, read by every cell of that column
+  let column_vars = $derived(
+    dom_x.map((x_idx) => `--c${x_idx}: ${grid_line(`x`, x_idx)}`).join(`; `),
+  )
   // Scroll is hot: only read offsets there. Client sizes and grid offsets force sync layout.
   function sync_scroll(): void {
     if (!matrix_el) return
@@ -724,9 +740,15 @@
         void export_state.run((context) => handle_export(format, context))
       return
     }
-    const step = ARROW_STEPS[event.key]
     const active_el = document.activeElement
-    if (!step || !(active_el instanceof HTMLElement) || !active_el.dataset.x) return
+    if (!(active_el instanceof HTMLElement) || !active_el.dataset.x) return
+    // Enter and Space activate the focused cell like a click (cells are not buttons)
+    if (event.key === `Enter` || event.key === ` `) {
+      event.preventDefault()
+      return active_el.click()
+    }
+    const step = ARROW_STEPS[event.key]
+    if (!step) return
     const x_idx = Number(active_el.dataset.x)
     const y_idx = Number(active_el.dataset.y)
     event.preventDefault()
@@ -774,6 +796,29 @@
         selection_mode !== `single` ||
         tooltip_mode !== `hover`),
   )
+  // An interactive matrix is a grid widget (one tab stop, arrow keys); otherwise a static table
+  let cell_role = $derived(has_interaction_handlers ? `gridcell` : `cell`)
+  // Roving tab stop: one cell (the last focused, else the first rendered) has tabindex 0, the
+  // rest -1. Set imperatively so moving focus touches two cells instead of re-rendering all.
+  let tab_cell: HTMLElement | null = null
+  const handle_focusin = ({ target }: FocusEvent): void => {
+    const cell_el = target instanceof Element && target.closest(`[data-x][data-y]`)
+    if (!(cell_el instanceof HTMLElement) || cell_el === tab_cell) return
+    tab_cell?.setAttribute(`tabindex`, `-1`)
+    cell_el.setAttribute(`tabindex`, `0`)
+    tab_cell = cell_el
+  }
+  // Re-pick once virtualization unmounts the tab stop; re-assert it since re-enabling resets
+  // every cell to -1
+  $effect(() => {
+    void [render_vis_x, render_vis_y]
+    if (!has_interaction_handlers || !matrix_el) return
+    const cell_el = tab_cell?.isConnected
+      ? tab_cell
+      : matrix_el.querySelector<HTMLElement>(`.cell[data-x][data-y]`)
+    cell_el?.setAttribute(`tabindex`, `0`)
+    tab_cell = cell_el
+  })
 
   // Reset index-based interaction state when the axis keys change. Element-wise compare beats
   // JSON.stringify-ing every key on each x_items/y_items update.
@@ -832,6 +877,8 @@
     {...rest}
     bind:this={matrix_el}
     class={[`grid`, rest.class]}
+    role={has_interaction_handlers ? `grid` : `table`}
+    style={[rest.style, column_vars].filter(Boolean).join(`; `)}
     style:--n-cols={col_count + (show_row_summaries && !gaps_mode ? 1 : 0)}
     style:--n-rows={row_count + (show_col_summaries && !gaps_mode ? 1 : 0)}
     style:--extra-right-y={right_y_labels ? 1 : 0}
@@ -847,17 +894,14 @@
     ondblclick={handle_dblclick}
     oncontextmenu={handle_contextmenu}
     onkeydown={handle_keydown}
+    onfocusin={has_interaction_handlers ? handle_focusin : undefined}
     onscroll={virtualize ? sync_scroll : undefined}
   >
-    <!-- Top-left corner spacer (when both axes have labels) -->
-    {#if show_x_labels && show_y_labels}
-      <div class="corner"></div>
-    {/if}
-
     {#snippet axis_label(axis: Axis, idx: number)}
       {@const { label } = (axis === `x` ? x_items : y_items)[idx]}
       <div
         class={[`${axis}-label`, split_labels[axis] && EDGE_CLASSES[axis][parity(axis, idx)]]}
+        role={axis === `x` ? `columnheader` : `rowheader`}
         style={label_style || undefined}
         style:grid-column={axis === `x` ? grid_line(`x`, idx) : y_label_grid_col(idx)}
         style:grid-row={axis === `x` ? x_label_grid_row(idx) : grid_line(`y`, idx)}
@@ -866,72 +910,78 @@
         {label}
       </div>
     {/snippet}
-    {#if show_x_labels}
-      {#each render_vis_x as x_idx (x_keys[x_idx])}{@render axis_label(`x`, x_idx)}{/each}
-    {/if}
-
-    {#each render_vis_y as y_idx (y_keys[y_idx])}
-      {#if show_y_labels}{@render axis_label(`y`, y_idx)}{/if}
-
-      {#each render_vis_x as x_idx (x_keys[x_idx])}
-        {#if is_hidden_cell(x_idx, y_idx)}
-          <div
-            class="cell empty"
-            style:grid-column={grid_line(`x`, x_idx)}
-            style:grid-row={grid_line(`y`, y_idx)}
-          ></div>
-        {:else}
-          {@const bg_color = background_at(x_idx, y_idx)}
-          {@const raw = get_value(x_idx, y_idx)}
-          {@const cell_missing = cell_is_missing(raw)}
-          {@const selected = selected_key_set.has(cell_pos_key(x_idx, y_idx))}
-          <svelte:element
-            this={has_interaction_handlers ? `button` : `div`}
-            class={[`cell`, { interactive: has_interaction_handlers }]}
-            class:selected
-            data-x={x_idx}
-            data-y={y_idx}
-            style={cell_missing ? missing.style : undefined}
-            style:background-color={bg_color}
-            style:color={cell || show_values ? contrast_for_bg(bg_color) : undefined}
-            style:--heatmap-selected-outline-color={selected
-              ? contrast_for_bg(bg_color)
-              : undefined}
-            style:grid-column={grid_line(`x`, x_idx)}
-            style:grid-row={grid_line(`y`, y_idx)}
-          >
-            {#if cell}
-              {@render cell(build_cell_context(x_idx, y_idx))}
-            {:else if cell_missing}
-              {#if missing.label}<span class="cell-value">{missing.label}</span>{/if}
-            {:else if show_values && raw !== null}
-              <span class="cell-value"
-                >{typeof raw === `number`
-                  ? format_num(raw, show_values === true ? `.3~g` : show_values)
-                  : raw}</span
-              >
-            {/if}
-          </svelte:element>
-        {/if}
-      {/each}
-    {/each}
-
     <!-- Row means in an extra column on the right, column means in an extra row below -->
     {#snippet summary_cell(axis: Axis, idx: number)}
       {@const summary = axis_mean(axis, idx)}
       <div
         class={[`summary`, axis === `x` ? `summary-col` : `summary-row`]}
+        role={cell_role}
         style:grid-column={axis === `x` ? grid_line(`x`, idx) : col_count + 2}
         style:grid-row={axis === `x` ? row_count + 2 : grid_line(`y`, idx)}
       >
         {#if summary != null}{format_num(summary)}{/if}
       </div>
     {/snippet}
-    {#if show_row_summaries}
-      {#each render_vis_y as y_idx (y_keys[y_idx])}{@render summary_cell(`y`, y_idx)}{/each}
+
+    <!-- Rows and columns sit in item order, placed by grid lines (--r per row, --c<idx> on the grid): a reorder
+         rewrites those few variables instead of moving and restyling every cell. Row wrappers are display:contents. -->
+    {#if show_x_labels}
+      <div class="row" role="row">
+        {#if show_y_labels}<div class="corner" role="columnheader"></div>{/if}
+        {#each dom_x as x_idx (x_keys[x_idx])}{@render axis_label(`x`, x_idx)}{/each}
+      </div>
     {/if}
+
+    {#each dom_y as y_idx (y_keys[y_idx])}
+      <div class="row" role="row" style:--r={grid_line(`y`, y_idx)}>
+        {#if show_y_labels}{@render axis_label(`y`, y_idx)}{/if}
+        {#each dom_x as x_idx (x_keys[x_idx])}
+          {#if is_hidden_cell(x_idx, y_idx)}
+            <div class="cell empty" role={cell_role} style:grid-column="var(--c{x_idx})"></div>
+          {:else}
+            {@const bg_color = background_at(x_idx, y_idx)}
+            {@const raw = get_value(x_idx, y_idx)}
+            {@const cell_missing = cell_is_missing(raw)}
+            {@const selected = selected_key_set.has(cell_pos_key(x_idx, y_idx))}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex (tabindex only with role gridcell) -->
+            <div
+              class={[`cell`, { interactive: has_interaction_handlers }]}
+              class:selected
+              role={cell_role}
+              tabindex={has_interaction_handlers ? -1 : undefined}
+              aria-selected={has_interaction_handlers ? selected : undefined}
+              data-x={x_idx}
+              data-y={y_idx}
+              style={cell_missing ? missing.style : undefined}
+              style:background-color={bg_color}
+              style:color={cell || show_values ? contrast_for_bg(bg_color) : undefined}
+              style:--heatmap-selected-outline-color={selected
+                ? contrast_for_bg(bg_color)
+                : undefined}
+              style:grid-column="var(--c{x_idx})"
+            >
+              {#if cell}
+                {@render cell(build_cell_context(x_idx, y_idx))}
+              {:else if cell_missing}
+                {#if missing.label}<span class="cell-value">{missing.label}</span>{/if}
+              {:else if show_values && raw !== null}
+                <span class="cell-value"
+                  >{typeof raw === `number`
+                    ? format_num(raw, show_values === true ? `.3~g` : show_values)
+                    : raw}</span
+                >
+              {/if}
+            </div>
+          {/if}
+        {/each}
+        {#if show_row_summaries}{@render summary_cell(`y`, y_idx)}{/if}
+      </div>
+    {/each}
+
     {#if show_col_summaries}
-      {#each render_vis_x as x_idx (x_keys[x_idx])}{@render summary_cell(`x`, x_idx)}{/each}
+      <div class="row" role="row">
+        {#each dom_x as x_idx (x_keys[x_idx])}{@render summary_cell(`x`, x_idx)}{/each}
+      </div>
     {/if}
 
     <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->
@@ -1022,12 +1072,16 @@
     );
     overflow: auto;
   }
+  .row {
+    display: contents;
+  }
   .corner {
     min-width: 0; /* spacer in top-left when both axes have labels */
   }
   .cell {
-    /* Recolor dense grids immediately; theme/button transitions create one animation per cell. */
+    /* Recolor dense grids immediately; theme transitions create one animation per cell. */
     transition: none;
+    grid-row: var(--r); /* set on the row wrapper */
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -1042,10 +1096,6 @@
     justify-content: center;
     cursor: default;
     &.interactive {
-      border: none;
-      padding: 0;
-      font: inherit;
-      line-height: inherit;
       cursor: pointer;
     }
     &.selected {

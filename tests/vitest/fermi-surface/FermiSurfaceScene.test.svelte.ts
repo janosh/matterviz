@@ -5,7 +5,15 @@ import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import { DoubleSide, type MeshStandardMaterial, Vector3 } from 'three/webgpu'
+import {
+  type BufferGeometry,
+  DoubleSide,
+  type InstancedMesh,
+  type MeshStandardMaterial,
+  Vector3,
+} from 'three/webgpu'
+import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
@@ -170,12 +178,132 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
 test(`hover picks the front-most sheet that survives the clip plane`, () => {
   const props = $state({ clip_enabled: false, clip_axis: `z` as const, clip_position: 0 })
   mount_scene(props)
-  const { filter } = interactivity.mock.calls[0][0] as {
-    filter: (hits: { point: Vector3 }[]) => unknown[]
-  }
-  const [inner, outer] = [-1, 1].map((z_coord) => ({ point: new Vector3(0, 0, z_coord) }))
+  type Hit = { point: Vector3; object: { userData: Record<string, unknown> } }
+  const { filter } = interactivity.mock.calls[0][0] as { filter: (hits: Hit[]) => unknown[] }
+  const hit = (z_coord: number, userData = {}) => ({
+    point: new Vector3(0, 0, z_coord),
+    object: { userData },
+  })
+  const [inner, outer] = [hit(-1), hit(1)]
   expect(filter([inner, outer])).toStrictEqual([inner])
+  // a k-path drawn through the zone wins over a sheet in front of it
+  const path = hit(0.5, { kpath_proxy: true })
+  expect(filter([inner, path, outer])).toStrictEqual([path])
   props.clip_enabled = true // keeps z >= 0
   flushSync()
   expect(filter([inner, outer])).toStrictEqual([outer])
+})
+
+// Property mode colours each sheet by the selected named property (the first when none is
+// named); a sheet without it keeps its flat colour, and the tooltip carries every property at
+// the hit vertex
+test(`colours by the selected property and reports all properties on hover`, () => {
+  const f32 = (values: number[]) => Float32Array.from(values)
+  const data = make_fermi_surface([
+    { ...sheet(0), properties: { λ: f32([0, 0.5, 1]), Δ: f32([1, 2, NaN]) } },
+    { ...sheet(2), properties: { λ: f32([0.2, 0.2, 0.2]) } },
+  ])
+  const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
+    fermi_data: data,
+    color_property: `property`,
+    property_name: undefined,
+    hover_data: null,
+  })
+  mount_scene(props)
+  const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
+  expect(vertex_colors()).toEqual([true, true]) // first property λ: both sheets have it
+  props.property_name = `Δ`
+  flushSync()
+  expect(vertex_colors()).toEqual([true, false]) // band 2 has no Δ
+  props.property_name = `λ`
+  flushSync()
+  expect(vertex_colors()).toEqual([true, true])
+
+  const mesh = threlte_stub.nodes.find(({ tag }) => tag === `Mesh`)
+  const on_move = mesh?.props.onpointermove as (event: unknown) => void
+  // nearest corner of face (0, 1, 2) to a point on vertex 1 of band 0's sheet (0, 4, 5)
+  on_move({
+    point: new Vector3(0, 4, 5),
+    face: { a: 0, b: 1, c: 2 },
+    nativeEvent: { clientX: 1, clientY: 2 },
+  })
+  expect(props.hover_data).toMatchObject({
+    property_name: `λ`,
+    property_value: 0.5,
+    property_values: { λ: 0.5, Δ: 2 },
+  })
+})
+
+// The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:
+// the Brillouin zone for a Wigner-Seitz mesh (here a 0.6-wide cube, so it differs from the
+// unit cell), the Γ-centred unit cell for band-grid (parallelepiped) surfaces. Moving it
+// rebuilds the geometry; (0 0 0) or a plane outside the cell draws nothing.
+test(`marks the slice plane where it cuts the data's cell`, () => {
+  // oxfmt-ignore
+  const zone_lattice: Matrix3x3 = [[0.6, 0, 0], [0, 0.6, 0], [0, 0, 0.6]]
+  const edges = centered_cell_edges(zone_lattice)
+  const bz_data = {
+    vertices: [],
+    faces: [],
+    order: 1,
+    volume: 0.216,
+    edges,
+    k_lattice: zone_lattice,
+  }
+  const props = $state({
+    fermi_data,
+    bz_data,
+    slice_plane: { miller_indices: [0, 0, 1] as Vec3, distance: 0.25 },
+  })
+  mount_scene(props)
+  // flat [x, y, z, ...] outline positions and their values along one axis
+  const outline = () => {
+    const node = threlte_stub.nodes.findLast(({ tag }) => tag === `Line`)
+    const geometry = node?.props.geometry as BufferGeometry | undefined
+    return Array.from(geometry?.getAttribute(`position`).array ?? [])
+  }
+  const along = (axis: number) => outline().filter((_, idx) => idx % 3 === axis)
+  const max_abs_x = () => Math.max(...along(0).map(Math.abs))
+  // a closed Line (WebGPU has no LineLoop): the square z = 0.25 with its first corner repeated
+  expect(along(2)).toEqual([0.25, 0.25, 0.25, 0.25, 0.25])
+  expect(outline().slice(-3)).toEqual(outline().slice(0, 3))
+  expect(max_abs_x()).toBeCloseTo(0.3, 6) // the zone's half-width, not the unit cell's
+  props.fermi_data = { ...fermi_data, reciprocal_cell: `parallelepiped` }
+  flushSync()
+  expect(max_abs_x()).toBeCloseTo(0.5, 6) // band-grid surfaces fill the Γ-centred unit cell
+  props.slice_plane = { miller_indices: [0, 0, 1], distance: -0.4 }
+  flushSync()
+  expect(along(2).every((coord) => Math.abs(coord + 0.4) < 1e-6)).toBe(true)
+  // (0 0 0) defines no plane; (0 0 1) at 0.8 lies outside the cell
+  // oxfmt-ignore
+  for (const miller_indices of [[0, 0, 0], [0, 0, 1]] as Vec3[]) {
+    props.slice_plane = { miller_indices, distance: 0.8 }
+    flushSync()
+    expect(threlte_stub.nodes.some(({ tag }) => tag === `Line`)).toBe(false)
+  }
+})
+
+// The Scene hands k_path to the shared KPath (hover, tints and disposal are covered in
+// KPath.test) and draws the k_marker (e.g. the cursor on a FermiSlice) as the one on-top dot
+// (KPath draws no sphere of its own here) until it clears with null
+test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
+  // oxfmt-ignore
+  const k_path_points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]]
+  const scene_props = $state<ComponentProps<typeof FermiSurfaceScene>>({
+    k_path: { k_path_points },
+    k_marker: k_path_points[1],
+  })
+  mount_scene(scene_props)
+  // KPath's hover proxy has one instance per path segment
+  const proxy = threlte_stub.nodes.find(
+    ({ tag, props }) => tag === `T` && typeof props.onpointermove === `function`,
+  )
+  expect((proxy?.props.is as InstancedMesh | undefined)?.count).toBe(2)
+  const markers = threlte_stub.nodes.filter(
+    ({ tag, props }) => tag === `Mesh` && props.position === scene_props.k_marker,
+  )
+  expect(markers.map(({ props }) => props.renderOrder)).toEqual([1001])
+  scene_props.k_marker = null
+  flushSync()
+  expect(threlte_stub.nodes.some(({ props }) => props.renderOrder === 1001)).toBe(false)
 })

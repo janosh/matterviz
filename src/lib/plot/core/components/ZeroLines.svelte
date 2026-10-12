@@ -2,6 +2,7 @@
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type { FacetAxis } from '#lib/plot/core/facets.js'
   import { get_scale_type_name, is_time_scale } from '#lib/plot/core/types.js'
+  import { plot_area_line } from '#lib/plot/core/layout.js'
 
   let {
     frame,
@@ -15,9 +16,9 @@
   // zero. A log axis has no zero to draw, and a time axis's zero is the epoch rather than an
   // origin worth marking.
   const zero_lines = $derived.by(() => {
-    const { axes, scales, pad, width, height } = frame
+    const { axes, scales } = frame
     const ranges = frame.ranges.current
-    const lines: { x1: number; x2: number; y1: number; y2: number }[] = []
+    const lines: ReturnType<typeof plot_area_line>[] = []
     for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
       const [lower, upper] = ranges[axis]
       const scale_type = axes[axis].scale_type
@@ -33,11 +34,7 @@
         continue
       const zero = scales[axis](0)
       if (!Number.isFinite(zero)) continue
-      lines.push(
-        axis === `x` || axis === `x2`
-          ? { x1: zero, x2: zero, y1: pad.t, y2: height - pad.b }
-          : { x1: pad.l, x2: width - pad.r, y1: zero, y2: zero },
-      )
+      lines.push(plot_area_line(zero, axis === `y` || axis === `y2`, frame))
     }
     return lines
   })

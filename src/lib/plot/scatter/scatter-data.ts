@@ -19,7 +19,7 @@ import type {
   PointStyle,
   StyleOverrides,
 } from '#lib/plot/core/types.js'
-import { assert_series_lengths, DEFAULT_MARKERS } from '#lib/plot/core/types.js'
+import { assert_series_lengths, has_marker } from '#lib/plot/core/types.js'
 
 // Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
 // null/Array.isArray branch out of the point loop matters at 100k points, where these
@@ -56,7 +56,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     const data_series = series[series_idx]
     // Missing series yield no points, and empty series are dropped when filtering
     if (!data_series) continue
-    const { x: x_values, y: y_values, color_values, size_values } = data_series
+    const { x: x_values, y: y_values, color_values, size_values, point_ids } = data_series
     if (!Array.isArray(x_values) || !Array.isArray(y_values)) continue
     assert_series_lengths(data_series, series_idx)
     if (!(data_series.visible ?? true)) continue
@@ -95,6 +95,7 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
         point_idx,
         size_value: size_values?.[point_idx],
       }
+      if (point_ids) point.point_id = point_ids[point_idx]
       if (get_x_error) point.x_error = get_x_error(point_idx)
       if (get_y_error) point.y_error = get_y_error(point_idx)
       points.push(point)
@@ -167,10 +168,7 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
         filtered_data.push(point)
       }
     }
-    if (
-      filtered_data.length > 0 ||
-      (data_series.markers ?? DEFAULT_MARKERS).includes(`line`)
-    ) {
+    if (filtered_data.length > 0 || has_marker(data_series, `line`)) {
       const { points: _points, ...rest } = data_series
       out.push({ ...rest, filtered_data })
     }
@@ -287,11 +285,10 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
   ): LegendDisplayStyle => {
     const series_default_color = plot_color(series_idx)
     const display_style: LegendDisplayStyle = {}
-    const series_markers = data_series.markers ?? DEFAULT_MARKERS
     const point_style = first_point_style(data_series)
     const point_override = series_idx === selected_series_idx ? styles.point : undefined
 
-    if (series_markers.includes(`points`) && styles.show_points !== false) {
+    if (has_marker(data_series, `points`) && styles.show_points !== false) {
       display_style.symbol_type = styles.point?.symbol_type ?? get_series_symbol(series_idx)
       if (
         !Array.isArray(data_series.point_style) &&
@@ -319,7 +316,7 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
       }
     }
 
-    if (series_markers.includes(`line`) && styles.show_lines !== false) {
+    if (has_marker(data_series, `line`) && styles.show_lines !== false) {
       const line = scatter_line_style(
         data_series,
         series_idx,
@@ -389,24 +386,23 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   color_scale_fn: (value: number) => string,
 ): string {
   const { color_value, point_style } = point
-  const series_markers = series?.markers ?? DEFAULT_MARKERS
 
   const scale_color = color_value != null ? color_scale_fn(color_value) : undefined
   if (is_opaque_color(scale_color)) return scale_color
   const fill_color = point_style?.fill
   if (is_opaque_color(fill_color)) return fill_color
-  if (series_markers.includes(`points`)) {
+  if (has_marker(series, `points`)) {
     const stroke_color = point_style?.stroke
     if (is_opaque_color(stroke_color)) return stroke_color
   }
-  if (series_markers.includes(`line`)) {
+  if (has_marker(series, `line`)) {
     const series_style = first_point_style(series)
     const first_color_value = series?.color_values?.[0]
     let line_color_candidate = series?.line_style?.stroke
     if (is_transparent_or_none(line_color_candidate)) line_color_candidate = series_style?.fill
     if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
       line_color_candidate = color_scale_fn(first_color_value)
-    if (is_transparent_or_none(line_color_candidate) && series_markers.includes(`points`))
+    if (is_transparent_or_none(line_color_candidate) && has_marker(series, `points`))
       line_color_candidate = series_style?.stroke
     if (is_opaque_color(line_color_candidate)) return line_color_candidate
   }

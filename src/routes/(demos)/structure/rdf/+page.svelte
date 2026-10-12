@@ -3,6 +3,7 @@
   import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import { PdfPlot, RdfPlot } from '#lib/rdf/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
@@ -73,6 +74,9 @@
   // sign to x-rays, while the Ni-Ni shell stays positive for both
   const nickel_hydride = rock_salt(`Ni`, `H`, 3.73)
 
+  // Hovering an RDF bin highlights the atom pairs behind it, a legend entry the pair's atoms
+  let rdf_highlights = $state.raw(new Map<Crystal, number[]>())
+
   // Amorphous structure
   let n_atoms = $state(200)
   let box_size = $state(20)
@@ -103,13 +107,18 @@
   rdf_bins: number,
 )}
   <section class="demo-2col">
-    <Structure {structure} />
+    <Structure {structure} highlighted_sites={rdf_highlights.get(structure) ?? []} />
     <RdfPlot
       structures={structure}
       mode={rdf_mode}
       cutoff={rdf_cutoff}
       n_bins={rdf_bins}
       style="height: 100%"
+      on_sites_hover={(highlights) => {
+        // both ends of the hovered pairs (one structure per section)
+        const sites = highlight_site_union(highlights?.[0])
+        rdf_highlights = new Map(rdf_highlights).set(structure, sites)
+      }}
     />
   </section>
 {/snippet}

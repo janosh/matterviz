@@ -13,6 +13,9 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
   import { untrack, type Snippet } from 'svelte'
+  import type { Vec2 } from '#lib/math.js'
+  import { property_label } from './constants'
+  import { available_property_names } from './geometry'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
   const defaults = DEFAULTS.fermi
@@ -24,6 +27,9 @@
     mu: chemical_potential = $bindable(defaults.mu),
     color_property = $bindable(defaults.color_property),
     color_scale = $bindable(defaults.color_scale),
+    property_name = $bindable(),
+    color_range = $bindable(),
+    fitted_color_range,
     custom_property_label,
     representation = $bindable(defaults.representation),
     surface_opacity = $bindable(defaults.surface_opacity),
@@ -48,8 +54,10 @@
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
-    // Label for the per-vertex property (e.g. "Fermi velocity", "λ(k)", "DOS")
-    custom_property_label?: string
+    property_name?: string // coloured by in `property` mode (default: the first present)
+    color_range?: Vec2 // fixed colour-scale [min, max]; unset fits the data
+    fitted_color_range?: Vec2 // shown as placeholder while color_range is unset
+    custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
     export_filename?: string
     on_export?: (format: SceneExportFormat, context: FileExportContext) => void | Promise<void>
@@ -60,11 +68,9 @@
 
   const export_formats = { stl: `3D printing`, obj: `Wavefront`, glb: `web/AR` }
 
-  // Per-vertex scalars (Fermi velocity, orbital character, …) are only colourable when some
-  // sheet carries them
-  let has_property = $derived(
-    fermi_data?.isosurfaces.some((iso) => iso.properties?.length) ?? false,
-  )
+  // per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) the data carries
+  let available_properties = $derived(available_property_names(fermi_data, band_data))
+  let has_property = $derived(available_properties.length > 0)
 
   let available_bands = $derived(
     fermi_data
@@ -75,22 +81,53 @@
   )
   const available_bands_changed = make_change_detector()
 
-  // Bands switched off stay off when a mu change alters which bands cross E_F; newly
-  // crossing bands start visible
+  // Bands switched off stay off when a mu change alters which bands cross E_F, even after one
+  // stops crossing and crosses again; newly crossing bands start visible
   let previous_bands: number[] = []
+  const hidden_bands = new Set<number>()
   const sync_bindable_defaults = (bands_changed = false): void => {
     if (color_property === `property` && !has_property)
       color_property = defaults.color_property
+    // A property the new data lacks falls back to the first one, and its fixed range with it
+    if (!available_properties.includes(property_name ?? ``)) {
+      if (property_name !== undefined) color_range = undefined
+      property_name = available_properties[0]
+    }
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
-      const selected = selected_bands
-      const hidden = selected ? previous_bands.filter((band) => !selected.includes(band)) : []
-      selected_bands = available_bands.filter((band) => !hidden.includes(band))
+      // a band crossing before but not shown now was hidden; one shown now is not
+      if (selected_bands) {
+        for (const band of previous_bands) hidden_bands.add(band)
+        for (const band of selected_bands) hidden_bands.delete(band)
+      }
+      selected_bands = available_bands.filter((band) => !hidden_bands.has(band))
     }
     previous_bands = available_bands
   }
 
   untrack(sync_bindable_defaults)
   $effect(() => sync_bindable_defaults(available_bands_changed(available_bands.join(`,`))))
+
+  // An emptied field returns to auto; one typed bound keeps the fitted value for the other. A
+  // partial entry (`-`, `1e`) also reads as `` but is flagged by badInput: keep the range.
+  function set_color_bound(
+    bound_idx: 0 | 1,
+    event: Event & { currentTarget: HTMLInputElement },
+  ) {
+    const { value, validity } = event.currentTarget
+    if (validity.badInput) return
+    const parsed = parse_num_token(value)
+    if (Number.isFinite(parsed)) {
+      const range: Vec2 = [...(color_range ?? fitted_color_range ?? [0, 1])]
+      range[bound_idx] = parsed
+      color_range = range
+    } else if (value.trim() === ``) color_range = undefined
+  }
+
+  // also forgets bands hidden while they did not cross
+  function show_all_bands(): void {
+    hidden_bands.clear()
+    selected_bands = [...available_bands]
+  }
 
   function toggle_band(band_idx: number): void {
     const bands = selected_bands ?? []
@@ -114,8 +151,8 @@
     track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
   )
   const appearance_settings = track_settings(
-    () => ({ color_property, color_scale, representation, surface_opacity }),
-    defaults,
+    () => ({ color_property, color_scale, representation, surface_opacity, color_range }),
+    { ...defaults, color_range: undefined },
   )
   const brillouin_zone_settings = track_settings(
     () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
@@ -173,7 +210,7 @@
       <SettingsSection
         title="Bands"
         changed_keys={bands_settings.changed_keys}
-        on_reset={() => (selected_bands = [...available_bands])}
+        on_reset={show_all_bands}
         layout="grid"
       >
         <div class="band-checkboxes">
@@ -184,14 +221,12 @@
                 checked={selected_bands?.includes(band_idx)}
                 onchange={() => toggle_band(band_idx)}
               />
-              <span>Band {band_idx}</span>
+              <span>Band {band_idx + 1}</span>
             </label>
           {/each}
         </div>
         <div class="band-actions">
-          <button type="button" onclick={() => (selected_bands = [...available_bands])}>
-            All
-          </button>
+          <button type="button" onclick={show_all_bands}>All</button>
           <button type="button" onclick={() => (selected_bands = [])}>None</button>
         </div>
       </SettingsSection>
@@ -200,8 +235,10 @@
     <SettingsSection
       title="Appearance"
       changed_keys={appearance_settings.changed_keys}
-      on_reset={() =>
-        ({ color_property, color_scale, representation, surface_opacity } = defaults)}
+      on_reset={() => {
+        ;({ color_property, color_scale, representation, surface_opacity } = defaults)
+        color_range = undefined
+      }}
       layout="grid"
     >
       <label>
@@ -210,11 +247,29 @@
           <option value="band">Band</option>
           <option value="spin">Spin</option>
           {#if has_property}
-            <option value="property">{custom_property_label ?? `Property`}</option>
+            <option value="property">
+              {available_properties.length === 1
+                ? property_label(available_properties[0], custom_property_label)
+                : `Property`}
+            </option>
           {/if}
         </select>
       </label>
       {#if color_property === `property`}
+        {#if available_properties.length > 1}
+          <label>
+            <span>Property</span>
+            <select
+              bind:value={property_name}
+              onchange={() => (color_range = undefined)}
+              aria-label="Fermi surface colouring property"
+            >
+              {#each available_properties as name (name)}
+                <option value={name}>{property_label(name, custom_property_label)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         <label>
           <span>Color scale</span>
           <ColorScaleSelect
@@ -222,6 +277,24 @@
             bind:value={color_scale}
             aria-label="Fermi surface color scale"
           />
+        </label>
+        <label title="Fixed colour-scale bounds; leave empty to fit the visible surfaces">
+          <span>Range</span>
+          <span style="display: flex; gap: 0.3em">
+            {#each [0, 1] as const as bound_idx (bound_idx)}
+              <input
+                type="number"
+                step="any"
+                style="width: 4.5em"
+                value={color_range?.[bound_idx] ?? ``}
+                placeholder={fitted_color_range
+                  ? format_num(fitted_color_range[bound_idx], `.3~g`)
+                  : ``}
+                oninput={(event) => set_color_bound(bound_idx, event)}
+                aria-label={`Colour range ${bound_idx ? `max` : `min`}`}
+              />
+            {/each}
+          </span>
         </label>
       {/if}
       <label>

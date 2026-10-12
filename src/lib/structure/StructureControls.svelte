@@ -896,6 +896,91 @@
       (scene_props.auto_rotate ?? 0) > 0 ? `, auto-rotating` : ``
     }`,
   )
+
+  // Settings sections with their reset trackers. Built in the script and evaluated once here, so each reset
+  // baseline is the mount snapshot even though the pane's contents mount on first open.
+  let sections = $derived({
+    visibility: scene_section(
+      `Visibility`,
+      [...visibility_rows, ...visibility_mode_rows],
+      vector_accessors(`vector_config`, [`visible`, `color`]),
+    ),
+    atoms: scene_section(`Atoms`, atom_rows, {
+      color_scheme: local(
+        () => color_scheme,
+        (value) => (color_scheme = value),
+      ),
+      atom_color_mode: atom_coloring,
+      atom_color_scale: local(() => atom_color_config.scale, set_atom_color_scale),
+      atom_color_property_key: atom_coloring,
+    }),
+    bonds: scene_section(`Bonds`, bond_rows),
+    polyhedra: scene_section(`Polyhedra`, polyhedra_rows, {
+      polyhedra_centers: scene_pair(
+        `polyhedra_excluded_elements`,
+        `polyhedra_included_elements`,
+      ),
+    }),
+    labels: scene_section(
+      `Labels`,
+      label_rows,
+      {
+        // One CSS string drives two controls, so each half gets its own key: keying both
+        // rows off site_label_bg_color would offer a reset on the swatch for an edit the
+        // user made with the opacity slider.
+        site_label_bg_hex: local(get_label_bg_hex, set_label_bg_hex),
+        site_label_bg_opacity: local(get_label_bg_opacity, set_label_bg_opacity),
+      },
+      [`site_label_offset`],
+    ),
+    site_vectors: scene_section(
+      `Site vectors`,
+      vector_rows,
+      vector_accessors(`vector_scale`, [`scale`]),
+      [`vector_color_scale`],
+    ),
+    cell: scene_section(`Cell`, cell_rows, {
+      supercell_scaling: local(
+        () => supercell_scaling,
+        (value) => (supercell_scaling = value),
+      ),
+      ...(periodic && {
+        cell_type: local(
+          () => cell_type,
+          (value) => (cell_type = value),
+        ),
+      }),
+    }),
+    view: scene_section(
+      `View`,
+      view_rows,
+      {
+        multi_view: local(
+          () => multi_view,
+          (value) => (multi_view = value),
+        ),
+      },
+      [`rotation`],
+    ),
+    pointer: scene_section(`Pointer sensitivity`, pointer_rows),
+    background: scene_section(`Background`, [], {
+      background_color: local(
+        () => background_color,
+        (value) => (background_color = value),
+      ),
+      background_opacity: local(
+        () => background_opacity,
+        (value) => (background_opacity = value),
+      ),
+    }),
+    lighting: scene_section(`Lighting`, lighting_rows),
+    displacement: scene_section(`Displacement Overlay`, displacement_rows),
+    trails: scene_section(`Trajectory Trails`, [trail_toggle_row, ...trail_rows], {}, [
+      `trajectory_line_trail_frames`,
+      `trajectory_line_elements`,
+    ]),
+  })
+  untrack(() => sections)
 </script>
 
 <!-- Declared outside <ControlPane> so they are template snippets, not props of the pane -->
@@ -1017,15 +1102,21 @@
       <SettingsGroup
         title="Volumetric data"
         open
-        subtitle={display_mode === `slice` ? `cross-section` : `isosurface`}
+        subtitle={{
+          structure: `isosurface`,
+          slice: `cross-section`,
+          split: `isosurface + cross-section`,
+        }[display_mode]}
       >
-        {#if display_mode === `slice` && slice_settings}
+        {#if display_mode !== `structure` && slice_settings}
           <VolumeSliceControls
             bind:settings={slice_settings}
             volumes={volumetric_data}
             bind:active_volume_id
+            show_plane_toggle={display_mode === `split`}
           />
-        {:else if isosurface_settings}
+        {/if}
+        {#if display_mode !== `slice` && isosurface_settings}
           <IsosurfaceControls
             bind:settings={isosurface_settings}
             bind:volumes={volumetric_data}
@@ -1037,15 +1128,7 @@
 
     <SettingsGroup title="Appearance" bind:open={open_groups.appearance}>
       {#key available_vector_keys.join(`\0`)}
-        <SettingsSection
-          title="Visibility"
-          layout="grid"
-          {...scene_section(
-            `Visibility`,
-            [...visibility_rows, ...visibility_mode_rows],
-            vector_accessors(`vector_config`, [`visible`, `color`]),
-          )}
-        >
+        <SettingsSection title="Visibility" layout="grid" {...sections.visibility}>
           <div class="toggle-grid">
             {@render setting_rows(visibility_rows)}
             {#each available_vector_keys as key, idx (key)}
@@ -1085,19 +1168,7 @@
         </SettingsSection>
       {/key}
 
-      <SettingsSection
-        title="Atoms"
-        layout="grid"
-        {...scene_section(`Atoms`, atom_rows, {
-          color_scheme: local(
-            () => color_scheme,
-            (value) => (color_scheme = value),
-          ),
-          atom_color_mode: atom_coloring,
-          atom_color_scale: local(() => atom_color_config.scale, set_atom_color_scale),
-          atom_color_property_key: atom_coloring,
-        })}
-      >
+      <SettingsSection title="Atoms" layout="grid" {...sections.atoms}>
         {@render setting_rows(atom_rows)}
         <label {...setting_row(`color_scheme`)}>
           <span>Color scheme</span>
@@ -1182,22 +1253,13 @@
       </SettingsSection>
 
       {#if scene_value(`show_bonds`) !== `never`}
-        <SettingsSection title="Bonds" layout="grid" {...scene_section(`Bonds`, bond_rows)}>
+        <SettingsSection title="Bonds" layout="grid" {...sections.bonds}>
           {@render setting_rows(bond_rows)}
         </SettingsSection>
       {/if}
 
       {#if scene_value(`show_polyhedra`) !== `never`}
-        <SettingsSection
-          title="Polyhedra"
-          layout="grid"
-          {...scene_section(`Polyhedra`, polyhedra_rows, {
-            polyhedra_centers: scene_pair(
-              `polyhedra_excluded_elements`,
-              `polyhedra_included_elements`,
-            ),
-          })}
-        >
+        <SettingsSection title="Polyhedra" layout="grid" {...sections.polyhedra}>
           {@render setting_rows(polyhedra_rows)}
           {#if structure_elements.length > 0}
             {@render element_chips(
@@ -1215,22 +1277,7 @@
       {/if}
 
       {#if scene_value(`show_site_labels`) || scene_value(`show_site_indices`)}
-        <SettingsSection
-          title="Labels"
-          layout="grid"
-          {...scene_section(
-            `Labels`,
-            label_rows,
-            {
-              // One CSS string drives two controls, so each half gets its own key: keying both
-              // rows off site_label_bg_color would offer a reset on the swatch for an edit the
-              // user made with the opacity slider.
-              site_label_bg_hex: local(get_label_bg_hex, set_label_bg_hex),
-              site_label_bg_opacity: local(get_label_bg_opacity, set_label_bg_opacity),
-            },
-            [`site_label_offset`],
-          )}
-        >
+        <SettingsSection title="Labels" layout="grid" {...sections.labels}>
           {@render setting_rows(label_rows)}
           <ColorInput
             {...setting_row(`site_label_bg_hex`)}
@@ -1274,16 +1321,7 @@
 
       {#if available_vector_keys.length > 0 && any_vectors_visible}
         {#key available_vector_keys.join(`\0`)}
-          <SettingsSection
-            title="Site vectors"
-            layout="grid"
-            {...scene_section(
-              `Site vectors`,
-              vector_rows,
-              vector_accessors(`vector_scale`, [`scale`]),
-              [`vector_color_scale`],
-            )}
-          >
+          <SettingsSection title="Site vectors" layout="grid" {...sections.site_vectors}>
             {@render setting_rows(vector_rows)}
             {#if scene_value(`vector_color_mode`) === `magnitude`}
               <label {...setting_row(`vector_color_scale`)}>
@@ -1321,22 +1359,7 @@
       {/if}
 
       {#if has_lattice}
-        <SettingsSection
-          title="Cell"
-          layout="grid"
-          {...scene_section(`Cell`, cell_rows, {
-            supercell_scaling: local(
-              () => supercell_scaling,
-              (value) => (supercell_scaling = value),
-            ),
-            ...(periodic && {
-              cell_type: local(
-                () => cell_type,
-                (value) => (cell_type = value),
-              ),
-            }),
-          })}
-        >
+        <SettingsSection title="Cell" layout="grid" {...sections.cell}>
           {#if periodic}
             <label
               {...setting_row(
@@ -1391,21 +1414,7 @@
     </SettingsGroup>
 
     <SettingsGroup title="Camera" bind:open={open_groups.camera} subtitle={camera_summary}>
-      <SettingsSection
-        title="View"
-        layout="grid"
-        {...scene_section(
-          `View`,
-          view_rows,
-          {
-            multi_view: local(
-              () => multi_view,
-              (value) => (multi_view = value),
-            ),
-          },
-          [`rotation`],
-        )}
-      >
+      <SettingsSection title="View" layout="grid" {...sections.view}>
         {@render setting_rows(view_rows)}
         {#if multi_view_control_visible && display_mode === `structure`}
           <label {...setting_row(`multi_view`)} class:disabled={multi_view_blocked}>
@@ -1482,30 +1491,13 @@
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        title="Pointer sensitivity"
-        layout="grid"
-        {...scene_section(`Pointer sensitivity`, pointer_rows)}
-      >
+      <SettingsSection title="Pointer sensitivity" layout="grid" {...sections.pointer}>
         {@render setting_rows(pointer_rows)}
       </SettingsSection>
     </SettingsGroup>
 
     <SettingsGroup title="Scene" bind:open={open_groups.scene}>
-      <SettingsSection
-        title="Background"
-        layout="grid"
-        {...scene_section(`Background`, [], {
-          background_color: local(
-            () => background_color,
-            (value) => (background_color = value),
-          ),
-          background_opacity: local(
-            () => background_opacity,
-            (value) => (background_opacity = value),
-          ),
-        })}
-      >
+      <SettingsSection title="Background" layout="grid" {...sections.background}>
         <!-- Keep an unset background undefined until an edit, preserving the theme color. -->
         <ColorInput
           {...setting_row(`background_color`)}
@@ -1522,11 +1514,7 @@
         >
       </SettingsSection>
 
-      <SettingsSection
-        title="Lighting"
-        layout="grid"
-        {...scene_section(`Lighting`, lighting_rows)}
-      >
+      <SettingsSection title="Lighting" layout="grid" {...sections.lighting}>
         {@render setting_rows(lighting_rows)}
       </SettingsSection>
     </SettingsGroup>
@@ -1537,7 +1525,7 @@
           <SettingsSection
             title="Displacement Overlay"
             layout="grid"
-            {...scene_section(`Displacement Overlay`, displacement_rows)}
+            {...sections.displacement}
           >
             <!-- `!== null` (not truthiness) so the union discriminates: an empty error string
             would leave the else branch un-narrowed and rmsd possibly undefined -->
@@ -1563,14 +1551,7 @@
         <!-- Only the trajectory viewer can collect a whole-run position stream, so this section
         is absent for plain structures rather than showing dead controls -->
         {#if trajectory_position_stream !== undefined}
-          <SettingsSection
-            title="Trajectory Trails"
-            layout="grid"
-            {...scene_section(`Trajectory Trails`, [trail_toggle_row, ...trail_rows], {}, [
-              `trajectory_line_trail_frames`,
-              `trajectory_line_elements`,
-            ])}
-          >
+          <SettingsSection title="Trajectory Trails" layout="grid" {...sections.trails}>
             {@render setting_rows([trail_toggle_row])}
             {#if trails_shown && trajectory_position_stream}
               {#if trail_elements.length > 1}

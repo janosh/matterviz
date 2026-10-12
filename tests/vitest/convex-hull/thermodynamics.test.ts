@@ -6,10 +6,13 @@ import {
   compute_quickhull_nd,
   find_lowest_energy_unary_refs,
   get_convex_hull_stats,
+  get_hull_decomposition,
   normalize_hull_composition_keys,
   process_hull_entries,
   process_hull_for_stats,
+  system_fractions,
 } from '#lib/convex-hull/thermodynamics.js'
+import { compute_hull_model } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { matrix_inverse_3x3, mat3x3_vec3_multiply, solve_linear_system } from '#lib/math.js'
@@ -736,4 +739,73 @@ describe(`process_hull_for_stats`, () => {
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
     },
   )
+})
+
+describe(`hull decomposition`, () => {
+  // Random entries on 2-4 element systems: every unstable entry's decomposition must mix back
+  // to its composition at exactly its formation energy minus its hull distance
+  test.each([
+    [[`Li`, `O`], 1],
+    [[`Li`, `Na`, `O`], 2],
+    [[`Li`, `Na`, `Cl`, `O`], 3],
+  ])(`%j: products reproduce composition and hull energy`, (elements, seed) => {
+    const rng = make_rng(seed)
+    const entries = [
+      ...elements.map((element) => make_elem(element, 0)),
+      ...Array.from({ length: 40 }, (_, idx) => {
+        const composition = Object.fromEntries(
+          elements.map((element) => [element, Math.floor(rng() * 4)]),
+        )
+        if (Object.values(composition).every((amount) => amount === 0)) composition.O = 1
+        return make_phase(composition, -2 * rng(), { entry_id: `e${idx}` })
+      }),
+    ]
+    const model = compute_hull_model(entries, { energy_source_mode: `on-the-fly` })
+    const unstable = model.entries.filter((entry) => (entry.e_above_hull ?? 0) > 1e-6)
+    expect(unstable.length).toBeGreaterThan(5)
+    const fractions = (entry: PhaseData) => system_fractions(entry.composition, model.elements)
+    for (const entry of unstable) {
+      const { energy, decomposition } = get_hull_decomposition(
+        entry,
+        model.entries,
+        model.elements,
+      ) ?? { energy: NaN, decomposition: [] }
+      // hull distance comes from facet planes, the decomposition from an LP: measured ≤ 1.3e-15
+      const hull_energy = (entry.e_form_per_atom ?? NaN) - (entry.e_above_hull ?? NaN)
+      expect(energy).toBeCloseTo(hull_energy, 12)
+      expect(decomposition.every(({ phase }) => phase.is_stable)).toBe(true)
+      expect(decomposition.length).toBeLessThanOrEqual(elements.length)
+      const mixed = elements.map((_, el_idx) =>
+        decomposition.reduce(
+          (sum, { phase, atom_fraction }) =>
+            sum + atom_fraction * (fractions(phase)?.[el_idx] ?? NaN),
+          0,
+        ),
+      )
+      expect(mixed).toEqual(fractions(entry)?.map((val) => expect.closeTo(val, 9)))
+    }
+  })
+
+  test(`stable entries, excluded entries and entries outside the system`, () => {
+    const elements = [`Li`, `O`] as const
+    const model = compute_hull_model(
+      [
+        make_elem(`Li`, 0),
+        make_elem(`O`, 0),
+        make_phase({ Li: 2, O: 1 }, -2, { entry_id: `li2o` }),
+        // excluded and below the hull: must never be offered as a product
+        make_phase({ Li: 1, O: 1 }, -5, { entry_id: `x`, exclude_from_hull: true }),
+      ],
+      { energy_source_mode: `on-the-fly` },
+    )
+    const decompose = (entry: PhaseData) =>
+      get_hull_decomposition(entry, model.entries, [...elements])
+    const li2o = model.entries.find((entry) => entry.entry_id === `li2o`)
+    expect(li2o?.is_stable && decompose(li2o)).toBeNull()
+    const above = { e_form_per_atom: -0.5, e_above_hull: 0.5 }
+    expect(decompose(make_phase({ Li: 1, Na: 1 }, -1, above))).toBeNull()
+    expect(system_fractions({ Li: 1, O: 3 }, [...elements])).toEqual([0.25, 0.75])
+    const lio2 = decompose(make_phase({ Li: 1, O: 2 }, -0.5, above))
+    expect(lio2?.decomposition.map(({ phase }) => phase.entry_id)).toEqual([`O`, `li2o`])
+  })
 })

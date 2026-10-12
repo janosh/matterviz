@@ -1,7 +1,7 @@
 <script lang="ts">
   // Isothermal section: the Gibbs triangle tiled by tie-triangles at one temperature, stable
   // phases as vertices, unstable phases faded by hull distance. Hovering a composition shows
-  // its tie-triangle (lever rule); drawing reuses the convex-hull canvas helpers.
+  // its tie-triangle (lever rule), a click (un)pins it; drawing reuses convex-hull helpers.
   import { add_alpha, default_element_colors } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import type { LabelOpts, Projected } from '#lib/convex-hull/canvas-draw.js'
@@ -25,7 +25,7 @@
   } from '#lib/plot/ternary/ternary.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
-  import { decompose_composition, type DiagramModel } from './compute'
+  import { decompose_composition, type DiagramModel, hits_pin } from './compute'
   import type { Decomposition, IsothermalSection, SectionHover, TernaryDisplay } from './types'
   import { TERNARY_COLORS } from './types'
 
@@ -34,6 +34,8 @@
     section,
     settings,
     selected_phase = $bindable(null),
+    pinned_composition = $bindable(null),
+    pin_color = TERNARY_COLORS.pin,
     highlighted_phases = [],
     emphasized_phases = [],
     on_hover,
@@ -43,6 +45,8 @@
     section: IsothermalSection
     settings: TernaryDisplay
     selected_phase?: number | null
+    pinned_composition?: Vec2 | null // composition probe kept across hovers (triangle xy)
+    pin_color?: string // concrete colour (canvas can't resolve var()/light-dark())
     highlighted_phases?: number[]
     emphasized_phases?: number[] // ringed, e.g. phases that change at the next transition
     on_hover?: (hover: SectionHover | null) => void
@@ -51,7 +55,9 @@
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
   let hover_composition = $state<{ xy: Vec2; decomposition: Decomposition } | null>(null)
-  let hover_phase: number | null = null
+  const pinned_decomposition = $derived(
+    pinned_composition && decompose_composition(model, section, pinned_composition),
+  )
 
   // === Geometry: triangle frame xy ↔ canvas px ===
 
@@ -75,6 +81,7 @@
     (pixel_x - layout.origin_x) / layout.size,
     (layout.origin_y - pixel_y) / layout.size,
   ]
+  const PIN_HIT_PX = 8 // a click this close to the pin removes it
 
   // === Entries in ConvexHullEntry shape for the shared canvas helpers ===
 
@@ -290,6 +297,22 @@
         paint_only: (entry) => vertices.has(entry),
       })
     }
+    // Pinned probe: spokes to its assemblage at this temperature, ringed marker
+    if (pinned_composition) {
+      const point = project(...pinned_composition)
+      ctx.strokeStyle = pin_color
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 3])
+      for (const idx of pinned_decomposition?.phases ?? []) {
+        stroke_path(ctx, [point, project(...model.phases[idx].xy)])
+      }
+      ctx.setLineDash([])
+      ring(ctx, point, 7 * scale, pin_color)
+      ctx.fillStyle = pin_color
+      ctx.beginPath()
+      ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI)
+      ctx.fill()
+    }
     // Composition probe: dashed spokes to the tie-triangle vertices
     if (hover_composition) {
       const point = project(...hover_composition.xy)
@@ -339,30 +362,44 @@
   })
   // Hover and selection only repaint the overlay (the base is several hundred paths)
   $effect(() => {
-    void [hover_composition, selected_phase, highlighted_phases, emphasized_phases]
+    void [
+      hover_composition,
+      pinned_composition,
+      pinned_decomposition,
+      pin_color,
+      selected_phase,
+      highlighted_phases,
+      emphasized_phases,
+    ]
     surface.schedule(false)
   })
 
   // === Pointer ===
 
+  const event_xy = (target: HTMLCanvasElement, event: MouseEvent): Vec2 => {
+    const rect = target.getBoundingClientRect()
+    return xy_at(event.clientX - rect.left, event.clientY - rect.top)
+  }
+  const on_pin = (coords_xy: Vec2) =>
+    hits_pin(pinned_composition, coords_xy, PIN_HIT_PX / layout.size)
+
   function handle_pointer_move(event: MouseEvent): void {
     if (!canvas) return
     const position: Vec2 = [event.clientX, event.clientY]
     const entry = find_hull_entry_at_mouse(canvas, event, pick_index)
-    hover_phase = entry ? entry.phase_idx : null
-    canvas.style.cursor = entry ? `pointer` : ``
-    if (hover_phase !== null) {
+    if (entry) {
+      canvas.style.cursor = `pointer`
       hover_composition = null
       on_hover?.({
         kind: `phase`,
-        phase: model.phases[hover_phase],
-        e_above_hull: section.e_above_hull[hover_phase],
+        phase: model.phases[entry.phase_idx],
+        e_above_hull: section.e_above_hull[entry.phase_idx],
         position,
       })
       return
     }
-    const rect = canvas.getBoundingClientRect()
-    const coords_xy = xy_at(event.clientX - rect.left, event.clientY - rect.top)
+    const coords_xy = event_xy(canvas, event)
+    canvas.style.cursor = on_pin(coords_xy) ? `pointer` : ``
     const barycentric = xy_to_ternary(coords_xy)
     if (!inside_triangle(barycentric, 1e-6)) return handle_pointer_leave()
     const decomposition = decompose_composition(model, section, coords_xy)
@@ -370,14 +407,19 @@
     on_hover?.({ kind: `composition`, barycentric, decomposition, position })
   }
   function handle_pointer_leave(): void {
-    hover_phase = null
     hover_composition = null
     if (canvas) canvas.style.cursor = ``
     on_hover?.(null)
   }
-  const handle_click = () => {
-    selected_phase =
-      hover_phase !== null && selected_phase !== hover_phase ? hover_phase : null
+  // A phase toggles its selection; anywhere else clears it and (un)pins the composition there
+  function handle_click(event: MouseEvent): void {
+    if (!canvas) return
+    const entry = find_hull_entry_at_mouse(canvas, event, pick_index)
+    selected_phase = entry && entry.phase_idx !== selected_phase ? entry.phase_idx : null
+    if (entry) return
+    const coords_xy = event_xy(canvas, event)
+    if (on_pin(coords_xy)) pinned_composition = null
+    else if (inside_triangle(xy_to_ternary(coords_xy), 1e-6)) pinned_composition = coords_xy
   }
 </script>
 

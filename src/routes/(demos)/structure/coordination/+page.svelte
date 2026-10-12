@@ -4,7 +4,8 @@
   import { plot_color } from '#lib/colors/index.js'
   import type { CoordinationSplitMode } from '#lib/coordination/index.js'
   import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
-  import { type AtomColorConfig, Structure } from '#lib/structure/index.js'
+  import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
+  import { type AtomColorConfig, type AnyStructure, Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_map } from '#site/structures.js'
   import EnumSelect from '../../EnumSelect.svelte'
@@ -50,13 +51,18 @@
   let multi_scene_props = $derived({ bonding_strategy: multi_strategy, gizmo: false })
 
   const selected_structures = $derived(labeled_structures(selected_ids))
+
+  let single_highlight = $state<number[]>([])
+  let multi_highlights = $state.raw<StructureSiteHighlight[]>([])
+  const highlight_of = (structure: AnyStructure): number[] =>
+    multi_highlights.find((highlight) => highlight.structure === structure)?.site_indices ?? []
 </script>
 
 <h1 id="coordination-number-histograms">Coordination Number Histograms</h1>
 
 <p class="demo-intro">
-  Histograms and structure colors share the selected bonding strategy. Click a discrete
-  color-bar segment to hide that coordination number.
+  Histograms and structure colors share the selected bonding strategy. Hover a bar to highlight
+  the sites it counts. Click a discrete color-bar segment to hide that coordination number.
 </p>
 
 <div class="bleed-1400">
@@ -81,10 +87,13 @@
           strategy={single_strategy}
           split_mode={single_split_mode}
           style="height: 500px"
+          on_sites_hover={(highlights) =>
+            (single_highlight = highlights?.[0]?.site_indices ?? [])}
         />
       </LazyDemo>
       <Structure
         structure={single_struct}
+        bind:highlighted_sites={single_highlight}
         bind:atom_color_config={single_color_config}
         scene_props={single_scene_props}
         style="height: 500px"
@@ -113,6 +122,7 @@
         split_mode={multi_split_mode}
         padding={{ l: 50 }}
         style="height: 100%"
+        on_sites_hover={(highlights) => (multi_highlights = highlights ?? [])}
       />
       <div class="selected-structures-grid">
         {#each selected_ids as struct_id, idx (struct_id)}
@@ -125,7 +135,8 @@
               <h3>{struct_id}</h3>
               <Structure
                 structure={struct_obj}
-                atom_color_config={multi_color_config}
+                highlighted_sites={highlight_of(struct_obj)}
+                bind:atom_color_config={multi_color_config}
                 scene_props={multi_scene_props}
                 style="height: 100%"
                 enable_info_pane={false}

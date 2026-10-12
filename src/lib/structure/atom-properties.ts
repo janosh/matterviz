@@ -9,7 +9,7 @@ import {
   is_d3_interpolate_name,
 } from '#lib/colors/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
-import { array_extent } from '#lib/math.js'
+import { array_extent, sorted_numbers } from '#lib/math.js'
 import type { AtomColorMode } from '#lib/settings.js'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
@@ -76,7 +76,7 @@ const build_prop_colors = (
   colors: string[],
   unique_values?: number[],
 ): AtomPropertyColors => {
-  const uniq = unique_values ?? [...new Set(vals)].toSorted((val_a, val_b) => val_a - val_b)
+  const uniq = unique_values ?? sorted_numbers(new Set(vals))
   const min_value = uniq[0]
   const max_value = uniq.at(-1)
   return { colors, values: vals, min_value, max_value, unique_values: uniq }

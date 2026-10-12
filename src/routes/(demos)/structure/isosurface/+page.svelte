@@ -74,7 +74,7 @@
         params.set(`show_negative`, String(layer.show_negative))
       }
     }
-    if (display_mode === `slice`) params.set(`view`, display_mode)
+    if (display_mode !== `structure`) params.set(`view`, display_mode)
     // Use window.location instead of page.url to avoid creating a reactive
     // dependency that would cause an infinite loop with the $effect
     replace_url(`${globalThis.location.pathname}?${params.toString()}`)
@@ -111,7 +111,8 @@
   // Load file from URL param or default on mount
   onMount(() => {
     const requested = file_param()
-    display_mode = page.url.searchParams.get(`view`) === `slice` ? `slice` : `structure`
+    const view = page.url.searchParams.get(`view`)
+    display_mode = view === `slice` || view === `split` ? view : `structure`
     const target = requested
       ? volumetric_files.find((file) => file.name === requested)
       : volumetric_files[0]
@@ -145,8 +146,9 @@
   files onto the viewer. Spin-polarized VASP files load one volume per block (charge and
   magnetization, or ELF and local potential spin up and down) and a surface's
   <em>Surface of</em> menu switches it between them; the cross-section view slices along HKL or
-  arbitrary Cartesian planes. To render several volumes at once and color one surface by
-  another volume's values (e.g. density by ESP), see the
+  arbitrary Cartesian planes, and the <em>3D + 2D cross-section</em> layout shows the slice
+  next to the 3D view with its plane marked in the scene. To render several volumes at once and
+  color one surface by another volume's values (e.g. density by ESP), see the
   <a href="/structure/multi-volume">multi-volume demo</a>.
 </p>
 

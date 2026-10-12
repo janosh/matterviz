@@ -114,6 +114,7 @@
     on_item_hover={(item) => {
       frame.hovered_series_idx = item != null && item.series_idx >= 0 ? item.series_idx : null
       on_item_hover?.(item)
+      legend.on_item_hover?.(item)
     }}
     style={`position: absolute; ${placed_style}${strip_style}pointer-events: auto; ${legend.style || ``}`}
   />

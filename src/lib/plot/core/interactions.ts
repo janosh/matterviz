@@ -1,5 +1,12 @@
 import { LOG_EPS, type Point2D, type Vec2 } from '#lib/math.js'
-import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
+import type {
+  AxisRanges,
+  LegendConfig,
+  LegendItem,
+  ScaleType,
+  Y2SyncConfig,
+  Y2SyncMode,
+} from '#lib/plot/core/types.js'
 import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
 
 // Get coordinates of a mouse event relative to an element (the event's
@@ -318,3 +325,49 @@ export function expand_range_if_needed(
   const changed = new_range[0] !== current[0] || new_range[1] !== current[1]
   return { range: new_range, changed }
 }
+
+// Plots report a hover on every pointer move: wrap a handler to run only when the hovered item,
+// named by key_of (null for none), changes, e.g. to skip repeated site searches
+export const on_change = <Value>(
+  key_of: (value: Value) => string | null,
+  handler: (value: Value) => void,
+): ((value: Value) => void) => {
+  let last_key: string | null = null
+  return (value) => {
+    const key = key_of(value)
+    if (key === last_key) return
+    last_key = key
+    handler(value)
+  }
+}
+
+// Plot props reporting the series under the pointer (curve point or legend entry), chained after
+// the caller's handlers; spread them last. Empty when nobody listens.
+type SeriesHoverProps<PointEvent> = {
+  on_point_hover?: (event: PointEvent | null) => void
+  legend?: LegendConfig | null
+}
+export const series_hover_props = <PointEvent extends { series_idx: number }>(
+  on_series_hover: ((series_idx: number | null) => void) | undefined,
+  { on_point_hover, legend = {} }: SeriesHoverProps<PointEvent>,
+): SeriesHoverProps<PointEvent> =>
+  on_series_hover
+    ? {
+        on_point_hover: (event) => {
+          on_series_hover(event?.series_idx ?? null)
+          on_point_hover?.(event)
+        },
+        legend: legend && {
+          ...legend,
+          on_item_hover: (item: LegendItem | null) => {
+            on_series_hover(item && item.series_idx >= 0 ? item.series_idx : null)
+            legend.on_item_hover?.(item)
+          },
+        },
+      }
+    : {}
+
+// Whether a pointer released (or moved) more than 5 px from where it was pressed, i.e. the
+// gesture was a drag (pan, orbit, zoom rectangle) rather than a click
+export const is_drag = (press: Vec2, { clientX, clientY }: MouseEvent): boolean =>
+  Math.hypot(clientX - press[0], clientY - press[1]) > 5

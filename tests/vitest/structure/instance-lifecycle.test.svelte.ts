@@ -37,6 +37,7 @@ import { bind_props } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
+  type Color,
   CylinderGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -1433,3 +1434,65 @@ test.each([false, true])(
       ).toHaveLength(2)
   },
 )
+
+// A lone carbon atom with its other props bound to `state`, unmounted after the test
+const mount_carbon = (state: Partial<ComponentProps<typeof StructureScene>>) => {
+  const structure = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
+  const props = { structure, show_bonds: `never` as const, show_polyhedra: `never` as const }
+  const mounted = mount_scene((anchor) =>
+    StructureScene(anchor, bind_props({ ...props, gizmo: false }, state)),
+  )
+  onTestFinished(mounted.unmount_scene)
+  flushSync()
+  return mounted
+}
+
+test(`Scene marks a volumetric slice plane with a translucent fan fill and a closed outline`, () => {
+  // oxfmt-ignore
+  const square: Vec3[] = [[0, 0, 1], [2, 0, 1], [2, 2, 1], [0, 2, 1]]
+  const state = $state({ slice_polygon: square })
+  const { scene } = mount_carbon(state)
+  const plane_meshes = () => ({
+    outlines: scene.getObjectsByProperty(`type`, `Line`) as Mesh[],
+    fill: (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).find(
+      (mesh) => mesh.renderOrder === 1000,
+    ),
+  })
+  const { outlines, fill } = plane_meshes()
+  // the corners plus the first again, closing the outline by hand
+  const closed = [...square, square[0]].flat()
+  expect([...outlines[0].geometry.getAttribute(`position`).array]).toEqual(closed)
+  expect([...(fill?.geometry.index?.array ?? [])]).toEqual([0, 1, 2, 0, 2, 3])
+  expect(fill?.material).toMatchObject({ transparent: true, opacity: 0.4, depthWrite: false })
+
+  // a new polygon rebuilds and releases the old buffers; fewer than 3 corners draw nothing
+  const dispose = fill && vi.spyOn(fill.geometry, `dispose`)
+  state.slice_polygon = square.slice(0, 3)
+  flushSync()
+  expect(dispose).toHaveBeenCalledOnce()
+  state.slice_polygon = square.slice(0, 2)
+  flushSync()
+  expect(plane_meshes()).toEqual({ outlines: [], fill: undefined })
+})
+
+// THREE.Color cannot parse the default CSS-variable color: it warned and kept the old color
+test(`active-site highlights resolve the CSS color token where the canvas sits`, () => {
+  const warn = vi.spyOn(console, `warn`)
+  const state = $state({ active_sites: [] as number[] })
+  const { canvas, scene } = mount_carbon(state)
+  const host = document.createElement(`div`)
+  host.style.setProperty(`--struct-active-highlight-color`, `rgb(255, 0, 0)`)
+  host.append(canvas)
+  document.body.append(host)
+  state.active_sites = [0]
+  flushSync()
+  const highlight_colors: string[] = []
+  scene.traverse((object) => {
+    const { material } = object as { material?: { depthTest?: boolean; color?: Color } }
+    if (material?.depthTest === false && material.color) {
+      highlight_colors.push(material.color.getHexString())
+    }
+  })
+  expect(highlight_colors).toContain(`ff0000`)
+  expect(warn.mock.calls.flat().join(` `)).not.toContain(`Unknown color model`)
+})

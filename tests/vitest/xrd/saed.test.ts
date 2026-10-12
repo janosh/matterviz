@@ -1,11 +1,17 @@
-import type { Vec2, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import { electron_form_factor } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
-import { compute_saed_pattern, laue_zone_label, saed_pattern_radius } from '#lib/xrd/saed.js'
+import {
+  compute_saed_pattern,
+  laue_zone_label,
+  saed_camera_pose,
+  saed_pattern_radius,
+} from '#lib/xrd/saed.js'
 import { electron_wavelength } from '#lib/xrd/calc-xrd.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../test-fixtures'
+import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 // Angle in degrees between two spots as seen from the direct beam
 const saed_spot_angle = (spot_a: Vec2, spot_b: Vec2): number => {
@@ -288,6 +294,38 @@ describe(`compute_saed_pattern validation`, () => {
       1e-11,
     )
   })
+
+  // A camera at +direction looking back with this up vector has screen right = up × direction.
+  // Projecting each reflection's g onto (right, up) must land it where the pattern draws it.
+  // oxfmt-ignore
+  const lattices: Record<string, Matrix3x3> = {
+    cubic: cubic_matrix(4),
+    hexagonal: [[3, 0, 0], [-1.5, 1.5 * Math.sqrt(3), 0], [0, 0, 5]],
+    monoclinic: [[4, 0, 0], [0, 5, 0], [-1.2, 0, 6]],
+  }
+  // oxfmt-ignore
+  const zone_axes: Vec3[] = [[0, 0, 1], [1, 1, 0], [1, 1, 1], [0, 1, 0], [2, -1, 3]]
+  test.each(
+    Object.entries(lattices).flatMap(([name, matrix]) =>
+      zone_axes.map((zone_axis) => ({ name, matrix, zone_axis })),
+    ),
+  )(
+    `saed_camera_pose puts the pattern's axes on screen: $name $zone_axis`,
+    ({ matrix, zone_axis }) => {
+      const crystal = make_crystal(matrix, [{ element: `Al`, abc: [0, 0, 0], label: `A1` }])
+      const pattern = compute_saed_pattern(crystal, { zone_axis })
+      const { direction, up } = saed_camera_pose(pattern)
+      expect(pattern.spots.length).toBeGreaterThan(5)
+      const right = math.cross_3d(up, direction)
+      const hkl_to_g = math.create_frac_to_cart(math.reciprocal_lattice(matrix))
+      for (const { hkl, position_2d } of pattern.spots) {
+        const g_cart = hkl_to_g(hkl)
+        // |g| ≤ max_g = 2 1/Å: 1e-12 is ~1e4 ulps of headroom over the f64 projection sums
+        expect(math.dot(g_cart, right)).toBeCloseTo(position_2d[0], 12)
+        expect(math.dot(g_cart, up)).toBeCloseTo(position_2d[1], 12)
+      }
+    },
+  )
 
   test(`in_plane_basis is orthonormal and perpendicular to the zone axis`, () => {
     const zone_axis: Vec3 = [1, 1, 2]

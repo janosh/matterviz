@@ -9,7 +9,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, query, set_select, set_input } from '../setup'
+import { bind_props, click_when_ready, query, set_select, set_input } from '../setup'
 import { make_position_stream } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
@@ -108,6 +108,9 @@ const set_timing = async (target: HTMLElement, label: string, value: string) => 
   set_input(input, value)
   await tick()
 }
+// Inline settings sit in the result plot's controls pane, which mounts them on first open
+const open_settings = (target: HTMLElement) =>
+  click_when_ready(target, `.plot-controls-toggle`)
 const calculation_button = (target: HTMLElement, text = `Recompute spectroscopy`) => {
   const button = query<HTMLButtonElement>(
     target,
@@ -137,6 +140,7 @@ test.each([
     const target = render_pane({ run })
 
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+    await open_settings(target)
     // 1 atom × 24001 frames fits at stride 1. Pass preprocessing to align strided signals.
     expect(mocks.collect).toHaveBeenCalledExactlyOnceWith(
       run,
@@ -211,6 +215,7 @@ test.each([
     },
   })
   await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  await open_settings(target)
   const control = [...target.querySelectorAll(`.spectroscopy-controls label`)]
     .find((element) => element.textContent?.trim().startsWith(label))
     ?.querySelector(`select, input`)
@@ -239,6 +244,7 @@ test.each([`signal`, `frame_count`] as const)(
     })
     const target = render_pane(props)
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+    await open_settings(target)
     if (field === `signal`) props.run.signals.dipole = { sample_shape: [3], sample_count: 2 }
     else props.run.frame_count = 20_000_000 // also changes the budgeted stride
     await set_timing(target, `timestep`, `2`)

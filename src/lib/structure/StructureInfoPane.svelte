@@ -35,10 +35,6 @@
       `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
     ],
     [
-      `Navigation`,
-      `Drag to rotate, scroll to zoom, hold Shift/Cmd/Ctrl + drag to pan. Rotate, zoom and pan sensitivity are adjustable under Camera in the settings pane`,
-    ],
-    [
       `Camera Reset`,
       `Press r, double-click the canvas, or use Reset view at the top of the settings pane`,
     ],

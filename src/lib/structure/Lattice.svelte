@@ -5,6 +5,7 @@
   import * as math from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { dispose_on_change } from '#lib/scene/geometry.svelte.js'
+  import { cell_vector_arrow_sizes, cell_vector_origin } from '#lib/structure/geometry.js'
   import { CanvasTooltip } from '#lib/structure/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { supercell_grid_edges } from '#lib/structure/supercell.js'
@@ -42,15 +43,13 @@
     show_cell_vectors?: boolean // whether to show the lattice vectors
   } = $props()
 
-  // Lattice vector arrows all start from this corner, just outside the cell, in the same a/b/c
-  // colors as the orientation gizmo and the rotation sliders
-  const VECTOR_ORIGIN: Vec3 = [-1, -1, -1]
   // Emphasize the origin cell relative to the tiled block.
   const TILE_EDGE_DIM = 0.45
   const TILE_EDGE_THINNING = 0.6
   // Lift toward opaque instead of multiplying opacity, which would saturate.
   const ORIGIN_SURFACE_LIFT = 0.18
   const BLOCK_SURFACE_DIM = 0.5
+  const VECTOR_SCALE = 0.5 // lattice arrows span half their cell vector
 
   const { invalidate } = useThrelte()
   let hovered_idx = $state<number | null>(null) // track hovered vector
@@ -68,6 +67,9 @@
     matrix ? math.scale_lattice_matrix(matrix, tile_counts) : null,
   )
   let lattice_center: Vec3 = $derived(cell_center(matrix ?? null))
+  // Lattice vector arrows start just outside the origin corner, colored like the gizmo's a/b/c
+  let vector_origin: Vec3 = $derived(matrix ? cell_vector_origin(matrix) : [0, 0, 0])
+  let arrow_sizes = $derived(cell_vector_arrow_sizes(matrix, VECTOR_SCALE))
   let block_center: Vec3 = $derived(cell_center(block_matrix))
 
   let tile_edges = $derived(supercell_grid_edges(tile_counts))
@@ -223,9 +225,10 @@
     <!-- Stable A/B/C slot keys preserve Arrow instances; vector props update reactively. -->
     {#each matrix as vec, idx (idx)}
       <Arrow
-        position={VECTOR_ORIGIN}
+        position={vector_origin}
         vector={vec}
-        scale={0.5}
+        scale={VECTOR_SCALE}
+        {...arrow_sizes}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
         onpointerenter={() => (hovered_idx = idx)}
         onpointerleave={() => (hovered_idx = null)}
@@ -235,7 +238,7 @@
     <!-- Tooltip for hovered vector -->
     {#if hovered_idx !== null && matrix}
       {@const hovered_vec = matrix[hovered_idx]}
-      {@const tooltip_position = math.add(VECTOR_ORIGIN, hovered_vec)}
+      {@const tooltip_position = math.add(vector_origin, hovered_vec)}
       <CanvasTooltip position={tooltip_position}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
         ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) <small>Å</small>

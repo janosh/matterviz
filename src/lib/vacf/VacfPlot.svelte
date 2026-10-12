@@ -7,6 +7,7 @@
   import { ScatterPlot } from '#lib/plot/index.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
+  import { series_hover_props } from '#lib/plot/core/interactions.js'
   import { compute_vacf_async } from './async-compute.svelte'
   import { revise_vacf } from './calc-vacf'
   import type { VacfInput, VacfOptions, VacfResult } from './index'
@@ -23,6 +24,7 @@
     show_controls = $bindable(true),
     vacf_controls_open = $bindable(false),
     vdos_controls_open = $bindable(false),
+    on_curve_hover,
     ...rest
   }: {
     // Precomputed curves. Bindable so a parent can read back what `input` produced.
@@ -38,6 +40,8 @@
     error_msg?: string
     vacf_controls_open?: boolean
     vdos_controls_open?: boolean
+    // Hovered curve's label (element or `Total`) in either panel, null on leave
+    on_curve_hover?: (label: string | null) => void
   } & Omit<ScatterPlotOptions, `controls_open`> = $props()
 
   use_async_result({
@@ -88,6 +92,13 @@
     result?.frequencies.length ? curve_series(result.frequencies, (curve) => curve.vdos) : [],
   )
 
+  // Both panels plot result.curves one series each, in order
+  const curve_hover = $derived(
+    on_curve_hover &&
+      ((series_idx: number | null) =>
+        on_curve_hover(result?.curves[series_idx ?? -1]?.label ?? null)),
+  )
+
   let show_vacf = $derived(panel !== `vdos` && vacf_series.length > 0)
   let show_vdos = $derived(panel !== `vacf` && vdos_series.length > 0)
   let plot_style = $derived(rest.style ?? `height: 280px;`)
@@ -119,6 +130,7 @@
       y_axis={{ label: y_label, ...rest.y_axis }}
       styles={{ show_lines: true, show_points: false, ...rest.styles }}
       style={plot_style}
+      {...series_hover_props(curve_hover, rest)}
     />
   {/snippet}
   {#if show_vacf}

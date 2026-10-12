@@ -197,6 +197,7 @@ test(`exports reproducible predictions separately from the original structure`, 
 }) => {
   await page.goto(`/structure/host-tool`)
   await page.getByRole(`button`, { name: `Run prediction`, exact: true }).click()
+  await page.locator(`button.structure-controls-toggle`).click()
   await page.locator(`button.structure-export-toggle`).click()
   await page.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`host-result`)
   const prediction_download = page.waitForEvent(`download`)
@@ -223,7 +224,8 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(original.sites).toEqual(data.input.sites)
   expect(original.lattice).toEqual(data.input.lattice)
   expect(original.volumes).toBeUndefined()
-  // Closed panes retain controls, so include hidden buttons when checking their removal.
+  // Controls mount on first open (above) and stay mounted once closed, so include hidden
+  // buttons when checking their removal.
   const density_surface = page.getByRole(`button`, {
     name: `Add surface for Predicted density`,
     exact: true,

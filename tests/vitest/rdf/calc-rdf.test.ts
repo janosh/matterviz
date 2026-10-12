@@ -1,13 +1,18 @@
 import * as math from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
-import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
+import {
+  calculate_all_pair_rdfs,
+  calculate_rdf,
+  rdf_bin_sites,
+  shell_volume,
+} from '#lib/rdf/calc-rdf.js'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import { neighbor_query } from '#lib/structure/bonding.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { structure_map } from '#site/structures.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../test-fixtures'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 
 const fixture = (identifier: string): Crystal => {
   const structure = structure_map.get(identifier)
@@ -428,4 +433,49 @@ describe(`calculate_all_pair_rdfs`, () => {
       }
     },
   )
+})
+
+describe(`rdf_bin_sites`, () => {
+  const options = { cutoff: 8, n_bins: 80 }
+
+  // Re-finding a bin's pairs with a search cut at that bin's upper edge must recover exactly
+  // the contacts the full-cutoff histogram counted, in every bin (empty ones included).
+  // Ordered structures carry unit occupancies, so counts are integers up to division round-off
+  // (~1e-15 relative); 1e-9 absolute is far below one contact.
+  test.each<[string, Crystal, [string, string] | undefined]>([
+    [`Lu-Al full RDF`, lu_al_structure, undefined],
+    [`Lu-Al partial Al-Lu`, lu_al_structure, [`Al`, `Lu`]],
+    [`Lu-Al partial Al-Al`, lu_al_structure, [`Al`, `Al`]],
+    [`rocksalt partial Cl-Na`, make_rocksalt(), [`Cl`, `Na`]],
+  ])(`%s: each bin's pairs are the ones the histogram counted`, (_name, structure, pair) => {
+    const [center_species, neighbor_species] = pair ?? []
+    const pattern = calculate_rdf(structure, { ...options, center_species, neighbor_species })
+    const element_of = (idx: number) => structure.sites[idx].species[0].element
+    const count = (element: string) =>
+      structure.sites.filter((_site, idx) => element_of(idx) === element).length
+    const pair_weight = pair ? count(pair[0]) * count(pair[1]) : structure.sites.length ** 2
+    const { volume } = math.calc_lattice_params(structure.lattice.matrix)
+    let [max_err, total_pairs] = [0, 0]
+    for (const [bin_idx, g_val] of pattern.g_r.entries()) {
+      // undo the ideal-gas normalisation: the raw (ordered-pair) count the histogram binned
+      const shell = shell_volume(pattern.r[bin_idx], bin_width(pattern))
+      const raw_count = (g_val * pair_weight * shell) / volume
+      const found = rdf_bin_sites(structure, { ...options, bin_idx, element_pair: pair })
+      max_err = Math.max(max_err, Math.abs(found.n_pairs - raw_count))
+      total_pairs += found.n_pairs
+      // a partial's centres carry its first element, their partners its second
+      if (pair) {
+        expect(found.site_indices.every((idx) => element_of(idx) === pair[0])).toBe(true)
+        expect(found.neighbor_indices.every((idx) => element_of(idx) === pair[1])).toBe(true)
+      }
+    }
+    expect(max_err).toBeLessThan(1e-9)
+    expect(total_pairs).toBeGreaterThan(0)
+  })
+
+  test.each([-1, 80, 2.5])(`rejects bin_idx %s outside the 80-bin grid`, (bin_idx) => {
+    expect(() => rdf_bin_sites(pd_structure, { ...options, bin_idx })).toThrow(
+      `bin_idx must be an integer in [0, 80)`,
+    )
+  })
 })

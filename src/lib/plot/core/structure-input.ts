@@ -15,6 +15,24 @@ export interface StructureEntry {
   color?: string
 }
 
+// Sites of one input structure counted by a hovered plot element, for a linked structure viewer
+// to highlight. `neighbor_indices`: partner atoms (bond-angle outer atoms, RDF pair partners),
+// with periodic images mapped to their base site.
+export interface StructureSiteHighlight {
+  label: string
+  structure: AnyStructure
+  site_indices: number[]
+  neighbor_indices?: number[]
+}
+
+// Deduped union of a highlight's sites and their partners, for a viewer that rings both
+export const highlight_site_union = (
+  highlight: Pick<StructureSiteHighlight, `site_indices` | `neighbor_indices`> | undefined,
+): number[] =>
+  highlight
+    ? [...new Set([...highlight.site_indices, ...(highlight.neighbor_indices ?? [])])]
+    : []
+
 // A Record value is either a bare structure or one tagged with a plot colour
 type RecordValue = AnyStructure | { structure: AnyStructure; color?: string }
 export type StructureInput = AnyStructure | Record<string, RecordValue> | StructureEntry[]

@@ -6,6 +6,7 @@ import {
   broaden_spectrum,
   compute_ir_raman_spectrum,
   ir_intensity,
+  peak_mode_indices,
   raman_invariants,
   scale_to_max,
   spectrum_from_phonon_data,
@@ -366,6 +367,21 @@ describe(`spectrum_sticks`, () => {
     expect(spectrum.modes.filter((mode) => mode.is_imaginary)).toHaveLength(1)
     // -1.5 THz is -50.0 cm^-1; the default stick spectrum must not carry it
     expect(spectrum_sticks(spectrum).x.every((freq) => freq > 0)).toBe(true)
+  })
+})
+
+describe(`peak_mode_indices`, () => {
+  // sticks closer than half the distance merge into one peak; farther ones stay apart, and a
+  // silent stick never claims the pointer from an active one
+  it.each([
+    [101, [1, 1, 1], [0, 1]],
+    [115, [1, 1, 1], [1, 2]],
+    [140, [1, 1, 1], []],
+    [101, [0, 1, 1], [1, 2]],
+  ])(`at %d with intensities %j picks the nearest peak`, (position, y, expected) => {
+    const modes = [0, 1, 2].map((mode_idx) => ({ ...co2_spectrum.modes[8], mode_idx }))
+    const sticks = { x: [100, 104, 108], y, modes }
+    expect(peak_mode_indices(sticks, position, 10)).toEqual(expected)
   })
 })
 
@@ -927,6 +943,38 @@ describe(`IrRamanSpectrum component`, () => {
     stick?.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     expect(on_mode_select).toHaveBeenCalledTimes(2)
   })
+
+  // rotated beside a band plot: frequency runs up the y axis and sticks grow along x
+  it.each([`vertical`, `horizontal`] as const)(
+    `draws a %s spectrum with its reference line and highlighted sticks`,
+    async (orientation) => {
+      render({
+        fwhm: 25,
+        orientation,
+        units: `THz`,
+        reference_frequency: co2_spectrum.modes[8].frequency,
+        highlighted_mode_indices: [5, 6],
+      })
+      await tick()
+      const sticks = [...document.querySelectorAll(`line.mode-stick`)]
+      expect(sticks).toHaveLength(3)
+      const attr = (element: Element, name: string) => Number(element.getAttribute(name))
+      const [freq_attr, other_attr] = orientation === `horizontal` ? [`y`, `x`] : [`x`, `y`]
+      for (const stick of sticks) {
+        expect(attr(stick, `${freq_attr}1`)).toBe(attr(stick, `${freq_attr}2`))
+        expect(attr(stick, `${other_attr}1`)).not.toBe(attr(stick, `${other_attr}2`))
+      }
+      const highlighted = document.querySelectorAll(`line.mode-stick.highlighted`)
+      expect([...highlighted].map((stick) => stick.getAttribute(`aria-label`))).toEqual([
+        expect.stringMatching(/^Select mode 6 at/),
+        expect.stringMatching(/^Select mode 7 at/),
+      ])
+      // the reference line spans the plot across the frequency axis at the nu3 stick
+      const ref_line = doc_query(`line.reference-line`)
+      expect(attr(ref_line, `${freq_attr}1`)).toBe(attr(ref_line, `${freq_attr}2`))
+      expect(attr(ref_line, `${freq_attr}1`)).toBeCloseTo(attr(sticks[2], `${freq_attr}1`), 6)
+    },
+  )
 
   const silent_modes = co2_spectrum.modes.map((mode) => ({ ...mode, ir_intensity: 0 }))
   it.each([

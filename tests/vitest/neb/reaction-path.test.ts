@@ -5,7 +5,6 @@ import {
   assert_path,
   fit_path_spline,
   natural_cubic_slopes,
-  nearest_image_idx,
   normalize_paths,
   path_profile,
   path_spline,
@@ -272,23 +271,6 @@ describe(`input normalization`, () => {
 
   test(`an empty record throws`, () => {
     expect(() => normalize_paths({})).toThrow(/empty record/)
-  })
-})
-
-describe(`plot hover mapping`, () => {
-  // Reaction coordinates are physical distances, so a hovered x maps back by nearest
-  // image — rounding would only be correct if x were the image index.
-  const coords = [0, 0.25, 0.5, 1.75, 3.0]
-
-  // oxfmt-ignore
-  test.each(
-    [[0.0, 0], [0.3, 1], [0.4, 2], [1.2, 3], [2.9, 4], [-5, 0], [99, 4]],
-  )(`coordinate %f maps to image %i`, (coord, expected_idx) => {
-    expect(nearest_image_idx(coords, coord)).toBe(expected_idx)
-  })
-
-  test(`an empty coordinate array throws`, () => {
-    expect(() => nearest_image_idx([], 0)).toThrow(/empty coordinate array/)
   })
 })
 

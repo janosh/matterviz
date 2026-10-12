@@ -53,12 +53,13 @@ const mount_2d = async (props: ComponentProps<typeof ChemPotDiagram>): Promise<v
   await tick()
 }
 
-test(`recomputes run only for compute-relevant changes, keep the plot, abort superseded requests, re-read a pinned tooltip`, async () => {
+test(`recomputes run only for compute-relevant changes, keep the plot, abort superseded requests, re-read a pinned tooltip, highlight the hovered domain`, async () => {
   const props = $state({
     entries: binary_temp_entries,
     temperature: 300,
     config: { default_min_limit: -25 },
     hover_info: null as ChemPotHoverInfo | null,
+    highlighted_formula: `O2`, // any spelling, matched by reduced formula
   })
   await mount_2d(props)
   expect(document.querySelector(`.spinner`)).not.toBeNull() // first load: nothing to show yet
@@ -75,11 +76,21 @@ test(`recomputes run only for compute-relevant changes, keep the plot, abort sup
   }
   expect(calls.list).toHaveLength(1)
   await size_plot()
+  // the series' stroked outline paths (points render in their own groups)
+  const stroke_widths = () =>
+    Object.fromEntries(
+      [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map((path) => [
+        path.parentElement?.getAttribute(`data-series-id`),
+        path.getAttribute(`stroke-width`),
+      ]),
+    )
+  expect(stroke_widths()).toEqual({ Li2O: `3`, O: `6` })
   document
     .querySelector(`g[data-series-id="Li2O"] [role="button"]`)
     ?.dispatchEvent(mouse(`click`))
   flushSync()
   expect(props.hover_info?.formula).toBe(`Li2O`)
+  expect(stroke_widths()).toEqual({ Li2O: `6`, O: `3` }) // the hovered domain wins
   const pinned_ranges = props.hover_info?.axis_ranges
   props.temperature = 900
   flushSync()

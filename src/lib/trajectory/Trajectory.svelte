@@ -39,7 +39,7 @@
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
-  import { clamp } from '#lib/math.js'
+  import { clamp, is_valid_index, same_values } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
@@ -48,6 +48,7 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -56,6 +57,9 @@
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
   import { is_vector_key } from '#lib/structure/vectors.js'
+  import { has_usable_lattice } from '#lib/structure/validation.js'
+  import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
+  import { element_site_indices, scene_site_indices } from './linked-sites'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
@@ -619,7 +623,7 @@
   const prepare_movie_frame = async (idx: number, cancellation?: AbortSignal) => {
     const timeout = AbortSignal.timeout(120_000)
     const signal = cancellation ? AbortSignal.any([cancellation, timeout]) : timeout
-    if (!trajectory || !Number.isInteger(idx) || idx < 0 || idx >= trajectory.frame_count)
+    if (!trajectory || !is_valid_index(idx, trajectory.frame_count))
       throw new RangeError(`Movie source frame ${idx} is unavailable`)
     if (!uses_structure_renderer())
       throw new Error(`Select a view mode containing the structure before rendering a movie`)
@@ -1202,6 +1206,32 @@
     return true
   }
 
+  // === linked views: analyses point at atoms of the displayed frame ===
+  // Inspector rows select atoms like a 3D click; hovering an analysis curve, bar or structure
+  // type highlights its atoms. Structure resets both on topology change, the highlight per frame.
+  let selected_sites = $state<number[]>([])
+  let highlighted_sites = $state.raw<number[]>([])
+  // Plots report a hover on every pointer move: only a changed set reaches Structure
+  const highlight = (sites: number[]): void => {
+    if (!same_values(sites, highlighted_sites)) highlighted_sites = sites
+  }
+  const select_source_atom = (atom_idx: number): void => {
+    const [site_idx] = scene_site_indices([atom_idx], current_frame)
+    if (site_idx === undefined) return
+    selected_sites =
+      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
+  }
+  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
+  const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
+    hover,
+  ) => {
+    const structure = session.current_structure
+    if (!hover || !has_usable_lattice(structure)) return highlight([])
+    const { bin_idx, element_pair } = hover
+    if (bin_idx === null) return highlight(element_site_indices(structure, element_pair))
+    highlight(highlight_site_union(rdf_bin_sites(structure, { ...hover, bin_idx })))
+  }
+
   // === analysis menu ===
   // Each floating pane keeps its ViewerPane toggle for layout anchoring but hides it, since
   // the analysis menu owns the clicks. Spectroscopy renders inline in the plot region.
@@ -1222,12 +1252,14 @@
     ...analysis_pane_props,
     default_dt: frame_time_step,
     default_time_unit: trajectory?.time_step?.unit,
+    // MSD/VACF curves are labelled by element (or `Total`, which names none)
+    on_curve_hover: (label: string | null) =>
+      highlight(label ? element_site_indices(session.current_structure, [label]) : []),
   })
   const analysis_panes = $derived([
     [`msd`, TrajectoryMsdPane, correlation_pane_props],
     [`vacf`, TrajectoryVacfPane, correlation_pane_props],
-    [`rdf`, TrajectoryRdfPane, analysis_pane_props],
-    [`structure-id`, TrajectoryStructureIdPane, analysis_pane_props],
+    [`rdf`, TrajectoryRdfPane, { ...analysis_pane_props, on_shell_hover }],
   ] as const)
   // oxfmt-ignore
   const ANALYSES = (
@@ -1620,6 +1652,21 @@
                     }
                   />
                 {/each}
+                <!-- Outside the loop: its playhead follows every frame, and a new props object
+                per frame would reset the panes' unbound results -->
+                <TrajectoryStructureIdPane
+                  {...analysis_pane_props}
+                  current_frame_idx={current_step_idx}
+                  on_frame_select={session.commit}
+                  on_atoms_hover={(hover) =>
+                    highlight(
+                      hover ? scene_site_indices(hover.atom_indices, current_frame) : [],
+                    )}
+                  bind:pane_open={
+                    () => active_pane === `structure-id`,
+                    (open) => set_pane_open(`structure-id`, open)
+                  }
+                />
                 <TrajectoryHotspotPane
                   bind:scale={hotspot_numeric_scale}
                   bind:cutaway={hotspot_cutaway}
@@ -1651,6 +1698,7 @@
                     (open) => set_pane_open(`data-inspector`, open)
                   }
                   on_step_change={session.commit}
+                  on_site_select={select_source_atom}
                 />
               {/snippet}
             </ToolbarMenu>
@@ -1767,6 +1815,8 @@
             }
           }
           bind:hidden_elements
+          bind:selected_sites
+          bind:highlighted_sites
         >
           {#snippet atom_tooltip({ site, site_idx })}
             {@render structure_props.atom_tooltip?.({ site, site_idx })}

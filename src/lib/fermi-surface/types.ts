@@ -11,9 +11,13 @@ export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `fullscreen_to
 
 export type SpinChannel = `up` | `down` | null
 
-// Property types for coloring: flat colour per band or spin channel, or the per-vertex
-// scalar `properties` (Fermi velocity, orbital character, …) mapped through a colour scale
+// Property types for coloring: flat colour per band or spin channel, or one of the named
+// per-vertex scalar `properties` (Fermi velocity, λ_nk, Δ_nk, …) mapped through a colour scale
 export type ColorProperty = `band` | `spin` | `property`
+
+// Named per-vertex scalar fields of one sheet, each holding one value per vertex. NaN marks a
+// vertex without a value (e.g. outside the energy window a coupling was computed in).
+export type VertexProperties = Record<string, Float32Array>
 
 type ReciprocalCellType = `wigner_seitz` | `parallelepiped`
 
@@ -24,7 +28,7 @@ export interface FermiIsosurface {
   positions: Float32Array
   indices: Uint32Array
   normals: Float32Array
-  properties?: Float32Array // per-vertex scalar values (e.g. Fermi velocity magnitude)
+  properties?: VertexProperties
   band_index: number
   spin: SpinChannel
 }
@@ -67,15 +71,27 @@ export interface BandGridData {
   // n, or n − 1 for endpoint-inclusive grids). Unset/0 for Γ-centred meshes (index 0 is Γ),
   // 0.5 for FRMSF lshift=2, ½ − n/2 for lshift=0 meshes that start near −½.
   grid_shift?: Vec3
+  // Absolute 0-based index of each band in `energies` (BXSF `BAND: n` → n − 1), so surfaces can
+  // be matched to a band structure of the same calculation; array positions when unset (FRMSF
+  // and JSON grids that list only some bands without numbering them)
+  band_indices?: number[]
+  // Named scalar fields on the same grid, [spin][band] like `energies` (FRMSF colour block,
+  // λ_nk, Δ_nk, Fermi velocity). Extraction samples them onto every surface vertex; NaN marks
+  // grid points without a value, e.g. outside the window a coupling was computed in.
+  properties?: Record<string, BandEnergyGrid[][]>
+}
+
+// Slice plane normal·k = distance, with the orthonormal Cartesian (u, v) directions that 2D
+// slice coordinates (e.g. points_2d) are expressed in
+export interface FermiSlicePlane {
+  plane_normal: Vec3
+  plane_distance: number
+  in_plane_basis: [Vec3, Vec3]
 }
 
 // 2D Fermi slice data (cross-section through the BZ)
-export interface FermiSliceData {
+export interface FermiSliceData extends FermiSlicePlane {
   isolines: Isoline[]
-  plane_normal: Vec3
-  plane_distance: number
-  // Orthonormal Cartesian (u, v) directions that points_2d are expressed in
-  in_plane_basis: [Vec3, Vec3]
   metadata: {
     n_lines: number
     has_properties: boolean
@@ -96,12 +112,16 @@ export interface Isoline {
 export interface FermiSurfaceOptions {
   mu?: number // chemical potential offset from fermi_energy (default 0)
   interpolation_factor?: number // tricubic upsampling factor (default 1 = none; 0 = auto)
+  // fold the surfaces into the Wigner-Seitz zone (see fold_to_wigner_seitz), e.g. to line them
+  // up with a band-structure k-path drawn through the zone
+  wigner_seitz?: boolean
 }
 
 // Options for Fermi slice computation
 export interface FermiSliceOptions {
   miller_indices?: Vec3 // plane orientation (default [0,0,1])
   distance?: number // distance from origin along normal (default 0)
+  property?: string // per-vertex property the contours carry (default: the first one present)
 }
 
 // Event data for file load
@@ -125,8 +145,10 @@ export interface FermiHoverData {
   position_fractional: Vec3 | null // in reciprocal lattice units (null if conversion failed)
   screen_position: Point2D
   surface_color?: string
-  property_value?: number // nearest vertex property value
-  property_name?: string // label of the per-vertex property (custom_property_label or "Property")
+  property_value?: number // nearest vertex value of the property the surface is coloured by
+  property_name?: string // display label of that property
+  // Every named property at the nearest vertex (display label → value), NaN without a value
+  property_values?: Record<string, number>
   is_tiled?: boolean // true if from symmetry copy
   // Index into lattice_point_group_matrices(k_lattice) (0 = identity; up to 47 for cubic)
   symmetry_index?: number

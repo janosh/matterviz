@@ -2,13 +2,18 @@
 // the temperature slice of the entries, the worker computation and the domain colouring
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
+import { parse_formula } from '#lib/composition/parse.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D } from '#lib/math.js'
 import { to_error } from '#lib/utils.js'
 import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'
-import { get_energy_stats_by_formula, get_min_entries_and_el_refs } from './compute'
+import {
+  formula_key_from_composition,
+  get_energy_stats_by_formula,
+  get_min_entries_and_el_refs,
+} from './compute'
 import { get_temp_filter_payload, get_valid_temperature } from './temperature'
 import {
   CHEMPOT_DEFAULTS,
@@ -241,6 +246,11 @@ export const container_pointer = (
 // Plain-text formula of a domain label (electronegativity order, no delimiters)
 export const domain_formula_text = (formula: string): string =>
   get_electro_neg_formula(formula, { plain_text: true, delim: ``, amount_format: `.3~s` })
+
+// Hovered domain, else the domain key (reduced formula) of the host's formula in any spelling
+// (Li2O2 → LiO). Not in compute.ts: parsing pulls element data into the worker bundle.
+export const highlight_key_of = (hovered?: string, external?: string | null): string | null =>
+  hovered ?? (external ? formula_key_from_composition(parse_formula(external)) : null)
 
 // [value, label] pairs for the color-mode and color-scale <select>s in both panes
 export const CHEMPOT_COLOR_MODE_OPTIONS = [

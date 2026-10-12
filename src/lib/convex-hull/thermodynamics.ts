@@ -677,3 +677,71 @@ export function compute_e_above_hull_nd(
     return covering === undefined ? NaN : query[spatial_dim] - energies[covering]
   })
 }
+
+// === Decomposition ===
+
+const MIXTURE_COEFF_TOL = 1e-7
+
+export interface LowestEnergyMixture<Phase> {
+  energy: number // eV/atom of the lowest-energy mixture at the query composition
+  decomposition: { phase: Phase; atom_fraction: number }[] // largest fraction first
+}
+
+// Lower hull of `phases` at atom `fractions` (shared element order) via an LP, null if unmixable
+export function lowest_energy_mixture<
+  Phase extends { fractions: readonly number[]; energy_per_atom: number },
+>(fractions: readonly number[], phases: readonly Phase[]): LowestEnergyMixture<Phase> | null {
+  const candidates = phases.filter((phase) =>
+    phase.fractions.every((fraction, el_idx) => fraction === 0 || fractions[el_idx] > 0),
+  )
+  if (candidates.length === 0) return null
+  const active_rows = fractions.flatMap((fraction, el_idx) => (fraction > 0 ? [el_idx] : []))
+  const result = math.solve_linear_program(
+    candidates.map((phase) => phase.energy_per_atom),
+    active_rows.map((el_idx) => candidates.map((phase) => phase.fractions[el_idx])),
+    active_rows.map((el_idx) => fractions[el_idx]),
+  )
+  if (result.status !== `optimal`) return null
+  const decomposition = result.solution
+    .map((atom_fraction, idx) => ({ phase: candidates[idx], atom_fraction }))
+    .filter(({ atom_fraction }) => atom_fraction > MIXTURE_COEFF_TOL)
+    .toSorted((item_a, item_b) => item_b.atom_fraction - item_a.atom_fraction)
+  return { energy: result.objective, decomposition }
+}
+
+// Atom fractions of a composition over `elements`, null when empty or partly outside them
+export function system_fractions(
+  composition: PhaseData[`composition`],
+  elements: readonly ElementSymbol[],
+): number[] | null {
+  const total = count_atoms_in_composition(composition)
+  const in_system = elements.reduce((sum, element) => sum + (composition[element] ?? 0), 0)
+  if (!(total > 0) || Math.abs(in_system - total) > 1e-9 * total) return null
+  return elements.map((element) => (composition[element] ?? 0) / total)
+}
+
+// Hull vertices an above-hull entry decomposes into (null on the hull, no E_form or outside)
+export function get_hull_decomposition<Entry extends PhaseData>(
+  entry: PhaseData,
+  entries: readonly Entry[],
+  elements: readonly ElementSymbol[],
+): LowestEnergyMixture<Entry> | null {
+  if (is_on_hull(entry) || !Number.isFinite(entry.e_form_per_atom)) return null
+  const fractions = system_fractions(entry.composition, elements)
+  if (!fractions) return null
+  const vertices = entries.flatMap((vertex) => {
+    const vertex_fractions =
+      is_on_hull(vertex) && system_fractions(vertex.composition, elements)
+    const energy_per_atom = vertex.e_form_per_atom
+    return vertex_fractions && typeof energy_per_atom === `number`
+      ? [{ vertex, fractions: vertex_fractions, energy_per_atom }]
+      : []
+  })
+  const mixture = lowest_energy_mixture(fractions, vertices)
+  if (!mixture) return null
+  const decomposition = mixture.decomposition.map(({ phase, atom_fraction }) => ({
+    phase: phase.vertex,
+    atom_fraction,
+  }))
+  return { energy: mixture.energy, decomposition }
+}

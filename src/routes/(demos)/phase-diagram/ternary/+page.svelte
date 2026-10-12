@@ -183,15 +183,17 @@
       <strong>Isothermal section</strong>: tie-triangles are the three-phase regions at the
       current temperature; hovering any composition gives its equilibrium assemblage with atom
       fractions (the ternary lever rule). Unstable phases are coloured by their hull distance;
-      orange rings mark the phases that change at the next transition on heating.
+      orange rings mark the phases that change at the next transition on heating. Click a
+      composition to pin it across temperatures and views (click again or Escape to unpin).
     </li>
     <li>
       <strong>3D prism</strong>: the same data as a composition–temperature prism. Stable
       phases are vertical rods over their stability windows, tie-lines sweep out the vertical
       sheets that bound the three-phase volumes, and the isothermal cutting plane can be
       dragged up and down (or driven by the slider) to slice the prism at any temperature;
-      everything above the plane is ghosted so the slice reads like a cut-away. Orbit with the
-      mouse, toggle with the 2D/3D buttons.
+      everything above the plane is ghosted so the slice reads like a cut-away. Hover the plane
+      to probe a composition, click it to pin. Orbit with the mouse, toggle with the 2D/3D
+      buttons.
     </li>
     <li>
       <strong>Stability map</strong>: one row per phase across temperature. Solid bars are the

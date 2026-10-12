@@ -83,7 +83,7 @@
   import { size_legend_entries } from '#lib/plot/core/size-legend.js'
   import {
     COLOR_BAR_DEFAULTS,
-    DEFAULT_MARKERS,
+    has_marker,
     is_time_scale,
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
@@ -144,7 +144,7 @@
   // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
   const OBSTACLE_SAMPLE_LIMIT = 500
-  const CANVAS_MARKER_THRESHOLD = 10_000
+  const CANVAS_MARKER_THRESHOLD = 1000
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
@@ -170,6 +170,7 @@
     selected_point = null,
     selected_points = $bindable([]),
     on_select,
+    highlighted_ids = null,
     hovered = $bindable(false),
     tooltip,
     user_content,
@@ -234,6 +235,9 @@
         points: InternalPoint<Metadata>[]
         rect: { x: Vec2; y: Vec2 }
       }) => void
+      // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
+      // collection. null turns it off; points without a point_id never dim.
+      highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
       tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
@@ -484,7 +488,7 @@
       const [y_lo, y_hi] = range_bounds([start.y, current.y])
       const picked: InternalPoint<Metadata>[] = []
       for (const series_data of filtered_series) {
-        if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+        if (!has_marker(series_data, `points`)) continue
         const project = series_projector(series_data)
         for (const point of series_data.filtered_data) {
           const [center_x, center_y] = project.point(point)
@@ -576,7 +580,7 @@
             x: norm_x(point.x) + (point.point_offset?.x ?? 0) / base_w,
             y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),
-          draws_line: show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+          draws_line: show_lines && has_marker(srs, `line`),
         }
       }),
     ),
@@ -656,7 +660,7 @@
         (srs) =>
           srs &&
           srs.visible !== false &&
-          (srs.markers ?? DEFAULT_MARKERS).includes(`points`) &&
+          has_marker(srs, `points`) &&
           srs.size_values?.some(Number.isFinite),
       ),
   )
@@ -739,7 +743,7 @@
     if (!show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
     for (const srs of filtered_series) {
-      if (!(srs.markers ?? DEFAULT_MARKERS).includes(`line`)) continue
+      if (!has_marker(srs, `line`)) continue
       const line_layers = [srs, ...(srs.line_underlays ?? [])]
       n_series += line_layers.length
       n_points += line_layers.reduce((sum, layer) => sum + layer.x.length, 0)
@@ -751,7 +755,7 @@
     if (!show_points) return 0
     let count = 0
     for (const series_data of filtered_series) {
-      if ((series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) {
+      if (has_marker(series_data, `points`)) {
         count += series_data.filtered_data.length
       }
     }
@@ -776,11 +780,7 @@
   const series_appearance = (series_data: FilteredSeries) => {
     const series_idx = series_data.orig_series_idx
     const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
-    const [sparse_radius, dense_radius] = (series_data.markers ?? DEFAULT_MARKERS).includes(
-      `line`,
-    )
-      ? [2.5, 2]
-      : [3, 2.5]
+    const [sparse_radius, dense_radius] = has_marker(series_data, `line`) ? [2.5, 2] : [3, 2.5]
     const default_radius =
       visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
     const default_fill = plot_color(series_idx)
@@ -902,6 +902,10 @@
     }
   }
 
+  const highlight_set = $derived(highlighted_ids == null ? null : new Set(highlighted_ids))
+  const is_link_dimmed = ({ point_id }: InternalPoint<Metadata>): boolean =>
+    point_id !== undefined && highlight_set?.has(point_id) === false
+
   // Points needing labels or effects remain in an SVG overlay. `selected` is passed in so
   // per-point loops read the prop once, not per point.
   const same_logical_point = (
@@ -946,20 +950,23 @@
     if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
+    // Link-dimmed markers paint first so the highlighted ones sit on top of them
+    const dimmed: CanvasMarker[] = []
     const markers: CanvasMarker[] = []
     for (const series_data of filtered_series) {
-      if (!(series_data.markers ?? DEFAULT_MARKERS).includes(`points`)) continue
+      if (!has_marker(series_data, `points`)) continue
       const { marker_of, canvas_safe } = series_appearance(series_data)
       const project = series_projector(series_data)
-      const opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
+      const legend_dimmed = is_legend_dimmed(series_data.orig_series_idx)
       for (const point of series_data.filtered_data) {
         if (!canvas_safe(point)) return null
         if (needs_static_svg_overlay(point, selected, keys)) continue
         const [cx, cy] = project.point(point)
-        markers.push(marker_of(point, cx, cy, opacity))
+        if (is_link_dimmed(point)) dimmed.push(marker_of(point, cx, cy, 0.25))
+        else markers.push(marker_of(point, cx, cy, legend_dimmed ? 0.25 : 1))
       }
     }
-    return markers
+    return dimmed.length > 0 ? [...dimmed, ...markers] : markers
   })
   const use_canvas_markers = $derived(canvas_markers !== null)
   // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart
@@ -1174,31 +1181,38 @@
   // Screen-space grid over every visible marker so a pointer move probes nearby cells only.
   // Lazy: built on the first hover after a data/scale change, not per frame.
   const hover_index = $derived.by(() => {
-    if (hover_config.mode === `x`) return null
+    if (hover_config.mode === `x` || hover_config.mode === `y`) return null
     function* entries() {
       for (const series_data of filtered_series) {
         const project = series_projector(series_data)
+        const marker = has_marker(series_data, `points`)
         for (const point of series_data.filtered_data) {
           const [cx, cy] = project.point(point)
-          yield { cx, cy, point }
+          yield { cx, cy, point, marker }
         }
       }
     }
     return build_spatial_index(entries(), hover_radius)
   })
 
-  // Nearest point along x within the hover radius, plus that x distance for the click radius
-  const x_hover_candidate = (x_rel: number, y_rel: number) => {
+  // Nearest point along one screen axis (`x` or `y` hover mode), ties broken by the other.
+  // Only x-monotonic series are binary-searched; `y` mode scans every point.
+  const axis_hover_candidate = (
+    axis: `x` | `y`,
+    x_rel: number,
+    y_rel: number,
+    markers_only: boolean,
+  ) => {
     let best_point: InternalPoint<Metadata> | null = null
-    let best_x_distance = Number.POSITIVE_INFINITY
-    let best_y_distance = Number.POSITIVE_INFINITY
+    let best_axis_distance = Number.POSITIVE_INFINITY
+    let best_cross_distance = Number.POSITIVE_INFINITY
     for (const series_data of filtered_series) {
       const { filtered_data: points, x_direction: direction } = series_data
-      if (points.length === 0) continue
+      if (points.length === 0 || (markers_only && !has_marker(series_data, `points`))) continue
       const project = series_projector(series_data)
-      const target_x = Number(project.x_scale.invert(x_rel))
       let [candidate_start, candidate_end] = [0, points.length]
-      if (direction !== 0) {
+      if (axis === `x` && direction !== 0) {
+        const target_x = Number(project.x_scale.invert(x_rel))
         const lower_idx = partition_point(points, (point) =>
           direction > 0 ? point.x < target_x : point.x > target_x,
         )
@@ -1220,27 +1234,34 @@
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
         const point = points[point_idx]
         const [cx, cy] = project.point(point)
-        const x_distance = Math.abs(cx - x_rel)
-        const y_distance = Math.abs(cy - y_rel)
+        const [axis_distance, cross_distance] =
+          axis === `x`
+            ? [Math.abs(cx - x_rel), Math.abs(cy - y_rel)]
+            : [Math.abs(cy - y_rel), Math.abs(cx - x_rel)]
         if (
-          x_distance < best_x_distance ||
-          (x_distance === best_x_distance && y_distance < best_y_distance)
+          axis_distance < best_axis_distance ||
+          (axis_distance === best_axis_distance && cross_distance < best_cross_distance)
         ) {
           best_point = point
-          best_x_distance = x_distance
-          best_y_distance = y_distance
+          best_axis_distance = axis_distance
+          best_cross_distance = cross_distance
         }
       }
     }
-    return best_point && best_x_distance <= hover_radius
-      ? { point: best_point, distance: best_x_distance }
+    return best_point && best_axis_distance <= hover_radius
+      ? { point: best_point, distance: best_axis_distance }
       : null
   }
 
-  // Nearest point within the hover radius and its screen distance (along x only in `x` mode)
-  const closest_hit_at = (x_rel: number, y_rel: number) => {
-    if (hover_config.mode === `x`) return x_hover_candidate(x_rel, y_rel)
-    const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel })
+  // Nearest point within the hover radius and its screen distance (along one axis in x/y modes).
+  // markers_only skips line-only series, e.g. for clicks on canvas markers.
+  const closest_hit_at = (x_rel: number, y_rel: number, markers_only = false) => {
+    const { mode } = hover_config
+    if (mode === `x` || mode === `y`) {
+      return axis_hover_candidate(mode, x_rel, y_rel, markers_only)
+    }
+    const accept = markers_only ? (item: { marker: boolean }) => item.marker : undefined
+    const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel }, accept)
     return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
   }
   // Point an on_plot_click at these coords would reach: the tooltip's candidate, but only
@@ -1255,8 +1276,10 @@
 
     const hit = closest_hit_at(x_rel, y_rel)
     const closest_point = hit?.point ?? null
+    // canvas marker clicks reach only series that draw markers; hover still sees every point
+    const click_hit = canvas_points_clickable ? closest_hit_at(x_rel, y_rel, true) : hit
     plot_click_armed = Boolean(
-      (on_plot_click || canvas_points_clickable) && plot_click_target(hit),
+      (on_plot_click || canvas_points_clickable) && plot_click_target(click_hit),
     )
 
     if (!closest_point) {
@@ -1306,7 +1329,9 @@
     }
     const coords = get_relative_coords(evt)
     if (!coords) return
-    const point = plot_click_target(closest_hit_at(coords.x, coords.y))
+    const point = plot_click_target(
+      closest_hit_at(coords.x, coords.y, canvas_points_clickable),
+    )
     if (!point) return
     if (canvas_points_clickable) return activate_point(point, evt)
     const props = on_plot_click && construct_handler_props(point)
@@ -1610,8 +1635,8 @@
   // the cursor had been used at all.
   let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
-  // One tab stop for the whole point cloud instead of one per point: a 10k-point
-  // scatter would otherwise take 10k presses to tab past. Arrow keys walk the marks.
+  // One tab stop for the whole point cloud instead of one per point: a 1k-point
+  // scatter would otherwise take 1k presses to tab past. Arrow keys walk the marks.
   // Only interactive points carry roving keys, so a plain plot needs no roving group. The
   // hover overlay list only decides which marks exist in canvas mode.
   const roving = create_roving_focus({
@@ -1795,7 +1820,7 @@
     {#if show_lines}
       {#each filtered_series as series_data (series_data._id)}
         {@const series_idx = series_data.orig_series_idx}
-        {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)}
+        {#if has_marker(series_data, `line`)}
           {@const project = series_projector(series_data)}
           {@const series_default_color = plot_color(series_idx)}
           {@const line = scatter_line_style(
@@ -1865,7 +1890,7 @@
          beyond the plot edge: keep complete icons visible, only lines and area are clipped. -->
     {#if show_points}
       {#each filtered_series as series_data, series_pos (series_data._id)}
-        {#if (series_data.markers ?? DEFAULT_MARKERS).includes(`points`)}
+        {#if has_marker(series_data, `points`)}
           {@const rendered_points = use_canvas_markers
             ? (svg_overlay_points_by_series[series_pos] ?? [])
             : series_data.filtered_data}
@@ -1885,7 +1910,7 @@
               <ScatterPoint
                 x={center_x - offset.x}
                 y={center_y - offset.y}
-                is_dimmed={is_legend_dimmed(point.series_idx)}
+                is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
                 is_hovered={same_logical_point(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point) ||
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}

@@ -16,17 +16,26 @@
   import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
   import type { SceneExportFormat } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
+  import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
-  import { detect_irreducible_bz, extract_fermi_surface } from './compute'
+  import {
+    band_grids_prepared,
+    detect_irreducible_bz,
+    extract_fermi_surface,
+    preview_interpolation_factor,
+  } from './compute'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
+  import { property_label } from './constants'
+  import { available_property_names, property_color_range } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
@@ -59,6 +68,14 @@
     controls_open = $bindable(false),
     color_property = $bindable(DEFAULTS.fermi.color_property),
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
+    property_name = $bindable(),
+    color_range = $bindable(),
+    show_colorbar = true,
+    slice_plane,
+    k_marker = null,
+    k_path,
+    wigner_seitz = false,
+    previewing = false,
     custom_property_label,
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
@@ -102,7 +119,16 @@
     structure?: Crystal
     bz_data?: BrillouinZoneData
     controls_open?: boolean
-    // Label for the per-vertex property colouring (e.g. "Fermi velocity", "λ(k)", "DOS")
+    property_name?: string // coloured by in `property` mode (default: the first present)
+    color_range?: Vec2 // fixed [min, max] of the property scale; unset fits visible sheets
+    show_colorbar?: boolean
+    slice_plane?: { miller_indices: Vec3; distance: number } // e.g. a FermiSlice's, drawn in 3D
+    k_marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. a FermiSlice's cursor
+    k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`] // e.g. a band plot's path
+    wigner_seitz?: boolean // fold band-grid surfaces into the zone, e.g. to match a k-path
+    // pointer-driven preview (e.g. band plot hover): extract at most at the auto resolution
+    previewing?: boolean
+    // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
     selected_bands?: number[]
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
@@ -139,27 +165,30 @@
   // Normalise the data props once at the boundary: pymatviz's `fermi_data`/`band_data` traits
   // can only travel as JSON (plain vertex/face rows, nested energies), while everything below
   // consumes typed arrays. Typed input passes through by identity. A malformed payload is
-  // reported through error_msg/on_error instead of throwing mid-render.
-  const normalized = $derived.by(() => {
+  // reported through error_msg/on_error instead of throwing mid-render. Separate deriveds, so
+  // committing an extracted fermi_data does not re-normalise a JSON band_data into a new grid
+  // (which re-ran the extraction every frame).
+  const try_normalize = <T>(normalize: () => T): { value?: T; error?: string } => {
     try {
-      return {
-        surface: fermi_data && normalize_fermi_surface(fermi_data),
-        grid: band_data && normalize_band_grid(band_data),
-        error: undefined,
-      }
+      return { value: normalize() }
     } catch (err) {
-      const error = `Invalid Fermi surface data: ${to_error(err).message}`
-      return { surface: undefined, grid: undefined, error }
+      return { error: `Invalid Fermi surface data: ${to_error(err).message}` }
     }
-  })
-  const surface_data = $derived(normalized.surface)
-  const grid_data = $derived(normalized.grid)
+  }
+  const surface_result = $derived(
+    try_normalize(() => fermi_data && normalize_fermi_surface(fermi_data)),
+  )
+  const grid_result = $derived(
+    try_normalize(() => band_data && normalize_band_grid(band_data)),
+  )
+  const surface_data = $derived(surface_result.value)
+  const grid_data = $derived(grid_result.value)
   // The notice this effect raised is cleared once a later payload normalises, so a host that
   // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
   // supplied by the caller are left alone.
   let reported_normalize_error: string | undefined
   $effect(() => {
-    const { error } = normalized
+    const error = surface_result.error ?? grid_result.error
     if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
       error_msg = undefined
     }
@@ -205,8 +234,6 @@
   // of unmounting it.
   let extraction_job_id = 0
   let extracting = $state(false)
-  // grid + factor of the last extraction: their upsampled band grids are cached
-  let extracted: { grid: BandGridData; interpolation_factor: number } | undefined
   $effect(() => {
     const job_id = ++extraction_job_id
     if (!grid_data) {
@@ -214,12 +241,14 @@
       return
     }
     const grid = grid_data
-    const options = { mu: mean, interpolation_factor }
+    const factor = previewing
+      ? preview_interpolation_factor(grid, interpolation_factor)
+      : interpolation_factor
+    const options = { mu: mean, interpolation_factor: factor, wigner_seitz }
     const extract = () => {
       if (job_id !== extraction_job_id) return
       try {
         fermi_data = extract_fermi_surface(grid, options)
-        extracted = { grid, interpolation_factor }
         error_msg = undefined
       } catch (err) {
         const message = `Fermi surface extraction failed: ${to_error(err).message}`
@@ -230,11 +259,10 @@
       }
     }
     // A mu change only reruns marching cubes on the cached grids (~1-12 ms on the demo files),
-    // so it extracts next frame and a mu drag tracks the pointer. A new grid or factor first
-    // upsamples every band, which takes a while at high factors: the spinner gets one painted
-    // frame before that blocks.
-    const upsamples =
-      extracted?.grid !== grid || extracted.interpolation_factor !== interpolation_factor
+    // so it extracts next frame and a mu drag tracks the pointer. A grid or factor not yet
+    // upsampled first upsamples every band, which takes a while at high factors: the spinner
+    // gets one painted frame before that blocks.
+    const upsamples = !band_grids_prepared(grid, factor, mean)
     if (upsamples) extracting = true
     let frame = requestAnimationFrame(() => {
       if (upsamples) frame = requestAnimationFrame(extract)
@@ -258,6 +286,25 @@
       error_msg = `Export failed: ${to_error(err).message}`
     }
   }
+
+  // The requested property when present, else the first; the fitted range spans visible sheets
+  const available_properties = $derived(available_property_names(surface_data, grid_data))
+  const active_property = $derived(
+    property_name !== undefined && available_properties.includes(property_name)
+      ? property_name
+      : available_properties[0],
+  )
+  const fitted_color_range = $derived<Vec2>(
+    color_property === `property`
+      ? property_color_range(
+          surface_data?.isosurfaces.filter(
+            ({ band_index }) => selected_bands?.includes(band_index) ?? true,
+          ) ?? [],
+          active_property,
+        )
+      : [0, 1],
+  )
+  const resolved_color_range = $derived(color_range ?? fitted_color_range)
 
   // BZ of whichever reciprocal lattice is available (priority order)
   const k_lattice = $derived(
@@ -344,6 +391,9 @@
           bind:mu={mean}
           bind:color_property
           bind:color_scale
+          bind:property_name
+          bind:color_range
+          {fitted_color_range}
           {custom_property_label}
           bind:representation
           bind:surface_opacity
@@ -375,7 +425,12 @@
           {bz_data}
           {color_property}
           {color_scale}
+          property_name={active_property}
+          color_range={resolved_color_range}
           property_label={custom_property_label}
+          {slice_plane}
+          {k_marker}
+          {k_path}
           {representation}
           {surface_opacity}
           {selected_bands}
@@ -395,6 +450,20 @@
           bind:hover_data
         />
       </Canvas>
+
+      {#if show_colorbar && color_property === `property` && active_property !== undefined}
+        <ColorBar
+          title={property_label(active_property, custom_property_label)}
+          scale={color_scale}
+          range={resolved_color_range}
+          snap_ticks={false}
+          tick_labels={3}
+          orientation="horizontal"
+          class="property-colorbar"
+          --cbar-font-size="0.75em"
+          --cbar-tick-label-font-weight="normal"
+        />
+      {/if}
 
       <!-- Hover tooltip -->
       {#if hover_data}
@@ -458,5 +527,16 @@
   }
   .fermi-surface :global(canvas) {
     user-select: none;
+  }
+  /* bottom-right corner, placed like the structure viewer's atom legend */
+  .fermi-surface :global(.property-colorbar) {
+    position: absolute;
+    bottom: var(--fermi-colorbar-bottom, clamp(4pt, 3cqmin, 8pt));
+    right: var(--fermi-colorbar-right, clamp(4pt, 3cqmin, 8pt));
+    --cbar-width: var(--fermi-colorbar-width, 140px);
+    /* tick labels centre on their ticks: room for the half of the last one past the bar */
+    padding-right: 1em;
+    z-index: 1;
+    pointer-events: none;
   }
 </style>

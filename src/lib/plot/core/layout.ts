@@ -255,6 +255,16 @@ export function y2_axis_label_x(
   return Math.min(width - title_height / 2, width - pad_r + tick_shift + label_offset)
 }
 
+// Line spanning the plot area at pixel `pos`: across it (horizontal) or from top to bottom
+export const plot_area_line = (
+  pos: number,
+  horizontal: boolean,
+  { width, height, pad }: { width: number; height: number; pad: Required<Sides> },
+): { x1: number; x2: number; y1: number; y2: number } =>
+  horizontal
+    ? { x1: pad.l, x2: width - pad.r, y1: pos, y2: pos }
+    : { x1: pos, x2: pos, y1: pad.t, y2: height - pad.b }
+
 // Ignore undefined sides so optional props never override defaults.
 export const filter_padding = (
   padding: Partial<Sides> | undefined | null,

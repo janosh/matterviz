@@ -115,6 +115,9 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   x_error?: ErrorValues
   y_error?: ErrorValues
   metadata?: Metadata[] | Metadata // Can be array or single object
+  // Stable per-point keys (material IDs, element symbols, ...) that link views: points carry
+  // them as `point_id`, and ScatterPlot's `highlighted_ids` matches against them
+  point_ids?: readonly (string | number)[]
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
@@ -169,14 +172,15 @@ type AlignedSeries = {
   y: ArrayLike<unknown>
   z?: ArrayLike<unknown>
   raw_y?: ArrayLike<unknown>
+  point_ids?: ArrayLike<unknown>
   x_error?: ErrorValues
   y_error?: ErrorValues
   line_underlays?: readonly { x: ArrayLike<unknown>; y: ArrayLike<unknown> }[]
 } & Partial<Record<(typeof PER_POINT_KEYS)[number], unknown>>
 
 export function assert_series_lengths(series: AlignedSeries, series_idx?: number): void {
-  const { id: identifier, label, x: coord_x, y: coord_y, z: coord_z, raw_y } = series
-  const name = identifier ?? label
+  const { x: coord_x, y: coord_y, z: coord_z, raw_y, point_ids } = series
+  const name = series.id ?? series.label
   const where =
     name === undefined
       ? `Series${series_idx === undefined ? `` : ` at index ${series_idx}`}`
@@ -195,7 +199,14 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
       ),
     ),
   ])
-  assert_aligned_lengths(where, { x: coord_x, y: coord_y, z: coord_z, raw_y, ...aligned })
+  assert_aligned_lengths(where, {
+    x: coord_x,
+    y: coord_y,
+    z: coord_z,
+    raw_y,
+    point_ids,
+    ...aligned,
+  })
   series.line_underlays?.forEach((underlay, idx) =>
     assert_aligned_lengths(`${where} line_underlays[${idx}]`, {
       x: underlay.x,
@@ -208,6 +219,7 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
 export interface InternalPoint<Metadata = Record<string, unknown>> extends Point<Metadata> {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
+  point_id?: string | number // The series' point_ids entry for this point, if any
   color_value?: number | null
   size_value?: number | null
   point_style?: PointStyle
@@ -395,8 +407,9 @@ export type HoverConfig = {
   click_threshold_px?: number
   // `x` ignores vertical distance and binary-searches monotonic series. This is useful for
   // time-series scrubbers where the horizontal coordinate selects a frame and avoids building
-  // a full 2D spatial index for tens of thousands of samples.
-  mode?: `nearest` | `x`
+  // a full 2D spatial index for tens of thousands of samples. `y` ignores horizontal distance
+  // (e.g. a spectrum with a vertical frequency axis).
+  mode?: `nearest` | `x` | `y`
   // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
   // this to keep pointer frames free of tooltip DOM work while another pane updates live.
   show_tooltip?: boolean
@@ -740,6 +753,13 @@ export const DEFAULT_GRID_STYLE = {
 } as const
 
 export const DEFAULT_MARKERS = `line+points` as const
+// Whether a series draws its `points` or its `line`, for plots whose unset markers mean
+// `fallback` (ternary series default to points only)
+export const has_marker = (
+  series: { markers?: Markers | null } | undefined,
+  part: `points` | `line`,
+  fallback: Markers = DEFAULT_MARKERS,
+): boolean => (series?.markers ?? fallback).includes(part)
 
 // Default series symbols for auto-differentiation (cycling through distinct shapes)
 export const DEFAULT_SERIES_SYMBOLS = [

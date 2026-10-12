@@ -59,6 +59,21 @@ const resolve_live_color = (
   }
 }
 
+// A token defined as a color function (`--page-bg: light-dark(...)`, var(), color-mix()) computes
+// to that literal string, not a color. Resolve it as a probe's `color`: the probe inherits the
+// node's color-scheme, which picks the light-dark() branch. Rejected values stay as they are.
+export const resolve_color_token = (node: Element, value: string): string => {
+  if (!value || is_concrete_color(value)) return value
+  const probe = document.createElement(`span`)
+  probe.style.color = value
+  if (!probe.style.color) return value
+  const host = node instanceof HTMLElement ? node : (node.parentElement ?? document.body)
+  host.append(probe)
+  const color = getComputedStyle(probe).color
+  probe.remove()
+  return color || value
+}
+
 // Live CSS color token on `node`, re-read after theme and ancestor-attribute changes.
 export function resolve_css_color(
   get_node: () => Element | null | undefined,
@@ -70,7 +85,9 @@ export function resolve_css_color(
     get_node,
     (node) => {
       const style = getComputedStyle(node)
-      return css_vars.map((name) => style.getPropertyValue(name).trim())
+      return css_vars.map((name) =>
+        resolve_color_token(node, style.getPropertyValue(name).trim()),
+      )
     },
     color_options,
   )

@@ -325,9 +325,23 @@ describe(`widget config wiring`, () => {
     [`bands_and_dos`, `fermi_level`, 0],
     [`periodic_table`, `log`, true],
     [`heatmap_matrix`, `log`, true],
+    [`composition`, `patterns`, { Fe: `/`, O: { shape: `dots`, size: 6 } }],
+    [`scatter_plot_3d`, `point_tween`, { duration: 300, delay: 50 }],
+    [`structure`, `cutaway`, { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2 }],
   ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {
     const stub = run_widget(widget_type, new MockModel({ widget_type, [prop]: value }))
     expect(stub.read()[prop]).toEqual(value)
+  })
+
+  // Trajectory has no top-level cutaway: it reaches the embedded Structure via structure_props
+  test(`trajectory forwards cutaway inside structure_props`, () => {
+    const cutaway = { mode: `plane`, axis: 0, position: 0.3, thickness: 0.25 }
+    const props = run_widget(
+      `trajectory`,
+      new MockModel({ widget_type: `trajectory`, cutaway }),
+    ).read()
+    expect(props.structure_props).toMatchObject({ cutaway })
+    expect(`cutaway` in props).toBe(false)
   })
 
   test.each([
@@ -390,10 +404,12 @@ describe(`writeback wiring`, () => {
     [`structure`, `active_volume_id`, null, `potential`, `spin`],
     [`structure`, `display_mode`, `structure`, `slice`, `structure`],
     [`structure`, `slice_settings`, {}, { position: 0.25 }, { position: 0.75 }],
+    [`structure`, `active_pane`, null, `flight`, `export`],
     [`trajectory`, `current_step_idx`, 0, 7, 3],
     [`trajectory`, `display_mode`, `auto`, `plot`, `structure`],
     [`trajectory`, `plot_type`, `time-series`, `distribution`, `time-series`],
     [`trajectory`, `distribution_property`, null, `energy`, `force_max`],
+    [`trajectory`, `active_pane`, null, `hotspots`, `flight`],
     [`scatter_plot`, `controls_open`, false, true, false],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],

@@ -1249,6 +1249,35 @@ describe(`convex_hull_2d`, () => {
 
 // oxfmt-ignore
 test.each([
+  [`face z=0`, [0, 0, 1], 0, 4],
+  [`face z=1`, [0, 0, 1], 1, 4],
+  [`interior square`, [0, 0, 1], 0.5, 4],
+  [`touching only the edge x=y=0`, [1, 1, 0], 0, 0],
+  [`diagonal rectangle through two edges`, [1, 1, 0], 1, 4],
+  [`touching only the vertex 0`, [1, 1, 1], 0, 0],
+  [`triangle through three vertices`, [1, 1, 1], 1, 3],
+  [`regular hexagon`, [1, 1, 1], 1.5, 6],
+  [`non-unit normal (same hexagon)`, [2, 2, 2], 3, 6],
+  [`flipped normal (same hexagon, reverse winding)`, [-1, -1, -1], -1.5, 6],
+  [`just past the far vertex`, [1, 1, 1], 3 + 1e-8, 0],
+  [`missing the cube`, [0, 1, 0], -0.5, 0],
+] as [string, Vec3, number, number][])(
+  `plane_polyhedron_section: %s -> %i corners`,
+  (_name, normal, offset, n_corners) => {
+    const polygon = math.plane_polyhedron_section(math.UNIT_CUBE_EDGES, normal, offset)
+    expect(polygon).toHaveLength(n_corners)
+    for (const [idx, corner] of polygon.entries()) {
+      expect(math.dot(normal, corner)).toBeCloseTo(offset, 12)
+      // counter-clockwise about the normal: every consecutive turn points along it
+      const [next, after] = [1, 2].map((step) => polygon[(idx + step) % n_corners])
+      const turn = math.cross_3d(math.subtract(next, corner), math.subtract(after, next))
+      expect(math.dot(turn, normal)).toBeGreaterThan(0)
+    }
+  },
+)
+
+// oxfmt-ignore
+test.each([
   [`rectangle`, [[0, 0], [4, 0], [4, 2], [0, 2]], [2, 1]],
   // zero signed area, so the shoelace formula falls back to the vertex average
   [`degenerate collinear polygon`, [[0, 0], [1, 0], [2, 0]], [1, 0]],
@@ -1562,6 +1591,40 @@ describe(`array_min, array_max and array_extent`, () => {
     expect(math.array_min(large_values)).toBe(0)
     expect(math.array_max(large_values)).toBe(499_999)
     expect(math.array_extent(large_values)).toEqual([0, 499_999])
+  })
+})
+
+describe(`index helpers`, () => {
+  // Reaction coordinates are physical distances, so a hovered x maps back by nearest
+  // image — rounding would only be correct if x were the image index.
+  const coords = [0, 0.25, 0.5, 1.75, 3.0]
+
+  // oxfmt-ignore
+  test.each(
+    [[0.0, 0], [0.3, 1], [0.4, 2], [1.2, 3], [2.9, 4], [-5, 0], [99, 4], [0.125, 0]],
+  )(`nearest_value_idx maps %f to index %i (ties to the earlier)`, (coord, expected_idx) => {
+    expect(math.nearest_value_idx(coords, coord)).toBe(expected_idx)
+  })
+
+  test(`nearest_value_idx throws on an empty array`, () => {
+    expect(() => math.nearest_value_idx([], 0)).toThrow(/empty array/)
+  })
+
+  test.each([
+    [0, 3, true],
+    [2, 3, true],
+    [3, 3, false],
+    [-1, 3, false],
+    [1.5, 3, false],
+    [Number.NaN, 3, false],
+    [0, 0, false],
+  ])(`is_valid_index(%f, %i) is %s`, (idx, length, expected) => {
+    expect(math.is_valid_index(idx, length)).toBe(expected)
+  })
+
+  test(`sorted_numbers sorts any iterable numerically`, () => {
+    expect(math.sorted_numbers(new Set([10, 2, 33, 1]))).toEqual([1, 2, 10, 33])
+    expect(math.sorted_numbers([])).toEqual([])
   })
 })
 

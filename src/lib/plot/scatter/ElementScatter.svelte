@@ -52,6 +52,8 @@
       x: coord_y.map((_, idx) => idx + 1),
       y: y_values,
       color_values: coord_y,
+      // Element symbols, so highlighted_ids links this plot to other element-keyed views
+      point_ids: coord_y.map((_, idx) => element_data[idx]?.symbol ?? idx + 1),
       point_style: { radius: 2 },
     },
   ]}

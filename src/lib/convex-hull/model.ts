@@ -78,6 +78,18 @@ export const apply_formation_energies = (
         return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
       })
 
+// Simplex position with E_form on the last plotted axis (y in 2D, z in 3D, none in 4D)
+export function hull_plot_position(
+  composition: CompositionType,
+  e_form: number,
+  elements: ElementSymbol[],
+  dim: 2 | 3 | 4,
+): { x: number; y: number; z: number } {
+  const [coord_x, coord_y = e_form, coord_z = dim === 3 ? e_form : 0] =
+    composition_to_simplex_coords(composition, elements)
+  return { x: coord_x, y: coord_y, z: coord_z }
+}
+
 const hull_point = (entry: ConvexHullEntry, dim: number): number[] =>
   [entry.x, entry.y, entry.z, entry.e_form_per_atom ?? NaN].slice(0, dim)
 
@@ -88,13 +100,6 @@ export function build_hull_model(
   dim: 2 | 3 | 4,
   energy_mode: EnergySourceMode,
 ) {
-  // Simplex position of a composition with E_form on the last plotted axis (y in 2D, z in 3D)
-  const plot_position = (composition: CompositionType, e_form: number) => {
-    const [coord_x, coord_y = e_form, coord_z = dim === 3 ? e_form : 0] =
-      composition_to_simplex_coords(composition, elements)
-    return { x: coord_x, y: coord_y, z: coord_z }
-  }
-
   // Plot coordinates: entries with a finite formation energy placed in the simplex, plus
   // synthetic E_form = 0 corners for elements without a reference entry (closes the hull)
   const entries: ConvexHullEntry[] = []
@@ -102,8 +107,11 @@ export function build_hull_model(
     for (const entry of effective_entries) {
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number` || !Number.isFinite(e_form)) continue
-      const is_element = is_unary_entry(entry)
-      entries.push({ ...entry, ...plot_position(entry.composition, e_form), is_element })
+      entries.push({
+        ...entry,
+        ...hull_plot_position(entry.composition, e_form, elements, dim),
+        is_element: is_unary_entry(entry),
+      })
     }
     for (const element of elements) {
       // An excluded unary is drawn but cannot anchor the hull, so it still needs the corner
@@ -118,7 +126,7 @@ export function build_hull_model(
         e_above_hull: 0,
         is_stable: true,
         entry_id: `synthetic-element:${element}`,
-        ...plot_position(composition, 0),
+        ...hull_plot_position(composition, 0, elements, dim),
         is_element: true,
         is_synthetic: true,
       })

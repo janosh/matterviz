@@ -1264,6 +1264,7 @@ test.each([`Original`, `Prediction`])(
     const tool_props = await mount_host_structure(bind_props({ structure }, state))
     const overlay = { volumes: [prediction_volume] }
     flushSync(() => tool_props.on_overlay(overlay))
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
     const remove = doc_query<HTMLButtonElement>(
       `button[aria-label="Remove volume ${removed_label}"]`,
     )
@@ -1374,6 +1375,7 @@ test.each([false, true])(
     vi.stubEnv(`VITEST`, ``)
     const tool_props = await mount_host_structure(bind_props({}, state))
     await vi.waitFor(() => expect(document.querySelector(`.cell-select`)).not.toBeNull())
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
     await symmetry.analyze_structure_symmetry(crystal)
     await tick()
     const overlay = {
@@ -1640,6 +1642,38 @@ describe(`Structure`, () => {
       await tick()
       expect(props.slice_settings?.color_range).toEqual(color_range)
     }
+  })
+
+  test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, async () => {
+    mock_gpu()
+    const props = mount_volumetric({
+      show_controls: `always`,
+      display_mode: `structure`,
+      slice_settings: { plane_mode: `hkl`, miller_indices: [0, 0, 1], position: 0.3 },
+    })
+    await tick()
+    expect(scene_stub.props?.slice_polygon).toEqual([])
+
+    await select_structure_layout(`3D + 2D cross-section`)
+    expect(props.display_mode).toBe(`split`)
+    // the cross-section sits in the 3D stage and 3D chrome stays available
+    doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)
+    doc_query(`button[aria-label="Measure / Edit"]`)
+    // (001) at 30% of the unit cell's height: the square z = 0.3
+    const square: Vec3[] = scene_stub.props?.slice_polygon ?? []
+    expect(square.map((corner) => corner[2])).toEqual(Array(4).fill(expect.closeTo(0.3, 12)))
+
+    // both volume panes in the controls, plus the plane toggle that hides it from the scene
+    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
+    doc_query(`select[aria-label="Slice plane mode"]`)
+    expect(doc_query(`.controls-pane`).textContent).toContain(`isosurface + cross-section`)
+    const plane_toggle = `input[aria-label="Show slice plane in 3D"]`
+    flushSync(() => doc_query<HTMLInputElement>(plane_toggle).click())
+    expect(props.slice_settings?.show_plane).toBe(false)
+    expect(scene_stub.props?.slice_polygon).toEqual([])
+
+    await select_structure_layout(`2D cross-section`)
+    expect(document.querySelector(plane_toggle)).toBeNull()
   })
 
   // volume-only data has no sites to show, and a stale volume ID falls back to the first one
@@ -2614,7 +2648,12 @@ describe(`Structure empty states`, () => {
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
   mock_gpu()
-  const scene_props = { camera_projection: `perspective` as const, auto_rotate: 0.5 }
+  const camera = { camera_direction: [1, 2, 3] as Vec3, camera_up: [0, 3, -2] as Vec3 }
+  const scene_props = {
+    camera_projection: `perspective` as const,
+    auto_rotate: 0.5,
+    ...camera,
+  }
   mount_structure({
     structure,
     active_pane: `controls`,
@@ -2642,6 +2681,8 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     auto_rotate_label?.querySelector<HTMLInputElement>(`input[type="number"]`)
   expect(Number(auto_rotate_input?.value)).toBeCloseTo(0.5, 1)
   expect(scene_stub.props?.auto_rotate).toBe(0.5)
+  // the single-pane view has no view direction of its own, so the caller's one (and roll) apply
+  expect(scene_stub.props).toMatchObject(camera)
   if (!auto_rotate_input) throw new Error(`Missing auto-rotate input`)
   set_input(auto_rotate_input, `1.5`)
   await tick()

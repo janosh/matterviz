@@ -4,6 +4,7 @@
   import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import { arrow_axis_geometry } from './geometry'
+  import { resolve_arrow_size } from './vectors'
 
   let {
     position,
@@ -26,9 +27,8 @@
 
   const geometry = $derived(arrow_axis_geometry(vector, scale, arrow_head_length))
   // negative radii are fractions of the shaft length
-  const absolute = (size: number): number => (size < 0 ? geometry.shaft_length * -size : size)
-  const shaft_r = $derived(absolute(shaft_radius))
-  const head_r = $derived(absolute(arrow_head_radius))
+  const shaft_r = $derived(resolve_arrow_size(shaft_radius, geometry.shaft_length))
+  const head_r = $derived(resolve_arrow_size(arrow_head_radius, geometry.shaft_length))
 </script>
 
 <T.Group {position} rotation={geometry.rotation}>

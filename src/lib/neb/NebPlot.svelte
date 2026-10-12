@@ -6,15 +6,10 @@
   import { plot_color } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
-  import { clamp } from '#lib/math.js'
+  import { clamp, nearest_value_idx } from '#lib/math.js'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import type { PathProfile, PathSplineOptions } from './reaction-path'
-  import {
-    nearest_image_idx,
-    normalize_paths,
-    path_energy_unit,
-    path_profile,
-  } from './reaction-path'
+  import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
 
   // Metadata carried by every image point so hover/click can map back to an image
   type PointMeta = { path_key: string; image_idx: number }
@@ -140,7 +135,7 @@
     if (image_idx !== undefined) return select_image(path_key, image_idx)
     // A spline sample: map the hovered coordinate to the nearest image of its own path
     const hovered = profiles.find((profile) => profile.key === path_key)
-    if (hovered) select_image(path_key, nearest_image_idx(hovered.coords, data.x))
+    if (hovered) select_image(path_key, nearest_value_idx(hovered.coords, data.x))
   }
 
   const profile_settings = track_settings(

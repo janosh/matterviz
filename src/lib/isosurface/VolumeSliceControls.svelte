@@ -29,10 +29,13 @@
     settings = $bindable(create_volume_slice_settings()),
     volumes = [],
     active_volume_id = $bindable<string | undefined>(),
+    show_plane_toggle = false,
   }: {
     settings?: Partial<VolumeSliceSettings>
     volumes?: VolumetricData[]
     active_volume_id?: string
+    // Offer settings.show_plane, for hosts that draw the slice plane in a 3D view
+    show_plane_toggle?: boolean
   } = $props()
 
   $effect(() => {
@@ -186,6 +189,19 @@
         </button>
       </div>
     </div>
+  {/if}
+
+  {#if show_plane_toggle}
+    <label>
+      <span>Plane in 3D</span>
+      <input
+        type="checkbox"
+        aria-label="Show slice plane in 3D"
+        bind:checked={
+          () => resolved_settings.show_plane, (show_plane) => update_settings({ show_plane })
+        }
+      />
+    </label>
   {/if}
 
   <label>

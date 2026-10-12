@@ -18,6 +18,8 @@ export interface VolumeSliceSettings {
   contour_levels: number
   color_range?: Vec2
   symmetric: boolean | `auto`
+  // Mark the slice plane in an accompanying 3D view (Structure's split layout)
+  show_plane: boolean
 }
 
 const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
@@ -31,6 +33,7 @@ const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   colormap: `interpolateRdBu`,
   contour_levels: 10,
   symmetric: `auto`,
+  show_plane: true,
 }
 
 // Return independent slice settings so nested vectors never leak across viewers.

@@ -70,6 +70,19 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
+// K-path segments to draw (point pairs with the index of the first). Paths are densely sampled,
+// so a segment far longer than the median step bridges a discontinuity (e.g. `U|K`) and is
+// skipped. Zero-length steps (labels repeat at branch boundaries) draw nothing and stay out of
+// the median, which they would drag down.
+export function k_path_segments(points: readonly Vec3[]) {
+  const lengths = points.slice(1).map((point, idx) => math.euclidean_dist(point, points[idx]))
+  const steps = lengths.filter(Boolean).toSorted((len_a, len_b) => len_a - len_b)
+  const cutoff = steps.length < 2 ? Infinity : steps[Math.floor(steps.length / 2)] * 10
+  return lengths.flatMap((length, idx) =>
+    length > 0 && length <= cutoff ? [{ idx, from: points[idx], to: points[idx + 1] }] : [],
+  )
+}
+
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
@@ -93,9 +106,7 @@ const FIT_PADDING = 1 / 0.92
 // Padded diameter of the sphere enclosing the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³,
 // whose half-extent along Cartesian axis j is 0.5·Σᵢ|k_lattice[i][j]|. Marching cubes leaves
 // Fermi surfaces in that cell rather than in the Wigner-Seitz zone, and for a skew lattice the
-// cell reaches well outside the zone. analyze_surface_topology in fermi-surface/compute.ts
-// computes the same half-extent for its own purpose (surface dimensionality) and stays
-// independent of this three.js-importing module.
+// cell reaches well outside the zone.
 export const k_cell_fit_extent = (
   k_lattice: Matrix3x3 | undefined,
   padding = FIT_PADDING,

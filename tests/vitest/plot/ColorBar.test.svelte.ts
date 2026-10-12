@@ -387,7 +387,7 @@ describe(`ColorBar tick labels`, () => {
     [`log`, [0.05, 3], [`0.01`, `0.1`, `1`, `10`]],
     [`linear`, [100, 0], [`100`, `80`, `60`, `40`, `20`, `0`]],
     // positive bounds below the LOG_EPS axis floor (1e-9) keep their full span
-    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `0.000001`]],
+    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `1e-6`]],
     // a descending log range runs high-to-low instead of collapsing to one point
     [`log`, [1000, 1], [`1k`, `100`, `10`, `1`]],
   ])(`%s ticks for range %j`, (scale_type, range, ticks) => {

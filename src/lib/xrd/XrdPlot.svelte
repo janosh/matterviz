@@ -11,6 +11,7 @@
   import { add_alpha, plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import { untrack } from 'svelte'
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -22,7 +23,7 @@
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import { decimate_pattern, format_hkl } from './index'
-  import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+  import type { Hkl, HklFormat, PatternEntry, XrdPattern, XrdPeak } from './index'
 
   // Measured scans can run to 10⁵ points; the stick/profile views stay responsive at this
   // budget while the peak-preserving thinning keeps every significant maximum
@@ -53,6 +54,10 @@
     error_msg = $bindable(),
     broadening_enabled = $bindable(false),
     broadening_params = $bindable({ ...DEFAULT_BROADENING }),
+    hovered_peak = $bindable(null),
+    selected_peak = $bindable(null),
+    on_bar_hover,
+    on_bar_click,
     ...rest
   }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
     patterns:
@@ -79,6 +84,10 @@
     error_msg?: string
     broadening_enabled?: boolean
     broadening_params?: BroadeningParams
+    // Stick under the pointer or keyboard focus (e.g. to draw diffraction_planes(peak.hkls) in a
+    // Structure); profiles and the broadened view report none
+    hovered_peak?: XrdPeak | null
+    selected_peak?: XrdPeak | null // pinned (and labelled) by a click, unpinned by another
   } = $props()
 
   let dropped_entries = $state<PatternEntry[]>([])
@@ -169,6 +178,8 @@
           if (!too_close) selected_indices.push(idx)
         }
       }
+      if (selected_peak?.pattern_idx === entry_idx)
+        selected_indices.push(selected_peak.peak_idx)
       const selected = new Set(selected_indices)
       // Angles are shown by default only while the plot holds at most two patterns
       const with_angle = show_angles ?? pattern_entries.length <= 2
@@ -196,6 +207,37 @@
         metadata,
         labels,
       }
+    })
+  })
+
+  // The stick at (pattern_idx, peak_idx) of the plotted entries, null for a profile sample
+  const peak_at = (pattern_idx: number, peak_idx: number): XrdPeak | null => {
+    const { pattern, label } = pattern_entries[pattern_idx]
+    if (is_profile(pattern)) return null
+    return {
+      pattern_idx,
+      peak_idx,
+      label,
+      two_theta: pattern.x[peak_idx],
+      intensity: ((pattern.y[peak_idx] || 0) / global_max_intensity) * 100,
+      hkls: pattern.hkls?.[peak_idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+      d_spacing: pattern.d_hkls?.[peak_idx],
+    }
+  }
+
+  // A hovered or pinned peak names a reflection, its indices only locate it: on new patterns
+  // re-read it there (fresh intensity scale) while the same stick still sits at them, else
+  // drop it rather than label whatever peak those indices now name
+  const resolve_peak = (peak: XrdPeak | null): XrdPeak | null => {
+    if (!peak || peak.pattern_idx >= pattern_entries.length) return null
+    const fresh = peak_at(peak.pattern_idx, peak.peak_idx)
+    return fresh?.label === peak.label && fresh.two_theta === peak.two_theta ? fresh : null
+  }
+  $effect.pre(() => {
+    void pattern_entries
+    untrack(() => {
+      hovered_peak = resolve_peak(hovered_peak)
+      selected_peak = resolve_peak(selected_peak)
     })
   })
 
@@ -437,6 +479,17 @@
         x_axis={plot_x_axis}
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         {tooltip}
+        on_bar_hover={(data) => {
+          hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
+          on_bar_hover?.(data)
+        }}
+        on_bar_click={(data) => {
+          const { series_idx, bar_idx } = data
+          const pinned =
+            selected_peak?.pattern_idx === series_idx && selected_peak.peak_idx === bar_idx
+          selected_peak = pinned ? null : peak_at(series_idx, bar_idx)
+          on_bar_click?.(data)
+        }}
         {@attach drop_zone}
         class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}

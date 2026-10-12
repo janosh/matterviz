@@ -2,8 +2,9 @@
   // Isobaric ternary composition-temperature phase diagram: candidate phases with G(T) swept
   // over temperature. Linked views: the isothermal section (2D Gibbs triangle or 3D prism with a
   // draggable cutting plane), a phase × T stability map and the list of transitions with
-  // balanced reactions.
-  import { is_dark_mode, watch_dark_mode } from '#lib/colors/index.js'
+  // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
+  // pin (its assemblage follows T), click the pin again or press Escape to drop it.
+  import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
@@ -50,7 +51,7 @@
     TernaryPhaseDiagram,
     TernaryPhaseDiagramOptions,
   } from './types'
-  import { TERNARY_DISPLAY_DEFAULTS } from './types'
+  import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from './types'
 
   type Hover =
     | { kind: `section`; data: SectionHover }
@@ -61,6 +62,7 @@
     options = {},
     temperature = $bindable(),
     selected_phase = $bindable(null),
+    pinned_composition = $bindable(null),
     diagram = $bindable(null),
     display = $bindable({}),
     free_energy_mode = $bindable(`auto`),
@@ -84,6 +86,7 @@
     options?: TernaryPhaseDiagramOptions
     temperature?: number // K; defaults to the start of the sweep
     selected_phase?: number | null // index into diagram.phases
+    pinned_composition?: Vec2 | null // composition probe (Gibbs-triangle xy) shared by views
     diagram?: TernaryPhaseDiagram | null // computed result (read-only binding)
     display?: Partial<TernaryDisplay> // view settings, merged over TERNARY_DISPLAY_DEFAULTS
     free_energy_mode?: FreeEnergyMode
@@ -114,6 +117,12 @@
     dark_mode = is_dark_mode(wrapper)
     return watch_dark_mode((dark) => (dark_mode = dark), wrapper)
   })
+  // Theme-aware --ternary-pin resolved to a concrete colour for canvas and three.js materials
+  const pin_color = resolve_css_color(() => wrapper, {
+    css_var: `--ternary-pin`,
+    require_opaque: true,
+    fallback: TERNARY_COLORS.pin,
+  })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
   let hover = $state<Hover | null>(null)
   let hovered_phase = $state<number | null>(null)
@@ -121,14 +130,17 @@
     if (entries_prop) dropped_entries = null
   })
   const entries = $derived(dropped_entries ?? entries_prop ?? [])
-  // Phase indices belong to one entry set: a new dataset invalidates the selection. Hover
+  // Phase indices and pin corners belong to one entry set: a new dataset clears both. Hover
   // also ends whenever the view changes, since an unmounting view fires no pointerleave.
   let last_entries: PhaseData[] | null = null
   $effect(() => {
     void [settings.view, settings.show_map, settings.show_events]
     hovered_phase = null
     hover = null
-    if (last_entries !== null && entries !== last_entries) selected_phase = null
+    if (last_entries !== null && entries !== last_entries) {
+      selected_phase = null
+      pinned_composition = null
+    }
     last_entries = entries
   })
 
@@ -296,8 +308,9 @@
       if (!event.shiftKey) set_temperature(current_t + dir * (t_max - t_min) * 0.01)
       else if (target) set_temperature(target.temperature + dir)
     } else if (event.key === ` `) toggle_play()
-    // only claim Escape when there is a selection to clear, else the host keeps the key
+    // Escape clears the selection, then the pin; with neither the host keeps the key
     else if (event.key === `Escape` && selected_phase !== null) selected_phase = null
+    else if (event.key === `Escape` && pinned_composition !== null) pinned_composition = null
     else return
     event.preventDefault()
   }
@@ -410,6 +423,8 @@
             {section}
             {settings}
             bind:selected_phase
+            bind:pinned_composition
+            pin_color={pin_color.current}
             highlighted_phases={hovered_phase === null ? [] : [hovered_phase]}
             {emphasized_phases}
             on_hover={(data) => (hover = data && { kind: `section`, data })}
@@ -426,8 +441,11 @@
                 bind:temperature={() => current_t, scrub_temperature}
                 bind:selected_phase
                 bind:hovered_phase
+                bind:pinned_composition
+                pin_color={pin_color.current}
                 text_color={canvas_text_color(wrapper, dark_mode)}
                 on_hover={(data) => (hover = data && { kind: `phase_t`, data })}
+                on_section_hover={(data) => (hover = data && { kind: `section`, data })}
               />
             </Canvas>
           </div>
@@ -609,6 +627,7 @@
     min-height: 480px;
     container-type: inline-size;
     background: var(--pd-bg, transparent);
+    --ternary-pin: var(--ternary-pin-color, light-dark(#c2185b, #ff4fa8));
     &.fullscreen {
       background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
     }

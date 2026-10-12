@@ -3,7 +3,12 @@ import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '
 import type { Matrix3x3 } from '#lib/math.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { ATOM_BATCH_SIZE, atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
-import { calc_lattice_params, first_non_increasing_index, partition_point } from '#lib/math.js'
+import {
+  calc_lattice_params,
+  first_non_increasing_index,
+  is_valid_index,
+  partition_point,
+} from '#lib/math.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import { to_error } from '#lib/utils.js'
 import type { Dataset, Group } from 'h5wasm'
@@ -706,7 +711,7 @@ const parse_torch_sim_datasets = (
   )
   const available_vector_keys = vector_channels.map(([key]) => key)
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {
-    if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count) {
+    if (!is_valid_index(frame_idx, valid_frame_count)) {
       throw new Error(
         `TorchSim HDF5 frame ${frame_idx} is outside 0..${valid_frame_count - 1}`,
       )
@@ -776,7 +781,7 @@ const parse_torch_sim_datasets = (
   const read_atoms: ReadAtoms = (options, signal) => {
     signal?.throwIfAborted()
     const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
-    if (!Number.isInteger(frame_idx) || frame_idx < 0 || frame_idx >= valid_frame_count)
+    if (!is_valid_index(frame_idx, valid_frame_count))
       throw new Error(`Invalid HDF5 frame ${frame_idx}`)
     const { start, count } = atom_range(n_atoms, options)
     const atom_slice: [number, number] = [start, start + count]

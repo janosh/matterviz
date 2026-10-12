@@ -1,6 +1,7 @@
 import type { PhaseData } from '#lib/convex-hull/index.js'
 import RecipeCard from '#lib/synthesis-planning/RecipeCard.svelte'
 import * as hull_thermo from '#lib/convex-hull/thermodynamics.js'
+import * as hull_helpers from '#lib/convex-hull/helpers.js'
 import SynthesisPlanner from '#lib/synthesis-planning/SynthesisPlanner.svelte'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type {
@@ -30,7 +31,11 @@ test(
   { timeout: 20_000 },
   async () => {
     const hull_compute = vi.spyOn(hull_thermo, `compute_lower_hull_nd`)
-    onTestFinished(() => hull_compute.mockRestore())
+    const build_overlay = vi.spyOn(hull_helpers, `build_hull_overlay`)
+    onTestFinished(() => {
+      hull_compute.mockRestore()
+      build_overlay.mockRestore()
+    })
     mount_planner({ comparison_options: { max_cell_lines: 5 } })
     await vi.waitFor(() => expect(document.querySelector(`.system-hull`)).not.toBeNull())
     expect(doc_query(`.cell-preview`).style.getPropertyValue(`--max-cell-lines`)).toBe(`5`)
@@ -49,6 +54,12 @@ test(
       },
       { timeout: 15_000 },
     )
+    // the selected route's reaction slice is drawn on the system hull: one line between its
+    // two solid precursors
+    await vi.waitFor(() => {
+      const lines = build_overlay.mock.lastCall?.[2]?.lines ?? []
+      expect(lines.map(({ from, to }) => [from.label, to.label])).toEqual([[`BaO`, `TiO2`]])
+    })
     const calls = hull_compute.mock.calls.length
     expect(calls).toBeGreaterThan(0)
     const choice = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)

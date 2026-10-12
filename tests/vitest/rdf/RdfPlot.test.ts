@@ -3,13 +3,14 @@ import RdfPlot from '#lib/rdf/RdfPlot.svelte'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import { structure_map } from '#site/structures.js'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, resize_element } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
-import { calculate_all_pair_rdfs } from '#lib/rdf/calc-rdf.js'
+import { calculate_all_pair_rdfs, rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
+import * as plot_module from '#lib/plot/index.js'
 
 // Spy on the neighbour search so the radiation buttons can be shown not to re-run it
 vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
@@ -167,14 +168,69 @@ describe(`RdfPlot`, () => {
     expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Updated r`)
   })
 
-  test(`mixed patterns and structures`, async () => {
+  // Supplied patterns come before the computed curves, so the series index must still find
+  // the right structure; a pattern has no structure to point into
+  test(`mixed patterns and structures: hovers report the curve and the atoms behind it`, async () => {
+    const scatter = vi.spyOn(
+      plot_module as unknown as {
+        ScatterPlot: Component<{
+          series?: { label?: string; y: readonly number[] }[]
+          on_point_hover?: (event: {
+            series_idx: number
+            point: { point_idx: number }
+          }) => void
+        }>
+      },
+      `ScatterPlot`,
+    )
+    const [on_bin_hover, on_sites_hover] = [vi.fn(), vi.fn()]
     const plot = await mount_sized_rdf_plot({
       patterns: { label: `Test`, pattern: create_synthetic_pattern() },
       structures: nacl_structure,
-      mode: `full`,
+      mode: `element_pairs`,
+      on_bin_hover,
+      on_sites_hover,
     })
-    expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-    expect(plot.textContent).toContain(`Test`)
+    for (const label of [`Test`, `Lu-Lu`]) {
+      const item = [...plot.querySelectorAll(`.legend-item`)].find(
+        (node) => node.textContent?.trim() === label,
+      )
+      item?.dispatchEvent(new MouseEvent(`mouseenter`))
+      item?.dispatchEvent(new MouseEvent(`mouseleave`))
+    }
+    const lu_sites = nacl_structure.sites.flatMap(({ species }, idx) =>
+      species[0].element === `Lu` ? [idx] : [],
+    )
+    expect(lu_sites).toHaveLength(8)
+    const lu_highlight = {
+      label: expect.stringContaining(`Lu`),
+      structure: nacl_structure,
+      site_indices: lu_sites,
+    }
+    expect(on_sites_hover.mock.calls).toEqual([[null], [null], [[lu_highlight]], [null]])
+    expect(
+      on_bin_hover.mock.calls.map(([hover]) => hover && [hover.entry.label, hover.bin_idx]),
+    ).toEqual([[`Test`, null], null, [`Lu-Lu`, null], null])
+
+    // a curve point is one r bin: its pairs are found on demand, once per bin
+    const { series = [], on_point_hover } = scatter.mock.lastCall?.[1] ?? {}
+    const series_idx = series.findIndex(({ label }) => label === `Lu-Lu`)
+    const bin_idx = series[series_idx]?.y.findIndex((g_val) => g_val > 0) ?? -1
+    expect(bin_idx).toBeGreaterThan(0)
+    on_sites_hover.mockClear()
+    on_point_hover?.({ series_idx, point: { point_idx: bin_idx } })
+    on_point_hover?.({ series_idx, point: { point_idx: bin_idx } })
+    const lu_lu = { cutoff: 15, n_bins: 75, element_pair: [`Lu`, `Lu`] as [string, string] }
+    const { n_pairs, ...expected } = rdf_bin_sites(nacl_structure, { ...lu_lu, bin_idx })
+    expect(n_pairs).toBeGreaterThan(0)
+    expect(on_sites_hover).toHaveBeenCalledOnce()
+    expect(on_sites_hover.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ structure: nacl_structure, ...expected }),
+    ])
+    expect(on_bin_hover).toHaveBeenLastCalledWith({
+      entry: expect.objectContaining({ label: `Lu-Lu` }),
+      bin_idx,
+    })
   })
 
   test(`dropped crystals are plotted, lattice-less molecules are reported`, async () => {

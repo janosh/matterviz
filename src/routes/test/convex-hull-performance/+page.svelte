@@ -11,7 +11,8 @@
   let dimension = $state<Dimension>(`3d`)
   let entry_count = $state(500)
   let is_generating = $state(false)
-  let generated_entries = $state<PhaseData[]>([])
+  // raw: replaced wholesale, and deep proxies would skew the timings and hide proxy bugs
+  let generated_entries = $state.raw<PhaseData[]>([])
   let generation_time_ms = $state(0)
   let show_stable = $state(true)
   let show_unstable = $state(true)

@@ -64,66 +64,26 @@ export function lattice_plane_polygons(
     .filter(({ polygon }) => polygon.length > 0)
 }
 
-// The 12 edges of the unit cube [0,1]³: every corner joins, along each of its zero
-// coordinates, the corner with that coordinate set to 1 (8 corners, 3 - #ones edges each)
-const UNIT_CUBE_CORNERS: Vec3[] = [0, 1].flatMap((coord_x) =>
-  [0, 1].flatMap((coord_y) => [0, 1].map((coord_z): Vec3 => [coord_x, coord_y, coord_z])),
-)
-const UNIT_CUBE_EDGES: readonly (readonly [Vec3, Vec3])[] = UNIT_CUBE_CORNERS.flatMap(
-  (corner) =>
-    corner.flatMap((val, dim) =>
-      val === 0 ? [[corner, corner.with(dim, 1) as Vec3] as const] : [],
-    ),
-)
-
 // Clip the plane `coeffs · frac = level` (fractional coordinates, so integer coeffs are
 // Miller indices and integer levels are the lattice planes of that family) to the unit
-// cell, returning the Cartesian polygon vertices in winding order (empty if the plane
-// misses the cell or only touches a corner or an edge).
+// cell, returning the Cartesian polygon vertices counter-clockwise about the plane normal
+// h·b₁ + k·b₂ + l·b₃ (empty if the plane misses the cell or only touches a corner or an edge).
 export function clip_frac_plane_to_cell(
   coeffs: Vec3,
   level: number,
   lattice: Matrix3x3,
 ): Vec3[] {
-  const tol = 1e-7
-  // Vertices closer than this (fractional) collapse into one: a plane passing just outside
-  // `tol` of a corner would otherwise cross all three of its edges and yield a sliver triangle
-  const dedup_tol = 1e-6
-  const signed_dist = (frac: Vec3) => math.dot(coeffs, frac) - level
-  const frac_points: Vec3[] = []
-  const push_unique = (frac: Vec3) => {
-    if (!frac_points.some((seen) => math.euclidean_dist(seen, frac) < dedup_tol)) {
-      frac_points.push(frac)
-    }
-  }
-  // Corners on the plane, plus interior crossings of the 12 cell edges
-  for (const [corner_a, corner_b] of UNIT_CUBE_EDGES) {
-    const [dist_a, dist_b] = [signed_dist(corner_a), signed_dist(corner_b)]
-    const [on_a, on_b] = [Math.abs(dist_a) < tol, Math.abs(dist_b) < tol]
-    if (on_a) push_unique(corner_a)
-    if (on_b) push_unique(corner_b)
-    if (!on_a && !on_b && dist_a * dist_b < 0) {
-      const frac_t = dist_a / (dist_a - dist_b)
-      push_unique(corner_a.map((val, dim) => val + frac_t * (corner_b[dim] - val)) as Vec3)
-    }
-  }
-  if (frac_points.length < 3) return []
+  // Clipped in fractional coordinates, where the cell is the unit cube. Corners closer than
+  // dedup tolerance collapse into one: a plane passing just outside the on-plane tolerance of
+  // a corner would otherwise cross all three of its edges and yield a sliver triangle.
+  const frac_polygon = math.plane_polyhedron_section(math.UNIT_CUBE_EDGES, coeffs, level, {
+    plane_tol: 1e-7,
+    merge_tol: 1e-6,
+  })
   const to_cart = math.create_frac_to_cart(lattice)
-  const cart_points = frac_points.map((point) => to_cart(point))
-
-  // Order vertices by angle around the centroid within the plane; only the direction of the
-  // plane normal matters here
-  const centroid = math.scale(math.add(...cart_points), 1 / cart_points.length)
-  const normal_unit = math.normalize_vec(math.miller_plane_normal(lattice, coeffs))
-  const ref_vec = math.normalize_vec(math.subtract(cart_points[0], centroid))
-  const cross_ref = math.cross_3d(normal_unit, ref_vec)
-  return cart_points
-    .map((vert) => {
-      const rel = math.subtract(vert, centroid)
-      return { vert, angle: Math.atan2(math.dot(rel, cross_ref), math.dot(rel, ref_vec)) }
-    })
-    .toSorted((pt_a, pt_b) => pt_a.angle - pt_b.angle)
-    .map(({ vert }) => vert)
+  const polygon = frac_polygon.map((frac) => to_cart(frac))
+  // The linear map to Cartesian keeps the winding about the normal unless it mirrors
+  return math.det_3x3(lattice) < 0 ? polygon.toReversed() : polygon
 }
 
 // Vertices of the fan triangulation of a convex polygon, three per triangle, for a

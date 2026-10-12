@@ -99,6 +99,27 @@ describe(`VacfPlot`, () => {
       expect(text).toContain(snippet)
   })
 
+  it(`reports the element curve under a legend entry of either panel`, async () => {
+    // two atoms on the same orbit, one Li and one Si, so both panels list Total, Li and Si
+    const { positions, velocities } = circular_motion(40, 0.04, 1)
+    const pair = (frames: number[][][]) => frames.map(([atom]) => [atom, atom])
+    const result = calc_vacf(
+      build_vacf_input(pair(positions), {
+        velocity_frames: pair(velocities),
+        elements: [`Li`, `Si`],
+      }),
+    )
+    const on_curve_hover = vi.fn()
+    await mount_plot({ result, on_curve_hover })
+    const items = [...document.querySelectorAll(`.legend-item`)]
+    for (const [label, panel_idx] of Object.entries({ Li: 0, Si: 1, Total: 1 })) {
+      const item = items.filter((node) => node.textContent?.includes(`${label} (`))[panel_idx]
+      item?.dispatchEvent(new MouseEvent(`mouseenter`))
+      item?.dispatchEvent(new MouseEvent(`mouseleave`))
+    }
+    expect(on_curve_hover.mock.calls.flat()).toEqual([`Li`, null, `Si`, null, `Total`, null])
+  })
+
   it(`keeps VACF and VDOS control panes independent`, async () => {
     await mount_plot({
       result: calc_vacf(orbit_input(80)),

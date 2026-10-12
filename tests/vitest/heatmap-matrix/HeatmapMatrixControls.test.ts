@@ -40,7 +40,10 @@ describe(`HeatmapMatrixControls`, () => {
     `preserves the value format through repeated toggles: %s`,
     async (show_values) => {
       const state = { show_values }
-      mount(HeatmapMatrixControls, { target: document.body, props: bind_props({}, state) })
+      mount(HeatmapMatrixControls, {
+        target: document.body,
+        props: bind_props({ controls_open: true }, state),
+      })
       const values_label = [...document.querySelectorAll(`.heatmap-controls label`)].find(
         (label) => label.textContent?.trim() === `Values`,
       )
@@ -61,6 +64,9 @@ describe(`HeatmapMatrixControls`, () => {
       elements_to_axis(symbols ?? [`H`, `Li`, `Be`, `Co`, `Ni`, `Cu`], ordering),
     )
     mount(HeatmapDemo, { target: document.body })
+    // open both panes: their settings mount on first open
+    await vi.waitFor(() => expect(document.querySelectorAll(toggle_sel)).toHaveLength(2))
+    for (const toggle of document.querySelectorAll<HTMLElement>(toggle_sel)) await fire(toggle)
     const orderings = await vi.waitFor(() => {
       const selects = [
         ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
@@ -69,8 +75,13 @@ describe(`HeatmapMatrixControls`, () => {
       return selects
     })
     const matrices = document.querySelectorAll(`.heatmap-controls-anchor .heatmap`)
+    // rendered order (DOM order is stable across reorders)
     const labels = (idx: number) =>
-      [...matrices[idx].querySelectorAll(`.x-label`)].map((label) => label.textContent)
+      [...matrices[idx].querySelectorAll<HTMLElement>(`.x-label`)]
+        .toSorted(
+          (lbl_a, lbl_b) => Number(lbl_a.style.gridColumn) - Number(lbl_b.style.gridColumn),
+        )
+        .map((label) => label.textContent)
     const initial_full = labels(0)
     const initial_subset = labels(1)
     expect(initial_full.length).toBeGreaterThan(0)
@@ -154,12 +165,8 @@ describe(`HeatmapMatrixControls`, () => {
         expect(toggle.classList.contains(class_name)).toBe(true)
       for (const class_name of [`heatmap-controls`, `custom-pane`])
         expect(pane.classList.contains(class_name)).toBe(true)
-      expect_labelled_settings_grid()
-      const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
-      expect(
-        [...ordering_select.options].map((option) => [option.value, option.textContent]),
-      ).toEqual(ELEMENT_ORDERINGS.map((key) => [key, ORDERING_LABELS[key]]))
-      expect(ordering_select.value).toBe(`atomic_number`)
+      // settings mount on first open, not before
+      expect(pane.querySelector(`select`)).toBeNull()
       // pane-open also keeps the surrounding hover controls visible.
       for (const open of [false, true]) {
         expect(toggle.getAttribute(`aria-label`)).toBe(`Heatmap controls`)
@@ -167,6 +174,13 @@ describe(`HeatmapMatrixControls`, () => {
         expect(pane.classList.contains(`pane-open`)).toBe(open)
         await fire(toggle)
       }
+      // and stay mounted once the pane closes again
+      expect_labelled_settings_grid()
+      const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
+      expect(
+        [...ordering_select.options].map((option) => [option.value, option.textContent]),
+      ).toEqual(ELEMENT_ORDERINGS.map((key) => [key, ORDERING_LABELS[key]]))
+      expect(ordering_select.value).toBe(`atomic_number`)
     },
   )
 
@@ -183,7 +197,12 @@ describe(`HeatmapMatrixControls`, () => {
   })
 
   test(`normalize and domain selects offer every mode and reflect the bound value`, async () => {
-    mount_controls({ normalize: `log`, domain_mode: `robust`, search_query: `Fe` })
+    mount_controls({
+      controls_open: true,
+      normalize: `log`,
+      domain_mode: `robust`,
+      search_query: `Fe`,
+    })
     await tick()
     const search = doc_query<HTMLInputElement>(`input[placeholder="Filter labels/keys"]`)
     expect(search.value).toBe(`Fe`)
@@ -219,6 +238,7 @@ describe(`HeatmapMatrixControls`, () => {
     async (formats) => {
       const export_handler = vi.fn()
       mount_controls({
+        controls_open: true,
         on_export: formats ? export_handler : undefined,
         export_formats: formats ? [...formats] : undefined,
       })

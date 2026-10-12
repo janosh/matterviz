@@ -12,6 +12,7 @@ import type {
   GasThermodynamicsConfig,
   HighlightStyle,
   HoverData3D,
+  HullAnnotations,
   HullFaceColorMode,
   PhaseData,
 } from './types'
@@ -155,6 +156,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
   highlighted_entries?: (string | AnyDimEntry)[]
   highlight_style?: HighlightStyle
   selected_entry?: AnyDimEntry | null
+  // Compositions marked by a linked view (lines between compositions, ringed compositions)
+  annotations?: HullAnnotations
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
   // Custom tooltip - can be a snippet (replaces default) or config object (adds prefix/suffix)
   tooltip?: ConvexHullTooltipProp<AnyDimEntry>

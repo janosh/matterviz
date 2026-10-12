@@ -1,16 +1,26 @@
 import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
+import {
+  drop_cached_hull_data,
+  entry_has_temp_data,
+  get_hull_decomposition,
+  system_fractions,
+} from './thermodynamics'
+import { hull_plot_position } from './model'
 import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
-import { array_extent, array_max } from '#lib/math.js'
+import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
 import { scaleSequential } from 'd3-scale'
 import type {
   ConvexHullConfig,
+  ConvexHullEntry,
   EntryCategoryConfig,
   HighlightStyle,
+  HullAnnotations,
+  HullMark,
+  HullOverlay,
   MarkerSymbol,
   PhaseData,
 } from './types'
@@ -549,4 +559,45 @@ export function get_entry_label(
       Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_num(amt, `.2~`)}`,
     )
     .join(``)
+}
+
+const [TIE_LINE_COLOR, ANNOTATION_COLOR] = [`#e8590c`, `#c026d3`]
+
+// Linked-view overlay in plot coords: dashed tie-lines from an above-hull `focus` to its ringed
+// products (atom fractions), plus host annotations (skipped with a warning outside the system)
+export function build_hull_overlay(
+  { entries, elements }: { entries: readonly ConvexHullEntry[]; elements: ElementSymbol[] },
+  focus: ConvexHullEntry | null,
+  annotations: HullAnnotations | undefined,
+): HullOverlay {
+  const dim = elements.length
+  const overlay: HullOverlay = { segments: [], rings: [] }
+  if (dim !== 2 && dim !== 3 && dim !== 4) return overlay
+  if (focus) {
+    const products = get_hull_decomposition(focus, entries, elements)?.decomposition ?? []
+    for (const { phase, atom_fraction } of products) {
+      overlay.segments.push({ from: focus, to: phase, color: TIE_LINE_COLOR, dashed: true })
+      const label = format_num(atom_fraction, `.0%`)
+      overlay.rings.push({ at: phase, color: TIE_LINE_COLOR, label })
+    }
+  }
+  const position = (mark: HullMark): Point3D | null => {
+    if (!system_fractions(mark.composition, elements)) {
+      console.warn(
+        `ConvexHull: annotation composition ${JSON.stringify(mark.composition)} is outside the ${elements.join(`-`)} system`,
+      )
+      return null
+    }
+    return hull_plot_position(mark.composition, mark.e_form, elements, dim)
+  }
+  for (const { from, to, color = ANNOTATION_COLOR } of annotations?.lines ?? []) {
+    const [start, end] = [position(from), position(to)]
+    if (start && end) overlay.segments.push({ from: start, to: end, color, dashed: false })
+  }
+  for (const mark of annotations?.marks ?? []) {
+    const at = position(mark)
+    if (at)
+      overlay.rings.push({ at, color: mark.color ?? ANNOTATION_COLOR, label: mark.label })
+  }
+  return overlay
 }

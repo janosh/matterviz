@@ -7,12 +7,16 @@
   import { file_type_paint } from '#lib/io/index.js'
   import { format_num } from '#lib/labels.js'
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
-  import type { SaedOptions, XrdPattern } from '#lib/xrd/index.js'
+  import type { SaedOptions, SaedSpot, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern,
     compute_xrd_pattern,
+    diffraction_planes,
     electron_wavelength,
+    format_hkl,
+    saed_camera_pose,
     SaedPattern,
     xrd_symmetry_rotations,
     XrdPlot,
@@ -108,6 +112,11 @@
   }
   const computed = $derived(try_compute(() => ensure_pattern(compute_id)))
 
+  // The hovered (else pinned) peak's planes; XrdPlot drops the pin with the structure's pattern
+  let hovered_peak = $state<XrdPeak | null>(null)
+  let selected_peak = $state<XrdPeak | null>(null)
+  const xrd_planes = $derived(diffraction_planes((hovered_peak ?? selected_peak)?.hkls ?? []))
+
   // Radiation comparison: the same structure probed with X-rays, neutrons and electrons.
   // XrdPlot already accepts an array of patterns, so overlaying them needs no plot changes.
   let probe_wavelength = $state(1.54184) // Å, shared so peak positions line up exactly
@@ -170,6 +179,16 @@
     const struct = computed_struct
     return try_compute(() => struct && compute_saed_pattern(struct, saed_options))
   })
+  // Likewise for SAED spots, seen down the zone axis; a thickness or kV change keeps the pin
+  let hovered_spot = $state<SaedSpot | null>(null)
+  const saed_zone_key = $derived(`${compute_id} ${saed.pattern?.zone_axis.join(`,`)}`)
+  let selected_spot = $derived.by<SaedSpot | null>(() => {
+    void saed_zone_key
+    return null
+  })
+  const active_spot = $derived(hovered_spot ?? selected_spot)
+  const saed_planes = $derived(diffraction_planes(active_spot ? [active_spot.hkl] : []))
+  const saed_camera = $derived(saed.pattern && saed_camera_pose(saed.pattern))
 
   // Multi-select demo: allow overlaying multiple structures
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
@@ -186,6 +205,17 @@
   )
 </script>
 
+{#snippet plane_legend(planes: LatticePlane[], pinned: boolean)}
+  {#if planes.length > 0}
+    <p class="demo-overlay-label">
+      {#each planes as { hkl, color } (hkl.join(`,`))}
+        <span style:color>({format_hkl(hkl, `compact`)})</span>
+      {/each}
+      {pinned ? `pinned` : ``}
+    </p>
+  {/if}
+{/snippet}
+
 <h1 id="xrd-patterns">XRD Patterns</h1>
 
 <div class="bleed-1400">
@@ -199,13 +229,26 @@
         annotate_peaks={3}
         hkl_format="compact"
         style="height: 600px"
+        bind:hovered_peak
+        bind:selected_peak
       />
       {#if computed.error}<p>Compute error: {computed.error}</p>{/if}
     </LazyDemo>
     {#if computed_struct}
-      <Structure structure={computed_struct} style="height: 600px" />
+      <Structure
+        structure={computed_struct}
+        style="height: 600px"
+        scene_props={{ lattice_planes: xrd_planes }}
+      >
+        {@render plane_legend(xrd_planes, !hovered_peak && selected_peak !== null)}
+      </Structure>
     {/if}
   </section>
+  <p>
+    Hover a peak to draw its lattice planes in the structure, click to pin it. The planes are
+    drawn in the input cell their Miller indices refer to; a peak merging several reflection
+    families shows up to three.
+  </p>
 
   <h2 id="x-ray-vs-neutron-vs-electron">X-ray vs neutron vs electron</h2>
   <p>
@@ -264,11 +307,33 @@
       <p class="error">SAED error: {saed.error}</p>
     {:else if saed.pattern}
       <section>
-        <SaedPattern pattern={saed.pattern} style="height: 520px" />
+        <SaedPattern
+          pattern={saed.pattern}
+          style="height: 520px"
+          bind:hovered_spot
+          bind:selected_spot
+        />
         {#if computed_struct}
-          <Structure structure={computed_struct} style="height: 520px" />
+          <Structure
+            structure={computed_struct}
+            style="height: 520px"
+            scene_props={{
+              lattice_planes: saed_planes,
+              camera_direction: saed_camera?.direction,
+              camera_up: saed_camera?.up,
+              camera_projection: `orthographic`,
+              // Bonds would hide the edge-on traces of zero-order-zone planes
+              show_bonds: `never`,
+            }}
+          >
+            {@render plane_legend(saed_planes, !hovered_spot && selected_spot !== null)}
+          </Structure>
         {/if}
       </section>
+      <p>
+        The structure looks down the zone axis. Hover a spot to draw its lattice planes, which
+        stand edge-on to the beam for zero-order (ZOLZ) spots; click to pin.
+      </p>
     {/if}
   </LazyDemo>
 

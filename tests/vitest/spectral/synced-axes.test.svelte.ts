@@ -47,8 +47,6 @@ test.each([`phonon`, `electronic`] as const)(
                 : { type, energies: doses.frequencies, densities: doses.densities },
           }),
           units: () => units,
-          bands_props: () => ({}),
-          dos_props: () => ({}),
           side_by_side: () => inputs.side_by_side,
           sync_zoom: () => inputs.sync_zoom,
           base_padding: { t: 20, b: 50 },
@@ -102,6 +100,16 @@ test.each([`phonon`, `electronic`] as const)(
     sync.views[0] = { x: [0, 1], y: [2, 3] }
     flushSync()
     expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
+
+    // a stacked panel's tall x-axis margin must not stay in the shared padding and shrink both
+    // plots once side by side again; side-by-side reports raise it
+    sync.raise_padding({ t: 20, b: 90, l: 40, r: 10 })
+    inputs.side_by_side = true
+    flushSync()
+    expect(sync.shared_padding).toEqual({ t: 20, b: 50 })
+    sync.raise_padding({ t: 20, b: 60, l: 40, r: 10 })
+    flushSync()
+    expect(sync.shared_padding).toEqual({ t: 20, b: 60 })
   },
 )
 

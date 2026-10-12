@@ -69,8 +69,9 @@ export function lattice_point_group_matrices(
 
   // The Cartesian R does not depend on the basis, but the {-1,0,1} search for M does: a
   // non-reduced basis (sheared supercell) expresses most operations with larger entries
-  const basis_t = math.transpose_3x3_matrix(math.reduce_basis(k_lattice))
-  const basis_t_inv = math.matrix_inverse_3x3(basis_t)
+  const basis = math.reduce_basis(k_lattice)
+  const basis_t = math.transpose_3x3_matrix(basis)
+  const basis_t_inv = math.reciprocal_lattice(basis)
   const matrices: Matrix4Tuple[] = []
   for (const int_mat of unimodular_candidates()) {
     const rot = math.dot(math.dot(basis_t, int_mat), basis_t_inv)

@@ -1,7 +1,7 @@
 // Radial distribution function g(r) of a periodic structure: pair distances (periodic images
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
-import { calc_lattice_params } from '#lib/math.js'
+import { calc_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { visit_neighbor_distances } from '#lib/structure/bonding.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
@@ -104,6 +104,43 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
     pair_weight,
     center_species && neighbor_species ? [center_species, neighbor_species] : undefined,
   )
+}
+
+// Atoms behind one RDF bin (centres and their partners, images mapped to base sites, sorted)
+// for highlighting a hovered bin. The kernels keep only the histogram, so this re-runs the
+// neighbour search for the one bin with the histogram's own bin_of and weights, so it finds
+// exactly the pairs counted there. `n_pairs` counts contacts, not weighted by occupancy.
+export function rdf_bin_sites(
+  structure: Crystal,
+  options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {
+    bin_idx: number
+    element_pair?: readonly [string, string]
+  },
+): { site_indices: number[]; neighbor_indices: number[]; n_pairs: number } {
+  const { bin_idx, element_pair } = options
+  const prepared = prepare_rdf(structure, options)
+  if (!is_valid_index(bin_idx, prepared.n_bins)) {
+    throw new Error(`bin_idx must be an integer in [0, ${prepared.n_bins}), got ${bin_idx}`)
+  }
+  const center_weights = species_weights(structure.sites, element_pair?.[0])
+  const neighbor_weights = species_weights(structure.sites, element_pair?.[1])
+  const centers = new Set<number>()
+  const neighbors = new Set<number>()
+  let n_pairs = 0
+  // bin_of floors, so the search never needs to reach past the bin's upper edge
+  const cutoff = Math.min(prepared.cutoff, (bin_idx + 1) * prepared.bin_size)
+  visit_neighbor_distances(structure, { ...prepared, cutoff }, (center, neighbor, dist) => {
+    if (!center_weights[center] || !neighbor_weights[neighbor]) return
+    if (prepared.bin_of(dist) !== bin_idx) return
+    n_pairs++
+    centers.add(center)
+    neighbors.add(neighbor)
+  })
+  return {
+    site_indices: sorted_numbers(centers),
+    neighbor_indices: sorted_numbers(neighbors),
+    n_pairs,
+  }
 }
 
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>

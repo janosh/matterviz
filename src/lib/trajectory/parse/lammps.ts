@@ -429,8 +429,8 @@ function create_lammps_reader(
       throw new Error(`No valid frames found in LAMMPS trajectory`)
     }
     if (guessed_types.size > 0) {
-      const guesses = Array.from(guessed_types)
-        .toSorted((left, right) => left - right)
+      const guesses = math
+        .sorted_numbers(guessed_types)
         .map((atom_type) => `${atom_type}→${element_from_lammps_type(atom_type)}`)
       warn(
         `LAMMPS dump names no element for some atom types; read them as atomic numbers (${guesses.join(`, `)}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`,
@@ -450,7 +450,7 @@ function create_lammps_reader(
       }
     }
     return {
-      atom_types: Array.from(atom_types_found).toSorted((left, right) => left - right),
+      atom_types: math.sorted_numbers(atom_types_found),
     }
   }
 

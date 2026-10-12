@@ -8,6 +8,7 @@
   import { to_error } from '#lib/utils.js'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+  import { series_hover_props } from '#lib/plot/core/interactions.js'
   import { compute_msd_async } from './async-compute.svelte'
   import { fit_msd_curves, with_lag_time_axis } from './calc-msd'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
@@ -26,6 +27,7 @@
     y_axis = {},
     show_controls = $bindable(true),
     controls_open = $bindable(false),
+    on_curve_hover,
     ...rest
   }: {
     // Precomputed curves. Bindable so a parent can read back what `positions` produced.
@@ -41,6 +43,8 @@
     max_visible_curves?: number
     loading?: boolean
     error_msg?: string
+    // Hovered curve's label (element or `Total`; a fit counts as its curve), null on leave
+    on_curve_hover?: (label: string | null) => void
   } & ScatterPlotOptions = $props()
 
   use_async_result({
@@ -68,10 +72,11 @@
     }
   })
 
-  let series = $derived.by<DataSeries[]>(() => {
+  // Each plotted series with the curve it belongs to (an Einstein fit belongs to its curve)
+  let plotted = $derived.by((): { srs: DataSeries; curve_label: string }[] => {
     if (!result) return []
     const { times, curves, lags, dt: delta_time } = result
-    return curves.flatMap((curve, idx): DataSeries[] => {
+    return curves.flatMap((curve, idx) => {
       const color = plot_color(idx)
       const visible = idx < max_visible_curves
       const msd_series: DataSeries = {
@@ -88,7 +93,7 @@
         line_style: { stroke: color, stroke_width: 2 },
       }
       const fit = fitted.fits[idx]
-      if (!show_fit || !fit) return [msd_series]
+      if (!show_fit || !fit) return [{ srs: msd_series, curve_label: curve.label }]
       const [fit_start, fit_end] = [
         fit.lag_window[0] * delta_time,
         fit.lag_window[1] * delta_time,
@@ -101,12 +106,18 @@
           label: `${curve.label} fit`,
           legend_group: `Einstein fits`,
           visible,
-          markers: `line`,
+          markers: `line` as const,
           line_style: { stroke: color, stroke_width: 1, line_dash: `5,4` },
         },
-      ]
+      ].map((srs) => ({ srs, curve_label: curve.label }))
     })
   })
+  let series = $derived(plotted.map(({ srs }) => srs))
+  const curve_hover = $derived(
+    on_curve_hover &&
+      ((series_idx: number | null) =>
+        on_curve_hover(plotted[series_idx ?? -1]?.curve_label ?? null)),
+  )
 </script>
 
 {#if series.length === 0}
@@ -128,6 +139,7 @@
     y_axis={{ label: `MSD (Å²)`, ...y_axis }}
     styles={{ show_lines: true, show_points: false, ...rest.styles }}
     style={rest.style ?? `height: 320px;`}
+    {...series_hover_props(curve_hover, rest)}
   />
   {#if show_fit && fitted.fit_error}
     <StatusMessage message={fitted.fit_error} type="warning" />

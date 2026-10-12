@@ -1,3 +1,4 @@
+import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
@@ -58,3 +59,25 @@ export function calc_coordination_nums(
 
   return { coordination_nums, cn_histogram, cn_histogram_by_element }
 }
+
+// Sites a CoordinationBarPlot bar counts, one highlight per structure the bar draws from:
+// every site with the bar's CN, narrowed to its series (`element` for by_element,
+// `structure_label` for by_structure). Elements are matched by majority species, as
+// cn_histogram_by_element buckets them.
+export const coordination_bar_sites = (
+  entries: readonly (StructureEntry & { data: CoordinationData })[],
+  bar: { coordination_num: number; element?: string; structure_label?: string },
+): StructureSiteHighlight[] =>
+  entries
+    .filter(({ label }) => bar.structure_label === undefined || label === bar.structure_label)
+    .map(({ label, structure, data }) => ({
+      label,
+      structure,
+      site_indices: data.coordination_nums.flatMap((site_cn, site_idx) =>
+        site_cn === bar.coordination_num &&
+        (bar.element === undefined ||
+          (get_majority_element(structure.sites[site_idx]) ?? `Unknown`) === bar.element)
+          ? [site_idx]
+          : [],
+      ),
+    }))

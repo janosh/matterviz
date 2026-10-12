@@ -171,6 +171,8 @@ export const TERNARY_COLORS = Object.freeze({
   stable: DEFAULT_HULL_COLORS.stable,
   face: `#4caf50`,
   selected: `#66f0ff`,
+  // Pinned probe: magenta, a hue no other ternary colour uses (overridden by a CSS theme shade)
+  pin: `#c2185b`,
   highlight: `#ff9800`,
   element: `#9e9e9e`,
 })

@@ -169,8 +169,6 @@ export interface PhononModeSelection {
   mode_idx: number
 }
 
-export type PhononExplorerView = `bands` | `ir` | `raman`
-
 // Born effective charges and high-frequency dielectric tensor from a phonopy BORN file.
 export interface BornChargeData {
   factor: number // NAC unit conversion factor, recorded but not applied here

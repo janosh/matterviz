@@ -500,14 +500,3 @@ export function path_profile(
     spline: path_spline(path, options, coords),
   }
 }
-
-// Index of the image whose reaction coordinate is closest to `coord`. Reaction
-// coordinates are not indices, so a hovered plot position maps back by nearest
-// neighbour rather than by rounding.
-export function nearest_image_idx(coords: readonly number[], coord: number): number {
-  if (coords.length === 0) throw new Error(`nearest_image_idx got an empty coordinate array`)
-  return coords.reduce(
-    (best, val, idx) => (Math.abs(val - coord) < Math.abs(coords[best] - coord) ? idx : best),
-    0,
-  )
-}

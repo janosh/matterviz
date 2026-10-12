@@ -14,6 +14,7 @@ import {
   density_divisor,
   extract_k_path_points,
   find_gamma_indices,
+  branch_qpoint_range,
   find_qpoint_at_rescaled_x,
   frac_k_to_cartesian,
   generate_ribbon_path,
@@ -303,6 +304,21 @@ describe(`qpoint_x_position / find_qpoint_at_rescaled_x`, () => {
     const disc_pos: Record<string, Vec2> = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] }
     expect(find_qpoint_at_rescaled_x(disc, 0.5, disc_pos)).toBe(1)
     expect(qpoint_x_position(disc, 2, disc_pos)).toBe(0.5)
+  })
+})
+
+describe(`branch_qpoint_range`, () => {
+  // Γ(0)→X(3)→K(5) sharing X, then a 2-point jump K(5)→U(6) that is a discontinuity
+  const band_structure = make_bs([`GAMMA`, null, null, `X`, null, `K`, `U`])
+  it.each([
+    [0, [0, 3]],
+    [3, [0, 3]], // shared symmetry point belongs to the earlier branch
+    [4, [3, 5]],
+    [5, [3, 5]],
+    [6, null], // only on the discontinuity jump
+    [-1, null],
+  ] as [number, Vec2 | null][])(`q-point %i lies in %j`, (qpoint_idx, expected) => {
+    expect(branch_qpoint_range(band_structure, qpoint_idx)).toEqual(expected)
   })
 })
 

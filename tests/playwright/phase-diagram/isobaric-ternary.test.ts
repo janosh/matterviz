@@ -1,5 +1,6 @@
 // Smoke coverage for IsobaricTernaryPhaseDiagram on its demo route: the isothermal section
-// canvas renders and tracks the viewport, the 2D/3D view toggle swaps canvases, and a dropped
+// canvas renders and tracks the viewport, the 2D/3D view toggle swaps canvases, the prism's
+// cutting plane probes compositions on hover and drags the temperature, and a dropped
 // entries file recomputes the diagram. Every test fails on a console/page error, navigation
 // and first render included.
 import { expect } from '@playwright/test'
@@ -80,6 +81,11 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     const t_before = Number(await kelvin.inputValue())
     const box = await require_bbox(canvas, `prism canvas`)
     const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
+    // hovering the plane probes a composition, a click without dragging pins it (T unchanged)
+    await page.mouse.move(center_x + 40, center_y + 15, { steps: 4 })
+    await expect(page.locator(`.ternary-tooltip`)).toContainText(/Li\s*[\d.]+\s*%/)
+    await page.mouse.click(center_x + 40, center_y + 15)
+    expect(Number(await kelvin.inputValue())).toBe(t_before)
     await page.mouse.move(center_x, center_y)
     await page.mouse.down()
     await page.mouse.move(center_x, center_y - 80, { steps: 10 })

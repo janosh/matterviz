@@ -36,14 +36,20 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import { BAND_COLORS, SPIN_COLORS } from './constants'
+  import { BAND_COLORS, property_label as display_label, SPIN_COLORS } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
-    has_vertex_properties,
     nearest_face_vertex,
+    property_color_range,
+    property_names,
+    vertex_property,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
+  import { reciprocal_cell_section, slice_plane_normal } from './compute'
+  import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
+  import KPath from '#lib/brillouin/KPath.svelte'
+  import type { ComponentProps } from 'svelte'
   import type {
     FermiHoverData,
     FermiIsosurface,
@@ -58,8 +64,9 @@
     // Fermi surface styling
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
-    // Name of the per-vertex property shown in the hover tooltip
-    property_label = `Property`,
+    property_name: requested_property, // coloured by in `property` mode (default: the first)
+    color_range, // colour-scale [min, max]; unset fits the property's finite values
+    property_label, // display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
@@ -73,6 +80,9 @@
     clip_axis = DEFAULTS.fermi.clip_axis,
     clip_position = DEFAULTS.fermi.clip_position,
     clip_flip = DEFAULTS.fermi.clip_flip,
+    slice_plane, // the 2D slice plane (h k l)·k = distance to mark, cut to the data's cell
+    k_marker = null, // k-point (Cartesian Å⁻¹) to mark with a dot, e.g. a FermiSlice's cursor
+    k_path,
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
@@ -86,12 +96,19 @@
       bz_data?: BrillouinZoneData
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
+      property_name?: string
+      color_range?: Vec2
       property_label?: string
+      slice_plane?: { miller_indices: Vec3; distance: number }
+      k_marker?: Vec3 | null
+      // a band structure's k-path to draw (its hovered point is the k_marker dot)
+      k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
+  const SLICE_PLANE_COLOR = `#f59e0b`
 
   // Transparent surfaces depth-sort correctly because renderer.sortObjects defaults to true
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
@@ -131,9 +148,13 @@
     threlte.invalidate()
   })
 
-  // Only the front-most visible sheet gets the pointer event (see front_hit)
+  // Only the front-most visible sheet gets the pointer event (see front_hit); a k-path drawn
+  // through the zone wins over sheets in front of it, or most of it could not be hovered
   const { enabled: hover_enabled } = extras.interactivity({
-    filter: (hits) => front_hit(hits, clip_plane),
+    filter: (hits) => {
+      const path_hit = hits.find((hit) => hit.object.userData.kpath_proxy)
+      return front_hit(path_hit ? [path_hit] : hits, clip_plane)
+    },
   })
 
   let visible_surfaces = $derived(
@@ -168,21 +189,14 @@
   // `property` maps the per-vertex scalars through the colour scale; band/spin colouring is a
   // single material colour per surface
   const use_vertex_colors = $derived(color_property === `property`)
+  const property_name = $derived(
+    requested_property ?? property_names(fermi_data?.isosurfaces ?? [])[0],
+  )
 
-  // Property range for color scaling across all visible surfaces
-  let property_range = $derived.by((): Vec2 => {
-    if (!use_vertex_colors) return [0, 1]
-    let [min_val, max_val] = [Infinity, -Infinity]
-    for (const surface of visible_surfaces) {
-      if (!surface.properties) continue
-      for (const prop of surface.properties) {
-        if (prop < min_val) min_val = prop
-        if (prop > max_val) max_val = prop
-      }
-    }
-    if (min_val === Infinity) return [0, 1]
-    return [min_val, max_val]
-  })
+  // Colour range of the property across all visible surfaces unless the caller fixed one
+  let property_range = $derived(
+    color_range ?? property_color_range(visible_surfaces, property_name),
+  )
 
   // Flat colour for a surface (material colour, tooltip background)
   function get_surface_color(surface: FermiIsosurface): string {
@@ -228,7 +242,8 @@
       ? { colormap: color_scale, color_range: property_range }
       : null
     for (const [idx, geometry] of geometries.entries()) {
-      if (geometry) apply_vertex_colors(geometry, visible_surfaces[idx], spec)
+      const values = vertex_property(visible_surfaces[idx], property_name)
+      if (geometry) apply_vertex_colors(geometry, values, spec)
     }
     threlte.invalidate()
   })
@@ -313,7 +328,8 @@
           })
     // A surface without per-vertex properties keeps its flat colour even in property mode,
     // otherwise vertexColors would read a missing attribute
-    material.vertexColors = use_vertex_colors && has_vertex_properties(surface)
+    material.vertexColors =
+      use_vertex_colors && vertex_property(surface, property_name) !== undefined
     if (!material.vertexColors) material.color.set(get_surface_color(surface))
     material.transparent = is_transparent
     // three draws a transparent DoubleSide material as back- then front-face passes, and one
@@ -339,6 +355,17 @@
     threlte.invalidate()
   })
 
+  // Where the 2D slice cuts the cell the surfaces live in (Γ-centred parallelepiped or zone);
+  // empty when the plane misses it
+  const slice_polygon = $derived.by((): Vec3[] => {
+    if (!slice_plane || !fermi_data) return []
+    const { miller_indices, distance } = slice_plane
+    // (0 0 0) defines no plane; FermiSlice reports that error
+    if (miller_indices.every((idx) => idx === 0)) return []
+    const normal = slice_plane_normal(fermi_data.k_lattice, miller_indices)
+    // the drawn zone, nothing while it is missing
+    return reciprocal_cell_section(fermi_data, normal, distance, bz_data?.edges ?? [])
+  })
   // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
@@ -370,12 +397,22 @@
 
     // The corner lookup happens in local space: the geometry's positions are the raw surface
     // vertices before sym_matrix
-    let property_value: number | undefined
+    let property_values: Record<string, number> | undefined
     if (surface.properties && event.face) {
       const local_point = event.point.clone().applyMatrix4(inverse_symmetry_ops[sym_idx])
-      property_value =
-        surface.properties[nearest_face_vertex(geometry, event.face, local_point)]
+      const vertex_idx = nearest_face_vertex(geometry, event.face, local_point)
+      property_values = Object.fromEntries(
+        Object.entries(surface.properties).map(([name, values]) => [
+          display_label(name, property_label),
+          values[vertex_idx],
+        ]),
+      )
     }
+    // The colouring property leads the tooltip, when this sheet has it
+    const active_label =
+      property_name !== undefined && surface.properties?.[property_name]
+        ? display_label(property_name, property_label)
+        : undefined
 
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
@@ -385,8 +422,9 @@
       position_fractional,
       screen_position: { x: clientX, y: clientY },
       surface_color,
-      property_value,
-      property_name: property_value === undefined ? undefined : property_label,
+      property_value: active_label === undefined ? undefined : property_values?.[active_label],
+      property_name: active_label,
+      property_values,
       is_tiled: effective_tile_bz,
       symmetry_index: sym_idx,
       n_symmetry_ops: symmetry_ops.length,
@@ -424,6 +462,19 @@
   <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
     <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
+  {/if}
+
+  <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
+
+  {#if k_path}
+    <KPath {...k_path} size={scene_size} edge_width={DEFAULTS.brillouin.edge_width} />
+  {/if}
+  {#if k_marker}
+    <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->
+    <T.Mesh position={k_marker} renderOrder={1001}>
+      <T.SphereGeometry args={[0.015 * scene_size, 16, 12]} />
+      <T.MeshBasicMaterial color={SLICE_PLANE_COLOR} depthTest={false} transparent />
+    </T.Mesh>
   {/if}
 
   <!-- Fermi surfaces (with optional symmetry tiling) -->

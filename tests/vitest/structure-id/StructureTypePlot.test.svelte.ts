@@ -43,7 +43,11 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
 
   // `over_frames` without labels is covered by the explicit frame_labels case below
   test.each<[string, ComponentProps<typeof StructureTypePlot>]>([
-    [`one result, by_structure`, { id_results: [fcc_result] }],
+    // the playhead and click-to-seek are over_frames only
+    [
+      `one result, by_structure`,
+      { id_results: [fcc_result], current_frame: 1, on_frame_click: () => {} },
+    ],
     [`normalized`, { id_results: frames, normalize: true }],
     [
       `over_frames with labels`,
@@ -68,6 +72,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     for (const label of props.frame_labels ?? []) {
       expect(root.textContent).toContain(String(label))
     }
+    expect(root.querySelector(`.current-frame-guide, .frame-seek-area`)).toBeNull()
   })
 
   // In either layout every series is one populated CNA type (the previous per-result series
@@ -94,6 +99,51 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
       expect(root.textContent).toContain(`1000`)
     },
   )
+
+  test(`over_frames marks the current frame, seeks on click and reports the hovered type`, async () => {
+    const [on_frame_click, on_type_hover] = [vi.fn(), vi.fn()]
+    const state = $state<{ current_frame: number | null }>({ current_frame: 20 })
+    const props = {
+      id_results: frames,
+      layout: `over_frames` as const,
+      frame_labels: [10, 20, 30],
+    }
+    const root = await mount_plot(
+      bind_props({ ...props, on_frame_click, on_type_hover }, state),
+    )
+    const guide = () => root.querySelector(`.current-frame-guide`)
+    const mid_x = Number(guide()?.getAttribute(`x1`))
+    expect(mid_x).toBeGreaterThan(0)
+    // a frame between analysed ones still sits at its own x position
+    state.current_frame = 25
+    flushSync()
+    expect(Number(guide()?.getAttribute(`x1`))).toBeGreaterThan(mid_x)
+    state.current_frame = null
+    flushSync()
+    expect(guide()).toBeNull()
+
+    // a click anywhere on the plot area snaps to the analysed frame nearest the pointer
+    const seek_area = root.querySelector(`.frame-seek-area`)
+    const svg_left = seek_area?.closest(`svg`)?.getBoundingClientRect().left ?? 0
+    for (const offset of [-200, 10, 1000]) {
+      const clientX = svg_left + mid_x + offset
+      seek_area?.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX }))
+    }
+    expect(on_frame_click.mock.calls).toEqual([[10], [20], [30]])
+    // the click a browser fires after a drag (e.g. a zoom rectangle) on the area is no seek
+    const drag_x = svg_left + mid_x
+    seek_area?.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: drag_x }))
+    globalThis.dispatchEvent(new MouseEvent(`mouseup`, { clientX: drag_x + 80 }))
+    seek_area?.dispatchEvent(new MouseEvent(`click`, { bubbles: true, clientX: drag_x + 80 }))
+    expect(on_frame_click).toHaveBeenCalledTimes(3)
+
+    const hcp_item = [...root.querySelectorAll(`.legend-item`)].find((item) =>
+      item.textContent?.includes(`HCP`),
+    )
+    hcp_item?.dispatchEvent(new MouseEvent(`mouseenter`))
+    hcp_item?.dispatchEvent(new MouseEvent(`mouseleave`))
+    expect(on_type_hover.mock.calls).toEqual([[`hcp`], [null]])
+  })
 
   // Results-only mode (no `structures`): the parent drives `loading` one-way while it collects
   // results, and the compute effect must not reset it to false

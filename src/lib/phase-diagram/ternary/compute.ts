@@ -17,8 +17,15 @@ import {
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
-import { array_min, partition_point, type Vec2, type Vec3 } from '#lib/math.js'
-import { ternary_to_xy } from '#lib/plot/ternary/ternary.js'
+import {
+  array_min,
+  euclidean_dist,
+  partition_point,
+  sorted_numbers,
+  type Vec2,
+  type Vec3,
+} from '#lib/math.js'
+import { inside_triangle, ternary_to_xy, xy_to_ternary } from '#lib/plot/ternary/ternary.js'
 import { build_free_energy_model, default_t_range } from './free-energy'
 import type {
   Decomposition,
@@ -213,7 +220,7 @@ function hull_topology(
   )
   // Coplanar input (only the corners, or everything at dG_f = 0): the hull is one triangle
   const facets = hull.length > 0 ? hull : [corners]
-  const stable = [...new Set(facets.flat())].toSorted((lhs, rhs) => lhs - rhs)
+  const stable = sorted_numbers(new Set(facets.flat()))
   return { temperature, dg_form, facets, stable, edges: facet_edges(facets), valid: true }
 }
 
@@ -301,6 +308,25 @@ export function decompose_phase(
   if (section.stable.includes(phase)) return { phases: [phase], fractions: [1] }
   return decompose_composition(model, section, model.phases[phase].xy)
 }
+
+// === Composition probes ===
+
+// Gibbs-triangle centroid: the origin of the prism's XZ plane
+const PRISM_CENTER: Vec2 = [0.5, Math.sqrt(3) / 6]
+// Triangle xy → prism scene xyz at height y_scene (z flipped: seen from above, like the 2D view)
+export const prism_position = ([x_pos, y_pos]: readonly number[], y_scene = 0): Vec3 => [
+  x_pos - PRISM_CENTER[0],
+  y_scene,
+  PRISM_CENTER[1] - y_pos,
+]
+// Inverse of prism_position (height ignored), null outside the Gibbs triangle
+export function prism_composition({ x, z }: { x: number; z: number }): Vec2 | null {
+  const coords_xy: Vec2 = [x + PRISM_CENTER[0], PRISM_CENTER[1] - z]
+  return inside_triangle(xy_to_ternary(coords_xy), 1e-6) ? coords_xy : null
+}
+// Whether coords_xy is within `radius` (triangle side = 1) of the pin, i.e. a click unpins
+export const hits_pin = (pinned: Vec2 | null, coords_xy: Vec2, radius: number): boolean =>
+  pinned !== null && euclidean_dist(coords_xy, pinned) <= radius
 
 // Energy above the hull of every phase: dG - sum_k w_k dG_k over its containing facet
 function e_above_hull_of(
@@ -593,9 +619,9 @@ function sample_temperatures(
     // Tabulated knots keep piecewise-linear G(T) exact between samples
     ...model.phases.flatMap((phase) => phase.entry.temperatures ?? []),
   ]
-  return [
-    ...new Set([t_min, t_max, ...samples.filter((temp) => temp >= t_min && temp <= t_max)]),
-  ].toSorted((lhs, rhs) => lhs - rhs)
+  return sorted_numbers(
+    new Set([t_min, t_max, ...samples.filter((temp) => temp >= t_min && temp <= t_max)]),
+  )
 }
 
 // Per phase: maximal [T_lo, T_hi] intervals on the hull. Transitions give exact bounds; at the

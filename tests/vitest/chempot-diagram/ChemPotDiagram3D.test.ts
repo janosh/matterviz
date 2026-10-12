@@ -1,3 +1,4 @@
+import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import { export_png_file } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
@@ -330,4 +331,76 @@ test(`hull faces are labelled by their owning domain, which the Surface quick-se
   expect(selected).toBeGreaterThan(0)
   expect(selected).toBeLessThan(n_domains) // buried domains stay unselected
   expect(scene().formula_meshes).toHaveLength(selected)
+})
+
+type HighlightScene = {
+  hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
+  on_domain_hover: (mesh: unknown, event: unknown) => void
+  on_domain_leave: (mesh: unknown) => void
+  highlighted_formula: string | null
+  highlight_edges: { getAttribute(name: string): { count: number } } | null
+}
+const pointer_event = { nativeEvent: new PointerEvent(`pointermove`), stopPropagation() {} }
+
+// Matched by reduced formula, outlined by that domain's edges (two vertices each); a phase
+// without a domain here highlights nothing
+test.each([
+  [`Fe4O6`, `Fe2O3`, true],
+  [`NaCl`, `ClNa`, false],
+])(`highlighted_formula %s highlights domain %s`, async (input, key, has_domain) => {
+  const scene = await mount_diagram<HighlightScene>({
+    entries,
+    config: { default_min_limit: -25 },
+    highlighted_formula: input,
+  })
+  expect(scene().highlighted_formula).toBe(key)
+  const info = scene().hover_meshes.find(({ formula }) => formula === key)?.info
+  const n_edges = info?.view === `3d` ? info.n_edges : 0
+  expect(n_edges > 0).toBe(has_domain)
+  expect(scene().highlight_edges?.getAttribute(`position`).count ?? 0).toBe(2 * n_edges)
+})
+
+// Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
+test(`a domain hovered in one quaternary grid pane is highlighted in all, tooltip only in its own`, async () => {
+  const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  const config = { projection_mode: `grid` as const, default_min_limit: -25 }
+  mounted = mount(ChemPotDiagram, {
+    target: document.body,
+    props: bind_props({ entries: ytos_entries, config }, bound),
+  })
+  const scenes = () =>
+    threlte_stub.nodes
+      .filter(({ tag }) => tag === `Scene`)
+      .map(({ props }) => props as HighlightScene)
+  await vi.waitFor(() => {
+    expect(document.querySelector(`.spinner`)).toBeNull()
+    expect(scenes()).toHaveLength(4)
+    expect(scenes().every((scene) => scene.hover_meshes.length > 0)).toBe(true)
+  })
+  const panes = [...document.querySelectorAll(`.chempot-diagram-3d`)]
+  const tooltip_panes = () =>
+    panes.map((pane) => pane.querySelectorAll(`.chempot-tooltip`).length)
+  const highlights = () => scenes().map((scene) => scene.highlighted_formula)
+
+  const [first, second] = scenes()
+  const hovered = second.hover_meshes.find(({ formula }) => formula.length > 2)
+  const other = first.hover_meshes.find(({ formula }) => formula !== hovered?.formula)
+  if (!hovered || !other) throw new Error(`no two distinct compound domains`)
+  second.on_domain_hover(hovered, pointer_event)
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(hovered.formula)
+  expect(tooltip_panes()).toEqual([0, 1, 0, 0])
+  expect(highlights()).toEqual(Array(4).fill(hovered.formula))
+  // hovering in another pane hands the tooltip and highlight over
+  second.on_domain_leave(hovered)
+  first.on_domain_hover(other, pointer_event)
+  flushSync()
+  expect(tooltip_panes()).toEqual([1, 0, 0, 0])
+  expect(highlights()).toEqual(Array(4).fill(other.formula))
+  first.on_domain_leave(other)
+  flushSync()
+  expect(bound.hover_info).toBeNull()
+  expect(tooltip_panes()).toEqual([0, 0, 0, 0])
+  expect(highlights()).toEqual(Array(4).fill(null))
 })

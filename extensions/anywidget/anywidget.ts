@@ -182,6 +182,8 @@ const traj_structure_prop_keys = [
   `color_scheme`,
   `background_color`,
   `background_opacity`,
+  // JSON CutawaySettings, sliced in the displayed cell; a hotspots-pane cutaway overrides it
+  `cutaway`,
 ] as const
 
 // Build scene/lattice props shared by structure and trajectory renderers. Unset traits fall
@@ -333,6 +335,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`slice_settings`, {}),
       writeback_prop(`selected_sites`, []),
       writeback_prop(`hovered_site_idx`),
+      // Open floating pane (StructurePane), e.g. 'flight' for the camera-flight planner
+      writeback_prop(`active_pane`),
       derived_prop(`scene_props`, scene_prop_keys, get_scene_props),
     ],
   },
@@ -374,6 +378,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`display_mode`, DEFAULTS.trajectory.display_mode),
       writeback_prop(`plot_type`, DEFAULTS.trajectory.plot_type),
       writeback_prop(`distribution_property`),
+      // Open floating pane (TrajectoryPane), e.g. 'hotspots' or 'flight'
+      writeback_prop(`active_pane`),
       derived_prop(
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],
@@ -424,6 +430,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `size_scale`,
       `legend`,
       `camera_projection`,
+      `point_tween`,
     ]),
   },
   bar_plot: {
@@ -450,7 +457,13 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   composition: {
     component: Composition,
     base_drive: style_base_drive,
-    drive: drive_props([`composition`, `mode`, `show_percentages`, `color_scheme`]),
+    drive: drive_props([
+      `composition`,
+      `mode`,
+      `show_percentages`,
+      `color_scheme`,
+      `patterns`,
+    ]),
   },
   convex_hull: {
     component: ConvexHull,
@@ -517,6 +530,11 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `fermi_data`,
       `band_data`,
       `mu`,
+      `color_property`,
+      `color_scale`,
+      `property_name`,
+      `color_range`,
+      `custom_property_label`,
       `representation`,
       `surface_opacity`,
       `show_bz`,

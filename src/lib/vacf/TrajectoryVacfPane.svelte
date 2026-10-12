@@ -20,6 +20,7 @@
     result = $bindable(),
     default_dt = null,
     default_time_unit,
+    on_curve_hover,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
@@ -29,6 +30,8 @@
     // only be labelled in inverse frames, so a file that knows its timestep should say so.
     default_dt?: number | null
     default_time_unit?: string
+    // Curve under the pointer (element symbol or `Total`), for highlighting its atoms
+    on_curve_hover?: (label: string | null) => void
   } = $props()
 
   let max_lag_fraction = $state(0.5)
@@ -121,6 +124,7 @@
   {/snippet}
   {#snippet children(ctx)}
     <VacfPlot
+      {on_curve_hover}
       input={ctx.input}
       vacf_options={vacf_options(ctx)}
       {panel}

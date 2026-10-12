@@ -57,6 +57,11 @@ const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
 const get_x_labels = () => query_all(`.x-label`)
 const get_y_labels = () => query_all(`.y-label`)
+// rendered [column, row] grid line of a cell: its column's --c<x_idx> on the grid, its row wrapper's --r
+const cell_track = (cell: HTMLElement): [number, number] => [
+  Number(doc_query(`.grid`).style.getPropertyValue(`--c${cell.dataset.x}`)),
+  Number(cell.closest<HTMLElement>(`.row`)?.style.getPropertyValue(`--r`)),
+]
 const cell_at = (x_idx: number, y_idx: number) =>
   doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
 // color_scale whose red channel reads back the normalized position on the ramp
@@ -137,7 +142,7 @@ describe(`symmetric mode`, () => {
     expect(data_cells).toHaveLength(6)
     expect(empty_cells).toHaveLength(3)
     for (const cell of data_cells) {
-      const [col, row] = [Number(cell.style.gridColumn), Number(cell.style.gridRow)]
+      const [col, row] = cell_track(cell)
       const message = `(${cell.dataset.x},${cell.dataset.y})`
       if (mode === `lower`) expect(col, message).toBeLessThanOrEqual(row)
       else expect(col, message).toBeGreaterThanOrEqual(row)
@@ -381,33 +386,25 @@ describe(`click and dblclick handlers`, () => {
     }
   })
 
-  test.each([`Enter`, ` `])(
-    `keyboard %s plus native click synthesis triggers once`,
-    (key_name) => {
-      const click_handler = vi.fn()
-      mount_matrix({ values: [[1]], on_click: click_handler })
-      const cell = doc_query(`.cell:not(.empty)`)
-      expect(cell.tagName).toBe(`BUTTON`)
-      // Approximate native button activation: keydown then synthesized click.
-      cell.dispatchEvent(keydown(key_name))
-      cell.dispatchEvent(mouse(`click`))
-      expect(click_handler).toHaveBeenCalledOnce()
-    },
-  )
-
-  test(`x_order/y_order reorder labels and arrow keys follow the sorted order`, async () => {
-    mount_matrix({
-      x_items: [
-        { label: `B`, sort_value: 2 },
-        { label: `A`, sort_value: 1 },
-      ],
-      y_items: [
-        { label: `Y`, sort_value: 2 },
-        { label: `X`, sort_value: 1 },
-      ],
-      x_order: `sort_value`,
-      y_order: `label`,
-      on_click: () => {},
+  test(`x_order/y_order reorder labels, arrow keys follow, reorders move no nodes`, async () => {
+    const x_order = fromStore(writable<`sort_value` | undefined>(`sort_value`))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: [
+          { label: `B`, sort_value: 2 },
+          { label: `A`, sort_value: 1 },
+        ],
+        y_items: [
+          { label: `Y`, sort_value: 2 },
+          { label: `X`, sort_value: 1 },
+        ],
+        get x_order() {
+          return x_order.current
+        },
+        y_order: `label`,
+        on_click: () => {},
+      },
     })
     await tick()
     expect(get_x_labels()[0].textContent?.trim()).toBe(`A`)
@@ -422,6 +419,51 @@ describe(`click and dblclick handlers`, () => {
     document.activeElement?.dispatchEvent(keydown(`ArrowDown`))
     await tick()
     expect(document.activeElement).toBe(cell_at(0, 0))
+    // back to item order (B A): cell nodes stay put, only their grid columns change
+    const nodes = get_data_cells()
+    const columns = () => nodes.map((cell) => cell_track(cell)[0])
+    expect(columns()).toEqual([2, 3, 2, 3])
+    flushSync(() => (x_order.current = undefined))
+    await tick()
+    expect(get_data_cells()).toEqual(nodes)
+    expect(columns()).toEqual([3, 2, 3, 2])
+  })
+
+  test(`one tab stop follows focus, Enter and Space click it; static matrices are tables`, async () => {
+    const on_click = vi.fn()
+    const disabled = fromStore(writable(false))
+    const props = {
+      x_items,
+      y_items,
+      on_click,
+      get disabled() {
+        return disabled.current
+      },
+    }
+    mount(HeatmapMatrix, { target: document.body, props })
+    await tick()
+    const roles = () =>
+      [doc_query(`.grid`), cell_at(0, 0)].map((el) => el.getAttribute(`role`))
+    expect(roles()).toEqual([`grid`, `gridcell`])
+    const tab_stops = () => get_data_cells().filter((cell) => cell.tabIndex === 0)
+    expect(tab_stops()).toEqual([cell_at(0, 0)])
+    cell_at(1, 1).focus()
+    expect(tab_stops()).toEqual([cell_at(1, 1)])
+    for (const key_name of [`Enter`, ` `]) {
+      const event = keydown(key_name, { cancelable: true })
+      cell_at(1, 1).dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect(on_click).toHaveBeenCalledTimes(2) // once per key, cells are not native buttons
+    expect(on_click.mock.calls[0][0]).toMatchObject({ x_idx: 1, y_idx: 1 })
+    // disabled matrices are static tables; re-enabling restores exactly one tab stop
+    flushSync(() => (disabled.current = true))
+    expect(roles()).toEqual([`table`, `cell`])
+    // focus reaching a static cell (e.g. a button in a `cell` snippet) adds no tab stop
+    cell_at(0, 0).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    expect(query_all(`[tabindex]`)).toEqual([])
+    flushSync(() => (disabled.current = false))
+    expect(tab_stops()).toEqual([cell_at(1, 1)])
   })
 
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
@@ -491,8 +533,8 @@ describe(`hide_empty`, () => {
         expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
         expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
         // Gaps retain the ordered A/X and C/Z tracks despite missing B/Y.
-        expect([cells[0].style.gridColumn, cells[0].style.gridRow]).toEqual([`2`, `2`])
-        expect([cells[3].style.gridColumn, cells[3].style.gridRow]).toEqual([`4`, `4`])
+        expect(cell_track(cells[0])).toEqual([2, 2])
+        expect(cell_track(cells[3])).toEqual([4, 4])
       }
     },
   )
