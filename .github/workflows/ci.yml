@@ -149,6 +149,7 @@ jobs:
         env:
           NODE_OPTIONS: --report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/node-reports
         run: |
+          mkdir -p /tmp/node-reports
           pnpm exec vp build > /tmp/build.log 2>&1 &
           for tick in $(seq 1 15); do sleep 10; jobs %1 >/dev/null 2>&1 || break; done
           if jobs %1 >/dev/null 2>&1; then
@@ -157,14 +158,19 @@ jobs:
             ps -eo pid,ppid,pcpu,rss,etime,stat,nlwp,args --sort=-pcpu | head -15 | cut -c1-220
             top -b -n 1 -H | head -30
             free -m; df -h / /tmp | tail -2; ulimit -n
-            for pid in $(pgrep -f "vp/bin|vite-plus|node "); do kill -USR2 "$pid" 2>/dev/null; done
+            build_pid=$(pgrep -f "vite-plus-core" | head -1)
+            echo "build pid $build_pid"
+            sudo ss -tnpa | grep -v LISTEN | head -20
+            sudo ls -l /proc/$build_pid/fd | awk '{print $NF}' | sort | uniq -c | sort -rn | head -25
+            for task in /proc/$build_pid/task/*; do echo "$(cat $task/comm) $(sudo cat $task/wchan) $(awk '{print $3}' $task/stat)"; done | sort | uniq -c
+            kill -USR2 "$build_pid"
             sleep 5
             for report in /tmp/node-reports/*.json; do
               echo "=== $report"
               jq -r '.header.commandLine | join(" ")' "$report" | cut -c1-200
-              jq -r '.javascriptStack.stack[]?' "$report" | head -40
+              jq -r '.javascriptStack.message, (.javascriptStack.stack[]?)' "$report" | head -40
               jq -r '.nativeStack[]?.symbol' "$report" | head -25
-              jq -r '[.libuv[]? | select(.is_active) | .type] | group_by(.) | map("\(.[0]) \(length)") | join(", ")' "$report"
+              jq -c '.libuv[]? | select(.is_active)' "$report" | head -30
             done
             echo "::endgroup::"
             exit 1
