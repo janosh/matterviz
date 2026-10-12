@@ -146,7 +146,30 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Build production site
-        run: pnpm exec vp build
+        env:
+          NODE_OPTIONS: --report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/node-reports
+        run: |
+          pnpm exec vp build > /tmp/build.log 2>&1 &
+          for tick in $(seq 1 15); do sleep 10; jobs %1 >/dev/null 2>&1 || break; done
+          if jobs %1 >/dev/null 2>&1; then
+            echo "::group::build still running after 150 s"
+            tail -5 /tmp/build.log
+            ps -eo pid,ppid,pcpu,rss,etime,stat,nlwp,args --sort=-pcpu | head -15 | cut -c1-220
+            top -b -n 1 -H | head -30
+            free -m; df -h / /tmp | tail -2; ulimit -n
+            for pid in $(pgrep -f "vp/bin|vite-plus|node "); do kill -USR2 "$pid" 2>/dev/null; done
+            sleep 5
+            for report in /tmp/node-reports/*.json; do
+              echo "=== $report"
+              jq -r '.header.commandLine | join(" ")' "$report" | cut -c1-200
+              jq -r '.javascriptStack.stack[]?' "$report" | head -40
+              jq -r '.nativeStack[]?.symbol' "$report" | head -25
+              jq -r '[.libuv[]? | select(.is_active) | .type] | group_by(.) | map("\(.[0]) \(length)") | join(", ")' "$report"
+            done
+            echo "::endgroup::"
+            exit 1
+          fi
+          wait %1; status=$?; tail -5 /tmp/build.log; exit $status
       - uses: actions/upload-artifact@v7
         with:
           name: browser-test-site
