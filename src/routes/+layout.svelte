@@ -84,9 +84,7 @@
   }}
 />
 
-<!-- z-index: above nav dropdown and Structure control toggles.
-     --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
-     does not define (it uses --text-color); without it the bars fall back to currentColor. -->
+<!-- z-index: above nav dropdown and Structure control toggles -->
 <PageSearch
   bind:open={cmd_palette_open}
   fallback_actions={[...route_actions, ...theme_actions]}
@@ -105,14 +103,16 @@
 <GitHubCorner id="github-corner" href={pkg.repository} />
 <CopyButton
   global
-  style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: var(--btn-color)"
+  style="top: 9pt; inset-inline-end: 9pt; background: var(--btn-bg); color: inherit"
 />
 
 <ThemeControl bind:theme_mode />
 
 <!-- menu_props: inline until svelte-widgets ships the same defaults. Its mobile menu hugs its
      content and anchors to the start edge, so page text shows beside the open menu; spanning
-     the viewport fixes that. `max-width` clears its 90vw cap, which would re-narrow the panel. -->
+     the viewport fixes that. `max-width` clears its 90vw cap, which would re-narrow the panel.
+     --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
+     does not define (it uses --text-color); without it the bars fall back to currentColor. -->
 <Nav
   routes={[{ href: `/`, label: `Home` }, ...nav_routes]}
   menu_props={{ style: `inset-inline: 0.5rem; max-width: none` }}

@@ -1,12 +1,12 @@
-import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
+import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { calc_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
-import { convert_atomic_numbers, create_sampled_frame } from '../helpers'
+import { convert_atomic_numbers, create_sampled_frame, values_per_sample } from '../helpers'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '../index'
 import type { Dataset, File as H5File } from 'h5wasm'
 import {
@@ -118,12 +118,7 @@ export const parse_md_h5_file = (
     const path = `/static/${name}`
     const dataset = required(file, path)
     ensure_shape(dataset, path, shape)
-    return read_numeric_samples(
-      dataset,
-      path,
-      shape[0],
-      shape.slice(1).reduce((total, size) => total * size, 1),
-    )
+    return read_numeric_samples(dataset, path, shape[0], values_per_sample(shape.slice(1)))
   }
   const atomic_numbers = read_static(`atomic_numbers`)
   const elements = convert_atomic_numbers(atomic_numbers)
@@ -341,9 +336,7 @@ export const parse_md_h5_file = (
     }
     return frame
   }
-  const collect_positions = (
-    options: PositionStreamOptions = {},
-  ): TrajectoryPositionStream => {
+  const collect_positions = (options: PositionStreamOptions): TrajectoryPositionStream => {
     const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
       FORMAT,
       options,

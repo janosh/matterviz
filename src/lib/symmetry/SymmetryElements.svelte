@@ -41,6 +41,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     tile_symmetry_elements,
   } from './symmetry-elements'
 
+  import { whole_tile_counts } from '#lib/structure/supercell.js'
   import { untrack } from 'svelte'
   import { T } from '@threlte/core'
   import { HTML } from '@threlte/extras'
@@ -95,7 +96,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Everything below clips against the unit cube of `cell`, so the block's own cell vectors
   // plus block-frame elements extend the overlay over every tile
-  const tiling_key = $derived(tiling.map((count) => Math.max(1, Math.floor(count))).join(`,`))
+  const tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
   const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
   const matrix_key = $derived(lattice.flat().join(`,`))
   const cell = $derived.by(() => {
@@ -365,8 +366,8 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 
   // Dispose each group's merged geometries when that group recomputes or on unmount. One
   // $effect per group (rather than a single combined one): the deriveds recompute
-  // independently — e.g. tweaking a plane-only prop rebuilds plane_groups but not
-  // axis_groups — and a combined effect would dispose the still-mounted axis geometry.
+  // independently — e.g. toggling mirror planes rebuilds plane_groups but not axis_groups —
+  // and a combined effect would dispose the still-mounted axis geometry.
   const geometries_of = (groups: MaterialGroup[]) => groups.map((group) => group.geometry)
   dispose_on_change(() => geometries_of(axis_groups))
   dispose_on_change(() => geometries_of(plane_groups))

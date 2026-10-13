@@ -1,6 +1,6 @@
 <script lang="ts">
   import Bands from '#lib/spectral/Bands.svelte'
-  import type { BaseBandStructure, RibbonConfig } from '#lib/spectral/types.js'
+  import type { BaseBandStructure } from '#lib/spectral/types.js'
 
   const mock_band_structure: BaseBandStructure = {
     type: `phonon`,
@@ -98,25 +98,6 @@
     ],
   }
 
-  // Band structure with fat bands (band_widths for electron-phonon coupling visualization)
-  const bs_with_fat_bands: BaseBandStructure = {
-    ...mock_band_structure,
-    // Simulated electron-phonon coupling: varies by band and k-point
-    band_widths: [
-      [0.8, 0.6, 0.3, 0.5], // Band 0: strong at Γ, weaker at X
-      [0.4, 0.7, 0.9, 0.6], // Band 1: peaks at X
-      [0.2, 0.3, 0.4, 0.8], // Band 2: increases toward M
-      [0.1, 0.2, 0.3, 0.4], // Band 3: weak coupling
-    ],
-  }
-
-  const fat_bands_config: RibbonConfig = {
-    color: `#e74c3c`,
-    opacity: 0.4,
-    max_width: 8,
-    scale: 1.0,
-  }
-
   // Semiconducting electronic band structure with spin-up and spin-down channels
   // (no band crosses E_F = 0, so the gap annotation renders)
   const electronic_bands_with_fermi: BaseBandStructure = {
@@ -193,34 +174,6 @@
 
 <h2 id="discontinuity">Band Structure with Discontinuities</h2>
 <Bands band_structs={{ '': bs_with_discontinuity }} data-testid="discontinuity-plot" />
-
-<h2 id="fat-bands">Fat Bands (Electron-Phonon Coupling)</h2>
-<Bands
-  band_structs={{ '': bs_with_fat_bands }}
-  ribbon_config={fat_bands_config}
-  data-testid="fat-bands-plot"
-/>
-
-<h2 id="fat-bands-default">Fat Bands with Default Styling</h2>
-<Bands band_structs={{ '': bs_with_fat_bands }} data-testid="fat-bands-default-plot" />
-
-<h2 id="fat-bands-multiple">Multiple Structures with Fat Bands</h2>
-<Bands
-  band_structs={{
-    'Structure A': bs_with_fat_bands,
-    'Structure B': {
-      ...bs2,
-      band_widths: [
-        [0.3, 0.5, 0.7, 0.4],
-        [0.5, 0.8, 0.6, 0.3],
-        [0.2, 0.4, 0.6, 0.5],
-        [0.1, 0.3, 0.5, 0.7],
-      ],
-    },
-  }}
-  ribbon_config={{ opacity: 0.35, max_width: 6 }}
-  data-testid="fat-bands-multiple-plot"
-/>
 
 <h2 id="phonon-units-and-shading">Phonon Units and Highlight Regions</h2>
 <Bands

@@ -2,8 +2,7 @@
 // uses runes ($state/$effect) to make widget props two-way reactive: Python trait
 // changes drive the mounted Svelte view (ipywidgets link()/observe()/assignment),
 // and component interaction state (selected sites, current step, ...) writes back
-// to Python so user actions can drive linked widgets. Without this, the bridge
-// was fire-once: props were read at mount and never synced either way.
+// to Python so user actions can drive linked widgets.
 //
 // Why not @anywidget/svelte: it targets one purpose-built widget with a `bindings`
 // prop that binds every trait two-way. We adapt ~20 existing matterviz components,

@@ -1,3 +1,8 @@
+<script module lang="ts">
+  // Single source for the initial values (here and in TernaryPlot) and what Reset restores
+  export const GRID_DEFAULTS = { grid_step: 0.1, show_grid: true, show_ticks: true }
+</script>
+
 <script lang="ts">
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import ExportButtons from '#lib/io/ExportButtons.svelte'
@@ -12,8 +17,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   const EXPORT_FORMATS: ChartExportFormat[] = [`png`, `svg`, `csv`]
-  // single source for the initial values and what Reset restores
-  const GRID_DEFAULTS = { grid_step: 0.1, show_grid: true, show_ticks: true }
 
   let {
     show_controls = $bindable(true),

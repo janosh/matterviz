@@ -6,7 +6,6 @@ import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
-import type { Vec2 } from '#lib/math.js'
 import type {
   GasAnalysis,
   GasSpecies,
@@ -14,7 +13,7 @@ import type {
   GasThermodynamicsProvider,
   PhaseData,
 } from './types'
-import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from './types'
+import { DEFAULT_GAS_PRESSURES } from './types'
 
 export const P_REF = 1.0 // Reference pressure in bar
 
@@ -121,14 +120,6 @@ const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
       interpolate_ts(DEFAULT_ENTHALPY_INCREMENT[gas], temperature) -
       interpolate_ts(DEFAULT_TS_DATA[gas], temperature)
     )
-  },
-
-  get_supported_gases(): GasSpecies[] {
-    return [...GAS_SPECIES]
-  },
-
-  get_temperature_range(): Vec2 {
-    return [0, 2000]
   },
 }
 
@@ -288,11 +279,11 @@ export function compute_gas_correction(
 // (its energy is G(T) after filter_entries_at_temperature) only gets the pressure term.
 export function apply_gas_corrections(
   entries: PhaseData[],
-  config: GasThermodynamicsConfig | undefined,
+  config: GasThermodynamicsConfig,
   temperature: number,
 ): PhaseData[] {
   // No enabled gas or no gas-dependent element: entries unchanged
-  if (!config || !analyze_gas_data(entries, config).has_gas_dependent_elements) return entries
+  if (!analyze_gas_data(entries, config).has_gas_dependent_elements) return entries
 
   const pressures = get_effective_pressures(config)
   const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
@@ -343,5 +334,5 @@ export function apply_gas_corrections(
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")
-export const format_chemical_potential = (mean: number, decimals = 3): string =>
+export const format_chemical_potential = (mean: number, decimals: number): string =>
   `${mean >= 0 ? `+` : ``}${format_num(mean, `.${decimals}~f`)} eV`

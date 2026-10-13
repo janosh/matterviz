@@ -274,7 +274,6 @@
         type="button"
         onclick={() => reset_all(context?.reset_camera)}
         title="Reset view and settings"
-        class="reset-camera-btn"
       >
         <Icon icon={Reset} />
       </button>

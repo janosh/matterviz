@@ -202,7 +202,7 @@ export function calc_bond_angles(
           center_idx,
           neighbor_idxs: [near_1.site_idx, near_2.site_idx],
           triplet: label_of(center, near_1.elem_id, near_2.elem_id),
-          angle: angle_between_vectors(near_1.vec, near_2.vec, `degrees`),
+          angle: angle_between_vectors(near_1.vec, near_2.vec),
         })
       }
     }

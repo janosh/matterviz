@@ -43,31 +43,24 @@ export const is_signed_range = (data_range: DataRange): boolean =>
 
 export const COLORMAP_LUT_SIZE = 256
 
-// Sample a d3 colormap into a flat RGB lookup table of COLORMAP_LUT_SIZE entries, converting
-// each CSS colour string with `to_rgb` (linear floats for vertex colours, 8-bit sRGB for
-// canvas pixels). Cached per (colormap, cache): building one parses 256 CSS colour strings.
-export function build_colormap_lut<Lut extends Float32Array | Uint8ClampedArray>(
-  colormap: D3InterpolateName,
-  cache: Map<D3InterpolateName, Lut>,
-  lut_ctor: new (length: number) => Lut,
-  to_rgb: (css: string) => readonly [number, number, number],
-): Lut {
-  const cached = cache.get(colormap)
-  if (cached) return cached
-  const interpolator = get_d3_interpolator(colormap)
-  const lut = new lut_ctor(COLORMAP_LUT_SIZE * 3)
-  for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
-    const [red, green, blue] = to_rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1)))
-    lut[idx * 3] = red
-    lut[idx * 3 + 1] = green
-    lut[idx * 3 + 2] = blue
-  }
-  cache.set(colormap, lut)
-  return lut
-}
-
 // Private so the mutable cached arrays cannot be corrupted by consumers
 const linear_lut_cache = new Map<D3InterpolateName, Float32Array>()
+
+// Sample a d3 colormap into a flat linear-RGB lookup table of COLORMAP_LUT_SIZE entries.
+// Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. Cached per
+// colormap: building one parses 256 CSS colour strings, and parse_linear_rgb is uncached on
+// purpose (256 one-shot keys would evict shared element colors).
+function linear_colormap_lut(colormap: D3InterpolateName): Float32Array {
+  const cached = linear_lut_cache.get(colormap)
+  if (cached) return cached
+  const interpolator = get_d3_interpolator(colormap)
+  const lut = new Float32Array(COLORMAP_LUT_SIZE * 3)
+  for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
+    lut.set(parse_linear_rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1))), idx * 3)
+  }
+  linear_lut_cache.set(colormap, lut)
+  return lut
+}
 
 // Range for a colormap over values in [min, max]. `true` forces a range symmetric about
 // zero, `false` keeps [min, max] as is, and `auto` (the default) symmetrises only when the
@@ -101,9 +94,7 @@ export function scalars_to_vertex_colors(
   { colormap, color_range, fallback_color = `#808080` }: VertexColorOptions,
   out?: Float32Array,
 ): Float32Array {
-  // Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. parse_linear_rgb
-  // is uncached: the LUT is the cache; 256 one-shot keys would evict shared element colors.
-  const lut = build_colormap_lut(colormap, linear_lut_cache, Float32Array, parse_linear_rgb)
+  const lut = linear_colormap_lut(colormap)
   const [range_min, range_max] = color_range
   const span = range_max - range_min
   const inv_span = span !== 0 ? 1 / span : 0

@@ -353,10 +353,6 @@
   {/if}
 </Structure>
 
-{#if error_msg}
-  <StatusMessage message={error_msg} type="error" />
-{/if}
-
 {#if volumetric_data?.length}
   <div class="demo-stats-bar">
     <span title="Number of loaded volumes">Volumes: {volumetric_data.length}</span>

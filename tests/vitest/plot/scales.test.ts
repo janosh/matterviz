@@ -355,7 +355,9 @@ describe(`scales`, () => {
   // A descending value_range asks for the largest value to draw the smallest marker
   test(`inverts the radius encoding on a descending log value_range`, () => {
     const radii = (value_range: Vec2) =>
-      [1, 10, 100].map(create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }))
+      [1, 10, 100].map(
+        create_size_scale({ type: `log`, value_range, radius_range: [2, 10] }, [0, 1]),
+      )
     expect(radii([1, 100])).toEqual([2, 6, 10])
     expect(radii([100, 1])).toEqual([10, 6, 2])
   })
@@ -499,10 +501,6 @@ describe(`scales`, () => {
         (count) => generate_log_ticks(min, max, count).length,
       )
       expect(counts).toEqual(counts.toSorted((count_a, count_b) => count_a - count_b))
-    })
-
-    test(`explicit tick arrays pass through untouched`, () => {
-      expect(generate_log_ticks(1, 1000, [1, 2, 3])).toEqual([1, 2, 3])
     })
 
     test.each([100, 1, 0.001])(

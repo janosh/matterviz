@@ -16,8 +16,6 @@ import {
 import type { MeasureMode, Site } from '#lib/structure/index.js'
 import type { Pbc } from './pbc'
 
-type AngleMode = `degrees` | `radians`
-
 export const MAX_SELECTED_SITES = 8
 
 // Angle and dihedral measure one ordered tuple: past its arity the oldest pick rolls out, so
@@ -44,17 +42,14 @@ export function displacement_pbc(
   return min_image_displacement(from, target, lattice_matrix, converters, pbc)
 }
 
-export function angle_between_vectors(
-  vector_1: Vec3,
-  vector_2: Vec3,
-  mode: AngleMode = `degrees`,
-) {
+// Angle between two vectors in degrees (0 for a zero-length vector)
+export function angle_between_vectors(vector_1: Vec3, vector_2: Vec3): number {
   const norm_1 = Math.hypot(...vector_1)
   const norm_2 = Math.hypot(...vector_2)
   if (norm_1 === 0 || norm_2 === 0) return 0
   // Normalize dot product to get cosine, clamped to [-1, 1] to avoid acos NaN
   const ang = Math.acos(clamp(dot(vector_1, vector_2) / (norm_1 * norm_2), -1, 1))
-  return mode === `degrees` ? to_degrees(ang) : ang
+  return to_degrees(ang)
 }
 
 // Unwrap a chain of positions so consecutive points are minimum-image neighbors, anchored on
@@ -153,7 +148,6 @@ export function dihedral_angle(
   point_4: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
   pbc?: Pbc,
-  mode: AngleMode = `degrees`,
 ): number {
   // One converter set for all three bonds instead of three (this runs per label render)
   const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
@@ -177,5 +171,5 @@ export function dihedral_angle(
     dot(cross_3d(normal_123, normal_234), axis_hat),
     dot(normal_123, normal_234),
   )
-  return mode === `degrees` ? to_degrees(ang) : ang
+  return to_degrees(ang)
 }

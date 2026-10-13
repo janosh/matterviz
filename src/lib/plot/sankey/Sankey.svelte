@@ -266,7 +266,7 @@
     label: node.label,
     value: node.value,
     color: node_colors[node.node_idx],
-    metadata: bucketed_data.nodes[node.node_idx]?.metadata,
+    metadata: bucketed_data.nodes[node.node_idx].metadata,
   })
 
   const link_props = (link: PositionedLink): SankeyLinkHandlerProps<Metadata> => ({
@@ -278,7 +278,7 @@
     target_label: link.target.label,
     value: link.value,
     color: link_color(link),
-    metadata: bucketed_data.links[link.link_idx]?.metadata,
+    metadata: bucketed_data.links[link.link_idx].metadata,
   })
 
   const link_from_event = (event: Event): PositionedLink | null =>
@@ -364,7 +364,7 @@
   })
 
   const toggle_node = (series_idx: number) =>
-    toggle_muted(muted_nodes, node_by_idx.get(series_idx)?.id ?? series_idx)
+    toggle_muted(muted_nodes, node_by_idx.get(series_idx)?.id)
 
   // Node label placement: horizontal -> beside node; vertical -> above node
   function label_attrs(node: PositionedNode) {
@@ -594,7 +594,6 @@
     transition: opacity 0.15s ease;
   }
   .node-label {
-    fill: var(--text-color);
     pointer-events: none;
     paint-order: stroke;
     stroke: var(--sankey-label-halo, var(--page-bg, white));

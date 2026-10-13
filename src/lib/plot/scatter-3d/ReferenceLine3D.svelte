@@ -44,46 +44,45 @@
     if (ref_line.type === `segment`) {
       return endpoints_from(ref_line.p1, ref_line.p2)
     }
-    if (ref_line.type === `line`) {
-      // Extend line through two points to bounding box
-      const [p1x, p1y, p1z] = ref_line.p1
-      const [delta_x, delta_y, delta_z] = [
-        ref_line.p2[0] - p1x,
-        ref_line.p2[1] - p1y,
-        ref_line.p2[2] - p1z,
+    const { type } = ref_line as { type: unknown }
+    if (type !== `line`) throw new Error(`Unknown 3D ref line type ${JSON.stringify(type)}`)
+    // `line`: extend the line through two points to the bounding box
+    const [p1x, p1y, p1z] = ref_line.p1
+    const [delta_x, delta_y, delta_z] = [
+      ref_line.p2[0] - p1x,
+      ref_line.p2[1] - p1y,
+      ref_line.p2[2] - p1z,
+    ]
+    // Find t values at each boundary plane
+    const t_values = [
+      ...(delta_x !== 0 ? [(x_min - p1x) / delta_x, (x_max - p1x) / delta_x] : []),
+      ...(delta_y !== 0 ? [(y_min - p1y) / delta_y, (y_max - p1y) / delta_y] : []),
+      ...(delta_z !== 0 ? [(z_min - p1z) / delta_z, (z_max - p1z) / delta_z] : []),
+    ]
+    // Keep only t values where the resulting point is inside bounds
+    const eps = 1e-6
+    const valid_t = t_values.filter((t_value) => {
+      const [point_x, point_y, point_z] = [
+        p1x + t_value * delta_x,
+        p1y + t_value * delta_y,
+        p1z + t_value * delta_z,
       ]
-      // Find t values at each boundary plane
-      const t_values = [
-        ...(delta_x !== 0 ? [(x_min - p1x) / delta_x, (x_max - p1x) / delta_x] : []),
-        ...(delta_y !== 0 ? [(y_min - p1y) / delta_y, (y_max - p1y) / delta_y] : []),
-        ...(delta_z !== 0 ? [(z_min - p1z) / delta_z, (z_max - p1z) / delta_z] : []),
-      ]
-      // Keep only t values where the resulting point is inside bounds
-      const eps = 1e-6
-      const valid_t = t_values.filter((t_value) => {
-        const [pixel_x, pixel_y, pixel_z] = [
-          p1x + t_value * delta_x,
-          p1y + t_value * delta_y,
-          p1z + t_value * delta_z,
-        ]
-        return (
-          pixel_x >= x_min - eps &&
-          pixel_x <= x_max + eps &&
-          pixel_y >= y_min - eps &&
-          pixel_y <= y_max + eps &&
-          pixel_z >= z_min - eps &&
-          pixel_z <= z_max + eps
-        )
-      })
-      if (valid_t.length < 2) return null
-      const t_min = Math.min(...valid_t)
-      const t_max = Math.max(...valid_t)
-      return endpoints_from(
-        [p1x + t_min * delta_x, p1y + t_min * delta_y, p1z + t_min * delta_z],
-        [p1x + t_max * delta_x, p1y + t_max * delta_y, p1z + t_max * delta_z],
+      return (
+        point_x >= x_min - eps &&
+        point_x <= x_max + eps &&
+        point_y >= y_min - eps &&
+        point_y <= y_max + eps &&
+        point_z >= z_min - eps &&
+        point_z <= z_max + eps
       )
-    }
-    return null
+    })
+    if (valid_t.length < 2) return null
+    const t_min = Math.min(...valid_t)
+    const t_max = Math.max(...valid_t)
+    return endpoints_from(
+      [p1x + t_min * delta_x, p1y + t_min * delta_y, p1z + t_min * delta_z],
+      [p1x + t_max * delta_x, p1y + t_max * delta_y, p1z + t_max * delta_z],
+    )
   })
 
   // Line style (with defaults)
@@ -104,10 +103,10 @@
       line2 = null
       return
     }
-    const [point_1, point] = endpoints
+    const [start, end] = endpoints
 
     const geo = new LineGeometry()
-    geo.setPositions([point_1.x, point_1.y, point_1.z, point.x, point.y, point.z])
+    geo.setPositions([start.x, start.y, start.z, end.x, end.y, end.z])
 
     const mat = new THREE.Line2NodeMaterial({
       color: new THREE.Color(style.color).getHex(),

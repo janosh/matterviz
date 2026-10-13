@@ -105,32 +105,3 @@
   n_bins={100}
   style="height: 360px"
 />
-
-<h2 id="reference-line-at-g-r-1">Reference Line at g(r) = 1</h2>
-<RdfPlot
-  id="reference-line"
-  patterns={synthetic_pattern}
-  show_reference_line
-  cutoff={10}
-  n_bins={50}
-  style="height: 360px"
-/>
-
-<h2 id="without-reference-line">Without Reference Line</h2>
-<RdfPlot
-  id="no-reference-line"
-  patterns={synthetic_pattern}
-  show_reference_line={false}
-  cutoff={10}
-  n_bins={50}
-  style="height: 360px"
-/>
-
-<h2 id="drag-drop-enabled">Drag & Drop Enabled</h2>
-<RdfPlot
-  id="drag-drop"
-  mode="element_pairs"
-  allow_file_drop
-  cutoff={7}
-  style="height: 360px"
-/>

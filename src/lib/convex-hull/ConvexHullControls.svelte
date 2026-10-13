@@ -272,7 +272,6 @@
 <ControlPane
   bind:controls_open
   controls_name="convex-hull"
-  pane_style=""
   toggle_style=""
   toggle_props={{ title: controls_open ? `` : `Convex hull controls`, ...toggle_props }}
   {pane_props}
@@ -482,8 +481,6 @@
 <style>
   :global(.convex-hull-controls-pane) {
     --pane-max-height: max(350px, calc(100cqh - 40px));
-    --pane-padding: 1ex;
-    --pane-gap: 0;
     --ctrl-label-w: 8em;
     --ctrl-value-w: 4em;
     --settings-row-gap: 8pt;
@@ -496,8 +493,7 @@
   button {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
-  .toggle-btn.active,
-  .toggle-btn:hover.active {
+  .toggle-btn.active {
     background: light-dark(rgba(25, 118, 210, 0.15), rgba(100, 180, 255, 0.2));
   }
   .legend-items-container {

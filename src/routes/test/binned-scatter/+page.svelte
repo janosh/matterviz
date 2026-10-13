@@ -119,7 +119,6 @@
       {x_axis}
       {y_axis}
       {density}
-      data-testid="binned-scatter-host"
       style="height: 600px; width: 900px;"
       on_density_zoom={() => (zoom_count += 1)}
       on_point_click={() => (point_click_count += 1)}

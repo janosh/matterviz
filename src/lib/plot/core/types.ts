@@ -361,7 +361,6 @@ export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTyp
 
 // Helper to get arcsinh threshold (returns 1 as default for non-arcsinh scales)
 export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number {
-  if (!scale_type) return 1
   if (typeof scale_type === `object` && scale_type.type === `arcsinh`) {
     const threshold = scale_type.threshold ?? 1
     if (!Number.isFinite(threshold) || threshold <= 0) {
@@ -369,7 +368,7 @@ export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number
     }
     return threshold
   }
-  return 1 // default threshold
+  return 1
 }
 
 // Helper to detect an explicit time scale
@@ -772,8 +771,8 @@ export const DEFAULT_SERIES_SYMBOLS = [
   `Wye`,
 ] as const satisfies readonly D3SymbolName[]
 
-// Sub-domain types live in ./types/* and are re-exported so existing
-// `#lib/plot/core/types.js` import paths keep working.
+// Sub-domain types live in ./types/* and are re-exported so `#lib/plot/core/types.js` is the
+// one import path for plot types.
 export type * from '#lib/plot/core/types/plot-3d.js'
 export type * from '#lib/plot/core/types/fills.js'
 export * from '#lib/plot/core/types/reference-lines.js'

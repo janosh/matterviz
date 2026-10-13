@@ -30,8 +30,9 @@
   import type { Sides } from '#lib/plot/core/layout.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { create_chart_exporter } from '#lib/plot/core/utils/chart-export.js'
+  import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
@@ -45,7 +46,7 @@
     ternary_layout,
     ternary_to_xy,
   } from '#lib/plot/ternary/ternary.js'
-  import TernaryControls from '#lib/plot/ternary/TernaryControls.svelte'
+  import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
   import { to_error } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -53,15 +54,14 @@
   // Room for the corner labels beside the bottom corners and above the apex, and for
   // the tick labels written outside each edge
   const DEFAULT_PADDING: Required<Sides> = { t: 30, b: 34, l: 50, r: 50 }
-  const COLOR_BAR_GAP = 8
 
   let {
     series: series_in = [],
     hidden_series = $bindable(),
     labels = [`A`, `B`, `C`],
-    grid_step = $bindable(0.1),
-    show_grid = $bindable(true),
-    show_ticks = $bindable(true),
+    grid_step = $bindable(GRID_DEFAULTS.grid_step),
+    show_grid = $bindable(GRID_DEFAULTS.show_grid),
+    show_ticks = $bindable(GRID_DEFAULTS.show_ticks),
     tick_format = `.0%`,
     color_scale = `interpolateViridis`,
     color_range,
@@ -257,15 +257,15 @@
     return {
       series_idx: point.series_idx,
       point_idx: point.point_idx,
-      series_id: srs?.id ?? point.series_idx,
+      series_id: srs.id ?? point.series_idx,
       series_label: series_label(point.series_idx),
-      amounts: srs?.points[point.point_idx] ?? [0, 0, 0],
+      amounts: srs.points[point.point_idx],
       fractions: point.fractions,
       color: point_color(point),
       color_value: point.color_value,
-      metadata: Array.isArray(srs?.metadata)
+      metadata: Array.isArray(srs.metadata)
         ? (srs.metadata[point.point_idx] as Metadata | undefined)
-        : (srs?.metadata as Metadata | undefined),
+        : (srs.metadata as Metadata | undefined),
     }
   }
   const hover_info = $derived.by(() => {

@@ -47,10 +47,7 @@
   // points of further structures map onto it by x
   const link = create_band_path_link({
     band_struct: () => first_band_struct,
-    k_lattice: () =>
-      structure?.lattice?.matrix
-        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-        : undefined,
+    k_lattice: () => reciprocal_lattice(structure.lattice.matrix, { two_pi: true }),
     x_positions: () => bands_x_positions,
   })
   const [desktop_width, tablet_width] = [1200, 600]

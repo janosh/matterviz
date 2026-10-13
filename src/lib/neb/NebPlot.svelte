@@ -225,8 +225,8 @@
       })}
     {/if}
     {#if annotate_barrier}
-      <!-- Annotate the spline peak (interpolated saddle). The highest computed image
-        is already a marker; E_act used to sit there and miss the curve's apex. -->
+      <!-- Annotate the spline peak (interpolated saddle), not the highest computed image:
+        that is already a marker and can miss the curve's apex. -->
       {@const { analysis, spline, offset } = active}
       {@const saddle = show_spline
         ? spline.fitted_max

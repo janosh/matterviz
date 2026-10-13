@@ -19,7 +19,7 @@
 
   // Reusable single-axis renderer: baseline, per-tick (grid + tick mark + label), and AxisLabel.
   // One <g class="{side}-axis"> with per-tick <g class="tick">; mirror the structure across all
-  // four sides so consumers (ScatterPlot/BarPlot/Histogram/BinnedScatterPlot) share one template.
+  // four sides so every Cartesian chart (via PlotAxes) shares one template.
   let {
     side,
     ticks,
@@ -157,7 +157,7 @@
     return { x1: inside ? -5 : 0, x2: inside ? 0 : 5 }
   })
 
-  // ScatterPlot mode: cull ticks whose pixel pos is off-plot and hide labels outside the data domain
+  // With a domain: cull ticks whose pixel pos is off-plot and hide labels outside the domain
   const in_domain = (tick: number): boolean => !domain || in_range(tick, domain)
   const in_plot = (pos: number): boolean =>
     !domain ||

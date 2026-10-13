@@ -12,27 +12,14 @@ const unsupported = (): never => {
   )
 }
 
-// Mirror h5wasm's class exports so `new h5wasm.File()` and `x instanceof
-// h5wasm.Dataset/Group` in the stubbed HDF5 path still resolve -- these must be
-// classes (a function can't back `instanceof`), so the empty-class rule is moot.
-// oxlint-disable typescript/no-extraneous-class -- intentional class API stubs
-export class Dataset {
-  constructor() {
-    unsupported()
-  }
-}
-export class Group {
-  constructor() {
-    unsupported()
-  }
-}
+// The two members the HDF5 path reads at runtime (h5-utils open_h5_source):
+// `await h5wasm.ready`, then `new h5wasm.File()`. Everything else it imports is type-only.
+// oxlint-disable-next-line typescript/no-extraneous-class -- intentional class API stub
 export class File {
   constructor() {
     unsupported()
   }
 }
-// oxlint-enable typescript/no-extraneous-class
-export type Entity = unknown
 
 // `await h5wasm.ready` in the (normally unused) HDF5 path fails fast with a clear
 // error. The no-op catch keeps the never-awaited common case from logging an
@@ -41,5 +28,3 @@ export const ready = Promise.reject(
   new Error(`HDF5 parsing is unavailable in the MatterViz widget bundle`),
 )
 void ready.catch(() => {})
-
-export default { Dataset, Group, File, ready }

@@ -59,7 +59,6 @@
   import type {
     AxisConfig,
     BasePlotProps,
-    DataSeries,
     InternalPoint,
     PanConfig,
     ScatterHandlerProps,
@@ -102,8 +101,8 @@
 
   let {
     series,
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
+    x_axis = {},
+    y_axis = {},
     size_scale = DEFAULT_BINNED_SIZE_SCALE,
     color_bar = {},
     density: density_config = {},
@@ -130,7 +129,7 @@
     facet_layout,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> &
-    // `range_padding` defaults to 0.05 (the historical density-bin framing pad) rather than
+    // `range_padding` defaults to 0.05 (a framing pad around the density bins) rather than
     // ScatterPlot's 0. No controls pane; hover is reported via on_point_click / the tooltip.
     Pick<
       BasePlotProps,
@@ -229,10 +228,9 @@
 
   const frame = create_cartesian_frame({
     controls_row: () => fullscreen_toggle, // no settings pane, only the fullscreen button
-    // No default tick format: format_tick_values short-circuits its whole duplicate-avoidance
-    // escalation the moment a formatter is supplied, so a hardcoded `.2~g` here labelled six
-    // ticks over [1000, 1010] as `1e+3` six times, and six `1`s after a density bin_click zoom.
-    // ScatterPlot supplies none either; a caller wanting a fixed format still passes one in.
+    // No default tick format: format_tick_values skips its duplicate-avoidance escalation
+    // whenever a formatter is supplied, so a fixed default would repeat labels on narrow
+    // ranges (e.g. after a density bin_click zoom). Callers can still pass one in.
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({
       x: auto_ranges.x,
@@ -585,7 +583,7 @@
       if (!mark) continue
       const { series_idx, point_idx } = mark
       const srs = series[series_idx]
-      const [coord_x, coord_y] = [srs?.x[point_idx], srs?.y[point_idx]]
+      const [coord_x, coord_y] = [srs.x[point_idx], srs.y[point_idx]]
       if (!in_view(coord_x, coord_y)) continue
       const radius = point_radius_for_value(srs.size_values?.[point_idx])
       const color = series_color(series_idx)

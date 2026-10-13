@@ -17,14 +17,12 @@
     highlight_style,
     entry_category = MAGNETIC_ORDERING_CATEGORY,
     tooltip,
-    show_fractional = true,
   }: {
     entry: EntryT
     polymorph_stats_map?: Map<string, PolymorphStats>
     highlight_style?: HighlightStyle
     entry_category?: EntryCategoryConfig | null
     tooltip?: ConvexHullTooltipProp<EntryT>
-    show_fractional?: boolean
   } = $props()
 
   const is_element = $derived(is_unary_entry(entry))
@@ -79,7 +77,7 @@
       </div>
     {/if}
 
-    {#if show_fractional && !is_element}
+    {#if !is_element}
       {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
       {#if total > 0}
         {@const fractions = Object.entries(entry.composition)

@@ -321,7 +321,6 @@ export function propagate_facet_range<Datum>(
 ): KeyedFacetAxisRanges[] {
   const source_panel = layout.panels.find((panel) => panel.key === source_key)
   if (!source_panel) throw new Error(`Unknown facet key "${source_key}"`)
-  if (!FACET_AXES.includes(axis)) throw new Error(`Invalid facet axis: ${axis}`)
   if (range !== null && !is_valid_range(range)) {
     throw new TypeError(`Invalid ${axis} facet range update: ${String(range)}`)
   }

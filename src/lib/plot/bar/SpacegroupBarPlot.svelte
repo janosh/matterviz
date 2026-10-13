@@ -139,7 +139,6 @@
         color,
         label: system,
         bar_width: 0.9,
-        visible: true,
       }
     })
   })
@@ -287,7 +286,7 @@
           stroke-width="1"
           stroke-opacity="0.3"
         />
-        <!-- Crystal system label (horizontal) at left edge -->
+        <!-- Crystal system label (horizontal) at right edge -->
         <text
           x={width - pad.r - 8}
           y={y_center}

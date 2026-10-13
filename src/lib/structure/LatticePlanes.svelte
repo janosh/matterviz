@@ -8,6 +8,7 @@
   import { DoubleSide } from 'three/webgpu'
   import { untrack } from 'svelte'
   import type { LatticePlane } from './lattice-planes'
+  import { whole_tile_counts } from './supercell'
   import {
     lattice_plane_polygons,
     polygon_edge_vertices,
@@ -27,7 +28,7 @@
     tiling?: Vec3
   } = $props()
 
-  const tiling_key = $derived(tiling.map((count) => Math.max(1, Math.floor(count))).join(`,`))
+  const tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
   const tile_counts = $derived(tiling_key.split(`,`).map(Number) as Vec3)
   // Trajectory frames often supply new arrays with unchanged geometry. Styles stay reactive
   // separately, so changing only a family's color or opacity never replaces its GPU buffers.

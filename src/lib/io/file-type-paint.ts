@@ -8,14 +8,11 @@ export interface FileTypePaint {
   item: string
 }
 
-// Default row wash relative to the badge fill.
-const ITEM_ALPHA = 0.08
-
-// Builds a paint pair from any concrete CSS badge color.
-export const file_type_paint = (badge: string, item_alpha = ITEM_ALPHA): FileTypePaint => {
+// Builds a paint pair from any concrete CSS badge color: the row is an 8% wash of the badge.
+export const file_type_paint = (badge: string): FileTypePaint => {
   if (!is_concrete_color(badge))
     throw new Error(`Cannot derive file row paint from unsupported color: ${badge}`)
-  return { badge, item: add_alpha(badge, item_alpha) }
+  return { badge, item: add_alpha(badge, 0.08) }
 }
 
 export const DEFAULT_FILE_TYPE_PAINTS: Record<string, FileTypePaint> = Object.fromEntries(

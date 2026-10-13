@@ -32,9 +32,7 @@
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
-    // Series data for multi-series controls
     series?: readonly HistogramSeries[]
-    // Histogram-specific controls
     bins?: number
     normalize?: HistogramNormalize
     mode?: `single` | `overlay`

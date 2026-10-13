@@ -171,14 +171,14 @@ export function align_tiling(prev: Tiling, next: Tiling): Rect[] {
   })
 }
 
-// Interpolate between two tilings (zoom animation). Rects are aligned by
-// node_idx; frames allocate one array but reuse rect objects at t = 0/1.
+// Interpolate between two tilings (zoom animation). Rects are aligned by node_idx (align_tiling
+// guarantees equal lengths); frames allocate one array but reuse rect objects at t = 0/1.
 export function lerp_rects(
   prev: readonly Rect[],
   next: readonly Rect[],
   fraction: number,
 ): Rect[] {
-  if (fraction >= 1 || prev.length !== next.length) return next as Rect[]
+  if (fraction >= 1) return next as Rect[]
   if (fraction <= 0) return prev as Rect[]
   return next.map((target, idx) => {
     const from = prev[idx]

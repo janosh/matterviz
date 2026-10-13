@@ -156,7 +156,6 @@ Example demonstrating `title_side` and `tick_side` interaction:
           title="Label"
           tick_labels={num_ticks}
           range={current_range}
-          --cbar-tick-overlap-offset="10px"
         />
       </div>
     {/each}

@@ -236,14 +236,14 @@ function first_bz_vertices(k_lattice: Matrix3x3, dual: Matrix3x3): Vec3[] {
   )
 }
 
+// Bragg plane caps for orders 2 and 3 (order 1 is exact): the O(n³) intersection loop bounds
+// the count
+const MAX_PLANES_BY_ORDER = { 2: 80, 3: 150 } as const
+
 // Generate BZ vertices for nth-order zone via three-plane intersections. Order 1 is exact for
 // any lattice; orders 2 and 3 use the ±order index shell truncated to the nearest
-// `max_planes_by_order[order]` Bragg planes (the O(n³) intersection loop bounds the count).
-export function generate_bz_vertices(
-  k_lattice: Matrix3x3,
-  order: 1 | 2 | 3 = 1,
-  max_planes_by_order: Record<number, number> = { 2: 80, 3: 150 },
-): Vec3[] {
+// MAX_PLANES_BY_ORDER[order] Bragg planes.
+export function generate_bz_vertices(k_lattice: Matrix3x3, order: 1 | 2 | 3 = 1): Vec3[] {
   const clamped_order = Math.min(order, 3) as typeof order
   // Vertices are Cartesian, so any basis of the same lattice gives the same zones; a
   // reduced one keeps the index shells small and meaningful
@@ -251,10 +251,9 @@ export function generate_bz_vertices(
   const dual = math.reciprocal_lattice(basis) // throws for a singular k_lattice
   if (clamped_order === 1) return first_bz_vertices(basis, dual)
 
-  const max_planes = max_planes_by_order[clamped_order] ?? 150
   const ranges: Vec3 = [clamped_order, clamped_order, clamped_order]
   return intersect_bragg_planes(
-    bragg_planes(basis, ranges).slice(0, max_planes),
+    bragg_planes(basis, ranges).slice(0, MAX_PLANES_BY_ORDER[clamped_order]),
     clamped_order,
   )
 }
@@ -277,9 +276,6 @@ const hull_geometry = ({ vertices, faces, edges }: ConvexHullData): IrreducibleB
   ),
 })
 
-// Build convex hull from vertices and extract topology. Runs three's quickhull on the f64
-// points directly (ConvexGeometry would round them through a Float32Array, costing ~1e-7
-// relative in every vertex and volume) and keeps only the points that end up on the hull.
 // Every point on one line through the first: the longest offset from it defines the axis, and
 // a point off that axis has a cross product with it proportional to its distance away
 const points_are_collinear = (points: Vec3[]): boolean => {
@@ -301,6 +297,9 @@ const points_are_collinear = (points: Vec3[]): boolean => {
   )
 }
 
+// Build convex hull from vertices and extract topology. Runs three's quickhull on the f64
+// points directly (ConvexGeometry would round them through a Float32Array, costing ~1e-7
+// relative in every vertex and volume) and keeps only the points that end up on the hull.
 export function compute_convex_hull(
   vertices: Vec3[],
   edge_sharp_angle_deg = 5, // Angle threshold for edge detection: edges between faces with angle > this are rendered
@@ -392,20 +391,18 @@ export function compute_convex_hull(
 export function compute_brillouin_zone(
   k_lattice: Matrix3x3,
   order: 1 | 2 | 3 = 1,
-  edge_sharp_angle_deg = 5, // Angle threshold for edge extraction (default 5°, increase for fewer edges, decrease for more)
-  max_planes_by_order: Record<number, number> = { 2: 80, 3: 150 }, // Bragg plane caps for orders 2 and 3 (order 1 is exact)
 ): BrillouinZoneData {
   if (k_lattice.some((row) => row.some((val) => !Number.isFinite(val)))) {
     throw new Error(`Reciprocal lattice has non-finite entries: ${JSON.stringify(k_lattice)}`)
   }
-  const vertices = generate_bz_vertices(k_lattice, order, max_planes_by_order)
+  const vertices = generate_bz_vertices(k_lattice, order)
   if (vertices.length < 4) {
     throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)
   }
 
   return {
     order: Math.min(order, 3),
-    ...hull_geometry(compute_convex_hull(vertices, edge_sharp_angle_deg)),
+    ...hull_geometry(compute_convex_hull(vertices)),
     k_lattice,
   }
 }
@@ -549,7 +546,7 @@ function clip_polyhedron_by_plane(
 export function compute_irreducible_bz(
   bz_data: BrillouinZoneData,
   point_group_ops: Matrix3x3[],
-  { time_reversal = true, edge_sharp_angle_deg = 5 } = {},
+  { time_reversal = true } = {},
 ): IrreducibleBZData {
   const ops = time_reversal
     ? [
@@ -591,10 +588,10 @@ export function compute_irreducible_bz(
         `IBZ clipping by plane n=[${plane.normal.map((val) => format_num(val)).join(`, `)}] left ${clipped.length} vertices (need ≥ 4 for a polyhedron)`,
       )
     }
-    const hull = compute_convex_hull(clipped, edge_sharp_angle_deg)
+    const hull = compute_convex_hull(clipped)
     current_vertices = hull.vertices
     current_faces = hull.faces
   }
 
-  return hull_geometry(compute_convex_hull(current_vertices, edge_sharp_angle_deg))
+  return hull_geometry(compute_convex_hull(current_vertices))
 }

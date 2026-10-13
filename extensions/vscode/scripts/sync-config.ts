@@ -122,29 +122,26 @@ function sync_package_config(): void {
   // Host-only settings the extension reads itself survive regeneration; everything else is
   // owned by SETTINGS_CONFIG, so a group deleted from the schema disappears here too instead
   // of lingering as a documented toggle wired to nothing.
-  const existing_props = package_content.contributes?.configuration?.properties ?? {}
+  const { contributes } = package_content
+  const existing_props = contributes.configuration.properties
   const preserved_props = Object.fromEntries(
-    HOST_SETTING_KEYS.flatMap((key) =>
-      key in existing_props ? [[key, existing_props[key]]] : [],
-    ),
+    HOST_SETTING_KEYS.map((key) => [key, existing_props[key]]),
   )
 
-  package_content.contributes ??= {}
-  package_content.contributes.configuration ??= { title: `MatterViz`, properties: {} }
-  package_content.contributes.configuration.properties = {
+  contributes.configuration.properties = {
     ...preserved_props,
     ...vscode_config,
   }
 
   const selectors = build_custom_editor_selectors()
-  const editors = package_content.contributes.customEditors
+  const editors = contributes.customEditors
   if (!Array.isArray(editors) || editors.length !== 1) {
     throw new Error(
       `expected exactly 1 customEditor to sync selectors into, got ${editors?.length}`,
     )
   }
   editors[0].selector = selectors
-  package_content.contributes.configurationDefaults = {
+  contributes.configurationDefaults = {
     'workbench.editorAssociations': build_editor_associations(),
   }
 

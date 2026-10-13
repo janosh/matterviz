@@ -4,12 +4,12 @@
   let {
     start,
     current,
-    mode = `zoom`,
+    mode,
   }: {
     start: Point2D | null
     current: Point2D | null
     // Alt+drag selects rather than zooms; a different tint is the only cue the user gets
-    mode?: `zoom` | `select`
+    mode: `zoom` | `select`
   } = $props()
 </script>
 

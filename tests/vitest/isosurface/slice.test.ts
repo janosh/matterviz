@@ -4,13 +4,13 @@ import {
   hkl_slice_plane,
   resolve_slice_cartesian_point,
   resolve_slice_plane,
-  sample_hkl_slice,
   sample_plane_slice,
   slice_cell_polygon,
   upsample_volume,
   volume_center,
 } from '#lib/isosurface/slice.js'
 import type { CartesianPlane, PlaneSliceOptions } from '#lib/isosurface/slice.js'
+import type { VolumetricData } from '#lib/isosurface/types.js'
 import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
@@ -20,6 +20,18 @@ import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../tes
 
 // Nested test grids flattened to the z-fastest storage the sampler reads
 const flat = (...args: Parameters<typeof make_grid>) => flatten_grid(make_grid(...args))
+
+// Sample the (hkl) plane at fraction `position` of the cell, n_points² pixels (default: the
+// largest grid dimension); null for (0 0 0)
+const sample_hkl_slice = (
+  volume: VolumetricData,
+  miller_indices: Vec3,
+  position: number,
+  n_points = Math.max(...volume.dims),
+) => {
+  const plane = hkl_slice_plane(volume, miller_indices, position)
+  return plane && sample_plane_slice(volume, plane, { resolution: [n_points, n_points] })
+}
 
 // Helper: assert result is non-null and return narrowed type
 function expect_slice(result: ReturnType<typeof sample_hkl_slice>) {
@@ -99,7 +111,7 @@ describe(`trilinear_interpolate`, () => {
   )
 })
 
-describe(`sample_hkl_slice`, () => {
+describe(`hkl_slice_plane + sample_plane_slice`, () => {
   // Cubic 5A cell with a 4x4x4 grid where value = iz (gradient along z)
   const z_gradient = make_volume(make_grid(4, 4, 4, (_ix, _iy, idx_z) => idx_z))
 
@@ -373,7 +385,7 @@ describe(`sample_plane_slice`, () => {
     },
   )
 
-  test(`HKL adapter matches the corresponding Cartesian plane for shifted volumes`, () => {
+  test(`a (001) hkl plane samples like the matching Cartesian plane for shifted volumes`, () => {
     const volume = linear_volume(cubic, [3, -2, 5])
     const hkl_result = expect_slice(sample_hkl_slice(volume, [0, 0, 1], 0.5, 9))
     const cartesian_result = plane_slice(

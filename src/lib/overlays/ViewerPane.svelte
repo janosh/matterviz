@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ComponentProps, Snippet } from 'svelte'
   import DraggablePane from 'svelte-widgets/DraggablePane.svelte'
-  import { Cross, type IconData } from 'svelte-widgets/icons'
+  import type { IconData } from 'svelte-widgets/icons'
 
   let {
     open = $bindable(false),
@@ -10,7 +10,6 @@
     class_prefix,
     toggle_props = {},
     pane_props = {},
-    open_icon = Cross,
     closed_icon,
     max_width,
     position = `absolute`,
@@ -159,7 +158,6 @@
     ...pane_props,
     class: [`${class_prefix}-pane`, pane_props.class, open && `viewer-pane-open`],
   }}
-  {open_icon}
   {closed_icon}
   max_width={position === `fixed`
     ? max_width

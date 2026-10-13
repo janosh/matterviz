@@ -26,5 +26,3 @@ export const plan_synthesis_async = Object.assign(
   ): Promise<SynthesisPlan> => run_plan(request, undefined, options),
   { cancel: run_plan.cancel, release: run_plan.release },
 )
-
-export type PlanSynthesisAsync = typeof plan_synthesis_async

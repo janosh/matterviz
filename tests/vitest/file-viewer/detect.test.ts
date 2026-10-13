@@ -6,7 +6,7 @@ import {
   is_plottable_data,
   scan_renderable_paths,
 } from '#lib/file-viewer/detect.js'
-import { resolve_path } from '#lib/json-path.js'
+import { resolve_path } from 'svelte-widgets/json-tree/path'
 
 const fixture = JSON.parse(
   gunzipSync(

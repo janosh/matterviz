@@ -118,7 +118,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
   const decoration_rects: Rect[] = [...(scene.exclusion_rects ?? [])]
 
   for (const item of ordered_items(scene.items)) {
-    const outside = get_outside_placement(item, scene, outside_layout)
+    const outside = get_outside_placement(item, outside_layout)
     if (outside) {
       placements.push(with_auto_legend_tracks(outside, item, scene))
       decoration_rects.push({ x: outside.x, y: outside.y, ...outside.footprint })

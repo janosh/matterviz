@@ -9,11 +9,9 @@
   import type {
     ScatterPlotOptions,
     HistogramOptions,
-    DataSeries,
     HistogramSeries,
     Orientation,
   } from '#lib/plot/index.js'
-  // Playback and acquisition share one viewer; only runs opened here are disposed here.
   import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -21,6 +19,7 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import {
     Atom,
@@ -1237,9 +1236,6 @@
   // the analysis menu owns the clicks. Spectroscopy renders inline in the plot region.
   let analysis_pane_props = $derived({
     run: trajectory,
-    // Mirrored copies, because a run is rune-free and its `properties.rows` cannot be tracked
-    property_rows: session.property_rows,
-    properties_complete: session.properties_complete,
     pane_props,
     toggle_props: {
       class: `analysis-toggle-anchor`,
@@ -1324,7 +1320,7 @@
   onpointerleave={() => (hovered = false)}
   onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
-  class={[`trajectory sequence-viewer`, actual_layout, rest.class]}
+  class={[`trajectory`, actual_layout, rest.class]}
   class:spectroscopy-mode={spectroscopy_open}
   {@attach file_io.raw_file_drop_zone({
     allow: () => allow_file_drop,
@@ -1424,23 +1420,15 @@
         ←
       </button>
     {/if}
-    <!-- z-index 3: above the structure viewer's AtomLegend (2), which shares the bottom edge -->
-    {#if warning_msg}
-      <StatusMessage
-        bind:message={warning_msg}
-        type="warning"
-        dismissible
-        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-      />
-    {/if}
-    {#if frame_error_msg}
-      <StatusMessage
-        bind:message={frame_error_msg}
-        type="error"
-        dismissible
-        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-      />
-    {/if}
+    <!-- top-center, clear of the structure viewer's AtomLegend on the bottom edge -->
+    <ViewerNotices>
+      {#if warning_msg}
+        <StatusMessage bind:message={warning_msg} type="warning" dismissible />
+      {/if}
+      {#if frame_error_msg}
+        <StatusMessage bind:message={frame_error_msg} type="error" dismissible />
+      {/if}
+    </ViewerNotices>
     <SequenceControlBar
       class="trajectory-controls"
       {controls_config}
@@ -1689,8 +1677,12 @@
                   }}
                   toggle_props={analysis_pane_props.toggle_props}
                 />
+                <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
+                cannot be tracked -->
                 <TrajectoryDataInspectorPane
                   {...analysis_pane_props}
+                  property_rows={session.property_rows}
+                  properties_complete={session.properties_complete}
                   {current_step_idx}
                   {current_frame}
                   bind:pane_open={

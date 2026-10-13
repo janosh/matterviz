@@ -2,7 +2,7 @@
   import { add_alpha } from '#lib/colors/index.js'
   import { color_interpolator } from '#lib/plot/core/scales.js'
   import { symbol_map } from '#lib/labels.js'
-  import type { LegendItem, Orientation } from '#lib/plot/index.js'
+  import type { LegendItem, Orientation } from '#lib/plot/core/types.js'
   import { fill_gradient_def } from '#lib/plot/core/components/FillArea.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks.js'
@@ -38,7 +38,7 @@
   let {
     series_data = [],
     layout = `vertical`,
-    layout_tracks = 1, // Default to 1 column/row
+    layout_tracks = 1,
     available_edge_length = Number.POSITIVE_INFINITY,
     item_extents,
     style = ``,
@@ -558,16 +558,13 @@
     box-shadow: inset 2px 0 0 var(--accent-color, currentColor);
   }
   .legend-marker {
-    display: inline-flex; /* Use flex to align items */
-    align-items: center; /* Vertically center items */
-    justify-content: center; /* Horizontally center items */
-    width: var(--plot-legend-marker-width, 25px); /* Fixed width for alignment */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--plot-legend-marker-width, 25px); /* fixed width aligns the labels */
     margin: var(--plot-legend-marker-margin, 0 3px 0 0);
     /* Prevent extra space from svg */
     line-height: var(--plot-legend-marker-line-height, 0);
-  }
-  .legend-marker svg {
-    vertical-align: middle;
   }
   .legend-marker svg.fill-swatch {
     margin-left: 2px;
@@ -607,7 +604,6 @@
     font-size: 0.6em;
     transition: transform 0.15s ease;
     transform: rotate(90deg);
-    cursor: pointer;
   }
   .group-chevron.collapsed {
     transform: rotate(0deg);

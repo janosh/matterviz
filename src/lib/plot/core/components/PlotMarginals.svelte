@@ -44,8 +44,8 @@
     width,
     height,
     pad,
-    outer_pad = { t: 0, b: 0, l: 0, r: 0 },
-    has_axis = { top: false, bottom: true, left: true, right: false },
+    outer_pad,
+    has_axis,
     axes,
     id: identifier,
   }: {
@@ -54,8 +54,8 @@
     width: number
     height: number
     pad: Required<Sides>
-    outer_pad?: Required<Sides> // space occupied by outside legends/colorbars
-    has_axis?: Record<MarginalSide, boolean>
+    outer_pad: Required<Sides> // space occupied by outside legends/colorbars
+    has_axis: Record<MarginalSide, boolean>
     axes: MarginalAxes
     id: string // unique per host plot; used to scope each strip's clipPath
   } = $props()
@@ -116,7 +116,7 @@
       label,
       head_label,
       head_value,
-      unit: axis_props(config.axis ?? default_axis_for_side(hovered.side)).unit,
+      unit: axes[config.axis ?? default_axis_for_side(hovered.side)].unit,
       value: value_row,
     }
   })
@@ -129,12 +129,6 @@
     anchor: string // text-anchor shared by all tick labels
     baseline: string // dominant-baseline shared by all tick labels
     title: { x: number; y: number; text: string; transform?: string }
-  }
-
-  // The axis a marginal binds to (x2/y2 fall back to x1/y1), with scale_type defaulted to linear
-  const axis_props = (axis: MarginalAxisBinding) => {
-    const axis_x = axes[axis] ?? (axis === `x2` ? axes.x : axes.y)
-    return { ...axis_x, scale_type: axis_x.scale_type ?? `linear` }
   }
 
   // Values a series contributes for a given side (x for top/bottom, y for left/right)
@@ -312,7 +306,7 @@
   // Keep numeric axis inputs separate from pixel scales: host axes objects can be
   // replaced on resize while their data domains remain unchanged.
   const data_axis = (axis: MarginalAxisBinding) => {
-    const source = $derived(axes[axis] ?? (axis === `x2` ? axes.x : axes.y))
+    const source = $derived(axes[axis])
     const lower = $derived(source.range[0])
     const upper = $derived(source.range[1])
     const scale_type = $derived(source.scale_type ?? `linear`)
@@ -421,7 +415,7 @@
     if (!width || !height) return []
     return side_data.flatMap(({ axis, is_x, data, max, domain, geometry }) => {
       const { side, config, curves } = data
-      const { pixel_range, format, tick_label, label: axis_title } = axis_props(axis)
+      const { pixel_range, format, tick_label, label: axis_title } = axes[axis]
       const pos_scale = create_scale(data.scale_type, data.positional_range, pixel_range)
       const rect = marginal_strip_rect(
         side,

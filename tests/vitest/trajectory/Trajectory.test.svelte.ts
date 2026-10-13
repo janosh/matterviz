@@ -1125,8 +1125,8 @@ describe(`banners`, () => {
       )
     const banner = find_parse_banner(document) as HTMLElement
     expect(banner.textContent).toContain(`2 parse warnings: odd header; missing cell`)
-    // bottom-anchored like the AtomLegend (z-index 2), so it must stack above it
-    expect(Number(banner.style.zIndex)).toBeGreaterThan(2)
+    // in the shared top-center notice column, clear of the bottom-edge AtomLegend
+    expect(banner.parentElement?.classList.contains(`viewer-notices`)).toBe(true)
     banner.querySelector<HTMLButtonElement>(`button[aria-label="Dismiss message"]`)?.click()
     await tick()
     expect(find_parse_banner(target)).toBeUndefined()

@@ -1,3 +1,5 @@
+// Display preparation travels with a frame through the existing source worker and prefetch.
+// Source arrays remain independently owned; only this worker's scratch projection is mutable.
 import type { BondColumns, BondPlacements } from '#lib/structure/bond-rendering.js'
 import {
   BondFrame,
@@ -9,8 +11,6 @@ import { compute_display_metrics, prepare_vector_geometry } from '#lib/structure
 import { numeric_sites, type DisplayMetrics } from '#lib/structure/site.js'
 import type { PolyhedraOptions, Polyhedron } from '#lib/structure/polyhedra.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
-// Display preparation travels with a frame through the existing source worker and prefetch.
-// Source arrays remain independently owned; only this worker's scratch projection is mutable.
 import { BondSearch, compute_bonds, type BondingStrategy } from '#lib/structure/bonding.js'
 import type { NumericFrame, FrameChannels } from './frame'
 import { FrameView, frame_transfers, wrap_frame_coordinates } from './frame'

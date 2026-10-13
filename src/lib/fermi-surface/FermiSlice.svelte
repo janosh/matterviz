@@ -210,7 +210,7 @@
   y_axis={{ ticks: [], range: [bounds.min[1], bounds.max[1]] }}
   range_padding={0}
   line_tween={{ duration: 0 }}
-  display={{ x_grid: false, y_grid: false, x_zero_line: show_axes, y_zero_line: show_axes }}
+  display={{ x_grid: false, y_grid: false, x_zero_line: false, y_zero_line: false }}
   styles={{ show_points: false, show_lines: true }}
   show_controls={false}
   fullscreen_toggle={false}
@@ -296,14 +296,8 @@
 
 <style>
   :global(.fermi-slice) {
-    --scatter-min-height: 300px;
-    --scatter-width: 100%;
-    --scatter-height: 100%;
     width: 100%;
     height: 100%;
-  }
-  :global(.fermi-slice .zero-line) {
-    display: none;
   }
   .fermi-axis {
     stroke: var(--fermi-surface-axis-color, #888);

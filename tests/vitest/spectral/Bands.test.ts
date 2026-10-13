@@ -527,7 +527,8 @@ describe(`Bands component`, () => {
       band_spin_mode: `overlay`,
       show_gap_annotation: true,
     })
-    expect(document.querySelector(`.gap-error`)?.textContent).toMatch(
+    // in the shared top-center notice column, clear of the corner controls
+    expect(doc_query(`.viewer-notices > .gap-error`).textContent).toMatch(
       /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
     )
     expect(line_count()).toBeGreaterThan(0)

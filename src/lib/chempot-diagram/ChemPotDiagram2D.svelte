@@ -374,17 +374,6 @@
     container-type: inline-size;
     width: 100%;
   }
-  .chempot-diagram-2d > :global(.pane-toggle) {
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  .chempot-diagram-2d:hover > :global(.pane-toggle),
-  .chempot-diagram-2d > :global(.pane-toggle:focus-visible),
-  .chempot-diagram-2d > :global(.pane-toggle[aria-expanded='true']) {
-    opacity: 1;
-  }
   .chempot-diagram-2d :global(.chempot-temp-slider) {
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;

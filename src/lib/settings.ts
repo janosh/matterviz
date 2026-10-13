@@ -729,9 +729,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
     color_property: {
       value: `band`,
-      // VS Code's configuration schema carries no per-value deprecation, so the removed values
-      // are called out in the description
-      description: `Quantity mapped onto the Fermi surface color scale ('velocity' and 'custom' were removed; use 'property')`,
+      description: `Quantity mapped onto the Fermi surface color scale`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
     color_scale: typed_setting<D3InterpolateName>({

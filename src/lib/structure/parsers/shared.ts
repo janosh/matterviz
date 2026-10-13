@@ -54,14 +54,12 @@ export class LineScanner {
   // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
   // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
   // slow path that num() takes on demand.
-  // `max_columns` leaves unused trailing fields untouched for scalar-only trajectory scans.
-  scan(line: string, from = 0, target = line.length, max_columns = Infinity): number {
+  scan(line: string, from = 0, to = line.length): number {
     this.line = line
     let { starts, ends, values } = this
     let count = 0
-    const len = max_columns > 0 ? target : from
     let idx = from
-    while (idx < len) {
+    while (idx < to) {
       let code = line.charCodeAt(idx)
       if (code <= 32) {
         idx++
@@ -72,14 +70,14 @@ export class LineScanner {
       if (code === 45 /* - */ || code === 43 /* + */) {
         negative = code === 45
         idx++
-        code = idx < len ? line.charCodeAt(idx) : 0
+        code = idx < to ? line.charCodeAt(idx) : 0
       }
       let mantissa = 0
       let digits = 0 // significant digits, leading zeros excluded
       let any_digit = false
       let scale = 0
       let seen_dot = false
-      while (idx < len) {
+      while (idx < to) {
         if (code >= CH_0 && code <= CH_9) {
           any_digit = true
           if (digits > 0 || code !== CH_0) digits++
@@ -88,13 +86,13 @@ export class LineScanner {
         } else if (code === 46 /* . */ && !seen_dot) seen_dot = true
         else break
         idx++
-        code = idx < len ? line.charCodeAt(idx) : 0
+        code = idx < to ? line.charCodeAt(idx) : 0
       }
       let value = NaN
-      if (any_digit && digits <= 15 && scale >= -22 && (idx >= len || code <= 32)) {
+      if (any_digit && digits <= 15 && scale >= -22 && (idx >= to || code <= 32)) {
         value = scale === 0 ? mantissa : mantissa / POW10[-scale]
         if (negative) value = -value
-      } else while (idx < len && line.charCodeAt(idx) > 32) idx++
+      } else while (idx < to && line.charCodeAt(idx) > 32) idx++
       if (count === starts.length) {
         this.starts = grow(starts)
         this.ends = grow(ends)
@@ -105,7 +103,6 @@ export class LineScanner {
       ends[count] = idx
       values[count] = value
       count++
-      if (count >= max_columns) break
     }
     this.count = count
     return count

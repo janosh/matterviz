@@ -28,8 +28,8 @@ interface VaspLineCursor {
   position: () => number
 }
 
-export const lines_cursor = (lines: readonly string[], start = 0): VaspLineCursor => {
-  let index = start
+export const lines_cursor = (lines: readonly string[]): VaspLineCursor => {
+  let index = 0
   return {
     peek: (lookahead = 0) => lines[index + lookahead],
     advance: (count = 1) => {

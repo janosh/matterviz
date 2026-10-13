@@ -272,7 +272,7 @@ describe(`compute_bar_auto_ranges`, () => {
 
 describe(`compute_stacked_offsets`, () => {
   test.each([`overlay`, `grouped`] as const)(`returns [] for %s mode`, (mode) => {
-    expect(compute_stacked_offsets([bar(), bar()], mode)).toEqual([])
+    expect(compute_stacked_offsets([bar(), bar()], mode, `vertical`)).toEqual([])
   })
 
   // expected is the offsets matrix, one row per original series index
@@ -316,7 +316,7 @@ describe(`compute_stacked_offsets`, () => {
       expected: [[0], [0]],
     },
   ])(`offsets $desc`, ({ series, expected }) => {
-    expect(compute_stacked_offsets(series, `stacked`)).toEqual(expected)
+    expect(compute_stacked_offsets(series, `stacked`, `vertical`)).toEqual(expected)
   })
 
   test(`horizontal bars stack per x2/x1 value axis`, () => {
@@ -342,15 +342,9 @@ test.each([
 describe(`compute_group_info`, () => {
   test(`returns slots only for visible bars in grouped mode`, () => {
     const series = [bar(), bar({ visible: false }), bar({ render_mode: `line` }), bar()]
-    expect(compute_group_info(series, `grouped`)).toEqual({
-      bar_series_count: 2,
-      bar_series_indices: [0, 3],
-    })
+    expect(compute_group_info(series, `grouped`)).toEqual({ bar_series_indices: [0, 3] })
     for (const mode of [`overlay`, `stacked`] as const) {
-      expect(compute_group_info(series, mode)).toEqual({
-        bar_series_count: 0,
-        bar_series_indices: [],
-      })
+      expect(compute_group_info(series, mode)).toEqual({ bar_series_indices: [] })
     }
   })
 })
@@ -367,10 +361,7 @@ describe(`bar geometry`, () => {
       cat_y_scale: scale_by(3),
       ...overrides,
     })
-  const group_info_of = (bar_series_indices: number[]) => ({
-    bar_series_count: bar_series_indices.length,
-    bar_series_indices,
-  })
+  const group_info_of = (bar_series_indices: number[]) => ({ bar_series_indices })
   const grouped_3 = group_info_of([0, 1, 2])
   const bar_rect = (overrides: Partial<Parameters<typeof compute_bar_rect>[0]> = {}) =>
     compute_bar_rect({

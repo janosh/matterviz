@@ -87,9 +87,7 @@
       on_change={handle_change}
     />
   {:else}
-    <p class="placeholder">
-      No diagram data loaded. Drop an SVG or JSON file onto the diagram.
-    </p>
+    <p class="placeholder">No diagram data loaded. Drop an SVG file onto the diagram.</p>
   {/if}
 </ViewerPane>
 

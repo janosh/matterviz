@@ -1,4 +1,3 @@
-import type { FileExportContext } from '#lib/io/file-export.svelte.js'
 // Reactive shell state shared by the hierarchical part-of-whole charts
 // (Sunburst, Treemap): hierarchy ingestion, zoom/breadcrumb navigation, hover +
 // tooltip state, legend muting, metric coloring, color-bar layout and keyboard
@@ -7,6 +6,7 @@ import type { FileExportContext } from '#lib/io/file-export.svelte.js'
 // `legend_points` hooks. HierarchyShell.svelte renders the markup around it.
 
 import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { FileExportContext } from '#lib/io/file-export.svelte.js'
 import type { Vec2 } from '#lib/math.js'
 import { is_modifier_chord } from 'svelte-widgets/utils'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -248,8 +248,6 @@ export class HierarchyChartState<
   inner_height = $derived(this.cbar.inner_height)
   plot_left = $derived(this.cbar.plot_left)
 
-  // Continuous metric coloring: when color_values is given, nodes are colored by
-  // their metric on a d3 colormap (nodes returning null keep their categorical color)
   metric = $derived.by(() =>
     compute_metric_colors(
       this.arcs,
@@ -263,9 +261,6 @@ export class HierarchyChartState<
   node_dim = $derived(compute_node_dim(this.arcs, this.muted_ids))
 
   label_font = $derived(resolve_label_font(this.svg_element))
-  // Per-node label text, measured width, fill/label colors, aria string (and
-  // clickability where the chart cares) - all zoom-independent, so computed once
-  // per layout/option change instead of per animation frame
   node_infos = $derived.by(() => {
     void this.#font_metrics_revision
     return compute_node_infos(this.arcs, {
@@ -382,7 +377,7 @@ export class HierarchyChartState<
     this.#opts.on_node_click({ ...this.#node_props(arc), event })
     if (!this.#opts.zoom_on_click()) return
     // A bucket stands for nodes it does not itself contain, so zooming into it shows
-    // one meaningless cell (Treemap did) or nothing at all (Sunburst, which refuses to
+    // one meaningless cell (Treemap) or nothing at all (Sunburst, which refuses to
     // zoom leaves). Zoom to its parent instead: with the threshold measured against the
     // view root, that re-measures its siblings and dissolves the bucket into the real
     // nodes it stood for - clicking 'Other' shows you what is inside it.

@@ -1,6 +1,5 @@
 // Pure screen-space geometry for BarPlot rendering: line-series point
-// construction and per-bar rect computation. Extracted from BarPlot.svelte's
-// template so the coordinate math is unit-testable.
+// construction and per-bar rect computation.
 
 import type { Point2D } from '#lib/math.js'
 import type { Rect } from '#lib/plot/core/layout.js'
@@ -100,13 +99,13 @@ export function compute_bar_rect(opts: {
   const { cat_val, val, base, bar_width_val, series_idx, mode, group_info } = opts
   const { cat_scale, val_scale } = opts
   const is_vertical = opts.orientation === `vertical`
-  const grouped = mode === `grouped` && group_info.bar_series_count > 1
-  const half = grouped ? bar_width_val / (2 * group_info.bar_series_count) : bar_width_val / 2
+  const group_size = group_info.bar_series_indices.length
+  const grouped = mode === `grouped` && group_size > 1
+  const half = grouped ? bar_width_val / (2 * group_size) : bar_width_val / 2
   // Offset uses the series' slot among visible bar series (original-index lookup)
   const group_offset = grouped
-    ? (group_info.bar_series_indices.indexOf(series_idx) -
-        (group_info.bar_series_count - 1) / 2) *
-      (bar_width_val / group_info.bar_series_count)
+    ? (group_info.bar_series_indices.indexOf(series_idx) - (group_size - 1) / 2) *
+      (bar_width_val / group_size)
     : 0
   const cat_start = cat_scale(cat_val + group_offset - half)
   const cat_end = cat_scale(cat_val + group_offset + half)

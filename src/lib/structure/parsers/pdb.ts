@@ -122,7 +122,7 @@ export const parse_pdb = (content: string): AnyStructure => {
     }
 
     if (record !== `ATOM` && record !== `HETATM`) continue
-    // Only the first model of an NMR / MD ensemble is parsed (see multi-model policy)
+    // Only the first model of an NMR / MD ensemble is parsed; later models are skipped
     if (model_count > 1) continue
 
     // Alternate location indicators duplicate the same atom at different positions;

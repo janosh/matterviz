@@ -13,7 +13,7 @@ const mount_title = (
   document.body.append(svg)
   const component = mount(PlotTitle, {
     target: svg,
-    props: { config, width: 100, ...props },
+    props: { config, width: 100, x: 0, y: 0, ...props },
   })
   return { component, svg }
 }

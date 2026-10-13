@@ -98,7 +98,7 @@ export interface StructureSessionInputs {
 // `prediction`: the host tool's result on this structure when an undo or redo left it. An
 // edit's own snapshot keeps none, so undoing an edit (a replaced input included) clears the
 // result while redoing it back restores it.
-export type EditSnapshot = {
+type EditSnapshot = {
   structure: AnyStructure
   bonds: StructureBond[] | undefined
   prediction?: StructureToolPrediction

@@ -233,10 +233,6 @@ describe(`lerp_rects`, () => {
   ])(`t=%f interpolates rects`, (fraction, expected) => {
     expect(lerp_rects(from, target, fraction)[0]).toEqual(expected)
   })
-
-  test(`length mismatch snaps to target (layout swap mid-tween)`, () => {
-    expect(lerp_rects([], target, 0.5)).toBe(target)
-  })
 })
 
 test(`normalize_treemap_label_lines ignores nullish and empty-label array entries`, () => {
@@ -377,7 +373,7 @@ describe(`align_tiling`, () => {
       [5, 6],
       [5, 6],
     ],
-    // The realigned array is what lerp_rects consumes, and it bails on a length mismatch
+    // The realigned array is what lerp_rects consumes, which needs equal lengths
     [
       `always returns one rect per cell of the new tiling`,
       [`P`, `x`, `y`],

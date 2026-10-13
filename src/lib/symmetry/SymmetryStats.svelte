@@ -28,7 +28,6 @@
     show_tooltips = true,
     children,
     label = `Symmetry`,
-    header,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     sym_data?: SymmetryDataset | null
@@ -36,7 +35,6 @@
     show_tooltips?: boolean
     children?: SymmetrySnippet
     label?: SymmetrySnippet | string
-    header?: SymmetrySnippet
   } = $props()
 
   // Space-group Wyckoff database + all settings (empty when WASM is not initialized,
@@ -91,16 +89,12 @@
 </script>
 
 <div {...rest} class={[`symmetry-stats`, rest.class]}>
-  {#if sym_data}
-    {@render header?.({ sym_data, settings })}
-  {/if}
-
   <!-- Always show controls so users can adjust settings even after errors -->
   <div class="controls">
     {#if typeof label === `string`}
       <strong>{label}</strong>
     {:else if label}
-      {@render label?.({ sym_data, settings })}
+      {@render label({ sym_data, settings })}
     {/if}
 
     <label>
@@ -141,7 +135,9 @@
     {@const stat_tiles = [
       {
         label: `Space Group`,
-        title: `${tooltips.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${tooltips.hermann_mauguin}`,
+        title: show_tooltips
+          ? `${titles.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${titles.hermann_mauguin}`
+          : undefined,
         value: `${sym_data.number} (${display_hm_symbol})`,
       },
       {

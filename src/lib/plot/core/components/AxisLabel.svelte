@@ -30,20 +30,19 @@
     loading?: boolean
     axis_type: `x` | `x2` | `y` | `y2`
     on_select?: (key: string) => void
-    // Maximum line width (0 falls back to AXIS_TITLE_WRAP_WIDTH, like vertical titles, whose
-    // plot height PlotAxis does not forward)
+    // Maximum line width (vertical titles keep the default: PlotAxis does not forward their
+    // plot height)
     width?: number
   } = $props()
 
-  const wrap_width = $derived(width || AXIS_TITLE_WRAP_WIDTH)
   const title_layout = $derived(
-    resolve_axis_title_layout({ label, options, selected_key }, wrap_width),
+    resolve_axis_title_layout({ label, options, selected_key }, width),
   )
   const first_line_y = $derived(
     coord_y - ((title_layout.lines.length - 1) * title_layout.line_height) / 2,
   )
   // Keep browser wrapping from splitting the trigger when canvas metrics under-estimate page fonts.
-  const trigger_width = $derived(Math.max(wrap_width, title_layout.width))
+  const trigger_width = $derived(Math.max(width, title_layout.width))
 
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation

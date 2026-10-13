@@ -11,6 +11,7 @@
   import Toast from 'svelte-widgets/Toast.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import {
     BrillouinZone,
@@ -298,7 +299,9 @@
     on_camera_reset?: EventHandler
   } = $props()
 
-  let notice_message = $state<string>()
+  const has_scene_content = $derived(
+    site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0,
+  )
   const drop_zone = create_material_loader<AnyStructure>({
     source: () => source,
     current_value: () => structure,
@@ -308,7 +311,7 @@
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
-      notice_message = undefined
+      toast_store.clear() // a previous load's notice doesn't describe this one
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
@@ -323,7 +326,7 @@
         // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
         if (loaded_structure !== structure) structure = loaded_structure
         ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
-        if (notice) notice_message = notice
+        if (notice) show_toast(notice)
       }
       on_file_load?.({
         structure: loaded_structure,
@@ -408,6 +411,8 @@
   let tool_source_revision = ``
   let tool_view = $state.raw<StructureToolView | null>(null)
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
+  // the scene's own warnings only make sense while it is on screen
+  const scene_shown = $derived(has_scene_content && !active_tool_view?.content)
   // The shown run's result, kept while a transient overlay previews other field values over it.
   let tool_result = $state.raw<StructureToolPrediction | null>(null)
   let tool_overlay_visible = $state(true)
@@ -1169,7 +1174,25 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
-  <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
+  <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
+  <ViewerNotices>
+    {#if scene_shown && analyze_symmetry && symmetry_error}
+      <StatusMessage
+        bind:message={symmetry_error}
+        type="warning"
+        dismissible
+        class="symmetry-error"
+      />
+    {/if}
+    {#if scene_shown && isosurface_error}
+      <StatusMessage
+        bind:message={isosurface_error}
+        type="warning"
+        dismissible
+        class="isosurface-error"
+      />
+    {/if}
+  </ViewerNotices>
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
     <div style:display={active_tool_view?.content ? `none` : `contents`}>
       <structure_host_tool.component
@@ -1205,7 +1228,7 @@
         {/if}
         <button onclick={tool_controller.clear}>Clear prediction</button>
       </p>{/if}
-    {#if site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0}
+    {#if has_scene_content}
       <ViewerChrome
         {controls_config}
         bind:fullscreen
@@ -1374,7 +1397,6 @@
                 bind:cell_type
                 {sym_data}
                 loading={session.supercell_loading}
-                direction="up"
                 suppress_hover={mode_menu_open}
               />
             {/if}
@@ -1449,27 +1471,8 @@
         dismissible={false}
         pause_on_hover={false}
         focus_hotkey={null}
-        class="edit-toast"
+        class="viewer-toast"
       />
-
-      {#if analyze_symmetry && symmetry_error}
-        <StatusMessage
-          bind:message={symmetry_error}
-          type="warning"
-          dismissible
-          class="symmetry-error"
-          style="position: absolute; bottom: 0.5rem; right: 0.5rem; max-width: min(90%, 400px); font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
-        />
-      {/if}
-      {#if isosurface_error}
-        <StatusMessage
-          bind:message={isosurface_error}
-          type="warning"
-          dismissible
-          class="isosurface-error"
-          style="position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%); max-width: 90%; font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
-        />
-      {/if}
     {:else if !loading}
       <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
       <p class="warn">{structure ? `No sites found in structure` : `No structure provided`}</p>
@@ -1505,14 +1508,6 @@
   }
   .structure > :global(.viewer-error) {
     z-index: var(--z-index-overlay-controls, 100000000);
-  }
-  .structure > :global(.import-notice) {
-    position: absolute;
-    bottom: 0.5em;
-    inset-inline: 0.5em;
-    z-index: var(--z-index-viewer-tooltip, 1000);
-    padding: 0.5em 1em;
-    overflow-wrap: anywhere;
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));
@@ -1575,7 +1570,7 @@
   }
   /* Transient notices sit inside the viewer (so they follow it into fullscreen) and never
     intercept pointer events meant for the canvas beneath */
-  .structure :global(.edit-toast) {
+  .structure :global(.viewer-toast) {
     --toast-stack-position: absolute;
     --toast-inset: 3rem;
     --toast-z-index: var(--z-index-viewer-dropdown, 100);

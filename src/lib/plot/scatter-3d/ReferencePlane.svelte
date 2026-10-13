@@ -72,13 +72,13 @@
       if (Math.hypot(...ref_plane.normal) < 1e-9) return null // degenerate normal
       return create_plane_from_normal(ref_plane.normal, ref_plane.point)
     }
-    if (ref_plane.type === `points`) {
-      const { p1: point_1, p2: point_2, p3: point_3 } = ref_plane
-      const cross = cross_3d(subtract(point_2, point_1), subtract(point_3, point_1))
-      if (Math.hypot(...cross) < 1e-9) return null // collinear points
-      return create_plane_from_normal(normalize_vec(cross), point_1)
-    }
-    return null
+    const { type } = ref_plane as { type: unknown }
+    if (type !== `points`) throw new Error(`Unknown 3D ref plane type ${JSON.stringify(type)}`)
+    // `points`: the plane through 3 points
+    const { p1: point_1, p2: point_2, p3: point_3 } = ref_plane
+    const cross = cross_3d(subtract(point_2, point_1), subtract(point_3, point_1))
+    if (Math.hypot(...cross) < 1e-9) return null // collinear points
+    return create_plane_from_normal(normalize_vec(cross), point_1)
   })
   dispose_on_change(() => [geometry])
 
@@ -92,12 +92,12 @@
     const v_dir = cross_3d(normalized, u_dir)
     // Scale to cover bounding box
     const scale = Math.max(x_max - x_min, y_max - y_min, z_max - z_min) * 2
-    const [pixel_x, pixel_y, pixel_z] = point
-    // Helper to offset point by u*su + v*sv
+    const [point_x, point_y, point_z] = point
+    // Offset the point by u_dir * offset_u + v_dir * offset_v
     const corner = (offset_u: number, offset_v: number): Vec3 => [
-      pixel_x + u_dir[0] * offset_u + v_dir[0] * offset_v,
-      pixel_y + u_dir[1] * offset_u + v_dir[1] * offset_v,
-      pixel_z + u_dir[2] * offset_u + v_dir[2] * offset_v,
+      point_x + u_dir[0] * offset_u + v_dir[0] * offset_v,
+      point_y + u_dir[1] * offset_u + v_dir[1] * offset_v,
+      point_z + u_dir[2] * offset_u + v_dir[2] * offset_v,
     ]
     return quad([
       corner(-scale, -scale),

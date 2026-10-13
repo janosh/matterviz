@@ -15,7 +15,6 @@
   const n_top = param(`top`, 12)
   const n_mid = param(`mid`, 12)
   const n_leaf = param(`leaf`, 10)
-  const labels = param(`labels`, 1) !== 0
   const patterned = param(`patterned`, 0) !== 0
   const max_children = param(`max_children`, 0)
 
@@ -62,7 +61,6 @@
     {data}
     bind:zoom_root_id
     {max_children}
-    show_labels={labels}
     pad_angle={0}
     style="height: 700px; --sunburst-arc-stroke-width: 1.2"
   />

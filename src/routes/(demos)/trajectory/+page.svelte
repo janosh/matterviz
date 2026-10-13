@@ -27,7 +27,7 @@
   <code>trajectory</code> to manage loading and disposal yourself.
 </p>
 
-<details class="analysis-notes">
+<details>
   <summary>What the analysis panes compute</summary>
   <p>
     <strong>MSD / diffusion</strong> (the orbit icon) averages |r(t₀+Δt) − r(t₀)|² over all

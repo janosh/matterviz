@@ -1,6 +1,6 @@
 import type { CompositionType } from '#lib/composition/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import type { Point2D, Point3D, Vec2 } from '#lib/math.js'
+import type { Point2D, Point3D } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 
 export interface StructurePopupStats {
@@ -114,7 +114,6 @@ export interface ConvexHullEntry extends PhaseData, Point3D {
   is_element: boolean
   // E_form = 0 corner closing the hull where no unary anchors it, left out of phase counts
   is_synthetic?: boolean
-  size?: number
   marker?: MarkerSymbol // Optional marker symbol override (default: circle)
 }
 
@@ -218,17 +217,11 @@ export const DEFAULT_GAS_PRESSURES: Readonly<Record<GasSpecies, number>> = {
   F2: 0.1, // typical experimental
 }
 
-// Interface for providing gas thermodynamic data (abstracted for privacy)
+// Source of gas thermodynamic data, so callers can swap in their own tables
 export interface GasThermodynamicsProvider {
   // Get standard chemical potential μ°(T) at reference pressure P₀=1 bar
   // Returns value in eV/molecule (not per atom)
   get_standard_chemical_potential(gas: GasSpecies, temperature: number): number
-
-  // Get list of supported gas species
-  get_supported_gases(): GasSpecies[]
-
-  // Get valid temperature range [T_min, T_max] in Kelvin
-  get_temperature_range(): Vec2
 }
 
 // Configuration for gas thermodynamics in convex hull calculations

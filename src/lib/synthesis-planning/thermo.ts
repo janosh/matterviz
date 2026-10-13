@@ -383,11 +383,18 @@ export function reaction_energy_at_temperature(
     const key = `${species}:${pressure}`
     if (samples && !samples.has(key))
       samples.set(key, new Float64Array(MAX_SCAN_TEMPERATURE + 1).fill(NaN))
-    return { species, pressure, grid: samples?.get(key), exchange: balanced.gas_exchange[idx] }
+    const exchange = balanced.gas_exchange[idx]
+    return {
+      species,
+      pressure,
+      grid: samples?.get(key),
+      exchange,
+      n_atoms_per_fu: gas.n_atoms_per_fu,
+    }
   })
   return (temperature) =>
     solid_part +
-    terms.reduce((sum, { species, pressure, grid, exchange }, idx) => {
+    terms.reduce((sum, { species, pressure, grid, exchange, n_atoms_per_fu }) => {
       // typed arrays read undefined at, and ignore writes to, off-grid (fractional or out of
       // range) indices, so only integer temperatures in the scan range are cached
       let mean = grid?.[temperature] ?? NaN
@@ -395,7 +402,7 @@ export function reaction_energy_at_temperature(
         mean = compute_gas_chemical_potential(provider, species, temperature, pressure)
         if (grid) grid[temperature] = mean
       }
-      return sum + exchange * mean * gases[idx].n_atoms_per_fu
+      return sum + exchange * mean * n_atoms_per_fu
     }, 0)
 }
 
@@ -452,10 +459,7 @@ export const reaction_slice_lines = (route: SynthesisRoute) =>
   )
 
 // A phase on a route's reaction slice at its precursor mixture, with the gas that mixture consumes
-export type SlicePoint = Pick<
-  CompetingPhase,
-  `phase` | `mixture` | `driving_force` | `consumed_gas`
->
+type SlicePoint = Pick<CompetingPhase, `phase` | `mixture` | `driving_force` | `consumed_gas`>
 
 // The slice's points: solid precursors (corners at 0), the target and its competitors
 export function reaction_slice_points({

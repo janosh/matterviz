@@ -22,8 +22,7 @@ export type TrajectoryFrameResolver = (
 // keep only filename-safe characters. Leading and trailing separators go too, so `run (1).traj`
 // exports as `run_1` rather than `run_1_`.
 export function trajectory_export_basename(filename: string): string {
-  // Case-preserving: this names a file the user sees. The hand-rolled list it replaced omitted
-  // `.zip`, `.z` and `.deflate`.
+  // Case-preserving: this names a file the user sees
   const base = strip_compression_extensions(filename.split(/[/\\]/).pop() ?? ``, {
     lowercase: false,
   })

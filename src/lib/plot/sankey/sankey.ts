@@ -54,11 +54,12 @@ export type PositionedLink = D3Link<NodeExtra, LinkExtra> & {
 interface SankeyLayoutOptions {
   width: number
   height: number
-  node_width?: number // px, default 24
-  node_padding?: number // px vertical gap between nodes in a column, default 12
-  node_align?: SankeyNodeAlign // default 'justify'
-  orientation?: Orientation // default 'horizontal'
-  iterations?: number // d3-sankey relaxation passes, default 6
+  // Omitted options fall back to DEFAULTS.sankey
+  node_width?: number // px
+  node_padding?: number // px gap between nodes in a column
+  node_align?: SankeyNodeAlign
+  orientation?: Orientation
+  iterations?: number // d3-sankey relaxation passes
 }
 
 interface SankeyLayoutResult {
@@ -230,17 +231,17 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   const outgoing: number[][] = data.nodes.map(() => [])
   data.links.forEach((link, link_idx) => {
     const source = resolve(link.source)
-    if (source >= 0) outgoing[source]?.push(link_idx)
+    if (source >= 0) outgoing[source].push(link_idx)
   })
   // A reference that resolves to nothing is not terminal, it is broken: folding those
   // links would replace them with a valid bucket and hide the error the layout reports.
   const is_terminal = (node_idx: number) =>
-    in_range(node_idx) && (outgoing[node_idx]?.length ?? 0) === 0
+    in_range(node_idx) && outgoing[node_idx].length === 0
 
   const folded = new Set<number>() // link indices replaced by a bucket
   const buckets: { source: number; value: number; count: number }[] = []
 
-  const value_of = (link_idx: number) => data.links[link_idx]?.value ?? 0
+  const value_of = (link_idx: number) => data.links[link_idx].value
   const foldable = (link_idx: number) => is_terminal(resolve(data.links[link_idx].target))
 
   outgoing.forEach((link_idxs, source) => {

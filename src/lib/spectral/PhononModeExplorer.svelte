@@ -374,7 +374,7 @@ under its open panes -->
 {/snippet}
 
 {#snippet phonon_settings()}
-  <ToolbarMenu label="Phonon settings" menu_class="phonon-settings-pane">
+  <ToolbarMenu label="Phonon settings">
     {#snippet button()}<Icon icon={Settings} />{/snippet}
     <div class="toolbar" aria-label="Phonon animation controls">
       {#if mode_data.qpoints.length > 1}
@@ -485,7 +485,7 @@ under its open panes -->
     {#if selected_mode && selection && selected_qpoint}
       <div class="mode-summary" data-testid="phonon-mode-summary">
         <strong>Mode {selection.mode_idx + 1}</strong>
-        <span class="frequency"
+        <span
           >{format_num(selected_mode.frequency, `.5~`)} THz
           <small>{wavenumber(selected_mode.frequency)}</small></span
         >
@@ -494,7 +494,7 @@ under its open panes -->
             >{pretty_sym_point(qpoint_labels[selection.qpoint_idx])}</span
           >
         {/if}
-        <span class="qpoint">q = [{format_qpoint(selected_qpoint.q_position, `.4~`)}]</span>
+        <span>q = [{format_qpoint(selected_qpoint.q_position, `.4~`)}]</span>
         {#if character}
           <span
             class="character"
@@ -518,7 +518,7 @@ under its open panes -->
             >eigenvectors at {n_animatable_qpoints}/{mode_data.qpoints.length} q-points</span
           >
         {/if}
-        {#if dataset.filename}<span class="source">{dataset.filename}</span>{/if}
+        {#if dataset.filename}<span>{dataset.filename}</span>{/if}
       </div>
     {/if}
   </div>
@@ -528,6 +528,7 @@ under its open panes -->
         <Trajectory
           {...trajectory_props}
           trajectory={trajectory_result.value}
+          allow_file_drop={false}
           bind:current_step_idx
           bind:fps
           bind:supercell_scaling={
@@ -668,7 +669,6 @@ under its open panes -->
   .explorer-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     flex-wrap: wrap;
     gap: 0.35em 1em;
   }
@@ -892,9 +892,6 @@ under its open panes -->
     }
   }
   @media (max-width: 560px) {
-    .explorer-header {
-      align-items: stretch;
-    }
     .tabs {
       width: 100%;
     }

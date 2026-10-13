@@ -55,7 +55,7 @@
     view = $bindable(),
     hovered_frequency = $bindable(null),
     reference_frequency = null,
-    fermi_level = undefined,
+    fermi_level,
     spin_mode = $bindable(`mirror`),
     // Controls configuration
     display = $bindable({
@@ -68,7 +68,7 @@
     controls_open = $bindable(false),
     show_normalize_control = false,
     show_units_control = false,
-    sigma_range = undefined,
+    sigma_range,
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
     ...rest
@@ -228,8 +228,6 @@
     label: is_horizontal ? `Density of States` : value_label,
     format: `.2f`,
     range: x_range,
-    // Keep label standoff identical to Bands' x-axis so the side-by-side
-    // "Density of States" and "Wave Vector" labels align (ScatterPlot default y: -40)
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
@@ -393,16 +391,14 @@
     {#snippet user_content(ctx)}
       {@const { width, y_scale_fn, x_scale_fn, pad } = ctx}
       <!-- Stacked area fills (rendered first so they appear behind lines) -->
-      {#if stack && stacked_areas.length > 0}
-        {#each stacked_areas as area, area_idx (area_idx)}
-          <path
-            d={build_stacked_area_path(area, x_scale_fn, y_scale_fn)}
-            fill={area.color}
-            fill-opacity="var(--dos-stacked-area-opacity, 0.3)"
-            stroke="none"
-          />
-        {/each}
-      {/if}
+      {#each stacked_areas as area, area_idx (area_idx)}
+        <path
+          d={build_stacked_area_path(area, x_scale_fn, y_scale_fn)}
+          fill={area.color}
+          fill-opacity="var(--dos-stacked-area-opacity, 0.3)"
+          stroke="none"
+        />
+      {/each}
 
       <!-- Fermi level line for electronic DOS -->
       {@const fermi_pos =
@@ -424,7 +420,6 @@
         for it, else inside the plot edge. Vertical: centred above the plot. -->
         {@const label_fits_right = pad.r >= 20}
         <text
-          class="fermi-level-label"
           x={is_horizontal ? width - pad.r + (label_fits_right ? 4 : -4) : fermi_pos}
           y={is_horizontal ? fermi_pos : pad.t - 4}
           dy={is_horizontal ? `0.35em` : undefined}

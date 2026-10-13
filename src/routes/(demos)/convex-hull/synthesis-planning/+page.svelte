@@ -2,7 +2,7 @@
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
-  import type { SynthesisConditions, SynthesisPlan } from '#lib/synthesis-planning/index.js'
+  import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
   import { to_error } from '#lib/utils.js'
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
 
@@ -14,7 +14,6 @@
   let entries = $state<PhaseData[]>([])
   let target = $state(``)
   let conditions = $state<SynthesisConditions>({ temperature: 0, open_species: [] })
-  let plan = $state<SynthesisPlan | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
 
@@ -65,7 +64,7 @@
   <Spinner text="Loading {selected?.label}…" />
 {:else}
   <div class="bleed-1400">
-    <SynthesisPlanner {entries} bind:target bind:conditions bind:plan two_step={false} />
+    <SynthesisPlanner {entries} bind:target bind:conditions />
   </div>
 {/if}
 

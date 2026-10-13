@@ -704,7 +704,7 @@ export function compute_label_positions(
     }
   }
 
-  // Label centre positions (the existing API) and, alongside them, the anchor-relative
+  // Label centre positions and, alongside them, the anchor-relative
   // offsets that warm-start the next solve. Those are rebuilt rather than merged: labels that
   // scrolled out of view or got culled must not linger in the map.
   warm_start?.clear()

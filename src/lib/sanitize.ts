@@ -97,7 +97,7 @@ const strip_comments = (html: string): string =>
   cut_spans(html, COMMENT_OPENER_RE, () => ({ kind: `comment`, closer_re: COMMENT_CLOSER_RE }))
 // The tag name is matched atomically (lookahead + backreference, as JS has no possessive
 // quantifiers): a backtracking `[\w:-]*\b[^<>]*` re-split `<a-a-a-…` at every `-` and rescanned
-// the rest each time, 15 s for 200 KB. A name ending in `-` or `:` is now that name (`<b->`
+// the rest each time, 15 s for 200 KB. A name ending in `-` or `:` is that whole name (`<b->`
 // is a `b-` tag, dropped) rather than `b` with an attribute `-`.
 const TAG_RE = /<\/?(?=(?<tag>[A-Za-z][\w:-]*))\k<tag>(?<attrs>[^<>]*)\/?>/g
 const ATTR_RE =

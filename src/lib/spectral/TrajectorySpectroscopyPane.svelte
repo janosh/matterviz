@@ -358,7 +358,6 @@
 
 <style>
   .trajectory-spectroscopy-inline {
-    display: block;
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -368,9 +367,6 @@
     container-type: inline-size;
     box-sizing: border-box;
     background: var(--plot-bg, var(--surface-bg));
-    &[hidden] {
-      display: none;
-    }
   }
   .spectroscopy-controls {
     display: grid;

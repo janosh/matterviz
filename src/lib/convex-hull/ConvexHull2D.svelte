@@ -35,14 +35,14 @@
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     entry_category,
-    color_mode = `energy`,
-    color_scale = `interpolateViridis`,
+    color_mode,
+    color_scale,
     display = $bindable({ x_grid: false, y_grid: false }),
-    highlighted_entries = [],
+    highlighted_entries,
     highlight_style = {},
     x_axis = {},
     y_axis = {},
-    selected_entry = null,
+    selected_entry,
     overlay = { segments: [], rings: [] },
     children,
     tooltip: custom_tooltip,
@@ -54,24 +54,26 @@
     | `fullscreen`
     | `wrapper`
     | `entry_category`
-    | `color_mode`
-    | `color_scale`
     | `display`
-    | `highlighted_entries`
     | `highlight_style`
-    | `selected_entry`
     | `children`
     | `tooltip`
     | keyof import('svelte/elements').HTMLAttributes<HTMLDivElement>
-  > & {
-    hull_data: ReturnType<typeof create_hull_data_pipeline>
-    selection: HullSelection
-    chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
-    title_height: number
-    overlay?: HullOverlay
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-  } = $props()
+  > &
+    Required<
+      Pick<
+        BaseConvexHullProps,
+        `color_mode` | `color_scale` | `highlighted_entries` | `selected_entry`
+      >
+    > & {
+      hull_data: ReturnType<typeof create_hull_data_pipeline>
+      selection: HullSelection
+      chrome: Snippet<[ReturnType<typeof create_canvas_interactions> | null]>
+      title_height: number
+      overlay?: HullOverlay
+      x_axis?: AxisConfig
+      y_axis?: AxisConfig
+    } = $props()
 
   const merged_config = $derived(merge_hull_config(config))
   // Narrow deriveds to primitive fields so heavy downstream deriveds (scatter series,

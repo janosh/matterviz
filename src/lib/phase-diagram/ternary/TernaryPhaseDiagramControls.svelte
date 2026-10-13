@@ -230,7 +230,6 @@
 <ControlPane
   bind:controls_open
   controls_name="ternary-phase-diagram"
-  pane_style=""
   toggle_style=""
   toggle_title="Ternary phase diagram"
   {...rest}
@@ -339,8 +338,6 @@
   :global(.ternary-phase-diagram-controls-pane) {
     font-size: 0.85em;
     max-width: 340px;
-    --pane-padding: 10px;
-    --pane-gap: 4px;
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;
   }

@@ -11,6 +11,7 @@
   import { add_alpha, plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { untrack } from 'svelte'
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
@@ -309,8 +310,6 @@
     },
   })
 
-  const banner_style = `position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; max-width: 80%`
-
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
   // In the horizontal layout the 2θ and intensity axes trade places
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -434,11 +433,13 @@
   </EmptyState>
 {:else}
   <div class="xrd-plot-container" style={`position: relative; ${rest.style ?? ``}`}>
-    {#if error_msg}
-      <StatusMessage bind:message={error_msg} type="error" dismissible style={banner_style} />
-    {:else if broadening_error}
-      <StatusMessage message={broadening_error} type="error" style={banner_style} />
-    {/if}
+    <ViewerNotices>
+      {#if error_msg}
+        <StatusMessage bind:message={error_msg} type="error" dismissible />
+      {:else if broadening_error}
+        <StatusMessage message={broadening_error} type="error" />
+      {/if}
+    </ViewerNotices>
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
       {#snippet tooltip(info: ScatterHandlerProps)}
@@ -456,7 +457,6 @@
         y_axis={plot_y_axis}
         {tooltip}
         {@attach drop_zone}
-        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls
@@ -491,7 +491,6 @@
           on_bar_click?.(data)
         }}
         {@attach drop_zone}
-        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls

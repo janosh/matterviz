@@ -8,7 +8,7 @@
   import { cell_vector_arrow_sizes, cell_vector_origin } from '#lib/structure/geometry.js'
   import { CanvasTooltip } from '#lib/structure/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
-  import { supercell_grid_edges } from '#lib/structure/supercell.js'
+  import { supercell_grid_edges, whole_tile_counts } from '#lib/structure/supercell.js'
   import Arrow from './Arrow.svelte'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
@@ -59,7 +59,7 @@
 
   // Via the string so callers handing over a fresh [1,1,1] every trajectory frame don't churn
   // the derived arrays below (and with them the tile mesh) on an unchanged tiling
-  let tiling_key = $derived(tiling.map((count) => Math.max(1, Math.floor(count))).join(`,`))
+  let tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
   let tile_counts: Vec3 = $derived(tiling_key.split(`,`).map(Number) as Vec3)
   let n_tiles = $derived(tile_counts[0] * tile_counts[1] * tile_counts[2])
   // Cell vectors of the whole tiled block
@@ -236,7 +236,7 @@
     {/each}
 
     <!-- Tooltip for hovered vector -->
-    {#if hovered_idx !== null && matrix}
+    {#if hovered_idx !== null}
       {@const hovered_vec = matrix[hovered_idx]}
       {@const tooltip_position = math.add(vector_origin, hovered_vec)}
       <CanvasTooltip position={tooltip_position}>

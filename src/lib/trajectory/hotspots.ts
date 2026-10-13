@@ -39,7 +39,6 @@ export interface HotspotOptions extends FrameRange {
   mass_source?: `recorded` | `standard`
   mass_unit?: `amu` | `kg`
   selection_key?: string
-  elements?: number[]
   dimensions?: 2 | 3
   // Effective translational DOF before velocity correction, or AFTER the declared reference
   // correction for stored energies. Stored energies without explicit DOF cannot show Kelvin.
@@ -184,7 +183,7 @@ export const hotspot_display_values = (
   mean: hotspot_mean(result, metric),
 })
 
-export function validate_hotspot_grid(grid: HotspotGrid): number {
+function validate_hotspot_grid(grid: HotspotGrid): number {
   if (grid.dims.length !== 3 || grid.dims.some((size) => !Number.isInteger(size) || size < 1))
     throw new Error(`Hotspot grid dimensions must be positive integers: ${grid.dims}`)
   if (
@@ -456,7 +455,6 @@ async function reduce_hotspots(
     reserved_buffer_bytes: buffer_bytes,
     options,
   }
-  const element_filter = options.elements ? new Set(options.elements) : undefined
   const timestamp = (batch: AtomBatch): number => {
     if (
       (result.weighting === `recorded time` && batch.time === undefined) ||
@@ -514,11 +512,7 @@ async function reduce_hotspots(
     let batch = first
     for (;;) {
       for (let atom_idx = 0; atom_idx < batch.atomic_numbers.length; atom_idx++) {
-        if (
-          (batch.selected && !batch.selected[atom_idx]) ||
-          (element_filter && !element_filter.has(batch.atomic_numbers[atom_idx]))
-        )
-          continue
+        if (batch.selected && !batch.selected[atom_idx]) continue
         const offset = atom_idx * 3
         const bin = hotspot_bin(batch.positions, offset, active_grid, inverse)
         if (bin < 0) {

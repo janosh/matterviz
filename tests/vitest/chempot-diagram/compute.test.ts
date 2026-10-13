@@ -796,7 +796,7 @@ describe(`simple_pca`, () => {
       [-10.42510384, -0.10320018],
       [-10.57055758, 0.10248767],
     ]
-    const { scores } = simple_pca(points_3d, 2)
+    const { scores } = simple_pca(points_3d)
     // component signs are arbitrary, so compare magnitudes
     expect(scores.map((row) => row.map(Math.abs))).toEqual(
       close_rows(
@@ -807,7 +807,7 @@ describe(`simple_pca`, () => {
   })
 
   test(`empty data returns empty`, () => {
-    const { scores, eigenvectors } = simple_pca([], 2)
+    const { scores, eigenvectors } = simple_pca([])
     expect(scores).toEqual([])
     expect(eigenvectors).toEqual([])
   })
@@ -824,7 +824,7 @@ describe(`simple_pca`, () => {
     [`3 collinear points`, [0, 1, 2].map((val) => [val, val, val])],
     [`coincident points`, chunk(3, [2, 2, 2, 2, 2, 2, 2, 2, 2])],
   ])(`returns an orthonormal basis for %s`, (_case, data) => {
-    const { eigenvectors } = simple_pca(data, 2)
+    const { eigenvectors } = simple_pca(data)
     expect(eigenvectors).toHaveLength(2)
     for (const eigenvector of eigenvectors)
       expect(Math.hypot(...eigenvector)).toBeCloseTo(1, 12)
@@ -851,7 +851,7 @@ describe(`simple_pca`, () => {
         point[(flat_axis + 2) % 3] = v_val
         return point
       })
-      const { scores, eigenvectors } = simple_pca(polygon, 2)
+      const { scores, eigenvectors } = simple_pca(polygon)
       for (const eigenvector of eigenvectors)
         expect(Math.abs(eigenvector[flat_axis])).toBeLessThan(1e-9)
       // the two components reconstruct every vertex: projection is lossless
@@ -888,7 +888,7 @@ describe(`simple_pca`, () => {
           [0, 1, 2].map((dim) => -3 + s_val * u_axis[dim] + t_val * w_axis[dim]),
         ),
       )
-      const { eigenvectors } = simple_pca(rect, 2)
+      const { eigenvectors } = simple_pca(rect)
       const dot = eigenvectors[0].reduce(
         (sum, val, idx) => sum + val * eigenvectors[1][idx],
         0,
@@ -1753,7 +1753,7 @@ describe(`get_visible_domain_labels`, () => {
         { formula: `AC`, position: [2, 2, 2], label_font_size: 10 },
       ],
     },
-  ])(`$label`, ({ positions, face_formulas, sizes, pinned, expected }) => {
+  ])(`$label`, ({ positions, face_formulas, sizes, pinned = [], expected }) => {
     expect(get_visible_domain_labels(positions, face_formulas, sizes, pinned)).toEqual(
       expected,
     )

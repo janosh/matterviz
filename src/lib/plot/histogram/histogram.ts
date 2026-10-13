@@ -92,10 +92,9 @@ export function log_safe_range(axis: Pick<AxisConfig, `range` | `scale_type`>): 
 const MAX_BINS = 1_000_000
 
 // Bin edges uniform in the AXIS' bin space (a log axis bins by decade, not by raw value), plus
-// the scalars an indexing loop needs. Exported so the marginal histograms bin on exactly these
-// edges, which is what makes a marginal agree with the bars it sits beside instead of binning
-// the same data linearly underneath a log axis.
-export function bin_geometry(
+// the scalars an indexing loop needs. Marginal histograms bin through bin_values too, so they
+// agree with the bars they sit beside instead of binning linearly underneath a log axis.
+function bin_geometry(
   domain: Vec2,
   n_bins: number,
   scale_type: ScaleType = `linear`,
@@ -148,21 +147,6 @@ export function bin_geometry(
   return { lo: lower, hi: upper, edges, degenerate: false, is_linear, fwd, pos_lo, scale }
 }
 
-// Bin index for a value already known to sit within [lo, hi]. The clamp covers val === hi (goes
-// in the last bin), then a snap to the materialized edges keeps a value sitting exactly on one
-// in the upper bin even when fwd() rounds down (log10(1000) < 3). bin_values keeps its own copy
-// of this loop rather than calling it: measured over 1e6 samples, the call costs 9.7 ms against
-// 4.0 ms inlined, which is worth the duplication on that one path and nowhere else.
-export function bin_index_of(val: number, geometry: ReturnType<typeof bin_geometry>): number {
-  const { edges, is_linear, fwd, pos_lo, scale } = geometry
-  const count = edges.length - 1
-  const pos = is_linear ? val : fwd(val)
-  let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, count - 1)
-  if (val >= edges[bin_idx + 1] && bin_idx < count - 1) bin_idx++
-  else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
-  return bin_idx
-}
-
 // Count `values` into `n_bins` uniform bins over `domain` (either order) in the scale's bin
 // space. Values outside the domain and non-finite values are dropped; the upper bound lands in
 // the last bin (numpy convention). On a log scale the domain is clamped to positive values. A
@@ -195,15 +179,18 @@ export function bin_values(
     }
     return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
-  const count_2 = edges.length - 1
-  const counts = weights ? new Float64Array(count_2) : new Uint32Array(count_2)
+  const bin_count = edges.length - 1
+  const counts = weights ? new Float64Array(bin_count) : new Uint32Array(bin_count)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
     if (!(val >= lower && val <= upper)) continue
+    // The clamp covers val === hi (goes in the last bin), then a snap to the materialized
+    // edges keeps a value sitting exactly on one in the upper bin even when fwd() rounds down
+    // (log10(1000) < 3).
     const pos = is_linear ? val : fwd(val)
-    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, count_2 - 1)
-    if (val >= edges[bin_idx + 1] && bin_idx < count_2 - 1) bin_idx++
+    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, bin_count - 1)
+    if (val >= edges[bin_idx + 1] && bin_idx < bin_count - 1) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
     if (!weights) counts[bin_idx] += 1
     else if (Number.isFinite(weights[idx])) counts[bin_idx] += weights[idx]

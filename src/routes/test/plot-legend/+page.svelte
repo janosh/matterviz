@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { LegendItem, Orientation } from '#lib/plot/index.js'
+  import type { LegendItem } from '#lib/plot/index.js'
   import { PlotLegend } from '#lib/plot/index.js'
 
   let series_data: LegendItem[] = $state([
@@ -45,14 +45,8 @@
     },
   ])
 
-  let legend_layout: Orientation = $state(`vertical`)
-  let legend_n_items = $state(1)
-  let legend_style = $state(``)
-  let legend_item_style = $state(``)
-
   let last_toggled_idx = $state<number | null>(null)
   let last_isolated_idx = $state<number | null>(null)
-  let prev_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
 
   function handle_toggle(toggled_idx: number) {
     last_toggled_idx = toggled_idx
@@ -65,29 +59,10 @@
   function handle_double_click(double_clicked_idx: number) {
     last_toggled_idx = null // Reset toggle tracker
     last_isolated_idx = double_clicked_idx
-
-    const visible_count = series_data.filter((item) => item.visible).length
-    const is_currently_isolated =
-      visible_count === 1 && series_data[double_clicked_idx]?.visible
-
-    if (is_currently_isolated && prev_visibility) {
-      // Restore previous visibility state
-      series_data = series_data.map((item, idx) => ({
-        ...item,
-        visible: prev_visibility?.[idx] ?? item.visible,
-      }))
-      prev_visibility = null // Clear memory
-    } else {
-      // Isolate the double-clicked series
-      // Only store previous state if we are actually isolating (more than one series visible)
-      if (visible_count > 1) {
-        prev_visibility = series_data.map((item) => item.visible) // Store current state
-      }
-      series_data = series_data.map((item) => ({
-        ...item,
-        visible: item.series_idx === double_clicked_idx,
-      }))
-    }
+    series_data = series_data.map((item) => ({
+      ...item,
+      visible: item.series_idx === double_clicked_idx,
+    }))
   }
 </script>
 
@@ -97,34 +72,9 @@
 <PlotLegend
   id="main-legend"
   {series_data}
-  layout={legend_layout}
-  layout_tracks={legend_n_items}
-  style={legend_style}
-  item_style={legend_item_style}
   on_toggle={handle_toggle}
   on_double_click={handle_double_click}
 />
-
-<h2 id="controls">Controls</h2>
-<label for="layout">Layout:</label>
-<select bind:value={legend_layout} id="layout">
-  <option value="vertical">Vertical</option>
-  <option value="horizontal">Horizontal</option>
-</select>
-<br />
-
-<label for="n_items">n_items (columns if horizontal, rows if vertical):</label>
-<input type="number" bind:value={legend_n_items} min="1" id="n_items" />
-<br />
-
-<label for="style">Style:</label>
-<input type="text" bind:value={legend_style} id="style" />
-<br />
-
-<label for="item_style">Item Style:</label>
-<input type="text" bind:value={legend_item_style} id="item_style" />
-<br />
-<br />
 
 <h2 id="state-trackers">State Trackers</h2>
 <p data-testid="last-toggled">
@@ -133,15 +83,3 @@
 <p data-testid="last-isolated">
   Last Isolated Index: {last_isolated_idx ?? `null`}
 </p>
-
-<h2 id="custom-style-test-case">Custom Style Test Case</h2>
-<PlotLegend
-  id="custom-style-legend"
-  series_data={series_data.slice(0, 2)}
-  layout="horizontal"
-  layout_tracks={2}
-  style="background-color: rgba(255, 255, 255, 0.95); padding: 0px"
-  item_style="color: rgb(55, 65, 81); padding: 1px 3px;"
-  on_toggle={() => {}}
-  on_double_click={() => {}}
-/>

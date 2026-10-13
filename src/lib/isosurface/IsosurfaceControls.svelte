@@ -209,8 +209,7 @@
     const geo_vol = volumes[resolve_geo_idx(layer)]
     const color_vol = color_vol_of(layer)
     if (!geo_vol || !color_vol || geo_vol === color_vol) return null
-    const compat = compare_volume_grids(geo_vol, color_vol)
-    return compat.ok ? null : (compat.reason ?? `grids differ`)
+    return compare_volume_grids(geo_vol, color_vol)
   }
 
   // Layers grouped by geometry-source volume for the tree-style UI

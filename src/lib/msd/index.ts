@@ -41,7 +41,7 @@ export interface MsdCurve {
 }
 
 export interface MsdOptions {
-  // Time per collected frame. Left at 1 the x axis is labelled in frames, because
+  // Time per collected frame. Left unset the x axis is labelled in frames, because
   // a run may not record a timestep and frame spacing is not guaranteed uniform.
   dt?: number
   // Required with dt and rejected without it (e.g. `ps`, `fs`)

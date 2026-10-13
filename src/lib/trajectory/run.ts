@@ -1,3 +1,10 @@
+// The one runtime object every trajectory consumer sees. A run owns its resources (bytes,
+// worker port, HDF5 handle, frame index) and exposes exactly one frame-access path, so a
+// consumer never has to work out whether the frames it can see are all the frames there are.
+//
+// Deliberately free of Svelte runes: runs are built inside Web Workers and the VS Code
+// extension host as well as in components. The viewer mirrors `properties` into `$state`
+// through `subscribe` (see session.svelte.ts).
 import { is_valid_index } from '#lib/math.js'
 import {
   materialize_frame,
@@ -6,13 +13,6 @@ import {
   type FrameChannels,
 } from './frame'
 import type { DisplayFrame, FramePreparation } from './prepare'
-// The one runtime object every trajectory consumer sees. A run owns its resources (bytes,
-// worker port, HDF5 handle, frame index) and exposes exactly one frame-access path, so a
-// consumer never has to work out whether the frames it can see are all the frames there are.
-//
-// Deliberately free of Svelte runes: runs are built inside Web Workers and the VS Code
-// extension host as well as in components. The viewer mirrors `properties` into `$state`
-// through `subscribe` (see session.svelte.ts).
 import type {
   CollectPositionsOptions,
   TrajectoryFrame,
@@ -189,7 +189,7 @@ export interface TrajectoryRun {
 // VS Code host). Everything except frames and collect_positions, which travel over a port.
 export interface TrajectoryRunSummary {
   atom_count: number
-  has_compute_hotspots?: boolean
+  has_compute_hotspots: boolean
   frame_count: number
   preview: TrajectoryFrame
   provenance: TrajectoryProvenance
@@ -296,8 +296,7 @@ export function sync_run(source: SyncRunSource): TrajectoryRun {
     )
   }
   const initial_frame = source_preview ? undefined : read(0)
-  const preview = source_preview ?? (initial_frame && materialize_frame(initial_frame))
-  if (!preview) throw new Error(`Missing trajectory preview`)
+  const preview = source_preview ?? materialize_frame(initial_frame ?? read(0))
   const atom_count = source_atom_count ?? preview.structure.sites.length
   let disposed = false
   const live = (): void => {

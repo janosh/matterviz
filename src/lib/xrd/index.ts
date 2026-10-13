@@ -181,7 +181,7 @@ export type XrdPeak = {
 }
 
 // Warm first (the first is the LatticePlanes default) to stand out against atom colours
-export const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
+const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
 
 // Lattice planes to overlay on a Structure for a diffraction peak or spot, one family per hkl
 // (a peak's hkls are distinct families coinciding in 2θ), one per color to keep the cell

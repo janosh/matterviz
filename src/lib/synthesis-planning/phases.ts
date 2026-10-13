@@ -16,7 +16,6 @@ import {
   lowest_energy_mixture,
   normalize_hull_composition_keys,
 } from '#lib/convex-hull/thermodynamics.js'
-import type { LowestEnergyMixture } from '#lib/convex-hull/thermodynamics.js'
 import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
 import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
 import { element_by_symbol } from '#lib/element/data.js'
@@ -48,7 +47,7 @@ const plain_formula = (composition: CompositionType): string =>
   get_electro_neg_formula(composition, { plain_text: true, delim: `` })
 
 // Reduced formula, e.g. {Li: 2, Co: 2, O: 4} → `LiCoO2`
-export const formula_of = (composition: CompositionType): string =>
+const formula_of = (composition: CompositionType): string =>
   plain_formula(get_reduced_formula(composition))
 
 const molar_mass_of = (composition: CompositionType): number =>
@@ -202,8 +201,6 @@ export function prepare_phase_set(
 }
 
 // === Convex hull ===
-
-export type HullPoint = LowestEnergyMixture<PlannerPhase>
 
 // The phase set's convex hull at `fractions` (atom fractions over its elements), null if none
 export const hull_at = lowest_energy_mixture<PlannerPhase>

@@ -171,8 +171,8 @@ const segments_for_wrapped_lines = (
 export function resolve_axis_title_layout(
   axis: Pick<AxisConfig, `label` | `options` | `selected_key`>,
   available_width = AXIS_TITLE_WRAP_WIDTH,
-  font: Readonly<FontSpec> = DEFAULT_AXIS_TITLE_FONT,
 ): AxisTitleLayout {
+  const font = DEFAULT_AXIS_TITLE_FONT
   const { label, segments, interactive } = selected_axis_title(axis)
   const shared = { label, line_height: font.line_height, interactive }
   if (!label) {
@@ -332,7 +332,6 @@ export interface AutoPaddingConfig {
   x2_axis?: MeasuredAxis
   y_axis?: MeasuredAxis
   y2_axis?: MeasuredAxis
-  label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
   width?: number // Plot width, needed to know whether x tick labels have to rotate
   height?: number // Plot height, needed for y/y2 wrapping and thinning
   controls_row?: boolean // whether the corner controls row (gear, fullscreen) is drawn
@@ -377,7 +376,6 @@ export const calc_auto_padding = ({
   x2_axis = EMPTY_AXIS,
   y_axis = EMPTY_AXIS,
   y2_axis = EMPTY_AXIS,
-  label_gap = LABEL_GAP_DEFAULT,
   width,
   height,
   controls_row = false,
@@ -420,7 +418,7 @@ export const calc_auto_padding = ({
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
     const title_band = has_title ? title_layout.height : 0
-    const title_gap = has_title && has_outside_ticks ? label_gap : 0
+    const title_gap = has_title && has_outside_ticks ? LABEL_GAP_DEFAULT : 0
     const title_shift = axis.label_shift?.x ?? 0
     const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
     return Math.max(
@@ -494,8 +492,8 @@ export const calc_auto_padding = ({
       : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick_label?.shift?.y ?? 0)
     // The title's first line sits one gap past the labels and is centered there, so half a
-    // line reaches further still; wrapped lines stack below it in full. LABEL_GAP_DEFAULT,
-    // not `label_gap`: PlotAxis places it via AXIS_TITLE_OFFSET.
+    // line reaches further still; wrapped lines stack below it in full (PlotAxis places it
+    // via AXIS_TITLE_OFFSET).
     const below_baseline =
       title_height > 0
         ? band + LABEL_GAP_DEFAULT + title_height - title_layout.line_height / 2
@@ -523,11 +521,6 @@ export const calc_auto_padding = ({
   return { t: pad_t, b: pad_b, l: pad_l, r: pad_r }
 }
 
-// Continuous placement algorithm with grid sampling and overlap scoring
-// Finds the optimal position for a legend/colorbar by sampling a grid of candidates
-// and scoring each by data point overlap and distance to exclusion zones
-
-// Common rectangle type for consistency
 export interface Rect {
   x: number
   y: number
@@ -654,8 +647,8 @@ export function sample_series_obstacle_points(
   return obstacles
 }
 
-// Score grid positions by point overlap, exclusion rectangles, nearest-point distance,
-// and corner proximity.
+// Place a legend/colorbar by scoring a grid of candidate positions by point overlap,
+// exclusion rectangles, nearest-point distance and corner proximity.
 export function compute_element_placement(
   config: ElementPlacementConfig,
 ): ElementPlacementResult {

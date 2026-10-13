@@ -1,7 +1,7 @@
 // Shared pan/zoom/touch/drag-rect interaction controller for the 2D plot components
-// (BarPlot, BoxPlot, Histogram, ScatterPlot). Owns the interaction state machine;
-// per-component policy (which axis props to write on rect-zoom, reset semantics)
-// stays in the component via the on_rect_zoom/on_reset/set_range callbacks.
+// (created by cartesian-frame). Owns the interaction state machine; axis policy (which
+// ranges a rect zoom writes, reset semantics) stays with the caller via the
+// on_rect_zoom/on_reset/set_range callbacks.
 
 import type { Point2D, Vec2 } from '#lib/math.js'
 import {
@@ -37,7 +37,6 @@ interface PanZoomOptions {
   scale_type: (axis: Axis) => ScaleType | undefined
   plot_bounds: () => Rect
   pan: () => PanConfig | undefined
-  // Write-order contract: x, x2, y, y2 (ScatterPlot's y2 sync reads the just-written y)
   set_range: (axis: Axis, range: Vec2) => void
   svg: () => SVGElement | null
   // Only fired when the drag rect exceeds 5px in both dimensions
@@ -116,7 +115,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   }
 
   // Transform the whole batch before writing: a rejected log range must leave every
-  // axis unchanged. Keep x, x2, y, y2 write order for callers that synchronize y2 to y.
+  // axis unchanged
   const pan_axes = (
     init: AxisRanges,
     dx_px: number,
@@ -262,25 +261,25 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (!touch_state || evt.touches.length !== 2) return
     evt.preventDefault()
 
-    const [param_1, param_2] = Array.from(evt.touches)
-    const [slope_1, slope_2] = touch_state.start_touches
+    const [touch_a, touch_b] = Array.from(evt.touches)
+    const [start_a, start_b] = touch_state.start_touches
 
     // Calculate center movement for pan
-    const start_center = { x: (slope_1.x + slope_2.x) / 2, y: (slope_1.y + slope_2.y) / 2 }
+    const start_center = { x: (start_a.x + start_b.x) / 2, y: (start_a.y + start_b.y) / 2 }
     const curr_center = {
-      x: (param_1.clientX + param_2.clientX) / 2,
-      y: (param_1.clientY + param_2.clientY) / 2,
+      x: (touch_a.clientX + touch_b.clientX) / 2,
+      y: (touch_a.clientY + touch_b.clientY) / 2,
     }
     const delta_x = curr_center.x - start_center.x
     const delta_y = curr_center.y - start_center.y
 
     // Calculate pinch scale (curr/start so spread = zoom in, pinch = zoom out)
-    const start_dist = Math.hypot(slope_2.x - slope_1.x, slope_2.y - slope_1.y)
+    const start_dist = Math.hypot(start_b.x - start_a.x, start_b.y - start_a.y)
     // ignore near-coincident touches so curr_dist / start_dist can't blow up the scale
     if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const curr_dist = Math.hypot(
-      param_2.clientX - param_1.clientX,
-      param_2.clientY - param_1.clientY,
+      touch_b.clientX - touch_a.clientX,
+      touch_b.clientY - touch_a.clientY,
     )
     const scale = curr_dist / start_dist
 
@@ -350,7 +349,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     on_window_blur: () => {
       shift_held = false
     },
-    reset_view: () => opts.on_reset(),
+    reset_view: opts.on_reset,
     // Tear down any window listeners + cursor override if the component unmounts
     // mid-drag (mouseup/panend would otherwise never fire, leaking listeners and a
     // stuck cursor). Safe during SSR teardown, where window/document don't exist.

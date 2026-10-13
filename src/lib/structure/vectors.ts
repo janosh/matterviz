@@ -310,7 +310,7 @@ export function prepare_vector_geometry(
       const site = present.length > 1 ? get_site(structure, site_idx) : null
       let basis: [Vec3, Vec3] | undefined
       let gap_abs = 0
-      if (site && filter) {
+      if (site) {
         gap_abs = filter.vector_origin_gap * (filter.get_site_radius(site, site_idx) * 0.5)
         const mean: Vec3 = [0, 0, 0]
         for (const { vector } of present) {
@@ -377,25 +377,6 @@ function compare_vector_keys(left: string, right: string): number {
   const ord_l = vector_key_sort_order(left)
   const ord_r = vector_key_sort_order(right)
   return ord_l[0] - ord_r[0] || ord_l[1] - ord_r[1] || ord_l[2].localeCompare(ord_r[2])
-}
-
-// Extract ALL vector properties from a site (not just the first match).
-// Returns entries for every key that is_vector_key() and has a valid 3D vector value.
-// Ordered by VECTOR_KEY_PREFIXES priority by default; callers may skip sorting when order is unused.
-export function get_all_site_vectors(
-  site: Site,
-  ordered = true,
-): { vec: Vec3; key: string }[] {
-  const props = site.properties
-  if (!props) return []
-  const results: { vec: Vec3; key: string }[] = []
-  for (const key of Object.keys(props)) {
-    if (!is_vector_key(key)) continue
-    const vec = try_parse_vec3(props[key])
-    if (vec) results.push({ vec, key })
-  }
-  if (ordered) results.sort((left, right) => compare_vector_keys(left.key, right.key))
-  return results
 }
 
 // Collect the union of all vector property keys across all sites in a structure,

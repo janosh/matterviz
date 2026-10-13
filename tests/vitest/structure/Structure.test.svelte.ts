@@ -102,7 +102,7 @@ const structure = structures[0]
 
 // Mount Structure into document.body (queries are left to each test via doc_query). Every
 // mount is unmounted after its test so component cleanup runs before happy-dom tears down:
-// the edit toast's dismiss timer would otherwise fire into a vanished `document`.
+// the viewer toast's dismiss timer would otherwise fire into a vanished `document`.
 const mounted: Record<string, unknown>[] = []
 const original_host_component = structure_host_tool.component
 const mount_structure = (props: ComponentProps<typeof Structure>) => {
@@ -119,6 +119,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
+
+// edit, import and cell-frame notices all land in the viewer's self-hiding toast
+const TOAST_MESSAGE = `.viewer-toast .toast-message`
 
 // Open the dropdown menu behind `trigger` and click the option labelled `label`
 const pick_menu_option = async (trigger: string, label: string): Promise<void> => {
@@ -340,11 +343,7 @@ test.each([
       ),
     )
     if (has_atoms) {
-      const notice = doc_query(`.import-notice`)
-      expect(notice.textContent).toContain(`Added 1 volume from B`)
-      doc_query<HTMLButtonElement>(`.import-notice button`).click()
-      await tick()
-      expect(document.querySelector(`.import-notice`)).toBeNull()
+      expect(doc_query(TOAST_MESSAGE).textContent).toContain(`Added 1 volume from B`)
       expect(state.structure).toBe(original)
     }
     drop(content.replace(before, after), `C`)
@@ -830,7 +829,7 @@ test(`replace_input adopts a result's geometry as the input, keeps its predictio
   const to_cart = create_frac_to_cart(relaxed_cell)
   for (const site of replaced.sites)
     to_cart(site.abc).forEach((coord, axis) => expect(coord).toBeCloseTo(site.xyz[axis], 12))
-  expect(doc_query(`.edit-toast .toast-message`).textContent).toContain(`undo`)
+  expect(doc_query(TOAST_MESSAGE).textContent).toContain(`undo`)
   // The run stays current and its prediction now describes the new input, without geometry.
   expect(tool.signal.aborted).toBe(false)
   const { prediction } = tool.host_props
@@ -1555,7 +1554,8 @@ describe(`Structure`, () => {
     await vi.waitFor(() =>
       expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
     )
-    const warning = doc_query(`.symmetry-error`)
+    // stacked top-center with the other notices, clear of the bottom-right atom legend
+    const warning = doc_query(`.viewer-notices > .symmetry-error`)
     expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
     expect(warning.getAttribute(`role`)).toBe(`status`)
     doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
@@ -2051,7 +2051,7 @@ describe(`Structure`, () => {
     })
     expect(state.measure_mode).toBe(`edit-bonds`)
     // a build that already fails at mount is reported, not only one that starts failing
-    expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
+    expect(doc_query(TOAST_MESSAGE).textContent).toBe(
       `Failed to create supercell: malformed scaling matrix`,
     )
   })
@@ -2127,7 +2127,7 @@ describe(`Structure`, () => {
       const analysis = mount_structure(props)
       await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
       flushSync()
-      expect(document.querySelector(`.edit-toast .toast-message`)).toBeNull()
+      expect(document.querySelector(TOAST_MESSAGE)).toBeNull()
       for (const cell_type of [`original`, `conventional`, `original`] as const) {
         props.cell_type = cell_type
         flushSync()
@@ -2139,9 +2139,7 @@ describe(`Structure`, () => {
         }
         expect(scene_stub.props?.atom_opacity, cell_type).toBe(show_thermal ? 0 : 1)
         if (cell_type === `conventional`)
-          expect(doc_query(`.edit-toast .toast-message`).textContent).toBe(
-            OVERLAYS_INPUT_FRAME_NOTE,
-          )
+          expect(doc_query(TOAST_MESSAGE).textContent).toBe(OVERLAYS_INPUT_FRAME_NOTE)
       }
     },
   )

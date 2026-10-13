@@ -150,7 +150,7 @@ export function ternary_grid_lines(step: number): TernaryGridLine[] {
 export interface TernaryLayout {
   scale: number // px per unit of triangle side
   to_px: (coords_xy: readonly [number, number]) => Vec2
-  from_px: (pixel_x: Vec2) => Vec2
+  from_px: (coords_px: Vec2) => Vec2
 }
 
 export function ternary_layout(width: number, height: number): TernaryLayout {

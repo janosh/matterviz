@@ -3,7 +3,7 @@
 // without Worker); the trajectory sweep in calc-trajectory-rdf.ts keeps one frame per worker.
 import type { AnyStructure } from '#lib/structure/index.js'
 import { to_structure_id_payload } from '#lib/structure-id/worker-payload.js'
-import { create_worker_client, type WorkerClient } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { calc_frame_rdfs, type FrameRdfOptions } from './calc-rdf'
 import type { RdfPattern } from './index'
 
@@ -27,23 +27,14 @@ const pool = Array.from({ length: RDF_WORKER_COUNT }, create_rdf_client)
 // early never queues behind a busy worker while another sits idle
 const in_flight = pool.map(() => 0)
 
-export const calc_frame_rdfs_async: WorkerClient<AnyStructure, FrameRdfOptions, RdfPattern[]> =
-  Object.assign(
-    async (...args: Parameters<(typeof pool)[number]>) => {
-      const client_idx = in_flight.indexOf(Math.min(...in_flight))
-      in_flight[client_idx]++
-      try {
-        return await pool[client_idx](...args)
-      } finally {
-        in_flight[client_idx]--
-      }
-    },
-    {
-      cancel: (reason?: string) => {
-        for (const client of pool) client.cancel(reason)
-      },
-      release: () => {
-        for (const client of pool) client.release()
-      },
-    },
-  )
+export const calc_frame_rdfs_async = async (
+  ...args: Parameters<(typeof pool)[number]>
+): Promise<RdfPattern[]> => {
+  const client_idx = in_flight.indexOf(Math.min(...in_flight))
+  in_flight[client_idx]++
+  try {
+    return await pool[client_idx](...args)
+  } finally {
+    in_flight[client_idx]--
+  }
+}

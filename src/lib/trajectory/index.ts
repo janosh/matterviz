@@ -15,7 +15,6 @@ export {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
   type OpenTrajectoryOptions,
-  source_byte_size,
   trajectory_from_frame_source,
   trajectory_from_frames,
   trajectory_from_json,
@@ -36,12 +35,7 @@ export { default as TrajectoryDataInspectorPane } from './TrajectoryDataInspecto
 export { default as TrajectoryError } from './TrajectoryError.svelte'
 export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'
 export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
-export {
-  energy_data_extractor,
-  force_stress_data_extractor,
-  full_data_extractor,
-  structural_data_extractor,
-} from './extract'
+export { full_data_extractor, structural_data_extractor } from './extract'
 export type {
   TrajectoryFrameResolver,
   TrajectoryPropertyRow,

@@ -53,12 +53,8 @@ export function dropped_file_url(drag_event: DragEvent): string | undefined {
   }
 }
 
-export const load_from_url = (
-  url: string,
-  callback: FileLoadCallback,
-  signal?: AbortSignal,
-): Promise<void> =>
-  load_url_content(url, callback as TrajectoryFileLoadCallback, false, signal)
+export const load_from_url = (url: string, callback: FileLoadCallback): Promise<void> =>
+  load_url_content(url, callback as TrajectoryFileLoadCallback, false)
 
 export const load_trajectory_from_url = (
   url: string,

@@ -241,11 +241,7 @@
         decoding="async"
         style="aspect-ratio: auto 1; border-radius: 4pt"
       />
-      <ElementTile
-        {element}
-        style="width: 70px; position: absolute; bottom: 0"
-        --elem-tile-hover-border="1px solid transparent"
-      />
+      <ElementTile {element} style="width: 70px; position: absolute; bottom: 0" />
     </a>
   {/snippet}
 </PrevNext>

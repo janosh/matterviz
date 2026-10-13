@@ -8,7 +8,7 @@
   import HotspotLegend from './HotspotLegend.svelte'
   import { Graph } from 'svelte-widgets/icons'
   import { format_num } from '#lib/labels.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01, to_error } from '#lib/utils.js'
   import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'
   import type { TrajectoryRun } from './run'
   import { create_request_owner } from './async-result.svelte'
@@ -235,7 +235,7 @@
       status.completed = status.total
       if (!computed.dof.some((value) => value > 0)) metric = `energy`
     } catch (failure) {
-      if (is_current()) error = failure instanceof Error ? failure.message : String(failure)
+      if (is_current()) error = to_error(failure).message
     } finally {
       status.busy = false
     }

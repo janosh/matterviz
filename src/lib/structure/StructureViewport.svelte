@@ -2,8 +2,7 @@
   // A single subcanvas (one Threlte <Canvas> + <StructureScene>) used by Structure.svelte
   // for both the regular single view and each pane of the 2x2 multi-side view.
   //
-  // Each viewport owns its camera: move tracking, reset (on reset_token), and orbit-target
-  // recentering on structure change. The primary pane (index 0) additionally binds out
+  // Each viewport owns its camera: move tracking and reset (on reset_token). The primary pane (index 0) additionally binds out
   // scene/camera for the export pane and receives the on_camera_move/on_camera_reset
   // callbacks so it drives Structure's external camera API. Camera state stays local to each
   // pane; scene_props supplies caller-controlled pose overrides.

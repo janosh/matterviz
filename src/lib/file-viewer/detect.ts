@@ -2,7 +2,7 @@
 // Used by JsonBrowser and the file renderer to select visualization components.
 
 import { type VolumetricFileData, volume_from_json } from '#lib/isosurface/types.js'
-import { build_path } from '#lib/json-path.js'
+import { build_path } from 'svelte-widgets/json-tree/path'
 import { is_structure_like, optimade_structure_from_raw } from '#lib/structure/parse.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'

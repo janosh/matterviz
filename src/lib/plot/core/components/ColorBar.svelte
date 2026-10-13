@@ -299,7 +299,6 @@
           />
         {/if}
       {:else if title}
-        <!-- Only show static title if no property select -->
         <span class="label">{@html sanitize_html(title)}</span>
       {/if}
       {#if color_scale_options?.length}
@@ -356,8 +355,6 @@
   div.colorbar {
     display: flex;
     box-sizing: border-box;
-    place-items: center;
-    /* Reduced default gap */
     gap: var(--cbar-gap, 0);
     margin: var(--cbar-margin);
     padding: var(--cbar-padding);
@@ -373,7 +370,6 @@
   div.bar {
     position: relative;
     border-radius: var(--cbar-border-radius, var(--border-radius, 3pt));
-    /* Use CSS variables set inline */
     width: var(--cbar-width);
     height: var(--cbar-height);
     /* column layouts (title top/bottom) don't flex-shrink the bar, so cap it explicitly */
@@ -412,8 +408,6 @@
     position: absolute;
     font-weight: var(--cbar-tick-label-font-weight, lighter);
     font-size: var(--cbar-tick-label-font-size, var(--cbar-font-size));
-    /* text color is set dynamically/inline for inside ticks */
-    color: var(--cbar-tick-label-color, initial);
     background: var(--cbar-tick-label-bg);
     padding: var(--cbar-tick-label-padding, 0 2px);
     white-space: nowrap;
@@ -431,7 +425,6 @@
       &.tick-inside {
         top: 50%; /* Center vertically */
         transform: translate(-50%, -50%); /* Center horizontally and vertically */
-        margin: 0; /* No extra margin for inside */
       }
     }
     /* --- Vertical Ticks --- */
@@ -458,7 +451,6 @@
     align-items: center;
     gap: var(--cbar-select-gap, 0.3em);
     white-space: nowrap;
-    width: auto;
     max-width: 100%;
     &:is(.left, .right) {
       flex-direction: column;

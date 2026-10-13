@@ -44,7 +44,6 @@
     analysis_name,
     collect,
     frame_steps,
-    unavailable_reason = null,
     frame_unavailable_reason,
     suggest_stride,
     compute_label,
@@ -77,8 +76,6 @@
     collect: (run: TrajectoryRun, options: AnalysisCollectOptions) => Promise<Input>
     // Actual collected steps verify sampling when indexed previews omit intermediate frames.
     frame_steps?: (input: Input) => readonly number[]
-    // Visible explanation for a disabled compute button.
-    unavailable_reason?: string | null
     // Validate the selected first frame before enabling collection; checked reads are cancelled
     // when the run or start frame changes, independently of the analysis request.
     frame_unavailable_reason?: (frame: TrajectoryFrame) => string | null
@@ -199,10 +196,7 @@
     }, collected_frames)
   })
   const disabled_reason = $derived(
-    unavailable_reason ||
-      range_reason ||
-      frame_reason ||
-      (selected_interval === null ? timing_reason : null),
+    range_reason || frame_reason || (selected_interval === null ? timing_reason : null),
   )
   const timing_interval = $derived(
     collected_stride === null ? selected_interval : collected_interval,

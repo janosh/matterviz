@@ -72,7 +72,7 @@ export interface TrajectoryXMap {
   quantity: TrajectoryXQuantity
   label: string
   unit: string
-  // x coordinate of a frame index. Interpolated between samples for indexed trajectories,
+  // x coordinate of a frame index. Interpolated between samples for sampled (HDF5) runs,
   // whose step numbers are only known at the sampled frames.
   to_x: (frame_idx: number) => number
   // Inverse of to_x, rounded to the nearest frame index and clamped to the trajectory.
@@ -80,7 +80,7 @@ export interface TrajectoryXMap {
 }
 
 // Frame numbers paired with the MD steps recorded at them. For an eagerly parsed
-// trajectory that is every frame; for an indexed one only the sampled frames.
+// trajectory that is every frame; for a sampled (HDF5) one only the sampled frames.
 export interface FrameStepSamples {
   frame_numbers: readonly number[]
   steps: readonly number[]
@@ -202,7 +202,7 @@ export function get_frame_time_step(
   if (frame_numbers.length !== steps.length) return null
   if (!strictly_increasing(steps) || !strictly_increasing(frame_numbers)) return null
 
-  // Steps per SOURCE frame, not per sample. An indexed trajectory only records a step at
+  // Steps per SOURCE frame, not per sample. A sampled (HDF5) run only records a step at
   // every Nth frame, so the step delta between two samples spans N frames; dividing by the
   // sample count alone reports a dt N times too large.
   const step_delta = steps[1] - steps[0]
@@ -540,7 +540,6 @@ export const generate_axis_scale_types = (plot_series: DataSeries[]) =>
   get_axis_scale_types(plot_series, {
     can_use_log_scale: (series) => series.axis_group === SCF_AXIS_GROUP,
     is_visible: series_is_visible,
-    min_log_decades: 3,
   })
 
 // Last sampling per source y array, reused while x, raw_y, limit and color also match: legend

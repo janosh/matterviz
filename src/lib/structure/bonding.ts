@@ -207,7 +207,7 @@ export function remap_bonds_after_deletion(
       if (sorted[mid] < idx) lower = mid + 1
       else upper = mid
     }
-    return idx - lower // lo == count of deleted indices < idx
+    return idx - lower // lower == count of deleted indices < idx
   }
   return bonds
     .filter(

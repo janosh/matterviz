@@ -234,7 +234,7 @@ const SIDE_BASELINE: Record<ReferenceAnnotationSide, ReferenceAnnotationBaseline
 export function calculate_annotation_position(
   coord_x_1: number,
   coord_y_1: number,
-  coord_x: number,
+  coord_x_2: number,
   coord_y_2: number,
   annotation: {
     position?: `start` | `center` | `end`
@@ -254,7 +254,7 @@ export function calculate_annotation_position(
   const frac = position === `start` ? 0 : position === `center` ? 0.5 : 1
 
   // Calculate base position with edge padding applied along line direction
-  const delta_x = coord_x - coord_x_1
+  const delta_x = coord_x_2 - coord_x_1
   const delta_y = coord_y_2 - coord_y_1
   const len = Math.hypot(delta_x, delta_y)
 
@@ -273,16 +273,16 @@ export function calculate_annotation_position(
   if (len > 0) {
     // Perpendicular vector (normalized)
     const normal_x = -delta_y / len
-    const size_y = delta_x / len
+    const normal_y = delta_x / len
     let sign: number
     if (side === `above` || side === `below`) {
-      // In SVG, y increases downward. Flip sign if 'above' and perpendicular points down (ny > 0),
-      // or if 'below' and perpendicular points up (ny <= 0), to ensure offset is in correct direction
-      sign = (side === `above`) === size_y > 0 ? -1 : 1
+      // In SVG, y increases downward. Flip sign if 'above' and the normal points down
+      // (normal_y > 0), or if 'below' and it points up (normal_y <= 0)
+      sign = (side === `above`) === normal_y > 0 ? -1 : 1
     } else {
       // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
       // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
-      // perpendicular. Horizontal lines (nx == 0) fall back to right = up (-y), left = down (+y).
+      // perpendicular. Horizontal lines (normal_x == 0) fall back to right = up (-y), left = down (+y).
       const want_right = side === `right`
       sign =
         Math.abs(normal_x) > 1e-9
@@ -292,7 +292,7 @@ export function calculate_annotation_position(
             : 1
     }
     perp_x = sign * normal_x * gap
-    perp_y = sign * size_y * gap
+    perp_y = sign * normal_y * gap
   }
 
   const text_anchor =
@@ -412,8 +412,7 @@ const annotation_candidate = (
   position: ReferenceAnnotationPosition,
   side: ReferenceAnnotationSide,
 ): ReferenceAnnotationCandidate => {
-  const [coord_x_1, coord_y_1, coord_x, coord_y_2] = endpoints
-  const anchor = calculate_annotation_position(coord_x_1, coord_y_1, coord_x, coord_y_2, {
+  const anchor = calculate_annotation_position(...endpoints, {
     ...annotation,
     position,
     side,
@@ -448,10 +447,12 @@ export function create_reference_annotation_candidates(
   )
 }
 
+// Min gap (px) kept between a reference annotation and other decorations
+const REFERENCE_ANNOTATION_CLEARANCE = 4
+
 function create_reference_annotation_items(
   lines: readonly IndexedRefLine[],
   axes: ReferenceLineAxes,
-  clearance: number,
 ): ReferenceAnnotationDecorationItem[] {
   const items: ReferenceAnnotationDecorationItem[] = []
   for (const line of lines) {
@@ -464,7 +465,7 @@ function create_reference_annotation_items(
       id: reference_annotation_id(line.idx),
       kind: `reference-annotation`,
       footprint: { width: candidates[0].rect.width, height: candidates[0].rect.height },
-      clearance,
+      clearance: REFERENCE_ANNOTATION_CLEARANCE,
       candidates,
       pinned: annotation.position !== undefined || annotation.side !== undefined,
     })
@@ -478,20 +479,18 @@ export function solve_reference_annotations({
   lines,
   ranges,
   scales,
-  clearance = 4,
   ...scene
 }: Omit<DecorationScene, `items`> &
   ReferenceLineAxes & {
     base_solution: DecorationSolution
     lines: readonly IndexedRefLine[]
-    clearance?: number
   }): DecorationSolution {
   // `scene.base_pad` includes marginal reservations, so normalized obstacles project onto
   // the same pixels the annotation candidates were built from
   const annotations = solve_decorations({
     ...scene,
     exclusion_rects: [...exclusion_rects, ...decoration_placement_rects(base_solution)],
-    items: create_reference_annotation_items(lines, { ranges, scales }, clearance),
+    items: create_reference_annotation_items(lines, { ranges, scales }),
   })
   return {
     ...base_solution,

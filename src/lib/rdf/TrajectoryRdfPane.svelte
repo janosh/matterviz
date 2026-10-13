@@ -100,11 +100,11 @@
   collecting_label="Binning pair distances…"
   {...pane_options}
 >
-  <!-- with no stride control, collected_frames is the trajectory's total frame count -->
-  {#snippet controls({ collected_frames: total_frames, n_atoms })}
+  <!-- with no stride control, collected_frames is the selected frame window's count -->
+  {#snippet controls({ collected_frames: window_frames, n_atoms })}
     {@const plan =
-      total_frames > 0
-        ? sweep_frame_plan(total_frames, safe_max_frames)
+      window_frames > 0
+        ? sweep_frame_plan(window_frames, safe_max_frames)
         : { frame_numbers: [], frame_stride: 1 }}
     <label>
       Max frames
@@ -130,7 +130,7 @@
       <span class="hint">{format_num(safe_cutoff / safe_bins, `.3~g`)} Å per bin</span>
     </label>
     <p class="hint">
-      {plan.frame_numbers.length} of {total_frames} frames
+      {plan.frame_numbers.length} of {window_frames} frames
       {#if plan.frame_stride > 1}(every {plan.frame_stride}){/if}
       × {n_atoms} atoms
     </p>

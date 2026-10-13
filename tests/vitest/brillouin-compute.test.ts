@@ -372,21 +372,8 @@ describe(`generate_bz_vertices`, () => {
     )
   })
 
-  test(`max_planes_by_order parameter`, () => {
-    const skew_lattice = recip_2pi([
-      [3, 0.5, 0.2],
-      [0.1, 4, 0.3],
-      [0.2, 0.4, 5],
-    ])
-    expect(generate_bz_vertices(skew_lattice, 2, { 1: 8, 2: 15, 3: 20 }).length).toBeLessThan(
-      generate_bz_vertices(skew_lattice, 2).length,
-    )
-  })
-
   test(`clamps unchecked orders above 3`, () => {
-    const max_planes_by_order = { 1: 10, 2: 10, 3: 10, 4: 4 }
-    const third_order = generate_bz_vertices(k_lattice, 3, max_planes_by_order)
-    expect(generate_bz_vertices(k_lattice, 4 as 3, max_planes_by_order)).toEqual(third_order)
+    expect(generate_bz_vertices(k_lattice, 4 as 3)).toEqual(generate_bz_vertices(k_lattice, 3))
   })
 })
 

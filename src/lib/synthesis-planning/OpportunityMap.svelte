@@ -5,6 +5,7 @@
   import { getAbortSignal } from 'svelte'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+  import { to_error } from '#lib/utils.js'
   import { compute_opportunity_map_async } from './opportunity-map-async.svelte'
   import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
   import type { SynthesisConditions, SynthesisRoute } from './types'
@@ -91,7 +92,7 @@
         if (!signal.aborted) cells = result
       })
       .catch((cause: unknown) => {
-        if (!signal.aborted) error = cause instanceof Error ? cause.message : String(cause)
+        if (!signal.aborted) error = to_error(cause).message
       })
       .finally(() => {
         if (!signal.aborted) pending = false

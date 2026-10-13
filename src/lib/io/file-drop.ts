@@ -61,7 +61,7 @@ const source_label = (source: DropSource): string =>
 // Multiple dropped files are processed sequentially so e.g. several cube files can be
 // imported at once. Overlapping drops are queued: a batch starting while a previous one is
 // still processing would interleave handler state mutations (e.g. torn volume lists).
-export const create_drop_batch_handler = <Handled = void>(
+const create_drop_batch_handler = <Handled = void>(
   opts: DropBatchOptions<Handled>,
 ): ((event: DragEvent) => Promise<void>) => {
   const { max_files } = opts

@@ -1,15 +1,10 @@
-import { encode_frame, type NumericFrame } from '../frame'
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
+import { encode_frame, type NumericFrame } from '../frame'
 import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
-import { frame_property_row, full_data_extractor } from '../extract'
+import { frame_property_row } from '../extract'
 import { is_supported_trajectory_signal_shape, values_per_sample } from '../helpers'
-import type {
-  TrajectoryDataExtractor,
-  TrajectoryFrame,
-  TrajectoryMetadata,
-  TrajectorySignal,
-} from '../index'
+import type { TrajectoryFrame, TrajectoryMetadata, TrajectorySignal } from '../index'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -22,9 +17,8 @@ export interface MemoryRunExtras {
   atom_masses?: readonly number[]
   signals?: Record<string, TrajectorySignal>
   warnings?: readonly string[]
-  // Pre-extracted per-frame rows; otherwise `data_extractor` runs over every frame
+  // Pre-extracted per-frame rows; otherwise full_data_extractor runs over every frame
   properties?: TrajectoryMetadata[]
-  data_extractor?: TrajectoryDataExtractor
 }
 
 const is_finite_number = (value: unknown): value is number =>
@@ -100,12 +94,6 @@ function validate_frames(
   }
 }
 
-const rows_from_frames = (
-  frames: readonly TrajectoryFrame[],
-  data_extractor: TrajectoryDataExtractor = full_data_extractor,
-): TrajectoryMetadata[] =>
-  frames.map((frame, frame_idx) => frame_property_row(frame, frame_idx, data_extractor))
-
 export function trajectory_from_frames(
   frames: TrajectoryFrame[],
   extras: MemoryRunExtras = {},
@@ -123,11 +111,11 @@ export function trajectory_from_frames(
         extras.signals,
       )
     },
-    properties: extras.properties ?? rows_from_frames(frames, extras.data_extractor),
+    properties: extras.properties ?? frames.map(frame_property_row),
   })
 }
 
-type NumericRunExtras = Omit<MemoryRunExtras, `data_extractor`> & {
+type NumericRunExtras = MemoryRunExtras & {
   properties: TrajectoryMetadata[]
   read_atoms?: ReadAtoms
 }

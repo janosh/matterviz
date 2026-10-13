@@ -648,7 +648,7 @@ describe(`get_convex_hull_stats`, () => {
     [1, { unary: 1, binary: 0, ternary: 0, quaternary: 0 }],
     [2, { unary: 1, binary: 1, ternary: 0, quaternary: 0 }],
     [3, { unary: 1, binary: 1, ternary: 1, quaternary: 0 }],
-    [undefined, { unary: 1, binary: 1, ternary: 1, quaternary: 1 }],
+    [4, { unary: 1, binary: 1, ternary: 1, quaternary: 1 }],
   ])(`max_arity=%s zeroes counts beyond the system dimensionality`, (max_arity, expected) => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0),

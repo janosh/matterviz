@@ -172,7 +172,6 @@
   }
   @container (max-width: 900px) {
     .bleed-1400 .multi-structure-layout {
-      --barplot-min-height: 0;
       grid-template:
         minmax(0, 1.1fr) minmax(0, 0.9fr) /
         minmax(0, 1.1fr) minmax(0, 0.9fr);

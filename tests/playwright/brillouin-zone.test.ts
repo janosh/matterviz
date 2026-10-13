@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import {
   expect_centered,
+  expect_centered_card,
   expect_inline_spinner,
   IS_CI,
   require_bbox,
@@ -302,7 +303,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
       await viewer.evaluate((element, size) => {
         element.style.setProperty(`--bz-width`, `${size}px`)
       }, width)
-      expect(await require_bbox(alert)).toEqual(await require_bbox(viewer))
+      await expect_centered_card(alert, viewer)
     }
     await alert.getByRole(`button`, { name: `Dismiss message` }).click()
     await expect(alert).toHaveCount(0)

@@ -17,7 +17,6 @@ import {
   format_datetime,
   infer_datetime_kind,
   make_cell_color_scale,
-  merge_domains,
   middle_ellipsis_parts,
   parse_datetime_val,
   parse_numeric_val,
@@ -136,17 +135,6 @@ describe(`column stats and color domains`, () => {
     const stats = compute_column_stats(input)
     if (!stats) throw new Error(`expected stats`)
     expect(resolve_color_domain(stats, `diverging`)).toEqual(expected)
-  })
-
-  it(`merges a shared-domain group to its widest extent`, () => {
-    expect(
-      merge_domains([
-        [0, 5],
-        [-2, 3],
-        [1, 9],
-      ]),
-    ).toEqual([-2, 9])
-    expect(merge_domains([])).toBeNull()
   })
 
   it.each([`linear`, `log`] as const)(

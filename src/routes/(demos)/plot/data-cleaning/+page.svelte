@@ -255,7 +255,6 @@
   let multi_series_cleaned = $derived(
     clean_multi_series(multi_series_data.x, multi_series_data.y_arrays, {
       invalid_values: invalid_mode,
-      in_place: false,
     }),
   )
 
@@ -290,10 +289,7 @@
   })
 
   let xyz_cleaned = $derived(
-    clean_xyz(xyz_data.x, xyz_data.y, xyz_data.z, {
-      invalid_values: invalid_mode,
-      in_place: false,
-    }),
+    clean_xyz(xyz_data.x, xyz_data.y, xyz_data.z, { invalid_values: invalid_mode }),
   )
 
   // Instability onset marker

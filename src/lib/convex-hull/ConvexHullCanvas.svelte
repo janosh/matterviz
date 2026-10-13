@@ -45,15 +45,15 @@
     show_hull_faces,
     hull_face_color,
     hull_face_opacity,
-    hull_face_color_mode = `uniform`,
-    color_mode = `energy`,
-    color_scale = `interpolateViridis`,
-    max_hull_dist_show_labels = 0.1,
+    hull_face_color_mode,
+    color_mode,
+    color_scale,
+    max_hull_dist_show_labels,
     show_stable_labels = true,
     show_unstable_labels = false,
-    highlighted_entries = [],
+    highlighted_entries,
     highlight_style = {},
-    selected_entry = null,
+    selected_entry,
     overlay = { segments: [], rings: [] },
     gizmo = true,
     children,
@@ -62,18 +62,24 @@
     BaseConvexHullProps,
     | `config`
     | `wrapper`
-    | `color_mode`
-    | `color_scale`
-    | `max_hull_dist_show_labels`
     | `show_stable_labels`
     | `show_unstable_labels`
-    | `highlighted_entries`
     | `highlight_style`
-    | `selected_entry`
     | `children`
     | keyof import('svelte/elements').HTMLAttributes<HTMLDivElement>
   > &
-    Hull3DProps & {
+    Required<
+      Pick<
+        BaseConvexHullProps,
+        | `color_mode`
+        | `color_scale`
+        | `max_hull_dist_show_labels`
+        | `highlighted_entries`
+        | `selected_entry`
+      >
+    > &
+    Pick<Hull3DProps, `gizmo`> &
+    Required<Pick<Hull3DProps, `show_hull_faces` | `hull_face_color_mode`>> & {
       dim: 3 | 4
       hull_data: ReturnType<typeof create_hull_data_pipeline>
       selection: HullSelection
@@ -206,7 +212,7 @@
     gizmo_cam_ref.position.set(...position)
     gizmo_cam_ref.up.set(...up_vector)
     gizmo_cam_ref.lookAt(0, 0, 0)
-    gizmo_orbit_ref?.update?.()
+    gizmo_orbit_ref?.update()
   })
 
   // Sync: gizmo → hull camera (during and after gizmo animation)
@@ -219,7 +225,7 @@
   // `placement` positions the wrapper div, not the gizmo inside its canvas, so it is split
   // off from the appearance options forwarded to <Gizmo> (which fills its own canvas here)
   const { placement: gizmo_placement = `top-right`, ...gizmo_props } =
-    $derived<ConvexHullGizmoOptions>(typeof gizmo === `object` && gizmo ? gizmo : {})
+    $derived<ConvexHullGizmoOptions>(typeof gizmo === `object` ? gizmo : {})
 
   // Formation energy colour bar for the face shading (uniform / formation_energy modes)
   const e_form_range = $derived<Vec2>([plot_entries.length > 0 ? energy_range.min : -1, 0])

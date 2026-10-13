@@ -37,7 +37,6 @@ export const is_mmcif_content = (content: string): boolean =>
 const ATOM_SITE_FIELDS: Record<string, string> = {
   type_symbol: `symbol`,
   label_atom_id: `label`,
-  auth_atom_id: `auth_label`,
   cartn_x: `cart_x`,
   cartn_y: `cart_y`,
   cartn_z: `cart_z`,
@@ -134,7 +133,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
     )
   }
 
-  // Only the first model of an NMR / MD ensemble is parsed (see multi-model policy)
+  // Only the first model of an NMR / MD ensemble is parsed; later models are skipped
   const model_col = indices.model
   const first_model = model_col === undefined ? undefined : data_rows[0]?.[model_col]
   const model_rows =

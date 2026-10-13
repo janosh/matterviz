@@ -53,7 +53,7 @@
     get_relative_coords,
     is_activation_key,
   } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '#lib/plot/core/axis-assignment.js'
   import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
@@ -134,7 +134,7 @@
     size_scale = SCALE_DEFAULTS.size,
     on_point_click,
     on_point_hover,
-    ref_lines = $bindable([]),
+    ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
     show_controls = $bindable(`hover`),
@@ -259,9 +259,7 @@
   })
 
   // One tab stop for the whole mark group instead of one per bar/point: a 230-bar
-  // spacegroup plot would otherwise take 230 presses to tab past, and the line-point
-  // group was worse - its only tab stop was the *hovered* point, so with nothing
-  // hovered every point was tabindex=-1 and keyboard users could not enter at all.
+  // spacegroup plot would otherwise take 230 presses to tab past.
   const roving = create_roving_focus({
     container: () => frame.svg_element,
     items: () => [internal_series, frame.ranges.current],
@@ -312,14 +310,14 @@
   // Every category goes to the shared adaptive resolver, which thins them by measured width
   let cat_tick_indices = $derived(category_list.map((_, idx) => idx))
 
-  let visible_series = $derived(internal_series.filter((srs) => srs?.visible ?? true))
+  let visible_series = $derived(internal_series.filter((srs) => srs.visible ?? true))
 
   // Per-series hatch/texture tiles resolved against the bar color (null: plain fill); ids
   // are scoped to this instance so several bar plots on a page never share <pattern>s
   const pattern_uid = unique_id(`bar`)
   let series_patterns = $derived(
     internal_series.map((srs) =>
-      srs?.pattern && srs.render_mode !== `line`
+      srs.pattern && srs.render_mode !== `line`
         ? resolve_pattern(srs.pattern, srs.color ?? bar_state.color, pattern_uid)
         : null,
     ),
@@ -424,7 +422,7 @@
       const scales = create_axis_scales(plot_axes, frame.ranges.current, pad, base_w, base_h)
       const obstacle_series: ObstacleSeries[] = []
       internal_series.forEach((srs, series_idx) => {
-        if (!(srs?.visible ?? true)) return
+        if (!(srs.visible ?? true)) return
         const is_line = srs.render_mode === `line`
         const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
         const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
@@ -467,15 +465,15 @@
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     internal_series.map((srs) => ({
-      x: vertical ? (srs?.x ?? []) : undefined,
-      y: vertical ? undefined : (srs?.x ?? []),
+      x: vertical ? srs.x : undefined,
+      y: vertical ? undefined : srs.x,
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
-      weight: srs?.y?.map((value) => Math.abs(value)) ?? [],
-      color: srs?.color ?? (srs?.render_mode === `line` ? line_state.color : bar_state.color),
-      label: srs?.label,
-      visible: srs?.visible ?? true,
-      x_axis: srs?.x_axis,
-      y_axis: srs?.y_axis,
+      weight: srs.y.map((value) => Math.abs(value)),
+      color: srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color),
+      label: srs.label,
+      visible: srs.visible ?? true,
+      x_axis: srs.x_axis,
+      y_axis: srs.y_axis,
     })),
   )
   // Finite color/size bounds of the visible line series drive the shared color/size scales.
@@ -623,9 +621,9 @@
   const handle_export = create_chart_exporter(frame, () =>
     series_to_csv_rows(
       internal_series.map((srs, series_idx) => ({
-        label: srs?.label ?? `series ${series_idx + 1}`,
-        x: srs?.x ?? [],
-        y: srs?.y ?? [],
+        label: srs.label ?? `series ${series_idx + 1}`,
+        x: srs.x,
+        y: srs.y,
       })),
     ),
   )
@@ -694,8 +692,8 @@
          range-filtered by center and may extend into the padding without losing part of the icon. -->
     <g>
       <defs><PatternDefs patterns={series_patterns} /></defs>
-      {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
-        {#if srs?.visible ?? true}
+      {#each internal_series as srs, series_idx (srs.id ?? series_idx)}
+        {#if srs.visible ?? true}
           {@const is_line = srs.render_mode === `line`}
           <g
             class={is_line ? `line-series` : `bar-series`}
@@ -745,7 +743,7 @@
               {@const do_click = (point: LineSeriesPoint, evt: MouseEvent | KeyboardEvent) => {
                 const fill = line_point_fill(point, color)
                 const point_data = get_bar_data(series_idx, point.idx, fill)
-                on_point_click?.({ ...point_data, event: evt, point: point })
+                on_point_click?.({ ...point_data, event: evt, point })
               }}
               {#if polyline_str}
                 <polyline

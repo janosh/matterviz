@@ -21,9 +21,9 @@ import {
 
 export type SceneExportFormat = `stl` | `obj` | `glb`
 
-// Type guard to check if a material has a Color-like property with numeric r/g/b
-// channels (duck typing for bundler compatibility across different Three.js
-// instances - Threlte vs vanilla Three.js).
+// Whether a material has a Color-like base color. Duck-typed, not `instanceof Color`: a
+// consumer's bundle without our `three` alias carries two three copies (Threlte's `three`,
+// our `three/webgpu`), and Threlte-made materials fail instanceof checks against ours.
 function has_color_property(mat: Material): mat is Material & { color: Color } {
   const color = (mat as { color?: unknown }).color
   if (!color || typeof color !== `object`) return false
@@ -73,7 +73,7 @@ export function generate_mtl_content(scene: Object3D): string {
   const processed_materials = new Set<string>()
   // MTL carries no color space, but three's own MTLLoader reads Kd/Ka as sRGB, so emitting a
   // material's working-space channels verbatim round-trips ~2x too dark. Converted through a
-  // Color we own because has_color_property only duck-types r/g/b off foreign three instances.
+  // Color we own, since has_color_property only duck-types r/g/b off a possibly foreign three copy.
   const srgb_color = new Color()
   const fmt = (val: number) => clamp01(val).toFixed(6)
   // `scale` is applied in linear light before encoding — 20% ambient reflectance means 20% of
@@ -117,15 +117,14 @@ export function generate_mtl_content(scene: Object3D): string {
   return lines.join(`\n`)
 }
 
-// Type guard for InstancedMesh (Three.js uses isInstancedMesh property, not exposed in
-// Object3D type). Threlte's InstancedMesh sets isInstancedMesh=true but type stays "Mesh".
+// Three's InstancedMesh (flag duck-typed for the same two-copies reason as above) or one of
+// the structure viewer's instanced-geometry meshes
 type ExportInstances = InstancedMesh | AtomInstances | ArrowMesh | BondMesh
 const is_instanced_mesh = (obj: Object3D): obj is ExportInstances =>
   obj instanceof AtomInstances ||
   obj instanceof ArrowMesh ||
   obj instanceof BondMesh ||
-  (obj as InstancedMesh).isInstancedMesh ||
-  obj.type === `InstancedMesh`
+  (obj as { isInstancedMesh?: boolean }).isInstancedMesh === true
 
 // Copy of `scene` with every InstancedMesh expanded into a Group of plain Meshes (one per
 // instance, carrying its resolved color), since the GLB/OBJ exporters don't handle instancing

@@ -5,6 +5,7 @@
 import { GAS_SPECIES } from '#lib/convex-hull/types.js'
 import { format_num, plural } from '#lib/labels.js'
 import { format_mev } from './format-mev'
+import { DEFAULT_MAX_E_ABOVE_HULL } from './plan'
 import { format_recipe_text } from './recipe'
 import { DEFAULT_SCORE_WEIGHTS, describe_interface } from './scoring'
 import type { SynthesisPlan, SynthesisRoute } from './types'
@@ -76,7 +77,7 @@ export const SYNTHESIS_PLAN_REQUEST_SCHEMA = {
         max_e_above_hull: {
           type: `number`,
           minimum: 0,
-          default: 0.03,
+          default: DEFAULT_MAX_E_ABOVE_HULL,
           description: `Max 0 K hull distance (eV/atom) for a phase to count as an obtainable precursor.`,
         },
         only_common: {
@@ -119,7 +120,7 @@ export const SYNTHESIS_PLANNER_TOOL = {
   input_schema: SYNTHESIS_PLAN_REQUEST_SCHEMA,
 } as const
 
-export function format_route_text(route: SynthesisRoute, rank?: number): string {
+function format_route_text(route: SynthesisRoute, rank?: number): string {
   const { reaction, selectivity, thermodynamics, practicality } = route
   const lines: string[] = []
   const header = `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${format_num(route.score, `.2~f`)}${

@@ -11,11 +11,6 @@
 
   let bin_count = $state(20)
   let sample_size = $state(1000)
-  let normal_visible = $state(true)
-  let exponential_visible = $state(true)
-  let uniform_visible = $state(true)
-  let overlay_opacity = $state(0.7)
-  let stroke_width = $state(1.5)
   let x_scale: ScaleType = $state(`linear`)
   let y_scale: ScaleType = $state(`linear`)
 
@@ -30,17 +25,11 @@
     series(generate_normal(sample_size, 5, 2), `Normal Distribution`, `#2563eb`),
   ])
 
-  let multiple_series_data = $derived([
-    series(generate_normal(500, 5, 2), `Normal (μ=5, σ=2)`, `#2563eb`, {
-      visible: normal_visible,
-    }),
-    series(generate_exponential(500, 0.3), `Exponential (λ=0.3)`, `#dc2626`, {
-      visible: exponential_visible,
-    }),
-    series(generate_uniform(500, 0, 15), `Uniform (0-15)`, `#16a34a`, {
-      visible: uniform_visible,
-    }),
-  ])
+  const multiple_series_data = [
+    series(generate_normal(500, 5, 2), `Normal (μ=5, σ=2)`, `#2563eb`),
+    series(generate_exponential(500, 0.3), `Exponential (λ=0.3)`, `#dc2626`),
+    series(generate_uniform(500, 0, 15), `Uniform (0-15)`, `#16a34a`),
+  ]
 
   const log_data = [
     series(generate_log_normal(1000, 2, 0.6), `Log-normal`, `#2563eb`),
@@ -77,24 +66,13 @@
   />
 </section>
 
-<label
-  >Opacity: <input type="range" min="0.1" max="1" step="0.1" bind:value={overlay_opacity} />
-  {overlay_opacity}</label
->
-<label
-  >Stroke Width: <input type="range" min="0.5" max="5" step="0.5" bind:value={stroke_width} />
-  {stroke_width}</label
->
-<label><input type="checkbox" bind:checked={normal_visible} /> Normal</label>
-<label><input type="checkbox" bind:checked={exponential_visible} /> Exponential</label>
-<label><input type="checkbox" bind:checked={uniform_visible} /> Uniform</label>
 <Histogram
   id="multiple-series-overlay"
   series={multiple_series_data}
   bins={30}
   mode="overlay"
   show_legend
-  bar={{ opacity: overlay_opacity, stroke_width }}
+  bar={{ opacity: 0.7, stroke_width: 1.5 }}
 />
 
 <section data-testid="logarithmic-scales-section">

@@ -757,7 +757,7 @@
         "matterviz.fermi.color_property": {
           "type": "string",
           "default": "band",
-          "description": "Quantity mapped onto the Fermi surface color scale ('velocity' and 'custom' were removed; use 'property')",
+          "description": "Quantity mapped onto the Fermi surface color scale",
           "enum": [
             "band",
             "spin",

@@ -4,6 +4,7 @@
   // of ~T. Defaults to phonopy's kJ/mol and J/(K·mol) so plots compare directly.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { DataSeries, ScatterPlotOptions } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
@@ -75,13 +76,18 @@
   })
 </script>
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
-<ScatterPlot
-  {...rest}
-  {series}
-  x_axis={{ label: `T (K)`, ...x_axis }}
-  y_axis={{ label: `F, U (${axis_units.y.label})`, ...y_axis }}
-  y2_axis={{ label: `S, C<sub>v</sub> (${axis_units.y2.label})`, ...y2_axis }}
-  style={rest.style ?? `height: 400px;`}
-/>
+<!-- one positioned root: the error floats over the plot instead of taking a grid cell
+     or pushing it down -->
+<div style="position: relative; height: 100%">
+  <ScatterPlot
+    {...rest}
+    {series}
+    x_axis={{ label: `T (K)`, ...x_axis }}
+    y_axis={{ label: `F, U (${axis_units.y.label})`, ...y_axis }}
+    y2_axis={{ label: `S, C<sub>v</sub> (${axis_units.y2.label})`, ...y2_axis }}
+    style={rest.style ?? `height: 400px;`}
+  />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
+</div>

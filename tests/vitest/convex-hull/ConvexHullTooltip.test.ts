@@ -18,7 +18,6 @@ type TooltipProps = {
   entry: PhaseData
   polymorph_stats_map?: Map<string, PolymorphStats>
   highlight_style?: { color?: string }
-  show_fractional?: boolean
   tooltip?: ConvexHullTooltipProp
 }
 
@@ -134,11 +133,8 @@ describe(`ConvexHullTooltip`, () => {
       expect(html).not.toMatch(/[½⅓⅔]/)
     })
 
-    test.each([
-      [`unary entry`, { Fe: 1 }, true],
-      [`show_fractional=false`, { Fe: 1, O: 2 }, false],
-    ])(`hides fractional for %s`, (_desc, composition, show_fractional) => {
-      mount_tooltip({ entry: mock_entry({ composition }), show_fractional })
+    test(`hides fractional for unary entries`, () => {
+      mount_tooltip({ entry: mock_entry({ composition: { Fe: 1 } }) })
       expect(document.body.textContent).not.toContain(`Fractional:`)
     })
 

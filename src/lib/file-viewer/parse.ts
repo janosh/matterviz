@@ -47,7 +47,7 @@ import { detect_view_type, volume_json_to_isosurface_input } from './detect'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types
-// via its internal mount_into, giving the user a tree view alongside the viz).
+// via mount_viewer, giving the user a tree view alongside the viz).
 // structure and volumetric have special handling in parse_file_content below.
 const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
   convex_hull: `convex_hull`,

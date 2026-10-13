@@ -124,7 +124,7 @@ export class LabelProjector {
     // Screen direction of the offset: project position + offset and take the
     // screen-space delta. Projecting the second point (instead of just rotating
     // the offset into view space) keeps perspective foreshortening exact for
-    // offsets with a depth component, matching the pre-projector behavior.
+    // offsets with a depth component.
     const [off_x, off_y, off_z] = offset
     const end_x = pos_x + off_x
     const end_y = pos_y + off_y

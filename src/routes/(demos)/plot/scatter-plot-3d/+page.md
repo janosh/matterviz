@@ -680,12 +680,11 @@ Define a plane by specifying three non-collinear points:
 
   // Three points defining a plane
   const point_1 = [1, 0, 0]
-  const point = [0, 1, 0]
+  const point_2 = [0, 1, 0]
   const point_3 = [0, 0, 1]
 
   // Generate random points near the plane
   const n_points = 50
-  const plane_normal = { x: 1, y: 1, z: 1 }
   const plane_points = {
     x: [],
     y: [],
@@ -700,13 +699,13 @@ Define a plane by specifying three non-collinear points:
     const param_3 = 1 - param_1 - param_2
     const noise = (Math.random() - 0.5) * 0.3
     plane_points.x.push(
-      point_1[0] * param_1 + point[0] * param_2 + point_3[0] * param_3 + noise,
+      point_1[0] * param_1 + point_2[0] * param_2 + point_3[0] * param_3 + noise,
     )
     plane_points.y.push(
-      point_1[1] * param_1 + point[1] * param_2 + point_3[1] * param_3 + noise,
+      point_1[1] * param_1 + point_2[1] * param_2 + point_3[1] * param_3 + noise,
     )
     plane_points.z.push(
-      point_1[2] * param_1 + point[2] * param_2 + point_3[2] * param_3 + noise,
+      point_1[2] * param_1 + point_2[2] * param_2 + point_3[2] * param_3 + noise,
     )
   }
 
@@ -715,7 +714,7 @@ Define a plane by specifying three non-collinear points:
     {
       type: `points`,
       p1: point_1,
-      p2: point,
+      p2: point_2,
       p3: point_3,
       label: `Fitted Plane`,
       style: {
@@ -740,7 +739,7 @@ Define a plane by specifying three non-collinear points:
     {
       type: `segment`,
       p1: [0, 0, 0],
-      p2: point,
+      p2: point_2,
       style: { color: `#2ecc71`, width: 2 },
       label: `To P2`,
     },
@@ -752,8 +751,8 @@ Define a plane by specifying three non-collinear points:
       label: `To P3`,
     },
     // Triangle edges
-    { type: `segment`, p1: point_1, p2: point, style: { color: `#3498db`, width: 3 } },
-    { type: `segment`, p1: point, p2: point_3, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: point_1, p2: point_2, style: { color: `#3498db`, width: 3 } },
+    { type: `segment`, p1: point_2, p2: point_3, style: { color: `#3498db`, width: 3 } },
     { type: `segment`, p1: point_3, p2: point_1, style: { color: `#3498db`, width: 3 } },
   ]
 </script>

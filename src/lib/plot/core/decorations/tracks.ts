@@ -82,7 +82,7 @@ export const create_legend_decoration_item = ({
   enabled: boolean
   footprint: DecorationSize
   items: readonly LegendGridItem[]
-  config?: LegendDecorationConfig | null
+  config?: LegendDecorationConfig
 }): LegendDecorationItem | null => {
   if (!enabled) return null
   return {

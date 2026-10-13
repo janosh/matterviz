@@ -45,23 +45,23 @@ export function bar_path(
   vertical: boolean = true,
   flip: boolean = false,
 ): string {
-  const radius_2 = Math.min(radius, width_value / 2, height_value / 2)
-  if (!(radius_2 > 0))
+  const clamped_radius = Math.min(radius, width_value / 2, height_value / 2)
+  if (!(clamped_radius > 0))
     return `M${coord_x},${coord_y}h${width_value}v${height_value}h${-width_value}Z`
 
   const sweep = flip ? 0 : 1
   if (vertical) {
     const y_start = flip ? coord_y : coord_y + height_value
-    const y_arc = flip ? coord_y + height_value - radius_2 : coord_y + radius_2
+    const y_arc = flip ? coord_y + height_value - clamped_radius : coord_y + clamped_radius
     const y_tip = flip ? coord_y + height_value : coord_y
-    return `M${coord_x},${y_start}V${y_arc}A${radius_2},${radius_2} 0 0 ${sweep} ${coord_x + radius_2},${y_tip}H${
-      coord_x + width_value - radius_2
-    }A${radius_2},${radius_2} 0 0 ${sweep} ${coord_x + width_value},${y_arc}V${y_start}Z`
+    return `M${coord_x},${y_start}V${y_arc}A${clamped_radius},${clamped_radius} 0 0 ${sweep} ${coord_x + clamped_radius},${y_tip}H${
+      coord_x + width_value - clamped_radius
+    }A${clamped_radius},${clamped_radius} 0 0 ${sweep} ${coord_x + width_value},${y_arc}V${y_start}Z`
   }
   const x_start = flip ? coord_x + width_value : coord_x
-  const x_arc = flip ? coord_x + radius_2 : coord_x + width_value - radius_2
+  const x_arc = flip ? coord_x + clamped_radius : coord_x + width_value - clamped_radius
   const x_tip = flip ? coord_x : coord_x + width_value
-  return `M${x_start},${coord_y}H${x_arc}A${radius_2},${radius_2} 0 0 ${sweep} ${x_tip},${coord_y + radius_2}V${
-    coord_y + height_value - radius_2
-  }A${radius_2},${radius_2} 0 0 ${sweep} ${x_arc},${coord_y + height_value}H${x_start}Z`
+  return `M${x_start},${coord_y}H${x_arc}A${clamped_radius},${clamped_radius} 0 0 ${sweep} ${x_tip},${coord_y + clamped_radius}V${
+    coord_y + height_value - clamped_radius
+  }A${clamped_radius},${clamped_radius} 0 0 ${sweep} ${x_arc},${coord_y + height_value}H${x_start}Z`
 }

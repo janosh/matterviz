@@ -1,7 +1,6 @@
 // Pure data-shaping logic for BarPlot: categorical x-value normalization,
 // auto-range computation (incl. stacked totals + zero-clamping), stacked-bar
-// offsets and grouped-bar layout info. Extracted from BarPlot.svelte so the
-// math is unit-testable without mounting the component.
+// offsets and grouped-bar layout info.
 
 import type { Vec2 } from '#lib/math.js'
 import {
@@ -298,7 +297,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
 export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
   internal_series: readonly NumericBarSeries<Metadata>[],
   mode: BarMode,
-  orientation: Orientation = `vertical`,
+  orientation: Orientation,
 ): number[][] {
   if (mode !== `stacked`) return []
   const offsets = internal_series.map((srs) => Array.from(srs.x, () => 0))
@@ -320,7 +319,6 @@ export function compute_stacked_offsets<Metadata = Record<string, unknown>>(
 }
 
 export interface GroupInfo {
-  bar_series_count: number
   bar_series_indices: number[] // original indices into internal_series of visible bar series
 }
 
@@ -330,9 +328,9 @@ export function compute_group_info<Metadata = Record<string, unknown>>(
   internal_series: readonly NumericBarSeries<Metadata>[],
   mode: BarMode,
 ): GroupInfo {
-  if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
+  if (mode !== `grouped`) return { bar_series_indices: [] }
   const bar_series_indices = internal_series
     .map((srs, idx) => ((srs.visible ?? true) && srs.render_mode !== `line` ? idx : -1))
     .filter((idx) => idx >= 0)
-  return { bar_series_count: bar_series_indices.length, bar_series_indices }
+  return { bar_series_indices }
 }

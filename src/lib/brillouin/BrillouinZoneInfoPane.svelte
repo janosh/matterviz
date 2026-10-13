@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { InfoPaneCard, InfoPaneRow, PaneProps } from '#lib/overlays/index.js'
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '#lib/labels.js'
@@ -13,12 +13,10 @@
     pane_open = $bindable(false),
     structure,
     bz_data,
-    pane_props = {},
   }: {
     pane_open?: boolean
     structure?: Crystal
     bz_data?: BrillouinZoneData
-    pane_props?: PaneProps
   } = $props()
 
   let sym_data = $state<MoyoDataset | null>(null)
@@ -95,7 +93,6 @@
     bind:open={pane_open}
     pane_name="Brillouin zone info"
     class_prefix="bz-info"
-    {pane_props}
     closed_icon={info_pane_icon}
   >
     <InfoPaneCards cards={pane_cards} empty_label="Brillouin zone info" />

@@ -5,7 +5,6 @@ export {
   Hdf5GroupSelectionRequiredError,
   open_trajectory,
   type OpenTrajectoryOptions,
-  source_byte_size,
   trajectory_from_frames,
   trajectory_from_json,
   VaspoutElectronicOnlyError,

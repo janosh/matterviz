@@ -246,14 +246,6 @@
     const radius = parse_radius(value)
     if (radius !== null) site_radius_overrides.set(site_idx, radius)
   }
-
-  // Same rule the scene renders with
-  const get_site_radius = (site_idx: number): number => {
-    const site = structure?.sites?.[site_idx]
-    return site
-      ? site_base_radius(site, site_idx, { element_radius_overrides, site_radius_overrides })
-      : (site_radius_overrides.get(site_idx) ?? 1)
-  }
 </script>
 
 {#snippet mode_selector_snippet()}
@@ -320,12 +312,16 @@
           {@attach tooltip({ placement: `top` })}
         >
           <span class="site-label">{main_elem}{site_idx}</span>
+          <!-- same rule the scene renders with -->
           <input
             type="number"
             min={MIN_RADIUS}
             max={MAX_RADIUS}
             step={0.05}
-            value={get_site_radius(site_idx)}
+            value={site_base_radius(site, site_idx, {
+              element_radius_overrides,
+              site_radius_overrides,
+            })}
             oninput={(event) => update_site_radius(site_idx, event.currentTarget.value)}
           />
           <span class="unit">Å</span>
@@ -484,7 +480,7 @@
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
     bind:this={property_legend_node}
     {...rest}
-    class={[`atom-legend property-legend atom-color-legend`, rest.class]}
+    class={[`atom-legend property-legend`, rest.class]}
     style="font-size: var(--struct-legend-font, clamp(9pt, 3cqmin, 14pt)); {rest.style ?? ``}"
   >
     {@render mode_selector_snippet()}
@@ -533,7 +529,7 @@
         {@const is_hidden = hidden_prop_vals.has(value)}
         <div class="legend-item">
           <span
-            class={['category-label color-swatch', { hidden: is_hidden }]}
+            class={['category-label', { hidden: is_hidden }]}
             style:background-color={color}
             style:color={property_text_color(color)}
           >

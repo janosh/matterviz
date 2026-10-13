@@ -1,5 +1,5 @@
-// 1-D Gaussian kernel density estimation for violin plots.
-// Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
+// 1-D Gaussian kernel density estimation for violins and marginal density curves.
+// Never mutates inputs.
 
 import type { Vec2 } from '#lib/math.js'
 import { array_extent, clamp, quantile_unordered, sample_std } from '#lib/math.js'

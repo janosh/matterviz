@@ -315,9 +315,9 @@
         scale={{ fn: color_scale_fn, domain: color_domain }}
         scale_type={normalized_color_scale.type}
         range={color_domain}
-        wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar?.wrapper_style ??
+        wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar.wrapper_style ??
           ``}"
-        bar_style="width: 200px; height: 16px; {color_bar?.bar_style ?? ``}"
+        bar_style="width: 200px; height: 16px; {color_bar.bar_style ?? ``}"
       />
     {/if}
 

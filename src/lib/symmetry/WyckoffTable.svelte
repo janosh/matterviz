@@ -16,7 +16,6 @@
     show_unoccupied = false,
     on_hover,
     on_click,
-    active_color = `#2563eb`,
     ...rest
   }: HTMLAttributes<HTMLTableElement> & {
     wyckoff_positions: WyckoffPos[]
@@ -24,7 +23,6 @@
     show_unoccupied?: boolean
     on_hover?: (site_indices: number[] | null) => void
     on_click?: (site_indices: number[] | null) => void
-    active_color?: string
   } = $props()
   // Enclosing viewer's element colors (page-wide ones when standalone)
   const palette = get_element_palette()
@@ -90,7 +88,6 @@
         <tr
           class={['wyckoff-row', { selected: is_selected }]}
           tabindex="0"
-          style="--active-color: {active_color}; --hover-color: #6cf0ff"
           onmouseenter={() => on_hover?.(site_indices)}
           onmouseleave={() => on_hover?.(null)}
           onclick={() => select_row(row_key, wyckoff_pos)}
@@ -158,12 +155,12 @@
     transition: background-color 0.2s ease;
   }
   .wyckoff-row:hover {
-    background-color: color-mix(in srgb, var(--hover-color) 25%, transparent);
+    background-color: color-mix(in srgb, #6cf0ff 25%, transparent);
   }
   .wyckoff-row.selected {
-    background-color: color-mix(in srgb, var(--active-color) 30%, transparent);
+    background-color: color-mix(in srgb, #2563eb 30%, transparent);
   }
   .wyckoff-row.selected:hover {
-    background-color: color-mix(in srgb, var(--active-color) 35%, transparent);
+    background-color: color-mix(in srgb, #2563eb 35%, transparent);
   }
 </style>

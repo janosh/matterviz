@@ -120,7 +120,4 @@ a pan behind it must not make it vanish under the cursor -->
     padding: 0;
     font-size: inherit;
   }
-  .close-btn:hover {
-    background: var(--pane-btn-bg-hover);
-  }
 </style>

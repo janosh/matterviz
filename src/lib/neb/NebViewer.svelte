@@ -198,12 +198,7 @@
   })
 </script>
 
-<div
-  {...rest}
-  bind:this={wrapper}
-  class={[`neb-viewer sequence-viewer`, rest.class]}
-  {@attach drop_zone}
->
+<div {...rest} bind:this={wrapper} class={[`neb-viewer`, rest.class]} {@attach drop_zone}>
   {#if !active || !profile}
     <div class="empty">
       <StatusMessage

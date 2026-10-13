@@ -70,13 +70,10 @@ function assert_string_array(value: unknown, path: string): asserts value is str
 
 function validate_gas_provider(value: unknown): asserts value is GasThermodynamicsProvider {
   assert_object(value, `conditions.gas_provider`)
-  for (const method of [
-    `get_standard_chemical_potential`,
-    `get_supported_gases`,
-    `get_temperature_range`,
-  ]) {
-    if (typeof value[method] !== `function`)
-      fail_validation(`conditions.gas_provider.${method} must be a function`)
+  if (typeof value.get_standard_chemical_potential !== `function`) {
+    fail_validation(
+      `conditions.gas_provider.get_standard_chemical_potential must be a function`,
+    )
   }
 }
 

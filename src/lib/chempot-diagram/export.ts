@@ -1,6 +1,5 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
 import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '#lib/io/export.js'
-import { download } from '#lib/io/fetch.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { export_scene_as } from '#lib/scene/index.js'
 import { escape_html as xml_escape } from '#lib/utils.js'
@@ -11,7 +10,7 @@ export const get_json_string = (payload: unknown): string => JSON.stringify(payl
 export const export_json_file = (
   payload: unknown,
   basename: string,
-  save: FileSaver = download,
+  save: FileSaver,
 ): void | Promise<void> =>
   save(get_json_string(payload), `${basename}.json`, `application/json`)
 
@@ -49,12 +48,6 @@ export function get_view_settings(opts: {
     camera_target: xyz_tuple(camera_target),
   }
 }
-
-export const export_view_json_file = (
-  view_settings: Record<string, unknown>,
-  basename: string,
-  save: FileSaver = download,
-): void | Promise<void> => export_json_file(view_settings, `${basename}-view`, save)
 
 interface OverlayTextItem {
   x: number
@@ -97,7 +90,7 @@ export async function export_png_file(
   wrapper: HTMLElement | undefined,
   basename: string,
   png_dpi: number,
-  save: FileSaver = download,
+  save: FileSaver,
 ): Promise<void> {
   const gl_canvas = get_gl_canvas(wrapper)
   if (!gl_canvas || !wrapper) return
@@ -150,7 +143,7 @@ export function export_svg_file(
   wrapper: HTMLElement | undefined,
   basename: string,
   view_settings: Record<string, unknown>,
-  save: FileSaver = download,
+  save: FileSaver,
 ): void | Promise<void> {
   const gl_canvas = get_gl_canvas(wrapper)
   if (!gl_canvas || !wrapper) return
@@ -182,26 +175,20 @@ export function export_svg_file(
 }
 
 interface ChemPotGlbParts {
-  hull_geometry?: THREE.BufferGeometry | null
-  hull_opacity?: number
+  hull_geometry: THREE.BufferGeometry | null
+  hull_opacity: number
   edge_geometry: THREE.BufferGeometry
-  formula_meshes?: { geometry: THREE.BufferGeometry; color: string }[]
-  formula_edges?: { geometry: THREE.BufferGeometry; color: string }[]
+  formula_meshes: { geometry: THREE.BufferGeometry; color: string }[]
+  formula_edges: { geometry: THREE.BufferGeometry; color: string }[]
 }
 
 // Rebuild the scene from its geometries and export as binary GLTF
 export function export_glb_file(
   parts: ChemPotGlbParts,
   basename: string,
-  save: FileSaver = download,
+  save: FileSaver,
 ): Promise<void> {
-  const {
-    hull_geometry,
-    hull_opacity = 0.25,
-    edge_geometry,
-    formula_meshes = [],
-    formula_edges = [],
-  } = parts
+  const { hull_geometry, hull_opacity, edge_geometry, formula_meshes, formula_edges } = parts
   const export_root = new THREE.Group()
   const add_mesh = (
     geometry: THREE.BufferGeometry,

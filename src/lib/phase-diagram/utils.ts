@@ -455,7 +455,7 @@ export function format_hover_info_text(
   return lines.join(`\n`)
 }
 
-// Calculate temperature stability range for a phase at given composition
+// Temperature span of a phase region: its lowest and highest vertex temperatures
 export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {

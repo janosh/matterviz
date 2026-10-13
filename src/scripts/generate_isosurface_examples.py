@@ -75,7 +75,7 @@ def frac_to_cart(frac: Vec3, lattice: list[Vec3]) -> Vec3:
 def write_cube(
     title: str,
     atoms: list[Atom],
-    n_grid: int | tuple[int, int, int],
+    n_grid: int,
     box_size: float,
     density_fn: Callable[[Vec3], float],
     orbital: bool = False,
@@ -85,16 +85,13 @@ def write_cube(
     Args:
         title: two-line title for the file header
         atoms: list of (Z, x, y, z) in Angstrom
-        n_grid: grid points per axis (int for cubic, tuple for non-cubic)
+        n_grid: grid points per axis (cubic grid)
         box_size: box side length in Angstrom (centered at origin)
         density_fn: Cartesian position in Angstrom -> value
         orbital: if True, write negative n_atoms + orbital header line
     """
-    count_x, count_y, count_z = (
-        (n_grid, n_grid, n_grid) if isinstance(n_grid, int) else n_grid
-    )
     origin = [-box_size / 2] * 3
-    voxel = box_size / max(count_x, count_y, count_z)
+    voxel = box_size / n_grid
     voxel_bohr = voxel * ANG_TO_BOHR
     origin_bohr = [coord * ANG_TO_BOHR for coord in origin]
 
@@ -103,9 +100,9 @@ def write_cube(
     lines.append(
         f"    {n_sign}   {origin_bohr[0]:.6f}   {origin_bohr[1]:.6f}   {origin_bohr[2]:.6f}"
     )
-    lines.append(f"   {count_x}   {voxel_bohr:.6f}   0.000000   0.000000")
-    lines.append(f"   {count_y}   0.000000   {voxel_bohr:.6f}   0.000000")
-    lines.append(f"   {count_z}   0.000000   0.000000   {voxel_bohr:.6f}")
+    lines.append(f"   {n_grid}   {voxel_bohr:.6f}   0.000000   0.000000")
+    lines.append(f"   {n_grid}   0.000000   {voxel_bohr:.6f}   0.000000")
+    lines.append(f"   {n_grid}   0.000000   0.000000   {voxel_bohr:.6f}")
 
     for z_num, atom_x, atom_y, atom_z in atoms:
         charge = float(z_num) if not orbital else 0.0
@@ -117,11 +114,11 @@ def write_cube(
         lines.append("    1    1")
 
     values = []
-    for index_x in range(count_x):
+    for index_x in range(n_grid):
         coord_x = origin[0] + index_x * voxel
-        for index_y in range(count_y):
+        for index_y in range(n_grid):
             coord_y = origin[1] + index_y * voxel
-            for index_z in range(count_z):
+            for index_z in range(n_grid):
                 coord_z = origin[2] + index_z * voxel
                 values.append(density_fn((coord_x, coord_y, coord_z)))
 

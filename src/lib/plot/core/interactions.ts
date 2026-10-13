@@ -7,7 +7,11 @@ import type {
   Y2SyncConfig,
   Y2SyncMode,
 } from '#lib/plot/core/types.js'
-import { get_arcsinh_threshold, get_scale_type_name } from '#lib/plot/core/types.js'
+import {
+  get_arcsinh_threshold,
+  get_scale_type_name,
+  is_y2_sync_mode,
+} from '#lib/plot/core/types.js'
 
 // Get coordinates of a mouse event relative to an element (the event's
 // currentTarget by default; pass `element` when the handler is delegated and the
@@ -64,8 +68,12 @@ export function closest_data_idx(
 // Normalize Y2 sync config (handle shorthand string vs full object)
 export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): Y2SyncConfig {
   if (!sync || sync === `none`) return { mode: `none` }
-  if (typeof sync === `string`) return { mode: sync }
-  return sync
+  const config = typeof sync === `string` ? { mode: sync } : sync
+  // untyped hosts (anywidget JSON) can send a typo or omit mode, which would silently align
+  if (!is_y2_sync_mode(config.mode)) {
+    throw new Error(`Unknown y2 sync mode ${JSON.stringify(config.mode)}`)
+  }
+  return config
 }
 
 // Helper to check if all values in ranges are finite
@@ -79,7 +87,6 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
 
   // Synced: Y2 has exact same range as Y1
   if (sync.mode === `synced`) return [y1_range[0], y1_range[1]]
-  if (sync.mode !== `align`) return y2_base_range
 
   // Align: Position so align_val (default 0) is at same relative position on both axes
   // Y2 range expands as needed to show all data while maintaining alignment
@@ -88,11 +95,8 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   if (y1_span === 0) return y2_base_range
 
   // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
-  // below assumes value rises with the fraction, which only holds on an ascending axis, and
-  // a descending y1 is a supported mode: measuring from y1_range[0] there both mirrored y2
-  // against it (y2 counting up while y1 counted down) and sized the range off the wrong
-  // constraint, so y1 [10, 0] against y2 data [0, 5] gave [-5, 5] instead of [5, 0]. Solve
-  // in ascending space, then hand the pair back pointing y1's way.
+  // below assumes value rises with the fraction, so solve in ascending space and hand the
+  // pair back pointing y1's way: a descending y1 [10, 0] against y2 data [0, 5] gives [5, 0].
   const descending = y1_span < 0
   const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
@@ -209,9 +213,9 @@ export const range_bounds = (range: Vec2): Vec2 =>
   range[0] <= range[1] ? range : [range[1], range[0]]
 
 // Point a range the way `current` runs, so a zoom keeps a descending axis descending
-export const orient_range = (range: Vec2, current?: Vec2): Vec2 => {
+export const orient_range = (range: Vec2, current: Vec2): Vec2 => {
   const [lower, upper] = range_bounds(range)
-  return current && current[0] > current[1] ? [upper, lower] : [lower, upper]
+  return current[0] > current[1] ? [upper, lower] : [lower, upper]
 }
 
 // Invert a drag-rect edge pair through a scale (Dates from time scales become epoch numbers)
@@ -220,7 +224,7 @@ export function invert_rect_range(
   scale: { invert: (pixel_x: number) => number | Date },
   a_px: number,
   b_px: number,
-  current?: Vec2,
+  current: Vec2,
 ): Vec2 | null {
   const inverted: Vec2 = [to_epoch_num(scale.invert(a_px)), to_epoch_num(scale.invert(b_px))]
   const range = orient_range(inverted, current)
@@ -312,7 +316,7 @@ export const MIN_TOUCH_DISTANCE_PIXELS = 10
 export function expand_range_if_needed(
   current: Vec2,
   new_range: Vec2,
-  has_data = true,
+  has_data: boolean,
 ): { range: Vec2; changed: boolean } {
   // Guard against NaN/Infinity - prefer valid range, fall back to [0, 1] if both invalid
   const current_valid = all_finite(current)

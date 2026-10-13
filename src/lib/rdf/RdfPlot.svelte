@@ -3,6 +3,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
   import { plural } from '#lib/labels.js'
@@ -182,43 +183,48 @@
   ])
 </script>
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
+<!-- one positioned root: the error floats over the plot instead of taking a grid cell
+     or pushing it down -->
+<div style="position: relative; height: 100%">
+  {#if allow_file_drop && drag_dropped.length > 0}
+    <div class="dropped-info">
+      {plural(drag_dropped.length, `structure`)} loaded
+      <button onclick={() => (drag_dropped = [])}>Clear</button>
+    </div>
+  {/if}
 
-{#if allow_file_drop && drag_dropped.length > 0}
-  <div class="dropped-info">
-    {plural(drag_dropped.length, `structure`)} loaded
-    <button onclick={() => (drag_dropped = [])}>Clear</button>
-  </div>
-{/if}
-
-{#if series.length === 0}
-  <div class="empty-drop" {@attach drop_zone}>
-    <StatusMessage
-      message={loading
-        ? loading_message
-        : allow_file_drop
-          ? `Drag and drop structure files here to visualize RDFs`
-          : `No RDF data to display`}
-      style="border: none"
-    />
-  </div>
-{:else}
-  <ScatterPlot
-    {...rest}
-    bind:show_controls
-    bind:controls_open
-    {series}
-    {ref_lines}
-    x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
-    y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
-    styles={{ show_lines: true, show_points: false, ...rest.styles }}
-    style={rest.style ?? `height: 400px;`}
-    {...hover_props}
-    {@attach drop_zone}
-  >
-    {@render children?.({ drag_dropped })}
-  </ScatterPlot>
-{/if}
+  {#if series.length === 0}
+    <div class="empty-drop" {@attach drop_zone}>
+      <StatusMessage
+        message={loading
+          ? loading_message
+          : allow_file_drop
+            ? `Drag and drop structure files here to visualize RDFs`
+            : `No RDF data to display`}
+        style="border: none"
+      />
+    </div>
+  {:else}
+    <ScatterPlot
+      {...rest}
+      bind:show_controls
+      bind:controls_open
+      {series}
+      {ref_lines}
+      x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
+      y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
+      styles={{ show_lines: true, show_points: false, ...rest.styles }}
+      style={rest.style ?? `height: 400px;`}
+      {...hover_props}
+      {@attach drop_zone}
+    >
+      {@render children?.({ drag_dropped })}
+    </ScatterPlot>
+  {/if}
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
+</div>
 
 <style>
   :global(.dragover) {

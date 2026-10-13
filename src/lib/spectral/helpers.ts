@@ -550,7 +550,6 @@ export function frac_k_to_cartesian(
 
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
-// Handles both matterviz format (qpoints as objects) and normalized pymatgen format
 // Optionally wraps fractional coordinates to first BZ (default: true)
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
@@ -558,8 +557,6 @@ export function extract_k_path_points(
   options: { wrap_to_bz?: boolean } = {},
 ): Vec3[] {
   const { wrap_to_bz = true } = options
-  if (!band_struct?.qpoints || !recip_lattice_matrix) return []
-
   if (
     recip_lattice_matrix.length !== 3 ||
     recip_lattice_matrix.some((row) => row?.length !== 3)
@@ -609,7 +606,7 @@ export function qpoint_x_position(
   qpoint_index: number,
   x_positions: Record<string, Vec2>,
 ): number | null {
-  if (!band_struct?.branches?.length || !x_positions) return null
+  if (!band_struct.branches.length) return null
   for (const [branch, [x_start, x_end]] of plotted_branches(band_struct, x_positions)) {
     if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
     const d_start = band_struct.distance[branch.start_index]
@@ -644,7 +641,7 @@ export function find_qpoint_at_rescaled_x(
   rescaled_x: number,
   x_positions: Record<string, Vec2>,
 ): number | null {
-  if (!band_struct?.branches?.length || !x_positions) return null
+  if (!band_struct.branches.length) return null
   const branches = plotted_branches(band_struct, x_positions)
 
   // Find which segment contains this x coordinate
@@ -1085,12 +1082,12 @@ export function classify_acoustic(
   band_structure: types.BaseBandStructure,
   band_idx: number,
   gamma_indices: number[],
-  threshold = ACOUSTIC_FREQ_THRESHOLD,
 ): boolean | null {
   if (gamma_indices.length === 0) return null
   return gamma_indices.some(
     (gamma_idx) =>
-      Math.abs(band_structure.bands[band_idx]?.[gamma_idx] ?? Infinity) < threshold,
+      Math.abs(band_structure.bands[band_idx]?.[gamma_idx] ?? Infinity) <
+      ACOUSTIC_FREQ_THRESHOLD,
   )
 }
 

@@ -38,7 +38,7 @@
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { plot_color } from '#lib/colors/index.js'
-  import { first_point_style } from '#lib/plot/core/data-transform.js'
+  import { extract_series_color } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
@@ -215,7 +215,7 @@
   const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)
   const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
-  // Size scale (the color scale is computed by the wrapper and passed as a prop)
+  // Size scale (the color scale is computed by the wrapper and passed as a prop). Reads
   // the type alone, so radius changes don't re-scan the size values
   const size_scale_type = $derived(size_scale.type)
   const auto_size_range = $derived(collect_size_range(series, size_scale_type))
@@ -244,7 +244,7 @@
   let point_instances = $derived.by(() => {
     const instances: PointInstance[] = []
     series.forEach((srs, series_idx) => {
-      if (!srs || !(srs.visible ?? true)) return
+      if (!(srs.visible ?? true)) return
       const { metadata, point_style } = srs
       for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
         const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
@@ -408,7 +408,7 @@
   let line_inputs = $derived.by((): SeriesLineInput[] => {
     const inputs: SeriesLineInput[] = []
     for (const [series_idx, srs] of series.entries()) {
-      const line_style = srs?.line_style
+      const line_style = srs.line_style
       if (!line_style || !(srs.visible ?? true)) continue
       // Lines run through every finite point, in range or not: the box's clipping group cuts
       // them at the axes instead of dropping whole segments
@@ -421,7 +421,7 @@
       inputs.push({
         series_idx,
         positions,
-        color: line_style.stroke ?? first_point_style(srs)?.fill ?? plot_color(series_idx),
+        color: extract_series_color(srs, plot_color(series_idx)),
         width: line_style.stroke_width ?? 2,
         dashed: Boolean(line_style.line_dash),
       })

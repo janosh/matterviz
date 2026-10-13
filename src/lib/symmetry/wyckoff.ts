@@ -48,9 +48,8 @@ function frac_coord_mapper(
   return { to_std, linear }
 }
 
-// Lower is simpler: per coordinate u ∈ [0, 1), the distance to the nearest of 0, 1/2 and 1.
-// The previous `min(u, 1 − u) + ½|u − ½|` reduces to ¼ + ½·min(u, 1 − u), which made u = 1/2
-// the WORST-scoring value so a generic 0.30 beat a special 0.50.
+// Lower is simpler: per coordinate u ∈ [0, 1), the distance to the nearest of 0, 1/2 and 1,
+// so special values like 0.50 beat a generic 0.30.
 const simplicity_score = (pos: Vec3): number =>
   pos.reduce((sum, coord) => {
     const unit = wrap_frac_coord(coord)

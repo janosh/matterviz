@@ -310,10 +310,9 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   // as they were under the nodes it stands for. The bucket's own pattern is the one
   // its members share (a hatch marking a whole subtree survives folding), else none.
   //
-  // Which children fold is decided once, here, and read back during flatten.
-  // Re-deriving it there from a value threshold only worked while the rule was a
-  // pure comparison; `max_children` ranks siblings against each other, so the cut
-  // is no longer a property any single child carries.
+  // Which children fold is decided once, here, and read back during flatten:
+  // `max_children` ranks siblings against each other, so the cut is not a property
+  // any single child carries.
   const buckets = new Map<Node, number>() // synthetic bucket node -> siblings folded
   if (min_fraction > 0 || max_children > 0) {
     // Rewriting `node.children` from inside `each` is safe: d3's traversal is a
@@ -331,8 +330,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       // one bucket, silently discarding a `max_children` ranking that still works.
       // Measured against the total of whatever the view is rooted at, so drilling in
       // re-measures a parent's children against the smaller total - which is what
-      // dissolves a bucket into the real nodes it stood for. At the data root this is
-      // the root total, so an unzoomed chart buckets exactly as it did before.
+      // dissolves a bucket into the real nodes it stood for.
       const basis = (in_zoom_subtree.has(node) ? zoom_node?.value : root.value) ?? 0
       const threshold = min_fraction > 0 ? min_fraction * basis : 0
       const eligible = kids.filter((kid) => (kid.value ?? 0) >= threshold)

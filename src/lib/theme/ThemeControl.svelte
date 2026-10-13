@@ -6,14 +6,8 @@
 
   let {
     theme_mode = $bindable(theme_state.mode),
-    on_change = () => {},
     ...rest
-  }: Omit<HTMLAttributes<HTMLSelectElement>, `onchange`> & {
-    theme_mode?: ThemeMode // Current theme mode (now bindable to global state)
-    // Callback when theme changes. The native `onchange` is omitted from the rest props so a
-    // caller reaching for it gets a type error instead of a handler that receives a DOM Event
-    on_change?: (mode: ThemeMode) => void
-  } = $props()
+  }: HTMLAttributes<HTMLSelectElement> & { theme_mode?: ThemeMode } = $props()
 
   $effect(() => {
     // Sync and save to local storage when theme changes
@@ -22,7 +16,6 @@
     theme_state.mode = theme_mode
     save_theme_preference(theme_mode)
     apply_theme_to_dom(theme_mode)
-    on_change(theme_mode)
   })
 </script>
 

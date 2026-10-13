@@ -1,8 +1,8 @@
 // Parser for VASP 6.x HDF5 output (vaspout.h5, written with LH5=.TRUE.).
 // Reads the ionic-relaxation trajectory from intermediate/ion_dynamics (with
 // per-frame energy/forces so convergence plots come for free) and falls back
-// to the final structure in results/positions for static (NSW=0) runs, which
-// render as single-frame trajectories (structure only, plots hidden).
+// to the final structure in results/positions for static (NSW=0) runs, whose
+// SCF steps become pseudo-frames when there are at least two.
 //
 // Tolerates files from incomplete/running calculations: datasets flushed
 // mid-write may disagree on step counts (e.g. 5 energies but 4 position
@@ -10,7 +10,8 @@
 // reads never index past any dataset's end.
 //
 // Electronic results (results/electron_dos, results/electron_eigenvalues*)
-// are read by ./vaspout-electronic.ts and attached as metadata.electronic;
+// are read by ./vaspout-electronic.ts; trajectories attach only the DOS as
+// metadata.electronic;
 // vaspwave.h5 charge density is handled by isosurface/parse-vaspwave.ts.
 //
 // Schema reference: py4vasp's VASP 6.x schema definitions.

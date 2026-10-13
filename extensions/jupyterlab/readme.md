@@ -29,7 +29,7 @@ Requires JupyterLab 4.
 
 Extensionless VASP names (`POSCAR`, `CONTCAR`, `XDATCAR` and the volumetric ones above) are matched by filename. Every format is also recognized with a `.gz` suffix. Structure JSON (pymatgen/ASE `as_dict()` output) is available under **Open With** without displacing Lab's built-in JSON viewer.
 
-A `.dump` file opens as a structure showing its first frame only, not as an animated trajectory. `.xtc`, `.trr` and `.dcd` are deliberately not registered — MatterViz has no decoder for them, so claiming them would replace another application's handler with an error message.
+A `.dump` file with several `ITEM: TIMESTEP` frames opens as a trajectory. `.xtc`, `.trr` and `.dcd` are deliberately not registered — MatterViz has no decoder for them, so claiming them would replace another application's handler with an error message.
 
 ## Limits
 

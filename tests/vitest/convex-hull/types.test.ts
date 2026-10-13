@@ -48,13 +48,9 @@ describe(`is_on_hull`, () => {
       `excluded overrides zero e_above_hull`,
     ],
     [{ exclude_from_hull: false, is_stable: true }, true, `not excluded, stable`],
-    [{ e_above_hull: 0.05 }, true, `custom tolerance 0.1 overrides default`, 0.1],
-  ] as [Partial<PhaseData>, boolean, string, number?][])(
-    `%o → %s (%s)`,
-    (overrides, expected, _desc, tol) => {
-      expect(is_on_hull(make(overrides), tol)).toBe(expected)
-    },
-  )
+  ] as [Partial<PhaseData>, boolean, string][])(`%o → %s (%s)`, (overrides, expected) => {
+    expect(is_on_hull(make(overrides))).toBe(expected)
+  })
 })
 
 describe(`compute_hull_stability`, () => {
@@ -67,14 +63,13 @@ describe(`compute_hull_stability`, () => {
     [`negative noise clamped to 0`, -1e-7, false, 0, true],
     [`negative noise, excluded → raw preserved`, -1e-7, true, -1e-7, false],
     [`large negative clamped to 0`, -0.05, false, 0, true],
-    [`custom tol=0.1 clamps 0.05 to 0`, 0.05, false, 0, true, 0.1],
     // exactly at tol: not clamped (< is strict) but still stable (<= is inclusive)
     [`exactly at tol boundary`, HULL_STABILITY_TOL, false, HULL_STABILITY_TOL, true],
     [`above tol boundary`, HULL_STABILITY_TOL * 10, false, HULL_STABILITY_TOL * 10, false],
-  ] as [string, number, boolean, number, boolean, number?][])(
+  ] as [string, number, boolean, number, boolean][])(
     `%s`,
-    (_label, raw, excluded, expected_e, expected_stable, tol) => {
-      expect(compute_hull_stability(raw, excluded, tol)).toEqual({
+    (_label, raw, excluded, expected_e, expected_stable) => {
+      expect(compute_hull_stability(raw, excluded)).toEqual({
         e_above_hull: expected_e,
         is_stable: expected_stable,
       })
@@ -83,7 +78,7 @@ describe(`compute_hull_stability`, () => {
 
   // unknown distance (degenerate hull / point outside projection / missing energy) must stay
   // undefined — not 0/stable — even when excluded, so it can't be mislabeled on-hull
-  test.each([null, undefined, NaN, Infinity, -Infinity] as const)(
+  test.each([undefined, NaN, Infinity, -Infinity] as const)(
     `unknown distance %s -> undefined`,
     (raw) => {
       for (const excluded of [false, true]) {
