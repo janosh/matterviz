@@ -1,5 +1,5 @@
-// moyo-wasm bridge: the one place the WASM module is initialized and a structure is handed
-// to moyo's analyze_cell, plus thin wrappers over its space-group database lookups.
+// moyo bridge: the one place a structure is handed to moyo's analyze_cell (the WASM build, or
+// a host backend running moyo natively), plus thin wrappers over its space-group database.
 import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
 import * as math from '#lib/math.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -39,11 +39,42 @@ export type SymmetryDataset = MoyoDataset & {
   orig_site_indices_by_input_idx: number[][]
 }
 
+// A host that runs moyo itself (e.g. a desktop shell with moyo compiled in) instead of the
+// WASM build. Both functions return moyo-wasm's own JSON shapes, so everything downstream of
+// analyze_structure_symmetry is unchanged; a host can then drop @spglib/moyo-wasm entirely.
+export interface SymmetryBackend {
+  analyze_cell: (
+    cell: MoyoCell,
+    symprec: number,
+    setting: `Standard` | `Spglib`,
+  ) => Promise<MoyoDataset>
+  // Settings of the ITA space group `number` and each setting's Wyckoff positions, keyed by
+  // Hall number (moyo-wasm's hall_symbol_entries_from_number and wyckoff_positions).
+  space_group_database: (number: number) => Promise<{
+    settings: MoyoHallSymbolEntry[]
+    wyckoff_positions: Record<number, MoyoWyckoffPosition[]>
+  }>
+}
+
+let symmetry_backend: SymmetryBackend | null = null
+// The backend's database answers, fetched with each analysis so the synchronous lookups below
+// (read inside $derived) can serve them.
+const backend_settings = new Map<number, MoyoHallSymbolEntry[]>()
+const backend_wyckoffs = new Map<number, MoyoWyckoffPosition[]>()
+
+// Register before the first analysis; null restores the WASM build.
+export function set_symmetry_backend(backend: SymmetryBackend | null): void {
+  symmetry_backend = backend
+  backend_settings.clear()
+  backend_wyckoffs.clear()
+}
+
 // Memoized so concurrent first callers share one instantiation; a failed attempt is
 // forgotten so the next call can retry (e.g. after a transient fetch error).
 let init_promise: Promise<unknown> | null = null
 let wasm_ready = false
 export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
+  if (symmetry_backend) return Promise.resolve()
   // wasm-bindgen resolves the default .wasm relative to its glue module
   init_promise ??= init(source === undefined ? undefined : { module_or_path: source })
     .then(() => {
@@ -115,7 +146,7 @@ export async function analyze_structure_symmetry(
   if (!(`lattice` in structure)) {
     throw new Error(`Symmetry analysis requires a periodic structure with a lattice`)
   }
-  await ensure_moyo_wasm_ready()
+  if (!symmetry_backend) await ensure_moyo_wasm_ready()
   const merged = merge_split_partial_sites(structure.sites)
   const positions = merged.map(({ site }) => site.abc)
   const numbers = merged.map(({ site, site_idx }) => site_atomic_number(site, site_idx))
@@ -132,11 +163,17 @@ export async function analyze_structure_symmetry(
     numbers: labels,
   }
   const { symprec, algo } = { ...default_sym_settings, ...settings }
-  const sym_data = analyze_cell(
-    JSON.stringify(cell),
-    symprec,
-    algo === `Moyo` ? `Standard` : algo,
-  )
+  const setting = algo === `Moyo` ? `Standard` : algo
+  const backend = symmetry_backend
+  const sym_data = backend
+    ? await backend.analyze_cell(cell, symprec, setting)
+    : analyze_cell(JSON.stringify(cell), symprec, setting)
+  if (backend && !backend_settings.has(sym_data.number)) {
+    const database = await backend.space_group_database(sym_data.number)
+    backend_settings.set(sym_data.number, database.settings)
+    for (const [hall_number, wyckoffs] of Object.entries(database.wyckoff_positions))
+      backend_wyckoffs.set(Number(hall_number), wyckoffs)
+  }
   // Standardized cells come back with moyo's labels; display them by majority element
   const number_by_label = new Map(labels.map((label, idx) => [label, numbers[idx]]))
   const to_numbers = (std_cell: MoyoCell): MoyoCell => ({
@@ -192,19 +229,23 @@ const is_int_in_range = (value: number, min: number, max: number): boolean =>
   Number.isInteger(value) && value >= min && value <= max
 
 // All Wyckoff positions of the space-group setting given by hall_number (1-530), ordered
-// general-position-first. Returns [] for a hall number outside that range and before the WASM
-// module is initialized (SSR, component tests) — callers treat the database as an optional
-// enrichment, never a hard requirement. Anything moyo itself throws propagates.
-export const spacegroup_wyckoff_positions = (hall_number: number): MoyoWyckoffPosition[] =>
-  wasm_ready && is_int_in_range(hall_number, 1, 530) ? wyckoff_positions(hall_number) : []
+// general-position-first. Returns [] for a hall number outside that range, before the WASM
+// module is initialized (SSR, component tests), and with a host backend for a space group no
+// analysis has returned yet — callers treat the database as an optional enrichment, never a
+// hard requirement. Anything moyo itself throws propagates.
+export const spacegroup_wyckoff_positions = (hall_number: number): MoyoWyckoffPosition[] => {
+  if (!is_int_in_range(hall_number, 1, 530)) return []
+  if (symmetry_backend) return backend_wyckoffs.get(hall_number) ?? []
+  return wasm_ready ? wyckoff_positions(hall_number) : []
+}
 
 // All Hall-symbol entries (settings) of the ITA space group `spacegroup_number` (1-230),
-// ordered by Hall number. Returns [] for a number outside that range and before the WASM
-// module is initialized.
-export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEntry[] =>
-  wasm_ready && is_int_in_range(spacegroup_number, 1, 230)
-    ? hall_symbol_entries_from_number(spacegroup_number)
-    : []
+// ordered by Hall number. Returns [] in the same cases as spacegroup_wyckoff_positions.
+export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEntry[] => {
+  if (!is_int_in_range(spacegroup_number, 1, 230)) return []
+  if (symmetry_backend) return backend_settings.get(spacegroup_number) ?? []
+  return wasm_ready ? hall_symbol_entries_from_number(spacegroup_number) : []
+}
 
 // Cell described by a MoyoCell (std_cell or prim_std_cell) as a Crystal. moyo-wasm uses the
 // same row-major serialization for output as for input, so the flat basis is row-major with

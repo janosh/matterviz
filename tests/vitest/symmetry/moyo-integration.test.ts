@@ -3,8 +3,10 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { Crystal } from '#lib'
 import type { SymmetryDataset } from '#lib/symmetry/index.js'
+import type { MoyoCell } from '@spglib/moyo-wasm'
 import {
   analyze_structure_symmetry,
+  set_symmetry_backend,
   spacegroup_settings,
   spacegroup_wyckoff_positions,
   transform_cell,
@@ -21,8 +23,13 @@ import {
   spacegroup_to_lattice_system,
 } from '#lib/symmetry/spacegroups.js'
 import { structure_map } from '#site/structures.js'
-import { space_group_type } from '@spglib/moyo-wasm'
-import { beforeAll, describe, expect, test } from 'vitest'
+import {
+  analyze_cell,
+  hall_symbol_entries_from_number,
+  space_group_type,
+  wyckoff_positions,
+} from '@spglib/moyo-wasm'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'
 
 // Helper to get structure or throw with descriptive error
@@ -520,5 +527,47 @@ describe(`space-group database lookups validate their ids`, () => {
     for (const invalid of [0, -1, min - 1, max + 1, 1.5, NaN, Infinity, -Infinity]) {
       expect(lookup(invalid), `id ${invalid}`).toEqual([])
     }
+  })
+})
+
+// A host backend returns moyo-wasm's own shapes, so the dataset (labels mapped back, input cell,
+// site map) and the synchronous database lookups match the WASM path exactly. This "host" wraps
+// the real WASM functions, standing in for a native moyo build of the same version.
+describe(`host symmetry backend`, () => {
+  beforeAll(init_moyo_for_tests)
+  afterEach(() => set_symmetry_backend(null))
+
+  const wasm_backend = () => ({
+    analyze_cell: vi.fn((cell: MoyoCell, symprec: number, setting: string) =>
+      Promise.resolve(analyze_cell(JSON.stringify(cell), symprec, setting)),
+    ),
+    space_group_database: vi.fn((number: number) => {
+      const settings = hall_symbol_entries_from_number(number)
+      return Promise.resolve({
+        settings,
+        wyckoff_positions: Object.fromEntries(
+          settings.map(({ hall_number }) => [hall_number, wyckoff_positions(hall_number)]),
+        ),
+      })
+    }),
+  })
+
+  test(`returns the WASM path's dataset and serves the lookups from the backend`, async () => {
+    const structure = nacl()
+    const direct = await analyze_crystal(structure)
+    const backend = wasm_backend()
+    set_symmetry_backend(backend)
+    // Before any analysis the backend's database is unknown: [] like an uninitialized WASM.
+    expect(spacegroup_settings(225)).toEqual([])
+    const via_backend = await analyze_crystal(structure)
+    expect(via_backend).toEqual(direct)
+    expect(backend.analyze_cell).toHaveBeenCalledOnce()
+    expect(backend.space_group_database).toHaveBeenCalledExactlyOnceWith(225)
+    expect(spacegroup_settings(225)).toEqual(hall_symbol_entries_from_number(225))
+    expect(spacegroup_wyckoff_positions(523)).toEqual(wyckoff_positions(523))
+    // Lookups for space groups no analysis returned stay empty; the database is fetched once.
+    expect(spacegroup_wyckoff_positions(1)).toEqual([])
+    await analyze_crystal(structure)
+    expect(backend.space_group_database.mock.calls).toEqual([[225]])
   })
 })
