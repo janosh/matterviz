@@ -1,8 +1,8 @@
 import EosPlot from '#lib/eos/EosPlot.svelte'
 import type { EosFit, EosKind } from '#lib/eos/index.js'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, mount_sized } from '../setup'
 
 // Cu-like 9-point scan, see fit.test.ts
 const volumes = [10.384, 10.738, 11.092, 11.446, 11.8, 12.154, 12.508, 12.862, 13.216]
@@ -36,21 +36,43 @@ describe(`EosPlot`, () => {
     }
   }
 
-  test(`fits every kind once, in kinds order, with its params under its legend entry`, async () => {
+  test(`fits every kind once, in kinds order, one legend line per series`, async () => {
     const kinds: EosKind[] = [`vinet`, `birch_murnaghan`, `vinet`]
     const { fits, legend, n_markers } = await render({ kinds })
     expect(fits.map((fit) => fit.kind)).toEqual([`vinet`, `birch_murnaghan`])
-    expect(legend).toMatch(
-      /^E\(V\) data Vinet fit.*139\.5 GPa.* Birch–Murnaghan fit.*139\.1 GPa/,
-    )
+    expect(legend).toBe(`E(V) data Vinet fit Birch–Murnaghan fit`)
     expect(n_markers).toBe(volumes.length)
   })
 
+  test(`legend={null} hides the legend`, async () => {
+    expect((await render({ legend: null })).legend).toBeUndefined()
+  })
+
+  // series 0 is the data, 1 the (only) Birch–Murnaghan fit; the tooltip shows point_idx 0 of
+  // the hovered series (V = 10.384 for the data, the curve's 10.2 start for the fit)
   test.each([
-    [{ show_fit_params: false }, `E(V) data Birch–Murnaghan fit`],
-    [{ legend: null }, undefined],
-  ])(`%j trims or hides the legend`, async (props, expected) => {
-    expect((await render(props)).legend).toBe(expected)
+    [
+      `fit with params`,
+      1,
+      {},
+      [`Birch–Murnaghan fit`, `V: 10.2 Å³`, `B0: 139.1 GPa`, `RMSE: 0.54 meV`],
+      [],
+    ],
+    [`fit without params`, 1, { show_fit_params: false }, [`Birch–Murnaghan fit`], [`B0`]],
+    [`data point`, 0, {}, [`E(V) data`, `V: 10.4 Å³`], [`B0`, `RMSE`]],
+  ])(`tooltip on %s`, async (_desc, series_idx, props, includes, excludes) => {
+    const tooltip_point = { x: 0, y: 0, series_idx, point_idx: 0 }
+    const root = await mount_sized(
+      EosPlot,
+      // hovered/tooltip_point pass through to ScatterPlot but aren't EosPlot's public props
+      { volumes, energies, hovered: true, tooltip_point, ...props } as ComponentProps<
+        typeof EosPlot
+      >,
+      { selector: `.scatter` },
+    )
+    const text = root.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
+    for (const expected of includes) expect(text).toContain(expected)
+    for (const unexpected of excludes) expect(text).not.toContain(unexpected)
   })
 
   test(`kinds=[] draws only the data points, without a single-entry legend`, async () => {

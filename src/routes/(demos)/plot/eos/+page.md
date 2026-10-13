@@ -1,6 +1,6 @@
 # Equation of State
 
-`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points, the fitted curve(s) and the parameters in one go. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
+`fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points and fitted curve(s) in one go; hover a curve for its fitted parameters. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
 
 ## Fitting a Scan
 
