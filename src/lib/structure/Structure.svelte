@@ -11,6 +11,7 @@
   import Toast from 'svelte-widgets/Toast.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import {
     BrillouinZone,
@@ -298,8 +299,6 @@
     on_camera_reset?: EventHandler
   } = $props()
 
-  // Inline so it beats StatusMessage's own type padding, which ties a scoped rule here
-  const notice_style = `font-size: 0.75rem; padding: 0.3rem 0.6rem`
   const has_scene_content = $derived(
     site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0,
   )
@@ -1175,15 +1174,14 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
-  <!-- one top-center stack so warnings neither cover the atom legend (bottom-right) nor each other -->
-  <div class="viewer-notices">
+  <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
+  <ViewerNotices>
     {#if scene_shown && analyze_symmetry && symmetry_error}
       <StatusMessage
         bind:message={symmetry_error}
         type="warning"
         dismissible
         class="symmetry-error"
-        style={notice_style}
       />
     {/if}
     {#if scene_shown && isosurface_error}
@@ -1192,10 +1190,9 @@
         type="warning"
         dismissible
         class="isosurface-error"
-        style={notice_style}
       />
     {/if}
-  </div>
+  </ViewerNotices>
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
     <div style:display={active_tool_view?.content ? `none` : `contents`}>
       <structure_host_tool.component
@@ -1511,23 +1508,6 @@
   }
   .structure > :global(.viewer-error) {
     z-index: var(--z-index-overlay-controls, 100000000);
-  }
-  .viewer-notices {
-    position: absolute;
-    top: 0.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    width: max-content;
-    max-width: min(90%, 400px);
-    display: flex;
-    flex-direction: column;
-    gap: 4pt;
-    z-index: var(--z-index-viewer-tooltip, 1000);
-    pointer-events: none;
-    overflow-wrap: anywhere;
-    > :global(.status-message) {
-      pointer-events: auto;
-    }
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));

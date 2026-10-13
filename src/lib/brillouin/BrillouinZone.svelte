@@ -7,6 +7,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -293,12 +294,9 @@
   {:else if zone || structure?.lattice}
     <!-- A caller-supplied zone renders on its own (the file viewer hands over {k_lattice,
          vertices, faces} with no structure) -->
-    <StatusMessage
-      bind:message={ibz_error}
-      type="warning"
-      dismissible
-      style="position: absolute; top: 0.5em; left: 50%; transform: translateX(-50%); max-width: 90%; z-index: 1"
-    />
+    <ViewerNotices>
+      <StatusMessage bind:message={ibz_error} type="warning" dismissible />
+    </ViewerNotices>
     <ViewerChrome
       {controls_config}
       filename={current_filename}

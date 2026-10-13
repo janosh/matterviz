@@ -4,7 +4,8 @@
   // of ~T. Defaults to phonopy's kJ/mol and J/(K·mol) so plots compare directly.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_TO_KJ_PER_MOL } from '#lib/constants.js'
-  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { DataSeries, ScatterPlotOptions } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { to_error } from '#lib/utils.js'
@@ -86,5 +87,7 @@
     y2_axis={{ label: `S, C<sub>v</sub> (${axis_units.y2.label})`, ...y2_axis }}
     style={rest.style ?? `height: 400px;`}
   />
-  <ViewerError bind:message={error_msg} dismissible placement="top" />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
 </div>

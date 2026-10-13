@@ -4,7 +4,7 @@
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { drag_over_handlers } from '#lib/io/index.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type {
@@ -149,5 +149,7 @@
       class={[rest.class, dragover && `dragover`]}
     />
   {/if}
-  <ViewerError bind:message={error_msg} dismissible placement="top" />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
 </div>

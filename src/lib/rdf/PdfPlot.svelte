@@ -4,7 +4,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { format_num } from '#lib/labels.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
@@ -197,7 +197,9 @@
       <p class="weights">{weight_summary}</p>
     {/if}
   {/if}
-  <ViewerError bind:message={error_msg} dismissible placement="top" />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
 </div>
 
 <style>

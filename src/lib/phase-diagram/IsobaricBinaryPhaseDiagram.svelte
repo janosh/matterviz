@@ -4,6 +4,7 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { create_file_drop_handler } from '#lib/io/file-drop.js'
   import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
@@ -470,14 +471,9 @@
   ondrop={handle_svg_drop}
   ondragover={(event_value) => event_value.preventDefault()}
 >
-  {#if input_error}
-    <!-- content-wide and capped, so it stays left of the corner buttons instead of under them -->
-    <StatusMessage
-      message={input_error}
-      type="error"
-      style="position: absolute; top: 0.5em; left: 0.5em; max-width: 60%; z-index: 5"
-    />
-  {/if}
+  <ViewerNotices>
+    {#if input_error}<StatusMessage message={input_error} type="error" />{/if}
+  </ViewerNotices>
   {#if source_data === undefined}
     <EmptyState role="status">
       <h3>Missing phase diagram data</h3>

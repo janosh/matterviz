@@ -7,7 +7,8 @@
   // through the bindable `fits`.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
@@ -121,5 +122,7 @@
     tooltip={rest.tooltip ?? eos_tooltip}
     style={rest.style ?? `height: 400px;`}
   />
-  <ViewerError bind:message={error_msg} dismissible placement="top" />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
 </div>

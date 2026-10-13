@@ -10,6 +10,7 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import { to_error } from '#lib/utils.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
@@ -847,16 +848,9 @@
   </ScatterPlot>
   {#snippet frame_children(ctx: UserContentProps)}
     {@render user_children?.(ctx)}
-    {#if gap_result.error}
-      <!-- top-left: the top-right corner belongs to the gear/fullscreen controls -->
-      {@const { t: top, l: left } = ctx.pad}
-      <StatusMessage
-        message={gap_result.error}
-        type="warning"
-        class="gap-error"
-        style="position: absolute; top: {top}px; left: {left}px; max-width: 60%; font-size: 0.75rem; padding: 0.3rem 0.6rem; pointer-events: none"
-      />
-    {/if}
+    <ViewerNotices>
+      <StatusMessage message={gap_result.error} type="warning" class="gap-error" />
+    </ViewerNotices>
     <!-- hidden while zoomed away from its tick -->
     {#if k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
       <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot

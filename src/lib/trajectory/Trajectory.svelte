@@ -19,6 +19,7 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import {
     Atom,
@@ -1419,23 +1420,15 @@
         ←
       </button>
     {/if}
-    <!-- z-index 3: above the structure viewer's AtomLegend (2), which shares the bottom edge -->
-    {#if warning_msg}
-      <StatusMessage
-        bind:message={warning_msg}
-        type="warning"
-        dismissible
-        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-      />
-    {/if}
-    {#if frame_error_msg}
-      <StatusMessage
-        bind:message={frame_error_msg}
-        type="error"
-        dismissible
-        style="position: absolute; bottom: 4pt; left: 4pt; right: 4pt; z-index: 3; font-size: 0.85em"
-      />
-    {/if}
+    <!-- top-center, clear of the structure viewer's AtomLegend on the bottom edge -->
+    <ViewerNotices>
+      {#if warning_msg}
+        <StatusMessage bind:message={warning_msg} type="warning" dismissible />
+      {/if}
+      {#if frame_error_msg}
+        <StatusMessage bind:message={frame_error_msg} type="error" dismissible />
+      {/if}
+    </ViewerNotices>
     <SequenceControlBar
       class="trajectory-controls"
       {controls_config}

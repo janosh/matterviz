@@ -531,9 +531,8 @@ describe(`Bands component`, () => {
     expect(gap_error?.textContent).toMatch(
       /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
     )
-    // anchored top-left, clear of the gear/fullscreen controls in the top-right corner
-    expect(gap_error?.style.left).toMatch(/^[\d.]+px$/)
-    expect(gap_error?.style.right).toBe(``)
+    // in the shared top-center notice column, clear of the corner controls
+    expect(gap_error?.parentElement?.classList.contains(`viewer-notices`)).toBe(true)
     expect(line_count()).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(/Eg:/)
   })

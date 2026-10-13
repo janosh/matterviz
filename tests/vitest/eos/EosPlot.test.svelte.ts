@@ -95,7 +95,7 @@ describe(`EosPlot`, () => {
     expect(result.n_markers).toBe(n_markers)
     // one root (a sibling error took its own cell in grid parents) with the error floating on top
     expect(document.body.childElementCount).toBe(1)
-    expect(document.querySelector(`.viewer-error.top .status-message`)).not.toBeNull()
+    expect(document.querySelector(`.viewer-notices .status-message`)).not.toBeNull()
     // error_msg is a writable $derived: dismissing overrides it until the inputs change
     document.querySelector<HTMLButtonElement>(`.status-message button`)?.click()
     flushSync()

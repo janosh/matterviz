@@ -3,7 +3,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
   import { plural } from '#lib/labels.js'
@@ -221,7 +221,9 @@
       {@render children?.({ drag_dropped })}
     </ScatterPlot>
   {/if}
-  <ViewerError bind:message={error_msg} dismissible placement="top" />
+  <ViewerNotices>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
+  </ViewerNotices>
 </div>
 
 <style>
