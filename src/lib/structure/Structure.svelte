@@ -298,7 +298,8 @@
     on_camera_reset?: EventHandler
   } = $props()
 
-  let notice_message = $state<string>()
+  // Inline so it beats StatusMessage's own type padding, which ties a scoped rule here
+  const notice_style = `font-size: 0.75rem; padding: 0.3rem 0.6rem`
   const has_scene_content = $derived(
     site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0,
   )
@@ -311,7 +312,7 @@
     set_error: (message) => (error_msg = message),
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
-      notice_message = undefined
+      toast_store.clear() // a previous load's notice doesn't describe this one
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
@@ -326,7 +327,7 @@
         // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
         if (loaded_structure !== structure) structure = loaded_structure
         ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
-        if (notice) notice_message = notice
+        if (notice) show_toast(notice)
       }
       on_file_load?.({
         structure: loaded_structure,
@@ -1174,15 +1175,15 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
-  <!-- one top-center stack so notices neither cover the atom legend (bottom-right) nor each other -->
+  <!-- one top-center stack so warnings neither cover the atom legend (bottom-right) nor each other -->
   <div class="viewer-notices">
-    <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
     {#if scene_shown && analyze_symmetry && symmetry_error}
       <StatusMessage
         bind:message={symmetry_error}
         type="warning"
         dismissible
         class="symmetry-error"
+        style={notice_style}
       />
     {/if}
     {#if scene_shown && isosurface_error}
@@ -1191,6 +1192,7 @@
         type="warning"
         dismissible
         class="isosurface-error"
+        style={notice_style}
       />
     {/if}
   </div>
@@ -1472,7 +1474,7 @@
         dismissible={false}
         pause_on_hover={false}
         focus_hotkey={null}
-        class="edit-toast"
+        class="viewer-toast"
       />
     {:else if !loading}
       <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
@@ -1522,11 +1524,9 @@
     gap: 4pt;
     z-index: var(--z-index-viewer-tooltip, 1000);
     pointer-events: none;
+    overflow-wrap: anywhere;
     > :global(.status-message) {
       pointer-events: auto;
-      font-size: 0.75rem;
-      padding: 0.3rem 0.6rem;
-      overflow-wrap: anywhere;
     }
   }
   .structure:fullscreen {
@@ -1590,7 +1590,7 @@
   }
   /* Transient notices sit inside the viewer (so they follow it into fullscreen) and never
     intercept pointer events meant for the canvas beneath */
-  .structure :global(.edit-toast) {
+  .structure :global(.viewer-toast) {
     --toast-stack-position: absolute;
     --toast-inset: 3rem;
     --toast-z-index: var(--z-index-viewer-dropdown, 100);

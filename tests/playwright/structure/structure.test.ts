@@ -887,7 +887,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       await drop_file(page, viewer, chgcar, filename)
       await wait_for_event(page, `on_file_load`, [`filename`])
     }
-    const notice = viewer.locator(`.import-notice`)
+    const notice = viewer.locator(`.viewer-toast .toast-message`)
     await expect(notice).toContainText(`Added 1 volume from B.CHGCAR`)
     expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
     const notice_box = await require_bbox(notice)
@@ -895,8 +895,8 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(notice_box.y + notice_box.height).toBeLessThanOrEqual(
       viewer_box.y + viewer_box.height,
     )
-    await notice.getByRole(`button`, { name: `Dismiss message` }).click()
-    await expect(notice).toHaveCount(0)
+    // self-hides after the toast duration (2 s) instead of waiting for a dismiss click
+    await expect(notice).toHaveCount(0, { timeout: 5000 })
     await drop_file(page, viewer, `invalid structure`, `${`long-filename-`.repeat(20)}.cif`)
     await wait_for_event(page, `on_error`, [`error_msg`])
     const alert = viewer.getByRole(`alert`).filter({ hasText: `Failed to load` })
