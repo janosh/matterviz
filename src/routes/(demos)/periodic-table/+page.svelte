@@ -10,12 +10,12 @@
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
   const four_fold_quadrants = [
-    [`Atomic Radius (pm)`, (element: ChemicalElement) => element.atomic_radius || 0],
+    [`Atomic Radius (Å)`, (element: ChemicalElement) => element.atomic_radius || 0],
     [
       `Electronegativity × 100`,
       (element: ChemicalElement) => (element.electronegativity || 0) * 100,
     ],
-    [`Covalent Radius (pm)`, (element: ChemicalElement) => element.covalent_radius || 0],
+    [`Covalent Radius (Å)`, (element: ChemicalElement) => element.covalent_radius || 0],
     [
       `|Electron Affinity| (kJ/mol)`,
       (element: ChemicalElement) => Math.abs(element.electron_affinity || 0),

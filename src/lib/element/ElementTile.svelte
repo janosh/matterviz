@@ -239,12 +239,13 @@
     font-size: var(--elem-symbol-font-size, 40cqw);
     font-weight: var(--elem-symbol-font-weight, 400);
   }
+  /* multi-value labels place and size themselves below; span.value would out-specify them */
   span.name,
-  span.value {
+  span.value:not(.multi-value) {
     position: absolute;
     bottom: 8cqw;
   }
-  span.value {
+  span.value:not(.multi-value) {
     font-size: var(--elem-value-font-size, 18cqw);
   }
   span.name {
@@ -263,8 +264,9 @@
   /* Multi-value positioning */
   .multi-value {
     position: absolute;
-    /* labels past 6 characters (e.g. 0.0000899) shrink to stay inside the tile */
-    font-size: calc(var(--elem-multi-value-font-size, 14cqw) * min(1, 6 / var(--value-chars)));
+    /* labels past 7 characters (e.g. 0.0000899) shrink to a 7-character width; at 18cqw and
+       ~0.65em per bold digit, ~8 fit between the 4cqw corner insets */
+    font-size: calc(var(--elem-multi-value-font-size, 18cqw) * min(1, 7 / var(--value-chars)));
     font-weight: 600;
     z-index: var(--elem-multi-value-z-index, 2);
   }
