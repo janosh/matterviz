@@ -133,7 +133,6 @@
 <ControlPane
   bind:controls_open
   controls_name="phase-diagram"
-  pane_style=""
   toggle_style=""
   toggle_title="Phase diagram"
   {...rest}
@@ -321,8 +320,6 @@
   :global(.phase-diagram-controls-pane) {
     font-size: 0.85em;
     max-width: 320px;
-    --pane-padding: 10px;
-    --pane-gap: 4px;
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;
   }

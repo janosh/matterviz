@@ -40,7 +40,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/reciprocal/fermi-surface-bands': `Fermi Surface + Bands`,
 }
 
-export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svx,svelte,md}`))
+export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svelte,md}`))
   .filter((filename) => !filename.includes(`/(hide)/`))
   .map((filename) => {
     const parts = filename.split(`/`).filter((part) => !part.startsWith(`(`)) // remove hidden route segments

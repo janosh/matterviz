@@ -22,7 +22,7 @@ Convert pymatgen `CompleteDos` and `LobsterCompleteDos` objects with `normalize_
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
+  import { shift_to_fermi, normalize_dos } from '#lib/spectral/helpers.js'
   import { dos_spin_polarization } from '#site/electronic/dos/index.js'
 
   const total_dos = normalize_dos(shift_to_fermi(dos_spin_polarization))
@@ -39,7 +39,7 @@ Extract atom-resolved or orbital-resolved projections from `CompleteDos` using `
 ```svelte example
 <script lang="ts">
   import { Dos } from 'matterviz'
-  import { shift_to_fermi, normalize_dos, extract_pdos } from '#lib/spectral/helpers.js'
+  import { shift_to_fermi, extract_pdos } from '#lib/spectral/helpers.js'
   import { dos_spin_polarization } from '#site/electronic/dos/index.js'
 
   let pdos_type = $state<'atom' | 'orbital'>('atom')

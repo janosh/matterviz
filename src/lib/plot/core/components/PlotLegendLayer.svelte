@@ -38,8 +38,6 @@
   > & {
     frame: CartesianFrame
     legend: LegendConfig | null | undefined
-    series_data: LegendItem[]
-    active_series_idx?: number | null
     // Called after the frame's hovered series is updated (charts with fill entries)
     on_item_hover?: (item: LegendItem | null) => void
   } = $props()
@@ -94,7 +92,6 @@
     {layout}
     {series_data}
     {active_series_idx}
-    draggable={legend.draggable ?? true}
     on_toggle={(idx) => {
       on_toggle?.(idx)
       legend.on_toggle?.(idx)

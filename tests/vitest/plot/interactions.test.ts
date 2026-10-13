@@ -221,6 +221,11 @@ describe(`normalize_y2_sync`, () => {
   ])(`normalize_y2_sync(%j) = %j`, (input, expected) => {
     expect(normalize_y2_sync(input)).toEqual(expected)
   })
+
+  // untyped hosts (anywidget JSON) can send these; they used to fall through to align
+  it.each([`aligned`, { align_value: 2 }])(`rejects unknown mode %j`, (input) => {
+    expect(() => normalize_y2_sync(input as Y2SyncConfig)).toThrow(/Unknown y2 sync mode/)
+  })
 })
 
 describe(`sync_y2_range`, () => {
@@ -331,7 +336,7 @@ describe(`expand_range_if_needed`, () => {
     [[3.5, 1.4], [3.5, 1.4], [3.5, 1.4], false, `identical inverted`],
     [[3.5, 1.4], [4, 1], [4, 1], true, `inverted range updated`],
   ] as const)(`%s`, (current, new_r, expected, changed, _desc) => {
-    expect(expand_range_if_needed([...current], [...new_r])).toEqual({
+    expect(expand_range_if_needed([...current], [...new_r], true)).toEqual({
       range: [...expected],
       changed,
     })
@@ -353,11 +358,10 @@ describe(`expand_range_if_needed`, () => {
 describe(`invert_rect_range`, () => {
   // A drag rect arrives in either pixel order, so its sorted inverted bounds must be
   // re-oriented to match the range they replace or a descending axis would mirror
-  it.each<[string, Vec2, Vec2, Vec2 | undefined, Vec2 | null]>([
+  it.each<[string, Vec2, Vec2, Vec2, Vec2 | null]>([
     [`descending axis keeps its direction`, [10, 0], [20, 60], [10, 0], [8, 4]],
     [`descending axis, drag dragged the other way`, [10, 0], [60, 20], [10, 0], [8, 4]],
     [`ascending axis is unaffected`, [0, 10], [20, 60], [0, 10], [2, 6]],
-    [`no current range keeps the old ascending result`, [10, 0], [20, 60], undefined, [4, 8]],
     [`zero-width drag is rejected`, [10, 0], [40, 40], [10, 0], null],
   ])(`%s`, (_desc, domain, [a_px, b_px], current, expected) => {
     const scale = create_scale(`linear`, domain, [0, 100])

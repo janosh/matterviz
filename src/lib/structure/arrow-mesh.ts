@@ -131,7 +131,8 @@ export class ArrowMesh extends Mesh<InstancedBufferGeometry> {
   }
 }
 
-export function arrow_material(part: number, dimensions = uniform(new Vector3())) {
+export function arrow_material(part: number) {
+  const dimensions = uniform(new Vector3())
   const material = new MeshStandardNodeMaterial()
   const origin = attribute<`vec3`>(`arrowOrigin`, `vec3`)
   const encoded_length = attribute<`float`>(`arrowLength`, `float`)

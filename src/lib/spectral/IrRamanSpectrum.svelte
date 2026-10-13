@@ -86,9 +86,9 @@
   // Derived, not effect-synced, so a unit switch never broadens a stale width on the new grid
   let display_fwhm = $derived(convert_frequencies([fwhm], unit, `cm^-1`)[0])
 
-  let raman_unavailable = $derived(kind === `raman` && !spectrum?.has_raman)
+  let raman_unavailable = $derived(kind === `raman` && !spectrum.has_raman)
   let sticks = $derived(
-    !spectrum?.modes?.length || raman_unavailable
+    !spectrum.modes.length || raman_unavailable
       ? { x: [], y: [], modes: [] }
       : spectrum_sticks(spectrum, kind, { unit }),
   )
@@ -174,7 +174,7 @@
   })
   const shape_input = { min: 0, max: 1, step: 0.05 }
 
-  let mode_count = $derived(spectrum?.modes?.length ?? 0)
+  let mode_count = $derived(spectrum.modes.length)
   let active_count = $derived(sticks.y.filter((val) => val > 1e-12).length)
 
   const spectrum_settings = track_settings(

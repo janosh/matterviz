@@ -485,7 +485,7 @@ export function get_touches_limits(
   for (let axis_idx = 0; axis_idx < Math.min(elements.length, lims.length); axis_idx++) {
     const [axis_min, axis_max] = lims[axis_idx]
     const tol = 1e-4 * (axis_max - axis_min) || EPS
-    const axis_name = elements[axis_idx] ?? `axis_${axis_idx}`
+    const axis_name = elements[axis_idx]
     const touches = (bound: number) =>
       points.some((point) => Math.abs(point[axis_idx] - bound) < tol)
     if (touches(axis_min)) touches_limits.push(`${axis_name} lower bound`)
@@ -518,12 +518,13 @@ const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null
   return best
 }
 
-// Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
+// Simple PCA: center data, compute covariance, eigendecompose, project to the top 2 components.
 // Used in 3D for finding domain polygon orientation for label placement.
-export function simple_pca(
-  data: number[][],
-  order: number = 2,
-): { scores: number[][]; eigenvectors: number[][]; means: number[] } {
+export function simple_pca(data: number[][]): {
+  scores: number[][]
+  eigenvectors: number[][]
+  means: number[]
+} {
   const n_rows = data.length
   const n_cols = data[0]?.length ?? 0
   if (n_rows === 0 || n_cols === 0) return { scores: [], eigenvectors: [], means: [] }
@@ -554,7 +555,7 @@ export function simple_pca(
     }
   }
 
-  // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices). Rank
+  // Power iteration for the top 2 eigenvectors (sufficient on small matrices). Rank
   // thresholds are relative to the total variance: covariance entries are lengths squared, so an
   // absolute epsilon calls a good axis rank-deficient once coordinates shrink (a domain 1e-6
   // wide has a second eigenvalue near 1e-13).
@@ -564,7 +565,7 @@ export function simple_pca(
   const cov_scale = cov.reduce((sum, row, idx) => sum + row[idx], 0) // trace = total variance
   const rank_eps = EPS * (cov_scale || 1)
 
-  for (let comp = 0; comp < order; comp++) {
+  for (let comp = 0; comp < 2; comp++) {
     // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
     // vector can sit in the null space (elemental domains have zero variance along their
     // own axis), where power iteration stalls on the first step and returns a spurious
@@ -654,7 +655,7 @@ export function dedup_points(
 // Two-component PCA fit, with the reconstruction from a score pair and the largest
 // out-of-plane residual (0 when exactly coplanar).
 function pca_plane(points: number[][]) {
-  const { scores, eigenvectors, means } = simple_pca(points, 2)
+  const { scores, eigenvectors, means } = simple_pca(points)
   const unproject = (score_x: number, score_y: number): number[] =>
     means.map(
       (mean, dim) => mean + score_x * eigenvectors[0][dim] + score_y * eigenvectors[1][dim],
@@ -875,14 +876,18 @@ export function get_visible_domain_labels(
   face_positions: ArrayLike<number>,
   face_domain_map: string[],
   label_font_size_by_formula: ReadonlyMap<string, number>,
-  pinned_labels: VisibleDomainLabel[] = [],
+  pinned_labels: VisibleDomainLabel[],
 ): VisibleDomainLabel[] {
-  const accum = new Map<string, { area: number; x: number; y: number; z: number }>()
+  const accum = new Map<
+    string,
+    { area: number; x: number; y: number; z: number; label_font_size: number }
+  >()
 
   // faces past the end of face_domain_map get an undefined formula and are skipped
   for (const [face_idx, corners] of buffer_faces(face_positions).entries()) {
     const formula = face_domain_map[face_idx]
-    if (!formula || !label_font_size_by_formula.has(formula)) continue
+    const label_font_size = formula ? label_font_size_by_formula.get(formula) : undefined
+    if (label_font_size === undefined) continue
 
     const [vert_a, vert_b, vert_c] = corners
     const area =
@@ -890,7 +895,7 @@ export function get_visible_domain_labels(
     if (area <= EPS) continue
 
     const centroid = vertex_mean(corners)
-    const entry = accum.get(formula) ?? { area: 0, x: 0, y: 0, z: 0 }
+    const entry = accum.get(formula) ?? { area: 0, x: 0, y: 0, z: 0, label_font_size }
     entry.area += area
     entry.x += centroid[0] * area
     entry.y += centroid[1] * area
@@ -903,7 +908,7 @@ export function get_visible_domain_labels(
     .map(([formula, entry]): VisibleDomainLabel => ({
       formula,
       position: [entry.x / entry.area, entry.y / entry.area, entry.z / entry.area],
-      label_font_size: label_font_size_by_formula.get(formula) ?? 12,
+      label_font_size: entry.label_font_size,
     }))
 
   for (const label of pinned_labels) {

@@ -163,8 +163,3 @@ export type FermiTooltipProp = TooltipProp<FermiHoverData, [{ hover_data: FermiH
 export const is_fermi_surface_data = (
   data: BandGridData | FermiSurfaceData | null,
 ): data is FermiSurfaceData => data !== null && `isosurfaces` in data
-
-// Type guard: checks if parsed result is BandGridData (raw band grid, needs extraction)
-export const is_band_grid_data = (
-  data: BandGridData | FermiSurfaceData | null,
-): data is BandGridData => data !== null && `energies` in data

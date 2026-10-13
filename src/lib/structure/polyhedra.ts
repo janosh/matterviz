@@ -244,7 +244,7 @@ const dist_to_face = (face: HullFace, point: Vec3): number =>
 // collinear/coplanar sets (e.g. square-planar CN=4 coordination draws nothing,
 // matching VESTA behavior). Supports up to 65535 input points (edge keys are
 // packed into 32-bit integers) - far beyond any coordination shell.
-export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): ConvexHullResult {
+export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
   // Dedup points (coordination shells are tiny, O(n^2) is fine)
   const unique: Vec3[] = []
   const unique_input_idx: number[] = []
@@ -285,7 +285,7 @@ export function convex_hull_3d(points: readonly Vec3[], eps_scale = 1e-7): Conve
     if (pixel_z > max_z) max_z = pixel_z
   }
   const diag = Math.hypot(max_x - min_x, max_y - min_y, max_z - min_z)
-  const eps = eps_scale * Math.max(1, diag)
+  const eps = 1e-7 * Math.max(1, diag)
 
   // Initial simplex: farthest pair along principal axes -> farthest from line -> from plane
   let [pt_0, pt_1] = [0, 1]
@@ -842,7 +842,6 @@ export type PolyhedraColoring =
 export function merge_polyhedra_buffers(
   polyhedra: readonly Polyhedron[],
   coloring: PolyhedraColoring,
-  coplanar_tol = 1e-3,
 ): MergedPolyhedraBuffers {
   let [triangle_count, max_faces, max_verts] = [0, 0, 0]
   for (const { faces, vertices } of polyhedra) {
@@ -953,7 +952,7 @@ export function merge_polyhedra_buffers(
             normal_y * edge_normals[edge_idx * 3 + 1] +
             normal_z * edge_normals[edge_idx * 3 + 2]
           // the last face to reach an edge decides whether it is hidden
-          edge_hidden[edge_idx] = dot < 1 - coplanar_tol ? 0 : 1
+          edge_hidden[edge_idx] = dot < 1 - 1e-3 ? 0 : 1 // coplanar tolerance
         } else {
           edge_idx = n_poly_edges++
           edge_at[cell] = edge_idx + 1

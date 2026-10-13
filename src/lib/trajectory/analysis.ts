@@ -1,7 +1,7 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // Shared entry points of the whole-trajectory analyses (MSD, VACF, structure-id,
 // spectroscopy, trails): one place that turns a run into a position sweep, and the frame
 // accounting the analysis panes display before a sweep starts.
+import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import type {
   CollectPositionsOptions,
   FrameRange,
@@ -124,7 +124,7 @@ export function analysis_frame_times(
 
 // Adapts a sweep's (done, total) callback to the pane's progress shape
 export const sweep_progress =
-  (on_progress: (progress: { current: number; total: number; stage: string }) => void) =>
+  (on_progress: (progress: ParseProgress) => void) =>
   (done: number, total: number): void =>
     on_progress({ current: done, total, stage: `frame ${done} of ${total}` })
 

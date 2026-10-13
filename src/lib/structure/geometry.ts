@@ -7,12 +7,12 @@ import { Euler, Quaternion, Vector3 } from 'three/webgpu'
 
 const UP_VECTOR = new Vector3(0, 1, 0)
 
-// Start of the lattice-vector arrows, `offset` Å along -(a+b+c): all-negative fractional
+// Start of the lattice-vector arrows, √3 Å along -(a+b+c): all-negative fractional
 // coordinates keep it and its a/b/c arrows outside the cell whatever the vectors' signs
-export function cell_vector_origin(matrix: Matrix3x3, offset = Math.sqrt(3)): Vec3 {
+export function cell_vector_origin(matrix: Matrix3x3): Vec3 {
   const diagonal = add(...matrix)
   const length = Math.hypot(...diagonal)
-  return length < EPS ? [0, 0, 0] : scale(diagonal, -offset / length) // a+b+c = 0 only for a degenerate cell
+  return length < EPS ? [0, 0, 0] : scale(diagonal, -Math.sqrt(3) / length) // a+b+c = 0 only for a degenerate cell
 }
 
 // Absolute shaft/head sizes shared by all three lattice-vector arrows, taken from the

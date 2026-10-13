@@ -40,8 +40,6 @@
   /* light-dark() takes colors only: a whole `1px solid …` inside it invalidates the property */
   --pane-border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
   --pane-box-shadow: 0 4px 20px -4px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.5));
-  --pane-bg-hover: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  --dropzone-border: 1px solid light-dark(#9ca3af, #4a5568);
   --dropzone-bg: light-dark(rgba(0, 0, 0, 0.02), rgba(45, 55, 72, 0.5));
   --dragover-border: 1px solid light-dark(#4f46e5, #007acc);
   --dragover-bg: light-dark(rgba(79, 70, 229, 0.1), rgba(0, 122, 204, 0.1));
@@ -78,8 +76,6 @@
   --struct-bg: rgba(0, 0, 0, 0.025);
   --pane-bg: rgb(248, 250, 252);
   --pane-border: 1px solid rgba(0, 0, 0, 0.075);
-  --pane-bg-hover: rgba(0, 0, 0, 0.03);
-  --dropzone-border: 1px solid #e5e7eb;
   --dropzone-bg: rgba(0, 0, 0, 0.01);
   --dragover-border: 1px solid #2563eb;
   --dragover-bg: rgba(37, 99, 235, 0.05);
@@ -108,7 +104,6 @@
   --struct-bg: rgba(255, 255, 255, 0.1);
   --pane-bg: rgb(26, 26, 26);
   --pane-border: 1px solid rgba(255, 255, 255, 0.075);
-  --dropzone-border: 1px solid #374151;
   --dropzone-bg: rgba(15, 15, 15, 0.7);
   --dragover-border: 1px solid #0ea5e9;
   --dragover-bg: rgba(14, 165, 233, 0.05);
@@ -151,7 +146,6 @@
      (or an inline VS Code foreground) and becomes unreadable. */
   --pane-bg: var(--page-bg, light-dark(#f1f3f5, #18171c));
   --pane-color: var(--text-color, light-dark(#374151, #eee));
-  --pane-muted-color: var(--text-color-muted, light-dark(#6b7280, #a0a0a0));
 
   /* Shared by viewer, sequence and plot toolbars. rem keeps icons independent of local
      font sizes, container dimensions and fullscreen. Hosts can override this per viewer. */
@@ -176,12 +170,11 @@
   --z-index-viewer-dropdown: 100;
   --z-index-viewer-tooltip: 1000;
 
-  /* App-wide overlay stack: controls < fullscreen/nav < dialogs < floating options.
+  /* App-wide overlay stack: controls < fullscreen/nav < dialogs.
      These must exceed Threlte HTML overlays, which use very high z-index values. */
   --z-index-overlay-controls: 100000000;
   --z-index-overlay-nav: 100000001;
   --z-index-overlay-dialog: 100000002;
-  --z-index-overlay-options: 100000003;
 }
 
 /* === Draggable pane chrome ===
@@ -227,12 +220,6 @@
       min-height: 32px;
     }
   }
-}
-body.fullscreen .draggable-pane {
-  position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
-  top: 3.3em !important;
-  right: 1em !important;
-  left: auto !important;
 }
 .draggable-pane h4 {
   margin: var(--pane-h4-margin, 2pt 0);
@@ -499,7 +486,7 @@ body.fullscreen .draggable-pane {
      marks at once. Plot components own their intentional hover/geometry transitions. */
   :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
   :where(select, label, .theme-control, .toc),
-  :where(.info-pane, .pane-header, .pane-content, .close-button) {
+  :where(.info-pane, .pane-content, .close-button) {
     transition:
       background-color var(--theme-transition-duration) ease,
       color var(--theme-transition-duration) ease,
@@ -590,8 +577,7 @@ body.fullscreen .draggable-pane {
    can override if needed, but these target elements that typically
    only appear inside MatterViz component trees. */
 @layer matterviz-components {
-  button,
-  a.btn {
+  button {
     color: var(--text-color);
     cursor: pointer;
     border: none;
@@ -750,9 +736,6 @@ body.fullscreen .draggable-pane {
   table :is(td, th) {
     border: 1px solid var(--border-color, gray);
     padding: 3pt 12pt;
-  }
-  table.roomy :is(td, th) {
-    padding: 5pt 9pt;
   }
   tbody tr:nth-child(odd) {
     background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);

@@ -13,13 +13,13 @@
     mean,
     show_atoms,
     cloud,
-    locked = false,
+    locked,
   }: {
     scale: HotspotScale
     mean: number
     show_atoms: boolean
     cloud: HotspotCloudSettings
-    locked?: boolean
+    locked: boolean
   } = $props()
 </script>
 

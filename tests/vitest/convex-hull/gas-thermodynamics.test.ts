@@ -37,11 +37,8 @@ test(`GAS_STOICHIOMETRY and DEFAULT_ELEMENT_TO_GAS hold the standard gas data`, 
 })
 
 describe(`gas-thermodynamics: default provider`, () => {
-  test(`get_default_gas_provider returns singleton supporting all gases at 0-2000K`, () => {
-    const provider = get_default_gas_provider()
-    expect(get_default_gas_provider()).toBe(provider)
-    expect(provider.get_supported_gases()).toEqual([...GAS_SPECIES])
-    expect(provider.get_temperature_range()).toEqual([0, 2000])
+  test(`get_default_gas_provider returns a singleton`, () => {
+    expect(get_default_gas_provider()).toBe(get_default_gas_provider())
   })
 
   // μ°(T) = Δ_fH(0 K) + H(T) - H(0 K) - T*S: the formation enthalpy at 0 K (0 for elemental
@@ -184,12 +181,9 @@ describe(`gas-thermodynamics: get_effective_pressures`, () => {
 })
 
 describe(`gas-thermodynamics: apply_gas_corrections`, () => {
-  test.each([
-    [`no gas config`, undefined],
-    [`no enabled gases`, { enabled_gases: [] }],
-  ])(`returns the same entries array when %s`, (_label, config) => {
+  test(`returns the same entries array when no gas is enabled`, () => {
     const entries = [make_phase({ Fe: 2, O: 3 }, -2)]
-    expect(apply_gas_corrections(entries, config, 500)).toBe(entries)
+    expect(apply_gas_corrections(entries, { enabled_gases: [] }, 500)).toBe(entries)
   })
 
   test(`only corrects unary references of enabled gases, each by its own μ° shift at P_REF`, () => {

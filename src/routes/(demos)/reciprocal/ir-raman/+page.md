@@ -209,4 +209,4 @@ Selected computed quantities are available per mode, so the raw numbers can be t
 ## Traps this component deliberately avoids
 
 - IR/Raman data uses `VibrationalSpectrum` to represent discrete modes and intensities. DOS adapters represent sampled density curves and normalize explicitly declared frequency units to THz.
-- **`apply_gaussian_smearing` is not used.** It smears values already on a grid and renormalises to preserve their sum, which is not a stick-to-continuum convolution. Broadening goes through `broaden_peaks` from `#lib/lineshape.js` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
+- **`apply_gaussian_smearing` is not used.** It convolves a density already sampled on a grid (trapezoid-weighted, losing mass past the grid ends), which is not a stick-to-continuum broadening. Broadening goes through `broaden_peaks` from `#lib/lineshape.js` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.

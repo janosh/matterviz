@@ -921,9 +921,6 @@ describe(`atom color mode availability`, () => {
         has_selective_dynamics: available,
         colorable_property_keys: available ? [`force`] : [],
       }
-      expect(atom_properties.is_atom_color_mode_available(mode, context)).toBe(
-        available || reason === null,
-      )
       expect(atom_properties.atom_color_mode_unavailable_reason(mode, context)).toEqual(
         available || reason === null ? null : expect.stringContaining(reason),
       )

@@ -27,7 +27,7 @@ interface HullDataPipelineInputs {
   gas_pressures: () => Partial<Record<GasSpecies, number>>
   energy_source_mode: () => EnergySourceMode
   // Pseudo-component keys (e.g. precursor formulas) in place of element symbols
-  components?: () => readonly string[] | undefined
+  components: () => readonly string[] | undefined
   max_hull_dist_show_phases: () => number
   show_stable: () => boolean
   show_unstable: () => boolean
@@ -76,7 +76,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const normalized_source = $derived.by(() => {
     try {
       return {
-        ...thermo.process_hull_entries(inputs.entries(), inputs.components?.()),
+        ...thermo.process_hull_entries(inputs.entries(), inputs.components()),
         error: null,
       }
     } catch (err) {

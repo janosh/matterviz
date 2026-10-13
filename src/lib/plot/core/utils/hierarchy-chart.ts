@@ -378,7 +378,7 @@ const reserve_space = (size: number, available: number): number =>
 // Vertical bars sit beside the chart and reserve width; horizontal bars sit below and
 // reserve height. Shared by Sunburst and Treemap so both place color bars identically.
 export function color_bar_layout(opts: {
-  color_bar: ColorBarLayoutProps | null | undefined
+  color_bar: ColorBarLayoutProps | null
   side: ColorBarSide
   measured: { width: number; height: number }
   avail_width: number

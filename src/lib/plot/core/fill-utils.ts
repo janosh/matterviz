@@ -101,7 +101,7 @@ export function resolve_fill_binding(region: FillRegion, series: readonly DataSe
 // Mirrors d3-shape's own sign helper (returns 1 for 0, unlike Math.sign) so
 // monotone_tangents reproduces curveMonotoneX exactly. Do NOT change to return 0
 // for 0: that would diverge from the rendered curve. It's harmless either way here
-// since s0/s1 === 0 forces the Math.min term below to 0 regardless.
+// since slope_0/slope_1 === 0 forces the Math.min term below to 0 regardless.
 const sign = (val: number): number => (val < 0 ? -1 : 1)
 
 // Per-knot tangents reproducing d3 curveMonotoneX (slope3 interior, slope2 endpoints)
@@ -457,7 +457,7 @@ export function compute_fill_segments(
   if (!upper || !lower || upper.points.length === 0 || lower.points.length === 0) return []
 
   // An explicit region.curve overrides the per-boundary curve (advanced: may no longer match the
-  // series line). Default leaves series edges at monotoneX so they coincide with the line.
+  // series line). Default keeps each edge's own curve, so series edges coincide with their line.
   if (region.curve) {
     upper.curve = region.curve
     lower.curve = region.curve
@@ -541,8 +541,8 @@ const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
 export function generate_fill_path(
   upper: readonly Pt[],
   lower: readonly Pt[],
-  upper_curve: FillCurveType = `monotoneX`,
-  lower_curve: FillCurveType = upper_curve,
+  upper_curve: FillCurveType,
+  lower_curve: FillCurveType,
 ): string {
   if (upper.length < 2 || lower.length < 2) return ``
   const upper_path = trace(upper, upper_curve)
@@ -561,7 +561,6 @@ const expand_error = (err: number | readonly number[], length: number): readonly
 export function convert_error_band_to_fill_region(
   error_band: ErrorBand,
   series: readonly DataSeries[],
-  default_color?: string,
 ): FillRegion | null {
   const resolved = resolve_series_ref(error_band.series, series)
   if (!resolved) return null
@@ -594,7 +593,7 @@ export function convert_error_band_to_fill_region(
       x: coord_x,
       values: coord_y.map((val, idx) => (Number.isFinite(val) ? val - lower_err[idx] : NaN)),
     },
-    fill: error_band.fill ?? default_color ?? `#4e79a7`,
+    fill: error_band.fill ?? `#4e79a7`,
     pattern: error_band.pattern,
     fill_opacity: error_band.fill_opacity ?? 0.3,
     edge_upper: error_band.edge_style,

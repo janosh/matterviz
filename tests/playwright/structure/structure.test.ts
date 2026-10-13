@@ -901,8 +901,11 @@ test.describe(`Structure Event Handler Tests`, () => {
     await wait_for_event(page, `on_error`, [`error_msg`])
     const alert = viewer.getByRole(`alert`).filter({ hasText: `Failed to load` })
     await expect(alert).toBeVisible()
-    expect(await require_bbox(alert)).toEqual(await require_bbox(viewer))
-    expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
+    // a compact card centered on the viewer, not a box covering it
+    const [alert_box, viewer_bounds] = [await require_bbox(alert), await require_bbox(viewer)]
+    expect_centered(alert_box, viewer_bounds)
+    expect(alert_box.width).toBeLessThan(viewer_bounds.width)
+    expect(await require_bbox(canvas)).toEqual(viewer_bounds)
     expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     )

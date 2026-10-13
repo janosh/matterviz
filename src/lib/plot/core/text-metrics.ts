@@ -233,10 +233,7 @@ export const graphemes = (text: string): string[] =>
 
 // Cache each line under its canonical canvas font. Multiline blocks therefore reuse repeated
 // lines and fonts while still applying their own line-height.
-export function measure_text_line(
-  text: string,
-  font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
-): TextLineMetrics {
+export function measure_text_line(text: string, font: Readonly<FontSpec>): TextLineMetrics {
   const font_css = canonical_font_css(font)
   const cached = line_metrics_by_font[font_css]?.[text]
   if (cached) return cached

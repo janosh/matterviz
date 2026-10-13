@@ -476,17 +476,3 @@ export const resolve_slice_plane = (
         normal: settings.cartesian_normal,
         up: settings.cartesian_up,
       }
-
-// Sample a 2D slice through volumetric data along a Miller-index plane (see hkl_slice_plane;
-// `distance` is its `position`). Returns null if indices are all zero.
-export function sample_hkl_slice(
-  volume: VolumetricData,
-  miller_indices: Vec3,
-  distance: number,
-  n_points?: number,
-): SliceResult | null {
-  const plane = hkl_slice_plane(volume, miller_indices, distance)
-  if (!plane) return null
-  const resolution = n_points ?? Math.max(...volume.dims)
-  return sample_plane_slice(volume, plane, { resolution: [resolution, resolution] })
-}

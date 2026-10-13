@@ -63,15 +63,18 @@ test(`a legend too wide for its frame always goes below the plot`, () => {
 describe(`place_outside_decorations`, () => {
   // horizontal reserves top padding; vertical reserves right padding
   test.each([
-    [true, `t`, `r`],
-    [false, `r`, `t`],
+    [true, `t`, `r`, { side: `top`, x: 105, y: 8 }],
+    [false, `r`, `t`, { side: `right`, x: 172, y: 99.5 }],
   ] as const)(
     `crowded colorbar (horizontal=%s) grows the %s padding only`,
-    (horizontal, grown, kept) => {
-      const layout = place({ colorbar: { footprint: { width: 220, height: 56 }, horizontal } })
+    (horizontal, grown, kept, expected_placement) => {
+      const colorbar = { footprint: { width: 220, height: 56 }, horizontal }
+      const layout = place({ colorbar })
       expect(layout.colorbar_outside).toBe(true)
       expect(layout.pad[grown]).toBeGreaterThan(base_pad[grown])
       expect(layout.pad[kept]).toBe(base_pad[kept])
+      const item: DecorationItem = { id: `colorbar`, kind: `colorbar`, ...colorbar }
+      expect(get_outside_placement(item, layout)).toMatchObject(expected_placement)
     },
   )
 
@@ -96,14 +99,7 @@ describe(`place_outside_decorations`, () => {
     })
     expect(roomy.pad.b).toBe(stacked.pad.b)
     // the padding did not grow, yet the legend still sits below: the side is not inferred from it
-    const roomy_scene: DecorationScene = {
-      base_pad: { ...base_pad, b: stacked.pad.b },
-      width,
-      height,
-      obstacles_norm: dense,
-      items: [{ id: `legend`, kind: `legend`, ...legend }],
-    }
-    const placement = get_outside_placement(roomy_scene.items[0], roomy_scene, roomy)
+    const placement = get_outside_placement({ id: `legend`, kind: `legend`, ...legend }, roomy)
     expect(placement).toMatchObject({ side: `bottom`, ...roomy.legend_pos })
     // a caller padding short of the band still grows to fit the legend
     const short = place({ legend, base_pad: { ...base_pad, b: 60 }, axis_pad: base_pad })

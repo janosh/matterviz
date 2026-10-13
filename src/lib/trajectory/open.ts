@@ -56,7 +56,7 @@ const SNIFF_BYTES = 8 * 1024 * 1024
 // UTF-8 size of a payload without encoding it: a 400 MB string would otherwise be copied
 // into a throwaway Uint8Array just to compare against the threshold. Every UTF-16 unit is
 // 1-3 UTF-8 bytes, so only the 1x-3x band needs the exact count.
-export const source_byte_size = (data: TrajectorySource, threshold = Infinity): number => {
+const source_byte_size = (data: TrajectorySource, threshold = Infinity): number => {
   if (data instanceof Blob) return data.size
   if (data instanceof ArrayBuffer) return data.byteLength
   if (data.length > threshold || data.length * 3 <= threshold) return data.length
@@ -74,7 +74,6 @@ const run_from_parsed = (
     time_step: parsed.time_step,
     atom_masses: parsed.atom_masses,
     signals: parsed.signals,
-    properties: parsed.properties,
     warnings: collector.warnings,
   })
 

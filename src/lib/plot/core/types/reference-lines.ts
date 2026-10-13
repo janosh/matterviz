@@ -98,14 +98,10 @@ type Ref3DBase = Omit<
   z_span?: [number | null, number | null]
 }
 
-// Base properties shared by all 3D reference line types
-// Aligned with RefLineBase for future feature parity (interactions, annotations, etc.)
+// Base properties shared by all 3D reference line types (color, width, opacity and dash of
+// `style` are drawn; 3D lines have no hover state, annotations or event handlers)
 interface RefLine3DBase extends Ref3DBase {
   style?: RefLineStyle
-  hover_style?: RefLineStyle
-  annotation?: RefLineAnnotation
-  on_click?: (event: { line_idx: number; line_id?: string | number }) => void
-  on_hover?: (event: { line_idx: number; line_id?: string | number } | null) => void
 }
 
 // 3D reference line - discriminated union

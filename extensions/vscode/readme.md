@@ -35,7 +35,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 ### Quick Start
 
 1. **Open a structure file** in VS Code (`.cif`, `.poscar`, `.xyz`, `.json`, etc.)
-2. **Right-click** in the explorer or editor
+2. **Right-click** the file in the explorer
 3. **Select "MatterViz: Open"** from the context menu
 4. **Or use the keyboard shortcut**: `Ctrl+Shift+V` (Windows/Linux) / `Cmd+Shift+V` (Mac)
 
@@ -174,7 +174,7 @@ MatterViz provides extensive customization options through VSCode settings. Acce
 If you encounter any issues with MatterViz, you can use the built-in bug reporting command to collect debug information:
 
 1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-2. Run **"Report MatterViz Bug"**
+2. Run **"MatterViz: Report Bug"**
 3. The command will open a new document with detailed debug information including:
    - Your OS and version
    - VSCode/Cursor version
@@ -182,7 +182,6 @@ If you encounter any issues with MatterViz, you can use the built-in bug reporti
    - Remote vs local session
    - Files currently being rendered
    - System resources and memory usage
-   - Extension configuration
 4. Copy the information and include it when [creating a GitHub issue](https://github.com/janosh/matterviz/issues/new)
 
 Render confirmations (which file was rendered, how many sites/frames) are logged to the **MatterViz** channel in the Output panel (`View → Output`) rather than shown as notifications; errors still appear as notifications.

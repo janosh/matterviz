@@ -1,5 +1,5 @@
-// Pure data-transform helpers extracted from ScatterPlot.svelte. Everything here is
-// stateless: component $state/$derived values are passed in as parameters.
+// Pure data-transform helpers for ScatterPlot.svelte. Everything here is stateless:
+// component $state/$derived values are passed in as parameters.
 import { partition_point, type Vec2 } from '#lib/math.js'
 import { error_getter } from '#lib/plot/core/error-bars.js'
 import { plot_color } from '#lib/colors/index.js'
@@ -189,8 +189,8 @@ export type LegendFill = FillRegion & {
 // Legend label of a series. Scatter is the only chart that also accepts a label from
 // series-level metadata (`metadata: { label }`).
 const scatter_series_label = <Metadata>(data_series: DataSeries<Metadata>): string | null =>
-  data_series?.label ??
-  (typeof data_series?.metadata === `object` &&
+  data_series.label ??
+  (typeof data_series.metadata === `object` &&
   data_series.metadata !== null &&
   `label` in data_series.metadata &&
   typeof data_series.metadata.label === `string`
@@ -303,8 +303,7 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
           ? color_scale_fn(color_value)
           : (point_override?.color ?? point_style?.fill ?? series_default_color)
       display_style.symbol_opacity = point_override?.opacity ?? point_style?.fill_opacity
-      // Fall back to stroke when the fill is missing/none/transparent, by alpha channel: a
-      // `startsWith('rgba(')` test called every rgba() color transparent.
+      // Fall back to stroke when the fill is missing, none or fully transparent (zero alpha)
       const stroke = point_override?.stroke_color ?? point_style?.stroke
       const stroke_only = [`Plus`, `Times`, `Asterisk`].includes(display_style.symbol_type)
       if (stroke_only || (stroke && is_transparent_or_none(display_style.symbol_color))) {

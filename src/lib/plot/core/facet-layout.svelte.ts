@@ -1,21 +1,19 @@
 import type { Vec2 } from '#lib/math.js'
+import { FACET_AXES } from '#lib/plot/core/facets.js'
 import type { FacetAxis, FacetAxisRanges, FacetLayoutContext } from '#lib/plot/core/facets.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { untrack } from 'svelte'
 
-interface FacetPlotAdapterOptions<Axis extends FacetAxis> {
-  axes: readonly Axis[]
+interface FacetPlotAdapterOptions {
   facet_layout: () => FacetLayoutContext | undefined
   intrinsic_padding: () => Sides
   intrinsic_ranges: () => FacetAxisRanges
-  ranges: () => Record<Axis, Vec2>
+  ranges: () => Record<FacetAxis, Vec2>
 }
 
 // Connect one Cartesian plot's local layout/range state to FacetGrid. Reports always
 // use intrinsic values; reconciled padding/ranges flow only from the grid into the plot.
-export function create_facet_plot_adapter<Axis extends FacetAxis>(
-  options: FacetPlotAdapterOptions<Axis>,
-) {
+export function create_facet_plot_adapter(options: FacetPlotAdapterOptions) {
   $effect(() => {
     const facet_layout = options.facet_layout()
     if (!facet_layout) return
@@ -30,13 +28,13 @@ export function create_facet_plot_adapter<Axis extends FacetAxis>(
       ...intrinsic,
       ...options.facet_layout()?.padding,
     }),
-    axis_visible: (axis: Axis): boolean =>
+    axis_visible: (axis: FacetAxis): boolean =>
       options.facet_layout()?.axis_visibility[axis] !== false,
     apply_ranges: (): void => {
       const facet_layout = options.facet_layout()
       if (!facet_layout) return
       const ranges = untrack(options.ranges)
-      for (const axis of options.axes) {
+      for (const axis of FACET_AXES) {
         const range = facet_layout.ranges[axis]
         const current = untrack(() => ranges[axis])
         if (range && (range[0] !== current[0] || range[1] !== current[1])) {
@@ -45,14 +43,14 @@ export function create_facet_plot_adapter<Axis extends FacetAxis>(
       }
     },
     // Set the live view of one axis, and share it with the grid inside a facet layout
-    update_range: (axis: Axis, range: Vec2): void => {
+    update_range: (axis: FacetAxis, range: Vec2): void => {
       options.ranges()[axis] = range
       options.facet_layout()?.update_range(axis, range)
     },
     reset_ranges: (): boolean => {
       const facet_layout = options.facet_layout()
       if (!facet_layout) return false
-      for (const axis of options.axes) facet_layout.update_range(axis, null)
+      for (const axis of FACET_AXES) facet_layout.update_range(axis, null)
       return true
     },
   }

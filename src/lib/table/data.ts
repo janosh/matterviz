@@ -7,6 +7,7 @@ import {
   html_to_text,
   normalize_unicode_minus,
 } from '#lib/utils.js'
+import { graphemes } from '#lib/plot/core/text-metrics.js'
 import { fuzzy_match } from 'svelte-widgets/utils'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
 
@@ -22,11 +23,10 @@ export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[]
 // Head and tail of a long cell string for a middle ellipsis, split on graphemes so combining
 // marks and emoji aren't torn apart. Strings at or below MIDDLE_ELLIPSIS_MIN_LENGTH render whole.
 export const MIDDLE_ELLIPSIS_MIN_LENGTH = 16
-const grapheme_segmenter = new Intl.Segmenter(undefined, { granularity: `grapheme` })
 export const middle_ellipsis_parts = (text: string): [string, string] => {
-  const graphemes = [...grapheme_segmenter.segment(text)].map(({ segment }) => segment)
-  const split_at = graphemes.length - Math.min(8, Math.floor(graphemes.length / 2))
-  return [graphemes.slice(0, split_at).join(``), graphemes.slice(split_at).join(``)]
+  const chars = graphemes(text)
+  const split_at = chars.length - Math.min(8, Math.floor(chars.length / 2))
+  return [chars.slice(0, split_at).join(``), chars.slice(split_at).join(``)]
 }
 
 // Missing values, NaN and invalid dates render as n/a and sort to the bottom

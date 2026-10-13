@@ -326,7 +326,6 @@ function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
 
 // Conservative planarity check: degenerate first-3-atom planes are non-planar.
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
-  if (ring.length < 3) return false
   const points = ring.map((atom_idx) => sites[atom_idx].xyz)
   const [size_x, size_y, size_z] = cross_3d(
     subtract(points[1], points[0]),

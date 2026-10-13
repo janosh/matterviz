@@ -374,7 +374,7 @@ Point styles, custom tooltips, and hover effects:
         stroke_width: 3,
       },
       point_hover: { scale: 1.3, stroke: 'gold', stroke_width: 4 },
-      point_label: { text: 'Giant red', offset: { y: -20 }, font_size: '12px' },
+      label: 'Giant red',
     },
     // Medium green semi-transparent points with dramatic hover effect
     {
@@ -392,7 +392,7 @@ Point styles, custom tooltips, and hover effects:
         stroke: 'lime',
         stroke_width: 2,
       },
-      point_label: { text: 'Growing green', offset: { y: -20 }, font_size: '12px' },
+      label: 'Growing green',
     },
     // Outline-only points (hollow) with color change on hover
     {
@@ -410,11 +410,7 @@ Point styles, custom tooltips, and hover effects:
         stroke: 'magenta', // Different color on hover
         stroke_width: 3,
       },
-      point_label: {
-        text: 'Color-changing hollow',
-        offset: { y: -20 },
-        font_size: '12px',
-      },
+      label: 'Color-changing hollow',
     },
     // Tiny points with extreme hover growth
     {
@@ -429,7 +425,7 @@ Point styles, custom tooltips, and hover effects:
         stroke: 'red',
         stroke_width: 2,
       },
-      point_label: { text: 'Exploding dots', offset: { y: -20 }, font_size: '12px' },
+      label: 'Exploding dots',
     },
     // Micro dots with custom glow effect
     {
@@ -446,43 +442,20 @@ Point styles, custom tooltips, and hover effects:
         stroke: 'cyan',
         stroke_width: 8, // Creates a glow effect
       },
-      point_label: {
-        text: 'Glowing microdots',
-        offset: { y: -20 },
-        font_size: '12px',
-      },
       label: 'Glowing microdots',
     },
   ]
 
-  // Only show labels for the first point in each series
-  series_with_styles.forEach((series, series_idx) => {
-    if (!series.label) {
-      series.label = series.point_label?.text || `Style ${series_idx + 1}`
-    }
-    // Create a metadata array with empty objects except for the first one
-    series.metadata = Array.from({ length: n_points }, (_, idx) => ({
-      series_name: series.point_label.text,
-    }))
-
-    // Only show label on the first point of each series
-    if (series.point_label) {
-      // ScatterPoint doesn't accept functions for the text property,
-      // so we'll clear the text for all points and manually handle
-      // the first point label with metadata
-      series.point_label.text = ''
-    }
-  })
-
-  // Hovered point tracking for demo
-  let hovered_point = null
+  // Tooltips read the series name from per-point metadata
+  for (const series of series_with_styles) {
+    series.metadata = Array.from({ length: n_points }, () => ({ series_name: series.label }))
+  }
 </script>
 
 <ScatterPlot
   series={series_with_styles.map((srs) => ({ ...srs, markers: 'points' }))}
   x_axis={{ label: 'X Axis' }}
   y_axis={{ label: 'Point Style Examples', range: [0, 12] }}
-  change={(point) => (hovered_point = point)}
   style="height: 400px"
 >
   {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
@@ -490,14 +463,6 @@ Point styles, custom tooltips, and hover effects:
     Point at ({coord_x}, {coord_y})
   {/snippet}
 </ScatterPlot>
-
-Hovered point:
-{#if hovered_point}
-  {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
-  ({coord_x}, {coord_y}) in '{metadata.series_name}'
-{:else}
-  None
-{/if}
 ```
 
 ## Per-Point Custom Styling with Marker Symbols and Sizing
@@ -808,7 +773,7 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
     style="height: 350px"
     legend={{
       layout: `horizontal`,
-      n_items: 3,
+      layout_tracks: 3,
       style: `max-width: none; justify-content: center;`,
     }}
   >
@@ -856,15 +821,12 @@ Points that share coordinates stay separately identifiable and interactive:
       { id: 'r5', label: 'R5 (9,5)' },
     ],
   }
-
-  let hovered_point = null
 </script>
 
 <ScatterPlot
   series={[shared_coords_data]}
   x_axis={{ range: [0, 10], ticks: 1, label: 'X Axis' }}
   y_axis={{ range: [0, 6], ticks: 1, label: 'Y Axis' }}
-  change={(point) => (hovered_point = point)}
   style="height: 350px"
 >
   {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
@@ -874,14 +836,6 @@ Points that share coordinates stay separately identifiable and interactive:
     ID: {identifier}
   {/snippet}
 </ScatterPlot>
-
-<strong>Currently hovered:</strong>
-{#if hovered_point}
-  {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
-  {metadata?.label || 'Unknown point'} at ({coord_x}, {coord_y})
-{:else}
-  nothing
-{/if}
 ```
 
 ## Text Annotations for Scatter Points
@@ -1384,17 +1338,11 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
   // Controls for random data points
   let ticks = $state({ x: -5, y: -5 })
 
-  // Grid controls
-  let grid = $state({ x: true, y: true })
-  let grid_color = $state('gray')
-  let grid_width = $state(0.4)
-  let grid_dash = $state('4')
+  // Grid toggles
+  let display = $state({ x_grid: true, y_grid: true })
 
   // Custom axis labels
   let axis_labels = $state({ x: 'X Axis', y: 'Y Value' })
-
-  // Hovered point tracking
-  let hovered_point = $state(null)
 
   // Update series based on visibility toggles
   let displayed_series = $derived(
@@ -1435,7 +1383,6 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     }
     return output
   })
-  let display = $state({ x_grid: grid.x })
 </script>
 
 <div>
@@ -1468,7 +1415,6 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
     series={displayed_series.map((srs) => ({ ...srs, markers: display_mode }))}
     x_axis={{ label: axis_labels.x }}
     y_axis={{ label: axis_labels.y }}
-    change={(point) => (hovered_point = point)}
     style="height: 400px;"
     legend={null}
   >
@@ -1478,13 +1424,6 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
       Symbol: {metadata.symbol}
     {/snippet}
   </ScatterPlot>
-
-  {#if hovered_point}
-    {@const { x: coord_x, y: coord_y, metadata } = hovered_point}
-    Hovered point: ({coord_x}, {coord_y.toFixed(2)}) from '{metadata.category}'
-  {:else}
-    No point hovered
-  {/if}
 
   <h3 id="random-points-with-custom-controls-and-external-legend" style="margin-top: 2em;">
     Random Points with Custom Controls and External Legend
@@ -1501,22 +1440,12 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
       </label>
     {/each}
 
-    {#each Object.keys(grid) as axis (axis)}
+    {#each ['x', 'y'] as axis (axis)}
       <label>
-        <input type="checkbox" bind:checked={grid[axis]} />
+        <input type="checkbox" bind:checked={display[`${axis}_grid`]} />
         {axis} Grid
       </label>
     {/each}
-
-    <label>
-      Grid Color:
-      <select bind:value={grid_color}>
-        <option value="gray">Gray</option>
-        <option value="lightgray">Light Gray</option>
-        <option value="darkgray">Dark Gray</option>
-        <option value="#aaaaaa">#aaa</option>
-      </select>
-    </label>
 
     {#each Object.keys(axis_labels) as axis (axis)}
       <label>
@@ -2681,9 +2610,6 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
       z_index: `below-grid`,
     },
   ])
-
-  let clicked_line = $state(null)
-  let hovered_line = $state(null)
 </script>
 
 <ScatterPlot

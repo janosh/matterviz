@@ -48,9 +48,7 @@ export const simplex_centroid = (corners: readonly (readonly number[])[]): numbe
 
 // Marker radius in CSS px before the container scale (stable points are larger)
 export const point_radius = (entry: ConvexHullEntry): number =>
-  // `||` (not ??) on purpose: size=0 falls back to the default
-  // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-  entry.size || (entry_is_stable(entry) ? 6 : 4)
+  entry_is_stable(entry) ? 6 : 4
 
 // === Markers ===
 
@@ -78,7 +76,7 @@ export function marker_path_data(radius: number, marker: MarkerSymbol): string |
 const marker_path_cache = new Map<string, Path2D>()
 const MAX_MARKER_PATH_CACHE = 512
 
-export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
+export function create_marker_path(size: number, marker: MarkerSymbol): Path2D {
   const rounded_size = Math.max(0, Number((Number.isFinite(size) ? size : 0).toFixed(3)))
   const key = `${marker}|${rounded_size}`
   const cached = marker_path_cache.get(key)
@@ -709,8 +707,6 @@ type HullView = {
 // syntax on purpose: its bivariant parameters let a strategy over a concrete camera type sit
 // in a HullCanvasStrategy<HullCamera> record without the component knowing the angles.
 export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
-  dim: 3 | 4
-  kind: `ternary` | `quaternary` // DEFAULTS.convex_hull section
   corners: readonly (readonly number[])[]
   camera_default: Camera // initial view, restored by reset_camera
   wheel_clamp: [min: number, max: number] // zoom clamp range
@@ -805,8 +801,6 @@ function center_ternary_camera(camera: TernaryCamera, view_scale: number): void 
 
 const ternary_defaults = DEFAULTS.convex_hull.ternary
 const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
-  dim: 3,
-  kind: `ternary`,
   corners: TRIANGLE_VERTICES,
   camera_default: {
     elevation: ternary_defaults.camera_elevation,
@@ -912,8 +906,6 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
 
 const quaternary_defaults = DEFAULTS.convex_hull.quaternary
 const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
-  dim: 4,
-  kind: `quaternary`,
   corners: TETRAHEDRON_VERTICES,
   camera_default: {
     rotation_x: quaternary_defaults.camera_rotation_x,

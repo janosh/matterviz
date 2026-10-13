@@ -22,6 +22,8 @@ type OutsideLayout = {
   legend_side: `right` | `bottom` // valid when legend_outside
   legend_pos: DecorationPoint // outside position (right or bottom margin; valid when legend_outside)
   colorbar_outside: boolean
+  colorbar_side: `top` | `right` // valid when colorbar_outside
+  colorbar_pos: DecorationPoint // outside position (valid when colorbar_outside)
 }
 
 // True when the interior spot the solver would pick for `footprint` (px), searched in the base
@@ -87,7 +89,7 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
   const base_w = width - base_pad.l - base_pad.r - reserved.l - reserved.r
   const base_h = height - base_pad.t - base_pad.b - reserved.t - reserved.b
   const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
-  // (unless the caller's right padding already has room for it, which costs no plot width)
+  // Too wide unless the caller's right padding already has room for it (costs no plot width)
   const too_wide =
     legend_width > LEGEND_MAX_INTERIOR_FRACTION * base_w && legend_width + 2 * gap > base_pad.r
   const too_tall = legend_height > LEGEND_MAX_INTERIOR_FRACTION * base_h
@@ -143,24 +145,28 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
         y: height - strip_height - gap,
       }
 
-  const legend_side = legend_right ? `right` : `bottom`
+  const colorbar_pos: DecorationPoint = colorbar_horizontal
+    ? { x: base_pad.l + reserved.l + (base_w - colorbar_width) / 2, y: gap }
+    : {
+        x: width - colorbar_width - gap,
+        y: base_pad.t + reserved.t + (base_h - colorbar_height) / 2,
+      }
+
   return {
     pad,
     legend_outside: legend_right || legend_bottom,
-    legend_side,
+    legend_side: legend_right ? `right` : `bottom`,
     legend_pos,
     colorbar_outside,
+    colorbar_side: colorbar_horizontal ? `top` : `right`,
+    colorbar_pos,
   }
 }
 
 export const get_outside_placement = (
   item: DecorationItem,
-  scene: DecorationScene,
   layout: OutsideLayout,
 ): DecorationPlacement | null => {
-  const gap = scene.gap ?? DEFAULT_DECORATION_GAP
-  const { width: item_width, height: item_height } = item.footprint
-  const { base_pad, width, height } = scene
   const placement = {
     id: item.id,
     kind: item.kind,
@@ -172,18 +178,7 @@ export const get_outside_placement = (
     return { ...placement, ...layout.legend_pos, side: layout.legend_side }
   }
   if (item.kind === `colorbar` && layout.colorbar_outside) {
-    const horizontal = item.horizontal ?? false
-    const reserved = scene.reserved_pad ?? { t: 0, b: 0, l: 0, r: 0 }
-    const base_width = width - base_pad.l - base_pad.r - reserved.l - reserved.r
-    const base_height = height - base_pad.t - base_pad.b - reserved.t - reserved.b
-    return {
-      ...placement,
-      x: horizontal
-        ? base_pad.l + reserved.l + (base_width - item_width) / 2
-        : width - item_width - gap,
-      y: horizontal ? gap : base_pad.t + reserved.t + (base_height - item_height) / 2,
-      side: horizontal ? `top` : `right`,
-    }
+    return { ...placement, ...layout.colorbar_pos, side: layout.colorbar_side }
   }
   return null
 }

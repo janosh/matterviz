@@ -37,8 +37,8 @@ export function normalize_to_scene(
 // - user Z → Three.js Y (vertical)
 export function create_to_threejs(
   ranges: Record<`x` | `y` | `z`, Vec2>,
-  [scene_x, scene_y, scene_z]: Vec3 = SCENE_SIZE,
 ): (user_x: number, user_y: number, user_z: number) => Point3D {
+  const [scene_x, scene_y, scene_z] = SCENE_SIZE
   return (user_x: number, user_y: number, user_z: number) => ({
     x: normalize_to_scene(user_x, ranges.x, scene_x),
     y: normalize_to_scene(user_z, ranges.z, scene_z), // z → Y
@@ -146,7 +146,7 @@ export function get_3d_auto_ranges(
   const extents = { x: empty_extent(), y: empty_extent(), z: empty_extent() }
   for (const srs of series) {
     // A legend-hidden series draws nothing, so it must not widen the axes either
-    if (!srs || srs.visible === false) continue
+    if (srs.visible === false) continue
     for (const axis of [`x`, `y`, `z`] as const) accumulate_extent(extents[axis], srs[axis])
   }
   // min_positive also lands in the extents but only matters on log axes, unused here

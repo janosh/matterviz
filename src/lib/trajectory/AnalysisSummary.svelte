@@ -7,24 +7,26 @@
   import { columns_to_csv } from '#lib/trajectory/analysis.js'
   import type { Snippet } from 'svelte'
 
+  type Download = { label: string; filename: string } & (
+    | { columns: () => Record<string, ArrayLike<number>> }
+    | { json: () => unknown }
+  )
+
   let {
     headers,
-    downloads = [],
+    downloads,
     children,
     note,
   }: {
     headers: string[]
-    // Build and serialize data only on click.
-    downloads?: ({ label: string; filename: string } & (
-      | { columns: () => Record<string, ArrayLike<number>> }
-      | { json: () => unknown }
-    ))[]
+    // Build and serialize data only on click. The first names the export.
+    downloads: [Download, ...Download[]]
     // Table rows (<tr>…</tr>)
     children: Snippet
     // Provenance line rendered below the table
     note: Snippet
   } = $props()
-  const default_name = $derived(downloads[0]?.filename.replace(/\.[^.]+$/, ``) ?? `analysis`)
+  const default_name = $derived(downloads[0].filename.replace(/\.[^.]+$/, ``))
   const export_state = new FileExportState(() => default_name)
 </script>
 
@@ -43,33 +45,31 @@
 <p class="analysis-note">
   {@render note()}
 </p>
-{#if downloads.length}
-  <details>
-    <summary>Export files</summary>
-    <ExportDestination state={export_state} />
-    {#each downloads as item (item.label)}
-      <button
-        type="button"
-        class="analysis-download"
-        title="Download {item.label}"
-        disabled={export_state.disabled}
-        onclick={() =>
-          export_state.run(({ filename, save }) => {
-            const suffix = item.filename.startsWith(`${default_name}.`)
-              ? item.filename.slice(default_name.length)
-              : `-${item.filename}`
-            const [text, mime] =
-              `columns` in item
-                ? [columns_to_csv(item.columns()), `text/csv`]
-                : [JSON.stringify(item.json(), null, 2), `application/json`]
-            return save(text, `${filename}${suffix}`, mime)
-          })}
-      >
-        ⬇ {item.label}
-      </button>
-    {/each}
-  </details>
-{/if}
+<details>
+  <summary>Export files</summary>
+  <ExportDestination state={export_state} />
+  {#each downloads as item (item.label)}
+    <button
+      type="button"
+      class="analysis-download"
+      title="Download {item.label}"
+      disabled={export_state.disabled}
+      onclick={() =>
+        export_state.run(({ filename, save }) => {
+          const suffix = item.filename.startsWith(`${default_name}.`)
+            ? item.filename.slice(default_name.length)
+            : `-${item.filename}`
+          const [text, mime] =
+            `columns` in item
+              ? [columns_to_csv(item.columns()), `text/csv`]
+              : [JSON.stringify(item.json(), null, 2), `application/json`]
+          return save(text, `${filename}${suffix}`, mime)
+        })}
+    >
+      ⬇ {item.label}
+    </button>
+  {/each}
+</details>
 
 <style>
   .analysis-summary {

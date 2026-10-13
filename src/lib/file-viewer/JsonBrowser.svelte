@@ -4,7 +4,7 @@
     pick_contrast_color,
     resolve_backdrop,
   } from '#lib/colors/index.js'
-  import { format_path, resolve_path } from '#lib/json-path.js'
+  import { format_path, resolve_path } from 'svelte-widgets/json-tree/path'
   import { plural } from '#lib/labels.js'
   import JsonTree from 'svelte-widgets/JsonTree.svelte'
   import { relative_path_segments } from 'svelte-widgets/json-tree/utils'

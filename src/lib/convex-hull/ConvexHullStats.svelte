@@ -449,9 +449,6 @@
     display: flex;
     flex-direction: column;
   }
-  .convex-hull-stats :global(tbody tr[onclick]) {
-    cursor: pointer;
-  }
   .view-toggle {
     display: flex;
     margin-bottom: 8pt;

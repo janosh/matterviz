@@ -236,17 +236,6 @@ export function resolve_color_domain(
   return [stats.min, stats.max]
 }
 
-// Widest domain covering every column in a shared-domain group, so comparable metrics
-// are colored on one scale instead of each being normalized to its own range.
-// Reduced rather than spread into Math.min/max, which throws RangeError past ~65k args.
-export const merge_domains = (domains: [number, number][]): [number, number] | null =>
-  domains.length === 0
-    ? null
-    : domains.reduce(([lower, upper], [next_lo, next_hi]): [number, number] => [
-        Math.min(lower, next_lo),
-        Math.max(upper, next_hi),
-      ])
-
 // Build a memoized value→color mapper for one column. The O(column-length)
 // work (numeric min/max) and d3 scale construction happen ONCE here;
 // the returned function is O(1) per cell. HeatmapTable derives one mapper per

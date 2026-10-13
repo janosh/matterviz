@@ -3,7 +3,6 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { normalize_show_controls } from '#lib/controls.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import {
     chart_export_filename,
@@ -32,7 +31,6 @@
     LegendConfig,
     PanConfig,
     PlotConfig,
-    Point,
     RefLine,
     RefLineEvent,
     ScatterHandlerEvent,
@@ -88,7 +86,7 @@
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
   import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
@@ -192,7 +190,7 @@
     error_bands = [],
     on_fill_click,
     on_fill_hover,
-    ref_lines = $bindable([]),
+    ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
     selected_series_idx = $bindable(0),
@@ -267,7 +265,7 @@
       error_bands?: ErrorBand[]
       on_fill_click?: (event: FillHandlerEvent) => void
       on_fill_hover?: (event: FillHandlerEvent | null) => void
-      ref_lines?: RefLine[] // Bindable for legend toggle support
+      ref_lines?: RefLine[]
       on_ref_line_click?: (event: RefLineEvent) => void
       on_ref_line_hover?: (event: RefLineEvent | null) => void
       selected_series_idx?: number
@@ -314,7 +312,7 @@
   })
 
   // Assign visible series by unit/axis_group while preserving every explicit y_axis.
-  // Dimensionless series retain the historical y default. Re-running this derived after a
+  // Dimensionless series keep the y default. Re-running this derived after a
   // legend toggle lets the remaining visible group move back to y.
   // Null/undefined entries pass through untouched; every consumer skips them.
   const assigned_series = $derived.by(() => {
@@ -1150,9 +1148,8 @@
     resolve_legend_visibility(show_legend, legend, legend_track_items.length),
   )
 
-  // Group fills by z-index for ordered rendering (single pass instead of 4 filters)
+  // Group fills by z-index for ordered rendering; no z_index lands in below-lines
   let fills_by_z = $derived.by(() => {
-    // default bucket: no z_index or 'below-lines'
     const groups: Record<LayerZIndex, typeof computed_fills> = {
       [`below-grid`]: [],
       [`below-lines`]: [],
@@ -1419,7 +1416,7 @@
     const hovered_series = assigned_series[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
-    const finite_color_value = Number.isFinite(color_value) ? (color_value ?? null) : null
+    const finite_color_value = is_finite_num(color_value) ? color_value : null
     const [cx, cy] = series_projector(hovered_series).point(point)
     const active_x_config = hovered_series.x_axis === `x2` ? final_x2_axis : final_x_axis
     const active_y_config = hovered_series.y_axis === `y2` ? final_y2_axis : final_y_axis
@@ -1862,7 +1859,7 @@
     {#each error_bar_paths as { series_pos, d: datum, stroke } (series_pos)}
       <path
         class="error-bars"
-        clip-path="url(#{frame.clip_path_id})"
+        clip-path="url(#{clip_path_id})"
         opacity={is_legend_dimmed(filtered_series[series_pos]?.orig_series_idx) ? 0.25 : 1}
         d={datum}
         {stroke}

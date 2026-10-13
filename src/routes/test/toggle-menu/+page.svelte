@@ -301,7 +301,6 @@
   .state-display {
     margin-top: 12px;
     padding: 8px;
-    background: var(--nav-bg);
     border-radius: 4px;
     font-size: 0.85em;
     font-family: monospace;

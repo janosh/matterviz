@@ -134,12 +134,6 @@
   import { trajectory_trail_anchors } from './trajectory-lines'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 
-  type EditableAtomHitTarget = {
-    site_idx: number
-    position: Vec3
-    radius: number
-  }
-
   type BondContextMenu = {
     site_idx_1: number
     site_idx_2: number
@@ -308,7 +302,7 @@
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     camera_position?: [x: number, y: number, z: number] // initial camera position; unset fits the structure
-    camera_target?: Vec3 // external orbit-controls target for pan synchronization
+    camera_target?: Vec3 // orbit-controls target (pans offset the camera, not this)
     // When set (and camera_position is unset), auto-place the camera along this
     // direction from the structure center (used by the multi-side view for fixed angles)
     camera_direction?: Vec3
@@ -810,7 +804,6 @@
   }
 
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
-    if (!interactive) return // inactive panes must not mutate shared bond state
     const rendered_target = { site_idx_1, site_idx_2 }
     if (!can_edit_bond(rendered_target)) return
     const edit_state = current_bond_edit_state()
@@ -848,7 +841,7 @@
     apply_bond_edit_result(result, false)
   }
 
-  // Order change or deletion of a rendered bond (or the context menu's when bond is null)
+  // Order change or deletion of a rendered bond (a null bond is a no-op)
   function edit_bond(
     bond: BondKeyTarget | null,
     edit: (target: BondKeyTarget) => BondEditResult,
@@ -856,10 +849,8 @@
     const target = bond && resolve_bond_edit_target(bond)
     if (target && can_edit_bond(target)) apply_bond_edit_result(edit(target))
   }
-  const context_bond = () => bond_context_target ?? bond_context_menu
-
   const set_context_bond_order = (order: BondOrder) =>
-    edit_bond(context_bond(), (target) =>
+    edit_bond(bond_context_target, (target) =>
       apply_set_bond_order(
         current_bond_edit_state(),
         target,
@@ -1464,7 +1455,7 @@
     if (!auto_bond_order || !structure || bond_pairs.length === 0) {
       return bond_pairs
     }
-    const total_charge = (`charge` in structure ? structure.charge : 0) ?? 0
+    const total_charge = structure.charge ?? 0
     const perceived = perceive_bond_orders(structure.sites, bond_records(bond_pairs), {
       total_charge,
     })
@@ -2225,7 +2216,7 @@
             <button
               type="button"
               class="remove"
-              {...menu_action_props(() => remove_bond(context_bond()))}
+              {...menu_action_props(() => remove_bond(bond_context_target))}
             >
               Remove
             </button>
@@ -2467,7 +2458,7 @@
             {@const vector_2 = disp(site_b.xyz)}
             {@const count_1 = Math.hypot(vector_1[0], vector_1[1], vector_1[2])}
             {@const count = Math.hypot(vector_2[0], vector_2[1], vector_2[2])}
-            {@const angle_deg = measure.angle_between_vectors(vector_1, vector_2, `degrees`)}
+            {@const angle_deg = measure.angle_between_vectors(vector_1, vector_2)}
             {#if count_1 > math.EPS && count > math.EPS}
               <!-- rays end on the minimum-image positions the angle was measured from, not
                 the raw in-cell ones, so the drawn wedge matches the reported number -->
@@ -2542,14 +2533,12 @@
 </T.Group>
 
 <style>
+  /* background, color and padding come from the inline style (site_label_* settings) */
   .atom-label {
-    background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
     border: 0;
     border-radius: var(--struct-atom-label-border-radius, var(--border-radius, 3pt));
-    color: inherit;
     cursor: pointer;
     font: inherit;
-    padding: var(--struct-atom-label-padding, 0 3px);
     white-space: nowrap;
   }
   .species {

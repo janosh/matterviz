@@ -442,9 +442,9 @@ export function observe_canvas_presence(
   return () => observer.disconnect()
 }
 
-// Bitrate target (bits/s) for AV1 exports, clamped to [1, 200] Mbps.
-// This pixel-rate heuristic also drives the file-size estimate; actual sizes vary by scene.
-export const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
+// Bitrate target (bits/s) for AV1 exports without an explicit `bitrate`, clamped to
+// [1, 200] Mbps. A pixel-rate heuristic: actual sizes vary by scene.
+const estimate_video_bitrate = (pixel_count: number, fps: number): number =>
   clamp(pixel_count * fps * 0.1, 1_000_000, 200_000_000)
 
 // Both containers use AV1. MP4 requires its registered sample-entry code, av01.

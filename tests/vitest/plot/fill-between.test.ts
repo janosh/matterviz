@@ -367,8 +367,8 @@ describe(`generate_fill_path`, () => {
   const lower: Pt[] = [make_point(0, 40), make_point(50, 45), make_point(100, 42)]
 
   it(`returns empty string when a boundary has fewer than 2 points`, () => {
-    expect(generate_fill_path([make_point(0, 0)], lower)).toBe(``)
-    expect(generate_fill_path([], [])).toBe(``)
+    expect(generate_fill_path([make_point(0, 0)], lower, `linear`, `linear`)).toBe(``)
+    expect(generate_fill_path([], [], `linear`, `linear`)).toBe(``)
   })
 
   it(`traces the upper series forward and the lower series backward`, () => {

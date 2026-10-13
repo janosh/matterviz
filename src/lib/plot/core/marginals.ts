@@ -131,7 +131,7 @@ export interface MarginalSeriesCurve {
 export type ScaleFn = (value: number) => number
 
 // Pixel span, data range, and scale type for one axis a marginal can bind to. Plots pass an
-// `axes` map (x + y required, x2/y2 optional) to PlotMarginals; x2/y2 fall back to x/y.
+// `axes` map with all four axes to PlotMarginals.
 export interface MarginalAxis {
   pixel_range: Vec2
   range: Vec2
@@ -141,12 +141,7 @@ export interface MarginalAxis {
   label?: string // axis title (e.g. `Error`), used as the position-row label in hover tooltips
   unit?: string
 }
-export type MarginalAxes = {
-  x: MarginalAxis
-  x2?: MarginalAxis
-  y: MarginalAxis
-  y2?: MarginalAxis
-}
+export type MarginalAxes = Record<MarginalAxisBinding, MarginalAxis>
 
 // Capture the host scale's pixel span and current domain, reading scale_type/format/label
 // off the plot's AxisConfig (DRYs the per-axis object every host plot passes to PlotMarginals; the
@@ -595,9 +590,8 @@ function compute_histogram(
   pos_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // The main Histogram's binner, so a strip agrees bar for bar with the chart beside it. d3's
-  // is uniform in DATA units, so under a log axis every bin but the last was a sliver (3301 of
-  // 5000 log-uniform samples in one bar), and it returns nice thresholds, not the asked count.
+  // The main Histogram's binner, so a strip agrees bar for bar with the chart beside it: exactly
+  // `config.bins` bins, uniform in the axis' scale space (log-uniform on a log axis)
   const { edges, counts } = bin_values(positions, pos_range, config.bins, scale_type, weights)
   let max = 0
   // A strip summarizes the points in view, so it normalizes by the in-range total
@@ -665,9 +659,8 @@ function compute_kde(
     range: positional_range,
     clip,
     max_samples: 5000,
-    // Evaluated on a grid uniform in the axis' bin space. gaussian_kde's own grid is uniform in
-    // data units, so under a log axis 99 of 100 points landed in the right half of the strip
-    // and two and a half decades of curve were drawn as one straight segment.
+    // Grid uniform in the axis' bin space: a data-unit grid would crowd nearly every point
+    // into the top decade of a log axis and draw the lower decades as one straight segment
     grid_transform: bin_transform(scale_type),
   })
   const points = kde.grid.map((pos, idx) => ({ pos, value: kde.density[idx] }))
@@ -683,8 +676,8 @@ export function compute_marginal_curve(
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // Canonicalize to an ascending range so a reversed (inverted-axis) range doesn't crash
-  // d3.bin (negative-length bin array) or empty the kde grid
+  // Canonicalize to an ascending range: clean_pairs' clipping and the kde grid assume
+  // lower <= upper, and an inverted axis hands over a reversed range
   const range = range_bounds(positional_range)
   const { positions: pos, weights: wts } = clean_pairs(positions, weights, range, scale_type)
   // rug returns the raw positions (empty or not); other types short-circuit on empty input
@@ -704,10 +697,8 @@ export function compute_marginal_curve(
     return compute_histogram(pos, wts, config, hist_range, scale_type)
   }
   if (config.type === `cdf`) return compute_cdf(pos, wts)
-  // gaussian_kde takes no weights, so a weighted `kde` marginal silently rendered the
-  // UNWEIGHTED density - positions [1, 2] weighted [1, 99] peaked at 1, not 2, with nothing
-  // said. The histogram and cdf paths above both honour `wts`. Rejecting the combination is
-  // the honest answer until the estimator itself can weight its samples.
+  // gaussian_kde takes no weights, so a weighted kde would draw the unweighted density
+  // (positions [1, 2] weighted [1, 99] would peak at 1). Reject it rather than mislead.
   if (wts) {
     throw new Error(
       `Marginal type 'kde' cannot weight its samples; use 'histogram' or 'cdf' for weighted data`,

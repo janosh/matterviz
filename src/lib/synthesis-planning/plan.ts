@@ -72,13 +72,12 @@ const empty_rejections = (): Record<RejectReason, number> => ({
   uphill: 0,
 })
 
-// Phases allowed to act as precursors for `target`
+// Phases allowed to act as precursors for the target
 function build_precursor_pool(
   ctx: PlannerContext,
-  target: PlannerPhase,
   options: SynthesisPlanRequest[`precursors`] = {},
 ): PlannerPhase[] {
-  const { phase_set, open_elements } = ctx
+  const { phase_set, open_elements, target } = ctx
   const max_e_above_hull = options.max_e_above_hull ?? DEFAULT_MAX_E_ABOVE_HULL
   // Precursor elements must end up in the target or leave as gas
   const allowed = phase_set.elements.map(
@@ -419,7 +418,7 @@ export function plan_synthesis(
     )
   }
 
-  const pool = build_precursor_pool(ctx, target, request.precursors)
+  const pool = build_precursor_pool(ctx, request.precursors)
   if (pool.length === 0) {
     ctx.warnings.push(
       `Precursor pool is empty: relax max_e_above_hull, allow/block filters or only_common`,

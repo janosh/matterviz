@@ -11,7 +11,6 @@
   import type { AnyStructure } from '#lib/structure/index.js'
   import * as exports from '#lib/structure/export.js'
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
-  import type { ComponentProps } from 'svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera as CameraIcon } from 'svelte-widgets/icons'
   import type { Camera, Scene } from 'three/webgpu'
@@ -32,7 +31,6 @@
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     pane_props = {},
     toggle_props = {},
-    ...rest
   }: {
     export_pane_open?: boolean
     flight_pane_open?: boolean
@@ -216,7 +214,6 @@
     ...toggle_props,
     class: [`structure-export-toggle`, toggle_props?.class],
   }}
-  {...rest}
 >
   {#if prediction && (on_reset_prediction_surfaces || on_clear_prediction)}
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">

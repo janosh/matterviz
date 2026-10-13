@@ -3,12 +3,11 @@
 // (CircleLegend nests them), which stays legible at the default 2-10 px marker radii. Value
 // picking and layout are pure so the geometry is testable; SizeLegend.svelte only draws it.
 
-import { ticks as d3_ticks } from 'd3-array'
 import { type FontSpec, measure_text_line } from '#lib/plot/core/text-metrics.js'
 
 export type SizeScaleFn = ((value: number) => number) & {
   domain: () => readonly number[]
-  ticks?: (count?: number) => number[]
+  ticks: (count?: number) => number[]
 }
 export type SizeLegendEntry = { value: number; radius: number }
 
@@ -44,9 +43,7 @@ export function size_legend_entries(
     const [lo, hi] = [Math.min(...domain), Math.max(...domain)]
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return []
     const in_domain_ticks = (n_ticks: number) =>
-      (scale.ticks ? scale.ticks(n_ticks) : d3_ticks(lo, hi, n_ticks)).filter(
-        (val) => val >= lo && val <= hi,
-      )
+      scale.ticks(n_ticks).filter((val) => val >= lo && val <= hi)
     // Nice ticks can fall outside the domain (0 for [2, 120] at step 50), leaving too few:
     // ask for twice as many and spread-pick from those
     let ticks = in_domain_ticks(count)

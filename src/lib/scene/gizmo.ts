@@ -6,8 +6,7 @@ import { clamp, type Vec3 } from '#lib/math.js'
 
 export type GizmoAxisKey = `x` | `y` | `z` | `nx` | `ny` | `nz`
 
-// Per-axis appearance. Mirrors the subset of three-viewport-gizmo's axis options the
-// library actually set, so existing call sites keep passing the same objects.
+// Per-axis appearance (colors, label, opacity, and their hover overrides)
 export type GizmoAxisStyle = {
   color?: string
   labelColor?: string

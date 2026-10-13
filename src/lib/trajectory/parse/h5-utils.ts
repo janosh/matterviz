@@ -8,6 +8,7 @@ import type {
 } from '#lib/trajectory/index.js'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
+import { values_per_sample } from '../helpers'
 import { DEFAULT_POSITION_STREAM_MAX_BYTES, resolve_frame_range } from '../runs/accumulate'
 
 export const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
@@ -134,8 +135,7 @@ export const read_dataset = (h5_file: h5wasm.File, path: string, format?: string
   const dataset = dataset_at(h5_file, path)
   if (!dataset) return null
   if (format !== undefined) {
-    const shape = dataset_shape(dataset, path, format)
-    const values = shape.reduce((product, size) => product * size, 1)
+    const values = values_per_sample(dataset_shape(dataset, path, format))
     assert_budget(path, values, `requests`, HDF5_MAX_WHOLE_DATASET_BYTES)
   }
   return dataset.to_array()

@@ -1,7 +1,7 @@
-import { encode_frame, select_frame_channels } from '../frame'
 // Run whose frames live with an embedding host (the VS Code extension process): the host
 // indexed the file, sent a summary, and answers one frame per request. Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
+import { encode_frame, select_frame_channels } from '../frame'
 import type { TrajectoryFrame } from '../index'
 import { to_error } from '#lib/utils.js'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'

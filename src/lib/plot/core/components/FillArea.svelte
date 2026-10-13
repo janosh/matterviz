@@ -183,7 +183,6 @@
   {#if pattern && is_first_segment}
     <defs><PatternDefs patterns={[pattern]} /></defs>
   {/if}
-  <!-- Gradient defs -->
   {#if is_fill_gradient(region.fill) && is_first_segment}
     <defs>{@render fill_gradient_def(gradient_id, region.fill)}</defs>
   {/if}
@@ -219,9 +218,6 @@
 {/snippet}
 
 <style>
-  .fill-region {
-    transition: opacity 0.15s ease;
-  }
   .fill-region.hovered {
     filter: brightness(1.35) saturate(1.2);
   }

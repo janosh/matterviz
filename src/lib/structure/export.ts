@@ -129,7 +129,7 @@ const site_force = (site: Site): number[] | null => {
 }
 
 // Whether any site carries per-axis motion flags. Keyed on Array.isArray, the same test
-// site_move_flags reads them with, so the header and the columns can never disagree.
+// move_flag_columns reads them with, so the header and the columns can never disagree.
 const has_move_flags = (structure: AnyStructure): boolean =>
   structure.sites.some((site) => Array.isArray(site.properties?.selective_dynamics))
 

@@ -191,7 +191,7 @@
           <option>dotted</option>
         </select>
         <input type="color" bind:value={active_tile_border.color} style="height: 1.5em" />
-        <code style="background: var(--sms-ui-bg); padding: 4px 8px; border-radius: 4px">
+        <code style="padding: 4px 8px; border-radius: 4px">
           {active_tile_border.width}
           {active_tile_border.style}
           {active_tile_border.color}

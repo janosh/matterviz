@@ -135,7 +135,7 @@ export function hotspot_field_geometry(
           ...result.grid,
           cell: lattice.matrix,
           origin: render_origin,
-          pbc: lattice.pbc ?? ([false, false, false] as const),
+          pbc: lattice.pbc,
         }
       : result.grid
   // Cell vectors are columns for Three's column-vector multiplication. Scene positions

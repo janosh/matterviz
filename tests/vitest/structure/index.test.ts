@@ -8,12 +8,12 @@ import {
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
   FIT_ZOOM_REF_PX,
-  get_all_site_vectors,
   get_structure_vector_keys,
   is_vector_key,
   ortho_zoom_for_extent,
   perspective_distance_for_extent,
   structure_fit_frame,
+  try_parse_vec3,
   vector_display_defaults,
   VECTOR_PALETTE,
 } from '#lib/structure/index.js'
@@ -418,9 +418,6 @@ describe(`camera helpers`, () => {
   )
 })
 
-const make_site = (properties?: Record<string, unknown>): Site =>
-  ({ species: [], abc: [0, 0, 0], xyz: [0, 0, 0], label: `X`, properties }) as Site
-
 describe(`is_vector_key`, () => {
   // a key is a vector key when it IS a known prefix or starts with `<prefix>_`
   test.each([
@@ -441,102 +438,36 @@ describe(`is_vector_key`, () => {
   })
 })
 
-describe(`get_all_site_vectors`, () => {
+describe(`try_parse_vec3`, () => {
   test.each([
-    [`force`, [1, 2, 3]],
-    [`spins`, [0, 0, -1]],
-    [`force_DFT`, [1, 0, 0]],
-    // LAMMPS vx/vy/vz and extXYZ velocities land here with no further wiring
-    [`velocity`, [1.5, -2, 0]],
-    [`phonon_displacement`, [-1, 2, 0]],
-  ] as const)(`accepts 3D vector in %s`, (key, vec) => {
-    const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
-    expect(result[0]).toEqual({ key, vec: [...vec] })
+    [
+      [1, 2, 3],
+      [1, 2, 3],
+    ],
+    [
+      [0, 0, 0],
+      [0, 0, 0],
+    ],
+    [2.5, [0, 0, 2.5]],
+    [-3.5, [0, 0, -3.5]],
+    [0, [0, 0, 0]],
+  ])(`parses %o as %o`, (value, expected) => {
+    expect(try_parse_vec3(value)).toEqual(expected)
   })
 
   test.each([
-    [`force`, 2.5, [0, 0, 2.5]],
-    [`spin`, -3.5, [0, 0, -3.5]],
-    [`magmom`, 0, [0, 0, 0]],
-  ] as const)(`converts scalar %s=%s to z-vector`, (key, scalar, expected) => {
-    expect(get_all_site_vectors(make_site({ [key]: scalar }))[0].vec).toEqual(expected)
-  })
-
-  test.each([
-    [`empty props`, {}],
-    [`non-vector keys only`, { charge: 1 }],
-    [`undefined properties`, undefined],
-    [`non-finite component`, { force: [Infinity, 0, 0] }],
-    [`wrong-length array`, { force: [1, 2] }],
-    [`non-numeric value`, { force: `high` }],
-    [`null value`, { force: null }],
-    [`nested array`, { force: [[1, 0, 0]] }],
-    [`non-finite scalar`, { spin: NaN }],
-  ])(`returns [] for %s`, (_label, properties) => {
-    expect(get_all_site_vectors(make_site(properties))).toEqual([])
-  })
-
-  test.each([
-    {
-      desc: `bare keys by prefix priority`,
-      props: { force: [1, 0, 0], magmom: [0, 0, 1] },
-      expected_keys: [`force`, `magmom`],
-    },
-    {
-      desc: `prefixed keys alphabetically within prefix group`,
-      props: { force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0], magmom: [0, 0, 1] },
-      expected_keys: [`force_DFT`, `force_MLFF`, `magmom`],
-    },
-    {
-      desc: `bare before prefixed of same type`,
-      props: { force_DFT: [1, 0, 0], force: [0, 1, 0] },
-      expected_keys: [`force`, `force_DFT`],
-    },
-    {
-      desc: `singular < prefixed < plural`,
-      props: { force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] },
-      expected_keys: [`force`, `force_DFT`, `forces`],
-    },
-  ])(`ordering: $desc`, ({ props, expected_keys }) => {
-    expect(get_all_site_vectors(make_site(props)).map((vec) => vec.key)).toEqual(expected_keys)
-  })
-
-  test(`can skip ordering when callers only need vector lookup`, () => {
-    const site = make_site({ magmom: [0, 0, 1], force: [1, 0, 0] })
-    const keys = get_all_site_vectors(site, false).map(({ key }) => key)
-    expect(keys).toEqual([`magmom`, `force`])
-  })
-
-  test.each([
-    {
-      desc: `non-vector property keys ignored`,
-      props: { charge: 1, tag: `core`, velocity: [1, 2, 3], force: [1, 0, 0] },
-      expected: [
-        { key: `force`, vec: [1, 0, 0] },
-        { key: `velocity`, vec: [1, 2, 3] },
-      ],
-    },
-    {
-      desc: `invalid values skipped, valid ones kept`,
-      props: {
-        force: [NaN, 0, 0],
-        magmom: [0, 0, 1],
-        spin: `bad`,
-        force_DFT: [1, 2],
-        force_MLFF: [Infinity, 0, 0],
-        magmoms: null,
-        spins: true,
-        velocity: { nested: [1, 2, 3] },
-      },
-      expected: [{ key: `magmom`, vec: [0, 0, 1] }],
-    },
-    {
-      desc: `zero vector [0,0,0] is valid`,
-      props: { force: [0, 0, 0] },
-      expected: [{ key: `force`, vec: [0, 0, 0] }],
-    },
-  ])(`filtering: $desc`, ({ props, expected }) => {
-    expect(get_all_site_vectors(make_site(props))).toEqual(expected)
+    [`non-finite component`, [Infinity, 0, 0]],
+    [`NaN component`, [NaN, 0, 0]],
+    [`wrong-length array`, [1, 2]],
+    [`non-numeric value`, `high`],
+    [`null`, null],
+    [`undefined`, undefined],
+    [`boolean`, true],
+    [`nested array`, [[1, 0, 0]]],
+    [`object`, { nested: [1, 2, 3] }],
+    [`non-finite scalar`, NaN],
+  ])(`rejects %s`, (_label, value) => {
+    expect(try_parse_vec3(value)).toBeNull()
   })
 })
 
@@ -585,6 +516,21 @@ describe(`get_structure_vector_keys`, () => {
       desc: `skips sites with all-invalid vector values`,
       sites: [{ force: [NaN, 0, 0], magmom: `bad` }, { force: [1, 0, 0] }],
       expected: [`force`],
+    },
+    {
+      desc: `prefixed keys alphabetically within prefix group`,
+      sites: [{ force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0], magmom: [0, 0, 1] }],
+      expected: [`force_DFT`, `force_MLFF`, `magmom`],
+    },
+    {
+      desc: `bare before prefixed of same type`,
+      sites: [{ force_DFT: [1, 0, 0], force: [0, 1, 0] }],
+      expected: [`force`, `force_DFT`],
+    },
+    {
+      desc: `singular < prefixed < plural`,
+      sites: [{ force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] }],
+      expected: [`force`, `force_DFT`, `forces`],
     },
     {
       // A LAMMPS dump with vx/vy/vz + fx/fy/fz + q gets two arrow layers; charge is not one

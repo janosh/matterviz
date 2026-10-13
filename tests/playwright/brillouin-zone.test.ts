@@ -302,7 +302,10 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
       await viewer.evaluate((element, size) => {
         element.style.setProperty(`--bz-width`, `${size}px`)
       }, width)
-      expect(await require_bbox(alert)).toEqual(await require_bbox(viewer))
+      // a compact card centered on the viewer, not a box covering it
+      const [alert_box, viewer_box] = [await require_bbox(alert), await require_bbox(viewer)]
+      expect_centered(alert_box, viewer_box)
+      expect(alert_box.width).toBeLessThan(viewer_box.width)
     }
     await alert.getByRole(`button`, { name: `Dismiss message` }).click()
     await expect(alert).toHaveCount(0)

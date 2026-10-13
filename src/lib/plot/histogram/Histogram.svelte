@@ -73,7 +73,7 @@
     is_activation_key,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg.js'
@@ -108,7 +108,7 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
-    ref_lines = $bindable([]),
+    ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
     show_controls = $bindable(`hover`),
@@ -474,13 +474,7 @@
   const handle_export = create_chart_exporter(frame, () => ({
     header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
     rows: histogram_bins.flatMap((hist) =>
-      hist.bins.map((bin) => [
-        hist.label ?? `series ${hist.series_idx + 1}`,
-        bin.x0,
-        bin.x1,
-        bin.count,
-        bin.value,
-      ]),
+      hist.bins.map((bin) => [hist.label, bin.x0, bin.x1, bin.count, bin.value]),
     ),
   }))
 </script>
@@ -540,7 +534,7 @@
         {#each hist.bins as bin, bin_idx (bin_idx)}
           <!-- min/abs on both axes (as BarPlot's compute_bar_rect does) rather than assuming
                x0 is left of x1 and the baseline below the value: bin edges and the baseline are
-               data values, so a reversed range flips either pair and used to drop every bar -->
+               data values, so a reversed range flips either pair -->
           {@const x0_px = x_scale(bin.x0)}
           {@const x1_px = x_scale(bin.x1)}
           {@const value_px = y_scale(bin.value)}
@@ -565,7 +559,7 @@
               role="button"
               tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
               {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
-              aria-label={`${hist.label ?? `series`} bin ${bin_idx + 1}: ${bin.x0} to ${
+              aria-label={`${hist.label} bin ${bin_idx + 1}: ${bin.x0} to ${
                 bin.x1
               }, count ${bin.count}${normalize === `count` ? `` : `, value ${bin.value}`}`}
               onmousemove={handle_bar_hover(hist, bin)}

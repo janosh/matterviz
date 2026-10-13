@@ -94,13 +94,17 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   return points
 }
 
+// Whole unit cells per axis of a (possibly fractional or zero) tiling, at least one each
+export const whole_tile_counts = (tiling: Vec3): Vec3 =>
+  tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+
 // Unique [start indices, axis, span] grid edges, excluding the origin cell drawn separately.
 // Above max_edges, draw only the block outline to bound instance count.
 export function supercell_grid_edges(
   tiling: Vec3,
   max_edges = 6000,
 ): [Vec3, number, number][] {
-  const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+  const counts = whole_tile_counts(tiling)
   if (counts.every((count) => count === 1)) return []
   const axes = [0, 1, 2]
   const [count_a, count_b, count_c] = counts
@@ -245,7 +249,7 @@ export function make_supercell(
           ? `_${row_index}_${col_index}_${depth_index}`
           : `_${row_index}${col_index}${depth_index}`
 
-        // Translation = ii * vec_a + jj * vec_b + kk * vec_c (inlined for performance)
+        // Translation = row_index * vec_a + col_index * vec_b + depth_index * vec_c (inlined)
         const translate_x = row_index * axis_x + col_index * basis_x + depth_index * center_x
         const translate_y = row_index * axis_y + col_index * basis_y + depth_index * center_y
         const translate_z = row_index * axis_z + col_index * basis_z + depth_index * center_z

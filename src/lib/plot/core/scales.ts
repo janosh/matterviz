@@ -246,7 +246,7 @@ export function create_scale(
 }
 
 // Build the four axis scales for a 2D plot in one call: x/x2 share the horizontal pixel span,
-// y/y2 the inverted vertical one. Shared by BarPlot/BoxPlot/Histogram (identical layout math).
+// y/y2 the inverted vertical one. Shared by cartesian-frame and BarPlot/BoxPlot/Histogram.
 export function create_axis_scales<A extends { scale_type?: ScaleType }>(
   axes: { x: A; x2: A; y: A; y2: A },
   ranges: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 },
@@ -330,7 +330,7 @@ export function generate_ticks(
   const type_name = get_scale_type_name(scale_type)
 
   // Log scale ticks
-  if (type_name === `log`) return generate_log_ticks(min_val, max_val, ticks_option)
+  if (type_name === `log`) return generate_log_ticks(min_val, max_val, positive_count)
 
   // Arcsinh scale ticks
   if (type_name === `arcsinh`) {
@@ -559,24 +559,19 @@ export function nice_range_from_extent(
 // Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
 // under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks for
 // sub-decade domains (e.g. after zooming) where fewer than two powers of 10 fit.
-export function generate_log_ticks(
-  min: number,
-  max: number,
-  ticks_option?: TicksOption,
-): number[] {
-  if (Array.isArray(ticks_option)) return ticks_option
+export function generate_log_ticks(min: number, max: number, count?: number): number[] {
   ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))
   const in_range = (tick: number): boolean => tick >= min && tick <= max
   const powers = range(min_power, max_power + 1).map((power: number) => 10 ** power)
   const in_range_powers = powers.filter(in_range)
-  const tick_count = typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : 5
+  const tick_count = count !== undefined && count > 0 ? count : 5
   // Powers of ten, or d3's fine mantissa ticks when fewer than two powers fall in range
   const fine_ticks =
     in_range_powers.length < 2 ? scaleLog().domain([min, max]).ticks(tick_count) : []
   const base_ticks = fine_ticks.length > 0 ? fine_ticks : in_range_powers
-  if (max_power - min_power < 3 && typeof ticks_option === `number` && ticks_option > 5) {
+  if (max_power - min_power < 3 && tick_count > 5) {
     const mantissa_ticks = powers
       .flatMap((power) => [power, power * 2, power * 5])
       .filter(in_range)
@@ -683,24 +678,22 @@ function create_arcsinh_color_scale(
 }
 
 // Create a size scale function from configuration
-export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0, 1]) {
+export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
   const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
   const [min_val, max_val] = config.value_range ?? auto_range
-  const safe_min = min_val ?? 0
-  const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)
 
   const type_name = get_scale_type_name(config.type)
 
   if (type_name === `log`) {
     return scaleLog()
-      .domain(positive_log_domain(safe_min, safe_max))
+      .domain(positive_log_domain(min_val, max_val))
       .range([min_radius, max_radius])
       .clamp(true)
   }
   if (type_name === `arcsinh`) {
     // Create arcsinh-based size scale
     const arcsinh_scale = scale_arcsinh(get_arcsinh_threshold(config.type))
-      .domain([safe_min, safe_max])
+      .domain([min_val, max_val])
       .range([min_radius, max_radius])
 
     type ClampedSizeScale = ((value: number) => number) & {
@@ -723,5 +716,5 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2 = [0
     return clamped_scale
   }
 
-  return scaleLinear().domain([safe_min, safe_max]).range([min_radius, max_radius]).clamp(true)
+  return scaleLinear().domain([min_val, max_val]).range([min_radius, max_radius]).clamp(true)
 }

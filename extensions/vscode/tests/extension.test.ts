@@ -690,7 +690,7 @@ describe(`MatterViz Extension`, () => {
     [{ command: `error`, text: `Error message` }],
     [{ command: `error`, text: `javascript:alert(1)` }],
   ] as const)(`error message handling: %s`, async (message) => {
-    await handle_msg(message)
+    await handle_msg(message, mock_webview)
     expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(message.text)
     expect(mock_output_channel.info).not.toHaveBeenCalled()
   })
@@ -701,8 +701,8 @@ describe(`MatterViz Extension`, () => {
   ] as const)(`info message handling logs instead of toasting: %s`, async (message) => {
     deactivate() // drop a channel an earlier test created so lazy creation is observable
     mock_output_channel.dispose.mockClear()
-    await handle_msg(message)
-    await handle_msg(message)
+    await handle_msg(message, mock_webview)
+    await handle_msg(message, mock_webview)
     expect(mock_output_channel.info).toHaveBeenCalledTimes(2)
     expect(mock_output_channel.info).toHaveBeenCalledWith(message.text)
     expect(mock_vscode.window.showInformationMessage).not.toHaveBeenCalled()
@@ -719,7 +719,10 @@ describe(`MatterViz Extension`, () => {
     `saveAs writes text content verbatim: %s`,
     async (content) => {
       mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
-      await handle_msg({ command: `saveAs`, content, filename: `test.cif`, is_binary: false })
+      await handle_msg(
+        { command: `saveAs`, content, filename: `test.cif`, is_binary: false },
+        mock_webview,
+      )
       expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
         { fsPath: `/test/save.cif` },
         new TextEncoder().encode(content),
@@ -731,13 +734,10 @@ describe(`MatterViz Extension`, () => {
   test(`saveAs binary data URL writes decoded bytes`, async () => {
     const filename = `structure.png`
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
-    await handle_msg({
-      command: `saveAs`,
-      content: `data:image/png;base64,/wCA`,
-      ...msg_args,
-      filename,
-      is_binary: true,
-    })
+    await handle_msg(
+      { command: `saveAs`, content: `data:image/png;base64,/wCA`, filename, is_binary: true },
+      mock_webview,
+    )
     expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
       { fsPath: `/test/${filename}` },
       Uint8Array.from([255, 0, 128]),
@@ -778,13 +778,7 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.workspace.fs.writeFile.mockRejectedValue(new Error(write_error))
     }
 
-    await handle_msg({
-      command: `saveAs`,
-      content,
-      ...msg_args,
-      filename,
-      is_binary,
-    })
+    await handle_msg({ command: `saveAs`, content, filename, is_binary }, mock_webview)
 
     if (error) {
       expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(error)
@@ -796,7 +790,10 @@ describe(`MatterViz Extension`, () => {
   test.each([{ command: `info` }, { command: `saveAs` }, { command: `unknown` }])(
     `malformed message handling: $command`,
     async (msg) => {
-      await handle_msg({ ...msg, ...msg_args } as unknown as WebviewToHostMessage)
+      await handle_msg(
+        { ...msg, ...msg_args } as unknown as WebviewToHostMessage,
+        mock_webview,
+      )
       expect(mock_output_channel.info).not.toHaveBeenCalled()
       expect(mock_vscode.window.showSaveDialog).not.toHaveBeenCalled()
       expect(mock_vscode.window.showErrorMessage).not.toHaveBeenCalled()
@@ -1180,10 +1177,7 @@ describe(`MatterViz Extension`, () => {
           (panel.webview.options as { localResourceRoots: unknown[] }).localResourceRoots,
         ).toHaveLength(1)
         expect(panel.webview.html).toContain(`custom-editor.cif`)
-        expect(panel.webview.onDidReceiveMessage).toHaveBeenCalledWith(
-          expect.any(Function),
-          undefined,
-        )
+        expect(panel.webview.onDidReceiveMessage).toHaveBeenCalledWith(expect.any(Function))
         expect(active_watchers.has(file_path)).toBe(true)
 
         // Dispose tears down message/theme/config listeners and the file watcher

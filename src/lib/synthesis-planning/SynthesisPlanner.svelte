@@ -13,6 +13,7 @@
   import { format_equation_html } from './format'
   import { format_mev } from './format-mev'
   import { prepare_phase_set, resolve_phase } from './phases'
+  import { DEFAULT_MAX_E_ABOVE_HULL } from './plan'
   import { plan_synthesis_async } from './plan-synthesis-async.svelte'
   import { build_route_recipe } from './recipe'
   import RouteComparison from './RouteComparison.svelte'
@@ -48,7 +49,7 @@
     max_precursors = $bindable(2),
     two_step = $bindable(false),
     target_mass_g = $bindable(1),
-    weights = $bindable({ ...DEFAULT_SCORE_WEIGHTS }),
+    weights = { ...DEFAULT_SCORE_WEIGHTS },
     max_routes = 50,
     selected_route_id = $bindable(null),
     shortlist_ids = $bindable([]),
@@ -464,7 +465,7 @@
             min="0"
             max="0.5"
             step="0.01"
-            value={precursors.max_e_above_hull ?? 0.03}
+            value={precursors.max_e_above_hull ?? DEFAULT_MAX_E_ABOVE_HULL}
             onchange={(event) =>
               (precursors = {
                 ...precursors,
@@ -531,7 +532,7 @@
           }}
         />
       {/if}
-      <details class="all-routes">
+      <details>
         <summary>Browse all {routes.length} ranked routes</summary>
         <RouteTable {routes} bind:selected_route_id />
       </details>

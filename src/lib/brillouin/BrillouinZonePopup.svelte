@@ -21,7 +21,6 @@
     width = BZ_POPUP_DEFAULT_WIDTH,
     height = 240,
     bz_props = {},
-    popup_div = $bindable(),
     ...rest
   }: Omit<ComponentProps<typeof FloatingPopup>, `children`> & {
     // Reciprocal lattice (rows b_i, 2π included) the zone is built from; the band data's own
@@ -82,12 +81,7 @@
   </div>
 {/snippet}
 
-<FloatingPopup
-  {...rest}
-  class={[`bz-popup`, rest.class]}
-  bind:popup_div
-  children={popup_body}
-/>
+<FloatingPopup {...rest} class={[`bz-popup`, rest.class]} children={popup_body} />
 
 <style>
   .bz-popup-body {

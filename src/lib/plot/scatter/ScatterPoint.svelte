@@ -21,7 +21,7 @@
     hover = {},
     label = {},
     offset = { x: 0, y: 0 },
-    point_tween = $bindable({}),
+    point_tween = {},
     is_hovered = false,
     is_selected = false,
     is_dimmed = false,

@@ -57,9 +57,10 @@ type Hdf5TrajectoryResult =
   // `lazy.dispose` closes the h5wasm handle and releases the backing FS entry
   | { kind: `lazy`; lazy: LazyTrajectorySource }
 
-// Opens an HDF5 trajectory. vaspout.h5 and single-frame files come back fully parsed (the
-// handle is closed before returning); multi-frame TorchSim / Reference MD files stay open
-// and decode frames on demand until the returned source is disposed.
+// Opens an HDF5 trajectory. vaspout.h5, single-frame Reference MD and small single-frame
+// TorchSim files come back fully parsed (the handle is closed before returning); MD HDF5 and
+// the other TorchSim / Reference MD files stay open and decode frames on demand until the
+// returned source is disposed.
 export const open_hdf5_trajectory = async (
   source: ArrayBuffer | Blob,
   collector: WarningCollector,
@@ -70,9 +71,9 @@ export const open_hdf5_trajectory = async (
   const opened = await open_h5_source(source, filename)
   let lazy: LazyTrajectorySource | undefined
   try {
-    if (replica && !is_md_h5_file(opened.h5_file))
-      throw new Error(`MD replica source schema changed`)
-    const result = is_md_h5_file(opened.h5_file)
+    const is_md_h5 = is_md_h5_file(opened.h5_file)
+    if (replica && !is_md_h5) throw new Error(`MD replica source schema changed`)
+    const result = is_md_h5
       ? parse_md_h5_file(opened.h5_file, hdf5_group_path, replica)
       : is_vaspout_h5_file(opened.h5_file)
         ? parse_vaspout_h5_file(opened.h5_file, collector.warn)
@@ -883,9 +884,7 @@ const parse_torch_sim_datasets = (
     (signal) => signal.steps.length,
     shares_geometry_steps,
   )
-  const collect_positions = (
-    options: PositionStreamOptions = {},
-  ): TrajectoryPositionStream => {
+  const collect_positions = (options: PositionStreamOptions): TrajectoryPositionStream => {
     const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
       FORMAT,
       options,

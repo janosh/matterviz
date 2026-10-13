@@ -8,7 +8,6 @@
 
 import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
 import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '#lib/lineshape.js'
-import { SvelteSet } from 'svelte/reactivity'
 import { convert_frequencies } from './frequency-units'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import type {
@@ -110,9 +109,9 @@ export function acoustic_mode_indices(
   modes: PhononMode[],
   q_position: Vec3,
   threshold = ACOUSTIC_FREQ_THRESHOLD,
-): SvelteSet<number> {
-  if (!is_gamma_point(q_position)) return new SvelteSet()
-  return new SvelteSet(
+): Set<number> {
+  if (!is_gamma_point(q_position)) return new Set()
+  return new Set(
     modes
       .map((mode, mode_idx) => ({ mode_idx, abs_freq: Math.abs(mode.frequency) }))
       .toSorted((left, right) => left.abs_freq - right.abs_freq)
@@ -293,11 +292,10 @@ export interface BroadenOptions {
   step_size?: number // grid spacing, defaults to FWHM/20
 }
 
-// Convolve a stick spectrum with pseudo-Voigt line shapes. Delegates to the XRD module's
-// broaden_peaks with an injected width model: the Caglioti Bragg-angle formula it defaults
-// to is meaningless for vibrational spectra, which want constant or frequency-dependent
-// widths. Line shapes are area-normalised, so the integrated intensity of each stick is
-// preserved (up to the +/-20 FWHM truncation window and grid discretisation).
+// Convolve a stick spectrum with pseudo-Voigt line shapes. Delegates to #lib/lineshape's
+// broaden_peaks with an injected constant or frequency-dependent width. Line shapes are
+// area-normalised, so the integrated intensity of each stick is preserved (up to the
+// +/-20 FWHM truncation window and grid discretisation).
 //
 // broaden_peaks is unit-agnostic (see its contract), so sticks go through unscaled.
 export function broaden_spectrum(

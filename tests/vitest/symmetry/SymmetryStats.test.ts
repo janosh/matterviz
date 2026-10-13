@@ -239,14 +239,26 @@ describe(`SymmetryStats`, () => {
 
   describe(`Tooltips`, () => {
     test.each([
-      { show_tooltips: true, symprec_title: /Symmetry precision/, algo_title: /Moyo/ },
-      { show_tooltips: false, symprec_title: /^$/, algo_title: /^$/ },
-    ])(`show_tooltips=$show_tooltips`, ({ show_tooltips, symprec_title, algo_title }) => {
-      mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
-      expect(doc_query(`.controls label:has(input[type="number"]) span`).title).toMatch(
-        symprec_title,
-      )
-      expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
-    })
+      {
+        show_tooltips: true,
+        symprec_title: /Symmetry precision/,
+        algo_title: /Moyo/,
+        space_group_title: /^International Tables Space group/,
+      },
+      { show_tooltips: false, symprec_title: /^$/, algo_title: /^$/, space_group_title: /^$/ },
+    ])(
+      `show_tooltips=$show_tooltips`,
+      ({ show_tooltips, symprec_title, algo_title, space_group_title }) => {
+        mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
+        expect(doc_query(`.controls label:has(input[type="number"]) span`).title).toMatch(
+          symprec_title,
+        )
+        expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
+        const space_group_tile = [...document.querySelectorAll(`.stats-grid > div`)].find(
+          (tile) => tile.textContent?.includes(`Space Group`),
+        )
+        expect((space_group_tile as HTMLElement | undefined)?.title).toMatch(space_group_title)
+      },
+    )
   })
 })

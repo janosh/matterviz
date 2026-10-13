@@ -503,7 +503,6 @@
   }
 
   const start_resize = (event: PointerEvent): void => {
-    if (!resizable) return
     event.preventDefault()
     event.stopPropagation()
     resize_drag = {

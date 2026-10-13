@@ -99,10 +99,10 @@ class PositionAccumulator {
   constructor(
     private readonly n_frames: number,
     private readonly n_atoms: number,
-    max_bytes: number = DEFAULT_POSITION_STREAM_MAX_BYTES,
-    private readonly frame_stride = 1,
-    private readonly channels: StreamChannels = NO_CHANNELS,
-    private readonly signal_shapes: Record<string, number[]> = {},
+    max_bytes: number,
+    private readonly frame_stride: number,
+    private readonly channels: StreamChannels,
+    private readonly signal_shapes: Record<string, number[]>,
   ) {
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)

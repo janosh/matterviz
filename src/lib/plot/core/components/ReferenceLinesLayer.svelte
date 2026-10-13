@@ -12,12 +12,12 @@
   // line resolves its axes through resolve_ref_line_axes, exactly like the annotation solver.
   let {
     frame,
-    z: coord_z = `below-lines`,
+    z: coord_z,
     on_click,
     on_hover,
   }: {
     frame: CartesianFrame
-    z?: LayerZIndex
+    z: LayerZIndex
     on_click?: (event: RefLineEvent) => void
     on_hover?: (event: RefLineEvent | null) => void
   } = $props()

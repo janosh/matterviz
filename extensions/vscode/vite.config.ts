@@ -7,7 +7,6 @@ import {
   lib_aliases,
   vite_plugin_json_gz,
 } from '../../src/vite-plugins.ts'
-import { mock_vscode } from './tests/vscode-mock.ts'
 
 // Fail the build instead of shipping a worker that only breaks inside a VS Code webview
 const self_contained_worker: PluginOption = {
@@ -39,7 +38,6 @@ export default defineConfig(({ mode }) => ({
             identifier.endsWith(`.svelte`) ? `export default {}` : null,
         }
       : svelte(),
-    mode === `test` ? mock_vscode() : null,
   ] as PluginOption[],
   // Webview workers start from blob URLs of their fetched scripts (see file-viewer/main.ts),
   // where neither relative imports nor relative asset URLs resolve, so each worker must be one
@@ -60,8 +58,7 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 6000,
     // Taken from the shared config rather than repeated: vite's default target lacks
     // light-dark(), so LightningCSS downlevels app.css's tokens into an OS-prefers-color-scheme
-    // polyfill that ignores the color-scheme the webview sets from VS Code's theme. This build
-    // drifted from the root's precisely because the value was declared in two places.
+    // polyfill that ignores the color-scheme the webview sets from VS Code's theme.
     cssTarget: make_config().build.cssTarget,
   },
   resolve: { alias: lib_aliases },

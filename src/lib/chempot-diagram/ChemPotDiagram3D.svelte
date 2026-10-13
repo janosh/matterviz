@@ -51,7 +51,6 @@
     export_json_file,
     export_png_file,
     export_svg_file,
-    export_view_json_file,
     get_json_string,
     get_view_settings,
   } from './export'
@@ -590,8 +589,7 @@
   }
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
-  const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
-    dedup_points(pts, tol).unique
+  const dedup_3d = (pts: number[][]): number[][] => dedup_points(pts, 1e-4).unique
 
   const controls_auto_ranges = $derived(
     get_3d_auto_ranges(
@@ -684,15 +682,12 @@
     return dispose_evicted
   })
 
-  // Post-process ConvexGeometry to merge coplanar triangles, eliminating
+  // Post-process ConvexGeometry (always non-indexed) to merge coplanar triangles, eliminating
   // internal diagonal edges across flat faces of the convex hull.
-  function merge_coplanar_geometry(geom: THREE.BufferGeometry): THREE.BufferGeometry {
-    const non_indexed = geom.index ? geom.toNonIndexed() : geom
-    const pos = non_indexed.getAttribute(`position`)
+  function merge_coplanar_geometry(geom: ConvexGeometry): THREE.BufferGeometry {
+    const pos = geom.getAttribute(`position`)
     const result = position_geometry(merge_coplanar_triangles(pos.array as Float32Array))
     result.computeVertexNormals()
-    // Dispose intermediate geometry from toNonIndexed() (avoid double-dispose if same object)
-    if (non_indexed !== geom) non_indexed.dispose()
     // Callers always pass a freshly created ConvexGeometry, so we own it
     geom.dispose()
     return result
@@ -1061,7 +1056,7 @@
         {
           label: `View`,
           on_download: ({ filename, save }) =>
-            export_view_json_file(current_view_settings(), filename, save),
+            export_json_file(current_view_settings(), `${filename}-view`, save),
         },
         {
           label: `GLB`,

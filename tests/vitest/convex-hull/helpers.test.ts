@@ -45,8 +45,8 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(point_color({ e_above_hull: 0 })).toBe(`#111`)
     expect(point_color({ e_above_hull: 0.1 })).toBe(`#222`)
     const entry = { is_stable: false, e_above_hull: 0 }
-    expect(helpers.visible_entries([entry], true, false)).toEqual([])
-    expect(helpers.visible_entries([entry], false, true)).toEqual([entry])
+    expect(helpers.visible_entries([entry], true, false, null, [])).toEqual([])
+    expect(helpers.visible_entries([entry], false, true, null, [])).toEqual([entry])
     expect(point_color(entry)).toBe(`#222`)
     expect(
       helpers.get_point_color_for_entry({ is_stable: true }, `stability`, undefined, null),
@@ -92,7 +92,9 @@ describe(`canvas-draw: markers and hit testing`, () => {
       }
       vi.stubGlobal(`Path2D`, StubPath2D)
       // Falls back to a zero-radius marker instead of throwing
-      expect(draw.create_marker_path(size)).toEqual(draw.create_marker_path(0))
+      expect(draw.create_marker_path(size, `circle`)).toEqual(
+        draw.create_marker_path(0, `circle`),
+      )
     },
   )
 
@@ -210,9 +212,9 @@ describe(`helpers: thresholds and tooltips`, () => {
   )
 
   test(`build_entry_tooltip_text lists name, composition, energies and id`, () => {
-    expect(helpers.build_entry_tooltip_text({ composition: { Li: 1 }, energy: -1 })).toBe(
-      `Li (Lithium)\n`,
-    )
+    expect(
+      helpers.build_entry_tooltip_text({ composition: { Li: 1 }, energy: -1 }, null),
+    ).toBe(`Li (Lithium)\n`)
     const compound = {
       composition: { Li: 1, O: 1 },
       energy: -6,
@@ -220,12 +222,12 @@ describe(`helpers: thresholds and tooltips`, () => {
       e_above_hull: 0,
       entry_id: `mp-1`,
     }
-    expect(helpers.build_entry_tooltip_text(compound)).toBe(
+    expect(helpers.build_entry_tooltip_text(compound, null)).toBe(
       `\nComposition: Li: ½, O: ½\nE_above_hull: 0 eV/atom\nE_form: −3 eV/atom\nID: mp-1`,
     )
     // an absolute energy_per_atom is not a formation energy, so it is not labelled as one
     const absolute_only = { composition: { Li: 1, O: 1 }, energy: -12, energy_per_atom: -6 }
-    expect(helpers.build_entry_tooltip_text(absolute_only)).not.toContain(`E_form`)
+    expect(helpers.build_entry_tooltip_text(absolute_only, null)).not.toContain(`E_form`)
   })
 })
 
@@ -635,8 +637,7 @@ describe(`helpers: temperature interpolation`, () => {
       [`single element`, { composition: { Fe: 1 } }, `Fe`],
       [`unreduced cell`, { composition: { La: 12, Ni: 6, O: 25 } }, `La12Ni6O25`],
       [`multi-atom unary`, { composition: { La: 4 } }, `La4`],
-      // composition key order without `elements`, the given element order with it
-      [`unsorted keys`, { composition: { O: 3, Fe: 1, Li: 2 } }, `O3FeLi2`],
+      // the given element order, not the composition key order
       [
         `elements order`,
         { composition: { O: 3, Fe: 1, Li: 2 } },
@@ -646,7 +647,8 @@ describe(`helpers: temperature interpolation`, () => {
     ] as [string, { composition: Record<string, number> }, string, ElementSymbol[]?][])(
       `%s → %s`,
       (_desc, entry, expected, elements) => {
-        expect(helpers.get_entry_label(entry, elements)).toBe(expected)
+        const order = elements ?? (Object.keys(entry.composition) as ElementSymbol[])
+        expect(helpers.get_entry_label(entry, order)).toBe(expected)
       },
     )
   })
@@ -760,8 +762,8 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
 
   test(`build_entry_tooltip_text includes magnetic ordering when present`, () => {
     expect(
-      helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` })),
+      helpers.build_entry_tooltip_text(mag_entry({ magnetic_ordering: `FiM` }), magnetic),
     ).toContain(`Magnetic: FiM`)
-    expect(helpers.build_entry_tooltip_text(mag_entry())).not.toContain(`Magnetic`)
+    expect(helpers.build_entry_tooltip_text(mag_entry(), magnetic)).not.toContain(`Magnetic`)
   })
 })

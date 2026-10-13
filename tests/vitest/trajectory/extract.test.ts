@@ -1,10 +1,5 @@
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
-import {
-  energy_data_extractor,
-  force_stress_data_extractor,
-  full_data_extractor,
-  structural_data_extractor,
-} from '#lib/trajectory/extract.js'
+import { full_data_extractor, structural_data_extractor } from '#lib/trajectory/extract.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { describe, expect, it } from 'vitest'
 import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
@@ -33,8 +28,8 @@ describe(`trajectory data extractors`, () => {
   // `exact` rows pin the whole record; the others may carry extra derived fields
   it.each([
     [
-      `all supported energy fields (keeping zeroes)`,
-      energy_data_extractor,
+      `all energy fields (keeping zeroes)`,
+      full_data_extractor,
       5,
       energies,
       undefined,
@@ -43,21 +38,12 @@ describe(`trajectory data extractors`, () => {
     ],
     // per-atom vectors belong on the sites; a stray metadata array is not a statistic
     [
-      `copied stress metadata, ignoring a per-atom forces array`,
-      force_stress_data_extractor,
+      `stress metadata, ignoring a per-atom forces array`,
+      full_data_extractor,
       1,
       { forces, stress_max: 2.1, pressure: 0 },
       undefined,
       { Step: 1, stress_max: 2.1, pressure: 0 },
-      true,
-    ],
-    [
-      `scalar force summaries when no force array is present`,
-      force_stress_data_extractor,
-      2,
-      { force_max: 0, force_norm: 3.5 },
-      undefined,
-      { Step: 2, force_max: 0, force_norm: 3.5 },
       true,
     ],
     [

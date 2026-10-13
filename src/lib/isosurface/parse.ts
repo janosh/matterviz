@@ -585,16 +585,13 @@ export function parse_cube(
   return { structure, volumes: [volume] }
 }
 
-export type VolumetricFormat = `cube` | `chgcar`
+type VolumetricFormat = `cube` | `chgcar`
 
 // Cheap format probe: the filename when it names a volumetric format, else the first ~10
 // lines (.cube header shape) or a POSCAR-like header followed by a grid-dimension line
 // within the first 25 kB (CHGCAR, as opposed to a plain POSCAR/CONTCAR). Never reads the
 // data body and never throws; null means "not volumetric".
-export function looks_like_volumetric(
-  content: string,
-  filename?: string,
-): VolumetricFormat | null {
+function looks_like_volumetric(content: string, filename?: string): VolumetricFormat | null {
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
   const lower_name = strip_compression_extensions(filename ?? ``)
   if (lower_name.endsWith(`.cube`)) return `cube`

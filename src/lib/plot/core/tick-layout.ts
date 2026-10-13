@@ -15,7 +15,7 @@ import {
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import type { AxisConfig, TickAutoLayoutConfig } from '#lib/plot/core/types.js'
 
-// Deterministic pre-mount height. PlotAxis replaces this font with the resolved computed font.
+// Default single-line tick label height (DEFAULT_FONT_SPEC line height) used to size label bands
 export const TICK_LABEL_HEIGHT = 16
 export const TICK_LABEL_GAP = 1
 const TICK_STAGGER_GAP = 4
@@ -53,10 +53,8 @@ const is_horizontal_side = (side: TickLayoutSide): boolean => side === `x` || si
 // === Text measurement ===
 
 // Width via the shared text-metrics cache, in the FontSpec resolved off a rendered tick
-export const measure_text_width = (
-  text: string,
-  font: Readonly<FontSpec> = DEFAULT_FONT_SPEC,
-): number => measure_text_line(text, font).width
+export const measure_text_width = (text: string, font: Readonly<FontSpec>): number =>
+  measure_text_line(text, font).width
 
 const tick_texts = (
   ticks: readonly (string | number)[],
@@ -1018,9 +1016,8 @@ const compute_tick_layout = (
   )
   let wrapped: Candidate | undefined
   if (strategies.includes(`wrap`) && max_lines > 1) {
-    // The band cap is the wrap target for every label on the side. Folding the measured label
-    // widths into this Math.min made the NARROWEST label the target for all of them, so one
-    // short tick over-wrapped every long one next to it.
+    // The band cap is the shared wrap target for every label on the side (not the narrowest
+    // measured label, which would over-wrap every longer neighbour)
     const vertical_wrap_width = max_band ?? DEFAULT_AUTO_LABEL_BAND
     wrapped = create_candidate(
       `wrap`,

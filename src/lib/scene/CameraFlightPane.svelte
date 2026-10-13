@@ -24,7 +24,7 @@
   let {
     open = $bindable(false),
     canvas,
-    filename = `camera-flight`,
+    filename,
     source_key,
     disabled = false,
     busy = $bindable(false),
@@ -32,20 +32,20 @@
     timeline_controls,
     on_export,
     on_change,
-    class_prefix = `camera-flight`,
+    class_prefix,
     pane_props = {},
   }: {
     open?: boolean
     canvas?: HTMLCanvasElement | null
-    filename?: string
+    filename: string
     source_key?: unknown
     disabled?: boolean
     busy?: boolean
     timeline?: FlightTimeline
     timeline_controls?: Snippet
-    on_export?: () => void
+    on_export: () => void
     on_change?: (flight: CameraFlight | undefined) => void
-    class_prefix?: string
+    class_prefix: string
     pane_props?: PaneProps
   } = $props()
 
@@ -591,9 +591,9 @@
     {#if activity === `thumbnails`}<p role="status">Capturing waypoint previews…</p>{/if}
 
     {#if error}<p role="alert">{error}</p>{/if}
-    {#if on_export}<footer style="display: flex; justify-content: flex-end">
-        <button type="button" disabled={busy} onclick={on_export}>Export options →</button>
-      </footer>{/if}
+    <footer style="display: flex; justify-content: flex-end">
+      <button type="button" disabled={busy} onclick={on_export}>Export options →</button>
+    </footer>
   </section>
 </ViewerPane>
 

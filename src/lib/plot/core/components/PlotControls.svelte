@@ -451,9 +451,6 @@
   .control-options {
     flex-wrap: wrap;
   }
-  .range-pair {
-    flex-wrap: nowrap;
-  }
   .control-options label {
     display: flex;
     align-items: center;

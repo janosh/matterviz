@@ -1,13 +1,7 @@
 <script lang="ts">
-  import { BrillouinBandsDos, normalize_dos } from '#lib/spectral/index.js'
+  import { BrillouinBandsDos } from '#lib/spectral/index.js'
   import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { electronic_bands } from '#site/electronic/bands/index.js'
-  import { dos_spin_polarization } from '#site/electronic/dos/index.js'
-
-  // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
-  const electronic_dos = normalize_dos(dos_spin_polarization)
-  if (!electronic_dos) throw new Error(`Invalid electronic DOS fixture`)
 
   const mock_structure: Crystal = {
     lattice: {
@@ -107,15 +101,6 @@
   data-testid="bz-bands-dos-default"
 />
 
-<h2 id="custom-widths">Custom Column Widths (35% BZ, 45% Bands, 20% DOS)</h2>
-<BrillouinBandsDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  style="grid-template-columns: 35% 45% 20%"
-  data-testid="bz-bands-dos-custom-widths"
-/>
-
 <h2 id="bands-custom-styling">Custom Bands Styling</h2>
 <BrillouinBandsDos
   structure={mock_structure}
@@ -125,34 +110,12 @@
   data-testid="bz-bands-dos-bands-styling"
 />
 
-<h2 id="dos-normalization">DOS with Normalization</h2>
-<BrillouinBandsDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  dos_props={{ normalize: `max`, sigma: 0.2 }}
-  data-testid="bz-bands-dos-dos-norm"
-/>
-
 <h2 id="independent-axes">Independent Y-axes (Mismatched Ranges)</h2>
 <BrillouinBandsDos
   structure={mock_structure}
   band_structs={{ '': mock_band_structure }}
   doses={{ '': high_freq_dos }}
   data-testid="bz-bands-dos-independent-axes"
-/>
-
-<h2 id="custom-bz-colors">Custom Brillouin Zone Colors</h2>
-<BrillouinBandsDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  bz_props={{
-    surface_color: `#9b59b6`,
-    surface_opacity: 0.5,
-    edge_color: `#2c3e50`,
-  }}
-  data-testid="bz-bands-dos-custom-colors"
 />
 
 <h2 id="with-bz-controls">With Brillouin Zone Controls</h2>
@@ -190,73 +153,6 @@
     Custom Overlay
   </div>
 </BrillouinBandsDos>
-
-<h2 id="electronic-bands">Electronic Bands (CaO)</h2>
-<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Electronic band structure with 3D Brillouin zone visualization. The Fermi level (E<sub>F</sub
-  >) is automatically detected and displayed as a dashed red line in both the bands and DOS
-  plots. Note: Using mock Si structure for BZ (actual CaO structure unavailable).
-</p>
-<BrillouinBandsDos
-  structure={mock_structure}
-  band_structs={{ '': electronic_bands.cao_2605 }}
-  doses={{ '': electronic_dos }}
-  bands_props={{ y_axis: { label: `Energy (eV)` } }}
-  dos_props={{ y_axis: { label: `` } }}
-  data-testid="bz-bands-dos-electronic"
-/>
-
-<h2 id="electronic-with-controls">Electronic Bands with BZ Controls</h2>
-<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Same electronic data but with Brillouin zone controls enabled for interactive exploration.
-</p>
-<BrillouinBandsDos
-  structure={mock_structure}
-  band_structs={{ '': electronic_bands.cao_2605 }}
-  doses={{ '': electronic_dos }}
-  bz_props={{ show_controls: true }}
-  bands_props={{
-    y_axis: { label: `Energy (eV)` },
-    line_kwargs: { stroke_width: 1.5 },
-  }}
-  dos_props={{ y_axis: { label: `` } }}
-  data-testid="bz-bands-dos-electronic-controls"
-/>
-
-<h2 id="comparison">Electronic vs Phonon Comparison</h2>
-<p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
-  Side-by-side comparison: Electronic bands show Fermi level marker (E<sub>F</sub>), phonon
-  bands do not (no Fermi energy concept for phonons).
-</p>
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
-  <div>
-    <h3 id="electronic-cao" style="text-align: center; margin-bottom: 0.5rem">
-      Electronic (CaO)
-    </h3>
-    <BrillouinBandsDos
-      structure={mock_structure}
-      band_structs={{ '': electronic_bands.cao_2605 }}
-      doses={{ '': electronic_dos }}
-      bands_props={{ y_axis: { label: `E (eV)` } }}
-      dos_props={{ y_axis: { label: `` } }}
-      style="min-height: 500px"
-      data-testid="bz-bands-dos-electronic-compare"
-    />
-  </div>
-  <div>
-    <h3 id="phonon-mock-si" style="text-align: center; margin-bottom: 0.5rem">
-      Phonon (Mock Si)
-    </h3>
-    <BrillouinBandsDos
-      structure={mock_structure}
-      band_structs={{ '': mock_band_structure }}
-      doses={{ '': mock_dos }}
-      bands_props={{ y_axis: { label: `ν (THz)` } }}
-      style="min-height: 500px"
-      data-testid="bz-bands-dos-phonon-compare"
-    />
-  </div>
-</div>
 
 <style>
   h1 {

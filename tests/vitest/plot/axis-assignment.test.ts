@@ -7,7 +7,7 @@ import {
   group_axis_series,
 } from '#lib/plot/core/axis-assignment.js'
 import type {
-  AxisAssignmentOptions,
+  AxisGroupingOptions,
   AxisValueSeries,
   OverflowAxisAssignment,
 } from '#lib/plot/core/axis-assignment.js'
@@ -21,7 +21,7 @@ const create_series = (
 
 const assign_overflow = (
   series: AxisValueSeries[],
-  options: AxisAssignmentOptions<AxisValueSeries> = {},
+  options: AxisGroupingOptions<AxisValueSeries> = {},
 ): OverflowAxisAssignment<AxisValueSeries> => {
   const result = assign_axes(series, options)
   expect(result.status).toBe(`overflow`)
@@ -83,6 +83,13 @@ describe(`group_axis_series`, () => {
 })
 
 describe(`assign_axes`, () => {
+  test.each([`right`, `y3`, null])(`rejects explicit y_axis=%j`, (y_axis) => {
+    const series = [
+      create_series(`Energy`, `eV`, { y_axis } as unknown as Partial<AxisValueSeries>),
+    ]
+    expect(() => assign_axes(series)).toThrow(/expected 'y' or 'y2'/)
+  })
+
   test(`assigns y/y2 deterministically without mutating input`, () => {
     const input = [
       create_series(`Energy`, `eV`),
@@ -221,11 +228,7 @@ describe(`assign_axes`, () => {
       { key: `GPa`, axis: `y2` },
     ])
     expect(result.overflow_groups.map((group) => group.key)).toEqual([`K`])
-    expect(result.error).toMatchObject({
-      group_keys: [`GPa`, `K`],
-      max_axes: 2,
-      reserved_axes: [`y`],
-    })
+    expect(result.error).toMatchObject({ group_keys: [`GPa`, `K`], reserved_axes: [`y`] })
     expect(result.error.message).toBe(
       `Cannot assign 2 visible automatic axis groups to 1 available axis (y reserved explicitly): GPa, K`,
     )
@@ -246,26 +249,7 @@ describe(`assign_axes`, () => {
     ])
     expect(result.overflow_groups.map((group) => group.key)).toEqual([`low`])
     expect(result.error).toBeInstanceOf(AxisAssignmentOverflowError)
-    expect(result.error).toMatchObject({
-      group_keys: [`high`, `medium`, `low`],
-      max_axes: 2,
-    })
-  })
-
-  test.each([
-    { max_axes: 1 as const, expected: [`y`, undefined] },
-    { max_axes: 2 as const, expected: [`y`, `y2`] },
-  ])(`respects the explicit $max_axes-axis limit`, ({ max_axes, expected }) => {
-    const input = [create_series(`A`, `unit_a`), create_series(`B`, `unit_b`)]
-    const result = assign_axes(input, { max_axes })
-    expect(result.assignments).toEqual(expected)
-    expect(result.status).toBe(max_axes === 1 ? `overflow` : `assigned`)
-  })
-
-  test(`rejects an unsupported runtime max_axes value`, () => {
-    expect(() => assign_axes([], { max_axes: 3 as never })).toThrow(
-      `max_axes must be 1 or 2, got 3`,
-    )
+    expect(result.error).toMatchObject({ group_keys: [`high`, `medium`, `low`] })
   })
 
   test(`returns a complete empty assignment for all-hidden input`, () => {
@@ -273,7 +257,7 @@ describe(`assign_axes`, () => {
       create_series(`Energy`, `eV`, { visible: false }),
       create_series(`Force`, `eV/Å`, { visible: false }),
     ]
-    expect(assign_axes(input, { max_axes: 1 })).toEqual({
+    expect(assign_axes(input)).toEqual({
       status: `assigned`,
       assignments: input.map(() => undefined),
       groups: [],
@@ -332,25 +316,11 @@ describe(`axis_labels`, () => {
   ])(`generates labels for $name`, ({ series, options, expected }) => {
     expect(axis_labels(series, options)).toEqual(expected)
   })
-
-  test(`uses a resolved assignment instead of unresolved series axes`, () => {
-    const input = [
-      create_series(`Energy`, `eV`),
-      create_series(`Residual`, `eV`, { axis_group: `scf` }),
-    ]
-    const assignment = assign_axes(input)
-
-    expect(axis_labels(input, { axis: assignment.assignments })).toEqual({
-      y: `Energy (eV)`,
-      y2: `Residual (eV)`,
-    })
-  })
 })
 
 describe(`axis_scale_types`, () => {
   const log_options = {
     can_use_log_scale: (series: AxisValueSeries) => series.axis_group === `scf`,
-    min_log_decades: 3,
   }
   const all_linear = { y: `linear`, y2: `linear` }
   const residual = (coord_y: number[], options: Partial<AxisValueSeries> = {}) =>
@@ -393,34 +363,10 @@ describe(`axis_scale_types`, () => {
     expect(axis_scale_types(series, log_options)).toEqual(expected)
   })
 
-  test(`compares decade spans without ratio overflow`, () => {
+  test(`custom visibility filter`, () => {
+    const input = [residual([1e-6, 1]), residual([-10, -9])]
     expect(
-      axis_scale_types([residual([Number.MIN_VALUE, Number.MAX_VALUE])], {
-        ...log_options,
-        min_log_decades: 1000,
-      }),
-    ).toEqual(all_linear)
-  })
-
-  test(`validates the decade threshold`, () => {
-    expect(() =>
-      axis_scale_types([create_series(`Residual`)], {
-        can_use_log_scale: () => true,
-        min_log_decades: NaN,
-      }),
-    ).toThrow(`min_log_decades must be a non-negative finite number, got NaN`)
-  })
-
-  test(`uses an axis accessor for unresolved series`, () => {
-    const input = [
-      create_series(`Energy`, `eV`, { y: [-10, -9] }),
-      create_series(`Residual`, `eV`, { axis_group: `scf`, y: [1e-6, 1] }),
-    ]
-    expect(
-      axis_scale_types(input, {
-        ...log_options,
-        axis: (_series, series_idx) => (series_idx === 0 ? `y` : `y2`),
-      }),
-    ).toEqual({ y: `linear`, y2: `log` })
+      axis_scale_types(input, { ...log_options, is_visible: (_srs, idx) => idx === 0 }),
+    ).toEqual({ y: `log`, y2: `linear` })
   })
 })

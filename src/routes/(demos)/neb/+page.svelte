@@ -6,12 +6,6 @@
   import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index.js'
   import InputFormat from './input-format.md'
 
-  let coord_mode = $state<`arc_length` | `image_index`>(`arc_length`)
-  let energy_reference = $state<`absolute` | `initial`>(`initial`)
-  let show_spline = $state(true)
-  let active_path_key = $state(`direct hop`)
-  let active_image_idx = $state(0)
-
   const direct = reaction_paths[`direct hop`]
   const analysis = analyze_barrier(direct)
   const spline = path_spline(direct)
@@ -25,14 +19,7 @@
 </p>
 
 <div class="bleed-1400">
-  <NebViewer
-    paths={reaction_paths}
-    bind:coord_mode
-    bind:energy_reference
-    bind:show_spline
-    bind:active_path_key
-    bind:active_image_idx
-  />
+  <NebViewer paths={reaction_paths} />
 
   <p>Arc length uses minimum-image displacements across periodic boundaries.</p>
 

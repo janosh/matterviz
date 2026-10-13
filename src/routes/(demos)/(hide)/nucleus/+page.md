@@ -29,7 +29,7 @@
   ul > li > a {
     position: absolute;
     top: -1em;
-    color: var(--color-text);
+    color: inherit;
     /* pad the hit area out to ~32px without moving the symbol */
     padding: 0.4em 0.6em;
     margin: -0.4em -0.6em;

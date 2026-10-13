@@ -16,7 +16,6 @@ type CellSelectProps = {
   cell_type?: CellType
   sym_data?: SymmetryDataset | null
   loading?: boolean
-  direction?: `up` | `down`
   suppress_hover?: boolean
 }
 

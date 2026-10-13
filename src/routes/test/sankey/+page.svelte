@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SankeyData } from '#lib/plot/index.js'
-  import { Sankey, sankey_from_links } from '#lib/plot/index.js'
+  import { Sankey } from '#lib/plot/index.js'
 
   // Three-layer flow: sources -> hubs -> sinks
   const flow: SankeyData = {
@@ -21,16 +21,7 @@
     ],
   }
 
-  // Bipartite (matbench spacegroup-style) data via the flat-array helper
-  const bipartite = sankey_from_links(
-    [0, 1, 2, 0, 1],
-    [3, 3, 4, 4, 4],
-    [120, 80, 60, 30, 20],
-    [`P1`, `P2/m`, `Fm-3m`, `Pnma`, `R-3m`],
-  )
-
-  let hover_msg = $state(`Hover over a node or link`)
-  let click_msg = $state(`Click a node`)
+  let hover_msg = $state(`Hover over a node`)
 </script>
 
 <svelte:head>
@@ -41,12 +32,7 @@
 
 <section id="basic-sankey">
   <h2 id="basic-horizontal">Basic (horizontal)</h2>
-  <Sankey
-    data={flow}
-    controls_open={false}
-    controls_toggle_props={{ class: `sankey-controls-toggle` }}
-    style="height: 360px"
-  />
+  <Sankey data={flow} style="height: 360px" />
 </section>
 
 <section id="vertical-sankey">
@@ -61,23 +47,7 @@
 
 <section id="gradient-sankey">
   <h2 id="gradient-links-legend">Gradient links + legend</h2>
-  <Sankey
-    data={flow}
-    link_color_mode="gradient"
-    show_legend
-    controls_toggle_props={{ class: `sankey-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="bipartite-sankey">
-  <h2 id="bipartite-from-flat-arrays">Bipartite (from flat arrays)</h2>
-  <Sankey
-    data={bipartite}
-    node_align="left"
-    controls_toggle_props={{ class: `sankey-controls-toggle` }}
-    style="height: 360px"
-  />
+  <Sankey data={flow} link_color_mode="gradient" show_legend style="height: 360px" />
 </section>
 
 <section id="handlers-sankey">
@@ -85,19 +55,10 @@
   <Sankey
     data={flow}
     on_node_hover={(data) =>
-      (hover_msg = data ? `Node: ${data.label} = ${data.value}` : `Hover over a node or link`)}
-    on_link_hover={(data) =>
-      (hover_msg = data
-        ? `Link: ${data.source_label} -> ${data.target_label} = ${data.value}`
-        : `Hover over a node or link`)}
-    on_node_click={(data) => (click_msg = `Clicked node: ${data.label}`)}
-    controls_toggle_props={{ class: `sankey-controls-toggle` }}
+      (hover_msg = data ? `Node: ${data.label} = ${data.value}` : `Hover over a node`)}
     style="height: 360px"
   />
-  <div class="handler-info">
-    <p>{hover_msg}</p>
-    <p>{click_msg}</p>
-  </div>
+  <p class="handler-info">{hover_msg}</p>
 </section>
 
 <style>

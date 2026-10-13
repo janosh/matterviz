@@ -1,6 +1,6 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
 
-export { default, default as PeriodicTable } from './PeriodicTable.svelte'
+export { default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as PropertySelect } from './PropertySelect.svelte'
 export { default as TableInset } from './TableInset.svelte'
 

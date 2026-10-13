@@ -26,7 +26,7 @@
 
   // Public CSS knobs every Cartesian chart exposes, mapped onto the frame's own
   // variables so the shell can be styled per chart (`--histogram-bg`, `--barplot-bg`, …)
-  // without duplicating this stylesheet three times. Values are the historical defaults.
+  // without duplicating this stylesheet per chart.
   const css_var_defaults = (prefix: string): Record<string, string> => ({
     ...chart_css_defaults(prefix),
     'svg-width': `100%`,

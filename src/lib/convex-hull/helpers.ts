@@ -24,7 +24,7 @@ import type {
   MarkerSymbol,
   PhaseData,
 } from './types'
-import { DEFAULT_HULL_COLORS, MAGNETIC_ORDERING_CATEGORY } from './types'
+import { DEFAULT_HULL_COLORS } from './types'
 import { entry_is_stable, is_unary_entry } from './entry-stability'
 
 export {
@@ -83,7 +83,7 @@ function normalize_category_value(raw: unknown, config: EntryCategoryConfig): st
 // through; returns null when none resolve.
 export function get_entry_category(
   entry: CategorySource,
-  config: EntryCategoryConfig | null | undefined,
+  config: EntryCategoryConfig | null,
 ): string | null {
   if (!config) return null
   const props = Array.isArray(config.property) ? config.property : [config.property]
@@ -102,7 +102,7 @@ export function get_entry_category(
 // config is null or entries lack category data).
 export function apply_category_markers<Entry extends PhaseData & { marker?: MarkerSymbol }>(
   entries: Entry[],
-  config: EntryCategoryConfig | null | undefined,
+  config: EntryCategoryConfig | null,
 ): (Entry & { marker?: MarkerSymbol })[] {
   if (!config) return entries
   let any_assigned = false
@@ -120,8 +120,8 @@ export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
   entries: readonly Entry[],
   show_stable: boolean,
   show_unstable: boolean,
-  category: EntryCategoryConfig | null = null,
-  hidden_categories: readonly string[] = [],
+  category: EntryCategoryConfig | null,
+  hidden_categories: readonly string[],
 ): Entry[] =>
   entries.filter((entry) => {
     if (!(entry_is_stable(entry) ? show_stable : show_unstable)) return false
@@ -240,7 +240,7 @@ function get_fractional_composition(
 // Plain-text summary of an entry (copied to the clipboard on double click)
 export function build_entry_tooltip_text(
   entry: PhaseData,
-  category: EntryCategoryConfig | null = MAGNETIC_ORDERING_CATEGORY,
+  category: EntryCategoryConfig | null,
 ): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
@@ -541,20 +541,17 @@ export function slim_phase_entry<Key extends keyof PhaseData>(
   return slim
 }
 
-// Derive a display label for a convex hull entry, falling back to composition
-// when reduced_formula and name are both missing.
+// Derive a display label for a convex hull entry, falling back to the composition in
+// `elements` order when reduced_formula and name are both missing.
 export function get_entry_label(
   entry: Pick<PhaseData, `reduced_formula` | `name` | `composition`>,
-  elements?: ElementSymbol[],
+  elements: ElementSymbol[],
 ): string {
   if (entry.reduced_formula) return entry.reduced_formula
   if (entry.name) return entry.name
   type Pairs = [ElementSymbol, number][]
-  let pairs = Object.entries(entry.composition).filter(([, amt]) => (amt ?? 0) > 0) as Pairs
-  if (elements) {
-    pairs = pairs.toSorted(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
-  }
-  return pairs
+  return (Object.entries(entry.composition).filter(([, amt]) => (amt ?? 0) > 0) as Pairs)
+    .toSorted(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
     .map(([element, amt]) =>
       Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_num(amt, `.2~`)}`,
     )

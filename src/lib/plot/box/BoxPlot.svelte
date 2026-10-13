@@ -23,7 +23,6 @@
     PlotConfig,
     RefLine,
     RefLineEvent,
-    ScaleType,
     UserContentProps,
     ViolinKind,
     ViolinSide,
@@ -63,7 +62,7 @@
     is_activation_key,
     pointer_pos,
   } from '#lib/plot/core/interactions.js'
-  import { roving_key } from '#lib/plot/core/utils/roving-focus.svelte.js'
+  import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
@@ -153,7 +152,7 @@
     hovered = $bindable(false),
     on_box_click,
     on_box_hover,
-    ref_lines = $bindable([]),
+    ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
     show_controls = $bindable(`hover`),
@@ -377,9 +376,7 @@
       if (!draws_violin(srs)) continue
       const clip = srs.clip ?? kde_clip
       const log = log_axes.split(` `).includes(val_axis_key(srs))
-      const samples = log
-        ? (srs.y ?? []).filter((val) => val > 0).map(Math.log10)
-        : (srs.y ?? [])
+      const samples = log ? srs.y.filter((val) => val > 0).map(Math.log10) : srs.y
       const kde = gaussian_kde(samples, {
         ...VIOLIN_KDE_OPTS,
         bandwidth: srs.bandwidth ?? bandwidth,
@@ -554,7 +551,7 @@
         const body = kde
           ? bar(srs.violin_width ?? violin_width, kde.grid[0], kde.grid[kde.grid.length - 1])
           : bar(box_width, stats.q1, stats.q3)
-        const cap_width = box_width * (whisker_state.cap_fraction ?? 0.5)
+        const cap_width = box_width * whisker_state.cap_fraction
         return [...body, ...bar(cap_width, stats.whisker_low, stats.whisker_high)]
       })
     }),
@@ -572,8 +569,8 @@
     visible_boxes.map((box_item) => {
       const secondary = is_secondary(box_item.series)
       return {
-        x: vertical ? undefined : (box_item.series.y ?? []),
-        y: vertical ? (box_item.series.y ?? []) : undefined,
+        x: vertical ? undefined : box_item.series.y,
+        y: vertical ? box_item.series.y : undefined,
         color: box_color(box_item.idx),
         label: box_item.series.label,
         visible: true,
@@ -625,8 +622,8 @@
     const [center_x, center_y] = vertical
       ? [corner_c, Math.min(v_hi, v_lo)]
       : [Math.max(v_hi, v_lo), corner_c]
-    const active_y_axis = (vertical ? (box_item.series.y_axis ?? `y`) : `y`) as `y` | `y2`
-    const active_x_axis = (vertical ? `x` : (box_item.series.x_axis ?? `x`)) as `x` | `x2`
+    const active_y_axis = vertical ? (box_item.series.y_axis ?? `y`) : `y`
+    const active_x_axis = vertical ? `x` : (box_item.series.x_axis ?? `x`)
     return {
       x: vertical ? box_item.slot : box_item.stats.median,
       y: vertical ? box_item.stats.median : box_item.slot,
@@ -760,7 +757,6 @@
   {...rest}
 >
   {#snippet layers()}
-    {@const pad = frame.pad}
     {@render ref_lines_layer(`below-grid`)}
 
     <PlotAxes
@@ -800,7 +796,7 @@
           {@const c_lo = cat_scale(box_item.slot - box_width_value / 2)}
           {@const c_hi = cat_scale(box_item.slot + box_width_value / 2)}
           {@const c_center = cat_scale(box_item.slot)}
-          {@const cap = (Math.abs(c_hi - c_lo) * (whisker_state.cap_fraction ?? 0.5)) / 2}
+          {@const cap = (Math.abs(c_hi - c_lo) * whisker_state.cap_fraction) / 2}
           {@const cap_lo = c_center - cap}
           {@const cap_hi = c_center + cap}
           {@const v_q1 = val_scale(stats.q1)}

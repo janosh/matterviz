@@ -65,7 +65,7 @@ synthesis_out_dir = f"{site_dir}/synthesis-planning"
 
 
 def fetch_subsystem(
-    elements: tuple[str, ...], hull_cutoff: float = HULL_CUTOFF
+    elements: tuple[str, ...], hull_cutoff: float
 ) -> list[dict[str, Any]]:
     """All entries of exactly these elements within hull_cutoff of the hull."""
     element_list = ",".join(f'"{element}"' for element in elements)

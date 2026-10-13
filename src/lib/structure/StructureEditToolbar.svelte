@@ -85,7 +85,6 @@
       {disabled}
       title={disabled ? `Bond editing is only available for the original 1x1x1 cell` : label}
       onclick={() => {
-        if (disabled) return
         session.inputs.set_measure_mode(mode)
         measure_menu_open = false
       }}

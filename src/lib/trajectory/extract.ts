@@ -1,33 +1,7 @@
 // Data extraction functions for trajectory analysis and plotting
-import { TRAJECTORY_ENERGY_KEYS } from '#lib/constants.js'
 import { get_density } from '#lib/structure/density.js'
 import { copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
-
-// Build an extractor that copies the listed numeric metadata fields (plus Step)
-const make_metadata_extractor =
-  (fields: readonly string[]): TrajectoryDataExtractor =>
-  (frame: TrajectoryFrame): Record<string, number> => {
-    const data: Record<string, number> = { Step: frame.step }
-    if (frame.metadata) copy_numeric_fields(data, frame.metadata, fields)
-    return data
-  }
-
-export const energy_data_extractor = make_metadata_extractor(TRAJECTORY_ENERGY_KEYS)
-
-// Force statistics as the parser recorded them (per-atom vectors live on the sites as
-// `force`, never in frame metadata). A relaxed structure legitimately has force_max 0.
-export const force_stress_data_extractor: TrajectoryDataExtractor = (
-  frame: TrajectoryFrame,
-): Record<string, number> => {
-  const data: Record<string, number> = { Step: frame.step }
-  const { metadata } = frame
-  if (!metadata) return data
-  // pressure lives here, not in structural_data_extractor, so full_data_extractor gets it once
-  const keys = [`force_max`, `force_norm`, `stress_max`, `stress_frobenius`, `pressure`]
-  copy_numeric_fields(data, metadata, keys)
-  return data
-}
 
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 
@@ -85,9 +59,8 @@ export const full_data_extractor: TrajectoryDataExtractor = (
 export const frame_property_row = (
   frame: TrajectoryFrame,
   frame_number: number,
-  data_extractor: TrajectoryDataExtractor = full_data_extractor,
 ): TrajectoryMetadata => ({
   frame_number,
   step: frame.step,
-  properties: data_extractor(frame),
+  properties: full_data_extractor(frame),
 })

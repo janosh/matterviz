@@ -6,7 +6,7 @@ import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { is_pbc, type Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, Pbc, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { shift_bonds_for_moved_sites } from '#lib/structure/bonding.js'
 import {
   is_lammps_data_content,
@@ -382,7 +382,7 @@ type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
 // Every atom in a file is expanded by the same ops, so resolve the strings once here instead
 // of re-running the expression parser (regex match, split, indexOf) per atom — that was
 // O(atoms x ops x 3) string parses where O(ops x 3) suffices.
-// Ops arrive pre-normalized (quotes + whitespace already stripped, see normalized_ops).
+// Ops arrive pre-normalized (quotes + whitespace already stripped, see cif_symop_of).
 const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
   operations.flatMap((operation) => {
     // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`
@@ -405,7 +405,7 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
 const apply_symmetry_ops = (
   coords: Vec3,
   symmetry_ops: ParsedSymOp[],
-  centering: Vec3[] = [],
+  centering: Vec3[],
 ): Vec3[] => {
   const [coord_x, coord_y, coord_z] = coords
   const wrapped: Vec3[] = []
@@ -1055,12 +1055,10 @@ export function structure_from_json(
 // can pass every structure through without paying for a copy. Non-periodic axes keep
 // out-of-cell coordinates (a slab translated along its vacuum direction, an unwrapped
 // trajectory), since folding them would tear the geometry apart.
-export function normalize_fractional_coords<T extends AnyStructure>(
-  structure: T,
-  pbc: Pbc | undefined = `lattice` in structure ? structure.lattice.pbc : undefined,
-): T {
-  if (!(`lattice` in structure) || !pbc) return structure
-  if (numeric_sites.has(structure) && pbc === structure.lattice.pbc) return structure
+export function normalize_fractional_coords<T extends AnyStructure>(structure: T): T {
+  if (!(`lattice` in structure) || numeric_sites.has(structure)) return structure
+  const { pbc } = structure.lattice
+  if (!pbc) return structure
   // Plain loop: this runs on every trajectory frame and nearly always finds nothing to wrap
   const [wrap_a, wrap_b, wrap_c] = pbc
   if (!wrap_a && !wrap_b && !wrap_c) return structure

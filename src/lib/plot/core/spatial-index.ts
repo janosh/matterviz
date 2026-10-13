@@ -16,7 +16,6 @@ export type SpatialIndex<T extends Positioned> = {
   items: T[]
   cell_size: number
   radius_px: number
-  count: number // indexed items, i.e. excluding those dropped as non-finite/off-grid
 }
 
 const in_grid = (coord: number) => coord >= -COORD_OFFSET && coord < COORD_OFFSET
@@ -51,7 +50,7 @@ export function build_spatial_index<T extends Positioned>(
   }
 
   indexed_items.length = count
-  return { cells, items: indexed_items, cell_size, radius_px, count }
+  return { cells, items: indexed_items, cell_size, radius_px }
 }
 
 // Nearest indexed item within `radius_px` of `pointer` (inclusive) that `accept` allows, or

@@ -224,7 +224,6 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
       max_y = Math.max(max_y, pos_y + extent)
       max_z = Math.max(max_z, pos_z + extent)
     }
-    this.boundingSphere ??= new Sphere()
     const bounds = this.boundingSphere
     if (this.count === 0) bounds.makeEmpty()
     else {
@@ -239,7 +238,7 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
     const sphere = this.geometry.boundingSphere
     if (!sphere || this.count === 0) return
     local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(this.matrixWorld).invert())
-    if (this.boundingSphere && !local_ray.intersectsSphere(this.boundingSphere)) return
+    if (!local_ray.intersectsSphere(this.boundingSphere)) return
     const planes = cutaway_planes(this)
     // Local-space planes let sphere bounds stay conservative under nonuniform transforms.
     const local_planes = planes.map((plane) => plane.clone().applyMatrix4(scratch_matrix))

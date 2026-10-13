@@ -157,9 +157,6 @@
 {/if}
 
 <style>
-  .reference-line {
-    transition: opacity 0.15s ease;
-  }
   .reference-line.hovered line:not([stroke='transparent']) {
     filter: brightness(1.2);
   }

@@ -25,12 +25,12 @@ const mol_bond_order = (code: number, context: string): BondOrder => {
   return 1
 }
 
-// Read consecutive fixed-width integer fields, falling back to whitespace splitting for
+// Read consecutive 3-wide integer fields, falling back to whitespace splitting for
 // files that don't pad their columns (hand-written fixtures, some converters).
 // Returns [] when neither reading yields `count` integers.
-const read_int_fields = (line: string, count: number, width = 3): number[] => {
+const read_int_fields = (line: string, count: number): number[] => {
   const fixed = Array.from({ length: count }, (_, field_idx) =>
-    line.slice(field_idx * width, (field_idx + 1) * width).trim(),
+    line.slice(field_idx * 3, (field_idx + 1) * 3).trim(),
   )
   // A missing field slices to '', and Number('') is 0, which Number.isInteger accepts — a
   // bond line truncated after its two atom ids would read as a valid bond of type 0

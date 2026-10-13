@@ -1,6 +1,4 @@
 import type { NumericFrame, FrameChannels } from '../frame'
-// Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
-// they reach the UI on the run instead of living in module-global state. Fatal failures throw.
 import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { ReadAtoms } from '../atom-batches'
@@ -23,6 +21,8 @@ export interface WarningCollector {
   readonly warnings: string[]
 }
 
+// Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
+// they reach the UI on the run instead of living in module-global state. Fatal failures throw.
 export const create_warning_collector = (): WarningCollector => {
   const warnings: string[] = []
   const seen_keys = new Set<string>()
@@ -59,8 +59,6 @@ export interface ParsedTrajectory extends ParsedRunFacts {
   frames: TrajectoryFrame[]
   // Frames are all in memory, so every run-level signal is too
   signals?: Record<string, TrajectorySignal>
-  // Pre-extracted per-frame scalars; omitted when the frames themselves are the source
-  properties?: TrajectoryMetadata[]
 }
 
 // A parser that keeps its source open (HDF5 handle) and decodes frames on demand instead of

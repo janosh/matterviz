@@ -137,7 +137,7 @@ export interface ErrorBand {
     | { upper: number | readonly number[]; lower: number | readonly number[] } // Asymmetric
 
   // Styling (defaults applied if not specified)
-  fill?: string // Defaults to series color with reduced opacity
+  fill?: string // Defaults to #4e79a7
   pattern?: FillPattern // hatch/texture over the band fill
   fill_opacity?: number // Defaults to 0.3
   edge_style?: FillEdgeStyle

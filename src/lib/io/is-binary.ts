@@ -43,11 +43,11 @@ export const is_binary = (content: string): boolean => {
 const starts_with = (bytes: Uint8Array, sig: number[]): boolean =>
   bytes.length >= sig.length && sig.every((byte, idx) => bytes[idx] === byte)
 
-// Leading bytes to test a magic signature against. Guards the slice: byteLength reads 0 for
+// Leading 8 bytes to test a magic signature against. Guards the slice: byteLength reads 0 for
 // a detached ArrayBuffer and slice() throws on one. Short buffers are passed through as-is
 // so a 2-byte gzip header still matches — every has_*_magic below length-checks itself.
-export const magic_head = (buffer: ArrayBuffer, count = 8): Uint8Array =>
-  buffer.byteLength === 0 ? new Uint8Array() : new Uint8Array(buffer.slice(0, count))
+export const magic_head = (buffer: ArrayBuffer): Uint8Array =>
+  buffer.byteLength === 0 ? new Uint8Array() : new Uint8Array(buffer.slice(0, 8))
 
 // gzip member header
 export const has_gzip_magic = (bytes: Uint8Array): boolean => starts_with(bytes, [0x1f, 0x8b])

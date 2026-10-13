@@ -255,7 +255,7 @@ describe(`compare_volume_grids`, () => {
         linear_volume(size, cubic, periodic),
         linear_volume(size, cubic, periodic),
       ),
-    ).toEqual({ ok: true })
+    ).toBeNull()
   })
 
   test.each([
@@ -280,22 +280,20 @@ describe(`compare_volume_grids`, () => {
       reason_match: /boundary modes differ/,
     },
   ])(`rejects mismatched $label with diagnostic`, ({ make_b, reason_match }) => {
-    const result = compare_volume_grids(base(), make_b())
-    expect(result.ok).toBe(false)
-    expect(result.reason).toMatch(reason_match)
+    expect(compare_volume_grids(base(), make_b())).toMatch(reason_match)
   })
 
   test(`origin and voxel tolerances use per-voxel distance`, () => {
     const near_origin = linear_volume(11, cubic, false, [1e-6, 0, 0])
-    expect(compare_volume_grids(base(), near_origin).ok).toBe(true)
-    expect(compare_volume_grids(base(), near_origin, { tolerance: 1e-8 }).ok).toBe(false)
+    expect(compare_volume_grids(base(), near_origin)).toBeNull()
+    expect(compare_volume_grids(base(), near_origin, { tolerance: 1e-8 })).toMatch(/origins/)
 
     // 11 finite points → divisor 10: a 5e-4 lattice delta is a 5e-5 voxel delta
     // (within the 1e-4 tolerance), while 2e-3 → 2e-4 exceeds it
     const stretched = (lattice_a: number) =>
       linear_volume(11, [[lattice_a, 0, 0], cubic[1], cubic[2]], false)
-    expect(compare_volume_grids(base(), stretched(10.0005)).ok).toBe(true)
-    expect(compare_volume_grids(base(), stretched(10.002)).ok).toBe(false)
+    expect(compare_volume_grids(base(), stretched(10.0005))).toBeNull()
+    expect(compare_volume_grids(base(), stretched(10.002))).toMatch(/voxel vectors/)
   })
 })
 

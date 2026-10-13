@@ -19,7 +19,7 @@ test.each([parse_linear_rgb, css_to_linear_rgb])(
 
 test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   const source = `#57178f` // deep purple (Cs-like)
-  const bright = brighten_hex(source, 0.55)
+  const bright = brighten_hex(source)
   expect(bright).toBe(`#cac4d6`)
   const src = new Color(source)
   const out = new Color(bright)
@@ -28,9 +28,7 @@ test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   // Still purple-ish: blue and red dominate green (not a neutral wash).
   expect(out.b).toBeGreaterThan(out.g)
   expect(out.r).toBeGreaterThan(out.g)
-  expect(brighten_hex(source, 0)).toBe(`#57178f`)
-  expect(brighten_hex(source, 1)).toBe(`#ffffff`)
-  expect(brighten_hex(undefined)).toBe(`#eaeaea`) // #cccccc lifted by the default 0.55
+  expect(brighten_hex(undefined)).toBe(`#eaeaea`) // #cccccc lifted 55% toward white
   // an unparsable color glows grey (linear 0.5 mixed 55% toward white), not in the hue the
   // previous call left behind — three's Color.set would have kept the red
   brighten_hex(`#ff0000`)

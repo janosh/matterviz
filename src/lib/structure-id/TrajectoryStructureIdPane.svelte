@@ -83,11 +83,11 @@
   collecting_label="Identifying…"
   {...pane_options}
 >
-  <!-- with no stride control, collected_frames is the trajectory's total frame count -->
-  {#snippet controls({ collected_frames: total_frames, n_atoms })}
+  <!-- with no stride control, collected_frames is the selected frame window's count -->
+  {#snippet controls({ collected_frames: window_frames, n_atoms })}
     {@const plan =
-      total_frames > 0
-        ? sweep_frame_plan(total_frames, safe_max_frames)
+      window_frames > 0
+        ? sweep_frame_plan(window_frames, safe_max_frames)
         : { frame_numbers: [], frame_stride: 1 }}
     <label>
       Max frames
@@ -98,7 +98,7 @@
       Plot fraction of atoms
     </label>
     <p class="hint">
-      {plan.frame_numbers.length} of {total_frames} frames
+      {plan.frame_numbers.length} of {window_frames} frames
       {#if plan.frame_stride > 1}(every {plan.frame_stride}){/if}
       <!-- a-CNA measured at ~9-14 µs/atom; the upper end is what a user should plan for -->
       × {n_atoms} atoms ≈ {format_num(plan.frame_numbers.length * n_atoms * 14e-6, `.2~g`)} s

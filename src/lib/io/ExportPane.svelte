@@ -25,7 +25,6 @@
     state = new FileExportState(() => filename),
     busy = false,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-    dpi_range = [50, 600],
     icon_style = ``,
     toggle_props = {},
     pane_props = {},
@@ -39,7 +38,6 @@
     state?: FileExportState
     busy?: boolean
     png_dpi?: number
-    dpi_range?: readonly [number, number]
     icon_style?: string
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
@@ -50,10 +48,10 @@
   } = $props()
 
   const pane_id = $props.id()
+  const [min_dpi, max_dpi] = [50, 600]
 
-  // Clamp DPI into dpi_range on input change (fires on blur, before any download click)
+  // Clamp DPI into [min_dpi, max_dpi] on input change (fires on blur, before any download click)
   function clamp_dpi(): void {
-    const [min_dpi, max_dpi] = dpi_range
     if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = DEFAULT_PNG_DPI
     else png_dpi = Math.round(clamp(png_dpi, min_dpi, max_dpi))
   }
@@ -143,8 +141,8 @@
               <span class="dpi-input"
                 >(DPI: <input
                   type="number"
-                  min={dpi_range[0]}
-                  max={dpi_range[1]}
+                  min={min_dpi}
+                  max={max_dpi}
                   bind:value={png_dpi}
                   onchange={clamp_dpi}
                   title="Export resolution in dots per inch"

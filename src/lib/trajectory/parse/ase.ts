@@ -108,7 +108,6 @@ export interface AseFrameOptions {
   // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
   // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
   inherit?: () => { numbers?: number[]; pbc?: Pbc }
-  max_json_length?: number
   base_offset?: number
 }
 
@@ -116,7 +115,6 @@ const read_frame_json = (
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
-  max_json_length = Infinity,
   base_offset = 0,
 ): string => {
   const offset = frame_offset - base_offset
@@ -125,7 +123,7 @@ const read_frame_json = (
       `frame offset ${frame_offset} lies outside the ${buffer.byteLength} byte slice at ${base_offset}`,
     )
   const json_length = Number(view.getBigInt64(offset, true))
-  if (json_length > max_json_length)
+  if (json_length > MAX_ASE_HEADER_BYTES)
     throw new Error(`frame JSON too large: ${json_length} bytes`)
   return decoder.decode(new Uint8Array(buffer, offset + 8, json_length))
 }
@@ -140,7 +138,7 @@ const is_ndarray_ref = (value: unknown): value is { ndarray: unknown[] } =>
 
 export const ase_calculator_data = (
   frame_data: Record<string, unknown>,
-  read_ndarray?: NdarrayReader,
+  read_ndarray: NdarrayReader,
 ): Record<string, unknown> => {
   const calculator = frame_data[`calculator.`] ?? frame_data.calculator
   if (!calculator || typeof calculator !== `object`) return {}
@@ -151,11 +149,11 @@ export const ase_calculator_data = (
       results[key] = value
       continue
     }
-    if (read_ndarray && (key === `stress.` || key === `forces.`)) {
+    if (key === `stress.` || key === `forces.`) {
       results[key.slice(0, -1)] = read_ndarray(value)
       continue
     }
-    if (!read_ndarray || !SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
+    if (!SPECTROSCOPY_CALCULATOR_KEY.test(key)) continue
     const shape = value.ndarray[0]
     if (
       !Array.isArray(shape) ||
@@ -163,8 +161,7 @@ export const ase_calculator_data = (
     ) {
       continue
     }
-    const size = shape.reduce((total, dimension) => total * dimension, 1)
-    if (![3, 9].includes(size)) continue
+    if (![3, 9].includes(values_per_sample(shape))) continue
     const result_key = key.endsWith(`.`) ? key.slice(0, -1) : key
     if (result_key in results) {
       throw new Error(`ASE calculator contains duplicate result key ${result_key}`)
@@ -207,15 +204,12 @@ export function decode_ase_frame(
     fallback_pbc,
     fallback_masses,
     inherit,
-    max_json_length,
     base_offset = 0,
     plot_row = false,
     warn,
   }: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
 ): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
-  const frame_data = JSON.parse(
-    read_frame_json(view, buffer, frame_offset, max_json_length, base_offset),
-  )
+  const frame_data = JSON.parse(read_frame_json(view, buffer, frame_offset, base_offset))
 
   const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
     read_ndarray_from_view(view, ref, base_offset)
@@ -408,7 +402,6 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
         inherit: () => inherited_topology(frame_idx),
         fallback_masses: atom_masses,
-        max_json_length: MAX_ASE_HEADER_BYTES,
         plot_row,
         warn,
       })
@@ -422,7 +415,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
-      return JSON.parse(read_frame_json(view, buffer, offset, MAX_ASE_HEADER_BYTES))
+      return JSON.parse(read_frame_json(view, buffer, offset))
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
     }

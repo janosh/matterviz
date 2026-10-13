@@ -456,7 +456,6 @@
         y_axis={plot_y_axis}
         {tooltip}
         {@attach drop_zone}
-        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls
@@ -491,7 +490,6 @@
           on_bar_click?.(data)
         }}
         {@attach drop_zone}
-        class={rest.class}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
         bind:show_controls

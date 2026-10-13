@@ -124,9 +124,9 @@ describe(`measure: angles`, () => {
     [`same direction`, [1, 0, 0], [2, 0, 0], 0],
     [`identical vectors`, [1, 1, 1], [1, 1, 1], 0],
   ] as [string, Vec3, Vec3, number][])(`basic angles: %s`, (_desc, vector_1, vector_2, deg) => {
-    expect(angle_between_vectors(vector_1, vector_2, `degrees`)).toBeCloseTo(deg, 10)
+    expect(angle_between_vectors(vector_1, vector_2)).toBeCloseTo(deg, 10)
     // symmetric in its arguments
-    expect(angle_between_vectors(vector_2, vector_1, `degrees`)).toBeCloseTo(deg, 10)
+    expect(angle_between_vectors(vector_2, vector_1)).toBeCloseTo(deg, 10)
   })
 
   // interior angle at `vertex` between the two `others` corners of a triangle
@@ -134,7 +134,6 @@ describe(`measure: angles`, () => {
     angle_between_vectors(
       [others[0][0] - vertex[0], others[0][1] - vertex[1], others[0][2] - vertex[2]],
       [others[1][0] - vertex[0], others[1][1] - vertex[1], others[1][2] - vertex[2]],
-      `degrees`,
     )
 
   // oxfmt-ignore
@@ -159,18 +158,17 @@ describe(`measure: angles`, () => {
   test.each([0.1, 2, 100])(`angle is independent of vector magnitude (scale %p)`, (scale) => {
     const vector_1: Vec3 = [1, 2, 3]
     const vector_2: Vec3 = [4, 5, 6]
-    const base_angle = angle_between_vectors(vector_1, vector_2, `degrees`)
+    const base_angle = angle_between_vectors(vector_1, vector_2)
     const scaled_v1: Vec3 = [vector_1[0] * scale, vector_1[1] * scale, vector_1[2] * scale]
     const scaled_v2: Vec3 = [vector_2[0] * scale, vector_2[1] * scale, vector_2[2] * scale]
 
-    expect(angle_between_vectors(scaled_v1, vector_2, `degrees`)).toBeCloseTo(base_angle, 10)
-    expect(angle_between_vectors(vector_1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
-    expect(angle_between_vectors(scaled_v1, scaled_v2, `degrees`)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(scaled_v1, vector_2)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(vector_1, scaled_v2)).toBeCloseTo(base_angle, 10)
+    expect(angle_between_vectors(scaled_v1, scaled_v2)).toBeCloseTo(base_angle, 10)
   })
 
   test(`angle edge cases`, () => {
     expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
-    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(Math.PI / 2, 10)
 
     // Collinear precision beyond the axis-aligned 0°/180° cases above
     expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
@@ -249,19 +247,6 @@ describe(`measure: dihedral angles`, () => {
     const angle = open_boundary(points)
     expect(Number.isNaN(angle)).toBe(false)
     expect(angle).toBe(0)
-  })
-
-  test(`radians mode agrees with degrees mode`, () => {
-    // oxfmt-ignore
-    const [point_1, point_2, point_3, point_4]: Vec3[] = [[0, 1, 0], [0, 0, 0], [1, 0, 0], [1, 0, 1]]
-    const rad = dihedral_angle(point_1, point_2, point_3, point_4, null, undefined, `radians`)
-    expect(rad).toBeCloseTo(Math.PI / 2, 12)
-    const degrees = dihedral_angle(point_1, point_2, point_3, point_4, null)
-    // Digit COUNT, not a tolerance — passing 1e-9 here would mean 10^-1e-9/2, i.e. half a
-    // degree. to_degrees multiplies by a precomputed fl(180/PI) while this line divides by
-    // PI, so the two orderings disagree by up to 1 ulp (measured 2.84e-14 over 200k angles
-    // spanning the range). 12 digits is 5e-13, ~18 ulps of headroom; 14 would fail.
-    expect((rad * 180) / Math.PI).toBeCloseTo(degrees, 12)
   })
 })
 

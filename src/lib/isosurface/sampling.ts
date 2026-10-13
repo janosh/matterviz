@@ -123,7 +123,7 @@ const OOB_TOL = 1e-6
 // Absolute Cartesian (x, y, z) in the volume's frame → trilinearly interpolated value.
 // Handles non-orthogonal lattices, origin offsets and periodic wrapping; scalar arithmetic
 // only since it runs once per isosurface vertex / slice pixel.
-export function volume_sampler_xyz(
+function volume_sampler_xyz(
   volume: VolumeGrid,
   out_of_bounds: OutOfBoundsPolicy,
 ): (coord_x: number, coord_y: number, coord_z: number) => number {
@@ -203,51 +203,37 @@ export function sample_volume_at_positions(
   return scalars
 }
 
-// Result of a strict VESTA-style grid compatibility check between two volumes.
-interface GridCompatibility {
-  ok: boolean
-  reason?: string // identifies the first mismatching property when ok is false
-}
-
-const incompatible_grids = (reason: string): GridCompatibility => ({ ok: false, reason })
-
 const fmt_vec = (vec: readonly number[]): string =>
   `[${vec.map((val) => Number(val.toPrecision(6))).join(`, `)}]`
 
-// Strictly compare two volumetric grids: identical dimensions, origins equal
-// within tolerance, all voxel vectors equal within tolerance, and matching
-// periodic/finite boundary modes. Cross-volume coloring via create_volume_sampler
-// works for any two volumes sharing a Cartesian frame, but strictly matching
-// grids guarantee the sampled field is exact (no cross-grid resampling).
+// Strict VESTA-style grid comparison: identical dimensions, origins equal within tolerance,
+// all voxel vectors equal within tolerance, and matching periodic/finite boundary modes.
+// Returns the first mismatch as a diagnostic, null for matching grids. Cross-volume coloring
+// via create_volume_sampler works for any two volumes sharing a Cartesian frame, but strictly
+// matching grids guarantee the sampled field is exact (no cross-grid resampling).
 export function compare_volume_grids(
   vol_a: VolumetricData,
   vol_b: VolumetricData,
   { tolerance = 1e-4 }: { tolerance?: number } = {},
-): GridCompatibility {
+): string | null {
   const [nx_a, ny_a, nz_a] = vol_a.dims
   const [nx_b, ny_b, nz_b] = vol_b.dims
   if (nx_a !== nx_b || ny_a !== ny_b || nz_a !== nz_b) {
-    return incompatible_grids(
-      `grid dimensions differ: ${nx_a}×${ny_a}×${nz_a} vs ${nx_b}×${ny_b}×${nz_b}`,
-    )
+    return `grid dimensions differ: ${nx_a}×${ny_a}×${nz_a} vs ${nx_b}×${ny_b}×${nz_b}`
   }
 
   if (vol_a.periodic !== vol_b.periodic) {
-    return incompatible_grids(
-      `boundary modes differ: ${vol_a.periodic ? `periodic` : `finite`} vs ${
-        vol_b.periodic ? `periodic` : `finite`
-      }`,
-    )
+    return `boundary modes differ: ${vol_a.periodic ? `periodic` : `finite`} vs ${
+      vol_b.periodic ? `periodic` : `finite`
+    }`
   }
 
   for (let axis = 0; axis < 3; axis++) {
     const delta = Math.abs(vol_a.origin[axis] - vol_b.origin[axis])
     if (delta > tolerance) {
-      return incompatible_grids(
-        `origins differ by ${delta.toPrecision(3)} Å along axis ${axis}: ${fmt_vec(
-          vol_a.origin,
-        )} vs ${fmt_vec(vol_b.origin)}`,
-      )
+      return `origins differ by ${delta.toPrecision(3)} Å along axis ${axis}: ${fmt_vec(
+        vol_a.origin,
+      )} vs ${fmt_vec(vol_b.origin)}`
     }
   }
 
@@ -261,16 +247,14 @@ export function compare_volume_grids(
       const voxel_delta =
         Math.abs(vol_a.lattice[axis][comp] - vol_b.lattice[axis][comp]) / divisor
       if (voxel_delta > tolerance) {
-        return incompatible_grids(
-          `voxel vectors differ along axis ${axis}: ${fmt_vec(
-            vol_a.lattice[axis],
-          )} vs ${fmt_vec(vol_b.lattice[axis])} (lattice rows)`,
-        )
+        return `voxel vectors differ along axis ${axis}: ${fmt_vec(
+          vol_a.lattice[axis],
+        )} vs ${fmt_vec(vol_b.lattice[axis])} (lattice rows)`
       }
     }
   }
 
-  return { ok: true }
+  return null
 }
 
 // Fractional display range per lattice axis, e.g. [[-0.15, 2.15], [-0.15, 2.15], [0, 1]]

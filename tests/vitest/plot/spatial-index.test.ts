@@ -42,7 +42,7 @@ describe(`spatial index`, () => {
       { cx: 500, cy: 500, id: `far` },
     ]
     const index = build_spatial_index(items, 20)
-    expect(index.count).toBe(3)
+    expect(index.items).toHaveLength(3)
     expect(query_nearest(index, { x: 15, y: 10 })?.id).toBe(`nearer-to-15`)
     expect(query_nearest(index, { x: 9, y: 10 })?.id).toBe(`near`)
     expect(query_nearest(index, { x: 250, y: 250 })).toBeNull()
@@ -84,7 +84,7 @@ describe(`spatial index`, () => {
       [5, Infinity],
       [(1 << 15) * 20 + 100, 0],
     ]) {
-      expect(build_spatial_index([{ cx: center_x, cy: center_y }], 20).count).toBe(0)
+      expect(build_spatial_index([{ cx: center_x, cy: center_y }], 20).items).toHaveLength(0)
     }
 
     const clustered = Array.from({ length: 100 }, (_, idx) => ({

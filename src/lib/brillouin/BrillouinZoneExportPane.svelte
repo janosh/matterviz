@@ -4,7 +4,6 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { export_canvas_as_png } from '#lib/io/export.js'
   import type { FileExportContext } from '#lib/io/file-export.svelte.js'
-  import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import type { BrillouinZoneData } from './types'
 
@@ -16,8 +15,7 @@
     camera,
     filename: source_filename = `brillouin-zone`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-    ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: {
     export_pane_open?: boolean
     bz_data?: BrillouinZoneData
     wrapper?: HTMLDivElement
@@ -85,5 +83,4 @@
     class: `bz-export-toggle`,
     title: export_pane_open ? `` : `Export Brillouin zone`,
   }}
-  {...rest}
 />

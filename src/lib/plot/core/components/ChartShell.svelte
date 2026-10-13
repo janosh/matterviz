@@ -17,7 +17,7 @@
 <script lang="ts">
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
-  // Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
+  // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
   // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
   // …) so every chart is themed the same way.

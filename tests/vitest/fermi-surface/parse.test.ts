@@ -1,11 +1,11 @@
-// Tests for Fermi surface file parsing via parse_fermi_file, the parsed-data type guards
+// Tests for Fermi surface file parsing via parse_fermi_file, the parsed-data type guard
 // and the demo fixture registry
 import {
   normalize_band_grid,
   normalize_fermi_surface,
   parse_fermi_file,
 } from '#lib/fermi-surface/parse.js'
-import { is_band_grid_data, is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import { fermi_surface_files } from '#site/fermi-surfaces.js'
 import { describe, expect, test } from 'vitest'
@@ -28,7 +28,7 @@ const triangle_mesh = {
 // Parse a band-grid format (BXSF/FRMSF/JSON grid) and assert the result is BandGridData
 const parse_grid = (content: string, filename?: string): BandGridData => {
   const parsed = parse_fermi_file(content, filename)
-  if (!is_band_grid_data(parsed)) throw new Error(`expected BandGridData`)
+  if (!parsed || is_fermi_surface_data(parsed)) throw new Error(`expected BandGridData`)
   return parsed
 }
 // Energy at grid point (ix, iy, iz) of a flat z-fastest band grid
@@ -629,16 +629,13 @@ const mock_band_grid: BandGridData = {
   n_spins: 1,
 }
 
-describe(`type guards`, () => {
+describe(`is_fermi_surface_data`, () => {
   test.each([
-    { fn: is_fermi_surface_data, data: mock_fermi_surface, expected: true },
-    { fn: is_fermi_surface_data, data: mock_band_grid, expected: false },
-    { fn: is_fermi_surface_data, data: null, expected: false },
-    { fn: is_band_grid_data, data: mock_band_grid, expected: true },
-    { fn: is_band_grid_data, data: mock_fermi_surface, expected: false },
-    { fn: is_band_grid_data, data: null, expected: false },
-  ])(`$fn.name($data) = $expected`, ({ fn: callback, data, expected }) => {
-    expect(callback(data)).toBe(expected)
+    { data: mock_fermi_surface, expected: true },
+    { data: mock_band_grid, expected: false },
+    { data: null, expected: false },
+  ])(`$data = $expected`, ({ data, expected }) => {
+    expect(is_fermi_surface_data(data)).toBe(expected)
   })
 })
 

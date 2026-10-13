@@ -39,10 +39,10 @@ import { central_difference_velocities } from '#lib/vacf/calc-vacf.js'
 // when the run records no timestep. Distinct from the VACF's `1/frame`, which counts
 // collected frames.
 export type TrajectoryFrequencyUnit = MdFrequencyUnit | `1/step`
-export const TRAJECTORY_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/step`] as const
+const TRAJECTORY_FREQUENCY_UNITS = [...MD_FREQUENCY_UNITS, `1/step`] as const
 type SpectralActivity = `active` | `inactive` | `unknown`
 export type SpectroscopyPreprocessing = `body_fixed` | `remove_com` | `raw`
-export const RAMAN_CHANNELS = [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`] as const
+const RAMAN_CHANNELS = [`isotropic`, `anisotropic`, `vv`, `vh`, `unpolarized`] as const
 // Powder-averaged Raman channels. A polarized single-crystal geometry has no producer in
 // the trajectory viewer, so only the orientation-averaged combinations are offered.
 export type RamanChannel = (typeof RAMAN_CHANNELS)[number]
@@ -108,7 +108,6 @@ type RamanSpectrumResult = Record<RamanChannel, TrajectorySpectrumCurve> & {
 
 interface TrajectorySpectralPeak {
   frequency: number
-  mode_label?: string
   ir_activity: SpectralActivity
   raman_activity: SpectralActivity
   ir_score: number | null

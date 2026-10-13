@@ -12,14 +12,12 @@
     cell_type = $bindable(`original`),
     sym_data = null,
     loading = false,
-    direction = `down`,
     suppress_hover = false,
   }: {
     supercell_scaling: string
     cell_type?: CellType
     sym_data?: SymmetryDataset | null
     loading?: boolean
-    direction?: `up` | `down`
     suppress_hover?: boolean // don't auto-open the menu on hover/focus (e.g. while a sibling popover is open)
   } = $props()
 
@@ -139,10 +137,7 @@
   </button>
 
   {#if menu_open}
-    <div
-      class={['dropdown', { 'open-up': direction === `up` }]}
-      transition:fade={{ duration: 100 }}
-    >
+    <div class="dropdown" transition:fade={{ duration: 100 }}>
       <div class="cell-type-row">
         {#each cell_types as { type, label, tooltip: cell_tooltip } (type)}
           {@const disabled = type !== `original` && !sym_data}
@@ -238,11 +233,12 @@
       background-color: var(--cell-select-hover-surface);
     }
   }
+  /* opens upward: the control sits at the bottom of the viewer */
   .dropdown {
     position: absolute;
-    top: 100%;
+    bottom: 100%;
     right: 0;
-    margin-top: 2px;
+    margin-bottom: 2px;
     /* Pair ink with the light-dark surface so a dark host's --text-color can't bleach the menu. */
     background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
     color: var(--cell-select-color);
@@ -268,22 +264,11 @@
   .dropdown::before {
     content: '';
     position: absolute;
-    top: -10px;
+    bottom: -10px;
     left: 0;
     right: 0;
     height: 10px;
   }
-  .dropdown.open-up {
-    top: auto;
-    bottom: 100%;
-    margin-top: 0;
-    margin-bottom: 2px;
-  }
-  .dropdown.open-up::before {
-    top: auto;
-    bottom: -10px;
-  }
-
   .cell-type-row {
     display: flex;
     gap: 3px;

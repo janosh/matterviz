@@ -39,7 +39,7 @@ export interface TreemapLabelBlock {
 
 export interface TreemapLabelPlacement {
   x: number
-  lines: (TreemapLabelLine & { y: number })[]
+  lines: (TreemapLabelLine & { y: number; font_scale: number })[]
   font_size: number
   header: boolean
   transform?: string

@@ -198,7 +198,7 @@ export type ConvexHullGizmoOptions = Record<string, unknown> & {
   size?: number
 }
 
-// Default legend configuration shared by 3D and 4D diagrams
+// Default controls-pane configuration shared by 2D, 3D and 4D diagrams
 export const default_controls: ConvexHullControlsType = {
   title: ``,
   show_counts: true,

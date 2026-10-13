@@ -288,7 +288,7 @@
     y: chart_state.pad.t + rect.y + rect.height / 2,
   })
 
-  // Uniform now that any cell zooms (plotly semantics), not just branches
+  // Any cell zooms (plotly semantics), not just branches, so clickability is uniform
   let cells_clickable = $derived(Boolean(on_node_click) || zoom_on_click)
 
   // Branches with visible children only ever label their header strip: a centered
@@ -511,7 +511,7 @@
                       class={line.class}
                       x={lbl.x}
                       y={line.y}
-                      font-size={lbl.font_size * (line.font_scale ?? 1)}
+                      font-size={lbl.font_size * line.font_scale}
                       font-weight={line.font_weight}
                       opacity={line.opacity}
                       fill={halo ? undefined : line.fill}

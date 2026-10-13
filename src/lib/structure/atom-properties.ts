@@ -512,11 +512,6 @@ export const atom_color_mode_unavailable_reason = (
   return null
 }
 
-export const is_atom_color_mode_available = (
-  mode: AtomColorMode,
-  context: AtomColorModeContext,
-): boolean => atom_color_mode_unavailable_reason(mode, context) === null
-
 // One option list keeps labels, availability, and explanations in sync across both pickers.
 export const get_atom_color_mode_options = (context: AtomColorModeContext) =>
   Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum ?? {}).map(

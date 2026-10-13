@@ -32,7 +32,7 @@
     [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
     [
       `Atom Selection`,
-      `Click atoms to select them, then pick distance or angle mode to measure all pairwise distances/angles`,
+      `Click atoms to select them, then pick a measure mode: distance measures all selected pairs, angle and dihedral the last 3 or 4 picks`,
     ],
     [
       `Camera Reset`,
@@ -503,12 +503,13 @@
     cursor: pointer;
     outline: none;
   }
-  .structure-info :global(.site-card:is(:hover, :focus-visible, .highlighted)) {
-    background: color-mix(in srgb, var(--site-color, currentColor) 18%, transparent);
-  }
+  /* every card is a selected site; hover/highlight must come after to show through */
   .structure-info :global(.site-card.selected) {
     box-shadow: inset 0 0 0 1px var(--site-color, currentColor);
     background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
+  }
+  .structure-info :global(.site-card:is(:hover, :focus-visible, .highlighted)) {
+    background: color-mix(in srgb, var(--site-color, currentColor) 40%, transparent);
   }
   .tips-item {
     display: grid;

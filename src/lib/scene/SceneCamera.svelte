@@ -1,5 +1,7 @@
 <script lang="ts">
-  // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by BrillouinZoneScene, FermiSurfaceScene, ChemPotScene3D and StructureScene
+  // Dual perspective/orthographic camera with OrbitControls + axis Gizmo, shared by
+  // BrillouinZoneScene, FermiSurfaceScene, ChemPotScene3D, ScatterPlot3DScene,
+  // TernaryPrismScene and StructureScene
   import type { Vec3 } from '#lib/math.js'
   import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
   import { T, useThrelte } from '@threlte/core'
@@ -37,7 +39,7 @@
     far?: number // far plane for either projection (three's default when omitted)
     // World direction drawn as screen up, also the axis OrbitControls orbits about
     up?: Vec3
-    orbit_props: ReturnType<typeof build_orbit_props> & { enabled?: boolean }
+    orbit_props: ReturnType<typeof build_orbit_props>
     gizmo?: boolean | GizmoOptions
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
   } = $props()
@@ -115,7 +117,7 @@
       bind:ref={orbit_controls}
       {...orbit_props}
       enablePan={false}
-      enabled={!flight_active && (orbit_props.enabled ?? true)}
+      enabled={!flight_active}
       enableDamping={!flight_active && orbit_props.enableDamping}
       autoRotate={!flight_active && orbit_props.autoRotate}
     >

@@ -1,4 +1,5 @@
-// Shared reactive scaffold behind the Cartesian charts (BarPlot, BoxPlot, Histogram):
+// Shared reactive scaffold behind the Cartesian charts (ScatterPlot, BinnedScatterPlot,
+// BarPlot, BoxPlot, Histogram):
 // axis range sync, auto padding, tick generation, scales, decoration/legend placement
 // and the pan/zoom controller. Each chart keeps its own marks, hover state and controls
 // pane; it feeds the frame merged axis configs, data-driven ranges and an obstacle field
@@ -178,7 +179,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
 
   const facet = create_facet_plot_adapter({
-    axes: FACET_AXES,
     facet_layout: opts.facet_layout,
     intrinsic_padding: () => base_pad,
     intrinsic_ranges: () => opts.facet_ranges?.() ?? opts.auto_ranges(),
@@ -700,9 +700,6 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get legend_placement() {
       return legend_placement
-    },
-    get legend_footprint() {
-      return legend_footprint
     },
     get exclusion_rects() {
       return exclusion_rects

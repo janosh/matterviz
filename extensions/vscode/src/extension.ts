@@ -326,13 +326,13 @@ export const create_html = (
 // Handle messages from webview
 export const handle_msg = async (
   msg: WebviewToHostMessage,
-  webview?: WebviewLike,
+  webview: WebviewLike,
 ): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     log_info(msg.text)
   } else if (msg.command === `error` && msg.text) {
     vscode.window.showErrorMessage(msg.text)
-  } else if (msg.command === `request_large_file` && msg.file_path && webview) {
+  } else if (msg.command === `request_large_file` && msg.file_path) {
     // Index the file here (the payload never crosses into the webview), answer with the run
     // summary, then stream its per-frame plot rows as they are extracted
     const command = `large_file_response`
@@ -355,7 +355,7 @@ export const handle_msg = async (
       console.error(`Failed to setup indexed parsing:`, error_message)
       webview.postMessage({ command, request_id: msg.request_id, error: error_message })
     }
-  } else if (msg.command === `request_frame` && msg.file_path && webview) {
+  } else if (msg.command === `request_frame` && msg.file_path) {
     try {
       const { request_id, file_path, frame_index } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
@@ -377,7 +377,7 @@ export const handle_msg = async (
   } else if (msg.command === `saveAs` && msg.content) {
     try {
       const uri = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file(msg.filename ?? `structure`),
+        defaultUri: vscode.Uri.file(msg.filename),
         filters: { Files: [`*`] },
       })
       if (!uri) return
@@ -454,9 +454,8 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
   } catch (error) {
     active_watcher_subscribers.delete(file_path)
     console.error(`Failed to start watching file ${file_path}:`, error)
-    // Shown here, not posted into the webview: the webview has no error surface of its own -
-    // it reports errors TO the host for exactly this treatment - so a posted one was dropped
-    // and the user was told nothing while the view silently stopped following the file.
+    // Shown here, not posted into the webview: the webview has no error surface of its own
+    // (it reports errors TO the host for exactly this treatment)
     vscode.window.showErrorMessage(`MatterViz: failed to start watching file: ${error}`)
   }
 }
@@ -490,8 +489,8 @@ async function broadcast_file_updated(
     }
   } catch (error) {
     console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)
-    // Once per failure, not once per subscriber, and shown rather than posted: the webview
-    // never read a host `error` message, so this left every view on a stale render in silence.
+    // Once per failure, not once per subscriber, and shown rather than posted: the webview has
+    // no error surface of its own
     vscode.window.showErrorMessage(`MatterViz: failed to read updated file: ${error}`)
   }
 }
@@ -542,9 +541,8 @@ function setup_webview_panel(
     defaults: get_defaults(),
   })
 
-  const message_listener = panel.webview.onDidReceiveMessage(
-    (msg: WebviewToHostMessage) => handle_msg(msg, panel.webview),
-    undefined,
+  const message_listener = panel.webview.onDidReceiveMessage((msg: WebviewToHostMessage) =>
+    handle_msg(msg, panel.webview),
   )
 
   // Push fresh theme/settings into the live webview. Rebuilding the HTML instead would

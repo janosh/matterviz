@@ -315,11 +315,10 @@ export function calculate_e_above_hull(
 export function get_convex_hull_stats(
   entries: (PhaseData & { is_synthetic?: boolean })[],
   elements: ElementSymbol[],
-  max_arity: number = 4,
+  max_arity: number,
 ): PhaseStats | null {
   const processed_entries = entries.filter((entry) => !entry.is_synthetic) // not data phases
   if (processed_entries.length === 0) return null
-  max_arity = Math.max(1, max_arity)
 
   const arity_counts = [0, 0, 0, 0, 0, 0] // index = arity (5 = quinary+)
   for (const entry of processed_entries) arity_counts[Math.min(5, get_arity(entry))]++
@@ -367,14 +366,10 @@ export interface HighDimHullResult {
 
 // Stats for systems the ConvexHull components can't render (5+ elements): computes
 // formation energies, hull distances and stability. Returns null when nothing is usable.
-// `elements` scopes the chemical system; defaults to the elements found in the entries.
-export function process_hull_for_stats(
-  entries: PhaseData[],
-  elements?: ElementSymbol[],
-): HighDimHullResult | null {
+export function process_hull_for_stats(entries: PhaseData[]): HighDimHullResult | null {
   const processed = process_hull_entries(entries)
   if (processed.entries.length === 0) return null
-  const hull_elements = elements ?? processed.elements
+  const hull_elements = processed.elements
 
   const el_refs = find_lowest_energy_unary_refs(processed.entries)
   const with_e_form = processed.entries.map((entry) => ({

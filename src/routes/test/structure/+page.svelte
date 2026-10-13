@@ -5,7 +5,6 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type {
     BondEditMode,
-    BondOrder,
     MeasureMode,
     StructureBond,
     StructurePane,
@@ -34,7 +33,6 @@
   let enable_measure_mode = $state(true)
   let measure_mode = $state<MeasureMode>(`distance`)
   let bond_edit_mode = $state<BondEditMode>(`add`)
-  let bond_edit_order = $state<BondOrder>(1)
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let bonds = $state<StructureBond[] | undefined>()
@@ -146,7 +144,6 @@
     {enable_measure_mode}
     bind:measure_mode
     bind:bond_edit_mode
-    bind:bond_edit_order
     bind:supercell_scaling
     bind:show_image_atoms
     bind:bonds
@@ -162,18 +159,10 @@
   {/if}
 </div>
 
-<div data-testid="pane-open-status" style="margin-top: 10px">
-  Info Pane Open Status: {active_pane === `info`}
-</div>
-<div data-testid="controls-open-status">
+<div data-testid="controls-open-status" style="margin-top: 10px">
   Controls Open Status: {active_pane === `controls`}
 </div>
 <div data-testid="bond-edit-mode-status">Bond Edit Mode: {bond_edit_mode}</div>
-
-<div data-testid="event-calls-status" style="max-height: 50vh; overflow-y: auto">
-  <h3 id="event-calls">Event Calls ({event_calls.length})</h3>
-  <pre>{JSON.stringify(event_calls, null, 2)}</pre>
-</div>
 
 <style>
   .structure-test-layout {

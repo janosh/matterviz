@@ -23,7 +23,6 @@ interface PhononModeTrajectoryOptions {
   amplitude?: number
   supercell?: Vec3
   n_frames?: number
-  vector_key?: string
 }
 
 // The real-space cell one or more modes animate in: the tiled unit cell with boundary
@@ -60,7 +59,7 @@ export const DEFAULT_PHONON_SHOW_VECTORS = false
 export const PHONON_VECTOR_KEY = `phonon_displacement`
 // Frames are synthesised on read, so only the displayed site count bounds memory and per-frame
 // work; this keeps a mistyped supercell from freezing the browser in bonding and rendering.
-export const MAX_PHONON_SUPERCELL_SITES = 200_000
+const MAX_PHONON_SUPERCELL_SITES = 200_000
 
 export function default_phonon_mode_selection(
   data: PhononModeData,
@@ -216,16 +215,11 @@ function validate_selection(
 }
 
 // Whether the selected Bloch phase repeats across every diagonal supercell boundary.
-export function is_commensurate_phonon_supercell(
-  q_position: Vec3,
-  supercell: Vec3,
-  tolerance = 1e-8,
-): boolean {
+export function is_commensurate_phonon_supercell(q_position: Vec3, supercell: Vec3): boolean {
   const scaling = parse_supercell_scaling(supercell)
   return q_position.every(
     (coordinate, axis) =>
-      Math.abs(coordinate * scaling[axis] - Math.round(coordinate * scaling[axis])) <=
-      tolerance,
+      Math.abs(coordinate * scaling[axis] - Math.round(coordinate * scaling[axis])) <= 1e-8,
   )
 }
 
@@ -420,11 +414,7 @@ export function phonon_mode_run(
   pattern: PhononModePattern,
   options: Omit<PhononModeTrajectoryOptions, `supercell`> = {},
 ): TrajectoryRun {
-  const {
-    amplitude = DEFAULT_PHONON_AMPLITUDE,
-    n_frames = DEFAULT_PHONON_FRAMES,
-    vector_key = PHONON_VECTOR_KEY,
-  } = options
+  const { amplitude = DEFAULT_PHONON_AMPLITUDE, n_frames = DEFAULT_PHONON_FRAMES } = options
   if (!Number.isFinite(amplitude) || amplitude <= 0) {
     throw new Error(`Phonon amplitude must be a positive finite number, got ${amplitude}`)
   }
@@ -464,7 +454,10 @@ export function phonon_mode_run(
           abc[1] + delta_x * inv_xb + delta_y * inv_yb + delta_z * inv_zb,
           abc[2] + delta_x * inv_xc + delta_y * inv_yc + delta_z * inv_zc,
         ] as Vec3,
-        properties: { ...properties, [vector_key]: [delta_x, delta_y, delta_z] as Vec3 },
+        properties: {
+          ...properties,
+          [PHONON_VECTOR_KEY]: [delta_x, delta_y, delta_z] as Vec3,
+        },
       }
     })
     return {

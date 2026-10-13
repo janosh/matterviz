@@ -1439,7 +1439,7 @@
               max={360}
               step={1}
               title="{axis}-axis rotation in degrees"
-              style={`--thumb-color: ${color}`}
+              style={`--range-thumb-bg-override: ${color}`}
               bind:value={
                 () => Math.round(rotation_degrees[idx]),
                 (degrees) => update_rotation(idx, degrees ?? 0)
@@ -1666,27 +1666,15 @@
     min-width: 6ch;
     flex-shrink: 0;
   }
-  /* Sections that opted out of the grid keep the historical stacked flow (the nested
-     isosurface and volume-slice panes render their own markup in here) */
-  :global(.controls-pane section.flow) {
-    display: flex;
-    flex-direction: column;
-    gap: 6pt;
-  }
   :global(.controls-pane .settings-group > summary) {
     min-height: 1.8em;
     box-sizing: border-box;
     padding: 2pt;
   }
   :global(.controls-pane h4) {
-    margin: 4pt 0 2pt !important;
+    margin: 0 0 2pt !important;
     font-size: 0.95em;
     opacity: 0.75;
-  }
-  /* only the heading that opens a group, not every heading following the first section —
-     `section:first-of-type + h4` would match the *second* section's heading */
-  :global(.controls-pane h4:first-of-type) {
-    margin-top: 0 !important;
   }
   /* as tall as the 1.8em search trigger, which it leaves room for on the right */
   .pane-toolbar {

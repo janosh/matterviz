@@ -383,11 +383,11 @@ export class TextLines {
     return this.chunks[chunk_idx].slice(this.starts[idx], this.end(idx, chunk_idx))
   }
   // Tokenizes line `idx` into `scanner` without slicing it out (no tokens past the end)
-  scan(scanner: LineScanner, idx: number, max_columns?: number): number {
+  scan(scanner: LineScanner, idx: number): number {
     if (idx < 0 || idx >= this.count) return scanner.scan(``)
     const chunk_idx = this.chunk_of(idx)
     const chunk = this.chunks[chunk_idx]
-    return scanner.scan(chunk, this.starts[idx], this.end(idx, chunk_idx), max_columns)
+    return scanner.scan(chunk, this.starts[idx], this.end(idx, chunk_idx))
   }
   // The text's first `length` characters, untrimmed, for format sniffing
   head(length: number): string {

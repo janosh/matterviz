@@ -7,13 +7,13 @@
   let {
     config,
     width,
-    x: coord_x = 0,
-    y: coord_y = 0,
+    x: coord_x,
+    y: coord_y,
   }: {
     config?: PlotTitleConfig | null
     width: number
-    x?: number
-    y?: number
+    x: number
+    y: number
   } = $props()
 
   let font_metrics_revision = $state(0)

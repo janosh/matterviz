@@ -1,6 +1,6 @@
 // Data cleaning for plot series: invalid-value handling, physical bounds, local (MAD) outlier
 // removal, smoothing (moving average / Savitzky-Golay / Gaussian) and oscillation/instability
-// detection, plus the multi-series, xyz and trajectory-property orchestrators built on them.
+// detection, plus the single-series, multi-series and xyz orchestrators built on them.
 
 import { median, type Vec2 } from '#lib/math.js'
 import type { DataSeries } from '#lib/plot/core/types.js'
@@ -188,11 +188,8 @@ function detect_amplitude_growth(values: number[], window_size: number): MethodR
 }
 
 // Method 3: more than max_changes derivative sign changes inside one window
-function detect_sign_change_frequency(
-  values: number[],
-  window_size: number,
-  max_changes = 3,
-): MethodResult {
+function detect_sign_change_frequency(values: number[], window_size: number): MethodResult {
+  const max_changes = 3
   const derivs = compute_derivatives(values)
   if (derivs.length < window_size * 2) return NO_ONSET
   const half_window = Math.floor(window_size / 2)
@@ -252,7 +249,8 @@ export function detect_instability(
       : 0
   const onsets = methods.map((method) => results[method].onset_index).filter((idx) => idx >= 0)
   const valid_onset = onsets.length > 0 ? Math.min(...onsets) : -1
-  const onset_index = valid_onset >= 0 ? (valid_indices[valid_onset] ?? valid_onset) : -1
+  // Every method's onset indexes valid_y, so it maps back through valid_indices
+  const onset_index = valid_onset >= 0 ? valid_indices[valid_onset] : -1
   return {
     detected: combined_score >= threshold || onset_index >= 0,
     onset_index,

@@ -523,9 +523,7 @@ export const parse_reference_md_h5_file = (
       metadata: trajectory_metadata,
     }
   }
-  const collect_positions = (
-    options: PositionStreamOptions = {},
-  ): TrajectoryPositionStream => {
+  const collect_positions = (options: PositionStreamOptions): TrajectoryPositionStream => {
     const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
       `Reference MD HDF5`,
       options,

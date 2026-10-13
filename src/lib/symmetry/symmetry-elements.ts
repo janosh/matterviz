@@ -18,6 +18,7 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { clip_frac_plane_to_cell } from '#lib/structure/lattice-planes.js'
+import { whole_tile_counts } from '#lib/structure/supercell.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 
@@ -73,7 +74,7 @@ export const DEFAULT_SHOW_SYM_KINDS: ShowSymmetryKinds = { rotation: true }
 // the structure viewer when the cell is switched with the overlay on.
 export const SYM_ELEMENTS_INPUT_FRAME_NOTE = `Symmetry elements are drawn only in the original (input) cell`
 
-// Default render colors of SymmetryElements.svelte, the single source for the legend swatches
+// Render colors of SymmetryElements.svelte, the single source for the legend swatches
 // too. Axes (rotation, screw, rotoinversion) are colored by rotation order in-scene.
 export const SYM_ELEM_COLORS = {
   axis_by_order: { 2: `#e63946`, 3: `#2a9d8f`, 4: `#3a6fb0`, 6: `#9c27b0` } as Record<
@@ -89,7 +90,7 @@ const axis_palette = Object.values(SYM_ELEM_COLORS.axis_by_order).join(`, `)
 const AXIS_SWATCH = `linear-gradient(90deg, ${axis_palette})`
 
 // Human-readable labels + legend swatch (a CSS background) per kind, matching what
-// SymmetryElements.svelte renders by default
+// SymmetryElements.svelte renders
 export const SYM_ELEM_KIND_INFO: Record<
   SymmetryElementKind,
   { label: string; color: string }
@@ -664,7 +665,7 @@ function symmetry_tiling(
   tiling: Vec3,
   collect_elements: boolean,
 ): { elements: SymmetryElement[]; unavailable_reason: string | null } {
-  const counts = tiling.map((count) => Math.max(1, Math.floor(count))) as Vec3
+  const counts = whole_tile_counts(tiling)
   const n_tiles = counts[0] * counts[1] * counts[2]
   const unavailable = (reason: string) => ({
     elements: [],
