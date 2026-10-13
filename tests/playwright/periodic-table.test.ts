@@ -81,17 +81,17 @@ test.describe(`Periodic Table`, () => {
     }
   })
 
-  // A custom inset taller than periods 1–3 must overlay the slot, not stretch those rows
-  // (which would open gaps between H/Li/Na and leave period-4 tiles a different size).
   // span.value used to out-specify the multi-value rules, so long labels (H density
   // 0.0000899) never shrank and spilled past the tile edge
   test(`multi-value labels stay inside their tiles across widths`, async ({ page }) => {
+    // the multi-value demo is a LazyDemo below the default 720px fold, so open it in view
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`/periodic-table`)
+    const labels = page.locator(`.multi-value`)
+    await expect(labels.first()).toBeVisible({ timeout: 20000 })
+    await expect(labels.filter({ hasText: /^0\.0000899$/ })).toHaveCount(1)
     for (const width of [1280, 900]) {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(`/periodic-table`)
-      const labels = page.locator(`.multi-value`)
-      await expect(labels.first()).toBeVisible({ timeout: 20000 })
-      await expect(labels.filter({ hasText: /^0\.0000899$/ })).toHaveCount(1)
       const overflowing = await labels.evaluateAll((nodes) =>
         nodes.flatMap((node) => {
           const rect = node.getBoundingClientRect()
@@ -112,6 +112,8 @@ test.describe(`Periodic Table`, () => {
     }
   })
 
+  // A custom inset taller than periods 1–3 must overlay the slot, not stretch those rows
+  // (which would open gaps between H/Li/Na and leave period-4 tiles a different size).
   test(`a tall inset does not stretch element-tile rows`, async ({ page }) => {
     expect((await page.goto(`/plot/color-scales`))?.status()).toBe(200)
     const table = page.locator(`.periodic-table`).first()

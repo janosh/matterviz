@@ -1753,8 +1753,8 @@ describe(`get_visible_domain_labels`, () => {
         { formula: `AC`, position: [2, 2, 2], label_font_size: 10 },
       ],
     },
-  ])(`$label`, ({ positions, face_formulas, sizes, pinned, expected }) => {
-    expect(get_visible_domain_labels(positions, face_formulas, sizes, pinned ?? [])).toEqual(
+  ])(`$label`, ({ positions, face_formulas, sizes, pinned = [], expected }) => {
+    expect(get_visible_domain_labels(positions, face_formulas, sizes, pinned)).toEqual(
       expected,
     )
   })

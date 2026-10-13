@@ -254,10 +254,9 @@ describe(`SymmetryStats`, () => {
           symprec_title,
         )
         expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
-        const space_group_tile = [...document.querySelectorAll(`.stats-grid > div`)].find(
-          (tile) => tile.textContent?.includes(`Space Group`),
-        )
-        expect((space_group_tile as HTMLElement | undefined)?.title).toMatch(space_group_title)
+        const space_group_tile = doc_query(`.stats-grid > div`) // first tile
+        expect(space_group_tile.textContent).toContain(`Space Group`)
+        expect(space_group_tile.title).toMatch(space_group_title)
       },
     )
   })

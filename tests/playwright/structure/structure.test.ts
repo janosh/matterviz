@@ -11,6 +11,7 @@ import {
   expect_canvas_changed,
   expect_canvas_changed_by,
   expect_centered,
+  expect_centered_card,
   expect_inline_spinner,
   get_canvas_timeout,
   goto_structure_test,
@@ -901,10 +902,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     await wait_for_event(page, `on_error`, [`error_msg`])
     const alert = viewer.getByRole(`alert`).filter({ hasText: `Failed to load` })
     await expect(alert).toBeVisible()
-    // a compact card centered on the viewer, not a box covering it
-    const [alert_box, viewer_bounds] = [await require_bbox(alert), await require_bbox(viewer)]
-    expect_centered(alert_box, viewer_bounds)
-    expect(alert_box.width).toBeLessThan(viewer_bounds.width)
+    const viewer_bounds = await expect_centered_card(alert, viewer)
     expect(await require_bbox(canvas)).toEqual(viewer_bounds)
     expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,

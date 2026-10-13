@@ -160,13 +160,12 @@ describe(`ElementTile`, () => {
         segments.forEach((cls) =>
           expect(document.querySelector(`.segment.${cls}`)).toBeInstanceOf(HTMLElement),
         )
-        const labels = positions.map((cls) => doc_query(`.multi-value.${cls}`).textContent)
-        expect(labels).toEqual(value.map(String))
+        const labels = positions.map((cls) => doc_query(`.multi-value.${cls}`))
+        expect(labels.map((label) => label.textContent)).toEqual(value.map(String))
         // the label length drives the CSS shrink that keeps e.g. 0.0000899 inside the tile
-        const chars = positions.map((cls) =>
-          doc_query(`.multi-value.${cls}`).style.getPropertyValue(`--value-chars`),
+        expect(labels.map((label) => label.style.getPropertyValue(`--value-chars`))).toEqual(
+          value.map((val) => String(String(val).length)),
         )
-        expect(chars).toEqual(value.map((val) => String(String(val).length)))
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull()
       },

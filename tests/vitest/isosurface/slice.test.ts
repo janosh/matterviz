@@ -385,7 +385,7 @@ describe(`sample_plane_slice`, () => {
     },
   )
 
-  test(`HKL adapter matches the corresponding Cartesian plane for shifted volumes`, () => {
+  test(`a (001) hkl plane samples like the matching Cartesian plane for shifted volumes`, () => {
     const volume = linear_volume(cubic, [3, -2, 5])
     const hkl_result = expect_slice(sample_hkl_slice(volume, [0, 0, 1], 0.5, 9))
     const cartesian_result = plane_slice(

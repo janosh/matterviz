@@ -619,6 +619,7 @@ describe(`helpers: temperature interpolation`, () => {
 
   describe(`get_entry_label`, () => {
     const li_fe_o2 = { Li: 1, Fe: 1, O: 2 }
+    const elements: ElementSymbol[] = [`Li`, `Fe`, `La`, `Ni`, `O`]
     test.each([
       [`reduced_formula`, { reduced_formula: `LiFeO2`, composition: li_fe_o2 }, `LiFeO2`],
       [
@@ -638,17 +639,11 @@ describe(`helpers: temperature interpolation`, () => {
       [`unreduced cell`, { composition: { La: 12, Ni: 6, O: 25 } }, `La12Ni6O25`],
       [`multi-atom unary`, { composition: { La: 4 } }, `La4`],
       // the given element order, not the composition key order
-      [
-        `elements order`,
-        { composition: { O: 3, Fe: 1, Li: 2 } },
-        `Li2FeO3`,
-        [`Li`, `Fe`, `O`],
-      ],
-    ] as [string, { composition: Record<string, number> }, string, ElementSymbol[]?][])(
+      [`elements order`, { composition: { O: 3, Fe: 1, Li: 2 } }, `Li2FeO3`],
+    ] as [string, { composition: Record<string, number> }, string][])(
       `%s → %s`,
-      (_desc, entry, expected, elements) => {
-        const order = elements ?? (Object.keys(entry.composition) as ElementSymbol[])
-        expect(helpers.get_entry_label(entry, order)).toBe(expected)
+      (_desc, entry, expected) => {
+        expect(helpers.get_entry_label(entry, elements)).toBe(expected)
       },
     )
   })

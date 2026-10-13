@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import {
   expect_centered,
+  expect_centered_card,
   expect_inline_spinner,
   IS_CI,
   require_bbox,
@@ -302,10 +303,7 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
       await viewer.evaluate((element, size) => {
         element.style.setProperty(`--bz-width`, `${size}px`)
       }, width)
-      // a compact card centered on the viewer, not a box covering it
-      const [alert_box, viewer_box] = [await require_bbox(alert), await require_bbox(viewer)]
-      expect_centered(alert_box, viewer_box)
-      expect(alert_box.width).toBeLessThan(viewer_box.width)
+      await expect_centered_card(alert, viewer)
     }
     await alert.getByRole(`button`, { name: `Dismiss message` }).click()
     await expect(alert).toHaveCount(0)

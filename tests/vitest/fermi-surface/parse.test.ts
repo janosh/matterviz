@@ -631,10 +631,10 @@ const mock_band_grid: BandGridData = {
 
 describe(`is_fermi_surface_data`, () => {
   test.each([
-    { data: mock_fermi_surface, expected: true },
-    { data: mock_band_grid, expected: false },
-    { data: null, expected: false },
-  ])(`$data = $expected`, ({ data, expected }) => {
+    [`FermiSurfaceData`, mock_fermi_surface, true],
+    [`BandGridData`, mock_band_grid, false],
+    [`null`, null, false],
+  ])(`%s → %s`, (_label, data, expected) => {
     expect(is_fermi_surface_data(data)).toBe(expected)
   })
 })

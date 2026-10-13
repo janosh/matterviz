@@ -363,7 +363,7 @@ describe(`axis_scale_types`, () => {
     expect(axis_scale_types(series, log_options)).toEqual(expected)
   })
 
-  test(`custom visibility filter`, () => {
+  test(`a custom is_visible filter hides series from scale inference`, () => {
     const input = [residual([1e-6, 1]), residual([-10, -9])]
     expect(
       axis_scale_types(input, { ...log_options, is_visible: (_srs, idx) => idx === 0 }),

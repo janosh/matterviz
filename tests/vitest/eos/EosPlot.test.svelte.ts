@@ -1,5 +1,5 @@
 import EosPlot from '#lib/eos/EosPlot.svelte'
-import type { EosFit, EosKind } from '#lib/eos/index.js'
+import type { EosFit } from '#lib/eos/index.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { bind_props, mount_sized } from '../setup'
@@ -36,16 +36,22 @@ describe(`EosPlot`, () => {
     }
   }
 
-  test(`fits every kind once, in kinds order, one legend line per series`, async () => {
-    const kinds: EosKind[] = [`vinet`, `birch_murnaghan`, `vinet`]
-    const { fits, legend, n_markers } = await render({ kinds })
-    expect(fits.map((fit) => fit.kind)).toEqual([`vinet`, `birch_murnaghan`])
-    expect(legend).toBe(`E(V) data Vinet fit Birch–Murnaghan fit`)
+  // kinds is deduped and fitted in order; a lone data series needs no legend
+  test.each([
+    [
+      `deduped kinds in order`,
+      { kinds: [`vinet`, `birch_murnaghan`, `vinet`] },
+      [`vinet`, `birch_murnaghan`],
+      `E(V) data Vinet fit Birch–Murnaghan fit`,
+    ],
+    [`legend={null}`, { legend: null }, [`birch_murnaghan`], undefined],
+    [`kinds=[]`, { kinds: [] }, [], undefined],
+  ])(`%s: fits and legend`, async (_desc, props, fit_kinds, expected_legend) => {
+    const { fits, legend, error, n_markers } = await render(props)
+    expect(fits.map((fit) => fit.kind)).toEqual(fit_kinds)
+    expect(legend).toBe(expected_legend)
+    expect(error).toBeUndefined()
     expect(n_markers).toBe(volumes.length)
-  })
-
-  test(`legend={null} hides the legend`, async () => {
-    expect((await render({ legend: null })).legend).toBeUndefined()
   })
 
   // series 0 is the data, 1 the (only) Birch–Murnaghan fit; the tooltip shows point_idx 0 of
@@ -68,19 +74,11 @@ describe(`EosPlot`, () => {
       { volumes, energies, hovered: true, tooltip_point, ...props } as ComponentProps<
         typeof EosPlot
       >,
-      { selector: `.scatter` },
+      { selector: `.scatter`, on_mount: (mounted) => (component = mounted) },
     )
     const text = root.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
     for (const expected of includes) expect(text).toContain(expected)
     for (const unexpected of excludes) expect(text).not.toContain(unexpected)
-  })
-
-  test(`kinds=[] draws only the data points, without a single-entry legend`, async () => {
-    const { fits, legend, error, n_markers } = await render({ kinds: [] })
-    expect(fits).toEqual([])
-    expect(legend).toBeUndefined()
-    expect(error).toBeUndefined()
-    expect(n_markers).toBe(volumes.length)
   })
 
   // ScatterPlot throws on x/y length mismatch, which used to take down the whole component

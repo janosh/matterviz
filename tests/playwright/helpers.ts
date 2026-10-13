@@ -40,6 +40,18 @@ export const expect_centered = (inner: Box, outer: Box, axis?: `x` | `y`): void 
   }
 }
 
+// A ViewerError card: centered on its viewer and narrower than it, not a box covering it.
+// Returns the viewer box for further layout checks.
+export const expect_centered_card = async (card: Locator, viewer: Locator): Promise<Box> => {
+  const [card_box, viewer_box] = await Promise.all([
+    require_bbox(card, `error card`),
+    require_bbox(viewer, `viewer`),
+  ])
+  expect_centered(card_box, viewer_box)
+  expect(card_box.width).toBeLessThan(viewer_box.width)
+  return viewer_box
+}
+
 export const expect_inline_spinner = async (container: Locator) => {
   const [status, spinner, label] = await Promise.all(
     [`.spinner`, `.circle-spinner`, `.spinner > span`].map((selector) =>

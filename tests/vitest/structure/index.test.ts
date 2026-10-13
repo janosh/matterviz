@@ -439,35 +439,25 @@ describe(`is_vector_key`, () => {
 })
 
 describe(`try_parse_vec3`, () => {
+  // finite 3-vectors pass through, finite scalars become z-vectors, anything else is null
   test.each([
-    [
-      [1, 2, 3],
-      [1, 2, 3],
-    ],
-    [
-      [0, 0, 0],
-      [0, 0, 0],
-    ],
-    [2.5, [0, 0, 2.5]],
-    [-3.5, [0, 0, -3.5]],
-    [0, [0, 0, 0]],
-  ])(`parses %o as %o`, (value, expected) => {
+    [`3-vector`, [1, 2, 3], [1, 2, 3]],
+    [`zero vector`, [0, 0, 0], [0, 0, 0]],
+    [`positive scalar`, 2.5, [0, 0, 2.5]],
+    [`negative scalar`, -3.5, [0, 0, -3.5]],
+    [`zero scalar`, 0, [0, 0, 0]],
+    [`non-finite component`, [Infinity, 0, 0], null],
+    [`NaN component`, [NaN, 0, 0], null],
+    [`wrong-length array`, [1, 2], null],
+    [`non-numeric value`, `high`, null],
+    [`null`, null, null],
+    [`undefined`, undefined, null],
+    [`boolean`, true, null],
+    [`nested array`, [[1, 0, 0]], null],
+    [`object`, { nested: [1, 2, 3] }, null],
+    [`non-finite scalar`, NaN, null],
+  ])(`%s`, (_label, value, expected) => {
     expect(try_parse_vec3(value)).toEqual(expected)
-  })
-
-  test.each([
-    [`non-finite component`, [Infinity, 0, 0]],
-    [`NaN component`, [NaN, 0, 0]],
-    [`wrong-length array`, [1, 2]],
-    [`non-numeric value`, `high`],
-    [`null`, null],
-    [`undefined`, undefined],
-    [`boolean`, true],
-    [`nested array`, [[1, 0, 0]]],
-    [`object`, { nested: [1, 2, 3] }],
-    [`non-finite scalar`, NaN],
-  ])(`rejects %s`, (_label, value) => {
-    expect(try_parse_vec3(value)).toBeNull()
   })
 })
 
@@ -486,7 +476,7 @@ describe(`get_structure_vector_keys`, () => {
   test.each([
     {
       desc: `unique keys across sites in priority order`,
-      sites: [{ force: [1, 0, 0], magmom: [0, 0, 1] }, { force: [0, 1, 0] }],
+      sites: [{ magmom: [0, 0, 1], force: [1, 0, 0] }, { force: [0, 1, 0] }],
       expected: [`force`, `magmom`],
     },
     {
