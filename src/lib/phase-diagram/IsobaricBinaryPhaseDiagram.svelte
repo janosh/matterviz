@@ -3,6 +3,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { create_file_drop_handler } from '#lib/io/file-drop.js'
   import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
@@ -470,7 +471,12 @@
   ondragover={(event_value) => event_value.preventDefault()}
 >
   {#if input_error}
-    <div class="error" role="alert">{input_error}</div>
+    <!-- content-wide and capped, so it stays left of the corner buttons instead of under them -->
+    <StatusMessage
+      message={input_error}
+      type="error"
+      style="position: absolute; top: 0.5em; left: 0.5em; max-width: 60%; z-index: 5"
+    />
   {/if}
   {#if source_data === undefined}
     <EmptyState role="status">
@@ -857,17 +863,6 @@
 </div>
 
 <style>
-  .error {
-    position: absolute;
-    top: 0.5em;
-    left: 0.5em;
-    right: 0.5em;
-    z-index: 5;
-    padding: 0.4em 0.8em;
-    border-radius: 4px;
-    background: rgba(198, 40, 40, 0.15);
-    color: #c62828;
-  }
   .binary-phase-diagram {
     position: relative;
     width: 100%;

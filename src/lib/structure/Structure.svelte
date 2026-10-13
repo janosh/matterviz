@@ -299,6 +299,9 @@
   } = $props()
 
   let notice_message = $state<string>()
+  const has_scene_content = $derived(
+    site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0,
+  )
   const drop_zone = create_material_loader<AnyStructure>({
     source: () => source,
     current_value: () => structure,
@@ -408,6 +411,8 @@
   let tool_source_revision = ``
   let tool_view = $state.raw<StructureToolView | null>(null)
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
+  // the scene's own warnings only make sense while it is on screen
+  const scene_shown = $derived(has_scene_content && !active_tool_view?.content)
   // The shown run's result, kept while a transient overlay previews other field values over it.
   let tool_result = $state.raw<StructureToolPrediction | null>(null)
   let tool_overlay_visible = $state(true)
@@ -1169,7 +1174,26 @@
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
-  <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
+  <!-- one top-center stack so notices neither cover the atom legend (bottom-right) nor each other -->
+  <div class="viewer-notices">
+    <StatusMessage bind:message={notice_message} dismissible class="import-notice" />
+    {#if scene_shown && analyze_symmetry && symmetry_error}
+      <StatusMessage
+        bind:message={symmetry_error}
+        type="warning"
+        dismissible
+        class="symmetry-error"
+      />
+    {/if}
+    {#if scene_shown && isosurface_error}
+      <StatusMessage
+        bind:message={isosurface_error}
+        type="warning"
+        dismissible
+        class="isosurface-error"
+      />
+    {/if}
+  </div>
   {#if show_host_tool && structure_host_tool.component && session.tool_input?.sites.length}
     <div style:display={active_tool_view?.content ? `none` : `contents`}>
       <structure_host_tool.component
@@ -1205,7 +1229,7 @@
         {/if}
         <button onclick={tool_controller.clear}>Clear prediction</button>
       </p>{/if}
-    {#if site_count(structure) > 0 || (volumetric_data?.length ?? 0) > 0}
+    {#if has_scene_content}
       <ViewerChrome
         {controls_config}
         bind:fullscreen
@@ -1374,7 +1398,6 @@
                 bind:cell_type
                 {sym_data}
                 loading={session.supercell_loading}
-                direction="up"
                 suppress_hover={mode_menu_open}
               />
             {/if}
@@ -1451,25 +1474,6 @@
         focus_hotkey={null}
         class="edit-toast"
       />
-
-      {#if analyze_symmetry && symmetry_error}
-        <StatusMessage
-          bind:message={symmetry_error}
-          type="warning"
-          dismissible
-          class="symmetry-error"
-          style="position: absolute; bottom: 0.5rem; right: 0.5rem; max-width: min(90%, 400px); font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
-        />
-      {/if}
-      {#if isosurface_error}
-        <StatusMessage
-          bind:message={isosurface_error}
-          type="warning"
-          dismissible
-          class="isosurface-error"
-          style="position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%); max-width: 90%; font-size: 0.75rem; padding: 0.3rem 0.6rem; z-index: var(--z-index-viewer-tooltip, 1000)"
-        />
-      {/if}
     {:else if !loading}
       <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
       <p class="warn">{structure ? `No sites found in structure` : `No structure provided`}</p>
@@ -1506,13 +1510,24 @@
   .structure > :global(.viewer-error) {
     z-index: var(--z-index-overlay-controls, 100000000);
   }
-  .structure > :global(.import-notice) {
+  .viewer-notices {
     position: absolute;
-    bottom: 0.5em;
-    inset-inline: 0.5em;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(90%, 400px);
+    display: flex;
+    flex-direction: column;
+    gap: 4pt;
     z-index: var(--z-index-viewer-tooltip, 1000);
-    padding: 0.5em 1em;
-    overflow-wrap: anywhere;
+    pointer-events: none;
+    > :global(.status-message) {
+      pointer-events: auto;
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      overflow-wrap: anywhere;
+    }
   }
   .structure:fullscreen {
     background: var(--struct-bg-fullscreen, var(--struct-bg));

@@ -4,6 +4,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
   import { format_num } from '#lib/labels.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
@@ -145,54 +146,59 @@
   )
 </script>
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
-{#if controls_config.visible(`controls`)}
-  <div class={[`pdf-controls`, controls_config.class]} style={controls_config.style}>
-    {#each [[`g_r`, `g(r)`], [`reduced_g_r`, `G(r)`]] as const as [key, label] (key)}
-      <button class:active={quantity === key} onclick={() => (quantity = key)}>{label}</button>
-    {/each}
-    <span class="separator">|</span>
-    {#each RADIATIONS as [key, label] (key)}
-      <button class:active={radiation === key} onclick={() => (radiation = key)}
-        >{label}</button
-      >
-    {/each}
-    <span class="separator">|</span>
-    <label>
-      Cutoff: <input type="range" min="5" max="40" step="1" bind:value={cutoff} />
-      {format_num(cutoff, `.0~f`)} Å
-    </label>
-    <label>
-      Bins: <input type="range" min="100" max="3000" step="100" bind:value={n_bins} />
-      {n_bins} ({format_num(cutoff / n_bins, `.3~f`)} Å)
-    </label>
-    <label>
-      <input type="checkbox" bind:checked={show_partials} /> Partials
-    </label>
-  </div>
-{/if}
-
-<!-- gated on struct_list, not series: with structures supplied but failing, the error above is
-the whole story and claiming there was nothing to plot would contradict it -->
-{#if struct_list.length === 0}
-  <StatusMessage message="No structures to compute a PDF for" style="border: none" />
-{:else if series.length > 0}
-  <ScatterPlot
-    {...rest}
-    bind:show_controls
-    bind:controls_open
-    {series}
-    {ref_lines}
-    x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
-    y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
-    styles={{ show_lines: true, show_points: false, ...rest.styles }}
-    style={rest.style ?? `height: 450px;`}
-  />
-  {#if weight_summary}
-    <p class="weights">{weight_summary}</p>
+<!-- one positioned root: the error floats over the plot instead of taking a grid cell
+     or pushing it down -->
+<div style="position: relative; height: 100%">
+  {#if controls_config.visible(`controls`)}
+    <div class={[`pdf-controls`, controls_config.class]} style={controls_config.style}>
+      {#each [[`g_r`, `g(r)`], [`reduced_g_r`, `G(r)`]] as const as [key, label] (key)}
+        <button class:active={quantity === key} onclick={() => (quantity = key)}
+          >{label}</button
+        >
+      {/each}
+      <span class="separator">|</span>
+      {#each RADIATIONS as [key, label] (key)}
+        <button class:active={radiation === key} onclick={() => (radiation = key)}
+          >{label}</button
+        >
+      {/each}
+      <span class="separator">|</span>
+      <label>
+        Cutoff: <input type="range" min="5" max="40" step="1" bind:value={cutoff} />
+        {format_num(cutoff, `.0~f`)} Å
+      </label>
+      <label>
+        Bins: <input type="range" min="100" max="3000" step="100" bind:value={n_bins} />
+        {n_bins} ({format_num(cutoff / n_bins, `.3~f`)} Å)
+      </label>
+      <label>
+        <input type="checkbox" bind:checked={show_partials} /> Partials
+      </label>
+    </div>
   {/if}
-{/if}
+
+  <!-- gated on struct_list, not series: with structures supplied but failing, the error above is
+  the whole story and claiming there was nothing to plot would contradict it -->
+  {#if struct_list.length === 0}
+    <StatusMessage message="No structures to compute a PDF for" style="border: none" />
+  {:else if series.length > 0}
+    <ScatterPlot
+      {...rest}
+      bind:show_controls
+      bind:controls_open
+      {series}
+      {ref_lines}
+      x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
+      y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
+      styles={{ show_lines: true, show_points: false, ...rest.styles }}
+      style={rest.style ?? `height: 450px;`}
+    />
+    {#if weight_summary}
+      <p class="weights">{weight_summary}</p>
+    {/if}
+  {/if}
+  <ViewerError bind:message={error_msg} dismissible placement="top" />
+</div>
 
 <style>
   .pdf-controls.hover-visible {

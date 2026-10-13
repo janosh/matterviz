@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   // Energy–volume scan with one or more fitted equations of state drawn through it and the
-  // fitted E0, V0, B0, B0' shown in a corner. Fitting happens here, so callers pass raw
-  // (volumes, energies) and read the results back through the bindable `fits`.
+  // fitted E0, V0, B0, B0' listed under each fit's legend entry, so ScatterPlot's legend
+  // placement keeps them clear of the data and the corner controls. Fitting happens here, so
+  // callers pass raw (volumes, energies) and read the results back through the bindable `fits`.
   import { plot_color } from '#lib/colors/index.js'
   import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
-  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
   import { format_num } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
@@ -28,7 +29,7 @@
     fits?: EosFit[] // read-only output: the successful fits, in `kinds` order
     show_fit_params?: boolean
     data_label?: string
-  } & Omit<ScatterPlotOptions, `children`> = $props()
+  } & ScatterPlotOptions = $props()
 
   // Fit every requested form; a failed fit (no minimum, diverged) is shown as a dismissible
   // error and leaves the data points on the plot
@@ -57,13 +58,27 @@
     return Array.from({ length: 200 }, (_, idx) => start + (span * idx) / 199)
   })
 
+  // Fit name plus (unless disabled) its parameters as extra lines of the legend label
+  const fit_label = (fit: EosFit): string => {
+    const name = `${EOS_KIND_LABELS[fit.kind]} fit`
+    if (!show_fit_params) return name
+    const params = [
+      `E<sub>0</sub> = ${format_num(fit.e0, `.4f`)} eV`,
+      `V<sub>0</sub> = ${format_num(fit.v0, `.3f`)} Å³`,
+      `B<sub>0</sub> = ${format_num(fit.b0 * EV_PER_A3_TO_GPA, `.1f`)} GPa`,
+      `B<sub>0</sub>' = ${format_num(fit.b0_prime, `.2f`)}`,
+      `RMSE = ${format_num(fit.rmse * 1e3, `.2f`)} meV`,
+    ]
+    return `${name}<br><small>${params.join(`<br>`)}</small>`
+  }
+
   // ScatterPlot throws on x/y length mismatch, so leave the points out and let the fit error
   // (which names both lengths) explain the empty plot
   const series = $derived.by((): DataSeries[] => {
     const fit_series: DataSeries[] = fit_result.fits.map((fit, idx) => ({
       x: curve_volumes,
       y: curve_volumes.map((vol) => eos_energy(fit.kind, fit, vol)),
-      label: `${EOS_KIND_LABELS[fit.kind]} fit`,
+      label: fit_label(fit),
       markers: `line`,
       line_style: { stroke: plot_color(idx + 1), stroke_width: 2 },
     }))
@@ -74,53 +89,31 @@
       ...fit_series,
     ]
   })
+
+  // Fits side by side (a column each) with compact lines and the swatch level with the fit
+  // name rather than centered on its params block; legend={null} still hides it
+  const legend = $derived(
+    rest.legend === null
+      ? null
+      : {
+          layout: `horizontal` as const,
+          layout_tracks: `auto` as const,
+          item_style: `align-items: flex-start; line-height: 1.3;`,
+          ...rest.legend,
+        },
+  )
 </script>
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
-<ScatterPlot
-  {...rest}
-  {series}
-  x_axis={{ label: `V (Å³)`, ...rest.x_axis }}
-  y_axis={{ label: `E (eV)`, ...rest.y_axis }}
-  show_legend={rest.show_legend ?? !(show_fit_params && fit_result.fits.length > 0)}
-  style={rest.style ?? `height: 400px;`}
->
-  <!-- the params box doubles as the legend (names in series colours) so the two never overlap -->
-  {#if show_fit_params && fit_result.fits.length > 0}
-    <div class="eos-fit-params">
-      <strong style:color={plot_color(0)}>● {data_label}</strong>
-      {#each fit_result.fits as fit, idx (fit.kind)}
-        <div style:color={plot_color(idx + 1)}>
-          <strong>— {EOS_KIND_LABELS[fit.kind]} fit</strong>
-          <span>E<sub>0</sub> = {format_num(fit.e0, `.4f`)} eV</span>
-          <span>V<sub>0</sub> = {format_num(fit.v0, `.3f`)} Å³</span>
-          <span>B<sub>0</sub> = {format_num(fit.b0 * EV_PER_A3_TO_GPA, `.1f`)} GPa</span>
-          <span>B<sub>0</sub>' = {format_num(fit.b0_prime, `.2f`)}</span>
-          <span>RMSE = {format_num(fit.rmse * 1e3, `.2f`)} meV</span>
-        </div>
-      {/each}
-    </div>
-  {/if}
-</ScatterPlot>
-
-<style>
-  .eos-fit-params {
-    position: absolute;
-    top: 1ex;
-    right: 1em;
-    display: flex;
-    flex-direction: column;
-    gap: 1ex;
-    padding: 0.5em 0.8em;
-    font-size: 0.85em;
-    font-family: monospace;
-    background: var(--surface-bg, rgba(128, 128, 128, 0.1));
-    border-radius: var(--border-radius, 3pt);
-    pointer-events: none;
-    div {
-      display: flex;
-      flex-direction: column;
-    }
-  }
-</style>
+<!-- one positioned root: the error floats over the plot instead of taking a grid cell
+     or pushing it down -->
+<div style="position: relative; height: 100%">
+  <ScatterPlot
+    {...rest}
+    {series}
+    x_axis={{ label: `V (Å³)`, ...rest.x_axis }}
+    y_axis={{ label: `E (eV)`, ...rest.y_axis }}
+    {legend}
+    style={rest.style ?? `height: 400px;`}
+  />
+  <ViewerError bind:message={error_msg} dismissible placement="top" />
+</div>

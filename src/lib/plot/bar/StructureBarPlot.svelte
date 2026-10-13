@@ -4,6 +4,7 @@
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import ViewerError from '#lib/layout/ViewerError.svelte'
   import { drag_over_handlers } from '#lib/io/index.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type {
@@ -104,46 +105,49 @@
   {@render tooltip?.(info)}
 {/snippet}
 
-<StatusMessage bind:message={error_msg} type="error" dismissible />
-
-{#if series.length === 0}
-  <StatusMessage
-    message={loading
-      ? loading_message
-      : allow_file_drop
-        ? `Drag and drop structure files here to compute ${subject}`
-        : `No ${empty_subject} to display`}
-    ondrop={handle_file_drop}
-    {...drag_handlers}
-  />
-{:else}
-  <BarPlot
-    {...rest}
-    bind:show_controls
-    bind:controls_open
-    {series}
-    bind:orientation
-    bind:mode
-    x_axis={{
-      ...(is_horizontal ? value_axis : primary_axis),
-      ...x_axis,
-      label_shift: (is_horizontal ? y_axis : x_axis).label_shift,
-    }}
-    y_axis={{
-      ...(is_horizontal ? primary_axis : value_axis),
-      ...y_axis,
-      label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
-    }}
-    bind:display
-    tooltip={labelled_tooltip}
-    on_bar_hover={on_bar_change
-      ? (bar) => {
-          rest.on_bar_hover?.(bar)
-          report_bar_change(bar)
-        }
-      : rest.on_bar_hover}
-    ondrop={handle_file_drop}
-    {...drag_handlers}
-    class={[rest.class, dragover && `dragover`]}
-  />
-{/if}
+<!-- one positioned root: the error floats over the plot instead of taking a grid cell
+     or pushing it down -->
+<div style="position: relative; height: 100%">
+  {#if series.length === 0}
+    <StatusMessage
+      message={loading
+        ? loading_message
+        : allow_file_drop
+          ? `Drag and drop structure files here to compute ${subject}`
+          : `No ${empty_subject} to display`}
+      ondrop={handle_file_drop}
+      {...drag_handlers}
+    />
+  {:else}
+    <BarPlot
+      {...rest}
+      bind:show_controls
+      bind:controls_open
+      {series}
+      bind:orientation
+      bind:mode
+      x_axis={{
+        ...(is_horizontal ? value_axis : primary_axis),
+        ...x_axis,
+        label_shift: (is_horizontal ? y_axis : x_axis).label_shift,
+      }}
+      y_axis={{
+        ...(is_horizontal ? primary_axis : value_axis),
+        ...y_axis,
+        label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
+      }}
+      bind:display
+      tooltip={labelled_tooltip}
+      on_bar_hover={on_bar_change
+        ? (bar) => {
+            rest.on_bar_hover?.(bar)
+            report_bar_change(bar)
+          }
+        : rest.on_bar_hover}
+      ondrop={handle_file_drop}
+      {...drag_handlers}
+      class={[rest.class, dragover && `dragover`]}
+    />
+  {/if}
+  <ViewerError bind:message={error_msg} dismissible placement="top" />
+</div>

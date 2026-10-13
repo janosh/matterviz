@@ -187,10 +187,6 @@
   {/if}
 </Structure>
 
-{#if error_msg}
-  <StatusMessage message={error_msg} type="error" />
-{/if}
-
 {#if active_volume}
   {@const { dims, values, data_range } = active_volume}
   <div class="demo-stats-bar">

@@ -1558,6 +1558,8 @@ describe(`Structure`, () => {
     const warning = doc_query(`.symmetry-error`)
     expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
     expect(warning.getAttribute(`role`)).toBe(`status`)
+    // stacked top-center with the other notices, clear of the bottom-right atom legend
+    expect(warning.parentElement?.classList.contains(`viewer-notices`)).toBe(true)
     doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
     flushSync()
     expect(document.querySelector(`.symmetry-error`)).toBeNull()

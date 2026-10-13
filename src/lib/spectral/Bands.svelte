@@ -43,7 +43,7 @@
 
   let {
     band_structs,
-    structure = undefined,
+    structure,
     bz_popup_props = {},
     line_kwargs = {},
     path_mode = `strict`,
@@ -58,7 +58,7 @@
     highlighted_qpoint_range = null,
     highlighted_band_index = null,
     ribbon_config = {},
-    fermi_level = undefined,
+    fermi_level,
     units = $bindable(`THz`),
     band_spin_mode = $bindable(`overlay`),
     highlight_regions = [],
@@ -67,8 +67,8 @@
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
     show_controls = $bindable(true),
     controls_open = $bindable(false),
-    id: identifier = undefined,
-    'data-testid': data_testid = undefined,
+    id: identifier,
+    'data-testid': data_testid,
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
@@ -255,7 +255,7 @@
         }
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1 // exclusive
-        const [x_start, x_end] = internal_x_positions[segment_key] ?? [0, 1]
+        const [x_start, x_end] = internal_x_positions[segment_key]
         const x_vals = helpers.scale_segment_distances(
           band_structure.distance.slice(start_idx, end_idx),
           x_start,
@@ -436,7 +436,7 @@
   })
 
   let fill_regions = $derived.by((): FillRegion[] => {
-    const regions: FillRegion[] = (highlight_regions ?? [])
+    const regions: FillRegion[] = highlight_regions
       .filter((region) => Number.isFinite(region.y_min) && Number.isFinite(region.y_max))
       .map((region) => ({
         lower: Math.min(region.y_min, region.y_max),
@@ -787,7 +787,6 @@
           />
         {/if}
         <text
-          class="fermi-level-label"
           x={ef_label_fits_right ? bands_x_end + 4 : bands_x_end - 4}
           y={ef_label_y}
           dy="0.35em"
@@ -849,12 +848,13 @@
   {#snippet frame_children(ctx: UserContentProps)}
     {@render user_children?.(ctx)}
     {#if gap_result.error}
-      {@const { t: top, r: right } = ctx.pad}
+      <!-- top-left: the top-right corner belongs to the gear/fullscreen controls -->
+      {@const { t: top, l: left } = ctx.pad}
       <StatusMessage
         message={gap_result.error}
         type="warning"
         class="gap-error"
-        style="position: absolute; top: {top}px; right: {right}px; max-width: 60%; font-size: 0.75rem; padding: 0.3rem 0.6rem; pointer-events: none"
+        style="position: absolute; top: {top}px; left: {left}px; max-width: 60%; font-size: 0.75rem; padding: 0.3rem 0.6rem; pointer-events: none"
       />
     {/if}
     <!-- hidden while zoomed away from its tick -->

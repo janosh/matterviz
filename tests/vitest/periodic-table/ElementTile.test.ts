@@ -162,6 +162,11 @@ describe(`ElementTile`, () => {
         )
         const labels = positions.map((cls) => doc_query(`.multi-value.${cls}`).textContent)
         expect(labels).toEqual(value.map(String))
+        // the label length drives the CSS shrink that keeps e.g. 0.0000899 inside the tile
+        const chars = positions.map((cls) =>
+          doc_query(`.multi-value.${cls}`).style.getPropertyValue(`--value-chars`),
+        )
+        expect(chars).toEqual(value.map((val) => String(String(val).length)))
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull()
       },

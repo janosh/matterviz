@@ -527,9 +527,13 @@ describe(`Bands component`, () => {
       band_spin_mode: `overlay`,
       show_gap_annotation: true,
     })
-    expect(document.querySelector(`.gap-error`)?.textContent).toMatch(
+    const gap_error = document.querySelector<HTMLElement>(`.gap-error`)
+    expect(gap_error?.textContent).toMatch(
       /Invalid band occupations: electronic_band_gap: 4 occupation rows for 8 bands/,
     )
+    // anchored top-left, clear of the gear/fullscreen controls in the top-right corner
+    expect(gap_error?.style.left).toMatch(/^[\d.]+px$/)
+    expect(gap_error?.style.right).toBe(``)
     expect(line_count()).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(/Eg:/)
   })

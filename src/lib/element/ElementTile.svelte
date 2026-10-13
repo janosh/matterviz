@@ -167,11 +167,13 @@
       <!-- One label per segment, positioned by the layout -->
       {#each rendered_segments as segment, idx (idx)}
         {#if segment.value !== undefined}
+          {@const label = format_value(segment.value)}
           <span
             class={[`value multi-value`, layout_config.positions[idx]]}
             style:color={text_color ?? auto_text_color(segment_colors[idx])}
+            style:--value-chars={label.length}
           >
-            {format_value(segment.value)}
+            {label}
           </span>
         {/if}
       {/each}
@@ -261,7 +263,8 @@
   /* Multi-value positioning */
   .multi-value {
     position: absolute;
-    font-size: var(--elem-multi-value-font-size, 14cqw);
+    /* labels past 6 characters (e.g. 0.0000899) shrink to stay inside the tile */
+    font-size: calc(var(--elem-multi-value-font-size, 14cqw) * min(1, 6 / var(--value-chars)));
     font-weight: 600;
     z-index: var(--elem-multi-value-z-index, 2);
   }

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { IS_CI, require_bbox } from '../helpers'
+import { drop_file, IS_CI, require_bbox } from '../helpers'
 import { readFile } from 'node:fs/promises'
 
 // CI environments are slower - use longer timeouts
@@ -197,6 +197,21 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await input.press(`Enter`)
     await expect(diagram).toHaveAttribute(`aria-label`, `Edited-B binary phase diagram`)
     await expect(svg.locator(`text`).filter({ hasText: `Edited` })).toBeVisible()
+  })
+
+  test(`a failed SVG drop shows an error banner left of the corner buttons`, async ({
+    page,
+  }) => {
+    const { diagram } = get_diagram_elements(page)
+    await drop_file(page, diagram, `<svg><unclosed`, `bad.svg`, `image/svg+xml`)
+    const banner = diagram.locator(`[role="alert"]`)
+    await expect(banner).toContainText(`Phase diagram file drop failed`)
+    await diagram.hover()
+    const [banner_box, buttons_box] = await Promise.all([
+      require_bbox(banner, `error banner`),
+      require_bbox(diagram.locator(`section.control-buttons`), `corner buttons`),
+    ])
+    expect(banner_box.x + banner_box.width).toBeLessThan(buttons_box.x)
   })
 
   test(`responsive: SVG resizes with viewport`, async ({ page }) => {

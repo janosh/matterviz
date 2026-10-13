@@ -14,6 +14,7 @@
   } from '#lib/convex-hull/gas-thermodynamics.js'
   import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -400,9 +401,11 @@
   </ViewerChrome>
 
   {#if title}<h3 class="diagram-title">{@html sanitize_html(title)}</h3>{/if}
-  {#if drop_error ?? model_result.error ?? compute_error}
-    <div class="error" role="alert">{drop_error ?? model_result.error ?? compute_error}</div>
-  {/if}
+  <StatusMessage
+    message={drop_error ?? model_result.error ?? compute_error ?? undefined}
+    type="error"
+    style="margin: 0.5em"
+  />
 
   {#if model && section}
     <div class={[`panels`, { 'with-side': settings.show_map || settings.show_events }]}>
@@ -807,13 +810,6 @@
         text-decoration: underline;
       }
     }
-  }
-  .error {
-    margin: 0.5em;
-    padding: 0.4em 0.8em;
-    border-radius: 4px;
-    background: rgba(198, 40, 40, 0.15);
-    color: #c62828;
   }
   .empty {
     flex: 1;

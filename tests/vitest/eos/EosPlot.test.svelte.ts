@@ -30,34 +30,33 @@ describe(`EosPlot`, () => {
       document.querySelector(selector)?.textContent?.replaceAll(/\s+/g, ` `).trim()
     return {
       fits: bound.fits,
-      params_box: text(`.eos-fit-params`),
       legend: text(`.legend`),
       error: text(`.status-message`),
       n_markers: document.querySelectorAll(`path.marker`).length,
     }
   }
 
-  test(`fits every kind once, in kinds order, and lists them in the params box`, async () => {
+  test(`fits every kind once, in kinds order, with its params under its legend entry`, async () => {
     const kinds: EosKind[] = [`vinet`, `birch_murnaghan`, `vinet`]
-    const { fits, params_box, legend, n_markers } = await render({ kinds })
+    const { fits, legend, n_markers } = await render({ kinds })
     expect(fits.map((fit) => fit.kind)).toEqual([`vinet`, `birch_murnaghan`])
-    expect(params_box).toMatch(/Vinet fit.*Birch–Murnaghan fit/)
-    expect(params_box).toContain(`B0 = 139.1 GPa`)
-    expect(legend).toBeUndefined() // the params box doubles as the legend
+    expect(legend).toMatch(
+      /^E\(V\) data Vinet fit.*139\.5 GPa.* Birch–Murnaghan fit.*139\.1 GPa/,
+    )
     expect(n_markers).toBe(volumes.length)
   })
 
-  test(`show_fit_params=false falls back to the plot legend`, async () => {
-    const { params_box, legend } = await render({ show_fit_params: false })
-    expect(params_box).toBeUndefined()
-    expect(legend).toContain(`Birch–Murnaghan fit`)
+  test.each([
+    [{ show_fit_params: false }, `E(V) data Birch–Murnaghan fit`],
+    [{ legend: null }, undefined],
+  ])(`%j trims or hides the legend`, async (props, expected) => {
+    expect((await render(props)).legend).toBe(expected)
   })
 
-  test(`kinds=[] draws only the data points, with the legend since no params box replaces it`, async () => {
-    const { fits, params_box, legend, error, n_markers } = await render({ kinds: [] })
+  test(`kinds=[] draws only the data points, without a single-entry legend`, async () => {
+    const { fits, legend, error, n_markers } = await render({ kinds: [] })
     expect(fits).toEqual([])
-    expect(params_box).toBeUndefined()
-    expect(legend).toBe(`E(V) data`)
+    expect(legend).toBeUndefined()
     expect(error).toBeUndefined()
     expect(n_markers).toBe(volumes.length)
   })
@@ -72,6 +71,9 @@ describe(`EosPlot`, () => {
     expect(result.fits).toEqual([])
     expect(result.error).toMatch(message)
     expect(result.n_markers).toBe(n_markers)
+    // one root (a sibling error took its own cell in grid parents) with the error floating on top
+    expect(document.body.childElementCount).toBe(1)
+    expect(document.querySelector(`.viewer-error.top .status-message`)).not.toBeNull()
     // error_msg is a writable $derived: dismissing overrides it until the inputs change
     document.querySelector<HTMLButtonElement>(`.status-message button`)?.click()
     flushSync()
