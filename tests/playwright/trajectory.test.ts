@@ -8,6 +8,7 @@ import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { readFile } from 'node:fs/promises'
 import {
+  drag_canvas,
   drop_file,
   collect_console_errors,
   expect_centered,
@@ -1501,4 +1502,24 @@ test.describe(`Trajectory Component`, () => {
       await check_viewer(`#vertical-layout`, `vertical`)
     })
   })
+})
+
+// A dataset of unrelated structures read as one trajectory: stepping to a frame with another
+// cell must orbit that cell's center, not the first frame's (which sat at the new cell's corner).
+test(`stepping to a frame with another cell orbits that cell's center`, async ({ page }) => {
+  await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+  await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
+    timeout: HYDRATION_TIMEOUT,
+  })
+  const viewer = page.locator(`#dataset-trajectory`)
+  const step_input = viewer.locator(`.step-input`)
+  await step_input.fill(`1`)
+  await step_input.press(`Enter`)
+  await expect(step_input).toHaveValue(`1`)
+  await drag_canvas(viewer.locator(`canvas`).first(), { dx: 80 })
+  const target = page.locator(`#dataset-camera-target`)
+  await expect(target).not.toHaveText(`null`, { timeout: LOAD_TIMEOUT })
+  const camera_target = JSON.parse((await target.textContent()) ?? `null`) as number[]
+  // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
+  expect(camera_target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
 })

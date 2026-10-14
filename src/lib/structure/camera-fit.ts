@@ -6,6 +6,7 @@ import { element_by_symbol } from '#lib/element/data.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
+import { site_count } from '#lib/structure/site.js'
 
 // Occupy at most 92% of the shorter viewport edge.
 export const DEFAULT_FIT_PADDING = 1 / 0.92
@@ -36,6 +37,26 @@ const element_radius = (
   element: ElementSymbol,
   overrides?: Partial<Record<ElementSymbol, number>>,
 ): number => overrides?.[element] ?? element_by_symbol.get(element)?.atomic_radius ?? 1
+
+// What makes a frame the same structure to the camera: a periodic frame's cell, a molecule's
+// atom count. Stepping to a frame that differs (a dataset of unrelated structures read as one
+// trajectory, an NPT cell) moves the orbit pivot to its center; an MD frame does not. Counts
+// sites without materializing a numeric frame's (site_count): this runs on every frame.
+export const frame_identity = (structure: AnyStructure): string =>
+  `lattice` in structure && structure.lattice
+    ? structure.lattice.matrix.flat().join(`,`)
+    : `molecule:${site_count(structure)}`
+
+// The camera pose carried from one structure's center to another's: target and position shift
+// by the same offset, so the view direction, distance and any pan stay as the user left them.
+export const follow_center = (
+  pose: { target: Vec3; position: Vec3 },
+  from: Vec3,
+  to: Vec3,
+): { target: Vec3; position: Vec3 } => {
+  const offset = math.subtract(to, from)
+  return { target: math.add(pose.target, offset), position: math.add(pose.position, offset) }
+}
 
 // Display radius of a site in Å before the global atom_radius scale: the per-element
 // override or atomic radius, occupancy-weighted over a disordered site's species. Normalized

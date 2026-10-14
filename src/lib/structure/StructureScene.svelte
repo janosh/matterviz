@@ -66,6 +66,8 @@
     perspective_distance_for_extent,
     site_base_radius,
     structure_fit_frame,
+    frame_identity,
+    follow_center,
   } from '#lib/structure/index.js'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import { resolve_arrow_size } from './vectors'
@@ -1210,6 +1212,26 @@
       clear_pan_offset(untrack(() => camera))
     }
   })
+  // A frame that is a different structure (frame_identity) carries the orbit pivot to its
+  // center, keeping the user's view; coordinate-only frames and the user's own atom edits leave
+  // the camera where it is. Non-reactive: compares successive frames only.
+  let followed_frame: { identity: string; center: Vec3 } | undefined
+  $effect.pre(() => {
+    if (!structure || dragging_atoms) return
+    const frame = { identity: frame_identity(structure), center: rotation_target }
+    const previous = followed_frame
+    followed_frame = frame
+    if (!previous || previous.identity === frame.identity) return
+    untrack(() => {
+      if (measure_mode === `edit-atoms`) return
+      if (camera_target === undefined || camera_position === undefined) return
+      const pose = { target: camera_target, position: camera_position }
+      const moved = follow_center(pose, previous.center, frame.center)
+      camera_target = moved.target
+      camera_position = moved.position
+    })
+  })
+
   // Declutter while a symmetry-element overlay actually draws something (elements present
   // AND an enabled kind among them): hide coordination polyhedra/bonds and shrink atoms so
   // axes/planes/centers stay readable. Gating on visibility (not just `symmetry_elements`)

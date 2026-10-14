@@ -352,6 +352,28 @@ describe(`structure_fit_frame`, () => {
       expect(extent(structure, opts)).toBeCloseTo(expected, 10)
     },
   )
+
+  // A dataset of unrelated structures stepped like frames: a new cell or molecule size carries
+  // the orbit pivot to its center (StructureScene), while an MD frame keeps it.
+  test(`frame_identity changes with the cell or a molecule's size, not atom positions`, () => {
+    const { frame_identity } = struct_utils
+    const [iron, moved_iron] = [site(`Fe`, [0, 0, 0]), site(`Fe`, [0.3, 0, 0])]
+    const molecule = (sites: Site[]): AnyStructure => ({ sites })
+    expect(frame_identity(cubic(3, [moved_iron]))).toBe(frame_identity(cubic(3, [iron])))
+    expect(frame_identity(cubic(4, [iron]))).not.toBe(frame_identity(cubic(3, [iron])))
+    expect(frame_identity(molecule([moved_iron]))).toBe(frame_identity(molecule([iron])))
+    expect(frame_identity(molecule([iron, moved_iron]))).not.toBe(
+      frame_identity(molecule([iron])),
+    )
+  })
+
+  test(`follow_center moves target and position alike, keeping direction and distance`, () => {
+    const pose = { target: [1.5, 1.5, 1.5] as Vec3, position: [11.5, 4.5, 9.5] as Vec3 }
+    expect(struct_utils.follow_center(pose, [1.5, 1.5, 1.5], [2, 2, 4.5])).toEqual({
+      target: [2, 2, 4.5],
+      position: [12, 5, 12.5],
+    })
+  })
 })
 
 describe(`camera helpers`, () => {
