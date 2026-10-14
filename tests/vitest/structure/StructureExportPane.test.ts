@@ -181,21 +181,6 @@ describe(`StructureExportPane`, () => {
     },
   )
 
-  // Only a browser that can pick a folder gets a destination row: elsewhere its button could
-  // never work and "Browser downloads" may not be where a host app's download hook saves.
-  test.each([false, true])(`folder picker available: %s`, (has_picker) => {
-    if (has_picker) vi.stubGlobal(`showDirectoryPicker`, vi.fn())
-    try {
-      mount_pane({ structure: simple_structure })
-      expect(document.querySelector(`.export-destination input`)).not.toBeNull()
-      const choose = document.querySelector(`button[aria-label="Choose export folder"]`)
-      expect(choose !== null).toBe(has_picker)
-      expect(document.body.textContent?.includes(`Browser downloads`)).toBe(has_picker)
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
   test(`shows checkmark feedback after successful copy`, async () => {
     vi.useFakeTimers()
     mount_pane({ structure: simple_structure })

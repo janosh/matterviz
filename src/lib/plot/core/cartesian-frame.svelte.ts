@@ -7,6 +7,7 @@
 // component init. Render the returned state with CartesianFrame.svelte.
 
 import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+import { host } from '#lib/host.js'
 import { clamp, type Vec2 } from '#lib/math.js'
 import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
 import {
@@ -131,7 +132,10 @@ export const has_controls_row = (
   fullscreen_toggle: boolean,
 ): boolean => {
   const config = normalize_show_controls(show_controls)
-  return config.visible(`controls`) || (fullscreen_toggle && config.visible(`fullscreen`))
+  return (
+    config.visible(`controls`) ||
+    (fullscreen_toggle && host.fullscreen && config.visible(`fullscreen`))
+  )
 }
 
 export function create_cartesian_frame(opts: CartesianFrameOptions) {

@@ -6,6 +6,7 @@
   // canvas markers once the visible count is small enough, with spatial-index picking,
   // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
   // pan/zoom, marginals and the title come from the shared Cartesian frame.
+  import { host } from '#lib/host.js'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Point2D, Vec2 } from '#lib/math.js'
@@ -227,7 +228,7 @@
   })
 
   const frame = create_cartesian_frame({
-    controls_row: () => fullscreen_toggle, // no settings pane, only the fullscreen button
+    controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane, only the fullscreen button
     // No default tick format: format_tick_values skips its duplicate-avoidance escalation
     // whenever a formatter is supplied, so a fixed default would repeat labels on narrow
     // ranges (e.g. after a density bin_click zoom). Callers can still pass one in.

@@ -1,3 +1,4 @@
+import { host } from '#lib/host.js'
 import { has_controls_row } from '#lib/plot/core/cartesian-frame.svelte.js'
 import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout.js'
 import {
@@ -658,6 +659,21 @@ describe(`layout utility functions`, () => {
         expect(has_controls_row(prop, fullscreen_toggle)).toBe(expected)
       },
     )
+
+    // A host that cannot fullscreen renders no button, so the row it alone held is not reserved.
+    it(`has_controls_row reserves no row for a fullscreen button the host hides`, () => {
+      const hidden_controls = { mode: `always`, hidden: [`controls`] } as const
+      expect(has_controls_row({ ...hidden_controls, hidden: [`controls`] }, true)).toBe(true)
+      host.fullscreen = false
+      try {
+        expect(has_controls_row({ ...hidden_controls, hidden: [`controls`] }, true)).toBe(
+          false,
+        )
+        expect(has_controls_row(`hover`, true)).toBe(true)
+      } finally {
+        host.fullscreen = true
+      }
+    })
 
     const default_b = DEFAULT_PLOT_PADDING.b
     it.each([

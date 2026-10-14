@@ -35,9 +35,10 @@ test(`filename follows the source until edited, rejects paths, and resets the de
   })
   expect(export_state.disabled).toBe(false)
   expect(download).toHaveBeenCalledExactlyOnceWith(`contents`, `My movie.csv`, `text/csv`)
-  expect(
-    document.querySelector<HTMLButtonElement>(`[aria-label="Choose export folder"]`)?.disabled,
-  ).toBe(true)
+  // No folder picker, no destination row: its button could never work and its label could name
+  // the wrong place under a host's download hook.
+  expect(document.querySelector(`[aria-label="Choose export folder"]`)).toBeNull()
+  expect(document.body.textContent).not.toContain(`Browser downloads`)
   const task = vi.fn()
   vi.spyOn(console, `error`).mockImplementation(() => {})
   for (const invalid of [``, `..`, `folder/file`, `folder\\file`, `bad\0name`]) {
