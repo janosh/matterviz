@@ -7,15 +7,27 @@
     disabled = false,
   }: { state: FileExportState; disabled?: boolean } = $props()
   let choosing = $state(false)
-  const directory_picker = (
-    globalThis as typeof globalThis & {
-      showDirectoryPicker?: (options: {
-        id: string
-        mode: `readwrite`
-        startIn: FileSystemDirectoryHandle | `downloads`
-      }) => Promise<FileSystemDirectoryHandle>
+  // Chromium defines showDirectoryPicker in every frame but rejects it in one cross-origin to
+  // the top-level page (a VS Code webview, a notebook's output iframe). Reading the top frame's
+  // origin throws exactly there, so that read is the feature test.
+  const same_origin_as_top = (): boolean => {
+    try {
+      return globalThis.top?.location.origin === globalThis.location.origin
+    } catch {
+      return false
     }
-  ).showDirectoryPicker
+  }
+  const directory_picker = same_origin_as_top()
+    ? (
+        globalThis as typeof globalThis & {
+          showDirectoryPicker?: (options: {
+            id: string
+            mode: `readwrite`
+            startIn: FileSystemDirectoryHandle | `downloads`
+          }) => Promise<FileSystemDirectoryHandle>
+        }
+      ).showDirectoryPicker
+    : undefined
 
   async function choose_folder() {
     if (!directory_picker || choosing) return

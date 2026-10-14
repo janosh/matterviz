@@ -39,6 +39,20 @@ test(`filename follows the source until edited, rejects paths, and resets the de
   // the wrong place under a host's download hook.
   expect(document.querySelector(`[aria-label="Choose export folder"]`)).toBeNull()
   expect(document.body.textContent).not.toContain(`Browser downloads`)
+  // A frame cross-origin to the top page (a VS Code webview) has the picker but may not use it
+  vi.stubGlobal(`showDirectoryPicker`, vi.fn())
+  vi.stubGlobal(`top`, {
+    get location() {
+      throw new DOMException(`Blocked`, `SecurityError`)
+    },
+  })
+  const framed = mount(ExportDestination, {
+    target: document.body,
+    props: { state: export_state },
+  })
+  await tick()
+  expect(document.querySelector(`[aria-label="Choose export folder"]`)).toBeNull()
+  await unmount(framed)
   const task = vi.fn()
   vi.spyOn(console, `error`).mockImplementation(() => {})
   for (const invalid of [``, `..`, `folder/file`, `folder\\file`, `bad\0name`]) {
