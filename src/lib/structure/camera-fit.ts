@@ -58,6 +58,12 @@ export const follow_center = (
   return { target: math.add(pose.target, offset), position: math.add(pose.position, offset) }
 }
 
+// Whether content of `extent` has outgrown a zoom fitted to `fitted_extent`: more than twice as
+// large or small. A frame within that keeps the zoom, so a volume scan or an NPT cell still shows
+// its change in size; a dataset's 86 Å slab after a 4 Å cell is re-framed instead.
+export const outgrows_fit = (extent: number, fitted_extent: number): boolean =>
+  extent > 2 * fitted_extent || extent < fitted_extent / 2
+
 // Display radius of a site in Å before the global atom_radius scale: the per-element
 // override or atomic radius, occupancy-weighted over a disordered site's species. Normalized
 // by total occupancy so vacancy-containing sites render at full size.

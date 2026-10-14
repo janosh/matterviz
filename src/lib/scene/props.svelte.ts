@@ -154,6 +154,10 @@ export function create_fit_zoom(opts: {
     get zoom() {
       return zoom
     },
+    // The extent the zoom was last fitted to
+    get fitted_extent() {
+      return fitted_extent
+    },
     // Re-frame on the current content: a new series, a camera reset, a projection/direction change
     refit() {
       fitted_extent = untrack(opts.extent)

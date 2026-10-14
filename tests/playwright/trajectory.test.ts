@@ -1505,21 +1505,30 @@ test.describe(`Trajectory Component`, () => {
 })
 
 // A dataset of unrelated structures read as one trajectory: stepping to a frame with another
-// cell must orbit that cell's center, not the first frame's (which sat at the new cell's corner).
-test(`stepping to a frame with another cell orbits that cell's center`, async ({ page }) => {
+// cell must orbit that cell's center (the first frame's sat at its corner), and a cell three times
+// the size gets a camera backed off to fit it rather than the first frame's close-up.
+test(`stepping to a frame with another cell orbits and frames that cell`, async ({ page }) => {
   await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
   await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
     timeout: HYDRATION_TIMEOUT,
   })
   const viewer = page.locator(`#dataset-trajectory`)
+  const camera = page.locator(`#dataset-camera`)
+  const orbit = async (): Promise<{ target: number[]; position: number[] }> => {
+    const before = await camera.textContent()
+    await drag_canvas(viewer.locator(`canvas`).first(), { dx: 80 })
+    await expect(camera).not.toHaveText(before ?? ``, { timeout: LOAD_TIMEOUT })
+    return JSON.parse((await camera.textContent()) ?? `null`)
+  }
+  const distance = ({ target, position }: { target: number[]; position: number[] }) =>
+    Math.hypot(...position.map((coord, axis) => coord - target[axis]))
+  const first = await orbit()
   const step_input = viewer.locator(`.step-input`)
   await step_input.fill(`1`)
   await step_input.press(`Enter`)
   await expect(step_input).toHaveValue(`1`)
-  await drag_canvas(viewer.locator(`canvas`).first(), { dx: 80 })
-  const target = page.locator(`#dataset-camera-target`)
-  await expect(target).not.toHaveText(`null`, { timeout: LOAD_TIMEOUT })
-  const camera_target = JSON.parse((await target.textContent()) ?? `null`) as number[]
+  const second = await orbit()
   // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
-  expect(camera_target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
+  expect(second.target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
+  expect(distance(second) / distance(first)).toBeGreaterThan(2)
 })

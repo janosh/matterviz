@@ -68,6 +68,7 @@
     structure_fit_frame,
     frame_identity,
     follow_center,
+    outgrows_fit,
   } from '#lib/structure/index.js'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import { resolve_arrow_size } from './vectors'
@@ -1185,39 +1186,46 @@
     },
   })
 
+  // Fits the zoom to the current content and places the camera on `target`, looking along
+  // `direction` (missing/zero: the default angled view).
+  const frame_camera = (target: Vec3, direction: Vec3 | null | undefined): void => {
+    fit.refit()
+    scene_camera.reset_to_fit()
+    // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
+    const distance =
+      camera_projection === `perspective`
+        ? perspective_distance_for_extent(
+            Math.max(1, fit_extent),
+            width,
+            height,
+            effective_fov,
+          )
+        : Math.max(1, fit_extent) * 2
+    camera_target = target
+    get_reset_target = () => target
+    camera_position = camera_position_for_target(target, distance, direction)
+    // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
+    clear_pan_offset(untrack(() => camera))
+  }
   $effect.pre(() => {
     const previous_view = camera_fit_cache.previous_view
     const view_changed = previous_view !== undefined && previous_view !== camera_view
     const should_fit = camera_needs_fit(camera_position, previous_view, camera_view)
     camera_fit_cache.previous_view = camera_view
-    // Auto-place at content center; missing/zero camera_direction → default angled view.
-    if (should_fit && structure && measured()) {
-      fit.refit()
-      scene_camera.reset_to_fit()
-      // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
-      const distance =
-        camera_projection === `perspective`
-          ? perspective_distance_for_extent(
-              Math.max(1, fit_extent),
-              width,
-              height,
-              effective_fov,
-            )
-          : Math.max(1, fit_extent) * 2
-      const target = view_changed ? fit_frame.center : (camera_target ?? fit_frame.center)
-      if (view_changed || camera_target === undefined) camera_target = target
-      get_reset_target = () => target
-      camera_position = camera_position_for_target(target, distance, camera_direction)
-      // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
-      clear_pan_offset(untrack(() => camera))
-    }
+    if (should_fit && structure && measured())
+      frame_camera(
+        view_changed ? fit_frame.center : (camera_target ?? fit_frame.center),
+        camera_direction,
+      )
   })
   // A frame that is a different structure (frame_identity) carries the orbit pivot to its
   // center, keeping the user's view; coordinate-only frames and the user's own atom edits leave
-  // the camera where it is. Non-reactive: compares successive frames only.
+  // the camera where it is. While the user orbits, the frame it follows from is held, so a cell
+  // changing every frame (NPT playback) moves the camera once the gesture ends instead of
+  // fighting it. Non-reactive: compares successive frames only.
   let followed_frame: { identity: string; center: Vec3 } | undefined
   $effect.pre(() => {
-    if (!structure || dragging_atoms) return
+    if (!structure || dragging_atoms || camera_is_moving) return
     const frame = { identity: frame_identity(structure), center: rotation_target }
     const previous = followed_frame
     followed_frame = frame
@@ -1225,6 +1233,10 @@
     untrack(() => {
       if (measure_mode === `edit-atoms`) return
       if (camera_target === undefined || camera_position === undefined) return
+      // A structure far larger or smaller than the zoom was fitted to is framed afresh, seen
+      // from where the user was looking
+      if (outgrows_fit(fit_extent, fit.fitted_extent))
+        return frame_camera(fit_frame.center, math.subtract(camera_position, camera_target))
       const pose = { target: camera_target, position: camera_position }
       const moved = follow_center(pose, previous.center, frame.center)
       camera_target = moved.target

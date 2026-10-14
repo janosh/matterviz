@@ -109,7 +109,7 @@
   const dataset_trajectory = trajectory_from_frames([cubic_frame(0, 2), cubic_frame(1, 6)], {
     metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
   })
-  let dataset_camera_target = $state<number[] | null>(null)
+  let dataset_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
 
   let current_step = $state(0)
   let hydrated = $state(false)
@@ -142,10 +142,11 @@
     trajectory={dataset_trajectory}
     show_controls="always"
     structure_props={{
-      on_camera_move: ({ camera_target }) => (dataset_camera_target = camera_target ?? null),
+      on_camera_move: ({ camera_target, camera_position }) =>
+        (dataset_camera = { target: camera_target, position: camera_position }),
     }}
   />
-  <output id="dataset-camera-target">{JSON.stringify(dataset_camera_target)}</output>
+  <output id="dataset-camera">{JSON.stringify(dataset_camera)}</output>
 
   <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
 
