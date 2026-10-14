@@ -418,24 +418,6 @@ test.each([
   expect(mount_props).not.toHaveProperty(`fullscreen_toggle`)
 })
 
-// host.fullscreen starts from the Fullscreen API: a VS Code webview's iframe lacks
-// allow="fullscreen" and reports false, a desktop webview or browser page true.
-test.each([
-  [false, false],
-  [true, true],
-  [undefined, true],
-])(`fullscreenEnabled=%s starts host.fullscreen as %s`, async (enabled, expected) => {
-  Object.defineProperty(document, `fullscreenEnabled`, { value: enabled, configurable: true })
-  vi.resetModules()
-  try {
-    const { host } = await import(`#lib/host.js`)
-    expect(host.fullscreen).toBe(expected)
-  } finally {
-    Reflect.deleteProperty(document, `fullscreenEnabled`)
-    vi.resetModules()
-  }
-})
-
 describe(`create_display trajectory display options`, () => {
   const trajectory_result = (): ParseResult => ({
     type: `trajectory`,

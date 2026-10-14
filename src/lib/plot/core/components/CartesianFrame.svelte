@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import {
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+    type ShowControlsProp,
+  } from '#lib/controls.js'
   import { FullscreenButton } from '#lib/layout/index.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
@@ -170,6 +174,7 @@
 
   onDestroy(() => pan_zoom.destroy())
   const controls_config = $derived(normalize_show_controls(show_controls))
+  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
   const toggle_props = $derived({
     ...controls_toggle_props,
     style: `position: static; ${controls_toggle_props?.style ?? ``}`,
@@ -194,10 +199,10 @@
     <div class={[`header-controls`, controls_config.class]} style={controls_config.style}>
       {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
       {@render controls?.(toggle_props, controls_config.visible(`controls`))}
-      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+      {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
-          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+          hidden={!show_toggle}
           {wrapper}
           bg_css_var="--{css_prefix}-fullscreen-bg"
         />

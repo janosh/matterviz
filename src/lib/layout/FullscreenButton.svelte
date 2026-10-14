@@ -43,6 +43,12 @@
     return () => document.removeEventListener(`fullscreenchange`, handle_change)
   })
 
+  // A host that cannot fullscreen holds no fullscreen state: a bound `true` (a "start in
+  // fullscreen" setting) would leave the viewer's fixed fullscreen styles on with no exit.
+  $effect.pre(() => {
+    if (!host.fullscreen && fullscreen) fullscreen = false
+  })
+
   // Plain `f` fullscreens the viewer under the pointer. Every viewer renders one of these
   // buttons for its own root, so owning the key here keeps one binding across all of them.
   // Hidden buttons retain an active fullscreen subscription but never handle shortcuts.

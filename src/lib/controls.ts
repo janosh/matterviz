@@ -1,4 +1,5 @@
 import { untrack } from 'svelte'
+import { host } from '#lib/host.js'
 import { is_plain_object } from '#lib/utils.js'
 
 // Shared visibility contract for viewer and plot controls.
@@ -43,6 +44,11 @@ export function normalize_show_controls(
     class: mode === `never` ? `` : `${mode}-visible`,
   }
 }
+
+// Whether a viewer or plot shows its fullscreen toggle: asked for, visible under show_controls
+// and possible in the embedding app (host.fullscreen)
+export const shows_fullscreen_toggle = (toggle: boolean, config: ShowControlsState): boolean =>
+  toggle && host.fullscreen && config.visible(`fullscreen`)
 
 // Settings panes own their reset baseline; SettingsSection only renders changed keys.
 // Read through proxies so nested edits cannot mutate the captured baseline.

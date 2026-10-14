@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShowControlsState } from '#lib/controls.js'
+  import { shows_fullscreen_toggle, type ShowControlsState } from '#lib/controls.js'
   // Shared control-buttons row (filename chip + snippet buttons/panes + fullscreen toggle) that
   // viewers render as a direct child of their root; themed via neutral --viewer-* CSS vars.
   // Full-width sequence viewers use SequenceControlBar instead.
@@ -32,7 +32,7 @@
 
   // Styled tooltip (reads the button's title attr), forwarded as a spreadable attachment
   const tooltip_attachment = { [createAttachmentKey()]: tooltip() }
-  const show_toggle = $derived(fullscreen_toggle && controls_config.visible(`fullscreen`))
+  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
 </script>
 
 <section

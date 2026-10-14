@@ -328,12 +328,13 @@ describe(`NebViewer`, () => {
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
   })
 
-  // A host that cannot fullscreen an element turns the toggle and its `f` shortcut off for
-  // every viewer at once.
+  // A host that cannot fullscreen an element turns the toggle, its `f` shortcut and a bound
+  // fullscreen flag off for every viewer at once.
   test.each([true, false])(
-    `a host with fullscreen=%s gets the toggle and its f shortcut only if true`,
+    `a host with fullscreen=%s gets the toggle, its f shortcut and the flag only if true`,
     async (fullscreen) => {
       mock_fullscreen()
+      const orig_fullscreen = host.fullscreen
       host.fullscreen = fullscreen
       try {
         const state = $state({ fullscreen: false })
@@ -344,8 +345,11 @@ describe(`NebViewer`, () => {
         globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
         await tick()
         expect(state.fullscreen).toBe(fullscreen)
+        state.fullscreen = true
+        await tick()
+        expect(state.fullscreen).toBe(fullscreen)
       } finally {
-        host.fullscreen = true
+        host.fullscreen = orig_fullscreen
       }
     },
   )

@@ -663,15 +663,14 @@ describe(`layout utility functions`, () => {
     // A host that cannot fullscreen renders no button, so the row it alone held is not reserved.
     it(`has_controls_row reserves no row for a fullscreen button the host hides`, () => {
       const hidden_controls = { mode: `always`, hidden: [`controls`] } as const
-      expect(has_controls_row({ ...hidden_controls, hidden: [`controls`] }, true)).toBe(true)
+      expect(has_controls_row(hidden_controls, true)).toBe(true)
+      const orig_fullscreen = host.fullscreen
       host.fullscreen = false
       try {
-        expect(has_controls_row({ ...hidden_controls, hidden: [`controls`] }, true)).toBe(
-          false,
-        )
+        expect(has_controls_row(hidden_controls, true)).toBe(false)
         expect(has_controls_row(`hover`, true)).toBe(true)
       } finally {
-        host.fullscreen = true
+        host.fullscreen = orig_fullscreen
       }
     })
 

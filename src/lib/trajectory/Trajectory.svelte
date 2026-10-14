@@ -13,7 +13,11 @@
     Orientation,
   } from '#lib/plot/index.js'
   import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import {
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+    type ShowControlsProp,
+  } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import FileInput from 'svelte-widgets/FileInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -830,6 +834,7 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
     controls_config.mode === `never` ? false : prop
@@ -1729,10 +1734,10 @@
               {/each}
             </ToolbarMenu>
           {/if}
-          {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+          {#if fullscreen || show_toggle}
             <FullscreenButton
               bind:fullscreen
-              hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+              hidden={!show_toggle}
               {wrapper}
               bg_css_var="--traj-bg-fullscreen"
               on_change={() => on_fullscreen_change?.(event_data())}

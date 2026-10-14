@@ -15,7 +15,11 @@
 </script>
 
 <script lang="ts">
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import {
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+    type ShowControlsProp,
+  } from '#lib/controls.js'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
@@ -88,6 +92,7 @@
     style: `position: static; ${controls_toggle_props?.style ?? ``}`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
+  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
 </script>
 
 <div
@@ -106,10 +111,10 @@
     >
       {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
       {@render controls?.(toggle_props, controls_config.visible(`controls`))}
-      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+      {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
-          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+          hidden={!show_toggle}
           {wrapper}
           bg_css_var="--{css_prefix}-fullscreen-bg"
         />
