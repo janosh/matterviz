@@ -89,7 +89,7 @@
     // Shared scene inputs (one-way); the session carries the displayed structure, selection
     // and edit state every pane binds to
     session,
-    view_reset_key = undefined,
+    series_key = undefined,
     reference_structure = undefined,
     scene_props = {},
     gizmo = false,
@@ -135,7 +135,7 @@
     on_camera_move?: (data: StructureHandlerData) => void
     on_camera_reset?: (data: StructureHandlerData) => void
     session: StructureSession
-    view_reset_key?: unknown
+    series_key?: unknown
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
@@ -296,7 +296,7 @@
     const live_camera = camera
     const controls = orbit_controls
     const context = {
-      key: view_reset_key,
+      key: series_key,
       reset_token,
       direction: camera_direction && [...camera_direction],
       pose_key: owner?.get_pose_key(),
@@ -324,7 +324,7 @@
       if (!saved || !view_state) return
       delete view_state.camera
       if (
-        view_state.key !== view_reset_key ||
+        view_state.key !== series_key ||
         view_state.reset_token !== reset_token ||
         view_state.pose_key !== view_state.get_pose_key() ||
         saved.type !== live_camera.type ||
@@ -475,6 +475,7 @@
         {structure}
         base_structure={session.base_structure}
         {reference_structure}
+        {series_key}
         {...scene_props}
         atom_tooltip={session.shows_input_frame ? scene_props.atom_tooltip : undefined}
         atom_color_field={session.shows_input_frame ? scene_props.atom_color_field : undefined}

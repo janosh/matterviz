@@ -353,26 +353,14 @@ describe(`structure_fit_frame`, () => {
     },
   )
 
-  // A dataset of unrelated structures stepped like frames: a new cell or molecule size carries
-  // the orbit pivot to its center (StructureScene), while an MD frame keeps it.
-  test(`frame_identity changes with the cell or a molecule's size, not atom positions`, () => {
-    const { frame_identity } = struct_utils
-    const [iron, moved_iron] = [site(`Fe`, [0, 0, 0]), site(`Fe`, [0.3, 0, 0])]
-    const molecule = (sites: Site[]): AnyStructure => ({ sites })
-    expect(frame_identity(cubic(3, [moved_iron]))).toBe(frame_identity(cubic(3, [iron])))
-    expect(frame_identity(cubic(4, [iron]))).not.toBe(frame_identity(cubic(3, [iron])))
-    expect(frame_identity(molecule([moved_iron]))).toBe(frame_identity(molecule([iron])))
-    expect(frame_identity(molecule([iron, moved_iron]))).not.toBe(
-      frame_identity(molecule([iron])),
-    )
-  })
-
   test.each([
     [10, 10, false],
     [19.9, 10, false],
     [5.1, 10, false],
     [21, 10, true],
     [4.9, 10, true],
+    [1.5, 0, false],
+    [2.5, 0, true],
   ])(`outgrows_fit(%s, fitted %s) is %s`, (content_extent, fitted, expected) => {
     expect(struct_utils.outgrows_fit(content_extent, fitted)).toBe(expected)
   })

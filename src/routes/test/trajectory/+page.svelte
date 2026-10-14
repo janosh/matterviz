@@ -2,6 +2,7 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+  import { Structure } from '#lib/structure/index.js'
   import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
   import { onMount } from 'svelte'
 
@@ -110,6 +111,9 @@
     metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
   })
   let dataset_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
+  // A plain Structure handed a new structure (a new file): a 4 Å, then a 6 Å cell
+  let swapped = $state(false)
+  let swap_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
 
   let current_step = $state(0)
   let hydrated = $state(false)
@@ -147,6 +151,15 @@
     }}
   />
   <output id="dataset-camera">{JSON.stringify(dataset_camera)}</output>
+
+  <button id="swap-structure" onclick={() => (swapped = true)}>Swap structure</button>
+  <Structure
+    id="swapped-structure"
+    structure={cubic_frame(0, swapped ? 6 : 4).structure}
+    on_camera_move={({ camera_target, camera_position }) =>
+      (swap_camera = { target: camera_target, position: camera_position })}
+  />
+  <output id="swap-camera">{JSON.stringify(swap_camera)}</output>
 
   <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
 

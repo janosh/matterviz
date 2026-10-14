@@ -936,7 +936,7 @@
   })
   let shared_viewport_props = $derived({
     session,
-    view_reset_key: series_key,
+    series_key,
     reference_structure,
     scene_props: {
       ...scene_props,
@@ -1004,28 +1004,18 @@
 
   // === camera context ===
   // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
-  // an explicit pose; supercell/image/cell changes re-center the orbit target on the new cell.
-  let transform_key = $derived(`${supercell_scaling}\0${show_image_atoms}\0${cell_type}`)
+  // an explicit pose. Cell changes within a series (supercell, cell type, a dataset's frames)
+  // carry the camera along in StructureScene.
   let previous_series_key: unknown = untrack(() => series_key)
-  let previous_transform = untrack(() => transform_key)
   $effect.pre(() => {
-    const transform = transform_key
-    const series_changed = series_key !== previous_series_key
-    const transform_changed = transform !== previous_transform
+    if (series_key === previous_series_key) return
     previous_series_key = series_key
-    previous_transform = transform
-    if (!series_changed && !transform_changed) return
     untrack(() => {
-      if (series_changed) {
-        session.clear_moved_panes()
-        // Keep an explicit caller pose intact when replacing the structure.
-        if (
-          scene_props.camera_target !== undefined ||
-          scene_props.camera_position !== undefined
-        )
-          return
-        camera_position = undefined
-      }
+      session.clear_moved_panes()
+      // Keep an explicit caller pose intact when replacing the structure.
+      if (scene_props.camera_target !== undefined || scene_props.camera_position !== undefined)
+        return
+      camera_position = undefined
       // In edit-atoms mode structure changes are the user's own edits: keep the orbit target
       if (measure_mode !== `edit-atoms`) camera_target = undefined
     })

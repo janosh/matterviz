@@ -34,6 +34,7 @@
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
+    flight_holds,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -66,7 +67,6 @@
     perspective_distance_for_extent,
     site_base_radius,
     structure_fit_frame,
-    frame_identity,
     follow_center,
     outgrows_fit,
   } from '#lib/structure/index.js'
@@ -235,6 +235,7 @@
     atom_label,
     atom_tooltip,
     camera_is_moving = $bindable(false),
+    series_key = undefined,
     width = 0,
     height = 0,
     measure_mode = `distance`,
@@ -378,6 +379,7 @@
     site_label_color?: string
     site_label_padding?: number
     camera_is_moving?: boolean // bindable: true while orbit controls are active
+    series_key?: unknown // changes with a new series (file); frames within one share it
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -1218,26 +1220,40 @@
         camera_direction,
       )
   })
-  // A frame that is a different structure (frame_identity) carries the orbit pivot to its
-  // center, keeping the user's view; coordinate-only frames and the user's own atom edits leave
-  // the camera where it is. While the user orbits, the frame it follows from is held, so a cell
-  // changing every frame (NPT playback) moves the camera once the gesture ends instead of
-  // fighting it. Non-reactive: compares successive frames only.
-  let followed_frame: { identity: string; center: Vec3 } | undefined
+  // Within a series (series_key), a frame whose orbit pivot moved (a new cell, a dataset's next
+  // structure, a molecule's drifting center of mass) carries the camera by that offset, keeping
+  // the user's view; fixed-cell MD frames leave it where it is. A new series is framed afresh or
+  // keeps the caller's pose (Structure's series effect), so it is never carried; neither are the
+  // user's own atom edits or a camera flight, whose poses are absolute. While the user orbits,
+  // the frame it follows from is held, so a cell changing every frame (NPT playback) moves the
+  // camera once the gesture ends instead of fighting it. Non-reactive: compares successive
+  // frames only.
+  let followed_frame: { series: unknown; center: Vec3 } | undefined
   $effect.pre(() => {
     if (!structure || dragging_atoms || camera_is_moving) return
-    const frame = { identity: frame_identity(structure), center: rotation_target }
+    const frame = { series: series_key, center: rotation_target }
     const previous = followed_frame
     followed_frame = frame
-    if (!previous || previous.identity === frame.identity) return
+    if (
+      !previous ||
+      previous.series !== frame.series ||
+      previous.center.every((coord, axis) => coord === frame.center[axis])
+    )
+      return
     untrack(() => {
-      if (measure_mode === `edit-atoms`) return
-      if (camera_target === undefined || camera_position === undefined) return
+      if (measure_mode === `edit-atoms` || !camera || !orbit_controls) return
+      // Nothing framed yet (a viewer mounted at 0x0), or a flight owns the camera
+      if (camera_position === undefined || flight_holds(orbit_controls)) return
+      // The live pose, not the props: auto-rotate and a damped glide move the camera without
+      // syncing them, and a stale prop pose would snap the camera back
+      const pose = {
+        target: orbit_controls.target.toArray(),
+        position: camera.position.toArray(),
+      }
       // A structure far larger or smaller than the zoom was fitted to is framed afresh, seen
       // from where the user was looking
       if (outgrows_fit(fit_extent, fit.fitted_extent))
-        return frame_camera(fit_frame.center, math.subtract(camera_position, camera_target))
-      const pose = { target: camera_target, position: camera_position }
+        return frame_camera(fit_frame.center, math.subtract(pose.position, pose.target))
       const moved = follow_center(pose, previous.center, frame.center)
       camera_target = moved.target
       camera_position = moved.position
