@@ -1,4 +1,5 @@
 import NebPlot from '#lib/neb/NebPlot.svelte'
+import { host } from '#lib/host.js'
 import NebViewer from '#lib/neb/NebViewer.svelte'
 import { path_spline } from '#lib/neb/reaction-path.js'
 import { format_num } from '#lib/labels.js'
@@ -326,6 +327,32 @@ describe(`NebViewer`, () => {
     }
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
   })
+
+  // A host that cannot fullscreen an element turns the toggle, its `f` shortcut and a bound
+  // fullscreen flag off for every viewer at once.
+  test.each([true, false])(
+    `a host with fullscreen=%s gets the toggle, its f shortcut and the flag only if true`,
+    async (fullscreen) => {
+      mock_fullscreen()
+      const orig_fullscreen = host.fullscreen
+      host.fullscreen = fullscreen
+      try {
+        const state = $state({ fullscreen: false })
+        const viewer = await mount_viewer(bind_props({ paths: direct_path }, state))
+        expect(viewer.querySelector(`.fullscreen-btn`) !== null).toBe(fullscreen)
+        viewer.dispatchEvent(new PointerEvent(`pointerenter`, { bubbles: true }))
+        viewer.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true }))
+        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `f` }))
+        await tick()
+        expect(state.fullscreen).toBe(fullscreen)
+        state.fullscreen = true
+        await tick()
+        expect(state.fullscreen).toBe(fullscreen)
+      } finally {
+        host.fullscreen = orig_fullscreen
+      }
+    },
+  )
 
   test(`updates path and image bindings through shared navigation`, async () => {
     const state = $state({ active_path_key: `direct hop`, active_image_idx: 0 })

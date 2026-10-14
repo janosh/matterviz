@@ -34,11 +34,8 @@ export interface MountViewerOptions {
   on_close?: () => void
 }
 
-// Every embedded viewer fills its host and leaves fullscreen to the host window
-export const VIEWER_COMMON_PROPS = {
-  style: `height: 100%; border-radius: 0`,
-  fullscreen_toggle: false,
-} as const
+// Every embedded viewer fills its host; its fullscreen toggle follows host.fullscreen
+export const VIEWER_COMMON_PROPS = { style: `height: 100%; border-radius: 0` } as const
 
 // Mount the viewer for `type` into `target` and return the component handle. Throws on a
 // type this table does not know so a new RenderableType cannot silently render nothing.
@@ -123,7 +120,7 @@ export function mount_viewer(
     })
   }
   if (type === `table` || type === `plot`) {
-    // PlotPanel declares no rest props, so the shared style/fullscreen props are not passed
+    // PlotPanel declares no rest props, so the shared style prop is not passed
     return mount(PlotPanel, {
       target,
       props: { data, ...(type === `table` && { initial_type: `table` as const }), on_close },

@@ -8,6 +8,7 @@ import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { readFile } from 'node:fs/promises'
 import {
+  drag_canvas,
   drop_file,
   collect_console_errors,
   expect_centered,
@@ -1501,4 +1502,56 @@ test.describe(`Trajectory Component`, () => {
       await check_viewer(`#vertical-layout`, `vertical`)
     })
   })
+})
+
+// Orbits the viewer's canvas and returns the camera pose the page echoed into `output`.
+const orbit = async (
+  viewer: Locator,
+  output: Locator,
+): Promise<{ target: number[]; position: number[] }> => {
+  const before = await output.textContent()
+  await drag_canvas(viewer.locator(`canvas`).first(), { dx: 80 })
+  await expect(output).not.toHaveText(before ?? ``, { timeout: LOAD_TIMEOUT })
+  return JSON.parse((await output.textContent()) ?? `null`)
+}
+
+// A dataset of unrelated structures read as one trajectory: stepping to a frame with another
+// cell must orbit that cell's center (the first frame's sat at its corner), and a cell three times
+// the size gets a camera backed off to fit it rather than the first frame's close-up.
+test(`stepping to a frame with another cell orbits and frames that cell`, async ({ page }) => {
+  await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+  await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
+    timeout: HYDRATION_TIMEOUT,
+  })
+  const viewer = page.locator(`#dataset-trajectory`)
+  const camera = page.locator(`#dataset-camera`)
+  const distance = ({ target, position }: { target: number[]; position: number[] }) =>
+    Math.hypot(...position.map((coord, axis) => coord - target[axis]))
+  const first = await orbit(viewer, camera)
+  const step_input = viewer.locator(`.step-input`)
+  await step_input.fill(`1`)
+  await step_input.press(`Enter`)
+  await expect(step_input).toHaveValue(`1`)
+  const second = await orbit(viewer, camera)
+  // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
+  expect(second.target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
+  expect(distance(second) / distance(first)).toBeGreaterThan(2)
+})
+
+// A new structure (a new file) is framed afresh on its own center; the frame follow must not
+// shift that fresh framing again by the offset between the old and new cell centers.
+test(`a plain Structure given a new cell orbits that cell's center`, async ({ page }) => {
+  await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
+  await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
+    timeout: HYDRATION_TIMEOUT,
+  })
+  const viewer = page.locator(`#swapped-structure`)
+  const camera = page.locator(`#swap-camera`)
+  expect((await orbit(viewer, camera)).target).toEqual(
+    [2, 2, 2].map((coord) => expect.closeTo(coord, 1)),
+  )
+  await page.locator(`#swap-structure`).click()
+  expect((await orbit(viewer, camera)).target).toEqual(
+    [3, 3, 3].map((coord) => expect.closeTo(coord, 1)),
+  )
 })

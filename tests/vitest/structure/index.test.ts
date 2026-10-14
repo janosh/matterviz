@@ -352,6 +352,26 @@ describe(`structure_fit_frame`, () => {
       expect(extent(structure, opts)).toBeCloseTo(expected, 10)
     },
   )
+
+  test.each([
+    [10, 10, false],
+    [19.9, 10, false],
+    [5.1, 10, false],
+    [21, 10, true],
+    [4.9, 10, true],
+    [1.5, 0, false],
+    [2.5, 0, true],
+  ])(`outgrows_fit(%s, fitted %s) is %s`, (content_extent, fitted, expected) => {
+    expect(struct_utils.outgrows_fit(content_extent, fitted)).toBe(expected)
+  })
+
+  test(`follow_center moves target and position alike, keeping direction and distance`, () => {
+    const pose = { target: [1.5, 1.5, 1.5] as Vec3, position: [11.5, 4.5, 9.5] as Vec3 }
+    expect(struct_utils.follow_center(pose, [1.5, 1.5, 1.5], [2, 2, 4.5])).toEqual({
+      target: [2, 2, 4.5],
+      position: [12, 5, 12.5],
+    })
+  })
 })
 
 describe(`camera helpers`, () => {

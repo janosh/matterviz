@@ -4,7 +4,7 @@
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
   // selected image on the right, with barrier numbers and playback along the path.
   import { DEFAULT_FPS_RANGE } from '#lib/constants.js'
-  import { normalize_show_controls } from '#lib/controls.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -88,6 +88,7 @@
   const dropped_paths = new SvelteMap<string, ReactionPath>()
   let controls_height = $state(0)
   const controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
 
   const merged: ReactionPathInput = $derived({
     ...(paths
@@ -248,10 +249,10 @@
         </span>
       {/if}
 
-      {#if fullscreen || (fullscreen_toggle && controls_config.visible(`fullscreen`))}
+      {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
-          hidden={!fullscreen_toggle || !controls_config.visible(`fullscreen`)}
+          hidden={!show_toggle}
           {wrapper}
           bg_css_var="--neb-bg-fullscreen"
           on_change={on_fullscreen_change}

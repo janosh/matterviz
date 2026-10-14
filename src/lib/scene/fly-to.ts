@@ -44,6 +44,9 @@ const MIN_SIN_ANGLE = 1e-6
 const flights = new WeakMap<FlyToControls, { enabled: boolean; release: () => void }>()
 const locked = new WeakSet<FlyToControls>() // held by a camera flight
 
+// Whether a camera flight holds `controls`: its poses are absolute, so nothing else moves them
+export const flight_holds = (controls: FlyToControls): boolean => locked.has(controls)
+
 // A camera flight ends the fly-to steering `controls` where it is and blocks new ones
 export function lock_fly_to(controls: FlyToControls, lock: boolean): void {
   if (lock) {

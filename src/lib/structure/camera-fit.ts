@@ -37,6 +37,26 @@ const element_radius = (
   overrides?: Partial<Record<ElementSymbol, number>>,
 ): number => overrides?.[element] ?? element_by_symbol.get(element)?.atomic_radius ?? 1
 
+// The camera pose carried from one structure's center to another's: target and position shift
+// by the same offset, so the view direction, distance and any pan stay as the user left them.
+export const follow_center = (
+  pose: { target: Vec3; position: Vec3 },
+  from: Vec3,
+  to: Vec3,
+): { target: Vec3; position: Vec3 } => {
+  const offset = math.subtract(to, from)
+  return { target: math.add(pose.target, offset), position: math.add(pose.position, offset) }
+}
+
+// Whether content of `extent` has outgrown a zoom fitted to `fitted_extent`: more than twice as
+// large or small. A frame within that keeps the zoom, so a volume scan or an NPT cell still shows
+// its change in size; a dataset's 86 Å slab after a 4 Å cell is re-framed instead. Extents
+// floor at 1 Å like the framing distance, so a point-like fit (one hidden atom) is no zero.
+export const outgrows_fit = (extent: number, fitted_extent: number): boolean => {
+  const [size, fitted] = [Math.max(1, extent), Math.max(1, fitted_extent)]
+  return size > 2 * fitted || size < fitted / 2
+}
+
 // Display radius of a site in Å before the global atom_radius scale: the per-element
 // override or atomic radius, occupancy-weighted over a disordered site's species. Normalized
 // by total occupancy so vacancy-containing sites render at full size.

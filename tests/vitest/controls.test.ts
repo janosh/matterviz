@@ -1,5 +1,10 @@
-import { describe, expect, expectTypeOf, it } from 'vitest'
-import { normalize_show_controls, track_settings } from '#lib/controls.js'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { host } from '#lib/host.js'
+import {
+  normalize_show_controls,
+  shows_fullscreen_toggle,
+  track_settings,
+} from '#lib/controls.js'
 
 describe(`normalize_show_controls`, () => {
   it.each([
@@ -134,3 +139,43 @@ describe(`track_settings`, () => {
     track_settings(count_values, { count: `broken` })
   })
 })
+
+// host.fullscreen starts from the Fullscreen API: a VS Code webview's iframe lacks
+// allow="fullscreen" and reports false, a desktop webview or browser page true.
+it.each([
+  [false, false],
+  [true, true],
+  [undefined, true],
+])(`fullscreenEnabled=%s starts host.fullscreen as %s`, async (enabled, expected) => {
+  Object.defineProperty(document, `fullscreenEnabled`, { value: enabled, configurable: true })
+  vi.resetModules()
+  try {
+    const { host: fresh_host } = await import(`#lib/host.js`)
+    expect(fresh_host.fullscreen).toBe(expected)
+  } finally {
+    Reflect.deleteProperty(document, `fullscreenEnabled`)
+    vi.resetModules()
+  }
+})
+
+// The toggle shows only when asked for, visible under show_controls and possible in the host
+it.each([
+  [true, `always`, true, true],
+  [false, `always`, true, false],
+  [true, { hidden: [`fullscreen`] }, true, false],
+  [true, `never`, true, false],
+  [true, `always`, false, false],
+] as const)(
+  `shows_fullscreen_toggle(%s, %j) with host.fullscreen=%s is %s`,
+  (toggle, show_controls, host_fullscreen, expected) => {
+    const orig_fullscreen = host.fullscreen
+    host.fullscreen = host_fullscreen
+    try {
+      expect(shows_fullscreen_toggle(toggle, normalize_show_controls(show_controls))).toBe(
+        expected,
+      )
+    } finally {
+      host.fullscreen = orig_fullscreen
+    }
+  },
+)

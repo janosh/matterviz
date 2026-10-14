@@ -1,5 +1,9 @@
 import type { Vec3 } from '#lib/math.js'
+import type { ElementSymbol } from '#lib/element/index.js'
+import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { DEFAULTS } from '#lib/settings.js'
 import type {
+  AnyStructure,
   BondEditMode,
   BondPair,
   MeasureMode,
@@ -1495,4 +1499,136 @@ test(`active-site highlights resolve the CSS color token where the canvas sits`,
   })
   expect(highlight_colors).toContain(`ff0000`)
   expect(warn.mock.calls.flat().join(` `)).not.toContain(`Unknown color model`)
+})
+
+// Stepping a series carries the camera by the offset its orbit pivot moved: a 4 Å → 5 Å cell
+// moves the cell center +0.5 Å on each axis, H2 → O2 moves the center of mass +5 Å along x.
+// A new series, a fixed-cell MD frame, the user's own edits and a camera flight leave the
+// camera; an active orbit holds the follow until it ends. It follows from the live camera,
+// which auto-rotate moves without syncing the props. A cell more than twice the fitted size
+// is framed afresh on its own center, seen along the live view direction.
+type FollowStep = {
+  from?: AnyStructure
+  to: AnyStructure
+  series?: string
+  measure_mode?: MeasureMode
+  orbiting?: boolean
+  live?: Vec3
+  clear_target?: boolean
+  flight?: boolean
+}
+const follow_crystal = (edge: number, moved = false): AnyStructure =>
+  make_crystal(edge, [[`Fe`, [moved ? 0.3 : 0, 0, 0]]])
+const dimer = (element: ElementSymbol, x_coord: number): AnyStructure => ({
+  sites: [
+    make_site(element, [0, 0, 0], [x_coord, 0, 0], element),
+    make_site(element, [0, 0, 0], [x_coord + 1, 0, 0], element),
+  ],
+})
+test.each<[string, FollowStep, Vec3 | `reframe`]>([
+  [`a new cell in the series`, { to: follow_crystal(5) }, [0.5, 0.5, 0.5]],
+  [`a fixed-cell MD frame`, { to: follow_crystal(4, true) }, [0, 0, 0]],
+  [`a new series`, { to: follow_crystal(5), series: `other` }, [0, 0, 0]],
+  [`an atom edit`, { to: follow_crystal(5), measure_mode: `edit-atoms` }, [0, 0, 0]],
+  [`a new cell mid-orbit`, { to: follow_crystal(5), orbiting: true }, [0.5, 0.5, 0.5]],
+  [
+    `a new cell while auto-rotating`,
+    { to: follow_crystal(5), live: [2, 2, 14] },
+    [0.5, 0.5, 0.5],
+  ],
+  [
+    `a new cell after the target was cleared`,
+    { to: follow_crystal(5), clear_target: true },
+    [0.5, 0.5, 0.5],
+  ],
+  [`a new cell during a camera flight`, { to: follow_crystal(5), flight: true }, [0, 0, 0]],
+  [`a molecule of the same size`, { from: dimer(`H`, 0), to: dimer(`O`, 5) }, [5, 0, 0]],
+  [`a cell far larger than the fit`, { to: follow_crystal(12), live: [2, 14, 2] }, `reframe`],
+])(`camera follow on %s`, (_label, step, offset) => {
+  const pose: { target: Vec3; position: Vec3 } = { target: [2, 2, 2], position: [12, 7, 9] }
+  const state = $state<{
+    structure: AnyStructure
+    series_key: string
+    measure_mode: MeasureMode
+    camera_is_moving: boolean
+    camera_target?: Vec3
+    camera_position: Vec3
+  }>({
+    structure: step.from ?? follow_crystal(4),
+    series_key: `series`,
+    measure_mode: `distance`,
+    camera_is_moving: false,
+    camera_target: pose.target,
+    camera_position: pose.position,
+  })
+  let controls: ComponentProps<typeof StructureScene>[`orbit_controls`]
+  let live_camera: ComponentProps<typeof StructureScene>[`camera`]
+  const { canvas, unmount_scene } = mount_scene((anchor) =>
+    StructureScene(
+      anchor,
+      bind_props(
+        {
+          width: 800,
+          height: 600,
+          show_bonds: `never` as const,
+          gizmo: false,
+          get orbit_controls() {
+            return controls
+          },
+          set orbit_controls(value) {
+            controls = value
+          },
+          get camera() {
+            return live_camera
+          },
+          set camera(value) {
+            live_camera = value
+          },
+        },
+        state,
+      ),
+    ),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  expect(state.camera_target).toEqual(pose.target)
+  if (step.live) live_camera?.position.set(...step.live)
+  if (step.clear_target) {
+    state.camera_target = undefined
+    flushSync()
+  }
+  if (step.flight) {
+    const lease = camera_flight_registry.get(canvas)?.begin()
+    onTestFinished(() => lease?.restore())
+  }
+  Object.assign(state, {
+    structure: step.to,
+    series_key: step.series ?? state.series_key,
+    measure_mode: step.measure_mode ?? state.measure_mode,
+    camera_is_moving: step.orbiting ?? false,
+  })
+  flushSync()
+  if (step.orbiting) {
+    expect(state.camera_target).toEqual(pose.target)
+    state.camera_is_moving = false
+    flushSync()
+  }
+  const { camera_target, camera_position } = state
+  if (!camera_target) throw new Error(`Missing camera target`)
+  if (offset === `reframe`) {
+    const { center } = camera_fit.structure_fit_frame(step.to, {
+      atom_radius_scale: DEFAULTS.structure.atom_radius,
+    })
+    const view = camera_position.map((coord, axis) => coord - camera_target[axis])
+    expect(camera_target).toEqual(center.map((coord) => expect.closeTo(coord, 9)))
+    // along the live view (+y), not the prop one, backed off past the 12 Å cell
+    expect([view[0], view[2]]).toEqual([expect.closeTo(0, 9), expect.closeTo(0, 9)])
+    expect(view[1]).toBeGreaterThan(12)
+    return
+  }
+  const shifted = (vec: Vec3) => vec.map((coord, axis) => coord + offset[axis])
+  expect(camera_target).toEqual(shifted(pose.target).map((coord) => expect.closeTo(coord, 9)))
+  expect(camera_position).toEqual(
+    shifted(step.live ?? pose.position).map((coord) => expect.closeTo(coord, 9)),
+  )
 })

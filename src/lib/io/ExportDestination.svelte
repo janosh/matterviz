@@ -7,15 +7,27 @@
     disabled = false,
   }: { state: FileExportState; disabled?: boolean } = $props()
   let choosing = $state(false)
-  const directory_picker = (
-    globalThis as typeof globalThis & {
-      showDirectoryPicker?: (options: {
-        id: string
-        mode: `readwrite`
-        startIn: FileSystemDirectoryHandle | `downloads`
-      }) => Promise<FileSystemDirectoryHandle>
+  // Chromium defines showDirectoryPicker in every frame but rejects it in one cross-origin to
+  // the top-level page (a VS Code webview, a notebook's output iframe). Reading the top frame's
+  // origin throws exactly there, so that read is the feature test.
+  const same_origin_as_top = (): boolean => {
+    try {
+      return globalThis.top?.location.origin === globalThis.location.origin
+    } catch {
+      return false
     }
-  ).showDirectoryPicker
+  }
+  const directory_picker = same_origin_as_top()
+    ? (
+        globalThis as typeof globalThis & {
+          showDirectoryPicker?: (options: {
+            id: string
+            mode: `readwrite`
+            startIn: FileSystemDirectoryHandle | `downloads`
+          }) => Promise<FileSystemDirectoryHandle>
+        }
+      ).showDirectoryPicker
+    : undefined
 
   async function choose_folder() {
     if (!directory_picker || choosing) return
@@ -48,30 +60,29 @@
       title="Base file name; the selected format adds its extension"
     />
   </label>
-  <div class="destination-row">
-    <span>Save to</span>
-    <span class="folder-name" title={export_state.directory?.name}>
-      {export_state.directory ? `${export_state.directory.name}/` : `Browser downloads`}
-    </span>
-    <button
-      type="button"
-      aria-label="Choose export folder"
-      onclick={choose_folder}
-      disabled={!directory_picker}
-      title={directory_picker
-        ? `Choose a folder before exporting`
-        : `Folder selection is not supported by this browser`}>Choose folder…</button
-    >
-    {#if export_state.directory}
+  <!-- Only a browser that can pick a folder has a destination to choose; elsewhere exports go
+    where the browser or the host app's download hook sends them, which this row cannot name -->
+  {#if directory_picker}<div class="destination-row">
+      <span>Save to</span>
+      <span class="folder-name" title={export_state.directory?.name}>
+        {export_state.directory ? `${export_state.directory.name}/` : `Browser downloads`}
+      </span>
       <button
         type="button"
-        aria-label="Use browser downloads"
-        onclick={() => (export_state.directory = null)}
+        aria-label="Choose export folder"
+        onclick={choose_folder}
+        title="Choose a folder before exporting">Choose folder…</button
       >
-        Reset
-      </button>
-    {/if}
-  </div>
+      {#if export_state.directory}
+        <button
+          type="button"
+          aria-label="Use browser downloads"
+          onclick={() => (export_state.directory = null)}
+        >
+          Reset
+        </button>
+      {/if}
+    </div>{/if}
 </fieldset>
 {#if export_state.filename_error || export_state.error}
   <div role="alert">{export_state.filename_error || export_state.error}</div>

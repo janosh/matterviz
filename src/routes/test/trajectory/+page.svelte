@@ -2,6 +2,7 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+  import { Structure } from '#lib/structure/index.js'
   import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
   import { onMount } from 'svelte'
 
@@ -74,6 +75,46 @@
     metadata: { source_format: `test_data`, frame_count: 1, total_atoms: 1 },
   })
 
+  // Unrelated structures read as one trajectory (a benchmark set): a 2 Å, then a 6 Å cubic cell.
+  const cubic_frame = (step: number, edge: number): TrajectoryFrame => ({
+    step,
+    structure: {
+      sites: [
+        {
+          species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
+          abc: [0.5, 0.5, 0.5],
+          xyz: [edge / 2, edge / 2, edge / 2],
+          label: `Fe1`,
+          properties: {},
+        },
+      ],
+      charge: 0,
+      lattice: {
+        matrix: [
+          [edge, 0, 0],
+          [0, edge, 0],
+          [0, 0, edge],
+        ],
+        a: edge,
+        b: edge,
+        c: edge,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: edge ** 3,
+        pbc: [true, true, true],
+      },
+    },
+    metadata: {},
+  })
+  const dataset_trajectory = trajectory_from_frames([cubic_frame(0, 2), cubic_frame(1, 6)], {
+    metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
+  })
+  let dataset_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
+  // A plain Structure handed a new structure (a new file): a 4 Å, then a 6 Å cell
+  let swapped = $state(false)
+  let swap_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
+
   let current_step = $state(0)
   let hydrated = $state(false)
   const single_viewer = $derived(browser && page.url.searchParams.has(`single-viewer`))
@@ -100,6 +141,26 @@
 />
 
 {#if !single_viewer}
+  <Trajectory
+    id="dataset-trajectory"
+    trajectory={dataset_trajectory}
+    show_controls="always"
+    structure_props={{
+      on_camera_move: ({ camera_target, camera_position }) =>
+        (dataset_camera = { target: camera_target, position: camera_position }),
+    }}
+  />
+  <output id="dataset-camera">{JSON.stringify(dataset_camera)}</output>
+
+  <button id="swap-structure" onclick={() => (swapped = true)}>Swap structure</button>
+  <Structure
+    id="swapped-structure"
+    structure={cubic_frame(0, swapped ? 6 : 4).structure}
+    on_camera_move={({ camera_target, camera_position }) =>
+      (swap_camera = { target: camera_target, position: camera_position })}
+  />
+  <output id="swap-camera">{JSON.stringify(swap_camera)}</output>
+
   <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
 
   <Trajectory

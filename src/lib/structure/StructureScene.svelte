@@ -34,6 +34,7 @@
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
+    flight_holds,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -66,6 +67,8 @@
     perspective_distance_for_extent,
     site_base_radius,
     structure_fit_frame,
+    follow_center,
+    outgrows_fit,
   } from '#lib/structure/index.js'
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import { resolve_arrow_size } from './vectors'
@@ -232,6 +235,7 @@
     atom_label,
     atom_tooltip,
     camera_is_moving = $bindable(false),
+    series_key = undefined,
     width = 0,
     height = 0,
     measure_mode = `distance`,
@@ -375,6 +379,7 @@
     site_label_color?: string
     site_label_padding?: number
     camera_is_moving?: boolean // bindable: true while orbit controls are active
+    series_key?: unknown // changes with a new series (file); frames within one share it
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
@@ -1183,33 +1188,78 @@
     },
   })
 
+  // Fits the zoom to the current content and places the camera on `target`, looking along
+  // `direction` (missing/zero: the default angled view).
+  const frame_camera = (target: Vec3, direction: Vec3 | null | undefined): void => {
+    fit.refit()
+    scene_camera.reset_to_fit()
+    // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
+    const distance =
+      camera_projection === `perspective`
+        ? perspective_distance_for_extent(
+            Math.max(1, fit_extent),
+            width,
+            height,
+            effective_fov,
+          )
+        : Math.max(1, fit_extent) * 2
+    camera_target = target
+    get_reset_target = () => target
+    camera_position = camera_position_for_target(target, distance, direction)
+    // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
+    clear_pan_offset(untrack(() => camera))
+  }
   $effect.pre(() => {
     const previous_view = camera_fit_cache.previous_view
     const view_changed = previous_view !== undefined && previous_view !== camera_view
     const should_fit = camera_needs_fit(camera_position, previous_view, camera_view)
     camera_fit_cache.previous_view = camera_view
-    // Auto-place at content center; missing/zero camera_direction → default angled view.
-    if (should_fit && structure && measured()) {
-      fit.refit()
-      scene_camera.reset_to_fit()
-      // Orthographic framing is controlled by zoom; its camera only needs a safe standoff.
-      const distance =
-        camera_projection === `perspective`
-          ? perspective_distance_for_extent(
-              Math.max(1, fit_extent),
-              width,
-              height,
-              effective_fov,
-            )
-          : Math.max(1, fit_extent) * 2
-      const target = view_changed ? fit_frame.center : (camera_target ?? fit_frame.center)
-      if (view_changed || camera_target === undefined) camera_target = target
-      get_reset_target = () => target
-      camera_position = camera_position_for_target(target, distance, camera_direction)
-      // a fresh framing starts unpanned; the pan lives on the camera, not in camera_target
-      clear_pan_offset(untrack(() => camera))
-    }
+    if (should_fit && structure && measured())
+      frame_camera(
+        view_changed ? fit_frame.center : (camera_target ?? fit_frame.center),
+        camera_direction,
+      )
   })
+  // Within a series (series_key), a frame whose orbit pivot moved (a new cell, a dataset's next
+  // structure, a molecule's drifting center of mass) carries the camera by that offset, keeping
+  // the user's view; fixed-cell MD frames leave it where it is. A new series is framed afresh or
+  // keeps the caller's pose (Structure's series effect), so it is never carried; neither are the
+  // user's own atom edits or a camera flight, whose poses are absolute. While the user orbits,
+  // the frame it follows from is held, so a cell changing every frame (NPT playback) moves the
+  // camera once the gesture ends instead of fighting it. Non-reactive: compares successive
+  // frames only.
+  let followed_frame: { series: unknown; center: Vec3 } | undefined
+  $effect.pre(() => {
+    if (!structure || dragging_atoms || camera_is_moving) return
+    const frame = { series: series_key, center: rotation_target }
+    const previous = followed_frame
+    followed_frame = frame
+    if (
+      !previous ||
+      previous.series !== frame.series ||
+      previous.center.every((coord, axis) => coord === frame.center[axis])
+    )
+      return
+    untrack(() => {
+      if (measure_mode === `edit-atoms` || !camera || !orbit_controls) return
+      // Nothing framed yet (a viewer mounted at 0x0), or a flight owns the camera
+      if (camera_position === undefined || flight_holds(orbit_controls)) return
+      // The live pose, not the props: auto-rotate and a damped glide move the camera without
+      // syncing them, and a stale prop pose would snap the camera back
+      const pose = {
+        target: orbit_controls.target.toArray(),
+        position: camera.position.toArray(),
+      }
+      // A structure far larger or smaller than the zoom was fitted to is framed afresh, seen
+      // from where the user was looking
+      if (outgrows_fit(fit_extent, fit.fitted_extent))
+        return frame_camera(fit_frame.center, math.subtract(pose.position, pose.target))
+      const moved = follow_center(pose, previous.center, frame.center)
+      camera_target = moved.target
+      camera_position = moved.position
+    })
+  })
+
   // Declutter while a symmetry-element overlay actually draws something (elements present
   // AND an enabled kind among them): hide coordination polyhedra/bonds and shrink atoms so
   // axes/planes/centers stay readable. Gating on visibility (not just `symmetry_elements`)
