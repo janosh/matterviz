@@ -1,5 +1,5 @@
 import NebPlot from '#lib/neb/NebPlot.svelte'
-import { configure_host } from '#lib/host.js'
+import { host } from '#lib/host.js'
 import NebViewer from '#lib/neb/NebViewer.svelte'
 import { path_spline } from '#lib/neb/reaction-path.js'
 import { format_num } from '#lib/labels.js'
@@ -334,7 +334,7 @@ describe(`NebViewer`, () => {
     `a host with fullscreen=%s gets the toggle and its f shortcut only if true`,
     async (fullscreen) => {
       mock_fullscreen()
-      configure_host({ fullscreen })
+      host.fullscreen = fullscreen
       try {
         const state = $state({ fullscreen: false })
         const viewer = await mount_viewer(bind_props({ paths: direct_path }, state))
@@ -345,7 +345,7 @@ describe(`NebViewer`, () => {
         await tick()
         expect(state.fullscreen).toBe(fullscreen)
       } finally {
-        configure_host({ fullscreen: true })
+        host.fullscreen = true
       }
     },
   )

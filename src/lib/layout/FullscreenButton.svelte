@@ -49,7 +49,7 @@
   // Chords stay with the browser (Cmd/Ctrl+F is find-in-page) and typing is left alone.
   $effect(() => {
     const root = wrapper
-    // A host that cannot fullscreen an element (configure_host) offers neither button nor key.
+    // A host that cannot fullscreen an element (host.fullscreen) offers neither button nor key.
     if (!root || !host.fullscreen) return
     root.setAttribute(VIEWER_ATTR, ``)
     const handle = (event: KeyboardEvent) => {
