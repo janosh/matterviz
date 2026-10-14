@@ -80,7 +80,7 @@ const opacity_setting = (value: number, description: string): SettingType<number
 })
 const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   value: true,
-  description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
+  description: `Show fullscreen toggle button (where the page may fullscreen an element)`,
   web_only: true,
 })
 

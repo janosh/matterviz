@@ -328,8 +328,8 @@ describe(`NebViewer`, () => {
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
   })
 
-  // A host whose window cannot follow an element fullscreen turns the toggle and its `f`
-  // shortcut off for every viewer at once.
+  // A host that cannot fullscreen an element turns the toggle and its `f` shortcut off for
+  // every viewer at once.
   test.each([true, false])(
     `a host with fullscreen=%s gets the toggle and its f shortcut only if true`,
     async (fullscreen) => {
