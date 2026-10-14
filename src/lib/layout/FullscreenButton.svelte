@@ -8,6 +8,7 @@
   import { forward_window_keydown } from 'svelte-widgets/attachments'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { host } from '#lib/host.js'
 
   // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
   // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to
@@ -48,7 +49,8 @@
   // Chords stay with the browser (Cmd/Ctrl+F is find-in-page) and typing is left alone.
   $effect(() => {
     const root = wrapper
-    if (!root) return
+    // A host that cannot fullscreen an element (configure_host) offers neither button nor key.
+    if (!root || !host.fullscreen) return
     root.setAttribute(VIEWER_ATTR, ``)
     const handle = (event: KeyboardEvent) => {
       if (hidden) return false
@@ -70,18 +72,18 @@
   })
 </script>
 
-<WidgetFullscreenButton
-  bind:fullscreen
-  {wrapper}
-  {...rest}
-  icons={{
-    // Fill 76.8% of the icon box to visually balance the rounded gear.
-    enter: { ...Fullscreen, viewBox: `2.885417 2.885417 18.229166 18.229166` },
-    exit: { ...ExitFullscreen, viewBox: `1.583333 1.583333 20.833334 20.833334` },
-    ...rest.icons,
-  }}
-  {hidden}
-  style={[rest.style, shortcut_flash.style(`fullscreen`), hidden && `display: none`]
-    .filter(Boolean)
-    .join(`; `)}
-/>
+{#if host.fullscreen}<WidgetFullscreenButton
+    bind:fullscreen
+    {wrapper}
+    {...rest}
+    icons={{
+      // Fill 76.8% of the icon box to visually balance the rounded gear.
+      enter: { ...Fullscreen, viewBox: `2.885417 2.885417 18.229166 18.229166` },
+      exit: { ...ExitFullscreen, viewBox: `1.583333 1.583333 20.833334 20.833334` },
+      ...rest.icons,
+    }}
+    {hidden}
+    style={[rest.style, shortcut_flash.style(`fullscreen`), hidden && `display: none`]
+      .filter(Boolean)
+      .join(`; `)}
+  />{/if}
