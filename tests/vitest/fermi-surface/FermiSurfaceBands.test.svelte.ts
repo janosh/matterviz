@@ -114,7 +114,13 @@ test.each<[string, number[], number, [number, number, number][]]>([
 test(`hover previews a band point's energy, a click pins it and isolates the band`, async () => {
   // extraction runs on animation frames: fake them to step it deterministically
   vi.useFakeTimers({
-    toFake: [`setTimeout`, `clearTimeout`, `requestAnimationFrame`, `cancelAnimationFrame`],
+    toFake: [
+      `setTimeout`,
+      `clearTimeout`,
+      `requestAnimationFrame`,
+      `cancelAnimationFrame`,
+      `performance`,
+    ],
   })
   onTestFinished(() => {
     vi.useRealTimers()
@@ -130,6 +136,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
     fermi_props: { controls_open: true }, // its band checkboxes show the sheets displayed
     bands_props: {
       point_tween: { duration: 0 },
+      line_tween: { duration: 0 }, // paths jump to where the (untweened) dots are
       style: `width: 600px; height: 400px`,
       on_plot_click,
       header_controls: createRawSnippet(() => ({ render: () => `<i class="caller"></i>` })),
@@ -309,7 +316,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
     [`up_only`, fermi_dots],
   ] as const) {
     props.bands_props = { ...props.bands_props, band_spin_mode }
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(50)
     flushSync()
     expect_dots(dots())
   }
