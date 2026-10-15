@@ -813,11 +813,14 @@ export async function expect_combined_fullscreen(
   await expect.poll(async () => Math.min(...(await heights()))).toBeGreaterThan(min_height)
   await expect(button).toHaveAttribute(`aria-pressed`, `true`)
   await container.evaluate(() => document.exitFullscreen())
+  // the button's flag follows the browser's exit (else a click would toggle a stale flag off)
+  await expect(button).toHaveAttribute(`aria-pressed`, `false`)
   const max_drift = async () =>
     Math.max(...(await heights()).map((height, idx) => Math.abs(height - inline_heights[idx])))
   await expect.poll(max_drift).toBeLessThan(0.5)
   for (const fullscreen of [true, false]) {
     await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
+    await expect(button).toHaveAttribute(`aria-pressed`, String(!fullscreen))
     await button.click()
     await expect.poll(is_fullscreen).toBe(fullscreen)
   }
