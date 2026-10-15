@@ -20,6 +20,8 @@ import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
 import { afterEach, assert, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
+  BAD_ROW_CIF,
+  cif_with_rows,
   IDENTITY_MATRIX3,
   make_crystal,
   read_binary_test_file,
@@ -84,19 +86,17 @@ test.each([
 
 // Recoverable parser issues ride on the structure/volumetric result into the mounted viewer,
 // and nothing is logged: the viewer's notice is where they are shown
-const warn_cif = (rows: string) =>
-  `data_t\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${rows}`
 test.each([
   [
     `a CIF row with bad coordinates`,
     `bad.cif`,
-    warn_cif(`Si1 Si 0 0 0\nSi2 Si abc 0 0`),
+    BAD_ROW_CIF,
     /^CIF: skipped 1 atom-site row: /,
   ],
   [
     `ambiguous CIF labels`,
     `amb.cif`,
-    warn_cif(`CO1 . 0 0 0`),
+    cif_with_rows(`CO1 . 0 0 0`),
     /ambiguous all-caps atom-site labels.*'CO1' read as Co/,
   ],
   [

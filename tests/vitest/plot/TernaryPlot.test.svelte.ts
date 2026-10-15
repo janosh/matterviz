@@ -134,15 +134,6 @@ describe(`TernaryPlot`, () => {
     expect(markers(plot)).toHaveLength(0)
   })
 
-  // tooltip=false hides the tooltip but keeps the hover handlers
-  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    const on_point_hover = vi.fn()
-    const plot = await mount_ternary({ series, on_point_hover, tooltip })
-    await fire(markers(plot)[1], mouse(`mousemove`, { clientX: 100, clientY: 100 }))
-    expect(on_point_hover).toHaveBeenCalledOnce()
-    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
-  })
-
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {
     const on_point_hover = vi.fn()
     const bound = $state({ series, labels: [`Fe`, `Ni`, `Cr`] as const })

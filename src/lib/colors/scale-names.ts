@@ -1,6 +1,7 @@
 // d3 color scheme names and the ColorScale data guard, kept free of Svelte modules so worker
 // bundles (settings validation in parse workers) can import them
 import * as d3_sc from 'd3-scale-chromatic'
+import type { Vec2 } from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { is_plain_object } from '#lib/utils.js'
 
@@ -24,6 +25,10 @@ const is_pair = (
   is_item: (item: unknown) => boolean,
 ): value is [unknown, unknown] =>
   Array.isArray(value) && value.length === 2 && value.every(is_item)
+// A palette slice: two distinct fractions in [0, 1], descending to run the scheme backwards
+export const is_palette_range = (value: unknown): value is Vec2 =>
+  is_pair(value, (end) => typeof end === `number` && end >= 0 && end <= 1) &&
+  value[0] !== value[1]
 const is_scale_type = (type: unknown): boolean =>
   [`linear`, `log`, `arcsinh`, `time`].some((name) => name === type) ||
   (is_plain_object(type) &&
@@ -43,9 +48,7 @@ export function is_color_scale(value: unknown): value is ColorScale {
     (type === undefined || is_scale_type(type)) &&
     (scheme === undefined || (typeof scheme === `string` && is_d3_interpolate_name(scheme))) &&
     (value_range === undefined || is_pair(value_range, is_range_end)) &&
-    (palette_range === undefined ||
-      (is_pair(palette_range, (end) => typeof end === `number` && end >= 0 && end <= 1) &&
-        palette_range[0] !== palette_range[1]))
+    (palette_range === undefined || is_palette_range(palette_range))
   )
 }
 export const get_d3_interpolator = (

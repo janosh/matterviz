@@ -14,7 +14,7 @@ import {
 } from '#lib/shortcuts.js'
 import { type Component, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { fire } from './setup'
+import { fire, keydown } from './setup'
 
 vi.mock(`#lib/scene/camera-reset.js`, async (original) => ({
   ...(await original<typeof camera_reset>()),
@@ -33,8 +33,10 @@ const create_root = (parent: HTMLElement = document.body): HTMLDivElement => {
   parent.append(root)
   return root
 }
+const key_event = (key: string, init: KeyboardEventInit = {}) =>
+  keydown(key, { cancelable: true, ...init })
 const press = (key: string, init: KeyboardEventInit = {}, target: EventTarget = globalThis) =>
-  fire(target, new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true, ...init }))
+  fire(target, key_event(key, init))
 
 describe(`shortcut registry`, () => {
   test.each([
@@ -81,12 +83,7 @@ describe(`viewer_keys`, () => {
     const action = vi.fn()
     const detach = viewer_keys(() => ({ x: action }))(root)
     if (via === `hover`) root.dispatchEvent(new PointerEvent(`pointerenter`))
-    const event = new KeyboardEvent(`keydown`, {
-      key,
-      bubbles: true,
-      cancelable: true,
-      ...init,
-    })
+    const event = key_event(key, init)
     await fire(via === `focus` ? button : globalThis, event)
     expect(action).toHaveBeenCalledTimes(handled ? 1 : 0)
     expect(event.defaultPrevented).toBe(handled)
@@ -99,14 +96,9 @@ describe(`viewer_keys`, () => {
     root.append(input)
     const action = vi.fn(() => false)
     viewer_keys(() => ({ x: action, Escape: action }))(root)
-    const typed = new KeyboardEvent(`keydown`, { key: `x`, bubbles: true, cancelable: true })
-    await fire(input, typed)
+    await press(`x`, {}, input)
     expect(action).not.toHaveBeenCalled()
-    const escape = new KeyboardEvent(`keydown`, {
-      key: `Escape`,
-      bubbles: true,
-      cancelable: true,
-    })
+    const escape = key_event(`Escape`)
     await fire(root, escape)
     expect(action).toHaveBeenCalledOnce()
     expect(escape.defaultPrevented).toBe(false)

@@ -126,16 +126,12 @@ describe(`HeatmapMatrixControls`, () => {
       expect(matrices[1].querySelector(selector)).toBeNull()
     }
     // the color bar shows by default; its toggle hides only this heatmap's
-    expect([...matrices].map((matrix) => Boolean(matrix.querySelector(`.colorbar`)))).toEqual([
-      true,
-      true,
-    ])
+    const color_bars = () =>
+      [...matrices].map((matrix) => Boolean(matrix.querySelector(`.colorbar`)))
+    expect(color_bars()).toEqual([true, true])
     query<HTMLInputElement>(setting(1, `Color bar`), `input`).click()
     await tick()
-    expect([...matrices].map((matrix) => Boolean(matrix.querySelector(`.colorbar`)))).toEqual([
-      true,
-      false,
-    ])
+    expect(color_bars()).toEqual([true, false])
     for (const pane_idx of [1, 0]) {
       const unchanged = labels(1 - pane_idx)
       const search = query<HTMLInputElement>(setting(pane_idx, `Search`), `input`)

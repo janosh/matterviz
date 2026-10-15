@@ -61,6 +61,7 @@ import {
   set_input,
 } from '../setup'
 import {
+  BAD_ROW_CIF,
   fcc_primitive_matrix,
   IDENTITY_MATRIX3,
   init_moyo_for_tests,
@@ -241,19 +242,8 @@ test(`parse warnings render as a dismissible notice and reset on the next load`,
   expect(doc_query(`.viewer-notices > .parse-warnings`).textContent).toContain(
     `1 parse warning: host warning`,
   )
-  const cell = [`a`, `b`, `c`].map((axis) => `_cell_length_${axis} 5`)
-  const angles = [`alpha`, `beta`, `gamma`].map((angle) => `_cell_angle_${angle} 90`)
-  const loop = [
-    `loop_`,
-    ...[`label`, `type_symbol`, `fract_x`, `fract_y`, `fract_z`].map(
-      (tag) => `_atom_site_${tag}`,
-    ),
-  ]
-  const cif = [`data_t`, ...cell, ...angles, ...loop, `Si1 Si 0 0 0`, `Si2 Si abc 0 0`].join(
-    `\n`,
-  )
   const zone = doc_query(`.structure`)
-  zone.dispatchEvent(create_drop_event(new File([cif], `bad.cif`)))
+  zone.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `bad.cif`)))
   await vi.waitFor(() =>
     expect(state.parse_warnings).toEqual([
       expect.stringMatching(/^CIF: skipped 1 atom-site row/),

@@ -67,6 +67,7 @@ describe(`extract_prop_docs`, () => {
       {
         name: `on_point_click`,
         type: `(data: TernaryPointProps<Metadata> & { event: MouseEvent | KeyboardEvent }) => void`,
+        description: `Called when a marker is clicked or activated by keyboard`,
       },
     ],
     [
@@ -89,17 +90,9 @@ describe(`extract_prop_docs`, () => {
         required: true,
       },
     ],
-    // typed through Pick<ComponentProps<typeof ScatterPlot>, ...>, i.e. another component's props
-    [
-      `XrdPlot`,
-      `x_axis`,
-      {
-        name: `x_axis`,
-        type: `AxisConfig`,
-        default: `{}`,
-        description: `Grouped configuration for plot axes and display settings`,
-      },
-    ],
+    // typed through Pick<ComponentProps<typeof ScatterPlot>, ...>, i.e. another component's
+    // props; PlotConfig's comment over x_axis heads all its uncommented members, no description
+    [`XrdPlot`, `x_axis`, { name: `x_axis`, type: `AxisConfig`, default: `{}` }],
   ])(`%s.%s`, (component, name, expected) => {
     expect(prop(component, name)).toEqual(expected)
   })

@@ -80,7 +80,7 @@
     tick_format = `.0%`,
     color_scale = `interpolateViridis`,
     color_bar = {},
-    padding = DEFAULT_PADDING,
+    padding = DEFAULT_PADDING, // px around the triangle for corner and tick labels
     legend = {},
     show_legend,
     tooltip,
@@ -110,13 +110,17 @@
       show_ticks?: boolean
       tick_format?: string // d3-format spec applied to fractions in [0, 1]
       color_scale?: ColorScale // value_range defaults to the extent of all color_values
+      // ColorBar props for the color_values scale, shown below the triangle; null hides it
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
-      legend?: LegendConfig | null
+      legend?: LegendConfig | null // series legend props; null hides it
       show_legend?: boolean
+      // Hover tooltip: a snippet of the point replaces the default content, false hides it
       tooltip?: TooltipProp<TernaryPointProps<Metadata>>
+      // Called when a marker is clicked or activated by keyboard
       on_point_click?: (
         data: TernaryPointProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called when a marker is hovered or focused, with null once it is left
       on_point_hover?: (
         data: (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void

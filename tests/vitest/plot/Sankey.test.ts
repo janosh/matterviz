@@ -136,18 +136,6 @@ describe(`Sankey`, () => {
     },
   )
 
-  // tooltip=false hides the tooltip but keeps the hover handlers
-  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    const on_node_hover = vi.fn()
-    const plot = await mount_sized_sankey({ data, on_node_hover, tooltip })
-    await fire(
-      plot.querySelector(`.nodes rect`),
-      mouse(`mousemove`, { clientX: 30, clientY: 40 }),
-    )
-    expect(on_node_hover).toHaveBeenCalledOnce()
-    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
-  })
-
   test(`hovering a node then a link swaps the tooltip and fires each callback once`, async () => {
     const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]
     const plot = await mount_sized_sankey({ data, on_node_hover, on_link_hover })

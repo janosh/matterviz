@@ -64,25 +64,20 @@ describe(`EmptyState`, () => {
 describe(`charts overlay the shared empty state exactly while they have no data`, () => {
   const xy = { x: [1, 2], y: [3, 4] }
   const hierarchy = [{ id: `a`, value: 1 }]
+  const none = { series: [] }
   type Props = Record<string, unknown>
   // Each chart demands its own data props; the table feeds them all one loose shape
-  const chart = (component: unknown) => component as Component<Props>
-  test.each<[string, Component<Props>, Props, Props]>([
-    [`.scatter`, chart(ScatterPlot), { series: [] }, { series: [xy] }],
+  test.each<[string, unknown, Props, Props]>([
+    [`.scatter`, ScatterPlot, none, { series: [xy] }],
     // reference lines and surfaces are content too
-    [
-      `.scatter`,
-      chart(ScatterPlot),
-      { series: [] },
-      { series: [], ref_lines: [{ type: `horizontal`, y: 3 }] },
-    ],
-    [`.binned-scatter`, chart(BinnedScatterPlot), { series: [] }, { series: [xy] }],
-    [`.histogram`, chart(Histogram), { series: [] }, { series: [{ values: [1, 2] }] }],
-    [`.bar-plot`, chart(BarPlot), { series: [] }, { series: [xy] }],
-    [`.box-plot`, chart(BoxPlot), { series: [] }, { series: [{ y: [1, 2, 3] }] }],
+    [`.scatter`, ScatterPlot, none, { ref_lines: [{ type: `horizontal`, y: 3 }] }],
+    [`.binned-scatter`, BinnedScatterPlot, none, { series: [xy] }],
+    [`.histogram`, Histogram, none, { series: [{ values: [1, 2] }] }],
+    [`.bar-plot`, BarPlot, none, { series: [xy] }],
+    [`.box-plot`, BoxPlot, none, { series: [{ y: [1, 2, 3] }] }],
     [
       `.sankey`,
-      chart(Sankey),
+      Sankey,
       { data: { nodes: [], links: [] } },
       {
         data: {
@@ -91,27 +86,17 @@ describe(`charts overlay the shared empty state exactly while they have no data`
         },
       },
     ],
-    [`.sunburst`, chart(Sunburst), { data: [] }, { data: hierarchy }],
-    [`.treemap`, chart(Treemap), { data: [] }, { data: hierarchy }],
-    [
-      `.ternary`,
-      chart(TernaryPlot),
-      { series: [] },
-      { series: [{ points: [[0.2, 0.3, 0.5]] }] },
-    ],
-    [`.scatter-3d`, chart(ScatterPlot3D), { series: [] }, { series: [{ ...xy, z: [5, 6] }] }],
-    [
-      `.scatter-3d`,
-      chart(ScatterPlot3D),
-      { series: [] },
-      { series: [], surfaces: [{ type: `grid`, z_fn: (x: number, y: number) => x * y }] },
-    ],
+    [`.sunburst`, Sunburst, { data: [] }, { data: hierarchy }],
+    [`.treemap`, Treemap, { data: [] }, { data: hierarchy }],
+    [`.ternary`, TernaryPlot, none, { series: [{ points: [[0.2, 0.3, 0.5]] }] }],
+    [`.scatter-3d`, ScatterPlot3D, none, { series: [{ ...xy, z: [5, 6] }] }],
+    [`.scatter-3d`, ScatterPlot3D, none, { surfaces: [{ type: `grid`, z_fn: () => 1 }] }],
   ])(`%s`, async (selector, component, empty_props, data_props) => {
     for (const [props, expected] of [
       [empty_props, `No data to display`],
       [data_props, null],
     ] as const) {
-      const root = await mount_sized(component, props, { selector })
+      const root = await mount_sized(component as Component<Props>, props, { selector })
       const overlay = root.querySelector(`.empty-state.overlay[role="status"]`)
       expect(overlay?.textContent ?? null).toBe(expected)
       root.parentElement?.remove()

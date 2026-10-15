@@ -384,22 +384,6 @@ describe(`BoxPlot`, () => {
     expect(fills).toEqual([`#ff0000`, `#00ff00`])
   })
 
-  // tooltip=false hides the tooltip but keeps the hover handlers
-  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    const on_box_hover = vi.fn()
-    const plot = await mount_sized_box_plot({
-      series: [{ y: [1, 2, 3] }],
-      on_box_hover,
-      tooltip,
-    })
-    query(plot, `g.box-series[role="button"]`).dispatchEvent(
-      new MouseEvent(`mousemove`, { bubbles: true }),
-    )
-    await tick()
-    expect(on_box_hover).toHaveBeenCalledOnce()
-    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
-  })
-
   // Tukey whiskers are not the series min/max once there are outliers. The tooltip must not
   // be a snapshot: it tracks replaced data under a resting pointer and closes with its box
   test(`hover and click report box stats and the tooltip follows replaced data`, async () => {

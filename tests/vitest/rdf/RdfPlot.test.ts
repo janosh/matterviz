@@ -6,7 +6,7 @@ import { structure_map } from '#site/structures.js'
 import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, resize_element } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
 import { calculate_all_pair_rdfs, rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
@@ -236,10 +236,7 @@ describe(`RdfPlot`, () => {
   // Drops open through open_material, whose parse warnings reach a notice named by file
   test(`dropped crystals are plotted with their parse warnings, molecules are reported`, async () => {
     const empty = await mount_sized_rdf_plot({})
-    const cell = `_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90`
-    const loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
-    const cif = `data_si\n${cell}\n${loop}\nSi1 Si 0 0 0\nSi2 Si abc 0 0\n`
-    empty.dispatchEvent(create_drop_event(new File([cif], `si.cif`)))
+    empty.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si.cif`)))
     await vi.waitFor(() =>
       expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
         `1 structure loaded`,

@@ -62,7 +62,8 @@ describe(`helpers: energy color scale + point color`, () => {
   // The face color bar draws resolve_color_scale(color_scale, face_e_form_range(...)), so its
   // gradient must map formation energies to exactly the colors the faces get
   test(`formation-energy faces and their color bar share one range`, () => {
-    const faces = [-1, -0.5, -0.2, 0].map((e_form, facet_idx) => ({ e_form, facet_idx }))
+    const e_forms = [-1, -0.5, -0.2, 0]
+    const faces = e_forms.map((e_form, facet_idx) => ({ e_form, facet_idx }))
     const face_color = draw.face_color_resolver(faces as draw.HullFace[], {
       mode: `formation_energy`,
       uniform_color: `#123456`,
@@ -72,13 +73,10 @@ describe(`helpers: energy color scale + point color`, () => {
     })
     const face_colors = faces.map((face) => face_color(face as draw.HullFace))
     expect(face_colors).toEqual([`#440154`, `#21918c`, `#7ad151`, `#fde725`])
-    const bar = resolve_color_scale(
-      `interpolateViridis`,
-      draw.face_e_form_range([-1, -0.5, -0.2, 0]),
-    )
+    const bar = resolve_color_scale(`interpolateViridis`, draw.face_e_form_range(e_forms))
     expect(bar.value_range).toEqual([-1, 0])
     const bar_scale = create_color_scale(bar, [0, 1]) // resolved ends ignore the auto range
-    expect(faces.map(({ e_form }) => bar_scale(e_form))).toEqual(face_colors)
+    expect(e_forms.map(bar_scale)).toEqual(face_colors)
     // a near-flat hull still spans 0.1 eV/atom instead of a zero-width range
     expect(draw.face_e_form_range([-0.3, -0.29])).toEqual([-0.3, -0.3 + 0.1])
   })

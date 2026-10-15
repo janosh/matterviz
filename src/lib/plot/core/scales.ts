@@ -1,4 +1,8 @@
-import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
+import {
+  type D3InterpolateName,
+  get_d3_interpolator,
+  is_palette_range,
+} from '#lib/colors/scale-names.js'
 import type { Vec2 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
@@ -681,10 +685,9 @@ export const resolve_color_scale = (
 export function color_interpolator(color_scale: ColorScale) {
   const { scheme = SCALE_DEFAULTS.scheme, palette_range = [0, 1] } =
     to_color_scale_config(color_scale)
-  const [start, end] = palette_range
-  const in_unit = (frac: number) => frac >= 0 && frac <= 1
-  if (!(in_unit(start) && in_unit(end) && start !== end))
+  if (!is_palette_range(palette_range))
     throw new Error(`Invalid palette_range: ${palette_range}`)
+  const [start, end] = palette_range
   const interpolate = typeof scheme === `function` ? scheme : get_d3_interpolator(scheme)
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }

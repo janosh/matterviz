@@ -232,10 +232,8 @@ describe(`IsosurfaceControls`, () => {
     )
     auto_button?.click()
     flushSync()
-    expect(props.settings.color_scale).toEqual({
-      scheme: `interpolateRdBu`,
-      value_range: undefined,
-    })
+    const { color_scale } = props.settings
+    expect(color_scale).toEqual({ scheme: `interpolateRdBu`, value_range: undefined })
   })
 })
 

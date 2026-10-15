@@ -163,15 +163,6 @@ describe(`Sunburst`, () => {
     expect(on_node_hover.mock.calls.map((args) => args[0] && `info`)).toEqual([`info`, null])
   })
 
-  // tooltip=false (shared HierarchyShell, so Treemap too) hides it but keeps the hover handlers
-  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    const on_node_hover = vi.fn()
-    const plot = await mount_sized_sunburst({ data: tree, on_node_hover, tooltip })
-    await fire(arc_path(plot, `A`), mouse(`mousemove`))
-    expect(on_node_hover).toHaveBeenCalledOnce()
-    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
-  })
-
   test(`clicking a branch zooms, fires callbacks, and dismisses its tooltip`, async () => {
     const on_node_click = vi.fn()
     const on_zoom = vi.fn()

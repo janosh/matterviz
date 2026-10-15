@@ -148,6 +148,21 @@ export const gzip_bytes = (content: string): Promise<ArrayBuffer> =>
   ).arrayBuffer()
 
 // Two-frame XYZ, the smallest input that exercises multi-frame parsing
+// Cubic CIF whose atom-site loop holds `rows`; BAD_ROW_CIF's row with a non-numeric coordinate
+// is skipped with a parse warning (`CIF: skipped 1 atom-site row`)
+export const cif_with_rows = (...rows: string[]): string =>
+  [
+    `data_t`,
+    ...[`a`, `b`, `c`].map((axis) => `_cell_length_${axis} 5`),
+    ...[`alpha`, `beta`, `gamma`].map((angle) => `_cell_angle_${angle} 90`),
+    `loop_`,
+    ...[`label`, `type_symbol`, `fract_x`, `fract_y`, `fract_z`].map(
+      (tag) => `_atom_site_${tag}`,
+    ),
+    ...rows,
+  ].join(`\n`)
+export const BAD_ROW_CIF = cif_with_rows(`Si1 Si 0 0 0`, `Si2 Si abc 0 0`)
+
 export const MULTI_FRAME_XYZ = `2\nStep 1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74
 2\nStep 2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.78`
 

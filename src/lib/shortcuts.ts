@@ -28,14 +28,11 @@ export type Shortcut = {
   scopes: readonly ShortcutScope[]
 }
 
+// oxfmt-ignore
 export const SHORTCUTS = {
   help: { keys: `?`, description: `Show keyboard shortcuts`, scopes: [`viewer`] },
   fullscreen: { keys: `F`, description: `Toggle fullscreen`, scopes: [`viewer`] },
-  close: {
-    keys: `Escape`,
-    description: `Close the open pane, menu or mode`,
-    scopes: [`viewer`],
-  },
+  close: { keys: `Escape`, description: `Close the open pane, menu or mode`, scopes: [`viewer`] },
   reset_camera: { keys: `R`, description: `Reset camera`, scopes: [`camera`] },
   play: { keys: `Space`, description: `Play / pause`, scopes: [`sequence`] },
   previous: { keys: `ArrowLeft`, description: `Previous frame`, scopes: [`sequence`] },
@@ -43,93 +40,32 @@ export const SHORTCUTS = {
   first: { keys: `Home Control+ArrowLeft`, description: `First frame`, scopes: [`sequence`] },
   last: { keys: `End Control+ArrowRight`, description: `Last frame`, scopes: [`sequence`] },
   step_10: { keys: `J L`, description: `Back / forward 10 frames`, scopes: [`sequence`] },
-  step_25: {
-    keys: `PageUp PageDown`,
-    description: `Back / forward 25 frames`,
-    scopes: [`sequence`],
-  },
+  step_25: { keys: `PageUp PageDown`, description: `Back / forward 25 frames`, scopes: [`sequence`] },
   speed: { keys: `- +`, description: `Slower / faster playback`, scopes: [`sequence`] },
-  jump: {
-    keys: `0 1 2 3 4 5 6 7 8 9`,
-    label: `0-9`,
-    description: `Jump to 0-90% of the sequence`,
-    scopes: [`sequence`],
-  },
-  view_mode: {
-    keys: `V Shift+V`,
-    description: `Next / previous view mode`,
-    scopes: [`trajectory`],
-  },
-  info_pane: {
-    keys: `I`,
-    description: `Toggle info pane`,
-    scopes: [`structure`, `brillouin`],
-  },
+  jump: { keys: `0 1 2 3 4 5 6 7 8 9`, label: `0-9`, description: `Jump to 0-90% of the sequence`, scopes: [`sequence`] },
+  view_mode: { keys: `V Shift+V`, description: `Next / previous view mode`, scopes: [`trajectory`] },
+  info_pane: { keys: `I`, description: `Toggle info pane`, scopes: [`structure`, `brillouin`] },
   multi_view: { keys: `G`, description: `Toggle multi-view`, scopes: [`structure`] },
-  add_mode: {
-    keys: `A`,
-    description: `Add atoms (atom editing) / add bonds (bond editing)`,
-    scopes: [`structure-edit`],
-  },
+  add_mode: { keys: `A`, description: `Add atoms (atom editing) / add bonds (bond editing)`, scopes: [`structure-edit`] },
   delete_bond_mode: { keys: `D`, description: `Delete bonds`, scopes: [`structure-edit`] },
-  change_element: {
-    keys: `E`,
-    description: `Change element of selected atoms`,
-    scopes: [`structure-edit`],
-  },
-  delete_atoms: {
-    keys: `Delete Backspace`,
-    description: `Delete selected atoms`,
-    scopes: [`structure-edit`],
-  },
-  duplicate: {
-    keys: `Control+D Meta+D`,
-    description: `Duplicate selected atoms`,
-    scopes: [`structure-edit`],
-  },
+  change_element: { keys: `E`, description: `Change element of selected atoms`, scopes: [`structure-edit`] },
+  delete_atoms: { keys: `Delete Backspace`, description: `Delete selected atoms`, scopes: [`structure-edit`] },
+  duplicate: { keys: `Control+D Meta+D`, description: `Duplicate selected atoms`, scopes: [`structure-edit`] },
   undo: { keys: `Control+Z Meta+Z`, description: `Undo`, scopes: [`structure-edit`] },
-  redo: {
-    keys: `Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z`,
-    description: `Redo`,
-    scopes: [`structure-edit`],
-  },
+  redo: { keys: `Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z`, description: `Redo`, scopes: [`structure-edit`] },
   color_mode: { keys: `C`, description: `Cycle color mode`, scopes: [`chempot-3d`] },
-  hull_color_mode: {
-    keys: `B`,
-    description: `Toggle stability / energy coloring`,
-    scopes: [`convex-hull`],
-  },
+  hull_color_mode: { keys: `B`, description: `Toggle stability / energy coloring`, scopes: [`convex-hull`] },
   hull_stable: { keys: `S`, description: `Toggle stable phases`, scopes: [`convex-hull`] },
   hull_unstable: { keys: `U`, description: `Toggle unstable phases`, scopes: [`convex-hull`] },
   hull_labels: { keys: `L`, description: `Toggle stable labels`, scopes: [`convex-hull`] },
   hull_select: { keys: `Enter`, description: `Select hovered entry`, scopes: [`convex-hull`] },
   hull_faces: { keys: `H`, description: `Toggle hull faces`, scopes: [`convex-hull-3d`] },
-  hull_reset: {
-    keys: `R`,
-    description: `Reset view and settings`,
-    scopes: [`convex-hull-2d`],
-  },
+  hull_reset: { keys: `R`, description: `Reset view and settings`, scopes: [`convex-hull-2d`] },
   hull_top_view: { keys: `T`, description: `Top-down view`, scopes: [`convex-hull-ternary`] },
-  export_pane: {
-    keys: `E`,
-    description: `Toggle export pane`,
-    scopes: [`binary-phase-diagram`],
-  },
-  temperature_step: {
-    keys: `ArrowLeft ArrowRight`,
-    description: `Lower / raise temperature`,
-    scopes: [`ternary-phase-diagram`],
-  },
-  temperature_jump: {
-    keys: `Shift+ArrowLeft Shift+ArrowRight`,
-    description: `Previous / next phase transition`,
-    scopes: [`ternary-phase-diagram`],
-  },
-  temperature_play: {
-    keys: `Space`,
-    description: `Play / pause temperature sweep`,
-    scopes: [`ternary-phase-diagram`],
-  },
+  export_pane: { keys: `E`, description: `Toggle export pane`, scopes: [`binary-phase-diagram`] },
+  temperature_step: { keys: `ArrowLeft ArrowRight`, description: `Lower / raise temperature`, scopes: [`ternary-phase-diagram`] },
+  temperature_jump: { keys: `Shift+ArrowLeft Shift+ArrowRight`, description: `Previous / next phase transition`, scopes: [`ternary-phase-diagram`] },
+  temperature_play: { keys: `Space`, description: `Play / pause temperature sweep`, scopes: [`ternary-phase-diagram`] },
 } as const satisfies Record<string, Shortcut>
 
 export type ShortcutId = keyof typeof SHORTCUTS

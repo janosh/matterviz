@@ -41,11 +41,17 @@ const comment_lines = (text: string, ranges: readonly ts.CommentRange[]): string
     .map(({ pos, end }) => text.slice(pos + 2, end).trim())
     .filter((line) => line && !LINT_PRAGMA_RE.test(line))
 
-// `//` lines directly above a node (the block touching it, no blank line in between) plus a
-// `//` comment trailing it on the same line, after an optional separator. A lone leading line
-// of at most three unpunctuated words (`// Controls`, `// Axis configuration`) heads a group
-// of props rather than describing this one, so it is skipped.
-const node_comment = (node: ts.Node): string | undefined => {
+// The members a prop node sits among (interface or type literal members, $props() bindings)
+const siblings = ({ parent }: ts.Node): readonly ts.Node[] =>
+  ts.isInterfaceDeclaration(parent) || ts.isTypeLiteralNode(parent)
+    ? parent.members
+    : ts.isObjectBindingPattern(parent)
+      ? parent.elements
+      : []
+
+// `//` lines directly above a node (the block touching it, no blank line in between) and a
+// `//` comment trailing it on the same line, after an optional separator
+const comment_parts = (node: ts.Node): { above: string[]; trailing: string[] } => {
   const { text } = node.getSourceFile()
   const leading = ts.getLeadingCommentRanges(text, node.pos) ?? []
   let block_start = leading.length
@@ -55,14 +61,28 @@ const node_comment = (node: ts.Node): string | undefined => {
     !/\n[^\S\n]*\n/.test(text.slice(leading[block_start - 1].end, next_start))
   )
     next_start = leading[--block_start].pos
-  const above = comment_lines(text, leading.slice(block_start))
-  const is_section_header =
-    above.length === 1 && /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0])
   const after = `;,`.includes(text[node.end]) ? node.end + 1 : node.end
-  const lines = [
-    ...(is_section_header ? [] : above),
-    ...comment_lines(text, ts.getTrailingCommentRanges(text, after) ?? []),
-  ]
+  return {
+    above: comment_lines(text, leading.slice(block_start)),
+    trailing: comment_lines(text, ts.getTrailingCommentRanges(text, after) ?? []),
+  }
+}
+
+const has_comment = (node: ts.Node): boolean =>
+  Object.values(comment_parts(node)).some((lines) => lines.length > 0)
+
+// A node's description from comment_parts. Leading lines that head a group of props rather
+// than describe this one are skipped: a lone line of at most three unpunctuated words
+// (`// Controls`, `// Axis configuration`), or a comment above the first of several members
+// none of the others comment on, which describes them all (PlotConfig's `// Grouped
+// configuration for plot axes and display settings` over x_axis, y_axis, ...).
+const node_comment = (node: ts.Node): string | undefined => {
+  const { above, trailing } = comment_parts(node)
+  const [first, ...others] = siblings(node)
+  const heads_group =
+    (above.length === 1 && /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0])) ||
+    (first === node && trailing.length === 0 && others.length > 0 && !others.some(has_comment))
+  const lines = [...(heads_group ? [] : above), ...trailing]
   return lines.length ? lines.join(` `) : undefined
 }
 

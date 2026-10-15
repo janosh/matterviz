@@ -22,18 +22,17 @@
   } = $props()
 </script>
 
-{#if color_bar}
-  {#if color_bar_props}
-    <div {...rest} class={[`chempot-legend`, rest.class]}>
-      <ColorBar
-        {...color_bar}
-        wrapper_style="width: 200px"
-        bar_style="height: 12px"
-        title_style="margin-bottom: 4px"
-        {...color_bar_props}
-      />
-    </div>
-  {/if}
+<!-- color_bar is null in the categorical modes, so a hidden bar never falls through to arity -->
+{#if color_bar && color_bar_props}
+  <div {...rest} class={[`chempot-legend`, rest.class]}>
+    <ColorBar
+      {...color_bar}
+      wrapper_style="width: 200px"
+      bar_style="height: 12px"
+      title_style="margin-bottom: 4px"
+      {...color_bar_props}
+    />
+  </div>
 {:else if color_mode === `arity`}
   <div {...rest} class={[`chempot-legend`, `arity-legend`, rest.class]}>
     {#each arity_legend_labels(formulas) as label, idx (label)}

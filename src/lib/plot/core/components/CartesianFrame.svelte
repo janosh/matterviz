@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
   import EmptyState from '#lib/EmptyState.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type {
@@ -297,24 +298,13 @@
   {/if}
 
   <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->
-  {#if live_message}
-    <span class="sr-only" aria-live="polite">{live_message}</span>
-  {/if}
+  {#if live_message}<LiveMessage>{live_message}</LiveMessage>{/if}
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
   {@render children?.(content_ctx)}
 </div>
 
 <style>
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
   .plot-frame {
     position: relative;
     width: var(--plot-frame-width);

@@ -18,6 +18,7 @@
   import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import EmptyState from '#lib/EmptyState.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
@@ -132,19 +133,10 @@
     {@render children?.(dims)}
     {#if empty}<EmptyState overlay role="status" />{/if}
   {/if}
-  {#if live_message}<span class="sr-only" aria-live="polite">{live_message}</span>{/if}
+  {#if live_message}<LiveMessage>{live_message}</LiveMessage>{/if}
 </div>
 
 <style>
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
   .chart-shell {
     position: relative;
     width: var(--chart-shell-width);

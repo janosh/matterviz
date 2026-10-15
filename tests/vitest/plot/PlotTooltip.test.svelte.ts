@@ -1,11 +1,23 @@
 import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+import BarPlot from '#lib/plot/bar/BarPlot.svelte'
+import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
+import Histogram from '#lib/plot/histogram/Histogram.svelte'
+import Sankey from '#lib/plot/sankey/Sankey.svelte'
+import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
+import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
 import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
 import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip.js'
 import { color as d3_color } from 'd3-color'
-import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
+import {
+  type Component,
+  createRawSnippet,
+  flushSync,
+  mount,
+  type ComponentProps,
+} from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, trigger_resize_observer } from '../setup'
+import { doc_query, fire, mount_sized, mouse, trigger_resize_observer } from '../setup'
 
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
@@ -361,4 +373,31 @@ describe(`PlotTooltip`, () => {
       }).style.top,
     ).toBe(top)
   })
+})
+
+// A chart's tooltip={false} skips its PlotTooltip but still runs the hover handler (Sunburst's
+// HierarchyShell serves Treemap too)
+type Props = Record<string, unknown>
+const two_nodes = {
+  nodes: [{ id: `a` }, { id: `b` }],
+  links: [{ source: `a`, target: `b`, value: 1 }],
+}
+// oxfmt-ignore
+test.each<[string, unknown, string, Props, string, MouseEventInit?]>([
+  [`.bar-plot`, BarPlot, `on_bar_hover`, { series: [{ x: [1, 2], y: [3, 4] }] }, `path[role="button"]`],
+  [`.box-plot`, BoxPlot, `on_box_hover`, { series: [{ y: [1, 2, 3] }] }, `g.box-series[role="button"]`],
+  [`.histogram`, Histogram, `on_bar_hover`, { series: [{ values: [0, 1] }] }, `g.histogram-series path[role="button"]`],
+  [`.sankey`, Sankey, `on_node_hover`, { data: two_nodes }, `.nodes rect`, { clientX: 30, clientY: 40 }],
+  [`.sunburst`, Sunburst, `on_node_hover`, { data: [{ label: `A`, value: 1 }], tween: { duration: 0 } }, `[data-sunburst-node-idx="1"]`],
+  [`.ternary`, TernaryPlot, `on_point_hover`, { series: [{ points: [[0.2, 0.3, 0.5]] }] }, `[data-ternary-idx="0"]`, { clientX: 100, clientY: 100 }],
+])(`%s with tooltip=false keeps its hover handler`, async (selector, chart, handler, props, target, init) => {
+  for (const tooltip of [undefined, false]) {
+    const on_hover = vi.fn()
+    const options = { selector, width: 500, height: 360 }
+    const plot = await mount_sized(chart as Component<Props>, { ...props, [handler]: on_hover, tooltip }, options)
+    await fire(plot.querySelector(target), mouse(`mousemove`, init))
+    expect(on_hover).toHaveBeenCalledOnce()
+    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
+    plot.parentElement?.remove()
+  }
 })
