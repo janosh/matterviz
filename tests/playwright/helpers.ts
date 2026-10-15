@@ -1,4 +1,10 @@
-import { expect, type Locator, type Page, test as base } from '@playwright/test'
+import {
+  type ConsoleMessage,
+  expect,
+  type Locator,
+  type Page,
+  test as base,
+} from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
@@ -818,10 +824,28 @@ export async function expect_combined_fullscreen(
   const max_drift = async () =>
     Math.max(...(await heights()).map((height, idx) => Math.abs(height - inline_heights[idx])))
   await expect.poll(max_drift).toBeLessThan(0.5)
+  // a click that misses fullscreen reports what did go fullscreen and any browser errors
+  const page = container.page()
+  const console_errors: string[] = []
+  const on_console = (msg: ConsoleMessage) => {
+    if (msg.type() === `error`) console_errors.push(msg.text())
+  }
+  page.on(`console`, on_console)
   for (const fullscreen of [true, false]) {
     await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
     await expect(button).toHaveAttribute(`aria-pressed`, String(!fullscreen))
     await button.click()
-    await expect.poll(is_fullscreen).toBe(fullscreen)
+    try {
+      await expect.poll(is_fullscreen).toBe(fullscreen)
+    } catch (error) {
+      const element = await page.evaluate(() => document.fullscreenElement?.className ?? null)
+      const pressed = await button.getAttribute(`aria-pressed`)
+      throw new Error(
+        `click to fullscreen=${fullscreen} missed: fullscreen element ${element}, ` +
+          `aria-pressed=${pressed}, console errors: ${console_errors.join(` | `) || `none`}`,
+        { cause: error },
+      )
+    }
   }
+  page.off(`console`, on_console)
 }
