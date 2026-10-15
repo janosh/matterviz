@@ -264,39 +264,24 @@ describe(`bands/DOS wrappers`, () => {
     expect(y_ticks(dos_plot)).toEqual(initial)
   })
 
-  // One fullscreen button for the whole component, in the top-right plot's header beside the
-  // caller's header controls (host: DOS side by side, bands when stacked). The wrapper's
-  // fullscreen_toggle and the host plot's show_controls can still hide it.
-  const header_snippet = (name: string) =>
-    createRawSnippet(() => ({ render: () => `<span class="${name}"></span>` }))
-  it.each(
-    wrappers.flatMap((wrapper) =>
-      [`default`, `fullscreen_toggle`, `show_controls`].map(
-        (variant) => [...wrapper, variant] as const,
-      ),
-    ),
-  )(`fullscreen button in %s at %ipx (%s)`, async (selector, width, Component, variant) => {
-    const host_key = width === 1200 ? `dos_props` : `bands_props`
-    const props = {
-      ...pair_props,
-      fullscreen_toggle: variant !== `fullscreen_toggle`,
-      bands_props: { header_controls: header_snippet(`bands-ctrl`) },
-      dos_props: { header_controls: header_snippet(`dos-ctrl`) },
-    }
-    if (variant === `show_controls`)
-      Object.assign(props[host_key], { show_controls: { hidden: [`fullscreen`] } })
-    const root = await mount_sized(Component, props, { selector, width, height: 600 })
-    const [bands_plot, dos_plot] = root.querySelectorAll(`.scatter`)
-    expect(
-      [bands_plot, dos_plot].map(
-        (plot) => plot.querySelectorAll(`.bands-ctrl, .dos-ctrl`).length,
-      ),
-    ).toEqual([1, 1])
-    // one button in the host plot by default, none when hidden
-    const host_plot = host_key === `dos_props` ? dos_plot : bands_plot
-    const buttons = [...root.querySelectorAll(`.fullscreen-btn`)]
-    expect(buttons.map((button) => host_plot.contains(button))).toEqual(
-      variant === `default` ? [true] : [],
-    )
+  // One fullscreen button in the top-right plot's header (DOS side by side, bands when stacked)
+  // beside the caller's controls, hidden by fullscreen_toggle or that plot's show_controls
+  const kinds = [`default`, `fullscreen_toggle`, `show_controls`] as const
+  const cases = wrappers.flatMap((row) => kinds.map((kind) => [...row, kind] as const))
+  it.each(cases)(`fullscreen btn in %s at %ipx, %s`, async (selector, width, Comp, kind) => {
+    const [host_idx, shown] = [width === 1200 ? 1 : 0, Number(kind === `default`)]
+    const hidden = { show_controls: { hidden: [`fullscreen`] as const } }
+    const [bands_props, dos_props] = [`bands`, `dos`].map((name, idx) => ({
+      header_controls: createRawSnippet(() => ({ render: () => `<i class=${name}></i>` })),
+      ...(kind === `show_controls` && idx === host_idx ? hidden : {}),
+    }))
+    const fullscreen_toggle = kind !== `fullscreen_toggle`
+    const props = { ...pair_props, bands_props, dos_props, fullscreen_toggle }
+    const root = await mount_sized(Comp, props, { selector, width, height: 600 })
+    const plots = [...root.querySelectorAll(`.scatter`)]
+    const in_plots = (sel: string) => plots.map((plot) => plot.querySelectorAll(sel).length)
+    expect([...in_plots(`.bands`), ...in_plots(`.dos`)]).toEqual([1, 0, 0, 1])
+    expect(in_plots(`.fullscreen-btn`)).toEqual(host_idx ? [0, shown] : [shown, 0])
+    expect(root.querySelectorAll(`.fullscreen-btn`)).toHaveLength(shown)
   })
 })

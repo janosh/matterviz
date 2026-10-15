@@ -531,9 +531,8 @@
     </svg>
 
     {#if hover_info}
-      <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color;
-    gradient/static ribbons (url(...)/var(...)) fall back to the node color they fade from
-    (the target's in target mode, else the source's) so the chip stays readable. -->
+      <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color, or for
+    url(...)/var(...) ribbons the node color they fade from, so the chip stays readable. -->
       <PlotTooltip
         x={hover_pos.x}
         y={hover_pos.y}

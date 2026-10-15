@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
   import type { BandsOptions, DosOptions } from './index'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -43,12 +42,6 @@
   let clientWidth = $state(800)
   let stacked = $derived(clientWidth < stack_below_width)
   let wrapper = $state<HTMLDivElement>()
-  const show_toggle = $derived(
-    shows_fullscreen_toggle(
-      fullscreen_toggle,
-      normalize_show_controls((stacked ? bands_props : dos_props).show_controls),
-    ),
-  )
 
   const sync = create_bands_dos_sync({
     band_structs: () => band_structs,
@@ -65,14 +58,12 @@
 </script>
 
 {#snippet fullscreen_button()}
-  {#if fullscreen || show_toggle}
-    <FullscreenButton
-      bind:fullscreen
-      hidden={!show_toggle}
-      {wrapper}
-      bg_css_var="--bands-dos-fullscreen-bg"
-    />
-  {/if}
+  <PanelsFullscreenButton
+    bind:fullscreen
+    toggle={fullscreen_toggle}
+    controls={(stacked ? bands_props : dos_props).show_controls}
+    {wrapper}
+  />
 {/snippet}
 
 <div
@@ -134,7 +125,7 @@
   .bands-and-dos:fullscreen {
     padding: 1em;
     grid-auto-rows: minmax(0, 1fr);
-    background: var(--bands-dos-fullscreen-bg, var(--page-bg, Canvas));
+    background: var(--fullscreen-bg, var(--page-bg, Canvas));
     > :global(*) {
       height: 100%;
       min-height: 0;

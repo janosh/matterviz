@@ -203,8 +203,7 @@ export function copy_prediction_input(value: unknown): AnyStructure {
       if (typeof entry.occu !== `number` || entry.occu < 0)
         invalid(`input.sites[${idx}].species.occu`, `expected nonnegative occupancy`)
       // prediction_to_json drops undecorated (0) oxidation states, as pymatgen omits them
-      entry.oxidation_state ??= 0
-      if (typeof entry.oxidation_state !== `number`)
+      if (typeof (entry.oxidation_state ??= 0) !== `number`)
         invalid(`input.sites[${idx}].species.oxidation_state`, `expected a number`)
     }
   }

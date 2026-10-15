@@ -1187,7 +1187,12 @@ describe(`banners`, () => {
     async (_kind, collect) => {
       // Trails are optional: a synchronous throw used to escape the effect instead of being
       // logged like a rejection
-      const error = vi.spyOn(console, `error`).mockImplementation(() => {})
+      // Await the log itself, not a 1 s waitFor poll that a loaded CI box can outlast
+      const prefix = `Trajectory trails: position collection failed`
+      const logged = Promise.withResolvers<unknown>()
+      vi.spyOn(console, `error`).mockImplementation((msg, detail) => {
+        if (msg === prefix) logged.resolve(detail)
+      })
       const run: TrajectoryRun = { ...make_run(), collect_positions: collect }
       const target = mount_trajectory(
         default_props({
@@ -1195,12 +1200,7 @@ describe(`banners`, () => {
           structure_props: { scene_props: { show_trajectory_lines: true } },
         }),
       )
-      await vi.waitFor(() =>
-        expect(error).toHaveBeenCalledWith(
-          `Trajectory trails: position collection failed`,
-          `no full pass`,
-        ),
-      )
+      expect(await logged.promise).toBe(`no full pass`)
       expect(target.querySelector(`.structure`)).not.toBeNull()
     },
   )

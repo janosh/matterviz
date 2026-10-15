@@ -283,6 +283,11 @@ function get_cif_block_name(structure: AnyStructure): string {
 const cif_token = (value: string): string =>
   !/\s|^[_#$'";[\]]/.test(value) ? value : value.includes(`'`) ? `"${value}"` : `'${value}'`
 
+// CIF type symbol of a species: the element plus its charge when decorated (`Fe2+`, `O2-`,
+// `Ag+`, `Fe2.5+`), the form pymatgen's CifWriter writes and parse_cif reads back
+const cif_type_symbol = (element: string, ox: number | undefined): string =>
+  !ox ? element : `${element}${Math.abs(ox) === 1 ? `` : Math.abs(ox)}${ox > 0 ? `+` : `-`}`
+
 // CIF and POSCAR write fractional coordinates against the cell, so both need a lattice matrix
 function require_lattice(structure: AnyStructure | undefined, format: string): Crystal {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
@@ -323,6 +328,24 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     }
   }
 
+  // Elements only and occupancy-weighted, like pymatgen's CifWriter: without it pymatgen
+  // cannot check a file with charged type symbols against its composition
+  const formula = plain_formula(structure)
+  if (formula) lines.push(`_chemical_formula_sum ${cif_token(formula)}`)
+
+  // Charged type symbols plus the _atom_type loop pymatgen's CifParser decorates from, only
+  // when every species is decorated (like its CifWriter): the parser strips the loop keys'
+  // charges (a plain Fe next to Fe3+ reads back as Fe3+) and makes every species an ion
+  const all_species = structure.sites.flatMap((site) => site.species)
+  const decorated = all_species.length > 0 && all_species.every((spec) => spec.oxidation_state)
+  if (decorated) {
+    const symbols = all_species.map(
+      ({ element, oxidation_state: ox }) => `${cif_type_symbol(element, ox)} ${ox}`,
+    )
+    lines.push(``, `loop_`, `_atom_type_symbol`, `_atom_type_oxidation_number`)
+    for (const row of new Set(symbols)) lines.push(`  ${row}`)
+  }
+
   lines.push(
     ``,
     // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
@@ -352,13 +375,15 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     const coords_str = get_frac_coords(site, cart_to_frac, idx)
       .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
-    const species_list = site.species.length ? site.species : [{ element: `X`, occu: 1 }]
+    const species_list = site.species.length
+      ? site.species
+      : [{ element: `X`, occu: 1, oxidation_state: 0 }]
     // parse_cif names a merged site after its first row, so that row keeps the site label
     const site_label = site.label || `${species_list[0]?.element || `X`}${idx + 1}`
     for (const [spec_idx, species] of species_list.entries()) {
-      const elem = species?.element || `X`
+      const symbol = cif_type_symbol(species.element, decorated ? species.oxidation_state : 0)
       const label = cif_token(spec_idx === 0 ? site_label : `${site_label}_${spec_idx}`)
-      lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
+      lines.push(`${label} ${symbol} ${coords_str} ${(species.occu ?? 1).toFixed(8)}`)
     }
   }
 

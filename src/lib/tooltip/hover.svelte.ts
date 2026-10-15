@@ -3,30 +3,21 @@ import { mount, unmount, type Snippet } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
 import { on } from 'svelte/events'
 
-const NEUTRAL_BG = `var(--tooltip-bg, light-dark(#eee, #333))`
-
 // Rich content for HTML and SVG marks whose native title cannot render unit markup.
-// `bg_color` returns the mark's own fill, so the tooltip matches what it describes
-// (PlotTooltip contrasts the text); without one it takes the neutral --tooltip-bg. A getter
-// read in a child effect, so a re-derived mark updates the open tooltip instead of tearing
-// down the attachment (which would unmount it and drop hover/focus state).
+// `bg_color` gets the mark's fill for the tooltip (else neutral --tooltip-bg); read in a child
+// effect so a re-derived mark updates the open tooltip rather than remounting it.
 export const hover_tooltip =
-  (
-    children: Snippet,
-    bg_color?: () => string | null | undefined,
-  ): Attachment<HTMLElement | SVGElement> =>
+  (children: Snippet, bg_color?: () => string): Attachment<HTMLElement | SVGElement> =>
   (node) => {
     const props = $state({
       x: 0,
       y: 0,
       fixed: true,
       children,
-      bg_color: NEUTRAL_BG,
+      bg_color: `var(--tooltip-bg, light-dark(#eee, #333))`,
       role: `tooltip`,
     })
-    $effect.pre(() => {
-      props.bg_color = bg_color?.() ?? NEUTRAL_BG
-    })
+    if (bg_color) $effect.pre(() => void (props.bg_color = bg_color()))
     let close: (() => void) | undefined
     let hovered = false
     let focused = false

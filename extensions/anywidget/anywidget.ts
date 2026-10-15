@@ -11,6 +11,7 @@ import {
   ChemPotDiagram,
   Composition,
   ConvexHull,
+  disable_workers,
   Dos,
   FermiSurface,
   HeatmapMatrix,
@@ -45,6 +46,10 @@ import {
   throttle,
   writeback_prop,
 } from './reactive.svelte'
+
+// The bundle loads from a blob:, CDN or file:// URL, against which bundled worker files either
+// fail to resolve or resolve cross-origin (new Worker throws), so compute on the main thread
+disable_workers()
 
 const styled_shadow_roots = new WeakSet<ShadowRoot>()
 

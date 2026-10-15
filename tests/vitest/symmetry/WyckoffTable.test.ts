@@ -24,10 +24,10 @@ describe(`WyckoffTable`, () => {
   })
 
   // Element badge text contrast: a translucent user override must composite against the
-  // page backdrop (white in jsdom) instead of throwing mid-render (mid grey: white text)
+  // page backdrop (white in jsdom) instead of throwing mid-render (mid grey: black text)
   test.each([
     [`#000000`, `white`],
-    [`rgba(0, 0, 0, 0.5)`, `white`],
+    [`rgba(0, 0, 0, 0.5)`, `black`],
     [`rgba(0, 0, 0, 0.1)`, `black`],
     [`var(--elem-color)`, `currentcolor`],
   ])(`element color %s renders badge text %s`, (elem_color, text_color) => {

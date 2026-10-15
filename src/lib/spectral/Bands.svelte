@@ -114,18 +114,13 @@
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
   } = $props()
 
-  const is_per_mode_style = (
-    kwargs: LineKwargs,
-  ): kwargs is { acoustic?: BandLineStyle; optical?: BandLineStyle } =>
-    `acoustic` in kwargs || `optical` in kwargs
   function get_line_style(
     color: string,
     is_acoustic: boolean,
     band_idx: number,
+    spin: `up` | `down`,
   ): Required<BandLineStyle> {
-    const custom: BandLineStyle = is_per_mode_style(line_kwargs)
-      ? (line_kwargs[is_acoustic ? `acoustic` : `optical`] ?? {})
-      : line_kwargs
+    const custom = helpers.band_line_style(line_kwargs, band_idx, spin, is_acoustic)
     const style = {
       stroke: custom.stroke ?? color,
       stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
@@ -133,9 +128,10 @@
     if (highlighted_band_index === null) return style
     const selected = highlighted_band_index === band_idx
     return {
+      // a caller-coloured band keeps its colour while emphasised
       stroke: selected
-        ? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`
-        : `var(--bands-muted-color, light-dark(#b9c2d0, #48566c))`,
+        ? (custom.stroke ?? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`)
+        : helpers.BANDS_CSS_COLORS.muted,
       stroke_width: selected
         ? Math.max(3, style.stroke_width * 2)
         : Math.min(1, style.stroke_width),
@@ -268,7 +264,7 @@
             band_idx,
             gamma_indices,
           )
-          const style_up = get_line_style(color, is_acoustic === true, band_idx)
+          const style_up = get_line_style(color, is_acoustic === true, band_idx, `up`)
           const spin_down_band = band_structure.spin_down_bands?.[band_idx]
           const y_down =
             band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
@@ -282,10 +278,16 @@
             channels.push([y_up, `up`, label_up, style_up])
           }
           if (y_down && effective_spin_mode !== `up_only`) {
+            const { stroke, stroke_width } = get_line_style(
+              color,
+              is_acoustic === true,
+              band_idx,
+              `down`,
+            )
             const style_down = {
-              ...style_up,
+              stroke,
               line_dash: `4,2`,
-              stroke_width: Math.max(1, style_up.stroke_width - 0.1),
+              stroke_width: Math.max(1, stroke_width - 0.1),
             }
             channels.push([y_down, `down`, `${structure_label} (↓)`, style_down])
           }
@@ -790,7 +792,7 @@
           x2={bands_x_end}
           y1={fermi_y}
           y2={fermi_y}
-          stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          stroke={helpers.BANDS_CSS_COLORS.fermi}
           stroke-width="var(--bands-fermi-line-width, 1.5)"
           stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
           opacity="var(--bands-fermi-line-opacity, 0.8)"
@@ -801,7 +803,7 @@
             y1={fermi_y}
             x2={bands_x_end + (ef_label_fits_right ? 3 : -3)}
             y2={ef_label_y}
-            stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+            stroke={helpers.BANDS_CSS_COLORS.fermi}
             stroke-width="0.7"
             opacity="0.5"
           />
@@ -812,7 +814,7 @@
           dy="0.35em"
           text-anchor={ef_label_fits_right ? `start` : `end`}
           font-size="10"
-          fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          fill={helpers.BANDS_CSS_COLORS.fermi}
           opacity="0.9"
         >
           E<tspan dy="2" font-size="8">F</tspan>
@@ -829,7 +831,7 @@
           x2={bands_x_end}
           y1={ref_y}
           y2={ref_y}
-          stroke="var(--bands-reference-line-color, light-dark(#d48860, #c47850))"
+          stroke={helpers.BANDS_CSS_COLORS.reference}
           stroke-width="var(--bands-reference-line-width, 1)"
           stroke-dasharray="var(--bands-reference-line-dash, 4,3)"
           opacity="var(--bands-reference-line-opacity, 0.5)"

@@ -141,17 +141,9 @@ test.describe(`FermiSurface smoke`, () => {
   })
 })
 
-// The Fermi surface + bands pairing has one fullscreen button (in the bands' header) that takes
-// both views fullscreen together; neither child offers its own
-test(`fermi-surface-bands goes fullscreen as one component`, async ({ page }) => {
-  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
-  await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
-  await expect_combined_fullscreen(page.locator(`.fermi-surface-bands`), [VIEWER, `.scatter`])
-})
-
 // hovering a symmetry label in 3D marks its k on the bands with a dashed vertical line and
-// shows a Brillouin zone tooltip for that k-point
-test(`hovering a 3D k-path label marks its k on the bands`, async ({ page }) => {
+// shows a Brillouin zone tooltip for that k-point; one button takes both views fullscreen
+test(`fermi-surface-bands: k-path label hover, one fullscreen`, async ({ page }) => {
   await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
   await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
   const qpoint_line = page.locator(`.fermi-surface-bands line.hovered-qpoint-line`)
@@ -167,4 +159,30 @@ test(`hovering a 3D k-path label marks its k on the bands`, async ({ page }) => 
   await page.mouse.move(0, 0)
   await expect(qpoint_line).toHaveCount(0)
   await expect(tooltip).toHaveCount(0)
+  await expect_combined_fullscreen(page.locator(`.fermi-surface-bands`), [VIEWER, `.scatter`])
+})
+
+// band lines take their sheet's colour (the hovered sheet's tooltip colour) and Cu's band 6 is
+// dotted where it crosses E_F (five times along the path)
+test(`fermi-surface-bands: band colours match sheets, E_F crossings dotted`, async ({
+  page,
+}) => {
+  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
+  const canvas = await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+  await expect(page.locator(`.fermi-surface-bands .band-crossings circle`)).toHaveCount(5)
+  // the sheet below-left of Γ, off the k-path
+  const box = await require_bbox(canvas, `Fermi surface canvas`)
+  await page.mouse.move(box.x + 0.35 * box.width, box.y + 0.62 * box.height)
+  const tooltip = page.locator(`${VIEWER} .plot-tooltip`, { hasText: /Band \d+/ })
+  await expect(tooltip).toBeVisible()
+  const band_idx =
+    Number(/Band (?<num>\d+)/.exec((await tooltip.textContent()) ?? ``)?.groups?.num) - 1
+  const band_rgb = await page.evaluate((band) => {
+    const series = [...document.querySelectorAll(`.fermi-surface-bands g[data-series-id]`)]
+    const group = series.find(
+      (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band,
+    )
+    return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
+  }, band_idx)
+  await expect(tooltip).toHaveCSS(`background-color`, band_rgb ?? `no band ${band_idx}`)
 })

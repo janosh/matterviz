@@ -26,11 +26,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import { detect_irreducible_bz, preview_interpolation_factor } from './compute'
-  import {
-    create_latest_extractor,
-    fermi_extraction_warm,
-    release_fermi_worker,
-  } from './extract-async'
+  import * as extraction from './extract-async'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
@@ -230,21 +226,18 @@
   })
 
   // Re-extract whenever the band grid or an extraction parameter changes — also on first
-  // mount with only `band_data` supplied. Extraction runs in a worker, one at a time with only
-  // the newest request waiting (create_latest_extractor), so a band-plot hover or mu drag never
-  // blocks a frame and the surface catches up as fast as extractions finish. A monotonic job id
-  // orders the results: one commits only if no newer one has and its grid is still current (a
-  // pending job cannot commit a surface for a grid that is gone). `extracting` overlays a
-  // spinner on the Canvas instead of unmounting it while a grid or factor upsamples first.
-  const extract_latest = create_latest_extractor()
+  // mount with only `band_data` supplied — latest-wins in a worker (create_latest_extractor).
+  // Results commit in job order and only for the current grid; only the newest job reports
+  // errors and clears `extracting`, a spinner while a grid or factor upsamples first.
+  const extract_latest = extraction.create_latest_extractor()
   let extraction_job_id = 0
   let committed_job_id = 0
   let extracting = $state(false)
+  // nothing commits, reports or clears the spinner after unmount
   $effect(() => () => {
-    // nothing commits, reports or clears the spinner after unmount
     committed_job_id = Infinity
     extraction_job_id = Infinity
-    release_fermi_worker()
+    extraction.release_fermi_worker()
   })
   $effect(() => {
     const job_id = ++extraction_job_id
@@ -256,7 +249,7 @@
     const factor = previewing
       ? preview_interpolation_factor(grid, interpolation_factor)
       : interpolation_factor
-    extracting = !fermi_extraction_warm(grid, factor)
+    extracting = !extraction.fermi_extraction_warm(grid, factor)
     extract_latest(grid, { mu: mean, interpolation_factor: factor, wigner_seitz })
       .then(
         (result) => {
@@ -267,9 +260,8 @@
         },
         (err: unknown) => {
           if (job_id !== extraction_job_id) return
-          const message = `Fermi surface extraction failed: ${to_error(err).message}`
-          error_msg = message
-          on_error?.({ error_msg: message })
+          error_msg = `Fermi surface extraction failed: ${to_error(err).message}`
+          on_error?.({ error_msg })
         },
       )
       .finally(() => {
@@ -472,30 +464,21 @@
         />
       {/if}
 
-      <!-- Hover tooltip -->
-      {#if hover_data}
+      <!-- Hover tooltip; a k-path point reads like a Brillouin zone hover, in its tint -->
+      {@const hovered = hover_data ?? kpath_hover_data}
+      {#if hovered}
         <PlotTooltip
-          x={hover_data.screen_position.x}
-          y={hover_data.screen_position.y}
+          {...hovered.screen_position}
           offset={{ x: 12, y: -12 }}
-          bg_color={hover_data.surface_color}
+          bg_color={hover_data ? hover_data.surface_color : KPATH_COLORS.hover}
           fixed
           style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
-          <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
-        </PlotTooltip>
-      {:else if kpath_hover_data}
-        <!-- a hovered k-path point reads like a hover in the Brillouin zone viewer, in the
-        color of the path segments it tints -->
-        <PlotTooltip
-          x={kpath_hover_data.screen_position.x}
-          y={kpath_hover_data.screen_position.y}
-          offset={{ x: 12, y: -12 }}
-          bg_color={KPATH_COLORS.hover}
-          fixed
-          style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
-        >
-          <BrillouinZoneTooltip hover_data={kpath_hover_data} />
+          {#if hover_data}
+            <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
+          {:else if kpath_hover_data}
+            <BrillouinZoneTooltip hover_data={kpath_hover_data} />
+          {/if}
         </PlotTooltip>
       {/if}
     {/if}

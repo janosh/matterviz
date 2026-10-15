@@ -387,8 +387,7 @@ test(`prediction import preserves input, fields and provenance, recomputes range
   }
   const text = prediction_to_json(prediction)
   const restored = prediction_from_json(text)
-  // pymatgen reads any oxidation_state as decorated (Cu0+): undecorated species drop it on
-  // export and get 0 back on import
+  // undecorated species drop oxidation_state on export (pymatgen would read Cu0+), get 0 back
   expect(JSON.parse(text).input.sites[0].species).toEqual([{ element: `Cu`, occu: 1 }])
   expect(restored.input).toEqual(input)
   expect(restored.volumes?.[0].values).toEqual(density.values)

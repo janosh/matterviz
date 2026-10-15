@@ -8,6 +8,7 @@ import type {
   VolumetricData,
 } from '#lib/isosurface/types.js'
 import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
+import type * as worker_client from '#lib/worker-client.svelte.js'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -24,6 +25,16 @@ vi.mock(`@threlte/core`, async () => ({
 // Large volumes go through the geometry worker; tests swap it for a controllable stub
 const compute_geometries_async = vi.hoisted(() => vi.fn())
 vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_async }))
+// Hosts that disable workers (anywidget) leave `Worker` defined, so the gate must be
+// can_create_worker rather than `typeof Worker`; flip `workers_disabled` to simulate one
+const worker_gate = vi.hoisted(() => ({ workers_disabled: false }))
+vi.mock(`#lib/worker-client.svelte.js`, async (import_original) => {
+  const original = await import_original<typeof worker_client>()
+  return {
+    ...original,
+    can_create_worker: () => !worker_gate.workers_disabled && original.can_create_worker(),
+  }
+})
 
 const SIZE = 10
 // Gaussian blob centred in the cell (positive field) and a signed variant with a negative
@@ -310,6 +321,19 @@ describe(`Isosurface`, () => {
     await settle()
     expect(compute_geometries_async).toHaveBeenCalledOnce()
     compute_geometries_async.mockReset()
+  })
+
+  test(`large grids stay on the main thread where workers are disabled`, async () => {
+    vi.stubGlobal(`Worker`, vi.fn())
+    compute_geometries_async.mockClear()
+    worker_gate.workers_disabled = true
+    try {
+      mount_isosurface({ volumes: [big_volume()] })
+      await settle()
+      expect(compute_geometries_async).not.toHaveBeenCalled()
+    } finally {
+      worker_gate.workers_disabled = false
+    }
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {

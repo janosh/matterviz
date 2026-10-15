@@ -8,6 +8,7 @@ import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { to_error } from '#lib/utils.js'
+import { can_create_worker } from '#lib/worker-client.svelte.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
@@ -158,7 +159,9 @@ export const parse_in_worker = async (
 ): Promise<ParseResult> => {
   const load_options = options.load_options && structuredClone(options.load_options)
   // Host markers require the main-thread host bridge; they contain no file bytes to parse.
-  if (typeof content === `string` && content.startsWith(`LARGE_FILE:`)) {
+  // Where no worker can be created (see can_create_worker), files parse there too.
+  const host_marker = typeof content === `string` && content.startsWith(`LARGE_FILE:`)
+  if (host_marker || (!options.worker_factory && !can_create_worker())) {
     options.signal?.throwIfAborted()
     return parse_file_content(content, filename, is_base64, load_options, options.on_progress)
   }

@@ -77,27 +77,31 @@ describe(`partial occupancy render-site logic`, () => {
     }
   })
 
-  // Still O(n): the scan was quadratic. A ratio against a base run instead of a wall-clock
-  // budget, so CI load mostly cancels: 16x the sites measured 17-27x when linear (41x under
-  // heavy load), 200-300x when quadratic (77x under heavy load). Min of 7 sheds load spikes.
+  // Still O(n): the scan was quadratic. Counting coordinate reads instead of timing runs keeps
+  // this deterministic under CI load (the wall-clock ratio flaked in parallel suites): a bucket
+  // lookup reads a fixed number of components per site, a scan over every group reads ~3n.
   test(`groups split-partial sites in linear time`, () => {
-    const min_ms = (n_sites: number) => {
-      const sites = Array.from({ length: n_sites }, (_unused, idx) =>
-        make_site(species([`Na`, 0.5]), [idx * 3, 0, 0], `Na`),
+    const reads_per_site = (n_pairs: number): number => {
+      let n_reads = 0
+      const count_reads = (xyz: Vec3): Vec3 =>
+        new Proxy(xyz, {
+          get: (target, key) => {
+            if (typeof key === `string` && /^\d$/.test(key)) n_reads++
+            return Reflect.get(target, key)
+          },
+        })
+      // pairs of half-occupied sites, 3 Å apart, so half the lookups find a group to merge
+      const sites = Array.from({ length: 2 * n_pairs }, (_unused, idx) =>
+        make_site(
+          species([idx % 2 ? `Cl` : `Na`, 0.5]),
+          count_reads([Math.floor(idx / 2) * 3, 0, 0]),
+          `X`,
+        ),
       )
-      const samples = Array.from({ length: 7 }, () => {
-        const start = performance.now()
-        const n_groups = merge_split_partial_sites(sites).length
-        const elapsed = performance.now() - start
-        expect(n_groups).toBe(n_sites)
-        return elapsed
-      })
-      return Math.min(...samples)
+      expect(merge_split_partial_sites(sites)).toHaveLength(n_pairs)
+      return n_reads / sites.length
     }
-    min_ms(2000) // JIT warm-up
-    // 8x the sites: linear scaling gives a ratio near 8, quadratic near 64. Sizes stay large
-    // enough that timer noise under CI load doesn't dominate the smaller run.
-    expect(min_ms(16000) / min_ms(2000)).toBeLessThan(24)
+    expect(reads_per_site(4000)).toBe(reads_per_site(250))
   })
 })
 
@@ -120,6 +124,28 @@ describe(`partial occupancy slice flags`, () => {
       )
       expect(slices[slice_idx].end_phi).toBeGreaterThanOrEqual(slices[slice_idx - 1].end_phi)
     }
+  })
+
+  // Mixed valence (Fe2+ / Fe3+ species) is one element: drawn as one sphere or wedge, not
+  // wedges with a seam, and split sites holding it still merge with a partner at their position
+  test(`draws an element's mixed-valence species as one`, () => {
+    const fe = (occu: number, oxidation_state: number) => ({
+      element: `Fe` as const,
+      occu,
+      oxidation_state,
+    })
+    const full = [fe(0.5, 2), fe(0.5, 3)]
+    expect(compute_slice_geometry(full)).toEqual(compute_slice_geometry(species([`Fe`, 1])))
+    expect(compute_slice_geometry([fe(0.3, 2), ...species([`O`, 0.2]), fe(0.3, 3)])).toEqual(
+      compute_slice_geometry(species([`Fe`, 0.6], [`O`, 0.2])),
+    )
+    const xyz: Vec3 = [1, 2, 3]
+    const [merged, ...rest] = merge_split_partial_sites([
+      make_site([fe(0.25, 2), fe(0.25, 3)], xyz, `Fe`),
+      make_site(species([`O`, 0.5]), xyz, `O`),
+    ])
+    expect(rest).toEqual([])
+    expect(merged.site.species.map(({ element }) => element)).toEqual([`Fe`, `Fe`, `O`])
   })
 
   test(`normalizes overfull occupancies to avoid wedge overflow`, () => {
@@ -161,7 +187,7 @@ const to_partial_atoms = (
   )
 const wedge_sites = [
   species([`Fe`, 0.5]), // vacancy: both caps
-  species([`Fe`, 0.5], [`Fe`, 0.5]), // mixed valence lists one element twice
+  species([`Fe`, 0.5], [`Ni`, 0.5]), // two equal wedges share one mesh
   species([`Cu`, 0.3], [`Au`, 0.3], [`Ni`, 0.2]), // three wedges and vacancy caps
   species([`O`, 0.8], [`F`, 0.8]), // overfull, rescaled to a full turn
 ]

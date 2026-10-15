@@ -37,16 +37,34 @@ export type SliceGeometry = {
   render_end_cap: boolean
 }
 
-// Allocation-free: runs for every site of every trajectory frame
+// Allocation-free: runs for every site of every trajectory frame. One visible element (Fe2+
+// and Fe3+ species count as one Fe) short of full occupancy.
 const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {
-  let n_visible = 0
+  let visible_element: string | undefined
   let total_visible_occupancy = 0
   for (const { element, occu } of site.species) {
     if (hidden_elements.size > 0 && hidden_elements.has(element)) continue
-    n_visible++
+    if (visible_element === undefined) visible_element = element
+    else if (element !== visible_element) return false
     total_visible_occupancy += occu
   }
-  return n_visible === 1 && total_visible_occupancy < 1 - OCCUPANCY_EPS
+  return visible_element !== undefined && total_visible_occupancy < 1 - OCCUPANCY_EPS
+}
+
+// A site's species as drawn: each element once with its occupancies summed, so mixed-valence
+// Fe2+ 0.5 / Fe3+ 0.5 is one full Fe sphere rather than two half wedges with a seam. Returns
+// the input itself when no element repeats (the common case allocates nothing).
+export const merge_species_by_element = (species: Site[`species`]): Site[`species`] => {
+  const repeats = species.some(
+    (spec, idx) => species.findIndex(({ element }) => element === spec.element) !== idx,
+  )
+  if (!repeats) return species
+  const merged = new Map<string, Site[`species`][number]>()
+  for (const spec of species) {
+    const prev = merged.get(spec.element)
+    merged.set(spec.element, prev ? { ...prev, occu: prev.occu + spec.occu } : spec)
+  }
+  return [...merged.values()]
 }
 
 // Disordered sites are often stored as separate single-species partial sites at the same
@@ -126,7 +144,8 @@ export const merge_split_partial_sites = (
   return render_sites
 }
 
-export const compute_slice_geometry = (visible_species: Site[`species`]): SliceGeometry[] => {
+export const compute_slice_geometry = (site_species: Site[`species`]): SliceGeometry[] => {
+  const visible_species = merge_species_by_element(site_species)
   if (visible_species.length === 0) return []
   // Ordered site (the common case): one full turn, no gap, no caps
   const [only] = visible_species

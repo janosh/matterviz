@@ -7,8 +7,10 @@ import type {
   WorkerLike,
 } from '#lib/file-viewer/parse-in-worker.js'
 import { parse_in_worker } from '#lib/file-viewer/parse-in-worker.js'
+import { parse_file_content } from '#lib/file-viewer/parse.js'
 import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker.js'
 import { prediction_to_json } from '#lib/structure/prediction.js'
+import { import_without_workers } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 import type {
   Hdf5GroupSelectionRequiredError,
@@ -418,6 +420,21 @@ describe(`parse_in_worker`, () => {
     expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
     await expect(prepare(3, preparation)).rejects.toThrow(`disposed`)
     for (const request of pending.splice(0)) request.resolve()
+  })
+
+  it.each([
+    [`Worker is missing`, undefined],
+    [`workers are disabled`, vi.fn()],
+  ])(`parses on the main thread where %s`, async (_label, worker_global) => {
+    vi.stubGlobal(`Worker`, worker_global)
+    const disabled = worker_global !== undefined
+    const module = await (disabled
+      ? import_without_workers(() => import(`#lib/file-viewer/parse-in-worker.js`))
+      : import(`#lib/file-viewer/parse-in-worker.js`))
+    const content = `{"lattice": {"matrix": [[3, 0, 0], [0, 3, 0], [0, 0, 3]]}, "sites": []}`
+    const result = await module.parse_in_worker(content, `empty.json`)
+    expect(result).toEqual(await parse_file_content(content, `empty.json`))
+    if (disabled) expect(worker_global).not.toHaveBeenCalled()
   })
 
   it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {

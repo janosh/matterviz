@@ -36,7 +36,7 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import { BAND_COLORS, property_label as display_label, SPIN_COLORS } from './constants'
+  import { property_label as display_label, sheet_color } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
@@ -200,11 +200,8 @@
     color_range ?? property_color_range(visible_surfaces, property_name),
   )
 
-  // Flat colour for a surface (material colour, tooltip background)
-  function get_surface_color(surface: FermiIsosurface): string {
-    if (color_property === `spin` && surface.spin) return SPIN_COLORS[surface.spin]
-    return BAND_COLORS[surface.band_index % BAND_COLORS.length]
-  }
+  const get_surface_color = (surface: FermiIsosurface): string =>
+    sheet_color(surface.band_index, surface.spin, color_property)
 
   // One BufferGeometry per visible surface object, built once and kept for as long as the
   // surface stays visible: the positions/normals/index buffers are shared with the surface, so
@@ -314,11 +311,7 @@
   // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
   // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
   const SURFACE_DEPTH_BIAS_STEP = 8
-  // A surface without per-vertex properties keeps its flat colour even in property mode,
-  // otherwise vertexColors would read a missing attribute
-  const has_vertex_colors = (surface: FermiIsosurface) =>
-    use_vertex_colors && vertex_property(surface, property_name) !== undefined
-  const make_material = (surface: FermiIsosurface, surface_idx: number) => {
+  const make_material = (surface_idx: number, color: string | true) => {
     const material =
       representation === `wireframe`
         ? new MeshBasicMaterial({ wireframe: true })
@@ -334,8 +327,8 @@
             // (three's default), so a distinct mask forces one pipeline per surface. Drop once fixed
             stencilFuncMask: surface_idx + 1,
           })
-    material.vertexColors = has_vertex_colors(surface)
-    if (!material.vertexColors) material.color.set(get_surface_color(surface))
+    material.vertexColors = color === true
+    if (color !== true) material.color.set(color)
     material.transparent = is_transparent
     // three draws a transparent DoubleSide material as back- then front-face passes, and one
     // raycast picks either side (an open sheet seen from its concave side shows only back faces)
@@ -344,25 +337,19 @@
   }
   // One material per surface, shared by every symmetry copy so a tiled cubic surface needs 1
   // material rather than 48 — hence built here instead of via <T.Mesh*Material>, which
-  // would instantiate one per <T.Mesh>. Cached by everything make_material reads, so a new
-  // fermi_data with the same sheets (a mu drag or band-plot hover re-extracting every frame)
-  // keeps its materials: each new material costs three a node-builder pass (~2 ms) on its
-  // first render. Colouring, transparency or representation changes build fresh ones and the
-  // effect below disposes those no surface uses any more. Plain Map: bookkeeping, not state.
+  // would instantiate one per <T.Mesh>. Cached by all make_material reads, so re-extracted sheets
+  // (every frame of a mu drag) skip three's ~2 ms node-builder pass for each new material
   const material_cache = new Map<string, MeshBasicMaterial | MeshStandardMaterial>()
   const materials = $derived(
     visible_surfaces.map((surface, surface_idx) => {
-      const key = [
-        representation,
-        surface_idx,
-        has_vertex_colors(surface) || get_surface_color(surface),
-        is_transparent,
-      ].join(`|`)
-      let material = material_cache.get(key)
-      if (!material) {
-        material = make_material(surface, surface_idx)
-        material_cache.set(key, material)
-      }
+      // A surface without per-vertex properties keeps its flat colour even in property mode,
+      // otherwise vertexColors would read a missing attribute
+      const color =
+        (use_vertex_colors && vertex_property(surface, property_name) !== undefined) ||
+        get_surface_color(surface)
+      const key = `${representation}|${surface_idx}|${color}|${is_transparent}`
+      const material = material_cache.get(key) ?? make_material(surface_idx, color)
+      material_cache.set(key, material)
       return material
     }),
   )
@@ -376,7 +363,6 @@
   })
   $effect(() => () => {
     for (const material of material_cache.values()) material.dispose()
-    material_cache.clear()
   })
   // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
   $effect(() => {
@@ -411,11 +397,9 @@
     symmetry_ops.map((sym_matrix) => new Matrix4().fromArray(sym_matrix).invert()),
   )
 
-  // The hovered k-path point, described like a hover in the Brillouin zone viewer, then
-  // passed on to the caller's own handler
+  // The hovered k-path point as a Brillouin zone viewer hover, also passed on to the caller
   const on_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
-    const position_cartesian =
-      qpoint_idx === null ? undefined : k_path?.path.points[qpoint_idx]
+    const position_cartesian = k_path?.path.points[qpoint_idx ?? -1]
     kpath_hover_data =
       position_cartesian && screen_position && bz_data
         ? {

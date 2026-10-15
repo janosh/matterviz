@@ -791,51 +791,34 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
   })
 }
 
-// A multi-panel component (Fermi surface + bands, bands + DOS, BZ + bands + DOS) offers one
-// fullscreen button that takes the whole component fullscreen, where every panel grows to at
-// least `min_height_frac` of the screen height. Enters by pressing `f` over `key_panel` (e.g. a
-// 3D panel, whose own shortcut must defer to the component's), exits through the Fullscreen
-// API (Esc), after which the button is unpressed and toggles fullscreen again.
+// A multi-panel component (Fermi surface + bands, bands + DOS, BZ + bands + DOS) has one
+// fullscreen button that takes it fullscreen with every panel over 80% of the screen height.
+// Enters by `f` over `key_panel` (a 3D panel's own shortcut must defer), exits via the
+// Fullscreen API (Esc) back to the inline panel sizes, then the synced button toggles both ways.
 export async function expect_combined_fullscreen(
   container: Locator,
   panels: string[],
-  {
-    key_panel = panels[0],
-    min_height_frac = 0.8,
-  }: { key_panel?: string; min_height_frac?: number } = {},
+  key_panel = panels[0],
 ): Promise<void> {
-  const page = container.page()
-  const button = container.locator(`.fullscreen-btn`)
-  const is_fullscreen = () =>
-    container.evaluate((element) => document.fullscreenElement === element)
-  const click_button = async () => {
-    // hover-revealed in its panel's header row
-    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover()
-    await button.click()
-  }
+  const button = container.locator(`.fullscreen-btn`) // strict: exactly one, before and after
+  const is_fullscreen = () => container.evaluate((elem) => document.fullscreenElement === elem)
   const panel_height = async (panel: string) =>
-    (await require_bbox(container.locator(panel).first(), panel)).height
-  const inline_heights = await Promise.all(panels.map(panel_height))
-  await expect(button).toHaveCount(1)
+    (await require_bbox(container.locator(panel).first())).height
+  const heights = () => Promise.all(panels.map(panel_height))
+  const inline_heights = await heights()
   await container.locator(key_panel).first().hover()
-  await page.keyboard.press(`f`)
+  await container.page().keyboard.press(`f`)
   await expect.poll(is_fullscreen).toBe(true)
-  const screen_height = await page.evaluate(() => innerHeight)
-  for (const panel of panels) {
-    await expect
-      .poll(() => panel_height(panel))
-      .toBeGreaterThan(screen_height * min_height_frac)
-  }
-  await expect(button).toHaveCount(1)
+  const min_height = 0.8 * (await container.evaluate(() => innerHeight))
+  await expect.poll(async () => Math.min(...(await heights()))).toBeGreaterThan(min_height)
   await expect(button).toHaveAttribute(`aria-pressed`, `true`)
-  await page.evaluate(() => document.exitFullscreen())
-  await expect(button).toHaveAttribute(`aria-pressed`, `false`)
-  // and the panels return to their inline sizes
-  for (const [idx, panel] of panels.entries()) {
-    await expect.poll(() => panel_height(panel)).toBeCloseTo(inline_heights[idx], 0)
+  await container.evaluate(() => document.exitFullscreen())
+  const max_drift = async () =>
+    Math.max(...(await heights()).map((height, idx) => Math.abs(height - inline_heights[idx])))
+  await expect.poll(max_drift).toBeLessThan(0.5)
+  for (const fullscreen of [true, false]) {
+    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
+    await button.click()
+    await expect.poll(is_fullscreen).toBe(fullscreen)
   }
-  await click_button()
-  await expect.poll(is_fullscreen).toBe(true)
-  await click_button()
-  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
 }

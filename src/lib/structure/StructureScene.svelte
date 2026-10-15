@@ -84,7 +84,11 @@
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { to_error } from '#lib/utils.js'
-  import { compute_slice_geometry, merge_split_partial_sites } from './partial-occupancy'
+  import {
+    compute_slice_geometry,
+    merge_species_by_element,
+    merge_split_partial_sites,
+  } from './partial-occupancy'
   import { PartialAtoms, type PartialAtom } from './partial-atoms'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -1837,22 +1841,14 @@
       ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
       : active_highlight_color,
   )
-  // The hovered atom's fill as drawn
-  const hovered_atom_color = $derived(
-    hovered_idx === null ? undefined : atom_groups.first_by_site.get(hovered_idx)?.color,
-  )
-  // Its tooltip wears that fill when it is one flat opaque colour: see-through atoms
-  // (atom_opacity < 1), a disordered site's element wedges (unless a property colour paints
-  // this site whole) or an atom colour field painted across the sphere have none, so those
-  // stay neutral
+  // The hovered atom's tooltip wears its fill only if flat and opaque (no field or bare wedges)
   const hovered_tooltip_bg = $derived(
     atom_opacity < 1 ||
       atom_color_field ||
-      (hovered_idx !== null &&
-        !property_colors?.colors[hovered_idx] &&
-        (hovered_site?.species.length ?? 0) > 1)
+      (merge_species_by_element(hovered_site?.species ?? []).length > 1 &&
+        !property_colors?.colors[hovered_idx ?? -1])
       ? null
-      : hovered_atom_color,
+      : atom_groups.first_by_site.get(hovered_idx ?? -1)?.color,
   )
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
@@ -1865,7 +1861,7 @@
     }
     if (hovered_idx !== null) {
       const hover_color =
-        hovered_atom_color ??
+        atom_groups.first_by_site.get(hovered_idx)?.color ??
         (hovered_site?.species[0] && palette[hovered_site.species[0].element])
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }

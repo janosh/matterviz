@@ -4,7 +4,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Vec3 } from '#lib/math.js'
-  import { is_opaque_color, pick_contrast_color } from '#lib/colors/index.js'
+  import { tooltip_paint } from '#lib/colors/index.js'
 
   let {
     position,
@@ -13,12 +13,10 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     position: Vec3
-    // Fill of the hovered mark, so the tooltip reads as part of it (text auto-contrasts).
-    // Omit, or pass a translucent/unresolvable color, for the neutral --canvas-tooltip-bg.
-    bg_color?: string | null
+    bg_color?: string | null // hovered mark's fill, see tooltip_paint
     children: Snippet<[{ position: Vec3 }]>
   } = $props()
-  const fill = $derived(is_opaque_color(bg_color) ? bg_color : undefined)
+  const paint = $derived(tooltip_paint(bg_color))
 
   // Threlte's Canvas host clips 3D rendering. Portal HTML overlays one level up so
   // tooltips can cross viewport/card boundaries without also unclipping the canvas.
@@ -67,8 +65,8 @@
     bind:this={tip}
     {...rest}
     role="tooltip"
-    style:background={fill}
-    style:color={fill && pick_contrast_color({ background: fill })}
+    style:background={paint?.background}
+    style:color={paint?.color}
   >
     {@render children({ position })}
   </div>

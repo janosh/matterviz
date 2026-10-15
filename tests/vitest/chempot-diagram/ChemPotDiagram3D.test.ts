@@ -366,22 +366,19 @@ test.each([
 
 // A drawn overlay is cut out of the base hull and wears its overlay colour, so its tooltip must
 // too; other domains keep their (arity) domain colour
-test.each([
-  [`Fe2O3`, true],
-  [`Li2O`, false],
-])(`tooltip of %s (overlay=%s) matches its drawn colour`, async (formula, is_overlay) => {
+test(`domain tooltips match their drawn colour`, async () => {
   const scene = await mount_diagram<HighlightScene & { formula_meshes: { color: string }[] }>({
     entries,
     config: { default_min_limit: -25, formulas_to_draw: [`Fe2O3`], draw_formula_meshes: true },
   })
-  const mesh = scene().hover_meshes.find((hover_mesh) => hover_mesh.formula === formula)
-  if (!mesh) throw new Error(`no ${formula} domain`)
-  scene().on_domain_hover(mesh, pointer_event)
-  flushSync()
-  const tip_bg = query(document.body, `.chempot-tooltip`).style.backgroundColor
-  const [overlay_color] = scene().formula_meshes.map(({ color }) => color)
-  expect(tip_bg === overlay_color).toBe(is_overlay)
-  if (!is_overlay) expect(ARITY_COLORS).toContain(tip_bg)
+  const tip_bg = (formula: string) => {
+    const mesh = scene().hover_meshes.find((hover_mesh) => hover_mesh.formula === formula)
+    scene().on_domain_hover(mesh, pointer_event)
+    flushSync()
+    return query(document.body, `.chempot-tooltip`).style.backgroundColor
+  }
+  expect(tip_bg(`Fe2O3`)).toBe(scene().formula_meshes[0].color)
+  expect(ARITY_COLORS).toContain(tip_bg(`Li2O`))
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
@@ -415,9 +412,6 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
   flushSync()
   expect(bound.hover_info?.formula).toBe(hovered.formula)
   expect(tooltip_panes()).toEqual([0, 1, 0, 0])
-  // the tooltip wears the hovered domain's fill (colored by arity by default)
-  const tip_bg = query(panes[1], `.chempot-tooltip`).style.backgroundColor
-  expect(ARITY_COLORS).toContain(tip_bg)
   expect(highlights()).toEqual(Array(4).fill(hovered.formula))
   // hovering in another pane hands the tooltip and highlight over
   second.on_domain_leave(hovered)

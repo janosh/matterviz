@@ -1,10 +1,11 @@
 // The shared worker client's teardown rules were each learned from a bug, so they need
 // tests that fail when the rule is removed - deleting `messageerror` or `terminate()` used
 // to leave every module's suite green.
-import { create_worker_client } from '#lib/worker-client.svelte.js'
+import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
 import { serve_worker } from '#lib/worker-serve.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { install_stub_worker, type StubWorkerInstance, type StubWorkerMessage } from './setup'
+import type { StubWorkerInstance, StubWorkerMessage } from './setup'
+import { install_stub_worker } from './setup'
 
 // Installed without a `compute`, so the stub records posts and never replies unless told to
 let stub: ReturnType<typeof install_stub_worker<StubWorkerMessage>>
@@ -186,14 +187,39 @@ describe(`request dedupe`, () => {
   })
 })
 
-test(`falls back to compute_sync when Worker is missing`, async () => {
-  vi.stubGlobal(`Worker`, undefined)
+test.each([
+  [
+    `Worker is missing`,
+    async () => {
+      vi.stubGlobal(`Worker`, undefined)
+      return { create_worker_client, can_create_worker }
+    },
+  ],
+  // anywidget's CDN/file:// bundle: the URL resolves but the worker would be cross-origin
+  [
+    `a host called disable_workers`,
+    async () => {
+      vi.resetModules()
+      const fresh = await import(`#lib/worker-client.svelte.js`)
+      expect(fresh.can_create_worker()).toBe(true)
+      fresh.disable_workers()
+      return fresh
+    },
+  ],
+])(`runs compute_sync on the main thread where %s`, async (_label, load) => {
+  const { create_worker_client: create, can_create_worker: can_create } = await load()
+  expect(can_create()).toBe(false)
   const progress = vi.fn()
-  const run = make_client((_input, _options, on_progress) => {
-    on_progress?.(0.5)
-    return `sync`
+  const run = create<{ tag: string }, undefined, string, number>({
+    label: `Test`,
+    create_worker: () => new Worker(`stub`),
+    compute_sync: (_input, _options, on_progress) => {
+      on_progress?.(0.5)
+      return `sync`
+    },
+    build_payload: (input) => input,
   })
-  await expect(run({ tag: `a` }, {}, { on_progress: progress })).resolves.toBe(`sync`)
+  await expect(run({ tag: `a` }, undefined, { on_progress: progress })).resolves.toBe(`sync`)
   expect(progress).toHaveBeenCalledExactlyOnceWith(0.5)
   expect(workers()).toHaveLength(0)
 })

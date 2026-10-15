@@ -5,8 +5,8 @@
   import {
     contrast_color_memo,
     is_color,
-    is_opaque_color,
     resolve_backdrop,
+    tooltip_paint,
   } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
@@ -592,12 +592,10 @@
     tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
     tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
     tooltip_div.classList.add(`visible`)
-    // wear the hovered cell's fill (the arrow too), text contrasted against it; a translucent
-    // or missing fill (transparent by default) gets an empty value, which removes the inline
-    // property and restores the neutral CSS defaults
-    const fill = is_opaque_color(context.bg_color) ? context.bg_color : null
-    tooltip_div.style.setProperty(`--_bg`, fill ?? ``)
-    tooltip_div.style.color = contrast_for_bg(fill) ?? ``
+    // no paint sets `` (removes the inline values), restoring the neutral CSS defaults
+    const paint = tooltip_paint(context.bg_color, contrast_for_bg)
+    tooltip_div.style.setProperty(`--_bg`, paint?.background ?? ``)
+    tooltip_div.style.color = paint?.color ?? ``
     if (typeof tooltip === `function`) {
       tooltip_cell = context
     } else {

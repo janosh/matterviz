@@ -795,8 +795,7 @@ describe(`milestone feature props`, () => {
     await Promise.resolve()
     const [first_cell, missing_cell] = get_data_cells()
     const tooltip_el = doc_query(`.tooltip`)
-    // the tooltip wears the hovered cell's fill, text contrasted against it, and a fill-less
-    // (missing) cell restores the neutral defaults
+    // the tooltip wears the hovered cell's fill with contrasting text; a fill-less cell resets
     for (const [cell, bg, color] of [
       [first_cell, `#000000`, `white`],
       [missing_cell, ``, ``],

@@ -224,15 +224,6 @@ export const marker_fill = (marker: Element | undefined): string | undefined =>
   /^var\(--point-fill-color, (?<color>.+)\)$/.exec(marker?.getAttribute(`fill`) ?? ``)?.groups
     ?.color
 
-// A color serialized the way an inline background is (happy-dom normalizes rgba spacing), for
-// comparing with a tooltip's `style.backgroundColor`; an empty or invalid color throws
-export const css_bg_color = (color: string | null | undefined): string => {
-  const { style } = document.createElement(`div`)
-  style.backgroundColor = color ?? ``
-  if (!style.backgroundColor) throw new Error(`invalid CSS color: ${color}`)
-  return style.backgroundColor
-}
-
 export const hdf5_group_option = (
   target: ParentNode,
   group_path: string,
@@ -760,4 +751,14 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
       next_error = null
     },
   }
+}
+
+// Re-imports a module graph with workers disabled, as anywidget runs matterviz's bundle
+export const import_without_workers = async <Module>(
+  load: () => Promise<Module>,
+): Promise<Module> => {
+  vi.resetModules()
+  const { disable_workers } = await import(`#lib/worker-client.svelte.js`)
+  disable_workers()
+  return load()
 }

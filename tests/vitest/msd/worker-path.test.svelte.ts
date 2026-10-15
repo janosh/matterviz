@@ -10,7 +10,13 @@ import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
+import {
+  bind_props,
+  expect_module_worker,
+  import_without_workers,
+  install_stub_worker,
+  settle,
+} from '../setup'
 import { drift_positions } from './helpers'
 
 const stub = install_stub_worker<{
@@ -45,6 +51,18 @@ describe(`worker code path`, () => {
       expect(positions.positions).toHaveLength(n_frames * 2 * 3)
     },
   )
+})
+
+it(`computes on the main thread where workers are disabled`, async () => {
+  const main_thread_module = await import_without_workers(
+    () => import(`#lib/msd/async-compute.svelte.js`),
+  )
+  const positions = drift_positions(30)
+  const n_workers = stub.instances.length
+  const result = await main_thread_module.compute_msd_async(positions)
+  expect([stub.instances.length, stub.posted.length]).toEqual([n_workers, 0])
+  expect(result).toEqual(await compute_msd_async(positions)) // the worker path's result
+  expect(stub.posted).toHaveLength(1)
 })
 
 // A timestep only relabels the lag axis, so editing it must not re-post the (possibly

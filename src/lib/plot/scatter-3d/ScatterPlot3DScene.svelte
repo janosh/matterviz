@@ -37,7 +37,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { is_opaque_color, opaque_contrast_color, plot_color } from '#lib/colors/index.js'
+  import { opaque_contrast_color, plot_color, tooltip_paint } from '#lib/colors/index.js'
   import { extract_series_color } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
@@ -343,11 +343,8 @@
     const idx = hovered_point && idx_by_key.get(point_key(hovered_point))
     if (idx == null) return null
     const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(idx * INSTANCE_STRIDE)
-    return {
-      position: [pos_x, pos_y, pos_z] as Vec3,
-      radius,
-      color: point_instances[idx].color,
-    }
+    const { color } = point_instances[idx]
+    return { position: [pos_x, pos_y, pos_z] as Vec3, radius, color }
   })
 
   // One sphere mesh for every point: instance transforms carry each radius
@@ -814,17 +811,15 @@
       {#if tooltip}
         {@render tooltip(data)}
       {:else}
-        {@const fill = is_opaque_color(hover_drawn.color) ? hover_drawn.color : null}
-        {@const shown_bg = tooltip_bg_override || fill}
-        <!-- wears the hovered marker's fill unless --scatter3d-tooltip-bg overrides it; a fill
-        JS can't resolve (CSS var, translucent) keeps the dark chip. Text contrasts with
-        whichever bg shows -->
+        {@const paint = tooltip_paint(hover_drawn.color)}
+        <!-- a set --scatter3d-tooltip-bg wins over the marker paint (else the dark chip) -->
         <div
           class="tooltip"
-          style:background="var(--scatter3d-tooltip-bg, {fill ?? `rgba(0, 0, 0, 0.85)`})"
-          style:color="var(--scatter3d-tooltip-color, {shown_bg
-            ? opaque_contrast_color(shown_bg)
-            : `white`})"
+          style:background="var(--scatter3d-tooltip-bg, {paint?.background ??
+            `rgba(0, 0, 0, 0.85)`})"
+          style:color="var(--scatter3d-tooltip-color, {tooltip_bg_override
+            ? opaque_contrast_color(tooltip_bg_override)
+            : (paint?.color ?? `white`)})"
           {@attach read_tooltip_bg}
         >
           {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}

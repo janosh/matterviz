@@ -309,15 +309,13 @@
   }
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
-  // The tooltip takes the hovered region's hue, opaque (the drawn fill is translucent, which
-  // would let region labels show through the card): the palette's hex for default fills, an
-  // explicit color only if opaque. A multi-phase gradient or translucent explicit color has no
-  // single solid color, so its tooltip keeps the neutral card
+  // The tooltip wears the hovered region's hue opaque (the translucent drawn fill would let
+  // labels show through); gradients and translucent explicit colors keep the neutral card
   const tooltip_region_color = $derived.by(() => {
     const region = effective_hover_info?.region
     if (!region || get_multi_phase_gradient(region.name)) return undefined
-    if (!region.color) return get_phase_color(region.name, `hex`)
-    return is_opaque_color(region.color) ? region.color : undefined
+    const color = region.color || get_phase_color(region.name, `hex`)
+    return is_opaque_color(color) ? color : undefined
   })
 
   // Isothermal tie-line geometry (SVG px); null outside two-phase regions.

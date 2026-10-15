@@ -220,6 +220,7 @@ describe(`Sunburst`, () => {
     [`#ffe0b3`, `black`],
     [`#1f3a5f`, `white`],
     [`#4e79a7`, `white`],
+    [`#e15759`, `black`], // PLOT_COLORS red: white only 3.7:1
   ])(`arc label on %s renders %s text for contrast`, async (color, expected_fill) => {
     const plot = await mount_sized_sunburst({ data: [{ label: `N`, color, value: 10 }] })
     expect(plot.querySelector(`.arc-label`)?.getAttribute(`fill`)).toBe(expected_fill)

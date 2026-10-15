@@ -200,23 +200,9 @@ const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
   return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
 }
 
-// APCA lightness contrast |Lc| (https://github.com/Myndex/SAPC-APCA, 0.0.98G). The WCAG 2
-// ratio (L+0.05)/(L'+0.05) flips black→white text at luminance 0.18, so mid-tones like the
-// steelblue and red of PLOT_COLORS got black text that reads worse than white; APCA's polarity-
-// dependent exponents put the flip near 0.32, matching how the pairs actually look. Fed WCAG
-// luminance rather than APCA's own 2.4-power form: the black/white pick differs only on
-// near-ties, and only an exposed Lc value would justify the second luminance path.
-const apca_contrast = (text_luminance: number, bg_luminance: number): number => {
-  // black-level soft clamp so near-black colors don't blow up the power curves; the spec's
-  // exponent is 1.414, i.e. √2 to three decimals (the difference moves the clamp by < 1e-5)
-  const soft_clamp = (lum: number) => (lum < 0.022 ? lum + (0.022 - lum) ** Math.SQRT2 : lum)
-  const [text_lum, bg_lum] = [soft_clamp(text_luminance), soft_clamp(bg_luminance)]
-  return Math.abs(
-    bg_lum > text_lum
-      ? (bg_lum ** 0.56 - text_lum ** 0.57) * 1.14
-      : (bg_lum ** 0.65 - text_lum ** 0.62) * 1.14,
-  )
-}
+// WCAG 2 contrast ratio between two relative luminances, from 1 (same) to 21 (black on white)
+const wcag_contrast = (lum_a: number, lum_b: number): number =>
+  (Math.max(lum_a, lum_b) + 0.05) / (Math.min(lum_a, lum_b) + 0.05)
 
 const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
   const foreground_alpha = clamp01(foreground.opacity)
@@ -249,7 +235,11 @@ export interface Paint {
 }
 
 const DEFAULT_CONTRAST_CHOICES = [`black`, `white`] as const
+const WCAG_AA = 4.5
 
+// The lighter choice whenever it reaches WCAG AA (4.5:1), else the higher-contrast one (black
+// or white always reaches 4.58:1). Pure max-ratio flips near-ties like steelblue (both 4.6:1)
+// to black, which reads worse; APCA put white on mid-tones at 2.7-3.3:1.
 export function pick_contrast_color(paint: Paint): string {
   const { background, backdrop, choices = DEFAULT_CONTRAST_CHOICES } = paint
   const parsed_bg = parse_rgb(background)
@@ -267,10 +257,10 @@ export function pick_contrast_color(paint: Paint): string {
       parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, effective_bg) : parsed_choice,
     )
   })
-  return apca_contrast(choice_luminances[0], bg_luminance) >=
-    apca_contrast(choice_luminances[1], bg_luminance)
-    ? choices[0]
-    : choices[1]
+  const ratios = choice_luminances.map((lum) => wcag_contrast(lum, bg_luminance))
+  const lighter_idx = choice_luminances[1] >= choice_luminances[0] ? 1 : 0
+  if (ratios[lighter_idx] >= WCAG_AA) return choices[lighter_idx]
+  return ratios[0] >= ratios[1] ? choices[0] : choices[1]
 }
 
 // Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
@@ -283,6 +273,20 @@ export const contrast_text_color = (paint: Paint): string =>
 // nothing to contrast against. For marks whose color the user supplies verbatim.
 export const opaque_contrast_color = (background: string): string =>
   is_opaque_color(background) ? pick_contrast_color({ background }) : `currentColor`
+
+// A hovered mark's opaque fill with contrasting text for its tooltip, beating the
+// --tooltip-bg/--canvas-tooltip-bg theme tokens that style the neutral chip shown for null
+// (translucent, var() or no fill). Component override vars like var(--scatter3d-tooltip-bg,
+// paint) beat both. `pick` swaps the text-color picker (e.g. a grid's contrast_color_memo).
+export const tooltip_paint = (
+  fill: unknown,
+  pick: (background: string) => string | null = (background) =>
+    pick_contrast_color({ background }),
+): { background: string; color: string } | null => {
+  if (!is_opaque_color(fill)) return null
+  const color = pick(fill)
+  return color === null ? null : { background: fill, color }
+}
 
 // Distinct backgrounds a memo holds at once. A continuous colour scale yields a new string
 // per distinct value, so a long-lived grid fed changing data would otherwise grow the cache

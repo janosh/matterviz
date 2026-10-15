@@ -25,7 +25,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     x: number
     y: number
-    bg_color?: string | null
+    bg_color?: string | null // hovered mark's fill (also translucent or var()), see tooltip_paint
     // Signed gap from the anchor; the sign picks the preferred side (right/below for positive)
     offset?: { x: number; y: number }
     fixed?: boolean // position: fixed for viewport coords (absolute otherwise)

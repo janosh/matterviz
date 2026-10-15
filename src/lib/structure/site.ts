@@ -8,9 +8,8 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { PreparedVectorGeometry } from './vectors'
 
-// A structure as pymatgen-compatible JSON data: pymatgen reads any species oxidation_state key,
-// 0 included, as a decorated Species (Fe0+), so undecorated species drop it (readers default it
-// back to 0). Only species entries change; site properties keep every key as written.
+// pymatgen-compatible JSON data: pymatgen reads any species oxidation_state key, 0 included, as
+// decorated (Fe0+), so undecorated species drop it (readers default it back to 0)
 export const structure_json_data = (structure: AnyStructure): object => ({
   ...structure,
   sites: structure.sites.map((site) => ({

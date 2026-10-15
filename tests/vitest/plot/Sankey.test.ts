@@ -113,15 +113,12 @@ describe(`Sankey`, () => {
     expect(first_path?.getAttribute(`stroke`)?.startsWith(`url(#`)).toBe(true)
   })
 
-  test.each([
-    [`source`, data],
-    [`target`, data],
-    // an explicit link color wins over the node color in both ribbon and tooltip
-    [`source`, { ...data, links: data.links.map((link) => ({ ...link, color: `#123456` })) }],
-  ] as const)(
-    `link tooltip wears the ribbon color in %s mode`,
-    async (link_color_mode, sankey_data) => {
-      const plot = await mount_sized_sankey({ data: sankey_data, link_color_mode })
+  // an explicit link color wins over the node color in both ribbon and tooltip
+  test.each<[`source` | `target`, string?]>([[`source`], [`target`], [`source`, `#123456`]])(
+    `link tooltip wears the ribbon color in %s mode (link color %s)`,
+    async (link_color_mode, color) => {
+      const links = data.links.map((link) => ({ ...link, color: color ?? link.color }))
+      const plot = await mount_sized_sankey({ data: { ...data, links }, link_color_mode })
       const link = plot.querySelector(`.links path`)
       await fire(link, mouse(`mousemove`, { clientX: 200, clientY: 100 }))
       const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)

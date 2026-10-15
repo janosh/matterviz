@@ -555,7 +555,6 @@
   .legend-item:focus {
     background-color: var(--plot-legend-item-hover-bg-color);
   }
-  /* hovering the series in the plot marks its item with the accent edge alone */
   .legend-item.active {
     box-shadow: inset 2px 0 0 var(--accent-color, currentColor);
   }

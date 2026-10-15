@@ -756,21 +756,14 @@ describe(`scene sizing helpers`, () => {
     },
   )
 
-  // band paths revisit symmetry points (junction duplicates, Γ twice): one chip per labeled
-  // position, distinct labels at one position joined, first q-point index kept for hover
-  // reporting; unlabeled points get none
+  // paths revisit symmetry points: one entry per labeled position, its labels, first q-point
   test(`k_path_sym_points merges revisited labeled points`, () => {
     // oxfmt-ignore
     const points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [1, 0, 0], [0, 0, 0], [0, 1, 0], [0, 1, 1e-9]]
     const labels = [`Γ`, null, `X`, `X`, `Γ`, `K`, `U`]
     const merged = k_path_sym_points({ points, labels, branches: [[0, 6]] }, 1e-6)
-    expect(
-      merged.map(({ labels: names, qpoint_idx }) => [names.join(` | `), qpoint_idx]),
-    ).toEqual([
-      [`Γ`, 0],
-      [`X`, 2],
-      [`K | U`, 5],
-    ])
+    const summary = merged.flatMap((sym) => [sym.labels.join(` | `), sym.qpoint_idx])
+    expect(summary).toEqual([`Γ`, 0, `X`, 2, `K | U`, 5])
   })
 
   test.each([

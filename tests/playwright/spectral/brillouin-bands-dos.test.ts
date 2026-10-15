@@ -48,15 +48,11 @@ test.describe(`BrillouinBandsDos Component Tests`, { lock: `brillouin-3d` }, () 
     })
   })
 
-  // one fullscreen button takes BZ, bands and DOS fullscreen together; at screen width the
-  // panels sit side by side, each the full height
+  // at screen width the three panels sit side by side, each the full height
   test(`BZ, bands and DOS go fullscreen as one component`, async ({ page }) => {
+    const panels = [`.scatter`, `.scatter >> nth=1`, `.brillouin-zone`]
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    await expect_combined_fullscreen(
-      container,
-      [`.scatter`, `.scatter >> nth=1`, `.brillouin-zone`],
-      { key_panel: `.brillouin-zone` },
-    )
+    await expect_combined_fullscreen(container, panels, `.brillouin-zone`)
   })
 
   test(`renders all three panels with content`, async ({ page }) => {

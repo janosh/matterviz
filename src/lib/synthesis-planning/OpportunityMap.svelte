@@ -222,7 +222,6 @@
         {#each temperatures as temperature, row_idx}
           <span>{format_num(temperature, `.0f`)}</span>
           {#each cells.slice(row_idx * 9, (row_idx + 1) * 9) as cell}
-            {@const color = cell_color(cell)}
             {#snippet cell_tooltip()}
               {@const route = shown_route(cell)}
               {@render tooltip_row(`Temperature`, cell.temperature, `K`, `.0f`)}
@@ -242,8 +241,8 @@
             {/snippet}
             <button
               type="button"
-              style:background={color}
-              {@attach hover_tooltip(cell_tooltip, () => color)}
+              style:background={cell_color(cell)}
+              {@attach hover_tooltip(cell_tooltip, () => cell_color(cell))}
               aria-label={cell_label(cell)}
               aria-pressed={cell.temperature === conditions.temperature &&
                 Math.abs(

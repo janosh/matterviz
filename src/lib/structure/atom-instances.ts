@@ -35,6 +35,17 @@ export function update_atom_coordinates<Atom extends InstancedAtom>(
   return atoms.slice()
 }
 
+// Summed occupancy of a site whose species are all `element` (mixed-valence Fe2+ / Fe3+ draws
+// as one Fe sphere), else NaN. Allocation-free: runs for every site of every trajectory frame.
+const element_occupancy = (species: Site[`species`], element: string): number => {
+  let occupancy = 0
+  for (const spec of species) {
+    if (spec.element !== element) return NaN
+    occupancy += spec.occu
+  }
+  return occupancy
+}
+
 // Reuse viewer-owned render records for coordinate-only updates of ordered atoms. Validate
 // every slot before changing any record; composition, occupancy or image changes rebuild it.
 export function update_ordered_atom_positions<
@@ -56,9 +67,7 @@ export function update_ordered_atom_positions<
       atom.occupancy !== 1 ||
       is_image_site(site) ||
       site.provenance?.completion ||
-      site.species.length !== 1 ||
-      site.species[0].occu !== 1 ||
-      atom.element !== site.species[0].element
+      element_occupancy(site.species, atom.element) !== 1
     )
       return null
   }

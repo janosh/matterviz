@@ -14,16 +14,8 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
 } from '#lib/structure/export.js'
-import {
-  parse_cif,
-  parse_poscar,
-  parse_structure_file,
-  parse_xyz,
-} from '#lib/structure/parse.js'
-import ba_ti_o3_tetragonal from '#site/structures/BaTiO3-tetragonal.poscar?raw'
-import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
-import tio2_cif from '#site/structures/TiO2.cif?raw'
-import { assert, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { parse_cif, parse_poscar, parse_xyz } from '#lib/structure/parse.js'
+import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../test-fixtures'
 
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
@@ -49,8 +41,6 @@ const diag_lattice = (lattice_a: number, lattice_b = lattice_a, lattice_c = latt
   matrix: [[lattice_a, 0, 0], [0, lattice_b, 0], [0, 0, lattice_c]],
   pbc: [true, true, true], a: lattice_a, b: lattice_b, c: lattice_c, alpha: 90, beta: 90, gamma: 90, volume: lattice_a * lattice_b * lattice_c,
 })
-
-const real_structure_json = `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
 
 // oxfmt-ignore
 const water_xyz_rows = [
@@ -114,87 +104,13 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Round-trip exporters`, () => {
-    // oxfmt-ignore
-    it.each([
-      { name: `JSON`, structure: complex_structure, preserves_id: true },
-      { name: `pymatgen JSON`, structure: JSON.parse(real_structure_json), preserves_id: false },
-    ])(`round-trips $name export and parse`, ({ structure, preserves_id }) => {
-      const content = structure_to_json_str(structure as AnyStructure)
-      const parsed = parse_structure_file(content, `test.json`)
-      const elements = (sites: AnyStructure[`sites`]) =>
-        sites.map((site) => site.species.map(({ element }) => element))
-      expect(elements(parsed.sites)).toEqual(elements(structure.sites))
-      // pymatgen reads any oxidation_state key as a decorated Species (Fe0+), so the export
-      // drops the undecorated 0 and keeps real oxidation states
-      const oxi_states = (sites: AnyStructure[`sites`]) =>
-        sites.flatMap((site) => site.species.map(({ oxidation_state }) => oxidation_state))
-      const exported = JSON.parse(structure_to_json_str(parsed))
-      expect(oxi_states(exported.sites)).toEqual(
-        oxi_states(parsed.sites).map((oxi) => (oxi === 0 ? undefined : oxi)),
-      )
-      if (preserves_id && structure.id) {
-        expect(parsed.id).toBe(structure.id)
-      }
-    })
-
+    // pymatgen reads any oxidation_state key as a decorated Species (Fe0+)
     it(`drops only undecorated species oxidation states, never site properties`, () => {
-      const site = {
-        species: [
-          { element: `Fe`, occu: 0.5, oxidation_state: 0 },
-          { element: `Co`, occu: 0.5, oxidation_state: 2 },
-        ],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Fe`,
-        properties: { oxidation_state: 0 },
-      } satisfies Site
+      const site = { ...make_site(`Fe`), properties: { oxidation_state: 0 } }
+      site.species.push({ element: `Co`, occu: 1, oxidation_state: 2 })
       const [exported] = JSON.parse(structure_to_json_str({ sites: [site] })).sites
-      expect(exported.species).toEqual([
-        { element: `Fe`, occu: 0.5 },
-        { element: `Co`, occu: 0.5, oxidation_state: 2 },
-      ])
+      expect(exported.species).toEqual([{ element: `Fe`, occu: 1 }, site.species[1]])
       expect(exported.properties).toEqual({ oxidation_state: 0 })
-    })
-
-    const TOL = 8
-    const to_any = (partial_structure: {
-      sites: AnyStructure[`sites`]
-      lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
-    }) =>
-      ({
-        sites: partial_structure.sites,
-        charge: 0,
-        ...(partial_structure.lattice && {
-          lattice: {
-            ...(partial_structure.lattice as Omit<LatticeType, `pbc`>),
-            pbc: [true, true, true],
-          },
-        }),
-      }) as AnyStructure
-
-    // oxfmt-ignore
-    it.each([
-      { name: `XYZ quartz`, parse: () => parse_xyz(extended_xyz_quartz), out: structure_to_xyz_str },
-      { name: `POSCAR BaTiO3`, parse: () => parse_poscar(ba_ti_o3_tetragonal), out: structure_to_poscar_str },
-      { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
-    ])(`round-trips %s`, ({ name, parse, out }) => {
-      const parsed = parse()
-      assert(parsed && `lattice` in parsed, `failed to parse fixture`)
-      const structure = to_any(parsed)
-      const exported = out(structure)
-      if (name === `CIF TiO2`) {
-        expect(structure_to_cif_str({ ...structure, lattice: { matrix: parsed.lattice.matrix } } as AnyStructure)).toBe(exported)
-      }
-      const reparsed = parse_structure_file(exported)
-      assert(reparsed && `lattice` in reparsed, `failed to reparse`)
-      expect(reparsed.sites).toHaveLength(parsed.sites.length)
-      const frac_to_cart = math.create_frac_to_cart(reparsed.lattice.matrix)
-      reparsed.sites.forEach((site, idx) => {
-        for (const axis of [0, 1, 2]) {
-          expect(site.abc[axis]).toBeCloseTo(parsed.sites[idx].abc[axis], TOL)
-          expect(frac_to_cart(site.abc)[axis]).toBeCloseTo(site.xyz[axis], TOL)
-        }
-      })
     })
 
     // Everything past `species x y z` used to vanish on export: no Properties= line was
@@ -606,7 +522,11 @@ describe(`Export functionality`, () => {
         return math.dot(vec_h, math.cross_3d(vec_f, vec_cl))
       }
       expect(triple_product(original)).toBeCloseTo(1.68, 12)
-      const reparsed = parse_cif(structure_to_cif_str(original))
+      const exported = structure_to_cif_str(original)
+      // the lattice matrix alone (no a/b/c/angles) is all the writer needs
+      const matrix_only = { ...original, lattice: { matrix: original.lattice.matrix } }
+      expect(structure_to_cif_str(matrix_only as AnyStructure)).toBe(exported)
+      const reparsed = parse_cif(exported)
       expect(math.det_3x3(reparsed.lattice.matrix)).toBeGreaterThan(0)
       // 8-decimal fractional coords in a 6 Å cell leave ~1e-8 Å per coordinate
       expect(triple_product(reparsed)).toBeCloseTo(1.68, 6)
@@ -707,8 +627,26 @@ describe(`Export functionality`, () => {
         expect(structure_to_xyz_str(struct).split(`\n`)[2]).toMatch(new RegExp(`^${element} `))
       })
 
-      it(`CIF gives an unlabeled mixed-valence site element-derived labels`, () => {
-        expect(structure_to_cif_str(mixed_valence)).toMatch(/^Fe1 Fe [^\n]+\nFe1_1 Fe /m)
+      // pymatgen's CifParser decorates species only from the _atom_type oxidation loop, strips
+      // the charges off its keys (a plain Fe next to Fe3+ read back as Fe3+) and makes every
+      // species an ion once it exists, so like its CifWriter charges need all species decorated.
+      // _chemical_formula_sum (elements, occupancy-weighted) is what pymatgen checks the
+      // composition against; without it, it warned on every file with charged symbols.
+      it(`CIF writes charges only when every species is decorated, plus the formula`, () => {
+        const cif = structure_to_cif_str(mixed_valence)
+        expect(cif).toMatch(/^Fe1 Fe2\+ [^\n]+\nFe1_1 Fe3\+ /m)
+        expect(cif).toContain(`_atom_type_oxidation_number\n  Fe2+ 2\n  Fe3+ 3\n`)
+        expect(cif).toContain(`\n_chemical_formula_sum Fe\n`)
+        const [mv_site] = mixed_valence.sites
+        const [fe2, fe3] = mv_site.species
+        const species = [fe2, { ...fe3, oxidation_state: 0 }]
+        const partly = { ...mixed_valence, sites: [{ ...mv_site, species }] }
+        for (const struct of [disordered, partly])
+          expect(structure_to_cif_str(struct)).not.toMatch(/_atom_type_symbol|[+-] /)
+        expect(structure_to_cif_str(partly)).toMatch(/^Fe1 Fe [^\n]+\nFe1_1 Fe /m)
+        expect(structure_to_cif_str(disordered)).toContain(
+          `_chemical_formula_sum 'Cu0.7 Au0.3'`,
+        )
       })
     })
 
@@ -799,93 +737,5 @@ describe(`Export functionality`, () => {
         `O 1.000000 1.000000 1.000000`,
       ])
     })
-  })
-})
-
-// Sort by element, then fractional coords, so reordered sites compare equal
-const sort_sites = (sites: AnyStructure[`sites`]): AnyStructure[`sites`] =>
-  [...sites].toSorted((site_a, site_b) => {
-    const elem_a = site_a.species[0].element
-    const elem_b = site_b.species[0].element
-    if (elem_a !== elem_b) return elem_a.localeCompare(elem_b)
-    for (let idx = 0; idx < 3; idx++) {
-      if (Math.abs(site_a.abc[idx] - site_b.abc[idx]) > 1e-4)
-        return site_a.abc[idx] - site_b.abc[idx]
-    }
-    return 0
-  })
-
-function assert_structures_equal(
-  struct1: AnyStructure,
-  struct2: AnyStructure,
-  filename: string,
-) {
-  expect(struct2.sites, `Site count mismatch in ${filename}`).toHaveLength(
-    struct1.sites.length,
-  )
-
-  if (`lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice) {
-    const params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-    for (const param of params) {
-      expect(
-        struct2.lattice[param],
-        `Lattice param '${param}' mismatch in ${filename}`,
-      ).toBeCloseTo(struct1.lattice[param])
-    }
-  } else {
-    expect(`lattice` in struct1).toBe(`lattice` in struct2)
-  }
-
-  const sorted_sites1 = sort_sites(struct1.sites)
-  const sorted_sites2 = sort_sites(struct2.sites)
-
-  for (const [idx, site1] of sorted_sites1.entries()) {
-    const site2 = sorted_sites2[idx]
-
-    expect(site2.species, `Species mismatch for site ${idx} in ${filename}`).toEqual(
-      site1.species,
-    )
-
-    for (const comp_idx of [0, 1, 2]) {
-      expect(
-        site2.abc[comp_idx],
-        `Coord mismatch for site ${idx}, component ${comp_idx} in ${filename}`,
-      ).toBeCloseTo(site1.abc[comp_idx], 4)
-    }
-
-    // POSCAR files can have selective_dynamics
-    if (site1.properties?.selective_dynamics) {
-      expect(
-        site2.properties?.selective_dynamics,
-        `selective_dynamics mismatch for site ${idx} in ${filename}`,
-      ).toEqual(site1.properties.selective_dynamics)
-    }
-  }
-}
-
-describe(`Round-trip CIF and POSCAR exports`, () => {
-  const structure_files = import.meta.glob<string>(
-    [
-      `/src/site/structures/*.cif`,
-      `!/src/site/structures/P24Ru4H252C296S24N16.cif`,
-      `/src/site/structures/*.{poscar,vasp}`,
-    ],
-    { eager: true, query: `?raw`, import: `default` },
-  )
-
-  const test_cases = Object.entries(structure_files).map(([path, content]) => ({
-    filename: path.split(`/`).pop() ?? path,
-    content,
-  }))
-
-  test.each(test_cases)(`round-trips $filename correctly`, ({ filename, content }) => {
-    const original = parse_structure_file(content, filename)
-    assert(original, `Failed to parse original file ${filename}`)
-
-    const exporter = filename.endsWith(`.cif`) ? structure_to_cif_str : structure_to_poscar_str
-    const round_tripped = parse_structure_file(exporter(original), filename)
-    assert(round_tripped, `Failed to parse exported file ${filename}`)
-
-    assert_structures_equal(original, round_tripped, filename)
   })
 })

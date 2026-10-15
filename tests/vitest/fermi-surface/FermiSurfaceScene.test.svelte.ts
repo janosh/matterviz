@@ -91,7 +91,11 @@ const mesh_materials = () =>
     .map(({ props }) => props.material as MeshStandardMaterial)
 
 test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque rebuilds them`, () => {
-  const props = $state({ surface_opacity: 0.6, fermi_data })
+  const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
+    surface_opacity: 0.6,
+    fermi_data,
+    representation: `solid`,
+  })
   mount_scene(props)
 
   // One double-sided mesh per renderable surface (the empty sheet gets none)
@@ -127,22 +131,17 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
   for (const spy of dispose_spies) expect(spy).not.toHaveBeenCalled()
 
   // A re-extraction (new fermi_data, same bands, e.g. every frame of a band-plot hover) keeps
-  // the materials: each new one costs three a node-builder pass on its first render
+  // the materials (each new one costs a node-builder pass); another band in a slot gets its
+  // own colour, so a new material, and the one no sheet uses any more is disposed
   props.fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
   flushSync()
-  expect(mesh_materials()).toEqual(transparent)
-  for (const spy of dispose_spies) expect(spy).not.toHaveBeenCalled()
-  // a sheet of another band at the same slot gets its own colour, so a new material, and the
-  // one no sheet uses any more is disposed
+  expect(mesh_materials()).toEqual(transparent) // material uuids differ, so same instances
   props.fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(3)])
   flushSync()
   const [kept, replaced] = mesh_materials()
   expect(kept).toBe(transparent[0])
   expect(replaced).not.toBe(transparent[1])
   expect(dispose_spies.map((spy) => spy.mock.calls.length)).toEqual([0, 1])
-  props.fermi_data = fermi_data
-  flushSync()
-  const restored = mesh_materials()
 
   // Fully opaque rebuilds fresh (non-transparent) materials
   props.surface_opacity = 1
@@ -150,15 +149,19 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
   const opaque = mesh_materials()
   expect(opaque).toHaveLength(2)
   for (const material of opaque) {
-    expect([...transparent, ...restored]).not.toContain(material)
+    expect([...transparent, replaced]).not.toContain(material)
     expect(material).toMatchObject({ transparent: false, opacity: 1, depthWrite: true })
   }
   for (const spy of dispose_spies) expect(spy).toHaveBeenCalledTimes(1)
-  // unmounting disposes the materials still in use
-  const opaque_spies = opaque.map((material) => vi.spyOn(material, `dispose`))
+  // a wireframe swap rebuilds them too, and unmounting disposes the materials still in use
+  props.representation = `wireframe`
+  flushSync()
+  const wireframe = mesh_materials()
+  expect(wireframe.filter((mat) => opaque.includes(mat) || !mat.wireframe)).toEqual([])
+  const in_use_spies = wireframe.map((material) => vi.spyOn(material, `dispose`))
   teardown?.()
   teardown = undefined
-  for (const spy of opaque_spies) expect(spy).toHaveBeenCalledOnce()
+  for (const spy of in_use_spies) expect(spy).toHaveBeenCalledOnce()
 })
 
 // lattice_point_group_matrices memoized into a module-level SvelteMap inside the `symmetry_ops`
@@ -173,12 +176,9 @@ test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
 // popping in and out under the cursor flickered over the surface
 test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {
   // only nullness of the tooltip is asserted, so a stub stands in for the full hover record
-  const props = $state<{
-    hover_data: FermiHoverData | null
-    kpath_hover_data: BZHoverData | null
-  }>({
-    hover_data: { band_index: 0 } as FermiHoverData,
-    kpath_hover_data: { bz_order: 1 } as BZHoverData,
+  const props = $state({
+    hover_data: { band_index: 0 } as FermiHoverData | null,
+    kpath_hover_data: { bz_order: 1 } as BZHoverData | null,
   })
   mount_scene(props)
 
@@ -343,11 +343,8 @@ test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
   expect((proxy?.props.is as InstancedMesh | undefined)?.count).toBe(2)
   const hover_segment = proxy?.props.onpointermove as (event: unknown) => void
   // near the far end of segment 1: k-point 2 at (0.5, 0.5, 0) = 0.5 b₂
-  hover_segment({
-    point: new Vector3(0.5, 0.45, 0),
-    instanceId: 1,
-    nativeEvent: { clientX: 3, clientY: 4 },
-  })
+  const nativeEvent = { clientX: 3, clientY: 4 }
+  hover_segment({ point: new Vector3(0.5, 0.45, 0), instanceId: 1, nativeEvent })
   flushSync()
   const screen_position = { x: 3, y: 4 }
   expect(scene_props.kpath_hover_data).toMatchObject({

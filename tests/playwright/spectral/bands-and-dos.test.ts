@@ -15,9 +15,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await page.goto(`/test/bands-and-dos`, { waitUntil: `networkidle` })
   })
 
-  // one fullscreen button (the top-right plot's) takes both plots fullscreen together. Narrow,
-  // the plots stack and the bands hold the button, which moves to the DOS once fullscreen
-  // puts them side by side.
+  // stacked, the bands hold the button; side by side in fullscreen, the DOS takes it over
   test(`bands and DOS go fullscreen as one component`, async ({ page }) => {
     const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     await container.evaluate((element) => (element.style.width = `400px`))

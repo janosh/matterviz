@@ -984,19 +984,10 @@ test.describe(`Legend Placement Stability`, () => {
       ),
     )
     expect(min_distance).toBeGreaterThan(Math.hypot(plot_bbox.width, plot_bbox.height) * 0.05)
-  })
 
-  // hovering a series in the plot marks its legend item with the accent edge, no background
-  test(`hovered series marks its legend item with an edge only`, async ({ page }) => {
-    const plot = page.locator(plot_selector)
-    await wait_for_stable_bbox(plot.locator(`.legend`))
-    const marker_bbox = await require_bbox(plot.locator(`path.marker`).first(), `marker`)
-    await page.mouse.move(
-      marker_bbox.x + marker_bbox.width / 2,
-      marker_bbox.y + marker_bbox.height / 2,
-    )
-    const active_item = plot.locator(`.legend-item.active`)
-    await expect(active_item).toHaveCount(1)
+    // hovering a series marks its legend item with the accent edge alone, no background
+    await plot.locator(`path.marker`).first().hover({ force: true })
+    const active_item = plot.locator(`.legend-item.active`) // strict: exactly one
     await expect(active_item).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
     await expect(active_item).toHaveCSS(`box-shadow`, /inset/)
   })

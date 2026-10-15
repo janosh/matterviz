@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
   import type { BandsOptions, DosOptions } from './index'
   import type { BrillouinZoneOptions } from '#lib/brillouin/index.js'
   import { BrillouinZone } from '#lib/brillouin/index.js'
@@ -62,12 +61,6 @@
   let is_mobile = $derived(clientWidth < tablet_width)
   let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
   let wrapper = $state<HTMLDivElement>()
-  const show_toggle = $derived(
-    shows_fullscreen_toggle(
-      fullscreen_toggle,
-      normalize_show_controls((is_desktop ? dos_props : bands_props).show_controls),
-    ),
-  )
 
   // Only the desktop layout puts the DOS horizontal beside the bands, sharing the vertical
   // frequency/energy dimension
@@ -85,14 +78,12 @@
 </script>
 
 {#snippet fullscreen_button()}
-  {#if fullscreen || show_toggle}
-    <FullscreenButton
-      bind:fullscreen
-      hidden={!show_toggle}
-      {wrapper}
-      bg_css_var="--bz-bands-dos-fullscreen-bg"
-    />
-  {/if}
+  <PanelsFullscreenButton
+    bind:fullscreen
+    toggle={fullscreen_toggle}
+    controls={(is_desktop ? dos_props : bands_props).show_controls}
+    {wrapper}
+  />
 {/snippet}
 
 <div
@@ -130,7 +121,6 @@
     }}
     fullscreen_toggle={false}
   >
-    <!-- the DOS is the top-right panel on desktop, the bands span the top row otherwise -->
     {#snippet header_controls(dims)}
       {@render bands_props.header_controls?.(dims)}
       {#if !is_desktop}{@render fullscreen_button()}{/if}
@@ -217,6 +207,6 @@
   .bands-dos-brillouin:fullscreen {
     padding: 1em;
     overflow: auto;
-    background: var(--bz-bands-dos-fullscreen-bg, var(--page-bg, Canvas));
+    background: var(--fullscreen-bg, var(--page-bg, Canvas));
   }
 </style>

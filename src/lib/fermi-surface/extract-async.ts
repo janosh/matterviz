@@ -1,75 +1,57 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// Fermi surface extraction off the main thread. Marching cubes plus zone folding takes 5-30 ms
-// per mu on a typical grid, so a band-plot hover or mu drag extracting every frame would drop
-// frames on the main thread; the worker keeps rendering and pointer handling smooth. Runs
-// synchronously where no worker can start: Worker missing (SSR, tests) or the worker URL not
-// resolvable (see module_urls_resolve).
+// Fermi surface extraction off the main thread: 5-30 ms per mu on a typical grid is too slow
+// for a band-plot hover or mu drag extracting every frame
+import { is_plain_object } from '#lib/utils.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { extract_fermi_surface, PREPARED_FACTORS_PER_BAND, resolved_factor } from './compute'
-import type { ExtractPayload } from './extract-job'
-import { cloneable_band_grid, WORKER_GRIDS } from './extract-job'
+import { type ExtractPayload, lru_set, WORKER_GRIDS } from './extract-job'
 import type { BandGridData, FermiSurfaceData, FermiSurfaceOptions } from './types'
 
+// Svelte $state proxies are not structured-cloneable, but their typed arrays read back raw, so
+// only the plain arrays and objects around the megabyte buffers are rebuilt
+const unproxied = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(unproxied)
+  if (!is_plain_object(value)) return value
+  return Object.fromEntries(Object.entries(value).map(([key, val]) => [key, unproxied(val)]))
+}
+
 type ExtractInput = { token: number; grid: BandGridData; send_grid: boolean }
-
-// Bundlers resolve the worker file against this module's URL, which a module imported from a
-// blob: or data: URL cannot do (new URL throws): anywidget loads matterviz's single-file
-// bundle that way, so there extraction runs on the main thread, as it does without Worker.
-const module_urls_resolve = URL.canParse(`./`, import.meta.url)
-
-const run_extraction = create_worker_client<
-  ExtractInput,
-  FermiSurfaceOptions,
-  FermiSurfaceData
->({
+const run_extraction = create_worker_client({
   label: `Fermi surface extraction`,
   create_worker: () =>
     new Worker(new URL(`./extract-worker.js`, import.meta.url), { type: `module` }),
-  requires_main_thread: () => !module_urls_resolve,
   // on the main thread the grid is at hand, and compute.ts caches its upsampling by identity
-  compute_sync: ({ grid }, options) => extract_fermi_surface(grid, options),
+  compute_sync: ({ grid }: ExtractInput, options?: FermiSurfaceOptions) =>
+    extract_fermi_surface(grid, options),
   build_payload: ({ token, grid, send_grid }): ExtractPayload => ({
     token,
-    grid: send_grid ? cloneable_band_grid(grid) : undefined,
+    grid: send_grid ? (unproxied(grid) as BandGridData) : undefined,
   }),
 })
 
 let next_token = 0
 const grid_tokens = new WeakMap<BandGridData, number>()
-// Tokens whose grid the current worker holds, oldest sent first: mirrors its grid store
-// (create_grid_store), and is cleared whenever the worker may be gone
-const sent_tokens = new Set<number>()
-// Interpolation factors the worker's copy of each grid is upsampled at, evicted oldest first as
-// compute.ts evicts them. A grid's set restarts whenever its grid is sent, since the copy
-// sent is new and cold; it counts only while sent_tokens holds the grid's token.
-const warm_factors = new WeakMap<BandGridData, Set<number>>()
+// The current worker's grid store (create_grid_store), cleared whenever the worker may be
+// gone: token → interpolation factors its copy of the grid is upsampled at (FIFO as compute.ts)
+const worker_grids = new Map<number, Set<number>>()
 
-// Recent results per grid by options: hovering back over band points or returning a mu slider
-// commits a surface without extracting again. Kept small since one sheet set is ~1 MB.
+// Recent results per grid by options, e.g. hovering back over band points (~1 MB each)
 const RESULT_CACHE_SIZE = 16
 const result_cache = new WeakMap<BandGridData, Map<string, FermiSurfaceData>>()
-// extract_fermi_surface's own defaults with the factor resolved (0 = auto), so equivalent
-// options share an entry, e.g. a hover preview and the full surface at the auto factor
+// extract_fermi_surface's defaults, factor resolved (0 = auto), so equal options share an entry
 const options_key = (
   grid: BandGridData,
   { mu = 0, interpolation_factor = 1, wigner_seitz = false }: FermiSurfaceOptions,
 ): string => `${mu}|${resolved_factor(grid, interpolation_factor)}|${wigner_seitz}`
 
-// Whether an extraction at this factor has completed for the grid, i.e. a new one only reruns
-// marching cubes instead of upsampling every band first
-export const fermi_extraction_warm = (
-  grid: BandGridData,
-  interpolation_factor = 1,
-): boolean => {
-  const token = grid_tokens.get(grid)
-  if (token === undefined || !sent_tokens.has(token)) return false
-  return warm_factors.get(grid)?.has(resolved_factor(grid, interpolation_factor)) ?? false
-}
+// Whether the worker holds the grid upsampled at this factor, so a new extraction is quick
+export const fermi_extraction_warm = (grid: BandGridData, interpolation_factor = 1): boolean =>
+  worker_grids
+    .get(grid_tokens.get(grid) ?? 0) // tokens start at 1
+    ?.has(resolved_factor(grid, interpolation_factor)) ?? false
 
-// extract_fermi_surface in the worker. Results are cached per grid (see RESULT_CACHE_SIZE),
-// so callers must treat them as read-only. The worker keeps its own copy of each grid and the
-// cache keys on grid identity and options (mu, not E_F), so in-place edits of a grid (energies,
-// fermi_energy, k_lattice) go unseen: pass a new band grid object instead.
+// extract_fermi_surface in the worker. Results are cached (read-only) by grid identity, and the
+// worker keeps its own grid copy, so in-place grid edits go unseen: pass a new grid object.
 export async function extract_fermi_surface_async(
   grid: BandGridData,
   options: FermiSurfaceOptions = {},
@@ -78,91 +60,59 @@ export async function extract_fermi_surface_async(
   result_cache.set(grid, cache)
   const key = options_key(grid, options)
   const cached = cache.get(key)
-  if (cached) {
-    cache.delete(key) // re-insert as most recent
-    cache.set(key, cached)
-    return cached
-  }
-  let token = grid_tokens.get(grid)
-  if (token === undefined) {
-    token = ++next_token
-    grid_tokens.set(grid, token)
-  }
-  const { mu, interpolation_factor, wigner_seitz } = options
+  if (cached) return lru_set(cache, key, cached, RESULT_CACHE_SIZE)
+  const token = grid_tokens.get(grid) ?? ++next_token
+  grid_tokens.set(grid, token)
   const request = (send_grid: boolean) => {
-    if (send_grid) {
-      sent_tokens.delete(token) // re-insert as newest, as the worker's grid store does
-      sent_tokens.add(token)
-      const [oldest] = sent_tokens // Sets iterate in insertion order
-      if (sent_tokens.size > WORKER_GRIDS) sent_tokens.delete(oldest)
-      warm_factors.delete(grid)
-    }
-    return run_extraction(
-      { token, grid, send_grid },
-      { mu, interpolation_factor, wigner_seitz },
-    )
+    if (send_grid) lru_set(worker_grids, token, new Set<number>(), WORKER_GRIDS)
+    return run_extraction({ token, grid, send_grid }, options)
   }
-  const send_grid = !sent_tokens.has(token)
-  let result: FermiSurfaceData
-  try {
-    result = await request(send_grid)
-  } catch (error) {
-    // A failed worker is torn down and its successor holds no grids; a live one may have
-    // evicted this grid for newer ones. Either way a request without the grid gets one retry
-    // with it, and every other grid is sent afresh next time.
-    sent_tokens.clear()
+  const send_grid = !worker_grids.has(token)
+  const result = await request(send_grid).catch((error: unknown) => {
+    // A failed worker's successor holds no grids, a live one may have evicted this one: retry
+    // once with the grid, and send every other grid afresh next time
+    worker_grids.clear()
     if (send_grid) throw error
-    result = await request(true)
-  }
-  cache.set(key, result)
-  const [oldest] = cache.keys() // Maps iterate in insertion order
-  if (cache.size > RESULT_CACHE_SIZE) cache.delete(oldest)
-  const factors = warm_factors.get(grid) ?? new Set<number>()
-  warm_factors.set(grid, factors.add(resolved_factor(grid, interpolation_factor ?? 1)))
-  const [oldest_factor] = factors // Sets iterate in insertion order; a re-add keeps its place
-  if (factors.size > PREPARED_FACTORS_PER_BAND) factors.delete(oldest_factor)
-  return result
+    return request(true)
+  })
+  const factors = worker_grids
+    .get(token)
+    ?.add(resolved_factor(grid, options.interpolation_factor ?? 1))
+  if (factors && factors.size > PREPARED_FACTORS_PER_BAND) factors.delete([...factors][0])
+  return lru_set(cache, key, result, RESULT_CACHE_SIZE)
 }
 
-// A viewer's unmount path: ends the worker unless another viewer's extraction is in flight.
-// A new worker holds no grids, so all are sent again and start cold.
+// A viewer's unmount path: ends the worker unless another viewer's extraction is in flight
 export function release_fermi_worker(): void {
   run_extraction.release()
-  sent_tokens.clear()
+  worker_grids.clear()
 }
 
-// Latest-wins scheduling for one viewer: at most one extraction in flight, and a request made
-// meanwhile waits in place of any request already waiting, so a pointer sweeping energies
-// faster than they extract skips the stale ones instead of queueing them all. A replaced
-// request resolves null; cached results resolve at once without waiting, and drop the waiting
-// request, which they supersede.
-export function create_latest_extractor(): (
-  grid: BandGridData,
-  options: FermiSurfaceOptions,
-) => Promise<FermiSurfaceData | null> {
+// Latest-wins scheduling for one viewer: one extraction in flight and only the newest request
+// waiting, so a pointer sweep skips stale energies. Replaced requests resolve null; cached
+// results resolve at once and supersede the waiting request.
+export function create_latest_extractor() {
   let busy = false
-  let waiting: { run: () => void; drop: () => void } | undefined
-  return (grid, options) => {
+  let waiting: { run: () => void; resolve: (result: null) => void } | undefined
+  return (grid: BandGridData, options: FermiSurfaceOptions) => {
+    waiting?.resolve(null) // only ever set while busy
+    waiting = undefined
     if (result_cache.get(grid)?.has(options_key(grid, options))) {
-      waiting?.drop()
-      waiting = undefined
       return extract_fermi_surface_async(grid, options)
     }
-    return new Promise((resolve, reject) => {
+    return new Promise<FermiSurfaceData | null>((resolve, reject) => {
       const run = () => {
         busy = true
+        waiting = undefined
         extract_fermi_surface_async(grid, options)
           .then(resolve, reject)
           .finally(() => {
             busy = false
-            const next = waiting
-            waiting = undefined
-            next?.run()
+            waiting?.run()
           })
       }
-      if (!busy) return run()
-      waiting?.drop()
-      waiting = { run, drop: () => resolve(null) }
+      if (busy) waiting = { run, resolve }
+      else run()
     })
   }
 }

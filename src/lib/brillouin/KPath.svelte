@@ -16,6 +16,7 @@
     path,
     hovered_k_point = null,
     highlighted_k_points = [],
+    k_markers = [],
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
@@ -25,19 +26,18 @@
     path: KPathData
     hovered_k_point?: Vec3 | null
     highlighted_k_points?: Vec3[]
+    // small dots on the path, e.g. where it pierces a Fermi surface (FermiSurfaceBands)
+    k_markers?: { position: Vec3; color: string }[]
     hovered_qpoint_index?: number | null
     highlighted_qpoint_range?: Vec2 | null
-    // the pointer's client position comes along for a host tooltip
     on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
     edge_width?: number
   } = $props()
 
   const { invalidate } = useThrelte()
-  // A caller spreading a fresh props object per hover (FermiSurfaceScene) re-runs every read
-  // of these props. Deriveds of their values end that re-run before the meshes rebuild (whose
-  // teardown would clear the very hover that triggered it) and before the spheres get new
-  // geometry args.
+  // A caller spreading a fresh props object per hover (FermiSurfaceScene) re-runs every prop
+  // read: these stop it before the meshes rebuild (clearing that hover) and spheres get new args
   const stable_path = $derived(path)
   const stable_size = $derived(size)
   const stable_edge = $derived(edge_width)
@@ -46,8 +46,6 @@
   // may be recomputed by the caller
   const same_point = (point_a: Vec3, point_b: Vec3) =>
     math.euclidean_dist(point_a, point_b) < 1e-6 * size
-
-  // one sphere + label chip per distinct symmetry point (see k_path_sym_points)
   const sym_points = $derived(k_path_sym_points(stable_path, 1e-6 * stable_size))
 
   // One instanced mesh for all segments plus a wider invisible one for hover, instead of two
@@ -57,11 +55,7 @@
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
   // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
   const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
-  const kpath_tints = {
-    base: new Color(KPATH_COLORS.base),
-    hover: new Color(KPATH_COLORS.hover),
-    range: new Color(KPATH_COLORS.range),
-  }
+  const tint = new Color() // setColorAt copies it
   $effect(() => () => {
     kpath_geometry.dispose()
     kpath_material.dispose()
@@ -106,7 +100,7 @@
       const is_hovered = hovered !== null && (idx === hovered || idx === hovered - 1)
       const in_stretch = range !== null && idx >= range[0] && idx < range[1]
       const color = is_hovered ? `hover` : in_stretch ? `range` : `base`
-      line.setColorAt(instance_idx, kpath_tints[color])
+      line.setColorAt(instance_idx, tint.set(KPATH_COLORS[color]))
     }
     if (line.instanceColor) line.instanceColor.needsUpdate = true
     invalidate()
@@ -141,7 +135,8 @@
 <!-- Symmetry point spheres + labels, one per distinct labeled k-point -->
 {#each sym_points as { position, labels, qpoint_idx } (qpoint_idx)}
   <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
-  tints its chip, and hovering one reports its q-point like hovering the path there -->
+  tints its chip, and hovering one reports its q-point like hovering the path there. Otherwise
+  light, so as not to blot out the surface behind, with a text shadow for legibility. -->
   {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
   <T.Mesh position={[position[0], position[1], position[2]]}>
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
@@ -151,13 +146,23 @@
     <span
       role="presentation"
       class="sym-label"
-      class:highlighted
+      style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.15)`}
+      style:font-weight={highlighted ? `bold` : null}
+      style="padding: 0 3px; border-radius: 2px; color: white; text-shadow: 0 0 2px rgba(0, 0, 0, 0.8)"
       onpointerenter={(event) => report_hover(qpoint_idx, event)}
       onpointerleave={() => report_hover(null)}
     >
       {labels.join(` | `)}
     </span>
   </extras.HTML>
+{/each}
+
+<!-- drawn over everything so a dot on a sheet stays visible through it -->
+{#each k_markers as { position, color }, idx (idx)}
+  <T.Mesh {position} renderOrder={1000}>
+    <T.SphereGeometry args={[2 * mark_sizes.kpath, 12, 8]} />
+    <T.MeshBasicMaterial {color} depthTest={false} transparent />
+  </T.Mesh>
 {/each}
 
 <!-- Hovered k-point highlight -->
@@ -167,18 +172,3 @@
     <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
   </T.Mesh>
 {/if}
-
-<style>
-  .sym-label {
-    padding: 0 3px;
-    border-radius: 2px;
-    color: white;
-    /* light chip, so it doesn't blot out the surface behind; the shadow keeps text legible */
-    background: rgba(0, 0, 0, 0.15);
-    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
-    &.highlighted {
-      background: #ff2020;
-      font-weight: bold;
-    }
-  }
-</style>

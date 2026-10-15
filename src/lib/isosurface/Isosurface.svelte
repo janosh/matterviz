@@ -9,6 +9,7 @@
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
+  import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
@@ -217,7 +218,7 @@
   // already-prepared grids are cheaper on the main thread than a round trip
   const use_geometry_worker = (pending: PendingSurface[]): boolean =>
     typeof window !== `undefined` &&
-    typeof Worker !== `undefined` &&
+    can_create_worker() &&
     pending.some(
       (surface) =>
         !current_prepared(surface.volume) &&
