@@ -391,23 +391,40 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   expect(props.fermi_data).toBe(committed)
 })
 
-test(`unmount releases the worker and an extraction settling after it commits nothing`, async () => {
-  const jobs = manual_extractions()
-  const props = $state<{ band_data: BandGridData; fermi_data?: FermiSurfaceData }>({
-    band_data: typed_grid(sphere_energies(6)),
-    fermi_data: undefined,
-  })
-  const component = mount(FermiSurface, { target: document.body, props })
-  await tick()
-  expect(jobs).toHaveLength(1)
-  extraction.release.mockClear()
-  await unmount(component)
-  expect(extraction.release).toHaveBeenCalledOnce()
-  const [{ grid, options, resolve }] = jobs
-  resolve(extract_fermi_surface(grid, options))
-  await tick()
-  expect(props.fermi_data).toBeUndefined()
-})
+test.each([`resolves`, `rejects`])(
+  `unmount releases the worker and an extraction that %s after it commits nothing`,
+  async (outcome) => {
+    const jobs = manual_extractions()
+    const on_error = vi.fn()
+    const props = $state<{
+      band_data: BandGridData
+      fermi_data?: FermiSurfaceData
+      error_msg?: string
+    }>({
+      band_data: typed_grid(sphere_energies(6)),
+      fermi_data: undefined,
+      error_msg: undefined,
+    })
+    const component = mount(FermiSurface, {
+      target: document.body,
+      props: bind_props({ on_error }, props) as ComponentProps<typeof FermiSurface>,
+    })
+    await tick()
+    expect(jobs).toHaveLength(1)
+    extraction.release.mockClear()
+    await unmount(component)
+    expect(extraction.release).toHaveBeenCalledOnce()
+    const [{ grid, options, resolve, reject }] = jobs
+    if (outcome === `resolves`) resolve(extract_fermi_surface(grid, options))
+    else reject(new Error(`worker gone`))
+    await tick()
+    expect([props.fermi_data, props.error_msg, on_error.mock.calls.length]).toEqual([
+      undefined,
+      undefined,
+      0,
+    ])
+  },
+)
 
 test(`only the newest extraction's error is reported`, async () => {
   const jobs = manual_extractions()

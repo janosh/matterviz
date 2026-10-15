@@ -433,7 +433,11 @@
     raf_id = requestAnimationFrame(() => {
       raf_id = 0
       if (rebuild_in_flight) {
-        void rebuild_in_flight.finally(request_rebuild)
+        // a reset (unmount, all volumes removed) drops the queued rerun too
+        const generation = rebuild_generation
+        void rebuild_in_flight.finally(() => {
+          if (generation === rebuild_generation) request_rebuild()
+        })
         return
       }
       rebuild_in_flight = rebuild_geometries(resolved_layers, rebuild_generation).finally(

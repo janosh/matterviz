@@ -1788,8 +1788,11 @@ describe(`parse_structure_file`, () => {
     test.each([
       [`no xyz and no lattice`, { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] }, `JSON site 1 has no xyz and the structure has no lattice`],
       [`a site without coordinates`, { sites: [bare_site(`H`), { species: [{ element: `H` }] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has neither abc nor xyz coordinates`],
-      [`a site without species`, { sites: [bare_site(`H`), { abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has no species array`],
-      [`an unknown element symbol`, { sites: [{ species: [`Xx`], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: Xx`],
+      [`a site without species`, { sites: [bare_site(`H`), { abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has no species`],
+      [`an unknown element symbol`, { sites: [{ species: [`Xx`], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: "Xx"`],
+      [`an empty species array`, { sites: [bare_site(`H`), { species: [], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has no species`],
+      [`an unknown element in a species object`, { sites: [{ species: [{ element: `Xx`, occu: 1 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: {"element":"Xx","occu":1}`],
+      [`a species object without element`, { sites: [{ species: [{ occu: 1 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: {"occu":1}`],
       [`2-row lattice matrix`, { sites: [bare_site(`H`)], lattice: { matrix: [[1, 0, 0], [0, 1, 0]] } }, /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)

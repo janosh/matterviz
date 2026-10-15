@@ -292,6 +292,26 @@ describe(`Isosurface`, () => {
     compute_geometries_async.mockReset()
   })
 
+  // The rerun queued behind an in-flight worker rebuild used to fire after unmount, starting
+  // a worker job (and writing state) for a destroyed component
+  test(`a rerun queued behind a worker rebuild is dropped on unmount`, async () => {
+    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
+    const pending: ((value: unknown) => void)[] = []
+    compute_geometries_async
+      .mockReset()
+      .mockImplementation(() => new Promise((resolve) => pending.push(resolve)))
+    const props = mount_isosurface({ volumes: [big_volume()] })
+    await settle()
+    props.settings.layers[0].isovalue = 0.4
+    await settle() // queues the rerun behind the in-flight job
+    teardown?.()
+    teardown = undefined
+    pending[0]({ volumes: [] })
+    await settle()
+    expect(compute_geometries_async).toHaveBeenCalledOnce()
+    compute_geometries_async.mockReset()
+  })
+
   test(`color source volume drives vertex colors and a white base color`, async () => {
     const colored = layer(0.3, {
       color: `#112233`,

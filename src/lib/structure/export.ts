@@ -8,6 +8,7 @@ import { is_plain_object } from '#lib/utils.js'
 import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
 import { get_element_counts } from './density'
 import { wrap_frac_coord } from './pbc'
+import { structure_json_data } from './site'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -411,15 +412,9 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
   return lines.join(`\n`)
 }
 
-// pymatgen reads any oxidation_state key, 0 included, as a decorated Species (Fe0+), so an
-// undecorated element round-trips only without it
 export function structure_to_json_str(structure?: AnyStructure): string {
   if (!structure) throw new Error(`No structure to export`)
-  return JSON.stringify(
-    structure,
-    (key, value) => (key === `oxidation_state` && value === 0 ? undefined : value),
-    2,
-  )
+  return JSON.stringify(structure_json_data(structure), null, 2)
 }
 
 // Text export formats: serializer + file extension + MIME type per format

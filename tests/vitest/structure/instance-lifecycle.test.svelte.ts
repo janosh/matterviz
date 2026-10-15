@@ -404,6 +404,7 @@ test.each<[string, SceneProps, Vec3, string, string]>([
     ``,
     ``,
   ],
+  [`translucent atoms`, { structure: lone_c, atom_opacity: 0.5 }, [0, 0, 10], ``, ``],
   // the half-length A arrow's shaft spans x in [-1, 0.9] at y = z = -1 (cell_vector_origin),
   // clear of the atom at (2, 2, 2)
   [

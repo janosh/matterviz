@@ -1841,11 +1841,13 @@
   const hovered_atom_color = $derived(
     hovered_idx === null ? undefined : atom_groups.first_by_site.get(hovered_idx)?.color,
   )
-  // Its tooltip wears that fill when it is one flat colour: a disordered site's element wedges
-  // (unless a property colour paints this site whole) or an atom colour field painted across
-  // the sphere have none, so those stay neutral
+  // Its tooltip wears that fill when it is one flat opaque colour: see-through atoms
+  // (atom_opacity < 1), a disordered site's element wedges (unless a property colour paints
+  // this site whole) or an atom colour field painted across the sphere have none, so those
+  // stay neutral
   const hovered_tooltip_bg = $derived(
-    atom_color_field ||
+    atom_opacity < 1 ||
+      atom_color_field ||
       (hovered_idx !== null &&
         !property_colors?.colors[hovered_idx] &&
         (hovered_site?.species.length ?? 0) > 1)

@@ -8,6 +8,19 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { PreparedVectorGeometry } from './vectors'
 
+// A structure as pymatgen-compatible JSON data: pymatgen reads any species oxidation_state key,
+// 0 included, as a decorated Species (Fe0+), so undecorated species drop it (readers default it
+// back to 0). Only species entries change; site properties keep every key as written.
+export const structure_json_data = (structure: AnyStructure): object => ({
+  ...structure,
+  sites: structure.sites.map((site) => ({
+    ...site,
+    species: site.species.map(({ oxidation_state, ...species }) =>
+      oxidation_state === 0 ? species : { ...species, oxidation_state },
+    ),
+  })),
+})
+
 // Only immutable viewer snapshots register a topology identity. Editable structures use
 // their actual site records; copying or editing a snapshot deliberately drops this identity.
 export const snapshot_topologies = new WeakMap<AnyStructure, object>()

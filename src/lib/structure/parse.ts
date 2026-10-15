@@ -54,7 +54,7 @@ import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { parse_leading_num, to_error } from '#lib/utils.js'
+import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
 import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '#lib/structure/format-detect.js'
@@ -1022,17 +1022,20 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
 // (null or absent otherwise, as in Materials Project dicts), hand-written JSON often omits occu
 // or gives bare element symbols
 function json_species(site: { species?: unknown }, idx: number): Species[] {
-  if (!Array.isArray(site.species))
-    throw new Error(`JSON site ${display_idx(idx)} has no species array`)
+  if (!Array.isArray(site.species) || site.species.length === 0)
+    throw new Error(`JSON site ${display_idx(idx)} has no species`)
   return site.species.map((species: unknown): Species => {
-    if (typeof species === `string` && is_elem_symbol(species))
-      return { element: species, occu: 1, oxidation_state: 0 }
-    if (!species || typeof species !== `object`)
+    const entry = typeof species === `string` ? { element: species } : species
+    if (
+      !is_plain_object(entry) ||
+      typeof entry.element !== `string` ||
+      !is_elem_symbol(entry.element)
+    )
       throw new Error(
-        `JSON site ${display_idx(idx)} has an invalid species: ${String(species)}`,
+        `JSON site ${display_idx(idx)} has an invalid species: ${JSON.stringify(species)}`,
       )
-    const { occu, oxidation_state } = species as Partial<Species>
-    return { ...species, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
+    const { occu, oxidation_state } = entry
+    return { ...entry, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
   })
 }
 

@@ -364,6 +364,26 @@ test.each([
   expect(scene().highlight_edges?.getAttribute(`position`).count ?? 0).toBe(2 * n_edges)
 })
 
+// A drawn overlay is cut out of the base hull and wears its overlay colour, so its tooltip must
+// too; other domains keep their (arity) domain colour
+test.each([
+  [`Fe2O3`, true],
+  [`Li2O`, false],
+])(`tooltip of %s (overlay=%s) matches its drawn colour`, async (formula, is_overlay) => {
+  const scene = await mount_diagram<HighlightScene & { formula_meshes: { color: string }[] }>({
+    entries,
+    config: { default_min_limit: -25, formulas_to_draw: [`Fe2O3`], draw_formula_meshes: true },
+  })
+  const mesh = scene().hover_meshes.find((hover_mesh) => hover_mesh.formula === formula)
+  if (!mesh) throw new Error(`no ${formula} domain`)
+  scene().on_domain_hover(mesh, pointer_event)
+  flushSync()
+  const tip_bg = query(document.body, `.chempot-tooltip`).style.backgroundColor
+  const [overlay_color] = scene().formula_meshes.map(({ color }) => color)
+  expect(tip_bg === overlay_color).toBe(is_overlay)
+  if (!is_overlay) expect(ARITY_COLORS).toContain(tip_bg)
+})
+
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
 test(`a domain hovered in one quaternary grid pane is highlighted in all, tooltip only in its own`, async () => {
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }

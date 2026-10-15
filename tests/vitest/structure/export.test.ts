@@ -137,6 +137,25 @@ describe(`Export functionality`, () => {
       }
     })
 
+    it(`drops only undecorated species oxidation states, never site properties`, () => {
+      const site = {
+        species: [
+          { element: `Fe`, occu: 0.5, oxidation_state: 0 },
+          { element: `Co`, occu: 0.5, oxidation_state: 2 },
+        ],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `Fe`,
+        properties: { oxidation_state: 0 },
+      } satisfies Site
+      const [exported] = JSON.parse(structure_to_json_str({ sites: [site] })).sites
+      expect(exported.species).toEqual([
+        { element: `Fe`, occu: 0.5 },
+        { element: `Co`, occu: 0.5, oxidation_state: 2 },
+      ])
+      expect(exported.properties).toEqual({ oxidation_state: 0 })
+    })
+
     const TOL = 8
     const to_any = (partial_structure: {
       sites: AnyStructure[`sites`]

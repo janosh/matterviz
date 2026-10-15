@@ -241,7 +241,9 @@
   let committed_job_id = 0
   let extracting = $state(false)
   $effect(() => () => {
-    committed_job_id = Infinity // nothing commits after unmount
+    // nothing commits, reports or clears the spinner after unmount
+    committed_job_id = Infinity
+    extraction_job_id = Infinity
     release_fermi_worker()
   })
   $effect(() => {
