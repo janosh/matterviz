@@ -812,8 +812,18 @@ export async function expect_combined_fullscreen(
     (await require_bbox(container.locator(panel).first())).height
   const heights = () => Promise.all(panels.map(panel_height))
   const inline_heights = await heights()
+  // the browser's own fullscreenchange must land before the exit below: svelte-widgets'
+  // sync clears its pending request only on a matching change event, so exiting within the
+  // same frame strands the request and the button's next click is skipped as a duplicate
+  const entered = container.evaluate(
+    () =>
+      new Promise((resolve) =>
+        document.addEventListener(`fullscreenchange`, resolve, { once: true }),
+      ),
+  )
   await container.locator(key_panel).first().hover()
   await container.page().keyboard.press(`f`)
+  await entered
   await expect.poll(is_fullscreen).toBe(true)
   const min_height = 0.8 * (await container.evaluate(() => innerHeight))
   await expect.poll(async () => Math.min(...(await heights()))).toBeGreaterThan(min_height)
