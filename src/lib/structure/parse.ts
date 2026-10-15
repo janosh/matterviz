@@ -7,7 +7,7 @@ import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { is_pbc, type Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, Site, Species } from '#lib/structure/index.js'
 import { shift_bonds_for_moved_sites } from '#lib/structure/bonding.js'
 import {
   is_lammps_data_content,
@@ -1018,6 +1018,24 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
   )
 }
 
+// A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
+// (null or absent otherwise, as in Materials Project dicts), hand-written JSON often omits occu
+// or gives bare element symbols
+function json_species(site: { species?: unknown }, idx: number): Species[] {
+  if (!Array.isArray(site.species))
+    throw new Error(`JSON site ${display_idx(idx)} has no species array`)
+  return site.species.map((species: unknown): Species => {
+    if (typeof species === `string` && is_elem_symbol(species))
+      return { element: species, occu: 1, oxidation_state: 0 }
+    if (!species || typeof species !== `object`)
+      throw new Error(
+        `JSON site ${display_idx(idx)} has an invalid species: ${String(species)}`,
+      )
+    const { occu, oxidation_state } = species as Partial<Species>
+    return { ...species, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
+  })
+}
+
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
 // site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
@@ -1036,6 +1054,7 @@ export function structure_from_json(
         )
       return {
         ...site,
+        species: json_species(site, idx),
         properties: site.properties ?? {},
         xyz: site.xyz,
         abc: site.abc ?? ([0, 0, 0] as Vec3),
@@ -1048,7 +1067,11 @@ export function structure_from_json(
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
-    const site = { ...raw_site, properties: raw_site.properties ?? {} }
+    const site = {
+      ...raw_site,
+      species: json_species(raw_site, idx),
+      properties: raw_site.properties ?? {},
+    }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }

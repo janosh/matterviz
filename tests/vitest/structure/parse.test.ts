@@ -1696,11 +1696,12 @@ describe(`parse_structure_file`, () => {
       expect(result.sites[0].species[0].element).toBe(`Fe`)
     })
 
-    test(`passes through raw string species like ['H'] unchanged`, () => {
+    test(`turns raw string species like ['H'] into Species`, () => {
       const raw = { data: { sites: [{ species: [`H`], xyz: [0, 0, 0] }] } }
       const result = parse_structure_file(JSON.stringify(raw), `test.json`)
-      expect(result.sites).toHaveLength(1)
-      expect(result.sites[0].species[0]).toBe(`H`)
+      expect(result.sites.map(({ species }) => species)).toEqual([
+        [{ element: `H`, occu: 1, oxidation_state: 0 }],
+      ])
     })
   })
 
@@ -1761,19 +1762,34 @@ describe(`parse_structure_file`, () => {
       const sites = [
         { species: [{ element: `C` }], xyz: [1, 0.5, 3] },
         { species: [{ element: `C` }], abc: [0.25, 0.5, 0.75] },
+        // pymatgen's null oxidation state, a disordered site and a bare element symbol
+        {
+          species: [{ element: `Fe`, occu: 0.5, oxidation_state: null }, `Ni`],
+          abc: [0, 0, 0],
+        },
       ]
       const result = parse_structure_file(JSON.stringify({ sites, lattice }), `test.json`)
       // xyz outside the cell wraps: abc 1.5 -> 0.5 and xyz is recomputed to match
       expect_vec3_close(result.sites[0].abc, [0.5, 0.25, 0.5], 12)
       expect_vec3_close(result.sites[0].xyz, [1, 0.5, 1], 12)
       expect_vec3_close(result.sites[1].xyz, [0.5, 1, 1.5], 12)
-      expect(result.sites).toHaveLength(2)
+      // Undecorated species (Materials Project dicts carry no oxidation_state) satisfy Species
+      expect(result.sites.map(({ species }) => species)).toEqual([
+        [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        [
+          { element: `Fe`, occu: 0.5, oxidation_state: 0 },
+          { element: `Ni`, occu: 1, oxidation_state: 0 },
+        ],
+      ])
     })
 
     // oxfmt-ignore
     test.each([
       [`no xyz and no lattice`, { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] }, `JSON site 1 has no xyz and the structure has no lattice`],
       [`a site without coordinates`, { sites: [bare_site(`H`), { species: [{ element: `H` }] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has neither abc nor xyz coordinates`],
+      [`a site without species`, { sites: [bare_site(`H`), { abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has no species array`],
+      [`an unknown element symbol`, { sites: [{ species: [`Xx`], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: Xx`],
       [`2-row lattice matrix`, { sites: [bare_site(`H`)], lattice: { matrix: [[1, 0, 0], [0, 1, 0]] } }, /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)

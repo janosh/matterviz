@@ -124,6 +124,14 @@ describe(`Export functionality`, () => {
       const elements = (sites: AnyStructure[`sites`]) =>
         sites.map((site) => site.species.map(({ element }) => element))
       expect(elements(parsed.sites)).toEqual(elements(structure.sites))
+      // pymatgen reads any oxidation_state key as a decorated Species (Fe0+), so the export
+      // drops the undecorated 0 and keeps real oxidation states
+      const oxi_states = (sites: AnyStructure[`sites`]) =>
+        sites.flatMap((site) => site.species.map(({ oxidation_state }) => oxidation_state))
+      const exported = JSON.parse(structure_to_json_str(parsed))
+      expect(oxi_states(exported.sites)).toEqual(
+        oxi_states(parsed.sites).map((oxi) => (oxi === 0 ? undefined : oxi)),
+      )
       if (preserves_id && structure.id) {
         expect(parsed.id).toBe(structure.id)
       }

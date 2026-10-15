@@ -411,9 +411,15 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
   return lines.join(`\n`)
 }
 
+// pymatgen reads any oxidation_state key, 0 included, as a decorated Species (Fe0+), so an
+// undecorated element round-trips only without it
 export function structure_to_json_str(structure?: AnyStructure): string {
   if (!structure) throw new Error(`No structure to export`)
-  return JSON.stringify(structure, null, 2)
+  return JSON.stringify(
+    structure,
+    (key, value) => (key === `oxidation_state` && value === 0 ? undefined : value),
+    2,
+  )
 }
 
 // Text export formats: serializer + file extension + MIME type per format
