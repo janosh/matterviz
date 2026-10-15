@@ -119,8 +119,15 @@
     is_acoustic: boolean,
     band_idx: number,
     spin: `up` | `down`,
+    structure_label: string,
   ): Required<BandLineStyle> {
-    const custom = helpers.band_line_style(line_kwargs, band_idx, spin, is_acoustic)
+    const custom = helpers.band_line_style(
+      line_kwargs,
+      band_idx,
+      spin,
+      is_acoustic,
+      structure_label,
+    )
     const style = {
       stroke: custom.stroke ?? color,
       stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
@@ -264,7 +271,13 @@
             band_idx,
             gamma_indices,
           )
-          const style_up = get_line_style(color, is_acoustic === true, band_idx, `up`)
+          const style_up = get_line_style(
+            color,
+            is_acoustic === true,
+            band_idx,
+            `up`,
+            structure_label,
+          )
           const spin_down_band = band_structure.spin_down_bands?.[band_idx]
           const y_down =
             band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
@@ -283,6 +296,7 @@
               is_acoustic === true,
               band_idx,
               `down`,
+              structure_label,
             )
             const style_down = {
               stroke,

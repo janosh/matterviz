@@ -500,6 +500,23 @@ describe(`Bands component`, () => {
     },
   )
 
+  // the callback also names the structure, so multi-structure plots can style each one
+  it(`line_kwargs callback receives each band's structure label`, async () => {
+    const strokes: Record<string, string> = { PBE: `#a00000`, HSE: `#00b000` }
+    await mount_bands({
+      band_structs: { PBE: spin_polarized_electronic, HSE: spin_polarized_electronic },
+      line_kwargs: (_band_idx: number, _spin: string, structure: string) => ({
+        stroke: strokes[structure],
+      }),
+    })
+    const series = [...document.querySelectorAll(`g[data-series-id]`)].map((group) => {
+      const [label] = JSON.parse(group.getAttribute(`data-series-id`) ?? `[]`)
+      return [label, group.querySelector(`path`)?.getAttribute(`stroke`)]
+    })
+    expect(new Set(series.map(([label]) => label))).toEqual(new Set([`PBE`, `HSE`]))
+    expect(series).toEqual(series.map(([label]) => [label, strokes[label ?? ``]]))
+  })
+
   // the shaded rect spans exactly the ticks of the highlighted branch, and a range off the
   // plotted path draws nothing
   it.each([

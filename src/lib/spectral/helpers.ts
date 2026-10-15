@@ -682,8 +682,9 @@ export const band_line_style = (
   band_idx: number,
   spin: `up` | `down`,
   is_acoustic: boolean,
+  structure: string,
 ): types.BandLineStyle => {
-  if (typeof kwargs === `function`) return kwargs(band_idx, spin)
+  if (typeof kwargs === `function`) return kwargs(band_idx, spin, structure)
   return is_per_mode_style(kwargs)
     ? (kwargs[is_acoustic ? `acoustic` : `optical`] ?? {})
     : kwargs

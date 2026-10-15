@@ -91,8 +91,8 @@
     const { line_kwargs: kwargs = {} } = bands_props
     if (vertex_colored) return bands_props.line_kwargs
     const sheet_spin = (spin: `up` | `down`) => (band_data.n_spins === 2 ? spin : null)
-    return (band_idx, spin) => {
-      const style = band_line_style(kwargs, band_idx, spin, false)
+    return (band_idx, spin, structure) => {
+      const style = band_line_style(kwargs, band_idx, spin, false, structure)
       return {
         ...style,
         stroke: grid_bands.has(band_idx)

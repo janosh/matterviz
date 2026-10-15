@@ -102,7 +102,8 @@ export interface StackedAreaData {
 export type DosData = PhononDos | ElectronicDos
 
 // Band line styling: one style for every band, one per acoustic/optical mode, or one per band
-// and spin channel (e.g. FermiSurfaceBands' sheet colours)
+// and spin channel of a structure (its band_structs key or label, e.g. FermiSurfaceBands' sheet
+// colours)
 export interface BandLineStyle {
   stroke?: string
   stroke_width?: number
@@ -110,7 +111,7 @@ export interface BandLineStyle {
 export type LineKwargs =
   | BandLineStyle
   | { acoustic?: BandLineStyle; optical?: BandLineStyle }
-  | ((band_idx: number, spin: `up` | `down`) => BandLineStyle)
+  | ((band_idx: number, spin: `up` | `down`, structure: string) => BandLineStyle)
 
 export interface HoveredData {
   hovered_frequency?: number | null // data unit: THz (phonon) or eV (electronic)
