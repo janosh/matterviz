@@ -4,7 +4,7 @@ import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { Vec2 } from '#lib/math.js'
 import { color_ramp_scale } from '#lib/plot/core/color-ramp.js'
 import { color_interpolator, to_color_scale_config } from '#lib/plot/core/scales.js'
-import type { ColorScale } from '#lib/plot/core/types.js'
+import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { clamp01 } from '#lib/utils.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
@@ -31,6 +31,10 @@ export const ISO_COLORMAPS = [
 type IsoColormap = (typeof ISO_COLORMAPS)[number]
 
 export const DEFAULT_ISO_COLORMAP: IsoColormap = `interpolateViridis`
+
+// A layer's color scale as a config: an unset color_scale or scheme takes the iso default
+export const iso_color_scale = (color_scale: ColorScale | undefined): ColorScaleConfig =>
+  to_color_scale_config(color_scale ?? DEFAULT_ISO_COLORMAP, DEFAULT_ISO_COLORMAP)
 
 // ColorScaleSelect props for picking one of ISO_COLORMAPS inside a compact settings grid
 // (isosurface layer colouring, Fermi surface property colouring)

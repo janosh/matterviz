@@ -39,7 +39,7 @@
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import { canvas_sources } from '#lib/io/export.js'
+  import { canvas_overlay_png_blob } from '#lib/io/export.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
@@ -216,9 +216,15 @@
     on_point_hover?.(data)
   }
 
-  // PNG re-renders the scene at export resolution; CSV lists the visible points
+  // PNG re-renders the scene at export resolution with the HTML color bar and legend drawn
+  // on top; CSV lists the visible points
   const export_sources = {
-    ...canvas_sources(() => wrapper?.querySelector(`canvas`)),
+    png: (png_dpi: number) =>
+      canvas_overlay_png_blob(
+        wrapper?.querySelector(`canvas`),
+        [...(wrapper?.querySelectorAll<HTMLElement>(`[data-export-overlay]`) ?? [])],
+        png_dpi,
+      ),
     csv: csv_source(() =>
       series_to_csv_rows(
         series.flatMap((srs, idx) =>

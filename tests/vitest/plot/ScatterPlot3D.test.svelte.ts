@@ -41,6 +41,7 @@ import {
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+import { canvas_overlay_png_blob } from '#lib/io/export.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   bind_props,
@@ -53,6 +54,11 @@ import {
 } from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
+// jsdom has no WebGPU canvas to rasterize; the export test checks what the PNG composites
+vi.mock(`#lib/io/export.js`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  canvas_overlay_png_blob: vi.fn(async () => new Blob([`png`], { type: `image/png` })),
+}))
 vi.mock(`$app/state`, () => ({
   page: {
     url: {
@@ -620,7 +626,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   test(`exports a PNG of the scene and a CSV of the visible points`, async () => {
     const on_export = vi.fn()
-    const series = [basic_series, { ...basic_series, label: `Hidden`, visible: false }]
+    const color_values = [5, 4, 3, 2, 1]
+    const series = [
+      { ...basic_series, color_values },
+      { ...basic_series, label: `Hidden`, visible: false },
+    ]
     const plot = await mount_sized(
       ScatterPlot3D,
       { series, on_export },
@@ -632,9 +642,21 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(String(result.data).split(`\n`)).toEqual([
       `series,x,y,color_value,size_value,z`,
       ...basic_series.x.map(
-        (x, idx) => `Test Series,${x},${basic_series.y[idx]},,,${basic_series.z[idx]}`,
+        (x, idx) =>
+          `Test Series,${x},${basic_series.y[idx]},${color_values[idx]},,${basic_series.z[idx]}`,
       ),
     ])
+    // the PNG composites the HTML color bar and legend over the re-rendered scene canvas
+    const canvas = document.createElement(`canvas`)
+    plot.append(canvas)
+    on_export.mockClear()
+    const png = await export_via_pane(on_export, `PNG`, plot)
+    expect(png.data).toBeInstanceOf(Blob)
+    expect(canvas_overlay_png_blob).toHaveBeenCalledExactlyOnceWith(
+      canvas,
+      [query(plot, `.colorbar`), query(plot, `.legend`)],
+      expect.any(Number),
+    )
   })
 
   test(`page initializes without query access during prerendering`, async () => {

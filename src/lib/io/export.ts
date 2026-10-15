@@ -554,6 +554,18 @@ export async function svg_to_png_blob(
   const { markup, size } = serialize_svg(svg, dpi_to_scale(png_dpi), true)
   if (!size) throw new Error(`Invalid SVG dimensions for PNG export`)
   const [width, height] = size
+  return with_svg_image(markup, width * height, (img) =>
+    paint_png_blob(width, height, 1, (ctx) => ctx.drawImage(img, 0, 0, width, height)),
+  )
+}
+
+// Load SVG markup into an <img> (timeout scaled by its pixel count), run `use` on it, then
+// release the object URL
+async function with_svg_image<Value>(
+  markup: string,
+  n_pixels: number,
+  use: (img: HTMLImageElement) => Promise<Value>,
+): Promise<Value> {
   const url = URL.createObjectURL(new Blob([markup], { type: EXPORT_MIME.svg }))
   const listeners = new AbortController()
   try {
@@ -570,12 +582,10 @@ export async function svg_to_png_blob(
           )
           img.src = url
         }),
-      export_timeout_ms((width * height * 4) / 1e6),
+      export_timeout_ms((n_pixels * 4) / 1e6),
       `SVG image load`,
     )
-    return await paint_png_blob(width, height, 1, (ctx) =>
-      ctx.drawImage(img, 0, 0, width, height),
-    )
+    return await use(img)
   } catch (error) {
     throw to_error(error)
   } finally {
@@ -723,6 +733,44 @@ export function html_to_svg(element: HTMLElement): SVGSVGElement {
   const svg = svg_el(`svg`, { viewBox: `0 0 ${rect.width} ${rect.height}` }) as SVGSVGElement
   svg.append(overlay_to_svg(element, rect))
   return svg
+}
+
+// PNG of a live canvas (re-rendered at `png_dpi`, see canvas_to_png_blob) with the HTML
+// `overlays` laid over it (legends, color bars) redrawn on top at their on-screen positions,
+// through the same overlay redraw as SVG chart exports
+export async function canvas_overlay_png_blob(
+  canvas: HTMLCanvasElement | null | undefined,
+  overlays: readonly HTMLElement[],
+  png_dpi = DEFAULT_PNG_DPI,
+): Promise<Blob> {
+  const source = require_element(canvas, `canvas`)
+  const frame_blob = await canvas_to_png_blob(source, png_dpi)
+  if (overlays.length === 0) return frame_blob
+  const origin = source.getBoundingClientRect()
+  const { width, height } = origin
+  if (!(width > 0 && height > 0))
+    throw new Error(`Cannot export a canvas that has not been laid out (zero size)`)
+  const scale = dpi_to_scale(png_dpi)
+  // sized in export pixels so the overlay rasterizes as crisply as the re-rendered frame
+  const svg = svg_el(`svg`, {
+    xmlns: SVG_NS,
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+    viewBox: `0 0 ${width} ${height}`,
+  })
+  for (const overlay of overlays) svg.append(overlay_to_svg(overlay, origin))
+  const markup = new XMLSerializer().serializeToString(svg)
+  const frame = await createImageBitmap(frame_blob)
+  try {
+    return await with_svg_image(markup, width * height * scale ** 2, (img) =>
+      paint_png_blob(width, height, scale, (ctx) => {
+        ctx.drawImage(frame, 0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+      }),
+    )
+  } finally {
+    frame.close()
+  }
 }
 
 // Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately

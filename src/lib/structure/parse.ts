@@ -1086,9 +1086,9 @@ const json_species_issue = (entry: Record<string, unknown>): string | undefined 
 
 // A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
 // (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols.
-// Values are checked here since CIF export and rendering do arithmetic on them.
-function json_species({ species }: { species?: unknown }, idx: number): Species[] {
-  const where = `JSON site ${display_idx(idx)}`
+// Values are checked here since CIF export and rendering do arithmetic on them. `where` names
+// the site in errors.
+export function json_species(species: unknown, where: string): Species[] {
   if (!Array.isArray(species) || !species.length) throw new Error(`${where} has no species`)
   return species.map((raw: unknown) => {
     const entry = typeof raw === `string` ? { element: raw } : raw
@@ -1120,7 +1120,7 @@ export function structure_from_json(
         )
       return {
         ...site,
-        species: json_species(site, idx),
+        species: json_species(site.species, `JSON site ${display_idx(idx)}`),
         properties: site.properties ?? {},
         xyz: site.xyz,
         abc: site.abc ?? ([0, 0, 0] as Vec3),
@@ -1133,7 +1133,7 @@ export function structure_from_json(
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
-    const species = json_species(raw_site, idx)
+    const species = json_species(raw_site.species, `JSON site ${display_idx(idx)}`)
     const site = { ...raw_site, species, properties: raw_site.properties ?? {} }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }

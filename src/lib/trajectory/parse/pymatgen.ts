@@ -1,9 +1,8 @@
 // Pymatgen Trajectory JSON parsing
 import { display_idx } from '#lib/labels.js'
-import type { ElementSymbol } from '#lib/element/types.js'
-import { species_symbol } from '#lib/element/helpers.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { json_species } from '#lib/structure/parse.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import {
   calc_force_stats,
@@ -25,6 +24,9 @@ const unwrap_numpy_arrays = (value: unknown): unknown => {
     Object.entries(value).map(([key, entry]) => [key, unwrap_numpy_arrays(entry)]),
   )
 }
+
+const strip_monty_keys = (entry: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(entry).filter(([key]) => !key.startsWith(`@`)))
 
 const frac_coords_of = (value: unknown, frame_idx: number, n_sites: number): Vec3[] => {
   if (!Array.isArray(value) || value.length !== n_sites) {
@@ -52,13 +54,20 @@ export function parse_pymatgen_trajectory(
   const obj = unwrap_numpy_arrays(raw) as Record<string, unknown>
   // Validate shape upfront so malformed input fails with a clear message
   // (callers gate only on truthiness, not structure) rather than a cryptic `.map` error
-  const frame_elements = Array.isArray(obj.species) ? obj.species.map(species_symbol) : []
-  if (frame_elements.length === 0 || frame_elements.includes(undefined)) {
+  if (!Array.isArray(obj.species) || obj.species.length === 0) {
     throw new TypeError(
       `Invalid pymatgen Trajectory: 'species' must be a non-empty array of element symbols or { element } objects`,
     )
   }
-  const elements = frame_elements as ElementSymbol[]
+  // Species keep their decoration (Fe3+ is MontyEncoder's { element, oxidation_state } dict),
+  // validated like structure JSON species; the encoder's @module/@class keys are dropped
+  const site_species = obj.species.map((entry: unknown, site_idx) =>
+    json_species(
+      [is_plain_object(entry) ? strip_monty_keys(entry) : entry],
+      `pymatgen Trajectory site ${display_idx(site_idx)}`,
+    ),
+  )
+  const elements = site_species.map(([{ element }]) => element)
   if (!Array.isArray(obj.coords)) {
     throw new TypeError(`Invalid pymatgen Trajectory: 'coords' must be an array of frames`)
   }
@@ -147,7 +156,7 @@ export function parse_pymatgen_trajectory(
       processed_properties[key] = value
     }
 
-    return create_trajectory_frame(
+    const frame = create_trajectory_frame(
       positions,
       elements,
       frame_lattice,
@@ -157,6 +166,10 @@ export function parse_pymatgen_trajectory(
       site_properties_for(idx, forces),
       warn,
     )
+    for (const [site_idx, site] of frame.structure.sites.entries()) {
+      site.species = site_species[site_idx].map((species) => ({ ...species }))
+    }
+    return frame
   })
 
   // pymatgen records time_step in femtoseconds

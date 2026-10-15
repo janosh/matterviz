@@ -5,6 +5,7 @@ import * as slice_module from '#lib/isosurface/slice.js'
 import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
 import type { SliceResult } from '#lib/isosurface/slice.js'
 import type { VolumeSliceMode } from '#lib/isosurface/slice-rendering.js'
+import { rgb } from 'd3-color'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { doc_query } from '../setup'
@@ -246,16 +247,25 @@ describe(`VolumeSlice`, () => {
     expect(context.clearRect).toHaveBeenCalledWith(0, 0, 4, 4)
   })
 
-  test(`keeps an inverted colorbar consistent with pixel colors`, async () => {
-    await mount_volume_slice({
-      color_bar: {},
-      color_scale: { scheme: `interpolateRdBu`, value_range: [3, -1] },
-    })
-    const gradient = document.querySelector(`.colorbar .bar`)?.getAttribute(`style`) ?? ``
-    const interpolator = get_d3_interpolator(`interpolateRdBu`)
+  // a config without scheme keeps the slice's diverging RdBu default, not viridis
+  test.each([{ scheme: `interpolateRdBu` as const }, {}])(
+    `keeps an inverted colorbar consistent with pixel colors %o`,
+    async (scheme) => {
+      const { context } = await mount_volume_slice({
+        color_bar: {},
+        color_scale: { ...scheme, value_range: [3, -1] },
+      })
+      const gradient = document.querySelector(`.colorbar .bar`)?.getAttribute(`style`) ?? ``
+      const interpolator = get_d3_interpolator(`interpolateRdBu`)
 
-    expect(gradient.indexOf(interpolator(0))).toBeLessThan(gradient.indexOf(interpolator(1)))
-  })
+      expect(gradient.indexOf(interpolator(0))).toBeGreaterThanOrEqual(0)
+      expect(gradient.indexOf(interpolator(0))).toBeLessThan(gradient.indexOf(interpolator(1)))
+      // value 3 (first data row, col 3) sits on the flipped bottom row and maps to palette start
+      const { data } = context.putImageData.mock.calls[0][0] as ImageData
+      const { r: red, g: green, b: blue } = rgb(interpolator(0))
+      expect(Array.from(data.subarray(15 * 4, 15 * 4 + 3))).toEqual([red, green, blue])
+    },
+  )
 })
 
 test(`VolumeSliceView re-samples for plane changes only`, async () => {

@@ -213,11 +213,7 @@ describe(`HeatmapMatrixControls`, () => {
     if (!normalize_select || !domain_select) throw new Error(`normalize/domain select missing`)
     expect([...normalize_select.options].map((opt) => opt.value)).toEqual([`linear`, `log`])
     expect(normalize_select.value).toBe(`log`)
-    expect([...domain_select.options].map((opt) => opt.value)).toEqual([
-      `auto`,
-      `robust`,
-      `fixed`,
-    ])
+    expect([...domain_select.options].map((opt) => opt.value)).toEqual([`auto`, `robust`])
     expect(domain_select.value).toBe(`robust`)
   })
 

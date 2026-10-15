@@ -9,6 +9,7 @@
   import type { SliceResult } from './slice'
   import {
     contour_segments,
+    DEFAULT_SLICE_SCHEME,
     resolve_contour_thresholds,
     resolve_slice_value_range,
     slice_to_rgba,
@@ -18,7 +19,7 @@
   let {
     slice,
     mode = `both`,
-    color_scale = `interpolateRdBu`,
+    color_scale: color_scale_prop = DEFAULT_SLICE_SCHEME,
     symmetric = `auto`,
     contour_levels = 10,
     color_bar = {},
@@ -34,6 +35,7 @@
     canvas?: HTMLCanvasElement
   } = $props()
 
+  let color_scale = $derived(to_color_scale_config(color_scale_prop, DEFAULT_SLICE_SCHEME))
   let value_range = $derived<Vec2>(
     slice ? resolve_slice_value_range(slice, color_scale, symmetric) : [0, 1],
   )
@@ -143,7 +145,7 @@
       title="Value"
       scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
       range={value_range}
-      scale_type={to_color_scale_config(color_scale).type}
+      scale_type={color_scale.type}
       tick_labels={5}
       {...color_bar}
       {orientation}

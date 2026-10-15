@@ -5,10 +5,10 @@ import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
 // open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
 import type { ElementSymbol } from '#lib'
-import { structure_to_xyz_str } from '#lib/structure/export.js'
+import { structure_to_json_str, structure_to_xyz_str } from '#lib/structure/export.js'
 import { get_element_counts } from '#lib/structure/density.js'
 import type { Pbc } from '#lib/structure/pbc.js'
-import { parse_xyz } from '#lib/structure/parse.js'
+import { parse_xyz, structure_from_json } from '#lib/structure/parse.js'
 import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
 import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -2021,6 +2021,46 @@ describe(`JSON`, () => {
     expect(frames.map((frame) => frame.structure.sites[0].xyz)).toEqual(expected_xyz)
     const periodic = (fields as { lattice?: unknown }).lattice !== null
     expect(frames.every(({ structure }) => `lattice` in structure === periodic)).toBe(true)
+  })
+
+  // Trajectory.from_structures of an oxidation-decorated structure: MontyEncoder writes
+  // Species/Element dicts, whose decoration must reach every frame like structure JSON does
+  it(`keeps decorated species in every frame and through structure JSON export`, async () => {
+    const monty = (cls: string, fields: Record<string, unknown>) => ({
+      '@module': `pymatgen.core.periodic_table`,
+      '@class': cls,
+      ...fields,
+    })
+    const run = await open(
+      pymatgen({
+        species: [
+          monty(`Species`, { element: `Fe`, oxidation_state: 3, spin: null }),
+          monty(`Element`, { element: `O` }),
+        ],
+        coords: [
+          [
+            [0, 0, 0],
+            [0.5, 0.5, 0.5],
+          ],
+          [
+            [0.1, 0, 0],
+            [0.5, 0.5, 0.5],
+          ],
+        ],
+      }),
+      `decorated.json`,
+    )
+    const frames = await frames_of(run)
+    const expected = [
+      [{ element: `Fe`, oxidation_state: 3, occu: 1, spin: null }],
+      [{ element: `O`, oxidation_state: 0, occu: 1 }],
+    ]
+    for (const { structure } of frames) {
+      expect(structure.sites.map((site) => site.species)).toEqual(expected)
+    }
+    expect(frames[0].structure.sites[0].species).not.toBe(frames[1].structure.sites[0].species)
+    const reread = structure_from_json(JSON.parse(structure_to_json_str(frames[1].structure)))
+    expect(reread.sites.map(({ species }) => species[0].oxidation_state)).toEqual([3, 0])
   })
 
   // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning

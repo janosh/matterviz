@@ -266,7 +266,6 @@ describe(`values and colors`, () => {
       x: [`A`, `B`],
       y: [`X`],
       values: [[0, 10]],
-      domain_mode: `fixed`,
       color_bar: {},
       color_scale: { scheme: red_scale, value_range: [10, 0] },
     })
@@ -925,7 +924,7 @@ describe(`virtualization`, () => {
       ...extra,
     })
   }
-  test.each([`auto`, `fixed`, `robust`] as const)(
+  test.each([`auto`, `robust`] as const)(
     `%s with explicit bounds only reads and colors rendered cells`,
     async (domain_mode) => {
       const scheme = vi.fn(red_scale)

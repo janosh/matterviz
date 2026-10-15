@@ -217,6 +217,26 @@ describe(`IsosurfaceControls`, () => {
     expect(props.settings).toEqual(create_volume_slice_settings())
     expect(document.querySelector(selector)).toBeNull()
   })
+
+  test(`cross-section range edits keep the RdBu default of a scheme-less color_scale`, () => {
+    const props = $state({
+      volumes: two_volumes(),
+      settings: create_volume_slice_settings({ color_scale: { value_range: [-1, 1] } }),
+    })
+    mount(VolumeSliceControls, { target: document.body, props: bind_props({}, props) })
+    flushSync()
+    const colormap = doc_query<HTMLSelectElement>(`select[aria-label="Slice colormap"]`)
+    expect(colormap.value).toBe(`interpolateRdBu`)
+    const auto_button = Array.from(document.querySelectorAll(`button`)).find(
+      (button) => button.textContent?.trim() === `Auto`,
+    )
+    auto_button?.click()
+    flushSync()
+    expect(props.settings.color_scale).toEqual({
+      scheme: `interpolateRdBu`,
+      value_range: undefined,
+    })
+  })
 })
 
 describe(`IsosurfaceControls multi-volume`, () => {
@@ -525,6 +545,28 @@ describe(`IsosurfaceControls multi-volume`, () => {
         ),
       // color volume data_range is [1, 8] → the untouched max bound comes from there
       expected: { color_scale: { scheme: `interpolateViridis`, value_range: [2.5, 8] } },
+      reset_visible: true,
+    },
+    // a config without scheme means the iso default (Viridis): no reset offered while
+    // untouched, and edits write that scheme
+    {
+      desc: `a scheme-less color_scale reads as the default colormap`,
+      layer: { color_volume_id: `1`, color_scale: { type: `log` } },
+      act: () => {},
+      expected: { color_scale: { type: `log` } },
+      reset_visible: false,
+    },
+    {
+      desc: `editing a bound of a scheme-less color_scale writes the default colormap`,
+      layer: { color_volume_id: `1`, color_scale: { type: `log` } },
+      act: () =>
+        change_value(
+          doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
+          `2.5`,
+        ),
+      expected: {
+        color_scale: { scheme: `interpolateViridis`, type: `log`, value_range: [2.5, 8] },
+      },
       reset_visible: true,
     },
     {

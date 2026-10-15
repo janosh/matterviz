@@ -97,7 +97,6 @@
       <select bind:value={domain_mode}>
         <option value="auto">Auto</option>
         <option value="robust">Robust</option>
-        <option value="fixed">Fixed</option>
       </select>
     </label>
     <label>

@@ -629,9 +629,15 @@ export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   )
 }
 
-// Bare scheme names expand to a config so every component reads one shape
-export const to_color_scale_config = (color_scale: ColorScale): ColorScaleConfig =>
-  typeof color_scale === `string` ? { scheme: color_scale } : color_scale
+// Bare scheme names expand to a config so every component reads one shape. default_scheme
+// fills an unset scheme for components whose palette default isn't viridis (diverging slices).
+export const to_color_scale_config = (
+  color_scale: ColorScale,
+  default_scheme?: ColorScaleConfig[`scheme`],
+): ColorScaleConfig => {
+  const config = typeof color_scale === `string` ? { scheme: color_scale } : color_scale
+  return config.scheme || !default_scheme ? config : { ...config, scheme: default_scheme }
+}
 
 // Set value_range ends win; null or unset ends fall back to the data-derived auto_range,
 // which a thunk computes only when an end needs it (skipping the data scan otherwise)

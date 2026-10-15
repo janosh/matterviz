@@ -101,11 +101,13 @@ test.each([`true`, `false`, ``])(`E2E jobs run only when e2e-gate outputs run=%j
   expect(jobs[`e2e-test-shards`].needs).toBe(`build-site`)
 })
 
-// Past CI runs (newest first) as [run id, head repo, E2E gate conclusion]; run 100 is this one
+// Past CI runs (newest first) as [run id, head repo, E2E gate conclusion, event (default
+// pull_request)]; run 100 is this one
 const fork = `someone/matterviz`
 const own = `janosh/matterviz`
+type PastRun = [number, string, string, string?]
 // oxfmt-ignore
-test.each<[string, string | undefined, [number, string, string][], boolean]>([
+test.each<[string, string | undefined, PastRun[], boolean]>([
   [`opened`, `opened`, [[3, own, `success`]], true],
   [`merge to main`, undefined, [[3, own, `success`]], true],
   [`first push, nothing decided yet`, `synchronize`, [], true],
@@ -116,12 +118,20 @@ test.each<[string, string | undefined, [number, string, string][], boolean]>([
   [`cancelled after a failure`, `synchronize`, [[9, own, `cancelled`], [3, own, `failure`]], true],
   [`only the current run`, `synchronize`, [[100, own, `success`]], true],
   [`a fork's same-named branch`, `synchronize`, [[4, fork, `success`], [3, own, `failure`]], true],
+  // a manually dispatched full run decides like a PR run; other events (push) decide nothing
+  [`a dispatched run failed`, `synchronize`, [[5, own, `failure`, `workflow_dispatch`], [3, own, `success`]], true],
+  [`a dispatched run passed`, `synchronize`, [[5, own, `success`, `workflow_dispatch`], [3, own, `failure`]], false],
+  [`a push run`, `synchronize`, [[5, own, `failure`, `push`], [3, own, `success`]], false],
 ])(`e2e-gate decides whether E2E runs: %s`, (_label, action, runs, expected) => {
   const [step] = jobs[`e2e-gate`].steps
   const scratch = mkdtempSync(join(tmpdir(), `matterviz-e2e-gate-`))
   onTestFinished(() => rmSync(scratch, { recursive: true, force: true }))
   // GitHub's API as JSON files, filtered by the workflow's own --jq expressions via real jq
-  const workflow_runs = runs.map(([id, full_name]) => ({ id, head_repository: { full_name } }))
+  const workflow_runs = runs.map(([id, full_name, , event = `pull_request`]) => ({
+    id,
+    event,
+    head_repository: { full_name },
+  }))
   writeFileSync(join(scratch, `runs.json`), JSON.stringify({ workflow_runs }))
   for (const [id, , conclusion] of runs) {
     const jobs_json = [
@@ -130,11 +140,14 @@ test.each<[string, string | undefined, [number, string, string][], boolean]>([
     ]
     writeFileSync(join(scratch, `jobs-${id}.json`), JSON.stringify({ jobs: jobs_json }))
   }
-  // logs each call's endpoint, then answers with jq over the matching file
+  // logs each call's endpoint, then answers with jq over the matching file (runs narrowed
+  // by an ?event= query like the API does)
   const gh_stub = `gh() {
     echo "$1 $2 $3" >> "${scratch}/calls"
-    if [[ "$2" == */jobs?per_page=100 ]]; then id="\${2%/jobs?per_page=100}"; file="jobs-\${id##*/}.json"; else file=runs.json; fi
-    jq -r "$4" "${scratch}/$file"
+    if [[ "$2" == */jobs?per_page=100 ]]; then id="\${2%/jobs?per_page=100}"; jq -r "$4" "${scratch}/jobs-\${id##*/}.json"; return; fi
+    event_filter=.
+    if [[ "$2" =~ event=([a-z_]+) ]]; then event_filter=".workflow_runs |= map(select(.event == \\"\${BASH_REMATCH[1]}\\"))"; fi
+    jq "$event_filter" "${scratch}/runs.json" | jq -r "$4"
   }`
   const output_file = join(scratch, `output`)
   writeFileSync(output_file, ``)
@@ -152,18 +165,20 @@ test.each<[string, string | undefined, [number, string, string][], boolean]>([
   })
   expect(status, stderr).toBe(0)
   expect(readFileSync(output_file, `utf8`)).toBe(`run=${expected}\n`)
-  // only pushes ask the API: completed pull_request runs of this branch, then each listed
-  // run's jobs until one decides
+  // only pushes ask the API: completed runs of this branch, then the jobs of each PR or
+  // dispatched run until one decides
   const calls = action === `synchronize` ? readFileSync(join(scratch, `calls`), `utf8`) : ``
-  const decided = runs.findIndex(([id, repo, gate]) => id !== 100 && repo === own && gate !== `cancelled`)
-  const queried = runs.slice(0, decided === -1 ? runs.length : decided + 1)
+  const listed = runs.filter(
+    ([id, repo, , event = `pull_request`]) =>
+      id !== 100 && repo === own && [`pull_request`, `workflow_dispatch`].includes(event),
+  )
+  const decided = listed.findIndex(([, , gate]) => gate !== `cancelled`)
+  const queried = listed.slice(0, decided === -1 ? listed.length : decided + 1)
   expect(calls.trim().split(`\n`).filter(Boolean)).toEqual(
     action === `synchronize`
       ? [
-          `api repos/${own}/actions/workflows/ci.yml/runs?event=pull_request&status=completed&branch=feature&per_page=30 --jq`,
-          ...queried
-            .filter(([id, repo]) => id !== 100 && repo === own)
-            .map(([id]) => `api repos/${own}/actions/runs/${id}/jobs?per_page=100 --jq`),
+          `api repos/${own}/actions/workflows/ci.yml/runs?status=completed&branch=feature&per_page=30 --jq`,
+          ...queried.map(([id]) => `api repos/${own}/actions/runs/${id}/jobs?per_page=100 --jq`),
         ]
       : [],
   )

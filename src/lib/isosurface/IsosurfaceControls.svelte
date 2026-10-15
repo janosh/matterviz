@@ -9,15 +9,10 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { ColorScaleConfig } from '#lib/plot/core/types.js'
   import { clamp01 } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
-  import {
-    auto_color_config,
-    DEFAULT_ISO_COLORMAP,
-    ISO_COLORMAP_SELECT_PROPS,
-  } from './coloring'
+  import { auto_color_config, iso_color_scale, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -187,8 +182,7 @@
   // range to auto-fit (renderer fits it to the values sampled on the surface).
   // Typing into an auto range seeds the other bound from the color volume's
   // full data range as a starting point.
-  const layer_color_scale = (layer: IsosurfaceLayer) =>
-    to_color_scale_config(layer.color_scale ?? DEFAULT_ISO_COLORMAP)
+  const layer_color_scale = (layer: IsosurfaceLayer) => iso_color_scale(layer.color_scale)
   const update_color_scale = (layer_idx: number, updates: ColorScaleConfig) => {
     const layer = settings.layers[layer_idx]
     if (layer) {

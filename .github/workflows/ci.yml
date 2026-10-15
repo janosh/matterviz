@@ -161,9 +161,12 @@ jobs:
         run: |
           run=true
           if [ "$ACTION" = synchronize ]; then
-            # newest first; cancelled or still running runs decide nothing
-            for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&status=completed&branch=$HEAD_REF&per_page=30" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_repository.full_name == \"$HEAD_REPO\") | .id"); do
+            # newest first; cancelled or still running runs decide nothing. Manually dispatched
+            # full runs of the branch count like PR runs (a failed one must keep E2E running);
+            # the head repo filter drops a fork's same-named branch and base-repo dispatches
+            # for fork PRs alike.
+            for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?status=completed&branch=$HEAD_REF&per_page=30" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.event == \"pull_request\" or .event == \"workflow_dispatch\") and .head_repository.full_name == \"$HEAD_REPO\") | .id"); do
               gate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" \
                 --jq '.jobs[] | select(.name == "E2E tests (shard 1/4)") | .conclusion')
               if [ "$gate" = success ]; then run=false; break; fi

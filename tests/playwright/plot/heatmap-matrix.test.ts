@@ -69,7 +69,7 @@ test(`domain and normalization changes recolor cells without per-cell animations
   // pane contents mount on first open
   await page.locator(`button.heatmap-matrix-controls-toggle`).first().click({ force: true })
   for (const [option, values] of [
-    [`robust`, [`fixed`, `robust`, `auto`]],
+    [`robust`, [`robust`, `auto`]],
     [`log`, [`log`, `linear`]],
   ]) {
     const select = page.locator(`select:has(option[value="${option}"])`).first()

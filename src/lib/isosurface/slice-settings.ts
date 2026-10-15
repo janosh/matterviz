@@ -1,5 +1,6 @@
 import type { Vec3 } from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
+import { DEFAULT_SLICE_SCHEME } from './slice-rendering'
 import type { VolumeSliceMode } from './slice-rendering'
 
 export type VolumeSlicePlaneMode = `hkl` | `cartesian`
@@ -29,7 +30,7 @@ const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   cartesian_up: [1, 0, 0],
   resolution: 1024,
   render_mode: `both`,
-  color_scale: `interpolateRdBu`,
+  color_scale: DEFAULT_SLICE_SCHEME,
   contour_levels: 10,
   symmetric: `auto`,
   show_plane: true,

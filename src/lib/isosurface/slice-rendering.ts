@@ -8,6 +8,9 @@ import type { SliceResult } from './slice'
 
 export type VolumeSliceMode = `both` | `contours` | `filled`
 
+// Slices default to a diverging palette, also when a color_scale config leaves scheme unset
+export const DEFAULT_SLICE_SCHEME = `interpolateRdBu`
+
 const MAX_CONTOUR_LEVELS = 256
 
 // Opaque 8-bit sRGB pixels (canvas wants d3's sRGB output as is), written byte-wise and read

@@ -1,4 +1,5 @@
 import {
+  canvas_overlay_png_blob,
   canvas_to_png_blob,
   dpi_to_scale,
   export_canvas_as_png,
@@ -705,6 +706,39 @@ describe(`svg_to_png_blob`, () => {
       expect(mock_canvas_element.toBlob).not.toHaveBeenCalled()
     }
   })
+})
+
+// 3D charts lay HTML legends/color bars over a GPU canvas; the PNG redraws them on the frame
+test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas frame`, async () => {
+  const canvas = Object.assign(make_mock_canvas(), {
+    clientWidth: 800,
+    clientHeight: 600,
+    getBoundingClientRect: () => new DOMRect(0, 0, 800, 600),
+  })
+  const legend = document.createElement(`div`)
+  legend.innerHTML = `<svg><circle r="3" fill="red"></circle></svg>`
+  document.body.append(legend)
+  onTestFinished(() => legend.remove())
+  const frame = { close: vi.fn() }
+  vi.stubGlobal(
+    `createImageBitmap`,
+    vi.fn(async () => frame),
+  )
+  const object_url = mock_object_url()
+  const images = mock_image(`load`)
+  const offscreen = mock_offscreen_canvas()
+
+  expect(await canvas_overlay_png_blob(canvas, [legend], 72)).toBeInstanceOf(Blob)
+  const { drawImage } = offscreen.getContext.mock.results[0].value as {
+    drawImage: ReturnType<typeof vi.fn>
+  }
+  expect(drawImage.mock.calls).toEqual([
+    [frame, 0, 0, 800, 600],
+    [images[0], 0, 0, 800, 600],
+  ])
+  expect(frame.close).toHaveBeenCalledOnce()
+  const overlay_svg = parse_svg(await (object_url.create.mock.calls[0][0] as Blob).text())
+  expect(overlay_svg.querySelector(`circle`)?.getAttribute(`fill`)).toBe(`red`)
 })
 
 describe(`export_canvas_as_png`, () => {
