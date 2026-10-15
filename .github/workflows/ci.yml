@@ -17,7 +17,9 @@ permissions:
 concurrency:
   # Reusable calls keep the caller's event and workflow name. Give each release run its
   # own group so dispatching another version cannot cancel or replace its CI gate.
-  group: ${{ github.workflow }}-${{ github.workflow == 'CI' && (github.event.pull_request.number || github.ref) || github.run_id }}
+  # Pushes to an open PR (synchronize) skip E2E and use their own group, so they cannot cancel
+  # the E2E run that started when the PR was opened or reopened.
+  group: ${{ github.workflow }}-${{ github.workflow == 'CI' && (github.event.pull_request.number || github.ref) || github.run_id }}${{ github.event.action == 'synchronize' && '-sync' || '' }}
   cancel-in-progress: ${{ github.workflow == 'CI' }}
 
 jobs:
@@ -40,7 +42,7 @@ jobs:
       - name: Format, lint and type-check the whole repo
         run: |
           pnpm exec vp check
-          npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning
+          pnpm typecheck
       - name: Run prek checks
         uses: j178/prek-action@main
 
@@ -138,8 +140,11 @@ jobs:
           RESULT: ${{ needs.unit-test-shards.result == 'success' && needs.publint.result == 'success' && 'success' || 'failure' }}
         run: test "$RESULT" = success
 
+  # The full E2E suite (~15 min) runs when a PR is opened or reopened, on merge to main, on
+  # manual dispatch and as the release gate, but not on later pushes to an open PR.
   build-site:
     name: Build browser test site
+    if: github.event.action != 'synchronize'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -156,6 +161,7 @@ jobs:
 
   e2e-source:
     name: E2E source inspection
+    if: github.event.action != 'synchronize'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -209,7 +215,8 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  # These four names are required by the main ruleset. Each gates the complete matrix.
+  # These four names are required by the main ruleset. Each gates the complete matrix and
+  # accepts skipped E2E jobs only on synchronize pushes, where they are skipped on purpose.
   e2e-tests:
     name: E2E tests (shard ${{ matrix.shard }}/4)
     if: always()
@@ -221,5 +228,5 @@ jobs:
     steps:
       - name: Require all E2E test shards
         env:
-          RESULT: ${{ needs.e2e-test-shards.result == 'success' && needs.e2e-source.result == 'success' && 'success' || 'failure' }}
+          RESULT: ${{ ((needs.e2e-test-shards.result == 'success' && needs.e2e-source.result == 'success') || (github.event.action == 'synchronize' && needs.e2e-test-shards.result == 'skipped' && needs.e2e-source.result == 'skipped')) && 'success' || 'failure' }}
         run: test "$RESULT" = success

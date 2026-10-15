@@ -8,7 +8,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 
 type Gate = {
   if: string
-  needs: string[]
+  needs: string[] | string
   steps: { run: string; env: { RESULT: string } }[]
 }
 const { jobs, concurrency } = load(readFileSync(`.github/workflows/ci.yml`, `utf8`)) as {
@@ -16,29 +16,43 @@ const { jobs, concurrency } = load(readFileSync(`.github/workflows/ci.yml`, `utf
   concurrency: { group: string; 'cancel-in-progress': string }
 }
 
+// Workflow expressions here use only property access, (in)equality, parentheses and &&/||,
+// which JS and Actions evaluate alike (single-quoted strings, `needs.job-name` aside).
+const eval_expr = (expression: string, context: Record<string, unknown>) =>
+  runInNewContext(
+    expression.replaceAll(/needs\.(?<job>[\w-]+)/g, (_, name: string) => `needs["${name}"]`),
+    context,
+  )
+
 test.each([
-  [`CI`, 465, `CI-465`, true],
-  [`CI`, undefined, `CI-refs/heads/feature`, true],
-  [`Publish`, undefined, `Publish-123`, false],
-])(`%s cancellation with PR %s respects the caller`, (workflow, pr_number, group, cancel) => {
-  // These expressions use only property access, equality and &&/||, shared by JS and Actions.
-  // workflow_dispatch is also the event inside a manually dispatched reusable release gate.
-  const github = {
-    workflow,
-    event_name: `workflow_dispatch`,
-    event: { pull_request: { number: pr_number } },
-    ref: `refs/heads/feature`,
-    run_id: 123,
-  }
-  const evaluate = (template: string) =>
-    template.replaceAll(/\$\{\{(?<expression>.+?)\}\}/g, (_match, expression: string) =>
-      String(runInNewContext(expression, { github })),
-    )
-  expect(evaluate(concurrency.group)).toBe(group)
-  expect(evaluate(concurrency[`cancel-in-progress`])).toBe(String(cancel))
-  github.run_id = 456
-  expect(evaluate(concurrency.group)).toBe(workflow === `CI` ? group : `Publish-456`)
-})
+  [`CI`, 465, `opened`, `CI-465`, true],
+  [`CI`, 465, `synchronize`, `CI-465-sync`, true],
+  [`CI`, undefined, undefined, `CI-refs/heads/feature`, true],
+  [`Publish`, undefined, undefined, `Publish-123`, false],
+])(
+  `%s cancellation with PR %s (%s) respects the caller`,
+  (workflow, pr_number, action, group, cancel) => {
+    // workflow_dispatch is also the event inside a manually dispatched reusable release gate.
+    // Synchronize runs get their own group so they never cancel an opened/reopened E2E run.
+    const github = {
+      workflow,
+      event_name: `workflow_dispatch`,
+      event: { action, pull_request: { number: pr_number } },
+      ref: `refs/heads/feature`,
+      run_id: 123,
+    }
+    const evaluate = (template: string) =>
+      template.replaceAll(/\$\{\{(?<expression>.+?)\}\}/g, (_match, expression: string) =>
+        String(eval_expr(expression, { github })),
+      )
+    expect(evaluate(concurrency.group)).toBe(group)
+    expect(evaluate(concurrency[`cancel-in-progress`])).toBe(String(cancel))
+    github.run_id = 456
+    expect(evaluate(concurrency.group)).toBe(workflow === `CI` ? group : `Publish-456`)
+  },
+)
+
+const e2e_actions = [`opened`, `reopened`, `synchronize`, `published`, undefined] as const
 
 test.each([
   [`unit-tests`, [`unit-test-shards`, `publint`]],
@@ -48,24 +62,38 @@ test.each([
   expect(gate.if).toBe(`always()`)
   expect(gate.needs).toEqual(dependencies)
   const [step] = gate.steps
-  for (const dependency of dependencies) {
-    for (const result of [`success`, `failure`, `cancelled`, `skipped`, ``]) {
-      const needs = Object.fromEntries(
-        dependencies.map((name) => [
-          name,
-          { result: name === dependency ? result : `success` },
-        ]),
-      )
-      const expression = step.env.RESULT.slice(3, -2).replaceAll(
-        /needs\.(?<job>[\w-]+)/g,
-        (_, name: string) => `needs["${name}"]`,
-      )
-      const { status } = spawnSync(`bash`, [`-e`, `-c`, step.run], {
-        env: { ...process.env, RESULT: String(runInNewContext(expression, { needs })) },
-      })
-      expect(status, `${dependency}: ${result}`).toBe(result === `success` ? 0 : 1)
-    }
+  const gate_status = (results: Record<string, string>, action?: string) => {
+    const needs = Object.fromEntries(
+      dependencies.map((name) => [name, { result: results[name] ?? `success` }]),
+    )
+    const github = { event: { action } }
+    const result = eval_expr(step.env.RESULT.slice(3, -2), { needs, github })
+    return spawnSync(`bash`, [`-e`, `-c`, step.run], {
+      env: { ...process.env, RESULT: String(result) },
+    }).status
   }
+  for (const action of e2e_actions) {
+    for (const dependency of dependencies) {
+      for (const result of [`success`, `failure`, `cancelled`, `skipped`, ``]) {
+        const status = gate_status({ [dependency]: result }, action)
+        expect(status, `${action} ${dependency}: ${result}`).toBe(result === `success` ? 0 : 1)
+      }
+    }
+    // E2E is skipped on purpose only for synchronize pushes; anywhere else skipping means a
+    // failed upstream job (e.g. build-site) and must fail the required check.
+    const all_skipped = Object.fromEntries(dependencies.map((name) => [name, `skipped`]))
+    const skip_ok = gate_name === `e2e-tests` && action === `synchronize`
+    expect(gate_status(all_skipped, action), `${action}: all skipped`).toBe(skip_ok ? 0 : 1)
+  }
+})
+
+test.each(e2e_actions)(`full E2E suite runs on %s events but not synchronize`, (action) => {
+  const github = { event: { action } }
+  for (const job of [`build-site`, `e2e-source`])
+    expect(eval_expr(jobs[job].if, { github }), job).toBe(action !== `synchronize`)
+  // Production shards inherit the skip from build-site.
+  expect(jobs[`e2e-test-shards`].if).toBeUndefined()
+  expect(jobs[`e2e-test-shards`].needs).toBe(`build-site`)
 })
 
 test.each([
