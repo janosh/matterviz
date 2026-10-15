@@ -158,3 +158,19 @@ describe(`vite_plugin_moyo_wasm_source`, () => {
     expect(readFileSync(glue_path, `utf-8`)).toContain(glue_literal)
   })
 })
+
+// Site and VS Code workers are ES modules: the site so lazily imported chunks (h5wasm, ~4.8 MB)
+// stay out of the parse worker every file open loads (iife inlines them), VS Code because its
+// webview workers must be single files and h5wasm is inlined there on purpose
+test.each([
+  [`vite.config.ts`, true],
+  [`extensions/vscode/vite.config.ts`, false],
+])(`%s builds ES workers (code splitting: %s)`, async (config_path, splits) => {
+  const { default: config_export } = await import(`../../${config_path}`)
+  const config =
+    typeof config_export === `function`
+      ? await config_export({ command: `build`, mode: `production` })
+      : config_export
+  expect(config.worker?.format).toBe(`es`)
+  expect(config.worker?.rolldownOptions?.output?.codeSplitting ?? true).toBe(splits)
+})

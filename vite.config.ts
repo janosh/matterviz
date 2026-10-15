@@ -180,7 +180,10 @@ export default defineConfig({
   build: { ...config.build, reportCompressedSize: false },
   plugins,
   optimizeDeps: { rolldownOptions: { plugins: [scan_virtual_relative_imports] } },
+  // ES workers keep lazily imported chunks (h5wasm, ~4 MB) separate: the default iife format
+  // inlines them, so every file parse loaded HDF5 support
   worker: {
+    format: `es`,
     plugins: shared.json_gz_worker_plugins(json_gz_options),
   },
   fmt: {
