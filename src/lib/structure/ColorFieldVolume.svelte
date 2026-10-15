@@ -1,6 +1,7 @@
 <script lang="ts">
   import { T, useThrelte } from '@threlte/core'
   import type { Vec3 } from '#lib/math.js'
+  import { clamp01 } from '#lib/utils.js'
   import {
     BackSide,
     BoxGeometry,
@@ -137,7 +138,7 @@
     invalidate()
   })
   $effect(() => {
-    alpha.value = Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 0
+    alpha.value = Number.isFinite(opacity) ? clamp01(opacity) : 0
     mesh.visible = visible
     invalidate()
   })

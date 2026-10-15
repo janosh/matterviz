@@ -72,6 +72,17 @@ const scene_state = (initial: Partial<StructureSettings>) => {
     },
   }
 }
+// pick an option in a row's <select>, or click a row's reset button, and flush the update
+const choose = async (key: string, value: string): Promise<void> => {
+  const select = doc_query<HTMLSelectElement>(`[data-key="${key}"] select`)
+  select.value = value
+  select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await tick()
+}
+const reset_row = async (key: string): Promise<void> => {
+  doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
+  await tick()
+}
 const find_label = (root: ParentNode, text: string, exact = false) =>
   [...root.querySelectorAll(`label`)].find((label) =>
     exact ? label.textContent?.trim() === text : label.textContent?.includes(text),
@@ -119,24 +130,31 @@ const trail_stream = (): TrajectoryPositionStream =>
   )
 
 describe(`StructureControls inputs`, () => {
-  test.each([
-    { scaling: `2x2x2`, invalid: false, title_includes: `Valid supercell scaling: 2x2x2` },
-    {
-      scaling: `invalid`,
-      invalid: true,
-      title_includes: `Invalid format. Use "2x2x2", "3x1x2", or "2"`,
-    },
-  ])(`supercell input state: $scaling`, async ({ scaling, invalid, title_includes }) => {
-    await mount_controls({
-      structure: simple_structure,
-      controls_open: true,
-      supercell_scaling: scaling,
-    })
+  test(`supercell input flags invalid values, applies on change (not per keystroke) and stays editable`, async () => {
+    const state = $state({ supercell_scaling: `invalid`, supercell_loading: false })
+    await mount_bound_controls(state)
     const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-    expect(input.getAttribute(`aria-invalid`)).toBe(String(invalid))
-    const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
-    expect(error_message !== null).toBe(invalid)
-    expect(input.title).toContain(title_includes)
+    const expect_validity = (invalid: boolean, title: string) => {
+      expect(input.getAttribute(`aria-invalid`)).toBe(String(invalid))
+      const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
+      expect(error_message !== null).toBe(invalid)
+      expect(input.title).toContain(title)
+    }
+    expect_validity(true, `Invalid format. Use "2x2x2", "3x1x2", or "2"`)
+    set_input(input, `3`) // a valid prefix of 3x1x1 must not start a 27-tile build
+    await tick()
+    expect(state.supercell_scaling).toBe(`invalid`)
+    state.supercell_loading = true // a build in flight must not lock the field
+    await tick()
+    expect(input.disabled).toBe(false)
+    set_input(input, `3x1x1`)
+    input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(state.supercell_scaling).toBe(`3x1x1`)
+    expect_validity(false, `Valid supercell scaling: 3x1x1`)
+    set_input(input, `3x`) // invalid drafts are never applied
+    input.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(state.supercell_scaling).toBe(`3x1x1`)
   })
 
   // Cell styling/tiling needs a lattice; image/vector controls and reduction need periodicity.
@@ -157,14 +175,11 @@ describe(`StructureControls inputs`, () => {
     [`nonfinite cell`, with_matrix([[NaN, 0, 0], [0, 1, 0], [0, 0, 1]]), false, false],
   ])(`lattice-dependent controls for %s`, async (_name, structure, cell_rows, reducible) => {
     await mount_controls({ structure, controls_open: true })
-    expect(document.querySelectorAll(`input[placeholder="1x1x1"]`).length > 0).toBe(cell_rows)
-    expect(document.querySelectorAll(`[data-key="cell_edge_color"]`).length > 0).toBe(
-      cell_rows,
-    )
-    expect(document.querySelectorAll(`[data-key="cell_type"]`).length > 0).toBe(reducible)
-    for (const key of [`show_image_atoms`, `show_cell_vectors`]) {
-      expect(document.querySelectorAll(`[data-key="${key}"]`).length > 0).toBe(reducible)
-    }
+    const has = (selector: string) => document.querySelector(selector) !== null
+    expect(has(`input[placeholder="1x1x1"]`)).toBe(cell_rows)
+    expect(has(`[data-key="cell_edge_color"]`)).toBe(cell_rows)
+    for (const key of [`cell_type`, `show_image_atoms`, `show_cell_vectors`])
+      expect(has(`[data-key="${key}"]`), key).toBe(reducible)
     // the toggles that never depend on the cell stay put
     expect(document.querySelectorAll(`[data-key="show_atoms"]`)).toHaveLength(1)
     for (const option of document.querySelectorAll<HTMLOptionElement>(
@@ -176,27 +191,9 @@ describe(`StructureControls inputs`, () => {
     }
   })
 
-  const mount_zone_axis = async (matrix: Matrix3x3 = cubic_matrix(10)) => {
-    await mount_controls({
-      structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
-      controls_open: true,
-    })
-    const miller_input = doc_query<HTMLInputElement>(`.zone-axis .miller-input input`)
-    return async (typed: string) => {
-      set_input(miller_input, typed)
-      await tick()
-    }
-  }
-  const zone_axis_error = () => document.querySelector(`.zone-axis .control-error`)
-  const view_button = () =>
-    [...document.querySelectorAll(`button`)].find((btn) => btn.textContent?.trim() === `View`)
-
-  // zone_axis_direction throws on a cell it cannot resolve a direction in. Resolving it in a
-  // $derived means the button is disabled and the reason shown BEFORE any click, so the throw
-  // can never escape the handler. `000` never reaches the guard: MillerIndexInput does not
-  // emit it, so the previous direction stays usable. The hkl/singular variant is covered
-  // directly in scene/camera-orientation.test.ts — the mode is just an argument to the
-  // identical guarded call, and happy-dom cannot drive a Svelte <select> binding.
+  // zone_axis_direction throws on a cell it cannot resolve; resolving it in a $derived disables
+  // the button and shows why BEFORE any click. MillerIndexInput never emits `000`, so the
+  // previous direction stays usable. hkl mode is covered in scene/camera-orientation.test.ts.
   // oxfmt-ignore
   test.each([
     [`a well-formed cell`, cubic_matrix(10), `001`, null],
@@ -205,11 +202,18 @@ describe(`StructureControls inputs`, () => {
   ] as [string, Matrix3x3, string, RegExp | null][])(
     `zone axis View button on %s`,
     async (_name, matrix, typed, expected_error) => {
-      const type_indices = await mount_zone_axis(matrix)
-      await type_indices(typed)
-      expect(view_button()?.disabled).toBe(expected_error !== null)
-      if (expected_error) expect(zone_axis_error()?.textContent).toMatch(expected_error)
-      else expect(zone_axis_error()).toBeNull()
+      await mount_controls({
+        structure: make_crystal(matrix, [[`H`, [0, 0, 0]]]),
+        controls_open: true,
+      })
+      set_input(doc_query<HTMLInputElement>(`.zone-axis .miller-input input`), typed)
+      await tick()
+      const buttons = [...document.querySelectorAll(`button`)]
+      const view_button = buttons.find((btn) => btn.textContent?.trim() === `View`)
+      expect(view_button?.disabled).toBe(expected_error !== null)
+      const error = document.querySelector(`.zone-axis .control-error`)
+      if (expected_error) expect(error?.textContent).toMatch(expected_error)
+      else expect(error).toBeNull()
     },
   )
 
@@ -238,11 +242,8 @@ describe(`StructureControls inputs`, () => {
       set_input(opacity_input, `0.5`)
       await tick()
 
-      doc_query<HTMLButtonElement>(
-        `button[aria-label="Restore labels to initial values"]`,
-      ).click()
+      doc_query<HTMLButtonElement>(`button[aria-label="Restore labels to initial values"]`).click()
       await tick()
-
       // reset restores what the pane mounted with, so the two halves of the one bg string come
       // back together even though a separate row drives each
       expect(bg_color_input.value).toBe(expected_hex_color)
@@ -344,9 +345,7 @@ describe(`StructureControls schema rows`, () => {
     expect(bond_color.getAttribute(`aria-invalid`)).toBe(`true`)
     expect(state.scene_props.bond_color).toBeUndefined()
     set_input(bond_color, `#abc`)
-    const neighbors = query(row_of(`polyhedra_neighbor_mode`), `select`, HTMLSelectElement)
-    neighbors.value = `anion`
-    neighbors.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await choose(`polyhedra_neighbor_mode`, `anion`)
     query(row_of(`show_cell_vectors`), `input`).click()
     query(row_of(`show_image_atoms`), `input`).click()
     set_input(
@@ -547,25 +546,12 @@ describe(`StructureControls schema rows`, () => {
 })
 
 describe(`StructureControls layout`, () => {
-  test(`reset baseline remains the mount snapshot before the pane first opens`, async () => {
+  test(`topic groups, settings search and the mount-time reset baseline`, async () => {
     const state = $state({ controls_open: false, scene_props: { atom_radius: 1.2 } })
     const target = await mount_bound_controls(state)
+    // edited before the pane first opens: the reset baseline stays the mount snapshot
     state.scene_props.atom_radius = 1.6
     await tick()
-    state.controls_open = true
-    await tick()
-    const reset = target.querySelector<HTMLButtonElement>(
-      `[data-key="atom_radius"] .setting-reset-button`,
-    )
-    expect(reset).not.toBeNull()
-    reset?.click()
-    await tick()
-    expect(state.scene_props.atom_radius).toBe(1.2)
-  })
-
-  test(`integrates topic groups and settings search`, async () => {
-    const state = $state({ controls_open: false, scene_props: { atom_radius: 1.2 } })
-    const target = await mount_bound_controls(state)
     state.controls_open = true
     await tick()
     const groups = [...target.querySelectorAll<HTMLDetailsElement>(`details.settings-group`)]
@@ -599,7 +585,7 @@ describe(`StructureControls layout`, () => {
     ).toBe(false)
     state.controls_open = false
     await tick()
-    state.scene_props.atom_radius = 1.6
+    state.scene_props.atom_radius = 1.8
     state.controls_open = true
     await tick()
     expect(target.querySelector<HTMLInputElement>(`input[type="search"]`)?.value).toBe(`damp`)
@@ -609,7 +595,9 @@ describe(`StructureControls layout`, () => {
     expect(
       target.querySelector<HTMLInputElement>(`[data-key="atom_radius"] input[type="number"]`)
         ?.valueAsNumber,
-    ).toBe(1.6)
+    ).toBe(1.8)
+    await reset_row(`atom_radius`)
+    expect(state.scene_props.atom_radius).toBe(1.2)
   })
 })
 
@@ -688,20 +676,11 @@ describe(`StructureControls reactive props`, () => {
       expect(
         target.querySelector(`button[aria-label="Restore atoms to initial values"]`),
       ).toBeNull()
-      const choose = async (key: string, value: string) => {
-        const select = doc_query<HTMLSelectElement>(`[data-key="${key}"] select`)
-        select.value = value
-        select.dispatchEvent(new Event(`change`, { bubbles: true }))
-        await tick()
-      }
       await choose(
         `atom_color_mode`,
         atom_color_config.mode === `element` ? `coordination` : `element`,
       )
-      doc_query<HTMLButtonElement>(
-        `[data-key="atom_color_mode"] .setting-reset-button`,
-      ).click()
-      await tick()
+      await reset_row(`atom_color_mode`)
       expect(state.atom_color_config).toEqual(atom_color_config)
       for (const reset_button of [
         `[data-key="atom_color_property_key"] .setting-reset-button`,
@@ -870,18 +849,10 @@ describe(`StructureControls reactive props`, () => {
       },
     }
     const structure = structuredClone(simple_structure)
-    const first_site = structure.sites[0]
-    if (!first_site) throw new Error(`Expected the structure fixture to contain a site`)
-    first_site.properties = {
-      ...first_site.properties,
-      selective_dynamics: [true, true, true],
-    }
+    const { properties } = structure.sites[0]
+    structure.sites[0].properties = { ...properties, selective_dynamics: [true, true, true] }
     const target = await mount_bound_controls(state, { structure })
-
-    const mode_select = doc_query<HTMLSelectElement>(`[data-key="atom_color_mode"] select`)
-    mode_select.value = `selective_dynamics`
-    mode_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
+    await choose(`atom_color_mode`, `selective_dynamics`)
     expect(state.atom_color_config.scale_type).toBe(`categorical`)
 
     doc_query<HTMLInputElement>(`input[aria-label="Color scale"]`).dispatchEvent(
@@ -895,13 +866,9 @@ describe(`StructureControls reactive props`, () => {
     turbo.click()
     await tick()
     expect(state.atom_color_config.scale).toBe(`interpolateTurbo`)
-    doc_query<HTMLButtonElement>(`[data-key="atom_color_scale"] .setting-reset-button`).click()
-    await tick()
+    await reset_row(`atom_color_scale`)
     expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
-
-    doc_query<HTMLButtonElement>(`[data-key="atom_color_mode"] .setting-reset-button`).click()
-    await tick()
-
+    await reset_row(`atom_color_mode`)
     expect(state.atom_color_config).toMatchObject({
       mode: DEFAULTS.structure.atom_color_mode,
       scale_type: DEFAULTS.structure.atom_color_scale_type,
@@ -993,14 +960,7 @@ describe(`StructureControls reactive props`, () => {
       },
     })
     await mount_bound_controls(state)
-
-    const prop_select = doc_query<HTMLSelectElement>(
-      `[data-key="atom_color_property_key"] select`,
-    )
-    prop_select.value = CNA_TYPE_PROPERTY
-    prop_select.dispatchEvent(new Event(`change`, { bubbles: true }))
-    await tick()
-
+    await choose(`atom_color_property_key`, CNA_TYPE_PROPERTY)
     expect(state.atom_color_config).toMatchObject({
       property_key: CNA_TYPE_PROPERTY,
       scale_type: `categorical`,
@@ -1107,8 +1067,15 @@ describe(`StructureControls reactive props`, () => {
       ...initial,
     })
     const expected = { ...state.scene_props }
-    // oxfmt-ignore
-    const stream = make_position_stream([[[0, 0, 0], [1, 0, 0]]], [`H`, `He`])
+    const stream = make_position_stream(
+      [
+        [
+          [0, 0, 0],
+          [1, 0, 0],
+        ],
+      ],
+      [`H`, `He`],
+    )
     const target = await mount_bound_controls(state, {
       show_trajectory_lines: true,
       trajectory_position_stream: stream,
@@ -1134,10 +1101,8 @@ describe(`StructureControls reactive props`, () => {
       `polyhedra_color`,
       `polyhedra_centers`,
       `trajectory_line_elements`,
-    ]) {
-      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
-      await tick()
-    }
+    ])
+      await reset_row(key)
     expect(state.scene_props).toStrictEqual(expected)
     expect(target.querySelector(`.setting-reset-button`)).toBeNull()
   })
@@ -1156,10 +1121,6 @@ describe(`StructureControls reactive props`, () => {
     const state = scene_state(initial)
     const expected = $state.snapshot(state.scene_props)
     const target = await mount_bound_controls(state, { structure: vector_structure })
-    const reset_row = async (key: string) => {
-      doc_query<HTMLButtonElement>(`[data-key="${key}"] .setting-reset-button`).click()
-      await tick()
-    }
     set_input(
       doc_query<HTMLInputElement>(`[data-key="vector_scale:force"] input[type="number"]`),
       `2.5`,
@@ -1173,15 +1134,12 @@ describe(`StructureControls reactive props`, () => {
       target.querySelector(`[data-key="vector_config:force"] .setting-reset-button`),
     ).toBeNull()
 
-    doc_query<HTMLInputElement>(
-      `[data-key="vector_config:force"] input[type="checkbox"]`,
-    ).click()
+    const force_toggle = `[data-key="vector_config:force"] input[type="checkbox"]`
+    doc_query<HTMLInputElement>(force_toggle).click()
     await tick()
     // Returning to the displayed default still leaves an override when visible was omitted.
     if (expected.vector_configs?.force?.visible === undefined) {
-      doc_query<HTMLInputElement>(
-        `[data-key="vector_config:force"] input[type="checkbox"]`,
-      ).click()
+      doc_query<HTMLInputElement>(force_toggle).click()
       await tick()
       expect(state.scene_props.vector_configs?.force?.visible).toBe(true)
     }
@@ -1239,18 +1197,14 @@ describe(`StructureControls reactive props`, () => {
     await tick()
     expect(state.scene_props.polyhedra_show_edges).toBe(false)
     expect(reset_button(`polyhedra`)).not.toBeNull()
-    doc_query<HTMLButtonElement>(
-      `[data-key="polyhedra_show_edges"] .setting-reset-button`,
-    ).click()
-    await tick()
+    await reset_row(`polyhedra_show_edges`)
     expect(state.scene_props.polyhedra_show_edges).toBe(true)
     expect(reset_button(`polyhedra`)).toBeNull()
 
     state.scene_props.polyhedra_color_mode = `uniform`
     state.scene_props.polyhedra_color = `#123456`
     await tick()
-    doc_query<HTMLButtonElement>(`[data-key="polyhedra_color"] .setting-reset-button`).click()
-    await tick()
+    await reset_row(`polyhedra_color`)
     expect(state.scene_props.polyhedra_color_mode).toBe(
       DEFAULTS.structure.polyhedra_color_mode,
     )
@@ -1281,9 +1235,7 @@ describe(`StructureControls reactive props`, () => {
       scale: 2.5,
     })
 
-    for (const section of sections) {
-      reset_button(section)?.click()
-    }
+    for (const section of sections) reset_button(section)?.click()
     await tick()
 
     expect(state.scene_props.displacement_arrow_color).toBe(
@@ -1307,24 +1259,17 @@ describe(`StructureControls reactive props`, () => {
       scene_props: { ...DEFAULTS.structure },
     })
     const target = await mount_bound_controls(state, { persist_settings: false })
-
+    const restore = `button[aria-label="Restore site vectors to initial values"]`
     state.structure = structure_with_vector(`magmom`)
     await tick()
-    expect(
-      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
-    ).toBeNull()
-
+    expect(target.querySelector(restore)).toBeNull()
     state.scene_props.vector_scale = 2
     state.structure = structure_with_vector(`force`)
     await tick()
-    expect(
-      target.querySelector(`button[aria-label="Restore site vectors to initial values"]`),
-    ).toBeNull()
+    expect(target.querySelector(restore)).toBeNull()
     state.scene_props.vector_scale = 3
     await tick()
-    doc_query<HTMLButtonElement>(
-      `button[aria-label="Restore site vectors to initial values"]`,
-    ).click()
+    doc_query<HTMLButtonElement>(restore).click()
     await tick()
     expect(state.scene_props.vector_scale).toBe(2)
   })
@@ -1349,23 +1294,18 @@ describe(`StructureControls reactive props`, () => {
   )
 
   test(`explains unavailable multi-view and enables it when space becomes available`, async () => {
-    const state = $state<{
-      multi_view: boolean
-      multi_view_unavailable_reason: string | undefined
-    }>({
+    const reason = `Requires at least 600×400 px. Enlarge the viewer or use fullscreen.`
+    const state = $state<{ multi_view: boolean; multi_view_unavailable_reason?: string }>({
       multi_view: false,
-      multi_view_unavailable_reason: `Requires at least 600×400 px. Enlarge the viewer or use fullscreen.`,
+      multi_view_unavailable_reason: reason,
     })
-
     const target = await mount_controls(bind_props({ controls_open: true }, state))
 
     const multi_view_row = find_label(target, `Multi-view grid`)
     const multi_view_input = multi_view_row?.querySelector<HTMLInputElement>(`input`)
     expect(multi_view_input?.disabled).toBe(true)
     const hint_id = multi_view_input?.getAttribute(`aria-describedby`) ?? ``
-    expect(document.querySelector(`#${hint_id}`)?.textContent).toContain(
-      state.multi_view_unavailable_reason,
-    )
+    expect(document.querySelector(`#${hint_id}`)?.textContent).toContain(reason)
 
     state.multi_view = true
     await tick()

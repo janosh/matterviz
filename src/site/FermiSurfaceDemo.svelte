@@ -13,7 +13,7 @@
   import { format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { fermi_file_paints, fermi_surface_files } from '#site/fermi-surfaces.js'
-  import { file_param, set_file_param } from '#site/state.svelte.js'
+  import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -46,8 +46,11 @@
   let slice_hovered_k = $state<Vec3 | null>(null)
   let surface_hovered_k = $state<Vec3 | null>(null)
 
+  // A slow earlier pick (cu_fs.bxsf.gz parses for seconds) must not replace a newer one
+  const loads = latest_load()
   const load_file = async (file: FileInfo) => {
     if (!file.url) return
+    const is_current = loads.start()
     active_file = file.name
     error_msg = undefined
     loading = true
@@ -56,6 +59,7 @@
     try {
       const opened = await open_material(file.url)
       try {
+        if (!is_current()) return
         if (opened.type !== `fermi_surface`) {
           throw new Error(`Expected Fermi surface data, got ${opened.type}`)
         }
@@ -71,9 +75,9 @@
         opened.dispose()
       }
     } catch (error) {
-      error_msg = to_error(error).message
+      if (is_current()) error_msg = to_error(error).message
     } finally {
-      loading = false
+      if (is_current()) loading = false
     }
   }
 
@@ -124,6 +128,7 @@
     : undefined}
   show_controls="hover"
   on_file_load={({ source_filename }) => {
+    loads.cancel() // a dropped file supersedes any pick still loading
     error_msg = undefined
     if (!source_filename) return
     active_file = source_filename

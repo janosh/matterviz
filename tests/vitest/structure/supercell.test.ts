@@ -29,6 +29,7 @@ describe(`parse_supercell_scaling`, () => {
     [`1x1x1`, [1, 1, 1]],
     [`2, 3, 1`, [2, 3, 1]],
     [`2 3 1`, [2, 3, 1]],
+    [` 2 x 3 x 1 `, [2, 3, 1]],
     [`5`, [5, 5, 5]],
     [2, [2, 2, 2]],
     [[2, 2, 2], [2, 2, 2]],
@@ -37,21 +38,13 @@ describe(`parse_supercell_scaling`, () => {
     expect(parse_supercell_scaling(input as string | number | Vec3)).toEqual(expected)
   })
 
-  // every string row fails the strict /^\d+$/ digit check or the part count; numbers and
-  // arrays are checked for positive integers directly
+  // every string row fails the strict /^\d+$/ digit check or the part count (`3x` is
+  // half-typed, not a lone 3; `1e3` is no digit string); numbers and arrays are checked for
+  // positive integers directly
+  // oxfmt-ignore
   test.each([
-    `2x2`, // wrong part count
-    `axbxc`,
-    `0x1x1`,
-    `-1x2x3`,
-    `2.5x1x1`,
-    `1e3`, // scientific notation is not a digit string
-    ``,
-    0,
-    1.5,
-    [1, 2],
-    [0, 1, 2],
-    [1.5, 2, 3],
+    `2x2`, `3x`, `2x2x2x`, `x2x2x2`, `2,,2`, `axbxc`, `0x1x1`, `-1x2x3`, `2.5x1x1`, `1e3`, ``,
+    0, 1.5, [1, 2], [0, 1, 2], [1.5, 2, 3],
   ])(`throws error for invalid input %s`, (input) => {
     expect(() => parse_supercell_scaling(input as string | number | Vec3)).toThrow(
       /supercell scaling/i,
@@ -108,19 +101,11 @@ describe(`supercell_grid_edges`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each<[Vec3, number[]]>([
-    [
-      [3, 4, 5],
-      [4, 4, 4],
-    ],
-    [
-      [3, 1, 1],
-      [4, 2, 2],
-    ],
-    [
-      [1, 3, 4],
-      [3, 4, 4],
-    ],
+    [[3, 4, 5], [4, 4, 4]],
+    [[3, 1, 1], [4, 2, 2]],
+    [[1, 3, 4], [3, 4, 4]],
   ])(`draws only the %s block outline past max_edges`, (counts, per_axis) => {
     const edges = supercell_grid_edges(counts, 10)
     expect(edges).toHaveLength(per_axis.reduce((sum, count) => sum + count, 0))

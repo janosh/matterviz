@@ -208,14 +208,16 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // metadata that StructureBarPlot turns into a `value —` prefix. Both wrappers rely on the
   // shell for it, so nothing in either component would notice if the prefix disappeared.
   test(`tooltip prefixes the hovered bar with its string metadata and reports its sites`, async () => {
-    const on_sites_hover = vi.fn()
-    const root = await mount_plot({ structures: simple_cubic, on_sites_hover })
+    const [on_sites_hover, on_bar_change] = [vi.fn(), vi.fn()]
+    const root = await mount_plot({ structures: simple_cubic, on_sites_hover, on_bar_change })
     const bar = root.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     expect(on_sites_hover).toHaveBeenCalledOnce()
+    // on_sites_hover wraps a caller's own on_bar_change instead of replacing it
+    expect(on_bar_change).toHaveBeenCalledOnce()
     const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
     const { element, cn } =
       /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}

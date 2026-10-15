@@ -453,11 +453,12 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   })
 
   test(`normalize=density relabels the value axis, bar hover reports its atoms`, async () => {
-    const on_sites_hover = vi.fn()
+    const [on_sites_hover, on_bar_change] = [vi.fn(), vi.fn()]
     const root = await mount_plot({
       structures: rocksalt,
       normalize: `density`,
       on_sites_hover,
+      on_bar_change,
     })
     expect(root.textContent).toContain(`Density (1/°)`)
     expect(root.textContent).not.toContain(`Count`)
@@ -469,6 +470,8 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     expect(on_sites_hover).toHaveBeenCalledOnce()
+    // on_sites_hover wraps a caller's own on_bar_change instead of replacing it
+    expect(on_bar_change).toHaveBeenCalledOnce()
     expect(on_sites_hover).toHaveBeenLastCalledWith([
       {
         label: `Structure`,

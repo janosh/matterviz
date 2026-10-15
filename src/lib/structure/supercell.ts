@@ -57,12 +57,11 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
   }
   if (typeof scaling === `string`) {
     // "2x2x2", "2×2×2", "2,2,2", "2 2 2" or a lone "2"; only plain digit runs count, so
-    // scientific notation and hex never reach Number()
+    // scientific notation and hex never reach Number(). Empty parts fail too ("3x" ≠ 3x3x3).
     const parts = scaling
       .trim()
       .toLowerCase()
-      .split(/[x×,\s]+/)
-      .filter((part) => part.length > 0)
+      .split(/\s*[x×,]\s*|\s+/)
     const values = parts.map(Number)
     if (
       (parts.length === 1 || parts.length === 3) &&

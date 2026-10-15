@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Vec2 } from '#lib/math.js'
-  import { normalize_to_scene, surface_vertices } from '#lib/plot/scatter-3d/scene-coords.js'
+  import {
+    normalize_to_scene,
+    SCENE_SIZE,
+    surface_vertices,
+  } from '#lib/plot/scatter-3d/scene-coords.js'
   import type { Surface3DConfig } from '#lib/plot/core/types.js'
   import { dispose_on_change } from '#lib/scene/index.js'
   import { T } from '@threlte/core'
@@ -11,9 +15,9 @@
     x_range = [0, 1],
     y_range = [0, 1],
     z_range = [0, 1],
-    scene_x = 10,
-    scene_y = 10,
-    scene_z = 5,
+    scene_x = SCENE_SIZE[0],
+    scene_y = SCENE_SIZE[1],
+    scene_z = SCENE_SIZE[2],
   }: {
     config: Surface3DConfig
     x_range?: Vec2
@@ -46,8 +50,7 @@
     const colors: number[] = []
     const valid: boolean[] = []
     for (const { x: x_val, y: y_val, z: z_val } of points) {
-      const is_valid =
-        Number.isFinite(x_val) && Number.isFinite(y_val) && Number.isFinite(z_val)
+      const is_valid = [x_val, y_val, z_val].every(Number.isFinite)
       valid.push(is_valid)
       if (!is_valid) {
         positions.push(0, 0, 0)
@@ -100,7 +103,6 @@
   dispose_on_change(() => [geometry])
   dispose_on_change(() => [wireframe_geometry])
 
-  // Material properties
   let is_transparent = $derived((config.opacity ?? 1) < 1)
   let material_props = $derived({
     transparent: is_transparent,

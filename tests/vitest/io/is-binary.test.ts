@@ -11,10 +11,7 @@ import {
 } from '#lib/io/is-binary.js'
 import { describe, expect, test } from 'vitest'
 
-const bytes = (...nums: number[]): Uint8Array => new Uint8Array(nums)
-const to_buffer = (nums: number[]): ArrayBuffer => new Uint8Array(nums).buffer
-
-// magic-byte signatures reused across cases
+const bytes = (...nums: number[]): Uint8Array<ArrayBuffer> => new Uint8Array(nums)
 const GZIP = [0x1f, 0x8b]
 const HDF5_FULL = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
 const HDF5_PREFIX = [0x89, 0x48, 0x44, 0x46]
@@ -26,17 +23,18 @@ describe(`is_binary (string heuristic)`, () => {
     [`empty string`, ``, false],
     [`plain ascii text`, `H 0 0 0\nO 1 1 1`, false],
     [`contains NUL byte`, `abc\0def`, true],
-    [`mostly non-printable bytes`, `\u00FF`.repeat(20), true],
-    // 20% high bytes but 80% printable -> only the binary-char-ratio (>0.1) clause fires
-    [`high-byte-ratio clause alone`, `\u00FF\u00FFabcdefgh`, true],
-    // control chars other than 9-13 (no high bytes) drop printable below 70% -> only the
-    // printable clause fires
-    [`printable-ratio clause alone`, `${`\u000E`.repeat(8)}ab`, true],
-    // tab/CR/LF are text, not filler: counting them as neither sank a CRLF single-atom XYZ to a
-    // 0.600 printable ratio and a tab-indented YAML to 0.615, both reported as binary
+    // bytes that are not UTF-8 decode to U+FFFD
+    [`undecodable bytes`, new TextDecoder().decode(new Uint8Array(20).fill(0xff)), true],
+    [`20% undecodable bytes`, `\uFFFD\uFFFDabcdefgh`, true],
+    [`C0 controls other than 9-13`, `${`\u000E`.repeat(8)}ab`, true],
+    [`C1 controls`, `\u0085\u009Fabcdefgh`, true],
+    // letters past ASCII are text, not high bytes: Latin-1 accents and Greek/CJK prose
+    [`accented prose`, `Größe für Ångström-Abstände é è ü ÿ`.repeat(3), false],
+    [`Greek and CJK comment`, `αβγ 硅晶体结构 `.repeat(10), false],
+    // tab/CR/LF are text: counting them as neither sank these two to binary
     [`CRLF single-atom XYZ`, `1\r\nE\r\nH 0 0 0\r\n`.repeat(400), false],
     [`tab-indented YAML`, `\t\t\t\tvalue: 1\n`.repeat(400), false],
-    // only the leading 8 KiB is sampled, so a large text file costs microseconds to classify
+    // only the leading 8 KiB is sampled
     [`binary header on a large payload`, `\0${`a`.repeat(20_000)}`, true],
     [`large text with a stray NUL past the sample window`, `${`a`.repeat(20_000)}\0`, false],
   ])(`%s -> %s`, (_desc, content, expected) => {
@@ -116,13 +114,12 @@ describe(`is_binary_payload (extension or magic bytes)`, () => {
     [`magic bytes, no binary ext`, `payload.dump`, HDF5_PREFIX, true],
     [`unknown ext, text bytes`, `payload.dump`, [0x48, 0x49], false],
   ])(`%s -> %s`, (_desc, filename, byte_seq, expected) => {
-    expect(is_binary_payload(filename, to_buffer(byte_seq))).toBe(expected)
+    expect(is_binary_payload(filename, bytes(...byte_seq).buffer)).toBe(expected)
   })
 })
 
 describe(`magic_head`, () => {
-  // slice() throws on a detached ArrayBuffer, so every magic-sniffing call site used to be
-  // one transferred buffer away from a TypeError.
+  // slice() throws on a detached ArrayBuffer, so magic sniffing used to throw a TypeError
   test(`returns empty for a detached buffer instead of throwing`, () => {
     const buffer = new ArrayBuffer(64)
     structuredClone(buffer, { transfer: [buffer] })
@@ -131,14 +128,13 @@ describe(`magic_head`, () => {
     expect(is_binary_payload(`x.dump`, buffer)).toBe(false)
   })
 
-  // Short buffers pass through so a 2-byte gzip header still matches; the has_*_magic
-  // predicates length-check themselves.
+  // Short buffers pass through so a 2-byte gzip header still matches
   test.each([
     [2, 2],
     [8, 8],
     [64, 8],
   ])(`%i-byte gzip buffer yields %i leading bytes`, (size, expected) => {
-    const head = magic_head(to_buffer([...GZIP, ...Array(size - 2).fill(0)]))
+    const head = magic_head(bytes(...GZIP, ...Array(size - 2).fill(0)).buffer)
     expect(head).toHaveLength(expected)
     expect(has_gzip_magic(head)).toBe(true)
   })

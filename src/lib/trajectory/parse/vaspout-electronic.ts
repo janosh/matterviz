@@ -123,23 +123,25 @@ const band_recip_lattice = (lattice: Matrix3x3 | null): Matrix3x3 | undefined =>
 // (e.g. 12 labels + 51 points/segment = 306 k-points). Returns per-kpoint labels
 // (null between endpoints) or null when the layout doesn't match. When the
 // input/kpoints*/number_kpoints dataset is absent (not all writers emit it),
-// the segment length is inferred from the label/k-point counts instead.
+// the segment length is inferred from the label/k-point counts instead; without
+// labels it alone splits the path (all labels null).
 export const line_mode_labels = (
   labels: string[] | null,
   per_segment_dataset: number | null,
   n_kpoints: number,
 ): { labels: (string | null)[]; per_segment: number } | null => {
-  if (!labels || labels.length < 2 || labels.length % 2 !== 0) return null
-  const n_segments = labels.length / 2
+  if (labels && (labels.length < 2 || labels.length % 2 !== 0)) return null
+  const n_segments = labels ? labels.length / 2 : n_kpoints / (per_segment_dataset ?? NaN)
   const per_segment = per_segment_dataset ?? n_kpoints / n_segments
   if (!Number.isInteger(per_segment) || per_segment < 2) return null
-  if (n_segments * per_segment !== n_kpoints) return null
+  if (!Number.isInteger(n_segments) || n_segments * per_segment !== n_kpoints) return null
 
   const per_kpoint: (string | null)[] = Array.from({ length: n_kpoints }, () => null)
-  for (let seg = 0; seg < n_segments; seg++) {
-    per_kpoint[seg * per_segment] = pretty_sym_point(labels[2 * seg])
-    per_kpoint[seg * per_segment + per_segment - 1] = pretty_sym_point(labels[2 * seg + 1])
-  }
+  // label 2·seg starts segment seg, label 2·seg + 1 ends it
+  labels?.forEach((label, label_idx) => {
+    const seg_start = Math.floor(label_idx / 2) * per_segment
+    per_kpoint[seg_start + (label_idx % 2) * (per_segment - 1)] = pretty_sym_point(label)
+  })
   return { labels: per_kpoint, per_segment }
 }
 
@@ -191,17 +193,23 @@ export const read_vaspout_bands = (
         : []
 
     const recip_lattice = band_recip_lattice(read_lattice(h5_file))
-    const line_mode = line_mode_labels(
-      to_string_array(
-        read_first_dataset(h5_file, [`${group}/kpoints_labels`, `${input}/labels_kpoints`]),
-      ),
-      to_scalar_number(read_dataset(h5_file, `${input}/number_kpoints`)),
-      n_kpoints,
+    const kpoint_labels = to_string_array(
+      read_first_dataset(h5_file, [`${group}/kpoints_labels`, `${input}/labels_kpoints`]),
     )
+    const in_line_mode = is_line_mode(read_dataset(h5_file, `${input}/mode`))
+    // unlabelled points split into segments only in line mode: elsewhere number_kpoints is a
+    // mesh setting (automatic mode's length), not points per segment
+    const line_mode =
+      kpoint_labels || in_line_mode
+        ? line_mode_labels(
+            kpoint_labels,
+            to_scalar_number(read_dataset(h5_file, `${input}/number_kpoints`)),
+            n_kpoints,
+          )
+        : null
     // An SCF mesh (Gamma/Monkhorst/automatic mode) is no band path: drawing its eigenvalues
     // along a fake "path" branch looks like a band structure but is not one
-    if (needs_line_mode && !line_mode && !is_line_mode(read_dataset(h5_file, `${input}/mode`)))
-      continue
+    if (needs_line_mode && !line_mode && !in_line_mode) continue
     const labels = line_mode?.labels ?? null
 
     const distance: number[] = []
@@ -221,7 +229,10 @@ export const read_vaspout_bands = (
     for (const [kpt_idx, kpt] of kpoint_data.entries()) {
       const frac = [kpt[0] ?? 0, kpt[1] ?? 0, kpt[2] ?? 0] as Vec3
       const cart = frac_to_cart(frac)
-      if (prev_cart) path_length += euclidean_dist(cart, prev_cart)
+      // A line-mode segment start is a boundary, not path: zero length at a junction (X, X)
+      // and, as pymatgen has it, no length across a jump (U|K) either
+      const segment_start = line_mode !== null && kpt_idx % line_mode.per_segment === 0
+      if (prev_cart && !segment_start) path_length += euclidean_dist(cart, prev_cart)
       prev_cart = cart
       distance.push(path_length)
       const label = labels?.[kpt_idx] ?? null
@@ -229,7 +240,7 @@ export const read_vaspout_bands = (
       if (label) labels_dict[label] = frac
     }
 
-    // One branch per labeled line-mode segment, else a single whole-path branch
+    // One branch per line-mode segment, else a single whole-path branch
     const branches: Branch[] = []
     if (line_mode) {
       for (let start = 0; start < n_kpoints; start += line_mode.per_segment) {

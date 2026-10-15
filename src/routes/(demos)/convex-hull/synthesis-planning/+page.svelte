@@ -5,6 +5,7 @@
   import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
   import { to_error } from '#lib/utils.js'
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
+  import { latest_load } from '#site/state.svelte.js'
 
   let selected_id = $state(synthesis_demo_systems[0]?.id ?? ``)
   const selected = $derived(
@@ -17,21 +18,28 @@
   let loading = $state(false)
   let error = $state<string | null>(null)
 
+  // A system switched away from must not report its error or end the newer load's spinner
+  const loads = latest_load()
   $effect(() => {
     const system = selected
     if (!system) return
+    const is_current = loads.start()
     loading = true
     error = null
     system
       .load()
       .then((loaded) => {
-        if (selected?.id !== system.id) return
+        if (!is_current()) return
         entries = loaded
         target = system.target
         conditions = { ...system.conditions }
       })
-      .catch((err) => (error = to_error(err).message))
-      .finally(() => (loading = false))
+      .catch((err) => {
+        if (is_current()) error = to_error(err).message
+      })
+      .finally(() => {
+        if (is_current()) loading = false
+      })
   })
 </script>
 

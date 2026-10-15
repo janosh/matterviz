@@ -5,7 +5,12 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import * as math from '#lib/math.js'
 import { first_duplicate } from '#lib/utils.js'
 import { composition_to_barycentric_nd } from './barycentric-coords'
-import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './entry-stability'
+import {
+  compute_hull_stability,
+  get_arity,
+  is_on_hull,
+  is_unary_entry,
+} from './entry-stability'
 import type { ConvexHullEntry, PhaseData, PhaseStats, ProcessedPhaseData } from './types'
 
 // A pymatgen species key as emitted by Composition.as_dict(): an element symbol with optional
@@ -203,12 +208,12 @@ const id_of = (entry: PhaseData): string => {
   return `${JSON.stringify(entry.composition)}|${entry.energy}|${structure_hash}`
 }
 
-// Energy above hull (eV/atom, clamped to >= 0) of `entries` against the hull of
-// reference_entries, aligned with `entries`. Formation energies come from e_form_per_atom
-// when present, else from the lowest-energy unary references; pure elements without a
-// reference default to E_form = 0. Entries that can't be placed (missing reference element,
-// zero atoms) get NaN.
-function e_above_hull_distances(
+// Raw energy above hull (eV/atom, negative below it, e.g. for exclude_from_hull entries) of
+// `entries` against the hull of reference_entries, aligned with `entries`. Formation energies
+// come from e_form_per_atom when present, else from the lowest-energy unary references; pure
+// elements without a reference default to E_form = 0. Entries that can't be placed (missing
+// reference element, zero atoms) get NaN.
+export function e_above_hull_distances(
   entries: PhaseData[],
   reference_entries: PhaseData[],
 ): number[] {
@@ -244,15 +249,7 @@ function e_above_hull_distances(
     typeof entry.e_form_per_atom === `number`
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs)
-  // Clamp raw distances to >= 0 (NaN stays NaN)
-  const clamp_dists = (distances: number[]): number[] =>
-    distances.map((dist) => Math.max(0, dist))
-
   const arity = elements.length
-  // The stable element sits at E_form = 0, so E_form is the hull distance
-  if (arity === 1)
-    return clamp_dists(entries_of_interest.map((entry) => e_form_of(entry) ?? NaN))
-
   // Hull points: reduced barycentric coords (first dropped — all N sum to 1 and would
   // confine the points to an affine subspace) + E_form. NaN E_form marks unplaceable.
   const to_point = (entry: PhaseData): number[] => {
@@ -262,6 +259,7 @@ function e_above_hull_distances(
     if (e_form === null || count_atoms_in_composition(entry.composition) <= 0) {
       return Array(arity).fill(NaN)
     }
+    if (arity === 1) return [e_form]
     return [...composition_to_barycentric_nd(entry.composition, elements).slice(1), e_form]
   }
 
@@ -270,28 +268,38 @@ function e_above_hull_distances(
     // exclude_from_hull entries are shown but not part of the hull
     (point, idx) => !reference_entries[idx].exclude_from_hull && point.every(Number.isFinite),
   )
-  // Missing pure-element corners default to E_form = 0. In reduced coordinates element 0 is
-  // the origin and element k > 0 has (k-1)th coordinate 1.
-  for (let el_idx = 0; el_idx < arity; el_idx++) {
+  // Corner energies: lowest E_form at each pure-element corner, defaulting to 0 when missing
+  // (then added as a hull point). In reduced coordinates element 0 is the origin and element
+  // k > 0 has (k-1)th coordinate 1.
+  const corner_energies = elements.map((_, el_idx) => {
     const corner: number[] = Array(arity).fill(0)
     if (el_idx > 0) corner[el_idx - 1] = 1
-    const present = ref_points.some((point) =>
-      point.slice(0, -1).every((val, dim) => Math.abs(val - corner[dim]) <= HULL_EPS),
-    )
-    if (!present) ref_points.push(corner)
-  }
+    const energies = ref_points
+      .filter((point) =>
+        point.slice(0, -1).every((val, dim) => Math.abs(val - corner[dim]) <= HULL_EPS),
+      )
+      .map((point) => point[arity - 1])
+    if (energies.length > 0) return Math.min(...energies)
+    ref_points.push(corner)
+    return 0
+  })
 
-  const facets = compute_lower_hull_nd(ref_points)
-  // With every corner present, the points are co-hyperplanar only when all E_form are 0,
-  // so the hull is the plane E = 0 and the distance is E_form itself.
-  return clamp_dists(
-    facets.length === 0
-      ? query_points.map((point) => point.at(-1) ?? NaN)
-      : compute_e_above_hull_nd(query_points, facets, ref_points),
-  )
+  const facets = arity > 1 ? compute_lower_hull_nd(ref_points) : []
+  if (facets.length > 0) return compute_e_above_hull_nd(query_points, facets, ref_points)
+  // No facets (a unary system, or every hull point on one hyperplane): the corners are always
+  // hull points, so the hull is the plane through them and E_hull = Σ x_k E_corner_k
+  return query_points.map((point) => {
+    const coords = point.slice(0, -1)
+    const first = 1 - coords.reduce((sum, val) => sum + val, 0)
+    const corner_sum = [first, ...coords].reduce(
+      (sum, frac, el_idx) => sum + frac * corner_energies[el_idx],
+      0,
+    )
+    return point[arity - 1] - corner_sum
+  })
 }
 
-// Energy above hull of one entry, or of many keyed by id_of (see e_above_hull_distances)
+// Energy above hull (clamped to >= 0) of one entry, or of many keyed by id_of
 export function calculate_e_above_hull(
   entry: PhaseData,
   reference_entries: PhaseData[],
@@ -304,9 +312,11 @@ export function calculate_e_above_hull(
   input: PhaseData | PhaseData[],
   reference_entries: PhaseData[],
 ): number | Record<string, number> {
-  if (!Array.isArray(input)) return e_above_hull_distances([input], reference_entries)[0]
+  const clamped = (entries: PhaseData[]) =>
+    e_above_hull_distances(entries, reference_entries).map((dist) => Math.max(0, dist))
+  if (!Array.isArray(input)) return clamped([input])[0]
   if (input.length === 0) return {} // Empty input → empty result (not an error)
-  const distances = e_above_hull_distances(input, reference_entries)
+  const distances = clamped(input)
   const repeat = first_duplicate(input.map(({ entry_id }) => entry_id).filter(Boolean))
   if (repeat) console.warn(`calculate_e_above_hull: duplicate entry_id "${repeat}", last wins`)
   return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
@@ -378,20 +388,16 @@ export function process_hull_for_stats(entries: PhaseData[]): HighDimHullResult 
       entry.e_form_per_atom ?? compute_e_form_per_atom(entry, el_refs) ?? undefined,
   }))
   const hull_distances = e_above_hull_distances(with_e_form, with_e_form)
-  // x/y/z default to 0 since high-dim systems aren't plotted
-  const hull_entries = with_e_form.map((entry, idx): ConvexHullEntry => {
-    const dist = hull_distances[idx]
-    const known = Number.isFinite(dist)
-    return {
-      ...entry,
-      e_above_hull: known ? dist : undefined,
-      is_stable: known ? !entry.exclude_from_hull && dist < HULL_STABILITY_TOL : undefined,
-      is_element: is_unary_entry(entry),
-      x: 0,
-      y: 0,
-      z: 0,
-    }
-  })
+  // x/y/z default to 0 since high-dim systems aren't plotted. Clamped: an excluded entry below
+  // the hull reads 0 here (the 2-4D model keeps its negative distance)
+  const hull_entries = with_e_form.map((entry, idx): ConvexHullEntry => ({
+    ...entry,
+    ...compute_hull_stability(Math.max(0, hull_distances[idx]), entry.exclude_from_hull),
+    is_element: is_unary_entry(entry),
+    x: 0,
+    y: 0,
+    z: 0,
+  }))
   return {
     entries: hull_entries,
     phase_stats: get_convex_hull_stats(hull_entries, hull_elements, hull_elements.length),

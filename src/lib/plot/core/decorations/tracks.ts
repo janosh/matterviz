@@ -37,6 +37,9 @@ type LegendDecorationConfig = {
   filter_query?: string
 }
 
+// Series count from which PlotLegend shows its filter input (unless `filterable` is false)
+export const LEGEND_FILTER_THRESHOLD = 12
+
 // Return the cells the legend grid actually renders. Keeping headers, the optional filter,
 // collapsed groups, and filtered items here prevents placement and rendering from counting
 // different grids.
@@ -98,7 +101,8 @@ export const create_legend_decoration_item = ({
               collapsed_groups: config.collapsed_groups,
               filter_query: config.filter_query,
               show_filter:
-                (config.filterable ?? true) && items.length >= (config.filter_threshold ?? 12),
+                (config.filterable ?? true) &&
+                items.length >= (config.filter_threshold ?? LEGEND_FILTER_THRESHOLD),
             }).length,
             orientation: config.layout ?? `vertical`,
             item_extents: config.item_extents,

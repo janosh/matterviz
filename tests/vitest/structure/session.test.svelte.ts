@@ -16,7 +16,7 @@ import { MAX_HISTORY, StructureSession } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
@@ -111,14 +111,6 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
 // Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
 const bond_lengths = (structure: AnyStructure | undefined): number[] =>
   explicit_only(structure ?? { sites: [] }).map((bond) => Number(bond.bond_length.toFixed(9)))
-
-// Every site with image atoms: the dummy crystal puts all atoms on cell boundaries
-const pick_all = (host: Host, session: StructureSession): void => {
-  const count = session.displayed_structure?.sites.length ?? 0
-  host.selected_sites = [0, count - 1]
-  host.measured_sites = [0, count - 1]
-  flushSync()
-}
 
 beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
 afterEach(() => vi.useRealTimers())
@@ -294,13 +286,75 @@ describe(`symmetry-aware display`, () => {
     flushSync()
     expect(session.property_colors).toBeNull()
   })
+
+  it(`bakes a cell type switched to while editing atoms, so edits hit the picked site`, async () => {
+    await init_moyo_for_tests()
+    const structure = prim_fcc_cu()
+    const sym_data = await analyze_structure_symmetry(structure)
+    const { host, session } = make_session({ structure, measure_mode: `edit-atoms` })
+    host.cell_type = `conventional`
+    flushSync()
+    // no symmetry data yet, so the original cell still shows: the pick stays, nothing is baked
+    expect([host.cell_type, session.history.undo_stack.length]).toEqual([`conventional`, 0])
+    host.selected_sites = [0]
+    host.sym_data = sym_data
+    flushSync()
+    // the 4-atom conventional cell became the raw structure, one undo away from the input
+    const { length: n_undo } = session.history.undo_stack
+    expect([host.cell_type, host.structure?.sites.length, n_undo]).toEqual([`original`, 4, 1])
+    expect(host.selected_sites).toEqual([]) // picked on the previous cell
+    host.selected_sites = [3]
+    flushSync()
+    expect(session.delete_selected()).toBe(true)
+    flushSync()
+    expect(host.structure?.sites).toHaveLength(3)
+  })
+
+  it(`bakes a cell type switch when symmetry data is already present`, async () => {
+    await init_moyo_for_tests()
+    const structure = prim_fcc_cu()
+    const sym_data = await analyze_structure_symmetry(structure)
+    const { host, session } = make_session({ structure, sym_data, measure_mode: `edit-atoms` })
+    host.cell_type = `conventional`
+    flushSync()
+    const { length: n_undo } = session.history.undo_stack
+    expect([host.cell_type, host.structure?.sites.length, n_undo]).toEqual([`original`, 4, 1])
+  })
+
+  // An input already in the requested cell bakes to itself: no undo entry, the pick stays
+  it(`skips the bake when the cell type leaves the cell unchanged`, async () => {
+    await init_moyo_for_tests()
+    const prim = prim_fcc_cu()
+    const conventional = transform_cell(
+      prim,
+      `conventional`,
+      await analyze_structure_symmetry(prim),
+    )
+    const sym_data = await analyze_structure_symmetry(conventional)
+    const { host, session } = make_session({
+      structure: conventional,
+      sym_data,
+      measure_mode: `edit-atoms`,
+    })
+    const input = host.structure
+    host.selected_sites = [2]
+    host.cell_type = `conventional`
+    flushSync()
+    expect(host.cell_type).toBe(`original`)
+    expect(host.structure).toBe(input)
+    expect(session.history.undo_stack).toHaveLength(0)
+    expect(host.selected_sites).toEqual([2])
+  })
 })
 
 describe(`selection validity`, () => {
   it(`never exposes a site index the displayed structure does not have`, () => {
     const { host, session } = make_session({ show_image_atoms: true })
-    pick_all(host, session)
+    // the last site is an image atom: the dummy crystal puts all atoms on cell boundaries
     const count = session.displayed_structure?.sites.length ?? 0
+    host.selected_sites = [0, count - 1]
+    host.measured_sites = [0, count - 1]
+    flushSync()
     expect(session.measured_sites).toEqual([0, count - 1])
     host.show_image_atoms = false
     flushSync()
@@ -513,10 +567,7 @@ describe(`edit-atoms`, () => {
     const slab = make_crystal(5, [{ element: `H`, abc: [0.5, 0.5, 0.9] }], {
       pbc: [true, true, false],
     })
-    const { host, session } = make_session({
-      structure: slab,
-      measure_mode: `edit-atoms`,
-    })
+    const { host, session } = make_session({ structure: slab, measure_mode: `edit-atoms` })
     session.move_sites([0], [5.5, 0, 2])
     flushSync()
     const moved = host.structure?.sites[0]
@@ -550,9 +601,18 @@ describe(`edit-atoms`, () => {
   // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice
   // is shown once per loaded structure (not once per edit) and again after an external load
   it(`edits a singular-lattice crystal with a single notice instead of throwing`, () => {
-    // oxfmt-ignore
     const make_singular = () =>
-      make_crystal([[5, 0, 0], [0, 5, 0], [0, 0, 0]], [[`Na`, [0.1, 0.2, 0]], [`Cl`, [0.6, 0.7, 0]]])
+      make_crystal(
+        [
+          [5, 0, 0],
+          [0, 5, 0],
+          [0, 0, 0],
+        ],
+        [
+          [`Na`, [0.1, 0.2, 0]],
+          [`Cl`, [0.6, 0.7, 0]],
+        ],
+      )
     const { host, session, notices } = make_session({
       measure_mode: `edit-atoms`,
       structure: make_singular(),

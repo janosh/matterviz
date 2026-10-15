@@ -126,9 +126,10 @@
     }
   }
 
+  // Numbers and numeric strings: Number() showed booleans (selective dynamics) as 1/0 and '' as 0
   const format_numeric = (value: unknown): string | null => {
-    const numeric_value = Number(value)
-    return Number.isNaN(numeric_value) ? null : format_num(numeric_value, `.3~f`)
+    const num = typeof value === `string` && value.trim() ? Number(value) : value
+    return typeof num === `number` && !Number.isNaN(num) ? format_num(num, `.3~f`) : null
   }
 
   function format_site_property(prop_key: string, prop_value: unknown): InfoPaneRow | null {
@@ -172,7 +173,11 @@
         value: `${get_electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
-      { label: `Charge`, value: `${structure.charge || 0}e`, key: `structure-charge` },
+      {
+        label: `Charge`,
+        value: `${format_num(structure.charge || 0)}e`,
+        key: `structure-charge`,
+      },
     ]
     // Only display scalar values (skip arrays and objects)
     for (const [key, value] of Object.entries(structure.properties ?? {})) {
@@ -191,7 +196,7 @@
       rows: [
         {
           label: `Volume, Density`,
-          value: `${format_num(volume, `.3~s`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
+          value: `${format_num(volume, `.1~f`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
           key: `cell-volume-density`,
         },
         {

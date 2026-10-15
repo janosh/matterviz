@@ -1,4 +1,5 @@
-import type { Matrix3x3, Vec2 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { AxisRanges } from '#lib/plot/core/types.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
 import type { ComponentProps } from 'svelte'
@@ -69,7 +70,6 @@ const make_unlabeled_band_structure = (
     start_index: branch_idx * 2,
     end_index: branch_idx * 2 + 1,
     name,
-    is_discontinuity: false,
   })),
   labels_dict: {},
 })
@@ -118,9 +118,7 @@ describe(`Bands component`, () => {
           '': {
             ...base_band_structure,
             qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
-            branches: [
-              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-            ],
+            branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
             distance: [0, 3],
             bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
           },
@@ -157,8 +155,8 @@ describe(`Bands component`, () => {
               label: idx % 2 ? `X` : `GAMMA`,
             })),
             branches: [
-              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-              { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
+              { start_index: 0, end_index: 1, name: `GAMMA-X` },
+              { start_index: 2, end_index: 3, name: `GAMMA-X` },
             ],
           },
         },
@@ -571,6 +569,42 @@ describe(`Bands component`, () => {
     expect(y_ticks()).toEqual(y_before)
   })
 
+  it(`drops a bound view while no plot is shown so a remount fits the new path`, async () => {
+    // BandsAndDos keeps the bound view in sync state that outlives the plot, which unmounts
+    // while no band data is loaded; the remounted plot must not restore the old path's range
+    const state = fromStore(
+      writable<{
+        band_structs: Record<string, BaseBandStructure>
+        view?: Partial<AxisRanges>
+      }>({
+        band_structs: { '': base_band_structure },
+      }),
+    )
+    await mount_sized(
+      Bands,
+      {
+        get band_structs() {
+          return state.current.band_structs
+        },
+        get view() {
+          return state.current.view
+        },
+        set view(view) {
+          state.current = { ...state.current, view }
+        },
+      },
+      { selector: `.scatter` },
+    )
+    expect(state.current.view?.x).toEqual([0, 3])
+    state.current = { ...state.current, band_structs: {} }
+    flushSync()
+    expect(document.querySelector(`.scatter`)).toBeNull()
+    const long_path = { ...base_band_structure, distance: [0, 10, 20, 30] }
+    state.current = { ...state.current, band_structs: { '': long_path } }
+    await tick()
+    expect(state.current.view?.x).toEqual([0, 30])
+  })
+
   it(`renders with a caller range that is itself unset without looping`, async () => {
     // the reset restore must not re-assign a default whose own range is invalid forever
     await mount_sized(
@@ -607,12 +641,18 @@ describe(`Bands component`, () => {
   )
 
   it(`opens a Brillouin zone popup marking the clicked symmetry point`, async () => {
-    // the band data's own reciprocal lattice is enough, no structure needed
-    await mount_sized(
-      Bands,
-      { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
-      { selector: `.scatter` },
-    )
+    // the band data's own reciprocal lattice is enough, no structure needed. The path is
+    // stored one reciprocal lattice vector out (Γ+b₁ → X+b₁), so the drawn branch folds back
+    // by -b₁ while X+b₁ = (1.5, 0, 0) folded alone lands on the opposite face (-0.5, 0, 0)
+    const shifted_path = {
+      ...base_band_structure,
+      qpoints: base_band_structure.qpoints.map(({ label }, idx) => ({
+        label,
+        frac_coords: [1 + idx / 6, 0, 0] as Vec3,
+      })),
+      recip_lattice: recip_lattice_a3,
+    }
+    await mount_sized(Bands, { band_structs: { '': shifted_path } }, { selector: `.scatter` })
     const labels = tick_labels()
     expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
@@ -625,10 +665,10 @@ describe(`Bands component`, () => {
     expect(popup?.closest(`.scatter`)).not.toBeNull()
     const stats = popup?.querySelector(`.bz-popup-stats`)
     expect(stats?.querySelector(`strong`)?.textContent).toBe(`X`)
-    // fractional coords of X in the fixture; its Cartesian position is folded into the first
-    // BZ of the cubic a=3 lattice, so [0.75, 0, 0] -> [-0.25, 0, 0] with k_x = -0.25 * 2π/3
-    expect(stats?.textContent).toContain(`(0.75, 0, 0)`)
-    expect(stats?.textContent).toContain(`(−${((0.25 * 2 * Math.PI) / 3).toFixed(3)}, 0, 0)`)
+    // fractional coords of X in the fixture; its Cartesian position is the drawn path's X
+    // (folded with its branch), k_x = +0.5 * 2π/3 ≈ 1.05, not the opposite face X folds to alone
+    expect(stats?.textContent).toContain(`(1.5, 0, 0)`)
+    expect(stats?.textContent).toContain(`k: (1.05, 0, 0)`)
     // the BZ viewer is embedded without its own chrome, sized by the popup
     expect(popup?.querySelector(`.brillouin-zone`)).not.toBeNull()
     expect(popup?.querySelector(`.brillouin-zone .control-buttons`)?.children).toHaveLength(0)

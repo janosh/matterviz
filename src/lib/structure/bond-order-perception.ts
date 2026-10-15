@@ -2,7 +2,11 @@
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
 import { cross_3d, subtract, type Vec2 } from '#lib/math.js'
 import type { BondOrder, BondPair, Site, StructureBond } from '#lib/structure/index.js'
-import { get_bond_key, get_majority_element } from './bonding'
+import {
+  canonicalize_bond_target,
+  get_majority_element,
+  rendered_bond_key_for,
+} from './bonding'
 
 export type PerceptionOptions = { total_charge?: number; max_atoms?: number }
 
@@ -217,10 +221,11 @@ function complete_perfect_matching(adjacency: number[][], mate: Int32Array): boo
 function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] | null {
   const n_atoms = target_valence.length
   const deficit = target_valence.slice()
-  // a self-bond (periodic image of the atom itself) counts once and is never raised
+  // a self-bond (to the atom's own periodic image) spends two valence units (its +S and -S
+  // images) and is never raised
   for (const { from, to: target } of edges) {
     deficit[from]--
-    if (target !== from) deficit[target]--
+    deficit[target]--
   }
   const first_copy = new Int32Array(n_atoms + 1)
   const atom_of_copy: number[] = []
@@ -556,21 +561,20 @@ export function perceive_bond_orders(
   })
 }
 
-// Final display order: explicit bonds win, then Kekulé mode, then perception.
+// Final display order: explicit bonds win, then Kekulé mode, then perception. Perceived bonds
+// between PBC image copies are mapped back onto their source `sites` to find explicit orders.
 export function compose_perceived_bonds(
   perceived: PerceivedBond[],
   explicit_bonds: StructureBond[],
   aromatic_display: `aromatic` | `kekule`,
+  sites?: Site[],
 ): PerceivedBond[] {
   const explicit_orders = new Map(
-    explicit_bonds.map((bond) => [
-      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-      bond.order,
-    ]),
+    explicit_bonds.map((bond) => [rendered_bond_key_for(bond), bond.order]),
   )
   return perceived.map((bond) => {
     const explicit = explicit_orders.get(
-      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+      rendered_bond_key_for(canonicalize_bond_target(bond, sites)),
     )
     if (explicit !== undefined) return { ...bond, bond_order: explicit }
     if (

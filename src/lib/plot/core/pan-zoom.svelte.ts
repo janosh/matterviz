@@ -87,6 +87,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   const on_window_mouse_move = (evt: MouseEvent) => {
     if (!drag_state) return
+    // A mouseup lost outside the window: cancel rather than zoom to a rect never released
+    if (!(evt.buttons & 1)) return cancel_rect_drag()
     const coords = {
       x: evt.clientX - drag_state.bounds.left,
       y: evt.clientY - drag_state.bounds.top,

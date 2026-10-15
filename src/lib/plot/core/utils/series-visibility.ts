@@ -1,4 +1,4 @@
-import { axis_group_key } from '../axis-assignment'
+import { axis_group_key } from '#lib/plot/core/axis-assignment.js'
 
 // Null/empty legends hide; explicit show_legend wins. Pass the rendered entry count,
 // with auto_default=false for hierarchy and Sankey charts that stay opt-in.

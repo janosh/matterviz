@@ -10,9 +10,10 @@ import { COMPETITOR_E_ABOVE_HULL } from './plan'
 import {
   assign_e_above_hull,
   ENERGY_TOL,
-  hull_at,
+  place_target,
   prepare_phase_set,
   resolve_phase,
+  target_stability,
 } from './phases'
 import type { PlannerPhase } from './phases'
 import { balance_reaction } from './thermo'
@@ -65,14 +66,8 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
     throw new Error(`Scan temperatures must be 0–2000 K and log10 pressures −12–2 bar`)
   const phase_set = prepare_phase_set(entries, conditions)
   const resolved = resolve_phase(phase_set, target_id)
-  if (!resolved || resolved.is_gas)
-    throw new Error(`Scan target ${target_id} is not a solid phase`)
-  const target_idx = phase_set.phases.findIndex((phase) => phase.formula === resolved.formula)
-  if (target_idx === -1)
-    throw new Error(`Scan target ${target_id} is absent from the working phase set`)
-  const ground_state = phase_set.phases[target_idx]
-  const target = { ...resolved }
-  phase_set.phases[target_idx] = target
+  if (!resolved) throw new Error(`Scan target ${target_id} matches no entry id or formula`)
+  const { target, ground_state } = place_target(phase_set, resolved)
   const { phases } = phase_set
   const gases = phases.filter((phase) => phase.is_gas)
   const gas_species = gases.map((phase) => phase.id.slice(4) as GasSpecies)
@@ -134,20 +129,10 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
         )
       }
       assign_e_above_hull(phases)
-      let e_above_hull = target.e_above_hull
-      // Keep the replaced ground state for target stability, as in plan_synthesis.
-      if (ground_state.id !== target.id) {
-        const hull = hull_at(target.fractions, [
-          ...phases.filter((phase) => phase.id !== target.id),
-          ground_state,
-        ])
-        if (!hull) throw new Error(`No stability hull for scan target ${target_id}`)
-        e_above_hull = Math.max(0, target.energy_per_atom - hull.energy)
-      }
       return {
         temperature,
         pressure,
-        e_above_hull,
+        e_above_hull: target_stability(phases, target, ground_state).e_above_hull,
         routes: prepared.map(({ id: identifier, target_product, competitors }) => {
           let strongest = 0
           for (const { product, force } of competitors) {

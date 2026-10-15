@@ -8,6 +8,7 @@ import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '#lib/vacf/VacfPlot.svelte'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
+import { format_bytes } from 'svelte-widgets/format'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   bind_props,
@@ -247,6 +248,8 @@ describe(`TrajectoryVacfPane`, () => {
     })
     expect(initial_text).toContain(`No VACF data to display`)
     expect(initial_text).toContain(`Compute VACF`)
+    // positions + stored velocities, known from the run before anything is collected
+    expect(initial_text).toContain(`60 frames × 1 atoms ≈ ${format_bytes(60 * 48)}`)
     await run_collect()
     const text = document.body.textContent ?? ``
     expect(text).toContain(`velocities read from the file`)

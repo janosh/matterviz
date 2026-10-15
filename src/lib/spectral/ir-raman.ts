@@ -6,6 +6,7 @@
 // LEPSILON finite-difference workflow, vasp_raman.py, phonopy-spectroscopy, ...) or
 // precomputed activities. Nothing in this file invents Raman data from eigenvectors.
 
+import { display_idx } from '#lib/labels.js'
 import { array_extent, type Matrix3x3, type Vec2, type Vec3 } from '#lib/math.js'
 import { broaden_peaks, MAX_BROADENING_GRID_POINTS } from '#lib/lineshape.js'
 import { convert_frequencies } from './frequency-units'
@@ -49,7 +50,7 @@ export function ir_intensity(
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
     const mass = masses[atom_idx]
     if (!Number.isFinite(mass) || mass <= 0) {
-      throw new Error(`ir_intensity: atom ${atom_idx} has invalid mass ${mass}`)
+      throw new Error(`ir_intensity: atom ${display_idx(atom_idx)} has invalid mass ${mass}`)
     }
     const inv_sqrt_mass = 1 / Math.sqrt(mass)
     const charge = born_charges[atom_idx]
@@ -167,7 +168,7 @@ export function compute_ir_raman_spectrum(
     const { eigenvector, frequency } = mode
     if (!eigenvector) {
       throw new Error(
-        `compute_ir_raman_spectrum: mode ${mode_idx} has no eigenvector; IR intensities ` +
+        `compute_ir_raman_spectrum: mode ${display_idx(mode_idx)} has no eigenvector; IR intensities ` +
           `cannot be computed from frequencies alone`,
       )
     }

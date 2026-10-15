@@ -1,4 +1,5 @@
 // Bounded numeric atom reads for spatial analysis.
+import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { finite_vec3_from_values, partition_point } from '#lib/math.js'
@@ -152,7 +153,7 @@ export function frame_atom_batch(
         : MASSES[atomic_number]
       if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0)
         throw new Error(
-          `Missing or invalid ${mass_source} mass at atom ${atom_idx}, step ${step}`,
+          `Missing or invalid ${mass_source} mass at atom ${display_idx(atom_idx)}, step ${step}`,
         )
       masses[idx] = mass
     }
@@ -163,7 +164,7 @@ export function frame_atom_batch(
         const value = velocity_property(atom_idx)
         if ((!Array.isArray(value) && !(value instanceof Float64Array)) || value.length !== 3)
           throw new Error(
-            `Missing or invalid ${velocity_key} at atom ${atom_idx}, step ${step}`,
+            `Missing or invalid ${velocity_key} at atom ${display_idx(atom_idx)}, step ${step}`,
           )
         velocity = value
         velocity_offset = 0
@@ -172,7 +173,7 @@ export function frame_atom_batch(
         const component = velocity[velocity_offset + axis]
         if (typeof component !== `number` || !Number.isFinite(component))
           throw new Error(
-            `Invalid ${velocity_key} at atom ${atom_idx}, step ${step}, axis ${axis}`,
+            `Invalid ${velocity_key} at atom ${display_idx(atom_idx)}, step ${step}, axis ${`xyz`[axis]}`,
           )
         velocities[idx * 3 + axis] = component
       }
@@ -180,14 +181,16 @@ export function frame_atom_batch(
     if (energies && energy_key) {
       const energy = energy_signal?.[atom_idx] ?? energy_property?.(atom_idx)
       if (typeof energy !== `number` || !Number.isFinite(energy) || energy < 0)
-        throw new Error(`Missing or invalid ${energy_key} at atom ${atom_idx}, step ${step}`)
+        throw new Error(
+          `Missing or invalid ${energy_key} at atom ${display_idx(atom_idx)}, step ${step}`,
+        )
       energies[idx] = energy
     }
     if (selected && selection_key) {
       const value = selection_signal?.[atom_idx] ?? selection_property?.(atom_idx)
       if (value !== 0 && value !== 1 && typeof value !== `boolean`)
         throw new Error(
-          `Selection ${selection_key} must be boolean or 0/1 at atom ${atom_idx}`,
+          `Selection ${selection_key} must be boolean or 0/1 at atom ${display_idx(atom_idx)}`,
         )
       selected[idx] = Number(value)
     }

@@ -48,6 +48,7 @@
   } from '#lib/plot/ternary/ternary.js'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
   import { to_error } from '#lib/utils.js'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -161,7 +162,7 @@
         srs.points.map((triple, point_idx): PlacedPoint => {
           const fractions = ternary_fractions(
             triple,
-            `${srs.label ?? `Series ${series_idx + 1}`} point ${point_idx}`,
+            `${srs.label ?? `Series ${series_idx + 1}`} point ${point_idx + 1}`,
           )
           return {
             series_idx,
@@ -272,6 +273,7 @@
     const point = rendered.find(is_hovered)
     return point ? point_props(point) : null
   })
+  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels
       .map((label, idx) => `${label} ${format_value(point.fractions[idx], tick_format)}`)

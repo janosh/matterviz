@@ -4,7 +4,7 @@
   import { trajectory_files } from '#site/trajectories.js'
   import { Trajectory, type TrajHandlerData } from 'matterviz/trajectory'
 
-  let active_file = $state(``) // last drag-and-dropped trajectory file
+  let active_file = $state(``) // last trajectory a viewer loaded (example or dropped file)
   let visible_props_cantor_qha = $state<string[] | undefined>(undefined)
   const handle_file_load = ({ source_filename }: TrajHandlerData): void => {
     if (source_filename) active_file = source_filename

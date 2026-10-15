@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import * as math from '#lib/math.js'
 import { LineScanner } from '#lib/structure/parsers/shared.js'
@@ -350,21 +351,25 @@ function create_lammps_reader(
         }
         ids.push(atom_id)
       }
+      // checked before the sites-only skip so an indexed open rejects it like the eager parse
+      const img_x = use_images ? scanner.num(image_cols[0]) : 0
+      const img_y = use_images ? scanner.num(image_cols[1]) : 0
+      const img_z = use_images ? scanner.num(image_cols[2]) : 0
+      if (!Number.isInteger(img_x) || !Number.isInteger(img_y) || !Number.isInteger(img_z)) {
+        throw new TypeError(
+          `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-integer image flags: "${lines.line(idx - 1)}"`,
+        )
+      }
       if (!sites) continue
       const position: math.Vec3 = frac_to_cart
         ? frac_to_cart(coords)
         : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
       if (use_images) {
-        const images = image_cols.map((col_idx) => scanner.num(col_idx))
-        if (!images.every(Number.isInteger)) {
-          throw new TypeError(
-            `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-integer image flags: "${lines.line(idx - 1)}"`,
-          )
-        }
+        const [vec_a, vec_b, vec_c] = lattice_matrix
         for (let axis = 0; axis < 3; axis++) {
-          for (let vec_idx = 0; vec_idx < 3; vec_idx++) {
-            position[axis] += images[vec_idx] * lattice_matrix[vec_idx][axis]
-          }
+          // same left-to-right sum as three `+=`, so unwrapping stays bit-identical
+          position[axis] =
+            position[axis] + img_x * vec_a[axis] + img_y * vec_b[axis] + img_z * vec_c[axis]
         }
       }
       positions.push(position)
@@ -444,8 +449,8 @@ function create_lammps_reader(
     for (let frame_idx = 1; frame_idx < steps.length; frame_idx++) {
       if (!(steps[frame_idx] > steps[frame_idx - 1])) {
         throw new Error(
-          `LAMMPS timestep ${steps[frame_idx]} at frame ${frame_idx} must be greater than ` +
-            `${steps[frame_idx - 1]} at frame ${frame_idx - 1}`,
+          `LAMMPS timestep ${steps[frame_idx]} at frame ${display_idx(frame_idx)} must be ` +
+            `greater than ${steps[frame_idx - 1]} at frame ${frame_idx}`,
         )
       }
     }

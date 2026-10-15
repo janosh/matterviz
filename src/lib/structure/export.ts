@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { download } from '#lib/io/fetch.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
@@ -56,8 +57,27 @@ export function create_structure_filename(
   return `${parts.length > 0 ? parts.join(`-`) : `structure`}${suffix}`
 }
 
-// First species' element of a site, or `X` when the site has no species
-const site_element = (site: Site): string => site.species?.[0]?.element || `X`
+// POSCAR and XYZ hold one fully occupied element per site, so a disordered site (several
+// elements, or a total occupancy below 1) has no faithful representation there: refuse it
+// rather than silently write a full atom of its first species. Species differing only in
+// oxidation state (Fe2+ 0.5 + Fe3+ 0.5) still name one fully occupied element. The tolerance
+// admits occupancies printed to 3 decimals (3 x 0.333).
+const is_disordered_site = (site: Site): boolean =>
+  new Set(site.species.map(({ element }) => element)).size > 1 ||
+  (site.species.length > 0 &&
+    site.species.reduce((sum, { occu }) => sum + (occu ?? 1), 0) < 1 - 1e-3)
+const disordered_site_error = (site: Site, idx: number): string =>
+  `Site ${display_idx(idx)} has partial or mixed occupancy (${site.species
+    .map(({ element, occu }) => `${element}:${occu}`)
+    .join(`, `)}); export as CIF or JSON to keep it`
+const disordered_site_reason = (structure: AnyStructure): string | undefined => {
+  const idx = structure.sites.findIndex(is_disordered_site)
+  return idx === -1 ? undefined : disordered_site_error(structure.sites[idx], idx)
+}
+
+// The element of an ordered site (callers refuse disordered ones up front), or `X` when it
+// has no species
+const site_element = (site: Site): string => site.species[0]?.element || `X`
 
 // cart→frac converter built on first use: a singular lattice (extXYZ `Lattice="... 0 0 0"`)
 // has no inverse, and a site that already carries abc never needs one
@@ -69,7 +89,7 @@ const lazy_cart_to_frac = (matrix: Matrix3x3): ((xyz: Vec3) => Vec3) => {
 const has_coords = (coords: unknown): coords is number[] =>
   Array.isArray(coords) && coords.length >= 3
 const coordinate_error = (idx: number): string =>
-  `No valid coordinates found for site ${idx}; expected three finite numeric components`
+  `No valid coordinates found for site ${display_idx(idx)}; expected three finite numeric components`
 // The requested coordinate kind when present, else the other one it would be converted from
 const valid_export_coords = (site: Site, fractional: boolean): boolean => {
   const [preferred, fallback] = fractional ? [site.abc, site.xyz] : [site.xyz, site.abc]
@@ -104,8 +124,14 @@ function coordinate_export_unavailable_reason(
 export const fractional_export_unavailable_reason = (
   structure?: AnyStructure,
 ): string | undefined => coordinate_export_unavailable_reason(structure, true)
+export const poscar_export_unavailable_reason = (
+  structure?: AnyStructure,
+): string | undefined =>
+  fractional_export_unavailable_reason(structure) ??
+  (structure && disordered_site_reason(structure))
 export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
-  coordinate_export_unavailable_reason(structure, false)
+  coordinate_export_unavailable_reason(structure, false) ??
+  (structure && disordered_site_reason(structure))
 
 // Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
 // silently switch the authoritative coordinate source or write NaN into the exported file.
@@ -326,12 +352,11 @@ export function structure_to_cif_str(input?: AnyStructure): string {
       .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
     const species_list = site.species.length ? site.species : [{ element: `X`, occu: 1 }]
+    // parse_cif names a merged site after its first row, so that row keeps the site label
+    const site_label = site.label || `${species_list[0]?.element || `X`}${idx + 1}`
     for (const [spec_idx, species] of species_list.entries()) {
       const elem = species?.element || `X`
-      const label =
-        species_list.length > 1
-          ? `${elem}${idx + 1}_${spec_idx}`
-          : cif_token(site.label || `${elem}${idx + 1}`)
+      const label = cif_token(spec_idx === 0 ? site_label : `${site_label}_${spec_idx}`)
       lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
     }
   }
@@ -340,6 +365,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
 }
 
 export function structure_to_poscar_str(input?: AnyStructure): string {
+  if (!input?.sites) throw new Error(`No structure or sites to export`)
+  const reason = poscar_export_unavailable_reason(input)
+  if (reason) throw new Error(`POSCAR export: ${reason}`)
   const structure = require_lattice(input, `POSCAR`)
   const { lattice } = structure
 

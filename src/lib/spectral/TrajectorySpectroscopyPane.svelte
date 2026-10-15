@@ -41,7 +41,11 @@
   } = $props()
 
   let infrared_key = $state(``)
-  let infrared_kind = $state<`dipole` | `polarization` | `current`>(`dipole`)
+  // Follows the chosen IR signal and stays user-editable until the next one is picked
+  let infrared_kind = $derived<`dipole` | `polarization` | `current`>(
+    infrared_key ? infrared_kind_from_key(infrared_key) : `dipole`,
+  )
+  // reset whenever an IR signal is picked (select onchange and the run reset below)
   let polarization_branch_continuous = $state(false)
   let raman_key = $state(``)
   let preprocessing = $state<SpectroscopyPreprocessing>(`body_fixed`)
@@ -134,11 +138,6 @@
         : `body_fixed`
   })
 
-  $effect(() => {
-    infrared_kind = infrared_key ? infrared_kind_from_key(infrared_key) : `dipole`
-    polarization_branch_continuous = false
-  })
-
   async function calculate(): Promise<void> {
     if (!run) return
     const request_run = run
@@ -217,7 +216,10 @@
     <fieldset class="spectroscopy-controls" disabled={calculation_busy}>
       <label
         >IR response
-        <select bind:value={infrared_key}>
+        <select
+          bind:value={infrared_key}
+          onchange={() => (polarization_branch_continuous = false)}
+        >
           <option value="">none</option>
           {#each infrared_keys as key (key)}<option value={key}>{key}</option>{/each}
         </select>

@@ -2,7 +2,7 @@
 // included) binned over [0, cutoff) and normalised by the ideal-gas expectation
 // N_a · N_b · V_shell / V (exact shell volume), so g(r) → 1 for an uncorrelated system.
 import { calc_lattice_params, is_valid_index, sorted_numbers } from '#lib/math.js'
-import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { visit_neighbor_distances } from '#lib/structure/bonding.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { RdfOptions, RdfPattern } from './index'
@@ -21,8 +21,10 @@ const species_weights = (sites: Site[], element: string | undefined): Float64Arr
 const MAX_RDF_BINS = 1_000_000
 
 // Only the histogram grid is retained. Neighbours stream into it so wide cutoffs on large
-// frames never allocate pair lists, displacement vectors or per-contact bin indices.
-function prepare_rdf(structure: Crystal, options: RdfOptions) {
+// frames never allocate pair lists, displacement vectors or per-contact bin indices. Takes any
+// structure (an MD frame off the worker payload too) and rejects one without a usable cell,
+// since the ideal-gas normalisation needs its volume.
+function prepare_rdf(structure: AnyStructure, options: RdfOptions) {
   const { cutoff = 15, n_bins = 75 } = options
   // finite too: Infinity passes `> 0` and resurfaces as a neighbor_query error naming no caller
   if (!(cutoff > 0) || !Number.isFinite(cutoff)) {
@@ -81,7 +83,7 @@ function normalize_histogram(
 
 // g(r) of one structure: the full RDF, or the partial g_ab(r) with center_species a and
 // neighbor_species b (either may be omitted to leave that end unfiltered).
-export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
+export function calculate_rdf(structure: AnyStructure, options: RdfOptions = {}): RdfPattern {
   const { center_species, neighbor_species } = options
   const prepared = prepare_rdf(structure, options)
   const center_weights = species_weights(structure.sites, center_species)
@@ -111,7 +113,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 // neighbour search for the one bin with the histogram's own bin_of and weights, so it finds
 // exactly the pairs counted there. `n_pairs` counts contacts, not weighted by occupancy.
 export function rdf_bin_sites(
-  structure: Crystal,
+  structure: AnyStructure,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {
     bin_idx: number
     element_pair?: readonly [string, string]
@@ -143,25 +145,13 @@ export function rdf_bin_sites(
   }
 }
 
+// What the trajectory RDF worker computes per MD frame (calculate_all_pair_rdfs)
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>
-
-// Partial g_ab(r) of every element pair in one MD frame: the trajectory RDF worker's compute.
-// Same as calculate_all_pair_rdfs, but rejects a lattice-less frame with a message that says
-// why (an ideal-gas normalisation needs a cell volume).
-export const calc_frame_rdfs = (
-  structure: AnyStructure,
-  options: FrameRdfOptions = {},
-): RdfPattern[] => {
-  if (!has_usable_lattice(structure)) {
-    throw new Error(`calc_frame_rdfs: ${lattice_unavailable_reason(structure, true)}`)
-  }
-  return calculate_all_pair_rdfs(structure, options)
-}
 
 // Partial g_ab(r) for every unordered element pair, elements sorted alphabetically. Mixed
 // occupancy sites contribute to every element they carry. Each pattern shares one `r` array.
 export function calculate_all_pair_rdfs(
-  structure: Crystal,
+  structure: AnyStructure,
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> = {},
 ): RdfPattern[] {
   const prepared = prepare_rdf(structure, options)

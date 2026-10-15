@@ -87,10 +87,12 @@ const with_auto_legend_tracks = (
         ? `horizontal`
         : `vertical`
       : track_config.orientation
+  // The base plot box minus reserved bands (marginal strips) the legend must fit along
+  const { base_pad, reserved_pad: reserved = { t: 0, b: 0, l: 0, r: 0 } } = scene
   const base_edge_length =
     orientation === `horizontal`
-      ? scene.width - scene.base_pad.l - scene.base_pad.r
-      : scene.height - scene.base_pad.t - scene.base_pad.b
+      ? scene.width - base_pad.l - base_pad.r - reserved.l - reserved.r
+      : scene.height - base_pad.t - base_pad.b - reserved.t - reserved.b
   return {
     ...placement,
     layout_tracks: suggest_legend_tracks({

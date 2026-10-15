@@ -299,6 +299,21 @@ describe(`convex hull replacement state`, () => {
     )
   })
 
+  // Without interpolation an untabulated T snaps to the nearest tabulated one, while
+  // interpolation keeps any in-range T
+  test.each([
+    [false, 600],
+    [true, 500],
+  ] as const)(`interpolate_temperature=%s turns T=500 into %s`, async (interpolate, want) => {
+    const entries = [`Li`, `O`].map((element) =>
+      with_temps({ [element]: 1 }, [300, 600, 900], element),
+    )
+    const state = { temperature: 500 }
+    await mount_hull(bind_props({ entries, interpolate_temperature: interpolate }, state))
+    flushSync()
+    expect(state.temperature).toBe(want)
+  })
+
   test(`source changes normalize once and switch renderer without losing bound controls`, async () => {
     const normalize = vi.spyOn(thermo, `process_hull_entries`)
     const state = new SvelteMap<string, PhaseData[]>([[`entries`, []]])

@@ -7,9 +7,10 @@ import type { PhaseSet, PlannerPhase } from './phases'
 import {
   assign_e_above_hull,
   ENERGY_TOL,
-  hull_at,
+  place_target,
   prepare_phase_set,
   resolve_phase,
+  target_stability,
   to_phase_ref,
 } from './phases'
 import { format_mev } from './format-mev'
@@ -361,17 +362,12 @@ export function plan_synthesis(
       `plan_synthesis: target "${request.target}" matches no entry id or formula. Available formulas include ${examples}`,
     )
   }
-  // A higher-energy polymorph picked by id stands in for its formula in the working set; the
-  // ground state is kept aside so the target's stability is still judged against it
-  const working_idx = phase_set.phases.findIndex((phase) => phase.formula === resolved.formula)
-  const ground_state = phase_set.phases[working_idx]
-  if (ground_state.id !== resolved.id) {
+  const { target, ground_state } = place_target(phase_set, resolved)
+  if (ground_state.id !== target.id) {
     phase_set.warnings.push(
-      `Target ${resolved.id} is a higher-energy polymorph of ${resolved.formula}; planning for this polymorph, but the ground state (${ground_state.id}) is thermodynamically preferred`,
+      `Target ${target.id} is a higher-energy polymorph of ${target.formula}; planning for this polymorph, but the ground state (${ground_state.id}) is thermodynamically preferred`,
     )
-    phase_set.phases[working_idx] = { ...resolved, e_above_hull_0K: NaN }
   }
-  const target = phase_set.phases[working_idx]
   assign_e_above_hull(phase_set.phases)
 
   const gases = phase_set.phases.filter((phase) => phase.is_gas)
@@ -403,12 +399,11 @@ export function plan_synthesis(
   }
 
   // Target stability at these conditions
-  const others = phase_set.phases.filter((phase) => phase.id !== target.id)
-  if (ground_state.id !== target.id) others.push(ground_state)
-  const hull_without_target = hull_at(target.fractions, others)
-  const e_above_hull = hull_without_target
-    ? Math.max(0, target.energy_per_atom - hull_without_target.energy)
-    : 0
+  const { e_above_hull, hull: hull_without_target } = target_stability(
+    phase_set.phases,
+    target,
+    ground_state,
+  )
   const is_stable = e_above_hull <= ENERGY_TOL
   if (!is_stable) {
     ctx.warnings.push(

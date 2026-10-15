@@ -11,7 +11,7 @@
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
   import type {
@@ -23,6 +23,7 @@
     analysis_pane_setup,
     analysis_step_interval,
     no_full_pass_message,
+    suggest_analysis_frame_stride,
   } from '#lib/trajectory/analysis.js'
   import { resolve_frame_range } from './runs/accumulate'
   import { create_request_owner } from './async-result.svelte'
@@ -45,11 +46,11 @@
     collect,
     frame_steps,
     frame_unavailable_reason,
+    position_buffers,
     suggest_stride,
     compute_label,
     recollect_label,
     collecting_label = `Reading frames…`,
-    bytes_per_atom_frame = 24,
     default_dt = null,
     default_time_unit,
     time_unit_fallback,
@@ -79,15 +80,17 @@
     // Validate the selected first frame before enabling collection; checked reads are cancelled
     // when the run or start frame changes, independently of the analysis request.
     frame_unavailable_reason?: (frame: TrajectoryFrame) => string | null
-    // Stride that keeps the collected buffer inside the memory budget. Supplying it also
-    // renders the frame-stride control; panes that read frames one at a time omit it.
+    // Stride that keeps the collected buffer inside the memory budget, by default the one
+    // budgeting `position_buffers`. Supplying either renders the frame-stride control; panes
+    // that read frames one at a time omit both.
     suggest_stride?: (run: TrajectoryRun, frame_count: number) => number | null
     compute_label: string
     recollect_label: string
     // Button text while `collect` runs
     collecting_label?: string
-    // Size of one atom-frame in the collected buffer for the estimate line (3 × f64 = 24)
-    bytes_per_atom_frame?: number
+    // Position-sized (3 × f64) buffers per atom-frame the analysis holds, for the estimate
+    // line and the default stride budget, so the two cannot disagree
+    position_buffers?: number
     // Time between two SOURCE frames as recorded in the file, seeded into the timestep
     // controls (which only render when `time_unit_fallback` is given) and re-seeded on swap
     default_dt?: number | null
@@ -105,6 +108,15 @@
 
   const pane_id = $props.id()
   const unavailable_hint_id = `${pane_id}-unavailable`
+  // the default budget follows position_buffers, which the MSD/VACF panes only pass once a
+  // run is loaded
+  const stride_fn = $derived(
+    suggest_stride ??
+      (position_buffers
+        ? (source: TrajectoryRun, frame_count: number) =>
+            suggest_analysis_frame_stride(source, undefined, position_buffers, frame_count)
+        : undefined),
+  )
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
   // Nth frame multiplies it (see dt_collected below). null, not 0, is what
@@ -115,10 +127,12 @@
   let use_dt = $state(false)
   let manual_timing = false
   let frame_stride = $state<number | null>(1)
-  let start_frame = $state<number | null>(0)
+  // 1-based inclusive frames as the inputs show them: only the start shifts to its index, since
+  // the exclusive 0-based end index is the inclusive 1-based last frame
+  let start_frame = $state<number | null>(1)
   let end_frame = $state<number | null>(null)
   let range = $derived({
-    start_frame: start_frame ?? NaN,
+    start_frame: from_display_idx(start_frame ?? NaN),
     end_frame: end_frame ?? run?.frame_count ?? 0,
   })
   let range_reason = $derived.by(() => {
@@ -126,8 +140,11 @@
     try {
       resolve_frame_range(run.frame_count, range)
       return null
-    } catch (error) {
-      return to_error(error).message
+    } catch {
+      const [first, last, max] = [start_frame, range.end_frame, run.frame_count]
+      if (!Number.isFinite(first) || !Number.isFinite(last))
+        return `Enter first and last frames inside 1–${max}`
+      return `Frame range ${first}–${last} must be whole frames, nonempty and inside 1–${max}`
     }
   })
   let frame_check = $state.raw<{ run: TrajectoryRun; start: number; reason: string | null }>()
@@ -170,7 +187,7 @@
     if (!frame_times) return
     const idx = frame_times.values.findIndex((time) => (start ? time >= value : time > value))
     const bound = !Number.isFinite(value) ? NaN : idx === -1 ? frame_times.values.length : idx
-    if (start) start_frame = bound
+    if (start) start_frame = display_idx(bound)
     else end_frame = bound
   }
   // Stride the current `input` was collected with. The typed stride can change after a
@@ -182,8 +199,8 @@
   let progress = $state<ParseProgress | null>(null)
 
   let { total_frames, n_atoms, safe_stride, collected_frames, suggested_stride, can_collect } =
-    $derived(analysis_pane_setup(run, suggest_stride, frame_stride, range_reason ? {} : range))
-  let estimated_bytes = $derived(collected_frames * n_atoms * bytes_per_atom_frame)
+    $derived(analysis_pane_setup(run, stride_fn, frame_stride, range_reason ? {} : range))
+  let estimated_bytes = $derived(collected_frames * n_atoms * 24 * (position_buffers ?? 1))
   const selected_interval = $derived.by(() => {
     void properties_revision
     if (!time_unit_fallback || !run || range_reason) return undefined
@@ -227,7 +244,7 @@
     if (run_changed) {
       analysed_run = run
       manual_timing = false
-      start_frame = 0
+      start_frame = 1
       end_frame = null
       clear()
       // a collect still running for the old trajectory may no longer report here
@@ -345,7 +362,7 @@
   {:else}
     {#if disabled_reason}
       <small id={unavailable_hint_id}>{disabled_reason}</small>
-    {:else if suggest_stride && !can_collect}
+    {:else if stride_fn && !can_collect}
       <StatusMessage
         type="warning"
         message={no_full_pass_message(run, analysis_name)}
@@ -360,16 +377,16 @@
         <input
           aria-label="Start frame"
           type="number"
-          min="0"
-          max={total_frames - 1}
+          min="1"
+          max={total_frames}
           step="1"
           bind:value={start_frame}
         />
       </label>
       <label>
-        End frame (exclusive)
+        End frame
         <input
-          aria-label="End frame (exclusive)"
+          aria-label="End frame"
           type="number"
           min="1"
           max={total_frames}
@@ -400,7 +417,7 @@
           />
         </label>
       {/if}
-      {#if suggest_stride}
+      {#if stride_fn}
         <label>
           Frame stride
           <input
@@ -435,9 +452,9 @@
           />
         </label>
       {/if}
-      {#if suggest_stride || time_unit_fallback || hint}
+      {#if stride_fn || time_unit_fallback || hint}
         <p class="hint">
-          {#if suggest_stride}
+          {#if stride_fn}
             {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
           {/if}
           {#if time_unit_fallback}
@@ -455,7 +472,7 @@
         disabled={collecting ||
           busy ||
           Boolean(disabled_reason) ||
-          (suggest_stride && !can_collect)}
+          (stride_fn && !can_collect)}
         title={disabled_reason ?? undefined}
         aria-describedby={disabled_reason ? unavailable_hint_id : undefined}
       >

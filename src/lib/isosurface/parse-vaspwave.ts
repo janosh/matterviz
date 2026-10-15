@@ -144,9 +144,10 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   }
 
   // vaspwave.h5 stores the same rho * V_cell grid VASP writes to CHGCAR, so divide by
-  // the cell volume to get e/A^3 like parse_chgcar does
-  const cell_volume = Math.abs(structure.lattice.volume)
-  const divisor = cell_volume > 1e-30 ? cell_volume : 1
+  // the cell volume (|det|) to get e/A^3 like parse_chgcar does
+  const cell_volume = structure.lattice.volume
+  if (!(cell_volume > 0))
+    throw new Error(`vaspwave.h5 lattice has no volume; cannot normalize ${CHARGE_PATH}`)
 
   const component_labels = [`charge density`, `magnetization density`]
   const volumes: VolumetricData[] = Array.from(
@@ -157,8 +158,8 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
       // zyx in C order is x fastest, the same layout CHGCAR uses
       const values =
         axis_order === `xyz`
-          ? Float64Array.from(component, (val) => val / divisor)
-          : transpose_x_fastest(component, dims, divisor)
+          ? Float64Array.from(component, (val) => val / cell_volume)
+          : transpose_x_fastest(component, dims, cell_volume)
       return make_volume(values, dims, {
         id: component_labels[component_idx],
         lattice,

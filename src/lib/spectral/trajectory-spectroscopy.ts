@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { PeriodogramResult, WindowType } from '#lib/fft.js'
@@ -1254,7 +1255,7 @@ export function standard_masses_for_elements(elements: string[]): Float64Array {
       ? element_by_symbol.get(element)?.atomic_mass
       : undefined
     if (mass && mass > 0) return mass
-    return fail(`no standard atomic mass for atom ${atom_idx} (${element})`)
+    return fail(`no standard atomic mass for atom ${display_idx(atom_idx)} (${element})`)
   })
 }
 

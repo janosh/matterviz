@@ -12,7 +12,7 @@
   import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
   import { to_error } from '#lib/utils.js'
   import { all_phase_diagram_files, find_precomputed_diagram } from '#site/phase-diagrams.js'
-  import { file_param, set_file_param } from '#site/state.svelte.js'
+  import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
 
   // Track currently loaded diagram
@@ -32,8 +32,8 @@
 
   const has_ext = (name: string, ext: string) => name.toLowerCase().endsWith(ext)
 
-  // Stale-load guard: every load gets a token and only the newest one may write state
-  let active_load: symbol | null = null
+  // Only the newest picker load (or a drop, which cancels them all) may write state
+  const loads = latest_load()
 
   // Parse fetched or dropped content by filename. TDB files are parsed but not solved; a
   // matching precomputed diagram (if any) is shown instead. Throws on malformed content.
@@ -63,8 +63,7 @@
   // Load a picker entry: built-in diagrams come precomputed from #site/phase-diagrams, the
   // rest (TDB, SVG, JSON, gzipped or not) are fetched and decompressed by #lib/io
   async function load_file(url: string, filename: string, sync_url = true): Promise<void> {
-    const token = Symbol(filename)
-    active_load = token
+    const is_current = loads.start()
     loading = true
     error_message = null
     tdb = null
@@ -79,13 +78,13 @@
         if (sync_url) set_file_param(filename)
       } else {
         await load_from_url(url, (content) => {
-          if (active_load === token) apply_content(content, filename, sync_url)
+          if (is_current()) apply_content(content, filename, sync_url)
         })
       }
     } catch (exc) {
-      if (active_load === token) error_message = `Failed to load: ${to_error(exc).message}`
+      if (is_current()) error_message = `Failed to load: ${to_error(exc).message}`
     } finally {
-      if (active_load === token) loading = false
+      if (is_current()) loading = false
     }
   }
 
@@ -143,7 +142,11 @@
   {@attach file_drop_zone({
     allow: () => true,
     max_files: 1,
-    on_drop: (content, filename) => apply_content(content, filename),
+    on_drop: (content, filename) => {
+      loads.cancel()
+      error_message = null
+      apply_content(content, filename)
+    },
     on_error: (msg) => (error_message = msg),
     set_loading: (value) => (loading = value),
   })}

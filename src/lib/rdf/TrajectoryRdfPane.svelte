@@ -140,6 +140,7 @@
       patterns={entries}
       allow_file_drop={false}
       loading={collecting}
+      loading_message="Binning pair distances…"
       {error_msg}
       style="height: 320px"
       on_bin_hover={on_shell_hover &&

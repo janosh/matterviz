@@ -7,7 +7,7 @@ import {
   cell_frame,
   drop_placeholder_cell,
   element_from_candidates,
-  is_placeholder_cell,
+  is_real_cell,
   parsed_result,
   parse_coordinate,
   parse_float_token,
@@ -60,10 +60,8 @@ const read_crysin_cell = (row: string | undefined): number[] | null => {
 // 1 1 1 90 90 90 placeholder. Goes through the same section splitter as parse_mol2 (so a
 // comment or blank line after the header is skipped identically) and structure-type
 // detection agrees with the parser on what is a crystal.
-export const mol2_has_lattice = (content: string): boolean => {
-  const params = read_crysin_cell(split_mol2_sections(content).get(`CRYSIN`)?.[0])
-  return params !== null && !is_placeholder_cell(params)
-}
+export const mol2_has_lattice = (content: string): boolean =>
+  is_real_cell(read_crysin_cell(split_mol2_sections(content).get(`CRYSIN`)?.[0]))
 
 // SYBYL atom types are `element.hybridization` (`C.3`, `N.ar`, `Fe`); the atom name
 // (`C1`, `CA`) is the fallback when the type column is missing or non-standard
@@ -83,7 +81,7 @@ const mol2_element = (
 
 export const parse_mol2 = (content: string): AnyStructure => {
   // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
-  const molecule_headers = [...content.matchAll(/^@<TRIPOS>MOLECULE/gim)]
+  const molecule_headers = [...content.matchAll(/^[ \t]*@<TRIPOS>MOLECULE/gim)]
   const first_record =
     molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
   if (molecule_headers.length > 1) {

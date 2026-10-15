@@ -7,6 +7,7 @@ import {
   create_structure_filename,
   export_structure_as,
   fractional_export_unavailable_reason,
+  poscar_export_unavailable_reason,
   xyz_export_unavailable_reason,
   structure_to_cif_str,
   structure_to_json_str,
@@ -280,7 +281,7 @@ describe(`Export functionality`, () => {
         [structure_to_poscar_str, fractional_export_unavailable_reason],
         [structure_to_xyz_str, xyz_export_unavailable_reason],
       ]) {
-        expect(reason(structure)).toContain(`No valid coordinates found for site 0`)
+        expect(reason(structure)).toContain(`No valid coordinates found for site 1`)
         expect(() => serialize(structure)).toThrow(reason(structure))
       }
       // A valid alternative must not silently replace the format's authoritative source.
@@ -440,7 +441,12 @@ describe(`Export functionality`, () => {
         )
         expect(() =>
           (format === `CIF` ? structure_to_cif_str : structure_to_poscar_str)(without_abc),
-        ).toThrow(`singular or ill-conditioned`)
+        ).toThrow(
+          // POSCAR checks poscar_export_unavailable_reason up front; CIF fails on inverting
+          format === `CIF`
+            ? `singular or ill-conditioned`
+            : `POSCAR export: A nonsingular unit cell with finite volume is required`,
+        )
         if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
       },
     )
@@ -579,7 +585,7 @@ describe(`Export functionality`, () => {
       expect(triple_product(reparsed)).toBeCloseTo(1.68, 6)
     })
 
-    it(`exports one CIF row per species on disordered sites and round-trips`, () => {
+    describe(`disordered sites`, () => {
       const disordered: AnyStructure = {
         ...simple_structure,
         sites: [
@@ -590,36 +596,93 @@ describe(`Export functionality`, () => {
             ],
             abc: [0.25, 0.25, 0.25],
             xyz: [2.5, 2.5, 2.5],
-            label: `Cu1`,
+            label: `M1`,
             properties: {},
           },
         ],
       }
-      const cif_content = structure_to_cif_str(disordered)
-      const atom_rows = cif_content
-        .split(`\n`)
-        .filter((line) => /^\S+ (?:Cu|Au) /.test(line.trim()))
-      expect(atom_rows).toHaveLength(2)
-
-      // each element's row carries the site coords and its OWN occupancy (col order:
-      // label element x y z occupancy) — distinct occupancies catch a swapped assignment
-      const cif_occ = (element: ElementSymbol): number => {
-        const row = atom_rows.find((line) => line.trim().split(/\s+/)[1] === element)
-        if (!row) throw new Error(`missing CIF row for ${element}`)
-        const cols = row.trim().split(/\s+/)
-        expect(cols.slice(2, 5)).toEqual([`0.25000000`, `0.25000000`, `0.25000000`])
-        return Number(cols.at(-1))
+      const [site] = disordered.sites
+      const cu = (occu: number | undefined) =>
+        ({
+          ...disordered,
+          sites: [
+            { ...site, species: [{ element: `Cu` as const, occu, oxidation_state: 0 }] },
+          ],
+        }) as AnyStructure
+      // species differing only in oxidation state are one element
+      const mixed_valence: AnyStructure = {
+        ...disordered,
+        sites: [
+          {
+            ...site,
+            label: ``,
+            species: [2, 3].map((oxidation_state) => ({
+              element: `Fe` as const,
+              occu: 0.5,
+              oxidation_state,
+            })),
+          },
+        ],
       }
-      expect(cif_occ(`Cu`)).toBeCloseTo(0.7, 8)
-      expect(cif_occ(`Au`)).toBeCloseTo(0.3, 8)
 
-      // Round-trip: each element keeps its own partial occupancy through parse_cif
-      const species = parse_cif(cif_content).sites.flatMap((site) => site.species)
-      expect(Object.fromEntries(species.map(({ element, occu }) => [element, occu]))).toEqual({
-        Cu: expect.closeTo(0.7, 8),
-        Au: expect.closeTo(0.3, 8),
+      it(`CIF writes one row per species with its own occupancy`, () => {
+        const atom_rows = structure_to_cif_str(disordered)
+          .split(`\n`)
+          .filter((line) => /^\S+ (?:Cu|Au) /.test(line))
+          .map((line) => line.trim().split(/\s+/))
+        // col order: label element x y z occupancy; distinct occupancies catch a swap
+        expect(atom_rows).toEqual([
+          [`M1`, `Cu`, `0.25000000`, `0.25000000`, `0.25000000`, `0.70000000`],
+          [`M1_1`, `Au`, `0.25000000`, `0.25000000`, `0.25000000`, `0.30000000`],
+        ])
       })
-      expect(species).toHaveLength(2)
+
+      it(`CIF round-trip keeps the label and per-species occupancies`, () => {
+        const reparsed_sites = parse_cif(structure_to_cif_str(disordered)).sites
+        expect(reparsed_sites.map(({ label }) => label)).toEqual([`M1`])
+        expect(reparsed_sites[0].species.map(({ element, occu }) => [element, occu])).toEqual([
+          [`Cu`, expect.closeTo(0.7, 8)],
+          [`Au`, expect.closeTo(0.3, 8)],
+        ])
+      })
+
+      // POSCAR and XYZ hold one fully occupied element per site: refuse a mixed site (rather
+      // than keep Cu only) and a partial one (rather than write a full Cu)
+      it.each([
+        [`mixed`, disordered, `Cu:0.7, Au:0.3`],
+        [`partial`, cu(0.7), `Cu:0.7`],
+        [`just below the 3-decimal tolerance`, cu(0.99), `Cu:0.99`],
+      ])(`POSCAR and XYZ refuse a %s site`, (_name, struct, species_str) => {
+        const msg = `Site 1 has partial or mixed occupancy (${species_str})`
+        expect(() => structure_to_poscar_str(struct)).toThrow(`POSCAR export: ${msg}`)
+        expect(() => structure_to_xyz_str(struct)).toThrow(`XYZ export: ${msg}`)
+        for (const reason of [
+          poscar_export_unavailable_reason,
+          xyz_export_unavailable_reason,
+        ]) {
+          expect(reason(struct)).toContain(msg)
+        }
+        expect(fractional_export_unavailable_reason(struct)).toBeUndefined()
+      })
+
+      it.each([
+        [`an occupancy printed to 3 decimals`, cu(0.999), `Cu`],
+        [`an undefined occupancy (counts as 1)`, cu(undefined), `Cu`],
+        [`a mixed-valence site`, mixed_valence, `Fe`],
+      ])(`POSCAR and XYZ accept %s`, (_name, struct, element) => {
+        for (const reason of [
+          poscar_export_unavailable_reason,
+          xyz_export_unavailable_reason,
+        ]) {
+          expect(reason(struct)).toBeUndefined()
+        }
+        expect(structure_to_poscar_str(struct).split(`\n`)[5]).toBe(element)
+        expect(structure_to_xyz_str(struct).split(`\n`)[2]).toMatch(new RegExp(`^${element} `))
+      })
+
+      it(`CIF gives an unlabeled mixed-valence site element-derived labels`, () => {
+        expect(structure_to_cif_str(mixed_valence)).toMatch(/^Fe1 Fe [^\n]+\nFe1_1 Fe /m)
+      })
     })
 
     const occu_site = (occu: number | undefined) => ({

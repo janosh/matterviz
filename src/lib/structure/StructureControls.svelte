@@ -867,8 +867,9 @@
   let has_lattice = $derived(has_lattice_matrix(structure))
   let periodic = $derived(has_usable_lattice(structure) && is_periodic(structure))
 
-  // Validate supercell input
-  let supercell_input_valid = $derived(is_valid_supercell_input(supercell_scaling))
+  // Applied on Enter/blur: per keystroke, the `3` of `3x1x1` started a 27-tile build
+  let supercell_draft = $derived(supercell_scaling)
+  let supercell_input_valid = $derived(is_valid_supercell_input(supercell_draft))
 
   // Rotation is stored in radians; the sliders show degrees in [0, 360)
   const wrap_degrees = (degrees: number): number => ((degrees % 360) + 360) % 360
@@ -1381,19 +1382,20 @@
             <span>Supercell</span>
             <input
               type="text"
-              bind:value={supercell_scaling}
+              bind:value={supercell_draft}
+              onchange={() => {
+                if (supercell_input_valid) supercell_scaling = supercell_draft
+              }}
               placeholder="1x1x1"
               style="border: {supercell_input_valid
                 ? undefined
                 : `1px dashed red`}; opacity: {supercell_loading ? 0.5 : 1}"
-              disabled={supercell_loading}
               inputmode="text"
               autocomplete="off"
               spellcheck="false"
-              pattern="^(\d+|\d+x\d+x\d+)$"
               aria-invalid={!supercell_input_valid}
               title={supercell_input_valid
-                ? `Valid supercell scaling: ${supercell_scaling}`
+                ? `Valid supercell scaling: ${supercell_draft}`
                 : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
             />
           </label>

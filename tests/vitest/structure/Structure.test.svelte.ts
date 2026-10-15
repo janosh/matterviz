@@ -194,8 +194,9 @@ Direct
 2 2 2
 1 2 3 4 5 6 7 8`
 
-test(`loads strings, URLs and dropped files through the component API`, async () => {
-  vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT)))
+test(`loads strings, URLs and dropped files; caller-owned structures skip fetching`, async () => {
+  const fetch_spy = vi.fn().mockResolvedValue(new Response(SAMPLE_POSCAR_CONTENT))
+  vi.stubGlobal(`fetch`, fetch_spy)
   const string_load = vi.fn<(data: StructureHandlerData) => void>()
   const url_load = vi.fn<(data: StructureHandlerData) => void>()
   const drop_load = vi.fn<(data: StructureHandlerData) => void>()
@@ -206,6 +207,7 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
   mount_structure({ source: `/loaded.poscar`, on_file_load: url_load })
   const drop_state = $state<{ structure?: AnyStructure }>({ structure: undefined })
   mount_structure(bind_props({ on_file_load: drop_load }, drop_state))
+  mount_structure({ source: `/blocked.poscar`, structure })
   await tick()
   document
     .querySelectorAll(`.structure`)
@@ -227,31 +229,14 @@ test(`loads strings, URLs and dropped files through the component API`, async ()
     )
   })
   expect(drop_state.structure?.sites).toHaveLength(5)
+  expect(fetch_spy.mock.calls.map(([url]) => url)).toEqual([`/loaded.poscar`])
 })
 
-test(`caller-owned structures prevent fetching a source URL`, async () => {
-  const fetch_spy = vi
-    .fn()
-    .mockImplementation(() => Promise.resolve(new Response(SAMPLE_POSCAR_CONTENT)))
-  vi.stubGlobal(`fetch`, fetch_spy)
-  const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-  mount_structure({
-    source: `/priority.poscar`,
-    on_file_load,
-  })
-  mount_structure({ source: `/blocked.poscar`, structure })
-  await vi.waitFor(() =>
-    expect(on_file_load).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ filename: `priority.poscar`, total_atoms: 5 }),
-    ),
-  )
-  expect(fetch_spy).toHaveBeenCalledOnce()
-})
-
-test(`drag hover state remains bindable and respects allow_file_drop`, async () => {
+test(`drag hover state is bindable, respects allow_file_drop, and custom drop handlers get raw content`, async () => {
   const enabled = $state({ dragover: false })
   const disabled = $state({ dragover: false })
-  mount_structure(bind_props({}, enabled))
+  const on_file_drop = vi.fn()
+  mount_structure(bind_props({ on_file_drop }, enabled))
   mount_structure(bind_props({ allow_file_drop: false }, disabled))
   await tick()
   const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure`)
@@ -263,14 +248,8 @@ test(`drag hover state remains bindable and respects allow_file_drop`, async () 
   expect(disabled_zone?.classList.contains(`dragover`)).toBe(false)
   enabled_zone?.dispatchEvent(new DragEvent(`dragleave`, { bubbles: true }))
   expect(enabled.dragover).toBe(false)
-})
-
-test(`custom drop handlers retain raw content and source metadata`, async () => {
-  const on_file_drop = vi.fn()
-  mount_structure({ on_file_drop })
-  await tick()
   const file = new File([SAMPLE_POSCAR_CONTENT], `custom.poscar`)
-  doc_query(`.structure`).dispatchEvent(create_drop_event(file))
+  enabled_zone?.dispatchEvent(create_drop_event(file))
   await vi.waitFor(() =>
     expect(on_file_drop).toHaveBeenCalledWith(SAMPLE_POSCAR_CONTENT, file.name, {
       source_filename: file.name,
@@ -307,6 +286,71 @@ test.each([false, true])(
     expect(scene_stub.props?.camera_target).toEqual(new_pose ? [4, 5, 6] : [1, 2, 3])
   },
 )
+
+// The session's own writes (an edit, a cell-type bake) keep the pose and moved-camera state;
+// a file loaded mid-edit is a new series and re-frames
+test.each([`edit`, `bake`, `load`] as const)(
+  `edit-atoms keeps the camera only for its own writes (%s)`,
+  async (change) => {
+    mock_gpu()
+    // the bake needs live symmetry analysis of a cell whose conventional cell differs
+    if (change === `bake`) vi.stubEnv(`VITEST`, ``)
+    await init_moyo_for_tests()
+    const state = $state<{ structure?: AnyStructure; cell_type: symmetry.CellType }>({
+      structure:
+        change === `bake`
+          ? make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
+          : structure,
+      cell_type: `original`,
+    })
+    const analysis = mount_structure(
+      bind_props({ measure_mode: `edit-atoms` as const }, state),
+    )
+    if (change === `bake`) await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
+    await tick()
+    const scene = scene_stub.props
+    if (!scene?.on_add_atom) throw new Error(`scene stub missing on_add_atom`)
+    scene.camera_is_moving = true // reports the pane as moved
+    flushSync()
+    scene.camera_is_moving = false
+    scene.camera_position = [9, 9, 9] // the user orbited (bound out of the scene)
+    scene.camera_target = [1, 1, 1]
+    doc_query<HTMLButtonElement>(`.view-layout-dropdown button`).click() // lists reset-camera
+    flushSync()
+    expect(document.querySelector(`.reset-camera`)).not.toBeNull()
+    if (change === `edit`) scene.on_add_atom([0, 0, 0], `C`)
+    else if (change === `bake`) state.cell_type = `conventional`
+    else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+    flushSync()
+    if (change === `bake`)
+      expect([state.cell_type, state.structure?.sites.length]).toEqual([`original`, 4])
+    const kept = change !== `load`
+    const { camera_position, camera_target } = scene_stub.props ?? {}
+    expect(camera_position).toEqual(kept ? [9, 9, 9] : undefined)
+    expect(camera_target).toEqual(kept ? [1, 1, 1] : undefined)
+    expect(document.querySelector(`.reset-camera`) !== null).toBe(kept)
+  },
+)
+
+// An external supercell (a phonon mode cell) carries unit_cell_idx into a cell the scene never
+// sees, while reference-structure displacements index the displayed sites: the scene's own
+// unit_cell_idx default folded both copies onto site 1, drawing the wrong arrows
+test(`hands the scene the session's base-index rule for an external supercell`, async () => {
+  mock_gpu()
+  const supercell = make_supercell(
+    make_crystal(5, [{ element: `C`, abc: [0, 0, 0] }]),
+    `2x1x1`,
+  )
+  expect(supercell.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 0])
+  mount_structure({
+    structure: supercell,
+    reference_structure: supercell,
+    show_image_atoms: false,
+  })
+  await tick()
+  const to_base_site_idx = scene_stub.props?.to_base_site_idx
+  expect(supercell.sites.map((site, idx) => to_base_site_idx?.(site, idx))).toEqual([0, 1])
+})
 
 test.each([
   [`coordinates`, SAMPLE_CHGCAR_CONTENT, `Direct\n0 0 0`, `Direct\n0.5 0 0`, true],
@@ -688,9 +732,7 @@ test(`host geometry moves drawn atoms and cell, keeps the input, selection and v
     prediction: undefined,
   })
   const tool = await mount_host_structure(bind_props({}, state))
-  flushSync(() => {
-    state.selected_sites = [1]
-  })
+  flushSync(() => (state.selected_sites = [1]))
   const [tool_input, bound_input] = [tool.host_props.structure, state.structure]
   // Drawn sites (images excluded) and cell box.
   const drawn = () => ({
@@ -713,10 +755,7 @@ test(`host geometry moves drawn atoms and cell, keeps the input, selection and v
   // A density on the relaxed cell keeps its own frame rather than the input's.
   const relaxed_density = make_volume(
     make_grid(2, 2, 2, (x_idx) => 1 + x_idx),
-    {
-      id: `density`,
-      lattice: relaxed_cell,
-    },
+    { id: `density`, lattice: relaxed_cell },
   )
   const input_drawn = { xyz: input.sites.map(({ xyz }) => xyz), cell: input.lattice.matrix }
   const final_geometry = { ...step(0.3), lattice: relaxed_cell }
@@ -1100,30 +1139,18 @@ test.each([
       color_property: `charge`,
     }
     flushSync(() => tool_props.on_overlay(overlay))
-    expect(state.atom_color_config).toMatchObject({
-      mode: `property`,
-      property_key: `charge`,
-    })
+    expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `charge` })
     expect(state.isosurface_settings.layers).toHaveLength(1)
     flushSync(() => {
       state.isosurface_settings.layers[0].isovalue = 0.123
-      state.atom_color_config = {
-        ...state.atom_color_config,
-        scale: `interpolateViridis`,
-      }
+      state.atom_color_config = { ...state.atom_color_config, scale: `interpolateViridis` }
     })
     flushSync(() =>
-      tool_props.on_overlay({
-        ...overlay,
-        site_properties: [...overlay.site_properties],
-      }),
+      tool_props.on_overlay({ ...overlay, site_properties: [...overlay.site_properties] }),
     )
     expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
     flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
-    expect(state.atom_color_config).toMatchObject({
-      mode: `property`,
-      property_key: `magmom`,
-    })
+    expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `magmom` })
     expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
     // Reusing the array must still publish its changed contents and preserve appearance.
     overlay.volumes[0] = { ...overlay.volumes[0], label: `Updated prediction` }
@@ -1310,13 +1337,9 @@ test.each([false, true])(
       bind_props({ structure: source }, state),
       mount_structure,
     )
-    const overlay = {
-      volumes: [{ ...volumetric_data[0], label: `Prediction` }],
-    }
+    const overlay = { volumes: [{ ...volumetric_data[0], label: `Prediction` }] }
     flushSync(() => tool_props.on_overlay(overlay))
-    flushSync(() => {
-      state.isosurface_settings.layers[0].isovalue = 0.321
-    })
+    flushSync(() => (state.isosurface_settings.layers[0].isovalue = 0.321))
     doc_query(`.structure`).dispatchEvent(
       create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `added.CHGCAR`)),
     )
@@ -1399,14 +1422,10 @@ test.each([false, true])(
     expect(document.body.textContent).not.toContain(`hidden in standardized cells`)
     flushSync(() => tool_props.set_overlay_visible(true))
     flushSync(() => tool_props.on_overlay(overlay))
-    flushSync(() => {
-      state.display_mode = `slice`
-    })
+    flushSync(() => (state.display_mode = `slice`))
     expect(document.body.textContent).toContain(`No volumetric data available`)
     click_button(`Use original cell`)
-    flushSync(() => {
-      state.display_mode = `structure`
-    })
+    flushSync(() => (state.display_mode = `structure`))
     expect(
       document.querySelector(`button[aria-label="Add surface for Prediction"]`),
     ).not.toBeNull()
@@ -1523,24 +1542,6 @@ describe(`Structure`, () => {
       mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
     ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)
     expect(colors.element).toEqual(page_colors)
-  })
-
-  // Regression: bond-edit identity tokens (structure_identity) were stored in
-  // deeply-proxied $state, so comparing them against the raw `structure` prop
-  // triggered state_proxy_equality_mismatch on mount. They must use $state.raw.
-  test(`mount does not emit state_proxy_equality_mismatch warning`, async () => {
-    const warns: string[] = []
-    vi.spyOn(console, `warn`).mockImplementation((...args: unknown[]) => {
-      warns.push(args.map(String).join(` `))
-    })
-    mount_structure({ structure })
-    flushSync()
-    await tick()
-    flushSync()
-    const proxy_warns = warns.filter((warn) =>
-      /state_proxy_equality_mismatch|effect_update_depth/i.test(warn),
-    )
-    expect(proxy_warns).toEqual([])
   })
 
   test(`shows a dismissible symmetry warning when analysis fails`, async () => {
@@ -1714,36 +1715,28 @@ describe(`Structure`, () => {
 
     const viewer = doc_query(`.structure`)
     const mode_toggle = doc_query<HTMLButtonElement>(`.atom-legend .mode-toggle`)
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
-    expect(mode_toggle.tabIndex).toBe(-1)
-
+    const expect_shown = (shown: boolean) =>
+      expect([getComputedStyle(mode_toggle).opacity, mode_toggle.tabIndex]).toEqual(
+        shown ? [`1`, 0] : [`0`, -1],
+      )
+    expect_shown(false)
     viewer.focus()
     await tick()
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-    expect(mode_toggle.tabIndex).toBe(0)
-
+    expect_shown(true)
     mode_toggle.focus()
     await tick()
     expect(document.activeElement).toBe(mode_toggle)
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-
+    expect_shown(true)
     mode_toggle.blur()
     await tick()
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
-    expect(mode_toggle.tabIndex).toBe(-1)
-
-    await fire(viewer, new PointerEvent(`pointerenter`))
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-    expect(mode_toggle.tabIndex).toBe(0)
-
-    await fire(viewer, new PointerEvent(`pointerleave`))
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
-
+    expect_shown(false)
     // second hover cycle: the unbound $bindable hovered prop must keep driving the toggle
-    await fire(viewer, new PointerEvent(`pointerenter`))
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`1`)
-    await fire(viewer, new PointerEvent(`pointerleave`))
-    expect(getComputedStyle(mode_toggle).opacity).toBe(`0`)
+    for (const _cycle of [1, 2]) {
+      await fire(viewer, new PointerEvent(`pointerenter`))
+      expect_shown(true)
+      await fire(viewer, new PointerEvent(`pointerleave`))
+      expect_shown(false)
+    }
   })
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
@@ -1797,11 +1790,7 @@ describe(`Structure`, () => {
         structure: AnyStructure
         measure_mode: MeasureMode
         selected_sites: number[]
-      }>({
-        structure,
-        measure_mode: `edit-atoms`,
-        selected_sites: [],
-      })
+      }>({ structure, measure_mode: `edit-atoms`, selected_sites: [] })
       mount_structure(state)
       await tick()
       state.selected_sites = [0]
@@ -1926,7 +1915,6 @@ describe(`Structure`, () => {
         ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
       ].find((button) => button.textContent?.includes(`Edit Bonds`))
 
-      expect(edit_bonds_button).toBeDefined()
       expect(edit_bonds_button?.disabled).toBe(disabled)
       edit_bonds_button?.click()
       await tick()
@@ -1972,7 +1960,6 @@ describe(`Structure`, () => {
   })
 
   test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
-    // Read-only results keep their identity when unrelated viewer state changes.
     const props = $state<ComponentProps<typeof Structure>>({
       structure,
       active_volume_id: `0`,
@@ -2008,19 +1995,9 @@ describe(`Structure`, () => {
       const out_of_cell = {
         ...structure,
         lattice: { ...structure.lattice, pbc },
-        sites: [
-          {
-            ...structure.sites[0],
-            abc,
-            xyz: frac_to_cart(abc),
-          },
-        ],
+        sites: [{ ...structure.sites[0], abc, xyz: frac_to_cart(abc) }],
       }
-      const state = mount_structure({
-        structure: out_of_cell,
-        show_image_atoms: false,
-      })
-
+      const state = mount_structure({ structure: out_of_cell, show_image_atoms: false })
       await vi.waitFor(() => expect(state.displayed_structure).toBeDefined())
       const displayed_site = state.displayed_structure?.sites[0]
       expect(displayed_site?.abc).toEqual(expected)
@@ -2037,7 +2014,6 @@ describe(`Structure`, () => {
     mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
 
     await vi.waitFor(() => {
-      // error log proves make_supercell was called, threw, and was caught
       expect(error_spy).toHaveBeenCalledWith(`Failed to create supercell:`, expect.any(Error))
       // legend reflects the untransformed base structure, not 8x supercell counts
       const legend_total = [
@@ -2181,38 +2157,15 @@ describe(`Structure`, () => {
   // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
   // ordered tuple and roll the oldest pick out, so they never hit a wall worth badging.
   test.each([
-    { mode: `distance`, shows_limit: true },
-    { mode: `angle`, shows_limit: false },
-    { mode: `dihedral`, shows_limit: false },
-    { mode: `edit-bonds`, shows_limit: false },
-    { mode: `edit-atoms`, shows_limit: false },
-  ] as const)(
-    `selection limit badge visibility in $mode mode`,
-    async ({ mode, shows_limit }) => {
-      mount_structure({
-        structure,
-        measured_sites: [0, 1, 2, 3, 4, 5, 6, 7],
-        measure_mode: mode,
-        show_controls: true,
-      })
-      await tick()
-
-      expect(document.querySelector(`.selection-limit-text`) != null).toBe(shows_limit)
-    },
-  )
-
-  test.each<{
-    mode: MeasureMode
-    measured_sites: number[]
-    selected_sites: number[]
-    shows_reset: boolean
-  }>([
-    { mode: `distance`, measured_sites: [0], selected_sites: [], shows_reset: true },
-    { mode: `angle`, measured_sites: [0], selected_sites: [], shows_reset: true },
-    { mode: `edit-bonds`, measured_sites: [0], selected_sites: [0], shows_reset: false },
-  ])(
-    `selection controls visibility in $mode mode`,
-    async ({ mode, measured_sites, selected_sites, shows_reset }) => {
+    [`distance`, [], true, true],
+    [`angle`, [], false, true],
+    [`dihedral`, [], false, true],
+    [`edit-bonds`, [0], false, false],
+    [`edit-atoms`, [], false, false],
+  ] satisfies [MeasureMode, number[], boolean, boolean][])(
+    `%s mode with selected=%o: limit badge=%s, reset button=%s`,
+    async (mode, selected_sites, shows_limit, shows_reset) => {
+      const measured_sites = [0, 1, 2, 3, 4, 5, 6, 7]
       mount_structure({
         structure,
         measured_sites,
@@ -2221,47 +2174,14 @@ describe(`Structure`, () => {
         show_controls: true,
       })
       await tick()
-
+      expect(document.querySelector(`.selection-limit-text`) !== null).toBe(shows_limit)
       expect(
-        document.querySelector(`button[aria-label="Reset selection and bond edits"]`) != null,
+        document.querySelector(`button[aria-label="Reset selection and bond edits"]`) !== null,
       ).toBe(shows_reset)
     },
   )
 
-  test(`keeps view selection across coordinate updates in one structure series`, async () => {
-    const props = $state<{
-      structure: AnyStructure
-      structure_series_key: unknown
-      selected_sites: number[]
-    }>({
-      structure,
-      structure_series_key: {},
-      selected_sites: [],
-    })
-    mount_structure(props)
-    await tick()
-    props.selected_sites = [0]
-
-    props.structure = {
-      ...structure,
-      sites: structure.sites.map((site, site_idx) =>
-        site_idx === 0
-          ? {
-              ...site,
-              xyz: [site.xyz[0] + 0.1, site.xyz[1], site.xyz[2]] as Vec3,
-            }
-          : site,
-      ),
-    }
-    await tick()
-    expect(props.selected_sites).toEqual([0])
-
-    props.structure_series_key = {}
-    await tick()
-    expect(props.selected_sites).toEqual([])
-  })
-
-  test(`invalidates site-indexed state on topology changes without changing series`, async () => {
+  test(`site-indexed state survives coordinate updates, clears on topology or series changes`, async () => {
     const props = $state<{
       structure: AnyStructure
       structure_series_key: unknown
@@ -2280,17 +2200,23 @@ describe(`Structure`, () => {
     mount_structure(props)
     await tick()
     props.selected_sites = [0]
-    props.measured_sites = [0]
-    props.highlighted_sites = [0]
-    props.hovered_site_idx = 0
-
     props.structure = {
       ...structure,
-      sites: structure.sites.map((site) => ({ ...site, xyz: [...site.xyz] as Vec3 })),
+      sites: structure.sites.map((site, site_idx): typeof site =>
+        site_idx === 0
+          ? { ...site, xyz: [site.xyz[0] + 0.1, site.xyz[1], site.xyz[2]] }
+          : site,
+      ),
     }
     await tick()
     expect(props.selected_sites).toEqual([0])
-
+    props.structure_series_key = {}
+    await tick()
+    expect(props.selected_sites).toEqual([])
+    props.selected_sites = [0]
+    props.measured_sites = [0]
+    props.highlighted_sites = [0]
+    props.hovered_site_idx = 0
     props.structure = { ...structure, sites: structure.sites.slice(1) }
     await tick()
     expect(props.selected_sites).toEqual([])
@@ -2376,15 +2302,14 @@ describe(`Structure`, () => {
     expect(vector_color(`magmom`)).not.toBeNull()
   })
 
-  test(`preserves control chrome overrides and toggles fullscreen`, async () => {
+  // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
+  // setting it from the parent requests/exits fullscreen like the button does
+  test(`preserves control chrome overrides and toggles bind:fullscreen`, async () => {
     const on_fullscreen_change = vi.fn()
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    mount_structure({
-      structure,
-      show_controls: `always`,
-      style: `--ctrl-btn-icon-size: 32px`,
-      on_fullscreen_change,
-    })
+    const props = $state({ fullscreen: false })
+    const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
+    mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
     const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
       stub_fullscreen_api()
     request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
@@ -2410,41 +2335,17 @@ describe(`Structure`, () => {
 
     await set_fullscreen_element(wrapper)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
-    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
-
-    fullscreen_button.click()
-    await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
-
-    await set_fullscreen_element(null)
-    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(on_fullscreen_change).toHaveBeenLastCalledWith({
-      structure,
-      fullscreen: false,
-    })
-    expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
-  })
-
-  // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
-  // setting it from the parent requests/exits fullscreen like the button does
-  test(`bind:fullscreen follows the fullscreen element and drives it`, async () => {
-    const props = $state({ fullscreen: false })
-    mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
-    const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
-      stub_fullscreen_api()
-    await tick()
-
-    doc_query<HTMLButtonElement>(
-      `.structure > section.control-buttons > .fullscreen-btn`,
-    ).click()
-    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledOnce())
-    await set_fullscreen_element(wrapper)
     expect(props.fullscreen).toBe(true)
+    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
 
     props.fullscreen = false
     await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
     await set_fullscreen_element(null)
+    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
     expect(props.fullscreen).toBe(false)
     expect(wrapper.classList.contains(`fullscreen`)).toBe(false)
+    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: false })
+    expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
   })
 
   // `width`/`height` are bindable read-outs of the wrapper's client size, kept current through
@@ -2652,12 +2553,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     auto_rotate: 0.5,
     ...camera,
   }
-  mount_structure({
-    structure,
-    active_pane: `controls`,
-    show_controls: true,
-    scene_props,
-  })
+  mount_structure({ structure, active_pane: `controls`, show_controls: true, scene_props })
   await tick()
 
   const projection_label = [...document.querySelectorAll(`label`)].find((label) =>
@@ -2767,8 +2663,10 @@ test(`scene_props owns the trail toggle in both directions`, async () => {
   expect(toggle.checked).toBe(true)
 })
 
+// Also a regression for bond-edit identity tokens (structure_identity) stored in deeply-proxied
+// $state: comparing them against the raw `structure` prop warned state_proxy_equality_mismatch.
 test.each([`literal`, `bound`] as const)(
-  `control edits reach %s scene_props in place without ownership warnings`,
+  `control edits reach %s scene_props in place without ownership or proxy warnings`,
   async (mode) => {
     mock_gpu()
     const warn_spy = vi.spyOn(console, `warn`)
@@ -2791,10 +2689,14 @@ test.each([`literal`, `bound`] as const)(
     // the parent's bound object is edited, not swapped for a copy on every change
     expect(state.bound_scene_props).toBe(settings)
     expect(settings.show_site_labels).toBe(mode === `bound`)
-    const ownership_warnings = warn_spy.mock.calls.filter((args) =>
-      args.some((arg) => String(arg).includes(`ownership_invalid`)),
+    const svelte_warnings = warn_spy.mock.calls.filter((args) =>
+      args.some((arg) =>
+        /ownership_invalid|state_proxy_equality_mismatch|effect_update_depth/i.test(
+          String(arg),
+        ),
+      ),
     )
-    expect(ownership_warnings).toEqual([])
+    expect(svelte_warnings).toEqual([])
   },
 )
 
@@ -3006,39 +2908,32 @@ describe(`source acquisition`, () => {
     },
   )
 
-  test(`keeps loading active until async source handlers finish`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    const { promise, resolve } = Promise.withResolvers<undefined>()
-    const on_file_drop = vi.fn(() => promise)
-    const state = $state({ loading: false })
-    mount_structure(bind_props({ source: `/test.poscar`, on_file_drop }, state))
+  // A host handler's failure is reported in its own words
+  test.each([false, true])(
+    `keeps loading active until an async source handler settles (fails=%s)`,
+    async (fails) => {
+      mock_fetch_response(SAMPLE_POSCAR_CONTENT)
+      const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+      const on_file_drop = vi.fn(() => promise)
+      const on_error = vi.fn()
+      const state = $state({ loading: false })
+      mount_structure(bind_props({ source: `/test.poscar`, on_file_drop, on_error }, state))
 
-    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
-    expect(state.loading).toBe(true)
-    expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
-      `Loading structure...`,
-    )
-    // the empty-state text would be drawn right under the spinner's label
-    expect(document.body.textContent).not.toContain(`No structure provided`)
-    resolve(undefined)
-    await vi.waitFor(() => expect(state.loading).toBe(false))
-  })
-
-  // A host handler's failure is reported in its own words, with the payload's source identity
-  test(`reports async source handler failures`, async () => {
-    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-    const on_error = vi.fn()
-    mount_structure({
-      source: `/test.poscar`,
-      on_file_drop: () => Promise.reject(new Error(`handler failed`)),
-      on_error,
-    })
-    await vi.waitFor(() =>
-      expect(on_error).toHaveBeenCalledWith(
-        expect.objectContaining({ error_msg: `handler failed` }),
-      ),
-    )
-  })
+      await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
+      expect(state.loading).toBe(true)
+      expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+        `Loading structure...`,
+      )
+      // the empty-state text would be drawn right under the spinner's label
+      expect(document.body.textContent).not.toContain(`No structure provided`)
+      if (fails) reject(new Error(`handler failed`))
+      else resolve(undefined)
+      await vi.waitFor(() => expect(state.loading).toBe(false))
+      expect(on_error.mock.calls).toEqual(
+        fails ? [[expect.objectContaining({ error_msg: `handler failed` })]] : [],
+      )
+    },
+  )
 
   test.each([
     [`test.poscar`, SAMPLE_POSCAR_CONTENT],
@@ -3097,34 +2992,41 @@ describe(`source acquisition`, () => {
   // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
   const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
     const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({
-      source: `/a.json`,
-      ...extra,
-    })
+    const props = $state<ComponentProps<typeof Structure>>({ source: `/a.json`, ...extra })
     mount_structure(props)
     await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
     return { responses, props }
   }
 
-  test(`ignores a stale structure URL completion`, async () => {
-    const on_file_load = vi.fn()
-    const { responses, props } = await mount_pending_url({ on_file_load })
-
+  // on_file_load/on_error report the requested URL, never a superseded source's completion.
+  // Mounts /a.json, switches to /b.json and waits until both requests are pending.
+  const supersede_source_url = async () => {
+    const [on_file_load, on_error] = [vi.fn(), vi.fn()]
+    const { responses, props } = await mount_pending_url({ on_file_load, on_error })
     props.source = `/b.json`
     await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses
-      .get(`/b.json`)
-      ?.shift()
-      ?.resolve(new Response(structure_json(`He`)))
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    const pending = (url: string) => responses.get(url)?.shift()
+    return { on_file_load, on_error, pending }
+  }
 
-    responses
-      .get(`/a.json`)
-      ?.shift()
-      ?.resolve(new Response(structure_json(`H`)))
+  test(`ignores a superseded source URL's success landing after the new source loaded`, async () => {
+    const { on_file_load, on_error, pending } = await supersede_source_url()
+    pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
     await tick()
-    expect(on_file_load).toHaveBeenCalledTimes(1)
+    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([1, 0])
     expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  })
+
+  test(`ignores a superseded source URL's failure landing while the new source is pending`, async () => {
+    const { on_file_load, on_error, pending } = await supersede_source_url()
+    pending(`/a.json`)?.reject(new Error(`/a.json failed`))
+    pending(`/b.json`)?.reject(new Error(`/b.json failed`))
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+    await tick()
+    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([0, 1])
+    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
   })
 
   test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {
@@ -3137,21 +3039,6 @@ describe(`source acquisition`, () => {
     await tick()
     await tick()
     expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
-  })
-
-  test(`on_error reports the requested URL, not a superseded source`, async () => {
-    const on_error = vi.fn()
-    const { responses, props } = await mount_pending_url({ on_error })
-
-    props.source = `/b.json`
-    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    responses.get(`/a.json`)?.shift()?.reject(new Error(`network down`))
-    await tick()
-    expect(on_error).not.toHaveBeenCalled()
-
-    responses.get(`/b.json`)?.shift()?.reject(new Error(`gone`))
-    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
   })
 
   // Deleting an atom writes a new structure object through the binding. Without re-claiming it

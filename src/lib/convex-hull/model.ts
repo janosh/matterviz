@@ -143,11 +143,9 @@ export function build_hull_model(
   const needs_hull_distance = (entry: ConvexHullEntry): boolean =>
     energy_mode === `on-the-fly` || !Number.isFinite(entry.e_above_hull)
   if (entries.some(needs_hull_distance)) {
-    // No facets means every hull point sits at E_form = 0 (the corners always do), so the
-    // hull is that plane and the distance is E_form itself
     const raw_dists =
       hull_facets.length === 0
-        ? entries.map((entry) => entry.e_form_per_atom)
+        ? thermo.e_above_hull_distances(entries, entries) // flat hull: plane through corners
         : thermo.compute_e_above_hull_nd(
             entries.map((entry) => hull_point(entry, dim)),
             hull_facets,

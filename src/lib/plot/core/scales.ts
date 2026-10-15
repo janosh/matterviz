@@ -56,12 +56,40 @@ const assert_tick_count = (count: number, requested: string, span: number): void
 // Dedupe and sort numeric array (used in tick generation)
 const dedupe_sort = (arr: number[]): number[] => math.sorted_numbers(new Set(arr))
 
+// Formats that print every value as an integer: `d` types (`d`, `,d`, `~d`) and zero-precision
+// fixed point (`.0f`, `,.0f`), but no time (`%d`) or percent (`.0%`) format
+export const is_integer_format = (format: string | null | undefined): boolean =>
+  typeof format === `string` &&
+  !format.includes(`%`) &&
+  (format.endsWith(`d`) || format.endsWith(`.0f`))
+
+// Tick positions an integer format can label: each tick rounded to the integer its label
+// reads, without repeats or values outside the domain (input order kept). A domain no
+// integer fits (zoomed below one unit) keeps the plain ticks, which tick_label_format then
+// labels as decimals instead of leaving the axis empty.
+export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] => {
+  const ints = [...new Set(ticks.map(Math.round))].filter((tick) =>
+    math.in_range(tick, domain),
+  )
+  return ints.length > 0 ? ints : [...ticks]
+}
+
+// Format for tick labels: an integer format can't label the all-fractional ticks
+// integer_ticks falls back to (0.2, 0.4 would all read `0`), so those get the default
+// decimal labels. Ticks with any integer among them (incl. explicit arrays) keep the format.
+export const tick_label_format = (
+  ticks: readonly number[],
+  format: string | undefined,
+): string | undefined =>
+  is_integer_format(format) && ticks.length > 0 && !ticks.some(Number.isInteger)
+    ? undefined
+    : format
+
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and
 // logarithmic (for large |x|) behavior. Unlike log, it handles negative values.
 // Formula: y = asinh(x / threshold) = ln(x/c + sqrt((x/c)² + 1))
 
-// Interface for arcsinh scale (D3-compatible)
 export interface ArcsinhScale {
   (value: number): number
   domain(): Vec2
@@ -72,13 +100,11 @@ export interface ArcsinhScale {
   ticks(count?: number): number[]
 }
 
-// Union type for all scale functions used in plots
 export type PlotScaleFn =
   | ScaleContinuousNumeric<number, number>
   | ScaleTime<number, number>
   | ArcsinhScale
 
-// Create an arcsinh scale with configurable threshold
 export function scale_arcsinh(threshold = 1): ArcsinhScale {
   if (!Number.isFinite(threshold) || threshold <= 0) {
     throw new Error(`arcsinh threshold must be a positive finite number, got ${threshold}`)
@@ -131,8 +157,7 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   return scale
 }
 
-// Generate nice tick values for arcsinh scale
-// Strategy: symmetric around zero when possible, with powers of 10 for large values.
+// Arcsinh ticks: symmetric around zero when possible, with powers of 10 for large values.
 // On mixed ranges, count=1 yields just [0]; count>=2 yields zero plus symmetric powers per side.
 export function generate_arcsinh_ticks(
   min: number,
@@ -162,9 +187,6 @@ export function generate_arcsinh_ticks(
   return dedupe_sort([0, ...side(upper), ...side(-lower).map((tick) => -tick)])
 }
 
-// Generate positive arcsinh ticks (helper)
-// Ensures domain boundaries (min, max) are included when they provide meaningful
-// visual anchors that powers-of-10 alone might miss.
 function generate_positive_arcsinh_ticks(
   min: number,
   max: number,
@@ -172,53 +194,34 @@ function generate_positive_arcsinh_ticks(
   count: number,
 ): number[] {
   if (count <= 0 || max <= min) return []
-
-  const ticks: number[] = []
+  const in_range = (val: number): boolean => val >= min && val <= max
 
   // Small range near threshold: use linear-like spacing
   if (max <= threshold * 2) {
     const step = (max - min) / count
-    for (let idx = 0; idx <= count; idx++) {
-      const val = min + step * idx
-      if (val >= min && val <= max) ticks.push(val)
-    }
-    return dedupe_sort(ticks)
+    const ticks = range(Math.floor(count) + 1).map((idx) => min + step * idx)
+    return dedupe_sort(ticks.filter(in_range))
   }
 
-  // Large range: log-like spacing via powers of 10.
-  // Domain endpoints are intentionally NOT added as ticks: raw extremes render as long
-  // unrounded labels (e.g. 1325.8239811994677). Powers of 10 plus 2x/5x multiples below
-  // already give clean round ticks; pass axis.ticks/axis.format for custom labels.
-
-  // Add threshold as a tick if in range
-  if (threshold >= min && threshold <= max) ticks.push(threshold)
-
-  // Add powers of 10 that are in range. Start at the threshold (not a decade below): values
-  // below it sit in arcsinh's near-linear region and map almost onto 0, so sub-threshold powers
-  // (e.g. ±1 when threshold=10) would pile up on the zero tick and overlap.
+  // Large range: the threshold plus powers of 10 (and 2x/5x multiples), never the raw domain
+  // endpoints, which render as unrounded labels (e.g. 1325.8239811994677). Powers start at the
+  // threshold: below it arcsinh is near-linear, so e.g. ±1 at threshold=10 would pile onto 0.
   const min_power = Math.floor(Math.log10(Math.max(min, threshold)))
-  const max_power = Math.ceil(Math.log10(max))
-
-  for (let power = min_power; power <= max_power; power++) {
-    const val = 10 ** power
-    if (val >= min && val <= max) ticks.push(val)
-  }
-
-  // Add intermediate values (2x, 5x) for sparser regions
+  const powers = range(min_power, Math.ceil(Math.log10(max)) + 1).map((power) => 10 ** power)
+  const ticks = [threshold, ...powers].filter(in_range)
+  // Intermediate values (2x, 5x) for sparser regions
   if (ticks.length < count) {
-    for (let power = min_power; power < max_power; power++) {
-      const base = 10 ** power
-      for (const mult of [2, 5]) {
-        const val = base * mult
-        if (val >= min && val <= max) ticks.push(val)
-      }
-    }
+    ticks.push(
+      ...powers
+        .slice(0, -1)
+        .flatMap((base) => [base * 2, base * 5])
+        .filter(in_range),
+    )
   }
 
   const result = dedupe_sort(ticks)
-  // Respect `count`: surplus small powers sit near zero in arcsinh space (their values map almost
-  // onto 0) and crowd the labels. Keep the largest-magnitude ticks — they anchor the range extent
-  // and are the most spread out — dropping near-zero ones first.
+  // Respect `count` by dropping near-zero ticks first: they crowd together in arcsinh space,
+  // while the largest-magnitude ones anchor the range extent
   return result.length > count ? result.slice(-count) : result
 }
 
@@ -272,9 +275,9 @@ export function generate_ticks(
   scale_type: ScaleType,
   ticks_option: TicksOption | undefined,
   scale_fn: PlotScaleFn, // D3 scale function with .ticks() method
-  options: { default_count?: number } = {},
+  options: { default_count?: number; format?: string } = {},
 ): number[] {
-  const { default_count = 8 } = options
+  const { default_count = 8, format } = options
   // Descending domains (e.g. [10, 0]) are a supported axis mode and every branch below wants
   // ascending bounds (a raw max_val < min_val collapses interval counts to zero ticks). Tick
   // order is irrelevant to rendering, so ascending output is fine.
@@ -285,7 +288,6 @@ export function generate_ticks(
     assert_tick_count(positive_count, `a tick count of ${positive_count}`, max_val - min_val)
   }
 
-  // If ticks_option is an object (value-to-label mapping), extract values
   if (is_tick_label_map(ticks_option)) {
     return Object.keys(ticks_option)
       .map(Number)
@@ -293,8 +295,14 @@ export function generate_ticks(
       .toSorted((left_value, right_value) => left_value - right_value)
   }
 
-  // If ticks_option is already an array, use it directly
   if (Array.isArray(ticks_option)) return ticks_option
+
+  // Integer formats round each generated label: 0.5 steps read `0, 1, 1, 2`. Explicit
+  // positions and label maps returned above are the caller's.
+  if (is_integer_format(format)) {
+    const ticks = generate_ticks(domain, scale_type, ticks_option, scale_fn, { default_count })
+    return math.sorted_numbers(integer_ticks(ticks, domain))
+  }
 
   if (is_time_scale(scale_type)) {
     // Interval requests (`day`/`month`/`year` or a negative day count) ask d3 for one tick per
@@ -329,10 +337,8 @@ export function generate_ticks(
 
   const type_name = get_scale_type_name(scale_type)
 
-  // Log scale ticks
   if (type_name === `log`) return generate_log_ticks(min_val, max_val, positive_count)
 
-  // Arcsinh scale ticks
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
     return generate_arcsinh_ticks(min_val, max_val, threshold, positive_count ?? default_count)
@@ -351,7 +357,6 @@ export function generate_ticks(
     return range(start, max_val + interval * 0.1, interval)
   }
 
-  // Default ticks using scale function
   return scale_fn.ticks(positive_count ?? default_count).map(Number)
 }
 
@@ -534,13 +539,11 @@ export function nice_range_from_extent(
   // If time or no range after padding, return the (potentially padded) domain directly
   if (is_time || data_min === data_max) return [data_min, data_max]
 
-  // Use D3's nice() to create pretty boundaries
-  // For arcsinh, we don't use D3's nice() - just return padded domain
+  // D3's nice() for pretty boundaries, except arcsinh which keeps the padded domain
   if (type_name === `arcsinh`) {
     return [snap_zero_min ? 0 : data_min, snap_zero_max ? 0 : data_max]
   }
 
-  // Create the scale with the *padded* data domain
   const scale =
     type_name === `log`
       ? scaleLog().domain(positive_log_domain(data_min, data_max))
@@ -556,9 +559,30 @@ export function nice_range_from_extent(
   return type_name === `log` ? validate_log_range(result) : result
 }
 
+// d3's fine log ticks step through every mantissa 1-9 whatever the count (17 ticks on
+// [0.0184, 0.993] for 6 requested). Keep the set closest to the count among all ticks and the
+// 1-2-5 or 1 mantissas (ties keep the denser, a thinned set needs two ticks), then every n-th
+// tick of it if that still overshoots by more than one ([2..8] -> [2, 4, 6, 8] for 5).
+const thin_log_ticks = (ticks: number[], count: number): number[] => {
+  const mantissa = (tick: number): number => tick / 10 ** Math.floor(Math.log10(tick) + 1e-9)
+  const has_mantissa = (digits: number[]) => (tick: number) =>
+    digits.some((digit) => Math.abs(mantissa(tick) - digit) < 1e-9)
+  const best = [[1, 2, 5], [1]]
+    .map((digits) => ticks.filter(has_mantissa(digits)))
+    .filter((subset) => subset.length >= 2)
+    .reduce(
+      (closest, subset) =>
+        Math.abs(subset.length - count) < Math.abs(closest.length - count) ? subset : closest,
+      ticks,
+    )
+  if (best.length <= count + 1) return best
+  const stride = Math.ceil(best.length / (count + 1))
+  return best.filter((_, idx) => idx % stride === 0)
+}
+
 // Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
-// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks for
-// sub-decade domains (e.g. after zooming) where fewer than two powers of 10 fit.
+// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks (thinned
+// toward the count) for sub-decade domains (e.g. after zooming) where fewer than two powers fit.
 export function generate_log_ticks(min: number, max: number, count?: number): number[] {
   ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
@@ -569,9 +593,12 @@ export function generate_log_ticks(min: number, max: number, count?: number): nu
   const tick_count = count !== undefined && count > 0 ? count : 5
   // Powers of ten, or d3's fine mantissa ticks when fewer than two powers fall in range
   const fine_ticks =
-    in_range_powers.length < 2 ? scaleLog().domain([min, max]).ticks(tick_count) : []
+    in_range_powers.length < 2
+      ? thin_log_ticks(scaleLog().domain([min, max]).ticks(tick_count), tick_count)
+      : []
   const base_ticks = fine_ticks.length > 0 ? fine_ticks : in_range_powers
-  if (max_power - min_power < 3 && tick_count > 5) {
+  // Decades the domain actually spans: floor/ceil of the bounds would count [0.5, 50] as three
+  if (Math.log10(max / min) < 3 && tick_count > 5) {
     const mantissa_ticks = powers
       .flatMap((power) => [power, power * 2, power * 5])
       .filter(in_range)
@@ -582,7 +609,6 @@ export function generate_log_ticks(min: number, max: number, count?: number): nu
   return base_ticks
 }
 
-// Get custom label for a tick value if provided, otherwise return null
 export const get_tick_label = (
   tick_value: number,
   ticks_option: TicksOption | undefined,
@@ -613,7 +639,6 @@ export function color_interpolator(config: ColorScaleConfig | D3InterpolateName)
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }
 
-// Create a color scale function from configuration
 export function create_color_scale(
   color_scale_config: ColorScaleConfig | D3InterpolateName,
   auto_color_range: Vec2,
@@ -624,24 +649,18 @@ export function create_color_scale(
       : color_scale_config
   const { value_range = auto_color_range, type: scale_type } = config
   const interpolator = color_interpolator(config)
-  const [min_val, max_val] = value_range
-
   const type_name = get_scale_type_name(scale_type)
-
   if (type_name === `log`) {
-    return scaleSequentialLog(interpolator).domain(log_color_domain([min_val, max_val]))
+    return scaleSequentialLog(interpolator).domain(log_color_domain(value_range))
   }
   if (type_name === `arcsinh`) {
-    // For arcsinh color scale, we create a custom scale that wraps the interpolator
     const threshold = get_arcsinh_threshold(scale_type)
-    return create_arcsinh_color_scale(interpolator, [min_val, max_val], threshold)
+    return create_arcsinh_color_scale(interpolator, [...value_range], threshold)
   }
-  return scaleSequential(interpolator).domain([min_val, max_val])
+  return scaleSequential(interpolator).domain(value_range)
 }
 
-// Create an arcsinh-based color scale (custom sequential scale)
-// Returns a D3-compatible scale with both getter and setter for domain
-// Scale function reads from closure state on each call for stable identity
+// D3-compatible arcsinh colour scale whose domain getter/setter keeps one stable instance
 function create_arcsinh_color_scale(
   interpolator: (fraction: number) => string,
   initial_domain: Vec2,
@@ -656,18 +675,15 @@ function create_arcsinh_color_scale(
     }
   }
 
-  // Single scale function that reads current domain on each call
   const scale = ((value: number): string => {
     const [d_min, d_max] = current_domain
     const t_min = Math.asinh(d_min / threshold)
     const t_max = Math.asinh(d_max / threshold)
     const t_val = Math.asinh(value / threshold)
-    // Normalize to [0, 1]
     const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
     return interpolator(clamp01(normalized))
   }) as ArcsinhColorScale
 
-  // Domain getter/setter for D3 compatibility - returns same scale instance
   scale.domain = function (new_domain?: Vec2) {
     if (new_domain === undefined) return current_domain
     current_domain = new_domain
@@ -677,7 +693,6 @@ function create_arcsinh_color_scale(
   return scale
 }
 
-// Create a size scale function from configuration
 export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
   const [min_radius, max_radius] = config.radius_range ?? SCALE_DEFAULTS.radius
   const [min_val, max_val] = config.value_range ?? auto_range
@@ -691,7 +706,6 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
       .clamp(true)
   }
   if (type_name === `arcsinh`) {
-    // Create arcsinh-based size scale
     const arcsinh_scale = scale_arcsinh(get_arcsinh_threshold(config.type))
       .domain([min_val, max_val])
       .range([min_radius, max_radius])

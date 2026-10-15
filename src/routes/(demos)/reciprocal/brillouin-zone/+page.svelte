@@ -3,15 +3,19 @@
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { FileInfo } from '#lib/io/types.js'
+  import { format_num } from '#lib/labels.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { structure_files, structure_map } from '#site/structures.js'
+  import { is_crystal } from '#lib/structure/validation.js'
+  import { parse_structure_fixture, structure_files, structure_map } from '#site/structures.js'
 
   let dropped_structure = $state<Crystal | undefined>()
+  // A Brillouin zone needs a lattice, so molecules stay out of the picker
+  const crystal_files = structure_files.filter((file) => file.category === `crystal`)
 
+  // any fixture format (CIF, POSCAR, ...), not only the plain-JSON ones in structure_map
   function handle_file_pick(file: FileInfo) {
-    if (!file.url) return
-    const struct = structure_map.get(file.name.replace(/\.\w+$/, ``))
-    if (struct && `lattice` in struct) dropped_structure = struct
+    const struct = parse_structure_fixture(file.name)
+    if (is_crystal(struct)) dropped_structure = struct
   }
 
   type BZExample = {
@@ -90,7 +94,7 @@
 <h1 id="brillouin-zones">Brillouin Zones</h1>
 
 <label>
-  Surface Opacity: {surface_opacity.toFixed(2)}
+  Surface Opacity: {format_num(surface_opacity, `.2f`)}
   <input type="range" min="0" max="1" step="0.05" bind:value={surface_opacity} />
 </label>
 
@@ -116,7 +120,7 @@
 
 <div class="try-own">
   <FilePicker
-    files={structure_files}
+    files={crystal_files}
     show_category_filters
     on_click={handle_file_pick}
     style="max-width: 600px; margin-inline: auto"

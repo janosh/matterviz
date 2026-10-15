@@ -121,9 +121,12 @@ describe(`collect_msd_positions`, () => {
     await expect(
       collect_msd_positions(run, { start_frame: 10, end_frame: 12, frame_stride: 2 }),
     ).rejects.toThrow(`need at least 2 frames, got 1`)
-    await expect(collect_msd_positions(run, { max_bytes: 1000 })).rejects.toThrow(
-      `Use frame_stride >= 5`,
-    )
+    // the suggestion counts the selected window, not frames already thinned by a stride
+    for (const frame_stride of [1, 2, 3]) {
+      await expect(
+        collect_msd_positions(run, { max_bytes: 1000, frame_stride }),
+      ).rejects.toThrow(`Use frame_stride >= 5`)
+    }
   })
 })
 

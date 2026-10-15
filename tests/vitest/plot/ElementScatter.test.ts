@@ -40,7 +40,7 @@ describe(`ElementScatter`, () => {
       | 'band_structs'
       | 'doses'
       | 'bz_data'
-      | 'k_path_points'
+      | 'k_path'
     type Options = ScatterPlotOptions &
       BarPlotOptions &
       HistogramOptions &

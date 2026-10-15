@@ -1,4 +1,5 @@
 // Spatial kinetic-energy reduction with bounded atom batches and one frame of bin statistics.
+import { display_idx } from '#lib/labels.js'
 import {
   AMU_KG,
   AVOGADRO_PER_MOL,
@@ -280,10 +281,10 @@ async function reduce_hotspots(
     batch_size > ATOM_BATCH_SIZE
   )
     throw new Error(
-      `Invalid hotspot frame range or batch size: ${start_frame}:${end_frame}:${frame_stride}, batch=${batch_size}`,
+      `Invalid hotspot frame range or batch size: frames ${display_idx(start_frame)}–${end_frame} (stride ${frame_stride}), batch=${batch_size}`,
     )
   if (preview_frame !== undefined && !is_valid_index(preview_frame, frame_count))
-    throw new Error(`Invalid hotspot preview frame ${preview_frame}`)
+    throw new Error(`Invalid hotspot preview frame ${display_idx(preview_frame)}`)
   if (
     ![2, 3].includes(dimensions) ||
     (!(dof_per_atom > 0 && dof_per_atom <= dimensions) &&
@@ -350,24 +351,22 @@ async function reduce_hotspots(
       signal,
     )
     signal?.throwIfAborted()
+    const fail = (problem: string) =>
+      new Error(`${problem} at frame ${display_idx(frame_idx)}, atom ${display_idx(start)}`)
     if (
       !Number.isInteger(batch.total_atoms) ||
       batch.total_atoms < 1 ||
-      batch.start + batch.atomic_numbers.length > batch.total_atoms
+      batch.start + batch.atomic_numbers.length > batch.total_atoms ||
+      !batch.positions.every(Number.isFinite)
     )
-      throw new Error(`Invalid coordinates or atom count at frame ${frame_idx}, atom ${start}`)
-    for (const position of batch.positions)
-      if (!Number.isFinite(position))
-        throw new Error(
-          `Invalid coordinates or atom count at frame ${frame_idx}, atom ${start}`,
-        )
+      throw fail(`Invalid coordinates or atom count`)
     if (
       batch.positions.length !== batch.atomic_numbers.length * 3 ||
       batch.start !== start ||
       !batch.atomic_numbers.length ||
       batch.atomic_numbers.length > batch_size
     )
-      throw new Error(`Invalid numeric atom batch at frame ${frame_idx}, atom ${start}`)
+      throw fail(`Invalid numeric atom batch`)
     const count = batch.atomic_numbers.length
     if (
       options.selection_key &&
@@ -375,16 +374,14 @@ async function reduce_hotspots(
         batch.selected.length !== count ||
         batch.selected.some((value) => value !== 0 && value !== 1))
     )
-      throw new Error(
-        `Missing or invalid selection ${options.selection_key} at frame ${frame_idx}, atom ${start}`,
-      )
+      throw fail(`Missing or invalid selection ${options.selection_key}`)
     if (
       with_channels &&
       (options.energy_key
         ? batch.energies?.length !== count
         : batch.masses?.length !== count || batch.velocities?.length !== count * 3)
     )
-      throw new Error(`Missing kinetic-energy inputs at frame ${frame_idx}, atom ${start}`)
+      throw fail(`Missing kinetic-energy inputs`)
     return batch
   }
   let first = await read(start_frame)
@@ -525,14 +522,14 @@ async function reduce_hotspots(
           const energy = batch.energies?.[atom_idx]
           if (energy === undefined || !Number.isFinite(energy) || energy < 0)
             throw new Error(
-              `Invalid kinetic energy at frame ${frame_idx}, atom ${batch.start + atom_idx}`,
+              `Invalid kinetic energy at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
             )
           scratch[base + 5] += energy * (energy_factor ?? 1)
         } else {
           const mass = batch.masses?.[atom_idx]
           if (mass === undefined || !Number.isFinite(mass) || mass <= 0 || !batch.velocities)
             throw new Error(
-              `Missing mass/velocity at frame ${frame_idx}, atom ${batch.start + atom_idx}`,
+              `Missing mass/velocity at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
             )
           const old_mass = scratch[base + 1]
           const total_mass = old_mass + mass
@@ -541,7 +538,7 @@ async function reduce_hotspots(
             const velocity = batch.velocities[offset + axis]
             if (!Number.isFinite(velocity))
               throw new Error(
-                `Invalid velocity at frame ${frame_idx}, atom ${batch.start + atom_idx}`,
+                `Invalid velocity at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
               )
             if (motion === `device`) {
               scratch[base + 5] += mass * velocity ** 2
@@ -621,7 +618,7 @@ async function reduce_hotspots(
         !Number.isFinite(result.dof[bin])
       )
         throw new Error(
-          `Kinetic-energy accumulation overflow at frame ${frame_idx}, bin ${bin}; check input units and values`,
+          `Kinetic-energy accumulation overflow at frame ${display_idx(frame_idx)}, bin ${display_idx(bin)}; check input units and values`,
         )
       result.occupied_frames[bin]++
     }

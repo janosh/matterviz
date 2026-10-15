@@ -10,6 +10,7 @@
 // images; it is reported separately from the highest computed image, since quoting the
 // interpolated value as if it were a computed image is a common reporting error.
 
+import { display_idx } from '#lib/labels.js'
 import type { LatticeConverters, Vec3 } from '#lib/math.js'
 import { clamp, create_lattice_converters, min_image_displacement } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
@@ -65,10 +66,12 @@ export function assert_path(
   }
   for (const [idx, image] of images.entries()) {
     if (typeof image.energy !== `number` || !Number.isFinite(image.energy)) {
-      throw new TypeError(`${context} image ${idx} has non-finite energy ${image.energy}`)
+      throw new TypeError(
+        `${context} image ${display_idx(idx)} has non-finite energy ${image.energy}`,
+      )
     }
     if (!image.structure?.sites?.length) {
-      throw new Error(`${context} image ${idx} has no structure sites`)
+      throw new Error(`${context} image ${display_idx(idx)} has no structure sites`)
     }
   }
   return images
@@ -116,13 +119,13 @@ const rss_norm = (vectors: readonly Vec3[]): number =>
 
 // Reaction coordinate of every image. `arc_length` (default) accumulates the
 // configuration-space distance between consecutive images, so unevenly spaced images
-// land where they physically belong; `image_index` returns the bare bead numbers.
+// land where they physically belong; `image_index` returns the 1-based image numbers.
 export function reaction_coordinate(
   path: ReactionPath | NebImage[],
   options: ReactionCoordOptions = {},
 ): number[] {
   const images = assert_path(path, `reaction_coordinate`)
-  if (options.mode === `image_index`) return images.map((_image, idx) => idx)
+  if (options.mode === `image_index`) return images.map((_image, idx) => display_idx(idx))
 
   const geometry = path_geometry(images[0].structure, options)
   const coords = [0]
@@ -186,7 +189,7 @@ function path_tangents(images: NebImage[], geometry: PathGeometry): Vec3[][] {
     const norm = rss_norm(raw)
     if (norm === 0) {
       throw new Error(
-        `Image ${image_idx} (${image.label ?? `unlabelled`}) has a zero-length path tangent; ` +
+        `Image ${display_idx(image_idx)} (${image.label ?? `unlabelled`}) has a zero-length path tangent; ` +
           `neighbouring images are identical, so dE/ds is undefined`,
       )
     }
@@ -206,10 +209,11 @@ export function projected_force_slopes(
   const tangents = path_tangents(images, path_geometry(images[0].structure, options))
   return images.map((image, image_idx) => {
     const forces = image.forces
-    if (!forces) throw new Error(`Image ${image_idx} unexpectedly lost its forces`)
+    if (!forces)
+      throw new Error(`Image ${display_idx(image_idx)} unexpectedly lost its forces`)
     if (forces.length !== image.structure.sites.length) {
       throw new Error(
-        `Image ${image_idx} has ${forces.length} force vectors for ${image.structure.sites.length} sites`,
+        `Image ${display_idx(image_idx)} has ${forces.length} force vectors for ${image.structure.sites.length} sites`,
       )
     }
     const tangent = tangents[image_idx]

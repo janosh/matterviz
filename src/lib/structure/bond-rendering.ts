@@ -115,6 +115,13 @@ export class BondFrame {
   }
 }
 export type BondData = readonly BondPair[] | BondFrame
+// Endpoint site indices and order of bond `idx`, read from a BondFrame's packed columns
+export const bond_site_1 = (bonds: BondData, idx: number): number =>
+  bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
+export const bond_site_2 = (bonds: BondData, idx: number): number =>
+  bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+export const bond_order_at = (bonds: BondData, idx: number): BondOrder | undefined =>
+  bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order
 export const bond_records = (bonds: BondData): readonly BondPair[] =>
   bonds instanceof BondFrame ? bonds.materialize() : bonds
 
@@ -123,10 +130,8 @@ export const bond_records = (bonds: BondData): readonly BondPair[] =>
 export function bond_neighbors(bonds: BondData, site_idx: number): number[] {
   const neighbors: number[] = []
   for (let idx = 0; idx < bonds.length; idx++) {
-    const first =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
-    const second =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+    const first = bond_site_1(bonds, idx)
+    const second = bond_site_2(bonds, idx)
     if (first === site_idx) neighbors.push(second)
     else if (second === site_idx) neighbors.push(first)
   }
@@ -140,9 +145,7 @@ export function count_bond_instances(bonds: BondData): number {
   if (bonds instanceof BondFrame && bonds.placements) return bonds.placements.instance_count
   let count = 0
   for (let idx = 0; idx < bonds.length; idx++)
-    count += instance_count_for_order(
-      bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order,
-    )
+    count += instance_count_for_order(bond_order_at(bonds, idx))
   return count
 }
 
@@ -163,11 +166,9 @@ export function prepare_bond_placements(bonds: BondData): BondPlacements {
       start = bonds[idx].pos_1
       end = bonds[idx].pos_2
     }
-    const order = bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order
-    const site_idx_1 =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
-    const site_idx_2 =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+    const order = bond_order_at(bonds, idx)
+    const site_idx_1 = bond_site_1(bonds, idx)
+    const site_idx_2 = bond_site_2(bonds, idx)
     max_site_idx = Math.max(max_site_idx, site_idx_1, site_idx_2)
     const copies = instance_count_for_order(order)
     const delta_x = end[0] - start[0]

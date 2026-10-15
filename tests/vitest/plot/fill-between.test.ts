@@ -16,11 +16,14 @@ import type {
   FillCurveType,
   FillGradient,
   FillRegion,
+  LineCurve,
 } from '#lib/plot/core/types.js'
 import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 
 const make_point = (x_value: number, y_value: number): Pt => ({ x: x_value, y: y_value })
+const zip_points = (x_values: number[], y_values: number[]): Pt[] =>
+  x_values.map((coord_x, idx) => make_point(coord_x, y_values[idx]))
 const series_ref = (series_idx: number) => ({ type: `series` as const, series_idx })
 
 // Reproduce the exact generator Line.svelte uses for series lines
@@ -137,13 +140,20 @@ describe(`resolve_boundary_points`, () => {
       series,
       `Fill boundary: aligned arrays must have equal lengths, got x=2, values=1`,
     ],
-  ] as const)(`rejects misaligned boundary %#`, (boundary, input_series, message) => {
+    // untyped (Python/JSON) callers can send a typo, which used to render monotoneX silently
+    [
+      series_ref(0),
+      [{ x: [0, 1], y: [0, 1], line_style: { curve: `cubic` } }] as unknown as DataSeries[],
+      `Unknown line curve "cubic"`,
+    ],
+  ] as const)(`rejects invalid boundary %#`, (boundary, input_series, message) => {
     expect(() => resolve_boundary_points(boundary, input_series, domains)).toThrow(message)
   })
 
   // a series fill edge inherits the series' line_style.curve so it matches the rendered line
   it.each([
     [undefined, `monotoneX`], // no curve -> default
+    [null, `monotoneX`], // Python None via JSON -> default
     [`monotone`, `monotoneX`], // renamed key (not caught by the undefined default)
     [`linear`, `linear`],
     [`natural`, `natural`],
@@ -152,7 +162,7 @@ describe(`resolve_boundary_points`, () => {
     [`catmull-rom`, `catmullRom`],
   ] as const)(`series fill edge maps line curve %s -> %s`, (line_curve, expected) => {
     const curved_series: DataSeries[] = [
-      { x: [0, 10, 20], y: [10, 20, 30], line_style: line_curve ? { curve: line_curve } : {} },
+      { x: [0, 10, 20], y: [10, 20, 30], line_style: { curve: line_curve as LineCurve } },
     ]
     const result = resolve_boundary_points(series_ref(0), curved_series, domains)
     expect(result?.curve).toBe(expected)
@@ -236,18 +246,13 @@ describe(`compute_fill_segments`, () => {
       series,
       domains,
     )
-    expect(segments).toHaveLength(1)
-    expect(segments[0].upper).toEqual([
-      make_point(0, 30),
-      make_point(10, 35),
-      make_point(20, 33),
+    expect(segments).toMatchObject([
+      {
+        upper: zip_points([0, 10, 20], [30, 35, 33]),
+        lower: zip_points([0, 10, 20], [10, 12, 11]),
+        upper_curve: `monotoneX`,
+      },
     ])
-    expect(segments[0].lower).toEqual([
-      make_point(0, 10),
-      make_point(10, 12),
-      make_point(20, 11),
-    ])
-    expect(segments[0].upper_curve).toBe(`monotoneX`)
   })
 
   it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
@@ -264,22 +269,12 @@ describe(`compute_fill_segments`, () => {
   it.each([false, true])(
     `clips duplicate knots without including interval endpoints twice (%s)`,
     (reverse) => {
-      const pairs = [
-        [0, 1],
-        [1, 2],
-        [1, 2],
-        [2, 3],
-        [3, 4],
-      ]
-      if (reverse) pairs.reverse()
+      const knot_x = [0, 1, 1, 2, 3]
+      if (reverse) knot_x.reverse()
       const sampled_x: number[] = []
       const [segment] = compute_fill_segments(
         {
-          upper: {
-            type: `data`,
-            x: pairs.map(([coord_x]) => coord_x),
-            values: pairs.map(([, coord_y]) => coord_y),
-          },
+          upper: { type: `data`, x: knot_x, values: knot_x.map((coord_x) => coord_x + 1) },
           lower: 0,
           x_range: [1, 2],
           where: (coord_x) => {
@@ -347,12 +342,7 @@ describe(`compute_fill_segments`, () => {
     // upper series y=[30,35,33] at x=[0,10,20]; clip at x=5 and x=15. stepAfter holds the previous
     // knot's y (30 in [0,10), 35 in [10,20)) — linear interpolation would give 32.5 and 34.
     const segments = compute_fill_segments(
-      {
-        upper: series_ref(1),
-        lower: series_ref(0),
-        curve: `stepAfter`,
-        x_range: [5, 15],
-      },
+      { upper: series_ref(1), lower: series_ref(0), curve: `stepAfter`, x_range: [5, 15] },
       series,
       domains,
     )
@@ -388,6 +378,14 @@ describe(`generate_fill_path`, () => {
       expect(path).toMatch(/Z$/)
     },
   )
+
+  // a typo from untyped (Python/JSON) callers used to render monotoneX silently
+  it(`throws on an unknown fill curve`, () => {
+    const typo = `monotonex` as FillCurveType
+    expect(() => generate_fill_path(upper, lower, typo, `linear`)).toThrow(
+      `Unknown fill curve "monotonex"`,
+    )
+  })
 })
 
 describe(`resolve_fill_binding`, () => {
@@ -471,11 +469,7 @@ describe(`convert_error_band_to_fill_region`, () => {
       x_domain: [1, 3],
       y_domain: [0, 40],
     })
-    expect(segments[0].upper).toEqual([
-      make_point(1, 12),
-      make_point(2, 22),
-      make_point(3, 32),
-    ])
+    expect(segments[0].upper).toEqual(zip_points([1, 2, 3], [12, 22, 32]))
   })
 })
 

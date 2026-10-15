@@ -53,6 +53,7 @@ describe(`perceive_bond_orders on small molecules`, () => {
     expected: PerceivedBond[`bond_order`][]
     perceived: boolean
     warns?: string
+    self_image?: Vec3 // last edge bonds its origin site to its own image here, one cell along a
   }>([
     { name: `no bonds -> empty result`, elements: [`Na`, `Cl`], coords: [[0, 0, 0], [2.8, 0, 0]],
       edges: [], expected: [], perceived: true },
@@ -122,9 +123,20 @@ describe(`perceive_bond_orders on small molecules`, () => {
       edges: Array.from({ length: 2999 }, (_un, idx): Vec2 => [idx, idx + 1]),
       expected: Array(2999).fill(1), perceived: false,
       warns: `skipped fragment 0 (3000 atoms, 2999 bonds): 4096 valence combinations x 5999` },
-  ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived, warns }) => {
+    // formate-like chain with one C per cell: C-H, C-O and C-C(+a) leave C one unit for O, so
+    // a -1 charge sits on O instead of a fifth C bond (C=O)
+    { name: `a bond to the atom's own periodic image spends two valence units`,
+      elements: [`C`, `H`, `O`], coords: [[0, 0, 0], [0, 1.09, 0], [0, -1.3, 0]],
+      edges: [[0, 1], [0, 2], [0, 0]], charge: -1, expected: [1, 1, 1], perceived: true,
+      self_image: [1.5, 0, 0] },
+  ])(`$name`, ({ elements, coords, edges, charge = 0, expected, perceived, warns, self_image }) => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const { sites, bonds } = make_input(elements, coords, edges)
+    const last = bonds.at(-1)
+    if (self_image && last) {
+      const bond_length = Math.hypot(...self_image)
+      bonds[bonds.length - 1] = { ...last, pos_2: self_image, bond_length, cell_shift: [1, 0, 0] }
+    }
     const result = perceive_bond_orders(sites, bonds, { total_charge: charge })
     expect(warn.mock.calls.map(([msg]) => msg)).toEqual(
       warns ? [expect.stringContaining(warns)] : [],
@@ -140,13 +152,6 @@ describe(`perceive_bond_orders on small molecules`, () => {
 })
 
 describe(`aromaticity`, () => {
-  test(`benzene: all 6 ring bonds flagged aromatic`, () => {
-    const { sites, bonds } = make_input(carbons(6), circle(6, 1.39), ring(0, 6))
-    const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result.every((bond) => bond.aromatic_ring !== undefined)).toBe(true)
-    expect(result.every((bond) => bond.bond_order === `aromatic`)).toBe(true)
-  })
-
   // h_counts[idx] hydrogens on heavy atom idx, appended after the heavy atoms
   const with_hydrogens = (
     heavy: ElementSymbol[],
@@ -295,18 +300,20 @@ describe(`aromaticity`, () => {
     },
   )
 
+  // Hückel 4n+2: only benzene's ring bonds are flagged aromatic
   test.each([
-    { n_atoms: 4, radius: 1.45, name: `cyclobutadiene` },
-    { n_atoms: 8, radius: 1.8, name: `cyclooctatetraene` },
-  ])(`$name is not flagged aromatic`, ({ n_atoms, radius }) => {
+    { n_atoms: 4, radius: 1.45, name: `cyclobutadiene`, aromatic: false },
+    { n_atoms: 6, radius: 1.39, name: `benzene`, aromatic: true },
+    { n_atoms: 8, radius: 1.8, name: `cyclooctatetraene`, aromatic: false },
+  ])(`$name ring bonds are aromatic: $aromatic`, ({ n_atoms, radius, aromatic }) => {
     const { sites, bonds } = make_input(
       carbons(n_atoms),
       circle(n_atoms, radius),
       ring(0, n_atoms),
     )
     const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(result.every((bond) => bond.bond_order !== `aromatic`)).toBe(true)
-    expect(result.every((bond) => bond.aromatic_ring === undefined)).toBe(true)
+    expect(result.every((bond) => (bond.bond_order === `aromatic`) === aromatic)).toBe(true)
+    expect(result.every((bond) => (bond.aromatic_ring !== undefined) === aromatic)).toBe(true)
   })
 })
 
@@ -340,19 +347,32 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     ...(cell_shift === undefined ? {} : { cell_shift }),
   })
 
+  // sites 2 and 3 copy sites 0 and 1 one cell over along a
+  const site = (image_of?: number, abc: Vec3 = [0, 0, 0]) =>
+    ({ abc, ...(image_of === undefined ? {} : { provenance: { image_of } }) }) as Site
+  const image_sites = [site(), site(), site(0, [1.1, 0, 0]), site(1, [1.2, 0, 0])]
+
   // oxfmt-ignore
-  test.each([
-    { name: `explicit order wins over perceived`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, 2)], mode: `aromatic` as const, expected: [2] },
-    { name: `explicit aromatic preserved over perceived single`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `aromatic` as const, expected: [`aromatic`] },
-    { name: `explicit key is order-insensitive`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(1, 0, 3)], mode: `aromatic` as const, expected: [3] },
-    { name: `explicit periodic bonds only override matching cell shifts`, perceived: [perceived_bond(0, 1, 1, undefined, [1, 0, 0]), perceived_bond(0, 1, 1, undefined, [-1, 0, 0])], explicit: [expl(0, 1, 3, [1, 0, 0])], mode: `aromatic` as const, expected: [3, 1] },
-    { name: `non-explicit aromatic stays aromatic in aromatic mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `aromatic` as const, expected: [`aromatic`] },
-    { name: `non-explicit aromatic remapped to kekule_order in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `kekule` as const, expected: [2] },
-    { name: `explicit aromatic not remapped in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `kekule` as const, expected: [`aromatic`] },
-    { name: `non-explicit non-aromatic perceived order passes through`, perceived: [perceived_bond(0, 1, 3)], explicit: [expl(2, 3, 2)], mode: `kekule` as const, expected: [3] },
-    { name: `aromatic without kekule_order falls back to aromatic`, perceived: [perceived_bond(0, 1, `aromatic`)], explicit: [], mode: `kekule` as const, expected: [`aromatic`] },
-  ])(`$name`, ({ perceived, explicit, mode, expected }) => {
-    const out = compose_perceived_bonds(perceived, explicit, mode)
+  test.each<{
+    name: string
+    perceived: PerceivedBond[]
+    explicit: StructureBond[]
+    mode: `aromatic` | `kekule`
+    expected: PerceivedBond[`bond_order`][]
+    sites?: Site[]
+  }>([
+    { name: `explicit order wins over perceived`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, 2)], mode: `aromatic`, expected: [2] },
+    { name: `explicit aromatic preserved over perceived single`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `aromatic`, expected: [`aromatic`] },
+    { name: `explicit key is order-insensitive`, perceived: [perceived_bond(0, 1, 1)], explicit: [expl(1, 0, 3)], mode: `aromatic`, expected: [3] },
+    { name: `explicit periodic bonds only override matching cell shifts`, perceived: [perceived_bond(0, 1, 1, undefined, [1, 0, 0]), perceived_bond(0, 1, 1, undefined, [-1, 0, 0])], explicit: [expl(0, 1, 3, [1, 0, 0])], mode: `aromatic`, expected: [3, 1] },
+    { name: `non-explicit aromatic stays aromatic in aromatic mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `aromatic`, expected: [`aromatic`] },
+    { name: `non-explicit aromatic remapped to kekule_order in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 2)], explicit: [], mode: `kekule`, expected: [2] },
+    { name: `explicit aromatic not remapped in kekule mode`, perceived: [perceived_bond(0, 1, `aromatic`, 1)], explicit: [expl(0, 1, `aromatic`)], mode: `kekule`, expected: [`aromatic`] },
+    { name: `non-explicit non-aromatic perceived order passes through`, perceived: [perceived_bond(0, 1, 3)], explicit: [expl(2, 3, 2)], mode: `kekule`, expected: [3] },
+    { name: `aromatic without kekule_order falls back to aromatic`, perceived: [perceived_bond(0, 1, `aromatic`)], explicit: [], mode: `kekule`, expected: [`aromatic`] },
+    { name: `explicit orders reach bonds between PBC image copies of their sites`, perceived: [perceived_bond(0, 1, 1), perceived_bond(2, 3, 1)], explicit: [expl(0, 1, 2)], mode: `aromatic`, expected: [2, 2], sites: image_sites },
+  ])(`$name`, ({ perceived, explicit, mode, expected, sites }) => {
+    const out = compose_perceived_bonds(perceived, explicit, mode, sites)
     expect(out.map((bond) => bond.bond_order)).toEqual(expected)
   })
 })

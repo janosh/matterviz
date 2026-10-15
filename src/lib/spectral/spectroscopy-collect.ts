@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { is_finite_vec3_like } from '#lib/math.js'
 import type { AnalysisStreamOptions } from '#lib/trajectory/analysis.js'
 import { collect_trajectory_positions } from '#lib/trajectory/analysis.js'
@@ -155,7 +156,9 @@ const recorded_masses = (run: TrajectoryRun): number[] | null => {
   }
   return masses.map((mass, atom_idx) => {
     if (typeof mass !== `number` || !Number.isFinite(mass) || mass <= 0) {
-      throw new Error(`Recorded mass ${atom_idx} must be finite and > 0, got ${mass}`)
+      throw new Error(
+        `Recorded mass of atom ${display_idx(atom_idx)} must be finite and > 0, got ${mass}`,
+      )
     }
     return mass
   })

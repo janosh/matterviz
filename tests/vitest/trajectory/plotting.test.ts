@@ -90,7 +90,7 @@ describe(`generate_plot_series`, () => {
     const absolute = generate_plot_series(rows, options)
     const relative = generate_plot_series(rows, { ...options, relative_energy: true })
     expect(relative.find((srs) => srs.id === key)).toMatchObject({
-      x: [1, 2, 3],
+      x: [2, 3, 4], // 1-based frame numbers of frame_number 1-3
       y: [0, 25, -4],
       label: `Δ Custom label`,
       unit,
@@ -121,7 +121,7 @@ describe(`generate_plot_series`, () => {
       { property_config: DEFAULT_PROPERTY_CONFIG },
     )
     expect(series.map(({ label }) => label)).toEqual([`Energy`])
-    expect(series[0].x).toEqual([0, 1, 2])
+    expect(series[0].x).toEqual([1, 2, 3])
     expect(series[0].y).toEqual([-10, -11, -12])
   })
 
@@ -274,8 +274,9 @@ describe(`generate_plot_series`, () => {
       )
       for (const row of rows) row.frame_number = 2 + row.frame_number * 10
       const series = generate_plot_series(rows)
+      // the frame axis counts from 1, so frame index 2 + idx * 10 plots one higher
       expect(find_series_by_label(series, `temperature`)).toMatchObject({
-        x: present_frames.map((idx) => 2 + idx * 10),
+        x: present_frames.map((idx) => 3 + idx * 10),
         y: present_frames.map((idx) => 300 + idx * 10),
       })
     },
@@ -304,7 +305,7 @@ describe(`generate_plot_series`, () => {
     expect(raw_y).toEqual(underlay.y)
     expect(Math.max(...smoothed.y)).toBeLessThan(20)
     expect(Math.max(...underlay.y)).toBe(100)
-    expect(raw_y).toEqual(smoothed.x.map((coord_x) => raw_series[0].y[coord_x]))
+    expect(raw_y).toEqual(smoothed.x.map((frame_num) => raw_series[0].y[frame_num - 1]))
     expect(smoothed.line_style).toMatchObject({ stroke_width: 2.5, curve: `monotone` })
     expect(underlay.line_style).toEqual({
       stroke: `color-mix(in srgb, #4e79a7 18%, transparent)`,
@@ -639,7 +640,7 @@ describe(`x axis quantity`, () => {
   )
 
   it.each([
-    { quantity: `frame` as const, expected_x: [0, 1, 2, 3], label: `Frame`, unit: `` },
+    { quantity: `frame` as const, expected_x: [1, 2, 3, 4], label: `Frame`, unit: `` },
     { quantity: `step` as const, expected_x: [0, 500, 1000, 1500], label: `Step`, unit: `` },
     {
       quantity: `time` as const,
@@ -657,7 +658,7 @@ describe(`x axis quantity`, () => {
     const series = generate_plot_series(rows, { x_map })
     const energy = find_series_by_label(series, `energy`)
     expect(energy?.x).toEqual(expected_x)
-    // frame index is also the default axis without an x_map
+    // 1-based frame numbers are also the default axis without an x_map
     if (quantity === `frame`)
       expect(find_series_by_label(generate_plot_series(rows), `energy`)?.x).toEqual(expected_x)
     expect(series.find((srs) => srs.id === `force_max`)?.x).toBe(energy?.x)
@@ -678,7 +679,14 @@ describe(`x axis quantity`, () => {
     // no timestep recorded, and steps that merely repeat the frame index add nothing
     const x_map = build_x_map(samples, `time`, {})
     expect(x_map.quantity).toBe(`frame`)
-    expect(x_map.to_x(2)).toBe(2)
+    // numbered from 1 like the step input; to_frame hands back the 0-based index
+    expect([0, 2].map(x_map.to_x)).toEqual([1, 3])
+    expect([1, 3, 99].map(x_map.to_frame)).toEqual([0, 2, 2])
+    // with no samples to grid on, frame numbers still count from 1
+    const empty_map = build_x_map({ frame_numbers: [], steps: [] }, `frame`)
+    expect([empty_map.to_x(0), empty_map.to_frame(1), empty_map.to_frame(3.4)]).toEqual([
+      1, 0, 2,
+    ])
   })
 
   // Plot skimming feeds the hovered x back in to pick a frame, so to_frame must invert

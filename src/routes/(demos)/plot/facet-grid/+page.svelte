@@ -166,7 +166,9 @@
       <div class="facet-panel">
         <strong style="text-align: center">{context.data.title}</strong>
         <Plot
-          series={context.data.series}
+          series={plot_type === `histogram`
+            ? context.data.series.map(({ y, label, color }) => ({ values: y, label, color }))
+            : context.data.series}
           facet_layout={context}
           fullscreen_toggle={false}
           style="height: 100%; min-height: 0"

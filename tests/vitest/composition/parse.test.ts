@@ -209,6 +209,7 @@ describe(`parse_composition`, () => {
       { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 },
     ],
     [`{Cu: 88, Sn: 12}`, { Cu: 88, Sn: 12 }], // relaxed JSON with bare keys
+    [`{26: 2, 8: 3}`, { Fe: 2, O: 3 }], // bare atomic-number keys, as objects accept
     [` { "Li": 1, "P": 1, "O": 4 } `, { Li: 1, P: 1, O: 4 }],
     [``, {}],
     [

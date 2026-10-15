@@ -74,9 +74,8 @@
       }
     }
     k_marker={link.hovered_k_point}
-    k_path={{
-      k_path_points: link.k_path_points,
-      k_path_labels: link.k_path_labels,
+    k_path={link.k_path && {
+      path: link.k_path,
       hovered_qpoint_index: link.active_qpoint,
       highlighted_qpoint_range: link.highlighted_qpoint_range,
       on_kpath_hover: link.hover_path,

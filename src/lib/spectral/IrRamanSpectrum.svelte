@@ -116,8 +116,8 @@
   })
 
   // Transmittance needs a bounded absorbance to invert, so it always scales to max=1
-  // regardless of the normalization selector.
-  let is_transmittance = $derived(presentation === `transmittance`)
+  // regardless of the normalization selector. IR only: Raman light is scattered, not absorbed.
+  let is_transmittance = $derived(kind === `ir` && presentation === `transmittance`)
   let curve_y = $derived.by(() => {
     if (broadened.y.length === 0) return []
     if (is_transmittance) return to_transmittance(broadened.y)
@@ -273,13 +273,15 @@
             </select>
           </label>
         {/if}
-        <label>
-          <span>Axis</span>
-          <select id="ir-raman-presentation" bind:value={presentation}>
-            <option value="absorbance">Absorbance</option>
-            <option value="transmittance">Transmittance</option>
-          </select>
-        </label>
+        {#if kind === `ir`}
+          <label>
+            <span>Axis</span>
+            <select id="ir-raman-presentation" bind:value={presentation}>
+              <option value="absorbance">Absorbance</option>
+              <option value="transmittance">Transmittance</option>
+            </select>
+          </label>
+        {/if}
         <label>
           <input id="ir-raman-sticks" type="checkbox" bind:checked={show_sticks} />
           Sticks

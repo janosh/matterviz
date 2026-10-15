@@ -58,7 +58,13 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-  import { collect_size_range, create_size_scale } from '#lib/plot/core/scales.js'
+  import {
+    collect_size_range,
+    create_size_scale,
+    generate_ticks,
+    get_tick_label,
+    tick_label_format,
+  } from '#lib/plot/core/scales.js'
   import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 
   let {
@@ -146,6 +152,10 @@
   // In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical) and user's Y →
   // Three.js Z (depth). So scene_z here refers to Three.js Y.
   const [scene_x, scene_y, scene_z] = SCENE_SIZE
+  // Surfaces and reference planes/lines keyed by id, else input position. Prefixed so an
+  // unnamed item's position never collides with another item's numeric id.
+  const item_key = ({ id }: { id?: string | number }, idx: number): string =>
+    id != null ? `id:${id}` : `idx:${idx}`
   const half_x = scene_x / 2
   const half_y = scene_y / 2
   const half_z = scene_z / 2
@@ -262,17 +272,20 @@
           metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
           point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
         }
+        // NaN/null colour/size values fall back to the series style, as in 2D: a NaN radius
+        // poisons the bounding sphere (and every raycast)
+        const { color_value, size_value } = point
         instances.push({
           point,
           key: point_key(point),
           position: to_scene(coords),
           color:
-            point.color_value != null
-              ? color_scale_fn(point.color_value)
+            color_value != null && Number.isFinite(color_value)
+              ? color_scale_fn(color_value)
               : (point.point_style?.fill ?? plot_color(series_idx)),
           radius:
-            point.size_value != null
-              ? size_scale_fn(point.size_value)
+            size_value != null && Number.isFinite(size_value)
+              ? size_scale_fn(size_value)
               : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05,
         })
       }
@@ -282,13 +295,15 @@
   const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
 
   // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
-  // tracking the same logical point's current values and position, or drop it once gone
+  // tracking the same logical point's current values and position, or drop it (tell the host)
   $effect.pre(() => {
     const lookup = idx_by_key
     untrack(() => {
       if (!hovered_point) return
       const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
-      if (next !== hovered_point) hovered_point = next
+      if (next === hovered_point) return
+      hovered_point = next
+      if (!next) on_point_hover?.(null)
     })
   })
 
@@ -364,28 +379,25 @@
     },
   }
 
-  // Projection settings - render point shadows on background planes
-  let proj_opacity = $derived(display.projection_opacity ?? 0.3)
-  let proj_scale = $derived(display.projection_scale ?? 0.5)
-
   $effect(() => {
-    projection_material.opacity = proj_opacity
+    projection_material.opacity = display.projection_opacity ?? 0.3
     invalidate()
   })
 
   // Point shadows on the enabled background planes: each fixes one scene axis at the
-  // backside position, at proj_scale of the point size
+  // backside position, at projection_scale of the point size
   let projection_layers = $derived(
-    ([`xy`, `xz`, `yz`] as const)
-      .filter((key) => display.projections?.[key])
-      .map((key): { key: string; projection: InstanceProjection } => ({
+    (
+      [
+        [`xy`, 1, pos.y],
+        [`xz`, 2, pos.z],
+        [`yz`, 0, pos.x],
+      ] as const
+    )
+      .filter(([key]) => display.projections?.[key])
+      .map(([key, axis, at]): { key: string; projection: InstanceProjection } => ({
         key,
-        projection:
-          key === `xy`
-            ? { axis: 1, at: pos.y, scale: proj_scale }
-            : key === `xz`
-              ? { axis: 2, at: pos.z, scale: proj_scale }
-              : { axis: 0, at: pos.x, scale: proj_scale },
+        projection: { axis, at, scale: display.projection_scale ?? 0.5 },
       })),
   )
 
@@ -449,7 +461,6 @@
           prev_by_idx.delete(input.series_idx) // reused - don't dispose below
           return prev
         }
-        // Create fat line geometry (LineGeometry for Line2)
         const geometry = new LineGeometry()
         geometry.setPositions(input.positions)
         // Node material for fat lines; it reads screen size from the viewport internally,
@@ -466,7 +477,6 @@
         line2.computeLineDistances()
         return { ...input, line2, geometry, material }
       })
-      // Dispose lines that were replaced or removed
       for (const stale of prev_by_idx.values()) {
         stale.geometry.dispose()
         stale.material.dispose()
@@ -488,18 +498,16 @@
     }
   })
 
-  // Generate axis ticks using D3's smart tick generation
-  function gen_ticks(range: Vec2, ticks?: AxisConfig3D[`ticks`]): number[] {
-    if (Array.isArray(ticks)) return ticks
-    const [min, max] = range
-    if (!isFinite(min) || !isFinite(max) || min === max) return [min]
-    const count = typeof ticks === `number` ? ticks : 5
-    return scaleLinear().domain([min, max]).ticks(count)
-  }
+  // Same tick options (and integer-format dedupe) as the 2D axes, defaulting to 5 nice ticks
+  const gen_ticks = (range: Vec2, { ticks, format }: Omit<AxisConfig3D, `range`>): number[] =>
+    generate_ticks(range, `linear`, ticks, scaleLinear().domain(range), {
+      default_count: 5,
+      format,
+    })
 
-  let x_ticks = $derived(gen_ticks(x_range, x_axis.ticks))
-  let y_ticks = $derived(gen_ticks(y_range, y_axis.ticks))
-  let z_ticks = $derived(gen_ticks(z_range, z_axis.ticks))
+  let x_ticks = $derived(gen_ticks(x_range, x_axis))
+  let y_ticks = $derived(gen_ticks(y_range, y_axis))
+  let z_ticks = $derived(gen_ticks(z_range, z_axis))
 
   // Build event data for point interactions (the point is in data coordinates)
   function make_event_data(
@@ -507,13 +515,12 @@
     event?: MouseEvent,
   ): Scatter3DHandlerEvent<Metadata> {
     const { series_idx, x: coord_x, y: coord_y, z: coord_z } = point
-    const srs = series[series_idx]
     return {
       x: coord_x,
       y: coord_y,
       z: coord_z,
       metadata: point.metadata ?? null,
-      label: srs?.label ?? null,
+      label: series[series_idx]?.label ?? null,
       series_idx,
       x_axis,
       y_axis,
@@ -679,12 +686,10 @@
 <!-- Axes with ticks and grid -->
 {#if display.show_axes !== false}
   {#each axes_config as { key, color, axis, ticks, tick_label_pos, axis_label_pos, line_geom, tick_geoms, grid_geoms } (key)}
-    <!-- Main axis line -->
     <T.Line>
       <T is={line_geom} dispose={false} />
       <T.LineBasicMaterial {color} linewidth={2} />
     </T.Line>
-    <!-- Ticks and grid -->
     {#each ticks as tick_val, tick_idx (tick_val)}
       <T.Line>
         <T is={tick_geoms[tick_idx]} dispose={false} />
@@ -699,10 +704,12 @@
         {/each}
       {/if}
       <extras.HTML position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
-        <span class="tick-label">{format_num(tick_val, axis.format || `.2~g`)}</span>
+        <span class="tick-label"
+          >{get_tick_label(tick_val, axis.ticks) ??
+            format_num(tick_val, tick_label_format(ticks, axis.format) || `.2~g`)}</span
+        >
       </extras.HTML>
     {/each}
-    <!-- Axis label -->
     {#if display.show_axis_labels !== false}
       <extras.HTML position={axis_label_pos} center zIndexRange={[1, 0]}>
         <span class="axis-label" style:color
@@ -721,19 +728,26 @@
 {/if}
 
 <T is={THREE.ClippingGroup} clippingPlanes={box_clip}>
-  <!-- Surfaces -->
-  {#each surfaces.filter((srf) => srf.visible !== false) as surface (surface.id ?? surfaces.indexOf(surface))}
-    <Surface3D config={surface} {x_range} {y_range} {z_range} {scene_x} {scene_y} {scene_z} />
+  {#each surfaces as surface, idx (item_key(surface, idx))}
+    {#if surface.visible !== false}
+      <Surface3D
+        config={surface}
+        {x_range}
+        {y_range}
+        {z_range}
+        {scene_x}
+        {scene_y}
+        {scene_z}
+      />
+    {/if}
   {/each}
 
-  <!-- Reference Planes -->
-  {#each ref_planes.filter((plane) => plane.visible !== false) as ref_plane, plane_idx (ref_plane.id ?? plane_idx)}
-    <ReferencePlane {ref_plane} {ranges} />
+  {#each ref_planes as ref_plane, idx (item_key(ref_plane, idx))}
+    {#if ref_plane.visible !== false}<ReferencePlane {ref_plane} {ranges} />{/if}
   {/each}
 
-  <!-- Reference Lines -->
-  {#each ref_lines.filter((line) => line.visible !== false) as ref_line, line_idx (ref_line.id ?? line_idx)}
-    <ReferenceLine3D {ref_line} {ranges} />
+  {#each ref_lines as ref_line, idx (item_key(ref_line, idx))}
+    {#if ref_line.visible !== false}<ReferenceLine3D {ref_line} {ranges} />{/if}
   {/each}
 
   <!-- Series lines connecting points (fat lines using Line2) -->
@@ -760,7 +774,6 @@
   />
 {/each}
 
-<!-- Hover highlight -->
 {#if hovered_point}
   {@const hover_point = hovered_point}
   {#if hover_drawn}

@@ -242,10 +242,14 @@
       })
     })
   })
-  // from the mode data, not the k-path: q-point-only files (no band path) still mark it
+  // the k-path's own point (folded with its branch, so on the drawn path), else from the mode
+  // data: q-point-only files (no band path) still mark it
   let selected_k_points = $derived.by(() => {
     const k_lattice = bz_inset.value?.k_lattice
-    const qpoint = mode_data.qpoints[selection?.qpoint_idx ?? -1]
+    const qpoint_idx = selection?.qpoint_idx ?? -1
+    const on_path = path_link.k_path?.points[qpoint_idx]
+    if (on_path) return [on_path]
+    const qpoint = mode_data.qpoints[qpoint_idx]
     return k_lattice && qpoint ? [frac_k_to_cartesian(qpoint.q_position, k_lattice)] : []
   })
 
@@ -327,8 +331,7 @@ under its open panes -->
       class="bz-inset"
       aria-label="Selected q-point in the Brillouin zone"
       bz_data={bz_inset.value.bz_data}
-      k_path_points={path_link.k_path_points}
-      k_path_labels={path_link.k_path_labels}
+      k_path={path_link.k_path}
       highlighted_k_points={selected_k_points}
       hovered_k_point={path_link.hovered_k_point}
       hovered_qpoint_index={path_link.active_qpoint}

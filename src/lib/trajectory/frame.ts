@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { wrap_frac_coord } from '#lib/structure/pbc.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { same_values } from '#lib/math.js'
@@ -231,7 +232,8 @@ export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
         let site: Site
         if (sites instanceof Uint8Array) {
           const element = element_from_atomic_number(sites[idx])
-          if (!element) throw new Error(`Invalid atomic number ${sites[idx]} at site ${idx}`)
+          if (!element)
+            throw new Error(`Invalid atomic number ${sites[idx]} at site ${display_idx(idx)}`)
           site = make_site(element, abc, xyz, `${element}${idx + 1}`)
         } else site = { ...structuredClone(sites[idx]), xyz, abc }
         write_site_properties(frame, idx, site.properties)
@@ -309,7 +311,9 @@ export function create_numeric_md_frame(
     xyz[1] = positions[idx * 3 + 1]
     xyz[2] = positions[idx * 3 + 2]
     if (!Number.isFinite(xyz[0]) || !Number.isFinite(xyz[1]) || !Number.isFinite(xyz[2]))
-      throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
+      throw new Error(
+        `Invalid position at site ${display_idx(idx)}: expected 3 finite coordinates`,
+      )
     coordinates[offset] = xyz[0]
     coordinates[offset + 1] = xyz[1]
     coordinates[offset + 2] = xyz[2]

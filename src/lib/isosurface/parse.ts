@@ -1,4 +1,5 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
+import { display_idx } from '#lib/labels.js'
 import {
   BOHR_TO_ANGSTROM,
   filename_token_regex,
@@ -15,6 +16,7 @@ import {
   read_text_line,
   text_cursor,
 } from '#lib/structure/parsers/vasp-header.js'
+import { parse_float_token, vec3_from_values } from '#lib/structure/parsers/shared.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { normalize_scientific_notation, parse_leading_num, to_error } from '#lib/utils.js'
@@ -214,15 +216,6 @@ export const checked_grid_points = (
 
 // === CHGCAR Parser ===
 
-// VASP writes Fortran-style exponents (1.0D-04) that a bare Number() turns into NaN.
-// Used for the coordinate lines after the header (which parse_vasp_header normalizes on its own).
-const parse_vasp_vec3 = (line: string): Vec3 =>
-  line
-    .trim()
-    .split(/\s+/)
-    .slice(0, 3)
-    .map((token) => Number(normalize_scientific_notation(token))) as Vec3
-
 // Block labels by what a VASP volumetric file stores and its block count. Charge files
 // (CHGCAR, CHG, AECCAR*, PARCHG) hold the total density, then one magnetization block
 // (collinear spin) or three (m_x, m_y, m_z: noncollinear/SOC). Spin-polarized ELFCARs and
@@ -310,7 +303,11 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
         throw new Error(`CHGCAR: file ends before all atom coordinates are read`)
       }
       const cur = read_text_line(content, pos)
-      const coords = parse_vasp_vec3(cur.line)
+      // parse_float_token reads Fortran exponents (1.0D-04)
+      const coords = vec3_from_values(
+        cur.line.trim().split(/\s+/).slice(0, 3).map(parse_float_token),
+        `CHGCAR atom ${sites.length + 1} coordinates`,
+      )
       pos = cur.next
 
       // xyz derived from the WRAPPED abc in both modes: Cartesian input kept its raw cart, so
@@ -381,11 +378,10 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
 
   if (blocks.length === 0) throw new Error(`No volumetric data found in CHGCAR`)
   const kind = vasp_kind_from_name(filename) ?? infer_vasp_kind(blocks)
-  // Only density files are divided by the cell volume (|det| for a left-handed lattice)
-  const cell_volume = Math.abs(lattice_params.volume)
-  if (kind === `density` && cell_volume > 1e-30) {
+  // Only density files are divided by the cell volume (|det|, nonzero: checked above)
+  if (kind === `density`) {
     for (const { values } of blocks) {
-      for (let idx = 0; idx < values.length; idx++) values[idx] /= cell_volume
+      for (let idx = 0; idx < values.length; idx++) values[idx] /= lattice_params.volume
     }
   }
   const labels = VASP_BLOCK_LABELS[kind][blocks.length]
@@ -497,14 +493,16 @@ export function parse_cube(
 
     // Validate: need atomic_number, charge, x, y, z (5 tokens, indices 2-4 finite)
     if (atom_line.length < 5 || !atom_line.slice(2, 5).every(Number.isFinite)) {
-      console.warn(`.cube atom ${atom_idx}: malformed line "${cur.line.trim()}", skipping`)
+      console.warn(
+        `.cube atom ${display_idx(atom_idx)}: malformed line "${cur.line.trim()}", skipping`,
+      )
       continue
     }
 
     // Z = 0 is the cube encoding for a ghost/BSSE centre: basis functions with no nucleus, so
     // nothing to render. Skip it like a malformed line instead of failing the whole file.
     if (atom_line[0] === 0) {
-      console.warn(`.cube atom ${atom_idx}: skipping Z = 0 ghost/BSSE centre`)
+      console.warn(`.cube atom ${display_idx(atom_idx)}: skipping Z = 0 ghost/BSSE centre`)
       continue
     }
     // Any other Z off the table is a malformed header, never hydrogen

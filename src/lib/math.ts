@@ -643,7 +643,7 @@ const lattice_basis = (lattice: Matrix3x3): LatticeBasis => {
 // periodic |b_i| (hence the candidate box) at their in-plane size: reducing only fully
 // periodic cells made a sheared slab ([[3,0,0],[200,3,0],[0,0,30]], z open) test 303756
 // candidates and throw.
-export function min_image_search_basis(lattice: Matrix3x3, pbc: Pbc): Matrix3x3 {
+function min_image_search_basis(lattice: Matrix3x3, pbc: Pbc): Matrix3x3 {
   const periodic = [0, 1, 2].filter((axis) => pbc[axis])
   const basis = reduce_basis(lattice, periodic)
   if (periodic.length === 0 || periodic.length === 3) return basis
@@ -680,9 +680,9 @@ export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters
 
 // Convert unit cell parameters to lattice matrix (crystallographic convention)
 export function cell_to_lattice_matrix(
-  lattice_a: number,
-  value_b: number,
-  value_c: number,
+  len_a: number,
+  len_b: number,
+  len_c: number,
   alpha: number,
   beta: number,
   gamma: number,
@@ -697,7 +697,7 @@ export function cell_to_lattice_matrix(
   // every Cartesian coordinate NaN.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
-  const cell_desc = `a=${lattice_a} b=${value_b} c=${value_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
+  const cell_desc = `a=${len_a} b=${len_b} c=${len_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
   // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
   // "a and b are collinear" is the more actionable of the two diagnoses
   // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
@@ -718,12 +718,12 @@ export function cell_to_lattice_matrix(
   const vol_factor = Math.sqrt(radicand)
 
   // Standard crystallographic lattice vectors
-  const c_x = value_c * cos_beta
-  const c_y = (value_c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
-  const c_z = (value_c * vol_factor) / sin_gamma
+  const c_x = len_c * cos_beta
+  const c_y = (len_c * (cos_alpha - cos_beta * cos_gamma)) / sin_gamma
+  const c_z = (len_c * vol_factor) / sin_gamma
   return [
-    [lattice_a, 0, 0],
-    [value_b * cos_gamma, value_b * sin_gamma, 0],
+    [len_a, 0, 0],
+    [len_b * cos_gamma, len_b * sin_gamma, 0],
     [c_x, c_y, c_z],
   ]
 }

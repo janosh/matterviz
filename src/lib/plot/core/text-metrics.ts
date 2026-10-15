@@ -256,7 +256,8 @@ const split_overlong_word = (
 
   const chunks: string[] = []
   let chunk = ``
-  for (const character of word) {
+  // By grapheme, so a break never strands a combining mark or splits an emoji sequence
+  for (const character of graphemes(word)) {
     const candidate = `${chunk}${character}`
     if (chunk && measure(candidate, font).width > available_width) {
       chunks.push(chunk)

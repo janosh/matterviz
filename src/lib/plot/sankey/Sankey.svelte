@@ -216,6 +216,12 @@
     return null
   })
 
+  // Hover state is index-based, and new data or a refold renumbers the nodes: clear it
+  $effect(() => {
+    void bucketed_data
+    untrack(clear_hover)
+  })
+
   // Missing SvelteSet members subscribe to the whole set. Indexed state gives every
   // mark its own dependency, so moving between targets only updates their adjacency.
   const active_nodes = $state<boolean[]>([])
@@ -256,8 +262,10 @@
     return link_opacity
   }
 
-  const node_text = (node: PositionedNode): string =>
-    node_label?.(node) ?? node.label ?? `${node.id}`
+  // Nodes may carry only an id
+  const node_name = (node: { id: string | number; label?: string }): string =>
+    node.label ?? `${node.id}`
+  const node_text = (node: PositionedNode): string => node_label?.(node) ?? node_name(node)
 
   const node_props = (node: PositionedNode): SankeyNodeHandlerProps<Metadata> => ({
     type: `node`,
@@ -474,7 +482,7 @@
                 role={on_link_click ? `button` : undefined}
                 tabindex={on_link_click ? 0 : undefined}
                 aria-label={on_link_click
-                  ? `flow ${link.source.label} to ${link.target.label}: ${link.value}`
+                  ? `flow ${node_name(link.source)} to ${node_name(link.target)}: ${link.value}`
                   : undefined}
                 style:cursor={on_link_click ? `pointer` : `default`}
               />
@@ -502,9 +510,7 @@
                   rx="1"
                   role={on_node_click ? `button` : undefined}
                   tabindex={on_node_click ? 0 : undefined}
-                  aria-label={on_node_click
-                    ? `${node.label ?? node.id}: ${node.value}`
-                    : undefined}
+                  aria-label={on_node_click ? `${node_name(node)}: ${node.value}` : undefined}
                   style:cursor={on_node_click ? `pointer` : `default`}
                 />
               {/if}
@@ -541,12 +547,13 @@
         {#if tooltip}
           {@render tooltip(hover_info)}
         {:else if hover_info.type === `node`}
-          <strong>{hover_info.label ?? hover_info.id}</strong>: <TooltipValue
+          <strong>{node_name(hover_info)}</strong>: <TooltipValue
             value={format_value(hover_info.value, value_format)}
           />
         {:else}
-          {hover_info.source_label ?? hover_info.source_idx} &rarr; {hover_info.target_label ??
-            hover_info.target_idx}: <TooltipValue
+          {@const { source_idx, target_idx, source_label, target_label } = hover_info}
+          {source_label ?? node_by_idx.get(source_idx)?.id} &rarr; {target_label ??
+            node_by_idx.get(target_idx)?.id}: <TooltipValue
             value={format_value(hover_info.value, value_format)}
           />
         {/if}

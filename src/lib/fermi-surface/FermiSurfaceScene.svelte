@@ -447,7 +447,7 @@
   fill={0.5}
 />
 
-<T is={clipping_group} position={rotation_target}>
+<T is={clipping_group}>
   <!-- Brillouin zone overlay -->
   {#if show_bz && bz_data}
     <PolyhedronMesh

@@ -5,7 +5,7 @@
 
 import { format_tick_values } from '#lib/labels.js'
 import { array_max, array_min, clamp } from '#lib/math.js'
-import { get_tick_label } from '#lib/plot/core/scales.js'
+import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,
   get_text_metrics_revision,
@@ -61,9 +61,10 @@ const tick_texts = (
   format?: string,
   tick_labels?: AxisConfig[`ticks`],
 ): string[] => {
+  const numeric_ticks = ticks.filter((tick): tick is number => typeof tick === `number`)
   const numeric_texts = format_tick_values(
-    ticks.filter((tick): tick is number => typeof tick === `number`),
-    format,
+    numeric_ticks,
+    tick_label_format(numeric_ticks, format),
   )
   let numeric_idx = 0
   return ticks.map((tick) => {

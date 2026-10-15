@@ -988,7 +988,7 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
 <BarPlot
   {series}
   {ref_lines}
-  mode={comparison_mode ? `grouped` : `single`}
+  mode={comparison_mode ? `grouped` : `overlay`}
   x_axis={{ label: comparison_mode ? `Sample` : `Device` }}
   y_axis={{
     label: comparison_mode ? `Value` : `Efficiency (%)`,
@@ -1266,7 +1266,7 @@ When comparing results from different computational methods or experimental tech
   }}
   {on_axis_change}
   mode="grouped"
-  bar={{ border_radius: 1, gap: 0.1, label_rotation: 90 }}
+  bar={{ border_radius: 1, label_rotation: 90 }}
   padding={{ t: 60 }}
   legend={{ layout: `horizontal`, style: `justify-content: center; font-size: 0.8em` }}
   style="height: 400px"

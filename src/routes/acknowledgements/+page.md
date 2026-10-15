@@ -1,7 +1,5 @@
 <script>
   import img_sources from '#lib/element-image-urls.json'
-  import { dev } from '$app/env'
-  import pkg from '#root/package.json'
 </script>
 
 # 🙏 &thinsp; Acknowledgements
@@ -28,7 +26,7 @@ Big thanks to the element image providers listed below. Each image caption links
       <li>
         <a {href}>{number} {name}</a>
         <a href="/{name}">
-          <img src="{dev ? '' : pkg.homepage}/elements/{key}.avif" alt={name} />
+          <img src="/elements/{key}.avif" alt={name} />
         </a>
       </li>
     {/each}

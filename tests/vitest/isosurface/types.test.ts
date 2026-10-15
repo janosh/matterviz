@@ -106,8 +106,8 @@ describe(`auto_volume_layer`, () => {
   ])(`shell %i sits at %s·abs_max with opacity %s`, (shell_idx, fraction, opacity) => {
     const layer = auto_volume_layer(vol_with_range(-5, 10), 1, shell_idx)
     expect(layer.isovalue).toBeCloseTo(10 * fraction)
-    expect(layer.opacity).toBe(opacity)
     expect(layer).toMatchObject({
+      opacity,
       volume_id: `0`,
       color: LAYER_COLORS[1],
       show_negative: true,
@@ -194,12 +194,9 @@ describe(`label_file_volumes`, () => {
   })
 
   // block labels when present, else 1-based positions
+  // oxfmt-ignore
   test.each([
-    [
-      [`charge`, `magnetization`],
-      `Fe-CHGCAR.bz2`,
-      [`Fe-CHGCAR: charge`, `Fe-CHGCAR: magnetization`],
-    ],
+    [[`charge`, `magnetization`], `Fe-CHGCAR.bz2`, [`Fe-CHGCAR: charge`, `Fe-CHGCAR: magnetization`]],
     [[undefined, undefined], `density.cube`, [`density.cube: 1`, `density.cube: 2`]],
   ])(
     `multi-block %j in %s share one source with "file: block" labels`,
@@ -279,17 +276,11 @@ describe(`volume_from_json`, () => {
   test(`nested grid JSON becomes a flat z-fastest volume with computed data_range`, () => {
     const grid = make_grid(2, 3, 4, (idx_x, idx_y, idx_z) => 100 * idx_x + 10 * idx_y + idx_z)
     const vol = volume_from_json({ ...base, grid, label: `rho` })
-    expect(vol.dims).toEqual([2, 3, 4])
-    expect(vol.order).toBe(`z_fastest`)
+    expect(vol).toMatchObject({ dims: [2, 3, 4], order: `z_fastest`, label: `rho` })
     expect(vol.values).toBeInstanceOf(Float64Array)
     expect(grid_value(vol, 1, 2, 3)).toBe(123)
-    expect(vol.data_range).toEqual({
-      min: 0,
-      max: 123,
-      abs_max: 123,
-      mean: expect.closeTo(61.5),
-    })
-    expect(vol.label).toBe(`rho`)
+    const mean = expect.closeTo(61.5)
+    expect(vol.data_range).toEqual({ min: 0, max: 123, abs_max: 123, mean })
   })
 
   test(`flat values + dims JSON (plain number[]) is accepted`, () => {
@@ -311,6 +302,9 @@ describe(`volume_from_json`, () => {
   test.each([
     [{ ...base, grid: [[[1, 2]], [[3]]] }, /Ragged grid/],
     [{ ...base, values: [1, 2, 3], dims: [2, 2, 2] }, /does not match dims/],
+    // both multiply out to the value count
+    [{ ...base, values: Array(8).fill(1), dims: [-2, -2, 2] }, /non-negative integers/],
+    [{ ...base, values: Array(10).fill(1), dims: [2.5, 2, 2] }, /non-negative integers/],
     [{ ...base, values: [1], dims: [1, 1] }, /needs dims/],
     [{ ...base }, /nested grid or flat values/],
     [{ ...base, grid: [[[1]]], lattice: [[1, 0, 0]] }, /3x3 lattice/],

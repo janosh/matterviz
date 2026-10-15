@@ -2,7 +2,6 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
-  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { open_material } from '#lib/file-viewer/open.js'
   import { apply_structure_material } from '#lib/structure/material.js'
   import FilePicker from '#lib/FilePicker.svelte'
@@ -20,7 +19,7 @@
   } from '#lib/isosurface/types.js'
   import { format_num } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { replace_url } from '#site/state.svelte.js'
+  import { latest_load, replace_url } from '#site/state.svelte.js'
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
@@ -37,8 +36,8 @@
   let load_time_ms = $state<number | undefined>()
   let dragover_hint = $state(false)
 
-  // Monotonic token so a stale async load can never overwrite a newer selection
-  let load_counter = 0
+  // A stale async load can never overwrite a newer selection or a dropped file
+  const loads = latest_load()
 
   const file_url = (name: string): string => {
     const file = volumetric_files.find((entry) => entry.name === name)
@@ -187,12 +186,9 @@
     },
   ]
 
-  // Run an async load with stale-load protection: bumps the shared counter and
-  // hands the task an is_current() check; error/loading state only update while
-  // this load is still the latest, so a newer selection can't be overwritten.
+  // Hands the task an is_current() check; error/loading only update while it holds
   async function run_load(task: (is_current: () => boolean) => Promise<void>) {
-    const load_id = ++load_counter
-    const is_current = () => load_id === load_counter
+    const is_current = loads.start()
     loading = true
     error_msg = undefined
     try {
@@ -339,7 +335,10 @@
   bind:error_msg
   bind:dragover={dragover_hint}
   show_controls="always"
-  on_file_load={clear_scenario}
+  on_file_load={() => {
+    loads.cancel() // a dropped file supersedes any scenario or file still loading
+    clear_scenario()
+  }}
   style="height: 550px"
 >
   <DragOverlay

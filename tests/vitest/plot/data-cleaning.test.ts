@@ -1,6 +1,10 @@
 import type { DataSeries } from '#lib/plot/index.js'
 import { assert_series_lengths } from '#lib/plot/core/types.js'
-import type { InvalidValueMode } from '#lib/plot/core/data-cleaning.js'
+import type {
+  CleaningConfig,
+  CleaningQuality,
+  InvalidValueMode,
+} from '#lib/plot/core/data-cleaning.js'
 import {
   clean_multi_series,
   clean_series,
@@ -605,94 +609,120 @@ describe(`clean_series`, () => {
 })
 
 describe(`clean_multi_series`, () => {
-  it(`filters every series to the shared valid indices`, () => {
-    const result = clean_multi_series(
-      [0, 1, 2, 3, 4],
-      [
-        [0, NaN, 4, 6, 8],
-        [10, 12, NaN, 16, 18],
+  const x_5 = [0, 1, 2, 3, 4]
+  const gapped = [
+    [0, NaN, 4, 6, 8],
+    [10, 12, NaN, 16, 18],
+  ]
+  type CleanCase = {
+    desc: string
+    x_values: number[]
+    y_arrays: number[][]
+    config: CleaningConfig
+    x_expected: number[]
+    cleaned_y: number[][]
+    quality: Partial<Record<keyof CleaningQuality, number[]>> // per-series counts
+  }
+  it.each<CleanCase>([
+    {
+      desc: `empty y`,
+      x_values: [0, 1, 2],
+      y_arrays: [],
+      config: {},
+      x_expected: [0, 1, 2],
+      cleaned_y: [],
+      quality: {},
+    },
+    {
+      desc: `shared valid indices`,
+      x_values: x_5,
+      y_arrays: gapped,
+      config: {},
+      x_expected: [0, 3, 4],
+      cleaned_y: [
+        [0, 6, 8],
+        [10, 16, 18],
       ],
-    )
-    expect(result.x).toEqual([0, 3, 4])
-    expect(result.cleaned_y).toEqual([
-      [0, 6, 8],
-      [10, 16, 18],
-    ])
-    expect(result.quality.map(({ points_removed }) => points_removed)).toEqual([2, 2])
-  })
-
-  it(`interpolates per series and applies bounds to all of them`, () => {
-    const interpolated = clean_multi_series(
-      [0, 1, 2, 3, 4],
-      [
-        [0, NaN, 4, 6, 8],
-        [10, 12, NaN, 16, 18],
+      quality: { points_removed: [2, 2] },
+    },
+    {
+      desc: `per-series interpolation`,
+      x_values: x_5,
+      y_arrays: gapped,
+      config: { invalid_values: `interpolate` },
+      x_expected: x_5,
+      cleaned_y: [
+        [0, 2, 4, 6, 8],
+        [10, 12, 14, 16, 18],
       ],
-      { invalid_values: `interpolate` },
-    )
-    expect(interpolated.cleaned_y).toEqual([
-      [0, 2, 4, 6, 8],
-      [10, 12, 14, 16, 18],
-    ])
-    expect(
-      interpolated.quality.map(({ invalid_values_found }) => invalid_values_found),
-    ).toEqual([1, 1])
-    const clamped = clean_multi_series(
-      [0, 1, 2],
-      [
+      quality: { invalid_values_found: [1, 1] },
+    },
+    {
+      desc: `clamped bounds`,
+      x_values: [0, 1, 2],
+      y_arrays: [
         [-5, 5, 15],
         [0, 10, 20],
       ],
-      { bounds: { min: 0, max: 10 } },
-    )
-    expect(clamped.cleaned_y).toEqual([
-      [0, 5, 10],
-      [0, 10, 10],
-    ])
-    const filtered = clean_multi_series(
-      [0, 1, 2, 3, 4],
-      [
+      config: { bounds: { min: 0, max: 10 } },
+      x_expected: [0, 1, 2],
+      cleaned_y: [
+        [0, 5, 10],
+        [0, 10, 10],
+      ],
+      quality: { bounds_violations: [2, 1] },
+    },
+    {
+      desc: `filtered bounds`,
+      x_values: x_5,
+      y_arrays: [
         [-10, 5, 10, 15, 100],
         [0, 5, 10, 15, 20],
       ],
-      { bounds: { min: 0, max: 20, mode: `filter` } },
-    )
-    expect(filtered.x).toEqual([1, 2, 3])
-    expect(filtered.cleaned_y[1]).toEqual([5, 10, 15])
-    expect(filtered.quality.map(({ bounds_violations }) => bounds_violations)).toEqual([2, 0])
-    // Interpolate before filtering, as clean_series does; filled values can violate bounds.
-    const interpolated_bounds = clean_multi_series(
-      [0, 1, 2],
-      [
+      config: { bounds: { min: 0, max: 20, mode: `filter` } },
+      x_expected: [1, 2, 3],
+      cleaned_y: [
+        [5, 10, 15],
+        [5, 10, 15],
+      ],
+      quality: { bounds_violations: [2, 0] },
+    },
+    // interpolates before filtering, as clean_series does: filled values can violate bounds
+    {
+      desc: `interpolation then filtering`,
+      x_values: [0, 1, 2],
+      y_arrays: [
         [-5, NaN, 5],
         [0, 5, 10],
       ],
-      { invalid_values: `interpolate`, bounds: { min: 1, max: 10, mode: `filter` } },
-    )
-    expect(interpolated_bounds.x).toEqual([2])
-    expect(interpolated_bounds.cleaned_y).toEqual([[5], [10]])
-    expect(
-      interpolated_bounds.quality.map(({ bounds_violations }) => bounds_violations),
-    ).toEqual([2, 1])
+      config: { invalid_values: `interpolate`, bounds: { min: 1, max: 10, mode: `filter` } },
+      x_expected: [2],
+      cleaned_y: [[5], [10]],
+      quality: { bounds_violations: [2, 1] },
+    },
+  ])(`cleans $desc`, ({ x_values, y_arrays, config, x_expected, cleaned_y, quality }) => {
+    const result = clean_multi_series(x_values, y_arrays, config)
+    expect(result).toMatchObject({ x: x_expected, cleaned_y })
+    expect(result.quality).toHaveLength(y_arrays.length)
+    for (const [key, counts] of Object.entries(quality))
+      expect(result.quality.map((entry) => entry[key as keyof CleaningQuality])).toEqual(
+        counts,
+      )
   })
 
-  it(`handles empty input and counts invalid values only inside the aligned prefix`, () => {
-    expect(clean_multi_series([0, 1, 2], [])).toEqual({
-      x: [0, 1, 2],
-      cleaned_y: [],
-      quality: [],
-    })
-    const result = clean_multi_series(
-      [0, 1, 2],
-      [
-        [0, NaN, 4, NaN, NaN],
-        [10, 12, 14, NaN, NaN],
-      ],
+  // silently truncating to the shortest array hid upstream length bugs
+  it(`rejects y arrays misaligned with x`, () => {
+    expect(() =>
+      clean_multi_series(
+        [0, 1, 2],
+        [
+          [0, NaN, 4, NaN, NaN],
+          [10, 12, 14],
+        ],
+      ),
+    ).toThrow(
+      `clean_multi_series: aligned arrays must have equal lengths, got x=3, y[0]=5, y[1]=3`,
     )
-    expect(result.quality.map(({ invalid_values_found }) => invalid_values_found)).toEqual([
-      1, 0,
-    ])
-    expect(result.quality[0].points_removed).toBe(1)
   })
 })
 
@@ -707,7 +737,7 @@ describe(`clean_xyz`, () => {
     expect(result.quality).toMatchObject({ points_removed: 3, invalid_values_found: 3 })
   })
 
-  it(`interpolates each coordinate, truncates to the shortest array and handles empties`, () => {
+  it(`interpolates each coordinate, rejects misaligned arrays and handles empties`, () => {
     const interpolated = clean_xyz(
       [0, NaN, 2, 3, 4],
       [0, Infinity, 2, 3, 4],
@@ -721,7 +751,9 @@ describe(`clean_xyz`, () => {
     })
     expect(interpolated.quality.invalid_values_found).toBe(3)
     expect(clean_xyz([], [], []).x).toEqual([])
-    expect(clean_xyz([0, 1, 2, 3, 4], [0, 1, 2], [0, 1, 2, 3]).x).toEqual([0, 1, 2])
+    expect(() => clean_xyz([0, 1, 2, 3, 4], [0, 1, 2], [0, 1, 2, 3])).toThrow(
+      `clean_xyz: aligned arrays must have equal lengths, got x=5, y=3, z=4`,
+    )
   })
 
   it(`smooths only the dependent y/z axes`, () => {

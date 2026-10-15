@@ -22,9 +22,7 @@ describe(`StructureInfoPane`, () => {
     mount(StructureInfoPane, { target: document.body, props })
 
   const make_sym_data = (position_count = 1): SymmetryDataset => {
-    const positions = Array.from({ length: position_count }, (): [number, number, number] => [
-      0, 0, 0,
-    ])
+    const positions = Array.from({ length: position_count }, (): Vec3 => [0, 0, 0])
     const numbers = Array<number>(position_count).fill(1)
     return {
       ...make_wyckoff_dataset(positions, numbers, Array<null>(position_count).fill(null)),
@@ -108,22 +106,15 @@ describe(`StructureInfoPane`, () => {
     expect(state.highlighted_sites).toEqual([])
   })
 
-  // Closed pane stays mounted (display:none); site cards must not rebuild while closed.
-  test.each([
-    [false, 0],
-    [true, 3],
-  ])(`pane_open=%s renders %i site cards`, (pane_open, n_cards) => {
+  // A closed pane stays mounted (display:none) with its tips, but must not build site cards.
+  // The tips must match Structure.svelte's plain-letter handlers.
+  test(`closed pane keeps the keyboard tip and builds no site cards`, () => {
     mount_info_pane({
       structure: get_dummy_structure(`H`, 3, true),
-      pane_open,
+      pane_open: false,
       selected_sites: [0, 1, 2],
     })
-    expect(document.querySelectorAll(`.site-card`)).toHaveLength(n_cards)
-  })
-
-  // Tips stay in the DOM even when closed; must match Structure.svelte's plain-letter handlers.
-  test(`Keyboard tip documents the plain-letter shortcuts`, () => {
-    mount_info_pane({ structure: get_dummy_structure(`H`, 1, true), pane_open: false })
+    expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
     expect(document.body.textContent).toContain(
       `Press f for fullscreen, i to toggle this pane, g for multi-view, r to reset the view`,
     )
@@ -134,6 +125,8 @@ describe(`StructureInfoPane`, () => {
 
   test(`selected cards hover, copy, and keyboard navigate; search selects sites`, async () => {
     const structure = get_dummy_structure(`H`, 3, true)
+    // a numeric-string magmom (as some parsers store it) still shows
+    structure.sites[0].properties = { selective_dynamics: [true, false, true], magmom: `2.5` }
     const state = $state({
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
@@ -146,6 +139,8 @@ describe(`StructureInfoPane`, () => {
     expect(site_cards()).toHaveLength(3)
     expect(site_cards()[0].textContent).toContain(`Frac.`)
     expect(site_cards()[0].textContent).toContain(`Cart.`)
+    expect(site_cards()[0].textContent).toContain(`(true, false, true)`) // not (1, 0, 1)
+    expect(site_cards()[0].textContent).toContain(`2.5 μB`)
     expect(document.querySelector(`.site-color`)).toBeNull()
 
     const site_row = site_cards()[1]
@@ -193,18 +188,15 @@ describe(`StructureInfoPane`, () => {
     async (atom_count) => {
       const structure = get_dummy_structure(`H`, 1, true)
       const displayed_structure = get_dummy_structure(`O`, atom_count, true)
-      displayed_structure.sites[atom_count - 1].properties = {
+      const last_site = displayed_structure.sites[atom_count - 1]
+      last_site.properties = {
         force: [3, 4, 0],
         magmom: 2,
         orig_site_idx: 0,
         orig_unit_cell_idx: 0,
         completion_image: true,
       }
-      displayed_structure.sites[atom_count - 1].provenance = {
-        image_of: 0,
-        unit_cell_idx: 0,
-        completion: true,
-      }
+      last_site.provenance = { image_of: 0, unit_cell_idx: 0, completion: true }
       const state = $state({ selected_sites: [atom_count - 1], displayed_structure })
       mount_info_pane(bind_props({ structure, pane_open: true }, state))
       const cards = document.querySelectorAll(`.site-card`)
@@ -266,9 +258,7 @@ describe(`StructureInfoPane`, () => {
     mount_info_pane(
       bind_props({ displayed_structure, bonding_strategy: `explicit_only` as const }, props),
     )
-    expect(rdf_spy).not.toHaveBeenCalled()
-    expect(cn_spy).not.toHaveBeenCalled()
-    expect(angle_spy).not.toHaveBeenCalled()
+    for (const spy of [rdf_spy, cn_spy, angle_spy]) expect(spy).not.toHaveBeenCalled()
     doc_query(`.analysis summary`).click()
     await tick()
     const selector = doc_query<HTMLSelectElement>(
@@ -331,6 +321,21 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelector(`.analysis select`)).toBeNull()
   })
 
+  // A cell transform's scaled charge carried float noise (4.000000000000149) into the row
+  test.each([
+    [4.000000000000149, `4e`],
+    [-2, `−2e`],
+    [undefined, `0e`],
+  ])(`formats a structure charge of %s as %s`, (charge, expected) => {
+    mount_info_pane({
+      structure: { ...get_dummy_structure(`H`, 1, true), charge },
+      pane_open: true,
+    })
+    expect(doc_query(`[data-testid="structure-charge"]`).textContent).toBe(
+      `Charge ${expected}`,
+    )
+  })
+
   test(`renders symmetry between Cell and Selected sites when sym_data is present`, () => {
     const periodic_structure = get_dummy_structure(`H`, 4, true)
     // Structure headings precede the selected-site inspector.
@@ -339,8 +344,13 @@ describe(`StructureInfoPane`, () => {
         .slice(0, count)
         .map((heading) => heading.textContent?.trim())
 
-    mount_info_pane({ structure: periodic_structure, pane_open: true })
+    const { lattice } = periodic_structure
+    mount_info_pane({
+      structure: { ...periodic_structure, lattice: { ...lattice, volume: 1728 } },
+      pane_open: true,
+    })
     expect(document.body.textContent).not.toContain(`Space Group`)
+    expect(document.body.textContent).toContain(`1728 Å³`) // not an SI-prefixed 1.73k
     expect(headings(3)).toEqual([`Structure`, `Cell`, `Selected sites (0)`])
 
     document.body.innerHTML = ``

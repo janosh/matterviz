@@ -1,8 +1,5 @@
 import { formula_key_from_composition } from '#lib/chempot-diagram/compute.js'
-import {
-  get_temp_filter_payload,
-  get_valid_temperature,
-} from '#lib/chempot-diagram/temperature.js'
+import { get_temp_filter_payload } from '#lib/chempot-diagram/temperature.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
@@ -71,20 +68,4 @@ describe(`get_temp_filter_payload`, () => {
       energy_per_atom: expect.closeTo(energy_per_atom, 8),
     })
   })
-})
-
-describe(`get_valid_temperature`, () => {
-  const available = [300, 700, 900]
-  test.each([
-    [`keeps the value when there is no temperature data`, 700, [], 700],
-    [`keeps an available value`, 700, available, 700],
-    [`falls back to the first available temperature for undefined`, undefined, available, 300],
-    [`keeps a non-exact value inside the available range`, 500, available, 500],
-    [`falls back to the first available temperature out of range`, 1200, available, 300],
-  ] as [string, number | undefined, number[], number][])(
-    `%s`,
-    (_label, temp, temps, expected) => {
-      expect(get_valid_temperature(temp, temps)).toBe(expected)
-    },
-  )
 })

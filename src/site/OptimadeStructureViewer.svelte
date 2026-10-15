@@ -82,31 +82,27 @@
   }
 
   // Every keystroke/provider switch starts a fetch; only the latest may write back, else a
-  // slow older response lands on top of a newer one
+  // slow older response lands on top of a newer one. A failed load clears the old structure.
   let structure_request_id = 0
   async function load_structure_data() {
     const request_id = ++structure_request_id
     loading_struct = true
     struct_error = null
-    let error: string | null = null
-    const data = await fetch_optimade_structure(
-      structure_id,
-      selected_db,
-      available_providers,
-    ).catch((err) => {
-      error = `Failed to load structure: ${err}`
-      return null
-    })
-    if (request_id !== structure_request_id) return
-    if (data) {
-      try {
-        structure = optimade_to_structure(data)
-      } catch (err) {
-        error = `Failed to convert structure data: ${err}`
-      }
+    try {
+      const data = await fetch_optimade_structure(
+        structure_id,
+        selected_db,
+        available_providers,
+      )
+      if (request_id !== structure_request_id) return
+      structure = optimade_to_structure(data)
+    } catch (error) {
+      if (request_id !== structure_request_id) return
+      structure = null
+      struct_error = `Failed to load structure: ${error}`
+    } finally {
+      if (request_id === structure_request_id) loading_struct = false
     }
-    struct_error = error
-    loading_struct = false
   }
 
   let suggestions_request_id = 0

@@ -54,6 +54,12 @@
       icon: FermiSurface,
     },
     {
+      label: `IR + Raman`,
+      href: `/reciprocal/ir-raman`,
+      description: `IR and Raman spectra from phonon eigenvectors, Born effective charges and Raman tensors.`,
+      icon: DensityOfStates,
+    },
+    {
       label: `Phonon Mode Explorer`,
       href: `/reciprocal/phonon-mode-explorer`,
       description: `Click phonon-band points to animate their atomic eigenvectors in a configurable 3D supercell.`,

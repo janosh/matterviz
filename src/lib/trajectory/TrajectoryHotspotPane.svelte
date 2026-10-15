@@ -7,7 +7,7 @@
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import HotspotLegend from './HotspotLegend.svelte'
   import { Graph } from 'svelte-widgets/icons'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { clamp01, to_error } from '#lib/utils.js'
   import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'
   import type { TrajectoryRun } from './run'
@@ -61,10 +61,12 @@
     if (!scale_locked) scale = hotspot_scale(mean, metric, threshold)
   })
   let preview_frame = $state<number>()
-  let sampling = $state({ start_frame: 0, end_frame: 1, frame_stride: 1, bins: 0 })
+  // Frames as the inputs show them, 1-based and inclusive: only the start shifts to its index,
+  // since the exclusive 0-based end index is the inclusive 1-based last frame
+  let sampling = $state({ start_frame: 1, end_frame: 1, frame_stride: 1, bins: 0 })
   const sampling_fields = $derived([
-    [`start_frame`, `Start frame (inclusive)`, 0, (run?.frame_count ?? 1) - 1],
-    [`end_frame`, `End frame (exclusive)`, 1, run?.frame_count ?? 1],
+    [`start_frame`, `Start frame`, 1, run?.frame_count ?? 1],
+    [`end_frame`, `End frame`, 1, run?.frame_count ?? 1],
     [`frame_stride`, `Frame stride`, 1, undefined],
     [`bins`, `Grid resolution (0 = automatic)`, 0, 128],
   ] as const)
@@ -120,6 +122,7 @@
   }
   const options = $derived<HotspotOptions>({
     ...sampling,
+    start_frame: from_display_idx(sampling.start_frame),
     bins: sampling.bins || undefined,
     coordinates,
     motion: source === `energy` ? `device` : motion,
@@ -158,7 +161,7 @@
       preview_frame = undefined
       analyzed_options_json = ``
       error = ``
-      sampling.start_frame = 0
+      sampling.start_frame = 1
       sampling.end_frame = next?.frame_count ?? 1
       source = `velocity`
       property_keys = { velocity: `velocity`, energy: `kinetic_energy` }
@@ -208,7 +211,8 @@
       if (!is_current()) return
       result = computed
       preview_frame = frame
-      if (frame !== undefined) status.preview_frame = frame
+      // Partial and final averages replace the preview, so its slider marker goes too
+      status.preview_frame = frame
       analyzed_options_json = submitted_json
       settings_open = false
     }
@@ -393,7 +397,7 @@
   {#if result}
     <p class="hotspot-map-status" role="status">
       {#if preview_frame !== undefined}
-        Frame {preview_frame} preview{busy ? ` · calculating time average…` : ``}
+        Frame {display_idx(preview_frame)} preview{busy ? ` · calculating time average…` : ``}
       {:else if coverage && coverage.completed < coverage.total}
         Incomplete time average · {result.frames}/{coverage.total} frames
       {:else}

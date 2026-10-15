@@ -773,6 +773,9 @@ describe(`controller and playback`, () => {
     await capture
     expect(exported).toHaveBeenCalledOnce()
     await session.wait_for_frame(1, new AbortController().signal)
+    await expect(session.wait_for_frame(0, new AbortController().signal)).rejects.toThrow(
+      `Frame 1 is not the requested display frame`,
+    )
     tick(534)
     expect(reads).toEqual([1, 2])
     expect(host.index).toBe(2)

@@ -1,4 +1,6 @@
-import { BondFrame, type BondData } from './bond-rendering'
+import { display_idx } from '#lib/labels.js'
+import type { BondData } from './bond-rendering'
+import { BondFrame, bond_site_1, bond_site_2 } from './bond-rendering'
 import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { get_element_counts } from './density'
@@ -505,10 +507,8 @@ export function build_adjacency(
   const start: Vec3 = [0, 0, 0]
   const end: Vec3 = [0, 0, 0]
   for (let idx = 0; idx < bonds.length; idx++) {
-    const site_idx_1 =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
-    const site_idx_2 =
-      bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+    const site_idx_1 = bond_site_1(bonds, idx)
+    const site_idx_2 = bond_site_2(bonds, idx)
     const cell_shift =
       bonds instanceof BondFrame ? bonds.cell_shift(idx) : bonds[idx].cell_shift
     if (site_idx_1 === site_idx_2 && !cell_shift?.some((value) => value !== 0)) continue
@@ -982,7 +982,7 @@ export function merge_polyhedra_buffers(
       }
     }
     if (edge_offset > edge_positions.length) {
-      skipped_sites.push(`site ${poly.center_site_idx} (${poly.center_element})`)
+      skipped_sites.push(`site ${display_idx(poly.center_site_idx)} (${poly.center_element})`)
       offset = poly_offset
       edge_offset = poly_edge_offset
     }

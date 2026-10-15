@@ -156,6 +156,7 @@
   let {
     structure = undefined,
     base_structure = undefined,
+    to_base_site_idx = get_orig_site_idx,
     render_token,
     on_rendered,
     atom_radius = DEFAULTS.structure.atom_radius,
@@ -303,6 +304,9 @@
     render_token?: unknown
     on_rendered?: (token: unknown) => void
     base_structure?: AnyStructure // untransformed cell: supplies the drawn lattice and the displacement reference
+    // Index into base_structure of a displayed site; Structure passes its session's rule, which
+    // ignores unit_cell_idx from a supercell built outside the viewer
+    to_base_site_idx?: (site: Site, site_idx: number) => number
     atom_radius?: number // scale factor for atomic radii
     same_size_atoms?: boolean // uniform radius for all atoms (else per-element atomic radii)
     camera_position?: [x: number, y: number, z: number] // initial camera position; unset fits the structure
@@ -1516,6 +1520,7 @@
       perceived,
       get_explicit_bond_metadata(structure),
       aromatic_display,
+      structure.sites,
     )
   })
 
@@ -1927,7 +1932,7 @@
     let max_mag = 0
     const visible = structure.sites.flatMap((site, site_idx) => {
       if (!is_site_visible(site_idx)) return []
-      const vector = vectors[get_orig_site_idx(site, site_idx)]
+      const vector = vectors[to_base_site_idx(site, site_idx)]
       if (!vector) return []
       const magnitude = Math.hypot(vector[0], vector[1], vector[2])
       if (magnitude < math.EPS) return []

@@ -66,10 +66,10 @@ export type ColorSchemeName = (typeof ELEMENT_COLOR_SCHEME_NAMES)[number]
 export const COMPRESSION_FORMATS = {
   gzip: [`.gz`, `.gzip`],
   deflate: [`.deflate`],
-  'deflate-raw': [`.z`],
   zip: [`.zip`], // Browser DecompressionStream doesn't support ZIP
   xz: [`.xz`], // Browser DecompressionStream doesn't support XZ
   bz2: [`.bz2`], // Browser DecompressionStream doesn't support BZ2
+  lzw: [`.z`], // Unix compress, no decoder here either
 } as const satisfies Record<string, readonly string[]>
 
 // All detectable compression extensions

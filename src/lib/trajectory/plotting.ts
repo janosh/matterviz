@@ -1,7 +1,13 @@
 // Plotting utilities for trajectory visualization
 import { PLOT_COLORS } from '#lib/colors/index.js'
 import { TRAJECTORY_ENERGY_KEYS } from '#lib/constants.js'
-import { humanize, SCF_AXIS_GROUP, trajectory_property_config } from '#lib/labels.js'
+import {
+  display_idx,
+  from_display_idx,
+  humanize,
+  SCF_AXIS_GROUP,
+  trajectory_property_config,
+} from '#lib/labels.js'
 import type { TrajPropertyConfig } from '#lib/labels.js'
 import { first_non_increasing_index, get_coefficient_of_variation, mean } from '#lib/math.js'
 import {
@@ -58,11 +64,11 @@ export interface PlotSeriesOptions {
   relative_energy?: boolean
   // Distributions keep constant/single-frame properties and order them by group priority.
   include_all_properties?: boolean
-  // Maps frame index to x coordinate. Defaults to the frame index itself.
+  // Maps frame index to x coordinate. Defaults to the 1-based frame number.
   x_map?: TrajectoryXMap
 }
 
-// What the plot's x axis counts. `frame` is the position in the trajectory (always
+// What the plot's x axis counts. `frame` is the 1-based position in the trajectory (always
 // available), `step` the MD/ionic step recorded in the file, `time` that step scaled by
 // the file's timestep. Plotting a 500-step-interval dump against the frame index and
 // labelling it "Step" is the bug this type exists to prevent.
@@ -131,9 +137,11 @@ function interpolate(
   if (value <= x_values[0]) return y_values[0]
   const last_idx = x_values.length - 1
   if (value >= x_values[last_idx]) return y_values[last_idx]
-  // An eagerly parsed trajectory grids on the frame index itself, so the search collapses
-  // to a lookup. Valid whenever it hits: xs[value] === value means value IS that grid point.
-  if (Number.isInteger(value) && x_values[value] === value) return y_values[value]
+  // An eagerly parsed trajectory grids on contiguous frame indices (or their 1-based numbers),
+  // so the search collapses to a lookup. Valid whenever it hits: on a strictly increasing grid,
+  // xs[idx] === value means value IS that grid point.
+  const grid_idx = value - x_values[0]
+  if (Number.isInteger(grid_idx) && x_values[grid_idx] === value) return y_values[grid_idx]
 
   let low = 0
   let high = last_idx
@@ -147,18 +155,18 @@ function interpolate(
   return y_values[low] + ((value - x_values[low]) / span) * (y_values[high] - y_values[low])
 }
 
-// Frame numbering for a trajectory with no samples to grid on
+// 1-based frame numbering for a trajectory with no samples to grid on
 const FRAME_X_MAP: TrajectoryXMap = {
   quantity: `frame`,
   label: X_QUANTITY_LABELS.frame,
   unit: ``,
-  to_x: (frame_idx) => frame_idx,
-  to_frame: (x_value) => Math.round(x_value),
+  to_x: display_idx,
+  to_frame: (x_value) => from_display_idx(Math.round(x_value)),
 }
 
 // Build the frame <-> x mapping for one quantity. Falls back to frame numbering when the
 // requested quantity is unsupported by the data rather than fabricating an axis. Frame
-// numbering is the identity read of the grid against itself, so it clamps like the others.
+// numbering reads the grid against its own 1-based numbers, so it clamps like the others.
 export function build_x_map(
   samples: FrameStepSamples,
   quantity: TrajectoryXQuantity,
@@ -171,7 +179,7 @@ export function build_x_map(
   const usable = available_x_quantities(samples, time_step, time_unit).includes(quantity)
     ? quantity
     : `frame`
-  const values = usable === `frame` ? frame_numbers : steps
+  const values = usable === `frame` ? frame_numbers.map(display_idx) : steps
   // available_x_quantities only returns `time` for a positive time_step
   const scale = usable === `time` ? (time_step ?? 1) : 1
 
@@ -180,8 +188,8 @@ export function build_x_map(
     label: X_QUANTITY_LABELS[usable],
     unit: usable === `time` ? time_unit : ``,
     // Frame numbering is its own x axis, taken directly rather than read off the grid:
-    // interpolating an array against itself round-trips through a divide and comes back
-    // a few eps off the integer that went in.
+    // interpolating between frame indices and numbers round-trips through a divide and comes
+    // back a few eps off the integer that went in.
     to_x:
       usable === `frame`
         ? FRAME_X_MAP.to_x
@@ -253,6 +261,7 @@ const stats_cache = new WeakMap<
   readonly TrajectoryMetadata[],
   Record<`all` | `time_series`, PropertyStats>
 >()
+const frame_number_grids = new WeakMap<readonly number[], number[]>() // see generate_plot_series
 function cached_properties(rows: readonly TrajectoryMetadata[]) {
   const cached = stats_cache.get(rows)
   if (cached) return cached
@@ -410,7 +419,12 @@ export function generate_plot_series(
     x_map = FRAME_X_MAP,
   } = options
   const series: PropertySeries[] = []
-  const x_grids = new Map<readonly number[], number[]>()
+  // Frame numbers outlive this call so caches keyed on the x array (smoothing, downsampling)
+  // keep hitting across re-renders; step/time grids depend on the x_map, so stay per call.
+  const x_grids =
+    x_map.to_x === FRAME_X_MAP.to_x
+      ? frame_number_grids
+      : new WeakMap<readonly number[], number[]>()
   const { all, time_series } = cached_properties(rows)
   for (const [key, { values, frame_indices }] of include_all_properties ? all : time_series) {
     const { clean_label, unit, axis_group } = extract_label_and_unit(key, property_config)
@@ -418,8 +432,8 @@ export function generate_plot_series(
       relative_energy && is_energy_property(key) ? values.find(Number.isFinite) : undefined
     const label = reference === undefined ? clean_label : `Δ ${clean_label}`
     const color = PLOT_COLORS[series.length % PLOT_COLORS.length]
-    // Dense properties share one frame grid; interpolate its step/time coordinates once.
-    let x_values = x_map.to_x === FRAME_X_MAP.to_x ? frame_indices : x_grids.get(frame_indices)
+    // Dense properties share one frame grid; map it to x coordinates once.
+    let x_values = x_grids.get(frame_indices)
     if (!x_values) {
       x_values = frame_indices.map(x_map.to_x)
       x_grids.set(frame_indices, x_values)

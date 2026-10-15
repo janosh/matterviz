@@ -2,7 +2,12 @@
   import type { InfoPaneCard, InfoPaneRow, ViewerPaneOptions } from '#lib/overlays/index.js'
   import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import { format_num, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
+  import {
+    display_idx,
+    format_num,
+    trajectory_property_config,
+    zero_if_negligible,
+  } from '#lib/labels.js'
   import { strip_html } from '#lib/utils.js'
   import { format_bytes } from 'svelte-widgets/format'
   import { array_extent } from '#lib/math.js'
@@ -163,6 +168,7 @@
       return []
     }
     const displayed_frame = current_frame ?? (current_step_idx === 0 ? run.preview : null)
+    const frame_num = display_idx(current_step_idx)
     const current_time =
       displayed_frame && simulation_time_step
         ? displayed_frame.step * simulation_time_step
@@ -181,10 +187,7 @@
       section(`Trajectory`, [
         safe_item(
           `Total Frames`,
-          `${format_num(total_frames, `.3~s`)} (current: ${format_num(
-            current_step_idx + 1,
-            `.3~s`,
-          )})`,
+          `${format_num(total_frames, `.3~s`)} (current: ${format_num(frame_num, `.3~s`)})`,
           `total-frames`,
         ),
         displayed_frame &&

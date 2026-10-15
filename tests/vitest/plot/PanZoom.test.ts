@@ -228,33 +228,42 @@ describe(`shared plot drag zoom bounds`, () => {
     expect(svg.style.cursor).toBe(`crosshair`)
   })
 
-  // A mouseup delivered outside the window never reaches the pan's own handler. That used to
-  // leave the plot panning on bare mouse moves; now that consumers gate animation and hover
-  // on `is_panning`, a wedged pan would also freeze both for the rest of the plot's life.
-  test(`a move without the button held ends a pan that lost its mouseup`, async () => {
-    const svg = await mount_scatter()
-    const bounds = svg.getBoundingClientRect()
-    const position = (coord_x: number, buttons: number): MouseEventInit => ({
-      button: 0,
-      buttons,
-      clientX: bounds.left + coord_x,
-      clientY: bounds.top + 120,
-      shiftKey: true,
-    })
+  // A mouseup delivered outside the window never reaches the drag's own handler. A wedged pan
+  // kept panning on bare moves (and froze animation/hover gated on `is_panning`); a wedged rect
+  // zoomed on the next stray mouseup.
+  test.each([
+    [`pan`, true],
+    [`rect drag`, false],
+  ])(
+    `a move without the button held ends a %s that lost its mouseup`,
+    async (_name, shift) => {
+      const svg = await mount_scatter()
+      const bounds = svg.getBoundingClientRect()
+      const position = (coord: number, buttons: number): MouseEventInit => ({
+        button: 0,
+        buttons,
+        clientX: bounds.left + coord,
+        clientY: bounds.top + coord,
+        shiftKey: shift,
+      })
+      const before = marker_xs(svg)
+      svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...position(200, 1) }))
+      window.dispatchEvent(new MouseEvent(`mousemove`, position(150, 1)))
+      await tick()
+      expect(svg.querySelector(`.zoom-rect`) !== null).toBe(!shift)
 
-    svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...position(200, 1) }))
-    window.dispatchEvent(new MouseEvent(`mousemove`, position(150, 1)))
-    await tick()
-
-    window.dispatchEvent(new MouseEvent(`mousemove`, position(100, 0))) // button released off-window
-    await tick()
-    const after_release = marker_xs(svg)
-    expect(document.body.style.cursor).toBe(``) // the grabbing cursor is released
-
-    window.dispatchEvent(new MouseEvent(`mousemove`, position(20, 0)))
-    await tick()
-    expect(marker_xs(svg)).toEqual(after_release) // a later bare move no longer pans the plot
-  })
+      window.dispatchEvent(new MouseEvent(`mousemove`, position(100, 0))) // released off-window
+      await tick()
+      expect(svg.querySelector(`.zoom-rect`)).toBeNull()
+      expect(document.body.style.cursor).toBe(``)
+      const after_release = marker_xs(svg)
+      window.dispatchEvent(new MouseEvent(`mousemove`, position(20, 0)))
+      window.dispatchEvent(new MouseEvent(`mouseup`, position(20, 0)))
+      await tick()
+      // no later bare move pans, and the abandoned rect never zooms
+      expect(marker_xs(svg)).toEqual(shift ? after_release : before)
+    },
+  )
 
   // A pan retargets every marker on each pointer frame. Animating that leaves the markers
   // trailing the axes while hover hit-testing already uses the live scales, so the point you

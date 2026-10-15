@@ -170,7 +170,6 @@ describe(`PlotLegend`, () => {
       available_edge_length: 32,
       item_extents: [{ height: 10 }, { height: 10 }, { height: 10 }],
     })
-
     expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(3, auto)`)
   })
 
@@ -299,39 +298,44 @@ describe(`PlotLegend`, () => {
     expect(mock_toggle.mock.calls).toEqual([[0], [2], [1], [3]])
   })
 
-  test(`drags from legend background and removes window listeners on mouseup`, () => {
+  test(`drags from legend background and removes window listeners on (lost) mouseup`, () => {
     const [on_drag_start, on_drag, on_drag_end] = [vi.fn(), vi.fn(), vi.fn()]
     mount_legend({ on_drag_start, on_drag, on_drag_end })
     const legend = doc_query(`.legend`)
+    // a right-click never drags (its mouseup can vanish into the context menu)
+    legend.dispatchEvent(mouse(`mousedown`, { button: 2 }))
+    expect(on_drag_start).not.toHaveBeenCalled()
     legend.dispatchEvent(mouse(`mousedown`))
     flushSync()
     expect(on_drag_start).toHaveBeenCalledTimes(1)
     expect(legend.classList.contains(`is-dragging`)).toBe(true)
-    window.dispatchEvent(new MouseEvent(`mousemove`))
-    window.dispatchEvent(new MouseEvent(`mousemove`))
+    const held_move = () => new MouseEvent(`mousemove`, { buttons: 1 })
+    window.dispatchEvent(held_move())
+    window.dispatchEvent(held_move())
     expect(on_drag).toHaveBeenCalledTimes(2)
     window.dispatchEvent(new MouseEvent(`mouseup`))
     flushSync()
     expect(on_drag_end).toHaveBeenCalledTimes(1)
-    window.dispatchEvent(new MouseEvent(`mousemove`))
+    window.dispatchEvent(held_move())
     expect(on_drag).toHaveBeenCalledTimes(2) // listeners gone
+    expect(legend.classList.contains(`is-dragging`)).toBe(false)
+    // a mouseup released outside the window is lost: the next unheld move ends the drag
+    legend.dispatchEvent(mouse(`mousedown`))
+    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 0 }))
+    flushSync()
+    expect(on_drag).toHaveBeenCalledTimes(2)
+    expect(on_drag_end).toHaveBeenCalledTimes(2)
     expect(legend.classList.contains(`is-dragging`)).toBe(false)
   })
 
   test(`applies style and item_style`, () => {
-    // Use longhand background-color instead of shorthand background
-    // because happy-dom doesn't properly parse CSS shorthand properties
+    // longhand background-color: happy-dom doesn't parse the background shorthand
     const style = `background-color: black; padding: 15px;`
-    const item_style = `color: white; margin: 2px;`
-    mount_legend({ style, item_style })
-
-    const wrapper = doc_query(`.legend`)
-    expect(wrapper.style.backgroundColor).toBe(`black`)
-    expect(wrapper.style.padding).toBe(`15px`)
-
-    const first_item = doc_query(`.legend-item`)
-    expect(first_item.style.color).toBe(`white`)
-    expect(first_item.style.margin).toBe(`2px`)
+    mount_legend({ style, item_style: `color: white; margin: 2px;` })
+    const { backgroundColor, padding } = doc_query(`.legend`).style
+    expect([backgroundColor, padding]).toEqual([`black`, `15px`])
+    const { color, margin } = doc_query(`.legend-item`).style
+    expect([color, margin]).toEqual([`white`, `2px`])
   })
 
   test.each([1, `auto`] as const)(
@@ -409,7 +413,6 @@ describe(`PlotLegend`, () => {
 
     test(`chevron toggles group collapse and aria labels on click and keyboard`, async () => {
       mount_legend({ series_data: make_grouped_data() })
-
       // Chevron (expansion) and label (visibility) are sibling controls, never nested
       expect(document.querySelectorAll(`[role="button"] [role="button"]`)).toHaveLength(0)
       const label = doc_query(`.group-label`)
@@ -422,16 +425,12 @@ describe(`PlotLegend`, () => {
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Collapse group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
-
-      // Click to collapse
       chevron.dispatchEvent(mouse(`click`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(true)
       expect(chevron.getAttribute(`aria-expanded`)).toBe(`false`)
       expect(chevron.getAttribute(`aria-label`)).toBe(`Expand group Li₂O`)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O items
-
-      // Keyboard (Enter) to expand
       chevron.dispatchEvent(keydown(`Enter`))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
@@ -465,22 +464,16 @@ describe(`PlotLegend`, () => {
     )
 
     test(`collapsed_groups prop controls initial collapse state`, async () => {
-      // Start with Li₂O group collapsed via prop
       const collapsed = new SvelteSet([`Li₂O`])
       mount_legend({ series_data: make_grouped_data(), collapsed_groups: collapsed })
-
       const chevrons = document.querySelectorAll(`.group-chevron`)
-      // Li₂O (first group) should be collapsed
-      expect(chevrons[0].classList.contains(`collapsed`)).toBe(true)
-      // NaCl (second group) should be expanded
-      expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
-      // Only 3 items visible (NaCl: 2 + Ungrouped: 1)
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3)
-
-      // Clicking chevron updates the bound set
+      expect(chevrons[0].classList.contains(`collapsed`)).toBe(true) // Li₂O
+      expect(chevrons[1].classList.contains(`collapsed`)).toBe(false) // NaCl
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // NaCl 2 + ungrouped 1
+      // clicking the chevron updates the bound set
       chevrons[0].dispatchEvent(mouse(`click`))
       await tick()
-      expect(collapsed.has(`Li₂O`)).toBe(false) // Removed from set
+      expect(collapsed.has(`Li₂O`)).toBe(false)
       expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
     })
 
@@ -526,21 +519,14 @@ describe(`PlotLegend`, () => {
 
     test(`renders fill swatch with correct styling and hidden state`, () => {
       mount_legend({ series_data: fill_series_data })
-      const items = document.querySelectorAll(`.legend-item`)
-
-      // Regular series: no fill swatch
-      expect(items[0].classList.contains(`fill-item`)).toBe(false)
+      const items = [...document.querySelectorAll(`.legend-item`)]
+      const has_class = (name: string) => items.map((item) => item.classList.contains(name))
+      expect(has_class(`fill-item`)).toEqual([false, true, true])
+      expect(has_class(`hidden`)).toEqual([false, false, true])
       expect(items[0].querySelector(`.fill-swatch`)).toBeNull()
-
-      // Fill region: has swatch with correct styling
-      expect(items[1].classList.contains(`fill-item`)).toBe(true)
       const rect = items[1].querySelector(`.fill-swatch rect`)
       expect(rect?.getAttribute(`fill`)).toBe(`rgb(70, 130, 180)`)
       expect(rect?.getAttribute(`stroke`)).toBe(`darkblue`)
-
-      // Hidden state
-      expect(items[1].classList.contains(`hidden`)).toBe(false)
-      expect(items[2].classList.contains(`hidden`)).toBe(true)
     })
 
     test(`fill items route click/keyboard/dblclick to the fill handlers`, () => {
@@ -554,29 +540,22 @@ describe(`PlotLegend`, () => {
         on_fill_double_click,
       })
       const items = document.querySelectorAll<HTMLElement>(`.legend-item`)
-
-      // Regular series click → on_toggle
       items[0].click()
-      expect(on_toggle).toHaveBeenCalledWith(0)
+      expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
       expect(on_fill_toggle).not.toHaveBeenCalled()
-      on_toggle.mockClear()
-
-      // Fill item click → on_fill_toggle with source_type and source_idx
+      // fill items report their source type and index, on click and on Enter alone
       items[1].click()
-      expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
-      expect(on_toggle).not.toHaveBeenCalled()
-      on_fill_toggle.mockClear()
-
-      // Fill item keyboard → on_fill_toggle
+      expect(on_fill_toggle).toHaveBeenCalledExactlyOnceWith(`fill_region`, 0)
       items[1].dispatchEvent(keydown(`Enter`))
-      expect(on_fill_toggle).toHaveBeenCalledWith(`fill_region`, 0)
+      expect(on_fill_toggle).toHaveBeenCalledTimes(2)
+      expect(on_fill_toggle).toHaveBeenLastCalledWith(`fill_region`, 0)
       items[1].dispatchEvent(mouse(`dblclick`))
-      expect(on_fill_double_click).toHaveBeenCalledWith(`fill_region`, 0)
+      expect(on_fill_double_click).toHaveBeenCalledExactlyOnceWith(`fill_region`, 0)
+      expect([on_toggle, on_fill_toggle].map((spy) => spy.mock.calls.length)).toEqual([1, 2])
     })
 
-    // plot fills bake translucency into the color (e.g. rgba(...,0.15)); the legend chip forces the
-    // color opaque so different fill colors stay distinguishable (fill-opacity alone can't override
-    // the color's own alpha channel)
+    // plot fills bake translucency into the color; the chip forces it opaque (fill-opacity
+    // can't override the color's own alpha) so different fill colors stay distinguishable
     test.each([
       [`rgba(52, 152, 219, 0.15)`, `rgb(52, 152, 219)`, 0.15],
       [`rgba(231, 76, 60, 0.25)`, `rgb(231, 76, 60)`, 0.15],
@@ -587,7 +566,6 @@ describe(`PlotLegend`, () => {
       (fill_color, expected, fill_opacity) => {
         mount_legend({ series_data: [fill_item({ fill_color, fill_opacity })] })
         const rect = doc_query(`.fill-swatch rect`)
-        // color forced opaque (strips faint baked-in alpha), then a light uniform fill-opacity
         expect(rect.getAttribute(`fill`)).toBe(expected)
         expect(rect.getAttribute(`fill-opacity`)).toBe(`0.7`)
         expect(rect.getAttribute(`stroke`)).toBe(`none`)

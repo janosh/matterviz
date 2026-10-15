@@ -91,16 +91,12 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // Initialize or reset temperature when it's undefined or no longer valid
   $effect(() => {
     const temperature = inputs.temperature()
-    const { has_temp_data, available_temperatures } = temp_analysis
-    if (
-      has_temp_data &&
-      (temperature === undefined ||
-        !(inputs.interpolate_temperature()
-          ? temperature >= available_temperatures[0] &&
-            temperature <= available_temperatures[available_temperatures.length - 1]
-          : available_temperatures.includes(temperature)))
+    const next = helpers.get_valid_temperature(
+      temperature,
+      temp_analysis.available_temperatures,
+      inputs.interpolate_temperature(),
     )
-      inputs.set_temperature(available_temperatures[0])
+    if (next !== undefined && next !== temperature) inputs.set_temperature(next)
   })
 
   const temp_filtered_entries = $derived.by(() => {

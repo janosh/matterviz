@@ -19,7 +19,10 @@
   let run = $state.raw<StructureToolRun>()
   let status = $state(`Ready`)
   let current_step_idx = $state(0)
-  const trajectory = $derived(make_demo_trajectory($state.snapshot(structure)))
+  // The demo relaxation drifts atoms along a lattice vector, so molecules get no trajectory
+  const trajectory = $derived(
+    `lattice` in structure ? make_demo_trajectory($state.snapshot(structure)) : undefined,
+  )
 
   let delay_ms = $state(100)
   let fail = $state(false)
@@ -97,7 +100,7 @@
   <button onclick={() => run?.cancel()} disabled={!running}>Cancel prediction</button>
   <label>Delay (ms) <input type="number" min="0" max="10000" bind:value={delay_ms} /></label>
   <label><input type="checkbox" bind:checked={fail} /> Fail prediction</label>
-  <button onclick={show_trajectory}>Show predicted trajectory</button>
+  <button onclick={show_trajectory} disabled={!trajectory}>Show predicted trajectory</button>
   <button
     onclick={() => prediction?.geometry && run?.replace_input(prediction.geometry)}
     disabled={!prediction?.geometry || prediction.run_id !== run?.id}

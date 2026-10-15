@@ -1,6 +1,7 @@
 // Re-express a bulk cell so that its c vector crosses the (hkl) lattice planes exactly
 // once. Everything here is exact integer arithmetic on the lattice: no atom is created,
 // destroyed or moved, only the choice of unit cell changes.
+import { display_idx } from '#lib/labels.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
@@ -237,7 +238,7 @@ export function make_oriented_bulk(
     if (clash >= 0) {
       throw new Error(
         `Input structure has two ${keys[idx]} sites within ${SLAB_POSITION_TOLERANCE} Å of ` +
-          `each other (sites ${clash} and ${idx})`,
+          `each other (sites ${display_idx(clash)} and ${display_idx(idx)})`,
       )
     }
     occupied.add(site.abc, keys[idx], idx)

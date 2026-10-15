@@ -304,18 +304,25 @@ describe(`ColorBar tick labels`, () => {
       [`0`, `1`, `2`],
     ],
     [{ range: [0, 0.1], tick_labels: 5, tick_format: `.1f` }, [`0.0`, `0.1`]],
+    // no integer fits: an integer format falls back to decimal ticks and labels
+    [{ range: [0.2, 0.8], tick_labels: 4, tick_format: `d` }, [`0.2`, `0.4`, `0.6`, `0.8`]],
   ])(`renders labels for %j`, (props, expected) => {
     mount_bar({ snap_ticks: false, ...props })
     expect(tick_texts()).toEqual(expected)
   })
 
-  test.each([false, true])(
-    `positions rounded arcsinh ticks at their labeled values (reversed=%s)`,
-    (reversed) => {
+  // `.0f` prints integers too, so its ticks must sit at the rounded values like `d`'s
+  test.each([
+    [false, `d`],
+    [true, `d`],
+    [false, `,.0f`],
+  ])(
+    `positions rounded arcsinh ticks at their labeled values (reversed=%s, format %s)`,
+    (reversed, tick_format) => {
       mount_bar({
         range: reversed ? [38, 0] : [0, 38],
         scale_type: { type: `arcsinh`, threshold: 0.25 },
-        tick_format: `d`,
+        tick_format,
         tick_labels: 4,
       })
       expect(tick_texts()).toEqual(reversed ? [`10`, `1`, `0`] : [`0`, `1`, `10`])
@@ -341,7 +348,8 @@ describe(`ColorBar tick labels`, () => {
       values: [10000, 1000, 100, 10, 1],
       labels: [`10k`, `1k`, `100`, `10`, `1`],
     },
-    { range: [2.3, 8.7], values: [3, 4, 5, 6, 7, 8], labels: [`3`, `4`, `5`, `6`, `7`, `8`] },
+    // d3's six sub-decade ticks overshoot the 3 asked for, so every other one is kept
+    { range: [2.3, 8.7], values: [3, 5, 7], labels: [`3`, `5`, `7`] },
     {
       range: [1e-12, 3e-8],
       values: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8],

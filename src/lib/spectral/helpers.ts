@@ -3,19 +3,21 @@ import { parse_axis_label, SUBSCRIPT_MAP } from '#lib/labels.js'
 import { is_plain_object } from '#lib/utils.js'
 import {
   array_extent,
+  add,
   array_max,
   create_frac_to_cart,
   dot,
   euclidean_dist,
   is_finite_matrix3x3,
   min_image_displacement,
+  scale as scale_vec,
   sorted_numbers,
   subtract,
 } from '#lib/math.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
-import type { KPathLabel } from '#lib/brillouin/types.js'
+import type { KPathData } from '#lib/brillouin/types.js'
 import type * as types from './types'
 
 const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
@@ -70,8 +72,15 @@ export function branch_segment_keys(band_struct: types.BaseBandStructure): strin
   })
 }
 
-export const is_discontinuity_branch = (branch: types.Branch): boolean =>
-  branch.is_discontinuity ?? branch.end_index - branch.start_index === 1
+// Display path of a branch, e.g. `S₀ → X`, from its end q-point labels (null if unlabelled)
+export const branch_path_label = (
+  band_struct: types.BaseBandStructure,
+  { start_index, end_index }: types.Branch,
+): string | null =>
+  [start_index, end_index]
+    .map((idx) => pretty_sym_point(band_struct.qpoints[idx]?.label ?? ``))
+    .filter(Boolean)
+    .join(` → `) || null
 
 // Scale segment distances to a target x-axis range [x_start, x_end].
 // Used by both band line series and fat band ribbons for consistent x-axis positioning.
@@ -339,11 +348,12 @@ function convert_pymatgen_band_structure(
   // jump (`Z|X`) or the zero-length duplicate at a junction (`X, X`). Step size is no signal:
   // paths put a fixed point count per segment, so in anisotropic cells every step of a long
   // segment can exceed any multiple of the median.
-  // Ascending indices of the q-points that start a new segment after a boundary
-  const disc_indices = steps.flatMap((_step, idx) =>
-    qpoints[idx].label && qpoints[idx + 1].label ? [idx + 1] : [],
+  // Indices of the q-points that start a new segment after a boundary
+  const disc_set = new Set(
+    steps.flatMap((_step, idx) =>
+      qpoints[idx].label && qpoints[idx + 1].label ? [idx + 1] : [],
+    ),
   )
-  const disc_set = new Set(disc_indices)
 
   // Cumulative distance, not advanced across discontinuities
   const distance = [0]
@@ -359,14 +369,13 @@ function convert_pymatgen_band_structure(
   // No valid branches is the normal case, not a degraded one: pymatgen's phonon band
   // structures never serialise `branches` (only the electronic one does), so infer them.
   if (branches.length === 0) {
-    // Branch boundaries are the path ends, every labeled q-point (Bands only draws tick labels
-    // at branch ends, so a label mid-branch would vanish) and both sides of every jump. The
-    // jump itself (the two-point span ending on a discontinuity index) is not a branch.
+    // Branch boundaries are the path ends and every labeled q-point (Bands only draws tick
+    // labels at branch ends, so a label mid-branch would vanish), so both sides of every jump.
+    // The jump itself (the two-point span ending on a discontinuity index) is not a branch.
     const boundaries = sorted_numbers(
       new Set([
         0,
         ...qpoints.flatMap((qpoint, idx) => (qpoint.label ? [idx] : [])),
-        ...disc_indices.flatMap((idx) => [idx - 1, idx]),
         qpoints.length - 1,
       ]),
     )
@@ -548,6 +557,12 @@ export function frac_k_to_cartesian(
   return wrap_to_bz ? fold_to_first_bz(cart, recip_lattice_matrix) : cart
 }
 
+// Relative tolerance on |k|² for two periodic images tying on a zone face. pymatgen stores
+// fractional k to 8 decimals (error ≤ 5e-9 per coordinate), leaving on-face points up to ~1e-8
+// relative outside the face: an absolute 1e-9 on |k|² flipped whole branches to the opposite
+// face. 1e-6 clears that storage noise 100x and is still far below any genuine image gap.
+const BZ_TIE_RTOL = 1e-6
+
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Optionally wraps fractional coordinates to first BZ (default: true)
@@ -563,27 +578,52 @@ export function extract_k_path_points(
   )
     throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
 
-  return band_struct.qpoints.map((qpoint) =>
-    frac_k_to_cartesian(qpoint.frac_coords, recip_lattice_matrix, wrap_to_bz),
+  const points = band_struct.qpoints.map(({ frac_coords }) =>
+    frac_k_to_cartesian(frac_coords, recip_lattice_matrix, false),
   )
+  if (!wrap_to_bz) return points
+  // Fold each branch as a unit, by the lattice vector that folds its midpoint: per-point folding
+  // sends points on a zone face (stored to 8 decimals, so ~1e-8 off it) to alternating faces,
+  // drawing chords across the zone. A branch continuing from the previous one (shared end
+  // point) keeps the previous shift only while that still puts its midpoint at a nearest image
+  // (a zone-face tie), so the shared point has one position; otherwise the inherited shift would
+  // push the whole branch out of the zone.
+  const folded = points.map((point) => fold_to_first_bz(point, recip_lattice_matrix))
+  let [prev_end, shift]: [number, Vec3] = [-1, [0, 0, 0]]
+  for (const { start_index, end_index } of band_struct.branches) {
+    const mid = scale_vec(add(points[start_index], points[end_index]), 0.5)
+    const mid_folded = fold_to_first_bz(mid, recip_lattice_matrix)
+    const mid_shifted = add(mid, shift)
+    const keeps_shift =
+      start_index === prev_end &&
+      dot(mid_shifted, mid_shifted) <= dot(mid_folded, mid_folded) * (1 + BZ_TIE_RTOL)
+    if (!keeps_shift) shift = subtract(mid_folded, mid)
+    for (let idx = start_index; idx <= end_index; idx++) folded[idx] = add(points[idx], shift)
+    prev_end = end_index
+  }
+  return folded
 }
 
-// Labeled k-path points for BrillouinZone's `k_path_labels`, aligned with extract_k_path_points
-export const k_path_labels = (
+// BrillouinZone's `k_path`: Cartesian points, labels and the branches Bands plots, so the zone
+// draws the plotted path and never bridges a jump (U|K)
+export const band_k_path = (
   band_struct: types.BaseBandStructure,
-  k_path_points: Vec3[],
-): KPathLabel[] =>
-  k_path_points.map((position, idx) => {
-    const label = band_struct.qpoints[idx]?.label
-    return { position, label: label ? pretty_sym_point(label) : null }
-  })
+  recip_lattice_matrix: Matrix3x3,
+): KPathData => ({
+  points: extract_k_path_points(band_struct, recip_lattice_matrix),
+  labels: band_struct.qpoints.map(({ label }) => (label ? pretty_sym_point(label) : null)),
+  branches: band_struct.branches.map(({ start_index, end_index }): Vec2 => [
+    start_index,
+    end_index,
+  ]),
+})
 
 // Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone: its
 // periodic image with the smallest norm, i.e. its minimum image from Γ. Ties keep the point
 // itself, so a high-symmetry point on a zone face stays on its own face.
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   const image = min_image_displacement([0, 0, 0], cart, recip)
-  return dot(image, image) < dot(cart, cart) - 1e-9 ? image : cart
+  return dot(image, image) < dot(cart, cart) * (1 - BZ_TIE_RTOL) ? image : cart
 }
 
 // Branches that have a plot x-range, paired with it (Bands.svelte's x_positions output)
@@ -600,7 +640,7 @@ const plotted_branches = (
 
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
-// Returns null if the index doesn't fall on a plotted (non-discontinuity) branch.
+// Returns null if the index doesn't fall on a plotted branch.
 export function qpoint_x_position(
   band_struct: types.BaseBandStructure,
   qpoint_index: number,
@@ -611,7 +651,7 @@ export function qpoint_x_position(
     if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
     const d_start = band_struct.distance[branch.start_index]
     const d_end = band_struct.distance[branch.end_index]
-    if (d_end === d_start) return x_start // discontinuity / zero-length segment
+    if (d_end === d_start) return x_start // zero-length segment
     const ratio = (band_struct.distance[qpoint_index] - d_start) / (d_end - d_start)
     return x_start + ratio * (x_end - x_start)
   }
@@ -620,16 +660,14 @@ export function qpoint_x_position(
 
 // First and last q-point index of the path branch (e.g. Γ→X) containing a q-point, for
 // highlighting the whole hovered segment in Bands and BrillouinZone. A symmetry point shared by
-// two branches belongs to the earlier one; discontinuity jumps are never a segment.
+// two branches belongs to the earlier one; jumps lie between branches, so are never a segment.
 export function branch_qpoint_range(
   band_struct: types.BaseBandStructure,
   qpoint_index: number,
 ): Vec2 | null {
   const branch = band_struct.branches.find(
     (candidate) =>
-      !is_discontinuity_branch(candidate) &&
-      qpoint_index >= candidate.start_index &&
-      qpoint_index <= candidate.end_index,
+      qpoint_index >= candidate.start_index && qpoint_index <= candidate.end_index,
   )
   return branch ? [branch.start_index, branch.end_index] : null
 }
@@ -646,7 +684,7 @@ export function find_qpoint_at_rescaled_x(
 
   // Find which segment contains this x coordinate
   for (const [{ start_index: start_idx, end_index: end_idx }, [x_start, x_end]] of branches) {
-    // Discontinuity (zero-length segment): match only if x is exactly at this point
+    // Zero-length segment: match only if x is exactly at this point
     if (Math.abs(x_end - x_start) < 1e-6) {
       if (Math.abs(rescaled_x - x_start) < 1e-6) return start_idx
       continue

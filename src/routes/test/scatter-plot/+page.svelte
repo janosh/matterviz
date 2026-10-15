@@ -30,7 +30,7 @@
     },
   ]
 
-  let color_scale = $state({ type: `linear` as const })
+  let color_scale = $state<{ type: ScaleType }>({ type: `linear` })
 
   const color_scale_series: DataSeries = {
     x: one_to_ten,
@@ -51,9 +51,10 @@
   // === Label Auto Placement Test Data ===
   type LabeledPoint = { x: number; y: number; fill: string; radius: number; label: LabelStyle }
   // Dense cluster where labels *should* repel
+  const rng = math.mulberry32(42) // seeded: identical label layouts across runs
   const dense_cluster: LabeledPoint[] = range(8).map((idx) => {
-    const angle = Math.random() * 2 * Math.PI
-    const dist = Math.random() * 5
+    const angle = rng() * 2 * Math.PI
+    const dist = rng() * 5
     return {
       x: 30 + Math.cos(angle) * dist,
       y: 70 + Math.sin(angle) * dist,
@@ -113,9 +114,9 @@
       (y_range[0] + y_range[1]) / 2,
     )
     return range(count).map(() => ({
-      x: x_range[0] + Math.random() * (x_range[1] - x_range[0]),
-      y: y_range[0] + Math.random() * (y_range[1] - y_range[0]),
-      color_value: center_dist * Math.random() * 2,
+      x: x_range[0] + rng() * (x_range[1] - x_range[0]),
+      y: y_range[0] + rng() * (y_range[1] - y_range[0]),
+      color_value: center_dist * rng() * 2,
     }))
   }
 

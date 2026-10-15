@@ -195,31 +195,25 @@ describe(`balance_reaction`, () => {
   const gases = phase_set.phases.filter((phase) => phase.is_gas)
   const target = find(phase_set.phases, `BaTiO3`)
 
-  test(`balances carbonate + oxide with CO2 release and scales to integers`, () => {
-    const precursors = [find(phase_set.phases, `BaCO3`), find(phase_set.phases, `TiO2`)]
+  // carbonate + oxide releases CO2; oxygen-poor precursors consume O2 from the atmosphere
+  // (2 BaO atoms + 1 Ti + 2 O from O2), both scaled to integer coefficients
+  test.each([
+    [[`BaCO3`, `TiO2`], `CO2`, 1, 8, `BaCO3 + TiO2 → BaTiO3 + CO2`],
+    [[`BaO`, `Ti`], `O2`, -1, 5, `BaO + Ti + O2 → BaTiO3`],
+  ])(`balances %j with %s exchange %d`, (formulas, gas, exchange, n_atoms, equation) => {
+    const precursors = formulas.map((formula) => find(phase_set.phases, formula))
     const balanced = balance_reaction(precursors, target, gases, true)
     if (typeof balanced === `string`) throw new Error(balanced)
     expect(balanced.coefficients).toEqual([1, 1])
-    const co2_idx = gases.findIndex((gas) => gas.formula === `CO2`)
-    expect(balanced.gas_exchange[co2_idx]).toBeCloseTo(1, 9)
-    expect(balanced.reactant_atoms).toBe(8)
+    const gas_idx = gases.findIndex(({ formula }) => formula === gas)
+    expect(balanced.gas_exchange[gas_idx]).toBeCloseTo(exchange, 9)
+    expect(balanced.reactant_atoms).toBe(n_atoms)
     const reaction = make_reaction(precursors, target, gases, balanced)
-    expect(reaction.equation).toBe(`BaCO3 + TiO2 → BaTiO3 + CO2`)
-    expect(reaction.driving_force).toBeCloseTo(reaction.energy_per_fu / 8, 12)
+    expect(reaction.equation).toBe(equation)
+    const gas_reactant = reaction.reactants.find(({ phase }) => phase.is_gas)
+    expect(gas_reactant?.coefficient ?? 0).toBeCloseTo(Math.max(0, -exchange), 9)
+    expect(reaction.driving_force).toBeCloseTo(reaction.energy_per_fu / n_atoms, 12)
     expect(reaction.energy_per_atom).toBeCloseTo(reaction.energy_per_fu / 5, 12)
-  })
-
-  test(`consumes O2 from the atmosphere when precursors are oxygen-poor`, () => {
-    const precursors = [find(phase_set.phases, `BaO`), find(phase_set.phases, `Ti`)]
-    const balanced = balance_reaction(precursors, target, gases, true)
-    if (typeof balanced === `string`) throw new Error(balanced)
-    const o2_idx = gases.findIndex((gas) => gas.formula === `O2`)
-    expect(balanced.gas_exchange[o2_idx]).toBeCloseTo(-1, 9)
-    // 2 BaO atoms + 1 Ti + 2 O from O2 consumed
-    expect(balanced.reactant_atoms).toBeCloseTo(5, 9)
-    const reaction = make_reaction(precursors, target, gases, balanced)
-    expect(reaction.equation).toBe(`BaO + Ti + O2 → BaTiO3`)
-    expect(reaction.reactants.find(({ phase }) => phase.is_gas)?.coefficient).toBeCloseTo(1, 9)
   })
 
   test.each([
@@ -457,14 +451,20 @@ describe(`plan_synthesis`, () => {
     const plan = plan_synthesis(base_request)
     const cached_calls = mean.mock.calls.length
     mean.mockClear()
+    // an explicit gas provider and the progress-capable kernel both reproduce the plan exactly
+    const progress: SynthesisPlanProgress[] = []
+    const with_provider = { ...base_request.conditions, gas_provider: provider }
     expect(
-      plan_synthesis({
-        ...base_request,
-        conditions: { ...base_request.conditions, gas_provider: provider },
-      }),
+      plan_synthesis(
+        { ...base_request, conditions: with_provider },
+        { on_progress: (update) => progress.push(update) },
+      ),
     ).toEqual(plan)
     expect(mean.mock.calls.length).toBeGreaterThan(cached_calls)
     mean.mockRestore()
+    expect(progress[0]).toEqual({ stage: `preparing`, current: 0, total: 1 })
+    expect(progress.some((update) => update.stage === `direct_routes`)).toBe(true)
+    expect(progress.at(-1)).toEqual({ stage: `ranking`, current: 1, total: 1 })
     expect(plan.chemical_system).toBe(`Ba-C-O-Ti`)
     expect(plan.target.formula).toBe(`BaTiO3`)
     expect(plan.target_stability.is_stable).toBe(true)
@@ -506,6 +506,18 @@ describe(`plan_synthesis`, () => {
       const total = Object.values(route.score_breakdown).reduce((sum, value) => sum + value, 0)
       expect(total).toBeCloseTo(route.score, 9)
     }
+
+    // format_plan_text is compact and carries the decisive numbers
+    const text = format_plan_text(plan, 3)
+    expect(text).toContain(`Synthesis plan for BaTiO3`)
+    expect(text).toContain(`1. BaCO3 + TiO2 → BaTiO3 + CO2`)
+    expect(text).toMatch(/inverse hull \d+ meV\/atom/)
+    expect(text).toContain(`Calculated recipe for 1 g`)
+    expect(text).toMatch(/Precursor: [\d.]+ g BaCO3/)
+    expect(text).toContain(`more routes in the structured result`)
+    expect(text.length).toBeLessThan(6000)
+    const [iface] = best.selectivity.interfaces
+    expect(describe_interface({ ...iface, first_product: null })).toBe(`TiO2|BaCO3 → nothing`)
   })
 
   test(`recipe masses balance and scale with target mass`, () => {
@@ -669,6 +681,9 @@ describe(`plan_synthesis`, () => {
     expect(plan.target_stability.decomposition.map(({ phase }) => phase.formula)).toEqual([
       `BaTiO3`,
     ])
+    // Nothing else reaches an elemental target's composition: it is its own hull vertex
+    const elemental = plan_synthesis({ entries: toy_entries, target: `Ti` }).target_stability
+    expect(elemental).toMatchObject({ e_above_hull: 0, is_stable: true })
   })
 
   test.each([
@@ -676,6 +691,16 @@ describe(`plan_synthesis`, () => {
     [{ target: `` }, /target must be a non-empty string/],
     [{ max_precursors: 7 }, /max_precursors/],
     [{ target: `NaCl` }, /matches no entry id or formula/],
+    // open O2 displaces the elemental O solid: a clear error, not a TypeError on undefined
+    [
+      { entries: toy_entries, target: `O`, conditions: { open_species: [`O2`] } },
+      /Target O is replaced by open O2 at these conditions/,
+    ],
+    // a CO2 solid id: open CO2 gas keeps the formula, so the solid has no slot to take
+    [
+      { entries: ba_ti_c_o, target: `agm003212195`, conditions: { open_species: [`CO2`] } },
+      /Target CO2 is replaced by open CO2 at these conditions/,
+    ],
     [{ conditions: { temperature: -1 } }, /conditions.temperature/],
     [{ conditions: { temperature: 2001 } }, /conditions.temperature/],
     [{ conditions: { open_species: [`Ar`] } }, /unsupported Ar/],
@@ -697,38 +722,9 @@ describe(`plan_synthesis`, () => {
       plan_synthesis({ ...base_request, ...override } as SynthesisPlanRequest),
     ).toThrow(message)
   })
-
-  test(`progress-capable kernel preserves the exact synchronous result`, () => {
-    const progress: SynthesisPlanProgress[] = []
-    const result = plan_synthesis(base_request, {
-      on_progress: (update) => progress.push(update),
-    })
-    expect(result).toEqual(plan_synthesis(base_request))
-    expect(progress[0]).toEqual({ stage: `preparing`, current: 0, total: 1 })
-    expect(progress.some((update) => update.stage === `direct_routes`)).toBe(true)
-    expect(progress.at(-1)).toEqual({ stage: `ranking`, current: 1, total: 1 })
-  })
 })
 
 describe(`agent surface`, () => {
-  test(`format_plan_text is compact and carries the decisive numbers`, () => {
-    const plan = plan_synthesis({
-      entries: ba_ti_c_o,
-      target: `BaTiO3`,
-      conditions: { temperature: 1200, open_species: [`O2`, `CO2`] },
-    })
-    const text = format_plan_text(plan, 3)
-    expect(text).toContain(`Synthesis plan for BaTiO3`)
-    expect(text).toContain(`1. BaCO3 + TiO2 → BaTiO3 + CO2`)
-    expect(text).toMatch(/inverse hull \d+ meV\/atom/)
-    expect(text).toContain(`Calculated recipe for 1 g`)
-    expect(text).toMatch(/Precursor: [\d.]+ g BaCO3/)
-    expect(text).toContain(`more routes in the structured result`)
-    expect(text.length).toBeLessThan(6000)
-    const [iface] = plan.routes[0].selectivity.interfaces
-    expect(describe_interface({ ...iface, first_product: null })).toBe(`TiO2|BaCO3 → nothing`)
-  })
-
   test(`request schema covers the request type and the tool definition is well-formed`, () => {
     const request_keys: (keyof Omit<SynthesisPlanRequest, `entries`>)[] = [
       `target`,

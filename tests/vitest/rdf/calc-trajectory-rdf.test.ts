@@ -165,7 +165,7 @@ describe(`collect_trajectory_rdf`, () => {
       },
     }
     await expect(collect_trajectory_rdf(generated, { n_bins: 20 })).rejects.toThrow(
-      /frame 1 has a different composition/,
+      /frame 2 has a different composition/,
     )
   })
 
@@ -178,7 +178,7 @@ describe(`collect_trajectory_rdf`, () => {
             ...run_of([rocksalt()]),
             read_frame: () => encode_frame({ structure: rocksalt(), step: step as number }),
           }),
-          /frame 0 has invalid step/,
+          /frame 1 has invalid step/,
         ] as const,
     ),
     [

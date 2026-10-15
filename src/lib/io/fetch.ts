@@ -13,6 +13,17 @@ function default_download(data: DownloadData, filename: string, type: string) {
   }
 }
 
+// Base64 data URL of a blob (FileReader streams it; a fromCharCode spread overflows on big ones)
+export const blob_to_data_url = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener(`load`, () => resolve(reader.result as string))
+    reader.addEventListener(`error`, () =>
+      reject(new Error(`Failed to read blob`, { cause: reader.error })),
+    )
+    reader.readAsDataURL(blob)
+  })
+
 // Download data to a file, unless a global `download` override (installed by the VS Code
 // webview to route saves through the host) takes it
 export function download(data: DownloadData, filename: string, type: string): void {

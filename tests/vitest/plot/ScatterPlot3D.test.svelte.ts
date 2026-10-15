@@ -2,6 +2,8 @@ import { ScatterPlot3D, ScatterPlot3DControls } from '#lib/plot/index.js'
 import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
 import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
+import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
+import type { Vec2 } from '#lib'
 import ScatterTestPage from '../../../src/routes/test/scatter-plot-3d/+page.svelte'
 import type {
   AxisConfig3D,
@@ -163,6 +165,76 @@ test.each([`surface`, `axes`, `reference plane`] as const)(
   },
 )
 
+// A descending axis range must not drop an extended line or shrink a normal-defined plane
+test(`reference line and plane span a reversed axis range`, async () => {
+  const ranges = { x: [100, 0] as Vec2, y: [0, 1] as Vec2, z: [0, 1] as Vec2 }
+  const { scene, unmount_scene } = mount_scene((anchor) => {
+    ReferenceLine3D(anchor, {
+      ref_line: { type: `line`, p1: [0, 0, 0], p2: [1, 0.01, 0.01] },
+      ranges,
+    })
+    return ReferencePlane(anchor, {
+      ref_plane: { type: `normal`, normal: [0, 0, 1], point: [50, 0.5, 0.5] },
+      ranges,
+    })
+  })
+  flushSync()
+  try {
+    // Line2 is a Mesh subclass, told apart by `type`
+    const [line, plane] = [`Line2`, `Mesh`].map((type) =>
+      find_objects(scene, Mesh).find((mesh) => mesh.type === type),
+    )
+    // data x=0 to x=100 runs from scene x +5 to -5 on the reversed axis
+    const ends = [`instanceStart`, `instanceEnd`].map((name) =>
+      line?.geometry.getAttribute(name).getX(0),
+    )
+    expect(ends).toEqual([5, -5])
+    // the plane covers the full x extent, not just twice the unit y/z spans
+    const xs = [...(plane?.geometry.getAttribute(`position`).array ?? [])].filter(
+      (_, idx) => idx % 3 === 0,
+    )
+    expect(Math.min(...xs)).toBeLessThanOrEqual(-5)
+    expect(Math.max(...xs)).toBeGreaterThanOrEqual(5)
+  } finally {
+    await unmount_scene()
+  }
+})
+
+// An unnamed plane's position must not share a key with another plane's numeric id: duplicate
+// keys throw, and a toggled plane would otherwise rebuild (or replace) its neighbours
+test(`reference planes key by id or position without collisions across visibility toggles`, async () => {
+  const visible = $state({ first: false })
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      get ref_planes() {
+        return [
+          { type: `xy` as const, z: 0.2, visible: visible.first },
+          { type: `xy` as const, z: 0.5 },
+          { type: `xy` as const, z: 0.8, id: 1 },
+        ]
+      },
+      ranges: { x: [0, 1], y: [0, 1], z: [0, 1] },
+      display: { show_axes: false },
+      gizmo: false,
+    }),
+  )
+  try {
+    flushSync()
+    // the background planes use PlaneGeometry, reference planes a plain BufferGeometry quad
+    const planes = () =>
+      find_objects(scene, Mesh).filter((mesh) => mesh.geometry.type === `BufferGeometry`)
+    const before = planes()
+    expect(before).toHaveLength(2)
+    visible.first = true
+    flushSync()
+    const after = planes()
+    expect(after).toHaveLength(3)
+    for (const mesh of before) expect(after).toContain(mesh)
+  } finally {
+    await unmount_scene()
+  }
+})
+
 // Every object under `root` of the given class
 const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   root: Object3D,
@@ -212,13 +284,19 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     y_range: [-1, 1],
     z_fn: (x_val, y_val) => Math.sqrt(1 - x_val ** 2 - y_val ** 2),
   }
+  const on_point_hover = vi.fn()
   const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
       get series() {
         return state.series
       },
+      on_point_hover,
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      x_axis: { label: `&alpha;<sub>x</sub>` },
+      // same tick options as the 2D axes: an interval used to yield no ticks, a map 5 defaults,
+      // a `d` format turned 0.5 steps into duplicate integer labels
+      x_axis: { label: `&alpha;<sub>x</sub>`, ticks: -1 },
+      y_axis: { ticks: { 0: `a`, 2: `b`, 9: `out of range` } },
+      z_axis: { ticks: 8, format: `d` },
       point_tween: { duration: 0 }, // data swaps below land at once, however slow the run
       gizmo: false,
       display: { show_bounding_box: true },
@@ -250,6 +328,10 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     // axis labels are HTML like the 2D axes' (a plain-text span showed the markup verbatim)
     const labels = [...document.querySelectorAll(`.axis-label`)].map((node) => node.innerHTML)
     expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
+    const tick_labels = [...document.querySelectorAll(`.tick-label`)].map(
+      (node) => node.textContent,
+    )
+    expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `a`, `b`, `0`, `1`, `2`, `3`, `4`])
     expect(instances().count).toBe(4)
     expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
     const [group, ...others] = find_objects(scene, ClippingGroup)
@@ -295,11 +377,14 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     expect(position_of(4)).toEqual(scene_pos(4, 0, 4))
     expect(state.hovered_point).toMatchObject({ x: 1, y: 3, z: 1, point_idx: 1 })
     expect(tip_text()).toBe(`1,3,1 true`)
-    // the point is gone: hover clears instead of describing a stale point
+    expect(on_point_hover).not.toHaveBeenCalled()
+    // the point is gone: hover clears instead of describing a stale point, and the host
+    // hears so (ScatterPlot3D's `hovered` would otherwise stay true)
     state.series = [{ x: [1], y: [1], z: [1] }]
     flushSync()
     expect(state.hovered_point).toBeNull()
     expect(tip_text()).toBeUndefined()
+    expect(on_point_hover).toHaveBeenCalledExactlyOnceWith(null)
   } finally {
     await unmount_scene()
   }
@@ -450,6 +535,13 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     set_xs([9, 3], 0, 2)
     expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
     expect([render_frame(), render_frame()]).toEqual([true, false])
+    // NaN colour/size values keep the series fill and radius (a NaN radius made the bounding
+    // sphere NaN, so raycasting missed every marker)
+    const [series] = state.series
+    state.series = [{ ...series, color_values: [NaN, NaN], size_values: [NaN, NaN] }]
+    flushSync()
+    expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
+    expect(Number.isFinite(instanced(false)[0].boundingSphere?.radius)).toBe(true)
     // so do plots past 20k markers, too many to rewrite every frame
     state.point_tween = { duration: 600 }
     set_xs([9, 0, ...Array(20_000).fill(1)], 0, 2)
@@ -503,15 +595,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(container.querySelector(`#test-scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
+  // oxfmt-ignore
   test.each<[string, ComponentProps<typeof ScatterPlot3D>]>([
     [`empty series`, { series: [] }],
-    [
-      `all surface types`,
-      {
-        series: [basic_series],
-        surfaces: [grid_surface, parametric_surface, triangulated_surface],
-      },
-    ],
+    [`all surface types`, { series: [basic_series], surfaces: [grid_surface, parametric_surface, triangulated_surface] }],
     [`open controls`, { series: [basic_series], controls_open: true }],
     [`surface-only plot without series`, { series: [], surfaces: [grid_surface] }],
   ])(`mounts with %s`, async (_desc, props) => {
@@ -524,18 +611,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
   })
 
+  // the scene maps axes linearly, so an untyped caller's log axis would draw silently linear
+  // oxfmt-ignore
   test.each<[string, ComponentProps<typeof ScatterPlot3D>, string]>([
-    [
-      `misaligned 3D coordinates`,
-      { series: [{ id: `points`, x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] },
-      `Series "points": aligned arrays must have equal lengths, got x=3, y=2, z=4`,
-    ],
-    // the scene maps axes linearly, so an untyped caller's log axis would draw silently linear
-    [
-      `non-linear axis scale types`,
-      { series: [basic_series], z_axis: { scale_type: `log` as never } },
-      `ScatterPlot3D axes are linear, got scale_type [null,null,"log"]`,
-    ],
+    [`misaligned 3D coordinates`, { series: [{ id: `points`, x: [1, 2, 3], y: [1, 2], z: [1, 2, 3, 4] }] }, `Series "points": aligned arrays must have equal lengths, got x=3, y=2, z=4`],
+    [`non-linear axis scale types`, { series: [basic_series], z_axis: { scale_type: `log` as never } }, `ScatterPlot3D axes are linear, got scale_type [null,null,"log"]`],
   ])(`rejects %s`, (_desc, props, message) => {
     expect(() => {
       mounted_component = mount(ScatterPlot3D, { target: container, props })
@@ -567,13 +647,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
       series: [color_series],
       color_bar: { wrapper_style: `opacity: 0.5`, style: `border: 1px solid red` },
     })
-    const wrapper = query(container, `.colorbar`)
-    const style = wrapper.getAttribute(`style`) ?? ``
-    expect(style).toContain(`position: absolute`)
-    expect(style).toContain(`left: 2em`)
-    expect(style).toContain(`opacity: 0.5`)
     // `style` rides the same root element, so it must survive the corner placement too
-    expect(style).toContain(`border: 1px solid red`)
+    const style = query(container, `.colorbar`).getAttribute(`style`)
+    const rules = [`position: absolute`, `left: 2em`, `opacity: 0.5`, `border: 1px solid red`]
+    for (const rule of rules) expect(style).toContain(rule)
   })
 
   test(`legend click hides the series and writes bound hidden_series`, async () => {
@@ -779,11 +856,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       target: container,
       props: bind_props(
         {
-          auto_ranges: {
-            x: [0, 5] as [number, number],
-            y: [0, 10] as [number, number],
-            z: [0, 3] as [number, number],
-          },
+          auto_ranges: { x: [0, 5] as Vec2, y: [0, 10] as Vec2, z: [0, 3] as Vec2 },
           toggle_props: { 'data-testid': `scatter-3d-toggle` },
           pane_props: { 'data-testid': `scatter-3d-pane` },
         },
@@ -804,7 +877,6 @@ describe(`ScatterPlot3D smoke tests`, () => {
 })
 
 describe(`scene coordinates`, () => {
-  // oxfmt-ignore
   test(`filters large triangulated surfaces and includes their bounds, skipping hidden series`, () => {
     const count = 200_000 // spreading these into push() exceeds the JS argument limit
     const points = Array.from({ length: count }, (_, idx) => ({ x: idx, y: -idx, z: 2 * idx }))
@@ -823,15 +895,11 @@ describe(`scene coordinates`, () => {
       y: [-220_000, 20_000],
       z: [0, 450_000],
     })
-    expect(
-      get_3d_auto_ranges(
-        [],
-        [
-          { x: -0, y: NaN, z: Infinity },
-          { x: 0, y: 2, z: NaN },
-        ],
-      ),
-    ).toEqual({
+    const degenerate = [
+      { x: -0, y: NaN, z: Infinity },
+      { x: 0, y: 2, z: NaN },
+    ]
+    expect(get_3d_auto_ranges([], degenerate)).toEqual({
       x: [-1, 1],
       y: [1.8, 2.2],
       z: [0, 1],

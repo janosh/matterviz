@@ -12,7 +12,7 @@ import {
 } from '#lib/trajectory/format-detect.js'
 import { format_bytes } from 'svelte-widgets/format'
 import { Readable } from 'node:stream'
-import { createGunzip, createInflate, createInflateRaw } from 'node:zlib'
+import { createGunzip, createInflate } from 'node:zlib'
 import * as vscode from 'vscode'
 
 // vscode.workspace.fs.readFile() has no streaming API, so the whole file lands in memory: cap
@@ -46,12 +46,7 @@ export const decompress_host_buffer = async (
     (max_memory_size - data.byteLength) / output_memory_factor,
   )
   const output_buffer = new ArrayBuffer(0, { maxByteLength: max_output_size })
-  const decompressor =
-    format === `gzip`
-      ? createGunzip()
-      : format === `deflate`
-        ? createInflate()
-        : createInflateRaw()
+  const decompressor = format === `gzip` ? createGunzip() : createInflate()
   const decompressed_stream = Readable.from([new Uint8Array(data)]).pipe(decompressor)
 
   for await (const chunk of decompressed_stream) {

@@ -28,10 +28,10 @@
   understanding of how electrons are placed into shells and how electron energies decrease with
   increasing shell number. To be precise, the radius of electron orbitals increases with the
   square of the shell number (shown here as linear due to page width constraints). Meanwhile,
-  the 'kinetic energy' of the electrons decreases linearly with shell number. The orbital
-  period T is proportional Z^2 / n^3, where Z is the atomic number. Shown here is sqrt(T) / Z
-  (the root of the period scaled by atomic number) as else inner-shell electrons of large atoms
-  would be invisibly fast.
+  the kinetic energy of the electrons decreases with the square of the shell number (Z^2 /
+  n^2). The orbital period T is proportional to n^3 / Z^2, where Z is the atomic number. Shown
+  here is sqrt(T) Z, i.e. a period growing as n^1.5 with the Z dependence dropped, as else
+  inner-shell electrons of large atoms would be invisibly fast.
 </p>
 
 <label

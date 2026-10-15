@@ -4,7 +4,7 @@
 // their own dispatcher.
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
-import { capitalize } from '#lib/labels.js'
+import { capitalize, display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type {
@@ -208,8 +208,8 @@ const is_cif_blank_or_comment = (trimmed: string): boolean =>
 // which some writers emit first) cannot shadow the value and the order of the lines in the
 // file does not matter. A bare tag takes its value from the next non-comment line, as CIF
 // allows. Returns [a, b, c, alpha, beta, gamma], or null when any tag is absent or unset
-// (`.` / `?`). A tag whose value does not parse, or a non-positive edge length, is
-// corruption and throws.
+// (`.` / `?`). A tag whose value does not parse is corruption and throws; edge lengths are
+// checked by the caller (assert_cell_lengths), since a 0 0 0 cell can be a placeholder.
 export const read_cell_params = (
   lines: readonly string[],
   format: `CIF` | `mmCIF`,
@@ -260,10 +260,40 @@ export const read_cell_params = (
     return value
   })
   const params = values.filter((value): value is number => value !== null)
-  if (params.length < tags.length) return null
-  if (params.slice(0, 3).some((length) => length <= 0))
-    throw new Error(`${format} cell has non-positive edge lengths: [${params.join(`, `)}]`)
-  return params
+  return params.length < tags.length ? null : params
+}
+
+// Alternate location indicators list one atom at several positions (overlapping ghost atoms).
+// Each residue (`residue_key`) keeps one conformer: its first listed alt loc, not just `A`,
+// so microheterogeneity (GLY in A, ALA in B at one resSeq) never mixes the two residues.
+// Rows without an alt loc always stay, and an atom (`atom_name`) that has such a row drops
+// its alt-loc rows, which would otherwise draw a ghost copy next to it.
+export function keep_first_alt_locs<Row>(
+  rows: readonly Row[],
+  alt_loc: (row: Row) => string | undefined,
+  residue_key: (row: Row) => string,
+  atom_name: (row: Row) => string,
+): Row[] {
+  const first_loc = new Map<string, string>()
+  const blank_atoms = new Set<string>()
+  for (const row of rows) {
+    const loc = alt_loc(row)
+    const key = residue_key(row)
+    if (loc === undefined) blank_atoms.add(`${key}|${atom_name(row)}`)
+    else if (!first_loc.has(key)) first_loc.set(key, loc)
+  }
+  return rows.filter((row) => {
+    const loc = alt_loc(row)
+    if (loc === undefined) return true
+    const key = residue_key(row)
+    return first_loc.get(key) === loc && !blank_atoms.has(`${key}|${atom_name(row)}`)
+  })
+}
+
+// A declared cell whose edges are not all positive cannot place a single atom
+export function assert_cell_lengths(params: readonly number[], context: string): void {
+  if (params.slice(0, 3).some((length) => !(length > 0)))
+    throw new Error(`${context} has non-positive edge lengths: [${params.join(`, `)}]`)
 }
 
 // Lattice matrix from the [a, b, c, alpha, beta, gamma] tuple that PDB CRYST1, mmCIF
@@ -271,22 +301,31 @@ export const read_cell_params = (
 export const cell_params_to_matrix = (params: readonly number[]): math.Matrix3x3 =>
   math.cell_to_lattice_matrix(params[0], params[1], params[2], params[3], params[4], params[5])
 
-// MD, docking and format-conversion tools emit a 1 1 1 90 90 90 cell as a placeholder for
-// genuinely aperiodic systems, so [a, b, c, alpha, beta, gamma] of unit edges means "no cell"
-export const is_placeholder_cell = (params: readonly number[]): boolean =>
-  params.slice(0, 3).every((length) => Math.abs(length - 1) < 1e-6) &&
-  params.slice(3).every((angle) => Math.abs(angle - 90) < 1e-6)
+// MD, docking and format-conversion tools emit a 1 1 1 90 90 90 cell (VMD 0 0 0 90 90 90)
+// as a placeholder for genuinely aperiodic systems, so such cells mean "no cell"
+const is_placeholder_cell = (params: readonly number[]): boolean =>
+  [0, 1].some((edge) =>
+    params.slice(0, 3).every((length) => Math.abs(length - edge) < 1e-6),
+  ) && params.slice(3).every((angle) => Math.abs(angle - 90) < 1e-6)
+
+// A declared cell that is neither a placeholder nor degenerate: what detection calls a crystal
+export const is_real_cell = (params: readonly number[] | null): boolean =>
+  params !== null && !is_placeholder_cell(params) && params.slice(0, 3).every((len) => len > 0)
 
 // Null (with a warning, since the file does declare a cell) for the placeholder cell, so the
-// structure parses as a molecule
+// structure parses as a molecule; any other cell must have positive edges
 export const drop_placeholder_cell = (
   params: readonly number[] | null,
   format: string,
   cell_name: string,
 ): readonly number[] | null => {
-  if (!params || !is_placeholder_cell(params)) return params
+  if (!params) return null
+  if (!is_placeholder_cell(params)) {
+    assert_cell_lengths(params, `${format} ${cell_name}`)
+    return params
+  }
   console.warn(
-    `${format}: ignoring placeholder ${cell_name} (1 1 1 90 90 90), treating as molecule`,
+    `${format}: ignoring placeholder ${cell_name} (${params.join(` `)}), treating as molecule`,
   )
   return null
 }
@@ -386,7 +425,7 @@ export const element_from_candidates = (
     const symbol = coerce_elem_symbol(capitalize_symbol(candidate).replace(/^[DT]$/, `H`))
     if (symbol) return symbol
   }
-  return parse_element_symbol(candidates.find(Boolean) ?? ``, `Atom ${atom_idx + 1}`)
+  return parse_element_symbol(candidates.find(Boolean) ?? ``, `Atom ${display_idx(atom_idx)}`)
 }
 
 // === Lattice conversion ===

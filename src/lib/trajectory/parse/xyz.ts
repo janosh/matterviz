@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { is_finite_vec3, type Matrix3x3 } from '#lib/math.js'
@@ -388,7 +389,7 @@ export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[]
   const torn = next.value
   const drop = (spec: XyzFrameSpec, reason: string) =>
     warn(
-      `Dropping truncated final XYZ frame ${specs.length} (line ${spec.start + 1}): ${reason}`,
+      `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`,
     )
   if (torn) {
     const atom_lines = Math.max(torn.end - torn.start - 2, 0)
@@ -419,7 +420,10 @@ export function parse_xyz_trajectory(
     build_xyz_frame(
       lines,
       spec,
-      { frame_label: `frame ${frame_idx} (line ${spec.start + 1})`, default_step: frame_idx },
+      {
+        frame_label: `frame ${display_idx(frame_idx)} (line ${spec.start + 1})`,
+        default_step: frame_idx,
+      },
       collector,
     ),
   )

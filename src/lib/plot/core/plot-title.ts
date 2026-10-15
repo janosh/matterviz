@@ -1,5 +1,6 @@
 import {
   DEFAULT_FONT_SPEC,
+  graphemes,
   measure_text_line,
   wrap_text_paragraph,
 } from '#lib/plot/core/text-metrics.js'
@@ -134,7 +135,7 @@ const truncate_with_ellipsis = (
 ): string => {
   const ellipsis = `…`
   if (available_width <= 0) return `${line}${ellipsis}`
-  const characters = Array.from(line.trimEnd())
+  const characters = graphemes(line.trimEnd())
   while (characters.length > 0) {
     const candidate = `${characters.join(``).trimEnd()}${ellipsis}`
     if (measure(candidate, font).width <= available_width) return candidate

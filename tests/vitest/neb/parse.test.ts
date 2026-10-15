@@ -80,7 +80,7 @@ describe(`reaction-path JSON`, () => {
     [`no images and no paths`, JSON.stringify({ format: REACTION_PATH_FORMAT }), /neither an "images" array nor a "paths" record/],
     [`an empty paths record`, JSON.stringify({ format: REACTION_PATH_FORMAT, paths: {} }), /empty "paths" record/],
     [`a single-image path`, doc_with({ energy: 0, structure }), /at least 2 images/],
-    [`a missing structure`, doc_with({ energy: 0 }, good), /missing a "structure" object/],
+    [`a missing structure`, doc_with({ energy: 0 }, good), /image 1 is missing a "structure" object/],
     [`a non-numeric energy`, doc_with({ energy: `low`, structure }, good), /energy must be a finite number/],
     [`a malformed force vector`, doc_with({ energy: 0, forces: [[1, 2]], structure }, good), /must be 3 finite numbers/],
     [`a force count mismatch`, doc_with({ energy: 0, forces: two_forces, structure }, good), /2 force vectors for 1 sites/],
@@ -101,7 +101,8 @@ describe(`extended XYZ reaction paths`, () => {
     const content = [frame(0, -10), frame(1, -9.2), frame(2, -9.7)].join(`\n`)
     const path = parse_xyz_reaction_path(content, `neb.xyz`)
     expect(path.images.map((image) => image.energy)).toEqual([-10, -9.2, -9.7])
-    expect(path.images.map((image) => image.label)).toEqual([`image 0`, `image 1`, `image 2`])
+    // no invented labels: the viewer numbers unlabelled images itself
+    expect(path.images.some((image) => `label` in image)).toBe(false)
     expect(analyze_barrier(path).forward_barrier).toBeCloseTo(0.8, 12)
   })
 
@@ -127,7 +128,7 @@ describe(`extended XYZ reaction paths`, () => {
   // oxfmt-ignore
   test.each([
     [`a single frame`, frame(0, -10), /1 XYZ frame\(s\).*at least 2/],
-    [`a frame with no energy in its comment`, `1\njust a comment\nLi 0.0 0.0 0.0\n1\njust a comment\nLi 1.0 0.0 0.0`, /no parsable energy/],
+    [`a frame with no energy in its comment`, `1\njust a comment\nLi 0.0 0.0 0.0\n1\njust a comment\nLi 1.0 0.0 0.0`, /neb\.xyz frame 1\b.*no parsable energy/],
     [`a non-numeric atom count`, `abc\ncomment\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
     [`a truncated frame`, `3\ncomment energy=-1\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
   ])(`throws for %s`, (_name, content, pattern) => {
@@ -185,6 +186,7 @@ describe(`dropped files`, () => {
   test.each([
     [`no files at all`, [], /got no files/],
     [`a structure file carrying no energy`, [{ content: JSON.stringify(cubic_structure(0.1)), filename: `POSCAR.json` }], /carries no energy/],
+    [`two files whose paths share a label`, [`a.json`, `b.json`].map((filename) => ({ content: JSON.stringify(minimal_doc({ label: `hop` })), filename })), /b\.json holds a second path keyed "hop"/],
   ])(`throws for %s`, (_name, files, pattern) => {
     expect(() => parse_dropped_paths(files)).toThrow(pattern)
   })

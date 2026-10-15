@@ -66,11 +66,11 @@ Removable tags, custom click handlers, and custom copy values:
 
 <div style="display: flex; flex-wrap: wrap; gap: 8pt; margin-bottom: 1em">
   <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Filters:</strong>
-  {#each filters as filter (filter.id)}
+  {#each filters as { id: filter_id, ...filter } (filter_id)}
     <InfoTag
       {...filter}
       removable
-      on_remove={() => (filters = filters.filter((item) => item.id !== filter.id))}
+      on_remove={() => (filters = filters.filter((item) => item.id !== filter_id))}
       {disabled}
     />
   {:else}

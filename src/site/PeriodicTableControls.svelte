@@ -1,8 +1,8 @@
 <script lang="ts">
   import { track_settings } from '#lib/controls.js'
   // Docs playground for the periodic table's CSS custom properties: every control writes one
-  // variable onto the document root, so all tables on the page follow it. Only the tile font
-  // color is bindable: it maps to ElementTile's text_color prop, which the demo passes through.
+  // variable onto the document root while mounted, so all tables on the page follow it. Only
+  // the tile font color is bindable (ElementTile's text_color prop, passed through by the demo).
   import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
   import type { ElementCategory } from '#lib/element/index.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
@@ -99,8 +99,11 @@
       '--tooltip-line-height': `${controls.tooltip_line_height}`,
       '--tooltip-text-align': controls.tooltip_text_align,
     }
-    for (const [prop, val] of Object.entries(css_vars)) {
-      document.documentElement.style.setProperty(prop, val)
+    const root_style = document.documentElement.style
+    for (const [prop, val] of Object.entries(css_vars)) root_style.setProperty(prop, val)
+    // leave with the component, else they override theme tokens site-wide for the session
+    return () => {
+      for (const prop of Object.keys(css_vars)) root_style.removeProperty(prop)
     }
   })
 

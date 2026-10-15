@@ -50,6 +50,7 @@ const co2_born_data = parse_born(co2_born)
 const nacl_data = parse_phonon_modes(nacl_yaml)
 const nacl_born_data = parse_born(nacl_born)
 const nacl_masses = nacl_data.atoms.map((atom) => atom.mass)
+const nacl_q = () => nacl_data.qpoints[0]
 const co2_raman_tensors = co2_raman_json.raman_tensors
 
 // Nested array literals are always exploded one row per line by the formatter, so build
@@ -58,6 +59,10 @@ const mat3 = (row0: Vec3, row1: Vec3, row2: Vec3): Matrix3x3 => [row0, row1, row
 const cvec3 = (c_x: Complex, c_y: Complex, c_z: Complex): Complex[] => [c_x, c_y, c_z]
 const mode_indices = (modes: VibrationalMode[], keep: (mode: VibrationalMode) => boolean) =>
   modes.filter(keep).map((mode) => mode.mode_idx)
+// sum over atoms of Z* vanishes to f64 round-off for a charge-neutral cell
+const expect_neutral = (charges: Matrix3x3[]) => {
+  for (const val of born_charge_sum(charges).flat()) expect(Math.abs(val)).toBeLessThan(1e-15)
+}
 
 // Masses straight from the fixtures, so the closed-form expectations below are checked
 // against the same numbers the implementation sees.
@@ -84,10 +89,8 @@ const sio2_spectrum = spectrum_from_phonon_data(sio2_data, parse_born(sio2_born)
 })
 
 describe(`eigenvector mass-weighting convention`, () => {
-  // Regression guard, not evidence about phonopy: the fixtures were hand-written assuming
-  // eigenvectors of the mass-weighted dynamical matrix, so this pins fixture/code agreement.
-  // A pure translation discriminates sharpest: mass-weighted components scale as sqrt(M)
-  // (so dividing by sqrt(M) gives a rigid translation), displacement ones are equal.
+  // Pins fixture/code agreement on eigenvectors of the mass-weighted dynamical matrix: in a
+  // pure translation mass-weighted components scale as sqrt(M), displacement ones are equal
   it.each([
     [`NaCl acoustic`, nacl_data],
     [`CO2 T_x`, co2_data],
@@ -97,15 +100,13 @@ describe(`eigenvector mass-weighting convention`, () => {
     const ratio = eigenvector[0][0][0] / eigenvector[1][0][0]
     const mass_ratio = Math.sqrt(data.atoms[0].mass / data.atoms[1].mass)
     expect(ratio).toBeCloseTo(mass_ratio, 12)
-    // Sanity: the two hypotheses are distinguishable, i.e. the masses actually differ
-    expect(Math.abs(mass_ratio - 1)).toBeGreaterThan(0.1)
+    expect(Math.abs(mass_ratio - 1)).toBeGreaterThan(0.1) // hypotheses distinguishable
   })
 })
 
 describe(`acoustic mode identification`, () => {
   it.each([
-    // Per-fixture frequency bound: CO2 declares its translations at literal 0 THz, while
-    // NaCl comes from real force constants and leaves ~2e-7 THz (6e-6 cm^-1) of residual.
+    // CO2 declares its translations at literal 0 THz, NaCl's force constants leave ~2e-7 THz
     [`CO2`, co2_spectrum, CO2_ACOUSTIC, 1e-12],
     [`NaCl`, nacl_spectrum, [0, 1, 2], 1e-5],
   ])(
@@ -115,33 +116,27 @@ describe(`acoustic mode identification`, () => {
       const indices = acoustic.map((mode) => mode.mode_idx)
       expect(indices.toSorted((lower, upper) => lower - upper)).toEqual(expected)
       for (const mode of acoustic) {
-        // Both bounds sit five or more orders under the smallest optical branch either
-        // fixture carries (2 THz for CO2, 5.05 THz for NaCl), so this pins "zero-frequency"
-        // rather than the classifier's own ACOUSTIC_FREQ_THRESHOLD, which would be circular.
-        expect(Math.abs(mode.frequency), `mode ${mode.mode_idx} frequency`).toBeLessThan(
-          freq_bound,
-        )
-        // Exactly zero up to f64 round-off: sum_kappa Z*_kappa = 0 and every atom of an
-        // acoustic mode has the same displacement, so the dipole derivative cancels term by
-        // term. Bound is well below the smallest optical intensity (~4e-2).
-        expect(Math.abs(mode.ir_intensity), `mode ${mode.mode_idx}`).toBeLessThan(1e-15)
+        // bounds sit 5+ orders under the lowest optical branch (not the classifier's own
+        // ACOUSTIC_FREQ_THRESHOLD, which would be circular)
+        const label = `mode ${mode.mode_idx}`
+        expect(Math.abs(mode.frequency), label).toBeLessThan(freq_bound)
+        // sum_kappa Z*_kappa = 0 and all atoms move alike, so the dipole cancels term by term
+        expect(Math.abs(mode.ir_intensity), label).toBeLessThan(1e-15)
       }
     },
   )
 
   const few_soft = [0.1, 0.2, 3, 4].map((frequency) => ({ frequency, eigenvector: null }))
   it.each([
-    [`no mode away from Gamma`, co2_data.qpoints[0].modes, [0.25, 0, 0] as Vec3, []],
-    [
-      `only near-zero modes when fewer than three qualify`,
-      few_soft,
-      [0, 0, 0] as Vec3,
-      [0, 1],
-    ],
-  ])(`acoustic_mode_indices labels %s`, (_name, modes, q_position, expected) => {
-    expect(is_gamma_point(q_position)).toBe(expected.length > 0)
-    expect([...acoustic_mode_indices(modes, q_position)]).toEqual(expected)
-  })
+    [`no mode away from Gamma`, co2_data.qpoints[0].modes, [0.25, 0, 0], []],
+    [`only near-zero modes when fewer than three qualify`, few_soft, [0, 0, 0], [0, 1]],
+  ] as [string, PhononModeData[`qpoints`][0][`modes`], Vec3, number[]][])(
+    `acoustic_mode_indices labels %s`,
+    (_name, modes, q_position, expected) => {
+      expect(is_gamma_point(q_position)).toBe(expected.length > 0)
+      expect([...acoustic_mode_indices(modes, q_position)]).toEqual(expected)
+    },
+  )
 })
 
 describe(`IR intensities against closed-form results`, () => {
@@ -150,21 +145,17 @@ describe(`IR intensities against closed-form results`, () => {
   it(`NaCl optical mode reproduces Z*^2 / mu`, () => {
     const reduced_mass = (M_NA * M_CL) / (M_NA + M_CL)
     const expected = nacl_born_data.born_charges[0][0][0] ** 2 / reduced_mass
-    for (const mode_idx of [3, 4, 5]) {
-      const mode = nacl_spectrum.modes[mode_idx]
+    // the 2-atom optical eigenvector is symmetry-fixed: I = Z*^2 (1/M_Na + 1/M_Cl)
+    for (const mode of nacl_spectrum.modes.slice(3)) {
       expect(mode.is_acoustic).toBe(false)
-      // Analytic for a 2-atom cell: the optical eigenvector is symmetry-fixed, so
-      // I = Z*^2 (1/M_Na + 1/M_Cl) = Z*^2 / mu with no free parameters.
       expect(mode.ir_intensity).toBeCloseTo(expected, 12)
     }
     // magnitude pin, from PBEsol Z*(Na) = 1.08875538 and mu = 13.945 amu
     expect(expected).toBeCloseTo(0.084997, 6)
   })
 
-  // NOT a mass-weighting discriminator, despite the mass factors in the formula: for a
-  // linear XY2 the nu2 and nu3 modes have identical mass-weighted amplitude patterns, so
-  // the mass terms cancel between them. What this does check is that the right Born-charge
-  // component is picked up for each cartesian direction.
+  // Not a mass-weighting discriminator (linear XY2 nu2/nu3 share mass-weighted amplitude
+  // patterns); checks the right Born-charge component is picked per cartesian direction
   it.each([
     [`nu2 bend x`, 5, 0],
     [`nu2 bend y`, 6, 0],
@@ -192,55 +183,45 @@ describe(`IR intensities against closed-form results`, () => {
   // Building a spectrum means pairing a phonopy YAML with a BORN and maybe a Raman file,
   // routinely from different sources, so every shape mismatch has to name what disagreed
   // rather than silently truncate to the shorter array.
-  const nacl_q = () => nacl_data.qpoints[0]
   const spec = (opts = {}, qpoint = nacl_q()) =>
     compute_ir_raman_spectrum(qpoint, nacl_masses, nacl_born_data, opts)
   const charges = nacl_born_data.born_charges
   // oxfmt-ignore
   it.each([
     [`fewer Born charge tensors than atoms`, () => compute_ir_raman_spectrum(nacl_q(), nacl_masses, { ...nacl_born_data, born_charges: charges.slice(0, 1) }), /1 Born charge tensors for 2 atoms/],
-    [`missing eigenvectors`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.map((mode) => ({ ...mode, eigenvector: null })) }), /has no eigenvector/],
+    [`missing eigenvectors`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.map((mode) => ({ ...mode, eigenvector: null })) }), /mode 1 has no eigenvector/],
     [`fewer modes than 3N`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.slice(0, 5) }), /5 modes for 2 atoms, expected 3N = 6/],
     [`one Raman tensor for six modes`, () => spec({ raman_tensors: [mat3([1, 0, 0], [0, 1, 0], [0, 0, 1])] }), /1 Raman tensors for 6 modes/],
     [`one Raman activity for six modes`, () => spec({ raman_activities: [1] }), /1 Raman activities for 6 modes/],
     [`a mass array shorter than the eigenvector`, () => ir_intensity(nacl_optical_eigvec, [M_NA], charges), /length mismatch/],
-    [`a non-physical mass`, () => ir_intensity(nacl_optical_eigvec, [0, M_CL], charges), /atom 0 has invalid mass 0/],
+    [`a non-physical mass`, () => ir_intensity(nacl_optical_eigvec, [0, M_CL], charges), /atom 1 has invalid mass 0/],
   ])(`rejects %s`, (_name, run, pattern) => expect(run).toThrow(pattern))
 
   it(`scales quadratically with the Born charges`, () => {
-    const born_charges = nacl_born_data.born_charges.map(
-      (tensor) => tensor.map((row) => row.map((val) => 2 * val)) as Matrix3x3,
-    )
-    const doubled = { ...nacl_born_data, born_charges }
-    const scaled = compute_ir_raman_spectrum(nacl_data.qpoints[0], nacl_masses, doubled)
-    const plain_intensity = nacl_spectrum.modes[3].ir_intensity
-    expect(scaled.modes[3].ir_intensity).toBeCloseTo(4 * plain_intensity, 12)
+    const double = (tensor: Matrix3x3) => tensor.map((row) => row.map((val) => 2 * val))
+    const doubled = { ...nacl_born_data, born_charges: charges.map(double) as Matrix3x3[] }
+    const scaled = compute_ir_raman_spectrum(nacl_q(), nacl_masses, doubled).modes[3]
+    expect(scaled.ir_intensity / nacl_spectrum.modes[3].ir_intensity).toBeCloseTo(4, 12)
   })
 })
 
 describe(`selection rules`, () => {
-  // The real-data counterpart of the CO2 selection-rule checks below. Point group 32 has no
-  // inversion centre, so mutual exclusion does not apply — but A2 modes still carry IR
-  // intensity with zero Raman activity, and the split has to survive the whole pipeline.
+  // Real-data counterpart of the CO2 checks below: point group 32 has no inversion centre,
+  // so no mutual exclusion, but A2 modes are IR-only through the whole pipeline
   it(`alpha-quartz A2 modes are IR-active and Raman-silent`, () => {
     const optical = sio2_spectrum.modes.filter((mode) => !mode.is_acoustic)
     expect(optical).toHaveLength(24)
     const raman_silent = optical.filter((mode) => (mode.raman_activity ?? 0) === 0)
-    // the four A2 modes; every other optical mode is A1 or E and carries Raman activity
-    expect(raman_silent.map((mode) => mode.mode_idx)).toEqual([9, 15, 18, 23])
-    // ...and those indices are exactly the A2 entries in the irrep labels, which come from
-    // phonopy's own symmetry analysis rather than from the Raman file that omitted them
+    // exactly the A2 entries of phonopy's own irrep labels; A1 and E modes are Raman active
     const labels = sio2_raman_json.mode_labels
-    expect(labels.flatMap((label, idx) => (label === `A2` ? [idx] : []))).toEqual([
-      9, 15, 18, 23,
-    ])
+    const a2_indices = labels.flatMap((label, idx) => (label === `A2` ? [idx] : []))
+    expect(a2_indices).toEqual([9, 15, 18, 23])
+    expect(raman_silent.map((mode) => mode.mode_idx)).toEqual(a2_indices)
     for (const mode of raman_silent) expect(mode.ir_intensity).toBeGreaterThan(1e-3)
     // ...and no optical mode is silent in both channels, which would mean a dropped mode
     for (const mode of optical) {
-      expect(
-        mode.ir_intensity + (mode.raman_activity ?? 0),
-        `mode ${mode.mode_idx}`,
-      ).toBeGreaterThan(0)
+      const total = mode.ir_intensity + (mode.raman_activity ?? 0)
+      expect(total, `mode ${mode.mode_idx}`).toBeGreaterThan(0)
     }
   })
 
@@ -252,34 +233,29 @@ describe(`selection rules`, () => {
     // ...and the split is the textbook one, not vacuously empty on both sides
     expect(ir_active).toEqual(CO2_UNGERADE)
     expect(raman_active).toEqual([7])
-    // Gerade IR silence is exact, not small: the O atoms move oppositely while their Z*
-    // tensors are identical (Z* is even under inversion), so every contribution cancels.
-    for (const mode_idx of CO2_GERADE) {
+    // Gerade IR silence is exact: O atoms move oppositely with identical Z* (even under
+    // inversion), so every contribution cancels
+    for (const mode_idx of CO2_GERADE)
       expect(Math.abs(modes[mode_idx].ir_intensity)).toBeLessThan(1e-15)
-    }
     for (const mode_idx of CO2_UNGERADE)
       expect(modes[mode_idx].ir_intensity).toBeGreaterThan(1e-2)
   })
 
-  it(`NaCl has an IR-active optical mode and no Raman data`, () => {
+  it(`NaCl has no Raman data`, () => {
     expect(nacl_spectrum.has_raman).toBe(false)
     expect(nacl_spectrum.modes.every((mode) => mode.raman_activity === null)).toBe(true)
     expect(() => spectrum_sticks(nacl_spectrum, `raman`)).toThrow(/no polarizability data/)
   })
 
   it(`IR intensity is invariant under a global eigenvector phase`, () => {
-    // Physical observables cannot depend on the arbitrary complex phase of an eigenvector.
-    const { eigenvector } = nacl_data.qpoints[0].modes[3]
-    if (!eigenvector) throw new Error(`fixture has no eigenvector`)
-    const angle = 0.7
-    const rotate = ([re_part, im_part]: Complex): Complex => [
-      re_part * Math.cos(angle) - im_part * Math.sin(angle),
-      re_part * Math.sin(angle) + im_part * Math.cos(angle),
-    ]
-    const rotated = eigenvector.map((atom_block) => atom_block.map(rotate))
+    const [cos, sin] = [Math.cos(0.7), Math.sin(0.7)]
+    const rotate = ([re, im]: Complex): Complex => [re * cos - im * sin, re * sin + im * cos]
+    const rotated = nacl_optical_eigvec.map((atom_block) => atom_block.map(rotate))
     const charges = nacl_born_data.born_charges
-    const rotated_intensity = ir_intensity(rotated, nacl_masses, charges)
-    expect(rotated_intensity).toBeCloseTo(ir_intensity(eigenvector, nacl_masses, charges), 12)
+    expect(ir_intensity(rotated, nacl_masses, charges)).toBeCloseTo(
+      ir_intensity(nacl_optical_eigvec, nacl_masses, charges),
+      12,
+    )
   })
 })
 
@@ -299,13 +275,10 @@ describe(`raman_invariants`, () => {
     expect(invariants.depolarization_ratio).toBeCloseTo(depolarization, 12)
   })
 
-  it(`CO2 nu1 activity matches the invariant formula applied to the fixture tensor`, () => {
-    const expected = raman_invariants(co2_raman_tensors[7]).activity
+  it(`activities come from the tensor invariants unless precomputed ones are given`, () => {
+    const expected = raman_invariants(co2_raman_tensors[7]).activity // CO2 nu1
     expect(co2_spectrum.modes[7].raman_activity).toBeCloseTo(expected, 12)
     expect(expected).toBeGreaterThan(0)
-  })
-
-  it(`precomputed activities take precedence over tensors`, () => {
     const raman_activities = co2_data.qpoints[0].modes.map((_mode, idx) => idx)
     const overridden = spectrum_from_phonon_data(co2_data, co2_born_data, {
       raman_tensors: co2_raman_tensors,
@@ -317,11 +290,6 @@ describe(`raman_invariants`, () => {
 })
 
 describe(`spectrum_sticks`, () => {
-  it(`drops acoustic modes by default and keeps them on request`, () => {
-    expect(spectrum_sticks(co2_spectrum).x).toHaveLength(6)
-    expect(spectrum_sticks(co2_spectrum, `ir`, { include_acoustic: true }).x).toHaveLength(9)
-  })
-
   // Experimental CO2 fundamentals in cm^-1, and the same values expressed in THz via the
   // module's own conversion so the two rows cannot drift apart.
   const CO2_OPTICAL_CM = [667, 667, 1333, 2349]
@@ -334,21 +302,24 @@ describe(`spectrum_sticks`, () => {
     for (const [idx, value] of optical.entries()) expect(value).toBeCloseTo(expected[idx], 6)
   })
 
-  it(`flags imaginary modes and excludes them by default`, () => {
-    const modes = nacl_data.qpoints[0].modes.map((mode, idx) =>
+  it(`drops acoustic and imaginary modes by default and keeps them on request`, () => {
+    expect(spectrum_sticks(co2_spectrum).x).toHaveLength(6)
+    expect(spectrum_sticks(co2_spectrum, `ir`, { include_acoustic: true }).x).toHaveLength(9)
+    const modes = nacl_q().modes.map((mode, idx) =>
       idx === 3 ? { ...mode, frequency: -3 } : mode,
     )
-    const soft = { ...nacl_data.qpoints[0], modes }
-    const spectrum = compute_ir_raman_spectrum(soft, nacl_masses, nacl_born_data)
+    const spectrum = compute_ir_raman_spectrum(
+      { ...nacl_q(), modes },
+      nacl_masses,
+      nacl_born_data,
+    )
     expect(spectrum.modes[3].is_imaginary).toBe(true)
     expect(spectrum_sticks(spectrum).x).toHaveLength(2)
     expect(spectrum_sticks(spectrum, `ir`, { include_imaginary: true }).x).toHaveLength(3)
   })
 
-  // Whether a mode is imaginary is a property of that mode, so the same -1.5 THz soft mode
-  // must be flagged identically however many other branches the cell happens to have. A
-  // spectral-weight fraction would call it imaginary at 9 modes and real at 48, leaking a
-  // -50 cm^-1 stick into the default spectrum of the larger cell.
+  // Imaginary is a per-mode property: a spectral-weight fraction called this -1.5 THz mode
+  // imaginary at 9 modes but real at 48, leaking a -50 cm^-1 stick into the larger cell
   it.each([3, 16])(`a -1.5 THz soft mode is imaginary in a %i-atom cell`, (n_atoms) => {
     const zeros = mat3([0, 0, 0], [0, 0, 0], [0, 0, 0])
     const eigenvector = Array.from({ length: n_atoms }, () => cvec3([1, 0], [0, 0], [0, 0]))
@@ -386,21 +357,18 @@ describe(`peak_mode_indices`, () => {
 })
 
 describe(`broaden_spectrum`, () => {
-  // Measure the width of the broadened profile at half its maximum, interpolating linearly
-  // between the two grid points that bracket each crossing.
+  // width at half maximum, linearly interpolating the grid points bracketing each crossing
   const measure_fwhm = (curve: SpectrumCurve): number => {
     const half = Math.max(...curve.y) / 2
     const crossings: number[] = []
     for (let idx = 1; idx < curve.y.length; idx++) {
       const [y_prev, y_next] = [curve.y[idx - 1], curve.y[idx]]
-      const [below_prev, below_next] = [y_prev < half, y_next < half]
-      if (below_prev === below_next) continue
+      if (y_prev < half === y_next < half) continue
       const frac = (half - y_prev) / (y_next - y_prev)
       crossings.push(curve.x[idx - 1] + frac * (curve.x[idx] - curve.x[idx - 1]))
     }
-    if (crossings.length !== 2) {
-      throw new Error(`expected 2 half-maximum crossings, found ${crossings.length}`)
-    }
+    if (crossings.length !== 2)
+      throw new Error(`expected 2 crossings, found ${crossings.length}`)
     return crossings[1] - crossings[0]
   }
   const gaussian = (fwhm: number, range: Vec2, step_size: number): BroadenOptions => ({
@@ -417,9 +385,8 @@ describe(`broaden_spectrum`, () => {
   ])(`%s line shape has the requested FWHM`, (_name, shape_factor, fwhm) => {
     const opts: BroadenOptions = { fwhm, shape_factor, range: [700, 1300], step_size: 0.02 }
     const curve = broaden_spectrum({ x: [1000], y: [1] }, opts)
-    // Grid step 0.02 with linear interpolation of the crossings; 1e-3 relative is ~0.012
-    // in absolute width, comfortably above the interpolation error and below any real
-    // shape error the implementation could introduce.
+    // 1e-3 relative (~0.012 absolute) sits above the 0.02-step interpolation error and
+    // below any real shape error
     expect(measure_fwhm(curve) / fwhm).toBeCloseTo(1, 3)
   })
 
@@ -438,8 +405,7 @@ describe(`broaden_spectrum`, () => {
       { x: [500, 2000], y: [1, 1] },
       { fwhm_fn: (center) => center / 100, shape_factor: 0, step_size: 0.05 },
     )
-    // Peak height of an area-normalised Gaussian scales as 1/FWHM, so the 2000 cm^-1 peak
-    // (FWHM 20) must be 4x shorter than the 500 cm^-1 one (FWHM 5).
+    // area-normalised peak height scales as 1/FWHM: FWHM 20 at 2000 is 4x below FWHM 5 at 500
     const near = (target: number) => {
       const dist = (idx: number) => Math.abs(curve.x[idx] - target)
       const best = curve.x.reduce((acc, _val, idx) => (dist(idx) < dist(acc) ? idx : acc), 0)
@@ -448,12 +414,8 @@ describe(`broaden_spectrum`, () => {
     expect(near(500) / near(2000)).toBeCloseTo(4, 2)
   })
 
-  // Also the area-preservation check: line shapes are area-normalised, so the integral of
-  // the broadened curve is the stick intensity, with discretisation the only error source
-  // (the Gaussian is truncated at +/-20 FWHM, far outside the +/-25 sigma of this range).
-  // The small intensities matter because broaden_peaks drops any stick below an ABSOLUTE
-  // 1e-5 — a sane floor for XRD intensities normalised to 100, meaningless in e^2/amu,
-  // where a whole spectrum can legitimately sit under it.
+  // Area preservation: line shapes are area-normalised, so the curve integrates to the
+  // stick intensity. 9e-6 sits under broaden_peaks' old ABSOLUTE 1e-5 (XRD-scale) floor
   it.each([9e-6, 3.7])(`broadens a spectrum whose only stick is %f`, (intensity) => {
     const step_size = 0.05
     const opts = gaussian(12, [700, 1300], step_size)
@@ -487,10 +449,8 @@ describe(`broaden_spectrum`, () => {
   // points, which used to hand broaden_peaks an uninterruptible fill loop (>4 min).
   const wide_ratio_fwhm = (center: number) => (center === 0 ? 1e-8 : 10)
 
-  // A bad fwhm_fn would otherwise surface downstream as "step_size must be > 0", and must
-  // name the stick it failed at. NaN intensities would come back as an all-NaN curve, a
-  // negative one as an all-zero curve (dropped under the relative floor), neither with any
-  // signal. NaN and shape_factor are broaden_peaks' own checks; the negative one is local.
+  // A bad fwhm_fn surfaced downstream as "step_size must be > 0" without naming the stick;
+  // NaN and negative intensities silently gave all-NaN and all-zero curves
   // oxfmt-ignore
   it.each([
     [`zero fwhm`, [100], [1], { fwhm: 0 }, /fwhm must be > 0/],
@@ -514,14 +474,8 @@ describe(`broaden_spectrum`, () => {
     expect(curve.y.every(Number.isFinite)).toBe(true)
   })
 
-  it(`returns an empty curve for no sticks`, () => {
-    expect(broaden_spectrum({ x: [], y: [] })).toEqual({ x: [], y: [] })
-  })
-
-  // broaden_spectrum used to rescale intensities to max 1 and widen/crop the grid to work
-  // around broaden_peaks' XRD-flavoured constants. Both are gone, so it must now be a plain
-  // delegation - exactly equal, not merely close, since nothing rescales on the way through.
-  it(`passes sticks straight through to broaden_peaks`, () => {
+  // The old max-1 rescaling and grid widening/cropping are gone: plain delegation, so exact
+  it(`passes sticks (or none) straight through to broaden_peaks`, () => {
     const sticks = { x: [820, 1106, 1180], y: [0.4, 1.7, 0.9] }
     const [range, step_size, shape_factor]: [Vec2, number, number] = [[900, 1100], 0.5, 0.5]
     const via_spectrum = broaden_spectrum(sticks, { fwhm: 12, shape_factor, range, step_size })
@@ -531,31 +485,25 @@ describe(`broaden_spectrum`, () => {
     // sticks outside `range` still paint their tails across it (820 and 1180 are both
     // within 20 x FWHM of the window), which is what the old grid extension existed for
     expect(Math.max(...via_spectrum.y)).toBeGreaterThan(0)
+    expect(broaden_spectrum({ x: [], y: [] })).toEqual({ x: [], y: [] })
   })
 
-  // An absolute 1e-5 floor erased spectra outright: IR intensities in e^2/amu routinely sit
-  // below it, and pre-scaling to max 1 was the workaround. Broadening is linear in intensity
-  // and the floor is relative now, so scaling every stick scales the curve by exactly that
-  // factor. Under the old floor the 1e-9 curve came back all zeros and this reads 1.
-  it(`broadens to the same profile whatever the intensities are scaled to`, () => {
-    const curve_at = (scale: number) =>
-      broaden_spectrum(
-        { x: [1000, 1200], y: [2 * scale, scale] },
-        { fwhm: 10, range: [900, 1300], step_size: 1 },
+  // An absolute 1e-5 floor zeroed the whole 1e-9 curve (IR intensities in e^2/amu sit
+  // below it); with a relative floor, scaling every stick scales the curve exactly
+  it.each([1e-9, 1e9])(
+    `broadens to the same profile with intensities scaled by %f`,
+    (scale) => {
+      const opts: BroadenOptions = { fwhm: 10, range: [900, 1300], step_size: 1 }
+      const curve_at = (factor: number) =>
+        broaden_spectrum({ x: [1000, 1200], y: [2 * factor, factor] }, opts)
+      const [reference, scaled] = [curve_at(1), curve_at(scale)]
+      expect(Math.max(...reference.y)).toBeGreaterThan(0)
+      const rel_errs = reference.y.map((val, idx) =>
+        val === 0 ? 0 : Math.abs(scaled.y[idx] / scale - val) / val,
       )
-    const reference = curve_at(1)
-    expect(Math.max(...reference.y)).toBeGreaterThan(0)
-
-    for (const scale of [1e-9, 1e9]) {
-      const scaled = curve_at(scale)
-      const max_rel_err = Math.max(
-        ...reference.y.map((val, idx) =>
-          val === 0 ? 0 : Math.abs(scaled.y[idx] / scale - val) / val,
-        ),
-      )
-      expect(max_rel_err, `scale ${scale}`).toBeLessThan(1e-12)
-    }
-  })
+      expect(Math.max(...rel_errs)).toBeLessThan(1e-12)
+    },
+  )
 })
 
 // Unit conversion constants are pinned per unit in helpers.test.ts; exercise both units
@@ -591,11 +539,6 @@ it(`to_transmittance puts the baseline at 1 and the strongest absorption at 0`, 
   expect(to_transmittance(wide)[999]).toBe(0)
 })
 
-it(`spectrum_from_phonon_data selects the Gamma point automatically`, () => {
-  expect(co2_spectrum.q_position).toEqual([0, 0, 0])
-  expect(co2_spectrum.n_atoms).toBe(3)
-})
-
 // A negative index used to fall into the Gamma-search branch and report "no Gamma point",
 // which says nothing about the index the caller actually passed
 const off_gamma: PhononModeData = {
@@ -610,6 +553,10 @@ it.each([
   expect(() => spectrum_from_phonon_data(data, nacl_born_data, { qpoint_index })).toThrow(
     pattern,
   )
+})
+
+it(`spectrum_from_phonon_data selects the Gamma point automatically`, () => {
+  expect(co2_spectrum).toMatchObject({ q_position: [0, 0, 0], n_atoms: 3 })
 })
 
 // Frequencies as declared in the fixtures, in file order (THz). The parser must not sort.
@@ -697,55 +644,24 @@ phonon:
   })
 
   it(`normalizes band path segments`, () => {
-    const yaml = `natom: 1
-nqpoint: 2
-segment_nqpoint: [2]
-labels: [[GAMMA, X]]
-lattice: [[1,0,0],[0,1,0],[0,0,1]]
-points: [{symbol: H, coordinates: [0,0,0], mass: 1.008}]
-phonon:
-- q-position: [0,0,0]
-  distance: 0
-  band:
-  - {frequency: 1, eigenvector: [[[1,0],[0,0],[0,0]]]}
-  - {frequency: 2, eigenvector: [[[0,0],[1,0],[0,0]]]}
-  - {frequency: 3, eigenvector: [[[0,0],[0,0],[1,0]]]}
-- q-position: [0.5,0,0]
-  distance: 1
-  band:
-  - {frequency: 2, eigenvector: [[[1,0],[0,0],[0,0]]]}
-  - {frequency: 3, eigenvector: [[[0,0],[1,0],[0,0]]]}
-  - {frequency: 4, eigenvector: [[[0,0],[0,0],[1,0]]]}
-`
+    const q_block = (q_pos: string, distance: number) =>
+      `- q-position: [${q_pos}]\n  distance: ${distance}\n  band:\n  - frequency: 1.0\n${eig_x()}${MORE_FREQS}`
+    const header = `segment_nqpoint: [2]\nlabels: [[GAMMA, X]]\n${h_cell()}phonon:\n`
+    const yaml = `${header}${q_block(`0,0,0`, 0)}${q_block(`0.5,0,0`, 1)}`
     expect(parse_phonon_modes(yaml).path_segments).toEqual([
       { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },
     ])
   })
 
+  // oxfmt-ignore
   it.each([
     [`q-point count`, `nqpoint: 2\n`, /declares nqpoint=2 but lists 1 q-points/],
     [`invalid q-point count`, `nqpoint: many\n`, /'nqpoint' must be an integer/],
-    [
-      `invalid path count`,
-      `npath: many\nsegment_nqpoint: [1]\n`,
-      /'npath' must be a positive integer/,
-    ],
-    [
-      `path count mismatch`,
-      `npath: 2\nsegment_nqpoint: [1]\n`,
-      /declares npath=2 but segment_nqpoint lists 1 path segments/,
-    ],
+    [`invalid path count`, `npath: many\nsegment_nqpoint: [1]\n`, /'npath' must be a positive integer/],
+    [`path count mismatch`, `npath: 2\nsegment_nqpoint: [1]\n`, /declares npath=2 but segment_nqpoint lists 1 path segments/],
     [`segment total`, `segment_nqpoint: [2]\n`, /sums to 2 but phonon lists 1/],
-    [
-      `label count`,
-      `segment_nqpoint: [1]\nlabels: [[GAMMA, X], [X, L]]\n`,
-      /one pair for each/,
-    ],
-    [
-      `missing distance`,
-      `segment_nqpoint: [1]\nlabels: [[GAMMA, X]]\n`,
-      /without a finite 'distance'/,
-    ],
+    [`label count`, `segment_nqpoint: [1]\nlabels: [[GAMMA, X], [X, L]]\n`, /one pair for each/],
+    [`missing distance`, `segment_nqpoint: [1]\nlabels: [[GAMMA, X]]\n`, /without a finite 'distance'/],
   ])(`rejects malformed band metadata: %s`, (_name, metadata, pattern) => {
     expect(() => parse_phonon_modes(`${metadata}${H_BAND}${eig_x()}${MORE_FREQS}`)).toThrow(
       pattern,
@@ -759,6 +675,12 @@ phonon:
     [`no eigenvectors`, `${H_BAND}${MORE_FREQS}`, /no 'eigenvector' blocks/],
     [`unnormalised`, `${H_BAND}${eig_x(2)}`, /not normalised \(sum \|e\|\^2 = 4/],
     [`extra eigenvector atom`, `${H_BAND}${eig_x(1, 2)}`, /over 1 atoms, got 2 atom blocks/],
+    // atom and component are both named 1-based
+    [
+      `bad eigenvector component`,
+      `${H_BAND}    eigenvector:\n    - - [1,0]\n      - [0,0]\n      - [0]\n`,
+      /eigenvector atom 1 component 3\b/,
+    ],
     [`negative mass`, `${h_cell(1, -1)}${Q_BAND}`, /invalid 'mass'/],
     [`band count`, `${H_BAND}${eig_x()}`, /lists 1 bands but a 1-atom cell has 3N = 3 modes/],
     // A 2-row lattice would otherwise be cast to Matrix3x3 unchecked
@@ -786,12 +708,8 @@ describe(`parse_born`, () => {
       expect(diag).toEqual(first_charge_diag)
       // Off-diagonals vanish for both fixtures' site symmetries
       expect(born.born_charges[0][0][1]).toBe(0)
-      // Sum over atoms of Z* must vanish for a charge-neutral cell. The fixtures are
-      // written with exactly-representable decimals summing to zero, so allow only f64
-      // round-off.
-      for (const row of born_charge_sum(born.born_charges)) {
-        for (const val of row) expect(Math.abs(val)).toBeLessThan(1e-15)
-      }
+      // fixtures use exactly-representable decimals summing to zero
+      expect_neutral(born.born_charges)
     },
   )
 
@@ -823,9 +741,7 @@ it(`apply_born_sum_rule removes the residual, keeps neutral charges, rejects emp
   // Residual +0.2 per diagonal element split evenly over 2 atoms
   expect(corrected[0][0][0]).toBeCloseTo(1.1, 12)
   expect(corrected[1][0][0]).toBeCloseTo(-1.1, 12)
-  for (const row of born_charge_sum(corrected)) {
-    for (const val of row) expect(Math.abs(val)).toBeLessThan(1e-15)
-  }
+  expect_neutral(corrected)
 
   const neutral = nacl_born_data.born_charges
   expect(apply_born_sum_rule(neutral)).toEqual(neutral)
@@ -1025,22 +941,29 @@ describe(`IrRamanSpectrum component`, () => {
   // The curve itself is not measurable here — the plot's line path stays empty under
   // happy-dom — so the drawn direction is checked on the sticks, which share the same
   // baseline, and the 1 - A arithmetic is covered by to_transmittance's own unit test.
+  // Transmittance is IR-only: a Raman view keeps its sticks upright and hides the selector
   it.each([
-    [`transmittance`, 1, 0],
-    [`absorbance`, 0, 1],
-  ] as const)(`%s hangs sticks from the %i baseline`, async (presentation, baseline, peak) => {
-    render({ presentation, fwhm: 25 })
-    await tick()
-    const sticks = [...document.querySelectorAll(`line.mode-stick`)]
-    expect(sticks).toHaveLength(3)
-    const y_of = (stick: Element, attr: string) => Number(stick.getAttribute(attr))
-    // Every stick starts on the shared baseline
-    const base_px = y_of(sticks[0], `y1`)
-    expect(sticks.every((stick) => y_of(stick, `y1`) === base_px)).toBe(true)
-    // The strongest mode spans the full axis, so its far end pins the other extreme and
-    // fixes which way round the axis runs: y grows downwards in SVG
-    const tips = sticks.map((stick) => y_of(stick, `y2`))
-    const full_span = baseline > peak ? Math.max(...tips) : Math.min(...tips)
-    expect(baseline > peak ? full_span > base_px : full_span < base_px).toBe(true)
-  })
+    [`ir`, `transmittance`, 1, 3],
+    [`ir`, `absorbance`, 0, 3],
+    [`raman`, `transmittance`, 0, 1],
+  ] as const)(
+    `%s %s hangs sticks from the %i baseline`,
+    async (kind, presentation, baseline, n_sticks) => {
+      render({ kind, presentation, fwhm: 25, controls_open: true })
+      await tick()
+      const presentation_select = document.querySelector(`#ir-raman-presentation`)
+      expect(presentation_select !== null).toBe(kind === `ir`)
+      const sticks = [...document.querySelectorAll(`line.mode-stick`)]
+      expect(sticks).toHaveLength(n_sticks)
+      const y_of = (stick: Element, attr: string) => Number(stick.getAttribute(attr))
+      // Every stick starts on the shared baseline
+      const base_px = y_of(sticks[0], `y1`)
+      expect(sticks.every((stick) => y_of(stick, `y1`) === base_px)).toBe(true)
+      // The strongest mode spans the full axis, so its far end fixes which way round the
+      // axis runs: y grows downwards in SVG, so a baseline at 1 (top) hangs sticks down
+      const tips = sticks.map((stick) => y_of(stick, `y2`))
+      if (baseline) expect(Math.max(...tips)).toBeGreaterThan(base_px)
+      else expect(Math.min(...tips)).toBeLessThan(base_px)
+    },
+  )
 })

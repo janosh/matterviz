@@ -12,12 +12,12 @@
   import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportItem, ExportSection } from '#lib/io/types.js'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import { clamp } from '#lib/math.js'
   import {
-    fractional_export_unavailable_reason,
+    poscar_export_unavailable_reason,
     xyz_export_unavailable_reason,
   } from '#lib/structure/export.js'
   import type { TrajectoryRun } from '#lib/trajectory/index.js'
@@ -103,13 +103,23 @@
   })
 
   let total_frames_available = $derived(run?.frame_count ?? 0)
-  let last_frame_idx = $derived(Math.max(0, total_frames_available - 1))
-  let start_frame = $state(0)
-  let end_frame = $derived(last_frame_idx)
-  $effect(() => {
-    start_frame = clamp(start_frame, 0, last_frame_idx)
-    end_frame = clamp(end_frame, start_frame, last_frame_idx)
+  let last_frame = $derived(Math.max(1, total_frames_available))
+  // 1-based frame numbers as the inputs, file names and hints show them; exporters get the
+  // 0-based indices. Writable deriveds keyed on the run, so loading another trajectory (even
+  // one with the same frame count) resets to all its frames.
+  let start_frame = $derived.by(() => {
+    void run
+    return 1
   })
+  let end_frame = $derived.by(() => {
+    void run
+    return last_frame
+  })
+  $effect(() => {
+    start_frame = clamp(start_frame, 1, last_frame)
+    end_frame = clamp(end_frame, start_frame, last_frame)
+  })
+  const [start_idx, end_idx] = $derived([start_frame, end_frame].map(from_display_idx))
   let export_frame_count = $derived(end_frame >= start_frame ? end_frame - start_frame + 1 : 0)
   const flight_duration = $derived(camera_flight?.keyframes.at(-1)?.time ?? 0)
   const video_frame_count = $derived(
@@ -120,9 +130,9 @@
     running !== null || flight_running || !run || export_frame_count === 0,
   )
   // Preview is frame zero; only gate ranges containing it. Writers validate every frame.
-  const gated_preview = $derived(run && start_frame === 0 ? run.preview.structure : undefined)
+  const gated_preview = $derived(run && start_idx === 0 ? run.preview.structure : undefined)
   const poscar_reason = $derived(
-    gated_preview && fractional_export_unavailable_reason(gated_preview),
+    gated_preview && poscar_export_unavailable_reason(gated_preview),
   )
   const xyz_reason = $derived(gated_preview && xyz_export_unavailable_reason(gated_preview))
 
@@ -152,7 +162,7 @@
     if (!prepare_display_frame) {
       const frame = await frame_at(idx, signal)
       signal.throwIfAborted()
-      if (!frame) throw new Error(`Trajectory frame ${idx} is unavailable`)
+      if (!frame) throw new Error(`Trajectory frame ${display_idx(idx)} is unavailable`)
     }
     await on_step_change?.(idx)
     await prepare_display_frame?.(idx, signal)
@@ -193,8 +203,8 @@
   const serialize_table = async (format: TableFormat, signal: AbortSignal) => {
     if (!run) throw new Error(`No trajectory to export`)
     const table = await collect_frame_property_rows(
-      start_frame,
-      end_frame,
+      start_idx,
+      end_idx,
       frame_at,
       run,
       on_progress,
@@ -232,8 +242,7 @@
     const original_step = current_step_idx
     const export_run = run
     const lifetime_signal = run_signal
-    const first_frame = start_frame
-    const last_frame = end_frame
+    const [first_idx, last_idx] = [start_idx, end_idx]
     const flight = camera_flight && structuredClone(camera_flight)
     const frame_count = video_frame_count
     await run_export(format.toUpperCase(), async (signal) => {
@@ -259,10 +268,10 @@
             flight
               ? camera_flight_frame(
                   frame_count <= 1 ? 0 : idx / (frame_count - 1),
-                  first_frame,
-                  last_frame,
+                  first_idx,
+                  last_idx,
                 )
-              : first_frame + idx,
+              : first_idx + idx,
             signal,
           ),
         on_finish: async () => {
@@ -274,7 +283,8 @@
               () => frame_at(original_step, lifetime_signal),
               lifetime_signal,
             )
-            if (!frame) throw new Error(`Trajectory frame ${original_step} is unavailable`)
+            if (!frame)
+              throw new Error(`Trajectory frame ${display_idx(original_step)} is unavailable`)
           } finally {
             if (run === export_run && !lifetime_signal.aborted)
               await on_step_change(original_step)
@@ -297,13 +307,7 @@
           `.extxyz`,
           `chemical/x-xyz`,
           (signal) =>
-            serialize_extxyz_frame_range(
-              start_frame,
-              end_frame,
-              frame_at,
-              on_progress,
-              signal,
-            ),
+            serialize_extxyz_frame_range(start_idx, end_idx, frame_at, on_progress, signal),
         ),
         data_export_item(
           {
@@ -315,8 +319,8 @@
           `application/zip`,
           (signal, basename) =>
             create_poscar_frame_range_zip(
-              start_frame,
-              end_frame,
+              start_idx,
+              end_idx,
               frame_at,
               basename,
               total_frames_available,
@@ -334,7 +338,7 @@
             label: format.toUpperCase(),
             hint:
               format === `csv`
-                ? `One row per frame over ${range}: frame index, MD step, then every extracted property with its unit in the header`
+                ? `One row per frame over frames ${range}: frame number, MD step, then every extracted property with its unit in the header`
                 : `Same per-frame numbers as the CSV, with a separate units map`,
             copy_text: () =>
               run_export(format.toUpperCase(), (signal) => serialize_table(format, signal)),
@@ -349,8 +353,8 @@
 
   const frame_range_settings = $derived(
     track_settings(() => ({ start_frame, end_frame }), {
-      start_frame: 0,
-      end_frame: last_frame_idx,
+      start_frame: 1,
+      end_frame: last_frame,
     }),
   )
   const video_settings_settings = track_settings(
@@ -363,6 +367,25 @@
     },
   )
 </script>
+
+{#snippet frame_range_inputs(first_label: string, last_label: string, slider_labels = false)}
+  <NumberRangeInput
+    min={1}
+    max={last_frame}
+    step={1}
+    bind:value={start_frame}
+    range_props={slider_labels ? { 'aria-label': `${first_label} slider` } : undefined}
+    >{first_label}</NumberRangeInput
+  >
+  <NumberRangeInput
+    min={start_frame}
+    max={last_frame}
+    step={1}
+    bind:value={end_frame}
+    range_props={slider_labels ? { 'aria-label': `${last_label} slider` } : undefined}
+    >{last_label}</NumberRangeInput
+  >
+{/snippet}
 
 <ExportPane
   state={export_state}
@@ -384,12 +407,7 @@
       changed_keys={frame_range_settings.changed_keys}
       on_reset={() => ({ start_frame, end_frame } = frame_range_settings.snapshot())}
     >
-      <NumberRangeInput min={0} max={last_frame_idx} step={1} bind:value={start_frame}
-        >Start Frame</NumberRangeInput
-      >
-      <NumberRangeInput min={start_frame} max={last_frame_idx} step={1} bind:value={end_frame}
-        >End Frame</NumberRangeInput
-      >
+      {@render frame_range_inputs(`Start Frame`, `End Frame`)}
     </SettingsSection>
   {/snippet}
 
@@ -507,30 +525,15 @@
       }}
       on_change={(flight) => (camera_flight = flight)}
       timeline={{
-        start: start_frame,
-        end: end_frame,
+        start: start_idx,
+        end: end_idx,
         current: current_step_idx,
         begin: on_flight_start,
         prepare: prepare_frame,
       }}
     >
       {#snippet timeline_controls()}
-        <NumberRangeInput
-          min={0}
-          max={last_frame_idx}
-          step={1}
-          bind:value={start_frame}
-          range_props={{ 'aria-label': `First MD frame slider` }}
-          >First MD frame</NumberRangeInput
-        >
-        <NumberRangeInput
-          min={start_frame}
-          max={last_frame_idx}
-          step={1}
-          bind:value={end_frame}
-          range_props={{ 'aria-label': `Last MD frame slider` }}
-          >Last MD frame</NumberRangeInput
-        >
+        {@render frame_range_inputs(`First MD frame`, `Last MD frame`, true)}
       {/snippet}
     </CameraFlightPane>
   {/key}

@@ -155,9 +155,13 @@ describe(`numeric composition`, () => {
           sites: Uint8Array.of(14, atomic_number),
           scalar_columns,
         }).structure as Crystal
-        for (const calculate of [struct_utils.get_element_counts, struct_utils.get_density])
+        for (const calculate of [
+          struct_utils.get_element_counts,
+          struct_utils.get_density,
+          struct_utils.get_center_of_mass,
+        ])
           expect(() => calculate(structure)).toThrow(
-            `Invalid atomic number ${atomic_number} at site 1`,
+            `Invalid atomic number ${atomic_number} at site 2`,
           )
       }
     },

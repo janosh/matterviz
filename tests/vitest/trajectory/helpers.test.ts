@@ -60,7 +60,7 @@ describe(`trajectory helpers`, () => {
         ],
         elements,
       ),
-    ).toThrow(/Invalid position at index 0/)
+    ).toThrow(/Invalid position at site 1/)
     // fractional coordinates follow a non-orthogonal lattice
     const sheared = create_structure(
       [[2, 1, 0]],

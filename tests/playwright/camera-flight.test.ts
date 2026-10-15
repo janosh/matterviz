@@ -182,7 +182,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     // Registration precedes OrbitControls' first update on software GPUs.
     await expect.poll(async () => (await read_pose()).quaternion).not.toEqual([0, 0, 0, 1])
     const step_input = viewer.locator(`.step-input`)
-    if (kind === `trajectory`) await step_input.fill(`2`)
+    if (kind === `trajectory`) await step_input.fill(`3`)
     const original = await read_pose()
     const expect_original_pose = () =>
       expect(async () => {
@@ -280,7 +280,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     )
     expect(new Set(thumbnails).size).toBeGreaterThan(3)
     await expect_original_pose()
-    if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
+    if (kind === `trajectory`) await expect(step_input).toHaveValue(`3`)
 
     // Both a thumbnail and the continuous playhead change the actual camera and MD frame.
     await flight.getByRole(`button`, { name: `Go to view 3`, exact: true }).click()
@@ -312,12 +312,12 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(playhead).toHaveValue(`1`)
     const movie_time = flight.getByLabel(`Movie time`, { exact: true })
     await expect(movie_time).toHaveValue(`1`)
-    if (kind === `trajectory`) await expect(step_input).toHaveValue(`1`)
+    if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
     await movie_time.fill(`0.25`)
     await movie_time.press(`Tab`)
     await expect(playhead).toHaveValue(`0.25`)
     await expect.poll(async () => (await read_pose()).position).not.toEqual(original.position)
-    if (kind === `trajectory`) await expect(step_input).toHaveValue(`0`)
+    if (kind === `trajectory`) await expect(step_input).toHaveValue(`1`)
     for (const invalid_time of [``, `-1`, `3`]) {
       await movie_time.fill(invalid_time)
       await movie_time.press(`Tab`)
@@ -326,7 +326,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     }
     await home.click()
     await expect_original_pose()
-    if (kind === `trajectory`) await expect(step_input).toHaveValue(`2`)
+    if (kind === `trajectory`) await expect(step_input).toHaveValue(`3`)
 
     // The thumbnail remains paired with its pose through drag, undo, update and insertion.
     await flight
@@ -360,7 +360,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(home).toBeDisabled({ timeout: 10_000 })
     await expect_original_pose()
     if (kind === `trajectory`) {
-      await expect(step_input).toHaveValue(`2`)
+      await expect(step_input).toHaveValue(`3`)
       const play_button = viewer.locator(`.play-button`)
       await play_button.click()
       await preview.click()
@@ -480,7 +480,7 @@ for (const kind of [`structure`, `trajectory`] as const) {
         )
         element.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
       })
-      await expect(viewer.locator(`.step-input`)).toHaveAttribute(`max`, `1`)
+      await expect(viewer.locator(`.step-input`)).toHaveAttribute(`max`, `2`)
       await expect(export_pane.getByText(/Includes camera flight/)).toHaveCount(0)
     }
   })

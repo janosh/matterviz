@@ -3,8 +3,6 @@
 import { format_num } from '#lib/labels.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { mat3_from_flat_col_major } from '#lib/symmetry/symmetry-elements.js'
-import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { Vector3 } from 'three/webgpu'
 import { ConvexHull, type VertexNode } from 'three/examples/jsm/math/ConvexHull.js'
 import type { BrillouinZoneData, ConvexHullData, IrreducibleBZData } from './types'
@@ -13,26 +11,6 @@ const TOL = 1e-8
 // Three unit normals whose parallelepiped volume is below this are treated as linearly
 // dependent (same scale-invariant cutoff math.matrix_inverse_3x3 applies to unit rows)
 const PARALLEL_TOL = 1e-10
-
-// Extract unique point group rotation matrices from space group operations.
-// Returns fractional-coordinate rotations (W matrices from spglib convention).
-// These must be converted to Cartesian k-space before use in clipping.
-export function extract_point_group_from_operations(
-  operations: MoyoDataset[`operations`],
-): Matrix3x3[] {
-  const seen = new Set<string>()
-  const unique_rotations: Matrix3x3[] = []
-
-  for (const { rotation } of operations) {
-    const key = rotation.map((val) => val.toFixed(6)).join(`,`)
-    if (seen.has(key)) continue
-    seen.add(key)
-
-    unique_rotations.push(mat3_from_flat_col_major(rotation))
-  }
-
-  return unique_rotations
-}
 
 // Convert fractional rotation W to Cartesian k-space rotation. k_lattice stores reciprocal
 // vectors as ROWS (k_cart = Bᵀ·q) and reciprocal fractional rotation is q' = W^{-T}·q, so
@@ -360,6 +338,22 @@ export function compute_convex_hull(
     )
   })
 
+  // A point inside a hull face or edge is no corner, but quickhull keeps whichever one round-off
+  // pushes outward, so one of a ±v pair could survive alone and bias the vertex centroid (fcc
+  // order-2 zone: 0.29 1/A off Γ). Corners meet ≥3 face planes; re-hull those alone.
+  const vertex_normals: Vec3[][] = unique_verts.map(() => [])
+  faces.forEach((face, face_idx) => {
+    const normal = face_normals[face_idx]
+    for (const normals of face.map((vertex_idx) => vertex_normals[vertex_idx])) {
+      if (!normals.some((other) => math.dot(other, normal) > 1 - 1e-9)) normals.push(normal)
+    }
+  })
+  const corners = unique_verts.filter(
+    (_, vertex_idx) => vertex_normals[vertex_idx].length >= 3,
+  )
+  if (corners.length >= 4 && corners.length < unique_verts.length)
+    return compute_convex_hull(corners, edge_sharp_angle_deg)
+
   const edge_to_faces = new Map<string, number[]>()
   faces.forEach((face, face_idx) => {
     face.forEach((from_vertex_idx, idx) => {
@@ -395,14 +389,10 @@ export function compute_brillouin_zone(
   if (k_lattice.some((row) => row.some((val) => !Number.isFinite(val)))) {
     throw new Error(`Reciprocal lattice has non-finite entries: ${JSON.stringify(k_lattice)}`)
   }
-  const vertices = generate_bz_vertices(k_lattice, order)
-  if (vertices.length < 4) {
-    throw new Error(`Insufficient vertices for BZ (got ${vertices.length}, need ≥4)`)
-  }
-
+  // too few vertices throw in first_bz_vertices (order 1) or compute_convex_hull
   return {
     order: Math.min(order, 3),
-    ...hull_geometry(compute_convex_hull(vertices)),
+    ...hull_geometry(compute_convex_hull(generate_bz_vertices(k_lattice, order))),
     k_lattice,
   }
 }

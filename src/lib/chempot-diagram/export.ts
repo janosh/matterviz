@@ -1,5 +1,6 @@
 // Export helpers for chemical potential diagrams (shared between 2D and 3D views).
 import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '#lib/io/export.js'
+import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { export_scene_as } from '#lib/scene/index.js'
 import { escape_html as xml_escape } from '#lib/utils.js'
@@ -85,6 +86,18 @@ function get_overlay_text_items(
   return text_items
 }
 
+// drawImage/toDataURL of a presented WebGPU canvas read no pixels, so re-render a registered
+// scene (at `png_dpi`) right before encoding; unregistered canvases encode as-is
+function capture_frame(gl_canvas: HTMLCanvasElement, png_dpi: number): Promise<Blob> {
+  const view = scene_registry.get(gl_canvas)
+  return canvas_to_png_blob(
+    gl_canvas,
+    view ? png_dpi : 72,
+    view?.scene ?? null,
+    view?.camera ?? null,
+  )
+}
+
 // Composite the 3D canvas + HTML overlay labels into a single PNG download
 export async function export_png_file(
   wrapper: HTMLElement | undefined,
@@ -112,16 +125,7 @@ export async function export_png_file(
   if (!ctx) return
   ctx.scale(scale, scale)
 
-  // drawImage of a WebGPU canvas reads no pixels after present, so re-render the registered
-  // scene at export resolution (unregistered canvases encode as-is) and composite that frame
-  const view = scene_registry.get(gl_canvas)
-  const frame_blob = await canvas_to_png_blob(
-    gl_canvas,
-    view ? png_dpi : 72,
-    view?.scene ?? null,
-    view?.camera ?? null,
-  )
-  const frame = await createImageBitmap(frame_blob)
+  const frame = await createImageBitmap(await capture_frame(gl_canvas, png_dpi))
   ctx.drawImage(frame, 0, 0, rect.width, rect.height)
   frame.close()
 
@@ -139,39 +143,31 @@ export async function export_png_file(
 }
 
 // SVG snapshot: rasterized canvas as embedded image + overlay labels as real text nodes
-export function export_svg_file(
+export async function export_svg_file(
   wrapper: HTMLElement | undefined,
   basename: string,
   view_settings: Record<string, unknown>,
   save: FileSaver,
-): void | Promise<void> {
+): Promise<void> {
   const gl_canvas = get_gl_canvas(wrapper)
   if (!gl_canvas || !wrapper) return
   const canvas_rect = gl_canvas.getBoundingClientRect()
   if (canvas_rect.width === 0 || canvas_rect.height === 0) return
-  const png_data_url = gl_canvas.toDataURL(`image/png`)
+  const frame_url = await blob_to_data_url(await capture_frame(gl_canvas, 72))
   const text_nodes = get_overlay_text_items(wrapper, canvas_rect).map(
-    (text_item) =>
-      `<text x="${text_item.x.toFixed(2)}" y="${text_item.y.toFixed(
-        2,
-      )}" text-anchor="middle" dominant-baseline="central" fill="${xml_escape(
-        text_item.color,
-      )}" font-size="${xml_escape(text_item.font_size)}" font-family="${xml_escape(
-        text_item.font_family,
-      )}" font-weight="${xml_escape(text_item.font_weight)}">${xml_escape(
-        text_item.text,
-      )}</text>`,
+    ({ x, y, color, font_size, font_family, font_weight, text }) =>
+      `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="middle" dominant-baseline="central" fill="${xml_escape(color)}" font-size="${xml_escape(font_size)}" font-family="${xml_escape(font_family)}" font-weight="${xml_escape(font_weight)}">${xml_escape(text)}</text>`,
   )
   const metadata = xml_escape(JSON.stringify(view_settings))
   const svg = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas_rect.width}" height="${canvas_rect.height}" viewBox="0 0 ${canvas_rect.width} ${canvas_rect.height}">`,
     `<metadata>${metadata}</metadata>`,
-    `<image href="${png_data_url}" x="0" y="0" width="${canvas_rect.width}" height="${canvas_rect.height}" />`,
+    `<image href="${frame_url}" x="0" y="0" width="${canvas_rect.width}" height="${canvas_rect.height}" />`,
     ...text_nodes,
     `</svg>`,
   ].join(``)
-  return save(svg, `${basename}.svg`, `image/svg+xml`)
+  await save(svg, `${basename}.svg`, `image/svg+xml`)
 }
 
 interface ChemPotGlbParts {
@@ -197,21 +193,14 @@ export function export_glb_file(
     const opts = { transparent: true, side: THREE.DoubleSide, ...material }
     export_root.add(new THREE.Mesh(geometry.clone(), new THREE.MeshBasicMaterial(opts)))
   }
-  const add_lines = (
-    geometry: THREE.BufferGeometry,
-    color: THREE.ColorRepresentation,
-  ): void => {
+  const add_lines = (geometry: THREE.BufferGeometry, color: THREE.ColorRepresentation) =>
     export_root.add(
       new THREE.LineSegments(geometry.clone(), new THREE.LineBasicMaterial({ color })),
     )
-  }
   if (hull_geometry) add_mesh(hull_geometry, { vertexColors: true, opacity: hull_opacity })
   add_lines(edge_geometry, 0x333333)
-  for (const { geometry, color } of formula_meshes) {
+  for (const { geometry, color } of formula_meshes)
     add_mesh(geometry, { color: new THREE.Color(color), opacity: 0.13 })
-  }
-  for (const { geometry, color } of formula_edges) {
-    add_lines(geometry, new THREE.Color(color))
-  }
+  for (const { geometry, color } of formula_edges) add_lines(geometry, new THREE.Color(color))
   return export_scene_as(export_root, `glb`, basename, save)
 }

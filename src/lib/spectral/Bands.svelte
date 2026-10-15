@@ -203,8 +203,8 @@
   )
 
   // Map segments to x-axis positions, in the physical path order of the first structure
-  // (segments only other structures have, in union mode, follow). Discontinuities sit at the
-  // current x without advancing the path.
+  // (segments only other structures have, in union mode, follow). A jump between branches
+  // advances nothing.
   let internal_x_positions = $derived.by((): Record<string, Vec2> => {
     const canonical_keys = structures[0]?.keys ?? []
     const ordered = [
@@ -215,10 +215,8 @@
     let current_x = 0
     for (const key of ordered) {
       const [band_structure, branch] = all_segments[key][0]
-      const segment_len = helpers.is_discontinuity_branch(branch)
-        ? 0
-        : band_structure.distance[branch.end_index] -
-          band_structure.distance[branch.start_index]
+      const segment_len =
+        band_structure.distance[branch.end_index] - band_structure.distance[branch.start_index]
       positions[key] = [current_x, current_x + segment_len]
       current_x += segment_len
     }
@@ -251,9 +249,7 @@
 
       for (const [branch_idx, branch] of band_structure.branches.entries()) {
         const segment_key = keys[branch_idx]
-        if (helpers.is_discontinuity_branch(branch) || !segments_to_plot.has(segment_key)) {
-          continue
-        }
+        if (!segments_to_plot.has(segment_key)) continue
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1 // exclusive
         const [x_start, x_end] = internal_x_positions[segment_key]
@@ -340,21 +336,33 @@
   })
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
-  // from the first structure plotting each segment
+  // from the first structure plotting each segment, with their q-point index in it
+  type SymPoint = {
+    label: string
+    frac_coords: Vec3
+    qpoint_idx: number
+    band_structure: BaseBandStructure
+  }
   let sym_points_at_x = $derived.by(() => {
-    const points_at: Record<number, { label: string; frac_coords: Vec3 }[]> = {}
-    const add_point = (pos: number, qpoint: QPoint | undefined) => {
+    const points_at: Record<number, SymPoint[]> = {}
+    const add_point = (pos: number, band_structure: BaseBandStructure, qpoint_idx: number) => {
+      const qpoint: QPoint | undefined = band_structure.qpoints[qpoint_idx]
       if (!qpoint?.label) return
       const label = helpers.pretty_sym_point(qpoint.label)
       points_at[pos] ??= []
       if (!points_at[pos].some((point) => point.label === label)) {
-        points_at[pos].push({ label, frac_coords: qpoint.frac_coords })
+        points_at[pos].push({
+          label,
+          frac_coords: qpoint.frac_coords,
+          qpoint_idx,
+          band_structure,
+        })
       }
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [band_structure, branch] = all_segments[segment_key][0]
-      add_point(x_start, band_structure.qpoints[branch.start_index])
-      add_point(x_end, band_structure.qpoints[branch.end_index])
+      add_point(x_start, band_structure, branch.start_index)
+      add_point(x_end, band_structure, branch.end_index)
     }
     return points_at
   })
@@ -378,23 +386,27 @@
       : (structures[0]?.bs.recip_lattice ?? null),
   )
   // The first structure's k-path (Cartesian), drawn in the popup for context
-  let k_path_points = $derived(
-    k_lattice && structures[0]
-      ? helpers.extract_k_path_points(structures[0].bs, k_lattice)
-      : [],
-  )
-  let k_path_labels = $derived(
-    structures[0] ? helpers.k_path_labels(structures[0].bs, k_path_points) : [],
+  let k_path = $derived(
+    k_lattice && structures[0] ? helpers.band_k_path(structures[0].bs, k_lattice) : undefined,
   )
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
+  // Marked at the drawn path's own point (folded with its branch, so it sits on the drawn label);
+  // a union-mode point only another structure has is not on that path and is folded alone
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
-    return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
-      ...point,
-      position: helpers.frac_k_to_cartesian(point.frac_coords, k_lattice),
-    }))
+    const lattice = k_lattice
+    return (sym_points_at_x[bz_popup_x] ?? []).map(
+      ({ label, frac_coords, qpoint_idx, band_structure }) => ({
+        label,
+        frac_coords,
+        position:
+          k_path && band_structure === structures[0]?.bs
+            ? k_path.points[qpoint_idx]
+            : helpers.frac_k_to_cartesian(frac_coords, lattice),
+      }),
+    )
   })
 
   let x_range = $derived.by((): Vec2 => {
@@ -530,6 +542,17 @@
     return x_start === null || x_end === null ? null : [x_start, x_end]
   })
 
+  // The plot is only mounted while there is something to draw, but a bound view outlives it in
+  // the host (e.g. BandsAndDos sync state). ScatterPlot honors a view passed at mount, so drop
+  // the view when the plot goes away or a remount would restore the old path's range.
+  const show_plot = $derived(series_data.length > 0 && !strict_path_error)
+  $effect(() => {
+    if (!show_plot) return
+    return () => {
+      view = undefined
+    }
+  })
+
   const path_settings = track_settings(
     () => ({
       path_mode,
@@ -545,7 +568,7 @@
   )
 </script>
 
-{#if series_data.length > 0 && !strict_path_error}
+{#if show_plot}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
@@ -574,18 +597,12 @@
     children={frame_children}
   >
     {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
-      {@const segment = Object.entries(internal_x_positions).find(
+      {@const segment_key = Object.entries(internal_x_positions).find(
         ([, [start, end]]) => coord_x >= start && coord_x <= end,
-      )}
-      {@const path =
-        (segment && !segment[0].startsWith(`branch:`)
-          ? segment[0]
-              .replace(/#\d+$/, ``)
-              .split(`_`)
-              .map((lbl) => (lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``))
-              .filter(Boolean)
-              .join(` → `)
-          : ``) || null}
+      )?.[0]}
+      {@const path = segment_key
+        ? helpers.branch_path_label(...all_segments[segment_key][0])
+        : null}
       {@const {
         band_idx,
         spin,
@@ -866,8 +883,7 @@
         {...bz_popup_props}
         {k_lattice}
         points={bz_popup_points}
-        {k_path_points}
-        {k_path_labels}
+        {k_path}
         place="manual"
         arrow_x={clamp(tick_x - left + half_width, 12, 2 * half_width - 12)}
         style="left: {left}px; top: {ctx.height -

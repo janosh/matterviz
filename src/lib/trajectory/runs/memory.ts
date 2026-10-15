@@ -1,5 +1,6 @@
 // In-memory run: every frame encoded once. Built by the eager parsers, from JSON payloads
 // (anywidget / JupyterLab), by PhononModeExplorer and by tests.
+import { display_idx } from '#lib/labels.js'
 import { encode_frame, type NumericFrame } from '../frame'
 import { first_non_increasing_index, is_finite_vec3_like } from '#lib/math.js'
 import { frame_property_row } from '../extract'
@@ -37,15 +38,15 @@ function validate_frames(
   for (let frame_idx = 0; frame_idx < frames.length; frame_idx++) {
     const frame = frames[frame_idx]
     if (!is_finite_number(frame.step)) {
-      throw new TypeError(`Frame ${frame_idx} has invalid step ${frame.step}`)
+      throw new TypeError(`Frame ${display_idx(frame_idx)} has invalid step ${frame.step}`)
     }
     const sites = frame.structure?.sites
-    if (!sites?.length) throw new Error(`Frame ${frame_idx} has no sites`)
+    if (!sites?.length) throw new Error(`Frame ${display_idx(frame_idx)} has no sites`)
     // indexed loop, no iterator or closure: this runs over every site of every frame
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
       if (!is_finite_vec3_like(sites[atom_idx].xyz)) {
         throw new Error(
-          `Frame ${frame_idx} atom ${atom_idx} has invalid Cartesian coordinates`,
+          `Frame ${display_idx(frame_idx)} atom ${display_idx(atom_idx)} has invalid Cartesian coordinates`,
         )
       }
     }
@@ -53,7 +54,7 @@ function validate_frames(
       `lattice` in frame.structure &&
       !frame.structure.lattice.matrix.flat().every(is_finite_number)
     ) {
-      throw new Error(`Frame ${frame_idx} has an invalid lattice`)
+      throw new Error(`Frame ${display_idx(frame_idx)} has an invalid lattice`)
     }
   }
   const { atom_masses, signals } = extras

@@ -480,6 +480,21 @@ describe(`StructureExportPane`, () => {
     },
   )
 
+  // POSCAR/XYZ hold one fully occupied element per site; CIF and JSON keep the disorder
+  test(`a partially occupied site disables POSCAR and XYZ only`, () => {
+    const [first, ...rest] = simple_structure.sites
+    const species = [{ element: `Cu` as const, occu: 0.5, oxidation_state: 0 }]
+    mount_pane({ structure: { ...simple_structure, sites: [{ ...first, species }, ...rest] } })
+    for (const label of [`JSON`, `XYZ`, `CIF`, `POSCAR`]) {
+      const disabled = label === `XYZ` || label === `POSCAR`
+      for (const action of [`Download`, `Copy`]) {
+        const button = get_button(`${action} ${label}`)
+        expect(button.disabled, `${action} ${label}`).toBe(disabled)
+        if (disabled) expect(button.title).toContain(`Site 1 has partial or mixed occupancy`)
+      }
+    }
+  })
+
   test.each([`Download`, `Copy`])(
     `a throwing serializer on %s is logged, not thrown from the click handler`,
     (action) => {

@@ -255,7 +255,7 @@ test.describe(`Trajectory performance`, () => {
       expect(Math.abs(structure.height - plot.height)).toBeLessThan(1)
       expect(structure.y + structure.height).toBeLessThanOrEqual(plot.y + 1)
       await page.setViewportSize({ width: 1400, height: 1000 })
-      await viewer.locator(`.step-input`).fill(`1`)
+      await viewer.locator(`.step-input`).fill(`2`) // second frame
       await viewer.locator(`.step-input`).press(`Enter`)
       await expect.poll(atom_count).toBe(n_atoms)
       await viewer.locator(`.trajectory-export-toggle`).click()

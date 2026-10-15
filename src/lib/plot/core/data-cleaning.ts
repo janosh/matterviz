@@ -4,7 +4,11 @@
 
 import { median, type Vec2 } from '#lib/math.js'
 import type { DataSeries } from '#lib/plot/core/types.js'
-import { assert_series_lengths, PER_POINT_KEYS } from '#lib/plot/core/types.js'
+import {
+  assert_aligned_lengths,
+  assert_series_lengths,
+  PER_POINT_KEYS,
+} from '#lib/plot/core/types.js'
 import { gaussian_kernel_smooth } from '#lib/spectral/helpers.js'
 
 // === Types ===
@@ -686,7 +690,11 @@ export function clean_multi_series(
 ): { x: number[]; cleaned_y: number[][]; quality: CleaningQuality[] } {
   const invalid_mode = config.invalid_values ?? `remove`
   const { bounds, smooth } = config
-  const length = Math.min(x_values.length, ...y_arrays.map((array) => array.length))
+  assert_aligned_lengths(
+    `clean_multi_series`,
+    Object.fromEntries([[`x`, x_values], ...y_arrays.map((arr, idx) => [`y[${idx}]`, arr])]),
+  )
+  const { length } = x_values
   const kept_indices = index_range(length).filter(
     (idx) =>
       invalid_mode !== `remove` || y_arrays.every((array) => Number.isFinite(array[idx])),
@@ -729,7 +737,8 @@ export function clean_xyz(
 ): { x: number[]; y: number[]; z: number[]; quality: CleaningQuality } {
   const invalid_mode = config.invalid_values ?? `remove`
   const { bounds, smooth, primary_axis = `x` } = config
-  const length = Math.min(x_values.length, y_values.length, z_values.length)
+  assert_aligned_lengths(`clean_xyz`, { x: x_values, y: y_values, z: z_values })
+  const { length } = x_values
   const columns = { x: x_values, y: y_values, z: z_values }
   const axes = [`x`, `y`, `z`] as const
   const pick_rows = (cols: typeof columns, indices: number[]) => ({

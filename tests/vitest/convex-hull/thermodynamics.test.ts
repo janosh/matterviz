@@ -109,25 +109,17 @@ describe(`process_hull_entries`, () => {
 
 describe(`compute_e_form_per_atom`, () => {
   const el_refs = { Fe: make_phase({ Fe: 1 }, -4.0), O: make_phase({ O: 1 }, -2.0) }
-
-  test(`FeO at -7.0 eV/atom → e_form = -4.0`, () => {
-    expect(compute_e_form_per_atom(make_phase({ Fe: 1, O: 1 }, -7.0), el_refs)).toBeCloseTo(
-      -4.0,
-      10,
-    )
-  })
-
+  const fe_corrected = { Fe: make_phase({ Fe: 1 }, -3.0, { correction: -1.0 }) }
   test.each([
-    [{ Fe: 1, Li: 1 }, `missing reference element`],
-    [{}, `empty composition`],
-  ])(`returns null for %o (%s)`, (composition, _desc) => {
-    expect(compute_e_form_per_atom(make_phase(composition, -5.0), el_refs)).toBeNull()
-  })
-
-  test(`corrections are total-energy (eV) values`, () => {
-    const refs = { Fe: make_phase({ Fe: 1 }, -3.0, { correction: -1.0 }) }
-    const entry = make_phase({ Fe: 2 }, -4.5, { correction: 1.0 }) // -9 + 1 = -8 → -4/atom
-    expect(compute_e_form_per_atom(entry, refs)).toBeCloseTo(0.0, 10)
+    [`FeO at -7.0 eV/atom`, make_phase({ Fe: 1, O: 1 }, -7.0), el_refs, -4],
+    // corrections are total-energy (eV) values: -9 + 1 = -8 eV → -4 eV/atom
+    [`corrections`, make_phase({ Fe: 2 }, -4.5, { correction: 1.0 }), fe_corrected, 0],
+    [`missing reference element`, make_phase({ Fe: 1, Li: 1 }, -5.0), el_refs, null],
+    [`empty composition`, make_phase({}, -5.0), el_refs, null],
+  ])(`%s`, (_desc, entry, refs, expected) => {
+    expect(compute_e_form_per_atom(entry, refs)).toEqual(
+      expected === null ? null : expect.closeTo(expected, 10),
+    )
   })
 })
 
@@ -372,17 +364,79 @@ describe(`N-dimensional quickhull`, () => {
 
 describe(`calculate_e_above_hull`, () => {
   const fe_o_refs: PhaseData[] = [make_elem(`Fe`, -4.0), make_elem(`O`, -2.0)]
+  const fe_o_feo_refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
+  // only an Fe reference + precomputed E_form: the O corner is synthesized at 0
+  const fe_feo_refs = [
+    make_phase({ Fe: 1 }, 0, { entry_id: `Fe`, e_form_per_atom: 0 }),
+    make_phase({ Fe: 1, O: 1 }, -1, { entry_id: `FeO`, e_form_per_atom: -1 }),
+  ]
+  // no facets (two points in 2D): the hull is the line through the unaries, not E_form = 0
+  const off_zero_refs = [
+    make_phase({ Fe: 1 }, -8, { e_form_per_atom: 0.2, entry_id: `Fe` }),
+    make_phase({ O: 1 }, -5, { e_form_per_atom: 0, entry_id: `O` }),
+  ]
+  // every point on the tilted plane E = 0.3 x_Fe: facet-less, so that plane is the hull
+  const tilted_refs = [
+    make_phase({ Fe: 1 }, -8, { e_form_per_atom: 0.3, entry_id: `Fe` }),
+    make_phase({ Li: 1 }, -2, { e_form_per_atom: 0, entry_id: `Li` }),
+    make_phase({ O: 1 }, -5, { e_form_per_atom: 0, entry_id: `O` }),
+    make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: 0.15, entry_id: `FeO` }),
+  ]
+  const fe_polymorphs = [0.1, 0.2].map((e_form) =>
+    make_phase({ Fe: 1 }, -8, { e_form_per_atom: e_form, entry_id: `Fe-${e_form}` }),
+  )
 
-  test(`unary: polymorph 0.5 eV/atom above the lowest → 0.5`, () => {
-    const refs = [make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-stable` })]
-    expect(
-      calculate_e_above_hull(make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }), refs),
-    ).toBeCloseTo(0.5, 10)
+  test.each([
+    [
+      `unary polymorph 0.5 eV/atom above the lowest`,
+      make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }),
+      [make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-stable` })],
+      0.5,
+    ],
+    [
+      `oxidation-state keys normalized against plain-symbol refs`,
+      make_phase({ 'Fe2+': 1, 'O2-': 1 }, -6.5, { entry_id: `FeO-charged` }),
+      fe_o_feo_refs,
+      1,
+    ],
+    // tie-line FeO (x=0.5, -1) → synthetic O corner (x=1, 0) gives -0.5 at x=0.75
+    [
+      `missing unary refs become E_form = 0 corners`,
+      make_phase({ Fe: 1, O: 3 }, 0, { entry_id: `FeO3`, e_form_per_atom: -0.25 }),
+      fe_feo_refs,
+      0.25,
+    ],
+    [
+      `precomputed e_form_per_atom wins over recomputation`,
+      make_phase({ Fe: 1, O: 1 }, -6.0, { entry_id: `FeO`, e_form_per_atom: 0.5 }),
+      fe_o_refs,
+      0.5,
+    ],
+    [`facet-less hull: off-zero unary is on it`, off_zero_refs[0], off_zero_refs, 0],
+    // 0.3 above the tie-line midpoint 0.1
+    [
+      `facet-less hull: distance to the tilted line`,
+      make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: 0.3, entry_id: `FeO` }),
+      off_zero_refs,
+      0.2,
+    ],
+    [`tilted plane: compound on it`, tilted_refs[3], tilted_refs, 0],
+    // plane at x_Fe = 0.25 is 0.075
+    [
+      `tilted plane: distance above it`,
+      make_phase({ Li: 1, Fe: 1, O: 2 }, -5, { e_form_per_atom: 0.175, entry_id: `LiFeO2` }),
+      tilted_refs,
+      0.1,
+    ],
+    // the lowest unary is the hull, even off E_form = 0
+    [`lone unary off zero`, fe_polymorphs[0], [fe_polymorphs[0]], 0],
+    [`unary polymorph above an off-zero ground state`, fe_polymorphs[1], fe_polymorphs, 0.1],
+  ])(`%s`, (_desc, query, refs, expected) => {
+    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(expected, 10)
   })
 
   test(`binary: interpolates hull tie-line, on-hull entries ≈ 0`, () => {
     // Hull: Fe (x=0, e_form 0) — FeO (x=0.5, e_form -4.5) — O (x=1, e_form 0)
-    const refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
     const results = calculate_e_above_hull(
       [
         make_phase({ Fe: 1, O: 1 }, -6.5, { entry_id: `FeO-unstable` }), // e_form -3.5 → 1.0
@@ -390,7 +444,7 @@ describe(`calculate_e_above_hull`, () => {
         make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-test` }),
         make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }),
       ],
-      refs,
+      fe_o_feo_refs,
     )
     expect(results[`FeO-unstable`]).toBeCloseTo(1.0, 10)
     expect(results.Fe3O).toBeCloseTo(0.5, 10)
@@ -401,7 +455,7 @@ describe(`calculate_e_above_hull`, () => {
     const dupes = [``, ``, `x`, `x`].map((entry_id, idx) =>
       make_phase({ [idx % 2 ? `O` : `Fe`]: 1 }, -1, { entry_id }),
     )
-    calculate_e_above_hull(dupes, refs)
+    calculate_e_above_hull(dupes, fe_o_feo_refs)
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       `calculate_e_above_hull: duplicate entry_id "x", last wins`,
     )
@@ -424,74 +478,25 @@ describe(`calculate_e_above_hull`, () => {
       expect(Math.abs(dist), id).toBeLessThan(1e-8)
   })
 
-  test(`oxidation-state keys are normalized against plain-symbol references`, () => {
-    const refs = [...fe_o_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `FeO` })]
-    const charged = { 'Fe2+': 1, 'O2-': 1 }
-    expect(
-      calculate_e_above_hull(make_phase(charged, -6.5, { entry_id: `FeO-charged` }), refs),
-    ).toBeCloseTo(1.0, 10)
-    expect(() => calculate_e_above_hull(make_phase({ Fe2O3: 1 }, -6.5), refs)).toThrow(
-      /Unrecognized composition key/,
-    )
-  })
-
-  // A compound below the elemental tie-plane shapes the hull; a same-composition
-  // polymorph 0.5 eV/atom higher must land exactly 0.5 above it, and an excluded compound
-  // must not shape it at all
+  // All-zero elemental refs make the hull the tie-plane at 0; a compound below it shapes the
+  // hull (a polymorph 0.5 eV/atom higher lands exactly 0.5 above), an excluded one must not
   test.each([
-    { arity: 3, els: [`Li`, `Fe`, `O`] },
-    { arity: 4, els: [`Li`, `Fe`, `P`, `O`] },
-    { arity: 5, els: [`Li`, `Na`, `K`, `Rb`, `Cs`] },
-  ])(`arity-$arity: compounds shape the hull unless exclude_from_hull`, ({ els }) => {
+    [[`Fe`, `O`]],
+    [[`Li`, `Fe`, `O`]],
+    [[`Li`, `Fe`, `P`, `O`]],
+    [[`Li`, `Na`, `K`, `Rb`, `Cs`]],
+  ])(`%j: compounds shape the elemental tie-plane unless exclude_from_hull`, (els) => {
     const comp = Object.fromEntries(els.map((element) => [element, 1]))
-    const refs = [
-      ...els.map((element) => make_elem(element, 0)),
-      make_phase(comp, -1.0, { entry_id: `stable-compound` }),
-    ]
-    expect(
-      calculate_e_above_hull(make_phase(comp, -0.5, { entry_id: `q` }), refs),
-    ).toBeCloseTo(0.5, 10)
-    const excluded_refs = [
-      ...els.map((element) => make_elem(element, 0)),
-      make_phase(comp, -2.0, { entry_id: `excluded`, exclude_from_hull: true }),
-    ]
-    // Below the elemental tie-plane → clamped to 0 (would be ~1.0 if the excluded compound counted)
-    expect(
-      calculate_e_above_hull(make_phase(comp, -1.0, { entry_id: `q` }), excluded_refs),
-    ).toBeCloseTo(0, 10)
-  })
-
-  test.each([
-    { arity: 2, comp: { Fe: 1, O: 1 } },
-    { arity: 3, comp: { Li: 1, Fe: 1, O: 1 } },
-    { arity: 4, comp: { Li: 1, Fe: 1, P: 1, O: 1 } },
-  ] as { arity: number; comp: Record<string, number> }[])(
-    `arity-$arity: all refs at e_form = 0 → hull is the tie-plane at 0`,
-    ({ comp }) => {
-      const refs = Object.keys(comp).map((element) => make_elem(element, 0))
-      expect(
-        calculate_e_above_hull(make_phase(comp, 0.5, { entry_id: `above` }), refs),
-      ).toBeCloseTo(0.5, 10)
-      expect(calculate_e_above_hull(make_phase(comp, -0.2, { entry_id: `below` }), refs)).toBe(
-        0,
-      )
-    },
-  )
-
-  test(`missing pure-element references default to e_form = 0 corners`, () => {
-    // Only Fe reference + precomputed e_form: the O corner is synthesized at 0
-    const refs = [
-      make_phase({ Fe: 1 }, 0, { entry_id: `Fe`, e_form_per_atom: 0 }),
-      make_phase({ Fe: 1, O: 1 }, -1, { entry_id: `FeO`, e_form_per_atom: -1 }),
-    ]
-    const query = make_phase({ Fe: 1, O: 3 }, 0, { entry_id: `FeO3`, e_form_per_atom: -0.25 })
-    // Tie-line FeO (x=0.5, -1) → O (x=1, 0) gives -0.5 at x=0.75
-    expect(calculate_e_above_hull(query, refs)).toBeCloseTo(0.25, 10)
-  })
-
-  test(`pre-computed e_form_per_atom wins over recomputation`, () => {
-    const entry = make_phase({ Fe: 1, O: 1 }, -6.0, { entry_id: `FeO`, e_form_per_atom: 0.5 })
-    expect(calculate_e_above_hull(entry, fe_o_refs)).toBeCloseTo(0.5, 10)
+    const elem_refs = els.map((element) => make_elem(element, 0))
+    const e_hull = (energy: number, refs: PhaseData[]) =>
+      calculate_e_above_hull(make_phase(comp, energy, { entry_id: `q` }), refs)
+    expect(e_hull(0.5, elem_refs)).toBeCloseTo(0.5, 10)
+    expect(e_hull(-0.2, elem_refs)).toBe(0)
+    const stable = make_phase(comp, -1.0, { entry_id: `stable-compound` })
+    expect(e_hull(-0.5, [...elem_refs, stable])).toBeCloseTo(0.5, 10)
+    // below the tie-plane → clamped to 0 (~1.0 if the excluded compound counted)
+    const excluded = make_phase(comp, -2.0, { entry_id: `excluded`, exclude_from_hull: true })
+    expect(e_hull(-1.0, [...elem_refs, excluded])).toBeCloseTo(0, 10)
   })
 
   test.each([
@@ -501,6 +506,12 @@ describe(`calculate_e_above_hull`, () => {
       make_phase({ Li: 1 }, -2.0),
       [make_elem(`Fe`)],
       /not present in reference/,
+    ],
+    [
+      `unrecognized key`,
+      make_phase({ Fe2O3: 1 }, -6.5),
+      fe_o_feo_refs,
+      /Unrecognized composition key/,
     ],
   ] as const)(`throws for %s`, (_desc, entry, refs, err) => {
     expect(() => calculate_e_above_hull(entry, [...refs])).toThrow(err)
@@ -522,16 +533,6 @@ describe(`calculate_e_above_hull`, () => {
         [...fe_o_refs, make_phase({ Li: 1 }, -2.0, { entry_id: `Li` })],
       ).zero,
     ).toBeNaN()
-  })
-
-  test(`keys same-composition polymorphs separately when entry_id is absent`, () => {
-    const entries = [
-      make_phase({ Fe: 1 }, -4.0),
-      make_phase({ O: 1 }, -2.0),
-      make_phase({ Fe: 1, O: 1 }, -3.0),
-      make_phase({ Fe: 1, O: 1 }, -2.5),
-    ]
-    expect(Object.keys(calculate_e_above_hull(entries, entries))).toHaveLength(4)
   })
 })
 
@@ -579,11 +580,9 @@ describe(`pymatgen cross-validation`, () => {
   // Both from the stored e_form_per_atom and recomputed from raw energy + correction
   test.each(fixtures)(`%s: e_above_hull matches pymatgen to 1e-10`, (_name, entries) => {
     const without_hull = entries.map(
-      ({ e_above_hull: _unused_event, is_stable: _unused_text, ...rest }) => rest,
+      ({ e_above_hull: _hull, is_stable: _stable, ...rest }) => rest,
     )
-    const without_e_form = without_hull.map(
-      ({ e_form_per_atom: _unused_func, ...rest }) => rest,
-    )
+    const without_e_form = without_hull.map(({ e_form_per_atom: _e_form, ...rest }) => rest)
     for (const input of [without_hull, without_e_form]) {
       if (input === without_e_form && entries === quinary) continue // quinary has no raw energies
       const results = calculate_e_above_hull(input, input)
@@ -609,13 +608,7 @@ describe(`pymatgen cross-validation`, () => {
 })
 
 describe(`get_convex_hull_stats`, () => {
-  test(`null for no entries, null e_form_range when no entry has a formation energy`, () => {
-    expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
-    const stats = get_convex_hull_stats([make_phase({ Fe: 1 }, -4.0)], [`Fe`], 1)
-    expect(stats?.e_form_range).toBeNull()
-  })
-
-  test(`arity counts, stability, energy stats and electronegativity-sorted system`, () => {
+  test(`arity counts, stability, energy stats, sorted system and empty/null cases`, () => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0, { is_stable: true, e_form_per_atom: -1.0, e_above_hull: 0 }),
       make_phase({ O: 1 }, -2.0, { e_above_hull: 0, e_form_per_atom: -0.5 }),
@@ -642,6 +635,9 @@ describe(`get_convex_hull_stats`, () => {
     expect(stats?.e_form_range).toEqual({ min: -2.0, max: -0.5, avg: -1.2 })
     expect(stats?.hull_distance.max).toBe(0.3)
     expect(stats?.hull_distance.avg).toBeCloseTo(0.6 / 5, 12)
+    expect(get_convex_hull_stats([], [`Fe`], 3)).toBeNull()
+    // null e_form_range when no entry has a formation energy
+    expect(get_convex_hull_stats([entries[5]], [`Fe`], 1)?.e_form_range).toBeNull()
   })
 
   test.each([
@@ -707,7 +703,7 @@ describe(`process_hull_for_stats`, () => {
   })
 
   // Hull distances are keyed by entry_id, else composition + energy: same-composition
-  // polymorphs without ids must not collide
+  // polymorphs without ids must not collide in either function
   test.each([
     {
       system: `binary`,
@@ -737,6 +733,9 @@ describe(`process_hull_for_stats`, () => {
         .filter((entry) => !entry.is_element)
         .toSorted((left_value, right_value) => left_value.energy - right_value.energy)
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
+      expect(Object.keys(calculate_e_above_hull(entries, entries))).toHaveLength(
+        entries.length,
+      )
     },
   )
 })

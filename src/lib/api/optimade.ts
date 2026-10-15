@@ -1,5 +1,6 @@
 // OPTIMADE API utilities for fetching structure data
 // Based on OPTIMADE 1.2.0 specification
+import { is_plain_object } from '#lib/utils.js'
 
 export interface OptimadeStructure {
   id: string
@@ -75,7 +76,14 @@ async function fetch_links(url: string): Promise<OptimadeProvider[]> {
   const promise = fetch_optimade(url).then(async (response) => {
     const body: { data: OptimadeProvider[] } = await response.json()
     if (!Array.isArray(body.data)) throw new Error(`Invalid links response from ${url}`)
-    return body.data.filter((link) => link.type === `links` && link.attributes.base_url)
+    // OPTIMADE allows base_url as a URL string or a JSON:API link object { href, meta }
+    return body.data.flatMap((link) => {
+      const raw: unknown = link.attributes?.base_url
+      const base_url = is_plain_object(raw) ? raw.href : raw
+      return link.type === `links` && typeof base_url === `string` && base_url
+        ? [{ ...link, attributes: { ...link.attributes, base_url } }]
+        : []
+    })
   })
   const entry = { promise, expires: Infinity }
   links_cache.set(url, entry)

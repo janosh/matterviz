@@ -80,8 +80,9 @@ describe(`trajectory_export_basename`, () => {
 
 describe(`poscar_frame_filename`, () => {
   test.each([
-    [7, 10, `run_frame_0007.vasp`],
-    [7, 100_000, `run_frame_00007.vasp`], // widens past the 4-digit floor (max index 99999)
+    [0, 1, `run_frame_0001.vasp`], // 1-based like the range inputs
+    [7, 10, `run_frame_0008.vasp`],
+    [7, 100_000, `run_frame_000008.vasp`], // widens past the 4-digit floor (last frame 100000)
   ])(`frame %i of %i`, (frame_idx, total, expected) => {
     expect(poscar_frame_filename(`run.extxyz`, frame_idx, total)).toBe(expected)
   })
@@ -174,10 +175,11 @@ describe(`serialize_extxyz_frame_range`, () => {
     )
   })
 
-  // Silently emitting a short file would look like a successful export of a shorter run
+  // Silently emitting a short file would look like a successful export of a shorter run.
+  // Index 3 is the 4th frame: messages number frames from 1 like the viewer
   test(`throws when a frame cannot be resolved`, async () => {
     await expect(serialize_extxyz_frame_range(0, 5, resolver)).rejects.toThrow(
-      `Trajectory frame 3 is not available for export`,
+      `Trajectory frame 4 is not available for export`,
     )
   })
 })
@@ -190,11 +192,11 @@ describe(`create_poscar_frame_range_zip`, () => {
     expect(blob.type).toBe(`application/zip`)
     const files = await read_zip(blob)
     expect(Object.keys(files).toSorted()).toEqual([
-      `run_frame_0000.vasp`,
       `run_frame_0001.vasp`,
       `run_frame_0002.vasp`,
+      `run_frame_0003.vasp`,
     ])
-    const first = new TextDecoder().decode(files[`run_frame_0000.vasp`])
+    const first = new TextDecoder().decode(files[`run_frame_0001.vasp`])
     expect(first.split(`\n`)[1]).toBe(`1.0`) // POSCAR scale line
     expect(first).toContain(`Si O`)
     expect(first.endsWith(`\n`)).toBe(true)
@@ -204,15 +206,15 @@ describe(`create_poscar_frame_range_zip`, () => {
       [1, 0.1],
       [2, 0.2],
     ] as const) {
-      const text = new TextDecoder().decode(files[`run_frame_000${frame_idx}.vasp`])
+      const text = new TextDecoder().decode(files[`run_frame_000${frame_idx + 1}.vasp`])
       const parsed = parse_poscar(text)
       expect(parsed?.sites[0].xyz[0]).toBeCloseTo(expected_x, 6)
     }
-    // names by absolute frame index, not position in the exported range
+    // names by absolute frame number, not position in the exported range
     const sub = await create_poscar_frame_range_zip(1, 2, resolver, `run.extxyz`, 3)
     expect(Object.keys(await read_zip(sub)).toSorted()).toEqual([
-      `run_frame_0001.vasp`,
       `run_frame_0002.vasp`,
+      `run_frame_0003.vasp`,
     ])
   })
 
@@ -221,7 +223,7 @@ describe(`create_poscar_frame_range_zip`, () => {
     const lattice_less = { structure: { sites: frames[0].structure.sites }, step: 0 }
     await expect(
       create_poscar_frame_range_zip(0, 0, () => lattice_less as TrajectoryFrame, `run`, 1),
-    ).rejects.toThrow(`Failed to serialize trajectory frame 0`)
+    ).rejects.toThrow(`Failed to serialize trajectory frame 1:`)
   })
 })
 
@@ -273,6 +275,7 @@ describe(`collect_frame_property_rows`, () => {
     const on_progress = vi.fn()
     const table = await collect_frame_property_rows(0, 2, resolver, trajectory, on_progress)
     expect(table.source).toBe(`properties`)
+    // 0-based frame indices (the CSV/JSON writers number from 1); step stays the file's own
     expect(table.rows.map(({ frame, step }) => [frame, step])).toEqual([
       [0, 0],
       [1, 5],
@@ -355,8 +358,8 @@ describe(`frame_rows_to_csv`, () => {
         `alpha (°),beta (°),gamma (°),density (g/cm³)`,
     )
     expect(lines).toHaveLength(4) // header + 3 frames
-    expect(lines[1].startsWith(`0,0,-10.5,0.25,125,5,5,5,90,90,90,`)).toBe(true)
-    expect(lines[3].startsWith(`2,9,-11.5,0.01,`)).toBe(true)
+    expect(lines[1].startsWith(`1,0,-10.5,0.25,125,5,5,5,90,90,90,`)).toBe(true)
+    expect(lines[3].startsWith(`3,9,-11.5,0.01,`)).toBe(true)
   })
 
   // rows_to_csv keys off the first row alone, so a property only later frames carry would
@@ -372,8 +375,8 @@ describe(`frame_rows_to_csv`, () => {
     ])
     expect(frame_rows_to_csv(table).split(`\n`)).toEqual([
       `frame,step,energy (eV),temperature (K),some_custom_prop`,
-      `0,0,-1,,`,
-      `1,1,-2,300,1.5`,
+      `1,0,-1,,`,
+      `2,1,-2,300,1.5`,
     ])
   })
 })
@@ -382,7 +385,7 @@ describe(`frame_rows_to_json`, () => {
   test(`pairs bare per-frame numbers with a units map and the range's provenance`, async () => {
     const table = await collect_frame_property_rows(1, 2, resolver, trajectory)
     const parsed = JSON.parse(frame_rows_to_json(table))
-    expect(parsed.frame_range).toEqual([1, 2])
+    expect(parsed.frame_range).toEqual([2, 3])
     expect(parsed.n_frames).toBe(2)
     expect(parsed.source).toBe(`properties`)
     expect(parsed.units).toMatchObject({
@@ -392,7 +395,7 @@ describe(`frame_rows_to_json`, () => {
       alpha: `°`,
     })
     expect(parsed.rows).toHaveLength(2)
-    expect(parsed.rows[0]).toMatchObject({ frame: 1, step: 5, energy: -11.25, volume: 125 })
+    expect(parsed.rows[0]).toMatchObject({ frame: 2, step: 5, energy: -11.25, volume: 125 })
   })
 
   // frame/step keys inside properties must not leak into the JSON rows (row identity wins)
@@ -409,9 +412,9 @@ describe(`frame_rows_to_json`, () => {
     )
     expect(parsed.source).toBe(`properties`)
     expect(parsed.rows).toEqual([
-      { frame: 0, step: 0, energy: -10.5, force_max: 0.25 },
-      { frame: 1, step: 5, energy: -11.25, force_max: 0.1 },
-      { frame: 2, step: 9, energy: -11.5, force_max: 0.01 },
+      { frame: 1, step: 0, energy: -10.5, force_max: 0.25 },
+      { frame: 2, step: 5, energy: -11.25, force_max: 0.1 },
+      { frame: 3, step: 9, energy: -11.5, force_max: 0.01 },
     ])
   })
 })
@@ -500,9 +503,9 @@ describe(`TrajectoryExportPane property export`, () => {
         document.querySelector(`[id="${xyz.getAttribute(`aria-describedby`)}"]`)?.textContent,
       ).toContain(`finite 3x3 lattice matrix`)
     }
-    // Preview is frame zero; excluding it must allow the valid remaining frames.
+    // Preview is frame index 0 (shown as frame 1); excluding it must allow the valid rest.
     const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-    set_input(start_input, `1`)
+    set_input(start_input, `2`)
     await tick()
     expect(poscar.disabled).toBe(false)
     expect(xyz.disabled).toBe(false)
@@ -667,7 +670,7 @@ describe(`TrajectoryExportPane property export`, () => {
   test.each([
     [`success`, ``],
     [`failure`, `recording failed`],
-    [`restore-null`, `Trajectory frame 2 is unavailable`],
+    [`restore-null`, `Trajectory frame 3 is unavailable`],
     [`restore-error`, `restore failed`],
     [`cancel`, ``],
     [`cancel-read`, ``],
@@ -835,7 +838,7 @@ describe(`TrajectoryExportPane property export`, () => {
       expect(document.querySelector(reset_selector)).toBeNull()
 
       const start_input = doc_query<HTMLInputElement>(`.settings-section input[type="number"]`)
-      set_input(start_input, `1`)
+      set_input(start_input, `2`)
       await tick()
       doc_query<HTMLButtonElement>(reset_selector).click()
       await tick()
@@ -844,13 +847,13 @@ describe(`TrajectoryExportPane property export`, () => {
       await click(`Download CSV`)
       await vi.waitFor(() => expect(download).toHaveBeenCalledTimes(1))
       const [, name, mime] = vi.mocked(download).mock.calls[0]
-      expect(name).toBe(`run_frames_0-2.csv`)
+      expect(name).toBe(`run_frames_1-3.csv`)
       expect(mime).toBe(`text/csv`)
       expect(resolve_frame.mock.calls.map(([idx]) => idx)).toEqual(expected_reads)
       const lines = downloaded_text()
       expect(lines).toHaveLength(4)
       expect(lines[0]).toContain(`energy (eV)`)
-      expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`0`, `1`, `2`])
+      expect(lines.slice(1).map((line) => line.split(`,`)[0])).toEqual([`1`, `2`, `3`])
     },
   )
 
@@ -862,7 +865,7 @@ describe(`TrajectoryExportPane property export`, () => {
     const [, end_input] = document.querySelectorAll<HTMLInputElement>(
       `.settings-section input[type="number"]`,
     )
-    set_input(end_input, `1`)
+    set_input(end_input, `2`) // inclusive 1-based: frames 1-2
     await tick()
 
     await click(`Download extXYZ`)
@@ -874,12 +877,37 @@ describe(`TrajectoryExportPane property export`, () => {
     expect(exported.map(({ step }) => step)).toEqual([0, 5])
   })
 
+  // Inputs show 1-based frames, and a newly loaded run (even one of the same length) starts
+  // from its full range instead of inheriting the previous run's start
+  test.each([3, 5])(`frame range resets on swapping in a %i-frame run`, async (next_count) => {
+    const state = fromStore(writable(trajectory))
+    open_pane({
+      get run() {
+        return state.current
+      },
+    })
+    await tick()
+    const number_inputs = () => [
+      ...document.querySelectorAll<HTMLInputElement>(`.settings-section input[type="number"]`),
+    ]
+    const ranges = () => number_inputs().map(({ min, max, value }) => `${min}-${max}:${value}`)
+    expect(ranges()).toEqual([`1-3:1`, `1-3:3`])
+    set_input(number_inputs()[0], `2`)
+    await tick()
+    expect(ranges()).toEqual([`1-3:2`, `2-3:3`])
+    state.current = trajectory_from_frames(
+      Array.from({ length: next_count }, (_unused, idx) => frames[idx % frames.length]),
+    )
+    await tick()
+    expect(ranges()).toEqual([`1-${next_count}:1`, `1-${next_count}:${next_count}`])
+  })
+
   test(`copies JSON to the clipboard`, async () => {
     open_pane({ run: trajectory })
     await click(`Copy JSON to clipboard`)
     await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1))
     const parsed = JSON.parse(vi.mocked(navigator.clipboard.writeText).mock.calls[0][0])
-    expect(parsed).toMatchObject({ frame_range: [0, 2], n_frames: 3, source: `properties` })
+    expect(parsed).toMatchObject({ frame_range: [1, 3], n_frames: 3, source: `properties` })
     expect(parsed.rows.map(({ energy }: { energy: number }) => energy)).toEqual([
       -10.5, -11.25, -11.5,
     ])

@@ -1,5 +1,10 @@
 import type { ChemicalElement, ElementCategory } from '#lib/element/types.js'
-import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
+import {
+  DEFAULT_CATEGORY_COLORS,
+  default_element_colors,
+  is_concrete_color,
+  resolve_color_token,
+} from './colors'
 import { get_theme_preference, type ThemeMode } from './theme'
 
 // Periodic-table hover/selection state shared between the table, its controls and
@@ -19,18 +24,14 @@ export const colors = $state({
 export const theme_state = $state<{ mode: ThemeMode }>({ mode: get_theme_preference() })
 
 // The page's --text-color as a concrete color. The custom property reads back as specified
-// (`light-dark(#374151, #eee)` under the default themes), so resolve it through a probe's
-// computed `color`. Reads theme_state.mode so a $derived caller re-resolves when the theme
-// flips. Undefined without a DOM or when no --text-color is set.
+// (`light-dark(#374151, #eee)` under the default themes), so resolve it to a computed color.
+// Reads theme_state.mode so a $derived caller re-resolves when the theme flips. Undefined
+// without a DOM or when --text-color is unset or not a color.
 export const resolve_theme_text_color = (): string | undefined => {
   void theme_state.mode
   if (typeof document === `undefined`) return undefined
   const root = document.documentElement
-  if (!getComputedStyle(root).getPropertyValue(`--text-color`).trim()) return undefined
-  const probe = document.createElement(`span`)
-  probe.style.color = `var(--text-color)`
-  root.append(probe)
-  const { color } = getComputedStyle(probe)
-  probe.remove()
-  return color || undefined
+  const token = getComputedStyle(root).getPropertyValue(`--text-color`).trim()
+  const color = token && resolve_color_token(root, token)
+  return is_concrete_color(color) ? color : undefined
 }

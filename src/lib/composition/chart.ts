@@ -74,9 +74,12 @@ export const segment_suffix = (
   (show_amounts && show_percentages ? `=` : ``) +
   (show_percentages ? format_num(fraction, `.1~%`) : ``)
 
-// Hover/aria text: "Fe: 2 atoms (40%)"
-export const segment_title = ({ element, amount, fraction }: ChartSegment): string =>
-  `${element}: ${amount} ${amount === 1 ? `atom` : `atoms`} (${format_num(fraction, `.1~%`)})`
+// Hover/aria text: "Fe: 2 atoms (40%)", amount rounded like the visible labels
+// Noun follows the shown number so 1.0000001 reads "1 atom"
+export const segment_title = ({ element, amount, fraction }: ChartSegment): string => {
+  const shown = format_amount(amount)
+  return `${element}: ${shown} ${shown === `1` ? `atom` : `atoms`} (${format_num(fraction, `.1~%`)})`
+}
 
 // Shrink `base_scale` so a label of `n_chars` characters (≈0.6em each) fits `available_space`
 // px, never below `min_scale_factor` of the base

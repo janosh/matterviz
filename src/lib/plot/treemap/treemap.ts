@@ -68,11 +68,9 @@ export function tile_rects<Metadata>(
   // Values are assigned manually (the documented d3 way to bypass .sum()) so all
   // three value modes carry over — with 'total', children summing to less than
   // their parent leave unfilled space in the parent cell, matching plotly.
-  // Non-finite/negative values would make d3's tiling emit NaN/out-of-bounds
-  // rects; coerce them to zero-size instead of corrupting the whole chart.
+  // compute_sunburst_layout already coerced non-finite/negative inputs to 0.
   root.each((node) => {
-    const { value } = node.data
-    ;(node as { value?: number }).value = Number.isFinite(value) && value >= 0 ? value : 0
+    ;(node as { value?: number }).value = node.data.value
   })
 
   const tiled = treemap<PositionedArc<Metadata>>()

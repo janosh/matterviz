@@ -1,4 +1,5 @@
 // Sweep structure identification (CNA + CSP) across sampled frames of a trajectory run.
+import { display_idx } from '#lib/labels.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { sweep_frames } from '#lib/trajectory/analysis.js'
 import { calc_structure_id_async } from './async-compute.svelte'
@@ -50,8 +51,8 @@ export async function collect_structure_id_sweep(
       first ??= { frame_number, n_atoms: result.n_atoms }
       if (result.n_atoms !== first.n_atoms) {
         throw new Error(
-          `collect_structure_id_sweep: frame ${frame_number} has ${result.n_atoms} atoms but ` +
-            `frame ${first.frame_number} has ${first.n_atoms}; per-type populations across ` +
+          `collect_structure_id_sweep: frame ${display_idx(frame_number)} has ${result.n_atoms} atoms but ` +
+            `frame ${display_idx(first.frame_number)} has ${first.n_atoms}; per-type populations across ` +
             `a varying atom count are not comparable`,
         )
       }

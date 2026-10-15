@@ -125,16 +125,11 @@ describe(`PlotControls`, () => {
 
   describe(`format input validation`, () => {
     test.each([
-      { format: `.2r`, valid: true },
-      { format: `.0%`, valid: true },
-      { format: `~s`, valid: true },
-      { format: `d`, valid: true },
-      { format: `.2e`, valid: true },
-      { format: `%Y-%m-%d`, valid: true },
-      { format: `%B %d, %Y`, valid: true },
-      { format: ``, valid: true },
-      { format: `xyz`, valid: false },
-      { format: `.`, valid: false },
+      ...[`.2r`, `.0%`, `~s`, `d`, `.2e`, `%Y-%m-%d`, `%B %d, %Y`, ``].map((format) => ({
+        format,
+        valid: true,
+      })),
+      ...[`xyz`, `.`].map((format) => ({ format, valid: false })),
     ])(`validates "$format" as $valid`, ({ format, valid }) => {
       const state = $state({ x_axis: { format: `.3f` } })
       mount_controls(bind_props({}, state))
@@ -250,21 +245,15 @@ describe(`PlotControls`, () => {
         },
       }
       const initial_display = state.display
+      const restore_btn = `button[aria-label="Restore display to initial values"]`
       mount_controls(bind_props({ auto_ranges: { y2: [0, 1] as Vec2 } }, state))
       const grids = get_checkboxes_in_group(`grid`)
       expect(grids).toHaveLength(3)
-      expect(
-        document.querySelector(`button[aria-label="Restore display to initial values"]`),
-      ).toBeNull()
-
+      expect(document.querySelector(restore_btn)).toBeNull()
       grids[0].click()
       await tick()
       expect(state.display.x_grid).toBe(false)
-
-      doc_query<HTMLButtonElement>(
-        `button[aria-label="Restore display to initial values"]`,
-      ).click()
-      await tick()
+      restore(`display`)
       expect(state.display).not.toBe(initial_display)
       expect(state.display).toMatchObject({
         x_grid: DEFAULTS.plot.display.x_grid,
@@ -274,9 +263,7 @@ describe(`PlotControls`, () => {
         y2_zero_line: false,
         y2_grid: true,
       })
-      expect(
-        document.querySelector(`button[aria-label="Restore display to initial values"]`),
-      ).toBeNull()
+      expect(document.querySelector(restore_btn)).toBeNull()
     })
 
     test(`does not fill missing display keys on mount`, () => {
@@ -328,6 +315,30 @@ describe(`PlotControls`, () => {
         ?.classList.contains(`axis-fields`),
     ).toBe(true)
   })
+
+  // epoch timestamps have no log/linear alternative: a time axis gets no select, doesn't
+  // count as changed (also when switched to time after mount) and survives a Reset
+  test.each([`time`, `linear`] as const)(
+    `scale type section leaves time axes alone (x mounted %s)`,
+    async (x_scale) => {
+      const state = $state<{ x_axis: AxisConfig; y_axis: AxisConfig }>({
+        x_axis: { scale_type: x_scale },
+        y_axis: { scale_type: `log` },
+      })
+      const auto_ranges = { x: [0, 1e12] as Vec2, y: [1, 10] as Vec2 }
+      mount_controls(bind_props({ auto_ranges }, state))
+      state.x_axis = { scale_type: `time` }
+      await tick()
+      expect(
+        document.querySelectorAll(`[data-testid="scale-type-section"] select`),
+      ).toHaveLength(1)
+      const reset_btn = `button[title="Reset scale type to defaults"]`
+      doc_query<HTMLButtonElement>(reset_btn).click()
+      await tick()
+      expect([state.x_axis.scale_type, state.y_axis.scale_type]).toEqual([`time`, `linear`])
+      expect(document.querySelector(reset_btn)).toBeNull()
+    },
+  )
 
   test(`Enter key blurs range input`, () => {
     mount_controls({ auto_ranges: { x: [0, 100] } })

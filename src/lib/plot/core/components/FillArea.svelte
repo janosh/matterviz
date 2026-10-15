@@ -8,6 +8,7 @@
   import { interpolatePath } from 'd3-interpolate-path'
   import type { TweenOptions } from 'svelte/motion'
   import { add_alpha } from '#lib/colors/index.js'
+  import { display_idx } from '#lib/labels.js'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
@@ -148,11 +149,11 @@
     return [(left + right) / 2, (top + bottom) / 2]
   }
   const handle_keydown = (event: KeyboardEvent) => {
-    if (event.key !== `Enter` && event.key !== ` `) return
+    // A hover-only region is focusable too, but must leave Space to scroll the page
+    if (!is_clickable || (event.key !== `Enter` && event.key !== ` `)) return
     event.preventDefault()
     const center = center_of(event.currentTarget)
-    if (!is_clickable || !center) return
-    emit_click(make_event(event, ...center))
+    if (center) emit_click(make_event(event, ...center))
   }
   // Focus is the keyboard's hover: without it a keyboard user reaches the region but
   // sees nothing, since every hover payload here comes from a pointer event
@@ -165,7 +166,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <g
-  class={['fill-region', { hovered: is_hovered }]}
+  class={[`fill-region`, { hovered: is_hovered }]}
   clip-path={`url(#${clip_path_id})`}
   style="cursor: {cursor_style}; pointer-events: all"
   onmouseenter={(event) => emit_hover(mouse_event(event))}
@@ -178,7 +179,7 @@
   role="img"
   tabindex={is_interactive && is_first_segment ? 0 : -1}
   aria-hidden={is_first_segment ? undefined : `true`}
-  aria-label={region.label ?? `Fill region ${region_idx}`}
+  aria-label={region.label ?? `Fill region ${display_idx(region_idx)}`}
 >
   {#if pattern && is_first_segment}
     <defs><PatternDefs patterns={[pattern]} /></defs>

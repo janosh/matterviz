@@ -8,7 +8,7 @@
     create_chart_exporter,
   } from '#lib/plot/core/utils/chart-export.js'
   import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
-  import { array_max, type Vec2 } from '#lib/math.js'
+  import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
     AxisConfig,
     BandwidthOption,
@@ -75,6 +75,7 @@
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '#lib/plot/core/svg.js'
@@ -463,28 +464,18 @@
   // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
   // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
   const range_values = (boxes: Box[], log_axis: boolean): number[] =>
-    boxes.flatMap((box_item) => {
-      const {
-        whisker_low,
-        whisker_high,
-        q1: quartile_1,
-        q3: quartile_3,
-        median,
-        mean,
-        outliers,
-      } = box_item.stats
-      const vals = [whisker_low, whisker_high, quartile_1, quartile_3, median]
+    boxes.flatMap(({ series: srs, idx, stats }) => {
+      const { outliers } = stats
+      const vals = [stats.whisker_low, stats.whisker_high, stats.q1, stats.q3, stats.median]
       // keep the drawn mean line in range even when hidden outliers drag it past the whiskers
-      if (show_mean) vals.push(mean)
+      if (show_mean) vals.push(stats.mean)
       // Drawn samples reach the data extremes, past whiskers and hidden outliers alike
-      if (point_mode(box_item.series) !== `none`)
-        vals.push(box_item.stats.min, box_item.stats.max)
+      if (point_mode(srs) !== `none`) vals.push(stats.min, stats.max)
       // outliers are sorted ascending; auto-range only needs their extremes (avoids
       // spreading a potentially huge array as call args)
-      if (show_outliers && outliers.length > 0) {
+      if (show_outliers && outliers.length > 0)
         vals.push(outliers[0], outliers[outliers.length - 1])
-      }
-      const kde = violin_kdes.get(box_item.idx)
+      const kde = violin_kdes.get(idx)
       if (kde && kde.grid.length > 0) vals.push(kde.grid[0], kde.grid[kde.grid.length - 1])
       return vals.filter((val) => Number.isFinite(val) && (!log_axis || val > 0))
     })
@@ -610,10 +601,19 @@
   )
 
   // === Tooltip / hover ===
-  let hover_info = $state<BoxHover | null>(null)
-  let hover_at_pointer = $state(false)
+  // Box index + pointer (null on keyboard focus: whisker-tip anchor), so a resting tooltip
+  // follows new data and closes once its box is gone
+  let hover_key = $state<{ idx: number; pointer: Point2D | null } | null>(null)
+  const hover_info = $derived.by((): BoxHover | null => {
+    if (!hover_key) return null
+    const { idx, pointer } = hover_key
+    const box_item = visible_boxes.find((item) => item.idx === idx)
+    if (!box_item || !Number.isFinite(box_item.stats.median)) return null
+    return get_box_data(box_item, pointer)
+  })
 
-  function get_box_data(box_item: Box, color: string): BoxHover {
+  // Anchored at the pointer when there is one, else at the whisker tip
+  function get_box_data(box_item: Box, pointer: Point2D | null = null): BoxHover {
     const val_scale = box_val_scale(box_item.series)
     const cat_scale = vertical ? frame.scales.x : frame.scales.y
     const corner_c = cat_scale(box_item.slot)
@@ -628,7 +628,7 @@
       x: vertical ? box_item.slot : box_item.stats.median,
       y: vertical ? box_item.stats.median : box_item.slot,
       stats: box_item.stats,
-      color,
+      color: box_color(box_item.idx),
       label: box_item.series.label ?? null,
       category_label: slot_list[box_item.slot],
       metadata: box_item.series.metadata,
@@ -640,32 +640,26 @@
       x2_axis,
       y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
       y2_axis,
-      cx: center_x,
-      cy: center_y,
+      cx: pointer?.x ?? center_x,
+      cy: pointer?.y ?? center_y,
     }
   }
 
-  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover, and it simply has
-  // no pointer, which is the case the whisker-tip anchor below already covers
-  const handle_box_hover =
-    (box_item: Box, color: string) => (event: MouseEvent | FocusEvent) => {
-      hovered = true
-      // Anchor the tooltip at the cursor (cx/cy default to the whisker tip) so it follows the
-      // mouse — boxes/violins are wide, and a fixed anchor lands far from the pointer.
-      const pointer = pointer_pos(event, frame.svg_element)
-      // The whisker-tip fallback has no pointer glyph for the tooltip to dodge
-      hover_at_pointer = Boolean(pointer)
-      hover_info = {
-        ...get_box_data(box_item, color),
-        ...(pointer && { cx: pointer.x, cy: pointer.y }),
-      }
-      on_box_hover?.({ ...hover_info, event })
-    }
+  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover, with no pointer (so
+  // the whisker-tip anchor). The cursor anchor makes the tooltip follow the mouse: boxes and
+  // violins are wide, and a fixed anchor lands far from the pointer.
+  const handle_box_hover = (box_item: Box) => (event: MouseEvent | FocusEvent) => {
+    hovered = true
+    const pointer = pointer_pos(event, frame.svg_element)
+    hover_key = { idx: box_item.idx, pointer }
+    on_box_hover?.({ ...get_box_data(box_item, pointer), event })
+  }
 
   const clear_hover = () => {
-    hover_info = null
+    hover_key = null
     on_box_hover?.(null)
   }
+  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 
@@ -680,31 +674,23 @@
   // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
   // rather than being forced through the shared long format.
   // whisker_low/high are what the chart draws; min/max are the raw extremes
+  type StatCol = Exclude<keyof Box[`stats`], `outliers`>
+  const cols = [
+    `n`,
+    `min`,
+    `whisker_low`,
+    `q1`,
+    `median`,
+    `mean`,
+    `q3`,
+    `whisker_high`,
+    `max`,
+  ] as const satisfies readonly StatCol[]
   const handle_export = create_chart_exporter(frame, () => ({
-    header: [
-      `series`,
-      `n`,
-      `min`,
-      `whisker_low`,
-      `q1`,
-      `median`,
-      `mean`,
-      `q3`,
-      `whisker_high`,
-      `max`,
-      `outliers`,
-    ],
+    header: [`series`, ...cols, `outliers`],
     rows: visible_boxes.map(({ series: srs, idx, stats }) => [
       srs.label ?? `box ${idx + 1}`,
-      stats.n,
-      stats.min,
-      stats.whisker_low,
-      stats.q1,
-      stats.median,
-      stats.mean,
-      stats.q3,
-      stats.whisker_high,
-      stats.max,
+      ...cols.map((col) => stats[col]),
       stats.outliers.join(` `),
     ]),
   }))
@@ -842,24 +828,25 @@
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
             {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
-            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}, median ${
-              box_item.stats.median
-            }`}
+            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}, median ${format_value_or_num(
+              stats.median,
+              plot_axes[val_axis_key(box_item.series)].format,
+            )}`}
             onfocusin={(evt) => {
               roving.focusin(evt)
-              handle_box_hover(box_item, color)(evt)
+              handle_box_hover(box_item)(evt)
             }}
             onfocusout={clear_hover_on_exit}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.series_opacity(box_item.idx)}
-            onmousemove={handle_box_hover(box_item, color)}
+            onmousemove={handle_box_hover(box_item)}
             onmouseleave={clear_hover}
-            onclick={(evt) => on_box_click?.({ ...get_box_data(box_item, color), event: evt })}
+            onclick={(evt) => on_box_click?.({ ...get_box_data(box_item), event: evt })}
             onkeydown={(evt) => {
               if (roving.handle_keydown(evt)) return
               if (is_activation_key(evt)) {
                 evt.preventDefault()
-                on_box_click?.({ ...get_box_data(box_item, color), event: evt })
+                on_box_click?.({ ...get_box_data(box_item), event: evt })
               }
             }}
           >
@@ -1018,7 +1005,7 @@
         x={hover_info.cx}
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={hover_at_pointer}
+        avoid_cursor={Boolean(hover_key?.pointer)}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}

@@ -126,7 +126,7 @@ describe(`TernaryPlot`, () => {
       ],
     })
     const message = plot.querySelector(`.viewer-error [role="alert"]`)?.textContent
-    expect(message).toContain(`Bad point 1 has a negative amount`)
+    expect(message).toContain(`Bad point 2 has a negative amount`)
     expect(markers(plot)).toHaveLength(0)
   })
 
@@ -167,12 +167,14 @@ describe(`TernaryPlot`, () => {
       point_idx: 0,
       series_label: `Path`,
     })
-    // the tooltip closes when its point is gone
+    // the tooltip closes when its point is gone, and the hover ends right away
     bound.series = [oxides]
     await tick()
     expect(tooltip()).toBeNull()
-    await fire(plot_svg(plot), mouse(`mouseleave`))
+    expect(on_point_hover).toHaveBeenCalledTimes(3)
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
+    await fire(plot_svg(plot), mouse(`mouseleave`))
+    expect(on_point_hover).toHaveBeenCalledTimes(3)
   })
 
   test(`keyboard focus anchors the tooltip at the marker, in svg pixels, until focus leaves the chart`, async () => {

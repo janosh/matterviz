@@ -259,11 +259,11 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
         const n_rep = 3
         const super_a = lat_a * n_rep
         const sites = []
-        // seeded pseudo-random for reproducible vectors
+        // seeded pseudo-random in [-0.5, 0.5) for reproducible vectors
         let seed = 42
         const rand = () => {
-          seed = (seed * 1103515245 + 12345) & 0x7fffffff
-          return seed / 0x7fffffff - 0.5
+          seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff
+          return seed / 0x80000000 - 0.5
         }
         for (let idx_x = 0; idx_x < n_rep; idx_x++) {
           for (let idx_y = 0; idx_y < n_rep; idx_y++) {

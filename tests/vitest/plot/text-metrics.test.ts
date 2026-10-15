@@ -141,6 +141,7 @@ describe(`text metrics`, () => {
     [`word boundaries`, `alpha beta gamma`, 50, false, [`alpha beta`, `gamma`]],
     [`no-break spaces`, `10\u00A0eV 20\u202FkPa`, 30, false, [`10\u00A0eV`, `20\u202FkPa`]],
     [`overlong words`, `abcdefghij`, 20, false, [`abcd`, `efgh`, `ij`]],
+    [`overlong words by grapheme`, `xe\u0301yz`, 10, false, [`x`, `e\u0301`, `yz`]],
     [`non-positive widths`, `alpha beta`, 0, false, [`alpha beta`]],
     [`discarded empty paragraphs`, `   `, 50, false, []],
     [`preserved empty paragraphs`, `   `, 50, true, [``]],

@@ -24,8 +24,7 @@ const normalize_supercell_label = (label: string | undefined): string | undefine
 
 const mount_select = (props: CellSelectProps) =>
   mount(CellSelect, { target: document.body, props })
-// Helper to mount component and open dropdown.
-async function mount_and_open(props: CellSelectProps): Promise<void> {
+const mount_and_open = async (props: CellSelectProps): Promise<void> => {
   mount_select(props)
   doc_query<HTMLButtonElement>(`.toggle-btn`).click()
   await tick()
@@ -34,21 +33,18 @@ async function mount_and_open(props: CellSelectProps): Promise<void> {
 describe(`CellSelect`, () => {
   describe(`rendering`, () => {
     test.each([
-      [`2x2x2`, `original`, `2x2x2`],
-      [`1x1x1`, `primitive`, `Prim 1x1x1`],
-      [`3x3x3`, `conventional`, `Conv 3x3x3`],
-    ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
-      mount_select({ supercell_scaling: scaling, cell_type })
-      expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
-    })
-
-    test.each([
-      [true, true],
-      [false, false],
-    ])(`loading=%s shows spinner=%s`, (loading, has_spinner) => {
-      mount_select({ supercell_scaling: `1x1x1`, loading })
-      expect(Boolean(document.querySelector(`.toggle-btn .spinner`))).toBe(has_spinner)
-    })
+      [`2x2x2`, `original`, false, `2x2x2`],
+      [`1x1x1`, `primitive`, false, `Prim 1x1x1`],
+      [`1x1x1`, `original`, true, ``], // the spinner replaces the label
+      [`3x3x3`, `conventional`, false, `Conv 3x3x3`],
+    ] as const)(
+      `displays "%s" with cell_type=%s, loading=%s as "%s"`,
+      (scaling, cell_type, loading, expected) => {
+        mount_select({ supercell_scaling: scaling, cell_type, loading })
+        expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
+        expect(document.querySelector(`.toggle-btn .spinner`) !== null).toBe(loading)
+      },
+    )
   })
 
   describe(`dropdown menu`, () => {
@@ -144,14 +140,18 @@ describe(`CellSelect`, () => {
   describe(`cell type buttons`, () => {
     // Prim/Conv need symmetry data; their tooltip says so while disabled
     test.each([
-      [null, [false, true, true]],
-      [mock_sym_data, [false, false, false]],
+      [null, `original`, [false, true, true]],
+      [mock_sym_data, `primitive`, [false, false, false]],
+      [mock_sym_data, `conventional`, [false, false, false]],
     ] as const)(
-      `sym_data=%s: labels, disabled states %s and tooltips`,
-      async (sym_data, disabled) => {
-        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data })
+      `sym_data=%s, cell_type=%s: labels, selection, disabled states %s and tooltips`,
+      async (sym_data, cell_type, disabled) => {
+        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data, cell_type })
         const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)]
         expect(buttons.map((btn) => btn.textContent?.trim())).toEqual([`Orig`, `Prim`, `Conv`])
+        expect(buttons.map((btn) => btn.classList.contains(`selected`))).toEqual(
+          [`original`, `primitive`, `conventional`].map((type) => type === cell_type),
+        )
         expect(buttons.map((btn) => btn.disabled)).toEqual(disabled)
         const tooltips = buttons.map((btn) => btn.getAttribute(`aria-label`))
         expect(tooltips[0]).toBe(`Original unit cell (as provided)`)
@@ -163,25 +163,6 @@ describe(`CellSelect`, () => {
         } else {
           for (const tip of tooltips.slice(1)) expect(tip).toContain(`requires symmetry data`)
         }
-      },
-    )
-
-    test.each([
-      [`original`, 0],
-      [`primitive`, 1],
-      [`conventional`, 2],
-    ] as const)(
-      `cell_type=%s marks button at index %d as selected`,
-      async (cell_type, idx) => {
-        await mount_and_open({
-          supercell_scaling: `1x1x1`,
-          cell_type,
-          sym_data: mock_sym_data,
-        })
-        const buttons = document.querySelectorAll(`.cell-type-btn`)
-        buttons.forEach((btn, btn_idx) => {
-          expect(btn.classList.contains(`selected`)).toBe(btn_idx === idx)
-        })
       },
     )
 
@@ -200,34 +181,20 @@ describe(`CellSelect`, () => {
     )
   })
 
-  describe(`supercell presets`, () => {
-    const presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
-
-    test(`shows all preset buttons and marks only the active one selected`, async () => {
-      await mount_and_open({ supercell_scaling: `3x3x1` })
-      const buttons = [...document.querySelectorAll(`.preset-btn`)]
-      expect(buttons.map((btn) => normalize_supercell_label(btn.textContent))).toEqual(presets)
-      expect(
-        buttons
-          .filter((btn) => btn.classList.contains(`selected`))
-          .map((btn) => normalize_supercell_label(btn.textContent)),
-      ).toEqual([`3x3x1`])
-    })
-
-    test(`clicking preset updates scaling and closes menu`, async () => {
-      const state = $state({ supercell_scaling: `1x1x1` })
-      await mount_and_open(bind_props({}, state))
-
-      const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)).find(
-        (button_elem) => normalize_supercell_label(button_elem.textContent) === `2x2x2`,
-      )
-      expect(btn).toBeDefined()
-      btn?.click()
-      await tick()
-
-      expect(state.supercell_scaling).toBe(`2x2x2`)
-      expect(document.querySelector(`.dropdown`)).toBeNull()
-    })
+  test(`presets mark only the active one and clicking one applies it and closes the menu`, async () => {
+    const state = $state({ supercell_scaling: `3x3x1` })
+    await mount_and_open(bind_props({}, state))
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)]
+    const labels = buttons.map((btn) => normalize_supercell_label(btn.textContent))
+    expect(labels).toEqual([`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`])
+    const selected = buttons.filter((btn) => btn.classList.contains(`selected`))
+    expect(selected.map((btn) => normalize_supercell_label(btn.textContent))).toEqual([
+      `3x3x1`,
+    ])
+    buttons[labels.indexOf(`2x2x2`)].click()
+    await tick()
+    expect(state.supercell_scaling).toBe(`2x2x2`)
+    expect(document.querySelector(`.dropdown`)).toBeNull()
   })
 
   describe(`custom input`, () => {
@@ -238,7 +205,6 @@ describe(`CellSelect`, () => {
       [`2x2`, true, true],
       [`invalid`, true, true],
       [`1x1x1`, false, true], // same as current
-      [`4x4x4`, false, false],
     ])(
       `input "%s" has invalid class: %s, apply disabled: %s`,
       async (input_val, invalid_class, apply_disabled) => {
@@ -265,43 +231,50 @@ describe(`CellSelect`, () => {
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
         set_input(input, input_val)
         await tick()
-
-        if (method === `click`) {
-          doc_query<HTMLButtonElement>(`.apply-btn`).click()
-        } else {
-          input.dispatchEvent(keydown(`Enter`))
-        }
+        if (method === `click`) doc_query<HTMLButtonElement>(`.apply-btn`).click()
+        else input.dispatchEvent(keydown(`Enter`))
         await tick()
-
         expect(state.supercell_scaling).toBe(expected_scaling)
-        if (menu_stays_open) {
-          expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
-        } else {
-          expect(document.querySelector(`.dropdown`)).toBeNull()
-        }
+        expect(document.querySelector(`.dropdown`) !== null).toBe(menu_stays_open)
       },
     )
   })
 
-  describe(`external prop sync`, () => {
-    test(`toggle label and custom input follow externally changed props`, async () => {
-      const state: { supercell_scaling: string; cell_type: CellType } = $state({
-        supercell_scaling: `1x1x1`,
-        cell_type: `original`,
-      })
-      mount_select(bind_props({}, state))
+  test(`a press that never clicks does not block later keyboard focus`, async () => {
+    mount_select({ supercell_scaling: `1x1x1` })
+    const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
+    toggle.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    toggle.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    await tick()
+    expect(document.querySelector(`.dropdown`)).toBeNull() // the click decides
+    toggle.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true })) // later Tab focus
+    await tick()
+    expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+  })
 
-      const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
-      expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)
-
-      state.supercell_scaling = `4x4x4`
-      state.cell_type = `primitive`
-      await tick()
-      expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 4x4x4`)
-
-      toggle.click()
-      await tick()
-      expect(doc_query<HTMLInputElement>(`.custom-input-row input`).value).toBe(`4x4x4`)
+  test(`toggle label and custom input follow external props; closing discards a draft`, async () => {
+    const state: { supercell_scaling: string; cell_type: CellType } = $state({
+      supercell_scaling: `1x1x1`,
+      cell_type: `original`,
     })
+    mount_select(bind_props({}, state))
+    const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
+    expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)
+    state.supercell_scaling = `4x4x4`
+    state.cell_type = `primitive`
+    await tick()
+    expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 4x4x4`)
+    toggle.click()
+    await tick()
+    const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
+    expect(input.value).toBe(`4x4x4`)
+    set_input(input, `abc`)
+    input.dispatchEvent(keydown(`Escape`))
+    await tick()
+    expect(document.querySelector(`.dropdown`)).toBeNull()
+    toggle.click()
+    await tick()
+    const reopened = doc_query<HTMLInputElement>(`.custom-input-row input`)
+    expect([reopened.value, reopened.classList.contains(`invalid`)]).toEqual([`4x4x4`, false])
   })
 })

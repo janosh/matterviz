@@ -256,6 +256,8 @@ describe(`marching_cubes`, () => {
     )
     const { vertices, faces } = marching_cubes(wrap_grid, 0.3, IDENTITY, PERIODIC)
     expect(faces.length).toBeGreaterThan(0)
+    // merged cache slots would also collapse triangles (no degenerate-triangle skip remains)
+    expect(faces.filter((face) => new Set(face).size < 3)).toEqual([])
     const edge_len = (idx_a: number, idx_b: number) =>
       Math.hypot(...vertices[idx_a].map((coord, axis) => coord - vertices[idx_b][axis]))
     const max_edge = Math.max(

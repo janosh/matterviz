@@ -46,7 +46,8 @@ repos:
           # skelton: Jonathan Michael Skelton, author of the cited Phonopy-Spectroscopy
           # cna: common neighbor analysis; mater: journal abbreviation (Acta Mater.); afterall: Vitest lifecycle hook
           # coo: the formula CoO (cobalt(II) oxide); startin: File System Access API's startIn option
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton,cna,mater,afterall,coo,startin'
+          # ser: PDB residue name of serine
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac,statics,conect,trough,skelton,cna,mater,afterall,coo,startin,ser'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli

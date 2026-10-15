@@ -6,6 +6,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+  import { range_bounds } from '#lib/plot/core/interactions.js'
   import { create_to_threejs, span_or } from '#lib/plot/scatter-3d/scene-coords.js'
   import type { RefLine3D } from '#lib/plot/core/types.js'
 
@@ -18,14 +19,12 @@
   } = $props()
 
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
-  // Transform data coords to Three.js coordinates
   const to_coords = $derived(create_to_threejs(ranges))
   const endpoints_from = (point_a: Vec3, point_b: Vec3): [Point3D, Point3D] => [
     to_coords(...point_a),
     to_coords(...point_b),
   ]
 
-  // Compute line endpoints based on type
   let endpoints = $derived.by((): [Point3D, Point3D] | null => {
     if (ref_line.visible === false) return null
     const [x_min, x_max] = span_or(ref_line.x_span, x_range)
@@ -46,46 +45,34 @@
     }
     const { type } = ref_line as { type: unknown }
     if (type !== `line`) throw new Error(`Unknown 3D ref line type ${JSON.stringify(type)}`)
-    // `line`: extend the line through two points to the bounding box
-    const [p1x, p1y, p1z] = ref_line.p1
-    const [delta_x, delta_y, delta_z] = [
-      ref_line.p2[0] - p1x,
-      ref_line.p2[1] - p1y,
-      ref_line.p2[2] - p1z,
-    ]
-    // Find t values at each boundary plane
-    const t_values = [
-      ...(delta_x !== 0 ? [(x_min - p1x) / delta_x, (x_max - p1x) / delta_x] : []),
-      ...(delta_y !== 0 ? [(y_min - p1y) / delta_y, (y_max - p1y) / delta_y] : []),
-      ...(delta_z !== 0 ? [(z_min - p1z) / delta_z, (z_max - p1z) / delta_z] : []),
-    ]
-    // Keep only t values where the resulting point is inside bounds
+    // `line`: extend the line through two points to the bounding box. Bounds are sorted so a
+    // reversed axis range still contains the line.
+    const { p1, p2 } = ref_line
+    const delta = p2.map((coord, axis) => coord - p1[axis])
+    const bounds = (
+      [
+        [x_min, x_max],
+        [y_min, y_max],
+        [z_min, z_max],
+      ] as Vec2[]
+    ).map(range_bounds)
+    const at = (t_value: number) =>
+      p1.map((coord, axis) => coord + t_value * delta[axis]) as Vec3
+    // Line parameters where it crosses each pair of boundary planes, kept if inside the box
     const eps = 1e-6
-    const valid_t = t_values.filter((t_value) => {
-      const [point_x, point_y, point_z] = [
-        p1x + t_value * delta_x,
-        p1y + t_value * delta_y,
-        p1z + t_value * delta_z,
-      ]
-      return (
-        point_x >= x_min - eps &&
-        point_x <= x_max + eps &&
-        point_y >= y_min - eps &&
-        point_y <= y_max + eps &&
-        point_z >= z_min - eps &&
-        point_z <= z_max + eps
+    const valid_t = bounds
+      .flatMap(([lo, hi], axis) =>
+        delta[axis] === 0 ? [] : [lo, hi].map((bound) => (bound - p1[axis]) / delta[axis]),
       )
-    })
+      .filter((t_value) =>
+        at(t_value).every(
+          (coord, axis) => coord >= bounds[axis][0] - eps && coord <= bounds[axis][1] + eps,
+        ),
+      )
     if (valid_t.length < 2) return null
-    const t_min = Math.min(...valid_t)
-    const t_max = Math.max(...valid_t)
-    return endpoints_from(
-      [p1x + t_min * delta_x, p1y + t_min * delta_y, p1z + t_min * delta_z],
-      [p1x + t_max * delta_x, p1y + t_max * delta_y, p1z + t_max * delta_z],
-    )
+    return endpoints_from(at(Math.min(...valid_t)), at(Math.max(...valid_t)))
   })
 
-  // Line style (with defaults)
   let style = $derived({
     color: ref_line.style?.color ?? `white`,
     opacity: ref_line.style?.opacity ?? 1,
@@ -96,19 +83,12 @@
   // Create Line2 with LineGeometry and a node material for proper variable-width lines.
   // Unlike the WebGL LineMaterial, Line2NodeMaterial reads the screen size from the viewport
   // internally, so there's no resolution uniform to keep in sync on resize.
-  let line2: Line2 | null = $state(null)
-
-  $effect(() => {
-    if (!endpoints) {
-      line2 = null
-      return
-    }
+  const line2 = $derived.by((): Line2 | null => {
+    if (!endpoints) return null
     const [start, end] = endpoints
-
-    const geo = new LineGeometry()
-    geo.setPositions([start.x, start.y, start.z, end.x, end.y, end.z])
-
-    const mat = new THREE.Line2NodeMaterial({
+    const geometry = new LineGeometry()
+    geometry.setPositions([start.x, start.y, start.z, end.x, end.y, end.z])
+    const material = new THREE.Line2NodeMaterial({
       color: new THREE.Color(style.color).getHex(),
       linewidth: style.width,
       transparent: style.opacity < 1,
@@ -117,15 +97,16 @@
       dashSize: 0.3,
       gapSize: 0.1,
     })
-
-    const line = new Line2(geo, mat)
+    const line = new Line2(geometry, material)
     line.computeLineDistances() // Required for dashed lines
-
-    line2 = line
-
+    return line
+  })
+  // Release each replaced line's GPU resources, and the last one on unmount
+  $effect(() => {
+    const line = line2
     return () => {
-      geo.dispose()
-      mat.dispose()
+      line?.geometry.dispose()
+      line?.material.dispose()
     }
   })
 </script>

@@ -30,14 +30,11 @@ const tree: TreemapNode[] = [
 ]
 
 // duration 0 makes zoom transitions synchronous for assertions
+const size = { selector: `.treemap`, width: 500, height: 360 }
 const mount_sized_treemap = (
   props: Partial<ComponentProps<typeof Treemap>> = {},
 ): Promise<HTMLElement> =>
-  mount_sized(
-    Treemap,
-    { data: tree, tween: { duration: 0 }, ...props },
-    { selector: `.treemap`, width: 500, height: 360 },
-  )
+  mount_sized(Treemap, { data: tree, tween: { duration: 0 }, ...props }, size)
 
 // Pre-order node indices for the `tree` fixture (root=0). The default
 // descending sort places A2 (6) before its smaller sibling A1 (4); the equal-
@@ -126,18 +123,11 @@ describe(`Treemap`, () => {
     expect(crumbs).toEqual([`all`, `A`])
   })
 
-  test.each([
-    [`branch`, `A`],
-    [`leaf`, `B`],
-  ] as const)(
-    `zoom_on_click=false: %s click fires on_node_click but does not zoom`,
-    async (_kind, label) => {
+  test.each([`A`, `B`] as const)(
+    `zoom_on_click=false: clicking %s does not zoom`,
+    async (label) => {
       const [on_zoom, on_node_click] = [vi.fn(), vi.fn()]
-      const plot = await mount_sized_treemap({
-        on_node_click,
-        on_zoom,
-        zoom_on_click: false,
-      })
+      const plot = await mount_sized_treemap({ on_node_click, on_zoom, zoom_on_click: false })
       await fire(cell_rect(plot, label))
       expect(on_node_click).toHaveBeenCalledOnce()
       expect(on_zoom).not.toHaveBeenCalled()
@@ -204,37 +194,19 @@ describe(`Treemap`, () => {
     if (pane) expect(getComputedStyle(pane).color).not.toBe(expected)
   })
 
+  const leaves = (values: number[]) =>
+    values.map((value, idx) => ({ label: `abcde`[idx], value }))
+  // oxfmt-ignore
   test.each([
     // Clicking a bucket used to zoom *into* it, landing on one meaningless full-viewport
-    // cell, because a bucket stands for nodes it does not itself contain. Every child
-    // of `thin` is tiny next to the root total, so all three bucket; re-rooted on
-    // `thin`, they clear the threshold measured against it.
-    {
-      name: `clicking a min_fraction bucket reveals the nodes it stood for`,
-      data: [
-        { label: `fat`, value: 900 },
-        {
-          label: `thin`,
-          children: [40, 30, 30].map((value, idx) => ({ label: `abc`[idx], value })),
-        },
-      ],
-      props: { min_fraction: 0.1 },
-      revealed: [`a`, `b`, `c`],
-    },
-    // `max_children` is a rank cap, not a threshold: re-measuring against the zoom root
-    // re-applies it identically, so the bucket would reappear and the click do nothing
-    {
-      name: `clicking a max_children bucket opens it`,
-      data: [
-        {
-          label: `p`,
-          children: [5, 4, 3, 2, 1].map((value, idx) => ({ label: `abcde`[idx], value })),
-        },
-      ],
-      props: { max_children: 3 },
-      revealed: [`a`, `b`, `c`, `d`, `e`],
-    },
-  ])(`$name`, async ({ data, props, revealed }) => {
+    // cell, because a bucket stands for nodes it does not itself contain. Every child of
+    // `thin` is tiny next to the root total; re-rooted on `thin`, they clear the threshold.
+    [`a min_fraction bucket`, [{ label: `fat`, value: 900 }, { label: `thin`, children: leaves([40, 30, 30]) }], { min_fraction: 0.1 }, [`a`, `b`, `c`]],
+    // a rank cap re-applied against the zoom root would make the bucket reappear
+    [`a max_children bucket`, [{ label: `p`, children: leaves([5, 4, 3, 2, 1]) }], { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`]],
+    // zooming to the data root is a reset, which drops expansions incl. the one just made
+    [`a root-level bucket`, leaves([5, 4, 3, 2, 1]), { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`]],
+  ] satisfies [string, TreemapNode[], Partial<ComponentProps<typeof Treemap>>, string[]][])(`clicking %s opens it`, async (_name, data, props, revealed) => {
     const plot = await mount_sized_treemap({ data, ...props })
     const cell_names = () =>
       [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)].map(
@@ -254,11 +226,8 @@ describe(`Treemap`, () => {
   test(`a zoom still animates when the relayout rebuilt the arcs`, async () => {
     let now = 0
     vi.spyOn(performance, `now`).mockImplementation(() => now)
-    const plot = await mount_sized(
-      Treemap,
-      { data: tree, min_fraction: 0.001 }, // bucketing on: zoom re-runs the layout
-      { selector: `.treemap`, width: 500, height: 360 },
-    )
+    // bucketing on: zoom re-runs the layout
+    const plot = await mount_sized(Treemap, { data: tree, min_fraction: 0.001 }, size)
     now = 2000 // past the settle window, so a genuine change must animate
     await fire(cell_rect(plot, `A`))
     flushSync()
@@ -270,11 +239,7 @@ describe(`Treemap`, () => {
   test(`a zoom inside the settle window does not make the next zoom-out snap`, async () => {
     let now = 0
     vi.spyOn(performance, `now`).mockImplementation(() => now)
-    const plot = await mount_sized(
-      Treemap,
-      { data: tree }, // default 400ms zoom tween
-      { selector: `.treemap`, width: 500, height: 360 },
-    )
+    const plot = await mount_sized(Treemap, { data: tree }, size) // default 400ms zoom tween
     now = 100 // still settling: this zoom snaps by design
     await fire(cell_rect(plot, `A`))
     expect(shown_idxs(plot)).toEqual([IDX.A2, IDX.A1])
@@ -286,30 +251,14 @@ describe(`Treemap`, () => {
     vi.restoreAllMocks()
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      name: `zoom_root_id re-roots the view`,
-      props: { zoom_root_id: `A` },
-      expected: [IDX.A2, IDX.A1], // ascending node_idx order
-    },
-    {
-      name: `stale zoom_root_id falls back to the root`,
-      props: { zoom_root_id: `ghost` },
-      expected: [IDX.A, IDX.A2, IDX.A1, IDX.B],
-    },
-    {
-      name: `leaf zoom_root_id renders that leaf full-viewport, not a blank chart`,
-      props: { zoom_root_id: `B` },
-      expected: [IDX.B],
-      min_cell_width: 400,
-    },
-    {
-      name: `max_depth limits rendered levels below the zoom root`,
-      props: { max_depth: 1 },
-      expected: [IDX.A, IDX.B], // A1/A2 at depth 2 are cut off
-    },
+    { name: `zoom_root_id re-roots the view`, props: { zoom_root_id: `A` }, expected: [IDX.A2, IDX.A1] },
+    { name: `stale zoom_root_id falls back to the root`, props: { zoom_root_id: `ghost` }, expected: [IDX.A, IDX.A2, IDX.A1, IDX.B] },
+    { name: `leaf zoom_root_id renders that leaf full-viewport`, props: { zoom_root_id: `B` }, expected: [IDX.B], min_cell_width: 400 },
+    { name: `max_depth limits rendered levels below the zoom root`, props: { max_depth: 1 }, expected: [IDX.A, IDX.B] },
   ])(`$name`, async ({ props, expected, min_cell_width }) => {
-    const plot = await mount_sized_treemap({ ...props })
+    const plot = await mount_sized_treemap(props)
     expect(shown_idxs(plot)).toEqual(expected)
     if (min_cell_width) {
       const width = Number(plot.querySelector(`.cells rect`)?.getAttribute(`width`))
@@ -340,7 +289,7 @@ describe(`Treemap`, () => {
     expect(plot.querySelector(`.breadcrumbs`)).toBeNull()
   })
 
-  test(`branch cells show header labels, leaves centered labels`, async () => {
+  test(`branch cells show header labels, leaves centered ones; show_labels=false none`, async () => {
     const plot = await mount_sized_treemap({ padding_top: 18 })
     const labels = [...plot.querySelectorAll(`.cell-label`)]
     const texts = labels.map((lbl) => lbl.textContent?.trim())
@@ -351,6 +300,8 @@ describe(`Treemap`, () => {
     const leaf = labels.find((lbl) => lbl.textContent?.trim() === `B`)
     expect(leaf?.classList.contains(`header`)).toBe(false)
     expect(leaf?.getAttribute(`font-size`)).toBe(`11`)
+    const unlabeled = await mount_sized_treemap({ show_labels: false })
+    expect(unlabeled.querySelectorAll(`.cell-label`)).toHaveLength(0)
   })
 
   test.each([
@@ -368,25 +319,20 @@ describe(`Treemap`, () => {
     expect(texts).toEqual(expect.arrayContaining([`A1`, `A2`, `B`])) // leaves keep theirs
   })
 
-  test(`show_labels=false renders no labels`, async () => {
-    const plot = await mount_sized_treemap({ show_labels: false })
-    expect(plot.querySelectorAll(`.cell-label`)).toHaveLength(0)
-  })
-
   test(`label_formatter renders styled lines without replacing cell interactions`, async () => {
-    const plot = await mount_sized_treemap({
-      label_fit: `clip`,
-      label_formatter: (arc: TreemapArc) => [
-        {
-          text: arc.label_path.join(`/`),
-          class: `path-line`,
-          font_scale: 0.6,
-          font_weight: 300,
-          opacity: 0.7,
-        },
-        { text: arc.label ?? `${arc.id}`, class: `name-line`, font_weight: 700 },
-      ],
-    })
+    const label_formatter = vi.fn((arc: TreemapArc) => [
+      {
+        text: arc.label_path.join(`/`),
+        class: `path-line`,
+        font_scale: 0.6,
+        font_weight: 300,
+        opacity: 0.7,
+      },
+      { text: arc.label ?? `${arc.id}`, class: `name-line`, font_weight: 700 },
+    ])
+    const plot = await mount_sized_treemap({ label_fit: `clip`, label_formatter })
+    expect(label_formatter).toHaveBeenCalledTimes(4) // A, A2, A1, B - never the hidden root
+    expect(label_formatter.mock.calls.map(([arc]) => arc.depth)).not.toContain(0)
     const a1_label = [...plot.querySelectorAll<SVGTextElement>(`.cell-label`)].find(
       (label) => label.querySelector(`.name-line`)?.textContent === `A1`,
     )
@@ -401,24 +347,11 @@ describe(`Treemap`, () => {
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
   })
 
-  test(`label_formatter is never invoked for the hidden root`, async () => {
-    const label_formatter = vi.fn((arc: TreemapArc) => arc.label ?? `${arc.id}`)
-    await mount_sized_treemap({ label_formatter })
-    const seen_depths = label_formatter.mock.calls.map(([arc]) => arc.depth)
-    expect(label_formatter).toHaveBeenCalledTimes(4) // A, A2, A1, B - not the root
-    expect(seen_depths).not.toContain(0)
-  })
-
+  const long_label = `very-long-label-`.repeat(100)
   test.each([
-    [`hide drops overflowing labels`, `hide`, `very-long-label-`.repeat(100), 30, null],
-    [
-      `default shrink uses the minimum for overflow`,
-      undefined,
-      `very-long-label-`.repeat(100),
-      30,
-      `6`,
-    ],
-    [`clip keeps the maximum for overflow`, `clip`, `very-long-label-`.repeat(100), 30, `30`],
+    [`hide drops overflowing labels`, `hide`, long_label, 30, null],
+    [`default shrink uses the minimum for overflow`, undefined, long_label, 30, `6`],
+    [`clip keeps the maximum for overflow`, `clip`, long_label, 30, `30`],
     [`shrink grows labels to the maximum`, `shrink`, `large`, 32, `32`],
   ] as const)(`%s`, async (_name, label_fit, label_text, label_max_font_size, font_size) => {
     const plot = await mount_sized_treemap({
@@ -455,9 +388,13 @@ describe(`Treemap`, () => {
   })
 
   test(`legend lists depth-1 categories and muting dims the subtree`, async () => {
-    const plot = await mount_sized_treemap({ show_legend: true })
+    const on_item_hover = vi.fn()
+    const plot = await mount_sized_treemap({ show_legend: true, legend: { on_item_hover } })
     const legend_items = plot.querySelectorAll(`.legend .legend-item`)
     expect(legend_items).toHaveLength(2) // A, B
+    // the caller's hover callback observes alongside the chart's own highlight
+    await fire(legend_items[0], mouse(`mouseenter`))
+    expect(on_item_hover).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0 }))
     await fire(legend_items[0], mouse(`click`))
     await tick()
     expect(cell_rect(plot, `A`).getAttribute(`fill-opacity`)).toBe(`0.12`)
@@ -543,11 +480,7 @@ describe(`Treemap`, () => {
   test(`swapping data clears stale hover/tooltip state`, async () => {
     // mount the $state object itself (not via the spreading helper) so it stays live
     const props = $state({ data: tree, tween: { duration: 0 } })
-    const plot = await mount_sized(Treemap, props, {
-      selector: `.treemap`,
-      width: 500,
-      height: 360,
-    })
+    const plot = await mount_sized(Treemap, props, size)
     await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     props.data = [{ label: `fresh`, value: 1 }]

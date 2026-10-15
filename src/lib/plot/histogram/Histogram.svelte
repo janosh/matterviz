@@ -66,6 +66,7 @@
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '#lib/math.js'
   import {
@@ -206,8 +207,6 @@
   const final_y2_axis = $derived(value_axis(y2_axis))
   const resolved_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
-
-  let hover_info = $state<HistogramHandlerProps | null>(null)
 
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
@@ -372,6 +371,8 @@
   const marginal_series = $derived<MarginalSeriesInput[]>(
     selected_series_entries.map(({ series_data, series_idx }) => ({
       x: series_data.values,
+      // the marginal summarizes what the bars count, so weighted samples stay weighted
+      weight: series_data.weights,
       color: series_color(series_idx),
       label: series_data.label,
       visible: true,
@@ -446,17 +447,36 @@
       y2_axis: final_y2_axis,
     } satisfies HistogramHandlerProps
   }
+  // Formatted like the tooltip, not raw float noise (0.30000000000000004)
+  const bar_aria_label = (hist: BinnedSeries, bin: HistogramBin, bin_idx: number): string => {
+    const { format } = hist.x_axis === `x2` ? final_x2_axis : final_x_axis
+    const [lower, upper] = [bin.x0, bin.x1].map((edge) => format_value_or_num(edge, format))
+    const count = format_value_or_num(bin.count, count_format)
+    const value =
+      normalize === `count` ? `` : `, value ${format_value_or_num(bin.value, `.3~g`)}`
+    return `${hist.label} bin ${bin_idx + 1}: ${lower} to ${upper}, count ${count}${value}`
+  }
+  // Hover state is indices only: the tooltip follows rebinned data and closes once its bin is gone
+  let hover_key = $state<{ series_idx: number; bin_idx: number } | null>(null)
+  const hover_info = $derived.by(() => {
+    if (!hover_key) return null
+    const { series_idx, bin_idx } = hover_key
+    const hist = histogram_bins.find((binned) => binned.series_idx === series_idx)
+    const bin = hist?.bins[bin_idx]
+    return hist && bin ? bar_data(hist, bin) : null
+  })
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
-    (hist: BinnedSeries, bin: HistogramBin) => (evt: MouseEvent | FocusEvent) => {
+    (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
       hovered = true
-      hover_info = bar_data(hist, bin)
-      on_bar_hover?.({ ...hover_info, event: evt })
+      hover_key = { series_idx: hist.series_idx, bin_idx }
+      on_bar_hover?.({ ...bar_data(hist, hist.bins[bin_idx]), event: evt })
     }
   const clear_hover = () => {
-    hover_info = null
+    hover_key = null
     on_bar_hover?.(null)
   }
+  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const handle_bar_click =
@@ -550,6 +570,9 @@
                 bar_width,
                 bar_height,
                 resolved_bar.border_radius ?? 0,
+                true,
+                // round the bar's tip, which a reversed count range puts at the bottom
+                value_px > baseline,
               )}
               fill={hist_patterns[hist.series_idx]?.url ?? hist.color}
               opacity={resolved_bar.opacity}
@@ -559,15 +582,12 @@
               role="button"
               tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
               {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
-              aria-label={`${hist.label} bin ${bin_idx + 1}: ${bin.x0} to ${
-                bin.x1
-              }, count ${bin.count}${normalize === `count` ? `` : `, value ${bin.value}`}`}
-              onmousemove={handle_bar_hover(hist, bin)}
+              aria-label={bar_aria_label(hist, bin, bin_idx)}
+              onmousemove={handle_bar_hover(hist, bin_idx)}
               onmouseleave={clear_hover}
               onfocusin={(evt) => {
                 roving.focusin(evt)
-                // Focus is the keyboard's hover; without it the tooltip never opens
-                handle_bar_hover(hist, bin)(evt)
+                handle_bar_hover(hist, bin_idx)(evt)
               }}
               onfocusout={clear_hover_on_exit}
               onclick={handle_bar_click(hist, bin)}
@@ -614,22 +634,12 @@
   {/snippet}
 
   {#snippet overlays()}
-    <!-- Tooltip (outside SVG for proper HTML rendering) -->
     {#if hover_info && hovered}
-      {@const {
-        value,
-        count,
-        y: coord_y,
-        property,
-        active_y_axis,
-        active_x_axis,
-      } = hover_info}
-      {@const tooltip_x = (active_x_axis === `x2` ? frame.scales.x2 : frame.scales.x)(value)}
-      {@const tooltip_y = (active_y_axis === `y2` ? frame.scales.y2 : frame.scales.y)(coord_y)}
+      {@const { value, count, y: coord_y } = hover_info}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
-        x={tooltip_x}
-        y={tooltip_y}
+        x={frame.scales[hover_info.active_x_axis](value)}
+        y={frame.scales[hover_info.active_y_axis](coord_y)}
         avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
         constrain_to={{ width: frame.width, height: frame.height }}
@@ -655,7 +665,7 @@
               />
             </div>
           {/if}
-          {#if mode === `overlay`}<div>{property}</div>{/if}
+          {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
         {/if}
       </PlotTooltip>
     {/if}

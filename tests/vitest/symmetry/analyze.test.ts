@@ -39,7 +39,8 @@ const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDa
   angle_tolerance: { type: `Default` },
 })
 
-// The cell conversion only reads pbc/charge/id/properties from the original structure.
+// The cell conversion only reads pbc/charge/id/properties (and the site count charge scales
+// by) from the original structure.
 // Distinct lattice parameter (a=4) detects whether a transformation happened.
 const original = make_crystal(4, [])
 const to_structure = (std_cell: MoyoCell, structure = original) =>
@@ -146,33 +147,26 @@ describe(`transform_cell`, () => {
     )
   })
 
+  // charge is per cell, scaled by the site count ratio to the 1-site original: it used to be
+  // copied unchanged, then divided by orbits.length (Infinity for the mock's empty orbits)
   test.each([
     [`conventional`, 5, 2],
     [`primitive`, 3, 1],
   ] as const)(`returns %s cell with a=%d and %d sites`, (cell_type, expected_a, n_sites) => {
-    const result = transform_cell(original, cell_type, sym_data)
-    // Must NOT be the same object as original, and must carry the transformed lattice
-    expect(result).not.toBe(original)
+    const bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }]
+    const structure = {
+      ...make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }]),
+      charge: 2,
+      properties: { bonds, custom_metadata: `kept` },
+    }
+    const result = transform_cell(structure, cell_type, sym_data)
+    expect(result).not.toBe(structure)
     expect(result.lattice.a).toBeCloseTo(expected_a, 5)
     expect(result.sites).toHaveLength(n_sites)
+    expect(result.charge).toBe(2 * n_sites)
+    expect(result.properties).toEqual({ custom_metadata: `kept` }) // bonds dropped
+    expect(transform_cell(original, cell_type, sym_data).charge).toBeUndefined()
   })
-
-  test.each([`conventional`, `primitive`] as const)(
-    `preserves non-bond structure properties for %s cell transforms`,
-    (cell_type) => {
-      const structure = {
-        ...original,
-        properties: {
-          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }],
-          custom_metadata: `kept`,
-        },
-      }
-
-      const result = transform_cell(structure, cell_type, sym_data)
-
-      expect(result.properties).toEqual({ custom_metadata: `kept` })
-    },
-  )
 })
 
 describe(`wasm database wrappers without initialized module`, () => {

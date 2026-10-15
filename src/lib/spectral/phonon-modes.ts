@@ -1,4 +1,5 @@
 import { is_elem_symbol } from '#lib/element/helpers.js'
+import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
@@ -98,12 +99,12 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     const { start_index, end_index, start_label, end_label } = segment
     if (start_index < 0 || end_index < start_index || end_index >= data.qpoints.length) {
       throw new Error(
-        `Phonon path segment ${segment_idx} has invalid bounds ${start_index}–${end_index} for ${data.qpoints.length} q-points`,
+        `Phonon path segment ${display_idx(segment_idx)} has invalid bounds ${display_idx(start_index)}–${display_idx(end_index)} for ${data.qpoints.length} q-points`,
       )
     }
     const name =
       start_label && end_label ? `${start_label}-${end_label}` : `segment-${segment_idx + 1}`
-    return { start_index, end_index, name, is_discontinuity: false }
+    return { start_index, end_index, name }
   })
   const labels_by_index = phonon_qpoint_labels(data)
   const labels_dict: Record<string, Vec3> = {}
@@ -118,7 +119,10 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
   const bands = Array.from({ length: data.qpoints[0]?.modes.length ?? 0 }, (_, mode_idx) =>
     data.qpoints.map(({ modes }, qpoint_idx) => {
       const mode = modes[mode_idx]
-      if (!mode) throw new Error(`Q-point ${qpoint_idx} is missing mode ${mode_idx}`)
+      if (!mode)
+        throw new Error(
+          `Q-point ${display_idx(qpoint_idx)} is missing mode ${display_idx(mode_idx)}`,
+        )
       return mode.frequency
     }),
   )
@@ -199,7 +203,7 @@ function validate_selection(
   }
   if (!mode.eigenvector) {
     throw new Error(
-      `Phonon mode ${selection.mode_idx} at q-point ${selection.qpoint_idx} has no eigenvector`,
+      `Phonon mode ${display_idx(selection.mode_idx)} at q-point ${display_idx(selection.qpoint_idx)} has no eigenvector`,
     )
   }
   if (mode.eigenvector.length !== data.n_atoms) {
@@ -274,7 +278,9 @@ export function phonon_supercell(
   const frac_to_cart = math.create_frac_to_cart(data.lattice)
   const sites = data.atoms.map((atom, atom_idx) => {
     if (!is_elem_symbol(atom.symbol)) {
-      throw new Error(`Phonon atom ${atom_idx} has unknown element symbol '${atom.symbol}'`)
+      throw new Error(
+        `Phonon atom ${display_idx(atom_idx)} has unknown element symbol '${atom.symbol}'`,
+      )
     }
     // Phonopy permits translated basis positions; image generation needs a canonical cell.
     const coordinates = wrap_to_unit_cell(atom.coordinates)
@@ -357,7 +363,7 @@ export function phonon_mode_pattern(
   const anchored = eigenvector.map((atom_vector, idx) => {
     const { mass } = data.atoms[idx]
     if (!Number.isFinite(mass) || mass <= 0) {
-      throw new Error(`Phonon atom ${idx} has invalid mass ${mass}`)
+      throw new Error(`Phonon atom ${display_idx(idx)} has invalid mass ${mass}`)
     }
     const mass_scale = 1 / Math.sqrt(mass)
     return atom_vector.map(([re_part, im_part]): Complex => [

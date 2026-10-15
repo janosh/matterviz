@@ -12,23 +12,30 @@ const titles = () =>
   [...document.querySelectorAll(`.info-card h4`)].map((element) => element.textContent?.trim())
 
 describe(`InfoPaneCards`, () => {
-  test(`renders duplicate unkeyed rows`, () => {
+  test(`renders duplicate unkeyed rows; the filter matches rendered text, not markup`, () => {
+    const same = { label: `Same`, value: `Value` }
+    const forces = { label: `F<sub>max</sub>`, value: `1 eV/&Aring;` }
     mount(InfoPaneCards, {
       target: document.body,
       props: {
         cards: [
-          {
-            title: `Card`,
-            rows: [
-              { label: `Same`, value: `Value` },
-              { label: `Same`, value: `Value` },
-            ],
-          },
+          { title: `Card`, rows: [same, same] },
+          { title: `Forces`, rows: [forces] },
         ],
+        filter_placeholder: `Filter cards`,
         empty_label: `info`,
       },
     })
-    expect(document.querySelectorAll(`.info-row`)).toHaveLength(2)
+    expect(document.querySelectorAll(`.info-row`)).toHaveLength(3)
+    for (const [query, expected] of [
+      [`fmax`, [`Forces`]],
+      [`eV/Å`, [`Forces`]],
+      [`sub`, []], // tag names are markup, not text
+    ] as const) {
+      set_input(doc_query<HTMLInputElement>(`input.info-filter`), query)
+      flushSync()
+      expect(titles(), query).toEqual(expected)
+    }
   })
 
   test(`pages long lists, clamps after filtering and resets the page on a new filter`, () => {

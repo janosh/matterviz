@@ -42,11 +42,13 @@
   const close_menu = () => {
     clearTimeout(hover_timer)
     menu_open = false
+    input_value = supercell_scaling // drop an unapplied (possibly invalid) draft
   }
 
   // A press focuses the button (focusin) before its click fires. Opening on that focusin
   // and then toggling on the click closed the menu again on every tap, so pointer-caused
-  // focus leaves the decision to the click; keyboard focus still opens instantly.
+  // focus leaves the decision to the click; keyboard focus still opens instantly. The focusin
+  // consumes the flag, so a press that never clicks can't swallow later keyboard focus.
   let pointer_press_pending = false
 
   $effect(() => () => clearTimeout(hover_timer))
@@ -108,6 +110,7 @@
   onmouseleave={close_menu}
   onfocusin={() => {
     if (!pointer_press_pending) menu_open = !suppress_hover
+    pointer_press_pending = false
   }}
   onfocusout={handle_focus_out}
 >

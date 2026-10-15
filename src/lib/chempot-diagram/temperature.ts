@@ -30,19 +30,3 @@ export function get_temp_filter_payload(
       : entries
   return { has_temp_data, available_temperatures, temp_filtered_entries }
 }
-
-// Keep a bound temperature inside the data: with no temperature data it is left alone, an
-// unset or out-of-range value snaps to the lowest sampled temperature, anything in range
-// (sampled or interpolated) stays
-export function get_valid_temperature(
-  temperature: number | undefined,
-  available_temperatures: number[],
-): number | undefined {
-  if (available_temperatures.length === 0) return temperature
-  const min_temperature = available_temperatures[0]
-  const max_temperature = available_temperatures.at(-1) ?? min_temperature
-  if (temperature === undefined) return min_temperature
-  return temperature >= min_temperature && temperature <= max_temperature
-    ? temperature
-    : min_temperature
-}

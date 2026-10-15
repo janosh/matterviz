@@ -17,13 +17,13 @@
 
   let {
     orientation = $bindable(`vertical`),
-    whisker_mode = $bindable(`tukey`),
-    show_outliers = $bindable(true),
-    show_mean = $bindable(false),
-    points = $bindable(`none`),
+    whisker_mode = $bindable(DEFAULTS.box.whisker_mode),
+    show_outliers = $bindable(DEFAULTS.box.show_outliers),
+    show_mean = $bindable(DEFAULTS.box.show_mean),
+    points = $bindable(DEFAULTS.box.points),
     outliers_drawn = true,
-    kind = $bindable(`box`),
-    side = $bindable(`both`),
+    kind = $bindable(DEFAULTS.box.kind),
+    side = $bindable(DEFAULTS.box.side),
     x_axis = $bindable({}),
     x2_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -47,15 +47,7 @@
   } = $props()
 
   const box_violin_settings = track_settings(
-    () => ({
-      orientation,
-      kind,
-      side,
-      whisker_mode,
-      show_outliers,
-      show_mean,
-      points,
-    }),
+    () => ({ orientation, kind, side, whisker_mode, show_outliers, show_mean, points }),
     { orientation: `vertical`, ...DEFAULTS.box },
   )
 </script>

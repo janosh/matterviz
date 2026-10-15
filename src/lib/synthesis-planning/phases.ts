@@ -214,6 +214,44 @@ export function assign_e_above_hull(phases: PlannerPhase[]): void {
   }
 }
 
+// Put the requested polymorph in place of its formula's lowest-energy phase (in place): plans
+// target the polymorph, while its stability is still judged against the displaced ground state
+export function place_target(
+  phase_set: PhaseSet,
+  resolved: PlannerPhase,
+): { target: PlannerPhase; ground_state: PlannerPhase } {
+  const { phases } = phase_set
+  const idx = phases.findIndex((phase) => !phase.is_gas && phase.formula === resolved.formula)
+  // e.g. an elemental O target while O2 is open: the gas replaced its formula's solid
+  if (idx === -1) {
+    const formula = formula_of(resolved.composition)
+    const gas = phases.find(
+      (phase) => phase.is_gas && formula_of(phase.composition) === formula,
+    )
+    throw new Error(
+      `Target ${resolved.formula} is replaced by open ${gas?.formula ?? `gas`} at these conditions`,
+    )
+  }
+  const ground_state = phases[idx]
+  if (ground_state.id !== resolved.id) phases[idx] = { ...resolved }
+  return { target: phases[idx], ground_state }
+}
+
+// Target hull distance against every other phase, a displaced ground state included, and the
+// hull mixture at its composition
+export function target_stability(
+  phases: PlannerPhase[],
+  target: PlannerPhase,
+  ground_state: PlannerPhase,
+): { e_above_hull: number; hull: ReturnType<typeof hull_at> } {
+  const others = phases.filter((phase) => phase.id !== target.id)
+  if (ground_state.id !== target.id) others.push(ground_state)
+  const hull = hull_at(target.fractions, others)
+  // No hull: nothing else reaches the target's composition (e.g. an elemental target), so it
+  // is a hull vertex itself
+  return { e_above_hull: hull ? Math.max(0, target.energy_per_atom - hull.energy) : 0, hull }
+}
+
 // Find the target among all entries by id, then by formula (lowest-energy polymorph). Garbage
 // formulas resolve to null rather than throwing.
 export function resolve_phase(phase_set: PhaseSet, query: string): PlannerPhase | null {

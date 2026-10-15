@@ -8,14 +8,14 @@ import {
   inflation_limiter,
   MAX_INFLATED_BYTES,
   MAX_STRING_CHARS,
+  MAX_WRAPPER_LAYERS,
 } from '#lib/io/decompress.js'
 import { zipSync } from 'fflate'
 import { describe, expect, test, vi } from 'vitest'
 
-// Compress bytes with the platform CompressionStream for round-trip tests
 const compress = async (
   data: Uint8Array<ArrayBuffer>,
-  format: `gzip` | `deflate` | `deflate-raw` = `gzip`,
+  format: `gzip` | `deflate` = `gzip`,
 ): Promise<ArrayBuffer> => {
   const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
   return new Response(stream).arrayBuffer()
@@ -29,7 +29,7 @@ describe(`detect_compression_format`, () => {
     [`test.json.gz`, `gzip`],
     [`structure.gzip`, `gzip`],
     [`data.deflate`, `deflate`],
-    [`file.z`, `deflate-raw`],
+    [`file.z`, `lzw`],
     [`archive.zip`, `zip`],
     [`test.json`, null], // no compression
     [``, null],
@@ -44,11 +44,9 @@ describe(`decompress_data`, () => {
     const orig_decompression_stream = globalThis.DecompressionStream
     // @ts-expect-error - intentionally deleting for test
     delete globalThis.DecompressionStream
-
     await expect(decompress_data(new ArrayBuffer(0), `gzip`)).rejects.toThrow(
       `Failed to decompress gzip file: ReferenceError: DecompressionStream is not defined`,
     )
-
     globalThis.DecompressionStream = orig_decompression_stream
   })
 
@@ -70,8 +68,7 @@ describe(`decompress_data`, () => {
       const view = new DataView(zip.buffer)
       for (let offset = 0; offset < zip.length - 4; offset++) {
         if (view.getUint32(offset, true) !== 0x02014b50) continue
-        // First central-directory entry describes .DS_Store. Neither its compression
-        // method nor its inflated size should matter because we never extract it.
+        // First central-directory entry is .DS_Store, never extracted, so its header can't matter
         if (metadata === `unsupported compression`) view.setUint16(offset + 10, 99, true)
         if (metadata === `oversized metadata`)
           view.setUint32(offset + 24, MAX_INFLATED_BYTES + 1, true)
@@ -90,20 +87,9 @@ describe(`decompress_data`, () => {
   ])(`rejects ambiguous ZIP archives %o`, async (entries, message) => {
     await expect(decompress_data(zipSync(entries).buffer, `zip`)).rejects.toThrow(message)
   })
-
-  test.each([[`gzip`], [`deflate`], [`deflate-raw`]] as const)(
-    `decompresses valid %s data`,
-    async (format) => {
-      const test_string = `{"test": "data", "format": "${format}"}`
-      const compressed = await compress(encode(test_string), format)
-      expect(await decompress_data(compressed, format)).toBe(test_string)
-    },
-  )
 })
 
-// decompress_file returns string | ArrayBuffer: text decodes to a string, binary payloads
-// (by extension or magic bytes) stay ArrayBuffer so a lossy UTF-8 decode can't corrupt them.
-// decompress_trajectory_file additionally keeps HDF5 payloads Blob-backed for h5wasm.
+// Text decodes to a string, binary stays ArrayBuffer; the trajectory loader keeps HDF5 a Blob
 describe(`decompress_file / decompress_trajectory_file`, () => {
   // Named or extensionless, plain or gzipped: HDF5 never round-trips through arrayBuffer()
   test.each([
@@ -127,8 +113,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     },
   )
 
-  // archive formats the browser cannot inflate fail up front with a clear message rather
-  // than reaching a parser as opaque bytes
+  // Formats the browser cannot inflate fail up front instead of reaching a parser as bytes
   test.each([
     [`test.json.bz2`, `BZ2`, decompress_file],
     [`trajectory.h5.xz`, `XZ`, decompress_trajectory_file],
@@ -151,8 +136,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     })
   })
 
-  // Text past one JS string stays a Blob for the chunked trajectory readers; other loaders
-  // cannot use it and say so instead of hitting the engine's string-length RangeError
+  // Text past one JS string stays a Blob for chunked trajectory readers; other loaders refuse it
   test(`keeps text past the string limit Blob-backed for trajectory loaders only`, async () => {
     const file = new File([`2\ncomment\nH 0 0 0\nH 1 0 0`], `huge.xyz`)
     Object.defineProperty(file, `size`, { value: MAX_STRING_CHARS + 1 })
@@ -175,16 +159,16 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     })
   })
 
-  // supported compressed text → string, with the compression extension stripped
+  // Compressed bytes stream out of the File instead of being buffered
   test.each([
     [`gzip`, `gz`],
     [`deflate`, `deflate`],
-    [`deflate-raw`, `z`],
   ] as const)(`decompresses %s text and strips the extension`, async (format, ext) => {
     const text = `{"compressed": true, "format": "${format}"}`
-    const compressed = await compress(encode(text), format)
-    const result = await decompress_file(new File([compressed], `test.json.${ext}`))
-    expect(result).toEqual({ content: text, filename: `test.json` })
+    const file = new File([await compress(encode(text), format)], `test.json.${ext}`)
+    const array_buffer = vi.spyOn(file, `arrayBuffer`)
+    expect(await decompress_file(file)).toEqual({ content: text, filename: `test.json` })
+    expect(array_buffer).not.toHaveBeenCalled()
     // Unlike HTTP bodies, dropped files cannot have had a transport wrapper removed.
     await expect(decompress_file(new File([text], `test.json.${ext}`))).rejects.toThrow(
       `Failed to decompress ${format} file`,
@@ -216,10 +200,33 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     },
   )
 
-  // Stripping `.zip` off `bundle.zip` named the CIF `bundle`, so every extension-keyed
-  // dispatcher missed it. `names` also carries the URL basename after the dropped name, and
-  // only the payload's OWN name may decide text vs binary: matching ANY candidate let the
-  // `.h5` basename below force a plain CIF entry to ArrayBuffer.
+  // Self-reproducing archives (ZIP quine r.zip, gzip quines) used to unwrap forever
+  test.each([MAX_WRAPPER_LAYERS, MAX_WRAPPER_LAYERS + 1])(
+    `%i gzip layers decode up to MAX_WRAPPER_LAYERS and reject past it instead of looping`,
+    async (n_layers) => {
+      let bytes = encode(`data_deep`)
+      for (let layer = 0; layer < n_layers; layer++)
+        bytes = new Uint8Array(await compress(bytes))
+      const result = classify_payload(new Blob([bytes]), [`deep.cif`], {
+        compression_by_magic: true,
+      })
+      if (n_layers === MAX_WRAPPER_LAYERS) {
+        expect(await result).toEqual({ content: `data_deep`, filename: `deep.cif` })
+        return
+      }
+      await expect(result).rejects.toThrow(
+        `deep.cif nests more than ${MAX_WRAPPER_LAYERS} compression layers`,
+      )
+      // a ZIP entry named like a ZIP keeps unwrapping by name alone
+      let zip = encode(`data_zip`)
+      for (let layer = 0; layer <= MAX_WRAPPER_LAYERS; layer++) zip = zipSync({ 'r.zip': zip })
+      await expect(decompress_file(new File([zip], `r.zip`))).rejects.toThrow(
+        `nests more than ${MAX_WRAPPER_LAYERS} compression layers`,
+      )
+    },
+  )
+
+  // Stripping `.zip` named the CIF `bundle`; a sibling `.h5` URL basename forced it to bytes
   test(`names a ZIP payload after its entry, not the archive or a sibling name, and keeps a binary payload's own name authoritative`, async () => {
     const zip = zipSync({ 'nested/a.cif': encode(`data_zipped`) })
     const entry = { content: `data_zipped`, filename: `a.cif` }
@@ -248,48 +255,25 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     }
   })
 
-  test(`streams compressed bytes out of the File instead of buffering them`, async () => {
-    const text = `streamed`
-    const file = new File([await compress(encode(text))], `a.json.gz`)
-    const array_buffer = vi.spyOn(file, `arrayBuffer`)
-    expect(await decompress_file(file)).toEqual({ content: text, filename: `a.json` })
-    expect(array_buffer).not.toHaveBeenCalled()
-  })
-
-  // Binary stays ArrayBuffer whether flagged by extension or (for unknown extensions) by magic
-  // bytes; a lossy UTF-8 decode would corrupt bytes >= 0x80 into U+FFFD. The individual
-  // extension lists and magic signatures are unit-tested in io/is-binary.test.ts.
+  // Binary stays ArrayBuffer by extension or, lacking one (also after inflating), by magic
+  // bytes; a UTF-8 decode would corrupt bytes >= 0x80. Signatures are in is-binary.test.ts
   test.each([
     [`binary extension`, `model.npz`, [0x00, 0x80, 0xff, 0x12, 0x89, 0x48]],
-    [
-      `ASE Ulm magic, unknown extension`,
-      `payload.dump`,
-      [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d],
-    ],
+    [`ASE Ulm magic`, `payload.dump`, [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]],
+    [`gzipped HDF5 magic`, `payload.gz`, [...hdf5_signature, 0x01, 0x02]],
   ])(`keeps %s as ArrayBuffer`, async (_label, filename, byte_seq) => {
     const bytes = new Uint8Array(byte_seq)
-    const result = await decompress_file(new File([bytes], filename))
+    const gzipped = filename.endsWith(`.gz`)
+    const file = new File([gzipped ? await compress(bytes) : bytes], filename)
+    const result = await decompress_file(file)
     expect(result.content).toBeInstanceOf(ArrayBuffer)
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(bytes)
-    expect(result.filename).toBe(filename)
-  })
-
-  // a compressed binary payload without a binary inner extension must still stay ArrayBuffer
-  // via post-decompression magic-byte detection (else a text decode corrupts it)
-  test(`keeps a gzipped binary payload (by magic) as ArrayBuffer`, async () => {
-    const hdf5 = new Uint8Array([...hdf5_signature, 0x01, 0x02])
-    const grid_z = await compress(hdf5)
-    // payload.gz -> payload (no binary extension): only magic bytes can save it
-    const result = await decompress_file(new File([grid_z], `payload.gz`))
-    expect(result.content).toBeInstanceOf(ArrayBuffer)
-    expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(hdf5)
-    expect(result.filename).toBe(`payload`)
+    expect(result.filename).toBe(filename.replace(/\.gz$/, ``))
   })
 })
 
-// Cuts land only just after a newline, so the chunks join to exactly one decode's text:
-// multi-byte UTF-8, CRLF, a leading BOM (dropped) or a later one (kept), and lines longer than
-// a chunk (which widen it)
+// Cuts land just after a newline, so chunks join to one decode's text: multi-byte UTF-8, CRLF,
+// a leading BOM (dropped) or later one (kept), lines longer than a chunk (which widen it)
 describe(`decode_text_chunks`, () => {
   test.each([
     ``,

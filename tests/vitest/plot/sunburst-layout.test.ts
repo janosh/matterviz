@@ -120,18 +120,11 @@ describe(`compute_sunburst_layout`, () => {
         .arcs.filter((arc) => arc.depth === 2)
         .map((arc) => arc.id)
 
+    // oxfmt-ignore
     test.each([
-      [
-        `at the data root, every child of the thin branch is below the threshold`,
-        null,
-        [`thin/Other`],
-      ],
+      [`at the data root, every child of the thin branch is below the threshold`, null, [`thin/Other`]],
       // 40/30/30 of 100 all clear 10%, so the bucket dissolves into the real nodes
-      [
-        `zooming the thin branch re-measures its children against it`,
-        `thin`,
-        [`thin/a`, `thin/b`, `thin/c`],
-      ],
+      [`zooming the thin branch re-measures its children against it`, `thin`, [`thin/a`, `thin/b`, `thin/c`]],
       [`an unresolvable zoom_root_id falls back to the root total`, `ghost`, [`thin/Other`]],
     ])(`%s`, (_name, zoom_root_id, expected) => {
       expect(ids_under_thin(zoom_root_id)).toEqual(expected)
@@ -247,6 +240,10 @@ describe(`compute_sunburst_layout`, () => {
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/children of "P" sum to 12/))
       // layout does NOT clamp the overflow: c2 ends at 12/10 of the circle
       expect(arcs[2].x1).toBeCloseTo(1.2, 9)
+      // a non-finite parent value is coerced to 0, which its children overflow just the
+      // same - silently collapsing the whole subtree to zero width without the warning
+      compute_sunburst_layout({ label: `Q`, value: NaN, children }, { value_mode: `total` })
+      expect(warn).toHaveBeenLastCalledWith(expect.stringMatching(/children of "Q" sum to 12/))
       warn.mockRestore()
     })
   })
@@ -433,6 +430,8 @@ describe(`min_fraction 'Other' bucketing`, () => {
     { label: `s2`, value: 3 },
     { label: `s3`, value: 12 },
   ]
+  const leaves = (values: number[]) =>
+    values.map((value, idx) => ({ label: `abcde`[idx], value }))
 
   test(`merges sub-threshold siblings into one contiguous trailing Other leaf`, () => {
     const { arcs } = compute_sunburst_layout(long_tail, { min_fraction: 0.05 })
@@ -452,12 +451,8 @@ describe(`min_fraction 'Other' bucketing`, () => {
   })
 
   test(`does not bucket a single small sibling; min_fraction 0 disables`, () => {
-    const two = [
-      { label: `big`, value: 95 },
-      { label: `tiny`, value: 5 },
-    ]
-    const { arcs } = compute_sunburst_layout(two, { min_fraction: 0.06 })
-    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `big`, `tiny`])
+    const { arcs } = compute_sunburst_layout(leaves([95, 5]), { min_fraction: 0.06 })
+    expect(arcs.map((arc) => arc.label)).toEqual([undefined, `a`, `b`])
 
     const off = compute_sunburst_layout(long_tail, { min_fraction: 0 })
     expect(off.arcs).toHaveLength(5)
@@ -465,11 +460,7 @@ describe(`min_fraction 'Other' bucketing`, () => {
   })
 
   test(`buckets per parent with custom label and inherited color`, () => {
-    const children = [
-      { label: `keep`, value: 60 },
-      { label: `tiny1`, value: 1 },
-      { label: `tiny2`, value: 1 },
-    ]
+    const children = leaves([60, 1, 1])
     const { arcs } = compute_sunburst_layout([{ label: `P`, color: `teal`, children }], {
       min_fraction: 0.05,
       other_label: `rest`,
@@ -606,55 +597,24 @@ describe(`min_fraction 'Other' bucketing`, () => {
       value: idx + 1,
     }))
     // Kept children hold their input order (in angle too); only the bucket moves to the end.
-    expect(ring_labels(flat, { max_children: 3 })).toEqual([
-      `job-47`,
-      `job-48`,
-      `job-49`,
-      `Other`,
-    ])
+    const kept = [`job-47`, `job-48`, `job-49`, `Other`]
+    expect(ring_labels(flat, { max_children: 3 })).toEqual(kept)
     const bucket = compute_sunburst_layout(flat, { max_children: 3 }).arcs.at(-1)
     // 1..50 sums to 1275; the three kept are 48 + 49 + 50.
     expect(bucket).toMatchObject({ is_other: true, other_count: 47, value: 1275 - 147 })
   })
 
-  const leaves = (values: number[]) =>
-    values.map((value, idx) => ({ label: `abcde`[idx], value }))
   const four = leaves([4, 3, 2, 1])
+  // oxfmt-ignore
   test.each<[string, SunburstNode[], SunburstLayoutOptions, string[]]>([
     // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
     // says strictly less than the child itself does.
-    [
-      `max_children lets a lone over-the-limit child through`,
-      four,
-      { max_children: 3 },
-      [`a`, `b`, `c`, `d`],
-    ],
-    [
-      `max_children buckets two over-the-limit children`,
-      four,
-      { max_children: 2 },
-      [`a`, `b`, `Other`],
-    ],
-    // A rank has to break ties somehow
-    [
-      `max_children breaks value ties by input order`,
-      leaves([5, 5, 5, 5, 5]),
-      { max_children: 2 },
-      [`a`, `b`, `Other`],
-    ],
+    [`max_children lets a lone over-the-limit child through`, four, { max_children: 3 }, [`a`, `b`, `c`, `d`]],
+    [`max_children buckets two over-the-limit children`, four, { max_children: 2 }, [`a`, `b`, `Other`]],
+    [`max_children breaks value ties by input order`, leaves([5, 5, 5, 5, 5]), { max_children: 2 }, [`a`, `b`, `Other`]],
     // max_children alone would keep `c` (8 of 100); min_fraction 0.1 rules it out
-    [
-      `a child has to clear both max_children and min_fraction`,
-      leaves([50, 40, 8, 2]),
-      { max_children: 3, min_fraction: 0.1 },
-      [`a`, `b`, `Other`],
-    ],
-    [
-      `bucketing composes with sort descending (smalls still trail)`,
-      long_tail,
-      { min_fraction: 0.05, sort: `descending` },
-      [`big`, `s3`, `Other`],
-    ],
+    [`a child has to clear both max_children and min_fraction`, leaves([50, 40, 8, 2]), { max_children: 3, min_fraction: 0.1 }, [`a`, `b`, `Other`]],
+    [`bucketing composes with sort descending (smalls still trail)`, long_tail, { min_fraction: 0.05, sort: `descending` }, [`big`, `s3`, `Other`]],
   ])(`%s`, (_name, data, opts, expected) => {
     expect(ring_labels(data, opts)).toEqual(expected)
   })
@@ -728,17 +688,7 @@ describe(`min_fraction 'Other' bucketing`, () => {
   // gap — the bucket has to sit before it, not absorb it.
   test(`bucketing under value_mode 'total' leaves the parent's shortfall as a gap`, () => {
     const { arcs } = compute_sunburst_layout(
-      [
-        {
-          label: `p`,
-          value: 100,
-          children: [
-            { label: `a`, value: 50 },
-            { label: `b`, value: 2 },
-            { label: `c`, value: 2 },
-          ],
-        },
-      ],
+      [{ label: `p`, value: 100, children: leaves([50, 2, 2]) }],
       { value_mode: `total`, min_fraction: 0.1 },
     )
     expect(arcs.map((arc) => arc.label)).toEqual([undefined, `p`, `a`, `Other`])

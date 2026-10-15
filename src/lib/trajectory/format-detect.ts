@@ -100,9 +100,10 @@ export const FORMAT_PATTERNS = {
   vasp: (data: string, filename?: string) => {
     if (name_hint(filename, XDATCAR_NAME_REGEX)) return true
     if (!data.includes(`Direct configuration=`)) return false
-    const lines = data.trimStart().split(/\r?\n/, 10)
+    // 9 lines: a 1-ion, 1-frame XDATCAR (see index_xdatcar_frames)
+    const lines = data.trimStart().split(/\r?\n/, 9)
     return (
-      lines.length === 10 &&
+      lines.length === 9 &&
       !Number.isNaN(parse_leading_num(lines[1])) &&
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
     )

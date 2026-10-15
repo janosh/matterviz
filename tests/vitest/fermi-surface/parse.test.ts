@@ -6,7 +6,7 @@ import {
   parse_fermi_file,
 } from '#lib/fermi-surface/parse.js'
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
-import type { BandGridData } from '#lib/fermi-surface/types.js'
+import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { fermi_surface_files } from '#site/fermi-surfaces.js'
 import { describe, expect, test } from 'vitest'
 import {
@@ -24,11 +24,28 @@ const triangle_mesh = {
   ],
   faces: [[0, 1, 2]],
 }
+const bad_lattice = [...IDENTITY_MATRIX3.slice(0, 2), [0, 0, null]] // JSON null = non-finite
+// matterviz FermiSurfaceData JSON holding one isosurface
+const json_surface = (
+  iso: Record<string, unknown>,
+  k_lattice: unknown = IDENTITY_MATRIX3,
+) => ({
+  isosurfaces: [iso],
+  k_lattice,
+  fermi_energy: 5,
+  reciprocal_cell: `wigner_seitz`,
+  metadata: { n_bands: 1, n_surfaces: 1 },
+})
 
 // Parse a band-grid format (BXSF/FRMSF/JSON grid) and assert the result is BandGridData
 const parse_grid = (content: string, filename?: string): BandGridData => {
   const parsed = parse_fermi_file(content, filename)
   if (!parsed || is_fermi_surface_data(parsed)) throw new Error(`expected BandGridData`)
+  return parsed
+}
+const parse_surface = (content: string, filename: string): FermiSurfaceData => {
+  const parsed = parse_fermi_file(content, filename)
+  if (!is_fermi_surface_data(parsed)) throw new Error(`expected FermiSurfaceData`)
   return parsed
 }
 // Energy at grid point (ix, iy, iz) of a flat z-fastest band grid
@@ -66,38 +83,25 @@ END_BLOCK_BANDGRID_3D
       `parses BXSF metadata, grid and energies with filename %s`,
       (filename) => {
         const band_data = parse_grid(sample_bxsf, filename)
-        expect(band_data.k_grid).toEqual([3, 3, 3])
-        expect(band_data.n_bands).toBe(1)
-        expect(band_data.n_spins).toBe(1)
-
+        const { energies, k_grid, n_bands, n_spins } = band_data
         // Grid shape: [spin][band] → flat z-fastest Float64Array with dims = k_grid
-        expect(band_data.energies).toHaveLength(1)
-        expect(band_data.energies[0]).toHaveLength(1)
-        const [grid] = band_data.energies[0]
-        expect(grid.dims).toEqual([3, 3, 3])
-        expect(grid.order).toBe(`z_fastest`)
+        expect([k_grid, n_bands, n_spins, energies.length, energies[0].length]).toEqual([
+          [3, 3, 3],
+          1,
+          1,
+          1,
+          1,
+        ])
+        const [grid] = energies[0]
+        expect([grid.dims, grid.order, grid.values.length]).toEqual([k_grid, `z_fastest`, 27])
         expect(grid.values).toBeInstanceOf(Float64Array)
-        expect(grid.values).toHaveLength(27)
-
         // First row (ix=0, iy=0): 5.0 6.0 5.0; the grid centre (1,1,1) is the 8.0 maximum
         expect(Array.from(grid.values.subarray(0, 3))).toEqual([5.0, 6.0, 5.0])
         expect(energy_at(band_data, 1, 1, 1)).toBe(8.0)
         expect(band_data.periodic).toBeUndefined() // BXSF grids are endpoint-inclusive
-
-        // Fermi energy extracted from the `# Fermi energy: 7.0 eV` comment
-        expect(band_data.fermi_energy).toBe(7.0)
+        expect(band_data.fermi_energy).toBe(7.0) // from the `# Fermi energy: 7.0 eV` comment
       },
     )
-
-    // the origin was parsed and never read, while extract_fermi_surface re-centres on Γ
-    // unconditionally, so a header encoding that shift would apply it twice
-    test(`rejects a non-zero grid origin`, () => {
-      const shifted = sample_bxsf.replace(`    0.0 0.0 0.0\n`, `    -0.5 -0.5 -0.5\n`)
-      expect(() => parse_grid(shifted, `test.bxsf`)).toThrow(
-        /BXSF grid origin \[-0.5, -0.5, -0.5\] is not supported/,
-      )
-      expect(() => parse_grid(sample_bxsf, `test.bxsf`)).not.toThrow()
-    })
 
     test.each([
       [
@@ -114,10 +118,17 @@ END_BLOCK_BANDGRID_3D
       expect(parse_grid(content, `test.bxsf`).fermi_energy).toBe(expected)
     })
 
-    test(`parses Fortran D-exponent energies (0.5D+01 etc)`, () => {
-      // Fortran codes write doubles as D-exponents which Number() rejects
-      const d_exp_bxsf = sample_bxsf.replace(`5.0 6.0 5.0`, `0.5D+01 6.0 5.0`)
-      expect(energy_at(parse_grid(d_exp_bxsf, `test.bxsf`), 0, 0, 0)).toBe(5.0)
+    // a non-zero origin: it was parsed and never read, while extract_fermi_surface re-centres
+    // on Γ unconditionally, so a header encoding that shift would apply it twice
+    // oxfmt-ignore
+    test.each([
+      [`a non-zero grid origin`, `0.0 0.0 0.0`, `-0.5 -0.5 -0.5`, /origin \[-0.5, -0.5, -0.5\] is not supported/],
+      [`too few band values`, `5.0 6.0 5.0\n  END`, `END`, /Band 0: expected 27 values, got 24/],
+      [`band number 0`, `BAND:   1`, `BAND:   0`, /invalid band number/],
+      [`a non-numeric band number`, `BAND:   1`, `BAND:   x`, /invalid band number/],
+    ])(`rejects BXSF with %s`, (_label, search, replacement, message) => {
+      const content = sample_bxsf.replace(search, replacement)
+      expect(() => parse_fermi_file(content, `bad.bxsf`)).toThrow(message)
     })
 
     test(`reads all values from a single long line without a spread-argument overflow`, () => {
@@ -132,59 +143,40 @@ END_BLOCK_BANDGRID_3D
       )
     })
 
-    test(`throws when a band has too few values`, () => {
-      const short_bxsf = sample_bxsf.replace(
-        `    5.0 6.0 5.0\n  END_BANDGRID_3D`,
-        `  END_BANDGRID_3D`,
-      )
-      expect(() => parse_fermi_file(short_bxsf, `short.bxsf`)).toThrow(
-        /Band 0: expected 27 values, got 24/,
-      )
-    })
-
-    // Without a filename the format is detected from the BEGIN_BLOCK_BANDGRID_3D marker
-    test(`auto-detects BXSF by content and skips blank/comment lines before END_BANDGRID`, () => {
+    // Without a filename the format is detected from the BEGIN_BLOCK_BANDGRID_3D marker.
+    // Fortran codes write doubles as D-exponents, which Number() rejects
+    test(`auto-detects BXSF by content, reads D-exponents, skips blank/comment lines`, () => {
       const band_data = parse_grid(
-        bxsf_block(2, `1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0\n\n  # A comment to skip\n`),
+        bxsf_block(2, `0.1D+01 2.0 3.0 4.0 5.0 6.0 7.0 8.0\n\n  # A comment to skip\n`),
       )
-      expect(band_data.n_bands).toBe(1)
-      expect(band_data.k_grid).toEqual([2, 2, 2])
+      expect([band_data.n_bands, band_data.k_grid]).toEqual([1, [2, 2, 2]])
       expect(Array.from(band_data.energies[0][0].values)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
     })
-  })
 
-  // BXSF `BAND: n` numbers bands in the full calculation: kept 0-based to match a band structure
-  // of the same run; an invalid number throws
-  test(`keeps BXSF band numbers as absolute band indices`, () => {
-    const bxsf = make_bxsf(6.5).replace(`BAND:   1`, `BAND:   9`)
-    const band_data = parse_grid(bxsf, `cu.bxsf`)
-    expect(band_data.band_indices).toEqual([8])
-    // two bands both numbered 1 (each spin channel counted from 1): numbers can't identify
-    // bands, so positions stand in
-    const bxsf_2 = make_bxsf().replace(`    1\n    3 3 3`, `    2\n    3 3 3`)
-    const band_block = /BAND:[^]*?(?=\s*END_BANDGRID_3D)/.exec(bxsf_2)?.[0] ?? ``
-    const repeated = parse_grid(bxsf_2.replace(band_block, `${band_block}\n    ${band_block}`))
-    expect([repeated.n_bands, repeated.band_indices]).toEqual([2, undefined])
-    for (const label of [`BAND:   0`, `BAND:   x`]) {
-      expect(() =>
-        parse_fermi_file(make_bxsf().replace(`BAND:   1`, label), `bad.bxsf`),
-      ).toThrow(/invalid band number/)
-    }
+    // BXSF `BAND: n` numbers bands in the full calculation: kept 0-based to match a band
+    // structure of the same run
+    test(`keeps BXSF band numbers as absolute band indices`, () => {
+      const band_data = parse_grid(sample_bxsf.replace(`BAND:   1`, `BAND:   9`), `cu.bxsf`)
+      expect(band_data.band_indices).toEqual([8])
+      // two bands both numbered 1 (each spin channel counted from 1): numbers can't identify
+      // bands, so positions stand in
+      const bxsf_2 = sample_bxsf.replace(`    1\n    3 3 3`, `    2\n    3 3 3`)
+      const band_block = /BAND:[^]*?(?=\s*END_BANDGRID_3D)/.exec(bxsf_2)?.[0] ?? ``
+      const repeated = parse_grid(
+        bxsf_2.replace(band_block, `${band_block}\n    ${band_block}`),
+      )
+      expect([repeated.n_bands, repeated.band_indices]).toEqual([2, undefined])
+    })
   })
 
   describe(`FRMSF format`, () => {
-    // FRMSF format: grid dims, lshift, n_bands, reciprocal vectors, then one energy per line
+    // FRMSF layout: grid dims, lshift, n_bands, reciprocal vectors, then the energies.
+    // FermiSurfer reads it with fscanf, so energies may share lines
+    const frmsf_header = (dims = `3 3 3`, lshift = 1, n_bands = 1) =>
+      [dims, lshift, n_bands, `1.0 0.0 0.0`, `0.0 1.0 0.0`, `0.0 0.0 1.0`].join(`\n`)
     const frmsf_energies = `0.1 0.2 0.1 0.2 0.3 0.2 0.1 0.2 0.1 0.2 0.3 0.2 0.3 0.4
       0.3 0.2 0.3 0.2 0.1 0.2 0.1 0.2 0.3 0.2 0.1 0.2 0.1`
-    const sample_frmsf = `${[
-      `3 3 3`,
-      `1`,
-      `1`,
-      `1.0 0.0 0.0`,
-      `0.0 1.0 0.0`,
-      `0.0 0.0 1.0`,
-      ...frmsf_energies.split(/\s+/).filter(Boolean),
-    ].join(`\n`)}\n`
+    const sample_frmsf = `${frmsf_header()}\n${frmsf_energies}\n`
 
     test.each([`test.frmsf`, `TEST.FRMSF.GZ`, `unknown.txt`, undefined])(
       `parses FRMSF metadata and keeps file units with filename %s`,
@@ -196,16 +188,15 @@ END_BLOCK_BANDGRID_3D
         expect(band_data.periodic).toBe(true) // FRMSF stores k=i/n with no duplicated endpoint
         expect(band_data.grid_shift).toEqual([0, 0, 0]) // lshift=1: Γ-centred
         expect(band_data.energies[0][0].dims).toEqual([3, 3, 3])
+        expect(band_data.properties).toBeUndefined() // no colour block
         // FRMSF energies and reciprocal vectors are in arbitrary units, so values pass through
         // unscaled
         expect(energy_at(band_data, 0, 0, 0)).toBe(0.1)
+        expect(energy_at(band_data, 0, 0, 1)).toBe(0.2)
         // 14th value (0.4) sits at flat index 13 = (1*3 + 1)*3 + 1, i.e. grid point (1,1,1)
         expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
-        expect(band_data.k_lattice).toEqual([
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ])
+        expect(energy_at(band_data, 2, 2, 2)).toBe(0.1)
+        expect(band_data.k_lattice).toEqual(IDENTITY_MATRIX3)
       },
     )
 
@@ -217,16 +208,13 @@ END_BLOCK_BANDGRID_3D
       [0, `3 3 3`, [-1, -1, -1]],
       [0, `4 3 2`, [-1.5, -1, -0.5]],
     ])(`lshift=%i on a %s grid gives grid_shift %j`, (lshift, dims, expected) => {
-      const [size_x, size_y, size_z] = dims.split(` `).map(Number)
-      const content = `${[
-        dims,
-        String(lshift),
-        `1`,
-        `1.0 0.0 0.0`,
-        `0.0 1.0 0.0`,
-        `0.0 0.0 1.0`,
-        ...Array.from({ length: size_x * size_y * size_z }, (_, idx) => `${idx * 0.01}`),
-      ].join(`\n`)}\n`
+      const n_points = dims
+        .split(` `)
+        .map(Number)
+        .reduce((prod, size) => prod * size)
+      // one energy per line
+      const energies = Array.from({ length: n_points }, (_, idx) => idx * 0.01).join(`\n`)
+      const content = `${frmsf_header(dims, lshift)}\n${energies}\n`
       expect(parse_grid(content, `shift.frmsf`).grid_shift).toEqual(expected)
     })
 
@@ -236,32 +224,11 @@ END_BLOCK_BANDGRID_3D
       )
     })
 
-    // FermiSurfer reads FRMSF with fscanf, so energies may share lines, and the optional
-    // colour block after them is not read as energies
-    test(`reads energies as a token stream`, () => {
-      const [header, energies] = [sample_frmsf.split(`\n`).slice(0, 6), frmsf_energies]
-      const colours = Array.from({ length: 27 }, () => `9.9`).join(` `)
-      const band_data = parse_grid(
-        `${header.join(`\n`)}\n${energies}\n${colours}\n`,
-        `test.frmsf`,
-      )
-      expect(energy_at(band_data, 0, 0, 1)).toBe(0.2)
-      expect(energy_at(band_data, 1, 1, 1)).toBe(0.4)
-      expect(energy_at(band_data, 2, 2, 2)).toBe(0.1)
-      expect(Object.keys(band_data.properties ?? {})).toEqual([`Property`])
-      expect(band_data.properties?.Property[0][0].values.every((val) => val === 9.9)).toBe(
-        true,
-      )
-      expect(parse_grid(sample_frmsf, `test.frmsf`).properties).toBeUndefined()
-    })
-
-    // Colour blocks are component-major ([component][band][k]): with two bands, point p of
-    // band b in component c is written as 100c + 10b + p/100 so every value names its slot (a
-    // band-major reader puts 110 where 10 belongs). `nan` (Python) and `NaN` (Rust) mark
-    // missing values, also as the first token of a line.
-    const two_band_header = sample_frmsf.split(`\n`).slice(0, 6)
-    two_band_header[2] = `2`
-    const two_band_energies = `${frmsf_energies}\n${frmsf_energies}`
+    // Colour blocks follow the energies, component-major ([component][band][k]): with two
+    // bands, point p of band b in component c is written as 100c + 10b + p/100 so every value
+    // names its slot (a band-major reader puts 110 where 10 belongs). `nan` (Python) and `NaN`
+    // (Rust) mark missing values, also as the first token of a line.
+    const two_band_frmsf = `${frmsf_header(`3 3 3`, 1, 2)}\n${frmsf_energies}\n${frmsf_energies}`
     const colour_block = (n_components: number) =>
       Array.from({ length: n_components * 54 }, (_, idx) => {
         if (idx === 0) return `nan`
@@ -269,8 +236,7 @@ END_BLOCK_BANDGRID_3D
         const [comp, band, point] = [Math.floor(idx / 54), Math.floor(idx / 27) % 2, idx % 27]
         return `${100 * comp + 10 * band + point / 100}`
       }).join(`\n`)
-    const frmsf_with = (block: string) =>
-      parse_grid(`${two_band_header.join(`\n`)}\n${two_band_energies}\n${block}\n`)
+    const frmsf_with = (block: string) => parse_grid(`${two_band_frmsf}\n${block}\n`)
     // the value colour_block writes for point p of band b in component c
     const slot = (comp: number, band: number, point: number) =>
       comp === 0 && band === 0 && point < 2 ? NaN : 100 * comp + 10 * band + point / 100
@@ -321,37 +287,27 @@ END_BLOCK_BANDGRID_3D
       [`unicode minus`, `−0.1`],
     ])(`parses %s energies (%s)`, (_label, token) => {
       const sign = token.startsWith(`−`) ? -1 : 1
-      const altered = sample_frmsf.replace(/^0\.1$/m, token)
+      const altered = sample_frmsf.replace(`0.1 0.2`, `${token} 0.2`)
       expect(energy_at(parse_grid(altered, `test.frmsf`), 0, 0, 0)).toBe(sign * 0.1)
     })
   })
 
   describe(`JSON format`, () => {
     test(`packs JSON meshes into typed arrays, fan-triangulating polygons`, () => {
-      const content = JSON.stringify({
-        isosurfaces: [
-          {
-            vertices: [
-              [0, 0, 0],
-              [1, 0, 0],
-              [1, 1, 0],
-              [0, 1, 0],
-            ],
-            faces: [[0, 1, 2, 3]],
-            normals: [],
-            properties: [1, 2, 3, 4],
-            band_index: 2,
-            spin: `down`,
-          },
+      const quad = {
+        vertices: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [1, 1, 0],
+          [0, 1, 0],
         ],
-        k_lattice: IDENTITY_MATRIX3,
-        fermi_energy: 0,
-        reciprocal_cell: `wigner_seitz`,
-        metadata: { n_bands: 1, n_surfaces: 1 },
-      })
-      const result = parse_fermi_file(content, `quad.json`)
-      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
-      const [iso] = result.isosurfaces
+        faces: [[0, 1, 2, 3]],
+        normals: [],
+        properties: [1, 2, 3, 4],
+        band_index: 2,
+        spin: `down`,
+      }
+      const [iso] = parse_surface(JSON.stringify(json_surface(quad)), `quad.json`).isosurfaces
       expect(Array.from(iso.positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0])
       expect(Array.from(iso.indices)).toEqual([0, 1, 2, 0, 2, 3])
       // Normals were empty, so they are recomputed: the quad faces +z
@@ -361,46 +317,15 @@ END_BLOCK_BANDGRID_3D
       expect([iso.band_index, iso.spin]).toEqual([2, `down`])
     })
 
-    test.each([
-      [`accepts`, IDENTITY_MATRIX3],
-      [
-        `rejects`,
-        [
-          [1, 0, 0],
-          [0, null, 0],
-          [0, 0, 1],
-        ],
-      ],
-    ])(`%s isosurfaces with empty face arrays and k_lattice`, (expectation, k_lattice) => {
-      const content = JSON.stringify({
-        isosurfaces: [
-          {
-            vertices: [[0, 0, 0]],
-            faces: [],
-            normals: [],
-            band_index: 0,
-            spin: null,
-          },
-        ],
-        k_lattice,
-        fermi_energy: 5.0,
-        reciprocal_cell: `wigner_seitz`,
-        metadata: { n_bands: 1, n_surfaces: 1 },
-      })
-
-      if (expectation === `rejects`) {
-        expect(() => parse_fermi_file(content, `test.json`)).toThrow(
-          /Invalid FermiSurfaceData/,
-        )
-        return
-      }
-
-      const result = parse_fermi_file(content, `test.json`)
-      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
+    test(`accepts isosurfaces with empty faces but rejects a non-finite k_lattice`, () => {
+      const lone_vertex = { vertices: [[0, 0, 0]], faces: [], band_index: 0, spin: null }
+      const result = parse_surface(JSON.stringify(json_surface(lone_vertex)), `test.json`)
       expect(result.fermi_energy).toBe(5)
       // the lone vertex survives and the empty face list becomes an empty index buffer
       expect(Array.from(result.isosurfaces[0].positions)).toEqual([0, 0, 0])
       expect(result.isosurfaces[0].indices).toHaveLength(0)
+      const bad = JSON.stringify(json_surface(lone_vertex, bad_lattice))
+      expect(() => parse_fermi_file(bad, `test.json`)).toThrow(/Invalid FermiSurfaceData/)
     })
 
     // energies[spin][band][kx][ky][kz] flatten to z-fastest order, so values read 0..n-1
@@ -451,17 +376,7 @@ END_BLOCK_BANDGRID_3D
     test.each([
       [`non-integer k_grid dim`, { k_grid: [2, 2.5, 2] }, /Invalid BandGridData/],
       [`zero k_grid dim`, { k_grid: [2, 0, 2] }, /Invalid BandGridData/],
-      [
-        `non-finite k_lattice entry`,
-        {
-          k_lattice: [
-            [1, 0, 0],
-            [0, null, 0],
-            [0, 0, 1],
-          ],
-        },
-        /Invalid BandGridData/,
-      ],
+      [`non-finite k_lattice entry`, { k_lattice: bad_lattice }, /Invalid BandGridData/],
       [
         `a band shape that disagrees with k_grid`,
         { energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]], k_grid: [3, 1, 2] },
@@ -473,54 +388,38 @@ END_BLOCK_BANDGRID_3D
       expect(() => parse_fermi_file(content, `test.json`)).toThrow(message)
     })
 
-    test(`parses IFermi JSON format`, () => {
-      const ifermi_json = JSON.stringify({
+    // IFermi as_dict: isosurfaces keyed by spin (1 up, -1 down) with per-face properties
+    const ifermi_json = (
+      isosurfaces: Record<string, unknown>,
+      reciprocal_space: unknown = { reciprocal_lattice: IDENTITY_MATRIX3 },
+    ) =>
+      JSON.stringify({
         '@module': `ifermi.surface`,
         '@class': `FermiSurface`,
-        '@version': `0.3.0`,
-        isosurfaces: {
-          1: [
-            {
-              ...triangle_mesh,
-              band_idx: 5,
-              dimensionality: `3D`,
-              orientation: null,
-              properties: [[3, 4, 0]], // per-face vector: its magnitude colours the vertices
-            },
-            { ...triangle_mesh, band_idx: 6, properties: null },
-          ],
-          '-1': [
-            {
-              vertices: [
-                [0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.25, 0.25, 0.25],
-              ],
-              faces: [[0, 1, 2]],
-              band_idx: 7,
-              dimensionality: `2D`,
-              orientation: [0, 0, 1],
-            },
-          ],
-        },
-        reciprocal_space: {
-          reciprocal_lattice: [
-            [2.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 2.0],
-          ],
-        },
+        isosurfaces,
+        reciprocal_space,
       })
 
-      const result = parse_fermi_file(ifermi_json, `fs_test.json`)
-      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
-
-      expect(result.k_lattice).toEqual([
-        [2.0, 0.0, 0.0],
-        [0.0, 2.0, 0.0],
-        [0.0, 0.0, 2.0],
-      ])
-
+    test(`parses IFermi JSON format`, () => {
+      const lattice_2x = IDENTITY_MATRIX3.map((row) => row.map((val) => 2 * val))
+      const isosurfaces = {
+        1: [
+          {
+            ...triangle_mesh,
+            band_idx: 5,
+            dimensionality: `3D`,
+            orientation: null,
+            properties: [[3, 4, 0]], // per-face vector: its magnitude colours the vertices
+          },
+          { ...triangle_mesh, band_idx: 6, properties: null },
+        ],
+        '-1': [
+          { ...triangle_mesh, band_idx: 7, dimensionality: `2D`, orientation: [0, 0, 1] },
+        ],
+      }
+      const json = ifermi_json(isosurfaces, { reciprocal_lattice: lattice_2x })
+      const result = parse_surface(json, `fs_test.json`)
+      expect(result.k_lattice).toEqual(lattice_2x)
       expect(result.isosurfaces.map((iso) => [iso.band_index, iso.spin])).toEqual([
         [5, `up`],
         [6, `up`],
@@ -531,7 +430,6 @@ END_BLOCK_BANDGRID_3D
       expect(spin_up.normals).toHaveLength(9)
       expect(Array.from(spin_up.properties?.Property ?? [])).toEqual([5, 5, 5])
       expect(result.isosurfaces[1].properties).toBeUndefined()
-
       expect(result.metadata).toEqual({
         n_bands: 3,
         n_surfaces: 3,
@@ -539,62 +437,36 @@ END_BLOCK_BANDGRID_3D
       })
     })
 
-    test(`IFermi fixture keeps its bands apart`, () => {
-      const result = parse_fermi_file(
-        read_maybe_gz(`src/site/fermi-surfaces/fs_BaFe2As2_wigner.json.gz`),
-        `fs_BaFe2As2_wigner.json`,
-      )
-      if (!is_fermi_surface_data(result)) throw new Error(`expected FermiSurfaceData`)
+    // The cell IFermi stored the surface in (its reciprocal_space @class) decides where the 3D
+    // slice plane is cut: the shipped _reciprocal file spans the Γ-centred parallelepiped
+    test.each([
+      [`fs_BaFe2As2_reciprocal.json.gz`, `parallelepiped`],
+      [`fs_BaFe2As2_wigner.json.gz`, `wigner_seitz`],
+    ])(`IFermi fixture %s is in the %s cell and keeps its bands apart`, (name, cell) => {
+      const result = parse_surface(read_maybe_gz(`src/site/fermi-surfaces/${name}`), name)
+      expect(result.reciprocal_cell).toBe(cell)
       const sheets = result.isosurfaces.map((iso) => `${iso.band_index}${iso.spin}`)
       expect(sheets.join(` `)).toBe(`5up 6up 6up 7up 7up 5down 6down 6down 7down 7down`)
       expect(result.metadata.n_bands).toBe(3)
     })
 
+    // one spin-up band-0 surface with `extra` mesh fields
+    const band_0 = (extra: Record<string, unknown> = {}) => ({
+      1: [{ ...triangle_mesh, band_idx: 0, ...extra }],
+    })
+    // oxfmt-ignore
     test.each([
       [`a non-spin key`, { 5: [{ ...triangle_mesh, band_idx: 5 }] }, /keyed by spin/],
-      [
-        `a missing band_idx`,
-        { 1: [triangle_mesh] },
-        /band_idx must be a non-negative integer/,
-      ],
-      [
-        `properties per vertex instead of per face`,
-        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [1, 2, 3] }] },
-        /one value per face \(1\), got 3/,
-      ],
-      [
-        `a non-numeric face property`,
-        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [`fast`] }] },
-        /face 0 has non-numeric property "fast"/,
-      ],
-      [
-        `a vector face property with a non-numeric component`,
-        { 1: [{ ...triangle_mesh, band_idx: 0, properties: [[1, `x`, 0]] }] },
-        /face 0 has non-numeric property \[1,"x",0\]/,
-      ],
-      [
-        `faces referencing missing vertices`,
-        {
-          1: [
-            {
-              ...triangle_mesh,
-              band_idx: 0,
-              faces: [
-                [0, 1, 2],
-                [99, 100, 101],
-              ],
-            },
-          ],
-        },
-        /references vertex 99 of a 3-vertex mesh/,
-      ],
-    ])(`rejects IFermi JSON with %s`, (_label, isosurfaces, message) => {
-      const json = JSON.stringify({
-        '@module': `ifermi.surface`,
-        '@class': `FermiSurface`,
-        isosurfaces,
-      })
-      expect(() => parse_fermi_file(json, `bad.json`)).toThrow(message)
+      [`a missing band_idx`, { 1: [triangle_mesh] }, /band_idx must be a non-negative integer/],
+      [`per-vertex properties`, band_0({ properties: [1, 2, 3] }), /one value per face \(1\), got 3/],
+      [`a string face property`, band_0({ properties: [`fast`] }), /face 0 has non-numeric property "fast"/],
+      [`a non-numeric vector component`, band_0({ properties: [[1, `x`, 0]] }), /non-numeric property \[1,"x",0\]/],
+      [`faces referencing missing vertices`, band_0({ faces: [...triangle_mesh.faces, [99, 100, 101]] }), /references vertex 99 of a 3-vertex mesh/],
+      // silently defaulting to a 1 Å⁻¹ identity lattice misplaced the zone and tiling
+      [`no reciprocal lattice`, band_0(), /needs a finite 3x3 'reciprocal_space.reciprocal_lattice', got undefined/, {}],
+      [`a non-finite reciprocal lattice`, band_0(), /needs a finite 3x3 .*got \[\[1,0,0\],\[0,1,0\],\[0,0,null\]\]/, { reciprocal_lattice: bad_lattice }],
+    ])(`rejects IFermi JSON with %s`, (_label, isosurfaces, message, reciprocal_space?: unknown) => {
+      expect(() => parse_fermi_file(ifermi_json(isosurfaces, reciprocal_space), `bad.json`)).toThrow(message)
     })
   })
 
@@ -642,31 +514,13 @@ describe(`is_fermi_surface_data`, () => {
 // Prop-boundary normalisers: pymatviz traits (and any caller) may hand the viewer the JSON
 // shapes instead of the typed arrays parse_fermi_file returns
 describe(`normalize_fermi_surface / normalize_band_grid`, () => {
-  const json_surface = {
-    isosurfaces: [
-      {
-        vertices: [
-          [0, 0, 0],
-          [1, 0, 0],
-          [0, 1, 0],
-        ],
-        faces: [[0, 1, 2]],
-        band_index: 1,
-        spin: null,
-      },
-    ],
-    k_lattice: IDENTITY_MATRIX3,
-    fermi_energy: 0.5,
-    reciprocal_cell: `parallelepiped`,
-    metadata: { n_bands: 1, n_surfaces: 1 },
-  }
+  const mesh = { ...triangle_mesh, band_index: 1, spin: null }
   const ifermi_surface = {
     '@class': `FermiSurface`,
-    isosurfaces: { '-1': [{ ...json_surface.isosurfaces[0], band_idx: 1 }] },
+    isosurfaces: { '-1': [{ ...triangle_mesh, band_idx: 1 }] },
     reciprocal_space: { reciprocal_lattice: IDENTITY_MATRIX3 },
   }
-  const typed_surface = parse_fermi_file(JSON.stringify(json_surface), `s.json`)
-  if (!is_fermi_surface_data(typed_surface)) throw new Error(`expected FermiSurfaceData`)
+  const typed_surface = parse_surface(JSON.stringify(json_surface(mesh)), `s.json`)
 
   test(`returns typed FermiSurfaceData by identity`, () => {
     expect(normalize_fermi_surface(typed_surface)).toBe(typed_surface)
@@ -674,7 +528,7 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
   })
 
   test.each([
-    [`matterviz JSON`, json_surface, 1, null],
+    [`matterviz JSON`, json_surface(mesh), 1, null],
     [`IFermi as_dict`, ifermi_surface, 1, `down`],
   ])(`packs %s into the parse_fermi_file result`, (_label, json, band_index, spin) => {
     const result = normalize_fermi_surface(json)
@@ -691,23 +545,13 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
   // IFermi face values average onto their vertices (vectors by magnitude); a vertex no face
   // touches has no value
   test(`IFermi face properties: vertex averages, NaN for an untouched vertex`, () => {
-    const vertices = [...json_surface.isosurfaces[0].vertices, [1, 1, 1]]
-    const surface = { vertices, faces: [[0, 1, 2]], band_idx: 0, properties: [[3, 4, 0]] }
+    const vertices = [...triangle_mesh.vertices, [1, 1, 1]]
+    const surface = { ...triangle_mesh, vertices, band_idx: 0, properties: [[3, 4, 0]] }
     const [iso] = normalize_fermi_surface({
       ...ifermi_surface,
       isosurfaces: { '1': [surface] },
     }).isosurfaces
     expect(Array.from(iso.properties?.Property ?? [])).toEqual([5, 5, 5, NaN])
-  })
-
-  // The cell IFermi stored the surface in (its reciprocal_space @class) decides where the 3D
-  // slice plane is cut: the shipped _reciprocal file spans the Γ-centred parallelepiped
-  test.each([
-    [`fs_BaFe2As2_reciprocal.json.gz`, `parallelepiped`],
-    [`fs_BaFe2As2_wigner.json.gz`, `wigner_seitz`],
-  ])(`IFermi %s is in the %s cell`, (name, cell) => {
-    const parsed = parse_fermi_file(read_maybe_gz(`src/site/fermi-surfaces/${name}`), name)
-    expect(is_fermi_surface_data(parsed) && parsed.reciprocal_cell).toBe(cell)
   })
 
   test.each([
@@ -718,9 +562,10 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
     expect(() => normalize_fermi_surface(json)).toThrow(message)
   })
 
+  const nested = { ...mock_band_grid, k_grid: [1, 1, 2] as const, energies: [[[[[3, 4]]]]] }
+
   test(`band grids: typed by identity, nested JSON energies flattened, bad shapes throw`, () => {
     expect(normalize_band_grid(mock_band_grid)).toBe(mock_band_grid)
-    const nested = { ...mock_band_grid, k_grid: [1, 1, 2] as const, energies: [[[[[3, 4]]]]] }
     const result = normalize_band_grid(nested)
     expect(result.energies[0][0].values).toBeInstanceOf(Float64Array)
     expect(Array.from(result.energies[0][0].values)).toEqual([3, 4])
@@ -732,7 +577,6 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
   // Named property grids share the energies' [spin][band] layout, JSON null (NaN) → NaN;
   // band_indices list every band once
   test(`band grid JSON properties and band_indices are validated against energies`, () => {
-    const nested = { ...mock_band_grid, k_grid: [1, 1, 2] as const, energies: [[[[[3, 4]]]]] }
     expect(normalize_band_grid({ ...nested, band_indices: [5] }).band_indices).toEqual([5])
     expect(() => normalize_band_grid({ ...nested, band_indices: [5, 6] })).toThrow(
       /band_indices lists 2 bands but energies hold 1/,
@@ -754,11 +598,8 @@ describe(`normalize_fermi_surface / normalize_band_grid`, () => {
   // value per vertex (null → NaN)
   test(`packs JSON mesh properties`, () => {
     const pack = (properties: (number | null)[] | Record<string, (number | null)[]>) => {
-      const iso = { ...json_surface.isosurfaces[0], properties }
-      const [{ properties: packed = {} }] = normalize_fermi_surface({
-        ...json_surface,
-        isosurfaces: [iso],
-      }).isosurfaces
+      const surface = normalize_fermi_surface(json_surface({ ...mesh, properties }))
+      const [{ properties: packed = {} }] = surface.isosurfaces
       return Object.fromEntries(
         Object.entries(packed).map(([name, vals]) => [name, [...vals]]),
       )

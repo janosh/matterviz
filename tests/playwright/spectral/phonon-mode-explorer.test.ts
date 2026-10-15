@@ -27,7 +27,8 @@ const download_extxyz = async (page: Page, explorer: Locator): Promise<string> =
   await export_toggle.click()
   const export_pane = explorer.locator(`.draggable-pane.export-pane.pane-open`)
   await expect(export_pane).toBeVisible()
-  await export_pane.locator(`label:has-text("End Frame") input[type="number"]`).fill(`1`)
+  // inclusive 1-based: frames 1-2
+  await export_pane.locator(`label:has-text("End Frame") input[type="number"]`).fill(`2`)
   const extxyz_download = page.waitForEvent(`download`)
   await export_pane.getByRole(`button`, { name: `Download extXYZ` }).click()
   const download = await extxyz_download
@@ -114,7 +115,8 @@ test.describe(`PhononModeExplorer`, () => {
     })
     const pause_button = explorer.getByRole(`button`, { name: `Pause` })
     await expect(pause_button).toBeVisible()
-    await expect.poll(() => step_input.inputValue()).not.toBe(`12`)
+    // the input shows slider index 12 as frame 13
+    await expect.poll(() => step_input.inputValue()).not.toBe(`13`)
     await pause_button.click()
 
     const cell_toggle = explorer.locator(`.cell-select .toggle-btn`)
@@ -152,9 +154,9 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(summary).toContainText(`q = [0.375, 0, 0.375]`)
     await expect(explorer.locator(`.effect-ring.selected`)).toHaveCount(1)
 
-    await step_input.fill(`0`)
+    await step_input.fill(`1`)
     await explorer.locator(`button[title^="Next step"]`).click()
-    await expect(step_input).toHaveValue(`1`)
+    await expect(step_input).toHaveValue(`2`)
 
     const selected_extxyz = await download_extxyz(page, explorer)
     const frame_zero = extxyz_frame_coordinates(selected_extxyz, 0)
@@ -197,7 +199,7 @@ test.describe(`PhononModeExplorer`, () => {
     await explorer.locator(`.trajectory`).hover()
     await explorer.getByRole(`button`, { name: `Pause` }).click()
     const step_input = explorer.locator(`.step-input`)
-    await step_input.fill(`46`)
+    await step_input.fill(`47`) // 1-based: index 46 of 48
     const visited_frames = [Number(await step_input.inputValue())]
     await explorer.getByRole(`button`, { name: `Play`, exact: true }).click()
     for (let tick = 0; tick < 64 && visited_frames.length < 3; tick++) {
@@ -205,7 +207,7 @@ test.describe(`PhononModeExplorer`, () => {
       const frame = Number(await step_input.inputValue())
       if (frame !== visited_frames.at(-1)) visited_frames.push(frame)
     }
-    expect(visited_frames).toEqual([46, 47, 0])
+    expect(visited_frames).toEqual([47, 48, 1])
     await explorer.getByRole(`button`, { name: `Pause` }).click()
   })
 
@@ -283,6 +285,23 @@ test.describe(`PhononModeExplorer`, () => {
     const restored_summary = page.getByTestId(`phonon-mode-summary`)
     await expect(restored_summary).toContainText(`q = [0, 0, 0]`)
     await expect(restored_summary).not.toContainText(`local-CO2.yaml`)
+  })
+
+  // Bundled fixtures have no URL, so a dragged chip carries only its name, which the file-drop
+  // handler used to fetch as a relative path and report as a failed load
+  test(`a fixture chip dropped on the explorer loads that fixture`, async ({ page }) => {
+    await open_explorer(page)
+    await page.locator(`#phonon-mode-explorer`).evaluate((root) => {
+      const name = `SiO2-gamma.yaml.gz`
+      const transfer = new DataTransfer()
+      transfer.setData(`application/json`, JSON.stringify({ name, url: name }))
+      transfer.setData(`text/plain`, name)
+      root.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
+    })
+    await expect.poll(() => url_params(page).file).toBe(`SiO2-gamma.yaml.gz`)
+    await expect(page.getByTestId(`phonon-fixture-detail`)).toContainText(
+      `Γ-only file with Born charges and Raman tensors`,
+    )
   })
 
   test(`persists the fixture and non-default explorer state in the URL`, async ({ page }) => {

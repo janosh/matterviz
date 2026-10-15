@@ -66,7 +66,7 @@ describe(`parse_decimal_token`, () => {
   // Fast path (integer mantissa < 2^53, |exp10| <= 22) and every fallback trigger must
   // agree with Number(normalize_scientific_notation(token)) bit for bit (Object.is, so
   // -0 and NaN are distinguished)
-  test.each([
+  const fast_path = [
     `0`,
     `-0`,
     `1`,
@@ -78,11 +78,10 @@ describe(`parse_decimal_token`, () => {
     `0.1`,
     `0.7`,
     `3.14159265358979`,
-    `0.12345678901E+02`,
-    `-1.5D+02`,
-    `1d5`,
-    `1D-05`,
-    `1.0D-04`,
+  ]
+  const fortran = [`0.12345678901E+02`, `-1.5D+02`, `1d5`, `1D-05`, `1.0D-04`]
+  // mantissas past 2^53, |exp10| past 22 and the ends of the float range
+  const fallback = [
     `9.42600000000E-125`,
     `123456789012345678`,
     `9007199254740993`,
@@ -93,21 +92,16 @@ describe(`parse_decimal_token`, () => {
     `0.0000000000000000000001`,
     `1.7976931348623157e308`,
     `5e-324`,
-    `abc`,
-    `1.2.3`,
-    `1e`,
-    `e5`,
-    `.e2`,
-    `1e+`,
-    `--1`,
-    `1-2`,
-    `−1.5`,
-    `1*^5`,
-  ])(`%s matches Number()`, (token) => {
-    const padded = `  ${token}\n`
-    const reference = Number(normalize_scientific_notation(token))
-    expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
-  })
+  ]
+  const invalid = [`abc`, `1.2.3`, `1e`, `e5`, `.e2`, `1e+`, `--1`, `1-2`, `−1.5`, `1*^5`]
+  test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
+    `%s matches Number()`,
+    (token) => {
+      const padded = `  ${token}\n`
+      const reference = Number(normalize_scientific_notation(token))
+      expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
+    },
+  )
 
   // Fortran drops the exponent letter for 3-digit exponents; two digits still need a letter
   test.each([
@@ -156,28 +150,29 @@ describe(`parse_chgcar`, () => {
         data: `1.0D+00 2.0D+00 3.0D+00\n  4.0D+00 5.0D+00\n  6.0D+00 7.0D+00 8.0D+00`,
       }),
     )
-    // Structure
-    expect(result?.structure.sites).toHaveLength(2)
-    expect(result?.structure.sites[0].species[0].element).toBe(`Si`)
-    expect(result?.structure.sites[1].abc).toEqual([0.5, 0.5, 0.5])
-    expect(result?.structure.lattice?.a).toBeCloseTo(5.43, 2)
-    // Volume metadata
-    expect(result?.volumes).toHaveLength(1)
-    expect(result?.volumes[0].dims).toEqual([2, 2, 2])
-    expect(result?.volumes[0].label).toBe(`charge density`)
-    expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
-    expect(result?.volumes[0].origin).toEqual([0, 0, 0])
-    expect(result?.volumes[0].periodic).toBe(true) // VASP grids are periodic
-    // Flat z-fastest storage
-    expect(result?.volumes[0].values).toHaveLength(8)
-    expect(result?.volumes[0].order).toBe(`z_fastest`)
-    // Volume normalization: values divided by cell volume
-    const cell_volume = result?.structure.lattice?.volume ?? 1
+    expect(result.structure.sites.map(({ species }) => species[0].element)).toEqual([
+      `Si`,
+      `Si`,
+    ])
+    expect(result.structure.sites[1].abc).toEqual([0.5, 0.5, 0.5])
+    expect(result.structure.lattice.a).toBeCloseTo(5.43, 2)
+    expect(result.volumes).toHaveLength(1)
+    expect(result.volumes[0]).toMatchObject({
+      dims: [2, 2, 2],
+      label: `charge density`,
+      origin: [0, 0, 0],
+      periodic: true, // VASP grids are periodic
+      order: `z_fastest`,
+    })
+    expect(result.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
+    expect(result.volumes[0].values).toHaveLength(8)
+    // values divided by cell volume
+    const cell_volume = result.structure.lattice.volume
     const position = grid_at(result)
     expect(position(0, 0, 0)).toBeCloseTo(1.0 / cell_volume, 5)
     expect(position(1, 1, 1)).toBeCloseTo(8.0 / cell_volume, 5)
     const scaled = (value: number) => expect.closeTo(value / cell_volume, 5)
-    expect(result?.volumes[0].data_range).toEqual({
+    expect(result.volumes[0].data_range).toEqual({
       min: scaled(1),
       max: scaled(8),
       abs_max: scaled(8),
@@ -187,10 +182,7 @@ describe(`parse_chgcar`, () => {
 
   test(`maps CHGCAR flattened data using x-fastest order`, () => {
     const result = parse_chgcar(
-      make_chgcar({
-        grid_dims: `2   3   2`,
-        data: `1 2 3 4 5 6 7 8 9 10 11 12`,
-      }),
+      make_chgcar({ grid_dims: `2   3   2`, data: `1 2 3 4 5 6 7 8 9 10 11 12` }),
     )
     // the file runs x fastest (value = 1 + ix + 2·iy + 6·iz), storage z fastest
     const cell_volume = result.structure.lattice.volume
@@ -293,27 +285,11 @@ describe(`parse_chgcar`, () => {
     // so the index-1 fallback (He) is exercised: FALLBACK_ELEMENTS[0] is H, which alone
     // would be indistinguishable from a blanket "unknown element becomes hydrogen".
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const vasp4 = [
-      `test`,
-      `   1.0`,
-      `     5.0  0.0  0.0`,
-      `     0.0  5.0  0.0`,
-      `     0.0  0.0  5.0`,
-      `   2 1`,
-      `Direct`,
-      `   0.0  0.0  0.0`,
-      `   0.5  0.5  0.5`,
-      `   0.25 0.25 0.25`,
-      ``,
-      `   2   2   2`,
-      `  1.0  2.0  3.0  4.0  5.0  6.0  7.0  8.0`,
-    ].join(`\n`)
+    const positions = [`0 0 0`, `0.5 0.5 0.5`, `0.25 0.25 0.25`]
+    const vasp4 = make_chgcar({ counts: `2 1`, positions }).replace(`   Si\n`, ``)
     const result = parse_chgcar(vasp4)
-    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
-      `H`,
-      `H`,
-      `He`,
-    ])
+    const elements = result.structure.sites.map((site) => site.species[0].element)
+    expect(elements).toEqual([`H`, `H`, `He`])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
   })
 
@@ -364,6 +340,9 @@ describe(`parse_chgcar`, () => {
     [`singular lattice`, make_chgcar({ lattice: [`5.0  0.0  0.0`, `0.0  0.0  0.0`, `0.0  0.0  5.0`], coord_mode: `Cartesian`, positions: [`0.0  0.0  0.0`, `1.0  0.0  1.0`] }), /singular/],
     // a truncated first block throws instead of zero-padding the grid
     [`truncated first block`, make_chgcar({ data: `1.0  2.0  3.0` }), /block 1 .*expected 8 values, got 3/],
+    // used to yield a site at NaN coordinates
+    [`short atom line`, make_chgcar({ counts: `1`, positions: [`0.0 0.5`] }), /CHGCAR atom 1 coordinates: expected 3 coordinates, got 2/],
+    [`non-numeric atom line`, make_chgcar({ counts: `1`, positions: [`0.0 0.5 abc`] }), /expected 3 finite coordinates, got \[0, 0.5, NaN\]/],
     // a charge file holds 1, 2 (collinear spin) or 4 (noncollinear) blocks
     [`three data blocks`, make_chgcar({ second_volume: `   2   2   2\n${`0.1 `.repeat(8)}\n\n   2   2   2\n${`0.2 `.repeat(8)}` }), /3 data blocks; expected 1 or 2 or 4/],
   ])(`throws for %s`, (_label, content, pattern) => {
@@ -405,17 +384,17 @@ describe(`parse_chgcar`, () => {
 
 // === Gaussian .cube Tests ===
 
-// Helper to build minimal .cube content
+const cubic_voxels = (voxel: number): Vec3[] => [
+  [voxel, 0, 0],
+  [0, voxel, 0],
+  [0, 0, voxel],
+]
 function make_cube({
   titles = [`title`, `comment`],
   n_atoms = 2,
   origin = [0, 0, 0] as Vec3,
   grid_n = [2, 2, 2] as Vec3,
-  voxels = [
-    [1.889726, 0, 0],
-    [0, 1.889726, 0],
-    [0, 0, 1.889726],
-  ] as Vec3[],
+  voxels = cubic_voxels(1.889726),
   atoms = [
     [1, 0, 0, 0, 0],
     [1, 0, 0, 0, 1.4],
@@ -505,13 +484,8 @@ describe(`parse_cube`, () => {
     [79, `Au`],
     [118, `Og`],
   ])(`maps atomic number %i to %s`, (z_num: number, expected: string) => {
-    const result = parse_cube(
-      make_cube({
-        n_atoms: 1,
-        atoms: [[z_num, 0, 0, 0, 0]],
-      }),
-    )
-    expect(result?.structure.sites[0].species[0].element).toBe(expected)
+    const result = parse_cube(make_cube({ n_atoms: 1, atoms: [[z_num, 0, 0, 0, 0]] }))
+    expect(result.structure.sites[0].species[0].element).toBe(expected)
   })
 
   // 119 is off the table and -1 is not an element at all; both used to render as hydrogen,
@@ -529,7 +503,7 @@ describe(`parse_cube`, () => {
     // oxfmt-ignore
     const result = parse_cube(make_cube({ n_atoms: 2, atoms: [[0, 0, 0, 0, 0], [6, 0, 1, 1, 1]] }))
     expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`C`])
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Z = 0 ghost/BSSE centre`))
+    expect(warn).toHaveBeenCalledWith(`.cube atom 1: skipping Z = 0 ghost/BSSE centre`)
     const clean = parse_cube(make_cube({ n_atoms: 1, atoms: [[6, 0, 1, 1, 1]] }))
     expect(result?.volumes).toEqual(clean?.volumes)
   })
@@ -539,11 +513,7 @@ describe(`parse_cube`, () => {
       make_cube({
         n_atoms: 1,
         grid_n: [-3, -3, -3],
-        voxels: [
-          [1, 0, 0],
-          [0, 1, 0],
-          [0, 0, 1],
-        ],
+        voxels: cubic_voxels(1),
         atoms: [[6, 0, 0, 0, 0]],
         data: Array(27).fill(`1.0`).join(`  `),
       }),
@@ -554,11 +524,7 @@ describe(`parse_cube`, () => {
 
   test(`handles orbital header (negative n_atoms)`, () => {
     const result = parse_cube(
-      make_cube({
-        n_atoms: -1,
-        atoms: [[1, 0, 0, 0, 0]],
-        orbital_header: `    1    1`,
-      }),
+      make_cube({ n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `    1    1` }),
     )
     expect(result?.structure.sites).toHaveLength(1)
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
@@ -596,20 +562,10 @@ describe(`parse_cube`, () => {
 
   // the grid origin is normalized into the structure frame either way
   test.each([
-    { origin: [0, 0, 0] as Vec3, periodic: undefined, pbc: true, label: `origin at 0` },
-    {
-      origin: [-5, -5, -5] as Vec3,
-      periodic: undefined,
-      pbc: false,
-      label: `molecular origin`,
-    },
-    {
-      origin: [1, 2, 3] as Vec3,
-      periodic: true,
-      pbc: true,
-      label: `explicit periodic option`,
-    },
-  ])(`$label sets pbc=$pbc`, ({ origin, periodic, pbc }) => {
+    [`origin at 0`, [0, 0, 0], undefined, true],
+    [`molecular origin`, [-5, -5, -5], undefined, false],
+    [`explicit periodic option`, [1, 2, 3], true, true],
+  ] as const)(`%s sets pbc=%s`, (_label, origin, periodic, pbc) => {
     const result = parse_cube(make_cube({ origin }), { periodic })
     expect(result?.structure.lattice?.pbc).toEqual([pbc, pbc, pbc])
     expect(result?.volumes[0].periodic).toBe(pbc)
@@ -617,20 +573,21 @@ describe(`parse_cube`, () => {
   })
 
   test(`skips malformed atom lines and parses valid ones`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    // the middle atom line has only 2 tokens
     const result = parse_cube(
       make_cube({
         n_atoms: 3,
         atoms: [
-          [6, 0, 0, 0, 0], // valid C atom
-          [0, 0], // malformed: only 2 tokens
-          [8, 0, 0, 0, 1.5], // valid O atom
+          [6, 0, 0, 0, 0],
+          [0, 0],
+          [8, 0, 0, 0, 1.5],
         ],
       }),
     )
-    // Only 2 valid atoms should be parsed (malformed one skipped)
-    expect(result?.structure.sites).toHaveLength(2)
-    expect(result?.structure.sites[0].species[0].element).toBe(`C`)
-    expect(result?.structure.sites[1].species[0].element).toBe(`O`)
+    expect(result.structure.sites.map((site) => site.species[0].element)).toEqual([`C`, `O`])
+    // atoms are numbered from 1
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\.cube atom 2: malformed line /))
   })
 })
 
@@ -646,11 +603,7 @@ describe(`parse_cube geometry`, () => {
       make_cube({
         origin,
         grid_n: [n_pts, n_pts, n_pts],
-        voxels: [
-          [voxel, 0, 0],
-          [0, voxel, 0],
-          [0, 0, voxel],
-        ],
+        voxels: cubic_voxels(voxel),
         n_atoms: 1,
         atoms: [[6, 0, 0, 0, 0]],
         data: Array(n_pts ** 3)
@@ -690,11 +643,7 @@ describe(`parse_cube geometry`, () => {
       make_cube({
         origin,
         grid_n: [n_pts, n_pts, n_pts],
-        voxels: [
-          [voxel, 0, 0],
-          [0, voxel, 0],
-          [0, 0, voxel],
-        ],
+        voxels: cubic_voxels(voxel),
         n_atoms: atoms.length,
         atoms,
         data: values.join(`  `),
@@ -810,13 +759,8 @@ describe(`site fixtures`, () => {
 // === Auto-detection Tests ===
 
 describe(`parse_volumetric_file`, () => {
-  // Minimal valid .cube content for detection tests
   const minimal_cube = make_cube()
-
-  // Minimal valid CHGCAR content for detection tests
   const minimal_chgcar = make_chgcar()
-
-  // === Filename-based detection ===
 
   // filename, content sniffing when the name says nothing, and compression suffix stripping
   test.each([
@@ -958,17 +902,7 @@ describe(`parse_volumetric_file`, () => {
     [`integer coordinates`, [`0 0 0`, `1 1 1`]],
     [`a trailing blank line`, [`0 0 0`, `1 1 1`, ``]],
   ])(`does not misidentify a plain POSCAR with %s as CHGCAR`, (_label, coords) => {
-    const poscar = [
-      `Si2`,
-      `   1.0`,
-      `     5.43  0.00  0.00`,
-      `     0.00  5.43  0.00`,
-      `     0.00  0.00  5.43`,
-      `   Si`,
-      `   2`,
-      `Direct`,
-      ...coords,
-    ].join(`\n`)
+    const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\nDirect\n${coords.join(`\n`)}`
     expect(parse_volumetric_file(poscar, `unknown.dat`)).toBeNull()
   })
 })

@@ -29,6 +29,12 @@ export type NumericBarSeries<Metadata = Record<string, unknown>> = Omit<
 
 const DEFAULT_CATEGORY_WIDTH = 0.75
 
+// Bar width in category-axis units: the series' scalar or per-bar width, else 0.5
+export const bar_width_at = (
+  { bar_width }: Pick<BarSeries, `bar_width`>,
+  bar_idx: number,
+): number => (Array.isArray(bar_width) ? bar_width[bar_idx] : bar_width) ?? 0.5
+
 // Map string x values (categories) to integer indices shared across all series.
 // Numeric-only input is passed through unchanged (same array identity).
 export function normalize_categorical<Metadata = Record<string, unknown>>(
@@ -43,11 +49,9 @@ export function normalize_categorical<Metadata = Record<string, unknown>>(
       ? [...explicit_categories]
       : [...new Set(series.flatMap((srs) => srs.x.map(String)))]
 
-  if (category_list.length === 0) {
-    // safe: when no categories were found, all x values are numeric
-    const internal_series = series as NumericBarSeries<Metadata>[]
-    return { category_list, internal_series }
-  }
+  // safe: when no categories were found, all x values are numeric
+  if (category_list.length === 0)
+    return { category_list, internal_series: series as NumericBarSeries<Metadata>[] }
 
   const category_indices = category_list.map((_, idx) => idx)
   const internal_series = series.map((srs) => {
@@ -169,10 +173,7 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
       if (series.render_mode === `line`) continue
       series.x.forEach((x_val, bar_idx) => {
         if (!Number.isFinite(x_val) || !Number.isFinite(series.y[bar_idx])) return
-        const bar_width = Array.isArray(series.bar_width)
-          ? (series.bar_width[bar_idx] ?? 0.5)
-          : (series.bar_width ?? 0.5)
-        const half_width = Math.abs(bar_width) / 2
+        const half_width = Math.abs(bar_width_at(series, bar_idx)) / 2
         const left_edge = x_val - half_width
         const right_edge = x_val + half_width
         if (Number.isFinite(left_edge) && (!is_log || left_edge > 0)) {
@@ -198,8 +199,6 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
     if (mode === `stacked`) {
       const stacked_totals = new Map<number, { pos: number; neg: number }>()
-
-      // Only include visible bar series (not lines) in stacking
       series_list
         .filter((srs) => srs.render_mode !== `line`)
         .forEach((srs) =>
@@ -329,8 +328,8 @@ export function compute_group_info<Metadata = Record<string, unknown>>(
   mode: BarMode,
 ): GroupInfo {
   if (mode !== `grouped`) return { bar_series_indices: [] }
-  const bar_series_indices = internal_series
-    .map((srs, idx) => ((srs.visible ?? true) && srs.render_mode !== `line` ? idx : -1))
-    .filter((idx) => idx >= 0)
+  const bar_series_indices = internal_series.flatMap((srs, idx) =>
+    (srs.visible ?? true) && srs.render_mode !== `line` ? [idx] : [],
+  )
   return { bar_series_indices }
 }

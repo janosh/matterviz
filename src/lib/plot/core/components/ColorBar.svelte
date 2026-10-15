@@ -2,7 +2,7 @@
   import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { format_num, format_tick_values } from '#lib/labels.js'
-  import { in_range, type Vec2 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math.js'
   import {
     color_ramp_scale,
     resolve_color_ramp,
@@ -10,7 +10,13 @@
   } from '#lib/plot/core/color-ramp.js'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'
-  import { generate_arcsinh_ticks, generate_log_ticks } from '#lib/plot/core/scales.js'
+  import {
+    generate_arcsinh_ticks,
+    generate_log_ticks,
+    integer_ticks,
+    is_integer_format,
+    tick_label_format,
+  } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import {
     DEFAULT_FONT_SPEC,
@@ -177,19 +183,18 @@
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
   const tick_metrics = $derived.by(() => {
-    let values = ticks
+    // Integer formats need integer positions; explicit tick arrays keep their values.
+    const values =
+      !Array.isArray(tick_labels) && is_integer_format(tick_format)
+        ? integer_ticks(ticks, tick_domain)
+        : ticks
+    const label_format = tick_label_format(values, tick_format)
     let labels: string[]
-    if (!tick_format) labels = format_tick_values(values)
-    else if (tick_format.startsWith(`%`)) {
-      const format_date = timeFormat(tick_format)
+    if (!label_format) labels = format_tick_values(values)
+    else if (label_format.startsWith(`%`)) {
+      const format_date = timeFormat(label_format)
       labels = values.map((value) => format_date(new Date(value)))
-    } else {
-      // Integer formats need integer positions; explicit tick arrays keep their values.
-      if (!Array.isArray(tick_labels) && tick_format.endsWith(`d`)) {
-        values = ticks.map(Math.round).filter((value) => in_range(value, tick_domain))
-      }
-      labels = values.map((value) => format_num(value, tick_format))
-    }
+    } else labels = values.map((value) => format_num(value, label_format))
     const seen = new Set<string>()
     return values.flatMap((value, idx) => {
       const label = labels[idx]

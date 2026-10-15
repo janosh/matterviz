@@ -1,6 +1,6 @@
 // mmCIF (PDBx/mmCIF): macromolecular CIF with Cartesian atom sites (`_atom_site.Cartn_x`),
-// shown as deposited (first model, conformer A, no symop expansion or wrapping), which is
-// why it has its own atom-site loop reader rather than parse_cif's.
+// shown as deposited (first model, first conformer per atom, no symop expansion or
+// wrapping), which is why it has its own atom-site loop reader rather than parse_cif's.
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
@@ -13,6 +13,7 @@ import {
   is_cif_loop_header,
   is_cif_unset,
   iter_cif_loops,
+  keep_first_alt_locs,
   leading_letters,
   normalize_cif_names,
   parsed_result,
@@ -43,6 +44,10 @@ const ATOM_SITE_FIELDS: Record<string, string> = {
   occupancy: `occupancy`,
   label_alt_id: `alt_id`,
   label_comp_id: `residue`,
+  label_seq_id: `label_seq_id`,
+  auth_seq_id: `auth_seq_id`,
+  pdbx_pdb_ins_code: `ins_code`,
+  label_asym_id: `asym_id`,
   auth_asym_id: `chain`,
   b_iso_or_equiv: `b_factor`,
   pdbx_pdb_model_num: `model`,
@@ -149,13 +154,32 @@ export const parse_mmcif = (content: string): AnyStructure => {
     )
   }
 
-  // Alternate conformers would render as overlapping ghost atoms
+  // Read a row's value for a field the loop may not declare at all
+  const text_at = (row: string[], field: string): string | undefined =>
+    indices[field] === undefined ? undefined : row[indices[field]]
   const alt_col = indices.alt_id
   const rows =
     alt_col === undefined
       ? model_rows
-      : model_rows.filter(
-          (row) => is_cif_unset(row[alt_col]) || row[alt_col].toUpperCase() === `A`,
+      : keep_first_alt_locs(
+          model_rows,
+          (row) => (is_cif_unset(row[alt_col]) ? undefined : row[alt_col]),
+          // label_seq_id is `.` for waters/ligands and residue names differ under
+          // microheterogeneity, so a residue is keyed on author numbering, with
+          // label_seq_id only standing in when auth_seq_id is absent
+          (row) => {
+            const auth_seq = text_at(row, `auth_seq_id`)
+            const seq = is_cif_unset(auth_seq) ? text_at(row, `label_seq_id`) : auth_seq
+            return [
+              text_at(row, `chain`),
+              text_at(row, `asym_id`),
+              seq,
+              text_at(row, `ins_code`),
+            ]
+              .map((part) => part ?? ``)
+              .join(`|`)
+          },
+          (row) => text_at(row, `label`) ?? ``,
         )
   if (rows.length < model_rows.length) {
     console.warn(
@@ -192,9 +216,6 @@ export const parse_mmcif = (content: string): AnyStructure => {
   )
   // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact
 
-  // Read a row's value for a field the loop may not declare at all
-  const text_at = (row: string[], field: string): string | undefined =>
-    indices[field] === undefined ? undefined : row[indices[field]]
   const number_at = (row: string[], field: string): number | null =>
     parse_cif_uncertain_number(text_at(row, field) ?? ``)
 
@@ -217,22 +238,15 @@ export const parse_mmcif = (content: string): AnyStructure => {
     const b_factor = number_at(row, `b_factor`)
     const residue = text_at(row, `residue`)
     const chain = text_at(row, `chain`)
+    // Refinement occupancy is model metadata, not compositional disorder (see parse_pdb)
     const properties: Record<string, unknown> = {
       ...(!is_cif_unset(residue) && { residue }),
       ...(!is_cif_unset(chain) && { chain }),
+      ...(occupancy !== null && { occupancy }),
       ...(b_factor !== null && { b_factor }),
     }
 
-    sites.push(
-      make_site(
-        element,
-        to_frac(xyz),
-        xyz,
-        `${element}${atom_idx + 1}`,
-        properties,
-        occupancy ?? 1,
-      ),
-    )
+    sites.push(make_site(element, to_frac(xyz), xyz, `${element}${atom_idx + 1}`, properties))
   }
 
   return parsed_result(sites, [], lattice_matrix)

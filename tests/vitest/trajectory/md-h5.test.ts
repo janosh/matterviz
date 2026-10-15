@@ -329,6 +329,10 @@ describe(`MD HDF5`, () => {
     })
     expect(repeated.atomic_numbers).toEqual(Uint8Array.of(32, 14))
     expect(repeated.masses).toEqual(Float64Array.of(72.6308, 28.085))
+    // 1-based frame numbers: index -1 is frame 0, which no committed prefix holds
+    expect(() => opened.lazy.read_atoms?.({ frame_idx: -1, start: 0, count: 1 })).toThrow(
+      `frame 0 is outside the 3 committed frames`,
+    )
     if (!run.collect_positions) throw new Error(`missing collect_positions`)
     const stream = await run.collect_positions({
       start_frame: 1,

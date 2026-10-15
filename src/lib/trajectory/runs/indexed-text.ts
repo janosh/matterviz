@@ -4,6 +4,7 @@
 // ASE); frames are decoded on read and cached by the session, never all at once. Per-frame
 // scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
 // responsive.
+import { display_idx } from '#lib/labels.js'
 import { to_error, yield_turn } from '#lib/utils.js'
 import { encode_frame } from '../frame'
 import { TextLines } from '../helpers'
@@ -32,7 +33,7 @@ const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames =>
     build_xyz_frame(
       lines,
       frames[frame_idx],
-      { frame_label: `indexed frame ${frame_idx}`, default_step: frame_idx },
+      { frame_label: `indexed frame ${display_idx(frame_idx)}`, default_step: frame_idx },
       collector,
     )
   // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
@@ -109,7 +110,7 @@ export const indexed_text_run = (
             // Exactly an in-memory run's row; plot-row frames skip positions and sites
             batch.push(frame_property_row(source.plot_row_frame(frame_idx), frame_idx))
           } catch (error) {
-            collector.warn(`Skipping plot data of frame ${frame_idx}`, error)
+            collector.warn(`Skipping plot data of frame ${display_idx(frame_idx)}`, error)
           }
           frame_idx++
         } while (frame_idx < end && performance.now() < deadline)
@@ -117,7 +118,7 @@ export const indexed_text_run = (
           properties.push(batch)
         } catch (error) {
           // push() committed the rows and notified every subscriber before rethrowing.
-          collector.warn(`Plot data subscriber failed after frame ${frame_idx - 1}`, error)
+          collector.warn(`Plot data subscriber failed after frame ${frame_idx}`, error)
         }
       }
     } finally {

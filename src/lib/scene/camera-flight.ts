@@ -1,5 +1,5 @@
 // Serializable camera paths shared by static structures and time-dependent trajectories.
-import { clamp, lerp, type Vec2, type Vec3 } from '#lib/math.js'
+import { clamp, lerp, to_degrees, type Vec2, type Vec3 } from '#lib/math.js'
 import type { OrthographicCamera } from 'three/webgpu'
 import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three/webgpu'
 import { read_pan_offset, set_pan_offset } from './pan'
@@ -144,7 +144,7 @@ export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlig
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
   const up = new Vector3(0, 1, 0)
-  const elevation_deg = (Math.asin(offset.dot(up) / offset.length()) * 180) / Math.PI
+  const elevation_deg = to_degrees(Math.asin(offset.dot(up) / offset.length()))
   if (Math.abs(elevation_deg) >= 89)
     throw new RangeError(`Orbit needs |elevation| < 89°, got ${elevation_deg}°`)
   // 45° steps suffice: smooth flights orbit exactly (see create_camera_flight_sampler)

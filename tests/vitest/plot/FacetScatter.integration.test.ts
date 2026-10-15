@@ -154,18 +154,10 @@ describe(`FacetGrid + Cartesian plots`, () => {
         expect(ranges(`y`)).toEqual(keys.map(() => context_for(keys[0]).ranges.y))
       })
 
-      expect(keys.map((key) => panel_for(key).querySelector(`.x-axis`) !== null)).toEqual([
-        false,
-        false,
-        true,
-        true,
-      ])
-      expect(keys.map((key) => panel_for(key).querySelector(`.y-axis`) !== null)).toEqual([
-        true,
-        false,
-        true,
-        false,
-      ])
+      const has_axis = (axis: `x` | `y`) =>
+        keys.map((key) => panel_for(key).querySelector(`.${axis}-axis`) !== null)
+      expect(has_axis(`x`)).toEqual([false, false, true, true])
+      expect(has_axis(`y`)).toEqual([true, false, true, false])
 
       for (const key of keys) {
         const plot = panel_for(key).querySelector<HTMLElement>(plot_case.root_selector)
@@ -178,16 +170,13 @@ describe(`FacetGrid + Cartesian plots`, () => {
         trigger_resize_observer(plot)
       }
       await tick()
-      const expected_offsets = [
-        { x: 90, y: 20 },
-        { x: 0, y: 20 },
-        { x: 90, y: 0 },
-        { x: 0, y: 0 },
-      ]
       const clips = keys.map((key) => clip_rect(panel_for(key)))
-      expect(clips.map(({ x: coord_x, y: coord_y }) => ({ x: coord_x, y: coord_y }))).toEqual(
-        expected_offsets,
-      )
+      expect(clips.map((clip) => `${clip.x},${clip.y}`)).toEqual([
+        `90,20`,
+        `0,20`,
+        `90,0`,
+        `0,0`,
+      ])
       const core_sizes = keys.map((key) => {
         const { rect, padding } = context_for(key)
         return {
@@ -216,30 +205,24 @@ describe(`FacetGrid + Cartesian plots`, () => {
       data: { series: [{ x: [], y: values }] },
     })
     const nine = Array.from({ length: 9 }, (_, value_idx) => value_idx)
-    const clustered_panels = [
-      panel(
-        `low`,
-        nine.map((idx) => (idx + 1) / 10),
-      ),
-      panel(
-        `high`,
-        nine.map((idx) => 90 + idx),
-      ),
-    ]
     const { context_for } = await mount_facet_plot(
-      {
-        ...histogram_case,
-        extra_props: { ...histogram_case.extra_props, bins: 10 },
-      },
-      clustered_panels,
+      { ...histogram_case, extra_props: { ...histogram_case.extra_props, bins: 10 } },
+      [
+        panel(
+          `low`,
+          nine.map((idx) => (idx + 1) / 10),
+        ),
+        panel(
+          `high`,
+          nine.map((idx) => 90 + idx),
+        ),
+      ],
     )
 
     await vi.waitFor(() => {
-      const low_ranges = context_for(`low`).ranges
-      const high_ranges = context_for(`high`).ranges
-      expect(low_ranges.x).toEqual(high_ranges.x)
-      expect(low_ranges.y).toEqual(high_ranges.y)
-      expect(low_ranges.y?.[1]).toBeGreaterThanOrEqual(9)
+      const { ranges } = context_for(`low`)
+      expect(ranges).toEqual(context_for(`high`).ranges)
+      expect(ranges.y?.[1]).toBeGreaterThanOrEqual(9)
     })
   })
 
@@ -258,7 +241,9 @@ describe(`FacetGrid + Cartesian plots`, () => {
       svg.dispatchEvent(
         new MouseEvent(`mousedown`, { bubbles: true, button: 0, clientX: 180, clientY: 80 }),
       )
-      window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 600, clientY: 420 }))
+      window.dispatchEvent(
+        new MouseEvent(`mousemove`, { buttons: 1, clientX: 600, clientY: 420 }),
+      )
       window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
 
       await vi.waitFor(() => {

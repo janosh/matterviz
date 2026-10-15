@@ -1299,7 +1299,7 @@ describe(`trajectory_from_frames validation`, () => {
       N_ATOMS - 1,
     )
     await expect(run.collect_positions?.()).rejects.toThrow(
-      `Atom count changed at frame 1: expected ${N_ATOMS} atoms, got ${N_ATOMS - 1}`,
+      `Atom count changed at frame 2: expected ${N_ATOMS} atoms, got ${N_ATOMS - 1}`,
     )
   })
 

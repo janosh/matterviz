@@ -20,6 +20,7 @@
     weight_pdf_partials,
   } from './index'
   import type { PdfPattern, TotalPdfPattern } from './index'
+  import { bind_error_report } from './error-report.svelte'
 
   const RADIATIONS = [
     [`xray`, `X-ray`],
@@ -75,16 +76,16 @@
         const partial_rdfs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         return { struct, label, partial_rdfs, rho_0 }
       } catch (exc) {
-        return { failure: to_error(exc).message }
+        return { failure: `${label}: ${to_error(exc).message}` }
       }
     }),
   )
   const computed = $derived.by(() => {
     const totals: { label: string; total: TotalPdfPattern }[] = []
-    let failure: string | undefined
+    const failures: string[] = []
     for (const entry of partials) {
       if (!entry.partial_rdfs) {
-        failure = entry.failure
+        failures.push(entry.failure)
         continue
       }
       try {
@@ -92,15 +93,17 @@
         const total = weight_pdf_partials(struct, partial_rdfs, { radiation, rho_0 })
         totals.push({ label, total })
       } catch (exc) {
-        failure = to_error(exc).message
+        failures.push(`${entry.label}: ${to_error(exc).message}`)
       }
     }
-    return { totals, failure }
+    return { totals, failures }
   })
-  // ...so the hop from derived value to bindable prop happens here, which is what $effect is for
-  $effect(() => {
-    error_msg = computed.failure
-  })
+  // ...so the hop from derived value to bindable prop happens in an $effect, joined with
+  // (never replacing) whatever message the parent put there
+  const error_report = bind_error_report(
+    { get: () => error_msg, set: (msg) => (error_msg = msg) },
+    () => computed.failures,
+  )
 
   const ref_lines = $derived<RefLine[]>([rdf_baseline(quantity), ...(rest.ref_lines ?? [])])
 
@@ -198,7 +201,11 @@
     {/if}
   {/if}
   <ViewerNotices>
-    <StatusMessage bind:message={error_msg} type="error" dismissible />
+    <StatusMessage
+      bind:message={() => error_msg, (msg) => !msg && error_report.dismiss()}
+      type="error"
+      dismissible
+    />
   </ViewerNotices>
 </div>
 

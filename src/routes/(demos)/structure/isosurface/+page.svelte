@@ -2,12 +2,11 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
-  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { format_num } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { file_param, replace_url } from '#site/state.svelte.js'
+  import { file_param, latest_load, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
@@ -80,7 +79,11 @@
     replace_url(`${globalThis.location.pathname}?${params.toString()}`)
   }
 
-  async function load_file(name: string, url: string) {
+  // A large file still parsing must not land on top of the one picked after it. Resolves to
+  // whether this load is still current.
+  const loads = latest_load()
+  async function load_file(name: string, url: string): Promise<boolean> {
+    const is_current = loads.start()
     active_file = name
     loading = true
     error_msg = undefined
@@ -93,16 +96,18 @@
       const parse_start = performance.now()
       const opened = await open_material(url)
       try {
+        if (!is_current()) return false
         apply_material(opened)
       } finally {
         opened.dispose()
       }
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (error) {
-      error_msg = to_error(error).message
+      if (is_current()) error_msg = to_error(error).message
     } finally {
-      loading = false
+      if (is_current()) loading = false
     }
+    return is_current()
   }
 
   // The active-file guard makes the initial pre-load effect a no-op.
@@ -122,9 +127,9 @@
       const isovalue_param = page.url.searchParams.get(`isovalue`)
       const show_neg_param = page.url.searchParams.get(`show_negative`)
 
-      load_file(target.name, target.url).then(() => {
+      void load_file(target.name, target.url).then((is_current) => {
         const [layer] = isosurface_settings.layers
-        if (!layer) return
+        if (!is_current || !layer) return
         const parsed = Number(isovalue_param)
         if (isovalue_param && !isNaN(parsed)) layer.isovalue = parsed
         if (show_neg_param) layer.show_negative = show_neg_param === `true`
@@ -170,6 +175,7 @@
   bind:dragover={dragover_hint}
   show_controls="always"
   on_file_load={({ source_filename }) => {
+    loads.cancel() // a dropped file supersedes any pick still loading
     active_file = source_filename
     parse_time_ms = undefined
   }}

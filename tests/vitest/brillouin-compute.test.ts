@@ -3,7 +3,6 @@ import {
   compute_convex_hull,
   compute_ibz_clipping_planes,
   compute_irreducible_bz,
-  extract_point_group_from_operations,
   find_ibz_reference_direction,
   fractional_to_cartesian_rotation,
   generate_bz_vertices,
@@ -22,13 +21,15 @@ import {
   polyhedron_centroid,
   polyhedron_geometry,
 } from '#lib/brillouin/geometry.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
+import { point_group_rotations } from '#lib/symmetry/analyze.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import {
   col_major,
   cubic_matrix,
+  fcc_primitive_matrix,
   IDENTITY_MATRIX3 as IDENTITY_MAT,
   load_json,
 } from './test-fixtures'
@@ -45,27 +46,28 @@ const reference_data = load_json<Record<string, BzReference>>(
   `${import.meta.dirname}/bz_reference_data.json.gz`,
 )
 
-// Common test constants
+const diag = (x_val: number, y_val: number, z_val: number) =>
+  math.vec9_to_mat3x3([x_val, 0, 0, 0, y_val, 0, 0, 0, z_val])
+// corners of the cube [-half, half]³
+const cube_corners = (half: number): Vec3[] =>
+  [-half, half].flatMap((x_val) =>
+    [-half, half].flatMap((y_val) =>
+      [-half, half].map((z_val): Vec3 => [x_val, y_val, z_val]),
+    ),
+  )
+
 const CUBIC_5 = cubic_matrix(5)
-const INVERSION_MAT: Matrix3x3 = [
-  [-1, 0, 0],
-  [0, -1, 0],
-  [0, 0, -1],
+const INVERSION_MAT = diag(-1, -1, -1)
+const UNIT_SQUARE: Vec3[] = [
+  [0, 0, 0],
+  [1, 0, 0],
+  [1, 1, 0],
+  [0, 1, 0],
 ]
+// Hexagonal 3-fold rotation and its square in fractional coords (non-orthogonal: W^T ≠ W^{-1})
+const C3_HEX = math.vec9_to_mat3x3([0, -1, 0, 1, -1, 0, 0, 0, 1])
+const C3_HEX_SQ = math.vec9_to_mat3x3([-1, 1, 0, -1, 0, 0, 0, 0, 1])
 
-// Hexagonal 3-fold rotation in fractional coords (non-orthogonal: W^T ≠ W^{-1})
-const C3_HEX: Matrix3x3 = [
-  [0, -1, 0],
-  [1, -1, 0],
-  [0, 0, 1],
-]
-const C3_HEX_SQ: Matrix3x3 = [
-  [-1, 1, 0],
-  [-1, 0, 0],
-  [0, 0, 1],
-] // C3²
-
-// Helpers
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
   vertices.some((vertex) => vertex.every((coord, idx) => Math.abs(coord - target[idx]) < tol))
 
@@ -108,11 +110,7 @@ const HEX_C = 5
 // shell misses one ± pair of the zone's side faces, which used to inflate the volume by 3.5%.
 const REAL_LATTICES: Record<string, Matrix3x3> = {
   cubic: cubic_matrix(A_CUBIC),
-  fcc: [
-    [0, A_CUBIC / 2, A_CUBIC / 2],
-    [A_CUBIC / 2, 0, A_CUBIC / 2],
-    [A_CUBIC / 2, A_CUBIC / 2, 0],
-  ],
+  fcc: fcc_primitive_matrix(A_CUBIC),
   bcc: [
     [-A_CUBIC / 2, A_CUBIC / 2, A_CUBIC / 2],
     [A_CUBIC / 2, -A_CUBIC / 2, A_CUBIC / 2],
@@ -122,18 +120,10 @@ const REAL_LATTICES: Record<string, Matrix3x3> = {
   tetragonal: lattice_from_params(4, 4, 6, 90, 90, 90),
   orthorhombic: lattice_from_params(4, 5, 6, 90, 90, 90),
   triclinic: lattice_from_params(4, 5, 6, 80, 85, 70),
-  non_reduced: [
-    [4, 0, 0],
-    [3.5, 1, 0],
-    [0, 0, 4],
-  ],
+  non_reduced: math.vec9_to_mat3x3([4, 0, 0, 3.5, 1, 0, 0, 0, 4]),
   // simple cubic lattice in a [[1,0,0],[10,1,0],[0,0,1]] supercell setting: its reciprocal
   // basis is a sliver whose ±1 Bragg shell bounds a cell ~100× too large along one axis
-  sheared_cubic: [
-    [A_CUBIC, 0, 0],
-    [10 * A_CUBIC, A_CUBIC, 0],
-    [0, 0, A_CUBIC],
-  ],
+  sheared_cubic: math.vec9_to_mat3x3([A_CUBIC, 0, 0, 10 * A_CUBIC, A_CUBIC, 0, 0, 0, A_CUBIC]),
 }
 
 type Polygon = { normal: Vec3; dist: number; vertex_ids: Set<number> }
@@ -280,6 +270,7 @@ describe(`compute_brillouin_zone`, () => {
     const pi_a = Math.PI / A_CUBIC
     const hex_k = (4 * Math.PI) / (3 * HEX_A) // |ΓK| of the hexagonal zone
     const pi_c = Math.PI / HEX_C
+    const hex_m = [Math.PI / HEX_A, Math.PI / (HEX_A * Math.sqrt(3))] // in-plane part of M
 
     test.each([
       // cubic zone is the cube [−π/a, π/a]³: R corner, X face centre, M edge midpoint
@@ -302,15 +293,9 @@ describe(`compute_brillouin_zone`, () => {
       // side rectangle, A = b₃/2 centres a hexagonal cap, L = M + b₃/2 on a cap edge
       [`hexagonal`, `H`, `vertex`, [hex_k / 2, (hex_k * Math.sqrt(3)) / 2, pi_c], 3],
       [`hexagonal`, `K`, `edge`, [hex_k / 2, (hex_k * Math.sqrt(3)) / 2, 0], null],
-      [`hexagonal`, `M`, `face`, [Math.PI / HEX_A, Math.PI / (HEX_A * Math.sqrt(3)), 0], 4],
+      [`hexagonal`, `M`, `face`, [...hex_m, 0], 4],
       [`hexagonal`, `A`, `face`, [0, 0, pi_c], 6],
-      [
-        `hexagonal`,
-        `L`,
-        `edge`,
-        [Math.PI / HEX_A, Math.PI / (HEX_A * Math.sqrt(3)), pi_c],
-        null,
-      ],
+      [`hexagonal`, `L`, `edge`, [...hex_m, pi_c], null],
     ] as [string, string, `vertex` | `face` | `edge`, Vec3, number | null][])(
       `%s %s is a %s point`,
       (name, _label, kind, point, count) => {
@@ -340,23 +325,10 @@ describe(`compute_brillouin_zone`, () => {
 
   // A coplanar real lattice has no reciprocal lattice; the error must surface, not NaN geometry
   test(`singular real or reciprocal lattice throws`, () => {
-    const coplanar: Matrix3x3 = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [1, 1, 0],
-    ]
+    const coplanar = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 1, 1, 0])
     expect(() => recip_2pi(coplanar)).toThrow(/singular/)
     expect(() => compute_brillouin_zone(coplanar, 1)).toThrow(/singular/)
-    expect(() =>
-      compute_brillouin_zone(
-        [
-          [1, 0, 0],
-          [0, NaN, 0],
-          [0, 0, 1],
-        ],
-        1,
-      ),
-    ).toThrow(/non-finite/)
+    expect(() => compute_brillouin_zone(diag(1, NaN, 1), 1)).toThrow(/non-finite/)
   })
 })
 
@@ -382,60 +354,18 @@ describe(`compute_convex_hull`, () => {
   // define a solid slipped through: 4 coincident points came back as a silently empty hull,
   // and 4 collinear ones reached three.js and surfaced as a bare
   // "Cannot read properties of undefined (reading 'point')". An IBZ clip can produce either.
+  // oxfmt-ignore
   test.each([
-    [
-      `coincident`,
-      [
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-      ],
-      /≥4 distinct vertices/,
-    ],
-    [
-      `collinear`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [2, 0, 0],
-        [3, 0, 0],
-      ],
-      /vertices spanning 3D/,
-    ],
-    [
-      `too few`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-      ],
-      /Need ≥4 vertices/,
-    ],
-  ] as [string, Vec3[], RegExp][])(
-    `throws a descriptive error for %s vertices`,
-    (_case, vertices, message) => {
-      expect(() => compute_convex_hull(vertices)).toThrow(message)
-    },
-  )
+    [`coincident`, [[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]], /≥4 distinct vertices/],
+    [`collinear`, [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]], /vertices spanning 3D/],
+    [`too few`, [[0, 0, 0], [1, 0, 0], [0, 1, 0]], /Need ≥4 vertices/],
+  ] as [string, Vec3[], RegExp][])(`throws a descriptive error for %s vertices`, (_, verts, msg) =>
+    expect(() => compute_convex_hull(verts)).toThrow(msg))
 
   // a flat but genuinely 2D set still builds, as the IBZ code relies on
-  test(`still accepts a coplanar quad`, () => {
-    const hull = compute_convex_hull([
-      [0, 0, 0],
-      [1, 0, 0],
-      [1, 1, 0],
-      [0, 1, 0],
-    ])
-    expect(hull.vertices).toHaveLength(4)
-  })
+  test(`still accepts a coplanar quad`, () =>
+    expect(compute_convex_hull(UNIT_SQUARE).vertices).toHaveLength(4))
 
-  // All 8 corners of the [-1, 1]³ cube
-  const cube_verts = [-1, 1].flatMap((coord_z) =>
-    [-1, 1].flatMap((coord_y) =>
-      [-1, 1].map((coord_x) => [coord_x, coord_y, coord_z] as Vec3),
-    ),
-  )
   const tetrahedron_verts: Vec3[] = [
     [0, 0, 0],
     [1, 0, 0],
@@ -445,7 +375,7 @@ describe(`compute_convex_hull`, () => {
 
   test.each([
     [`tetrahedron`, tetrahedron_verts, 4, 4, 6],
-    [`cube`, cube_verts, 8, 12, 12],
+    [`cube`, cube_corners(1), 8, 12, 12],
   ] as [string, Vec3[], number, number, number][])(
     `%s: %d vertices, %d faces, %d edges`,
     (_, vertices, v_count, f_count, e_count) => {
@@ -468,19 +398,37 @@ describe(`BZ order`, () => {
   // Higher orders return the convex hull of zones 1..n. For the simple cubic lattice the union
   // of zones 1+2 is the rhombic dodecahedron |kx|+|ky| ≤ 2π/a (& perms): 14 vertices, 24 edges,
   // volume exactly 2·V₁. The union of zones 1..3 is not convex, so its hull overshoots 3·V₁
-  // (measured 4·V₁); only the volume is pinned since coplanar points on the hull's faces make
-  // its vertex/edge counts a triangulation detail.
+  // (measured 4·V₁, with 24 corners and 36 edges).
   test.each([
     [2, 2, 14, 24],
-    [3, 4, null, null],
+    [3, 4, 24, 36],
   ])(`cubic order %d: hull volume = %d·V₁`, (order, ratio, n_verts, n_edges) => {
     const k_lattice = recip_2pi(CUBIC_5)
     const basis_z = compute_brillouin_zone(k_lattice, order as 2 | 3)
     const vol_1 = (2 * Math.PI) ** 3 / 125
     expect(Math.abs(basis_z.volume - ratio * vol_1)).toBeLessThan(1e-12 * vol_1)
     expect(basis_z.order).toBe(order)
-    if (n_verts !== null) expect(basis_z.vertices).toHaveLength(n_verts)
-    if (n_edges !== null) expect(basis_z.edges).toHaveLength(n_edges)
+    expect(basis_z.vertices).toHaveLength(n_verts)
+    expect(basis_z.edges).toHaveLength(n_edges)
+  })
+
+  // The reciprocal lattice is centrosymmetric, so is every zone: the vertex mean sits on Γ to
+  // round-off (measured ≤ 1e-16·R; 4 eps·R = 8.9e-16·R bounds a mean of eps·R-accurate
+  // vertices). Points inside hull faces or edges used to survive for only one of ±v (fcc order
+  // 2: centroid 0.29 1/A off Γ, which the scene's rotation target then orbited).
+  test.each(
+    [`fcc`, `hexagonal`, `triclinic`].flatMap((name) =>
+      [1, 2, 3].map((order) => [name, order]),
+    ),
+  )(`%s order %d zone is centred on Γ`, (name, order) => {
+    const { vertices } = compute_brillouin_zone(
+      recip_2pi(REAL_LATTICES[name]),
+      order as 1 | 2 | 3,
+    )
+    const radius = Math.max(...vertices.map((vertex) => Math.hypot(...vertex)))
+    expect(Math.hypot(...polyhedron_centroid(vertices))).toBeLessThan(
+      4 * Number.EPSILON * radius,
+    )
   })
 
   test(`order >3 clamps to 3`, () => {
@@ -490,9 +438,10 @@ describe(`BZ order`, () => {
 
 // Fractional rotation matrices (row-major) for mock moyo operations
 const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1])
-const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1])
+const ROT_Z_180 = diag(-1, -1, 1)
 const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1])
-const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1])
+const MIRROR_Z = diag(1, 1, -1)
+const C4_OPS = [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270]
 
 // moyo-wasm serializes nalgebra Matrix3 rotations as flat 9-arrays in COLUMN-major order
 // (number[] substitutes for Float64Array in tests)
@@ -502,27 +451,25 @@ const make_op = (rot: Matrix3x3, translation: Vec3 = [0, 0, 0]) =>
     translation,
   }) as unknown as MoyoDataset[`operations`][number]
 
-describe(`extract_point_group_from_operations`, () => {
+describe(`point_group_rotations`, () => {
   test(`deduplicates same rotation with different translations`, () => {
     const ops = [make_op(IDENTITY_MAT), make_op(IDENTITY_MAT, [0.5, 0, 0])]
-    expect(extract_point_group_from_operations(ops)).toHaveLength(1)
+    expect(point_group_rotations(ops)).toHaveLength(1)
   })
 
   test.each([
-    [`C4 group`, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 4],
+    [`C4 group`, C4_OPS, 4],
     [`with inversion/mirror`, [IDENTITY_MAT, INVERSION_MAT, MIRROR_Z], 3],
     [`empty input`, [], 0],
   ] as [string, Matrix3x3[], number][])(`%s → %d unique rotations`, (_, rots, expected) => {
-    expect(extract_point_group_from_operations(rots.map((rot) => make_op(rot)))).toHaveLength(
-      expected,
-    )
+    expect(point_group_rotations(rots.map((rot) => make_op(rot)))).toHaveLength(expected)
   })
 
   // Regression: moyo flat arrays are column-major, so a row-major read returns Wᵀ instead
   // of W. Non-symmetric Ws (C4z, hex C3) catch the layout mix-up.
   test(`decodes column-major moyo rotations (round-trip)`, () => {
     for (const rot of [IDENTITY_MAT, ROT_Z_90, C3_HEX, C3_HEX_SQ]) {
-      expect(extract_point_group_from_operations([make_op(rot)])).toEqual([rot])
+      expect(point_group_rotations([make_op(rot)])).toEqual([rot])
     }
   })
 })
@@ -532,7 +479,7 @@ describe(`compute_ibz_clipping_planes`, () => {
   test.each([
     [`identity only`, [IDENTITY_MAT], 0],
     [`C4z generator`, [IDENTITY_MAT, ROT_Z_90], 1],
-    [`C4 group`, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 3],
+    [`C4 group`, C4_OPS, 3],
   ] as [string, Matrix3x3[], number][])(
     `%s → %d planes through the origin`,
     (_label, ops, n_planes) => {
@@ -603,22 +550,9 @@ const group_closure = (generators: Matrix3x3[]): Matrix3x3[] => {
 // Hexagonal point group D6h in fractional coordinates of a₁ = (a,0,0), a₂ = a(−½, √3/2, 0):
 // the 60° rotation sends a₁ → a₁+a₂ and a₂ → −a₁ (columns of W), C2 about a₁ sends
 // a₂ → −a₁−a₂ and a₃ → −a₃, plus the horizontal mirror.
-const C6_HEX: Matrix3x3 = [
-  [1, -1, 0],
-  [1, 0, 0],
-  [0, 0, 1],
-]
-const C2_HEX_A1: Matrix3x3 = [
-  [1, -1, 0],
-  [0, -1, 0],
-  [0, 0, -1],
-]
-const MIRROR_Z_MAT: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, -1],
-]
-const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z_MAT])
+const C6_HEX = math.vec9_to_mat3x3([1, -1, 0, 1, 0, 0, 0, 0, 1])
+const C2_HEX_A1 = math.vec9_to_mat3x3([1, -1, 0, 0, -1, 0, 0, 0, -1])
+const D6H_OPS = group_closure([C6_HEX, C2_HEX_A1, MIRROR_Z])
 
 describe(`compute_irreducible_bz`, () => {
   // All 48 signed permutation matrices (proper + improper rotations of the cube)
@@ -632,30 +566,11 @@ describe(`compute_irreducible_bz`, () => {
     [2, 1, 0],
   ]) {
     for (let signs = 0; signs < 8; signs++) {
-      const mat: Matrix3x3 = [
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-      ]
+      const mat = diag(0, 0, 0)
       for (let row = 0; row < 3; row++) mat[row][perm[row]] = signs & (1 << row) ? -1 : 1
       oh_ops.push(mat)
     }
   }
-
-  test(`generated point groups have the right order`, () => {
-    expect(group_closure(oh_ops)).toHaveLength(48)
-    expect(D6H_OPS).toHaveLength(24)
-    expect(group_closure(td_ops)).toHaveLength(24)
-    // fcc Oh ops are integer in the primitive basis and still form a 48-element group
-    for (const w_frac of fcc_oh_frac) {
-      for (const val of w_frac.flat())
-        expect(Math.abs(val - Math.round(val))).toBeLessThan(1e-12)
-    }
-    expect(group_closure(fcc_oh_ops)).toHaveLength(48)
-    // C6 really is a 60° rotation of the hexagonal reciprocal lattice: trace = 1 + 2cos60° = 2
-    const rot = fractional_to_cartesian_rotation(C6_HEX, recip_2pi(REAL_LATTICES.hexagonal))
-    expect(rot[0][0] + rot[1][1] + rot[2][2]).toBeCloseTo(2, 12)
-  })
 
   // Oh in the fractional basis of the fcc primitive cell: W = B·R·B⁻¹ inverts
   // fractional_to_cartesian_rotation (R orthogonal), and must come out integer
@@ -665,13 +580,26 @@ describe(`compute_irreducible_bz`, () => {
   const fcc_oh_ops = fcc_oh_frac.map(
     (w_frac) => w_frac.map((row) => row.map(Math.round)) as Matrix3x3,
   )
+  const td_ops = oh_ops.filter((rot) => rot.flat().filter((val) => val < 0).length % 2 === 0)
+
+  test(`generated point groups have the right order`, () => {
+    expect(group_closure(oh_ops)).toHaveLength(48)
+    expect(D6H_OPS).toHaveLength(24)
+    expect(group_closure(td_ops)).toHaveLength(24)
+    // fcc Oh ops are integer in the primitive basis (before rounding) and still a 48-group
+    for (const val of fcc_oh_frac.flat(2))
+      expect(Math.abs(val - Math.round(val))).toBeLessThan(1e-12)
+    expect(group_closure(fcc_oh_ops)).toHaveLength(48)
+    // C6 really is a 60° rotation of the hexagonal reciprocal lattice: trace = 1 + 2cos60° = 2
+    const rot = fractional_to_cartesian_rotation(C6_HEX, recip_2pi(REAL_LATTICES.hexagonal))
+    expect(rot[0][0] + rot[1][1] + rot[2][2]).toBeCloseTo(2, 12)
+  })
 
   // The Dirichlet wedge is an exact fundamental domain: V_IBZ = V_BZ/|G|. 1e-8 relative leaves
   // room for the clip-then-rehull rounding while catching a single dropped plane (factor 2).
   // Time reversal (the default) makes E(k) = E(−k), so the k-space group is the Laue group:
   // P1 halves the zone and the 24-op non-centrosymmetric Td reduces it 48-fold like Oh
   // Td: the Oh signed permutations with an even number of −1 entries (det · parity = +1)
-  const td_ops = oh_ops.filter((rot) => rot.flat().filter((val) => val < 0).length % 2 === 0)
   test.each([
     [`cubic Oh`, 48, REAL_LATTICES.cubic, oh_ops, true],
     [`fcc Oh (primitive basis)`, 48, REAL_LATTICES.fcc, fcc_oh_ops, true],
@@ -681,13 +609,7 @@ describe(`compute_irreducible_bz`, () => {
     [`P1`, 2, REAL_LATTICES.cubic, [IDENTITY_MAT], true],
     [`P1 without time reversal`, 1, REAL_LATTICES.cubic, [IDENTITY_MAT], false],
     [`cubic mirror`, 2, REAL_LATTICES.cubic, [IDENTITY_MAT, MIRROR_Z], false],
-    [
-      `cubic C4`,
-      4,
-      REAL_LATTICES.cubic,
-      [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270],
-      false,
-    ],
+    [`cubic C4`, 4, REAL_LATTICES.cubic, C4_OPS, false],
     // non-orthogonal fractional rotations exercise the W^{-T} conversion
     [`hexagonal C3`, 3, REAL_LATTICES.hexagonal, [IDENTITY_MAT, C3_HEX, C3_HEX_SQ], false],
   ] as [string, number, Matrix3x3, Matrix3x3[], boolean][])(
@@ -730,90 +652,55 @@ describe(`fractional_to_cartesian_rotation`, () => {
   ] as [string, Matrix3x3, Matrix3x3, number][])(
     `%s: R is a proper rotation mapping the reciprocal lattice onto itself`,
     (_, frac_rot, k_latt, trace) => {
-      const rotation_matrix = fractional_to_cartesian_rotation(frac_rot, k_latt)
-
+      const rot = fractional_to_cartesian_rotation(frac_rot, k_latt)
       // Orthogonal (RᵀR = I), proper (det = +1), right angle (trace = 1 + 2·cosθ — also
       // rules out the identity fallback, which trivially passes the other invariants)
-      math
-        .dot(math.transpose_3x3_matrix(rotation_matrix), rotation_matrix)
-        .forEach((row, row_index) =>
-          row.forEach((val, col_index) =>
-            expect(val, `RᵀR[${row_index}][${col_index}]`).toBeCloseTo(
-              row_index === col_index ? 1 : 0,
-              10,
-            ),
-          ),
-        )
-      expect(math.det_3x3(rotation_matrix)).toBeCloseTo(1, 10)
-      expect(
-        rotation_matrix[0][0] + rotation_matrix[1][1] + rotation_matrix[2][2],
-        `trace`,
-      ).toBeCloseTo(trace, 10)
+      expect(math.dot(math.transpose_3x3_matrix(rot), rot)).toEqual(
+        IDENTITY_MAT.map((row) => row.map((val) => expect.closeTo(val, 10))),
+      )
+      expect(math.det_3x3(rot)).toBeCloseTo(1, 10)
+      expect(rot[0][0] + rot[1][1] + rot[2][2], `trace`).toBeCloseTo(trace, 10)
 
       // R must map the reciprocal lattice onto itself: coordinates of R·bᵢ in the
       // reciprocal basis (k_cart = Bᵀ·q) must be integers
       const basis_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_latt))
       for (const b_vec of k_latt) {
-        for (const coord of math.dot(basis_inv, math.dot(rotation_matrix, b_vec))) {
+        for (const coord of math.dot(basis_inv, math.dot(rot, b_vec))) {
           expect(coord, `R·b lattice coords`).toBeCloseTo(Math.round(coord), 8)
         }
       }
     },
   )
 
-  const singular_w: Matrix3x3 = [
-    [0, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-  const zero_mat: Matrix3x3 = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
   // rotations are never singular, so a failed inversion is corrupt input, not a case to
   // paper over with an identity (which would silently drop that op's IBZ clipping plane)
   test.each([
-    [`singular W`, singular_w, k_lattice],
-    [`singular k_lattice`, IDENTITY_MAT, zero_mat],
+    [`singular W`, diag(0, 1, 1), k_lattice],
+    [`singular k_lattice`, IDENTITY_MAT, diag(0, 0, 0)],
   ] as [string, Matrix3x3, Matrix3x3][])(`throws for %s`, (_, w_matrix, k_matrix) => {
     expect(() => fractional_to_cartesian_rotation(w_matrix, k_matrix)).toThrow(/singular/)
   })
 })
 
-const cube_vertices: Vec3[] = [
-  [0, 0, 0],
-  [1, 0, 0],
-  [1, 1, 0],
-  [0, 1, 0],
-]
-
 describe(`polyhedron_geometry`, () => {
   // faces -> expected position-attribute count; null when no valid triangle remains
   // (degenerate <3-vertex faces and out-of-bounds indices are skipped; quads fan-triangulate)
+  // oxfmt-ignore
   test.each<[string, number[][], number | null]>([
     [`empty faces`, [], null],
     [`degenerate face (<3 vertices)`, [[0, 1]], null],
     [`out-of-bounds vertex index`, [[0, 1, 99]], null],
     [`quad fan-triangulates into 2 triangles`, [[0, 1, 2, 3]], 6],
-    [
-      `keeps valid triangle, drops invalid faces`,
-      [
-        [0, 1],
-        [0, 1, 99],
-        [0, 1, 2],
-      ],
-      3,
-    ],
+    [`keeps valid triangle, drops invalid faces`, [[0, 1], [0, 1, 99], [0, 1, 2]], 3],
   ])(`%s`, (_label, faces, expected_count) => {
-    const geometry = polyhedron_geometry(cube_vertices, faces)
+    const geometry = polyhedron_geometry(UNIT_SQUARE, faces)
     if (expected_count === null) expect(geometry).toBeNull()
     else expect(geometry?.getAttribute(`position`).count).toBe(expected_count)
     geometry?.dispose()
   })
 
   test(`computes +z per-face normals and a bounding sphere for a CCW xy-plane quad`, () => {
-    const geometry = polyhedron_geometry(cube_vertices, [[0, 1, 2, 3]])
+    const geometry = polyhedron_geometry(UNIT_SQUARE, [[0, 1, 2, 3]])
     const normals = geometry?.getAttribute(`normal`)
     expect([normals?.getX(0), normals?.getY(0), normals?.getZ(5)]).toEqual([0, 0, 1])
     expect(geometry?.boundingSphere).not.toBeNull()
@@ -822,63 +709,67 @@ describe(`polyhedron_geometry`, () => {
 })
 
 describe(`k_lattice_inverse + cartesian_to_fractional`, () => {
-  const k_lattice: Matrix3x3 = [
-    [2, 0, 0],
-    [0, 4, 0],
-    [0, 0, 8],
-  ]
+  const k_lattice = diag(2, 4, 8)
 
   test(`round-trips Cartesian to fractional coordinates, incl. a non-orthogonal lattice`, () => {
     const inv = k_lattice_inverse(k_lattice)
     expect(cartesian_to_fractional(inv, [2, 4, 8])).toEqual([1, 1, 1])
     expect(cartesian_to_fractional(inv, [1, 1, 1])).toEqual([0.5, 0.25, 0.125])
-    const skewed: Matrix3x3 = [
-      [1, 0, 0],
-      [0.5, Math.sqrt(3) / 2, 0],
-      [0, 0, 1],
-    ]
-    const inverse = k_lattice_inverse(skewed)
-    const fractional = cartesian_to_fractional(inverse, [0.5, Math.sqrt(3) / 2, 0])
-    expect(fractional?.[0]).toBeCloseTo(0, 12)
-    expect(fractional?.[1]).toBeCloseTo(1, 12)
-    expect(fractional?.[2]).toBeCloseTo(0, 12)
+    const skewed = math.vec9_to_mat3x3([1, 0, 0, 0.5, Math.sqrt(3) / 2, 0, 0, 0, 1])
+    const fractional = cartesian_to_fractional(k_lattice_inverse(skewed), skewed[1])
+    expect(fractional).toEqual([0, 1, 0].map((val) => expect.closeTo(val, 12)))
   })
 
   test(`returns null for missing or singular lattice`, () => {
     expect(k_lattice_inverse(undefined)).toBeNull()
-    expect(
-      k_lattice_inverse([
-        [1, 0, 0],
-        [2, 0, 0],
-        [0, 0, 1],
-      ]),
-    ).toBeNull()
+    expect(k_lattice_inverse(math.vec9_to_mat3x3([1, 0, 0, 2, 0, 0, 0, 0, 1]))).toBeNull()
     expect(cartesian_to_fractional(null, [1, 2, 3])).toBeNull()
   })
 })
 
 describe(`scene sizing helpers`, () => {
   test(`polyhedron_centroid averages vertices, falls back to origin`, () => {
-    expect(polyhedron_centroid(cube_vertices)).toEqual([0.5, 0.5, 0])
+    expect(polyhedron_centroid(UNIT_SQUARE)).toEqual([0.5, 0.5, 0])
     expect(polyhedron_centroid(undefined)).toEqual([0, 0, 0])
     expect(polyhedron_centroid([])).toEqual([0, 0, 0])
   })
 
-  // points along x: a jump at a discontinuity (U|K) is skipped; repeated branch-boundary points
-  // neither draw nor shrink the median; with one step there is no median to judge against
+  // points along x, branches as [start, end] index ranges: in-branch steps draw, even one 50×
+  // the median step (a step-length cutoff would drop that real segment), but zero-length ones
+  // don't; neither do junction repeats or jumps between branches, uncovered steps or
+  // single-point branches
+  // oxfmt-ignore
   test.each([
-    { xs: [0, 0.1, 0.2, 5, 5.1], kept: [0, 1, 3] },
-    { xs: [0, 0.1, 0.1, 0.1, 0.1, 0.2], kept: [0, 4] },
-    { xs: [0, 9], kept: [0] },
-    { xs: [0], kept: [] },
-    { xs: [], kept: [] },
-  ])(`k_path_segments of x = $xs keeps $kept`, ({ xs, kept }) => {
-    const points = xs.map((x_coord): Vec3 => [x_coord, 0, 0])
-    const segments = k_path_segments(points)
-    expect(segments.map((segment) => segment.idx)).toEqual(kept)
-    for (const { idx, from, to } of segments)
-      expect([from, to]).toEqual([points[idx], points[idx + 1]])
-  })
+    { xs: [0, 0.1, 0.1, 0.2, 5.2], branches: [[0, 4]], kept: [0, 2, 3] },
+    { xs: [0, 0.1, 0.1, 0.2, 5, 5.1], branches: [[0, 1], [2, 3], [4, 5]], kept: [0, 2, 4] },
+    { xs: [0, 9], branches: [[1, 1]], kept: [] },
+    { xs: [], branches: [], kept: [] },
+  ] as { xs: number[]; branches: Vec2[]; kept: number[] }[])(
+    `k_path_segments of x = $xs, branches $branches keeps $kept`,
+    ({ xs, branches, kept }) => {
+      const points = xs.map((x_coord): Vec3 => [x_coord, 0, 0])
+      const segments = k_path_segments({ points, labels: points.map(() => null), branches })
+      expect(segments.map(({ idx }) => idx)).toEqual(kept)
+      for (const { idx, from, to } of segments)
+        expect([from, to]).toEqual([points[idx], points[idx + 1]])
+    },
+  )
+
+  test.each([
+    { n_labels: 1, branch: [0, 1], error: /1 labels for 2 points/ },
+    { n_labels: 2, branch: [0, 2], error: /\[0, 2\] is no index range into 2 points/ },
+    { n_labels: 2, branch: [1, 0], error: /\[1, 0\] is no index range/ },
+    { n_labels: 2, branch: [-1, 1], error: /is no index range/ },
+    { n_labels: 2, branch: [0.5, 1], error: /is no index range/ },
+    { n_labels: 2, branch: [0, 0.5], error: /is no index range/ },
+  ] as { n_labels: number; branch: Vec2; error: RegExp }[])(
+    `k_path_segments rejects branch $branch with $n_labels labels`,
+    ({ n_labels, branch, error }) => {
+      const points = [0, 1].map((x_coord): Vec3 => [x_coord, 0, 0])
+      const labels = Array.from({ length: n_labels }, () => null)
+      expect(() => k_path_segments({ points, labels, branches: [branch] })).toThrow(error)
+    },
+  )
 
   test(`bz_mark_sizes scale with the zone`, () => {
     const [si, supercell] = [2, 0.0628].map((size) =>
@@ -890,12 +781,7 @@ describe(`scene sizing helpers`, () => {
   })
 
   test(`k_space_size is the mean k-vector magnitude, 10 when missing`, () => {
-    const k_lattice: Matrix3x3 = [
-      [3, 0, 0],
-      [0, 6, 0],
-      [0, 0, 9],
-    ]
-    expect(k_space_size(k_lattice)).toBe(6)
+    expect(k_space_size(diag(3, 6, 9))).toBe(6)
     expect(k_space_size(undefined)).toBe(10)
   })
 
@@ -910,73 +796,45 @@ describe(`scene sizing helpers`, () => {
   })
 
   describe(`bz_fit_extent`, () => {
-    const k_lattice: Matrix3x3 = [
-      [4, 0, 0],
-      [0, 4, 0],
-      [0, 0, 4],
-    ]
+    const k_lattice = cubic_matrix(4)
     // a cube of side 2 centered on the origin: the enclosing sphere has diameter 2*sqrt(3)
-    const cube: Vec3[] = [-1, 1].flatMap((coord_x) =>
-      [-1, 1].flatMap((coord_y) =>
-        [-1, 1].map((coord_z): Vec3 => [coord_x, coord_y, coord_z]),
-      ),
-    )
+    const cube = cube_corners(1)
     const tiny = cube.map((vert) => math.scale(vert, 0.02))
     const coincident = Array.from({ length: 4 }, (): Vec3 => [0.1, 0.1, 0.1])
+    const sqrt3 = Math.sqrt(3)
 
     test.each([
-      [`spans the enclosing sphere of the vertices`, cube, 1, 2 * Math.sqrt(3)],
-      [`scales with padding`, cube, 2, 4 * Math.sqrt(3)],
+      [`spans the enclosing sphere of the vertices`, cube, 1, 2 * sqrt3],
+      [`scales with padding`, cube, 2, 4 * sqrt3],
       // the default padding must exceed the bare diameter or the zone touches the frame edge
-      [
-        `pads to 92% of the shorter edge by default`,
-        cube,
-        undefined,
-        (2 * Math.sqrt(3)) / 0.92,
-      ],
+      [`pads to 92% of the shorter edge by default`, cube, undefined, (2 * sqrt3) / 0.92],
       // Without vertices the zone is framed by the cell it is inscribed in: a cubic lattice of
-      // side 4 gives a cell diagonal of 4*sqrt(3). Using 2*k_space_size = 8 instead would frame
-      // the zone too loosely and then jump when the vertices arrive.
+      // side 4 gives a cell diagonal of 4*sqrt(3), exactly what its side-4 cube zone's vertices
+      // give. Using 2*k_space_size = 8 instead would frame the zone too loosely and then jump
+      // when the vertices arrive.
+      [`falls back to the cell without vertices`, undefined, undefined, (4 * sqrt3) / 0.92],
+      [`falls back on empty vertices too`, [], undefined, (4 * sqrt3) / 0.92],
+      // so the view does not rescale the moment the vertices land: the same as the fallback
       [
-        `falls back to the cell without vertices`,
+        `frames the side-4 cube zone like the fallback`,
+        cube_corners(2),
         undefined,
-        undefined,
-        (4 * Math.sqrt(3)) / 0.92,
+        (4 * sqrt3) / 0.92,
       ],
-      [`falls back on empty vertices too`, [], undefined, (4 * Math.sqrt(3)) / 0.92],
       // Framing must stay scale-free: a zone 50x smaller is 50x smaller on screen. A 1 A floor
       // exceeded the true extent below ~0.29 here and drew every such zone against a constant.
-      [`scales down to a 0.02 1/A zone`, tiny, 1, 2 * Math.sqrt(3) * 0.02],
+      [`scales down to a 0.02 1/A zone`, tiny, 1, 2 * sqrt3 * 0.02],
       // coincident vertices leave nothing to frame, so the enclosing cell decides
-      [`falls back on coincident vertices`, coincident, 1, 4 * Math.sqrt(3)],
+      [`falls back on coincident vertices`, coincident, 1, 4 * sqrt3],
     ] as [string, Vec3[] | undefined, number | undefined, number][])(
       `%s`,
       (_desc, vertices, padding, expected) =>
         expect(bz_fit_extent(vertices, k_lattice, padding)).toBeCloseTo(expected, 10),
     )
 
-    // the fallback and the vertices branch must frame a cubic zone identically, or the view
-    // visibly rescales the moment the computed vertices land
-    test(`the cubic fallback matches what its own vertices would give`, () => {
-      // Wigner-Seitz zone of the cubic reciprocal lattice above: a cube of side 4
-      const zone: Vec3[] = [-2, 2].flatMap((coord_x) =>
-        [-2, 2].flatMap((coord_y) =>
-          [-2, 2].map((coord_z): Vec3 => [coord_x, coord_y, coord_z]),
-        ),
-      )
-      expect(bz_fit_extent(undefined, k_lattice)).toBeCloseTo(
-        bz_fit_extent(zone, k_lattice),
-        10,
-      )
-    })
-
     test(`an anisotropic cell is framed by its longest diagonal, not its mean vector`, () => {
       // mean |b| is 34, so a k_space_size-based fallback would frame 100 units of cell at 68
-      const stretched: Matrix3x3 = [
-        [100, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ]
+      const stretched = diag(100, 1, 1)
       expect(k_cell_fit_extent(stretched, 1)).toBeCloseTo(Math.hypot(100, 1, 1), 10)
       // and the same cell 1000x smaller, which a 1 A floor used to round up to a flat 1
       const shrunk = stretched.map((row) => math.scale(row, 1e-3)) as Matrix3x3

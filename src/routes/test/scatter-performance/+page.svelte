@@ -11,14 +11,16 @@
 
   // Keep the full [0, 1] dataset visible throughout the alternating pan/zoom gestures.
   const initial_view = (): Partial<AxisRanges> => ({ x: [-0.25, 1.25], y: [-0.25, 1.25] })
+  const initial_styles = (): StyleOverrides => ({ show_lines: false })
   let series = $state.raw<DataSeries[]>([])
   let view = $state(initial_view())
   let color_scale = $state<ColorScaleConfig>({ scheme: `interpolateViridis` })
   let size_scale = $state<SizeScaleConfig>({ radius_range: [1, 3] })
-  let styles = $state<StyleOverrides>({ show_lines: false })
+  let styles = $state(initial_styles())
 
   function reset(): void {
     view = initial_view()
+    styles = initial_styles()
     color_scale = { scheme: `interpolateViridis` }
     size_scale = { radius_range: [1, 3] }
   }

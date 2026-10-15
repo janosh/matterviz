@@ -4,6 +4,7 @@
   // fixture. Mount time is published in the DOM; hover/zoom frame timings are measured by
   // the spec itself via requestAnimationFrame.
   import { Sunburst, type SunburstNode } from '#lib'
+  import { mulberry32 } from '#lib/math.js'
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
@@ -18,16 +19,8 @@
   const patterned = param(`patterned`, 0) !== 0
   const max_children = param(`max_children`, 0)
 
-  // mulberry32 so every run sees identical values
-  const make_rng = (seed: number) => () => {
-    seed = (seed + 0x6d2b79f5) >>> 0
-    let mixed = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)
-    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296
-  }
-
   const build_tree = (): SunburstNode[] => {
-    const rng = make_rng(11)
+    const rng = mulberry32(11) // seeded so every run sees identical values
     return Array.from({ length: n_top }, (_top, top_idx) => ({
       id: `T${top_idx}`,
       label: `Group ${top_idx}`,

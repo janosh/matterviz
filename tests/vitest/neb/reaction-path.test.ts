@@ -63,9 +63,9 @@ describe(`barrier arithmetic`, () => {
 
   test(`path_profile measures coords, barrier and spline with one options object`, () => {
     const profile = path_profile(asymmetric, { mode: `image_index` })
-    expect(profile.coords).toEqual([0, 1, 2, 3, 4])
+    expect(profile.coords).toEqual([1, 2, 3, 4, 5]) // 1-based image numbers
     expect(profile.energies).toEqual(asymmetric.map((image) => image.energy))
-    expect(profile.analysis.ts_coordinate).toBe(2)
+    expect(profile.analysis.ts_coordinate).toBe(3)
     expect(profile.spline.method).toBe(`natural-cubic`)
     expect(profile.spline.highest_image.energy).toBe(profile.analysis.ts_energy)
   })
@@ -177,18 +177,14 @@ describe(`cumulative arc length`, () => {
     }
   })
 
-  test(`image_index mode returns the bare bead numbers`, () => {
-    const images = walk_path([0, 2.5, 3.0, 6.0], [0, 1, 2, 3])
-    expect(reaction_coordinate(images, { mode: `image_index` })).toEqual([0, 1, 2, 3])
-  })
-
   test(`unevenly spaced images place the transition state off-centre in arc length`, () => {
     // Images bunch near the start; arc length must not pretend they are evenly spread
     const images = walk_path([0, 0.5, 1.0, 4.0], [0, 0.4, 0.9, 0.2])
     const { ts_coordinate, ts_image_idx } = analyze_barrier(images)
     expect(ts_image_idx).toBe(2)
     expect(ts_coordinate).toBeCloseTo(1.0, 12)
-    expect(analyze_barrier(images, { mode: `image_index` }).ts_coordinate).toBe(2)
+    expect(reaction_coordinate(images, { mode: `image_index` })).toEqual([1, 2, 3, 4])
+    expect(analyze_barrier(images, { mode: `image_index` }).ts_coordinate).toBe(3)
   })
 })
 
@@ -204,8 +200,8 @@ describe(`degenerate paths fail loudly`, () => {
 
   // oxfmt-ignore
   test.each([
-    [`a non-finite energy`, [make_image([[0, 0, 0]], 0), make_image([[1, 0, 0]], Number.NaN)], /non-finite energy/],
-    [`a structure without sites`, [make_image([[0, 0, 0]], 0), { structure: { sites: [] }, energy: 1 }], /no structure sites/],
+    [`a non-finite energy`, [make_image([[0, 0, 0]], 0), make_image([[1, 0, 0]], Number.NaN)], /image 2 has non-finite energy/],
+    [`a structure without sites`, [make_image([[0, 0, 0]], 0), { structure: { sites: [] }, energy: 1 }], /image 2 has no structure sites/],
   ])(`%s throws`, (_name, images, pattern) => {
     expect(() => analyze_barrier(images)).toThrow(pattern)
   })
@@ -242,7 +238,9 @@ describe(`force projection`, () => {
       forces: Array.from({ length: n_forces }, (): Vec3 => [0, 0, 0]),
     })
     const images = [two_atoms(1, 0, 1), two_atoms(2, 1, 2)]
-    expect(() => projected_force_slopes(images)).toThrow(/1 force vectors for 2 sites/)
+    expect(() => projected_force_slopes(images)).toThrow(
+      `Image 1 has 1 force vectors for 2 sites`,
+    )
   })
 
   test(`throws when neighbouring images are identical so the tangent vanishes`, () => {

@@ -59,7 +59,7 @@ export type ReactionPathInput =
 export type NamedReactionPath = { key: string; path: ReactionPath }
 
 // `arc_length` (default) is the cumulative minimum-image distance through
-// configuration space; `image_index` plots against the bare bead number.
+// configuration space; `image_index` plots against the 1-based image number.
 export type ReactionCoordMode = `arc_length` | `image_index`
 
 // `initial` subtracts the first image energy, making barriers directly readable.

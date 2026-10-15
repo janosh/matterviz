@@ -16,16 +16,8 @@
   const n_frames = browser ? Number(page.url.searchParams.get(`frames`) ?? 300) : 300
   const n_atoms = browser ? Number(page.url.searchParams.get(`atoms`) ?? 64) : 64
 
-  // mulberry32 so every run sees identical coordinates
-  const make_rng = (seed: number) => () => {
-    seed = (seed + 0x6d2b79f5) >>> 0
-    let mixed = Math.imul(seed ^ (seed >>> 15), 1 | seed)
-    mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)
-    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296
-  }
-
   const build_frames = (): TrajectoryFrame[] => {
-    const rng = make_rng(7)
+    const rng = math.mulberry32(7) // seeded so every run sees identical coordinates
     const cell = 2.2 * Math.cbrt(n_atoms)
     const matrix: math.Matrix3x3 = [
       [cell, 0, 0],

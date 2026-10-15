@@ -27,6 +27,20 @@ const sweep_result: StructureIdSweep = {
   frame_stride: 6,
 }
 
+// Passthrough that records the props the pane hands its plot
+const plot_props = vi.hoisted(() => ({
+  current: undefined as Record<string, unknown> | undefined,
+}))
+vi.mock(`#lib/structure-id/StructureTypePlot.svelte`, async (import_original) => {
+  const original = await import_original<{ default: (...args: unknown[]) => unknown }>()
+  return {
+    default: (anchor: unknown, props: Record<string, unknown>) => {
+      plot_props.current = props
+      return original.default(anchor, props)
+    },
+  }
+})
+
 let mounted_component: ReturnType<typeof mount> | undefined
 afterEach(async () => {
   if (mounted_component) await unmount(mounted_component)
@@ -68,8 +82,9 @@ test(`passes the frame window, cap and skip_csp to the sweep, relays progress, s
   expect(max_frames.closest(`label`)?.textContent).toContain(`Max frames`)
   set_input(max_frames, `3`)
   for (const [label, value] of [
-    [`Start frame`, `2`],
-    [`End frame (exclusive)`, `18`],
+    // 1-based inclusive frames 3-18 are the 0-based window [2, 18)
+    [`Start frame`, `3`],
+    [`End frame`, `18`],
   ]) {
     const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
     set_input(input, value)
@@ -154,9 +169,39 @@ test(`hovering a structure type reports its atoms from the analysed frame neares
     await hover(`mouseenter`)
     const atoms = { frame_number: analysed, atom_indices: [0, 1, 2, 3] }
     expect(on_atoms_hover).toHaveBeenLastCalledWith(atoms)
-    expect(document.body.textContent?.includes(`${hint} ${analysed}`)).toBe(shown !== analysed)
+    // the hint numbers frames from 1 like the step input
+    expect(document.body.textContent?.includes(`${hint} ${analysed + 1},`)).toBe(
+      shown !== analysed,
+    )
     await hover(`mouseleave`)
     expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
     expect(document.body.textContent).not.toContain(hint)
   }
+})
+
+// The plot's Frame axis counts from 1 like the step input; clicks hand back 0-based indices
+test(`numbers plotted frames from 1 and seeks clicked frames 0-based`, async () => {
+  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
+  const on_frame_select = vi.fn()
+  const result = {
+    frame_numbers: [0, 10],
+    results: [fcc_result, fcc_result],
+    frame_stride: 10,
+  }
+  mounted_component = mount(TrajectoryStructureIdPane, {
+    target: document.body,
+    props: {
+      pane_open: true,
+      run: make_run(20),
+      result,
+      current_frame_idx: 3,
+      on_frame_select,
+    },
+  })
+  await settle()
+  const { frame_labels, current_frame, on_frame_click } = plot_props.current ?? {}
+  expect([frame_labels, current_frame]).toEqual([[1, 11], 4])
+  if (typeof on_frame_click !== `function`) throw new Error(`plot got no on_frame_click`)
+  on_frame_click(11)
+  expect(on_frame_select).toHaveBeenCalledWith(10)
 })

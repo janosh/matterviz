@@ -4,6 +4,7 @@
 // chunks (TextLines), so such a file still opens as XYZ, LAMMPS or XDATCAR.
 // Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
+import { display_idx } from '#lib/labels.js'
 import { HDF5_EXT_REGEX } from '#lib/constants.js'
 import { decode_text_chunks, MAX_STRING_CHARS } from '#lib/io/decompress.js'
 import { is_binary } from '#lib/io/is-binary.js'
@@ -82,7 +83,8 @@ const run_from_parsed = (
 // rebuilt from its matrix. Coordinates stay as written, like every other reader's frames.
 const frame_structure = (structure: unknown, label: string | number): AnyStructure => {
   if (!is_structure_like(structure)) {
-    const context = typeof label === `number` ? `trajectory frame ${label}` : label
+    const context =
+      typeof label === `number` ? `trajectory frame ${display_idx(label)}` : label
     throw new Error(
       `Invalid structure in ${context}: expected non-empty 'sites' array with species and coordinates`,
     )
@@ -230,14 +232,17 @@ export async function open_trajectory(
   const open_hdf5 = async (data: ArrayBuffer | Blob): Promise<TrajectoryRun> => {
     report(10, `Reading HDF5…`)
     const result = await open_hdf5_trajectory(data, collector, filename, hdf5_group_path)
-    signal?.throwIfAborted()
     const hdf5_provenance = {
       ...provenance,
       ...(hdf5_group_path && { hdf5_group: hdf5_group_path }),
     }
-    if (result.kind === `parsed`)
+    if (result.kind === `parsed`) {
+      signal?.throwIfAborted()
       return run_from_parsed(result.parsed, hdf5_provenance, collector)
+    }
+    // inside the try: an abort before the run owns the lazy source must still free its file copy
     try {
+      signal?.throwIfAborted()
       return hdf5_run(result.lazy, hdf5_provenance, collector.warnings)
     } catch (error) {
       result.lazy.dispose?.()

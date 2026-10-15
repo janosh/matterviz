@@ -1,5 +1,6 @@
 // Bonding algorithms for structure visualization
 
+import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '../element/data'
 import { element_from_atomic_number } from '../element/helpers'
 import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
@@ -73,7 +74,9 @@ export function intern_site_elements(
     if (sites instanceof NumericSites) {
       const element = element_from_atomic_number(sites.numbers[idx])
       if (element === undefined)
-        throw new Error(`Invalid atomic number ${sites.numbers[idx]} at site ${idx}`)
+        throw new Error(
+          `Invalid atomic number ${sites.numbers[idx]} at site ${display_idx(idx)}`,
+        )
       symbol = element
     } else symbol = get_majority_element(sites[idx]) ?? unknown_label
     let elem_id = elem_id_of.get(symbol)
@@ -125,8 +128,7 @@ export function has_framework_potential(elements: Iterable<string>): boolean {
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 
-// the ternaries never yield -0, so a reversed shift keys as its forward twin (`-0` stringifies
-// differently from `0`)
+// the ternaries never yield -0, which Object.is-based equality (Svelte, toEqual) tells from 0
 const negate_cell_shift = (cell_shift: Vec3): Vec3 => [
   cell_shift[0] === 0 ? 0 : -cell_shift[0],
   cell_shift[1] === 0 ? 0 : -cell_shift[1],
@@ -373,18 +375,27 @@ export function delete_bond(
 ): BondEditResult {
   const record = make_bond_record(bond, 1)
   const key = rendered_bond_key_for(record)
+  const calculated = find_bond_by_key(calculated_bonds, key)
   if (includes_bond_key(edit_state.added_bonds, key)) {
+    // An added bond the strategy now also finds must leave the calculated set too
+    const removed_bonds =
+      calculated && !includes_bond_key(edit_state.removed_bonds, key)
+        ? replace_bond(edit_state.removed_bonds, {
+            ...record,
+            order: get_bond_order(calculated),
+          })
+        : edit_state.removed_bonds
     return {
       action: `deleted-added`,
       changed: true,
       state: {
         ...edit_state,
         added_bonds: remove_bond_key(edit_state.added_bonds, key),
+        removed_bonds,
         bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
       },
     }
   }
-  const calculated = find_bond_by_key(calculated_bonds, key)
   if (!calculated || includes_bond_key(edit_state.removed_bonds, key)) {
     return { action: `not-visible`, changed: false, state: edit_state }
   }
@@ -822,7 +833,7 @@ function neighbor_query_cutoff(
     const coord_z = coordinates ? coordinates[idx * stride + 2] : sites[idx].xyz[2]
     if (!(Number.isFinite(coord_x) && Number.isFinite(coord_y) && Number.isFinite(coord_z))) {
       throw new Error(
-        `neighbor_query: site ${idx} has a non-finite position (${coord_x}, ${coord_y}, ${coord_z})`,
+        `neighbor_query: site ${display_idx(idx)} has a non-finite position (${coord_x}, ${coord_y}, ${coord_z})`,
       )
     }
     cloud_pos[idx * 3] = coord_x

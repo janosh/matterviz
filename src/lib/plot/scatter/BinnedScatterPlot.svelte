@@ -170,7 +170,7 @@
   let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let label_measure_root = $state<HTMLDivElement>()
-  let label_sizes = new SvelteMap<string, LabelSize>()
+  const label_sizes = new SvelteMap<string, LabelSize>()
 
   const grid_display = { x_grid: true, y_grid: true }
   const x_scale_type = $derived(x_axis.scale_type ?? `linear`)
@@ -233,12 +233,7 @@
     // whenever a formatter is supplied, so a fixed default would repeat labels on narrow
     // ranges (e.g. after a density bin_click zoom). Callers can still pass one in.
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
-    auto_ranges: () => ({
-      x: auto_ranges.x,
-      x2: unit_range,
-      y: auto_ranges.y,
-      y2: unit_range,
-    }),
+    auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
     has_x2: () => false,
     has_y2: () => false,
     padding: () => padding,
@@ -530,10 +525,7 @@
         const count = density_grids[series_idx].counts[bin_idx]
         const cache = style_cache[series_idx]
         let fill = cache.get(count)
-        if (!fill) {
-          fill = color_scales[series_idx](count)
-          cache.set(count, fill)
-        }
+        if (!fill) cache.set(count, (fill = color_scales[series_idx](count)))
         ctx.fillStyle = fill
         ctx.globalAlpha = per_series_density
           ? 1
@@ -679,12 +671,6 @@
     point_labels_settings.measure_text?.(payload) ??
     String(payload.point.point_id ?? point_label_key(payload.point))
 
-  const label_size_for_payload = (
-    payload: BinnedPointPayload<Metadata, PointData>,
-  ): LabelSize =>
-    label_sizes.get(point_label_key(payload.point)) ??
-    estimate_label_size(label_measure_text(payload), point_labels_settings.font_size)
-
   const point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
     const payloads: BinnedPointPayload<Metadata, PointData>[] = []
@@ -728,9 +714,8 @@
           point_radius_for_value(payload.point.size_value) + point_labels_settings.gap_px,
       },
     }))
-    const label_series = [{ filtered_data }]
     point_label_positions = compute_label_positions(
-      label_series,
+      [{ filtered_data }],
       actual_label_placement_config,
       frame.scales,
       { width, height, pad },
@@ -772,14 +757,15 @@
       label_position.x - payload.cx,
       label_position.y - payload.cy,
     )
-    if (displacement <= (actual_label_placement_config.leader_line_threshold ?? 15)) {
+    if (displacement <= (actual_label_placement_config.leader_line_threshold ?? 15))
       return null
-    }
     return label_leader_segment({
       point: { x: payload.cx, y: payload.cy },
       point_radius: point_radius_for_value(payload.point.size_value),
       label_center: label_position,
-      label_size: label_size_for_payload(payload),
+      label_size:
+        label_sizes.get(point_label_key(payload.point)) ??
+        estimate_label_size(label_measure_text(payload), point_labels_settings.font_size),
       min_length: point_labels_settings.leaders.min_length_px,
     })
   }
@@ -787,10 +773,7 @@
   function on_pointer_move(event: MouseEvent) {
     if (pan_zoom.drag_start || pan_zoom.is_panning) return
     const coords = get_relative_coords(event)
-    if (!coords) {
-      clear_hover()
-      return
-    }
+    if (!coords) return clear_hover()
     // The raw cursor, not a pre-offset point: PlotTooltip needs the true anchor to
     // flip and to keep the pointer glyph clear (see its `offset`/`avoid_cursor`).
     tooltip_pos = coords
@@ -835,7 +818,6 @@
       on_density_zoom?.({ bin, event })
       return
     }
-    if (bin.count > 1 && density_settings.bin_click !== `point`) return
     const point = first_point_in_bin(series, density_result, bin, x_scale_fn, y_scale_fn)
     if (point) on_point_click?.({ ...point_payload(point, bin_color(bin)), event })
   }

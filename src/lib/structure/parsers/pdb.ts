@@ -3,11 +3,13 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import { parse_num_token } from '#lib/utils.js'
 import {
   cell_frame,
   drop_placeholder_cell,
   element_from_candidates,
-  is_placeholder_cell,
+  is_real_cell,
+  keep_first_alt_locs,
   parsed_result,
   record_atom_id,
   resolve_bonds,
@@ -16,10 +18,8 @@ import {
 import type { RawBond } from './shared'
 
 // Read a fixed-width numeric field; blank fields are NaN rather than Number('') === 0
-const num_field = (line: string, start: number, end: number): number => {
-  const token = line.slice(start, end).trim()
-  return token === `` ? NaN : Number(token)
-}
+const num_field = (line: string, start: number, end: number): number =>
+  parse_num_token(line.slice(start, end))
 
 // CRYST1 columns per the PDB spec: a(7-15) b(16-24) c(25-33) alpha(34-40) beta(41-47)
 // gamma(48-54). Falls back to whitespace splitting for files that don't pad the record.
@@ -31,19 +31,15 @@ const read_cryst1_params = (line: string): number[] | null => {
   const values = fixed.every(Number.isFinite)
     ? fixed
     : line.trim().split(/\s+/).slice(1, 7).map(Number)
-  if (values.length !== 6 || !values.every(Number.isFinite)) return null
-  if (values.slice(0, 3).some((length) => length <= 0)) return null
-  return values
+  return values.length === 6 && values.every(Number.isFinite) ? values : null
 }
 
 // Whether a PDB declares a real (non-placeholder) unit cell — drives crystal/molecule
 // classification in detect_structure_type without running the full parse.
 export const pdb_has_lattice = (content: string): boolean =>
-  content.split(/\r?\n/).some((line) => {
-    if (!line.startsWith(`CRYST1`)) return false
-    const params = read_cryst1_params(line)
-    return params !== null && !is_placeholder_cell(params)
-  })
+  content
+    .split(/\r?\n/)
+    .some((line) => line.startsWith(`CRYST1`) && is_real_cell(read_cryst1_params(line)))
 
 // Element symbol from columns 77-78, falling back to the atom-name convention: a 2-char
 // symbol starts in column 13 and a 1-char symbol is right-justified into column 14,
@@ -79,10 +75,8 @@ export const parse_pdb = (content: string): AnyStructure => {
 
   let cell_params: readonly number[] | null = null
   let model_count = 0
-  let skipped_alt_locs = 0
-  const atom_lines: string[] = []
+  const model_lines: string[] = []
   const raw_bonds: RawBond[] = []
-  const atom_serials: number[] = []
 
   for (const line of lines) {
     const record = line.slice(0, 6).trim().toUpperCase()
@@ -125,31 +119,33 @@ export const parse_pdb = (content: string): AnyStructure => {
     // Only the first model of an NMR / MD ensemble is parsed; later models are skipped
     if (model_count > 1) continue
 
-    // Alternate location indicators duplicate the same atom at different positions;
-    // keeping every one would render overlapping ghost atoms
-    const alt_loc = line[16] ?? ` `
-    if (alt_loc !== ` ` && alt_loc.toUpperCase() !== `A`) {
-      skipped_alt_locs++
-      continue
-    }
-
     if (line.length < 54)
       throw new Error(
         `PDB ${record} record too short for fixed-column coordinates (need 54 chars, got ${line.length}): '${line}'`,
       )
-    atom_lines.push(line)
-    atom_serials.push(num_field(line, 6, 11))
+    model_lines.push(line)
   }
 
-  if (atom_lines.length === 0) throw new Error(`No ATOM or HETATM records found in PDB file`)
+  if (model_lines.length === 0) throw new Error(`No ATOM or HETATM records found in PDB file`)
   if (model_count > 1) {
     console.warn(
       `PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`,
     )
   }
-  if (skipped_alt_locs > 0) {
-    console.warn(`PDB: skipped ${skipped_alt_locs} atom(s) with alternate location indicators`)
+  // altLoc is column 17; a residue is chain + resSeq + iCode (columns 22-27). resName
+  // stays out of the key: microheterogeneity lists different residues per conformer.
+  const atom_lines = keep_first_alt_locs(
+    model_lines,
+    (line) => (line[16] === ` ` ? undefined : line[16]),
+    (line) => line.slice(21, 27),
+    (line) => line.slice(12, 16),
+  )
+  if (atom_lines.length < model_lines.length) {
+    console.warn(
+      `PDB: skipped ${model_lines.length - atom_lines.length} atom(s) with alternate location indicators`,
+    )
   }
+  const atom_serials = atom_lines.map((line) => num_field(line, 6, 11))
 
   // Cartesian coordinates stay authoritative and are NOT wrapped into the cell:
   // wrapping would tear molecules apart across periodic boundaries
@@ -170,22 +166,16 @@ export const parse_pdb = (content: string): AnyStructure => {
     const b_factor = num_field(line, 60, 66)
     const residue = line.slice(17, 20).trim()
     const chain = line.slice(21, 22).trim()
+    // The occupancy column is refinement metadata (alt-loc weights, unmodeled atoms at 0),
+    // not compositional disorder, so it stays a site property and the species is whole
     const properties: Record<string, unknown> = {
       ...(residue && { residue }),
       ...(chain && { chain }),
+      ...(Number.isFinite(occupancy) && { occupancy }),
       ...(Number.isFinite(b_factor) && { b_factor }),
     }
 
-    sites.push(
-      make_site(
-        element,
-        abc,
-        xyz,
-        `${element}${atom_idx + 1}`,
-        properties,
-        Number.isFinite(occupancy) ? occupancy : 1,
-      ),
-    )
+    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties))
     record_atom_id(site_idx_by_serial, atom_serials[atom_idx], sites.length - 1)
   }
 
