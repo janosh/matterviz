@@ -15,6 +15,7 @@ import { flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  css_bg_color,
   doc_query,
   form_controls,
   mount_sized,
@@ -22,6 +23,7 @@ import {
   one_tab_stop,
   pattern_id_of,
   plot_svg,
+  query,
   roving_tabindexes,
   set_input,
 } from '../setup'
@@ -511,6 +513,24 @@ describe(`Histogram`, () => {
     },
   )
 
+  test(`tooltip takes the color of the hovered bar's own series`, async () => {
+    await mount_histogram({
+      series: [series_of([0, 1, 2]), series_of([5, 6, 7])],
+      bins: 5,
+      x_axis: { range: [0, 10] },
+      mode: `overlay`,
+    })
+    const [first, second] = [...document.querySelectorAll(`g.histogram-series`)].map((group) =>
+      query(group, `path[role="button"]`),
+    )
+    expect(first.getAttribute(`fill`)).not.toBe(second.getAttribute(`fill`))
+    second.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(
+      css_bg_color(second.getAttribute(`fill`)),
+    )
+  })
+
   // the tooltip must not be a snapshot: it tracks rebinned data under a resting pointer
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()
@@ -546,6 +566,10 @@ describe(`Histogram`, () => {
       }),
     )
     const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    // the tooltip takes the hovered bar's color, like BarPlot's
+    expect(document.querySelector<HTMLElement>(`.plot-tooltip`)?.style.backgroundColor).toBe(
+      css_bg_color(first_bar.getAttribute(`fill`)),
+    )
     expect(tooltip_text).toContain(`Count: 2.5`)
     expect(tooltip_text).toContain(`Probability: 0.5`)
     expect(tooltip_text).toContain(`A`)

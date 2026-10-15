@@ -74,7 +74,7 @@
       stroke="white"
       role="img"
       aria-label={segment_title(bubble)}
-      {@attach hover_tooltip(segment_tooltip)}
+      {@attach hover_tooltip(segment_tooltip, () => bubble.color)}
       stroke-width="1"
       class="bubble"
     >

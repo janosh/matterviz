@@ -790,13 +790,23 @@ describe(`milestone feature props`, () => {
     mount_matrix({
       tooltip: true,
       tooltip_mode: `both`,
-      values: [[1]],
+      values: [[`#000000`, null]],
     })
     await Promise.resolve()
-    const first_cell = get_data_cells()[0]
+    const [first_cell, missing_cell] = get_data_cells()
     const tooltip_el = doc_query(`.tooltip`)
-    first_cell.dispatchEvent(mouse(`mouseover`, { clientX: 10, clientY: 10 }))
-    await Promise.resolve()
+    // the tooltip wears the hovered cell's fill, text contrasted against it, and a fill-less
+    // (missing) cell restores the neutral defaults
+    for (const [cell, bg, color] of [
+      [first_cell, `#000000`, `white`],
+      [missing_cell, ``, ``],
+    ] as const) {
+      cell.dispatchEvent(mouse(`mouseover`, { clientX: 10, clientY: 10 }))
+      await Promise.resolve()
+      expect(tooltip_el.classList.contains(`visible`)).toBe(true)
+      expect(tooltip_el.style.getPropertyValue(`--_bg`)).toBe(bg)
+      expect(tooltip_el.style.color).toBe(color)
+    }
     first_cell.dispatchEvent(mouse(`mouseout`))
     await Promise.resolve()
     expect(tooltip_el.classList.contains(`visible`)).toBe(false)

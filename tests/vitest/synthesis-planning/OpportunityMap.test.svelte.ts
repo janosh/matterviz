@@ -54,7 +54,9 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   const first = doc_query<HTMLButtonElement>(`.map-grid button`)
   first.focus()
   await tick()
-  const tooltip = document.querySelector(`.plot-tooltip`)
+  const tooltip = document.querySelector<HTMLElement>(`.plot-tooltip`)
+  // the tooltip wears the focused cell's fill
+  expect(tooltip?.style.backgroundColor).toBe(first.style.background)
   for (const label of [
     `Temperature: 300 K`,
     `O2:`,

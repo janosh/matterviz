@@ -239,7 +239,7 @@
     {#if hovered_idx !== null}
       {@const hovered_vec = matrix[hovered_idx]}
       {@const tooltip_position = math.add(vector_origin, hovered_vec)}
-      <CanvasTooltip position={tooltip_position}>
+      <CanvasTooltip position={tooltip_position} bg_color={AXIS_COLORS[hovered_idx][2]}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
         ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) <small>Å</small>
       </CanvasTooltip>

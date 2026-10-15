@@ -224,6 +224,15 @@ export const marker_fill = (marker: Element | undefined): string | undefined =>
   /^var\(--point-fill-color, (?<color>.+)\)$/.exec(marker?.getAttribute(`fill`) ?? ``)?.groups
     ?.color
 
+// A color serialized the way an inline background is (happy-dom normalizes rgba spacing), for
+// comparing with a tooltip's `style.backgroundColor`; an empty or invalid color throws
+export const css_bg_color = (color: string | null | undefined): string => {
+  const { style } = document.createElement(`div`)
+  style.backgroundColor = color ?? ``
+  if (!style.backgroundColor) throw new Error(`invalid CSS color: ${color}`)
+  return style.backgroundColor
+}
+
 export const hdf5_group_option = (
   target: ParentNode,
   group_path: string,

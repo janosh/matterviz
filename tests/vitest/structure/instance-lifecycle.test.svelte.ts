@@ -1,4 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
+import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -37,7 +38,7 @@ import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
-import { bind_props } from '../setup'
+import { bind_props, doc_query } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
@@ -343,6 +344,88 @@ test.each([
   scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
   flushSync()
   expect(hover.hovered_idx).toBe(front_idx)
+})
+
+// The tooltip wears the hovered mark's one flat fill: the atom's colour (a disordered site's
+// element wedges have none unless a property colouring paints the whole site; a translucent
+// one stays neutral) or a lattice arrow's hover tint
+const c_n_site: Site = {
+  ...make_site(`C`, [0, 0, 0], [0, 0, 0], `C`),
+  species: [
+    { element: `C`, occu: 0.5, oxidation_state: 0 },
+    { element: `N`, occu: 0.5, oxidation_state: 0 },
+  ],
+}
+const lone_c = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
+test.each<[string, SceneProps, Vec3, string, string]>([
+  [`ordered site`, { structure: lone_c }, [0, 0, 10], default_element_colors.C, `white`],
+  [`disordered site`, { structure: { sites: [c_n_site] } }, [0, 0, 10], ``, ``],
+  [
+    `property-coloured disordered site`,
+    {
+      structure: { sites: [c_n_site] },
+      property_colors: { colors: [`#fedcba`], values: [1] },
+    },
+    [0, 0, 10],
+    `#fedcba`,
+    `black`,
+  ],
+  // property colours that don't reach this site leave its element wedges, so no flat fill
+  [
+    `disordered site past the property colours`,
+    {
+      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, -5], `C`), c_n_site] },
+      property_colors: { colors: [`#123456`], values: [1] },
+    },
+    [0, 0, 10],
+    ``,
+    ``,
+  ],
+  // a colour field paints a gradient across the sphere
+  [
+    `atom colour field`,
+    {
+      structure: lone_c,
+      atom_color_field: {
+        dims: [1, 1, 1],
+        colors: new Float32Array([1, 0, 0, 1]),
+        pbc: [true, true, true],
+        cartesian_to_fractional: new Matrix4(),
+      },
+    },
+    [0, 0, 10],
+    ``,
+    ``,
+  ],
+  [
+    `translucent property colour`,
+    { structure: lone_c, property_colors: { colors: [`rgba(18, 52, 86, 0.5)`], values: [1] } },
+    [0, 0, 10],
+    ``,
+    ``,
+  ],
+  // the half-length A arrow's shaft spans x in [-1, 0.9] at y = z = -1 (cell_vector_origin),
+  // clear of the atom at (2, 2, 2)
+  [
+    `lattice vector A`,
+    { structure: make_crystal(4, [[`C`, [0.5, 0.5, 0.5]]]) },
+    [0, -1, 10],
+    AXIS_COLORS[0][2],
+    `white`,
+  ],
+])(`%s tooltip background`, (_label, props, ray_origin, expected_bg, expected_text) => {
+  const interactivity = spy_interactivity()
+  // nothing renders in happy-dom, so the arrow meshes' world matrices need a manual update
+  mount_structure({ show_bonds: `never`, ...props }).scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(...ray_origin), new Vector3(0, 0, -1))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  const tip = doc_query(`[role="tooltip"]`)
+  expect(tip.style.background).toBe(expected_bg)
+  // text contrasts with the fill; a neutral tooltip keeps its CSS default
+  expect(tip.style.color).toBe(expected_text)
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path

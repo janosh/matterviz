@@ -6,12 +6,13 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import type * as scene_module from '#lib/scene/index.js'
 import type * as threlte_core from '@threlte/core'
 import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometry.js'
+import { ARITY_COLORS } from '#lib/chempot-diagram/color.js'
 import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, set_input } from '../setup'
+import { bind_props, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -394,6 +395,9 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
   flushSync()
   expect(bound.hover_info?.formula).toBe(hovered.formula)
   expect(tooltip_panes()).toEqual([0, 1, 0, 0])
+  // the tooltip wears the hovered domain's fill (colored by arity by default)
+  const tip_bg = query(panes[1], `.chempot-tooltip`).style.backgroundColor
+  expect(ARITY_COLORS).toContain(tip_bg)
   expect(highlights()).toEqual(Array(4).fill(hovered.formula))
   // hovering in another pane hands the tooltip and highlight over
   second.on_domain_leave(hovered)

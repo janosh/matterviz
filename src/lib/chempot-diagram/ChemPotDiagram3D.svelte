@@ -1388,6 +1388,7 @@
       {hover_info}
       pinned={locked_hover_formula === hover_info.formula}
       detail_level={chempot.tooltip_detail_level}
+      color={domain_colors.get(hover_info.formula)}
       constrain_to={{ width: container_width, height: container_height }}
     />
   {/if}

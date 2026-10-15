@@ -42,7 +42,14 @@ import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { mock_fullscreen, bind_props, expect_plot_controls, query, set_input } from '../setup'
+import {
+  mock_fullscreen,
+  bind_props,
+  doc_query,
+  expect_plot_controls,
+  query,
+  set_input,
+} from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
@@ -390,6 +397,53 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
 })
 
+test.each([
+  // opaque fill: tooltip wears it, text contrasts with it
+  [`#ffffff`, ``, `#ffffff`, `black`],
+  // translucent or var() fills JS can't composite keep the dark chip with white text
+  [`rgba(255, 255, 255, 0.5)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
+  [`var(--marker-fill)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
+  // a --scatter3d-tooltip-bg override is what shows, so text contrasts with it, not the fill
+  [`#ffffff`, `#000000`, `#ffffff`, `white`],
+])(
+  `default 3D tooltip for fill %s (bg override %j) falls back to %s with %s text`,
+  async (fill, bg_override, fallback_bg, text_color) => {
+    const portal = document.createElement(`div`)
+    document.body.append(portal)
+    onTestFinished(() => portal.remove())
+    // happy-dom doesn't inherit custom properties into getComputedStyle, so stand in for a
+    // --scatter3d-tooltip-bg set on an ancestor
+    const orig_computed_style = globalThis.getComputedStyle
+    vi.spyOn(globalThis, `getComputedStyle`).mockImplementation((elt, pseudo) => {
+      const style = orig_computed_style(elt, pseudo)
+      const orig_get = style.getPropertyValue.bind(style)
+      style.getPropertyValue = (name) =>
+        name === `--scatter3d-tooltip-bg` ? bg_override : orig_get(name)
+      return style
+    })
+    onTestFinished(() => {
+      vi.restoreAllMocks()
+    })
+    const { unmount_scene } = mount_scene((anchor) =>
+      ScatterPlot3DScene(anchor, {
+        series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
+        hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
+        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+        tooltip_portal: portal,
+        gizmo: false,
+      }),
+    )
+    try {
+      flushSync()
+      const tip = query(portal, `.tooltip`)
+      expect(tip.style.background).toBe(`var(--scatter3d-tooltip-bg, ${fallback_bg})`)
+      expect(tip.style.color).toBe(`var(--scatter3d-tooltip-color, ${text_color})`)
+    } finally {
+      await unmount_scene()
+    }
+  },
+)
+
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame
   vi.useFakeTimers({ toFake: [`performance`] })
@@ -492,6 +546,10 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     expect(marker(0)).toEqual(drawn(half))
     // the hover halo rides on the moving marker the raycast hits, not on its target
     expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
+    // the default tooltip wears the hovered marker's fill, text contrasted against it
+    const tip = doc_query(`.tooltip`)
+    expect(tip.style.background).toBe(`var(--scatter3d-tooltip-bg, #ffffff)`)
+    expect(tip.style.color).toBe(`var(--scatter3d-tooltip-color, black)`)
     expect(halo()?.scale.x).toBe(hover_marker_geometry(half[3]).radius)
     // shadows switched on mid-flight join the same clock, flattened onto the floor
     state.display = { show_axes: false, projections: { xy: true } }

@@ -2,7 +2,12 @@
   import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
 
   import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
+  import {
+    contrast_color_memo,
+    is_color,
+    is_opaque_color,
+    resolve_backdrop,
+  } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig } from '#lib/plot/core/types.js'
@@ -587,6 +592,12 @@
     tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
     tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
     tooltip_div.classList.add(`visible`)
+    // wear the hovered cell's fill (the arrow too), text contrasted against it; a translucent
+    // or missing fill (transparent by default) gets an empty value, which removes the inline
+    // property and restores the neutral CSS defaults
+    const fill = is_opaque_color(context.bg_color) ? context.bg_color : null
+    tooltip_div.style.setProperty(`--_bg`, fill ?? ``)
+    tooltip_div.style.color = contrast_for_bg(fill) ?? ``
     if (typeof tooltip === `function`) {
       tooltip_cell = context
     } else {
@@ -1166,9 +1177,10 @@
     opacity: 0.9;
   }
   .tooltip {
+    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     display: none;
     position: fixed;
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    background: var(--_bg);
     color: var(--tooltip-color, light-dark(#222, #eee));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
@@ -1193,8 +1205,7 @@
       transform: translateX(-50%);
       border-left: 6px solid transparent;
       border-right: 6px solid transparent;
-      border-bottom: 6px solid
-        var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+      border-bottom: 6px solid var(--_bg);
     }
   }
 </style>

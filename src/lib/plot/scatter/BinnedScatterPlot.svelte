@@ -967,6 +967,7 @@
         constrain_to={{ width, height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: 44 }}
+        bg_color={series_color(hovered_point.series_idx)}
       >
         {#if tooltip}
           {@render tooltip(props)}

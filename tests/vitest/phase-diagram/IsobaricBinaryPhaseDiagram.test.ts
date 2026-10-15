@@ -1,10 +1,19 @@
-import { format_hover_info_text } from '#lib/phase-diagram/utils.js'
+import { format_hover_info_text, get_phase_color } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
+import {
+  create_drop_event,
+  css_bg_color,
+  doc_query,
+  keydown,
+  mount_sized,
+  mouse,
+  plot_svg,
+  query,
+} from '../setup'
 import { create_hover_info, lever_rule, pts, rect } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
@@ -140,6 +149,16 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(info?.lever_rule).toBeUndefined()
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`Liquid`)
     expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
+    // a single-phase region backs its tooltip with its (opaque) palette hue rather than the
+    // translucent drawn fill; a two-phase field's gradient has no single color, so its
+    // tooltip stays the neutral card
+    const tooltip_bg = () =>
+      wrapper.querySelector<HTMLElement>(`.tooltip-container`)?.style.backgroundColor
+    expect(tooltip_bg()).toBe(css_bg_color(get_phase_color(`Liquid`, `hex`)))
+    // the card inside shows that fill through
+    const card_bg = () =>
+      getComputedStyle(query(wrapper, `.phase-diagram-tooltip`)).backgroundColor
+    expect(card_bg()).toBe(`transparent`)
 
     await hover_at(wrapper, 0.25, 250) // inside the α + β field spanning x: [0, 1]
     expect(on_phase_hover.mock.lastCall?.[0]?.lever_rule).toMatchObject({
@@ -156,6 +175,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     if (!tie_line?.parentElement) throw new Error(`missing tie line`)
     expect(getComputedStyle(tie_line.parentElement).pointerEvents).toBe(`none`)
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`α + β`)
+    expect(tooltip_bg()).toBe(``)
+    expect(card_bg()).not.toBe(`transparent`)
 
     // outside the plot area (left of the y-axis) -> hover cleared
     plot_svg(wrapper).dispatchEvent(
@@ -164,6 +185,19 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     await tick()
     expect(on_phase_hover).toHaveBeenLastCalledWith(null)
     expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
+  })
+
+  test.each([
+    [`#123456`, css_bg_color(`#123456`)],
+    // a translucent explicit fill would let labels show through, so the card stays neutral
+    [`rgba(18, 52, 86, 0.5)`, ``],
+  ])(`explicit region color %s backs the tooltip as %j`, async (color, expected) => {
+    const [liquid, ...rest] = eutectic.regions
+    const wrapper = await mount_diagram({
+      data: { ...eutectic, regions: [{ ...liquid, color }, ...rest] },
+    })
+    await hover_at(wrapper, 0.5, 750)
+    expect(query(wrapper, `.tooltip-container`).style.backgroundColor).toBe(expected)
   })
 
   test(`click locks the tooltip; click again or Escape unlocks`, async () => {

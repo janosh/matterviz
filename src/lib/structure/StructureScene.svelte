@@ -1837,6 +1837,21 @@
       ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
       : active_highlight_color,
   )
+  // The hovered atom's fill as drawn
+  const hovered_atom_color = $derived(
+    hovered_idx === null ? undefined : atom_groups.first_by_site.get(hovered_idx)?.color,
+  )
+  // Its tooltip wears that fill when it is one flat colour: a disordered site's element wedges
+  // (unless a property colour paints this site whole) or an atom colour field painted across
+  // the sphere have none, so those stay neutral
+  const hovered_tooltip_bg = $derived(
+    atom_color_field ||
+      (hovered_idx !== null &&
+        !property_colors?.colors[hovered_idx] &&
+        (hovered_site?.species.length ?? 0) > 1)
+      ? null
+      : hovered_atom_color,
+  )
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
@@ -1848,7 +1863,7 @@
     }
     if (hovered_idx !== null) {
       const hover_color =
-        atom_groups.first_by_site.get(hovered_idx)?.color ??
+        hovered_atom_color ??
         (hovered_site?.species[0] && palette[hovered_site.species[0].element])
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
@@ -2326,7 +2341,7 @@
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
           atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
-        <CanvasTooltip position={hovered_site.xyz}>
+        <CanvasTooltip position={hovered_site.xyz} bg_color={hovered_tooltip_bg}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}

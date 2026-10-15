@@ -14,6 +14,7 @@ import {
   bind_props,
   CANVAS_NOOP_METHODS,
   clip_rect,
+  css_bg_color,
   doc_query,
   mock_canvas_context,
   query,
@@ -1278,6 +1279,8 @@ describe(`BinnedScatterPlot`, () => {
     hover_plot(420, 280)
     await tick()
     expect(document.querySelector(`.custom-point-tooltip`)?.textContent).toBe(`label-wbm-1`)
+    // the tooltip takes the hovered point's series color, as the density bins' tooltips do
+    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(css_bg_color(plot_color(1)))
 
     click_plot(420, 280)
     expect(on_point_click).toHaveBeenCalledWith(

@@ -642,6 +642,7 @@
         y={frame.scales[hover_info.active_y_axis](coord_y)}
         avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
+        bg_color={series_color(hover_info.series_idx)}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}

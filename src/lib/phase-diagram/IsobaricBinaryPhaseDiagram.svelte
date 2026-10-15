@@ -6,6 +6,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { create_file_drop_handler } from '#lib/io/file-drop.js'
+  import { is_opaque_color } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -308,6 +309,16 @@
   }
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
+  // The tooltip takes the hovered region's hue, opaque (the drawn fill is translucent, which
+  // would let region labels show through the card): the palette's hex for default fills, an
+  // explicit color only if opaque. A multi-phase gradient or translucent explicit color has no
+  // single solid color, so its tooltip keeps the neutral card
+  const tooltip_region_color = $derived.by(() => {
+    const region = effective_hover_info?.region
+    if (!region || get_multi_phase_gradient(region.name)) return undefined
+    if (!region.color) return get_phase_color(region.name, `hex`)
+    return is_opaque_color(region.color) ? region.color : undefined
+  })
 
   // Isothermal tie-line geometry (SVG px); null outside two-phase regions.
   // The line runs between the two endpoint markers, the cursor marker sits at the hover point.
@@ -822,7 +833,11 @@
         fixed
         offset={{ x: 15, y: 15 }}
         fallback_size={{ width: 200, height: 150 }}
-        class={[`tooltip-container`, { locked: locked_hover_info }]}
+        class={[
+          `tooltip-container`,
+          { locked: locked_hover_info, colored: tooltip_region_color },
+        ]}
+        bg_color={tooltip_region_color}
         style="--plot-tooltip-padding: 0; white-space: normal{locked_hover_info
           ? `; pointer-events: auto`
           : ``}"
@@ -910,6 +925,11 @@
   }
   .binary-phase-diagram :global(.tooltip-container.locked) {
     filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+  }
+  /* the region's fill shows through the card, under the tooltip's contrasting text */
+  .binary-phase-diagram :global(.tooltip-container.colored .phase-diagram-tooltip) {
+    background: transparent;
+    color: inherit;
   }
   .tooltip-lock-indicator {
     position: absolute;

@@ -104,7 +104,7 @@
         stroke="white"
         role="img"
         aria-label={segment_title(segment)}
-        {@attach hover_tooltip(segment_tooltip)}
+        {@attach hover_tooltip(segment_tooltip, () => segment.color)}
         stroke-width="1"
         class="bar-segment"
       >
