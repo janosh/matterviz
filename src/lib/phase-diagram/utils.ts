@@ -1,5 +1,4 @@
 import { add_alpha } from '#lib/colors/index.js'
-import { DEFAULT_PNG_DPI } from '#lib/constants.js'
 import { format_num } from '#lib/labels.js'
 import { array_extent, point_in_polygon, type Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
@@ -57,8 +56,6 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   }),
   // Margins
   margin: Object.freeze({ t: 25, r: 25, b: 50, l: 60 } as Required<Sides>),
-  // Export
-  png_dpi: DEFAULT_PNG_DPI,
 })
 
 // Merge partial config with defaults - single helper for consistent merging

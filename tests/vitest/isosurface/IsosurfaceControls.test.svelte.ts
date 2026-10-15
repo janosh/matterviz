@@ -226,7 +226,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     )
   const mount_colored = (layer: Partial<IsosurfaceLayer> = {}, volumes = two_volumes()) =>
     mount_layers(
-      [make_layer(`0`, { color_volume_id: `1`, colormap: `interpolateRdBu`, ...layer })],
+      [make_layer(`0`, { color_volume_id: `1`, color_scale: `interpolateRdBu`, ...layer })],
       { volumes },
     )
   const change_color_scale = (label: string) => {
@@ -399,7 +399,9 @@ describe(`IsosurfaceControls multi-volume`, () => {
   })
 
   test(`color-source UI shows colormap + range; clearing a bound resets to auto`, () => {
-    const props = mount_colored({ color_range: [-1, 1] })
+    const props = mount_colored({
+      color_scale: { scheme: `interpolateRdBu`, value_range: [-1, 1] },
+    })
     const color_scale = doc_query<HTMLInputElement>(
       `input[aria-label="Colormap for sampled values"]`,
     ).closest(`.multiselect`)
@@ -416,7 +418,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     expect(Number(range_inputs[1].value)).toBe(1)
 
     change_value(range_inputs[0], ``)
-    expect(props.settings.layers[0].color_range).toBeUndefined()
+    expect(props.settings.layers[0].color_scale).toEqual({ scheme: `interpolateRdBu` })
     expect(
       [
         ...document.querySelectorAll<HTMLInputElement>(`input[aria-label^="Color range "]`),
@@ -476,22 +478,31 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   test.each([
     {
-      desc: `colormap select updates the layer's colormap`,
-      layer: { color_volume_id: `1`, colormap: `interpolateViridis` },
+      desc: `colormap select updates the layer's scheme`,
+      layer: { color_volume_id: `1`, color_scale: { type: `log`, value_range: [1, 9] } },
       act: () => change_color_scale(`Turbo`),
-      expected: { colormap: `interpolateTurbo` },
+      // the scale type and range survive a scheme change
+      expected: {
+        color_scale: { scheme: `interpolateTurbo`, type: `log`, value_range: [1, 9] },
+      },
       reset_visible: true,
     },
     {
       desc: `picking "None (solid)" clears color source, colormap, and range`,
-      layer: { color_volume_id: `1`, colormap: `interpolateRdBu`, color_range: [-1, 1] },
+      layer: {
+        color_volume_id: `1`,
+        color_scale: { scheme: `interpolateRdBu`, value_range: [-1, 1] },
+      },
       act: () => change_value(find_select_with_option(`None (solid)`), `-1`),
-      expected: { color_volume_id: undefined, colormap: undefined, color_range: undefined },
+      expected: { color_volume_id: undefined, color_scale: undefined },
       reset_visible: false,
     },
     {
       desc: `reset button restores auto colormap and clears explicit range`,
-      layer: { color_volume_id: `1`, colormap: `interpolateTurbo`, color_range: [-9, 9] },
+      layer: {
+        color_volume_id: `1`,
+        color_scale: { scheme: `interpolateTurbo`, value_range: [-9, 9] },
+      },
       act: () => {
         const reset_button = document.querySelector<HTMLButtonElement>(
           `button[aria-label="Reset colormap + range to auto-fit"]`,
@@ -501,19 +512,19 @@ describe(`IsosurfaceControls multi-volume`, () => {
         flushSync()
       },
       // colormap auto-resets to Viridis for all-positive data
-      expected: { color_range: undefined, colormap: `interpolateViridis` },
+      expected: { color_scale: `interpolateViridis` },
       reset_visible: false,
     },
     {
       desc: `editing one bound of an auto range seeds the other from the color volume's data range`,
-      layer: { color_volume_id: `1`, colormap: `interpolateViridis` },
+      layer: { color_volume_id: `1`, color_scale: `interpolateViridis` },
       act: () =>
         change_value(
           doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
           `2.5`,
         ),
       // color volume data_range is [1, 8] → the untouched max bound comes from there
-      expected: { color_range: [2.5, 8] },
+      expected: { color_scale: { scheme: `interpolateViridis`, value_range: [2.5, 8] } },
       reset_visible: true,
     },
     {

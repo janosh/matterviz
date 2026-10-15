@@ -1,7 +1,6 @@
 export type { DensePointSeries, NumericArray } from './adaptive-density'
 export { default as BinnedScatterPlot } from './BinnedScatterPlot.svelte'
 export type {
-  BinnedColorScaleConfig,
   BinnedDensityConfig,
   BinnedOverlaysConfig,
   BinnedPointBasePayload,

@@ -2,7 +2,7 @@
 import {
   apply_vertex_colors,
   available_property_names,
-  property_color_range,
+  property_value_range,
   property_names,
   vertex_property,
   build_isosurface_geometry,
@@ -34,7 +34,7 @@ const make_surface = (overrides: Partial<FermiIsosurface> = {}): FermiIsosurface
     ],
     overrides,
   )
-const viridis: VertexColorOptions = { colormap: `interpolateViridis`, color_range: [0, 1] }
+const viridis: VertexColorOptions = { color_scale: `interpolateViridis`, value_range: [0, 1] }
 
 const make_geometry = (surface = make_surface()) => {
   const geometry = build_isosurface_geometry(surface)
@@ -92,8 +92,8 @@ describe(`apply_vertex_colors`, () => {
     const before = Array.from(first.array)
     const version_before = first.version
     apply_vertex_colors(geometry, values, {
-      colormap: `interpolateMagma`,
-      color_range: [0, 1],
+      color_scale: `interpolateMagma`,
+      value_range: [0, 1],
     })
     // Same buffer, new values, flagged for re-upload — the mesh buffers are untouched
     expect(geometry.getAttribute(`color`)).toBe(first)
@@ -145,8 +145,8 @@ describe(`named vertex properties`, () => {
     [`λ`, surfaces, [-0.6, 1]],
     [`Δ`, surfaces, [1, 5]],
     [`missing`, surfaces, [0, 1]],
-  ])(`property_color_range of %s`, (name, subset, expected) => {
-    const [low, high] = property_color_range(subset, name)
+  ])(`property_value_range of %s`, (name, subset, expected) => {
+    const [low, high] = property_value_range(subset, name)
     // Float32 storage: 0.2 round-trips as 0.20000000298
     expect(low).toBeCloseTo(expected[0], 6)
     expect(high).toBeCloseTo(expected[1], 6)

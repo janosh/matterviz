@@ -1,8 +1,12 @@
 // Vertex-color generation for cross-volume isosurface coloring: maps sampled
 // scalar values through a d3 colormap LUT to Three.js color buffer attributes.
 import type { D3InterpolateName } from '#lib/colors/index.js'
-import { get_d3_interpolator } from '#lib/colors/index.js'
 import type { Vec2 } from '#lib/math.js'
+import { color_ramp_scale } from '#lib/plot/core/color-ramp.js'
+import { color_interpolator, to_color_scale_config } from '#lib/plot/core/scales.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
+import { get_scale_type_name } from '#lib/plot/core/types.js'
+import { clamp01 } from '#lib/utils.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import type { DataRange } from './types'
@@ -43,33 +47,65 @@ export const is_signed_range = (data_range: DataRange): boolean =>
 
 export const COLORMAP_LUT_SIZE = 256
 
-// Private so the mutable cached arrays cannot be corrupted by consumers
-const linear_lut_cache = new Map<D3InterpolateName, Float32Array>()
-
-// Sample a d3 colormap into a flat linear-RGB lookup table of COLORMAP_LUT_SIZE entries.
-// Vertex colors are read as Linear-sRGB, so d3's sRGB output is converted. Cached per
-// colormap: building one parses 256 CSS colour strings, and parse_linear_rgb is uncached on
-// purpose (256 one-shot keys would evict shared element colors).
-function linear_colormap_lut(colormap: D3InterpolateName): Float32Array {
-  const cached = linear_lut_cache.get(colormap)
+// A color scale's palette (scheme clipped to palette_range) sampled at COLORMAP_LUT_SIZE
+// fractions and packed by `build`, for GPU vertex colors and canvas slice pixels. Cached in the
+// caller's private `cache` (building one parses 256 CSS colors); function schemes are rebuilt.
+export function palette_lut<Lut>(
+  cache: Map<string, Lut>,
+  color_scale: ColorScale,
+  build: (colors: string[]) => Lut,
+): Lut {
+  const { scheme, palette_range } = to_color_scale_config(color_scale)
+  const key = typeof scheme === `function` ? null : `${scheme}|${palette_range}`
+  const cached = key === null ? undefined : cache.get(key)
   if (cached) return cached
-  const interpolator = get_d3_interpolator(colormap)
-  const lut = new Float32Array(COLORMAP_LUT_SIZE * 3)
-  for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
-    lut.set(parse_linear_rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1))), idx * 3)
+  const interpolate = color_interpolator(color_scale)
+  const lut = build(
+    Array.from({ length: COLORMAP_LUT_SIZE }, (_, idx) =>
+      interpolate(idx / (COLORMAP_LUT_SIZE - 1)),
+    ),
+  )
+  if (key !== null) cache.set(key, lut)
+  return lut
+}
+
+// LUT index of a value on [min, max] with the color scale type's spacing (an inverted range
+// flips the palette, a degenerate one maps every value to its middle). -1 marks values with no
+// color: non-finite ones and, on a log scale, non-positive ones.
+export function lut_index_fn(color_scale: ColorScale, [min, max]: Vec2) {
+  const last = COLORMAP_LUT_SIZE - 1
+  const { type } = to_color_scale_config(color_scale)
+  const inv_span = 1 / (max - min)
+  const position =
+    min === max
+      ? (value: number) => (Number.isFinite(value) ? 0.5 : NaN)
+      : !type || get_scale_type_name(type) === `linear`
+        ? (value: number) => (value - min) * inv_span
+        : color_ramp_scale(type, [min, max], [0, 1])
+  return (value: number): number => {
+    const fraction = position(value)
+    return Number.isFinite(fraction) ? Math.round(clamp01(fraction) * last) : -1
   }
-  linear_lut_cache.set(colormap, lut)
+}
+
+// Linear-RGB LUTs for vertex colors: vertex colors are read as Linear-sRGB, so d3's sRGB output
+// is converted. parse_linear_rgb is uncached on purpose (256 one-shot keys would evict shared
+// element colors).
+const linear_lut_cache = new Map<string, Float32Array>()
+const build_linear_lut = (colors: string[]): Float32Array => {
+  const lut = new Float32Array(colors.length * 3)
+  for (const [idx, color] of colors.entries()) lut.set(parse_linear_rgb(color), idx * 3)
   return lut
 }
 
 // Range for a colormap over values in [min, max]. `true` forces a range symmetric about
 // zero, `false` keeps [min, max] as is, and `auto` (the default) symmetrises only when the
 // values straddle zero so diverging colormaps keep zero at their centre.
-export type ColorRangeSymmetry = boolean | `auto`
-export function fit_color_range(
+export type ValueRangeSymmetry = boolean | `auto`
+export function fit_value_range(
   min: number,
   max: number,
-  symmetric: ColorRangeSymmetry = `auto`,
+  symmetric: ValueRangeSymmetry = `auto`,
 ): Vec2 {
   if (symmetric === true || (symmetric === `auto` && min < 0 && max > 0)) {
     const abs_max = Math.max(Math.abs(min), Math.abs(max))
@@ -79,41 +115,39 @@ export function fit_color_range(
 }
 
 export interface VertexColorOptions {
-  colormap: D3InterpolateName
-  color_range: Vec2 // [min, max]; inverted ranges (min > max) flip the colormap
-  fallback_color?: string // used for non-finite scalars (out-of-bounds under 'fallback' policy)
+  color_scale: ColorScale // scheme, palette_range and type spacing
+  // [min, max] the caller resolved from color_scale.value_range and the data (see
+  // resolve_value_range); inverted ranges flip the colormap
+  value_range: Vec2
+  // used for scalars with no color: non-finite (out-of-bounds under 'fallback' policy), or
+  // non-positive on a log scale
+  fallback_color?: string
 }
 
 // Map per-vertex scalars to a flat linear-RGB Float32Array (3 components per
 // vertex) suitable for a Three.js 'color' BufferAttribute. Values outside
-// color_range clamp to the ends of the colormap; non-finite values get
+// value_range clamp to the ends of the colormap; values with no color get
 // fallback_color. Pass an existing array of the right size to fill in place
 // (avoids reallocating GPU-bound buffers on recolor).
 export function scalars_to_vertex_colors(
   scalars: Float32Array,
-  { colormap, color_range, fallback_color = `#808080` }: VertexColorOptions,
+  { color_scale, value_range, fallback_color = `#808080` }: VertexColorOptions,
   out?: Float32Array,
 ): Float32Array {
-  const lut = linear_colormap_lut(colormap)
-  const [range_min, range_max] = color_range
-  const span = range_max - range_min
-  const inv_span = span !== 0 ? 1 / span : 0
+  const lut = palette_lut(linear_lut_cache, color_scale, build_linear_lut)
+  const lut_index = lut_index_fn(color_scale, value_range)
   const [fb_r, fb_g, fb_b] = css_to_linear_rgb(fallback_color)
 
   const colors =
     out?.length === scalars.length * 3 ? out : new Float32Array(scalars.length * 3)
   for (let idx = 0; idx < scalars.length; idx++) {
-    const value = scalars[idx]
-    if (!Number.isFinite(value)) {
+    const lut_idx = lut_index(scalars[idx]) * 3
+    if (lut_idx < 0) {
       colors[idx * 3] = fb_r
       colors[idx * 3 + 1] = fb_g
       colors[idx * 3 + 2] = fb_b
       continue
     }
-    // span === 0 maps everything to the middle of the colormap
-    const normalized = span === 0 ? 0.5 : (value - range_min) * inv_span
-    const clamped = normalized < 0 ? 0 : Math.min(1, normalized)
-    const lut_idx = Math.round(clamped * (COLORMAP_LUT_SIZE - 1)) * 3
     colors[idx * 3] = lut[lut_idx]
     colors[idx * 3 + 1] = lut[lut_idx + 1]
     colors[idx * 3 + 2] = lut[lut_idx + 2]
@@ -143,27 +177,27 @@ export function set_vertex_colors(
 // data range: signed fields (e.g. ESP, magnetization) get a diverging RdBu map
 // with a symmetric range about zero; non-negative fields get Viridis over [min, max].
 export function auto_color_config(data_range: DataRange): {
-  colormap: IsoColormap
-  color_range: Vec2
+  scheme: IsoColormap
+  value_range: Vec2
 } {
   const { min, max, abs_max } = data_range
   if (is_signed_range(data_range)) {
     // RdBu with symmetric range: negative → red, positive → blue (ESP convention)
-    return { colormap: `interpolateRdBu`, color_range: [-abs_max, abs_max] }
+    return { scheme: `interpolateRdBu`, value_range: [-abs_max, abs_max] }
   }
-  return { colormap: DEFAULT_ISO_COLORMAP, color_range: [min, max] }
+  return { scheme: DEFAULT_ISO_COLORMAP, value_range: [min, max] }
 }
 
 // Fit a color range to the scalar values actually present on the surface(s),
 // ignoring non-finite (out-of-bounds) markers. This is the default when a layer
-// has no explicit color_range: the whole-volume range is usually dominated by
+// has no explicit value_range: the whole-volume range is usually dominated by
 // extreme values near nuclei that never appear on the rendered surface.
 // `symmetric: true` (pass when the source field is signed) forces a range symmetric
 // about zero even when the sampled values happen to be one-signed, so diverging
-// colormaps keep zero at their center; see fit_color_range for the other modes.
+// colormaps keep zero at their center; see fit_value_range for the other modes.
 export function compute_scalar_range(
   scalar_arrays: Float32Array[],
-  { symmetric = `auto` }: { symmetric?: ColorRangeSymmetry } = {},
+  { symmetric = `auto` }: { symmetric?: ValueRangeSymmetry } = {},
 ): Vec2 {
   let min = Infinity
   let max = -Infinity
@@ -175,5 +209,5 @@ export function compute_scalar_range(
     }
   }
   if (min === Infinity) return [0, 1] // no finite samples
-  return fit_color_range(min, max, symmetric)
+  return fit_value_range(min, max, symmetric)
 }

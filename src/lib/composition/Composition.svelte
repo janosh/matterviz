@@ -1,7 +1,7 @@
 <script lang="ts">
   import ExportPane from '#lib/io/ExportPane.svelte'
 
-  import { DEFAULT_PNG_DPI, ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
+  import { ELEMENT_COLOR_SCHEME_NAMES } from '#lib/constants.js'
   import type { CompositionType } from '#lib/composition/index.js'
   import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -14,7 +14,7 @@
     Graph,
     ScatterPlot,
   } from 'svelte-widgets/icons'
-  import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+  import { svg_sources } from '#lib/io/export.js'
   import type { CompositionChartProps } from './chart'
   import BarChart from './BarChart.svelte'
   import BubbleChart from './BubbleChart.svelte'
@@ -136,21 +136,5 @@ path below, which has no pointer position to read -->
   bind:export_pane_open
   filename={get_electro_neg_formula(parsed, { plain_text: true, delim: `` })}
   toggle_props={{ style: `display: none` }}
-  sections={[
-    {
-      title: `Export composition`,
-      items: [
-        {
-          label: `SVG`,
-          on_download: ({ filename, save }) =>
-            export_svg_as_svg(svg_node, `${filename}.svg`, [], {}, save),
-        },
-        {
-          label: `PNG`,
-          on_download: ({ filename, save }) =>
-            export_svg_as_png(svg_node, `${filename}.png`, DEFAULT_PNG_DPI, [], {}, save),
-        },
-      ],
-    },
-  ]}
+  sources={svg_sources(() => svg_node)}
 />

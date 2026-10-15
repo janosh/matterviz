@@ -77,15 +77,12 @@ type ElementAxisOrdering =
 
 // Shared types used by both HeatmapMatrix and HeatmapMatrixControls. Exported through the
 // #lib star exports, so new names must stay unique there.
-export type HeatmapNormalizeMode = `linear` | `log`
-// auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale_range as given
+// auto: data min/max; robust: 2nd-98th percentile; fixed: color_scale.value_range as given
 export type HeatmapDomainMode = `auto` | `robust` | `fixed`
-export type ColorBarPosition = `right` | `bottom`
 export type SymmetricMode = false | `lower` | `upper`
 
 // Tooltip snippet type for HeatmapMatrix
 export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
-export type HeatmapExportFormat = `csv` | `json`
 
 // All built-in string ordering keys
 export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrderingKey[]

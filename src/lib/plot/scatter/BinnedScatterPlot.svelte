@@ -40,6 +40,7 @@
   import {
     bin_points,
     density_bin_at_point,
+    density_bin_rows,
     density_screen_cell,
     first_point_in_bin,
     series_extents,
@@ -55,6 +56,8 @@
   import {
     collect_size_range,
     create_color_scale,
+    resolve_value_range,
+    to_color_scale_config,
     create_size_scale,
   } from '#lib/plot/core/scales.js'
   import type {
@@ -66,7 +69,9 @@
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
-  import { attach_canvas, prepare_canvas } from '#lib/plot/core/utils.js'
+  import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
+  import type { ExportProps } from '#lib/io/export.js'
   import {
     compute_label_positions,
     estimate_label_size,
@@ -135,7 +140,8 @@
     Pick<
       BasePlotProps,
       `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
-    > & {
+    > &
+    ExportProps & {
       series: DensePointSeries<Metadata>[]
       x_axis?: AxisConfig
       y_axis?: AxisConfig
@@ -335,6 +341,19 @@
       ]
     return { ...bin, series_idx, count: density_grids[series_idx].counts[bin_idx] }
   }
+  // CSV export: the non-empty density bins currently in view (per series when colored apart)
+  const export_sources = {
+    csv: csv_source(() => ({
+      header: [`series`, `x_start`, `x_end`, `y_start`, `y_end`, `count`],
+      rows: density_bin_rows(
+        density_result,
+        x_range,
+        y_range,
+        bin_transforms,
+        series.map((srs, idx) => srs.label ?? `Series ${idx + 1}`),
+      ),
+    })),
+  }
   const auto_color_range = $derived<Vec2>([
     1,
     Math.max(1, ...density_grids.map(({ max_count }) => max_count)),
@@ -348,16 +367,17 @@
       ),
     ),
   )
+  // the bar spans the shared scale's domain: an explicit value_range, else the count range
+  const color_bar_domain = $derived(
+    resolve_value_range(density_settings.color_scale, auto_color_range),
+  )
   const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
   const color_bar_props = $derived.by((): ColorBarDecorationProps | null => {
     if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
       scale_type:
-        color_bar.scale_type ??
-        (typeof density_settings.color_scale === `string`
-          ? undefined
-          : density_settings.color_scale.type),
+        color_bar.scale_type ?? to_color_scale_config(density_settings.color_scale).type,
       title: `${color_bar.title ?? `Density`} (${density_result.visible_count.toLocaleString()} points)`,
       tick_format: color_bar.tick_format ?? `.2~s`,
       tick_labels: color_bar.tick_labels ?? 4,
@@ -587,15 +607,28 @@
 
   // Density bins are continuous geometry and clip to the plot area. Point centers are
   // range-filtered before drawing, so leave their complete marker glyphs visible at the edges.
+  // Registered per canvas as its export painter, so exports redraw at the export pixel ratio
   const paint = (
     node: HTMLCanvasElement | undefined,
     draw: (ctx: CanvasRenderingContext2D) => void,
     clip_to_plot = false,
   ) => {
-    const surface = prepare_canvas(node, width, height)
+    if (node)
+      canvas_painters.set(node, (target, pixel_ratio) =>
+        paint_at(target, draw, clip_to_plot, pixel_ratio),
+      )
+    paint_at(node, draw, clip_to_plot)
+  }
+  const paint_at = (
+    node: HTMLCanvasElement | undefined,
+    draw: (ctx: CanvasRenderingContext2D) => void,
+    clip_to_plot: boolean,
+    pixel_ratio?: number,
+  ) => {
+    const surface = prepare_canvas(node, width, height, pixel_ratio)
     if (!surface) return
-    const { ctx, pixel_ratio } = surface
-    ctx.setTransform(pixel_ratio, 0, 0, pixel_ratio, 0, 0)
+    const { ctx } = surface
+    ctx.setTransform(surface.pixel_ratio, 0, 0, surface.pixel_ratio, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.save()
     if (clip_to_plot) {
@@ -842,6 +875,7 @@
   on_mouse_click={on_click}
   on_mouse_leave={clear_hover}
   {header_controls}
+  {export_sources}
   {children}
   {...rest}
   data-render-mode={render_mode}
@@ -920,8 +954,8 @@
         decoration={colorbar}
         color_bar={{
           ...color_bar_props,
-          scale: { fn: color_scales[0], domain: auto_color_range },
-          range: auto_color_range,
+          scale: { fn: color_scales[0], domain: color_bar_domain },
+          range: color_bar_domain,
         }}
       />
     {/if}

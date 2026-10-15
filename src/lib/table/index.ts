@@ -1,12 +1,17 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
-import { contrast_color_memo, get_d3_interpolator } from '#lib/colors/index.js'
+import { contrast_color_memo } from '#lib/colors/index.js'
 import { quantile_unordered } from '#lib/math.js'
 import { color_ramp_scale } from '#lib/plot/core/color-ramp.js'
+import {
+  color_interpolator,
+  resolve_value_range,
+  to_color_scale_config,
+} from '#lib/plot/core/scales.js'
+import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
 import { clamp01 } from '#lib/utils.js'
 import { scaleSequential } from 'd3-scale'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
-import type { ExportFormat } from './export'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
 export { default as ToggleMenu } from './ToggleMenu.svelte'
@@ -49,8 +54,9 @@ export type Column<Row extends object = RowData> = {
   // Render cells as dates/times in this mode; also makes bare numbers read as epoch timestamps
   datetime_format?: DateTimeFormatMode
   better?: `higher` | `lower`
-  color_scale?: D3InterpolateName | null
-  scale_type?: `linear` | `log`
+  // null turns the heatmap off; `type: 'log'` colors on a log scale, value_range ends fix
+  // the domain (and clamp like `normalize`), palette_range clips the scheme
+  color_scale?: ColorScale | null
   // How to map values onto the color scale (default `minmax`). See ColorNormalizeMode.
   normalize?: ColorNormalizeMode
   // Columns sharing a tag are colored on one merged domain, so their cells are
@@ -97,7 +103,7 @@ export type SummaryStat = `mean` | `median` | `min` | `max` | `count`
 export type ColumnPrefs = {
   width?: number
   better?: `higher` | `lower`
-  color_scale?: D3InterpolateName | null
+  color_scale?: D3InterpolateName | null // scheme picked in the controls pane
   datetime_format?: DateTimeFormatMode
   filter?: ColumnFilter
 }
@@ -149,10 +155,6 @@ export type VirtualScroll = boolean | { overscan?: number; min_window?: number }
 export type Search =
   | boolean
   | { placeholder?: string; expanded?: boolean; keys?: string[]; fuzzy?: boolean }
-
-// Export configuration (boolean to enable, object for full control). `md` emits
-// GitHub-flavoured markdown, `tex` a LaTeX booktabs tabular.
-export type ExportData = boolean | { formats?: ExportFormat[]; filename?: string }
 
 export type CellColor = { bg: string | null; text: string | null }
 export const NULL_CELL_COLOR: CellColor = { bg: null, text: null }
@@ -243,24 +245,26 @@ export function resolve_color_domain(
 export function make_cell_color_scale(
   all_values: CellVal[], // all values in the column
   better: `higher` | `lower` | undefined, // sort direction
-  color_scale: D3InterpolateName | null = `interpolateViridis`, // color scale name
-  scale_type: `linear` | `log` = `linear`, // scale type
+  color_scale: ColorScale | null = `interpolateViridis`,
   // Overrides the min/max taken from all_values (quantile clipping, a shared group).
-  // Supplying it also clamps the scale: excluded values must saturate, not extrapolate.
+  // Supplying it (or color_scale.value_range) also clamps the scale: excluded values must
+  // saturate, not extrapolate.
   domain?: [number, number],
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
+  const { type, value_range } = to_color_scale_config(color_scale)
+  const is_log = get_scale_type_name(type) === `log`
 
-  const range: [number, number] = domain ? [...domain] : [0, 1]
+  let range: [number, number] = domain ? [...domain] : [0, 1]
   // Resolved domains need no column scan, except when a log lower bound needs lifting
   // to the smallest positive value (quantile clipping or a shared-domain group).
-  if (!domain || (scale_type === `log` && range[0] <= 0 && range[1] > 0)) {
+  if (!domain || (is_log && range[0] <= 0 && range[1] > 0)) {
     let lowest = Infinity
     let highest = -Infinity
     let has_log_zero = false
     for (const value of all_values) {
       if (typeof value !== `number` || !Number.isFinite(value)) continue
-      if (scale_type === `log` && value <= 0) {
+      if (is_log && value <= 0) {
         has_log_zero ||= value === 0
         continue
       }
@@ -274,18 +278,23 @@ export function make_cell_color_scale(
       range[1] = highest === -Infinity ? 1 : highest
     } else if (lowest !== Infinity) range[0] = lowest
   }
+  range = resolve_value_range(color_scale, range)
   if (better === `lower`) range.reverse()
 
-  const interpolator = get_d3_interpolator(color_scale)
-  // Log positions come from the shared ramp scale (same LOG_EPS floor as ColorBar/HeatmapMatrix)
-  const log_position = scale_type === `log` ? color_ramp_scale(`log`, range, [0, 1]) : null
+  const interpolator = color_interpolator(color_scale)
+  // Log/arcsinh positions come from the shared ramp scale (same LOG_EPS floor as
+  // ColorBar/HeatmapMatrix)
+  const position =
+    !type || get_scale_type_name(type) === `linear`
+      ? null
+      : color_ramp_scale(type, range, [0, 1])
   // Zero sits below the positive log domain and takes its low-end colour (the floored bound,
   // so an all-zero column still maps to a real colour)
-  const log_zero_value = log_position?.domain()[better === `lower` ? 1 : 0]
+  const log_zero_value = is_log ? position?.domain()[better === `lower` ? 1 : 0] : undefined
   const seq_scale = scaleSequential()
     .domain(range)
     .interpolator(interpolator)
-    .clamp(Boolean(domain))
+    .clamp(Boolean(domain ?? value_range))
 
   // Fills are opaque here (HeatmapTable composites translucent ones itself), so no backdrop
   const text_by_bg = contrast_color_memo()
@@ -295,10 +304,10 @@ export function make_cell_color_scale(
     // the scale never accounted for.
     if (val == null || !Number.isFinite(val)) return NULL_CELL_COLOR
     // Negatives remain invalid on a log scale
-    if (scale_type === `log` && val < 0) return NULL_CELL_COLOR
+    if (is_log && val < 0) return NULL_CELL_COLOR
     const color_val = val === 0 && log_zero_value !== undefined ? log_zero_value : val
-    const background = log_position
-      ? interpolator(clamp01(log_position(color_val)))
+    const background = position
+      ? interpolator(clamp01(position(color_val)))
       : seq_scale(color_val)
     return { bg: background, text: text_by_bg(background) }
   }

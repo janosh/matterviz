@@ -1,11 +1,10 @@
-import type { BinnedColorScaleConfig } from '#lib/plot/scatter/binned-scatter-types.js'
 import { clamp, partition_point, type Point2D, type Vec2 } from '#lib/math.js'
 import {
   axis_transform,
   range_bounds,
   validate_log_range,
 } from '#lib/plot/core/interactions.js'
-import type { ScaleType } from '#lib/plot/core/types.js'
+import type { ColorScale, ScaleType } from '#lib/plot/core/types.js'
 import { assert_series_lengths, get_scale_type_name } from '#lib/plot/core/types.js'
 
 export type NumericArray = ArrayLike<number>
@@ -20,7 +19,7 @@ export interface DensePointSeries<Metadata = Record<string, unknown>> {
   size_values?: ArrayLike<number | null>
   color?: string
   // Opt into separate density bins and a color scale for this series.
-  density_color_scale?: BinnedColorScaleConfig
+  density_color_scale?: ColorScale
 }
 
 export interface DenseInternalPoint<Metadata = Record<string, unknown>> {
@@ -394,4 +393,33 @@ export function first_point_in_bin<Metadata>(
   const point_idx = grid.first_point_idxs[idx]
   const srs = series[series_idx]
   return srs ? internal_point(srs, series_idx, point_idx, x_scale, y_scale) : null
+}
+
+// Non-empty density bins as table rows for CSV export: one row per bin per series when the
+// series are binned separately, else one pooled row (series `all`) per bin
+export function density_bin_rows(
+  density: DensityBinResult,
+  x_range: Vec2,
+  y_range: Vec2,
+  transforms: BinTransforms | undefined,
+  series_labels: readonly string[],
+): (string | number)[][] {
+  const grids = density.series_bins?.map(
+    (grid, idx) => [series_labels[idx], grid] as const,
+  ) ?? [[`all`, density] as const]
+  const rows: (string | number)[][] = []
+  for (const [label, { counts }] of grids) {
+    for (const [bin_idx, count] of counts.entries()) {
+      if (!count) continue
+      const x_bin = bin_idx % density.x_bins
+      const y_bin = Math.floor(bin_idx / density.x_bins)
+      rows.push([
+        label,
+        ...bin_range(transforms?.x, x_range, x_bin, density.x_bins),
+        ...bin_range(transforms?.y, y_range, y_bin, density.y_bins),
+        count,
+      ])
+    }
+  }
+  return rows
 }

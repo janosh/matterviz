@@ -1,19 +1,10 @@
-// Export helpers for chemical potential diagrams (shared between 2D and 3D views).
-import { canvas_to_png_blob, dpi_to_scale, scene_registry } from '#lib/io/export.js'
+// Export helpers for the 3D chemical potential diagram: composited PNG/SVG snapshots and GLB.
+import { canvas_to_png_blob, dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { export_scene_as } from '#lib/scene/index.js'
 import { escape_html as xml_escape } from '#lib/utils.js'
 import * as THREE from 'three/webgpu'
-
-export const get_json_string = (payload: unknown): string => JSON.stringify(payload, null, 2)
-
-export const export_json_file = (
-  payload: unknown,
-  basename: string,
-  save: FileSaver,
-): void | Promise<void> =>
-  save(get_json_string(payload), `${basename}.json`, `application/json`)
 
 interface XYZ {
   x: number
@@ -86,88 +77,60 @@ function get_overlay_text_items(
   return text_items
 }
 
-// drawImage/toDataURL of a presented WebGPU canvas read no pixels, so re-render a registered
-// scene (at `png_dpi`) right before encoding; unregistered canvases encode as-is
-function capture_frame(gl_canvas: HTMLCanvasElement, png_dpi: number): Promise<Blob> {
-  const view = scene_registry.get(gl_canvas)
-  return canvas_to_png_blob(
-    gl_canvas,
-    view ? png_dpi : 72,
-    view?.scene ?? null,
-    view?.camera ?? null,
-  )
+// The 3D canvas, throwing when it is missing or has zero size (hidden/unrendered)
+function require_canvas(wrapper: HTMLElement | undefined): {
+  canvas: HTMLCanvasElement
+  rect: DOMRect
+  wrapper: HTMLElement
+} {
+  const canvas = get_gl_canvas(wrapper)
+  const rect = canvas?.getBoundingClientRect()
+  if (!canvas || !wrapper || !rect || !(rect.width > 0) || !(rect.height > 0))
+    throw new Error(`Chemical potential diagram has no rendered canvas to export`)
+  return { canvas, rect, wrapper }
 }
 
-// Composite the 3D canvas + HTML overlay labels into a single PNG download
-export async function export_png_file(
+// The 3D canvas (re-rendered at `png_dpi`) with the HTML overlay labels drawn on top
+export async function chempot_png_blob(
   wrapper: HTMLElement | undefined,
-  basename: string,
   png_dpi: number,
-  save: FileSaver,
-): Promise<void> {
-  const gl_canvas = get_gl_canvas(wrapper)
-  if (!gl_canvas || !wrapper) return
-
-  const rect = gl_canvas.getBoundingClientRect()
-  // A degenerate rect means the canvas is hidden/unrendered: nothing to capture
-  if (!(rect.width > 0) || !(rect.height > 0)) {
-    console.error(
-      `Cannot export PNG: canvas has zero size (width=${rect.width}, height=${rect.height})`,
-    )
-    return
-  }
-  const scale = dpi_to_scale(png_dpi)
-  const out = document.createElement(`canvas`)
-  // Floor at 1px so tiny rect x min-DPI rounding can't yield an invalid 0x0 canvas
-  out.width = Math.max(1, Math.round(rect.width * scale))
-  out.height = Math.max(1, Math.round(rect.height * scale))
-  const ctx = out.getContext(`2d`)
-  if (!ctx) return
-  ctx.scale(scale, scale)
-
-  const frame = await createImageBitmap(await capture_frame(gl_canvas, png_dpi))
-  ctx.drawImage(frame, 0, 0, rect.width, rect.height)
-  frame.close()
-
-  for (const text_item of get_overlay_text_items(wrapper, rect)) {
-    ctx.font = text_item.font
-    ctx.fillStyle = text_item.color
+): Promise<Blob> {
+  const { canvas, rect, wrapper: root } = require_canvas(wrapper)
+  const frame = await createImageBitmap(await canvas_to_png_blob(canvas, png_dpi))
+  return paint_png_blob(rect.width, rect.height, dpi_to_scale(png_dpi), (ctx) => {
+    ctx.drawImage(frame, 0, 0, rect.width, rect.height)
+    frame.close()
     ctx.textAlign = `center`
     ctx.textBaseline = `middle`
-    ctx.fillText(text_item.text, text_item.x, text_item.y)
-  }
-
-  // Already scaled and composited above; encode these pixels without another DPI multiplier.
-  const blob = await canvas_to_png_blob(out, 72)
-  await save(blob, `${basename}.png`, `image/png`)
+    for (const text_item of get_overlay_text_items(root, rect)) {
+      ctx.font = text_item.font
+      ctx.fillStyle = text_item.color
+      ctx.fillText(text_item.text, text_item.x, text_item.y)
+    }
+  })
 }
 
-// SVG snapshot: rasterized canvas as embedded image + overlay labels as real text nodes
-export async function export_svg_file(
+// SVG snapshot: the rendered canvas as an embedded image, overlay labels as real text nodes
+// and the view settings as metadata
+export async function chempot_svg_string(
   wrapper: HTMLElement | undefined,
-  basename: string,
   view_settings: Record<string, unknown>,
-  save: FileSaver,
-): Promise<void> {
-  const gl_canvas = get_gl_canvas(wrapper)
-  if (!gl_canvas || !wrapper) return
-  const canvas_rect = gl_canvas.getBoundingClientRect()
-  if (canvas_rect.width === 0 || canvas_rect.height === 0) return
-  const frame_url = await blob_to_data_url(await capture_frame(gl_canvas, 72))
-  const text_nodes = get_overlay_text_items(wrapper, canvas_rect).map(
+): Promise<string> {
+  const { canvas, rect, wrapper: root } = require_canvas(wrapper)
+  const frame_url = await blob_to_data_url(await canvas_to_png_blob(canvas))
+  const text_nodes = get_overlay_text_items(root, rect).map(
     ({ x, y, color, font_size, font_family, font_weight, text }) =>
       `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="middle" dominant-baseline="central" fill="${xml_escape(color)}" font-size="${xml_escape(font_size)}" font-family="${xml_escape(font_family)}" font-weight="${xml_escape(font_weight)}">${xml_escape(text)}</text>`,
   )
   const metadata = xml_escape(JSON.stringify(view_settings))
-  const svg = [
+  return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas_rect.width}" height="${canvas_rect.height}" viewBox="0 0 ${canvas_rect.width} ${canvas_rect.height}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}" viewBox="0 0 ${rect.width} ${rect.height}">`,
     `<metadata>${metadata}</metadata>`,
-    `<image href="${frame_url}" x="0" y="0" width="${canvas_rect.width}" height="${canvas_rect.height}" />`,
+    `<image href="${frame_url}" x="0" y="0" width="${rect.width}" height="${rect.height}" />`,
     ...text_nodes,
     `</svg>`,
   ].join(``)
-  await save(svg, `${basename}.svg`, `image/svg+xml`)
 }
 
 interface ChemPotGlbParts {

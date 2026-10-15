@@ -7,6 +7,8 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { Vec3 } from '#lib/math.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
+  import type { ColorScaleConfig } from '#lib/plot/core/types.js'
   import { resolve_slice_cartesian_point } from './slice'
   import { create_volume_slice_settings } from './slice-settings'
   import type { VolumeSlicePlaneMode, VolumeSliceSettings } from './slice-settings'
@@ -64,16 +66,20 @@
     update_settings({ [key]: vector })
   }
 
+  const color_scale_config = $derived(to_color_scale_config(resolved_settings.color_scale))
+  const update_color_scale = (updates: ColorScaleConfig): void =>
+    update_settings({ color_scale: { ...color_scale_config, ...updates } })
+
   function update_color_bound(bound_idx: 0 | 1, raw_value: string): void {
     const value = raw_value.trim() === `` ? undefined : Number(raw_value)
-    if (value === undefined) return update_settings({ color_range: undefined })
+    if (value === undefined) return update_color_scale({ value_range: undefined })
     if (!Number.isFinite(value)) return
-    const [minimum, maximum] = resolved_settings.color_range ?? [
+    const [minimum, maximum] = color_scale_config.value_range ?? [
       active_volume?.data_range.min ?? 0,
       active_volume?.data_range.max ?? 1,
     ]
-    update_settings({
-      color_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
+    update_color_scale({
+      value_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
     })
   }
 
@@ -91,7 +97,7 @@
     type="number"
     step="any"
     placeholder="auto"
-    value={resolved_settings.color_range?.[bound_idx] ?? ``}
+    value={color_scale_config.value_range?.[bound_idx] ?? ``}
     oninput={(event) => update_color_bound(bound_idx, event.currentTarget.value)}
   />
 {/snippet}
@@ -234,9 +240,7 @@
     <span>Colormap</span>
     <select
       aria-label="Slice colormap"
-      bind:value={
-        () => resolved_settings.colormap, (colormap) => update_settings({ colormap })
-      }
+      bind:value={() => color_scale_config.scheme, (scheme) => update_color_scale({ scheme })}
     >
       {#each ISO_COLORMAPS as colormap (colormap)}
         <option value={colormap}>{colormap.replace(`interpolate`, ``)}</option>
@@ -264,7 +268,7 @@
       {@render color_bound_input(0)}
       <span>to</span>
       {@render color_bound_input(1)}
-      <button type="button" onclick={() => update_settings({ color_range: undefined })}>
+      <button type="button" onclick={() => update_color_scale({ value_range: undefined })}>
         Auto
       </button>
     </span>

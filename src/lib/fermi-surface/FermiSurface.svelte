@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { FileExportContext } from '#lib/io/file-export.svelte.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { canvas_sources, type ExportProps } from '#lib/io/export.js'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
   import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
   import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
@@ -12,13 +13,18 @@
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
+  import type { FileSaver } from '#lib/io/file-export.svelte.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
-  import type { SceneExportFormat } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import {
+    create_color_scale,
+    resolve_value_range,
+    to_color_scale_config,
+  } from '#lib/plot/core/scales.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -32,7 +38,7 @@
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { property_label } from './constants'
-  import { available_property_names, property_color_range } from './geometry'
+  import { available_property_names, property_value_range } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
@@ -50,7 +56,7 @@
   } from './types'
   import { is_fermi_surface_data } from './types'
 
-  type FermiSurfaceControlName = `filename` | `fullscreen` | `controls`
+  type FermiSurfaceControlName = `filename` | `fullscreen` | `controls` | `export-pane`
 
   type FermiFullscreenData = {
     fermi_data?: FermiSurfaceData
@@ -68,8 +74,7 @@
     color_property = $bindable(DEFAULTS.fermi.color_property),
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
     property_name = $bindable(),
-    color_range = $bindable(),
-    show_colorbar = true,
+    color_bar = {},
     slice_plane,
     k_marker = null,
     k_path,
@@ -110,49 +115,53 @@
     on_error,
     on_fullscreen_change,
     on_point_hover,
+    export_formats,
+    export_filename,
+    on_export,
     ...rest
-  }: Partial<FermiSurfaceSettings> & {
-    // Both accept the typed-array form `parse_fermi_file` returns and the JSON form (plain
-    // `vertices`/`faces` rows, nested energies) that pymatviz/anywidget traits can carry
-    fermi_data?: FermiSurfaceData | FermiSurfaceJson
-    band_data?: BandGridData | BandGridJson
-    structure?: Crystal
-    bz_data?: BrillouinZoneData
-    controls_open?: boolean
-    property_name?: string // coloured by in `property` mode (default: the first present)
-    color_range?: Vec2 // fixed [min, max] of the property scale; unset fits visible sheets
-    show_colorbar?: boolean
-    slice_plane?: { miller_indices: Vec3; distance: number } // e.g. a FermiSlice's, drawn in 3D
-    k_marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. a FermiSlice's cursor
-    k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`] // e.g. a band plot's path
-    wigner_seitz?: boolean // fold band-grid surfaces into the zone, e.g. to match a k-path
-    // pointer-driven preview (e.g. band plot hover): extract at most at the auto resolution
-    previewing?: boolean
-    // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
-    custom_property_label?: string
-    selected_bands?: number[]
-    selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
-    show_controls?: ShowControlsProp<FermiSurfaceControlName>
-    fullscreen?: boolean
-    width?: number
-    height?: number
-    wrapper?: HTMLDivElement
-    hovered?: boolean
-    dragover?: boolean
-    allow_file_drop?: boolean
-    fullscreen_toggle?: boolean
-    source?: MaterialSource
-    spinner_props?: ComponentProps<typeof Spinner>
-    loading?: boolean
-    error_msg?: string
-    children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
-    on_file_drop?: FileLoadCallback
-    on_file_load?: (data: FermiFileLoadData) => void
-    on_error?: (data: FermiErrorData) => void
-    on_fullscreen_change?: (data: FermiFullscreenData) => void
-    tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
-    on_point_hover?: (data: FermiHoverData | null) => void
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  }: Partial<FermiSurfaceSettings> &
+    ExportProps & {
+      // Both accept the typed-array form `parse_fermi_file` returns and the JSON form (plain
+      // `vertices`/`faces` rows, nested energies) that pymatviz/anywidget traits can carry
+      fermi_data?: FermiSurfaceData | FermiSurfaceJson
+      band_data?: BandGridData | BandGridJson
+      structure?: Crystal
+      bz_data?: BrillouinZoneData
+      controls_open?: boolean
+      property_name?: string // coloured by in `property` mode (default: the first present)
+      // property color bar, shown in `property` mode; null hides it
+      color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+      slice_plane?: { miller_indices: Vec3; distance: number } // e.g. a FermiSlice's, drawn in 3D
+      k_marker?: Vec3 | null // k-point (Cartesian Å⁻¹) to mark, e.g. a FermiSlice's cursor
+      k_path?: ComponentProps<typeof FermiSurfaceScene>[`k_path`] // e.g. a band plot's path
+      wigner_seitz?: boolean // fold band-grid surfaces into the zone, e.g. to match a k-path
+      // pointer-driven preview (e.g. band plot hover): extract at most at the auto resolution
+      previewing?: boolean
+      // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
+      custom_property_label?: string
+      selected_bands?: number[]
+      selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
+      show_controls?: ShowControlsProp<FermiSurfaceControlName>
+      fullscreen?: boolean
+      width?: number
+      height?: number
+      wrapper?: HTMLDivElement
+      hovered?: boolean
+      dragover?: boolean
+      allow_file_drop?: boolean
+      fullscreen_toggle?: boolean
+      source?: MaterialSource
+      spinner_props?: ComponentProps<typeof Spinner>
+      loading?: boolean
+      error_msg?: string
+      children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
+      on_file_drop?: FileLoadCallback
+      on_file_load?: (data: FermiFileLoadData) => void
+      on_error?: (data: FermiErrorData) => void
+      on_fullscreen_change?: (data: FermiFullscreenData) => void
+      tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
+      on_point_hover?: (data: FermiHoverData | null) => void
+    } & HTMLAttributes<HTMLDivElement> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
@@ -291,32 +300,38 @@
     return () => cancelAnimationFrame(frame)
   })
 
-  async function handle_export(
-    format: SceneExportFormat,
-    { filename, save }: FileExportContext,
-  ) {
-    if (!scene) {
-      console.error(`No scene available for export`)
-      return
-    }
-    try {
-      await export_scene_as(scene, format, filename, save)
-    } catch (err) {
-      console.error(`Export failed:`, err)
-      error_msg = `Export failed: ${to_error(err).message}`
-    }
-  }
+  // PNG of the view plus the visible sheets as 3D models (OBJ also writes its .mtl)
+  const model_formats = [
+    [`STL`, `stl`, `3D printing`],
+    [`OBJ`, `obj`, `Wavefront`],
+    [`GLB`, `glb`, `web/AR`],
+  ] as const
+  const export_sections = $derived([
+    {
+      title: `3D model`,
+      tooltip: `Visible Fermi surfaces`,
+      items: model_formats.map(([label, format, hint]) => ({
+        label,
+        hint,
+        disabled: !scene,
+        disabled_reason: scene ? undefined : `Waiting for the 3D view to render`,
+        on_download: ({ filename, save }: { filename: string; save: FileSaver }) =>
+          scene && export_scene_as(scene, format, filename, save),
+      })),
+    },
+  ])
 
   // The requested property when present, else the first; the fitted range spans visible sheets
+  // and fills the ends color_scale.value_range leaves unset
   const available_properties = $derived(available_property_names(surface_data, grid_data))
   const active_property = $derived(
     property_name !== undefined && available_properties.includes(property_name)
       ? property_name
       : available_properties[0],
   )
-  const fitted_color_range = $derived<Vec2>(
+  const fitted_value_range = $derived<Vec2>(
     color_property === `property`
-      ? property_color_range(
+      ? property_value_range(
           surface_data?.isosurfaces.filter(
             ({ band_index, spin }) =>
               (selected_bands?.includes(band_index) ?? true) &&
@@ -326,7 +341,7 @@
         )
       : [0, 1],
   )
-  const resolved_color_range = $derived(color_range ?? fitted_color_range)
+  const value_range = $derived(resolve_value_range(color_scale, fitted_value_range))
 
   // BZ of whichever reciprocal lattice is available (priority order)
   const k_lattice = $derived(
@@ -414,8 +429,7 @@
           bind:color_property
           bind:color_scale
           bind:property_name
-          bind:color_range
-          {fitted_color_range}
+          {fitted_value_range}
           {custom_property_label}
           bind:representation
           bind:surface_opacity
@@ -430,8 +444,16 @@
           bind:clip_flip
           bind:interpolation_factor
           bind:camera_projection
-          on_export={handle_export}
-          export_filename={current_filename || `fermi-surface`}
+        />
+      {/if}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
+        <ExportPane
+          filename={export_filename ?? (current_filename || `fermi-surface`)}
+          sources={canvas_sources(() => wrapper?.querySelector(`canvas`))}
+          sections={export_sections}
+          {export_formats}
+          {on_export}
+          toggle_props={{ class: `fermi-export-toggle`, title: `Export Fermi surface` }}
         />
       {/if}
     </ViewerChrome>
@@ -446,9 +468,8 @@
           fermi_data={surface_data}
           {bz_data}
           {color_property}
-          {color_scale}
+          color_scale={{ ...to_color_scale_config(color_scale), value_range }}
           property_name={active_property}
-          color_range={resolved_color_range}
           property_label={custom_property_label}
           {slice_plane}
           {k_marker}
@@ -475,15 +496,17 @@
         />
       </Canvas>
 
-      {#if show_colorbar && color_property === `property` && active_property !== undefined}
+      {#if color_bar && color_property === `property` && active_property !== undefined}
         <ColorBar
           title={property_label(active_property, custom_property_label)}
-          scale={color_scale}
-          range={resolved_color_range}
+          scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
+          scale_type={to_color_scale_config(color_scale).type}
+          range={value_range}
           snap_ticks={false}
           tick_labels={3}
           orientation="horizontal"
-          class="property-colorbar"
+          {...color_bar}
+          class={[`property-colorbar`, color_bar.class]}
           --cbar-font-size="0.75em"
           --cbar-tick-label-font-weight="normal"
         />

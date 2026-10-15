@@ -1298,7 +1298,6 @@
             structure={session.normalized_structure}
             {wrapper}
             {scene}
-            {camera}
             image_canvas={display_mode === `slice` ? slice_canvas : undefined}
             image_filename={display_mode === `slice`
               ? `${volume_by_id.get(active_volume_id ?? ``)?.label ?? `volume`}-slice`

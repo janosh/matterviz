@@ -2,6 +2,7 @@ import NebPlot from '#lib/neb/NebPlot.svelte'
 import { host } from '#lib/host.js'
 import NebViewer from '#lib/neb/NebViewer.svelte'
 import { path_spline } from '#lib/neb/reaction-path.js'
+import { parse_reaction_path_json } from '#lib/neb/parse.js'
 import { format_num } from '#lib/labels.js'
 import { reaction_paths } from '#site/neb/index.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -9,6 +10,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   mock_fullscreen,
   bind_props,
+  export_via_pane,
   create_drop_event,
   doc_query,
   flush_render,
@@ -191,6 +193,46 @@ describe(`NebViewer`, () => {
     const viewer = await mount_viewer()
     expect(viewer.textContent).toContain(`Drop a matterviz-reaction-path JSON`)
     expect(viewer.querySelector(`.scatter`)).toBeNull()
+  })
+
+  // CSV: one row per image of every profiled path; JSON: the native format, re-loadable
+  const n_images = Object.values(reaction_paths).reduce(
+    (sum, path) => sum + path.images.length,
+    0,
+  )
+  const energies = (path: { images: { energy: number }[] }) =>
+    path.images.map((img) => img.energy)
+  test.each([
+    [
+      `CSV`,
+      (data: string) => {
+        const [header, first, ...rest] = data.split(`\n`)
+        // 1-based image, coordinate 0 and energy 0 relative to the initial image
+        const [, image, coord, , rel_energy] = first.split(`,`)
+        return [header, rest.length + 1, image, Number(coord), Number(rel_energy)]
+      },
+      [`path,image,reaction_coordinate,energy,energy_rel_initial`, n_images, `1`, 0, 0],
+    ],
+    [
+      `JSON`,
+      (data: string) => {
+        const parsed = parse_reaction_path_json(data)
+        return [Object.keys(parsed), energies(parsed[`direct hop`])]
+      },
+      [Object.keys(reaction_paths), energies(direct_path)],
+    ],
+  ] as const)(`exports the reaction paths as %s`, async (format, pick, expected) => {
+    const on_export = vi.fn()
+    const viewer = await mount_viewer({ paths: reaction_paths, on_export })
+    const result = await export_via_pane(on_export, format, query(viewer, `.neb-controls`))
+    expect(result.offered).toEqual([`PNG`, `CSV`, `JSON`])
+    expect([result.format, result.filename]).toEqual([format.toLowerCase(), `reaction-path`])
+    expect(pick(String(result.data))).toEqual(expected)
+  })
+
+  test(`export_formats=[] hides the viewer's export pane`, async () => {
+    const viewer = await mount_viewer({ paths: reaction_paths, export_formats: [] })
+    expect(viewer.querySelector(`.neb-export-toggle`)).toBeNull()
   })
 
   test(`renders the plot, the structure and the barrier summary together`, async () => {

@@ -42,7 +42,7 @@ export const available_property_names = (
     : property_names(fermi_data?.isosurfaces ?? [])
 
 // [min, max] of a property's finite values over the surfaces (NaN marks vertices without one)
-export const property_color_range = (
+export const property_value_range = (
   surfaces: readonly FermiIsosurface[],
   name: string | undefined,
 ): Vec2 =>

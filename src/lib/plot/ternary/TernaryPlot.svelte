@@ -3,21 +3,16 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import type { FileExportContext } from '#lib/io/file-export.svelte.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { format_value } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
-  import type {
-    BasePlotProps,
-    ColorBarScale,
-    LegendConfig,
-    PointStyle,
-  } from '#lib/plot/index.js'
+  import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
-  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
+  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
   import {
@@ -29,9 +24,9 @@
   import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
   import { observe_size } from '#lib/plot/core/utils.js'
-  import { create_chart_exporter } from '#lib/plot/core/utils/chart-export.js'
+  import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export.js'
+  import { svg_sources } from '#lib/io/export.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
-  import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
@@ -65,7 +60,6 @@
     show_ticks = $bindable(GRID_DEFAULTS.show_ticks),
     tick_format = `.0%`,
     color_scale = `interpolateViridis`,
-    color_range,
     color_bar = {},
     padding = DEFAULT_PADDING,
     legend = {},
@@ -96,8 +90,7 @@
       show_grid?: boolean
       show_ticks?: boolean
       tick_format?: string // d3-format spec applied to fractions in [0, 1]
-      color_scale?: ColorBarScale
-      color_range?: Vec2 // defaults to the min/max of every series' color_values
+      color_scale?: ColorScale // value_range defaults to the extent of all color_values
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
       legend?: LegendConfig | null
       show_legend?: boolean
@@ -201,10 +194,10 @@
     return [min, max]
   })
   let color_bar_visible = $derived(color_bar !== null && color_extent[0] <= color_extent[1])
-  let effective_color_range = $derived<Vec2>(color_range ?? color_extent)
-  let color_ramp = $derived(
-    resolve_color_ramp(color_scale, effective_color_range, color_bar?.scale_type),
-  )
+  let value_range = $derived(resolve_value_range(color_scale, color_extent))
+  let color_scale_type = $derived(to_color_scale_config(color_scale).type)
+  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
+  let color_ramp = $derived(resolve_color_ramp(color_bar_scale, value_range, color_scale_type))
   const point_color = (point: PlacedPoint): string =>
     point.color_value === null
       ? series_color(point.series_idx)
@@ -360,22 +353,17 @@
     { dx: -8, 'text-anchor': `end`, 'dominant-baseline': `middle` },
   ] as const
 
-  const export_chart = (format: ChartExportFormat, context: FileExportContext) =>
-    create_chart_exporter(
-      {
-        svg_element,
-        title_config: { text: `ternary` },
-        axes: { x: { label: labels.join(`-`) }, y: {} },
-      },
-      () => ({
-        header: [`series`, ...labels, `color_value`],
-        rows: visible_points.map((point) => [
-          series_label(point.series_idx),
-          ...point.fractions,
-          point.color_value,
-        ]),
-      }),
-    )(format, context)
+  const export_sources = {
+    ...svg_sources(() => svg_element),
+    csv: csv_source(() => ({
+      header: [`series`, ...labels, `color_value`],
+      rows: visible_points.map((point) => [
+        series_label(point.series_idx),
+        ...point.fractions,
+        point.color_value,
+      ]),
+    })),
+  }
 </script>
 
 <ChartShell
@@ -389,6 +377,8 @@
   {show_controls}
   {controls_toggle_props}
   {header_controls}
+  {export_sources}
+  export_filename={export_filename(`ternary`, labels.join(`-`))}
   {children}
   {...rest}
 >
@@ -401,7 +391,6 @@
       bind:grid_step
       bind:show_grid
       bind:show_ticks
-      on_export={export_chart}
     >
       {@render controls_extra?.()}
     </TernaryControls>
@@ -558,8 +547,9 @@
 
     {#if color_bar_visible && color_bar}
       <ColorBar
-        scale={color_scale}
-        range={effective_color_range}
+        scale={color_bar_scale}
+        range={value_range}
+        scale_type={color_scale_type}
         {...color_bar}
         style="position: absolute; bottom: {COLOR_BAR_GAP}px; left: 50%; transform: translateX(-50%); width: var(--ternary-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {color_bar.style ??
           ``}"

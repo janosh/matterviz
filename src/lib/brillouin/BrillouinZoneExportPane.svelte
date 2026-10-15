@@ -1,84 +1,45 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import type { ExportSection } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { export_canvas_as_png } from '#lib/io/export.js'
-  import type { FileExportContext } from '#lib/io/file-export.svelte.js'
-  import type { Camera, Scene } from 'three/webgpu'
+  import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import type { BrillouinZoneData } from './types'
 
   let {
     export_pane_open = $bindable(false),
     bz_data,
     wrapper,
-    scene,
-    camera,
-    filename: source_filename = `brillouin-zone`,
+    filename = `brillouin-zone`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
-  }: {
+    export_formats,
+    on_export,
+  }: Omit<ExportProps, `export_filename`> & {
     export_pane_open?: boolean
     bz_data?: BrillouinZoneData
     wrapper?: HTMLDivElement
-    scene?: Scene
-    camera?: Camera
     filename?: string
     png_dpi?: number
   } = $props()
 
-  function export_as_png({ filename, save }: FileExportContext) {
-    const canvas = wrapper?.querySelector(`canvas`)
-    if (!canvas || !scene || !camera) return
-    const png_name = `${filename}-${bz_data?.order ?? `1`}.png`
-    return export_canvas_as_png(canvas, png_name, png_dpi, scene, camera, save)
-  }
-
-  function json_string() {
-    if (!bz_data) return null
-    const { order, volume, vertices, faces, edges, k_lattice } = bz_data
-    const json = { order, volume, vertices, faces, edges, reciprocal_lattice: k_lattice }
-    return JSON.stringify(json, null, 2)
-  }
-
-  const sections = $derived<ExportSection[]>([
-    {
-      title: `Export as image`,
-      items: [
-        {
-          label: `PNG`,
-          disabled: !scene || !camera,
-          show_dpi: true,
-          on_download: export_as_png,
-        },
-      ],
-    },
-    {
-      title: `Export as data`,
-      tooltip: `Includes vertices, faces, edges, and reciprocal lattice vectors`,
-      items: [
-        {
-          label: `JSON`,
-          disabled: !bz_data,
-          on_download: ({ filename, save }) => {
-            const content = json_string()
-            if (content && bz_data)
-              return save(
-                content,
-                `${filename}-bz-order-${bz_data.order}.json`,
-                `application/json`,
-              )
-          },
-          copy_text: json_string,
-        },
-      ],
-    },
-  ])
+  // PNG re-renders the registered scene at the export DPI; JSON holds vertices, faces, edges
+  // and reciprocal lattice vectors
+  const sources = $derived({
+    ...canvas_sources(() => wrapper?.querySelector(`canvas`)),
+    ...(bz_data && {
+      json: json_source(() => {
+        const { order, volume, vertices, faces, edges, k_lattice } = bz_data
+        return { order, volume, vertices, faces, edges, reciprocal_lattice: k_lattice }
+      }),
+    }),
+  })
 </script>
 
 <ExportPane
-  filename={source_filename}
+  filename="{filename}-bz-order-{bz_data?.order ?? 1}"
   bind:export_pane_open
   bind:png_dpi
-  {sections}
+  {sources}
+  {export_formats}
+  {on_export}
   toggle_props={{
     class: `bz-export-toggle`,
     title: export_pane_open ? `` : `Export Brillouin zone`,

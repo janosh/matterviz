@@ -3,7 +3,7 @@ import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { bind_props, click_export } from '../setup'
 import { make_phase } from '../test-fixtures'
 
 // Entry with tabulated free energies
@@ -104,13 +104,9 @@ describe(`ChemPot temperature config wiring`, () => {
       max_interpolation_gap: 700,
     })
     expect(document.querySelector(`.error-state`)).toBeNull()
-    const export_toggle = document.querySelector<HTMLButtonElement>(
-      `.header-controls > .chempot-export-toggle`,
-    )
-    expect(export_toggle).not.toBeNull()
-    export_toggle?.click()
-    await tick()
-    expect(document.querySelector(`.chempot-export-pane.pane-open`)).not.toBeNull()
+    // one export entry point: the plot's own pane, with the domains added as JSON
+    expect(document.querySelectorAll(`button.export-toggle`)).toHaveLength(1)
+    expect(await click_export(null)).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
     expect(slider_value()).toBe(`700`)
   })

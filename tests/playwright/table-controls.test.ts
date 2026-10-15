@@ -56,13 +56,14 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   await table.locator(`input[type=search]`).fill(`Beta`)
   await expect(rows).toHaveCount(1)
   await expect(rows).toContainText(`Beta`)
-  for (const format of [`csv`, `json`, `md`, `tex`]) {
-    await table.getByRole(`button`, { name: `Export`, exact: true }).click()
-    const filename = table.getByRole(`textbox`, { name: `File name`, exact: true })
-    if (format === `csv`) await filename.fill(`Selected rows`)
+  await table.locator(`button.export-toggle`).click()
+  const filename = table.getByRole(`textbox`, { name: `File name`, exact: true })
+  await filename.fill(`Selected rows`)
+  const labels = { csv: `CSV`, json: `JSON`, md: `Markdown`, tex: `LaTeX` }
+  for (const [format, label] of Object.entries(labels)) {
     await expect(filename).toHaveValue(`Selected rows`)
     const downloaded = page.waitForEvent(`download`)
-    await table.getByRole(`button`, { name: format.toUpperCase(), exact: true }).click()
+    await table.getByRole(`button`, { name: `Download ${label}`, exact: true }).click()
     const download = await downloaded
     expect(download.suggestedFilename()).toBe(`Selected rows.${format}`)
     const path = await download.path()

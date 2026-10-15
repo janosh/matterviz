@@ -12,7 +12,8 @@
     PolyhedronMesh,
     ReciprocalVectors,
   } from '#lib/brillouin/index.js'
-  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
+  import type { Point2D, Vec3 } from '#lib/math.js'
+  import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -41,7 +42,7 @@
     apply_vertex_colors,
     build_isosurface_geometry,
     nearest_face_vertex,
-    property_color_range,
+    property_value_range,
     property_names,
     vertex_property,
   } from './geometry'
@@ -66,7 +67,6 @@
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
     property_name: requested_property, // coloured by in `property` mode (default: the first)
-    color_range, // colour-scale [min, max]; unset fits the property's finite values
     property_label, // display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
@@ -100,7 +100,6 @@
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
       property_name?: string
-      color_range?: Vec2
       property_label?: string
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
@@ -200,9 +199,12 @@
     requested_property ?? property_names(fermi_data?.isosurfaces ?? [])[0],
   )
 
-  // Colour range of the property across all visible surfaces unless the caller fixed one
+  // Colour value range: set color_scale.value_range ends, else the property's finite values
+  // across all visible surfaces
   let property_range = $derived(
-    color_range ?? property_color_range(visible_surfaces, property_name),
+    resolve_value_range(color_scale, () =>
+      property_value_range(visible_surfaces, property_name),
+    ),
   )
 
   const get_surface_color = (surface: FermiIsosurface): string =>
@@ -242,9 +244,7 @@
   // Vertex-colour attributes follow the colour property/scale/range; mutating the geometry
   // bypasses the <T> props Threlte watches, so the on-demand renderer is told to repaint
   $effect(() => {
-    const spec = use_vertex_colors
-      ? { colormap: color_scale, color_range: property_range }
-      : null
+    const spec = use_vertex_colors ? { color_scale, value_range: property_range } : null
     for (const [idx, geometry] of geometries.entries()) {
       const values = vertex_property(visible_surfaces[idx], property_name)
       if (geometry) apply_vertex_colors(geometry, values, spec)

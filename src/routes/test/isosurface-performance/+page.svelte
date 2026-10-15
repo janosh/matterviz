@@ -99,7 +99,7 @@
       show_negative: false,
       volume_id: `density`,
       color_volume_id: color_mode === `same_grid` ? `density` : `color`,
-      colormap: `interpolateRdBu`,
+      color_scale: `interpolateRdBu`,
     }))
   }
 
@@ -191,8 +191,8 @@
   function recolor(): void {
     const { layers } = settings
     if (!layers[0]) return
-    layers[0].colormap =
-      layers[0].colormap === `interpolateRdBu` ? `interpolateViridis` : `interpolateRdBu`
+    layers[0].color_scale =
+      layers[0].color_scale === `interpolateRdBu` ? `interpolateViridis` : `interpolateRdBu`
   }
 
   async function measure_fps(): Promise<void> {

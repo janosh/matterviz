@@ -772,3 +772,38 @@ export const import_without_workers = async <Module>(
   disable_workers()
   return load()
 }
+
+// Open the export pane inside `root` and click one format's download button. Returns the
+// pane's download labels so callers can assert which formats a component offers.
+export async function click_export(
+  format: string | null,
+  root: ParentNode = document,
+): Promise<string[]> {
+  const toggle = root.querySelector<HTMLButtonElement>(`button.export-toggle`)
+  if (!toggle) throw new Error(`No export pane toggle in ${root.nodeName}`)
+  if (toggle.getAttribute(`aria-expanded`) !== `true`) toggle.click()
+  await tick()
+  const buttons = [
+    ...document.querySelectorAll<HTMLButtonElement>(`button[aria-label^="Download "]`),
+  ]
+  if (format) {
+    const button = buttons.find(
+      (btn) => btn.getAttribute(`aria-label`) === `Download ${format}`,
+    )
+    if (!button) throw new Error(`No Download ${format} button`)
+    button.click()
+  }
+  return buttons.map((btn) => btn.getAttribute(`aria-label`)?.replace(`Download `, ``) ?? ``)
+}
+
+// Export one format through the pane and return what the component's `on_export` received
+export async function export_via_pane(
+  on_export: ReturnType<typeof vi.fn>,
+  format: string,
+  root: ParentNode = document,
+): Promise<{ offered: string[]; format: string; data: unknown; filename: string }> {
+  const offered = await click_export(format, root)
+  await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+  const [called_format, { data, filename }] = on_export.mock.calls[0]
+  return { offered, format: called_format, data, filename }
+}

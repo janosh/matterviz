@@ -2,12 +2,10 @@
 
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
-import type {
-  AxisItem,
-  ColorBarPosition,
-  HeatmapDomainMode,
-} from '#lib/heatmap-matrix/index.js'
+import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
 import { format_num } from '#lib/labels.js'
+import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
@@ -15,6 +13,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  export_via_pane,
   form_controls,
   keydown,
   mouse,
@@ -64,7 +63,7 @@ const cell_track = (cell: HTMLElement): [number, number] => [
 ]
 const cell_at = (x_idx: number, y_idx: number) =>
   doc_query(`.cell[data-x="${x_idx}"][data-y="${y_idx}"]`)
-// color_scale whose red channel reads back the normalized position on the ramp
+// scheme whose red channel reads back the normalized position on the ramp
 const red_scale = (val: number) => `rgb(${Math.round(val * 255)}, 0, 0)`
 const red_of = (cell: HTMLElement) => Number(/\d+/.exec(cell.style.backgroundColor)?.[0])
 
@@ -161,7 +160,7 @@ describe(`values and colors`, () => {
         [0.25, 0.75, 0],
         [1, 0, 0.5],
       ],
-      color_scale: red_scale,
+      color_scale: { scheme: red_scale },
     })
     // cells are laid out y-row by y-row, so the ramp position is each value's own share of
     // the 0..1 data range (0.25 -> 64, 0.75 -> 191 after rounding)
@@ -194,7 +193,7 @@ describe(`values and colors`, () => {
       y: [`X`, `Y`],
       values: { X: { A: 0, B: 1 }, Y: { A: 0.5, B: null } },
       missing: { color: `red` },
-      color_scale: red_scale,
+      color_scale: { scheme: red_scale },
     })
     const cells = get_data_cells()
     expect(cells).toHaveLength(4)
@@ -223,9 +222,8 @@ describe(`values and colors`, () => {
       x: [`A`, `B`, `C`],
       y: [`X`],
       values: [[0, 0.01, 100]],
-      log: true,
-      show_color_bar: true,
-      color_bar_format: `~g`,
+      color_scale: { type: `log` },
+      color_bar: { tick_format: `~g` },
     })
     const ticks = [...document.querySelectorAll(`.colorbar .tick-label`)].map((span) =>
       Number(span.textContent),
@@ -244,7 +242,7 @@ describe(`values and colors`, () => {
         x_items: make_items(values[0].map((val) => `c${val}`)),
         y_items: make_items([`X`]),
         values,
-        color_scale: red_scale,
+        color_scale: { scheme: red_scale },
         get domain_mode() {
           return domain.current
         },
@@ -261,17 +259,16 @@ describe(`values and colors`, () => {
     }
   })
 
-  // A descending color_scale_range flips the legend's direction but must not flip which
+  // A descending value_range flips the legend's direction but must not flip which
   // value gets which color: cells and the ColorBar read the same ramp.
-  test(`descending color_scale_range keeps value-to-color mapping consistent with the legend`, () => {
+  test(`descending value_range keeps value-to-color mapping consistent with the legend`, () => {
     mount_matrix({
       x: [`A`, `B`],
       y: [`X`],
       values: [[0, 10]],
-      color_scale_range: [10, 0],
       domain_mode: `fixed`,
-      show_color_bar: true,
-      color_scale: red_scale,
+      color_bar: {},
+      color_scale: { scheme: red_scale, value_range: [10, 0] },
     })
     const cells = get_data_cells()
     expect(cells[0].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
@@ -285,41 +282,37 @@ describe(`values and colors`, () => {
   // a non-positive log floor is lifted to the smallest positive value so the data still spans
   // the ramp; a degenerate domain paints every mappable cell the midpoint color (also when
   // the lifted log floor lands on the max); a log domain entirely <= 0 maps nothing
-  test.each<
-    [string, Partial<ComponentProps<typeof HeatmapMatrix>>, number[], (number | string)[]]
-  >([
-    [`custom color scale`, { color_scale: () => `rgb(255, 0, 0)` }, [0.5], [`rgb(255, 0, 0)`]],
+  test.each<[string, ColorScaleConfig, number[], (number | string)[]]>([
+    [`custom color scale`, { scheme: () => `rgb(255, 0, 0)` }, [0.5], [`rgb(255, 0, 0)`]],
     // A ±1 tolerance around the midpoint 127.5 permits byte values 127 or 128.
     [
       `non-positive data lifts the log floor`,
-      { log: true, missing: { color: `red` } },
+      { type: `log` },
       [-1, 0.01, 1, 100],
       [`red`, 0, expect.toBeOneOf([127, 128]), 255],
     ],
     // Positive values below LOG_EPS (1e-9) must still span the whole ramp.
-    [`sub-1e-9 log bounds`, { log: true }, [1e-12, 1e-9, 1e-6], [0, 128, 255]],
+    [`sub-1e-9 log bounds`, { type: `log` }, [1e-12, 1e-9, 1e-6], [0, 128, 255]],
     [
       `log floor lifted to the min positive value`,
-      { log: true, color_scale_range: [-10, 10] },
+      { type: `log`, value_range: [-10, 10] },
       [1, 10],
       [0, 255],
     ],
-    [`zero-width range`, { color_scale_range: [2, 2] }, [1, 2, 3], [128, 128, 128]],
-    [
-      `log floor lifted onto the max`,
-      { log: true, color_scale_range: [-1, 5] },
-      [5, 0],
-      [128, 0],
-    ],
-    [`log range entirely <= 0`, { log: true, color_scale_range: [-5, 0] }, [1], [0]],
-  ])(`%s`, (_name, props, row, expected_reds) => {
+    [`zero-width range`, { value_range: [2, 2] }, [1, 2, 3], [128, 128, 128]],
+    // a null end keeps the data bound
+    [`one fixed end`, { value_range: [null, 4] }, [0, 2, 4, 8], [0, 128, 255, 255]],
+    [`log floor lifted onto the max`, { type: `log`, value_range: [-1, 5] }, [5, 0], [128, 0]],
+    [`log range entirely <= 0`, { type: `log`, value_range: [-5, 0] }, [1], [0]],
+    // palette_range clips the scheme: the data spans its upper half
+    [`palette_range`, { palette_range: [0.5, 1] }, [0, 1], [128, 255]],
+  ])(`%s`, (_name, color_scale, row, expected_reds) => {
     mount_matrix({
       x: row.map((val) => `c${val}`),
       y: [`X`],
       values: [row],
-      missing: { color: `rgb(0, 0, 0)` },
-      color_scale: red_scale,
-      ...props,
+      missing: { color: expected_reds.includes(`red`) ? `red` : `rgb(0, 0, 0)` },
+      color_scale: { scheme: red_scale, ...color_scale },
     })
     const colors = get_data_cells().map((cell, idx) =>
       typeof expected_reds[idx] === `string` ? cell.style.backgroundColor : red_of(cell),
@@ -616,7 +609,7 @@ describe(`milestone feature props`, () => {
       x: [`keepA`], // the search filters both axes
       y: [`keep5`, `keep10`, `drop0`],
       values: [[5], [10], [0]],
-      color_scale: red_scale,
+      color_scale: { scheme: red_scale },
       search_query,
     })
     const cells = get_data_cells()
@@ -624,53 +617,63 @@ describe(`milestone feature props`, () => {
     expect(red_of(cells[0])).toBe(red) // the cell holding 5
   })
 
-  // HeatmapMatrix binds show_color_bar/color_bar_position into its controls pane, so both must
-  // be $bindable - a plain prop drops the checkbox/select writes (and fails to compile).
-  // The `log` shorthand only sets normalize when it changes, so the select can still undo it.
-  test(`controls pane writes color bar props back and can undo the log shorthand`, async () => {
-    const state: { show_color_bar: boolean; color_bar_position: ColorBarPosition } = {
-      show_color_bar: true,
-      color_bar_position: `bottom`,
+  // HeatmapMatrix binds color_scale/color_bar into its controls pane, so both must be
+  // $bindable - a plain prop drops the select/checkbox writes (and fails to compile). The
+  // Normalize select writes color_scale.type, keeping its scheme.
+  test(`controls pane writes color scale type and color bar props back`, async () => {
+    // store-backed, so the matrix re-renders on its own writes
+    const scale = fromStore(writable<ColorScale>({ scheme: red_scale, type: `log` }))
+    const bar = fromStore(
+      writable<Partial<ComponentProps<typeof ColorBar>> | null>({ title: `Kept` }),
+    )
+    const state = {
+      get color_scale() {
+        return scale.current
+      },
+      set color_scale(value) {
+        scale.current = value
+      },
+      get color_bar() {
+        return bar.current
+      },
+      set color_bar(value) {
+        bar.current = value
+      },
     }
-    const log = fromStore(writable(true))
     const props = {
       x_items,
       y_items: make_items([`X`]),
       values: [[1, 10, 100]],
-      color_scale: red_scale,
       show_controls: true,
       controls_open: true,
-      get log() {
-        return log.current
-      },
     }
     mount(HeatmapMatrix, { target: document.body, props: bind_props(props, state) })
     await tick()
     const { control, set_value } = form_controls()
     const reds = () => get_data_cells().map(red_of)
-    expect(reds()).toEqual([0, 128, 255])
+    expect([control(`Normalize`).value, ...reds()]).toEqual([`log`, 0, 128, 255])
     await set_value(`Normalize`, `linear`)
     expect(reds()).toEqual([0, 23, 255])
-    flushSync(() => (log.current = false))
-    flushSync(() => (log.current = true)) // a later change (e.g. widget trait) applies again
-    expect([control(`Normalize`).value, ...reds()]).toEqual([`log`, 0, 128, 255])
+    expect(state.color_scale).toEqual({ scheme: red_scale, type: `linear` })
 
-    await set_value(`Color bar side`, `right`)
-    expect(state.color_bar_position).toBe(`right`)
+    await set_value(`Color bar side`, `vertical`)
+    expect(state.color_bar).toEqual({ title: `Kept`, orientation: `vertical` })
+    expect(doc_query(`.heatmap`).classList.contains(`color-bar-right`)).toBe(true)
     control(`Color bar`).click()
     flushSync()
-    expect(state.show_color_bar).toBe(false)
+    expect(state.color_bar).toBeNull()
+    control(`Color bar`).click() // toggling back on restores the stashed props
+    flushSync()
+    expect(state.color_bar).toEqual({ title: `Kept`, orientation: `vertical` })
   })
 
-  test(`show_color_bar renders a color bar with color_bar_label and color_bar_format`, () => {
+  test(`color_bar renders with its title and tick_format overriding the defaults`, () => {
     mount_matrix({
       x: [`A`],
       y: [`X`],
       values: [[1.234]],
-      show_color_bar: true,
-      color_bar_label: `Custom`,
-      color_bar_format: `.1f`,
-      color_scale_range: [1.234, 1.234],
+      color_bar: { title: `Custom`, tick_format: `.1f` },
+      color_scale: { value_range: [1.234, 1.234] },
     })
     expect(doc_query(`.color-bar .label`).textContent).toContain(`Custom`)
     const tick_text = Array.from(document.querySelectorAll(`.color-bar .tick-label`))
@@ -925,16 +928,16 @@ describe(`virtualization`, () => {
   test.each([`auto`, `fixed`, `robust`] as const)(
     `%s with explicit bounds only reads and colors rendered cells`,
     async (domain_mode) => {
-      const color_scale = vi.fn(red_scale)
+      const scheme = vi.fn(red_scale)
       const values = labels.map(() => labels.map(() => 1))
       const offscreen_value = vi.fn(() => 1)
       Object.defineProperty(values[29], 29, { get: offscreen_value })
-      mount_virtual({ values, color_scale, domain_mode, color_scale_range: [0, 60] })
+      mount_virtual({ values, color_scale: { scheme, value_range: [0, 60] }, domain_mode })
       await tick()
       expect(offscreen_value).not.toHaveBeenCalled()
       expect(query_all(`.cell[data-x]`).length).toBeLessThan(100)
-      expect(color_scale.mock.calls.length).toBeLessThan(200)
-      expect(color_scale.mock.calls.length).toBeGreaterThan(0)
+      expect(scheme.mock.calls.length).toBeLessThan(200)
+      expect(scheme.mock.calls.length).toBeGreaterThan(0)
     },
   )
 
@@ -1005,18 +1008,60 @@ test.each([
   [`Ctrl+E is the browser's`, { key: `e`, ctrlKey: true }, undefined, 0],
   [`typing e in an input never exports`, { key: `e` }, `input`, 0],
   [`a held e does not re-download`, { key: `e`, repeat: true }, undefined, 0],
+  [`no export pane, no shortcut`, { key: `e` }, `never`, 0],
 ])(`%s`, async (_name, init, target_tag, calls) => {
   const on_export = vi.fn()
-  mount_matrix({ on_export, export_formats: [`csv`] })
+  mount_matrix({
+    on_export,
+    export_formats: [`csv`],
+    values: numbered_values,
+    show_controls: target_tag === `never` ? false : `hover`,
+  })
   await tick()
   const grid = doc_query(`.grid`)
   const input = document.createElement(`input`)
   if (target_tag) grid.append(input)
-  const target = target_tag ? input : grid
+  const target = target_tag === `input` ? input : grid
   target.dispatchEvent(new KeyboardEvent(`keydown`, { ...init, bubbles: true }))
   await tick()
-  expect(on_export).toHaveBeenCalledTimes(calls)
+  await vi.waitFor(() => expect(on_export).toHaveBeenCalledTimes(calls))
+  if (calls) expect(on_export.mock.calls[0][0]).toBe(`csv`)
 })
+
+// The export pane sits in the header chrome: CSV/JSON hold the visible matrix as tidy rows,
+// SVG redraws the HTML grid (cells as rects, labels as text)
+const svg_texts = (data: string) =>
+  [...new DOMParser().parseFromString(data, `image/svg+xml`).querySelectorAll(`text`)].map(
+    (text) => text.textContent,
+  )
+test.each([
+  [`csv`, (data: string) => data.split(`\n`)[1], `X,1,2,3`],
+  [`json`, (data: string) => JSON.parse(data)[2], { y_key: `Z`, A: 7, B: 8, C: 9 }],
+  // every cell and label lands in the drawing (all mocked to one 40x20 box here)
+  [`svg`, svg_texts, expect.arrayContaining([`A`, `X`, `1`, `9`])],
+] as const)(
+  `%s export hands the serialized matrix to on_export`,
+  async (format, pick, expected) => {
+    const on_export = vi.fn()
+    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+      DOMRect.fromRect({ width: 40, height: 20 }),
+    )
+    vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(
+      DOMRect.fromRect({ width: 8, height: 12 }),
+    )
+    mount_matrix({
+      values: numbered_values,
+      show_controls: `hover`,
+      show_values: true,
+      on_export,
+    })
+    await tick()
+    const result = await export_via_pane(on_export, format.toUpperCase())
+    expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
+    expect([result.format, result.filename]).toEqual([format, `heatmap`])
+    expect(pick(String(result.data))).toEqual(expected)
+  },
+)
 
 // Cmd/Ctrl+Arrow is the browser's (scroll to end); only bare arrows walk cells
 test.each([

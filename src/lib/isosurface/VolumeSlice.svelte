@@ -1,16 +1,16 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { get_d3_interpolator, resolve_computed_color } from '#lib/colors/index.js'
+  import { resolve_computed_color } from '#lib/colors/index.js'
   import type { Vec2 } from '#lib/math.js'
-  import { clamp01 } from '#lib/utils.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import type { Orientation } from '#lib/plot/core/types.js'
+  import { create_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import type { ColorScale } from '#lib/plot/core/types.js'
+  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { SliceResult } from './slice'
   import {
     contour_segments,
     resolve_contour_thresholds,
-    resolve_slice_color_range,
+    resolve_slice_value_range,
     slice_to_rgba,
   } from './slice-rendering'
   import type { VolumeSliceMode } from './slice-rendering'
@@ -18,43 +18,26 @@
   let {
     slice,
     mode = `both`,
-    colormap = `interpolateRdBu`,
-    color_range,
+    color_scale = `interpolateRdBu`,
     symmetric = `auto`,
     contour_levels = 10,
-    show_colorbar = true,
-    colorbar_title = `Value`,
-    colorbar_orientation = `vertical`,
+    color_bar = {},
     canvas = $bindable(),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     slice?: SliceResult | null
     mode?: VolumeSliceMode
-    colormap?: D3InterpolateName
-    color_range?: Vec2
+    color_scale?: ColorScale // unset value_range ends fit the slice (see `symmetric`)
     symmetric?: boolean | `auto`
     contour_levels?: number | number[]
-    show_colorbar?: boolean
-    colorbar_title?: string
-    colorbar_orientation?: Orientation
+    color_bar?: Partial<ComponentProps<typeof ColorBar>> | null // null hides it
     canvas?: HTMLCanvasElement
   } = $props()
 
-  let resolved_color_range = $derived<Vec2>(
-    slice ? resolve_slice_color_range(slice, color_range, symmetric) : [0, 1],
+  let value_range = $derived<Vec2>(
+    slice ? resolve_slice_value_range(slice, color_scale, symmetric) : [0, 1],
   )
-  let contour_thresholds = $derived(
-    resolve_contour_thresholds(resolved_color_range, contour_levels),
-  )
-  let colorbar_color_scale = $derived.by(() => {
-    const interpolator = get_d3_interpolator(colormap)
-    const [range_start, range_end] = resolved_color_range
-    const span = range_end - range_start
-    return (value: number): string => {
-      const normalized = span === 0 ? 0.5 : clamp01((value - range_start) / span)
-      return interpolator(normalized)
-    }
-  })
+  let contour_thresholds = $derived(resolve_contour_thresholds(value_range, contour_levels))
   // Contours are stroked in the canvas's CSS `color` (--volume-slice-contour-color).
   // getComputedStyle forces a style flush and the contour pass repaints on every slider
   // frame, so resolve the colour per theme/style change instead.
@@ -94,12 +77,8 @@
     if (contour_thresholds.length === 0) return
     const threshold_min = contour_thresholds[0]
     const outside_value =
-      Math.min(...resolved_color_range, threshold_min) -
-      Math.max(
-        1,
-        Math.abs(threshold_min),
-        Math.abs(resolved_color_range[1] - resolved_color_range[0]),
-      )
+      Math.min(...value_range, threshold_min) -
+      Math.max(1, Math.abs(threshold_min), Math.abs(value_range[1] - value_range[0]))
     if (contour_values.length !== current_slice.data.length) {
       contour_values = new Float64Array(current_slice.data.length)
     }
@@ -143,7 +122,7 @@
       if (image_data?.width !== slice.width || image_data?.height !== slice.height) {
         image_data = context.createImageData(slice.width, slice.height)
       }
-      slice_to_rgba(slice, colormap, resolved_color_range, image_data.data)
+      slice_to_rgba(slice, color_scale, value_range, image_data.data)
       context.putImageData(image_data, 0, 0)
     }
     if (mode !== `filled`) draw_contours(context, slice)
@@ -158,14 +137,17 @@
     aria-label="Volumetric scalar-field slice"
     style:aspect-ratio={aspect_ratio}
   ></canvas>
-  {#if show_colorbar && slice}
+  {#if color_bar && slice}
+    {@const orientation = color_bar.orientation ?? `vertical`}
     <ColorBar
-      title={colorbar_title}
-      scale={{ fn: colorbar_color_scale, domain: resolved_color_range }}
-      range={resolved_color_range}
+      title="Value"
+      scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
+      range={value_range}
+      scale_type={to_color_scale_config(color_scale).type}
       tick_labels={5}
-      orientation={colorbar_orientation}
-      class={[`slice-colorbar`, colorbar_orientation]}
+      {...color_bar}
+      {orientation}
+      class={[`slice-colorbar`, orientation, color_bar.class]}
       --cbar-font-size="0.75em"
       --cbar-tick-label-font-weight="normal"
     />

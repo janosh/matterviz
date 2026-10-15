@@ -10,7 +10,7 @@ import type {
 import type { ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
-import { fire, keydown, mount_sized, mouse, plot_svg, query } from '../setup'
+import { export_via_pane, fire, keydown, mount_sized, mouse, plot_svg, query } from '../setup'
 
 const data: SankeyData = {
   nodes: [
@@ -426,4 +426,36 @@ describe(`bucket_sankey_data`, () => {
     const ids = bucket_sankey_data(collide, { min_fraction: 0.1 }).nodes.map((node) => node.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
+})
+
+// CSV holds the laid-out links by node label, JSON the whole graph by node id
+test.each([
+  [`CSV`, `source,target,value\nA,C,8\nB,C,4\nC,D,12`],
+  [
+    `JSON`,
+    JSON.stringify(
+      {
+        nodes: [
+          { id: 0, label: `A`, value: 8, color: `#e15759` },
+          { id: 1, label: `B`, value: 4, color: `#4e79a7` },
+          { id: 2, label: `C`, value: 12, color: `#59a14f` },
+          { id: 3, label: `D`, value: 12, color: plot_color(3) },
+        ],
+        links: [
+          { source: 0, target: 2, value: 8 },
+          { source: 1, target: 2, value: 4 },
+          { source: 2, target: 3, value: 12 },
+        ],
+      },
+      null,
+      2,
+    ),
+  ],
+])(`Sankey %s export`, async (format, expected) => {
+  const on_export = vi.fn()
+  const plot = await mount_sized_sankey({ data, on_export })
+  const result = await export_via_pane(on_export, format, plot)
+  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
+  expect([result.format, result.filename]).toEqual([format.toLowerCase(), `sankey`])
+  expect(result.data).toBe(expected)
 })

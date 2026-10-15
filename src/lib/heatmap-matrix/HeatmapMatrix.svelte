@@ -1,7 +1,17 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
+  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import {
+    html_to_svg,
+    json_source,
+    run_export,
+    svg_sources,
+    type ExportProps,
+    type ExportSources,
+  } from '#lib/io/export.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
+  import { normalize_show_controls } from '#lib/controls.js'
 
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import {
     contrast_color_memo,
     is_color,
@@ -10,7 +20,9 @@
   } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
-  import type { AxisConfig } from '#lib/plot/core/types.js'
+  import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
+  import { get_scale_type_name } from '#lib/plot/core/types.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { ColorRamp } from '#lib/plot/core/color-ramp.js'
   import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -26,11 +38,8 @@
     CellContext,
     CellValue,
     HeatmapDomainMode,
-    HeatmapExportFormat,
-    HeatmapNormalizeMode,
     HeatmapTooltipProp,
     HeatmapValues,
-    ColorBarPosition,
     MissingCellStyle,
     SymmetricMode,
   } from './index'
@@ -50,17 +59,11 @@
     y_items,
     values = [],
     color_scale = $bindable(`interpolateViridis`),
-    color_scale_range = [null, null],
     color_overrides = {},
     missing = {},
     backdrop = undefined,
-    log = false,
-    normalize = $bindable(log ? `log` : `linear`), // seeded for SSR, where effects never run
     domain_mode = $bindable(`auto`),
-    show_color_bar = $bindable(false),
-    color_bar_position = $bindable(`bottom`),
-    color_bar_label = `Value`,
-    color_bar_format = `.3~f`,
+    color_bar = $bindable(null),
     // Interaction props
     active_cell = $bindable(null),
     selected_cells = $bindable([]),
@@ -89,7 +92,8 @@
     search_query = $bindable(``),
     virtualize = false,
     overscan = 3,
-    export_formats = [`csv`, `json`],
+    export_formats,
+    export_filename = `heatmap`,
     on_export,
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
@@ -103,89 +107,78 @@
     cell,
     children,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> & {
-    x_items: AxisItem[]
-    y_items: AxisItem[]
-    values?: HeatmapValues
-    color_scale?: D3InterpolateName | ((val: number) => string)
-    // Per-end override of the color domain; null keeps the data-derived bound
-    color_scale_range?: [number | null, number | null]
-    // CSS colors for single cells, nested like the record form of `values` (y key, then x key)
-    color_overrides?: Record<string, Record<string, string>>
-    missing?: MissingCellStyle
-    // Opaque color painted behind the matrix, used to composite translucent cell fills
-    // before picking label contrast. Defaults to the --page-bg token on the matrix.
-    backdrop?: string
-    // Shorthand for normalize="log"; later changes set normalize to "log" or "linear"
-    log?: boolean
-    normalize?: HeatmapNormalizeMode
-    domain_mode?: HeatmapDomainMode
-    show_color_bar?: boolean
-    color_bar_position?: ColorBarPosition
-    color_bar_label?: string
-    color_bar_format?: string
-    active_cell?: CellPos | null
-    selected_cells?: CellPos[]
-    // single: click replaces; multi: Cmd/Ctrl+click toggles; range: Shift+click spans
-    selection_mode?: SelectionMode
-    pinned_cell?: CellPos | null
-    // hover: tooltip follows the pointer; pinned: click pins it; both
-    tooltip_mode?: `hover` | `pinned` | `both`
-    disabled?: boolean
-    on_click?: (cell: CellContext) => void
-    on_double_click?: (cell: CellContext) => void
-    on_select?: (cells: CellPos[]) => void
-    on_context_menu?: (cell: CellContext, event: MouseEvent) => void
-    // Drag a cell rectangle for on_brush; x/y_range are its end item indices in rendered order
-    enable_brush?: boolean
-    on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
-    tile_size?: string
-    gap?: string
-    // false: show all rows/cols. 'compact': remove all-null rows/cols.
-    // 'gaps': keep grid positions but hide all-null rows/cols (preserves alignment).
-    hide_empty?: false | `compact` | `gaps`
-    show_x_labels?: boolean
-    show_y_labels?: boolean
-    // Alternate labels between the two edges so dense axes stay legible (auto: >= 24 items)
-    stagger_axis_labels?: boolean | `auto`
-    symmetric?: SymmetricMode
-    // In symmetric mode, keep labels on the outer edges or hug the diagonal
-    symmetric_label_position?: `diagonal` | `edge`
-    label_style?: string
-    x_order?: AxisOrder
-    y_order?: AxisOrder
-    // Case-insensitive substring filter on item keys/labels of both axes
-    search_query?: string
-    // Render only the cells inside the scroll viewport. The window comes from the container's
-    // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
-    // fits on screen mounts every cell either way, at a few hundred ms per 10k.
-    virtualize?: boolean
-    overscan?: number
-    export_formats?: HeatmapExportFormat[]
-    on_export?: (
-      format: HeatmapExportFormat,
-      payload: unknown,
-      context: FileExportContext,
-    ) => void | Promise<void>
-    // Mean of each visible row/column in an extra track
-    show_row_summaries?: boolean
-    show_col_summaries?: boolean
-    // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
-    show_values?: boolean | string
-    // Controls pane (opt-in, renders HeatmapMatrixControls inside the shell)
-    show_controls?: ShowControlsProp<`controls`>
-    controls_open?: boolean
-    controls_props?: Pick<
-      ComponentProps<typeof HeatmapMatrixControls>,
-      `pane_props` | `toggle_props` | `children`
-    >
-    // Axis config (label used as axis title)
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    tooltip?: HeatmapTooltipProp
-    cell?: Snippet<[CellContext]>
-    children?: Snippet
-  } = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> &
+    ExportProps & {
+      x_items: AxisItem[]
+      y_items: AxisItem[]
+      values?: HeatmapValues
+      // value_range overrides the data-derived color domain per end (null keeps that bound)
+      color_scale?: ColorScale
+      // CSS colors for single cells, nested like the record form of `values` (y key, then x key)
+      color_overrides?: Record<string, Record<string, string>>
+      missing?: MissingCellStyle
+      // Opaque color painted behind the matrix, used to composite translucent cell fills
+      // before picking label contrast. Defaults to the --page-bg token on the matrix.
+      backdrop?: string
+      domain_mode?: HeatmapDomainMode
+      // null hides the bar; orientation `vertical` places it right of the matrix, else below
+      color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+      active_cell?: CellPos | null
+      selected_cells?: CellPos[]
+      // single: click replaces; multi: Cmd/Ctrl+click toggles; range: Shift+click spans
+      selection_mode?: SelectionMode
+      pinned_cell?: CellPos | null
+      // hover: tooltip follows the pointer; pinned: click pins it; both
+      tooltip_mode?: `hover` | `pinned` | `both`
+      disabled?: boolean
+      on_click?: (cell: CellContext) => void
+      on_double_click?: (cell: CellContext) => void
+      on_select?: (cells: CellPos[]) => void
+      on_context_menu?: (cell: CellContext, event: MouseEvent) => void
+      // Drag a cell rectangle for on_brush; x/y_range are its end item indices in rendered order
+      enable_brush?: boolean
+      on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
+      tile_size?: string
+      gap?: string
+      // false: show all rows/cols. 'compact': remove all-null rows/cols.
+      // 'gaps': keep grid positions but hide all-null rows/cols (preserves alignment).
+      hide_empty?: false | `compact` | `gaps`
+      show_x_labels?: boolean
+      show_y_labels?: boolean
+      // Alternate labels between the two edges so dense axes stay legible (auto: >= 24 items)
+      stagger_axis_labels?: boolean | `auto`
+      symmetric?: SymmetricMode
+      // In symmetric mode, keep labels on the outer edges or hug the diagonal
+      symmetric_label_position?: `diagonal` | `edge`
+      label_style?: string
+      x_order?: AxisOrder
+      y_order?: AxisOrder
+      // Case-insensitive substring filter on item keys/labels of both axes
+      search_query?: string
+      // Render only the cells inside the scroll viewport. The window comes from the container's
+      // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
+      // fits on screen mounts every cell either way, at a few hundred ms per 10k.
+      virtualize?: boolean
+      overscan?: number
+      // Mean of each visible row/column in an extra track
+      show_row_summaries?: boolean
+      show_col_summaries?: boolean
+      // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
+      show_values?: boolean | string
+      // Controls pane (opt-in, renders HeatmapMatrixControls inside the shell)
+      show_controls?: ShowControlsProp<`controls`>
+      controls_open?: boolean
+      controls_props?: Pick<
+        ComponentProps<typeof HeatmapMatrixControls>,
+        `pane_props` | `toggle_props` | `children`
+      >
+      // Axis config (label used as axis title)
+      x_axis?: AxisConfig
+      y_axis?: AxisConfig
+      tooltip?: HeatmapTooltipProp
+      cell?: Snippet<[CellContext]>
+      children?: Snippet
+    } = $props()
 
   // Cells on the far side of the diagonal (by rendered rank) are skipped in symmetric mode
   const is_hidden_cell = (x_idx: number, y_idx: number): boolean =>
@@ -258,14 +251,8 @@
   })
 
   // === Color domain ===
-  // `log` writes normalize only when it changes, so the Normalize control can still undo it
-  let applied_log = false
-  $effect.pre(() => {
-    if (log === applied_log) return
-    applied_log = log
-    normalize = log ? `log` : `linear`
-  })
-  let use_log = $derived(normalize === `log`)
+  let color_scale_config = $derived(to_color_scale_config(color_scale))
+  let use_log = $derived(get_scale_type_name(color_scale_config.type) === `log`)
   // One pass over the visible numeric values: min, max, smallest positive (the log floor when
   // the domain reaches <= 0; a Number.MIN_VALUE floor gave log_min ~ -744 and squashed every
   // color to the top). Only robust domains collect values for quantiles. Only filtered-in
@@ -302,14 +289,11 @@
     const [q_lo, q_hi] = [quantile_unordered(scratch, 0.02), quantile_unordered(scratch, 0.98)]
     return q_lo <= q_hi ? [q_lo, q_hi] : [q_hi, q_lo]
   })
-  let data_domain = $derived(
+  let data_domain = $derived<Vec2>(
     domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max],
   )
-  // Resolve each unspecified bound lazily; explicit ranges need no data-domain scan.
-  let [cs_min, cs_max] = $derived([
-    color_scale_range[0] ?? data_domain[0],
-    color_scale_range[1] ?? data_domain[1],
-  ])
+  // Resolve unspecified bounds lazily; explicit ranges need no data-domain scan.
+  let [cs_min, cs_max] = $derived(resolve_value_range(color_scale, () => data_domain))
   let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
@@ -325,7 +309,7 @@
       const mid_color = resolve_color_ramp(color_bar_scale, [0, 1]).color_fn(0.5)
       return { color_fn: () => mid_color, domain: [lower, upper] }
     }
-    return resolve_color_ramp(color_bar_scale, [floor, upper], use_log ? `log` : `linear`)
+    return resolve_color_ramp(color_bar_scale, [floor, upper], color_scale_config.type)
   })
   // Color bar span in the caller's bound order: the cell ramp's domain, so a lifted log floor
   // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
@@ -334,6 +318,7 @@
     const [lower, upper] = ramp.domain
     return cs_min <= cs_max ? [lower, upper] : [upper, lower]
   })
+  let color_bar_side = $derived(color_bar?.orientation === `vertical` ? `right` : `bottom`)
   // fill for cells with no mappable value (default transparent)
   let missing_fill = $derived(missing.color ?? `transparent`)
   // whether a value lacks a mappable scale color (-> missing fill + label/style decorations)
@@ -730,9 +715,21 @@
     active_cell = { x_idx, y_idx }
   }
 
-  const export_state = new FileExportState(() => `heatmap`)
-  const handle_export = (format: HeatmapExportFormat, context: FileExportContext) =>
-    on_export?.(format, build_export_payload(format), context)
+  const export_state = new FileExportState(() => export_filename)
+  // The visible matrix (in rendered order) as tidy rows for CSV/JSON, and the grid itself
+  // redrawn as SVG for the figure formats
+  const visible_rows = () =>
+    matrix_to_rows(
+      vis_x.map((x_idx) => x_items[x_idx]),
+      vis_y.map((y_idx) => y_items[y_idx]),
+      vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
+    )
+  const export_sources: ExportSources = {
+    ...svg_sources(() => matrix_el && html_to_svg(matrix_el)),
+    csv: () => rows_to_csv(visible_rows()),
+    json: json_source(visible_rows),
+  }
+  const controls_mode = $derived(normalize_show_controls(show_controls))
   const ARROW_STEPS: Record<string, [x: number, y: number]> = {
     ArrowRight: [1, 0],
     ArrowLeft: [-1, 0],
@@ -744,9 +741,14 @@
     // guarded up front, or Cmd+Arrow would move a cell instead of scrolling the page.
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
     if (event.key.toLowerCase() === `e` && !event.repeat) {
-      const format = export_formats[0]
-      if (format && on_export)
-        void export_state.run((context) => handle_export(format, context))
+      const format = (Object.keys(export_sources) as (keyof ExportSources)[]).find(
+        (fmt) => export_formats?.includes(fmt) ?? true,
+      )
+      const source = format && export_sources[format]
+      if (format && source && controls_mode.mode !== `never`)
+        void export_state.run((context) =>
+          run_export(format, source, { ...context, png_dpi: DEFAULT_PNG_DPI }, on_export),
+        )
       return
     }
     const active_el = document.activeElement
@@ -775,16 +777,7 @@
     void focus_cell(vis_x[x_pos], vis_y[y_pos], step[0], step[1])
   }
 
-  // === Export and summaries ===
-  function build_export_payload(format: HeatmapExportFormat): unknown {
-    const rows = matrix_to_rows(
-      vis_x.map((x_idx) => x_items[x_idx]),
-      vis_y.map((y_idx) => y_items[y_idx]),
-      vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
-    )
-    return format === `json` ? rows : rows_to_csv(rows)
-  }
-
+  // === Summaries ===
   // Mean over the visible numeric cells of one column (axis x) or row (axis y), null when none
   function axis_mean(axis: Axis, idx: number): number | null {
     let [sum, count] = [0, 0]
@@ -862,26 +855,37 @@
 <svelte:window onmouseup={handle_mouseup} />
 
 <div
-  class={[`heatmap`, `color-bar-${color_bar_position}`]}
+  class={[`heatmap`, `color-bar-${color_bar_side}`]}
   style:padding-left={y_axis.label ? `1.8em` : undefined}
 >
   <HeatmapMatrixControls
     {...controls_props}
     bind:controls_open
-    bind:normalize
+    bind:color_scale
     bind:domain_mode
-    bind:show_color_bar
-    bind:color_bar_position
+    bind:color_bar
     bind:search_query
     bind:symmetric
     bind:show_values
     bind:show_row_summaries
     bind:show_col_summaries
-    {export_formats}
-    {export_state}
-    on_export={on_export ? handle_export : undefined}
     {show_controls}
   />
+  {#if controls_mode.mode !== `never`}
+    <!-- left of the controls toggle, sharing its hover reveal -->
+    <ExportPane
+      sources={export_sources}
+      {export_formats}
+      {on_export}
+      filename={export_filename}
+      state={export_state}
+      toggle_props={{
+        class: [`control-pane-toggle`, controls_mode.class],
+        style: `position: absolute; top: var(--heatmap-matrix-controls-toggle-top, 6px); right: calc(var(--heatmap-matrix-controls-toggle-right, 6px) + 2.2em); z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)`,
+        title: `Export`,
+      }}
+    />
+  {/if}
   <div
     {...rest}
     bind:this={matrix_el}
@@ -1005,19 +1009,19 @@
     {@render children?.()}
   </div>
 
-  {#if show_color_bar}
+  {#if color_bar}
     <ColorBar
-      class={[`color-bar`, `color-bar-${color_bar_position}`]}
-      title={color_bar_label}
-      orientation={color_bar_position === `right` ? `vertical` : `horizontal`}
+      title="Value"
       tick_labels={5}
-      tick_format={color_bar_format}
+      tick_format=".3~f"
       range={color_bar_range}
-      scale_type={use_log ? `log` : `linear`}
+      scale_type={color_scale_config.type}
       scale={color_bar_scale}
-      wrapper_style={color_bar_position === `right`
+      wrapper_style={color_bar_side === `right`
         ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
         : `--cbar-width: 180px;`}
+      {...color_bar}
+      class={[`color-bar`, `color-bar-${color_bar_side}`, color_bar.class]}
     />
   {/if}
   {#if x_axis.label}<div class="x-title">{x_axis.label}</div>{/if}

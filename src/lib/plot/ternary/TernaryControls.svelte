@@ -4,19 +4,12 @@
 </script>
 
 <script lang="ts">
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import ExportButtons from '#lib/io/ExportButtons.svelte'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
-
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
-  import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-
-  const EXPORT_FORMATS: ChartExportFormat[] = [`png`, `svg`, `csv`]
 
   let {
     show_controls = $bindable(true),
@@ -24,7 +17,6 @@
     grid_step = $bindable(GRID_DEFAULTS.grid_step),
     show_grid = $bindable(GRID_DEFAULTS.show_grid),
     show_ticks = $bindable(GRID_DEFAULTS.show_ticks),
-    on_export,
     toggle_props = {},
     pane_props = {},
     children,
@@ -34,13 +26,11 @@
     grid_step?: number
     show_grid?: boolean
     show_ticks?: boolean
-    on_export?: (format: ChartExportFormat, context: FileExportContext) => void | Promise<void>
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
 
-  const export_state = new FileExportState(() => `ternary`)
   const grid_settings = track_settings(
     () => ({ grid_step, show_grid, show_ticks }),
     GRID_DEFAULTS,
@@ -75,15 +65,4 @@
       <input type="checkbox" bind:checked={show_ticks} />
     </label>
   </SettingsSection>
-  {#if on_export}
-    <ExportDestination state={export_state} />
-    <SettingsSection title="Export" layout="flow">
-      <ExportButtons
-        state={export_state}
-        formats={EXPORT_FORMATS}
-        {on_export}
-        button_props={() => ({ style: `padding: 2pt 8pt; cursor: pointer` })}
-      />
-    </SettingsSection>
-  {/if}
 </ControlPane>

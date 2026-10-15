@@ -88,9 +88,23 @@ describe(`hierarchy chart helpers`, () => {
     const derived = compute_metric_colors(arcs, (arc) => arc.value, `interpolateViridis`)
     expect(derived?.range).toEqual([1, 6])
     expect(derived?.colors).toHaveLength(arcs.length)
-    expect(
-      compute_metric_colors(arcs, (arc) => arc.value, `interpolateViridis`, [0, 100])?.range,
-    ).toEqual([0, 100])
+    for (const [value_range, expected] of [
+      [
+        [0, 100],
+        [0, 100],
+      ],
+      [
+        [null, 100],
+        [1, 100],
+      ], // a null end keeps the metric's bound
+    ] as const) {
+      const fixed = compute_metric_colors(arcs, (arc) => arc.value, {
+        scheme: `interpolateViridis`,
+        value_range: [...value_range],
+      })
+      expect(fixed?.range).toEqual(expected)
+      expect(fixed?.color_fn(expected[1])).toBe(`#fde725`) // top of viridis at the upper bound
+    }
     const partial = compute_metric_colors(
       arcs,
       (arc) => (arc.label === `alpha` ? null : arc.value),

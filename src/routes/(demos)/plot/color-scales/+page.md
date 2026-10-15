@@ -48,7 +48,14 @@
 </h2>
 
 <div bind:clientWidth={demo_width}>
-  <PeriodicTable {heatmap_values} log={log_scale} {color_scale} color_scale_range={nice_range}>
+  <PeriodicTable
+    {heatmap_values}
+    color_scale={{
+      scheme: color_scale,
+      type: log_scale ? `log` : `linear`,
+      value_range: nice_range,
+    }}
+  >
     {#snippet inset({ active_element })}
       <TableInset style="align-content: center; --ptable-inset-padding: 0.25em 0.5em 1.4em">
         {#if controls_in_inset}

@@ -118,7 +118,7 @@
         y_items={axis_items}
         values={en_diff_values}
         color_scale="interpolateViridis"
-        show_color_bar
+        color_bar={{}}
         show_controls="hover"
         controls_props={{ children: full_controls }}
         hide_empty={hide_mode}
@@ -132,13 +132,9 @@
           (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
             payload.x_range[1]
           }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-        on_export={async (format_name, payload, { filename, save }) => {
-          await save(
-            typeof payload === `string` ? payload : JSON.stringify(payload, null, 2),
-            `${filename}.${format_name}`,
-            format_name === `csv` ? `text/csv;charset=utf-8` : `application/json`,
-          )
-          last_export_status = `Exported ${format_name.toUpperCase()}`
+        on_export={async (format, { data, mime, filename, save }) => {
+          await save(data, `${filename}.${format}`, mime)
+          last_export_status = `Exported ${format.toUpperCase()}`
         }}
         tooltip
         on_click={(cell: CellContext) => (clicked_cell = cell)}

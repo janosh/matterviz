@@ -98,7 +98,7 @@
   })
 
   // Surface of the first volume at `iso_frac` of its |max|, colored by the second volume.
-  // The colormap is auto-picked from the color volume's data; color_range stays
+  // The scheme is auto-picked from the color volume's data; value_range stays
   // unset so the renderer fits it to the values sampled on the surface.
   const colored_layer = (
     [volume, color_volume]: VolumetricData[],
@@ -108,7 +108,7 @@
     surface_layer(volume, {
       isovalue: volume.data_range.abs_max * iso_frac,
       color_volume_id: color_volume.id,
-      colormap: auto_color_config(color_volume.data_range).colormap,
+      color_scale: auto_color_config(color_volume.data_range).scheme,
       ...overrides,
     })
 
@@ -153,7 +153,7 @@
       description: `Si diamond CHGCAR colored by a matching LOCPOT on two 80×80×96 grids (~614k points each). Drag isovalue vs colormap-range to compare mesh rebuild vs recolor cost.`,
       files: [`large-grid-CHGCAR.gz`, `large-grid-LOCPOT.gz`],
       layers: (volumes) => [
-        colored_layer(volumes, 0.25, { opacity: 0.9, colormap: `interpolateTurbo` }),
+        colored_layer(volumes, 0.25, { opacity: 0.9, color_scale: `interpolateTurbo` }),
       ],
     },
     {

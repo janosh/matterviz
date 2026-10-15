@@ -264,7 +264,7 @@ Chalcogenides/Tellurides/Sb₂Te₃,14
 
 ## Metric coloring
 
-Pass `color_values` to color arcs by a numeric metric on a continuous d3 colormap instead of categorical inheritance (e.g. energy above hull per compound). Arcs whose accessor returns `null` (here: the branch levels) keep their categorical color, and a `ColorBar` shows the scale (pass `color_bar={null}` to hide it, or `color_range` to fix the domain).
+Pass `color_values` to color arcs by a numeric metric on a continuous d3 colormap instead of categorical inheritance (e.g. energy above hull per compound). Arcs whose accessor returns `null` (here: the branch levels) keep their categorical color, and a `ColorBar` shows the scale (pass `color_bar={null}` to hide it, or `color_scale={{ scheme, value_range }}` to fix the domain).
 
 ```svelte example
 <script lang="ts">

@@ -6,7 +6,13 @@ import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { can_create_worker } from '#lib/worker-client.svelte.js'
-import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
+import {
+  bind_props,
+  click_export,
+  create_drop_event,
+  doc_query,
+  mock_parse_worker,
+} from '../setup'
 import type { Vec3 } from '#lib/math.js'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
 
@@ -441,4 +447,20 @@ test(`results commit in job order, only the newest reports errors, none land aft
   await tick()
   expect(props.fermi_data?.isosurfaces[0].positions).toBe(positions)
   expect([props.error_msg, on_error.mock.calls.length]).toEqual([error_msg, 1])
+})
+
+// The viewer's one export pane: a PNG of the view plus the visible sheets as 3D models
+test.each([
+  [{}, [`PNG`, `STL`, `OBJ`, `GLB`]],
+  [{ export_formats: [] }, null],
+  [{ show_controls: { hidden: [`export-pane`] } }, null],
+] as const)(`export pane with %j offers %j`, async (props, offered) => {
+  const band_data = typed_grid(sphere_energies(5))
+  mounted.push(mount(FermiSurface, { target: document.body, props: { band_data, ...props } }))
+  // the chrome (with the controls toggle) mounts once the band grid is loaded
+  const controls_toggle = () => document.querySelector(`.fermi-surface .pane-toggle`)
+  await vi.waitFor(() => expect(controls_toggle()).not.toBeNull())
+  const toggle = document.querySelector(`.fermi-export-toggle`)
+  expect(toggle === null).toBe(offered === null)
+  if (offered) expect(await click_export(null, document)).toEqual(offered)
 })

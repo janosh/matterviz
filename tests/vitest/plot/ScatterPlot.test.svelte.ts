@@ -1,5 +1,5 @@
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
-import { svg_to_svg_string } from '#lib/io/export.js'
+import { svg_to_string } from '#lib/io/export.js'
 import type { Vec2 } from '#lib/math.js'
 import type {
   AxisConfig,
@@ -10,7 +10,6 @@ import type {
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-import { export_chart_image } from '#lib/plot/core/utils/chart-export.js'
 import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -21,6 +20,7 @@ import { interpolateViridis } from 'd3-scale-chromatic'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  click_export,
   clip_rect,
   doc_query,
   form_controls,
@@ -295,7 +295,7 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
-  test(`image export redraws the legend and color bar, then cleans up`, async () => {
+  test(`image export redraws the legend and color bar without touching the chart`, async () => {
     const plot = await mount_sized_scatter_plot({
       series: [
         { ...basic, label: `AlphaSeries`, color_values: [1, 2, 3, 4, 5] },
@@ -308,18 +308,14 @@ describe(`ScatterPlot`, () => {
     vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(rect)
     vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(rect)
     const svg = plot_svg(plot)
-    const save = vi.fn()
-    await export_chart_image(svg, `chart`, `svg`, save)
-    const [exported] = save.mock.calls[0]
-    const doc = new DOMParser().parseFromString(exported, `image/svg+xml`)
-    const texts = [...doc.querySelectorAll(`.export-overlay text`)].map((el) => el.textContent)
+    const live_markup = svg.outerHTML
+    const doc = new DOMParser().parseFromString(svg_to_string(svg), `image/svg+xml`)
+    const texts = [...doc.querySelectorAll(`text`)].map((el) => el.textContent)
     expect(texts).toEqual(expect.arrayContaining([`AlphaSeries`, `BetaSeries`, `CbarTitle`]))
     // legend marker glyphs come along, and the color bar's gradient becomes an SVG gradient
-    expect(doc.querySelectorAll(`.export-overlay svg`).length).toBeGreaterThanOrEqual(2)
-    expect(doc.querySelector(`.export-overlay linearGradient stop`)).not.toBeNull()
-    // the export-only layer is visible in the file but never left in the live chart
-    expect(doc.querySelector(`[display="none"] .export-overlay`)).toBeNull()
-    expect(svg.querySelector(`.export-overlay`)).toBeNull()
+    expect(doc.querySelectorAll(`svg svg`).length).toBeGreaterThanOrEqual(2)
+    expect(doc.querySelector(`linearGradient stop`)).not.toBeNull()
+    expect(svg.outerHTML).toBe(live_markup) // overlays are drawn into the copy only
   })
 
   // CSV series names match the legend: label, else series metadata.label, else `Series N`
@@ -331,13 +327,8 @@ describe(`ScatterPlot`, () => {
       { x: [2], y: [20] },
       { x: [3], y: [30], metadata: { label: `from meta` } },
     ]
-    await mount_sized_scatter_plot({ series, controls_open: true })
-    const csv_button = () =>
-      [...document.querySelectorAll<HTMLElement>(`button.export-btn`)].find(
-        (btn) => btn.textContent?.trim() === `CSV`,
-      )
-    await vi.waitFor(() => expect(csv_button()).toBeDefined())
-    csv_button()?.click()
+    await mount_sized_scatter_plot({ series })
+    expect(await click_export(`CSV`)).toEqual([`PNG`, `SVG`, `CSV`])
     await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
     const [csv] = save.mock.calls[0]
     expect(csv).toContain(`Series 2,2,20`)
@@ -825,9 +816,12 @@ describe(`ScatterPlot`, () => {
         Math.round(300 * ratio),
       ])
       expect(canvas.style.width).toBe(`400px`)
-      vi.spyOn(canvas, `toDataURL`).mockReturnValue(`data:image/png;base64,cGxvdA==`)
+      // export repaints the markers on a fresh canvas at 2x via the registered painter
+      vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockReturnValue(
+        `data:image/png;base64,cGxvdA==`,
+      )
       const exported = new DOMParser().parseFromString(
-        svg_to_svg_string(plot_svg(overlaid)),
+        svg_to_string(plot_svg(overlaid)),
         `image/svg+xml`,
       )
       const image = query(exported, `image[href="data:image/png;base64,cGxvdA=="]`)
@@ -835,9 +829,10 @@ describe(`ScatterPlot`, () => {
         query(exported, `g[clip-path] path`).compareDocumentPosition(image) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      const overlay_marker = [...exported.querySelectorAll(`path`)].at(-1)
+      if (!overlay_marker) throw new Error(`exported overlay marker missing`)
       expect(
-        image.compareDocumentPosition(query(exported, `path.marker`)) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        image.compareDocumentPosition(overlay_marker) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
       const state = $state<{
@@ -1654,7 +1649,7 @@ describe(`ScatterPlot`, () => {
         line_tween: { duration: 0 }, // no path morph, so the final `d` is set synchronously
         legend: null,
       })
-      const has_cubic = [...plot.querySelectorAll(`path`)].some((path) =>
+      const has_cubic = [...plot_svg(plot).querySelectorAll(`path`)].some((path) =>
         (path.getAttribute(`d`) ?? ``).includes(`C`),
       )
       expect(has_cubic).toBe(cubic)

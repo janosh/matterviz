@@ -203,9 +203,9 @@
 
 <h2 id="auto-scaling-color-bar">Auto-Scaling Color Bar</h2>
 <p>
-  When <code>show_color_bar</code> is enabled (the default) and no custom inset is provided, the
-  periodic table automatically displays a color bar that scales with the table size. The color bar
-  font and bar width adapt to container width using container queries.
+  Unless <code>color_bar</code> is <code>null</code> or a custom inset is provided, the periodic
+  table automatically displays a color bar that scales with the table size. The color bar font and
+  bar width adapt to container width using container queries.
 </p>
 
 <div class="auto-colorbar-grid">
@@ -217,7 +217,7 @@
           tile_props={{ show_name: false, show_number: false, show_symbol: false }}
           heatmap_values={element_data.map((element) => element[property] || 0)}
           {color_scale}
-          color_bar_props={{ title }}
+          color_bar={{ title }}
           gap="1px"
           style="--ptable-inner-transition-offset: 0.3"
         />
@@ -235,7 +235,7 @@
         tile_props={{ show_name: false, show_number: false }}
         heatmap_values={element_data.map((element) => element[property] || 0)}
         {color_scale}
-        show_color_bar={false}
+        color_bar={null}
       >
         {#snippet inset()}
           <TableInset style="display: grid; place-content: center">

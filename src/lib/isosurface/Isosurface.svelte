@@ -8,6 +8,7 @@
   // colormap LUT.
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { T, useThrelte } from '@threlte/core'
@@ -497,14 +498,15 @@
         entry.scalars = sample_entry_scalars(entry, color_vol)
         entry.scalars_volume_id = color_vol_id
       }
-      if (!layer.color_range) {
+      const { value_range } = to_color_scale_config(layer.color_scale ?? DEFAULT_ISO_COLORMAP)
+      if (value_range?.[0] == null || value_range[1] == null) {
         const scalars = auto_scalars.get(entry.layer_idx) ?? []
         scalars.push(entry.scalars)
         auto_scalars.set(entry.layer_idx, scalars)
       }
     }
 
-    // Default color range per layer: fit to the scalars actually present on that
+    // Default value_range per layer: fit to the scalars actually present on that
     // layer's surfaces (both lobes) — whole-volume ranges are dominated by
     // extremes near nuclei that the surface never touches. Signed source fields
     // keep a symmetric range so diverging colormaps stay centered on zero.
@@ -528,10 +530,14 @@
       const layer = layers[entry.layer_idx]
       if (!layer || !entry.scalars) continue
       const scalars = entry.scalars
+      const color_scale = layer.color_scale ?? DEFAULT_ISO_COLORMAP
       time_stage(`apply_colormap`, () =>
         set_vertex_colors(entry.geometry, scalars, {
-          colormap: layer.colormap ?? DEFAULT_ISO_COLORMAP,
-          color_range: layer.color_range ?? auto_ranges.get(entry.layer_idx) ?? [0, 1],
+          color_scale,
+          value_range: resolve_value_range(
+            color_scale,
+            auto_ranges.get(entry.layer_idx) ?? [0, 1],
+          ),
           fallback_color: lobe_color(layer, entry.sign),
         }),
       )
@@ -554,8 +560,10 @@
         return [
           layer.color_volume_id ?? ``,
           color_vol ? vol_id(color_vol) : ``,
-          layer.colormap ?? ``,
-          layer.color_range?.join(`,`) ?? ``,
+          // function schemes compare by source
+          JSON.stringify(layer.color_scale ?? ``, (_, val) =>
+            typeof val === `function` ? String(val) : val,
+          ),
           layer.color,
           layer.negative_color,
         ].join(`.`)

@@ -42,7 +42,15 @@ import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { mock_fullscreen, bind_props, expect_plot_controls, query, set_input } from '../setup'
+import {
+  bind_props,
+  expect_plot_controls,
+  export_via_pane,
+  mock_fullscreen,
+  mount_sized,
+  query,
+  set_input,
+} from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
@@ -610,6 +618,25 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await tick()
   }
 
+  test(`exports a PNG of the scene and a CSV of the visible points`, async () => {
+    const on_export = vi.fn()
+    const series = [basic_series, { ...basic_series, label: `Hidden`, visible: false }]
+    const plot = await mount_sized(
+      ScatterPlot3D,
+      { series, on_export },
+      { selector: `.scatter-3d` },
+    )
+    const result = await export_via_pane(on_export, `CSV`, plot)
+    expect(result.offered).toEqual([`PNG`, `CSV`])
+    expect(result.filename).toBe(`scatter3d`)
+    expect(String(result.data).split(`\n`)).toEqual([
+      `series,x,y,color_value,size_value,z`,
+      ...basic_series.x.map(
+        (x, idx) => `Test Series,${x},${basic_series.y[idx]},,,${basic_series.z[idx]}`,
+      ),
+    ])
+  })
+
   test(`page initializes without query access during prerendering`, async () => {
     mounted_component = mount(ScatterTestPage, { target: container })
     await tick()
@@ -628,7 +655,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(query(container, `.scatter-3d`).getAttribute(`style`)).toContain(
       `--chart-shell-fullscreen-bg: var(--scatter3d-fullscreen-bg, var(--scatter3d-bg, var(--plot-bg, transparent)))`,
     )
-    const pane = query(container, `.draggable-pane`)
+    const pane = query(container, `.draggable-pane:not(.export-pane)`)
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
   })
 

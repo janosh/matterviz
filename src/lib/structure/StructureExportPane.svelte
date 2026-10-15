@@ -13,7 +13,7 @@
   import { prediction_to_json, type StructureToolPrediction } from './host-tool.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Camera as CameraIcon } from 'svelte-widgets/icons'
-  import type { Camera, Scene } from 'three/webgpu'
+  import type { Scene } from 'three/webgpu'
 
   let {
     export_pane_open = $bindable(false),
@@ -24,7 +24,6 @@
     on_reset_prediction_surfaces,
     wrapper = undefined,
     scene = undefined,
-    camera = undefined,
     image_canvas = undefined,
     image_filename = undefined,
     enable_3d_export = true,
@@ -40,7 +39,6 @@
     on_reset_prediction_surfaces?: () => void
     wrapper?: HTMLDivElement
     scene?: Scene
-    camera?: Camera
     image_canvas?: HTMLCanvasElement
     image_filename?: string
     enable_3d_export?: boolean
@@ -170,17 +168,8 @@
           show_dpi: true,
           on_download: ({ filename, save }: FileExportContext) => {
             const canvas = image_canvas ?? wrapper?.querySelector(`canvas`)
-            if (canvas) {
-              return export_canvas_as_png(
-                canvas,
-                filename,
-                png_dpi,
-                image_canvas ? null : scene,
-                image_canvas ? null : camera,
-                save,
-              )
-            }
-            console.warn(`Canvas element not found for PNG export`)
+            if (!canvas) throw new Error(`Canvas element not found for PNG export`)
+            return export_canvas_as_png(canvas, filename, png_dpi, save)
           },
         },
       ],

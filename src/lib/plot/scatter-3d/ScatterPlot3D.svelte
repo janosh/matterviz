@@ -2,8 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { type D3InterpolateName, plot_color } from '#lib/colors/index.js'
-  import type { Vec2 } from '#lib/math.js'
+  import { plot_color } from '#lib/colors/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
@@ -13,7 +12,7 @@
     AxisConfig3D,
     BasePlotProps,
     CameraProjection3D,
-    ColorScaleConfig,
+    ColorScale,
     DataSeries3D,
     InternalPoint3D,
     LegendConfig,
@@ -28,6 +27,8 @@
     auto_scale_range,
     collect_series_extent,
     create_color_scale,
+    resolve_value_range,
+    to_color_scale_config,
   } from '#lib/plot/core/scales.js'
   import {
     create_legend_visibility,
@@ -38,6 +39,8 @@
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+  import { canvas_sources } from '#lib/io/export.js'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
   type SceneProps = ComponentProps<typeof ScatterPlot3DScene<Metadata>>
@@ -111,7 +114,7 @@
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
-    color_scale?: ColorScaleConfig | D3InterpolateName
+    color_scale?: ColorScale
     color_bar?: ComponentProps<typeof ColorBar> | null
     legend?: LegendConfig | null
     show_legend?: boolean
@@ -184,19 +187,12 @@
     ...xy_ranges,
     z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),
   })
-  // Normalize color_scale to always be an object
-  let normalized_color_scale = $derived(
-    typeof color_scale === `string`
-      ? { type: `linear` as const, scheme: color_scale }
-      : color_scale,
-  )
+  let color_scale_type = $derived(to_color_scale_config(color_scale).type)
 
   // Finite colour extent across all series; [0, 1] when no series carries colour values
   const color_extent = $derived(collect_series_extent(series, `color_values`))
-  const auto_color_range = $derived(
-    auto_scale_range(color_extent, normalized_color_scale.type),
-  )
-  let color_scale_fn = $derived(create_color_scale(normalized_color_scale, auto_color_range))
+  const auto_color_range = $derived(auto_scale_range(color_extent, color_scale_type))
+  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
 
   // Legend data
   let legend_data = $derived(
@@ -219,6 +215,31 @@
     tooltip_point = data?.point ?? null
     on_point_hover?.(data)
   }
+
+  // PNG re-renders the scene at export resolution; CSV lists the visible points
+  const export_sources = {
+    ...canvas_sources(() => wrapper?.querySelector(`canvas`)),
+    csv: csv_source(() =>
+      series_to_csv_rows(
+        series.flatMap((srs, idx) =>
+          srs.visible === false
+            ? []
+            : [
+                {
+                  label: srs.label ?? `Series ${idx + 1}`,
+                  x: srs.x,
+                  y: srs.y,
+                  extras: {
+                    z: srs.z,
+                    color_value: srs.color_values ?? undefined,
+                    size_value: srs.size_values ?? undefined,
+                  },
+                },
+              ],
+        ),
+      ),
+    ),
+  }
 </script>
 
 <ChartShell
@@ -233,6 +254,7 @@
   {show_controls}
   {controls_toggle_props}
   {header_controls}
+  {export_sources}
   {children}
   {...rest}
 >
@@ -302,10 +324,7 @@
 
     <!-- Color Bar -->
     {#if has_color_bar && color_bar}
-      {@const color_domain = [
-        normalized_color_scale.value_range?.[0] ?? auto_color_range[0],
-        normalized_color_scale.value_range?.[1] ?? auto_color_range[1],
-      ] as Vec2}
+      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <!-- spread first, so the corner placement and default bar size below append to the
       caller's styles instead of being dropped by it -->
       <ColorBar
@@ -313,7 +332,7 @@
         tick_side="primary"
         {...color_bar}
         scale={{ fn: color_scale_fn, domain: color_domain }}
-        scale_type={normalized_color_scale.type}
+        scale_type={color_scale_type}
         range={color_domain}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar.wrapper_style ??
           ``}"

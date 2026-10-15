@@ -1,4 +1,4 @@
-import { get_d3_interpolator, type D3InterpolateName } from '#lib/colors/index.js'
+import { get_d3_interpolator } from '#lib/colors/index.js'
 import type { Vec2 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
@@ -8,6 +8,7 @@ import {
   validate_log_range,
 } from '#lib/plot/core/interactions.js'
 import type {
+  ColorScale,
   ColorScaleConfig,
   ScaleType,
   SizeScaleConfig,
@@ -628,34 +629,45 @@ export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   )
 }
 
-// Shared by density cells and legend ramps so clipped palettes stay identical.
-export function color_interpolator(config: ColorScaleConfig | D3InterpolateName) {
-  const { scheme = SCALE_DEFAULTS.scheme, color_range = [0, 1] } =
-    typeof config === `string` ? { scheme: config } : config
-  const [start, end] = color_range
+// Bare scheme names expand to a config so every component reads one shape
+export const to_color_scale_config = (color_scale: ColorScale): ColorScaleConfig =>
+  typeof color_scale === `string` ? { scheme: color_scale } : color_scale
+
+// Set value_range ends win; null or unset ends fall back to the data-derived auto_range,
+// which a thunk computes only when an end needs it (skipping the data scan otherwise)
+export const resolve_value_range = (
+  color_scale: ColorScale,
+  auto_range: Vec2 | (() => Vec2),
+): Vec2 => {
+  const [lower, upper] = to_color_scale_config(color_scale).value_range ?? [null, null]
+  if (lower != null && upper != null) return [lower, upper]
+  const [auto_lower, auto_upper] = typeof auto_range === `function` ? auto_range() : auto_range
+  return [lower ?? auto_lower, upper ?? auto_upper]
+}
+
+// t in [0, 1] -> color over the palette_range slice of the scheme. Shared by density cells,
+// legend ramps and color bars so clipped palettes stay identical.
+export function color_interpolator(color_scale: ColorScale) {
+  const { scheme = SCALE_DEFAULTS.scheme, palette_range = [0, 1] } =
+    to_color_scale_config(color_scale)
+  const [start, end] = palette_range
   if (!(start >= 0 && end <= 1 && start < end))
-    throw new Error(`Invalid color_range: ${color_range}`)
-  const interpolate = get_d3_interpolator(scheme)
+    throw new Error(`Invalid palette_range: ${palette_range}`)
+  const interpolate = typeof scheme === `function` ? scheme : get_d3_interpolator(scheme)
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }
 
-export function create_color_scale(
-  color_scale_config: ColorScaleConfig | D3InterpolateName,
-  auto_color_range: Vec2,
-) {
-  const config =
-    typeof color_scale_config === `string`
-      ? { scheme: color_scale_config }
-      : color_scale_config
-  const { value_range = auto_color_range, type: scale_type } = config
-  const interpolator = color_interpolator(config)
+export function create_color_scale(color_scale: ColorScale, auto_range: Vec2) {
+  const { type: scale_type } = to_color_scale_config(color_scale)
+  const value_range = resolve_value_range(color_scale, auto_range)
+  const interpolator = color_interpolator(color_scale)
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
     return scaleSequentialLog(interpolator).domain(log_color_domain(value_range))
   }
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    return create_arcsinh_color_scale(interpolator, [...value_range], threshold)
+    return create_arcsinh_color_scale(interpolator, value_range, threshold)
   }
   return scaleSequential(interpolator).domain(value_range)
 }

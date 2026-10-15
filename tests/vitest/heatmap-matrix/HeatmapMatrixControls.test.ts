@@ -7,6 +7,7 @@ import { mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  click_export,
   doc_query,
   expect_labelled_settings_grid,
   fire,
@@ -100,9 +101,7 @@ describe(`HeatmapMatrixControls`, () => {
     for (const pane of panes) {
       // Caller-provided ordering/hide-empty rows must share the built-in settings grid.
       expect(pane.querySelectorAll(`.settings-section.grid > label`)).toHaveLength(
-        [...pane.querySelectorAll(`label`)].filter(
-          (label) => !label.closest(`.export-destination`),
-        ).length,
+        pane.querySelectorAll(`label`).length,
       )
     }
     const setting = (pane_idx: number, name: string) => {
@@ -135,10 +134,12 @@ describe(`HeatmapMatrixControls`, () => {
       expect(labels(1 - pane_idx)).toEqual(unchanged)
     }
     const download = vi.spyOn(file_io, `download`).mockImplementation(() => {})
-    for (const button of panes[0].querySelectorAll<HTMLButtonElement>(`.pane-row button`)) {
-      button.click()
-      await tick()
-      await vi.waitFor(() => expect(button.disabled).toBe(false))
+    // the demo's on_export saves each file itself; the first heatmap's pane serves its matrix
+    for (const format of [`CSV`, `JSON`]) {
+      await click_export(format, matrices[0])
+      await vi.waitFor(() =>
+        expect(download.mock.calls).toHaveLength(format === `CSV` ? 1 : 2),
+      )
     }
     expect(download.mock.calls).toEqual([
       [`y_key,Co\nCo,0`, `heatmap.csv`, `text/csv;charset=utf-8`],
@@ -199,7 +200,7 @@ describe(`HeatmapMatrixControls`, () => {
   test(`normalize and domain selects offer every mode and reflect the bound value`, async () => {
     mount_controls({
       controls_open: true,
-      normalize: `log`,
+      color_scale: { scheme: `interpolatePlasma`, type: `log` },
       domain_mode: `robust`,
       search_query: `Fe`,
     })
@@ -220,47 +221,16 @@ describe(`HeatmapMatrixControls`, () => {
     expect(domain_select.value).toBe(`robust`)
   })
 
-  test(`color bar position select only visible when show_color_bar is true`, async () => {
-    mount_controls({ controls_open: true, show_color_bar: false })
+  test(`color bar side select only visible while color_bar is not null`, async () => {
+    mount_controls({ controls_open: true, color_bar: null })
     await tick()
-    expect(select_with(`right`)).toBeUndefined()
+    expect(select_with(`vertical`)).toBeUndefined()
 
     const color_bar_checkbox = doc_query<HTMLInputElement>(
       `.heatmap-controls input[type="checkbox"]`,
     )
     color_bar_checkbox.click()
     await tick()
-    expect(select_with(`right`)?.labels?.[0]?.textContent).toContain(`Color bar side`)
+    expect(select_with(`vertical`)?.labels?.[0]?.textContent).toContain(`Color bar side`)
   })
-
-  test.each([undefined, [], [`csv`, `json`]] as const)(
-    `export controls require a handler and formats: %j`,
-    async (formats) => {
-      const export_handler = vi.fn()
-      mount_controls({
-        controls_open: true,
-        on_export: formats ? export_handler : undefined,
-        export_formats: formats ? [...formats] : undefined,
-      })
-      const buttons = Array.from(
-        document.querySelectorAll<HTMLButtonElement>(`.pane-row button`),
-      )
-      expect(buttons).toHaveLength(formats?.length ?? 0)
-      if (!formats?.length) {
-        expect(document.querySelector(`.heatmap-controls .pane-row`)).toBeNull()
-        return
-      }
-      for (const [idx, format] of formats.entries()) {
-        expect(buttons[idx].textContent?.trim()).toBe(`Export ${format.toUpperCase()}`)
-        buttons[idx].click()
-        await tick()
-        await vi.waitFor(() => expect(buttons[idx].disabled).toBe(false))
-        expect(export_handler).toHaveBeenLastCalledWith(
-          format,
-          expect.objectContaining({ filename: `heatmap`, save: expect.any(Function) }),
-        )
-      }
-      expect(export_handler).toHaveBeenCalledTimes(2)
-    },
-  )
 })

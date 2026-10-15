@@ -5,7 +5,13 @@ import { reciprocal_lattice } from '#lib/math.js'
 import type * as symmetry from '#lib/symmetry/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { mock_parse_worker, create_drop_event, doc_query, mock_fullscreen } from '../setup'
+import {
+  click_export,
+  create_drop_event,
+  doc_query,
+  mock_fullscreen,
+  mock_parse_worker,
+} from '../setup'
 import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
@@ -443,3 +449,26 @@ test.each(
     expect(state.info_pane_open).toBe(canceled || is_composing)
   },
 )
+
+test(`export pane saves the zone geometry as JSON named by its order`, async () => {
+  const save = vi.fn()
+  vi.stubGlobal(`download`, save)
+  mounted_component = mount(BrillouinZone, {
+    target: document.body,
+    props: { structure: cubic },
+  })
+  await vi.waitFor(() => expect(document.querySelector(`.bz-export-toggle`)).not.toBeNull())
+  expect(await click_export(`JSON`)).toEqual([`PNG`, `JSON`])
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
+  const [json, filename, mime] = save.mock.calls[0]
+  expect([filename, mime]).toEqual([`brillouin-zone-bz-order-1.json`, `application/json`])
+  expect(Object.keys(JSON.parse(json))).toEqual([
+    `order`,
+    `volume`,
+    `vertices`,
+    `faces`,
+    `edges`,
+    `reciprocal_lattice`,
+  ])
+  vi.unstubAllGlobals()
+})

@@ -19,6 +19,7 @@
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { ExportProps } from '#lib/io/export.js'
   import { build_diagram, find_duplicate_id } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
@@ -66,13 +67,14 @@
     show_grid = $bindable(true),
     show_component_labels = $bindable(true),
     fullscreen_toggle = true,
-    enable_export = true,
     show_controls,
     display_temp_unit = $bindable(),
     controls_open = $bindable(false),
     export_pane_open = $bindable(false),
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
+    export_formats,
+    on_export,
     diagram_input = $bindable<DiagramInput | null>(null),
     editor_open = $bindable(false),
     x_axis = $bindable({}),
@@ -80,42 +82,41 @@
     tooltip,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    data?: PhaseDiagramData
-    config?: Partial<PhaseDiagramConfig>
-    // Hover callback
-    on_phase_hover?: (info: PhaseHoverInfo | null) => void
-    // Bindable state
-    fullscreen?: boolean
-    wrapper?: HTMLDivElement
-    hovered_region?: PhaseRegion | null
-    // Display options
-    show_boundaries?: boolean
-    show_labels?: boolean
-    show_special_points?: boolean
-    show_grid?: boolean
-    show_component_labels?: boolean
-    fullscreen_toggle?: boolean
-    enable_export?: boolean
-    show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
-    // Temperature display unit (can differ from data.temperature_unit)
-    display_temp_unit?: `K` | `°C` | `°F`
-    controls_open?: boolean
-    // Export options
-    export_pane_open?: boolean
-    png_dpi?: number
-    export_filename?: string
-    // Diagram input editor (for SVG drop editing)
-    diagram_input?: DiagramInput | null
-    editor_open?: boolean
-    // Axis configuration
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
-    // or false to disable tooltip entirely
-    tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
-    children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    ExportProps & {
+      data?: PhaseDiagramData
+      config?: Partial<PhaseDiagramConfig>
+      // Hover callback
+      on_phase_hover?: (info: PhaseHoverInfo | null) => void
+      // Bindable state
+      fullscreen?: boolean
+      wrapper?: HTMLDivElement
+      hovered_region?: PhaseRegion | null
+      // Display options
+      show_boundaries?: boolean
+      show_labels?: boolean
+      show_special_points?: boolean
+      show_grid?: boolean
+      show_component_labels?: boolean
+      fullscreen_toggle?: boolean
+      show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
+      // Temperature display unit (can differ from data.temperature_unit)
+      display_temp_unit?: `K` | `°C` | `°F`
+      controls_open?: boolean
+      // Export options
+      export_pane_open?: boolean
+      png_dpi?: number
+      // Diagram input editor (for SVG drop editing)
+      diagram_input?: DiagramInput | null
+      editor_open?: boolean
+      // Axis configuration
+      x_axis?: AxisConfig
+      y_axis?: AxisConfig
+      // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
+      // or false to disable tooltip entirely
+      tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
+      children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
+    } = $props()
 
   // Keep calculations safe while the template renders the missing-data state.
   const missing_data_placeholder: PhaseDiagramData = {
@@ -506,19 +507,19 @@
           bind:config
           bind:x_axis
           bind:y_axis
-          bind:png_dpi
           data={effective_data}
-          {enable_export}
           {...pane_props}
         />
       {/if}
-      {#if enable_export && controls_config.visible(`export`)}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi
           data={effective_data}
           {wrapper}
           filename={export_filename}
+          {export_formats}
+          {on_export}
           {...pane_props}
         />
       {/if}

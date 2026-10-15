@@ -171,7 +171,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 ```svelte example
 <script lang="ts">
-  import { element_data, format_num, HeatmapTable } from 'matterviz'
+  import { element_data, format_num, HeatmapTable, TABLE_EXPORT_FORMATS } from 'matterviz'
 
   // Get unique categories and phases for filters
   const categories = [...new Set(element_data.map((element) => element.category))].sort()
@@ -290,9 +290,8 @@ All 118 chemical elements with physical and chemical properties. Features column
       label: `ρ (g/cm³)`,
       group: `Physical`,
       better: `higher`,
-      color_scale: `interpolateOranges`,
+      color_scale: { scheme: `interpolateOranges`, type: `log` },
       format: `.3~`,
-      scale_type: `log`,
       description: `Density`,
     },
     {
@@ -416,7 +415,7 @@ All 118 chemical elements with physical and chemical properties. Features column
   {columns}
   scroll_style="max-height: 500px;"
   search
-  export_data
+  export_formats={TABLE_EXPORT_FORMATS}
   show_column_toggle
   show_row_select
   row_key="atomic_number"
@@ -740,8 +739,7 @@ Try D3 color scales, linear vs log scale types, and the `better` prop (which end
       id: `σ (S/m)`,
       label: `σ (S/m)`,
       better,
-      color_scale: selected_scale,
-      scale_type,
+      color_scale: { scheme: selected_scale, type: scale_type },
       format: `.2e`,
       description: `Electrical conductivity (try log scale!)`,
     },
@@ -794,7 +792,7 @@ Combines per-column filters, filtered summaries, diverging normalization, quanti
 
 ```svelte example
 <script lang="ts">
-  import { HeatmapTable } from 'matterviz'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS } from 'matterviz'
 
   const rows = [
     { Material: `Fe2O3`, E_form: -8.5, MAE: 0.042, RMSE: 0.089, sigma: 1.2e-6, Tier: `oxide` },
@@ -848,8 +846,8 @@ Combines per-column filters, filtered summaries, diverging normalization, quanti
   {columns}
   {density}
   show_filters
+  export_formats={TABLE_EXPORT_FORMATS}
   summary={[`mean`, `min`, `max`]}
-  export_data
   keyboard_cells
   style="margin-top: 1em"
 />

@@ -9,6 +9,8 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
+  import type { ColorScaleConfig } from '#lib/plot/core/types.js'
   import { clamp01 } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import {
@@ -169,16 +171,15 @@
     removed_volumes = removed_volumes.toSpliced(removed_idx, 1)
   }
 
-  // Set (or clear) a layer's scalar-color source. The colormap is auto-picked
-  // from the color volume's data; color_range stays unset so the renderer fits
+  // Set (or clear) a layer's scalar-color source. The scheme is auto-picked
+  // from the color volume's data; value_range stays unset so the renderer fits
   // it to the scalar values actually present on the surface.
   function set_color_source(layer_idx: number, color_id: string | null) {
     const color_vol = color_id === null ? undefined : volume_by_id.get(color_id)
     if (color_id !== null && !color_vol) return
     update_layer(layer_idx, {
       color_volume_id: color_id ?? undefined,
-      colormap: color_vol ? auto_color_config(color_vol.data_range).colormap : undefined,
-      color_range: undefined,
+      color_scale: color_vol ? auto_color_config(color_vol.data_range).scheme : undefined,
     })
   }
 
@@ -186,21 +187,31 @@
   // range to auto-fit (renderer fits it to the values sampled on the surface).
   // Typing into an auto range seeds the other bound from the color volume's
   // full data range as a starting point.
-  function update_color_range(layer_idx: number, bound: 0 | 1, raw_value: string) {
+  const layer_color_scale = (layer: IsosurfaceLayer) =>
+    to_color_scale_config(layer.color_scale ?? DEFAULT_ISO_COLORMAP)
+  const update_color_scale = (layer_idx: number, updates: ColorScaleConfig) => {
+    const layer = settings.layers[layer_idx]
+    if (layer) {
+      update_layer(layer_idx, { color_scale: { ...layer_color_scale(layer), ...updates } })
+    }
+  }
+
+  function update_value_range(layer_idx: number, bound: 0 | 1, raw_value: string) {
     const layer = settings.layers[layer_idx]
     if (!layer) return
     if (raw_value.trim() === ``) {
-      update_layer(layer_idx, { color_range: undefined })
+      update_color_scale(layer_idx, { value_range: undefined })
       return
     }
     const value = Number(raw_value)
     if (Number.isNaN(value)) return
     const color_vol = color_vol_of(layer)
-    const current: Vec2 =
-      layer.color_range ??
-      (color_vol ? auto_color_config(color_vol.data_range).color_range : [0, 1])
-    const next: Vec2 = bound === 0 ? [value, current[1]] : [current[0], value]
-    update_layer(layer_idx, { color_range: next })
+    const [current_min, current_max] =
+      layer_color_scale(layer).value_range ??
+      (color_vol ? auto_color_config(color_vol.data_range).value_range : [0, 1])
+    update_color_scale(layer_idx, {
+      value_range: bound === 0 ? [value, current_max] : [current_min, value],
+    })
   }
 
   // Grid-compatibility note for a surface/color volume pair. Strictly matching
@@ -319,14 +330,18 @@
   {/each}
 {/snippet}
 
-{#snippet range_bound_input(layer_idx: number, bound: 0 | 1, explicit_range?: Vec2)}
+{#snippet range_bound_input(
+  layer_idx: number,
+  bound: 0 | 1,
+  explicit_range?: [number | null, number | null],
+)}
   <input
     type="number"
     style="width: 4.5em"
     step="any"
     placeholder="auto"
-    value={explicit_range ? Number(explicit_range[bound].toPrecision(4)) : ``}
-    onchange={(event) => update_color_range(layer_idx, bound, event.currentTarget.value)}
+    value={explicit_range?.[bound] == null ? `` : Number(explicit_range[bound].toPrecision(4))}
+    onchange={(event) => update_value_range(layer_idx, bound, event.currentTarget.value)}
     aria-label={bound === 0 ? `Color range minimum` : `Color range maximum`}
     {@attach tooltip({
       content: `Value mapped to the colormap ${
@@ -519,12 +534,12 @@
             </select>
           </label>
           {#if color_vol}
-            {@const explicit_range = layer.color_range}
-            {@const auto_colormap = auto_color_config(color_vol.data_range).colormap}
+            {@const { scheme, value_range: explicit_range } = layer_color_scale(layer)}
+            {@const auto_scheme = auto_color_config(color_vol.data_range).scheme}
             <ColorScaleSelect
               {...ISO_COLORMAP_SELECT_PROPS}
-              value={layer.colormap ?? DEFAULT_ISO_COLORMAP}
-              on_add={({ option }) => update_layer(layer_idx, { colormap: option })}
+              value={typeof scheme === `string` ? scheme : undefined}
+              on_add={({ option }) => update_color_scale(layer_idx, { scheme: option })}
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />
@@ -534,7 +549,7 @@
               <span aria-hidden="true">&ndash;</span>
               {@render range_bound_input(layer_idx, 1, explicit_range)}
             </div>
-            {#if explicit_range || (layer.colormap ?? DEFAULT_ISO_COLORMAP) !== auto_colormap}
+            {#if explicit_range || scheme !== auto_scheme}
               {@const reset_color_label = `Reset colormap + range to auto-fit`}
               <button
                 type="button"

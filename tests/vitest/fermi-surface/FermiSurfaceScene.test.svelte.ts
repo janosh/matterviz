@@ -257,6 +257,7 @@ test(`colours by the selected property and reports all properties on hover`, () 
   const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
     fermi_data: data,
     color_property: `property`,
+    color_scale: `interpolateViridis`,
     property_name: undefined,
     hover_data: null,
   })
@@ -275,6 +276,20 @@ test(`colours by the selected property and reports all properties on hover`, () 
   expect(vertex_colors()).toEqual([true, true])
 
   const mesh = threlte_stub.nodes.find(({ tag }) => tag === `Mesh`)
+  // a set color_scale.value_range end recolors the sheets; null ends fit the data again
+  const colors = () =>
+    Array.from(
+      (mesh?.props.geometry as BufferGeometry | undefined)?.getAttribute(`color`).array ?? [],
+    )
+  const fitted = colors()
+  for (const [value_range, same] of [
+    [[null, 2], false],
+    [[null, null], true],
+  ] as const) {
+    props.color_scale = { value_range: [...value_range] }
+    flushSync()
+    expect(colors().every((val, idx) => val === fitted[idx])).toBe(same)
+  }
   const on_move = mesh?.props.onpointermove as (event: unknown) => void
   // nearest corner of face (0, 1, 2) to a point on vertex 1 of band 0's sheet (0, 4, 5)
   on_move({

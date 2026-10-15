@@ -1,16 +1,12 @@
 <script lang="ts">
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import ExportButtons from '#lib/io/ExportButtons.svelte'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
-
   import { track_settings } from '#lib/controls.js'
   import { ISO_COLORMAP_SELECT_PROPS } from '#lib/isosurface/coloring.js'
   import { format_num } from '#lib/labels.js'
   import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
-  import type { SceneExportFormat } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
@@ -28,8 +24,7 @@
     color_property = $bindable(defaults.color_property),
     color_scale = $bindable(defaults.color_scale),
     property_name = $bindable(),
-    color_range = $bindable(),
-    fitted_color_range,
+    fitted_value_range,
     custom_property_label,
     representation = $bindable(defaults.representation),
     surface_opacity = $bindable(defaults.surface_opacity),
@@ -47,26 +42,25 @@
     interpolation_factor = $bindable(defaults.interpolation_factor),
     // Camera
     camera_projection = $bindable(defaults.camera_projection),
-    on_export,
-    export_filename = `fermi-surface`,
     children,
   }: Partial<FermiSurfaceSettings> & {
     controls_open?: boolean
     fermi_data?: FermiSurfaceData
     band_data?: BandGridData
     property_name?: string // coloured by in `property` mode (default: the first present)
-    color_range?: Vec2 // fixed colour-scale [min, max]; unset fits the data
-    fitted_color_range?: Vec2 // shown as placeholder while color_range is unset
+    fitted_value_range?: Vec2 // placeholder for the color_scale.value_range ends left unset
     custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
-    export_filename?: string
-    on_export?: (format: SceneExportFormat, context: FileExportContext) => void | Promise<void>
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
 
-  const export_state = new FileExportState(() => export_filename)
-
-  const export_formats = { stl: `3D printing`, obj: `Wavefront`, glb: `web/AR` }
+  // color_scale's scheme and value_range, edited in place by the select and range inputs
+  const color_scale_config = $derived(to_color_scale_config(color_scale))
+  const set_value_range = (value_range: Vec2 | undefined): void => {
+    if (value_range || color_scale_config.value_range) {
+      color_scale = { ...color_scale_config, value_range }
+    }
+  }
 
   // per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) the data carries
   let available_properties = $derived(available_property_names(fermi_data, band_data))
@@ -90,7 +84,7 @@
       color_property = defaults.color_property
     // A property the new data lacks falls back to the first one, and its fixed range with it
     if (!available_properties.includes(property_name ?? ``)) {
-      if (property_name !== undefined) color_range = undefined
+      if (property_name !== undefined) set_value_range(undefined)
       property_name = available_properties[0]
     }
     if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
@@ -117,10 +111,10 @@
     if (validity.badInput) return
     const parsed = parse_num_token(value)
     if (Number.isFinite(parsed)) {
-      const range: Vec2 = [...(color_range ?? fitted_color_range ?? [0, 1])]
+      const range = resolve_value_range(color_scale, fitted_value_range ?? [0, 1])
       range[bound_idx] = parsed
-      color_range = range
-    } else if (value.trim() === ``) color_range = undefined
+      set_value_range(range)
+    } else if (value.trim() === ``) set_value_range(undefined)
   }
 
   // also forgets bands hidden while they did not cross
@@ -151,8 +145,8 @@
     track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
   )
   const appearance_settings = track_settings(
-    () => ({ color_property, color_scale, representation, surface_opacity, color_range }),
-    { ...defaults, color_range: undefined },
+    () => ({ color_property, color_scale, representation, surface_opacity }),
+    defaults,
   )
   const brillouin_zone_settings = track_settings(
     () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
@@ -237,7 +231,6 @@
       changed_keys={appearance_settings.changed_keys}
       on_reset={() => {
         ;({ color_property, color_scale, representation, surface_opacity } = defaults)
-        color_range = undefined
       }}
       layout="grid"
     >
@@ -261,7 +254,7 @@
             <span>Property</span>
             <select
               bind:value={property_name}
-              onchange={() => (color_range = undefined)}
+              onchange={() => set_value_range(undefined)}
               aria-label="Fermi surface colouring property"
             >
               {#each available_properties as name (name)}
@@ -274,7 +267,13 @@
           <span>Color scale</span>
           <ColorScaleSelect
             {...ISO_COLORMAP_SELECT_PROPS}
-            bind:value={color_scale}
+            bind:value={
+              () =>
+                typeof color_scale_config.scheme === `string`
+                  ? color_scale_config.scheme
+                  : undefined,
+              (scheme) => (color_scale = { ...color_scale_config, scheme })
+            }
             aria-label="Fermi surface color scale"
           />
         </label>
@@ -286,9 +285,9 @@
                 type="number"
                 step="any"
                 style="width: 4.5em"
-                value={color_range?.[bound_idx] ?? ``}
-                placeholder={fitted_color_range
-                  ? format_num(fitted_color_range[bound_idx], `.3~g`)
+                value={color_scale_config.value_range?.[bound_idx] ?? ``}
+                placeholder={fitted_value_range
+                  ? format_num(fitted_value_range[bound_idx], `.3~g`)
                   : ``}
                 oninput={(event) => set_color_bound(bound_idx, event)}
                 aria-label={`Colour range ${bound_idx ? `max` : `min`}`}
@@ -397,23 +396,6 @@
     {/if}
   </SettingsGroup>
 
-  {#if on_export}
-    <ExportDestination state={export_state} />
-    <SettingsSection title="Export" layout="grid">
-      <div class="export-buttons">
-        <ExportButtons
-          state={export_state}
-          formats={Object.keys(export_formats) as SceneExportFormat[]}
-          {on_export}
-          button_props={(format) => ({
-            title: `Export as ${format.toUpperCase()} (${export_formats[format]})`,
-          })}
-        />
-      </div>
-      <small>Export visible Fermi surfaces</small>
-    </SettingsSection>
-  {/if}
-
   <SettingsSection
     title="Camera"
     changed_keys={camera_settings.changed_keys}
@@ -433,7 +415,7 @@
 </ControlPane>
 
 <style>
-  :is(.band-checkboxes, .band-actions, .export-buttons, small) {
+  :is(.band-checkboxes, .band-actions, small) {
     grid-column: 1 / -1;
   }
   .band-checkboxes {
@@ -447,11 +429,9 @@
     gap: 0.3em;
     font-size: 0.9em;
   }
-  :is(.band-actions, .export-buttons) {
+  .band-actions {
     display: flex;
     gap: 0.5em;
-  }
-  .band-actions {
     margin-top: 0.5em;
   }
   .band-actions button {
@@ -466,17 +446,5 @@
     min-width: 3em;
     font-family: monospace;
     font-size: 0.9em;
-  }
-  .export-buttons :global(button) {
-    padding: 0.3em 0.8em;
-    font-size: 0.85em;
-    background: var(--btn-bg, #4488cc);
-    color: white;
-    border: none;
-    border-radius: 3pt;
-    cursor: pointer;
-  }
-  .export-buttons :global(button:hover) {
-    background: var(--btn-bg-hover, #3377bb);
   }
 </style>

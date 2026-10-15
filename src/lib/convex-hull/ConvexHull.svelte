@@ -11,6 +11,9 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
   import { ViewerChrome } from '#lib/layout/index.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { json_source, svg_sources, type ExportSources } from '#lib/io/export.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { first_duplicate } from '#lib/utils.js'
@@ -85,6 +88,9 @@
     annotations,
     tooltip,
     children,
+    export_formats,
+    export_filename,
+    on_export,
     ...rest
   }: ConvexHullProps = $props()
 
@@ -225,6 +231,55 @@
     overlay,
     children,
   })
+  // === Export ===
+  // The plotted entries (one row each, element amounts as columns) as CSV/JSON; the figure as
+  // SVG/PNG of the 2D plot, or a PNG of the 3D/4D canvas redrawn at export resolution
+  const entry_records = () =>
+    [...hull_data.stable_entries, ...hull_data.unstable_entries].map((entry) => ({
+      entry_id: entry.entry_id ?? null,
+      formula: entry.reduced_formula ?? entry.name ?? null,
+      composition: entry.composition,
+      energy_per_atom: entry.energy_per_atom ?? null,
+      e_form_per_atom: entry.e_form_per_atom ?? null,
+      e_above_hull: entry.e_above_hull ?? null,
+      is_stable: entry.is_stable ?? null,
+    }))
+  const export_sources = $derived<ExportSources>({
+    ...(dim === 2
+      ? svg_sources(() => wrapper?.querySelector<SVGSVGElement>(`:scope > svg`))
+      : {
+          png: (png_dpi) => {
+            if (!renderer) throw new Error(`Convex hull canvas has not rendered yet`)
+            return renderer.to_png_blob(png_dpi)
+          },
+        }),
+    csv: csv_source(() => {
+      const records = entry_records()
+      const { elements } = hull_data
+      return {
+        header: [
+          `entry_id`,
+          `formula`,
+          ...elements,
+          `energy_per_atom`,
+          `e_form_per_atom`,
+          `e_above_hull`,
+          `is_stable`,
+        ],
+        rows: records.map(({ composition, is_stable, ...rec }) => [
+          rec.entry_id,
+          rec.formula,
+          ...elements.map((el) => (composition as Record<string, number>)[el] ?? 0),
+          rec.energy_per_atom,
+          rec.e_form_per_atom,
+          rec.e_above_hull,
+          is_stable == null ? null : String(is_stable),
+        ]),
+      }
+    }),
+    json: json_source(entry_records),
+  })
+
   function reset_all(reset_camera?: () => void) {
     const defaults = hull_defaults
     fullscreen = defaults.fullscreen
@@ -293,6 +348,16 @@
         {max_hull_dist_show_labels}
         {label_threshold}
         toggle_props={{ class: `info-btn` }}
+      />
+    {/if}
+
+    {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
+      <ExportPane
+        filename={export_filename ?? (title.replaceAll(/<[^>]+>|\s+/g, ``) || `convex-hull`)}
+        sources={export_sources}
+        {export_formats}
+        {on_export}
+        toggle_props={{ class: `hull-export-toggle`, title: `Export convex hull` }}
       />
     {/if}
 

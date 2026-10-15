@@ -70,11 +70,8 @@
     show_breadcrumbs = $bindable(DEFAULTS.treemap.show_breadcrumbs),
     color_values,
     color_scale = SCALE_DEFAULTS.scheme,
-    color_range,
     color_bar = {},
     color_bar_side = `right`,
-    export_buttons = true,
-    export_filename = `treemap`,
     tween,
     value_format = `,`,
     padding = DEFAULT_PADDING,
@@ -150,13 +147,11 @@
     padding: () => padding,
     color_values: () => color_values,
     color_scale: () => color_scale,
-    color_range: () => color_range,
     color_bar: () => color_bar,
     color_bar_side: () => color_bar_side,
     legend: () => legend,
     show_legend: () => show_legend,
     zoom_on_click: () => zoom_on_click,
-    export_filename: () => export_filename,
     zoom_root_id: () => zoom_root_id,
     set_zoom_root_id: (value) => (zoom_root_id = value),
     set_hovered: (value) => (hovered = value),
@@ -405,6 +400,7 @@
   {show_controls}
   {controls_toggle_props}
   {header_controls}
+  export_sources={chart_state.export_sources}
   {children}
   {...rest}
 >
@@ -426,9 +422,6 @@
       bind:label_text
       bind:zoom_on_click
       bind:show_breadcrumbs
-      {export_buttons}
-      on_export={chart_state.export_chart}
-      {export_filename}
     >
       {@render controls_extra?.({ zoom_root_id })}
     </TreemapControls>

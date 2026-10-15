@@ -8,11 +8,13 @@
     resolve_backdrop,
     resolve_css_color,
   } from '#lib/colors/index.js'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import type { ExportProps, ExportSources } from '#lib/io/export.js'
   import { format_num } from '#lib/labels.js'
   import { array_max, clamp } from '#lib/math.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { clamp01, html_to_text } from '#lib/utils.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
@@ -24,7 +26,6 @@
     ColumnPrefs,
     ColumnStats,
     DateTimeFormatMode,
-    ExportData,
     InitialSort,
     Column,
     Pagination,
@@ -43,7 +44,6 @@
     resolve_color_domain,
   } from '#lib/table/index.js'
   import ColumnFilterMenu from './ColumnFilter.svelte'
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'
   import {
@@ -62,9 +62,8 @@
     parse_numeric_val,
     text_matches_query,
   } from './data'
-  import type { ExportFormat, TableMatrix } from './export'
+  import type { TableMatrix } from './export'
   import {
-    EXPORT_MIME_TYPES,
     table_to_delimited,
     table_to_json,
     table_to_latex,
@@ -79,14 +78,7 @@
   import Popover from 'svelte-widgets/Popover.svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { tooltip } from 'svelte-widgets/attachments'
-  import {
-    Columns,
-    Copy,
-    Cross,
-    Download,
-    Export,
-    Search as SearchIcon,
-  } from 'svelte-widgets/icons'
+  import { Columns, Cross, Search as SearchIcon } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
   import { flip } from 'svelte/animate'
   import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
@@ -107,7 +99,9 @@
     on_row_double_click,
     column_order = $bindable([]),
     column_prefs = $bindable({}),
-    export_data = false,
+    export_formats = [],
+    export_filename = `table-export`,
+    on_export,
     show_column_toggle = false,
     show_filters = false,
     summary = false,
@@ -132,80 +126,81 @@
     show_controls = $bindable({ mode: `hover`, hidden: [`controls`] }),
     controls_open = $bindable(false),
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    // Hold large datasets in $state.raw: a deep $state proxy routes every cell read through a
-    // signal. Replace, don't mutate.
-    data: Row[]
-    // Discovered from the first 50 rows' keys when omitted
-    columns?: Column<Row>[]
-    sort_hint?: SortHint
-    cell?: CellSnippet<Row>
-    // Extra buttons rendered in the toolbar row above the table
-    controls?: Snippet
-    initial_sort?: InitialSort
-    // Active sort by column ID. Bindable for external control/persistence.
-    sort?: TableSort
-    // Shift-click criteria in priority order. Takes precedence over sort; bind to persist.
-    multi_sort?: { column: string; ascending: boolean }[]
-    default_num_format?: string
-    show_heatmap?: boolean
-    on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
-    on_row_double_click?: (event: MouseEvent, row: Row) => void
-    // Column IDs in display order. Bindable so drag reorders persist.
-    column_order?: string[]
-    // Per-column user tuning (width, color scale, gradient direction, date format,
-    // filter), keyed by column ID. Bindable so hosts can persist and restore it.
-    column_prefs?: Record<string, ColumnPrefs>
-    export_data?: ExportData
-    show_column_toggle?: boolean
-    // Show a per-column filter funnel in each header (range, checklist or substring,
-    // picked from the column's data). Individual columns opt out with `filter: false`.
-    show_filters?: boolean
-    // Append summary rows for every numeric column, computed over the rows left after
-    // search and filters. `true` shows mean; pass an array to pick and order the stats.
-    summary?: boolean | SummaryStat[]
-    // Row height preset, driving --heatmap-cell-padding
-    density?: `compact` | `cosy` | `comfortable`
-    // Make cells keyboard-navigable: arrows move the active cell, Shift+arrow extends the
-    // selection, Alt+Left/Right moves a column. Off by default so tables that only display
-    // data don't add a tab stop; rows with on_row_click keep their own row-level keys.
-    keyboard_cells?: boolean
-    search?: Search
-    // Current search query. Bindable so parents can control or persist it.
-    search_query?: string
-    show_row_select?: boolean
-    pagination?: Pagination
-    // Opt-in row virtualization: only rows near the viewport render, with spacer rows
-    // preserving scroll geometry, so DOM size stays bounded for any data length.
-    // Inactive when pagination is enabled.
-    virtual?: VirtualScroll
-    // Required for selection; identifies rows across sorting and data replacement.
-    row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
-    // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
-    row_animation_ms?: number
-    selected_ids?: RowId[]
-    // Read-only output: every row left after search and filters, in the current sort order
-    // and across all pages (bind it to export or pick from what the table shows)
-    visible_rows?: Row[]
-    // Column IDs hidden through the column toggle. Bindable for persistence.
-    hidden_columns?: string[]
-    scroll_style?: string
-    // Inline styles for the root container (merged with rest.style)
-    root_style?: string
-    // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
-    // color-mix() and the JS text contrast correction.
-    heatmap_opacity?: number
-    // Opaque color painted behind the table, needed for readable text on faded cells when
-    // heatmap_opacity < 1 and the host paints its own surface. Defaults to --page-bg.
-    backdrop?: string
-    // Show a row number column as the first column
-    show_row_numbers?: boolean
-    // Offer a gradient-direction toggle in the context menu of heatmap columns
-    allow_better_toggle?: boolean
-    // Floating toolbar visibility; defaults to hover with the settings gear hidden.
-    show_controls?: ShowControlsProp<`controls`>
-    controls_open?: boolean
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    // Unlike charts, tables opt in to export: export_formats defaults to []
+    ExportProps & {
+      // Hold large datasets in $state.raw: a deep $state proxy routes every cell read through a
+      // signal. Replace, don't mutate.
+      data: Row[]
+      // Discovered from the first 50 rows' keys when omitted
+      columns?: Column<Row>[]
+      sort_hint?: SortHint
+      cell?: CellSnippet<Row>
+      // Extra buttons rendered in the toolbar row above the table
+      controls?: Snippet
+      initial_sort?: InitialSort
+      // Active sort by column ID. Bindable for external control/persistence.
+      sort?: TableSort
+      // Shift-click criteria in priority order. Takes precedence over sort; bind to persist.
+      multi_sort?: { column: string; ascending: boolean }[]
+      default_num_format?: string
+      show_heatmap?: boolean
+      on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
+      on_row_double_click?: (event: MouseEvent, row: Row) => void
+      // Column IDs in display order. Bindable so drag reorders persist.
+      column_order?: string[]
+      // Per-column user tuning (width, color scale, gradient direction, date format,
+      // filter), keyed by column ID. Bindable so hosts can persist and restore it.
+      column_prefs?: Record<string, ColumnPrefs>
+      show_column_toggle?: boolean
+      // Show a per-column filter funnel in each header (range, checklist or substring,
+      // picked from the column's data). Individual columns opt out with `filter: false`.
+      show_filters?: boolean
+      // Append summary rows for every numeric column, computed over the rows left after
+      // search and filters. `true` shows mean; pass an array to pick and order the stats.
+      summary?: boolean | SummaryStat[]
+      // Row height preset, driving --heatmap-cell-padding
+      density?: `compact` | `cosy` | `comfortable`
+      // Make cells keyboard-navigable: arrows move the active cell, Shift+arrow extends the
+      // selection, Alt+Left/Right moves a column. Off by default so tables that only display
+      // data don't add a tab stop; rows with on_row_click keep their own row-level keys.
+      keyboard_cells?: boolean
+      search?: Search
+      // Current search query. Bindable so parents can control or persist it.
+      search_query?: string
+      show_row_select?: boolean
+      pagination?: Pagination
+      // Opt-in row virtualization: only rows near the viewport render, with spacer rows
+      // preserving scroll geometry, so DOM size stays bounded for any data length.
+      // Inactive when pagination is enabled.
+      virtual?: VirtualScroll
+      // Required for selection; identifies rows across sorting and data replacement.
+      row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
+      // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
+      row_animation_ms?: number
+      selected_ids?: RowId[]
+      // Read-only output: every row left after search and filters, in the current sort order
+      // and across all pages (bind it to export or pick from what the table shows)
+      visible_rows?: Row[]
+      // Column IDs hidden through the column toggle. Bindable for persistence.
+      hidden_columns?: string[]
+      scroll_style?: string
+      // Inline styles for the root container (merged with rest.style)
+      root_style?: string
+      // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
+      // color-mix() and the JS text contrast correction.
+      heatmap_opacity?: number
+      // Opaque color painted behind the table, needed for readable text on faded cells when
+      // heatmap_opacity < 1 and the host paints its own surface. Defaults to --page-bg.
+      backdrop?: string
+      // Show a row number column as the first column
+      show_row_numbers?: boolean
+      // Offer a gradient-direction toggle in the context menu of heatmap columns
+      allow_better_toggle?: boolean
+      // Floating toolbar visibility; defaults to hover with the settings gear hidden.
+      show_controls?: ShowControlsProp<`controls`>
+      controls_open?: boolean
+    } = $props()
 
   // DOMPurify and the DOM-free SSR sanitizer can serialize equivalent markup differently.
   // Keep the hydration hash stable, then let DOMPurify replace the HTML after mounting.
@@ -310,13 +305,6 @@
     with_defaults(search, { placeholder: `Filter...`, expanded: false }),
   )
   let search_expanded = $derived(search_config?.expanded ?? false)
-  let export_config = $derived(
-    with_defaults(export_data, {
-      formats: [`csv`, `json`, `md`, `tex`] as ExportFormat[],
-      filename: `table-export`,
-    }),
-  )
-  const export_state = new FileExportState(() => export_config?.filename ?? `table-export`)
   let virtual_config = $derived(
     pagination_config ? null : with_defaults(virtual, { overscan: 10, min_window: 60 }),
   )
@@ -333,9 +321,8 @@
     summary === true ? [`mean`] : summary === false ? [] : summary,
   )
 
-  // Which toolbar dropdown is open, if any — they overlap, so only one ever is
-  let open_dropdown = $state<`columns` | `export` | null>(null)
-  let export_btn = $state<HTMLButtonElement>()
+  let columns_open = $state(false)
+  let export_pane_open = $state(false)
   // Likewise for the header popovers: one column's filter panel or date/time format list
   type PopoverKind = `filter` | `datetime`
   let header_popover = $state<{ kind: PopoverKind; col_id: string } | null>(null)
@@ -374,10 +361,22 @@
   }
   const better_of = (col: Column<Row>): `higher` | `lower` | undefined =>
     prefs_of(col.id).better ?? col.better
-  // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back
-  const color_scale_of = (col: Column<Row>): D3InterpolateName | null | undefined => {
+  // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back. A
+  // picked scheme keeps the column's scale type and ranges.
+  const is_log_scale = (color_scale: ColorScale | null | undefined): boolean =>
+    color_scale != null &&
+    get_scale_type_name(to_color_scale_config(color_scale).type) === `log`
+  const color_scale_of = (col: Column<Row>): ColorScale | null | undefined => {
     const pref = prefs_of(col.id).color_scale
-    return pref === undefined ? col.color_scale : pref
+    if (pref === undefined) return col.color_scale
+    return pref && col.color_scale
+      ? { ...to_color_scale_config(col.color_scale), scheme: pref }
+      : pref
+  }
+  // Scheme name shown in a column's select (function schemes fall back to the default)
+  const scheme_name = (color_scale: ColorScale | null | undefined): D3InterpolateName => {
+    const scheme = color_scale ? to_color_scale_config(color_scale).scheme : undefined
+    return typeof scheme === `string` ? scheme : `interpolateViridis`
   }
 
   // === Column identity and order ===
@@ -814,10 +813,13 @@
         : make_cell_color_scale(
             // Linear scales need only the cached extrema; logarithmic scales still need
             // the smallest positive value, which may differ from the overall minimum.
-            !stats ? [] : col.scale_type === `log` ? stats.values : [stats.min, stats.max],
+            !stats
+              ? []
+              : is_log_scale(configured_scale)
+                ? stats.values
+                : [stats.min, stats.max],
             better,
             configured_scale ?? `interpolateViridis`,
-            col.scale_type || `linear`,
             // Explicit domains clamp; plain minmax preserves its unclamped behavior.
             col.normalize || col.domain_group ? stats?.domain : undefined,
           ),
@@ -1270,7 +1272,8 @@
     rows: export_rows.map((row) => cols.map((view) => cell_text(row[view.key]))),
     numeric: cols.map((view) => view.numeric),
   })
-  const EXPORTERS: Record<ExportFormat, () => string> = {
+  // CSV/Markdown/LaTeX share the text matrix; JSON keeps raw values under stable column ids
+  const export_sources: ExportSources = {
     csv: () => table_to_delimited(table_matrix(), `,`),
     json: () =>
       table_to_json(
@@ -1280,8 +1283,6 @@
     md: () => table_to_markdown(table_matrix()),
     tex: () => table_to_latex(table_matrix()),
   }
-  const copy_to_clipboard = () =>
-    void navigator.clipboard.writeText(table_to_delimited(table_matrix(), `\t`))
 
   // === Controls pane helpers ===
   // Separate color settings so resetting them preserves widths, filters and date formats
@@ -1463,7 +1464,7 @@
     <section
       class={[`control-buttons`, controls_config.class]}
       style={controls_config.style}
-      class:force-visible={controls_open || open_dropdown !== null}
+      class:force-visible={controls_open || columns_open || export_pane_open}
     >
       {#if search_config}
         {#if search_expanded || search_query}
@@ -1489,10 +1490,10 @@
         <ToggleMenu
           columns={toggle_columns}
           bind:column_panel_open={
-            () => open_dropdown === `columns`,
+            () => columns_open,
             (open) => {
-              if (open) open_dropdown = `columns`
-              else if (open_dropdown === `columns`) open_dropdown = null
+              columns_open = open
+              if (open) export_pane_open = false
             }
           }
           on_toggle={(col, visible) => set_column_visible(col.id, visible)}
@@ -1507,58 +1508,35 @@
         </ToggleMenu>
       {/if}
 
-      {#if export_config}
-        <button
-          bind:this={export_btn}
-          class={['icon-btn', { active: open_dropdown === `export` }]}
-          aria-label="Export"
-          aria-expanded={open_dropdown === `export`}
-          onclick={() => (open_dropdown = open_dropdown === `export` ? null : `export`)}
-          {@attach tooltip({ content: `Export`, placement: `top` })}
-        >
-          <Icon icon={Export} />
-        </button>
-        {#if open_dropdown === `export`}
-          <div
-            class="dropdown-pane"
-            out:close_before_removal
-            {@attach anchored_popover({
-              anchor: export_btn,
-              on_close: () => {
-                if (open_dropdown === `export`) open_dropdown = null
-              },
-            })}
-          >
-            <ExportDestination state={export_state} />
-            {#each export_config.formats as format (format)}
-              <button
-                class="dropdown-option"
-                disabled={export_state.disabled}
-                onclick={() =>
-                  export_state.run(async ({ filename, save }) => {
-                    await save(
-                      EXPORTERS[format](),
-                      `${filename}.${format}`,
-                      EXPORT_MIME_TYPES[format],
-                    )
-                    open_dropdown = null
-                  })}
-              >
-                <Icon icon={Download} style="width: 12px" />
-                {format.toUpperCase()}
-              </button>
-            {/each}
-            <button
-              class="dropdown-option"
-              onclick={() => {
-                copy_to_clipboard()
-                open_dropdown = null
-              }}
-            >
-              <Icon icon={Copy} style="width: 12px" /> Copy
-            </button>
-          </div>
-        {/if}
+      {#if export_formats.length}
+        <!-- the export pane and the column menu overlap, so opening one closes the other -->
+        <ExportPane
+          bind:export_pane_open={
+            () => export_pane_open,
+            (open) => {
+              export_pane_open = open
+              if (open) columns_open = false
+            }
+          }
+          sources={export_sources}
+          {export_formats}
+          {on_export}
+          filename={export_filename}
+          sections={[
+            {
+              title: `Clipboard`,
+              items: [
+                {
+                  label: `TSV`,
+                  hint: `Tab-separated, pastes into spreadsheet columns`,
+                  copy_text: () => table_to_delimited(table_matrix(), `\t`),
+                },
+              ],
+            },
+          ]}
+          pane_props={{ style: `position: fixed` }}
+          toggle_props={{ class: `icon-btn`, title: `Export`, style: `position: static` }}
+        />
       {/if}
 
       {#if show_row_select && selected_ids.length > 0}
@@ -1624,10 +1602,10 @@
               <div class="col-color-row">
                 <span class="col-color-label">{@html render_html(col.label)}</span>
                 <select
-                  value={color_scale_of(col) ?? `interpolateViridis`}
+                  value={scheme_name(color_scale_of(col))}
                   onchange={(event) => {
                     const val = event.currentTarget.value as D3InterpolateName
-                    const is_default = val === (col.color_scale ?? `interpolateViridis`)
+                    const is_default = val === scheme_name(col.color_scale)
                     set_pref(col_id, `color_scale`, is_default ? undefined : val)
                   }}
                 >
@@ -2362,33 +2340,6 @@
       border-radius: 8px;
       min-width: 14px;
       text-align: center;
-    }
-  }
-  .dropdown-pane {
-    padding: 4px 0;
-    background: light-dark(rgba(255, 255, 255, 0.98), rgba(30, 30, 30, 0.98));
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15));
-    border-radius: 6px;
-    box-shadow: 0 4px 12px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4));
-    max-height: 280px;
-    overflow-y: auto;
-    color: light-dark(#333, #eee);
-    font-size: 0.95em;
-  }
-  .dropdown-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    background: transparent;
-    border: none;
-    color: inherit;
-    width: 100%;
-    text-align: left;
-    &:hover {
-      background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
     }
   }
   .search-input {

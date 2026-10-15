@@ -9,6 +9,8 @@
   import { plot_color } from '#lib/colors/index.js'
   import { PlotLegend, PlotTooltip, SankeyControls } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import { json_source, svg_sources } from '#lib/io/export.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import {
     closest_data_idx,
     is_activation_key,
@@ -267,6 +269,35 @@
     node.label ?? `${node.id}`
   const node_text = (node: PositionedNode): string => node_label?.(node) ?? node_name(node)
 
+  // === Export ===
+  // Data as laid out (after small-link bucketing): links as a source/target/value table,
+  // or the whole graph as JSON
+  const export_sources = {
+    ...svg_sources(() => svg_element),
+    csv: csv_source(() => ({
+      header: [`source`, `target`, `value`],
+      rows: layout.links.map(({ source, target, value }) => [
+        node_text(source),
+        node_text(target),
+        value,
+      ]),
+    })),
+    json: json_source(() => ({
+      nodes: layout.nodes.map((node) => ({
+        id: node.id,
+        label: node_text(node),
+        value: node.value,
+        color: node_colors[node.node_idx],
+      })),
+      links: layout.links.map(({ source, target, value, label }) => ({
+        source: source.id,
+        target: target.id,
+        value,
+        ...(label && { label }),
+      })),
+    })),
+  }
+
   const node_props = (node: PositionedNode): SankeyNodeHandlerProps<Metadata> => ({
     type: `node`,
     node_idx: node.node_idx,
@@ -405,6 +436,7 @@
   {show_controls}
   {controls_toggle_props}
   {header_controls}
+  {export_sources}
   {children}
   {...rest}
 >

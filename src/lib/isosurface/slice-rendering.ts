@@ -1,9 +1,9 @@
-import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import { clamp, type Vec2 } from '#lib/math.js'
-import { clamp01 } from '#lib/utils.js'
+import { resolve_value_range } from '#lib/plot/core/scales.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { rgb } from 'd3-color'
-import type { ColorRangeSymmetry } from './coloring'
-import { COLORMAP_LUT_SIZE, fit_color_range } from './coloring'
+import type { ValueRangeSymmetry } from './coloring'
+import { fit_value_range, lut_index_fn, palette_lut } from './coloring'
 import type { SliceResult } from './slice'
 
 export type VolumeSliceMode = `both` | `contours` | `filled`
@@ -13,39 +13,31 @@ const MAX_CONTOUR_LEVELS = 256
 // Opaque 8-bit sRGB pixels (canvas wants d3's sRGB output as is), written byte-wise and read
 // back as 32-bit words, so they come out in the platform's byte order and each canvas pixel
 // is a single store
-const slice_pixel_cache = new Map<D3InterpolateName, Uint32Array>()
-const get_slice_pixel_lut = (colormap: D3InterpolateName): Uint32Array => {
-  const cached = slice_pixel_cache.get(colormap)
-  if (cached) return cached
-  const interpolator = get_d3_interpolator(colormap)
-  const bytes = new Uint8ClampedArray(COLORMAP_LUT_SIZE * 4)
-  for (let idx = 0; idx < COLORMAP_LUT_SIZE; idx++) {
-    const { r: red, g: green, b: blue } = rgb(interpolator(idx / (COLORMAP_LUT_SIZE - 1)))
+const slice_pixel_cache = new Map<string, Uint32Array>()
+const build_pixel_lut = (colors: string[]): Uint32Array => {
+  const bytes = new Uint8ClampedArray(colors.length * 4)
+  for (const [idx, color] of colors.entries()) {
+    const { r: red, g: green, b: blue } = rgb(color)
     bytes.set([red, green, blue, 255], idx * 4)
   }
-  const words = new Uint32Array(bytes.buffer)
-  slice_pixel_cache.set(colormap, words)
-  return words
+  return new Uint32Array(bytes.buffer)
 }
 
-// Resolve an explicit or automatic slice color range. `auto` symmetry (the default) centres
-// the range on zero only when the slice straddles it.
-export function resolve_slice_color_range(
+// The slice's color value range: set color_scale.value_range ends win, unset ends fit the
+// slice. `auto` symmetry (the default) centres the fit on zero only when the slice straddles it.
+export const resolve_slice_value_range = (
   slice: Pick<SliceResult, `min` | `max`>,
-  color_range?: Vec2,
-  symmetric: ColorRangeSymmetry = `auto`,
-): Vec2 {
-  if (color_range) return [...color_range]
-  return fit_color_range(slice.min, slice.max, symmetric)
-}
+  color_scale: ColorScale,
+  symmetric: ValueRangeSymmetry = `auto`,
+): Vec2 => resolve_value_range(color_scale, fit_value_range(slice.min, slice.max, symmetric))
 
 // Convert a sampled slice to browser-sRGB RGBA pixels, preserving its exact mask. Rows are
 // flipped so the slice's +v axis points up on the canvas. Pass `out` of the right size to
 // fill it in place.
 export function slice_to_rgba(
   slice: Pick<SliceResult, `data` | `mask` | `width` | `height`>,
-  colormap: D3InterpolateName,
-  color_range: Vec2,
+  color_scale: ColorScale,
+  value_range: Vec2, // resolved, see resolve_slice_value_range
   out?: Uint8ClampedArray,
 ): Uint8ClampedArray {
   // `out` is filled through a 32-bit view, which needs a 4-byte aligned offset
@@ -54,35 +46,25 @@ export function slice_to_rgba(
       ? out
       : new Uint8ClampedArray(slice.data.length * 4)
   const words = new Uint32Array(pixels.buffer, pixels.byteOffset, slice.data.length)
-  const lut = get_slice_pixel_lut(colormap)
-  const [range_min, range_max] = color_range
-  const span = range_max - range_min
-  const inv_span = span === 0 ? 0 : 1 / span
+  const lut = palette_lut(slice_pixel_cache, color_scale, build_pixel_lut)
+  const lut_index = lut_index_fn(color_scale, value_range)
   const { data, mask, width, height } = slice
 
   for (let row_idx = 0; row_idx < height; row_idx++) {
     const target_row = height - 1 - row_idx
     for (let col_idx = 0; col_idx < width; col_idx++) {
       const source_idx = row_idx * width + col_idx
-      const value = data[source_idx]
-      // masked and non-finite pixels stay transparent black
-      words[target_row * width + col_idx] =
-        mask[source_idx] && Number.isFinite(value)
-          ? lut[
-              Math.round(
-                (span === 0 ? 0.5 : clamp01((value - range_min) * inv_span)) *
-                  (COLORMAP_LUT_SIZE - 1),
-              )
-            ]
-          : 0
+      // masked pixels and values with no color stay transparent black
+      const lut_idx = mask[source_idx] ? lut_index(data[source_idx]) : -1
+      words[target_row * width + col_idx] = lut_idx < 0 ? 0 : lut[lut_idx]
     }
   }
   return pixels
 }
 
-// Resolve a contour count or explicit threshold list against a color range.
+// Resolve a contour count or explicit threshold list against a color value range.
 export function resolve_contour_thresholds(
-  color_range: Vec2,
+  value_range: Vec2,
   contour_levels: number | number[],
 ): number[] {
   if (Array.isArray(contour_levels)) {
@@ -96,7 +78,7 @@ export function resolve_contour_thresholds(
   const count = Number.isFinite(contour_levels)
     ? clamp(Math.floor(contour_levels), 0, MAX_CONTOUR_LEVELS)
     : 0
-  const [range_min, range_max] = color_range
+  const [range_min, range_max] = value_range
   if (count === 0 || range_min === range_max) return []
   const lower_bound = Math.min(range_min, range_max)
   const range_span = Math.abs(range_max - range_min)

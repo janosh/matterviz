@@ -1,4 +1,4 @@
-import type { FileExportContext } from '#lib/io/file-export.svelte.js'
+import type { ExportProps } from '#lib/io/export.js'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
 import type { D3InterpolateName } from '#lib/colors/index.js'
@@ -16,7 +16,6 @@ import type { TickStrategy } from '#lib/plot/core/tick-layout.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
 import type { FillGradient } from '#lib/plot/core/types/fills.js'
 import { type ErrorValues, error_lengths, type PointError } from '#lib/plot/core/error-bars.js'
-import type { ChartExportFormat } from '#lib/plot/core/utils/chart-export.js'
 
 export type { TweenOptions } from 'svelte/motion'
 
@@ -302,15 +301,20 @@ export interface ArcsinhScaleConfig {
 // Scale type can be a simple string or arcsinh config object
 export type ScaleType = ScaleTypeName | ArcsinhScaleConfig
 
-// Color/size mapping configs shared by scatter, scatter-3d and binned-scatter plots
+// The one value -> color mapping every color-mapped component takes as `color_scale`
+// (plots, ternary, sunburst/treemap, heatmap matrix, periodic table, Fermi surface, …)
 export type ColorScaleConfig = {
-  type?: ScaleType
-  // Prefixed d3 interpolator name (`interpolateViridis`, not `Viridis`)
-  scheme?: D3InterpolateName
+  type?: ScaleType // spacing of the colors over value_range: linear, log or arcsinh
+  // Prefixed d3 interpolator name (`interpolateViridis`, not `Viridis`), or a t in [0, 1] ->
+  // CSS color function
+  scheme?: D3InterpolateName | ((fraction: number) => string)
+  // Data values mapped to the palette ends; a null or unset end fits the data
+  value_range?: [number | null, number | null]
   // Fraction of the palette to use, e.g. [0.25, 1] to keep low counts visibly colored.
-  color_range?: Vec2
-  value_range?: Vec2
+  palette_range?: Vec2
 }
+// A bare interpolator name is shorthand for { scheme: name }
+export type ColorScale = D3InterpolateName | ColorScaleConfig
 export type SizeScaleConfig = {
   type?: ScaleType
   radius_range?: Vec2
@@ -340,7 +344,7 @@ export const SCALE_DEFAULTS: {
   size_3d: SizeScaleConfig
 } = {
   scheme: VIRIDIS,
-  color: { type: `linear`, scheme: VIRIDIS, value_range: undefined },
+  color: { type: `linear`, scheme: VIRIDIS },
   radius: SCATTER_RADIUS,
   binned_radius: BINNED_RADIUS,
   size: { type: `linear`, radius_range: SCATTER_RADIUS, value_range: undefined },
@@ -465,7 +469,7 @@ export interface LegendItem {
   fill_source_idx?: number
   display_style: {
     // A short continuous color-scale bar, with ordinary series toggle behavior.
-    color_scale?: ColorScaleConfig | D3InterpolateName
+    color_scale?: ColorScale
     symbol_type?: D3SymbolName
     symbol_color?: string
     symbol_opacity?: number
@@ -713,11 +717,6 @@ export interface PlotControlsProps
   // Include x2/y2 to expose their controls;
   // omitting a secondary axis hides it. Each omitted primary range defaults to [0, 1].
   auto_ranges?: Partial<Record<AxisKey, Vec2>>
-  // Saves the figure or the numbers behind it. Omit to hide the Export section - a
-  // chart that can't serialize its data should not offer a CSV button that does nothing.
-  on_export?: (format: ChartExportFormat, context: FileExportContext) => void | Promise<void>
-  export_formats?: readonly ChartExportFormat[]
-  export_filename?: string
   // Component props
   controls_title?: string
   controls_name?: string
@@ -726,8 +725,9 @@ export interface PlotControlsProps
 }
 
 // Base props shared across plot components (non-bindable props only)
-// Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs
-export interface BasePlotProps {
+// Components should declare x_axis, y_axis, display, etc. as $bindable() grouped configs.
+// The export props are consumed by the chart's frame/shell (export pane in the header row).
+export interface BasePlotProps extends ExportProps {
   range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
   padding?: Sides
   title?: string | PlotTitleConfig

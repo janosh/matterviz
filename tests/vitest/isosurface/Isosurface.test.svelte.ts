@@ -372,12 +372,31 @@ describe(`Isosurface`, () => {
     // Remapping through a different colormap reuses the color buffer in place; the in-place
     // needsUpdate is invisible to Threlte, so the on-demand renderer must be invalidated
     invalidate.mockClear()
-    props.settings.layers = [{ ...colored, colormap: `interpolateRdBu` }]
+    props.settings.layers = [{ ...colored, color_scale: `interpolateRdBu` }]
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
     expect(geometry.getAttribute(`color`).array).toBe(color_attr.array)
     expect(Float32Array.from(color_attr.array)).not.toEqual(before)
     expect(invalidate).toHaveBeenCalled()
+    // null value_range ends auto-fit to the surface like an unset range; a set end overrides
+    const rdbu_auto = Float32Array.from(color_attr.array)
+    for (const [value_range, same] of [
+      [[null, null], true],
+      [[null, 1e9], false],
+    ] as const) {
+      props.settings.layers = [
+        {
+          ...colored,
+          color_scale: { scheme: `interpolateRdBu`, value_range: [...value_range] },
+        },
+      ]
+      await settle()
+      expect(
+        Float32Array.from(color_attr.array).every((val, idx) => val === rdbu_auto[idx]),
+      ).toBe(same)
+    }
+    props.settings.layers = [{ ...colored, color_scale: `interpolateRdBu` }]
+    await settle()
 
     // Replacing a scalar field under the same ID resamples it without rebuilding geometry.
     const before_replacement = Float32Array.from(color_attr.array)

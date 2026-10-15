@@ -4,6 +4,7 @@ import { PLOT_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
+  export_via_pane,
   fire,
   flush_render,
   keydown,
@@ -487,4 +488,13 @@ describe(`Treemap`, () => {
     await flush_render()
     expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
   })
+})
+
+test(`Treemap export offers the figure and a node CSV; export_formats narrows it`, async () => {
+  const on_export = vi.fn()
+  const plot = await mount_sized_treemap({ on_export, export_formats: [`svg`, `csv`] })
+  const result = await export_via_pane(on_export, `CSV`, plot)
+  expect(result.offered).toEqual([`SVG`, `CSV`])
+  expect(result.filename).toBe(`treemap`)
+  expect(String(result.data).split(`\n`)).toContain(`A / A2,2,6,0.3`)
 })

@@ -1,5 +1,6 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { ShowControlsProp } from '#lib/controls.js'
+import type { ExportProps } from '#lib/io/export.js'
 import type { TooltipConfig } from '#lib/tooltip/index.js'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
@@ -91,13 +92,11 @@ export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
   | ConvexHullTooltipConfig<AnyDimEntry>
 
-type ConvexHullControlName = `reset` | `info-pane` | `fullscreen` | `controls`
+type ConvexHullControlName = `reset` | `info-pane` | `export-pane` | `fullscreen` | `controls`
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
-export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
-  HTMLAttributes<HTMLDivElement>,
-  `entries` | `children`
-> {
+export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
+  extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`>, ExportProps {
   entries?: PhaseData[]
   // Treat these strings as the composition keys instead of element symbols, e.g. precursor
   // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions

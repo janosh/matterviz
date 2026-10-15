@@ -1,39 +1,27 @@
 <script lang="ts">
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import ExportButtons from '#lib/io/ExportButtons.svelte'
-
   import type { ShowControlsProp } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
-  import type { Snippet } from 'svelte'
+  import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
+  import type { ComponentProps, Snippet } from 'svelte'
   import { ELEMENT_ORDERINGS, ORDERING_LABELS } from './index'
-  import type {
-    ElementAxisOrderingKey,
-    HeatmapDomainMode,
-    HeatmapExportFormat,
-    HeatmapNormalizeMode,
-    ColorBarPosition,
-    SymmetricMode,
-  } from './index'
+  import type { ElementAxisOrderingKey, HeatmapDomainMode, SymmetricMode } from './index'
 
   let {
     ordering = $bindable(),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
     show_controls = `hover`,
-    normalize = $bindable(`linear`),
+    color_scale = $bindable(`interpolateViridis`),
     domain_mode = $bindable(`auto`),
-    show_color_bar = $bindable(false),
-    color_bar_position = $bindable(`bottom`),
+    color_bar = $bindable(null),
     search_query = $bindable(``),
     symmetric = $bindable<SymmetricMode>(false),
     show_values = $bindable<boolean | string>(false),
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
-    export_formats = [`csv`, `json`],
-    on_export,
-    export_state = new FileExportState(() => `heatmap`),
     pane_props = {},
     toggle_props = {},
     children,
@@ -44,21 +32,14 @@
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
     show_controls?: ShowControlsProp<`controls`>
-    normalize?: HeatmapNormalizeMode
+    color_scale?: ColorScale // the Normalize select writes its `type`
     domain_mode?: HeatmapDomainMode
-    show_color_bar?: boolean
-    color_bar_position?: ColorBarPosition
+    color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
     search_query?: string
     symmetric?: SymmetricMode
     show_values?: boolean | string
     show_row_summaries?: boolean
     show_col_summaries?: boolean
-    export_formats?: HeatmapExportFormat[]
-    export_state?: FileExportState
-    on_export?: (
-      format: HeatmapExportFormat,
-      context: FileExportContext,
-    ) => void | Promise<void>
     pane_props?: PaneProps
     toggle_props?: PaneToggleProps
     children?: Snippet<[{ controls_open: boolean }]>
@@ -66,6 +47,8 @@
 
   // Stash custom format string so toggling the checkbox preserves it
   let stashed_format: string | null = null
+  // Stash the color bar props so toggling the bar off and on again keeps them
+  let stashed_color_bar: Partial<ComponentProps<typeof ColorBar>> = {}
 </script>
 
 <ControlPane
@@ -99,7 +82,12 @@
     </label>
     <label>
       <span>Normalize</span>
-      <select bind:value={normalize}>
+      <select
+        bind:value={
+          () => get_scale_type_name(to_color_scale_config(color_scale).type),
+          (type) => (color_scale = { ...to_color_scale_config(color_scale), type })
+        }
+      >
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select>
@@ -114,14 +102,28 @@
     </label>
     <label>
       <span>Color bar</span>
-      <input type="checkbox" bind:checked={show_color_bar} />
+      <input
+        type="checkbox"
+        bind:checked={
+          () => Boolean(color_bar),
+          (show) => {
+            if (color_bar) stashed_color_bar = color_bar
+            color_bar = show ? stashed_color_bar : null
+          }
+        }
+      />
     </label>
-    {#if show_color_bar}
+    {#if color_bar}
       <label>
         <span>Color bar side</span>
-        <select bind:value={color_bar_position}>
-          <option value="right">Right</option>
-          <option value="bottom">Bottom</option>
+        <select
+          bind:value={
+            () => color_bar?.orientation ?? `horizontal`,
+            (orientation) => (color_bar = { ...color_bar, orientation })
+          }
+        >
+          <option value="vertical">Right</option>
+          <option value="horizontal">Bottom</option>
         </select>
       </label>
     {/if}
@@ -154,20 +156,6 @@
       <span>Col sums</span>
       <input type="checkbox" bind:checked={show_col_summaries} />
     </label>
-    {#if on_export && export_formats.length}
-      <ExportDestination state={export_state} />
-      <div class="setting">
-        <span>Export</span>
-        <div class="pane-row">
-          <ExportButtons
-            state={export_state}
-            formats={export_formats}
-            {on_export}
-            label={(format) => `Export ${format.toUpperCase()}`}
-          />
-        </div>
-      </div>
-    {/if}
     {@render children?.({ controls_open })}
   </SettingsSection>
 </ControlPane>
@@ -176,10 +164,5 @@
   :global(.heatmap-controls) {
     font-size: 0.85em;
     max-width: 320px;
-  }
-  .pane-row {
-    display: flex;
-    gap: 10pt;
-    flex-wrap: wrap;
   }
 </style>

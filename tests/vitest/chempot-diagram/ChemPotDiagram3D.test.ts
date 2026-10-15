@@ -1,6 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
-import { export_png_file, export_svg_file } from '#lib/chempot-diagram/export.js'
+import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type * as scene_module from '#lib/scene/index.js'
@@ -59,6 +59,12 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   const canvas = document.createElement(`canvas`)
   wrapper.append(canvas)
   vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
+  // a HiDPI backing store already at the 2x export size is encoded without resampling
+  Object.assign(canvas, { width: 400, height: 200 })
+  Object.defineProperties(canvas, {
+    clientWidth: { value: 200 },
+    clientHeight: { value: 100 },
+  })
   // the WebGPU frame is encoded (a 2D drawImage of the canvas reads no pixels) and composited
   const frame_blob = new Blob([`frame`], { type: `image/png` })
   canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
@@ -77,9 +83,8 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
     },
   }
   vi.spyOn(document, `createElement`).mockReturnValue(output as unknown as HTMLCanvasElement)
-  const save = vi.fn()
   const settled = vi.fn()
-  void export_png_file(wrapper, `diagram`, 144, save).then(settled, settled)
+  void chempot_png_blob(wrapper, 144).then(settled, settled)
   await vi.runAllTimersAsync()
   expect([output.width, output.height]).toEqual([400, 200])
   expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
@@ -87,25 +92,18 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(frame, 0, 0, 200, 100)
   expect(frame.close).toHaveBeenCalledOnce()
   if (outcome === `success`) {
-    expect(settled).toHaveBeenCalledExactlyOnceWith(undefined)
-    expect(save).toHaveBeenCalledExactlyOnceWith(blob, `diagram.png`, `image/png`)
+    expect(settled).toHaveBeenCalledExactlyOnceWith(blob)
     // the SVG embeds that encoded frame too: toDataURL of a presented WebGPU canvas is blank
-    await export_svg_file(wrapper, `diagram`, {}, save)
-    const svg_image = `<image href="data:image/png;base64,${btoa(`frame`)}"`
-    expect(save).toHaveBeenLastCalledWith(
-      expect.stringContaining(svg_image),
-      `diagram.svg`,
-      `image/svg+xml`,
-    )
+    const svg = await chempot_svg_string(wrapper, {})
+    expect(svg).toContain(`<image href="data:image/png;base64,${btoa(`frame`)}"`)
   } else {
     expect(settled).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         message: expect.stringContaining(
-          outcome === `empty` ? `Failed to generate PNG blob` : `toBlob timed out`,
+          outcome === `empty` ? `Failed to generate high-resolution PNG` : `toBlob timed out`,
         ),
       }),
     )
-    expect(save).not.toHaveBeenCalled()
   }
   expect(vi.getTimerCount()).toBe(0)
 })

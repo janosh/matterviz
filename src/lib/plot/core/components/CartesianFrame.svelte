@@ -20,6 +20,8 @@
   import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
   import type { UserContentProps } from '#lib/plot/core/types.js'
+  import { svg_sources, type ExportProps, type ExportSources } from '#lib/io/export.js'
+  import { chart_export_filename } from '#lib/plot/core/utils/chart-export.js'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
@@ -41,7 +43,8 @@
     'dragover-bg': `var(--dragover-bg)`,
   })
 
-  interface Props extends Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> {
+  interface Props
+    extends Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`>, ExportProps {
     frame: CartesianFrame
     // Wrapper class the chart is selected by (`histogram`, `bar-plot`, `box-plot`)
     plot_class: ClassValue
@@ -76,6 +79,8 @@
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
     header_controls?: Snippet<[Dims]>
+    // Data formats this chart can export, on top of the SVG/PNG of its frame
+    export_sources?: ExportSources
     controls_toggle_props?: PaneToggleProps
     controls?: Snippet<[PaneToggleProps, boolean]>
     // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges
@@ -112,6 +117,10 @@
     on_key_down,
     live_message,
     header_controls,
+    export_sources = {},
+    export_formats,
+    export_filename,
+    on_export,
     controls_toggle_props,
     controls,
     user_content,
@@ -196,6 +205,12 @@
       {show_controls}
       {controls_toggle_props}
       {header_controls}
+      export_pane={{
+        sources: { ...svg_sources(() => frame.svg_element), ...export_sources },
+        export_formats,
+        on_export,
+        filename: export_filename ?? chart_export_filename(frame),
+      }}
       {controls}
     />
   {/if}

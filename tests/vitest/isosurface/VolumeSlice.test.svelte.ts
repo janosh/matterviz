@@ -68,7 +68,7 @@ async function mount_volume_slice(props: Partial<ComponentProps<typeof VolumeSli
   )
   mount(VolumeSlice, {
     target: document.body,
-    props: { slice: make_slice(), show_colorbar: false, ...props },
+    props: { slice: make_slice(), color_bar: null, ...props },
   })
   await tick()
   return { canvas: document.querySelector(`canvas`), context }
@@ -105,10 +105,7 @@ describe(`VolumeSlice`, () => {
   })
 
   test(`centers a bounded horizontal colorbar`, async () => {
-    await mount_volume_slice({
-      show_colorbar: true,
-      colorbar_orientation: `horizontal`,
-    })
+    await mount_volume_slice({ color_bar: { orientation: `horizontal` } })
     const colorbar = doc_query(`.slice-colorbar.horizontal`, HTMLElement)
     const colorbar_style = getComputedStyle(colorbar)
 
@@ -123,7 +120,7 @@ describe(`VolumeSlice`, () => {
 
   // a vertical title beside the tick labels overlapped long labels and stood off short ones
   test(`puts a vertical colorbar title opposite its tick labels`, async () => {
-    await mount_volume_slice({ show_colorbar: true })
+    await mount_volume_slice({ color_bar: {} })
     const title_row = doc_query(`.slice-colorbar.vertical .title-row`, HTMLElement)
     expect(title_row.classList.contains(`left`)).toBe(true)
   })
@@ -166,7 +163,7 @@ describe(`VolumeSlice`, () => {
     const { context } = await mount_volume_slice({
       slice,
       mode: `contours`,
-      color_range: [0, 1],
+      color_scale: { value_range: [0, 1] },
       contour_levels: [-10],
     })
 
@@ -235,8 +232,8 @@ describe(`VolumeSlice`, () => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
       context as unknown as CanvasRenderingContext2D,
     )
-    const props = $state<{ show_colorbar: boolean; slice: SliceResult | null }>({
-      show_colorbar: false,
+    const props = $state<{ color_bar: null; slice: SliceResult | null }>({
+      color_bar: null,
       slice: make_slice(),
     })
     mount(VolumeSlice, { target: document.body, props })
@@ -251,9 +248,8 @@ describe(`VolumeSlice`, () => {
 
   test(`keeps an inverted colorbar consistent with pixel colors`, async () => {
     await mount_volume_slice({
-      show_colorbar: true,
-      color_range: [3, -1],
-      colormap: `interpolateRdBu`,
+      color_bar: {},
+      color_scale: { scheme: `interpolateRdBu`, value_range: [3, -1] },
     })
     const gradient = document.querySelector(`.colorbar .bar`)?.getAttribute(`style`) ?? ``
     const interpolator = get_d3_interpolator(`interpolateRdBu`)
@@ -280,7 +276,10 @@ test(`VolumeSliceView re-samples for plane changes only`, async () => {
     await new Promise(requestAnimationFrame)
     await tick()
   }
-  await settle({ colormap: `interpolateViridis`, contour_levels: 3, color_range: [0, 5] })
+  await settle({
+    color_scale: { scheme: `interpolateViridis`, value_range: [0, 5] },
+    contour_levels: 3,
+  })
   await settle({ render_mode: `contours`, symmetric: true, show_plane: false })
   expect(sample).toHaveBeenCalledTimes(1)
   // a pane slider drag (one edit per frame) resamples every frame, not once it rests

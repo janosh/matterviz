@@ -55,15 +55,23 @@ export const attach_canvas =
     }
   }
 
+// Repaints a foreignObject canvas onto another canvas at a given pixel ratio. Charts register
+// one per canvas so SVG/PNG export embeds the marks at export resolution, not as an
+// upscaled screen bitmap.
+export const canvas_painters = new WeakMap<
+  HTMLCanvasElement,
+  (target: HTMLCanvasElement, pixel_ratio: number) => void
+>()
+
 // Round fractional CSS sizes/DPR to the nearest physical pixel, keeping tiny canvases valid.
 // Assign dimensions only when changed: writing them resets the bitmap and context state.
 export function prepare_canvas(
   canvas: HTMLCanvasElement | undefined,
   width: number,
   height: number,
+  pixel_ratio = globalThis.devicePixelRatio || 1,
 ) {
   if (!canvas || !(width > 0 && height > 0)) return undefined
-  const pixel_ratio = globalThis.devicePixelRatio || 1
   const backing_width = Math.max(1, Math.round(width * pixel_ratio))
   const backing_height = Math.max(1, Math.round(height * pixel_ratio))
   if (canvas.width !== backing_width) canvas.width = backing_width

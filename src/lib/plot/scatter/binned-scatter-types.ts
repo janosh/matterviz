@@ -1,7 +1,6 @@
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { DenseInternalPoint } from '#lib/plot/scatter/adaptive-density.js'
 import type {
-  ColorScaleConfig,
+  ColorScale,
   LabelPlacementConfig,
   RefLine,
   ScatterHandlerProps,
@@ -9,8 +8,6 @@ import type {
 } from '#lib/plot/core/types.js'
 import { SCALE_DEFAULTS } from '#lib/plot/core/types.js'
 import type { Snippet } from 'svelte'
-
-export type BinnedColorScaleConfig = ColorScaleConfig | D3InterpolateName
 
 export type BinnedSizeScaleConfig = SizeScaleConfig & { pick_radius?: number | `auto` }
 
@@ -22,7 +19,7 @@ export const DEFAULT_BINNED_SIZE_SCALE: BinnedSizeScaleConfig = {
 
 export type BinnedDensityConfig = {
   bin_px?: number
-  color_scale?: BinnedColorScaleConfig
+  color_scale?: ColorScale
   auto_point_mode?: false | { max_points?: number; max_points_per_px?: number }
   bin_click?: `zoom` | `point` | `none`
 }

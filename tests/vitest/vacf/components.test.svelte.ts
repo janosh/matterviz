@@ -127,7 +127,9 @@ describe(`VacfPlot`, () => {
       vacf_controls_open: true,
       vdos_controls_open: false,
     })
-    const toggles = document.querySelectorAll<HTMLButtonElement>(`.pane-toggle`)
+    const toggles = document.querySelectorAll<HTMLButtonElement>(
+      `.pane-toggle:not(.export-toggle)`,
+    )
     const expanded_states = () =>
       [...toggles].map((toggle) => toggle.getAttribute(`aria-expanded`))
     expect(expanded_states()).toEqual([`true`, `false`])

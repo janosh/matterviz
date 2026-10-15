@@ -1,7 +1,7 @@
 import {
   contour_segments,
   resolve_contour_thresholds,
-  resolve_slice_color_range,
+  resolve_slice_value_range,
   slice_to_rgba,
 } from '#lib/isosurface/slice-rendering.js'
 import { contours } from 'd3-contour'
@@ -17,18 +17,20 @@ const make_slice = () => ({
 })
 
 describe(`slice rendering helpers`, () => {
-  // Symmetry modes are fit_color_range's (coloring tests); these pin that each is forwarded
+  // Symmetry modes are fit_value_range's (coloring tests); these pin that each is forwarded
   test.each([
     [`auto`, [-1, 3], undefined, [-3, 3]], // signed data: centred on zero
     [false, [-1, 3], undefined, [-1, 3]],
     [true, [1, 3], undefined, [-3, 3]],
     [`auto`, [-2, 2], [3, -1], [3, -1]], // an explicit range wins as is
+    [`auto`, [-1, 3], [null, 5], [-3, 5]], // a null end keeps the fitted bound
   ] as const)(
     `symmetric=%s resolves %j (explicit %j) to %j`,
     (symmetric, [min, max], explicit, expected) => {
-      expect(
-        resolve_slice_color_range({ min, max }, explicit && [...explicit], symmetric),
-      ).toEqual(expected)
+      const color_scale = {
+        value_range: explicit && ([...explicit] as [number | null, number | null]),
+      }
+      expect(resolve_slice_value_range({ min, max }, color_scale, symmetric)).toEqual(expected)
     },
   )
 
@@ -45,6 +47,10 @@ describe(`slice rendering helpers`, () => {
     expect(
       slice_to_rgba(slice, `interpolateViridis`, [-2, 2], new Uint8ClampedArray(4)),
     ).not.toBe(output)
+    // a log scale leaves the non-positive pixels transparent and puts 2 at the palette top
+    const log_pixels = slice_to_rgba(slice, { type: `log` }, [1, 2])
+    expect([log_pixels[3], log_pixels[7], log_pixels[15]]).toEqual([0, 255, 0])
+    expect(log_pixels.slice(4, 7)).toEqual(pixels.slice(4, 7))
   })
 
   test.each([

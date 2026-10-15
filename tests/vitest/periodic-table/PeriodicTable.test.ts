@@ -35,7 +35,7 @@ const tile_bg_reds = (count: number): number[] =>
   [...document.querySelectorAll<HTMLElement>(`.element-tile`)]
     .slice(0, count)
     .map((tile) => Number(/\d+/.exec(tile.style.backgroundColor)?.[0]))
-// color_scale whose red channel reads back the normalized position on the ramp
+// scheme whose red channel reads back the normalized position on the ramp
 const red_scale = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
 // tooltip snippet that hands its props to on_render
 const capture_tooltip = <T>(on_render: (props: T) => void) =>
@@ -453,7 +453,11 @@ describe(`PeriodicTable`, () => {
   ] as const)(`missing color edge cases (log=$log)`, ({ values, color, log }) => {
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: values as never, missing: { color }, log },
+      props: {
+        heatmap_values: values as never,
+        missing: { color },
+        color_scale: { type: log ? `log` : `linear` },
+      },
     })
     const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
     expect([tiles[0].style.backgroundColor, tiles[1].style.backgroundColor]).toEqual([
@@ -497,7 +501,7 @@ describe(`PeriodicTable`, () => {
       target: document.body,
       props: {
         heatmap_values: [NaN, 1, 2] as never,
-        color_scale,
+        color_scale: { scheme: color_scale },
         missing: { color: `#666` },
       },
     })
@@ -523,7 +527,11 @@ describe(`PeriodicTable`, () => {
     (value, log, expected_opacity, expected_labels) => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [value] as never, log, missing: { style: `opacity: 0.3` } },
+        props: {
+          heatmap_values: [value] as never,
+          color_scale: { type: log ? `log` : `linear` },
+          missing: { style: `opacity: 0.3` },
+        },
       })
       const tile = doc_query(`.element-tile`)
       expect(tile.style.opacity).toBe(expected_opacity)
@@ -569,7 +577,7 @@ describe(`PeriodicTable`, () => {
     })
     mount(PeriodicTable, {
       target: document.body,
-      props: { heatmap_values: [0, 2, 8], log: true, tooltip },
+      props: { heatmap_values: [0, 2, 8], color_scale: { type: `log` }, tooltip },
     })
     const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
     tiles[1].dispatchEvent(mouseenter) // He = 2 (a positive value)
@@ -760,7 +768,7 @@ describe(`PeriodicTable`, () => {
     })
 
     test.each([
-      [{ show_color_bar: false }, `show_color_bar=false`],
+      [{ color_bar: null }, `color_bar=null`],
       [{ heatmap_values: [] }, `empty heatmap`],
       [{ heatmap_values: [``, `  `] }, `blank values`],
       [{ heatmap_values: [`#f00`, `#0f0`] as never }, `color-only values`],
@@ -788,12 +796,12 @@ describe(`PeriodicTable`, () => {
       expect(rendered).toBe(true)
     })
 
-    test(`color_bar_props customize title, wrapper style and ticks`, () => {
+    test(`color_bar props customize title, wrapper style and ticks`, () => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
           heatmap_values: [1, 2, 3],
-          color_bar_props: {
+          color_bar: {
             title: `Test Property`,
             wrapper_style: `width: 70%`,
             tick_labels: 3,
@@ -813,7 +821,10 @@ describe(`PeriodicTable`, () => {
     test(`log tile colors use true log mapping matching the powers-of-10 ColorBar`, () => {
       mount(PeriodicTable, {
         target: document.body,
-        props: { heatmap_values: [1, 10, 100, 1000], log: true, color_scale: red_scale },
+        props: {
+          heatmap_values: [1, 10, 100, 1000],
+          color_scale: { scheme: red_scale, type: `log` },
+        },
       })
       const tick_text = [...document.querySelectorAll(`.tick-label`)].map((label) =>
         label.textContent?.trim(),
@@ -823,15 +834,14 @@ describe(`PeriodicTable`, () => {
       expect(tile_bg_reds(4)).toEqual([0, 85, 170, 255])
     })
 
-    // tiles and the auto ColorBar share one ramp clamped to an explicit color_scale_range
-    test(`color_scale_range clamps tile colors without scanning the data extent`, () => {
+    // tiles and the auto ColorBar share one ramp clamped to an explicit value_range
+    test(`value_range clamps tile colors without scanning the data extent`, () => {
       const extent_spy = vi.spyOn(math, `array_extent`)
       mount(PeriodicTable, {
         target: document.body,
         props: {
           heatmap_values: [-5, 0, 5, 10, 20],
-          color_scale: red_scale,
-          color_scale_range: [0, 10],
+          color_scale: { scheme: red_scale, value_range: [0, 10] },
         },
       })
       expect(tile_bg_reds(5)).toEqual([0, 0, 128, 255, 255])
@@ -839,15 +849,26 @@ describe(`PeriodicTable`, () => {
       expect(tick_extent()).toEqual([0, 10])
     })
 
+    // a null end keeps the data bound; palette_range clips tiles and bar alike
+    test(`a half-set value_range and a palette_range`, () => {
+      mount(PeriodicTable, {
+        target: document.body,
+        props: {
+          heatmap_values: [0, 5, 10, 20],
+          color_scale: { scheme: red_scale, value_range: [null, 10], palette_range: [0.5, 1] },
+        },
+      })
+      expect(tile_bg_reds(4)).toEqual([128, 191, 255, 255])
+      expect(tick_extent()).toEqual([0, 10])
+    })
+
     // a non-positive min has no log image: start at the smallest positive value, not LOG_EPS
-    test(`log mode lifts a non-positive color_scale_range min to the smallest positive value`, () => {
+    test(`log mode lifts a non-positive value_range min to the smallest positive value`, () => {
       mount(PeriodicTable, {
         target: document.body,
         props: {
           heatmap_values: [1, 10, 100],
-          log: true,
-          color_scale: red_scale,
-          color_scale_range: [0, 100],
+          color_scale: { scheme: red_scale, type: `log`, value_range: [0, 100] },
         },
       })
       expect(tile_bg_reds(3)).toEqual([0, 128, 255])

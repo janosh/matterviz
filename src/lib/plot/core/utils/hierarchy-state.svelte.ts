@@ -5,9 +5,7 @@
 // projection/tiling and hands it back through the `visible`, `node_center` and
 // `legend_points` hooks. HierarchyShell.svelte renders the markup around it.
 
-import type { D3InterpolateName } from '#lib/colors/index.js'
-import type { FileExportContext } from '#lib/io/file-export.svelte.js'
-import type { Vec2 } from '#lib/math.js'
+import { svg_sources, type ExportSources } from '#lib/io/export.js'
 import { is_modifier_chord } from 'svelte-widgets/utils'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import {
@@ -18,7 +16,7 @@ import {
 import type { Sides } from '#lib/plot/core/layout.js'
 import { filter_padding } from '#lib/plot/core/layout.js'
 import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
-import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
+import type { ColorScale, LegendConfig, LegendItem } from '#lib/plot/core/types.js'
 import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart.js'
 import {
   ancestor_chain,
@@ -33,7 +31,7 @@ import {
   selection_within,
   toggle_muted,
 } from '#lib/plot/core/utils/hierarchy-chart.js'
-import { export_chart_image } from '#lib/plot/core/utils/chart-export.js'
+import { csv_source } from '#lib/plot/core/utils/chart-export.js'
 import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
 import type {
   OtherBucketInfo,
@@ -76,12 +74,9 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // Color nodes by a numeric metric (continuous colormap) instead of categorical
   // inheritance; return null to keep a node's categorical color
   color_values?: (node: PositionedArc<Metadata>) => number | null
-  color_scale?: D3InterpolateName
-  color_range?: Vec2 // defaults to the metric's [min, max]
+  color_scale?: ColorScale // value_range defaults to the metric's [min, max]
   color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
   color_bar_side?: ColorBarSide // side reserved for vertical color bars
-  export_buttons?: boolean // SVG/PNG download buttons in the controls pane
-  export_filename?: string
   value_format?: string
   padding?: Sides
   legend?: LegendConfig | null
@@ -121,14 +116,12 @@ interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   readonly height: () => number
   readonly padding: () => Sides
   readonly color_values: () => ((arc: PositionedArc<Metadata>) => number | null) | undefined
-  readonly color_scale: () => D3InterpolateName
-  readonly color_range: () => Vec2 | undefined
+  readonly color_scale: () => ColorScale
   readonly color_bar: () => ComponentProps<typeof ColorBar> | null
   readonly color_bar_side: () => ColorBarSide
   readonly legend: () => LegendConfig | null
   readonly show_legend: () => boolean | undefined
   readonly zoom_on_click: () => boolean
-  readonly export_filename: () => string
   // Only charts that gate focusability on clickability pass this (Sunburst);
   // its presence is what puts `clickable` on the computed node infos
   readonly clickable?: (arc: PositionedArc<Metadata>) => boolean
@@ -249,12 +242,7 @@ export class HierarchyChartState<
   plot_left = $derived(this.cbar.plot_left)
 
   metric = $derived.by(() =>
-    compute_metric_colors(
-      this.arcs,
-      this.#opts.color_values(),
-      this.color_scale,
-      this.#opts.color_range(),
-    ),
+    compute_metric_colors(this.arcs, this.#opts.color_values(), this.color_scale),
   )
   color_for = (arc: PositionedArc<Metadata>): string =>
     this.metric?.colors[arc.node_idx] ?? arc.color
@@ -473,11 +461,14 @@ export class HierarchyChartState<
         : null
   }
 
-  export_chart = (format: `svg` | `png`, context?: FileExportContext): void | Promise<void> =>
-    export_chart_image(
-      this.svg_element,
-      context?.filename ?? this.#opts.export_filename(),
-      format,
-      context?.save,
-    )
+  // Figure plus one CSV row per node (root excluded), labelled by its full path
+  export_sources: ExportSources = {
+    ...svg_sources(() => this.svg_element),
+    csv: csv_source(() => ({
+      header: [`path`, `depth`, `value`, `fraction`],
+      rows: this.arcs
+        .filter((arc) => arc.depth > 0)
+        .map((arc) => [arc.label_path.join(` / `), arc.depth, arc.value, arc.fraction]),
+    })),
+  }
 }

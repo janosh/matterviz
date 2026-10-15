@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { HeatmapTable, ToggleMenu } from '#lib/table/index.js'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS, ToggleMenu } from '#lib/table/index.js'
   import type { Column } from '#lib/table/index.js'
 
   // === Example 1: Basic flat list (no groups) ===
@@ -165,7 +165,7 @@
     bind:column_prefs
     show_controls="always"
     search
-    export_data
+    export_formats={TABLE_EXPORT_FORMATS}
     show_column_toggle
     show_row_select
     row_key="Name"

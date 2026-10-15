@@ -1,5 +1,5 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
-import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { format_num, zero_if_negligible } from '#lib/labels.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
@@ -166,12 +166,10 @@ export interface IsosurfaceLayer {
   volume_id: string
   // Scalar-color-source volume ID; unset preserves solid-color behavior
   color_volume_id?: string
-  // Continuous colormap applied to sampled scalars (default interpolateViridis)
-  colormap?: D3InterpolateName
-  // Scalar range mapped onto the colormap; inverted [max, min] flips the map.
-  // When unset, the renderer auto-fits the range to the values sampled on the
-  // surface (symmetric about zero for signed fields).
-  color_range?: Vec2
+  // Color scale for the sampled scalars (default interpolateViridis). An inverted value_range
+  // [max, min] flips the map; unset ends auto-fit to the values sampled on the surface
+  // (symmetric about zero for signed fields).
+  color_scale?: ColorScale
 }
 
 // Isosurface rendering settings: every rendered surface is an explicit layer (an empty

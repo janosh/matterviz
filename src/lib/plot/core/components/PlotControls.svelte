@@ -5,10 +5,6 @@
 </script>
 
 <script lang="ts">
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import ExportButtons from '#lib/io/ExportButtons.svelte'
-  import { FileExportState } from '#lib/io/file-export.svelte.js'
-
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
@@ -47,12 +43,7 @@
     controls_name = `plot`,
     toggle_props = {},
     pane_props = {},
-    on_export,
-    export_filename = controls_title,
-    export_formats = [`png`, `svg`, `csv`],
   }: PlotControlsProps = $props()
-
-  const export_state = new FileExportState(() => export_filename)
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
   const auto_range = (axis: AxisKey): Vec2 | undefined =>
@@ -428,21 +419,6 @@
   </SettingsSection>
 
   {@render post_children?.()}
-
-  {#if on_export}
-    <ExportDestination state={export_state} />
-    <SettingsSection title="Export" layout="flow">
-      <ExportButtons
-        state={export_state}
-        formats={export_formats}
-        {on_export}
-        button_props={() => ({
-          class: `export-btn`,
-          style: `padding: 2pt 8pt; cursor: pointer`,
-        })}
-      />
-    </SettingsSection>
-  {/if}
 </ControlPane>
 
 <style>

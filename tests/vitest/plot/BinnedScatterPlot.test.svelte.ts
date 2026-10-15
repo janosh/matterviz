@@ -4,7 +4,7 @@ import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
-import { svg_to_svg_string } from '#lib/io/export.js'
+import { svg_to_string } from '#lib/io/export.js'
 import { plot_color } from '#lib/colors/index.js'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   mock_fullscreen,
   bind_props,
+  click_export,
   CANVAS_NOOP_METHODS,
   clip_rect,
   doc_query,
@@ -160,10 +161,7 @@ const uniform_density_series = (columns = 32, rows = 24) => [
   },
 ]
 function mock_label_measurement(width: number, height: number) {
-  const orig_get_bounding_client_rect = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    `getBoundingClientRect`,
-  )?.value as (this: HTMLElement) => DOMRect
+  const orig_get_bounding_client_rect = HTMLElement.prototype.getBoundingClientRect
   return vi.spyOn(HTMLElement.prototype, `getBoundingClientRect`).mockImplementation(function (
     this: HTMLElement,
   ) {
@@ -385,6 +383,19 @@ describe(`BinnedScatterPlot`, () => {
     mount_plot({ series: [{ x: [0, 1], y: [0, 1] }], density, color_bar: null })
     await settle()
     expect(document.querySelector(`.colorbar`)).toBeNull()
+
+    // the bar spans the cells' value_range, not the raw count range
+    document.body.replaceChildren()
+    mount_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      density: { ...density, color_scale: { value_range: [null, 40] } },
+      color_bar: { snap_ticks: false, tick_labels: 2, tick_format: `d` },
+    })
+    await settle()
+    const ticks = [...document.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
+      Number(label.textContent),
+    )
+    expect(ticks).toEqual([1, 40])
   })
 
   // An outside colorbar stacks on the axis band (default 20 top / 12 right), not on the caller's
@@ -801,20 +812,23 @@ describe(`BinnedScatterPlot`, () => {
     expect(clears.overlay).toBeGreaterThan(before_hover)
     expect(clears.base).toBe(settled.base)
 
+    // export repaints both layers on fresh canvases at 2x instead of upscaling the screen bitmap
     const canvases = [...binned_plot().querySelectorAll(`canvas`)]
-    for (const canvas of canvases) {
-      vi.spyOn(canvas, `toDataURL`).mockReturnValue(
-        `data:image/png;base64,${btoa(canvas.className)}`,
-      )
-    }
+    vi.spyOn(HTMLCanvasElement.prototype, `toDataURL`).mockImplementation(function (
+      this: HTMLCanvasElement,
+    ) {
+      return `data:image/png;base64,${btoa(`${this.width}x${this.height}`)}`
+    })
     const exported = new DOMParser().parseFromString(
-      svg_to_svg_string(plot_svg()),
+      svg_to_string(plot_svg()),
       `image/svg+xml`,
     )
     expect(
       [...exported.querySelectorAll(`image`)].map((image) => image.getAttribute(`href`)),
     ).toEqual(
-      [`density-canvas`, `marked-points`].map((name) => `data:image/png;base64,${btoa(name)}`),
+      canvases.map(
+        ({ width, height }) => `data:image/png;base64,${btoa(`${width * 2}x${height * 2}`)}`,
+      ),
     )
     expect(
       query(exported, `image`).compareDocumentPosition(query(exported, `.x-axis`)) &
@@ -827,6 +841,39 @@ describe(`BinnedScatterPlot`, () => {
     expect(clears).toEqual(after_unmount)
     expect(canvases.every((canvas) => canvas.parentNode === null)).toBe(true)
   })
+
+  test.each([
+    [`pooled`, {}, [`all`]],
+    [`per series`, { density_color_scale: `interpolateReds` }, [`A`, `B`]],
+  ] as const)(
+    `CSV export lists the non-empty %s density bins`,
+    async (_desc, extra, labels) => {
+      mock_canvas_context()
+      const save = vi.fn()
+      vi.stubGlobal(`download`, save)
+      const series = [`A`, `B`].map((label, idx) => ({
+        label,
+        x: [0.1 + idx * 0.5, 0.15 + idx * 0.5, 0.9],
+        y: [0.2, 0.25, 0.9],
+        ...extra,
+      }))
+      mount_plot({ series, ...density_mode(), ...unit_axes })
+      await settle()
+      expect(await click_export(`CSV`)).toEqual([`PNG`, `SVG`, `CSV`])
+      await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
+      const [csv, filename, mime] = save.mock.calls[0]
+      expect([filename, mime]).toEqual([`chart.csv`, `text/csv;charset=utf-8`])
+      const [header, ...rows] = String(csv).split(`\n`)
+      expect(header).toBe(`series,x_start,x_end,y_start,y_end,count`)
+      const cells = rows.map((row) => row.split(`,`))
+      expect([...new Set(cells.map(([label]) => label))]).toEqual(labels)
+      // every point lands in exactly one bin, and each bin's range contains its points
+      expect(cells.reduce((sum, row) => sum + Number(row[5]), 0)).toBe(6)
+      for (const [, x_start, x_end] of cells)
+        expect(Number(x_start)).toBeLessThan(Number(x_end))
+      vi.unstubAllGlobals()
+    },
+  )
 
   test(`missing selected point ID does not schedule pulse frames`, async () => {
     const request_frame = vi.spyOn(globalThis, `requestAnimationFrame`)

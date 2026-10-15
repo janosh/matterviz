@@ -3,7 +3,6 @@
   import { track_settings } from '#lib/controls.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { css_color_to_hex } from '#lib/colors/index.js'
-  import { format_num } from '#lib/labels.js'
   import { NumberRangeInput, SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { clamp } from '#lib/math.js'
   import type { AxisConfig } from '#lib/plot/index.js'
@@ -27,9 +26,6 @@
     y_axis = $bindable({}),
     // Data
     data,
-    // Export
-    enable_export = true,
-    png_dpi = $bindable(PHASE_DIAGRAM_DEFAULTS.png_dpi),
     children,
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
@@ -46,9 +42,6 @@
     y_axis?: AxisConfig
     // Data for context (components, units, etc.)
     data?: PhaseDiagramData
-    // Export settings
-    enable_export?: boolean
-    png_dpi?: number
     // Custom content rendered above the built-in sections
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
@@ -127,7 +120,6 @@
     }),
     PHASE_DIAGRAM_DEFAULTS,
   )
-  const export_settings = track_settings(() => ({ png_dpi }), PHASE_DIAGRAM_DEFAULTS)
 </script>
 
 <ControlPane
@@ -292,28 +284,6 @@
       {/each}
     </SettingsSection>
   </SettingsGroup>
-
-  {#if enable_export}
-    <SettingsSection
-      title="Export"
-      changed_keys={export_settings.changed_keys}
-      on_reset={() => (png_dpi = PHASE_DIAGRAM_DEFAULTS.png_dpi)}
-      layout="grid"
-    >
-      <label
-        {@attach tooltip({
-          content: `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.`,
-        })}
-      >
-        <span>PNG DPI</span>
-        <span class="dpi-value" style="display: inline-flex; align-items: baseline; gap: 1pt">
-          <input type="number" min={72} max={600} step={50} bind:value={png_dpi} />
-          <span style="font-size: 0.85em; opacity: 0.8">{format_num(png_dpi, `d`)} dpi</span>
-        </span>
-        <input type="range" min={72} max={600} step={50} bind:value={png_dpi} />
-      </label>
-    </SettingsSection>
-  {/if}
 </ControlPane>
 
 <style>
@@ -335,8 +305,5 @@
   }
   input[type='number'] {
     width: 3.5em;
-  }
-  input[type='range'] {
-    min-width: 40px;
   }
 </style>
