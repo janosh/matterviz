@@ -1,9 +1,11 @@
+<script module lang="ts">
+  // The neutral chip for marks without a usable fill, also the CSS default below
+  const NEUTRAL_BG = `var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)))`
+</script>
+
 <script lang="ts">
-  import {
-    contrast_text_color,
-    resolve_backdrop,
-    resolve_computed_color,
-  } from '#lib/colors/index.js'
+  import type { TooltipPaint } from '#lib/colors/index.js'
+  import { resolve_color_token, tooltip_paint, watch_css_color } from '#lib/colors/index.js'
   import { DEFAULT_CURSOR_SIZE, place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
   import type { Rect } from '#lib/plot/core/layout.js'
   import type { Snippet } from 'svelte'
@@ -84,24 +86,29 @@
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the
   // label path is long — cap width to the constrained box and let the text wrap.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
-  const backdrop = resolve_backdrop(() => wrapper)
-  const rendered_bg = resolve_computed_color(
-    () => (bg_color == null ? undefined : wrapper),
-    `background-color`,
-    { fallback: () => bg_color ?? backdrop.current },
-  )
-  const text_color = $derived(
-    bg_color == null
-      ? undefined
-      : contrast_text_color({ background: rendered_bg.current, backdrop: backdrop.current }),
-  )
+  // A fill JS can parse is painted outright, with no DOM reads as the tooltip follows the
+  // pointer. Anything else (a var() fill, or no fill: the neutral --tooltip-bg chip) resolves
+  // through a probe once per fill and theme change. Watching from the parent skips the
+  // style:left/top writes on the tooltip itself.
+  const js_paint = $derived(tooltip_paint(bg_color))
+  const dom_fill = $derived(js_paint ? null : (bg_color ?? NEUTRAL_BG))
+  let dom_paint = $state<TooltipPaint | null>(null)
+  $effect(() => {
+    const [node, fill] = [wrapper, dom_fill]
+    if (!node || !fill) return
+    const resolve = (color: string) => tooltip_paint(resolve_color_token(node, color))
+    const read = () => (dom_paint = resolve(fill) ?? resolve(NEUTRAL_BG))
+    read()
+    return watch_css_color(node.parentElement ?? node, read)
+  })
+  const paint = $derived(js_paint ?? dom_paint)
 </script>
 
 <div
   {...rest}
   class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
-  style:background-color={bg_color}
-  style:color={text_color}
+  style:background-color={paint?.background}
+  style:color={paint?.color}
   style:max-width={max_width != null ? `${max_width}px` : undefined}
   style:position={fixed ? `fixed` : `absolute`}
   style:left="{pos.x}px"
@@ -114,6 +121,11 @@
 </div>
 
 <style>
+  /* zero specificity: a caller's class may restyle the chip until the probe resolves */
+  :where(.plot-tooltip) {
+    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    color: var(--tooltip-color, light-dark(#222, #eee));
+  }
   .plot-tooltip {
     box-sizing: border-box;
     padding: var(--plot-tooltip-padding, 2px 6px);

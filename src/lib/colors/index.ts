@@ -130,6 +130,8 @@ const to_rgb = (color: string): RGBColor | undefined => {
   )
 }
 let color_canvas_context: CanvasRenderingContext2D | null | undefined
+// Canvas-parsed colors by string (FIFO-bounded): each parse is a pixel write + readback
+const canvas_rgb_memo = new Map<string, RGBColor | undefined>()
 function to_rendered_rgb(color: string): RGBColor | undefined {
   const parsed = to_rgb(color)
   if (parsed) return parsed
@@ -139,11 +141,23 @@ function to_rendered_rgb(color: string): RGBColor | undefined {
     /^(?:var\(|currentcolor$)/i.test(color)
   )
     return undefined
+  if (canvas_rgb_memo.has(color)) return canvas_rgb_memo.get(color)
   color_canvas_context ??= document
     .createElement(`canvas`)
     .getContext(`2d`, { willReadFrequently: true })
   const context = color_canvas_context
   if (!context) return undefined
+  const rendered = canvas_rgb(context, color)
+  evict_oldest(canvas_rgb_memo)
+  canvas_rgb_memo.set(color, rendered)
+  return rendered
+}
+// The browser's own parse of `color`, undefined if rejected: a rejected assignment keeps the
+// previous fillStyle, so black and white priors then read back differently
+const canvas_rgb = (
+  context: CanvasRenderingContext2D,
+  color: string,
+): RGBColor | undefined => {
   context.fillStyle = `black`
   context.fillStyle = color
   const parsed_style = context.fillStyle
@@ -243,18 +257,18 @@ const WCAG_AA = 4.5
 export function pick_contrast_color(paint: Paint): string {
   const { background, backdrop, choices = DEFAULT_CONTRAST_CHOICES } = paint
   const parsed_bg = parse_rgb(background)
-  let effective_bg = parsed_bg
-  if (parsed_bg.opacity < 1) {
-    if (!backdrop) throw new Error(`Translucent background requires a backdrop: ${background}`)
-    const parsed_backdrop = parse_rgb(backdrop)
-    if (parsed_backdrop.opacity < 1) throw new Error(`backdrop must be opaque: ${backdrop}`)
-    effective_bg = composite_rgb(parsed_bg, parsed_backdrop)
-  }
-  const bg_luminance = rgb_luminance(effective_bg)
+  if (parsed_bg.opacity === 1) return contrast_on(parsed_bg, choices)
+  if (!backdrop) throw new Error(`Translucent background requires a backdrop: ${background}`)
+  const parsed_backdrop = parse_rgb(backdrop)
+  if (parsed_backdrop.opacity < 1) throw new Error(`backdrop must be opaque: ${backdrop}`)
+  return contrast_on(composite_rgb(parsed_bg, parsed_backdrop), choices)
+}
+const contrast_on = (bg: RGBColor, choices: readonly [string, string]): string => {
+  const bg_luminance = rgb_luminance(bg)
   const choice_luminances = choices.map((choice) => {
     const parsed_choice = parse_rgb(choice)
     return rgb_luminance(
-      parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, effective_bg) : parsed_choice,
+      parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, bg) : parsed_choice,
     )
   })
   const ratios = choice_luminances.map((lum) => wcag_contrast(lum, bg_luminance))
@@ -270,32 +284,25 @@ export const contrast_text_color = (paint: Paint): string =>
 
 // Black/white against an opaque background; translucent or unresolvable (CSS var,
 // currentcolor, transparent) backgrounds inherit, since without a known backdrop there is
-// nothing to contrast against. For marks whose color the user supplies verbatim.
+// nothing to contrast against. For marks drawn in place with the color the user supplies.
 export const opaque_contrast_color = (background: string): string =>
   is_opaque_color(background) ? pick_contrast_color({ background }) : `currentColor`
 
-// Text for a chip floating over a backdrop JS can't see (a 3D canvas): a translucent bg is
-// judged by its own opaque color, which dominates a mostly opaque chip (rgba(0, 0, 0, 0.85) →
-// white); unresolvable ones (var(), currentcolor, transparent) inherit
-export const chip_contrast_color = (background: string): string => {
-  const parsed = to_rendered_rgb(background.trim())
-  return parsed?.opacity
-    ? pick_contrast_color({ background: parsed.copy({ opacity: 1 }).formatRgb() })
-    : `currentColor`
+export interface TooltipPaint {
+  background: string
+  color: string
 }
-
-// A hovered mark's opaque fill with contrasting text for its tooltip, beating the
-// --tooltip-bg/--canvas-tooltip-bg theme tokens that style the neutral chip shown for null
-// (translucent, var() or no fill). Component override vars like var(--scatter3d-tooltip-bg,
-// paint) beat both. `pick` swaps the text-color picker (e.g. a grid's contrast_color_memo).
-export const tooltip_paint = (
-  fill: unknown,
-  pick: (background: string) => string | null = (background) =>
-    pick_contrast_color({ background }),
-): { background: string; color: string } | null => {
-  if (!is_opaque_color(fill)) return null
-  const color = pick(fill)
-  return color === null ? null : { background: fill, color }
+// The one rule for painting a tooltip in its hovered mark's color: an opaque fill as is, a
+// translucent one flattened to its opaque hue (so content behind never shows through), each
+// with black/white text by WCAG contrast. Null for fills JS cannot resolve (var(),
+// currentcolor, transparent, none): the neutral --tooltip-bg/--canvas-tooltip-bg theme chip.
+export const tooltip_paint = (fill: unknown): TooltipPaint | null => {
+  if (typeof fill !== `string`) return null
+  const parsed = to_rendered_rgb(fill.trim())
+  if (!parsed?.opacity) return null
+  const opaque = parsed.copy({ opacity: 1 })
+  const background = parsed.opacity === 1 ? fill : opaque.formatRgb()
+  return { background, color: contrast_on(opaque, DEFAULT_CONTRAST_CHOICES) }
 }
 
 // Distinct backgrounds a memo holds at once. A continuous colour scale yields a new string

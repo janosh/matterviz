@@ -7,7 +7,13 @@ import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisConditions } from '#lib/synthesis-planning/types.js'
 import { mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, expect_module_worker, install_stub_worker, set_input } from '../setup'
+import {
+  doc_query,
+  expect_module_worker,
+  expect_tooltip_paint,
+  install_stub_worker,
+  set_input,
+} from '../setup'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
@@ -54,9 +60,9 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   const first = doc_query<HTMLButtonElement>(`.map-grid button`)
   first.focus()
   await tick()
-  const tooltip = document.querySelector<HTMLElement>(`.plot-tooltip`)
-  // the tooltip wears the focused cell's fill
-  expect(tooltip?.style.backgroundColor).toBe(first.style.background)
+  const tooltip = doc_query(`.plot-tooltip`)
+  // the tooltip wears the focused cell's fill with contrasting text
+  expect_tooltip_paint(tooltip, first.style.background)
   for (const label of [
     `Temperature: 300 K`,
     `O2:`,
@@ -65,10 +71,14 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
     `Driving force:`,
     `Selectivity:`,
   ])
-    expect(tooltip?.textContent).toContain(label)
-  expect(
-    [...(tooltip?.querySelectorAll(`small`) ?? [])].map((node) => node.textContent),
-  ).toEqual([`K`, `bar`, `meV/atom`, `meV/atom`, `meV/atom`])
+    expect(tooltip.textContent).toContain(label)
+  expect([...tooltip.querySelectorAll(`small`)].map((node) => node.textContent)).toEqual([
+    `K`,
+    `bar`,
+    `meV/atom`,
+    `meV/atom`,
+    `meV/atom`,
+  ])
   first.blur()
   expect_module_worker(stub.instances, `src/lib/synthesis-planning/opportunity-map-worker.ts`)
   expect(stub.posted[0].message.input.entries.at(-1)?.e_form_per_atom).toBeNaN()

@@ -6,7 +6,6 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { create_file_drop_handler } from '#lib/io/file-drop.js'
-  import { is_opaque_color } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -309,13 +308,12 @@
   }
 
   const effective_hover_info = $derived(locked_hover_info ?? hover_info)
-  // The tooltip wears the hovered region's hue opaque (the translucent drawn fill would let
-  // labels show through); gradients and translucent explicit colors keep the neutral card
+  // The tooltip wears the hovered region's hue (PlotTooltip flattens a translucent one, so
+  // labels never show through); gradient regions keep the neutral card
   const tooltip_region_color = $derived.by(() => {
     const region = effective_hover_info?.region
     if (!region || get_multi_phase_gradient(region.name)) return undefined
-    const color = region.color || get_phase_color(region.name, `hex`)
-    return is_opaque_color(color) ? color : undefined
+    return region.color || get_phase_color(region.name, `hex`)
   })
 
   // Isothermal tie-line geometry (SVG px); null outside two-phase regions.

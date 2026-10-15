@@ -176,15 +176,16 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test.each([
     [`#123456`, `#123456`],
-    // a translucent explicit fill would let labels show through, so the card stays neutral
-    [`rgba(18, 52, 86, 0.5)`, ``],
+    // a translucent explicit fill is flattened so labels never show through
+    [`rgba(18, 52, 86, 0.5)`, `rgb(18, 52, 86)`],
   ])(`explicit region color %s backs the tooltip as %j`, async (color, expected) => {
     const [liquid, ...rest] = eutectic.regions
     const wrapper = await mount_diagram({
       data: { ...eutectic, regions: [{ ...liquid, color }, ...rest] },
     })
     await hover_at(wrapper, 0.5, 750)
-    expect(doc_query(`.tooltip-container`).style.backgroundColor).toBe(expected)
+    const { style } = doc_query(`.tooltip-container`)
+    expect([style.backgroundColor, style.color]).toEqual([expected, `white`])
   })
 
   test(`click locks the tooltip; click again or Escape unlocks`, async () => {

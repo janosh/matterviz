@@ -532,7 +532,7 @@
 
     {#if hover_info}
       <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color, or for
-    url(...)/var(...) ribbons the node color they fade from, so the chip stays readable. -->
+    a url(...) gradient ribbon the source node color it fades from. -->
       <PlotTooltip
         x={hover_pos.x}
         y={hover_pos.y}
@@ -540,11 +540,9 @@
         avoid_cursor={hover_at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 44 }}
-        bg_color={hover_info.type === `node` || !/^(url|var)\(/.test(hover_info.color)
-          ? hover_info.color
-          : node_colors[
-              link_color_mode === `target` ? hover_info.target_idx : hover_info.source_idx
-            ]}
+        bg_color={hover_info.type === `link` && hover_info.color.startsWith(`url(`)
+          ? node_colors[hover_info.source_idx]
+          : hover_info.color}
       >
         {#if tooltip}
           {@render tooltip(hover_info)}

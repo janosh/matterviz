@@ -593,7 +593,7 @@
     tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
     tooltip_div.classList.add(`visible`)
     // no paint sets `` (removes the inline values), restoring the neutral CSS defaults
-    const paint = tooltip_paint(context.bg_color, contrast_for_bg)
+    const paint = tooltip_paint(context.bg_color)
     tooltip_div.style.setProperty(`--_bg`, paint?.background ?? ``)
     tooltip_div.style.color = paint?.color ?? ``
     if (typeof tooltip === `function`) {

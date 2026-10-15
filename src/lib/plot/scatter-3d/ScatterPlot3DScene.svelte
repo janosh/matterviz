@@ -37,7 +37,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { chip_contrast_color, plot_color, tooltip_paint } from '#lib/colors/index.js'
+  import { plot_color, tooltip_paint } from '#lib/colors/index.js'
   import { extract_series_color } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
@@ -330,22 +330,17 @@
   // Like the task above, runs every frame without forcing renders: only a moving tween
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
-  // --scatter3d-tooltip-bg as resolved where the tooltip renders ('' when unset), read when
-  // the default tooltip mounts so its text contrasts with the bg actually shown
-  let tooltip_bg_override = $state(``)
-  const read_tooltip_bg = (node: HTMLElement) => {
-    tooltip_bg_override = getComputedStyle(node)
-      .getPropertyValue(`--scatter3d-tooltip-bg`)
-      .trim()
-  }
+  const hover_idx = $derived(hovered_point && idx_by_key.get(point_key(hovered_point)))
   // The hovered marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
-    const idx = hovered_point && idx_by_key.get(point_key(hovered_point))
-    if (idx == null) return null
-    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(idx * INSTANCE_STRIDE)
-    const { color } = point_instances[idx]
-    return { position: [pos_x, pos_y, pos_z] as Vec3, radius, color }
+    if (hover_idx == null) return null
+    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(hover_idx * INSTANCE_STRIDE)
+    return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
+  // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
+  // the paint (a $derived only notifies when its value changes)
+  const hover_color = $derived(point_instances[hover_idx ?? -1]?.color)
+  const hover_paint = $derived(tooltip_paint(hover_color))
 
   // One sphere mesh for every point: instance transforms carry each radius
   const point_geometry = $derived(
@@ -811,16 +806,10 @@
       {#if tooltip}
         {@render tooltip(data)}
       {:else}
-        {@const paint = tooltip_paint(hover_drawn.color)}
-        <!-- a set --scatter3d-tooltip-bg wins over the marker paint (else the dark chip) -->
         <div
           class="tooltip"
-          style:background="var(--scatter3d-tooltip-bg, {paint?.background ??
-            `rgba(0, 0, 0, 0.85)`})"
-          style:color="var(--scatter3d-tooltip-color, {tooltip_bg_override
-            ? chip_contrast_color(tooltip_bg_override)
-            : (paint?.color ?? `white`)})"
-          {@attach read_tooltip_bg}
+          style:background={hover_paint?.background}
+          style:color={hover_paint?.color}
         >
           {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
             <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
@@ -849,6 +838,12 @@
     color: var(--text-color, #333);
   }
   .tooltip {
+    /* the neutral chip for markers without a usable color, as in CanvasTooltip */
+    background: var(
+      --canvas-tooltip-bg,
+      light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96))
+    );
+    color: var(--canvas-tooltip-text-color, light-dark(#0f172a, #f8fafc));
     padding: 6px 10px;
     border-radius: 4px;
     font-size: 12px;

@@ -12,7 +12,7 @@ import PieChart from '#lib/composition/PieChart.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, expect_tooltip_paint } from '../setup'
 
 const lfp: CompositionType = { Li: 1, Fe: 1, P: 1, O: 4 }
 const mount_chart = <T extends Component<{ composition: CompositionType }>>(
@@ -45,7 +45,7 @@ describe(`shared segment helpers`, () => {
       flushSync()
       const tip = doc_query(`.plot-tooltip`)
       expect(tip.textContent?.trim()).toBe(`Fe: 2 atoms (40 %)`)
-      expect(tip.style.backgroundColor).toBe(mark.getAttribute(`fill`))
+      expect_tooltip_paint(tip, mark.getAttribute(`fill`) ?? ``)
       expect([...tip.querySelectorAll(`small`)].map((node) => node.textContent)).toEqual([
         `atoms`,
         `%`,
@@ -69,7 +69,7 @@ describe(`shared segment helpers`, () => {
       scheme.set(`current`, `Jmol`)
       flushSync()
       expect(doc_query(`.plot-tooltip`)).toBe(reopened)
-      expect(reopened.style.backgroundColor).toBe(ELEMENT_COLOR_SCHEMES.Jmol.Fe)
+      expect_tooltip_paint(reopened, ELEMENT_COLOR_SCHEMES.Jmol.Fe)
       await unmount(component)
       expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     },
@@ -145,9 +145,7 @@ describe(`shared segment helpers`, () => {
     flushSync()
     marks[1].dispatchEvent(new MouseEvent(`pointerenter`))
     flushSync()
-    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(
-      ELEMENT_COLOR_SCHEMES.Vesta.O,
-    )
+    expect_tooltip_paint(doc_query(`.plot-tooltip`), ELEMENT_COLOR_SCHEMES.Vesta.O)
   })
 
   const fe2o3 = { Fe: 2, O: 3 }

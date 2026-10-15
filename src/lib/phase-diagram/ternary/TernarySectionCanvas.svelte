@@ -395,6 +395,7 @@
         phase: model.phases[entry.phase_idx],
         e_above_hull: section.e_above_hull[entry.phase_idx],
         position,
+        color: point_color(entry),
       })
       return
     }

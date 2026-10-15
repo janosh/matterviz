@@ -21,6 +21,7 @@ import {
   watch_dark_mode,
 } from '#lib/colors/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
+import { mock_canvas_context } from './setup'
 import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
@@ -231,23 +232,42 @@ describe(`pick_contrast_color`, () => {
     expect(contrast_text_color(paint)).toBe(expected)
   })
 
-  // opaque fills dress the tooltip; anything else keeps the neutral themed chip
+  // opaque fills dress the tooltip as is, translucent ones flattened to their hue; fills JS
+  // can't resolve keep the neutral themed chip
   it.each([
     [`#59a14f`, { background: `#59a14f`, color: `black` }],
     [`#1f3a5f`, { background: `#1f3a5f`, color: `white` }],
-    [`rgba(255, 255, 255, 0.5)`, null],
+    [`rgba(255, 255, 255, 0.5)`, { background: `rgb(255, 255, 255)`, color: `black` }],
+    [`rgba(0, 0, 0, 0.85)`, { background: `rgb(0, 0, 0)`, color: `white` }],
     [`var(--fill)`, null],
+    [`transparent`, null],
+    [`none`, null],
     [null, null],
   ])(`tooltip_paint(%s) = %o`, (fill, expected) => {
     expect(tooltip_paint(fill)).toEqual(expected)
   })
 
-  it(`tooltip_paint asks a custom picker for opaque fills only`, () => {
-    const pick = vi.fn(() => `red`)
-    expect(tooltip_paint(`#59a14f`, pick)).toEqual({ background: `#59a14f`, color: `red` })
-    expect(tooltip_paint(`var(--fill)`, pick)).toBeNull()
-    expect(pick).toHaveBeenCalledExactlyOnceWith(`#59a14f`)
-    expect(tooltip_paint(`#59a14f`, () => null)).toBeNull()
+  // Colors only a browser parses (oklch, …) cost a canvas pixel write + readback each
+  it(`canvas color parses are memoized`, () => {
+    vi.stubGlobal(`CanvasRenderingContext2D`, Object) // only checked for existence
+    const get_image_data = vi.fn(() => ({ data: [10, 20, 30, 255] }))
+    let fill_style = ``
+    const ctx = mock_canvas_context({ getImageData: get_image_data })
+    Object.defineProperty(ctx, `fillStyle`, {
+      get: () => fill_style,
+      set: (value: string) => (fill_style = value),
+    })
+    try {
+      const color = `oklch(0.4 0.1 250 / 1)`
+      const paints = [tooltip_paint(color), tooltip_paint(color), tooltip_paint(color)]
+      expect(paints).toEqual(
+        Array.from({ length: 3 }, () => ({ background: color, color: `white` })),
+      )
+      expect(get_image_data).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    }
   })
 
   it(`contrast_color_memo matches pick_contrast_color and follows backdrop/alpha changes`, () => {

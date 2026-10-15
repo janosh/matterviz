@@ -16,6 +16,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  expect_tooltip_paint,
   form_controls,
   mount_sized,
   mouse,
@@ -518,7 +519,7 @@ describe(`Histogram`, () => {
     expect(first).not.toBe(last)
     bars.at(-1)?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
-    expect(doc_query(`.plot-tooltip`).style.backgroundColor).toBe(last)
+    expect_tooltip_paint(doc_query(`.plot-tooltip`), last ?? ``)
   })
 
   // the tooltip must not be a snapshot: it tracks rebinned data under a resting pointer

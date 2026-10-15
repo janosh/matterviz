@@ -390,22 +390,13 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
 })
 
-// The default tooltip wears an opaque marker fill, else the dark chip; its text contrasts with
-// whichever bg shows, so with a --scatter3d-tooltip-bg override set, with that, not the fill
+// The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
+// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint)
 test.each([
-  [`#ffffff`, ``, `#ffffff`, `black`],
-  // translucent or var() fills JS can't composite
-  [`rgba(255, 255, 255, 0.5)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
-  [`var(--marker-fill)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
-  [`#ffffff`, `#000000`, `#ffffff`, `white`],
-  // a translucent override is judged by its own opaque color (the canvas backdrop is unknown)
-  [`#ffffff`, `rgba(0, 0, 0, 0.85)`, `#ffffff`, `white`],
-  [`#000000`, `rgba(255, 255, 255, 0.7)`, `#000000`, `black`],
-])(`3D tooltip fill %s, override %j: %s bg, %s text`, (fill, override, bg, text) => {
-  const sheet = document.createElement(`style`)
-  document.head.append(sheet)
-  if (override) sheet.textContent = `.tooltip { --scatter3d-tooltip-bg: ${override} }`
-  onTestFinished(() => sheet.remove())
+  [`#ffffff`, `#ffffff`, `black`],
+  [`rgba(255, 255, 255, 0.5)`, `rgb(255, 255, 255)`, `black`],
+  [`var(--marker-fill)`, ``, ``],
+])(`3D tooltip fill %s: %j bg, %j text`, (fill, bg, text) => {
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
       series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
@@ -417,8 +408,7 @@ test.each([
   onTestFinished(unmount_scene)
   flushSync()
   const { style } = query(document.body, `.tooltip`)
-  expect(style.background).toBe(`var(--scatter3d-tooltip-bg, ${bg})`)
-  expect(style.color).toBe(`var(--scatter3d-tooltip-color, ${text})`)
+  expect([style.background, style.color]).toEqual([bg, text])
 })
 
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {

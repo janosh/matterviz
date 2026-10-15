@@ -14,13 +14,13 @@ import {
 import IsobaricTernaryPhaseDiagram from '#lib/phase-diagram/ternary/IsobaricTernaryPhaseDiagram.svelte'
 import PhaseEventList from '#lib/phase-diagram/ternary/PhaseEventList.svelte'
 import PhaseStabilityMap from '#lib/phase-diagram/ternary/PhaseStabilityMap.svelte'
-import { TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
+import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
 import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
 import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, set_input } from '../../setup'
+import { bind_props, doc_query, expect_tooltip_paint, set_input } from '../../setup'
 import { make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -147,6 +147,18 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(document.querySelector(`.phase-event-list .phase.selected`)).not.toBeNull()
     press(`Escape`)
     expect(document.querySelector(`.phase-event-list .phase.selected`)).toBeNull()
+  })
+
+  // A hovered phase point's tooltip wears its drawn color; composition probes get the neutral
+  // theme chip (was a hard-coded dark card: white on near-white with the light --tooltip-bg)
+  test(`section tooltip paints a hovered phase's color, else the neutral chip`, async () => {
+    mount_diagram()
+    await wait_for_events()
+    move_to([1, 0])
+    expect_tooltip_paint(doc_query(`.ternary-tooltip`), TERNARY_COLORS.stable)
+    move_to([0.45, 0.25])
+    expect(doc_query(`.ternary-tooltip`).textContent).toContain(`%`)
+    expect_tooltip_paint(doc_query(`.ternary-tooltip`), null)
   })
 
   test(`stability map steps T itself but lets shift+arrows reach the host`, async () => {

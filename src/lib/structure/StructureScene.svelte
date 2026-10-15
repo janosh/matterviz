@@ -1841,15 +1841,18 @@
       ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
       : active_highlight_color,
   )
-  // The hovered atom's tooltip wears its fill only if flat and opaque (no field or bare wedges)
-  const hovered_tooltip_bg = $derived(
-    atom_opacity < 1 ||
-      atom_color_field ||
-      (merge_species_by_element(hovered_site?.species ?? []).length > 1 &&
-        !property_colors?.colors[hovered_idx ?? -1])
-      ? null
-      : atom_groups.first_by_site.get(hovered_idx ?? -1)?.color,
-  )
+  // The hovered atom's tooltip wears its fill when the drawn atom shows one color: a property
+  // color, or one visible element (merged across oxidation states and split partial sites,
+  // full or partial occupancy). Element wedges and color fields keep the neutral chip.
+  const hovered_tooltip_bg = $derived.by(() => {
+    const atom = atom_groups.first_by_site.get(hovered_idx ?? -1)
+    if (!atom || atom_color_field) return null
+    if (property_colors?.colors[atom.site_idx]) return atom.color
+    const visible = merge_species_by_element(atom.species).filter(
+      ({ element }) => !hidden_elements.has(element),
+    )
+    return visible.length === 1 ? atom.color : null
+  })
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {

@@ -1,6 +1,7 @@
 import type { ShowControlsProp } from '#lib/controls.js'
 import Sankey from '#lib/plot/sankey/Sankey.svelte'
 import { plot_color } from '#lib/colors/index.js'
+import { color as d3_color } from 'd3-color'
 import type {
   SankeyData,
   SankeyLinkHandlerProps,
@@ -113,16 +114,25 @@ describe(`Sankey`, () => {
     expect(first_path?.getAttribute(`stroke`)?.startsWith(`url(#`)).toBe(true)
   })
 
-  // an explicit link color wins over the node color in both ribbon and tooltip
-  test.each<[`source` | `target`, string?]>([[`source`], [`target`], [`source`, `#123456`]])(
+  // an explicit link color wins over the node color in both ribbon and tooltip; a static
+  // var() ribbon resolves to its own grey, not the source node's color
+  test.each<[`source` | `target` | `static`, string?, string?]>([
+    [`source`],
+    [`target`],
+    [`source`, `#123456`],
+    [`static`, undefined, `#888888`],
+  ])(
     `link tooltip wears the ribbon color in %s mode (link color %s)`,
-    async (link_color_mode, color) => {
+    async (link_color_mode, color, expected) => {
       const links = data.links.map((link) => ({ ...link, color: color ?? link.color }))
       const plot = await mount_sized_sankey({ data: { ...data, links }, link_color_mode })
-      const link = plot.querySelector(`.links path`)
+      const link = query(plot, `.links path`)
       await fire(link, mouse(`mousemove`, { clientX: 200, clientY: 100 }))
-      const tooltip = plot.querySelector<HTMLElement>(`.plot-tooltip`)
-      expect(tooltip?.style.backgroundColor).toBe(link?.getAttribute(`stroke`))
+      const tooltip = query(plot, `.plot-tooltip`)
+      const hex = (css: string | null) => d3_color(css ?? ``)?.formatHex()
+      expect(hex(tooltip.style.backgroundColor)).toBe(
+        expected ?? hex(link.getAttribute(`stroke`)),
+      )
     },
   )
 

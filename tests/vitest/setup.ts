@@ -1,3 +1,4 @@
+import { tooltip_paint } from '#lib/colors/index.js'
 import type { Rect } from '#lib/plot/core/layout.js'
 import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
@@ -103,6 +104,15 @@ export const doc_query = <T extends Element = HTMLElement>(
   selector: string,
   element_constructor?: Element_constructor<T>,
 ): T => query(document, selector, element_constructor)
+
+// Assert a tooltip wears `fill` per tooltip_paint (opaque as is, translucent flattened, with
+// contrasting text); null: the CSS theme chip, i.e. no inline paint
+export const expect_tooltip_paint = (tooltip: HTMLElement, fill: string | null): void => {
+  const { backgroundColor: background, color } = tooltip.style
+  const expected = fill === null ? { background: ``, color: `` } : tooltip_paint(fill)
+  if (!expected) throw new Error(`tooltip_paint gives no paint for fill ${fill}`)
+  expect({ background, color }).toEqual(expected)
+}
 
 // Wait for a button to render (e.g. a controls-pane toggle whose content mounts on first
 // open), click it and flush the update. Returns the button for follow-up assertions.

@@ -4,7 +4,7 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { mouse, resize_element } from '../setup'
+import { doc_query, expect_tooltip_paint, mouse, resize_element } from '../setup'
 
 // Every compute request is held until the test resolves it, so "while recomputing" states are
 // observable; requests record their config and abort signal
@@ -99,9 +99,8 @@ test(`recomputes run only for compute-relevant changes, keep the plot, abort sup
   expect(props.hover_info?.formula).toBe(`Li2O`)
   expect(stroke_widths()).toEqual({ Li2O: `6`, O: `3` }) // the hovered domain wins
   // the pinned tooltip takes the hovered domain's drawn outline color
-  const outline = document.querySelector(`g[data-series-id="Li2O"] > path[stroke]`)
-  const tip = document.querySelector<HTMLElement>(`.chempot-tooltip`)
-  expect(tip?.style.backgroundColor).toBe(outline?.getAttribute(`stroke`))
+  const outline = doc_query(`g[data-series-id="Li2O"] > path[stroke]`)
+  expect_tooltip_paint(doc_query(`.chempot-tooltip`), outline.getAttribute(`stroke`) ?? ``)
   const pinned_ranges = props.hover_info?.axis_ranges
   props.temperature = 900
   flushSync()
