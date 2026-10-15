@@ -304,6 +304,8 @@ describe(`ColorBar tick labels`, () => {
       [`0`, `1`, `2`],
     ],
     [{ range: [0, 0.1], tick_labels: 5, tick_format: `.1f` }, [`0.0`, `0.1`]],
+    // no integer fits: an integer format falls back to decimal ticks and labels
+    [{ range: [0.2, 0.8], tick_labels: 4, tick_format: `d` }, [`0.2`, `0.4`, `0.6`, `0.8`]],
   ])(`renders labels for %j`, (props, expected) => {
     mount_bar({ snap_ticks: false, ...props })
     expect(tick_texts()).toEqual(expected)

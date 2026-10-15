@@ -15,6 +15,7 @@
     generate_log_ticks,
     integer_ticks,
     is_integer_format,
+    tick_label_format,
   } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import {
@@ -182,19 +183,18 @@
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap
   const tick_metrics = $derived.by(() => {
-    let values = ticks
+    // Integer formats need integer positions; explicit tick arrays keep their values.
+    const values =
+      !Array.isArray(tick_labels) && is_integer_format(tick_format)
+        ? integer_ticks(ticks, tick_domain)
+        : ticks
+    const label_format = tick_label_format(values, tick_format)
     let labels: string[]
-    if (!tick_format) labels = format_tick_values(values)
-    else if (tick_format.startsWith(`%`)) {
-      const format_date = timeFormat(tick_format)
+    if (!label_format) labels = format_tick_values(values)
+    else if (label_format.startsWith(`%`)) {
+      const format_date = timeFormat(label_format)
       labels = values.map((value) => format_date(new Date(value)))
-    } else {
-      // Integer formats need integer positions; explicit tick arrays keep their values.
-      if (!Array.isArray(tick_labels) && is_integer_format(tick_format)) {
-        values = integer_ticks(ticks, tick_domain)
-      }
-      labels = values.map((value) => format_num(value, tick_format))
-    }
+    } else labels = values.map((value) => format_num(value, label_format))
     const seen = new Set<string>()
     return values.flatMap((value, idx) => {
       const label = labels[idx]

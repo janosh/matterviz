@@ -64,9 +64,26 @@ export const is_integer_format = (format: string | null | undefined): boolean =>
   (format.endsWith(`d`) || format.endsWith(`.0f`))
 
 // Tick positions an integer format can label: each tick rounded to the integer its label
-// reads, without repeats or values outside the domain (input order kept)
-export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] =>
-  [...new Set(ticks.map(Math.round))].filter((tick) => math.in_range(tick, domain))
+// reads, without repeats or values outside the domain (input order kept). A domain no
+// integer fits (zoomed below one unit) keeps the plain ticks, which tick_label_format then
+// labels as decimals instead of leaving the axis empty.
+export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] => {
+  const ints = [...new Set(ticks.map(Math.round))].filter((tick) =>
+    math.in_range(tick, domain),
+  )
+  return ints.length > 0 ? ints : [...ticks]
+}
+
+// Format for tick labels: an integer format can't label the all-fractional ticks
+// integer_ticks falls back to (0.2, 0.4 would all read `0`), so those get the default
+// decimal labels. Ticks with any integer among them (incl. explicit arrays) keep the format.
+export const tick_label_format = (
+  ticks: readonly number[],
+  format: string | undefined,
+): string | undefined =>
+  is_integer_format(format) && ticks.length > 0 && !ticks.some(Number.isInteger)
+    ? undefined
+    : format
 
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and

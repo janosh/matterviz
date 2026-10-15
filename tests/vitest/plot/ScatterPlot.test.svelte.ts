@@ -1864,6 +1864,16 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`).length).toBeGreaterThan(1)
   })
 
+  // an integer-format axis zoomed below one unit has no integer to label: decimal ticks, not
+  // an empty axis or repeated `0`s
+  test(`integer-format axis without an integer in range falls back to decimal ticks`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [0.2, 0.8] }],
+      y_axis: { format: `d`, range: [0.2, 0.8], ticks: 4 },
+    })
+    expect(axis_tick_labels(plot, `y`)).toEqual([`0.2`, `0.4`, `0.6`, `0.8`])
+  })
+
   test(`increases automatic tick precision when compact labels would collide`, async () => {
     const plot = await mount_sized_scatter_plot({
       series: [{ x: [0, 1], y: [-1539, -1537] }],

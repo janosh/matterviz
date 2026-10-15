@@ -63,6 +63,7 @@
     create_size_scale,
     generate_ticks,
     get_tick_label,
+    tick_label_format,
   } from '#lib/plot/core/scales.js'
   import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 
@@ -705,7 +706,7 @@
       <extras.HTML position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
         <span class="tick-label"
           >{get_tick_label(tick_val, axis.ticks) ??
-            format_num(tick_val, axis.format || `.2~g`)}</span
+            format_num(tick_val, tick_label_format(ticks, axis.format) || `.2~g`)}</span
         >
       </extras.HTML>
     {/each}
