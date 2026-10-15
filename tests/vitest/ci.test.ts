@@ -52,48 +52,121 @@ test.each([
   },
 )
 
-const e2e_actions = [`opened`, `reopened`, `synchronize`, `published`, undefined] as const
-
 test.each([
-  [`unit-tests`, [`unit-test-shards`, `publint`]],
-  [`e2e-tests`, [`e2e-test-shards`, `e2e-source`]],
-])(`%s requires every test job to succeed`, (gate_name, dependencies) => {
+  [`unit-tests`, [`unit-test-shards`, `publint`], []],
+  [`e2e-tests`, [`e2e-test-shards`, `e2e-source`], [`e2e-gate`]],
+])(`%s requires every test job to succeed`, (gate_name, dependencies, deciders) => {
   const gate = jobs[gate_name]
   expect(gate.if).toBe(`always()`)
-  expect(gate.needs).toEqual(dependencies)
+  expect(gate.needs).toEqual([...deciders, ...dependencies])
   const [step] = gate.steps
-  const gate_status = (results: Record<string, string>, action?: string) => {
-    const needs = Object.fromEntries(
-      dependencies.map((name) => [name, { result: results[name] ?? `success` }]),
-    )
-    const github = { event: { action } }
-    const result = eval_expr(step.env.RESULT.slice(3, -2), { needs, github })
+  const gate_status = (results: Record<string, string>, run_e2e: string) => {
+    const needs = Object.fromEntries([
+      [`e2e-gate`, { result: `success`, outputs: { run: run_e2e } }],
+      ...dependencies.map((name) => [name, { result: results[name] ?? `success` }]),
+    ])
+    const result = eval_expr(step.env.RESULT.slice(3, -2), { needs })
     return spawnSync(`bash`, [`-e`, `-c`, step.run], {
       env: { ...process.env, RESULT: String(result) },
     }).status
   }
-  for (const action of e2e_actions) {
+  // a failed e2e-gate leaves its output empty (``): skipped E2E must fail then too
+  for (const run_e2e of [`true`, `false`, ``]) {
     for (const dependency of dependencies) {
       for (const result of [`success`, `failure`, `cancelled`, `skipped`, ``]) {
-        const status = gate_status({ [dependency]: result }, action)
-        expect(status, `${action} ${dependency}: ${result}`).toBe(result === `success` ? 0 : 1)
+        const status = gate_status({ [dependency]: result }, run_e2e)
+        expect(status, `run=${run_e2e} ${dependency}: ${result}`).toBe(
+          result === `success` ? 0 : 1,
+        )
       }
     }
-    // E2E is skipped on purpose only for synchronize pushes; anywhere else skipping means a
+    // E2E is skipped on purpose only where e2e-gate says so; anywhere else skipping means a
     // failed upstream job (e.g. build-site) and must fail the required check.
     const all_skipped = Object.fromEntries(dependencies.map((name) => [name, `skipped`]))
-    const skip_ok = gate_name === `e2e-tests` && action === `synchronize`
-    expect(gate_status(all_skipped, action), `${action}: all skipped`).toBe(skip_ok ? 0 : 1)
+    const skip_ok = gate_name === `e2e-tests` && run_e2e === `false`
+    expect(gate_status(all_skipped, run_e2e), `run=${run_e2e}: all skipped`).toBe(
+      skip_ok ? 0 : 1,
+    )
   }
 })
 
-test.each(e2e_actions)(`full E2E suite runs on %s events but not synchronize`, (action) => {
-  const github = { event: { action } }
-  for (const job of [`build-site`, `e2e-source`])
-    expect(eval_expr(jobs[job].if, { github }), job).toBe(action !== `synchronize`)
+test.each([`true`, `false`, ``])(`E2E jobs run only when e2e-gate outputs run=%j`, (run) => {
+  const needs = { 'e2e-gate': { outputs: { run } } }
+  for (const job of [`build-site`, `e2e-source`]) {
+    expect(jobs[job].needs, job).toBe(`e2e-gate`)
+    expect(eval_expr(jobs[job].if, { needs }), job).toBe(run === `true`)
+  }
   // Production shards inherit the skip from build-site.
   expect(jobs[`e2e-test-shards`].if).toBeUndefined()
   expect(jobs[`e2e-test-shards`].needs).toBe(`build-site`)
+})
+
+// Past CI runs (newest first) as [run id, head repo, E2E gate conclusion]; run 100 is this one
+const fork = `someone/matterviz`
+const own = `janosh/matterviz`
+// oxfmt-ignore
+test.each<[string, string | undefined, [number, string, string][], boolean]>([
+  [`opened`, `opened`, [[3, own, `success`]], true],
+  [`merge to main`, undefined, [[3, own, `success`]], true],
+  [`first push, nothing decided yet`, `synchronize`, [], true],
+  [`last decided gate passed`, `synchronize`, [[3, own, `success`], [2, own, `failure`]], false],
+  [`last decided gate failed`, `synchronize`, [[3, own, `failure`], [2, own, `success`]], true],
+  // cancelled runs, this run and a fork's same-named branch decide nothing; older runs do
+  [`cancelled after a pass`, `synchronize`, [[9, own, `cancelled`], [3, own, `success`]], false],
+  [`cancelled after a failure`, `synchronize`, [[9, own, `cancelled`], [3, own, `failure`]], true],
+  [`only the current run`, `synchronize`, [[100, own, `success`]], true],
+  [`a fork's same-named branch`, `synchronize`, [[4, fork, `success`], [3, own, `failure`]], true],
+])(`e2e-gate decides whether E2E runs: %s`, (_label, action, runs, expected) => {
+  const [step] = jobs[`e2e-gate`].steps
+  const scratch = mkdtempSync(join(tmpdir(), `matterviz-e2e-gate-`))
+  onTestFinished(() => rmSync(scratch, { recursive: true, force: true }))
+  // GitHub's API as JSON files, filtered by the workflow's own --jq expressions via real jq
+  const workflow_runs = runs.map(([id, full_name]) => ({ id, head_repository: { full_name } }))
+  writeFileSync(join(scratch, `runs.json`), JSON.stringify({ workflow_runs }))
+  for (const [id, , conclusion] of runs) {
+    const jobs_json = [
+      { name: `Unit tests`, conclusion: `failure` },
+      { name: `E2E tests (shard 1/4)`, conclusion },
+    ]
+    writeFileSync(join(scratch, `jobs-${id}.json`), JSON.stringify({ jobs: jobs_json }))
+  }
+  // logs each call's endpoint, then answers with jq over the matching file
+  const gh_stub = `gh() {
+    echo "$1 $2 $3" >> "${scratch}/calls"
+    if [[ "$2" == */jobs?per_page=100 ]]; then id="\${2%/jobs?per_page=100}"; file="jobs-\${id##*/}.json"; else file=runs.json; fi
+    jq -r "$4" "${scratch}/$file"
+  }`
+  const output_file = join(scratch, `output`)
+  writeFileSync(output_file, ``)
+  const { status, stderr } = spawnSync(`bash`, [`-e`, `-c`, `${gh_stub}\n${step.run}`], {
+    encoding: `utf8`,
+    env: {
+      ...process.env,
+      ACTION: action ?? ``,
+      HEAD_REPO: own,
+      HEAD_REF: `feature`,
+      GITHUB_REPOSITORY: own,
+      GITHUB_RUN_ID: `100`,
+      GITHUB_OUTPUT: output_file,
+    },
+  })
+  expect(status, stderr).toBe(0)
+  expect(readFileSync(output_file, `utf8`)).toBe(`run=${expected}\n`)
+  // only pushes ask the API: completed pull_request runs of this branch, then each listed
+  // run's jobs until one decides
+  const calls = action === `synchronize` ? readFileSync(join(scratch, `calls`), `utf8`) : ``
+  const decided = runs.findIndex(([id, repo, gate]) => id !== 100 && repo === own && gate !== `cancelled`)
+  const queried = runs.slice(0, decided === -1 ? runs.length : decided + 1)
+  expect(calls.trim().split(`\n`).filter(Boolean)).toEqual(
+    action === `synchronize`
+      ? [
+          `api repos/${own}/actions/workflows/ci.yml/runs?event=pull_request&status=completed&branch=feature&per_page=30 --jq`,
+          ...queried
+            .filter(([id, repo]) => id !== 100 && repo === own)
+            .map(([id]) => `api repos/${own}/actions/runs/${id}/jobs?per_page=100 --jq`),
+        ]
+      : [],
+  )
 })
 
 test.each([
