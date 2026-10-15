@@ -75,7 +75,11 @@ export const merge_species_by_element = (species: Site[`species`]): Site[`specie
   const merged = new Map<string, Site[`species`][number]>()
   for (const spec of species) {
     const prev = merged.get(spec.element)
-    merged.set(spec.element, prev ? { ...prev, occu: prev.occu + spec.occu } : spec)
+    const occu = spec.occu ?? 1 // hand-built sites may omit it
+    merged.set(
+      spec.element,
+      prev ? { ...prev, occu: (prev.occu ?? 1) + occu } : { ...spec, occu },
+    )
   }
   return [...merged.values()]
 }

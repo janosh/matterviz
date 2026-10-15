@@ -1237,6 +1237,8 @@ O3 O2- 0.75 0.25 0.75`
         2.6666666666666665,
       ],
       [`sign-first symbol`, `${site_loop}\nFe1 Fe+2 0 0 0`, `Fe+2 2`, 2],
+      // an unset type symbol (`?`) leaves the label's element to key the lookup
+      [`unset type symbol`, `${site_loop}\nFe1 ? 0 0 0`, `Fe 3`, 3],
       // pymatgen also strips loop keys to `Fe`, reading a plain Fe next to Fe3+ as Fe3+
       [`bare symbol with only a charged key`, `${site_loop}\nFe1 Fe 0 0 0`, `Fe3+ 3`, 0],
     ])(`_atom_type_oxidation_number decorates a %s`, (_desc, atoms, atom_type, ox) => {

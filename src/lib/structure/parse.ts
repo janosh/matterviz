@@ -605,7 +605,10 @@ const parse_cif_atom_data = (
 
   // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
   const raw_label = label === undefined ? undefined : raw_data[label]
-  const type_symbol = symbol >= 0 ? raw_data[symbol] : undefined
+  // an unset type symbol (`?`/`.`) is missing, so the element read from the label keys the
+  // _atom_type oxidation lookup
+  const type_symbol =
+    symbol >= 0 && !is_cif_unset(raw_data[symbol]) ? raw_data[symbol] : undefined
   const { element, ambiguity } = cif_row_element(
     type_symbol,
     raw_label,

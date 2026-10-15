@@ -331,9 +331,10 @@ export function structure_to_cif_str(input?: AnyStructure): string {
   const formula = plain_formula(structure)
   if (formula) lines.push(`_chemical_formula_sum ${cif_token(formula)}`)
 
-  // Charged type symbols plus the _atom_type loop pymatgen's CifParser decorates from, only
-  // when every species is decorated (like its CifWriter): the parser strips the loop keys'
-  // charges (a plain Fe next to Fe3+ reads back as Fe3+) and makes every species an ion
+  // Decorated species always get charged type symbols (parse_cif reads them back). The
+  // _atom_type loop pymatgen's CifParser decorates from is written only when every species is
+  // decorated (like its CifWriter): it strips the loop keys' charges (a plain Fe next to Fe3+
+  // would read back as Fe3+) and makes every species an ion
   const all_species = structure.sites.flatMap((site) => site.species)
   const decorated = all_species.length > 0 && all_species.every((spec) => spec.oxidation_state)
   if (decorated) {
@@ -379,7 +380,7 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     // parse_cif names a merged site after its first row, so that row keeps the site label
     const site_label = site.label || `${species_list[0]?.element || `X`}${idx + 1}`
     for (const [spec_idx, species] of species_list.entries()) {
-      const symbol = cif_type_symbol(species.element, decorated ? species.oxidation_state : 0)
+      const symbol = cif_type_symbol(species.element, species.oxidation_state)
       const label = cif_token(spec_idx === 0 ? site_label : `${site_label}_${spec_idx}`)
       lines.push(`${label} ${symbol} ${coords_str} ${(species.occu ?? 1).toFixed(8)}`)
     }

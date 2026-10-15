@@ -140,6 +140,10 @@ describe(`partial occupancy slice flags`, () => {
     // 0.9995 within the tolerance export uses to call a site ordered
     expect(compute_slice_geometry([fe(0.7, 2), fe(0.2, 3), fe(0.1, 4)])).toEqual(sphere)
     expect(compute_slice_geometry(species([`Fe`, 0.9995]))).toEqual(sphere)
+    // a hand-built species without occu counts as fully occupied (was NaN angles)
+    const { occu: _occu, ...bare_fe } = fe(0.5, 2)
+    const omitted = [bare_fe, fe(0, 3)] as Site[`species`]
+    expect(compute_slice_geometry(omitted)).toEqual(sphere)
     expect(compute_slice_geometry([fe(0.3, 2), ...species([`O`, 0.2]), fe(0.3, 3)])).toEqual(
       compute_slice_geometry(species([`Fe`, 0.6], [`O`, 0.2])),
     )

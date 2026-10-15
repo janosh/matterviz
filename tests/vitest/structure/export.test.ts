@@ -634,10 +634,12 @@ describe(`Export functionality`, () => {
 
       // pymatgen's CifParser decorates species only from the _atom_type oxidation loop, strips
       // the charges off its keys (a plain Fe next to Fe3+ read back as Fe3+) and makes every
-      // species an ion once it exists, so like its CifWriter charges need all species decorated.
+      // species an ion once it exists, so like its CifWriter the loop needs all species
+      // decorated. Charged type symbols alone (which pymatgen reads as plain elements) keep a
+      // partly decorated structure's charges for parse_cif.
       // _chemical_formula_sum (elements, occupancy-weighted) is what pymatgen checks the
       // composition against; without it, it warned on every file with charged symbols.
-      it(`CIF writes charges only when every species is decorated, plus the formula`, () => {
+      it(`CIF writes the oxidation loop only when every species is decorated, plus the formula`, () => {
         const cif = structure_to_cif_str(mixed_valence)
         expect(cif).toMatch(/^Fe1 Fe2\+ [^\n]+\nFe1_1 Fe3\+ /m)
         expect(cif).toContain(`_atom_type_oxidation_number\n  Fe2+ 2\n  Fe3+ 3\n`)
@@ -647,8 +649,15 @@ describe(`Export functionality`, () => {
         const species = [fe2, { ...fe3, oxidation_state: 0 }]
         const partly = { ...mixed_valence, sites: [{ ...mv_site, species }] }
         for (const struct of [disordered, partly])
-          expect(structure_to_cif_str(struct)).not.toMatch(/_atom_type_symbol|[+-] /)
-        expect(structure_to_cif_str(partly)).toMatch(/^Fe1 Fe [^\n]+\nFe1_1 Fe /m)
+          expect(structure_to_cif_str(struct)).not.toContain(`_atom_type_symbol`)
+        expect(structure_to_cif_str(disordered)).not.toMatch(/[+-] /)
+        const partly_cif = structure_to_cif_str(partly)
+        expect(partly_cif).toMatch(/^Fe1 Fe2\+ [^\n]+\nFe1_1 Fe /m)
+        // the decorated species keeps its charge through a round trip
+        const ox_states = parse_cif(partly_cif).sites[0].species.map(
+          (spec) => spec.oxidation_state,
+        )
+        expect(ox_states).toEqual([2, 0])
         expect(structure_to_cif_str(disordered)).toContain(
           `_chemical_formula_sum 'Cu0.7 Au0.3'`,
         )
