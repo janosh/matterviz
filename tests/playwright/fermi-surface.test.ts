@@ -4,6 +4,7 @@
 import { expect, type Page } from '@playwright/test'
 import {
   drop_file,
+  expect_combined_fullscreen,
   IS_CI,
   require_bbox,
   test_without_errors as test,
@@ -138,4 +139,32 @@ test.describe(`FermiSurface smoke`, () => {
     await pane.getByRole(`button`, { name: `Reset chemical potential to defaults` }).click()
     await expect(offset).toHaveValue(`0`)
   })
+})
+
+// The Fermi surface + bands pairing has one fullscreen button (in the bands' header) that takes
+// both views fullscreen together; neither child offers its own
+test(`fermi-surface-bands goes fullscreen as one component`, async ({ page }) => {
+  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
+  await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+  await expect_combined_fullscreen(page.locator(`.fermi-surface-bands`), [VIEWER, `.scatter`])
+})
+
+// hovering a symmetry label in 3D marks its k on the bands with a dashed vertical line and
+// shows a Brillouin zone tooltip for that k-point
+test(`hovering a 3D k-path label marks its k on the bands`, async ({ page }) => {
+  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
+  await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+  const qpoint_line = page.locator(`.fermi-surface-bands line.hovered-qpoint-line`)
+  await expect(qpoint_line).toHaveCount(0)
+  await page.locator(`.sym-label`, { hasText: /^K$/ }).hover()
+  await expect(qpoint_line).toHaveCount(1)
+  await expect(qpoint_line).toHaveCSS(`stroke-dasharray`, `5px, 3px`)
+  // K = (3/4, 3/4, 0)·2π/a for fcc Cu, i.e. (3/8, 3/8, 3/4) in the reciprocal basis
+  const tooltip = page.locator(`.plot-tooltip`, { hasText: `BZ Volume` })
+  await expect(tooltip).toContainText(`(0.375, 0.375, 0.75)`)
+  // in the hover tint of the path segments (KPATH_COLORS.hover = #ff6b35)
+  await expect(tooltip).toHaveCSS(`background-color`, `rgb(255, 107, 53)`)
+  await page.mouse.move(0, 0)
+  await expect(qpoint_line).toHaveCount(0)
+  await expect(tooltip).toHaveCount(0)
 })

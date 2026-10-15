@@ -1,7 +1,7 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import BrillouinBandsDos from '#lib/spectral/BrillouinBandsDos.svelte'
 import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
-import { flushSync } from 'svelte'
+import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -262,5 +262,41 @@ describe(`bands/DOS wrappers`, () => {
     await fire(plot_svg(dos_plot), new MouseEvent(`dblclick`, { bubbles: true }))
     expect(y_ticks(bands_plot)).toEqual(initial)
     expect(y_ticks(dos_plot)).toEqual(initial)
+  })
+
+  // One fullscreen button for the whole component, in the top-right plot's header beside the
+  // caller's header controls (host: DOS side by side, bands when stacked). The wrapper's
+  // fullscreen_toggle and the host plot's show_controls can still hide it.
+  const header_snippet = (name: string) =>
+    createRawSnippet(() => ({ render: () => `<span class="${name}"></span>` }))
+  it.each(
+    wrappers.flatMap((wrapper) =>
+      [`default`, `fullscreen_toggle`, `show_controls`].map(
+        (variant) => [...wrapper, variant] as const,
+      ),
+    ),
+  )(`fullscreen button in %s at %ipx (%s)`, async (selector, width, Component, variant) => {
+    const host_key = width === 1200 ? `dos_props` : `bands_props`
+    const props = {
+      ...pair_props,
+      fullscreen_toggle: variant !== `fullscreen_toggle`,
+      bands_props: { header_controls: header_snippet(`bands-ctrl`) },
+      dos_props: { header_controls: header_snippet(`dos-ctrl`) },
+    }
+    if (variant === `show_controls`)
+      Object.assign(props[host_key], { show_controls: { hidden: [`fullscreen`] } })
+    const root = await mount_sized(Component, props, { selector, width, height: 600 })
+    const [bands_plot, dos_plot] = root.querySelectorAll(`.scatter`)
+    expect(
+      [bands_plot, dos_plot].map(
+        (plot) => plot.querySelectorAll(`.bands-ctrl, .dos-ctrl`).length,
+      ),
+    ).toEqual([1, 1])
+    // one button in the host plot by default, none when hidden
+    const host_plot = host_key === `dos_props` ? dos_plot : bands_plot
+    const buttons = [...root.querySelectorAll(`.fullscreen-btn`)]
+    expect(buttons.map((button) => host_plot.contains(button))).toEqual(
+      variant === `default` ? [true] : [],
+    )
   })
 })

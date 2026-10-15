@@ -90,6 +90,28 @@ export function k_path_segments({ points, labels, branches }: KPathData) {
   })
 }
 
+// Labeled k-path points merged by position: band paths revisit symmetry points (both ends of
+// adjacent branches, Γ several times), and one translucent chip per visit stacks toward
+// opaque. Distinct labels at one position join like the band plot's `K | U` ticks; each
+// point keeps its first q-point index for hover reporting.
+export function k_path_sym_points({ points, labels }: KPathData, tolerance: number) {
+  const merged: { position: Vec3; labels: string[]; qpoint_idx: number }[] = []
+  for (const [qpoint_idx, position] of points.entries()) {
+    const label = labels[qpoint_idx]
+    if (!label) continue
+    const existing = merged.find(
+      (sym) => math.euclidean_dist(sym.position, position) < tolerance,
+    )
+    if (!existing) merged.push({ position, labels: [label], qpoint_idx })
+    else if (!existing.labels.includes(label)) existing.labels.push(label)
+  }
+  return merged
+}
+
+// K-path tints: the path, the segments at the hovered q-point and the highlighted stretch (e.g.
+// the hovered branch). Hosts match their hover tooltip to `hover`, the color under the pointer.
+export const KPATH_COLORS = { base: `#ffcc00`, hover: `#ff6b35`, range: `#ff9a3c` } as const
+
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({

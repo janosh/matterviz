@@ -2,7 +2,7 @@
   // A band structure's k-path in a reciprocal-space scene (Brillouin zone, Fermi surface) with
   // symmetry-point labels, hovered k-point and tinted hovered/highlighted segments. Hovering the
   // path or a label reports the nearer q-point index, so a band plot beside it can mark it.
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
@@ -10,7 +10,7 @@
   import * as extras from '@threlte/extras'
   import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
   import type { KPathData } from './types'
-  import { bz_mark_sizes, k_path_segments } from './geometry'
+  import { bz_mark_sizes, k_path_segments, k_path_sym_points, KPATH_COLORS } from './geometry'
 
   let {
     path,
@@ -27,29 +27,40 @@
     highlighted_k_points?: Vec3[]
     hovered_qpoint_index?: number | null
     highlighted_qpoint_range?: Vec2 | null
-    on_kpath_hover?: (qpoint_index: number | null) => void
+    // the pointer's client position comes along for a host tooltip
+    on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
     edge_width?: number
   } = $props()
 
   const { invalidate } = useThrelte()
-  const mark_sizes = $derived(bz_mark_sizes(size, edge_width))
+  // A caller spreading a fresh props object per hover (FermiSurfaceScene) re-runs every read
+  // of these props. Deriveds of their values end that re-run before the meshes rebuild (whose
+  // teardown would clear the very hover that triggered it) and before the spheres get new
+  // geometry args.
+  const stable_path = $derived(path)
+  const stable_size = $derived(size)
+  const stable_edge = $derived(edge_width)
+  const mark_sizes = $derived(bz_mark_sizes(stable_size, stable_edge))
   // Same k-point, with a tolerance scaled to the zone: positions come from the same fold but
   // may be recomputed by the caller
   const same_point = (point_a: Vec3, point_b: Vec3) =>
     math.euclidean_dist(point_a, point_b) < 1e-6 * size
 
+  // one sphere + label chip per distinct symmetry point (see k_path_sym_points)
+  const sym_points = $derived(k_path_sym_points(stable_path, 1e-6 * stable_size))
+
   // One instanced mesh for all segments plus a wider invisible one for hover, instead of two
   // meshes per segment: band paths run to hundreds of segments.
-  const k_path_segs = $derived(k_path_segments(path))
+  const k_path_segs = $derived(k_path_segments(stable_path))
   const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
   // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
   const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
-  const KPATH_COLORS = {
-    base: new Color(`#ffcc00`),
-    hover: new Color(`#ff6b35`),
-    range: new Color(`#ff9a3c`),
+  const kpath_tints = {
+    base: new Color(KPATH_COLORS.base),
+    hover: new Color(KPATH_COLORS.hover),
+    range: new Color(KPATH_COLORS.range),
   }
   $effect(() => () => {
     kpath_geometry.dispose()
@@ -74,9 +85,9 @@
   // while hovered clears the hover here, or the parent keeps a stale q-point. Null, as the old
   // index may name another k-point on the new path; the next pointer move reports the new one.
   let reported_qpoint: number | null = null
-  const report_hover = (qpoint_idx: number | null) => {
+  const report_hover = (qpoint_idx: number | null, pointer?: PointerEvent) => {
     reported_qpoint = qpoint_idx
-    on_kpath_hover?.(qpoint_idx)
+    on_kpath_hover?.(qpoint_idx, pointer && { x: pointer.clientX, y: pointer.clientY })
   }
   $effect(() => {
     const { line, proxy } = kpath_meshes
@@ -95,7 +106,7 @@
       const is_hovered = hovered !== null && (idx === hovered || idx === hovered - 1)
       const in_stretch = range !== null && idx >= range[0] && idx < range[1]
       const color = is_hovered ? `hover` : in_stretch ? `range` : `base`
-      line.setColorAt(instance_idx, KPATH_COLORS[color])
+      line.setColorAt(instance_idx, kpath_tints[color])
     }
     if (line.instanceColor) line.instanceColor.needsUpdate = true
     invalidate()
@@ -113,7 +124,7 @@
     const { idx, from, to } = segment
     const cursor: Vec3 = [point.x, point.y, point.z]
     const nearer_from = math.euclidean_dist(cursor, from) <= math.euclidean_dist(cursor, to)
-    report_hover(nearer_from ? idx : idx + 1)
+    report_hover(nearer_from ? idx : idx + 1, nativeEvent)
   }
 </script>
 
@@ -127,30 +138,26 @@
   />
 {/if}
 
-<!-- Symmetry point spheres + labels at labeled k-path points -->
-{#each path.points as position, qpoint_idx (qpoint_idx)}
-  {@const label = path.labels[qpoint_idx]}
-  {#if label}
-    <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
-    tints its chip, and hovering one reports its q-point like hovering the path there -->
-    {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
-    <T.Mesh position={[position[0], position[1], position[2]]}>
-      <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
-      <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
-    </T.Mesh>
-    <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
-      <span
-        role="presentation"
-        style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
-        style:font-weight={highlighted ? `bold` : null}
-        style="padding: 0 3px; border-radius: 2px; color: white"
-        onpointerenter={() => report_hover(qpoint_idx)}
-        onpointerleave={() => report_hover(null)}
-      >
-        {label}
-      </span>
-    </extras.HTML>
-  {/if}
+<!-- Symmetry point spheres + labels, one per distinct labeled k-point -->
+{#each sym_points as { position, labels, qpoint_idx } (qpoint_idx)}
+  <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
+  tints its chip, and hovering one reports its q-point like hovering the path there -->
+  {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
+  <T.Mesh position={[position[0], position[1], position[2]]}>
+    <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
+    <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
+  </T.Mesh>
+  <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
+    <span
+      role="presentation"
+      class="sym-label"
+      class:highlighted
+      onpointerenter={(event) => report_hover(qpoint_idx, event)}
+      onpointerleave={() => report_hover(null)}
+    >
+      {labels.join(` | `)}
+    </span>
+  </extras.HTML>
 {/each}
 
 <!-- Hovered k-point highlight -->
@@ -160,3 +167,18 @@
     <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
   </T.Mesh>
 {/if}
+
+<style>
+  .sym-label {
+    padding: 0 3px;
+    border-radius: 2px;
+    color: white;
+    /* light chip, so it doesn't blot out the surface behind; the shadow keeps text legible */
+    background: rgba(0, 0, 0, 0.15);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+    &.highlighted {
+      background: #ff2020;
+      font-weight: bold;
+    }
+  }
+</style>

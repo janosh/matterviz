@@ -755,8 +755,10 @@
             x2={hover_x}
             y1={pad.t}
             y2={height - pad.b}
+            class="hovered-qpoint-line"
             stroke="var(--bands-hover-line-color, #ff6b35)"
             stroke-width="var(--bands-hover-line-width, 2)"
+            stroke-dasharray="var(--bands-hover-line-dash, 5,3)"
             opacity="var(--bands-hover-line-opacity, 0.85)"
             pointer-events="none"
           />

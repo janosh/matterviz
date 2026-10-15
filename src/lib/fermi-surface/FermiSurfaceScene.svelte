@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
@@ -12,7 +12,7 @@
     PolyhedronMesh,
     ReciprocalVectors,
   } from '#lib/brillouin/index.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -86,6 +86,7 @@
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
+    kpath_hover_data = $bindable<BZHoverData | null>(null),
     width = 0,
     height = 0,
     // camera/lighting/interaction props, resolved against the shared defaults below
@@ -105,6 +106,7 @@
       k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
       hover_data?: FermiHoverData | null
+      kpath_hover_data?: BZHoverData | null // the hovered k-path point, for a zone tooltip
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
@@ -297,7 +299,9 @@
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
       hover_enabled.set(!moving)
-      if (moving) hover_data = null
+      if (!moving) return
+      hover_data = null
+      kpath_hover_data = null
     },
   })
 
@@ -310,6 +314,10 @@
   // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
   // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
   const SURFACE_DEPTH_BIAS_STEP = 8
+  // A surface without per-vertex properties keeps its flat colour even in property mode,
+  // otherwise vertexColors would read a missing attribute
+  const has_vertex_colors = (surface: FermiIsosurface) =>
+    use_vertex_colors && vertex_property(surface, property_name) !== undefined
   const make_material = (surface: FermiIsosurface, surface_idx: number) => {
     const material =
       representation === `wireframe`
@@ -326,10 +334,7 @@
             // (three's default), so a distinct mask forces one pipeline per surface. Drop once fixed
             stencilFuncMask: surface_idx + 1,
           })
-    // A surface without per-vertex properties keeps its flat colour even in property mode,
-    // otherwise vertexColors would read a missing attribute
-    material.vertexColors =
-      use_vertex_colors && vertex_property(surface, property_name) !== undefined
+    material.vertexColors = has_vertex_colors(surface)
     if (!material.vertexColors) material.color.set(get_surface_color(surface))
     material.transparent = is_transparent
     // three draws a transparent DoubleSide material as back- then front-face passes, and one
@@ -339,15 +344,39 @@
   }
   // One material per surface, shared by every symmetry copy so a tiled cubic surface needs 1
   // material rather than 48 — hence built here instead of via <T.Mesh*Material>, which
-  // would instantiate one per <T.Mesh>. Rebuilt whenever colouring, transparency or
-  // representation change (a handful of objects; three reuses the compiled pipeline for
-  // identical parameters) and the previous set is disposed by the effect below
-  const materials = $derived(visible_surfaces.map(make_material))
+  // would instantiate one per <T.Mesh>. Cached by everything make_material reads, so a new
+  // fermi_data with the same sheets (a mu drag or band-plot hover re-extracting every frame)
+  // keeps its materials: each new material costs three a node-builder pass (~2 ms) on its
+  // first render. Colouring, transparency or representation changes build fresh ones and the
+  // effect below disposes those no surface uses any more. Plain Map: bookkeeping, not state.
+  const material_cache = new Map<string, MeshBasicMaterial | MeshStandardMaterial>()
+  const materials = $derived(
+    visible_surfaces.map((surface, surface_idx) => {
+      const key = [
+        representation,
+        surface_idx,
+        has_vertex_colors(surface) || get_surface_color(surface),
+        is_transparent,
+      ].join(`|`)
+      let material = material_cache.get(key)
+      if (!material) {
+        material = make_material(surface, surface_idx)
+        material_cache.set(key, material)
+      }
+      return material
+    }),
+  )
   $effect(() => {
-    const current = materials
-    return () => {
-      for (const material of current) material.dispose()
+    const used = new Set(materials)
+    for (const [key, material] of material_cache) {
+      if (used.has(material)) continue
+      material.dispose()
+      material_cache.delete(key)
     }
+  })
+  $effect(() => () => {
+    for (const material of material_cache.values()) material.dispose()
+    material_cache.clear()
   })
   // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
   $effect(() => {
@@ -381,6 +410,27 @@
   const inverse_symmetry_ops = $derived(
     symmetry_ops.map((sym_matrix) => new Matrix4().fromArray(sym_matrix).invert()),
   )
+
+  // The hovered k-path point, described like a hover in the Brillouin zone viewer, then
+  // passed on to the caller's own handler
+  const on_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
+    const position_cartesian =
+      qpoint_idx === null ? undefined : k_path?.path.points[qpoint_idx]
+    kpath_hover_data =
+      position_cartesian && screen_position && bz_data
+        ? {
+            position_cartesian,
+            position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+            screen_position,
+            is_ibz: false,
+            bz_order: bz_data.order,
+            bz_volume: bz_data.volume,
+            ibz_volume: null,
+            symmetry_multiplicity: null,
+          }
+        : null
+    k_path?.on_kpath_hover?.(qpoint_idx, screen_position)
+  }
 
   // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
   // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
@@ -467,7 +517,12 @@
   <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
 
   {#if k_path}
-    <KPath {...k_path} size={scene_size} edge_width={DEFAULTS.brillouin.edge_width} />
+    <KPath
+      {...k_path}
+      size={scene_size}
+      edge_width={DEFAULTS.brillouin.edge_width}
+      {on_kpath_hover}
+    />
   {/if}
   {#if k_marker}
     <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->

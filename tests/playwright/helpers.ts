@@ -790,3 +790,52 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
     timeout,
   })
 }
+
+// A multi-panel component (Fermi surface + bands, bands + DOS, BZ + bands + DOS) offers one
+// fullscreen button that takes the whole component fullscreen, where every panel grows to at
+// least `min_height_frac` of the screen height. Enters by pressing `f` over `key_panel` (e.g. a
+// 3D panel, whose own shortcut must defer to the component's), exits through the Fullscreen
+// API (Esc), after which the button is unpressed and toggles fullscreen again.
+export async function expect_combined_fullscreen(
+  container: Locator,
+  panels: string[],
+  {
+    key_panel = panels[0],
+    min_height_frac = 0.8,
+  }: { key_panel?: string; min_height_frac?: number } = {},
+): Promise<void> {
+  const page = container.page()
+  const button = container.locator(`.fullscreen-btn`)
+  const is_fullscreen = () =>
+    container.evaluate((element) => document.fullscreenElement === element)
+  const click_button = async () => {
+    // hover-revealed in its panel's header row
+    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover()
+    await button.click()
+  }
+  const panel_height = async (panel: string) =>
+    (await require_bbox(container.locator(panel).first(), panel)).height
+  const inline_heights = await Promise.all(panels.map(panel_height))
+  await expect(button).toHaveCount(1)
+  await container.locator(key_panel).first().hover()
+  await page.keyboard.press(`f`)
+  await expect.poll(is_fullscreen).toBe(true)
+  const screen_height = await page.evaluate(() => innerHeight)
+  for (const panel of panels) {
+    await expect
+      .poll(() => panel_height(panel))
+      .toBeGreaterThan(screen_height * min_height_frac)
+  }
+  await expect(button).toHaveCount(1)
+  await expect(button).toHaveAttribute(`aria-pressed`, `true`)
+  await page.evaluate(() => document.exitFullscreen())
+  await expect(button).toHaveAttribute(`aria-pressed`, `false`)
+  // and the panels return to their inline sizes
+  for (const [idx, panel] of panels.entries()) {
+    await expect.poll(() => panel_height(panel)).toBeCloseTo(inline_heights[idx], 0)
+  }
+  await click_button()
+  await expect.poll(is_fullscreen).toBe(true)
+  await click_button()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
+}

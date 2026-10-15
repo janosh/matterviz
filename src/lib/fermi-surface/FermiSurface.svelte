@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { FileExportContext } from '#lib/io/file-export.svelte.js'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
-  import { compute_brillouin_zone } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
+  import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
+  import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index.js'
   import { reciprocal_lattice } from '#lib/math.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import EmptyState from '#lib/EmptyState.svelte'
@@ -24,12 +25,12 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
+  import { detect_irreducible_bz, preview_interpolation_factor } from './compute'
   import {
-    band_grids_prepared,
-    detect_irreducible_bz,
-    extract_fermi_surface,
-    preview_interpolation_factor,
-  } from './compute'
+    create_latest_extractor,
+    fermi_extraction_warm,
+    release_fermi_worker,
+  } from './extract-async'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
 
@@ -157,6 +158,7 @@
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<FermiHoverData | null>(null)
+  let kpath_hover_data = $state<BZHoverData | null>(null) // hovered k-path point
 
   $effect(() => on_point_hover?.(hover_data))
 
@@ -228,12 +230,20 @@
   })
 
   // Re-extract whenever the band grid or an extraction parameter changes — also on first
-  // mount with only `band_data` supplied. A monotonic job id drops superseded runs (bumped on
-  // every rerun, including one that clears band_data, so a pending job cannot commit a
-  // surface for a grid that is gone). `extracting` overlays a spinner on the Canvas instead
-  // of unmounting it.
+  // mount with only `band_data` supplied. Extraction runs in a worker, one at a time with only
+  // the newest request waiting (create_latest_extractor), so a band-plot hover or mu drag never
+  // blocks a frame and the surface catches up as fast as extractions finish. A monotonic job id
+  // orders the results: one commits only if no newer one has and its grid is still current (a
+  // pending job cannot commit a surface for a grid that is gone). `extracting` overlays a
+  // spinner on the Canvas instead of unmounting it while a grid or factor upsamples first.
+  const extract_latest = create_latest_extractor()
   let extraction_job_id = 0
+  let committed_job_id = 0
   let extracting = $state(false)
+  $effect(() => () => {
+    committed_job_id = Infinity // nothing commits after unmount
+    release_fermi_worker()
+  })
   $effect(() => {
     const job_id = ++extraction_job_id
     if (!grid_data) {
@@ -244,31 +254,25 @@
     const factor = previewing
       ? preview_interpolation_factor(grid, interpolation_factor)
       : interpolation_factor
-    const options = { mu: mean, interpolation_factor: factor, wigner_seitz }
-    const extract = () => {
-      if (job_id !== extraction_job_id) return
-      try {
-        fermi_data = extract_fermi_surface(grid, options)
-        error_msg = undefined
-      } catch (err) {
-        const message = `Fermi surface extraction failed: ${to_error(err).message}`
-        error_msg = message
-        untrack(() => on_error?.({ error_msg: message }))
-      } finally {
-        extracting = false
-      }
-    }
-    // A mu change only reruns marching cubes on the cached grids (~1-12 ms on the demo files),
-    // so it extracts next frame and a mu drag tracks the pointer. A grid or factor not yet
-    // upsampled first upsamples every band, which takes a while at high factors: the spinner
-    // gets one painted frame before that blocks.
-    const upsamples = !band_grids_prepared(grid, factor, mean)
-    if (upsamples) extracting = true
-    let frame = requestAnimationFrame(() => {
-      if (upsamples) frame = requestAnimationFrame(extract)
-      else extract()
-    })
-    return () => cancelAnimationFrame(frame)
+    extracting = !fermi_extraction_warm(grid, factor)
+    extract_latest(grid, { mu: mean, interpolation_factor: factor, wigner_seitz })
+      .then(
+        (result) => {
+          if (!result || job_id < committed_job_id || grid !== grid_data) return
+          committed_job_id = job_id
+          fermi_data = result
+          error_msg = undefined
+        },
+        (err: unknown) => {
+          if (job_id !== extraction_job_id) return
+          const message = `Fermi surface extraction failed: ${to_error(err).message}`
+          error_msg = message
+          on_error?.({ error_msg: message })
+        },
+      )
+      .finally(() => {
+        if (job_id === extraction_job_id) extracting = false
+      })
   })
 
   async function handle_export(
@@ -448,6 +452,7 @@
           bind:scene
           bind:camera
           bind:hover_data
+          bind:kpath_hover_data
         />
       </Canvas>
 
@@ -476,6 +481,19 @@
           style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
           <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
+        </PlotTooltip>
+      {:else if kpath_hover_data}
+        <!-- a hovered k-path point reads like a hover in the Brillouin zone viewer, in the
+        color of the path segments it tints -->
+        <PlotTooltip
+          x={kpath_hover_data.screen_position.x}
+          y={kpath_hover_data.screen_position.y}
+          offset={{ x: 12, y: -12 }}
+          bg_color={KPATH_COLORS.hover}
+          fixed
+          style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+        >
+          <BrillouinZoneTooltip hover_data={kpath_hover_data} />
         </PlotTooltip>
       {/if}
     {/if}

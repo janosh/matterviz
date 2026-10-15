@@ -154,7 +154,6 @@
     border-left: 3px solid transparent;
     &.active {
       border-left-color: var(--accent-color, #1976d2);
-      background: color-mix(in srgb, var(--accent-color, #1976d2) 12%, transparent);
     }
     &.involved button {
       font-weight: 600;

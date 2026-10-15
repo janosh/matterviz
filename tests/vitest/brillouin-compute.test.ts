@@ -17,6 +17,7 @@ import {
   k_cell_fit_extent,
   k_lattice_inverse,
   k_path_segments,
+  k_path_sym_points,
   k_space_size,
   polyhedron_centroid,
   polyhedron_geometry,
@@ -754,6 +755,23 @@ describe(`scene sizing helpers`, () => {
         expect([from, to]).toEqual([points[idx], points[idx + 1]])
     },
   )
+
+  // band paths revisit symmetry points (junction duplicates, Γ twice): one chip per labeled
+  // position, distinct labels at one position joined, first q-point index kept for hover
+  // reporting; unlabeled points get none
+  test(`k_path_sym_points merges revisited labeled points`, () => {
+    // oxfmt-ignore
+    const points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [1, 0, 0], [0, 0, 0], [0, 1, 0], [0, 1, 1e-9]]
+    const labels = [`Γ`, null, `X`, `X`, `Γ`, `K`, `U`]
+    const merged = k_path_sym_points({ points, labels, branches: [[0, 6]] }, 1e-6)
+    expect(
+      merged.map(({ labels: names, qpoint_idx }) => [names.join(` | `), qpoint_idx]),
+    ).toEqual([
+      [`Γ`, 0],
+      [`X`, 2],
+      [`K | U`, 5],
+    ])
+  })
 
   test.each([
     { n_labels: 1, branch: [0, 1], error: /1 labels for 2 points/ },

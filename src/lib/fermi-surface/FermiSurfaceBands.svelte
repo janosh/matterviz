@@ -3,6 +3,8 @@
   // index (band_indices, e.g. BXSF `BAND: n` → n − 1). Hovering a band point previews the surface
   // at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click
   // pins the energy as mu and isolates the band's sheet (click again for all).
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import { FullscreenButton } from '#lib/layout/index.js'
   import Bands from '#lib/spectral/Bands.svelte'
   import {
     band_point_meta,
@@ -20,6 +22,8 @@
     band_struct,
     mu = $bindable(0),
     selected_bands = $bindable(),
+    fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     fermi_props = {},
     bands_props = {},
     ...rest
@@ -28,7 +32,10 @@
     band_struct: BaseBandStructure
     mu?: number
     selected_bands?: number[] // bands whose Fermi sheets are shown (all when unset)
-    // extra props of each view; the linked ones (band data, mu, highlights, k-path) override them
+    fullscreen?: boolean // both views fullscreen together (one button, in the bands' header)
+    fullscreen_toggle?: boolean // also hidden by bands_props.show_controls
+    // extra props of each view; the linked ones (band data, mu, fermi_level, highlights, k-path)
+    // override them
     fermi_props?: ComponentProps<typeof FermiSurface>
     bands_props?: Partial<ComponentProps<typeof Bands>>
   } = $props()
@@ -56,13 +63,21 @@
     return null
   })
   let surface = $state.raw<FermiSurfaceData>()
+  let wrapper = $state<HTMLDivElement>()
+  const show_toggle = $derived(
+    shows_fullscreen_toggle(
+      fullscreen_toggle,
+      normalize_show_controls(bands_props.show_controls),
+    ),
+  )
 </script>
 
-<div {...rest} class={[`fermi-surface-bands`, rest.class]}>
+<div {...rest} bind:this={wrapper} class={[`fermi-surface-bands`, rest.class]}>
   <!-- caller props first: the link's handlers chain the caller's instead of being replaced -->
   <FermiSurface
     {...fermi_props}
     {band_data}
+    fullscreen_toggle={false}
     bind:fermi_data={surface}
     wigner_seitz
     previewing={hovered_energy !== null}
@@ -88,6 +103,8 @@
   <Bands
     {...bands_props}
     band_structs={{ bands: band_struct }}
+    fullscreen_toggle={false}
+    fermi_level={band_data.fermi_energy}
     highlighted_band_index={hovered_band ?? clicked_band}
     highlighted_qpoint_index={link.active_qpoint}
     highlighted_qpoint_range={link.highlighted_qpoint_range}
@@ -114,7 +131,19 @@
       }
       bands_props.on_plot_click?.(event)
     }}
-  />
+  >
+    {#snippet header_controls(dims)}
+      {@render bands_props.header_controls?.(dims)}
+      {#if fullscreen || show_toggle}
+        <FullscreenButton
+          bind:fullscreen
+          hidden={!show_toggle}
+          {wrapper}
+          bg_css_var="--fermi-bands-fullscreen-bg"
+        />
+      {/if}
+    {/snippet}
+  </Bands>
 </div>
 
 <style>
@@ -122,5 +151,13 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
     gap: var(--fermi-bands-gap, 1em);
+    &:fullscreen {
+      padding: 1em;
+      background: var(--fermi-bands-fullscreen-bg, var(--page-bg, Canvas));
+      > :global(*) {
+        height: 100%;
+        min-height: 0;
+      }
+    }
   }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import { FullscreenButton } from '#lib/layout/index.js'
   import type { BandsOptions, DosOptions } from './index'
   import type { BrillouinZoneOptions } from '#lib/brillouin/index.js'
   import { BrillouinZone } from '#lib/brillouin/index.js'
@@ -24,6 +26,8 @@
     dos_props = {},
     bz_props = {},
     sync_y_zoom = true,
+    fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -36,6 +40,8 @@
     dos_props?: DosOptions
     bz_props?: BrillouinZoneOptions
     sync_y_zoom?: boolean // Sync frequency/energy axis zoom between plots (default: true)
+    fullscreen?: boolean // all three panels fullscreen together (one button, top-right plot)
+    fullscreen_toggle?: boolean // also hidden by the top-right plot's show_controls
     children?: Snippet<[HoveredData]>
   } = $props()
 
@@ -55,6 +61,13 @@
   let is_desktop = $derived(clientWidth >= desktop_width)
   let is_mobile = $derived(clientWidth < tablet_width)
   let screen_class = $derived(is_desktop ? `desktop` : is_mobile ? `phone` : `tablet`)
+  let wrapper = $state<HTMLDivElement>()
+  const show_toggle = $derived(
+    shows_fullscreen_toggle(
+      fullscreen_toggle,
+      normalize_show_controls((is_desktop ? dos_props : bands_props).show_controls),
+    ),
+  )
 
   // Only the desktop layout puts the DOS horizontal beside the bands, sharing the vertical
   // frequency/energy dimension
@@ -71,7 +84,23 @@
   })
 </script>
 
-<div {...rest} class={[`bands-dos-brillouin`, screen_class, rest.class]} bind:clientWidth>
+{#snippet fullscreen_button()}
+  {#if fullscreen || show_toggle}
+    <FullscreenButton
+      bind:fullscreen
+      hidden={!show_toggle}
+      {wrapper}
+      bg_css_var="--bz-bands-dos-fullscreen-bg"
+    />
+  {/if}
+{/snippet}
+
+<div
+  {...rest}
+  class={[`bands-dos-brillouin`, screen_class, rest.class]}
+  bind:clientWidth
+  bind:this={wrapper}
+>
   {@render children?.({
     hovered_frequency: sync.hovered_frequency,
     hovered_band_point,
@@ -99,7 +128,14 @@
       link.hover_band(event)
       bands_props.on_point_hover?.(event)
     }}
-  />
+    fullscreen_toggle={false}
+  >
+    <!-- the DOS is the top-right panel on desktop, the bands span the top row otherwise -->
+    {#snippet header_controls(dims)}
+      {@render bands_props.header_controls?.(dims)}
+      {#if !is_desktop}{@render fullscreen_button()}{/if}
+    {/snippet}
+  </Bands>
 
   <BrillouinZone
     {...bz_props}
@@ -111,6 +147,7 @@
     hovered_qpoint_index={link.active_qpoint}
     highlighted_qpoint_range={link.highlighted_qpoint_range}
     on_kpath_hover={link.hover_path}
+    fullscreen_toggle={false}
   />
 
   <Dos
@@ -133,7 +170,13 @@
       ...dos_props.padding,
       ...sync.shared_padding,
     }}
-  />
+    fullscreen_toggle={false}
+  >
+    {#snippet header_controls(dims)}
+      {@render dos_props.header_controls?.(dims)}
+      {#if is_desktop}{@render fullscreen_button()}{/if}
+    {/snippet}
+  </Dos>
 </div>
 
 <style>
@@ -170,5 +213,10 @@
       minmax(340px, auto) minmax(260px, auto) minmax(320px, auto)
     );
     grid-template-areas: 'bands' 'dos' 'bz';
+  }
+  .bands-dos-brillouin:fullscreen {
+    padding: 1em;
+    overflow: auto;
+    background: var(--bz-bands-dos-fullscreen-bg, var(--page-bg, Canvas));
   }
 </style>

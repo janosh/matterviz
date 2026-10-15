@@ -2,7 +2,7 @@
 import FermiSurfaceBands from '#lib/fermi-surface/FermiSurfaceBands.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type { BaseBandStructure } from '#lib/spectral/types.js'
-import { flushSync } from 'svelte'
+import { createRawSnippet, flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fire, mount_sized, mouse, plot_svg } from '../setup'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -153,4 +153,40 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   await leave()
   expect(selected_strokes()).toBe(0)
   expect(shown_bands()).toEqual([true, true])
+
+  // the E_F line marks the grid's Fermi level (the surface's mu = 0), not a differing efermi
+  // stored with the band structure
+  const fermi_line_y = () => wrapper.querySelector(`line.fermi-level-line`)?.getAttribute(`y1`)
+  const grid_fermi_y = fermi_line_y()
+  props.band_struct = { ...band_struct, efermi: 0.25 }
+  await vi.advanceTimersByTimeAsync(50)
+  flushSync()
+  expect(fermi_line_y()).toBe(grid_fermi_y)
+})
+
+// One fullscreen button for both views, in the bands' header beside the caller's header
+// controls; the wrapper's fullscreen_toggle and the bands' show_controls can still hide it
+test.each([
+  [`default`, {}, {}, 1],
+  [`fullscreen_toggle`, { fullscreen_toggle: false }, {}, 0],
+  [`show_controls`, {}, { show_controls: { hidden: [`fullscreen`] as const } }, 0],
+])(`fullscreen button (%s)`, async (_variant, wrapper_props, extra_bands_props, n_buttons) => {
+  const header_controls = createRawSnippet(() => ({
+    render: () => `<span class="caller-ctrl"></span>`,
+  }))
+  const wrapper = await mount_sized(
+    FermiSurfaceBands,
+    {
+      band_data,
+      band_struct,
+      ...wrapper_props,
+      bands_props: { header_controls, ...extra_bands_props },
+    },
+    { selector: `.fermi-surface-bands`, width: 1200, height: 600 },
+  )
+  const caller_ctrl = wrapper.querySelector(`.scatter .header-controls .caller-ctrl`)
+  expect(caller_ctrl).toBeInstanceOf(HTMLSpanElement)
+  const buttons = wrapper.querySelectorAll(`.fullscreen-btn`)
+  expect(buttons).toHaveLength(n_buttons)
+  if (n_buttons) expect(caller_ctrl?.parentElement?.contains(buttons[0])).toBe(true)
 })
