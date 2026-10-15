@@ -153,9 +153,9 @@ test.describe(`Histogram Component Tests`, () => {
     await wait_for_bars(histogram)
     const initial_bars = await bar_count(histogram)
     await histogram.hover()
-    await histogram.locator(`button.pane-toggle`).focus()
+    await histogram.locator(`button.control-pane-toggle`).focus()
     await page.keyboard.press(`Enter`)
-    const pane = histogram.locator(`.draggable-pane`)
+    const pane = histogram.locator(`.control-pane`)
     await expect(pane).toBeVisible()
 
     const bins_input = pane

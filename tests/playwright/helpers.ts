@@ -513,10 +513,10 @@ export async function open_plot_controls(
   plot: Locator,
 ): Promise<{ toggle: Locator; pane: Locator }> {
   await plot.hover()
-  const toggle = plot.locator(`button.pane-toggle`)
+  const toggle = plot.locator(`button.control-pane-toggle`)
   await expect(toggle).toBeVisible()
   await toggle.click()
-  const pane = plot.locator(`.draggable-pane`)
+  const pane = plot.locator(`.control-pane`)
   await expect(pane).toBeVisible()
   return { toggle, pane }
 }

@@ -25,8 +25,8 @@ cases.forEach(({ name, route, plot: selector, section }) => {
     await page.goto(route, { waitUntil: `networkidle` })
     const plot = page.locator(selector).first()
     await plot.scrollIntoViewIfNeeded()
-    await plot.locator(`button.pane-toggle`).first().click()
-    const pane = plot.locator(`.draggable-pane`)
+    await plot.locator(`button.control-pane-toggle`).click()
+    const pane = plot.locator(`.control-pane`)
     const reset = pane.getByRole(`button`, {
       name: `Reset ${section} to defaults`,
       exact: true,
@@ -50,8 +50,8 @@ cases.forEach(({ name, route, plot: selector, section }) => {
 test(`NEB profile controls and reset update the plotted axes`, async ({ page }) => {
   await page.goto(`/neb`, { waitUntil: `networkidle` })
   const plot = page.locator(`.scatter`).last()
-  await plot.locator(`button.pane-toggle`).first().click()
-  const pane = plot.locator(`.draggable-pane`)
+  await plot.locator(`button.control-pane-toggle`).click()
+  const pane = plot.locator(`.control-pane`)
   await pane.locator(`#neb-coord-mode`).selectOption(`image_index`)
   await pane.locator(`#neb-energy-reference`).selectOption(`absolute`)
   await pane.locator(`#neb-show-spline`).uncheck()

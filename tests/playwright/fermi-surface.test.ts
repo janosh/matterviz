@@ -102,6 +102,11 @@ test.describe(`FermiSurface smoke`, () => {
     await pane.getByLabel(`Projection`).selectOption(`orthographic`)
     await pane.getByRole(`button`, { name: `Reset camera to defaults` }).click()
     await expect(pane.getByLabel(`Projection`)).toHaveValue(`perspective`)
+    // the visible sheets download as 3D models from the export pane
+    const viewer = page.locator(VIEWER)
+    await viewer.hover()
+    await viewer.locator(`.fermi-export-toggle`).click()
+    const export_pane = viewer.locator(`.export-pane`)
     for (const format of [`STL`, `OBJ`, `GLB`]) {
       const extensions = format === `OBJ` ? [`obj`, `mtl`] : [format.toLowerCase()]
       const downloads = extensions.map((extension) =>
@@ -109,7 +114,9 @@ test.describe(`FermiSurface smoke`, () => {
           download.suggestedFilename().endsWith(`.${extension}`),
         ),
       )
-      await pane.getByRole(`button`, { name: format, exact: true }).click()
+      await export_pane
+        .getByRole(`button`, { name: `Download ${format}`, exact: true })
+        .click()
       for (const download of await Promise.all(downloads))
         expect(await download.failure()).toBeNull()
     }
@@ -148,8 +155,13 @@ test(`fermi-surface-bands: k-path label hover, one fullscreen`, async ({ page })
   await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
   const qpoint_line = page.locator(`.fermi-surface-bands line.hovered-qpoint-line`)
   await expect(qpoint_line).toHaveCount(0)
-  await page.locator(`.sym-label`, { hasText: /^K$/ }).hover()
-  await expect(qpoint_line).toHaveCount(1)
+  // label chips follow the 3D view, which software GPUs (CI) may still be settling: re-hover
+  // until the pointer lands on the chip where it now sits
+  const k_label = page.locator(`.sym-label`, { hasText: /^K$/ })
+  await expect(async () => {
+    await k_label.hover()
+    await expect(qpoint_line).toHaveCount(1, { timeout: 1000 })
+  }).toPass()
   await expect(qpoint_line).toHaveCSS(`stroke-dasharray`, `5px, 3px`)
   // K = (3/4, 3/4, 0)·2π/a for fcc Cu, i.e. (3/8, 3/8, 3/4) in the reciprocal basis
   const tooltip = page.locator(`.plot-tooltip`, { hasText: `BZ Volume` })

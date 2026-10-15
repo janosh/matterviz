@@ -651,14 +651,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Host button styles must not shrink fullscreen relative to the gear toggle.
     await page.addStyleTag({ content: `button { font-size: 13px; }` })
     for (const suffix of [``, ` svg`]) {
-      const gear = await require_bbox(scatter_plot.locator(`.pane-toggle${suffix}`))
+      const gear = await require_bbox(scatter_plot.locator(`.control-pane-toggle${suffix}`))
       const fullscreen = await require_bbox(scatter_plot.locator(`.fullscreen-btn${suffix}`))
       expect([fullscreen.width, fullscreen.height]).toEqual([gear.width, gear.height])
     }
     const fullscreen_button = scatter_plot.locator(`.fullscreen-btn`)
     for (const active of [false, true]) {
       await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, String(active))
-      const gear = await require_bbox(scatter_plot.locator(`.pane-toggle svg path`))
+      const gear = await require_bbox(scatter_plot.locator(`.control-pane-toggle svg path`))
       const glyph = await require_bbox(fullscreen_button.locator(`svg path`))
       // Square glyphs read larger: keep them 4–8% smaller than the rounded gear.
       for (const dim of [`width`, `height`] as const) {

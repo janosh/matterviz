@@ -11,7 +11,7 @@ test(`table settings reset authored overrides and preserve column widths`, async
   page,
 }) => {
   const table = page.locator(`#table-controls`)
-  await table.locator(`.pane-toggle`).click()
+  await table.locator(`.control-pane-toggle`).click()
   const pane = page.locator(`.table-controls-pane`)
   for (const section of [`heatmap`, `display`, `column colors`]) {
     const reset = pane.getByRole(`button`, {
