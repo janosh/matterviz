@@ -557,6 +557,12 @@ export function frac_k_to_cartesian(
   return wrap_to_bz ? fold_to_first_bz(cart, recip_lattice_matrix) : cart
 }
 
+// Relative tolerance on |k|² for two periodic images tying on a zone face. pymatgen stores
+// fractional k to 8 decimals (error ≤ 5e-9 per coordinate), leaving on-face points up to ~1e-8
+// relative outside the face: an absolute 1e-9 on |k|² flipped whole branches to the opposite
+// face. 1e-6 clears that storage noise 100x and is still far below any genuine image gap.
+const BZ_TIE_RTOL = 1e-6
+
 // Extract k-path points from band structure and convert to reciprocal space coordinates
 // Accepts a reciprocal lattice matrix (should include 2π factor for consistency with BZ)
 // Optionally wraps fractional coordinates to first BZ (default: true)
@@ -578,13 +584,20 @@ export function extract_k_path_points(
   if (!wrap_to_bz) return points
   // Fold each branch as a unit, by the lattice vector that folds its midpoint: per-point folding
   // sends points on a zone face (stored to 8 decimals, so ~1e-8 off it) to alternating faces,
-  // drawing chords across the zone. Branches sharing an end point share the shift.
+  // drawing chords across the zone. A branch continuing from the previous one (shared end
+  // point) keeps the previous shift only while that still puts its midpoint at a nearest image
+  // (a zone-face tie), so the shared point has one position; otherwise the inherited shift would
+  // push the whole branch out of the zone.
   const folded = points.map((point) => fold_to_first_bz(point, recip_lattice_matrix))
   let [prev_end, shift]: [number, Vec3] = [-1, [0, 0, 0]]
   for (const { start_index, end_index } of band_struct.branches) {
     const mid = scale_vec(add(points[start_index], points[end_index]), 0.5)
-    if (start_index !== prev_end)
-      shift = subtract(fold_to_first_bz(mid, recip_lattice_matrix), mid)
+    const mid_folded = fold_to_first_bz(mid, recip_lattice_matrix)
+    const mid_shifted = add(mid, shift)
+    const keeps_shift =
+      start_index === prev_end &&
+      dot(mid_shifted, mid_shifted) <= dot(mid_folded, mid_folded) * (1 + BZ_TIE_RTOL)
+    if (!keeps_shift) shift = subtract(mid_folded, mid)
     for (let idx = start_index; idx <= end_index; idx++) folded[idx] = add(points[idx], shift)
     prev_end = end_index
   }
@@ -610,7 +623,7 @@ export const band_k_path = (
 // itself, so a high-symmetry point on a zone face stays on its own face.
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   const image = min_image_displacement([0, 0, 0], cart, recip)
-  return dot(image, image) < dot(cart, cart) - 1e-9 ? image : cart
+  return dot(image, image) < dot(cart, cart) * (1 - BZ_TIE_RTOL) ? image : cart
 }
 
 // Branches that have a plot x-range, paired with it (Bands.svelte's x_positions output)

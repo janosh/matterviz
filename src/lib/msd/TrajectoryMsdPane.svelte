@@ -60,7 +60,7 @@
   analysis_name="MSD"
   collect={collect_msd_positions}
   frame_steps={(input) => input.steps}
-  position_buffers={run ? position_buffers(run) : 1}
+  position_buffers={run && position_buffers(run)}
   compute_label="Compute MSD"
   recollect_label="Recollect positions"
   {default_dt}

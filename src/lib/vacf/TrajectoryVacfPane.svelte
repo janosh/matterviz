@@ -72,7 +72,7 @@
   frame_steps={(input) => input.steps}
   compute_label="Compute VACF"
   recollect_label="Recollect velocities"
-  position_buffers={run ? vacf_buffers(run) : 1}
+  position_buffers={run && vacf_buffers(run)}
   {default_dt}
   {default_time_unit}
   time_unit_fallback="fs"

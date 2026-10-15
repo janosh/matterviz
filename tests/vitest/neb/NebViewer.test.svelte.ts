@@ -310,6 +310,8 @@ describe(`NebViewer`, () => {
     expect(slider?.max).toBe(`6`)
     // mirrors the visible stepper caption so both convey the same position
     expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 1 of 7`)
+    // the demo file labels its beads `image 0` ... `image 6`, which restate the index
+    expect(viewer.querySelector(`.image-status`)?.textContent).toMatch(/^\s*image 1 of 7/)
     // a generic 0-based `image k` label would contradict the position, so it is not shown
     const images = direct_path.images.map((image, idx) => ({
       ...image,
@@ -317,6 +319,15 @@ describe(`NebViewer`, () => {
     }))
     const generic = await mount_viewer({ paths: { ...direct_path, images } })
     expect(generic.querySelector(`.image-status`)?.textContent).toMatch(/^\s*image 1 of 7/)
+    // ...but a bead number from a larger path (a sub-path's image 3, 4, ...) is kept
+    const sub_path = direct_path.images.map((image, idx) => ({
+      ...image,
+      label: `image ${idx + 3}`,
+    }))
+    const kept = await mount_viewer({ paths: { ...direct_path, images: sub_path } })
+    expect(kept.querySelector(`.image-status`)?.textContent).toMatch(
+      /^\s*image 3: image 1 of 7/,
+    )
     expect(
       viewer.querySelector(`.step-section > span[aria-label]`)?.getAttribute(`aria-label`),
     ).toBe(`7 total images`)

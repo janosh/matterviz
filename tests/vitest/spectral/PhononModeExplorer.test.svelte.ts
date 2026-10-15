@@ -1,3 +1,6 @@
+import type * as brillouin_module from '#lib/brillouin/index.js'
+import { reciprocal_lattice, type Vec3 } from '#lib/math.js'
+import { frac_k_to_cartesian } from '#lib/spectral/helpers.js'
 import type { PhononModeDataset } from '#lib/spectral/index.js'
 import { parse_born, parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
 import PhononModeExplorer from '#lib/spectral/PhononModeExplorer.svelte'
@@ -17,6 +20,19 @@ import {
   translate_of,
   trigger_resize_observer,
 } from '../setup'
+
+// Pass-through spy on the Brillouin zone inset recording its props (the WebGPU scene that
+// draws them does not render here)
+type BZProps = ComponentProps<typeof brillouin_module.BrillouinZone>
+const bz_spy = vi.hoisted(() => ({ props: undefined as BZProps | undefined }))
+vi.mock(`#lib/brillouin/index.js`, async (import_original) => {
+  const original = await import_original<typeof brillouin_module>()
+  const BrillouinZone = (...args: Parameters<typeof original.BrillouinZone>) => {
+    bz_spy.props = args[1]
+    return original.BrillouinZone(...args)
+  }
+  return { ...original, BrillouinZone }
+})
 
 type ExplorerProps = ComponentProps<typeof PhononModeExplorer>
 const modes = parse_phonon_modes(band_yaml)
@@ -136,6 +152,29 @@ test(`renders a typed phonon dataset`, async () => {
   await vi.waitFor(() => {
     expect(target.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`X`)
     expect(target.querySelector(`.bz-popup .brillouin-zone`)).not.toBeNull()
+  })
+})
+
+// Γ→X stretched to Γ→1.5·X leaves the zone: its branch (midpoint inside) is not folded,
+// while the end point folded alone jumps elsewhere. The inset marks the drawn path's point.
+test(`marks the selected q-point on the drawn k-path in the inset`, async () => {
+  const stretched = {
+    ...modes,
+    qpoints: modes.qpoints.map((qpoint) => ({
+      ...qpoint,
+      q_position: qpoint.q_position.map((coord) => coord * 1.5) as Vec3,
+    })),
+  }
+  const qpoint_idx = stretched.qpoints.length - 1
+  render({ dataset: { ...dataset, modes: stretched }, selection: { qpoint_idx, mode_idx: 3 } })
+  if (!modes.lattice) throw new Error(`NaCl fixture lacks a lattice`)
+  const k_lattice = reciprocal_lattice(modes.lattice, { two_pi: true })
+  const folded_alone = frac_k_to_cartesian(stretched.qpoints[qpoint_idx].q_position, k_lattice)
+  await vi.waitFor(() => {
+    const on_path = bz_spy.props?.k_path?.points[qpoint_idx]
+    expect(on_path).toBeDefined()
+    expect(bz_spy.props?.highlighted_k_points).toEqual([on_path])
+    expect(on_path).not.toEqual(folded_alone)
   })
 })
 

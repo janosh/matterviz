@@ -146,6 +146,7 @@ describe(`shared segment helpers`, () => {
     [{ H: 1 }, `H: 1 atom (100%)`],
     [{ H: 2, O: 1 }, `H: 2 atoms (66.7%)`],
     [{ H: 0.1 + 0.2, O: 1 }, `H: 0.3 atoms (23.1%)`], // float noise stays out of the label
+    [{ Fe: 1.0000001 }, `Fe: 1 atom (100%)`], // noun matches the rounded number
   ])(`segment_title for %j`, (composition, expected) => {
     expect(segment_title(composition_segments(composition, `Vesta`, {}, `p`)[0])).toBe(
       expected,

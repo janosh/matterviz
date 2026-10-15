@@ -336,21 +336,33 @@
   })
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
-  // from the first structure plotting each segment
+  // from the first structure plotting each segment, with their q-point index in it
+  type SymPoint = {
+    label: string
+    frac_coords: Vec3
+    qpoint_idx: number
+    band_structure: BaseBandStructure
+  }
   let sym_points_at_x = $derived.by(() => {
-    const points_at: Record<number, { label: string; frac_coords: Vec3 }[]> = {}
-    const add_point = (pos: number, qpoint: QPoint | undefined) => {
+    const points_at: Record<number, SymPoint[]> = {}
+    const add_point = (pos: number, band_structure: BaseBandStructure, qpoint_idx: number) => {
+      const qpoint: QPoint | undefined = band_structure.qpoints[qpoint_idx]
       if (!qpoint?.label) return
       const label = helpers.pretty_sym_point(qpoint.label)
       points_at[pos] ??= []
       if (!points_at[pos].some((point) => point.label === label)) {
-        points_at[pos].push({ label, frac_coords: qpoint.frac_coords })
+        points_at[pos].push({
+          label,
+          frac_coords: qpoint.frac_coords,
+          qpoint_idx,
+          band_structure,
+        })
       }
     }
     for (const [segment_key, [x_start, x_end]] of Object.entries(internal_x_positions)) {
       const [band_structure, branch] = all_segments[segment_key][0]
-      add_point(x_start, band_structure.qpoints[branch.start_index])
-      add_point(x_end, band_structure.qpoints[branch.end_index])
+      add_point(x_start, band_structure, branch.start_index)
+      add_point(x_end, band_structure, branch.end_index)
     }
     return points_at
   })
@@ -380,12 +392,21 @@
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
+  // Marked at the drawn path's own point (folded with its branch, so it sits on the drawn label);
+  // a union-mode point only another structure has is not on that path and is folded alone
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
     if (bz_popup_x === null || !k_lattice) return []
-    return (sym_points_at_x[bz_popup_x] ?? []).map((point) => ({
-      ...point,
-      position: helpers.frac_k_to_cartesian(point.frac_coords, k_lattice),
-    }))
+    const lattice = k_lattice
+    return (sym_points_at_x[bz_popup_x] ?? []).map(
+      ({ label, frac_coords, qpoint_idx, band_structure }) => ({
+        label,
+        frac_coords,
+        position:
+          k_path && band_structure === structures[0]?.bs
+            ? k_path.points[qpoint_idx]
+            : helpers.frac_k_to_cartesian(frac_coords, lattice),
+      }),
+    )
   })
 
   let x_range = $derived.by((): Vec2 => {

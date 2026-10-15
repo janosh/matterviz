@@ -15,7 +15,7 @@
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
   import {
     calculate_all_pair_rdfs,
@@ -25,6 +25,7 @@
     rdf_bin_sites,
   } from './index'
   import type { RdfEntry } from './index'
+  import { bind_error_report } from './error-report.svelte'
 
   let {
     patterns,
@@ -73,6 +74,7 @@
     on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } & Omit<ScatterPlotOptions, `children`> = $props()
 
+  let drop_error = $state<string>()
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: (content, filename, metadata) => {
@@ -81,15 +83,15 @@
         const structure = parse_structure_file(as_text(content), filename)
         // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected
         if (is_crystal(structure)) drag_dropped = [...drag_dropped, structure]
-        else error_msg = `${filename} has no lattice or sites; cannot compute an RDF`
+        else drop_error = `${filename} has no lattice or sites; cannot compute an RDF`
       } catch (exc) {
-        error_msg = `Failed to process structure: ${to_error(exc).message}`
+        drop_error = `Failed to process structure: ${to_error(exc).message}`
       }
     },
-    on_error: (msg) => (error_msg = msg),
+    on_error: (msg) => (drop_error = msg),
     set_loading: (val) => {
       loading = val
-      if (val) error_msg = undefined
+      if (val) drop_error = undefined
     },
   })
 
@@ -127,14 +129,11 @@
     return { entries: [...(patterns ? [patterns].flat() : []), ...curves], failures }
   })
   const entries = $derived(computed.entries)
-  // writing a bindable prop from inside the $derived would be state_unsafe_mutation. The last
-  // failure report clears once its structure is gone, but never a file-drop error.
-  let failure_msg: string | undefined
-  $effect(() => {
-    const msg = computed.failures.join(`; `) || undefined
-    if (msg || untrack(() => error_msg) === failure_msg) error_msg = msg
-    failure_msg = msg
-  })
+  // a failure report clears once its structure is gone, a drop error on the next drop
+  const error_report = bind_error_report(
+    { get: () => error_msg, set: (msg) => (error_msg = msg) },
+    () => [drop_error, ...computed.failures],
+  )
 
   // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
   const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
@@ -239,7 +238,11 @@
     </ScatterPlot>
   {/if}
   <ViewerNotices>
-    <StatusMessage bind:message={error_msg} type="error" dismissible />
+    <StatusMessage
+      bind:message={() => error_msg, (msg) => !msg && error_report.dismiss()}
+      type="error"
+      dismissible
+    />
   </ViewerNotices>
 </div>
 

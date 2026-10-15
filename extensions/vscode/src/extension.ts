@@ -365,7 +365,7 @@ export const handle_msg = async (
       webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message
-      console.error(`Failed to load frame ${msg.frame_index}:`, error_message)
+      console.error(`Failed to load frame ${msg.frame_index + 1}:`, error_message)
       webview.postMessage({
         command: `frame_response`,
         request_id: msg.request_id,

@@ -271,6 +271,69 @@ describe(`RdfPlot`, () => {
     target.querySelector<HTMLButtonElement>(`.drop-broken`)?.click()
     await vi.waitFor(() => expect(target.textContent).not.toMatch(/non-finite/))
   })
+
+  // drop errors, structure failures and the parent's own error_msg are separate sources:
+  // none may overwrite or clear another, whatever order they arrive in
+  const drop_msg = `mol.xyz has no lattice or sites`
+  const failure_re = /broken: .*non-finite/
+  test.each<[string, string[], (string | RegExp)[], string?]>([
+    [`drop error, then a cutoff change`, [`drop-broken`, `drop`, `change-cutoff`], [drop_msg]],
+    [`failure, then a drop error`, [`drop`], [drop_msg, failure_re]],
+    [
+      `drop error, then a failure, then its fix`,
+      [`drop-broken`, `drop`, `restore-structures`, `check-failure`, `drop-broken`],
+      [drop_msg],
+    ],
+    [`parent message, then a failure fix`, [`drop-broken`], [`parent note`], `parent note`],
+  ])(`keeps every error source: %s`, async (_label, steps, expected, rdf_error) => {
+    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+    broken.sites[0].xyz = [NaN, 0, 0]
+    const pattern = create_synthetic_pattern()
+    const target = await mount_harness({
+      pattern,
+      structures: { good: nacl_structure, broken },
+      rdf_error,
+    })
+    const mirror = () => target.querySelector(`.rdf-error-mirror`)?.textContent ?? ``
+    await vi.waitFor(() => expect(mirror()).toMatch(failure_re))
+    if (rdf_error) expect(mirror()).toContain(rdf_error)
+    for (const step of steps) {
+      if (step === `drop`) {
+        const plot = target.querySelector(`.scatter`)
+        plot?.dispatchEvent(create_drop_event(new File([`1\n\nSi 0 0 0\n`], `mol.xyz`)))
+        await vi.waitFor(() => expect(mirror()).toContain(drop_msg))
+      } else if (step === `check-failure`) {
+        await vi.waitFor(() => expect(mirror()).toMatch(failure_re))
+        expect(mirror()).toContain(drop_msg)
+      } else target.querySelector<HTMLButtonElement>(`.${step}`)?.click()
+      await tick()
+    }
+    await vi.waitFor(() => {
+      for (const part of expected) expect(mirror()).toMatch(part)
+    })
+    if (!expected.includes(failure_re)) expect(mirror()).not.toMatch(failure_re)
+    // the bound error_msg and the rendered notice say the same thing
+    expect(target.querySelector(`[role="alert"]`)?.textContent?.trim()).toContain(mirror())
+  })
+
+  test(`dismissing clears every error source until a new one arrives`, async () => {
+    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+    broken.sites[0].xyz = [NaN, 0, 0]
+    const target = await mount_harness({
+      pattern: create_synthetic_pattern(),
+      structures: { good: nacl_structure, broken },
+      rdf_error: `parent note`,
+    })
+    const mirror = () => target.querySelector(`.rdf-error-mirror`)?.textContent
+    await vi.waitFor(() => expect(mirror()).toMatch(/^parent note; .*broken: .*non-finite/))
+    target.querySelector<HTMLButtonElement>(`[role="alert"] button`)?.click()
+    await vi.waitFor(() => expect(mirror()).toBe(`none`))
+    expect(target.querySelector(`[role="alert"]`)).toBeNull()
+    // recomputing the same failure keeps it dismissed
+    target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
+    await tick()
+    expect(mirror()).toBe(`none`)
+  })
 })
 
 describe(`PdfPlot`, () => {
@@ -372,6 +435,22 @@ describe(`PdfPlot`, () => {
     })
     expect(target.querySelector(`.pdf-error-mirror`)?.textContent).toContain(
       `No neutron scattering length for Po`,
+    )
+  })
+
+  // every failing structure is reported under its label, after (never over) the parent's message
+  test(`error_msg joins the parent message with each labelled failure`, async () => {
+    const po_crystal = (lattice: number) => make_crystal(lattice, [[`Po`, [0, 0, 0]]])
+    const target = await mount_harness({
+      pattern: create_synthetic_pattern(),
+      pdf_structure: { first: po_crystal(3.35), second: po_crystal(3.4) },
+      pdf_error: `parent note`,
+    })
+    const no_b_coh = `No neutron scattering length for Po`
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.pdf-error-mirror`)?.textContent).toMatch(
+        new RegExp(`^parent note; first: .*${no_b_coh}.*; second: .*${no_b_coh}`),
+      ),
     )
   })
 

@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec2 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { AxisRanges } from '#lib/plot/core/types.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
@@ -641,12 +641,18 @@ describe(`Bands component`, () => {
   )
 
   it(`opens a Brillouin zone popup marking the clicked symmetry point`, async () => {
-    // the band data's own reciprocal lattice is enough, no structure needed
-    await mount_sized(
-      Bands,
-      { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
-      { selector: `.scatter` },
-    )
+    // the band data's own reciprocal lattice is enough, no structure needed. The path is
+    // stored one reciprocal lattice vector out (Γ+b₁ → X+b₁), so the drawn branch folds back
+    // by -b₁ while X+b₁ = (1.5, 0, 0) folded alone lands on the opposite face (-0.5, 0, 0)
+    const shifted_path = {
+      ...base_band_structure,
+      qpoints: base_band_structure.qpoints.map(({ label }, idx) => ({
+        label,
+        frac_coords: [1 + idx / 6, 0, 0] as Vec3,
+      })),
+      recip_lattice: recip_lattice_a3,
+    }
+    await mount_sized(Bands, { band_structs: { '': shifted_path } }, { selector: `.scatter` })
     const labels = tick_labels()
     expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
@@ -659,10 +665,10 @@ describe(`Bands component`, () => {
     expect(popup?.closest(`.scatter`)).not.toBeNull()
     const stats = popup?.querySelector(`.bz-popup-stats`)
     expect(stats?.querySelector(`strong`)?.textContent).toBe(`X`)
-    // fractional coords of X in the fixture; its Cartesian position is folded into the first
-    // BZ of the cubic a=3 lattice, so [0.75, 0, 0] -> [-0.25, 0, 0] with k_x = -0.25 * 2π/3
-    expect(stats?.textContent).toContain(`(0.75, 0, 0)`)
-    expect(stats?.textContent).toContain(`(−${((0.25 * 2 * Math.PI) / 3).toFixed(3)}, 0, 0)`)
+    // fractional coords of X in the fixture; its Cartesian position is the drawn path's X
+    // (folded with its branch), k_x = +0.5 * 2π/3 ≈ 1.05, not the opposite face X folds to alone
+    expect(stats?.textContent).toContain(`(1.5, 0, 0)`)
+    expect(stats?.textContent).toContain(`k: (1.05, 0, 0)`)
     // the BZ viewer is embedded without its own chrome, sized by the popup
     expect(popup?.querySelector(`.brillouin-zone`)).not.toBeNull()
     expect(popup?.querySelector(`.brillouin-zone .control-buttons`)?.children).toHaveLength(0)

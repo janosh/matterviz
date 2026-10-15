@@ -99,7 +99,7 @@ export function phonon_band_structure_from_modes(data: PhononModeData): PhononBa
     const { start_index, end_index, start_label, end_label } = segment
     if (start_index < 0 || end_index < start_index || end_index >= data.qpoints.length) {
       throw new Error(
-        `Phonon path segment ${segment_idx + 1} has invalid bounds ${start_index}–${end_index} for ${data.qpoints.length} q-points`,
+        `Phonon path segment ${display_idx(segment_idx)} has invalid bounds ${display_idx(start_index)}–${display_idx(end_index)} for ${data.qpoints.length} q-points`,
       )
     }
     const name =

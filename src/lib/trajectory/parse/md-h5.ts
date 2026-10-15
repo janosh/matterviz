@@ -246,7 +246,9 @@ export const parse_md_h5_file = (
   }
   const check_frame = (frame_idx: number): void => {
     if (!is_valid_index(frame_idx, frame_count))
-      throw new Error(`${FORMAT} frame ${display_idx(frame_idx)} is past the committed prefix`)
+      throw new Error(
+        `${FORMAT} frame ${display_idx(frame_idx)} is outside the ${frame_count} committed frames`,
+      )
   }
   const channels: Record<string, { name: string; width: number; unit: string }> =
     Object.fromEntries(

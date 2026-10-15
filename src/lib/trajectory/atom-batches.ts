@@ -173,7 +173,7 @@ export function frame_atom_batch(
         const component = velocity[velocity_offset + axis]
         if (typeof component !== `number` || !Number.isFinite(component))
           throw new Error(
-            `Invalid ${velocity_key} at atom ${display_idx(atom_idx)}, step ${step}, axis ${axis}`,
+            `Invalid ${velocity_key} at atom ${display_idx(atom_idx)}, step ${step}, axis ${`xyz`[axis]}`,
           )
         velocities[idx * 3 + axis] = component
       }

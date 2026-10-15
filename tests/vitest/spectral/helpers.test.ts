@@ -35,6 +35,7 @@ import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
 import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
 import { phonon_band_structure_from_modes } from '#lib/spectral/phonon-modes.js'
 import cao_json from '#site/electronic/bands/cao-2605-bands.json.gz?raw'
+import vbr2_json from '#site/electronic/bands/vbr2-971787-bands.json.gz?raw'
 import mgb2_band_yaml from '#site/phonons/ir-raman/MgB2-band.yaml.gz?raw'
 import * as math from '#lib/math.js'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -432,21 +433,94 @@ describe(`extract_k_path_points`, () => {
   })
 
   // Steps along a zone face (L→U, H→K) used to alternate faces: pymatgen stores 8 decimals, so
-  // on-face points sit ~1e-8 outside it. cao's longest in-branch step was 35x the median.
+  // on-face points sit ~1e-8 outside it. cao's longest in-branch step was 35x the median. An
+  // absolute tie tolerance then flipped whole VBr2 branches to the opposite face (junction
+  // duplicates M, K, L, H up to 2.1 Å⁻¹ apart), and M→K's flipped shift, passed on through a
+  // shared K, ended K→Γ at Γ+G (22 of 34 points outside the zone).
+  const vbr2 = normalize_band_structure(JSON.parse(vbr2_json))
+  if (!vbr2) throw new Error(`VBr2 fixture failed to normalize`)
+  // VBr2's M(20)→K(31) and K(32)→Γ(54) joined at one K, its junction duplicate dropped
+  const keep = Array.from({ length: 35 }, (_, offset) => 20 + offset).filter(
+    (idx) => idx !== 32,
+  )
+  const vbr2_shared_k: BaseBandStructure = {
+    ...vbr2,
+    qpoints: keep.map((idx) => vbr2.qpoints[idx]),
+    distance: keep.map((idx) => vbr2.distance[idx]),
+    bands: vbr2.bands.map((band) => keep.map((idx) => band[idx])),
+    branches: [
+      { start_index: 0, end_index: 11, name: `M-K` },
+      { start_index: 11, end_index: 33, name: `K-GAMMA` },
+    ],
+  }
+  // Wigner-Seitz test: no lattice vector G is nearer than Γ, i.e. 2k·G ≤ |G|² (to the fold's
+  // 1e-6 relative tie tolerance; the 8-decimal storage noise is ~1e-8)
+  const outside_first_bz = (point: Vec3, recip: Matrix3x3): boolean => {
+    const recip_t = math.transpose_3x3_matrix(recip)
+    for (let n_1 = -2; n_1 <= 2; n_1++)
+      for (let n_2 = -2; n_2 <= 2; n_2++)
+        for (let n_3 = -2; n_3 <= 2; n_3++) {
+          const lattice_vec = math.mat3x3_vec3_multiply(recip_t, [n_1, n_2, n_3])
+          const norm_sq = math.dot(lattice_vec, lattice_vec)
+          if (norm_sq && 2 * math.dot(point, lattice_vec) > norm_sq * (1 + 1e-6)) return true
+        }
+    return false
+  }
   it.each([
     [`cao`, normalize_band_structure(JSON.parse(cao_json))],
     [`MgB2 band.yaml`, phonon_band_structure_from_modes(parse_phonon_modes(mgb2_band_yaml))],
-  ])(`band_k_path keeps %s branches continuous`, (_name, band_structure) => {
-    if (!band_structure?.recip_lattice) throw new Error(`fixture lacks a reciprocal lattice`)
-    const { points, branches } = band_k_path(band_structure, band_structure.recip_lattice)
-    const steps = branches
-      .flatMap(([start, end]) =>
-        points
-          .slice(start, end)
-          .map((point, offset) => math.euclidean_dist(point, points[start + offset + 1])),
-      )
-      .toSorted((step_a, step_b) => step_a - step_b)
-    expect(steps.at(-1)).toBeLessThanOrEqual(2 * steps[steps.length >> 1])
+    [`VBr2`, vbr2],
+    [`VBr2 M→K→Γ sharing K`, vbr2_shared_k],
+  ])(
+    `band_k_path keeps %s branches continuous, joined and inside the first BZ`,
+    (_name, band_structure) => {
+      const recip = band_structure?.recip_lattice
+      if (!band_structure || !recip) throw new Error(`fixture lacks a reciprocal lattice`)
+      const { points, labels, branches } = band_k_path(band_structure, recip)
+      const steps = branches
+        .flatMap(([start, end]) =>
+          points
+            .slice(start, end)
+            .map((point, offset) => math.euclidean_dist(point, points[start + offset + 1])),
+        )
+        .toSorted((step_a, step_b) => step_a - step_b)
+      expect(steps.at(-1)).toBeLessThanOrEqual(2 * steps[steps.length >> 1])
+      // a junction's duplicate symmetry point (X, X) is drawn where the next branch starts
+      for (const [[, prev_end], [next_start]] of branches
+        .slice(0, -1)
+        .map((branch, idx) => [branch, branches[idx + 1]] as const)) {
+        if (next_start !== prev_end + 1 || !labels[prev_end]) continue
+        if (labels[prev_end] !== labels[next_start]) continue
+        expect(math.euclidean_dist(points[prev_end], points[next_start])).toBeLessThan(1e-9)
+      }
+      expect(points.filter((point) => outside_first_bz(point, recip))).toEqual([])
+    },
+  )
+
+  // A branch continuing at a shared end point keeps the previous branch's shift while that
+  // still folds its own midpoint to a nearest image (a face tie), else takes its own. Paths
+  // stored one lattice vector out, Γ'→X' then along the face X'→M' stays on the +x face; with
+  // its own shift it would jump to the -x face. X'→2.3·x does not tie, so it takes its own
+  // shift (back inside) rather than inheriting one that leaves it at 0.5..1.3, outside.
+  // oxfmt-ignore
+  it.each([
+    [`keeps a face-tie shift`, [[1.5, 0.25, 0], [1.5, 0.5, 0]], [[0.5, 0, 0], [0.5, 0.25, 0], [0.5, 0.5, 0]]],
+    [`refuses a shift that leaves the zone`, [[1.9, 0, 0], [2.3, 0, 0]], [[-0.5, 0, 0], [-0.1, 0, 0], [0.3, 0, 0]]],
+  ] as [string, Vec3[], Vec3[]][])(`band_k_path at a shared end point %s`, (_name, tail, expected_tail) => {
+    const frac: Vec3[] = [[1.1, 0, 0], [1.2, 0, 0], [1.3, 0, 0], [1.4, 0, 0], [1.5, 0, 0], ...tail]
+    const band_structure = make_bs(frac.map(() => null), {
+      qpoints: frac.map((frac_coords) => ({ label: null, frac_coords })),
+      branches: [
+        { start_index: 0, end_index: 4, name: `a` },
+        { start_index: 4, end_index: 6, name: `b` },
+      ],
+    })
+    const { points } = band_k_path(band_structure, IDENTITY_MATRIX3)
+    const expected = [[0.1, 0, 0], [0.2, 0, 0], [0.3, 0, 0], [0.4, 0, 0], ...expected_tail]
+    const max_err = Math.max(
+      ...points.flatMap((point, idx) => point.map((coord, axis) => Math.abs(coord - expected[idx][axis]))),
+    )
+    expect(max_err).toBeLessThan(1e-12)
   })
 })
 

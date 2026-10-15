@@ -682,6 +682,11 @@ describe(`x axis quantity`, () => {
     // numbered from 1 like the step input; to_frame hands back the 0-based index
     expect([0, 2].map(x_map.to_x)).toEqual([1, 3])
     expect([1, 3, 99].map(x_map.to_frame)).toEqual([0, 2, 2])
+    // with no samples to grid on, frame numbers still count from 1
+    const empty_map = build_x_map({ frame_numbers: [], steps: [] }, `frame`)
+    expect([empty_map.to_x(0), empty_map.to_frame(1), empty_map.to_frame(3.4)]).toEqual([
+      1, 0, 2,
+    ])
   })
 
   // Plot skimming feeds the hovered x back in to pick a frame, so to_frame must invert

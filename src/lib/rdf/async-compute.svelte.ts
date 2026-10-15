@@ -27,7 +27,7 @@ const pool = Array.from({ length: RDF_WORKER_COUNT }, create_rdf_client)
 // early never queues behind a busy worker while another sits idle
 const in_flight = pool.map(() => 0)
 
-export const calc_frame_rdfs_async = async (
+export const calc_all_pair_rdfs_async = async (
   ...args: Parameters<(typeof pool)[number]>
 ): Promise<RdfPattern[]> => {
   const client_idx = in_flight.indexOf(Math.min(...in_flight))

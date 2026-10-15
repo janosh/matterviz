@@ -675,6 +675,12 @@ phonon:
     [`no eigenvectors`, `${H_BAND}${MORE_FREQS}`, /no 'eigenvector' blocks/],
     [`unnormalised`, `${H_BAND}${eig_x(2)}`, /not normalised \(sum \|e\|\^2 = 4/],
     [`extra eigenvector atom`, `${H_BAND}${eig_x(1, 2)}`, /over 1 atoms, got 2 atom blocks/],
+    // atom and component are both named 1-based
+    [
+      `bad eigenvector component`,
+      `${H_BAND}    eigenvector:\n    - - [1,0]\n      - [0,0]\n      - [0]\n`,
+      /eigenvector atom 1 component 3\b/,
+    ],
     [`negative mass`, `${h_cell(1, -1)}${Q_BAND}`, /invalid 'mass'/],
     [`band count`, `${H_BAND}${eig_x()}`, /lists 1 bands but a 1-atom cell has 3N = 3 modes/],
     // A 2-row lattice would otherwise be cast to Matrix3x3 unchecked

@@ -159,7 +159,7 @@ function parse_eigenvector(
     return atom_block.map((component, dir_idx) =>
       to_complex(
         component,
-        `${context}: eigenvector atom ${display_idx(atom_idx)} component ${dir_idx}`,
+        `${context}: eigenvector atom ${display_idx(atom_idx)} component ${display_idx(dir_idx)}`,
       ),
     )
   })

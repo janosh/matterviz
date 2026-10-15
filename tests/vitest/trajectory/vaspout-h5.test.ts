@@ -365,6 +365,12 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     [`SCF mesh in Gamma mode`, { ...scf_mesh(`Gamma`), ...hide_opt }, null],
     [`SCF mesh in Monkhorst-Pack mode`, { ...scf_mesh(`Monkhorst-Pack`), ...hide_opt }, null],
     [`SCF mesh in Automatic mode`, { ...scf_mesh(`Automatic`), ...hide_opt }, null],
+    // Automatic mode's number_kpoints is a mesh length: dividing the k-count makes no path
+    [`SCF mesh in Automatic mode with number_kpoints`, {
+      ...scf_mesh(`Automatic`),
+      ...hide_opt,
+      [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints`, value: 4 },
+    }, null],
     [`unlabelled SCF path in line mode`, { ...scf_mesh(`Line-mode`), ...hide_opt }, { n_kpoints: 8, branch_names: [`path`] }],
     // number_kpoints alone splits it: the jumps between segments are no path
     [`unlabelled SCF path in line mode with number_kpoints`, {

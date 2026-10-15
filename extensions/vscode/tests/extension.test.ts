@@ -486,7 +486,13 @@ describe(`MatterViz Extension`, () => {
     [`negative frame index`, `/test/movie.extxyz`, -1, `Invalid request_id or frame_index`],
     [`missing run`, `/test/missing.extxyz`, 0, `No indexed trajectory is open`],
   ])(`request_frame reports %s`, async (_label, file_path, frame_index, error) => {
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
     await handle_msg(frame_msg(file_path, frame_index), mock_webview)
+    // the log numbers frames from 1 like the step input
+    expect(console_error).toHaveBeenCalledWith(
+      `Failed to load frame ${frame_index + 1}:`,
+      expect.stringContaining(error),
+    )
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
       command: `frame_response`,
       request_id: `frame-request`,

@@ -47,10 +47,7 @@
     frame_steps,
     frame_unavailable_reason,
     position_buffers,
-    suggest_stride = position_buffers
-      ? (source, frame_count) =>
-          suggest_analysis_frame_stride(source, undefined, position_buffers, frame_count)
-      : undefined,
+    suggest_stride,
     compute_label,
     recollect_label,
     collecting_label = `Reading frames…`,
@@ -111,6 +108,15 @@
 
   const pane_id = $props.id()
   const unavailable_hint_id = `${pane_id}-unavailable`
+  // the default budget follows position_buffers, which the MSD/VACF panes only pass once a
+  // run is loaded
+  const stride_fn = $derived(
+    suggest_stride ??
+      (position_buffers
+        ? (source: TrajectoryRun, frame_count: number) =>
+            suggest_analysis_frame_stride(source, undefined, position_buffers, frame_count)
+        : undefined),
+  )
 
   // Control-panel state. dt_source is the time between two SOURCE frames; collecting every
   // Nth frame multiplies it (see dt_collected below). null, not 0, is what
@@ -193,7 +199,7 @@
   let progress = $state<ParseProgress | null>(null)
 
   let { total_frames, n_atoms, safe_stride, collected_frames, suggested_stride, can_collect } =
-    $derived(analysis_pane_setup(run, suggest_stride, frame_stride, range_reason ? {} : range))
+    $derived(analysis_pane_setup(run, stride_fn, frame_stride, range_reason ? {} : range))
   let estimated_bytes = $derived(collected_frames * n_atoms * 24 * (position_buffers ?? 1))
   const selected_interval = $derived.by(() => {
     void properties_revision
@@ -356,7 +362,7 @@
   {:else}
     {#if disabled_reason}
       <small id={unavailable_hint_id}>{disabled_reason}</small>
-    {:else if suggest_stride && !can_collect}
+    {:else if stride_fn && !can_collect}
       <StatusMessage
         type="warning"
         message={no_full_pass_message(run, analysis_name)}
@@ -411,7 +417,7 @@
           />
         </label>
       {/if}
-      {#if suggest_stride}
+      {#if stride_fn}
         <label>
           Frame stride
           <input
@@ -446,9 +452,9 @@
           />
         </label>
       {/if}
-      {#if suggest_stride || time_unit_fallback || hint}
+      {#if stride_fn || time_unit_fallback || hint}
         <p class="hint">
-          {#if suggest_stride}
+          {#if stride_fn}
             {collected_frames} frames × {n_atoms} atoms ≈ {format_bytes(estimated_bytes)}
           {/if}
           {#if time_unit_fallback}
@@ -466,7 +472,7 @@
         disabled={collecting ||
           busy ||
           Boolean(disabled_reason) ||
-          (suggest_stride && !can_collect)}
+          (stride_fn && !can_collect)}
         title={disabled_reason ?? undefined}
         aria-describedby={disabled_reason ? unavailable_hint_id : undefined}
       >

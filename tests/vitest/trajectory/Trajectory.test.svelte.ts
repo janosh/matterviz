@@ -1542,27 +1542,36 @@ describe(`bindings`, () => {
     [Number.MAX_SAFE_INTEGER, 2],
     [-5, 0],
     [1.7, 1],
-  ])(`clamps an initial current_step_idx of %s to %s and notifies`, (initial, expected) => {
-    const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
-    const props = $state(default_props({ current_step_idx: initial, on_step_change }))
-    mount_trajectory(props)
-    expect(props.current_step_idx).toBe(expected)
-    expect(on_step_change).toHaveBeenCalledWith(
-      expect.objectContaining({ step_idx: expected, frame_count: 3 }),
-    )
-    // the step input and slider announce the 1-based position; the binding stays 0-based
-    const step_input = doc_query<HTMLInputElement>(`.step-input`)
-    expect([step_input.value, step_input.min, step_input.max]).toEqual([
-      String(expected + 1),
-      `1`,
-      `3`,
-    ])
-    expect(doc_query(`.step-slider`).getAttribute(`aria-valuetext`)).toBe(
-      `${expected + 1} of 3`,
-    )
-    set_input(step_input, `1`)
-    expect(props.current_step_idx).toBe(0)
-  })
+  ])(
+    `clamps an initial current_step_idx of %s to %s and notifies`,
+    async (initial, expected) => {
+      const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
+      const props = $state(default_props({ current_step_idx: initial, on_step_change }))
+      mount_trajectory(props)
+      expect(props.current_step_idx).toBe(expected)
+      expect(on_step_change).toHaveBeenCalledWith(
+        expect.objectContaining({ step_idx: expected, frame_count: 3 }),
+      )
+      // the step input and slider announce the 1-based position; the binding stays 0-based
+      const step_input = doc_query<HTMLInputElement>(`.step-input`)
+      expect([step_input.value, step_input.min, step_input.max]).toEqual([
+        String(expected + 1),
+        `1`,
+        `3`,
+      ])
+      expect(doc_query(`.step-slider`).getAttribute(`aria-valuetext`)).toBe(
+        `${expected + 1} of 3`,
+      )
+      set_input(step_input, `1`)
+      expect(props.current_step_idx).toBe(0)
+      // an out-of-range entry that leaves the index unchanged snaps back on commit
+      set_input(step_input, `3`)
+      set_input(step_input, `99`)
+      step_input.dispatchEvent(new Event(`change`, { bubbles: true }))
+      await Promise.resolve()
+      expect([props.current_step_idx, step_input.value]).toEqual([2, `3`])
+    },
+  )
 
   test(`a run swap keeps the step index but clamps it to the new run`, async () => {
     const props = $state(default_props({ current_step_idx: 2 }))

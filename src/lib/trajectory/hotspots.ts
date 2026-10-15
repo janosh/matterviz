@@ -618,7 +618,7 @@ async function reduce_hotspots(
         !Number.isFinite(result.dof[bin])
       )
         throw new Error(
-          `Kinetic-energy accumulation overflow at frame ${display_idx(frame_idx)}, bin ${bin}; check input units and values`,
+          `Kinetic-energy accumulation overflow at frame ${display_idx(frame_idx)}, bin ${display_idx(bin)}; check input units and values`,
         )
       result.occupied_frames[bin]++
     }

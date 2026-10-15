@@ -220,8 +220,15 @@ describe(`frame stride`, () => {
     expect(document.querySelector(`.stub-controls p.hint`)).toBeNull()
   })
 
-  test(`position_buffers alone opts in to the stride budget`, async () => {
-    mount_pane({ suggest_stride: undefined, position_buffers: 2 })
+  // the MSD/VACF panes mount before their run, so position_buffers arrives later
+  test(`position_buffers alone opts in to the stride budget, even when set after mount`, async () => {
+    const buffers = $state<{ position_buffers?: number }>({ position_buffers: undefined })
+    mount_pane(bind_props({ suggest_stride: undefined }, buffers))
+    await settle()
+    expect(
+      document.querySelector(`.stub-controls input[aria-label="Frame stride"]`),
+    ).toBeNull()
+    buffers.position_buffers = 2
     await settle()
     expect(doc_query(`.stub-controls input[aria-label="Frame stride"]`)).toBeInstanceOf(
       HTMLInputElement,

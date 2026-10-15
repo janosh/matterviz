@@ -337,7 +337,7 @@ describe(`spatial kinetic hotspots`, () => {
     })
     await expect(
       calculate_hotspots(1, read, { grid, velocity_unit: `m/s`, mass_unit: `kg` }),
-    ).rejects.toThrow(`accumulation overflow`)
+    ).rejects.toThrow(`accumulation overflow at frame 1, bin 1;`)
   })
 
   it(`follows changing cells while fixed-device bins exclude atoms leaving the device`, async () => {
@@ -503,6 +503,11 @@ describe(`spatial kinetic hotspots`, () => {
     })
     const batch = frame_atom_batch(encode_frame(frames[1]), { frame_idx: 1 })
     expect(Array.from(batch.positions)).toEqual([1.5, 0.5, 0.5])
+    // a bad velocity component names its Cartesian axis, not a 0-based index
+    frames[0].structure.sites[0].properties.vel = [1, NaN, 0]
+    expect(() =>
+      frame_atom_batch(encode_frame(frames[0]), { frame_idx: 0, velocity_key: `vel` }),
+    ).toThrow(`Invalid vel at atom 1, step 0, axis y`)
     const run = trajectory_from_frames(frames)
     onTestFinished(() => run.dispose())
     if (!run.compute_hotspots) throw new Error(`Missing hotspot capability`)

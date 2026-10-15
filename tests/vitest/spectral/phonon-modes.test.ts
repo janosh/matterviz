@@ -526,6 +526,11 @@ describe(`phonon band helpers`, () => {
     data.qpoints.push({ q_position: [0.5, 0, 0], distance: 1, modes: [] })
     data.path_segments = [{ start_index: 0, end_index: 1, start_label: ``, end_label: `` }]
     expect(() => phonon_band_structure_from_modes(data)).toThrow(`Q-point 2 is missing mode 1`)
+    // so are a segment and its out-of-range bounds
+    data.path_segments = [{ start_index: 0, end_index: 2, start_label: ``, end_label: `` }]
+    expect(() => phonon_band_structure_from_modes(data)).toThrow(
+      `Phonon path segment 1 has invalid bounds 1–3 for 2 q-points`,
+    )
   })
 
   it.each([

@@ -9,7 +9,6 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'
-  import { seeded_rng } from '#site/histogram-data.js'
 
   const fe_bcc = {
     matrix: [
@@ -261,8 +260,11 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
         const super_a = lat_a * n_rep
         const sites = []
         // seeded pseudo-random in [-0.5, 0.5) for reproducible vectors
-        const rng = seeded_rng(42)
-        const rand = () => rng() - 0.5
+        let seed = 42
+        const rand = () => {
+          seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff
+          return seed / 0x80000000 - 0.5
+        }
         for (let idx_x = 0; idx_x < n_rep; idx_x++) {
           for (let idx_y = 0; idx_y < n_rep; idx_y++) {
             for (let idx_z = 0; idx_z < n_rep; idx_z++) {

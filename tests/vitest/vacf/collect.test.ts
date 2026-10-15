@@ -3,11 +3,8 @@ import type { CollectPositionsOptions, TrajectoryRun } from '#lib/trajectory/ind
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { calc_vacf } from '#lib/vacf/calc-vacf.js'
-import {
-  collect_vacf_input,
-  suggest_vacf_frame_stride,
-  VELOCITY_SITE_PROPERTY,
-} from '#lib/vacf/collect.js'
+import { collect_vacf_input, vacf_buffers, VELOCITY_SITE_PROPERTY } from '#lib/vacf/collect.js'
+import { suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
 import { describe, expect, it, vi } from 'vitest'
 import { make_frame } from '../test-fixtures'
 import { make_ase_md_buffer } from '../trajectory/fixtures'
@@ -152,12 +149,10 @@ describe(`collect_vacf_input`, () => {
         Array.from({ length: 1000 }, (_, idx) => make_frame(idx, [[0, 0, 0]], frame_options)),
       )
       const budgets = [72_000, 48_000, 24_000]
-      expect(budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes))).toEqual(
-        strides,
-      )
-      expect(
-        budgets.map((max_bytes) => suggest_vacf_frame_stride(run, max_bytes, 500)),
-      ).toEqual(window_strides)
+      const stride = (max_bytes: number, frame_count?: number) =>
+        suggest_analysis_frame_stride(run, max_bytes, vacf_buffers(run), frame_count)
+      expect(budgets.map((max_bytes) => stride(max_bytes))).toEqual(strides)
+      expect(budgets.map((max_bytes) => stride(max_bytes, 500))).toEqual(window_strides)
     },
   )
 })

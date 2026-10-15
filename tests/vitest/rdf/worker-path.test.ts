@@ -1,7 +1,7 @@
-// Web Worker branch of calc_frame_rdfs_async (see structure-id/worker-path.test.ts for why a
+// Web Worker branch of calc_all_pair_rdfs_async (see structure-id/worker-path.test.ts for why a
 // stub Worker is installed before the import): the payload must carry one element per site,
 // which the structure-id payload omits, or every pair would histogram as X-X.
-import type { calc_frame_rdfs_async as CalcFrameRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
+import type { calc_all_pair_rdfs_async as CalcAllPairRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
 import { calculate_all_pair_rdfs, type FrameRdfOptions } from '#lib/rdf/calc-rdf.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
@@ -14,10 +14,10 @@ const stub = install_stub_worker<{
   input: StructureIdPayload
   options: FrameRdfOptions
 }>(({ input, options }) => calculate_all_pair_rdfs(structure_from_payload(input), options))
-let calc_frame_rdfs_async: typeof CalcFrameRdfsAsync
+let calc_all_pair_rdfs_async: typeof CalcAllPairRdfsAsync
 
 beforeAll(async () => {
-  ;({ calc_frame_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
+  ;({ calc_all_pair_rdfs_async } = await import(`#lib/rdf/async-compute.svelte.js`))
 })
 afterEach(stub.reset)
 
@@ -27,7 +27,7 @@ test(`ships positions, lattice and species, and matches the sync per-pair histog
     [`Cl`, [0.5, 0.5, 0.5]],
   ])
   crystal.sites[0].properties.on_click = () => {}
-  const result = await calc_frame_rdfs_async(crystal, { cutoff: 5, n_bins: 50 })
+  const result = await calc_all_pair_rdfs_async(crystal, { cutoff: 5, n_bins: 50 })
   expect_module_worker(stub.instances, `src/lib/rdf/rdf-worker.ts`)
   const { input: payload } = stub.posted[0].message
   expect(Object.keys(payload).toSorted()).toEqual([`lattice`, `species`, `xyz`])
@@ -46,8 +46,9 @@ test(`dispatches each request to the least-loaded pool worker`, async () => {
   const crystal = make_crystal(4, [[`Na`, [0, 0, 0]]])
   const options = { cutoff: 4, n_bins: 10 }
   const posted_per_worker = () => stub.instances.map((worker) => worker.posted.length)
-  for (let request = 0; request < 3; request++) await calc_frame_rdfs_async(crystal, options)
+  for (let request = 0; request < 3; request++)
+    await calc_all_pair_rdfs_async(crystal, options)
   expect(posted_per_worker()).toEqual([3])
-  await Promise.all([0, 1].map(() => calc_frame_rdfs_async(crystal, options)))
+  await Promise.all([0, 1].map(() => calc_all_pair_rdfs_async(crystal, options)))
   expect(posted_per_worker()).toEqual([4, 1])
 })

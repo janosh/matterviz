@@ -669,6 +669,33 @@ describe(`LARGE_FILE markers`, () => {
     },
   )
 
+  test.each([
+    [{ command: `frame_response` }, `Host returned no trajectory frame 3`],
+    [{}, `Frame 3 timeout after 10s`], // host never answers
+  ])(`frame reply %j rejects with "%s" (1-based)`, async (frame_reply, msg) => {
+    with_host((request) =>
+      request.command === `request_frame`
+        ? { ...frame_reply, request_id: request.request_id }
+        : {
+            command: `large_file_response`,
+            request_id: request.request_id,
+            run_summary: {
+              ...summarize_run(backing),
+              properties: { rows: [], complete: false },
+            },
+          },
+    )
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    const result = await (await fresh_parse())(marker, `movie.extxyz`)
+    if (result.type !== `trajectory`) throw new Error(`Expected a host trajectory`)
+    const error = Promise.resolve()
+      .then(() => materialize_frame_result(result.data.read_frame(2)))
+      .catch((exc: unknown) => exc)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await error).toEqual(new Error(msg))
+    result.data.dispose()
+  })
+
   test.each([`send`, `response`])(`cleans up a host request when %s throws`, async (phase) => {
     const { post_message } = with_host((request) => ({
       command: `large_file_response`,

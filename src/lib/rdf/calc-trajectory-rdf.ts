@@ -10,7 +10,7 @@ import { calc_lattice_params } from '#lib/math.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { sweep_frames } from '#lib/trajectory/analysis.js'
-import { calc_frame_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
+import { calc_all_pair_rdfs_async, RDF_WORKER_COUNT } from './async-compute.svelte'
 import { coordination_number } from './calc-pdf'
 import type { FrameRdfOptions } from './calc-rdf'
 
@@ -210,7 +210,11 @@ export async function collect_trajectory_rdf(
         )
       }
       const volume = calc_lattice_params(structure.lattice.matrix).volume
-      const patterns = await calc_frame_rdfs_async(structure, { cutoff, n_bins }, { signal })
+      const patterns = await calc_all_pair_rdfs_async(
+        structure,
+        { cutoff, n_bins },
+        { signal },
+      )
       return { patterns, volume }
     },
   )
