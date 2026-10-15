@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
@@ -37,7 +38,7 @@
     height = $bindable(0),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    show_controls = `hover`,
+    show_controls = DEFAULT_CONTROLS_MODE,
     chrome_color,
     controls_toggle_props,
     header_controls,

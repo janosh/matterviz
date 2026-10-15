@@ -10,7 +10,7 @@
     type ExportSources,
   } from '#lib/io/export.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import { normalize_show_controls } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, normalize_show_controls } from '#lib/controls.js'
 
   import {
     contrast_color_memo,
@@ -30,6 +30,7 @@
   import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from 'svelte-widgets/virtual'
+  import type { VirtualScroll } from '#lib/table/index.js'
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
@@ -46,7 +47,7 @@
     MissingCellStyle,
     SymmetricMode,
   } from './index'
-  import { axis_key, cell_value_getter, matrix_to_rows } from './index'
+  import { axis_key, cell_value_getter, matrix_to_rows, VIRTUAL_CELL_THRESHOLD } from './index'
 
   type SelectionMode = `single` | `multi` | `range`
   type AxisOrder =
@@ -93,15 +94,14 @@
     x_order,
     y_order,
     search_query = $bindable(``),
-    virtualize = false,
-    overscan = 3,
+    virtual,
     export_formats,
     export_filename = `heatmap`,
     on_export,
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
     show_values = $bindable(false),
-    show_controls = `hover`,
+    show_controls = DEFAULT_CONTROLS_MODE,
     controls_open = $bindable(false),
     controls_props = {},
     x_axis = {},
@@ -158,11 +158,12 @@
       y_order?: AxisOrder
       // Case-insensitive substring filter on item keys/labels of both axes
       search_query?: string
-      // Render only the cells inside the scroll viewport. The window comes from the container's
-      // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
-      // fits on screen mounts every cell either way, at a few hundred ms per 10k.
-      virtualize?: boolean
-      overscan?: number
+      // Render only the cells inside the scroll viewport, windowing both axes like HeatmapTable
+      // windows rows: `overscan` extra tracks per side, at least `min_window` tracks (also what
+      // renders before the viewport is measured). The window comes from the container's own
+      // scroll extent, so a matrix that fits on screen still mounts every cell. Unset turns it
+      // on past VIRTUAL_CELL_THRESHOLD visible cells, false renders every cell.
+      virtual?: VirtualScroll
       // Mean of each visible row/column in an extra track
       show_row_summaries?: boolean
       show_col_summaries?: boolean
@@ -409,6 +410,11 @@
       : 1
 
   // === Virtual window ===
+  let virtual_config = $derived(
+    (virtual ?? row_count * col_count > VIRTUAL_CELL_THRESHOLD)
+      ? { overscan: 3, min_window: 0, ...(typeof virtual === `object` ? virtual : {}) }
+      : null,
+  )
   // Zero is a legitimate size (a gap of `0px` is common), so only blank, negative or non-px
   // input falls back. Treating 0 as invalid inflated the stride to 12px and made the virtual
   // window cover a fraction of the cells actually on screen.
@@ -429,13 +435,13 @@
   // items are selected by their rank; otherwise track position == position in `visible`.
   const window_axis = (axis: Axis, scroll: number, viewport: number, count: number) => {
     const [visible, rank] = axis === `x` ? [vis_x, ranks.x] : [vis_y, ranks.y]
-    if (!virtualize) return visible
+    if (!virtual_config) return visible
     const { start, end } = virtual_window({
       scroll,
       viewport,
       item_size: stride_px,
       count,
-      overscan,
+      ...virtual_config,
     })
     return gaps_mode
       ? visible.filter((item_idx) => rank[item_idx] >= start && rank[item_idx] < end)
@@ -484,7 +490,7 @@
   onMount(measure_viewport)
   // A container resized but never scrolled would keep windowing against its mount viewport
   $effect(() => {
-    if (!virtualize || !matrix_el || typeof ResizeObserver === `undefined`) return
+    if (!virtual_config || !matrix_el || typeof ResizeObserver === `undefined`) return
     // Size-guarded: remeasuring re-windows the grid, which can add or drop the scrollbar
     const observer = new ResizeObserver(([{ target }]) => {
       const { clientWidth: width, clientHeight: height } = target
@@ -497,7 +503,7 @@
   // the container the observer above watches.
   $effect(() => {
     void [vis_x, vis_y, stride_px, show_x_labels, show_y_labels]
-    if (virtualize) measure_viewport()
+    if (virtual_config) measure_viewport()
   })
 
   // === Selection, brush, tooltip ===
@@ -698,7 +704,7 @@
     y_step = 0,
   ): Promise<void> {
     const cell_node = () => matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    if (virtualize && matrix_el && !cell_node()) {
+    if (virtual_config && matrix_el && !cell_node()) {
       const edge = (axis: Axis, idx: number, step: number, offset: number, extent: number) =>
         Math.max(
           0,
@@ -910,7 +916,7 @@
     oncontextmenu={handle_contextmenu}
     onkeydown={handle_keydown}
     onfocusin={has_interaction_handlers ? handle_focusin : undefined}
-    onscroll={virtualize ? sync_scroll : undefined}
+    onscroll={virtual_config ? sync_scroll : undefined}
   >
     {#snippet axis_label(axis: Axis, idx: number)}
       {@const { label } = (axis === `x` ? x_items : y_items)[idx]}

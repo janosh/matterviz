@@ -1,4 +1,6 @@
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
+import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.js'
+import { make_rng } from '../numeric-helpers'
 import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -7,6 +9,7 @@ import {
   export_via_pane,
   fire,
   keydown,
+  mock_canvas_context,
   mount_sized,
   mouse,
   one_tab_stop,
@@ -185,6 +188,49 @@ describe(`TernaryPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     await fire(plot_svg(plot), mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenCalledTimes(3)
+  })
+
+  // ScatterPlot's threshold: one canvas instead of an SVG node per marker, still pickable
+  test.each([
+    { fill: undefined, canvas: true },
+    { fill: `var(--marker-fill)`, canvas: false }, // a paint canvas can't parse stays SVG
+  ])(`$fill markers past the canvas threshold: canvas=$canvas`, async ({ fill, canvas }) => {
+    const arcs: [number, number][] = []
+    mock_canvas_context({ arc: vi.fn((cx: number, cy: number) => arcs.push([cx, cy])) })
+    const n_points = CANVAS_MARKER_THRESHOLD + 1
+    const rng = make_rng(0)
+    const points = Array.from(
+      { length: n_points },
+      () => [rng(), rng(), rng()] as [number, number, number],
+    )
+    const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const plot = await mount_ternary({
+      series: [{ points, point_style: { fill } }],
+      on_point_hover,
+      on_point_click,
+    })
+    expect(Boolean(plot.querySelector(`canvas.marker-canvas`))).toBe(canvas)
+    expect(markers(plot)).toHaveLength(canvas ? 0 : n_points)
+    if (!canvas) return
+    // markers paint in data order, so arc k is point k; the svg rect sits at the origin
+    expect(arcs).toHaveLength(n_points)
+    const svg = plot_svg(plot)
+    for (const point_idx of [0, 500, n_points - 1]) {
+      const [cx, cy] = arcs[point_idx]
+      await fire(svg, mouse(`mousemove`, { clientX: cx, clientY: cy }))
+      expect(on_point_hover).toHaveBeenLastCalledWith(expect.objectContaining({ point_idx }))
+      // only the hovered marker gets an SVG node, drawn over its canvas twin
+      expect(markers(plot).map((node) => node.getAttribute(`data-ternary-idx`))).toEqual([
+        String(point_idx),
+      ])
+      expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+      await fire(svg, mouse(`click`, { clientX: cx, clientY: cy }))
+      expect(on_point_click).toHaveBeenLastCalledWith(expect.objectContaining({ point_idx }))
+    }
+    // far from every marker clears the hover
+    await fire(svg, mouse(`mousemove`, { clientX: 1, clientY: 1 }))
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
+    expect(markers(plot)).toHaveLength(0)
   })
 
   test(`keyboard focus anchors the tooltip at the marker, in svg pixels, until focus leaves the chart`, async () => {

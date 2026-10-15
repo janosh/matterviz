@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
   import { type ScatterPlotOptions, ScatterPlot, type DataSeries } from '#lib/plot/index.js'
   // Energy profile of one or more reaction paths, with the barrier annotated and the
   // fitted saddle drawn distinctly from the highest computed image.
@@ -33,7 +33,7 @@
     on_image_change,
     x_axis = {},
     y_axis = {},
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     profiles: given_profiles,
     ...rest

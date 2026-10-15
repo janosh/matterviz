@@ -132,7 +132,7 @@ test(`electronegativity colorbar retains fitting ticks and thins only crowded la
   }
 })
 
-// The element matrix is ~103x103 and opts into `virtualize`. Windowing is measured from real
+// The element matrix is ~103x103, past the cell count where `virtual` turns on by itself. Windowing is measured from real
 // layout, so it can only be exercised in a browser.
 test.describe(`HeatmapMatrix virtualization`, () => {
   const matrix = `.scroll-container .heatmap > .grid`

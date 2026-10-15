@@ -3,6 +3,7 @@
   import type { ShowControlsState } from '#lib/controls.js'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { type ShortcutId, shortcut_attrs } from '#lib/shortcuts.js'
   import type { create_sequence_player } from './sequence-player.svelte'
 
   let {
@@ -12,9 +13,8 @@
     playback,
     step_label_positions = [],
     item_name = `step`,
-    previous_title,
+    keyboard_hints = false,
     play_title,
-    next_title,
     aria_label,
     aria_valuetext,
     disable_step_while_playing = true,
@@ -27,9 +27,9 @@
     playback: ReturnType<typeof create_sequence_player>
     step_label_positions?: number[]
     item_name?: string
-    previous_title?: string
+    // The host forwards its keys to playback.handle_keydown: buttons name their shortcuts
+    keyboard_hints?: boolean
     play_title?: string
-    next_title?: string
     aria_label?: string
     aria_valuetext?: string
     disable_step_while_playing?: boolean
@@ -49,6 +49,9 @@
   }
   const step_locked = $derived(playback.is_playing && disable_step_while_playing)
   const play_label = $derived(playback.is_playing ? `Pause` : `Play`)
+  // title plus aria-keyshortcuts when the host handles the key, else the bare label
+  const hint = (id: ShortcutId, label: string) =>
+    keyboard_hints ? shortcut_attrs(id, label) : { title: label }
 </script>
 
 {#if controls_config.visible(`nav`)}
@@ -58,7 +61,7 @@
       onclick={playback.previous}
       style={playback.shortcut_flash.style(`previous`)}
       disabled={index === 0 || step_locked}
-      title={previous_title ?? `Previous ${item_name}`}
+      {...hint(`previous`, `Previous ${item_name}`)}
       aria-label={`Previous ${item_name}`}
     >
       ⏮
@@ -68,7 +71,7 @@
       onclick={playback.toggle}
       style={playback.shortcut_flash.style(`play`)}
       disabled={count <= 1}
-      title={play_title ?? play_label}
+      {...hint(`play`, play_title ?? play_label)}
       aria-label={play_label}
       class={['play-button', { playing: playback.is_playing }]}
     >
@@ -79,7 +82,7 @@
       onclick={playback.next}
       style={playback.shortcut_flash.style(`next`)}
       disabled={index === count - 1 || step_locked}
-      title={next_title ?? `Next ${item_name}`}
+      {...hint(`next`, `Next ${item_name}`)}
       aria-label={`Next ${item_name}`}
     >
       ⏭

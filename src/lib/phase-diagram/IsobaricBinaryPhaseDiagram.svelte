@@ -129,7 +129,7 @@
   }
 
   // `always` by default: the editor and export toggles are how users discover those features
-  const controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  const controls_config = $derived(normalize_show_controls(show_controls))
   // Shared icon/toggle styling for the controls, export and editor panes
   const pane_props = {
     icon_style: `width: 14px; height: 14px`,
@@ -496,6 +496,7 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
+      shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
       style="--viewer-buttons-top: var(--ctrl-btn-top, 30px); --viewer-buttons-right: var(--ctrl-btn-right, 20px)"
     >
       {#if controls_config.visible(`controls`)}

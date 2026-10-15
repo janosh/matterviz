@@ -1339,7 +1339,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-structure-only/)
       await expect(display_button).toHaveAttribute(
         `aria-label`,
-        `Automatic: Structure-only (V: next, Shift+V: previous)`,
+        `Automatic: Structure-only (V / Shift+V)`,
       )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)

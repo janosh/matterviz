@@ -1,5 +1,4 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
-import * as d3_sc from 'd3-scale-chromatic'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { evict_oldest } from '#lib/labels.js'
 import { clamp } from '#lib/math.js'
@@ -17,27 +16,9 @@ import pastel_colors from './pastel-colors.json' with { type: 'json' }
 import vesta_colors from './vesta-colors.json' with { type: 'json' }
 
 export * from './backdrop.svelte'
+export * from './scale-names'
 export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants.js'
 
-// Extract color scheme interpolate function names from d3-scale-chromatic
-// Color scale names are always the prefixed d3 export name (`interpolateViridis`), which
-// is what get_d3_interpolator, the settings defaults and every dropdown value use. Bare
-// names are a display concern only -- strip the prefix at render time.
-export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
-const d3_interpolators = Object.fromEntries(
-  Object.entries(d3_sc).filter(
-    ([name, candidate]) => name.startsWith(`interpolate`) && typeof candidate === `function`,
-  ),
-) as Record<D3InterpolateName, (fraction: number) => string>
-export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
-  Object.hasOwn(d3_interpolators, name)
-export const get_d3_interpolator = (
-  name: D3InterpolateName,
-): ((fraction: number) => string) => {
-  const interpolator = d3_interpolators[name]
-  if (!interpolator) throw new Error(`Unknown D3 color interpolator: ${name}`)
-  return interpolator
-}
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 

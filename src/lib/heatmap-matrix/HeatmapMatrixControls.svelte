@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
@@ -13,7 +14,7 @@
     ordering = $bindable(),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
-    show_controls = `hover`,
+    show_controls = DEFAULT_CONTROLS_MODE,
     color_scale = $bindable(`interpolateViridis`),
     domain_mode = $bindable(`auto`),
     color_bar = $bindable(null),

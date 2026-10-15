@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { normalize_show_controls } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, normalize_show_controls } from '#lib/controls.js'
   import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
@@ -35,7 +35,7 @@
     cutoff = $bindable(PDF_DEFAULT_CUTOFF),
     n_bins = $bindable(PDF_DEFAULT_N_BINS),
     show_partials = $bindable(false),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     pbc,
     error_msg = $bindable(),

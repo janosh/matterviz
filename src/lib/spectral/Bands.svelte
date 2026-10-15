@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { track_settings } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
   import type { BZPopupPoint } from '#lib/brillouin/index.js'
@@ -66,7 +66,7 @@
     shade_imaginary_modes = true,
     show_gap_annotation = true,
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     id: identifier,
     'data-testid': data_testid,

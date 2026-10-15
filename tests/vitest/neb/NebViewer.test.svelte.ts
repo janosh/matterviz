@@ -438,6 +438,8 @@ describe(`NebViewer`, () => {
         expected_label,
       )
     }
+    // NebViewer's keys work on the focused slider only: its buttons claim no shortcut
+    expect(viewer.querySelector(`.play-button`)?.hasAttribute(`aria-keyshortcuts`)).toBe(false)
 
     const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
     path_select.value = `curved hop`

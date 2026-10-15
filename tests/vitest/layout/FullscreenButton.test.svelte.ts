@@ -41,7 +41,8 @@ describe(`FullscreenButton`, () => {
   test(`without a wrapper the flag is the state and every flip is reported`, async () => {
     const { state, on_change, button } = mount_button()
     expect(button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(button.title).toBe(`Enter fullscreen`)
+    expect(button.title).toBe(`Enter fullscreen (F)`)
+    expect(button.getAttribute(`aria-keyshortcuts`)).toBe(`F`)
     expect(button.querySelector(`svg`)?.getAttribute(`viewBox`)).toBe(
       `2.885417 2.885417 18.229166 18.229166`,
     )
@@ -50,7 +51,7 @@ describe(`FullscreenButton`, () => {
     await tick()
     expect(state.fullscreen).toBe(true)
     expect(button.getAttribute(`aria-pressed`)).toBe(`true`)
-    expect(button.title).toBe(`Exit fullscreen`)
+    expect(button.title).toBe(`Exit fullscreen (F)`)
     expect(button.querySelector(`svg`)?.getAttribute(`viewBox`)).toBe(
       `1.583333 1.583333 20.833334 20.833334`,
     )

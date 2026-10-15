@@ -3,7 +3,6 @@
   // (dim 4, tetrahedron) convex hulls on a 2D canvas. Everything dimension-specific comes
   // from the HullCanvasStrategy picked by `dim`; the component never reads camera angles.
   import { add_alpha, default_element_colors } from '#lib/colors/index.js'
-  import type { Vec2 } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { ColorScaleConfig } from '#lib/plot/core/types.js'
@@ -22,6 +21,8 @@
     draw_overlay_rings,
     draw_overlay_segments,
     energy_range_of,
+    face_e_form_range,
+    hull_face_e_forms,
     HULL_CANVAS_STRATEGIES,
     simplex_centroid,
   } from './canvas-draw'
@@ -234,13 +235,18 @@
   const { placement: gizmo_placement = `top-right`, ...gizmo_props } =
     $derived<ConvexHullGizmoOptions>(typeof gizmo === `object` ? gizmo : {})
 
-  // Formation energy colour bar for the face shading (uniform / formation_energy modes)
-  const e_form_range = $derived<Vec2>([plot_entries.length > 0 ? energy_range.min : -1, 0])
-  // alpha 0 at 0 eV, up to hull_face_opacity at the most negative energy
-  const e_form_color_scale = $derived<ColorScaleConfig>({
-    scheme: (frac) => add_alpha(hull_face_color, (1 - frac) * hull_face_opacity),
-    value_range: e_form_range,
-  })
+  // Formation energy colour bar for the face shading: formation_energy mode draws the faces'
+  // color_scale over their range, uniform mode its alpha ramp (0 at 0 eV, up to
+  // hull_face_opacity at the most negative energy)
+  const face_e_forms = $derived(hull_face_e_forms(hull_facets))
+  const e_form_color_scale = $derived<ColorScaleConfig>(
+    hull_face_color_mode === `formation_energy`
+      ? resolve_color_scale(color_scale, face_e_form_range(face_e_forms))
+      : {
+          scheme: (frac) => add_alpha(hull_face_color, (1 - frac) * hull_face_opacity),
+          value_range: [plot_entries.length > 0 ? energy_range.min : -1, 0],
+        },
+  )
 
   const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
 </script>
@@ -290,7 +296,7 @@
     />
   {/if}
 
-  {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
+  {#if plot_entries.length > 0 && show_hull_faces && hull_facets.length > 0 && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
     <ColorBar
       title="Formation energy (eV/atom)"
       color_scale={e_form_color_scale}

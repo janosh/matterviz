@@ -3,6 +3,7 @@
   import { get_convex_hull_defaults } from '#lib/settings.js'
   import { untrack } from 'svelte'
   import { normalize_show_controls } from '#lib/controls.js'
+  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
@@ -320,6 +321,14 @@
     {wrapper}
     fullscreen_bg_css_var="--hull-bg-fullscreen"
     on_fullscreen_change={context?.recenter_camera}
+    shortcut_scopes={[
+      `viewer`,
+      `convex-hull`,
+      ...(dim === 2
+        ? [`convex-hull-2d` as const]
+        : [`convex-hull-3d` as const, `camera` as const]),
+      ...(dim === 3 ? [`convex-hull-ternary` as const] : []),
+    ]}
     class="convex-hull-toolbar"
     style="--viewer-buttons-gap: 0"
   >
@@ -327,7 +336,9 @@
       <button
         type="button"
         onclick={() => reset_all(context?.reset_camera)}
-        title="Reset view and settings"
+        {...dim === 2
+          ? shortcut_attrs(`hull_reset`)
+          : { title: SHORTCUTS.hull_reset.description }}
       >
         <Icon icon={Reset} />
       </button>

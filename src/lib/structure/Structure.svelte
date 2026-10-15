@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
   import { merge_site_properties, site_count } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
@@ -1243,6 +1244,14 @@
         fullscreen_bg_css_var="--struct-bg-fullscreen"
         on_fullscreen_change={(value) =>
           on_fullscreen_change?.({ structure, fullscreen: value })}
+        shortcut_scopes={[
+          `viewer`,
+          `structure`,
+          ...(has_3d_view ? [`camera` as const] : []),
+          ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
+            ? [`structure-edit` as const]
+            : []),
+        ]}
         style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
       >
         {#if layout_control_visible}
@@ -1258,8 +1267,9 @@
                 <button
                   type="button"
                   class={['view-mode-option', { selected: current_layout.mode === mode }]}
-                  title={mode === `multi` ? `${label} (G)` : label}
-                  aria-keyshortcuts={mode === `multi` ? `G` : undefined}
+                  {...mode === `multi`
+                    ? shortcut_attrs(`multi_view`, label)
+                    : { title: label }}
                   aria-pressed={current_layout.mode === mode}
                   onclick={() => select_structure_layout(mode)}
                 >
@@ -1273,7 +1283,7 @@
                 type="button"
                 class="view-mode-option reset-camera"
                 title={RESET_VIEW_TITLE}
-                aria-keyshortcuts="r"
+                aria-keyshortcuts={SHORTCUTS.reset_camera.keys}
                 onclick={() => {
                   session.reset_all_cameras()
                   view_layout_menu_open = false
@@ -1301,7 +1311,10 @@
             bind:selected_sites
             {sym_data}
             wyckoff_positions={session.wyckoff_rows}
-            toggle_props={{ style: shortcut_flash.style(`info`) }}
+            toggle_props={{
+              style: shortcut_flash.style(`info`),
+              ...shortcut_attrs(`info_pane`),
+            }}
             {@attach attach_tooltip({ content: `Structure info pane` })}
           />
         {/if}

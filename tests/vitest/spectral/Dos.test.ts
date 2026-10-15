@@ -108,6 +108,18 @@ describe(`Dos component`, () => {
     expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(n_lines)
   })
 
+  // Domain wrappers share the charts' default (DEFAULT_CONTROLS_MODE): controls on hover
+  it(`reveals its controls on hover by default`, async () => {
+    const plot = await mount_sized(
+      Dos,
+      { doses: { '': phonon_dos } },
+      { selector: `.scatter` },
+    )
+    expect(plot.querySelector(`.header-controls`)?.classList.contains(`hover-visible`)).toBe(
+      true,
+    )
+  })
+
   // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
   // boundary instead of throwing inside convert_frequencies
   it.each([`cm^-1`, `cm-1`, `cm⁻¹`])(`labels the phonon axis in %s as cm⁻¹`, async (units) => {

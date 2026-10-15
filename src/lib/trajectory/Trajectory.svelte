@@ -48,7 +48,8 @@
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { FullscreenButton, SettingsSection, ShortcutsHelp } from '#lib/layout/index.js'
+  import { SHORTCUTS, shortcut_title } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
@@ -1310,7 +1311,7 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
-  aria-keyshortcuts={has_plot_properties ? `V Shift+V` : undefined}
+  aria-keyshortcuts={has_plot_properties ? SHORTCUTS.view_mode.keys : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
@@ -1493,9 +1494,7 @@
           playback={player}
           {step_label_positions}
           item_name="step"
-          previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
-          play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
-          next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
+          keyboard_hints
           on_index_input={session.scrub}
         >
           {#snippet slider_overlay()}
@@ -1709,7 +1708,10 @@
           {#if has_plot_properties && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
+              label={shortcut_title(
+                `view_mode`,
+                `${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`,
+              )}
               class="view-mode-dropdown-wrapper"
               button_style={shortcut_flash.style(`view`)}
             >
@@ -1728,6 +1730,14 @@
               {/each}
             </ToolbarMenu>
           {/if}
+          <ShortcutsHelp
+            scopes={[
+              `viewer`,
+              `sequence`,
+              ...(has_plot_properties ? [`trajectory` as const] : []),
+            ]}
+            {wrapper}
+          />
           {#if fullscreen || show_toggle}
             <FullscreenButton
               bind:fullscreen

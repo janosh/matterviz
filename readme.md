@@ -96,7 +96,9 @@ Composite components expose deliberate `*_props` options for presentation and in
 
 `scene_props.camera_position` fits the structure when omitted; any supplied coordinate tuple, including `[0, 0, 0]`, is an explicit position. Clear it with `undefined` to request a fresh fit.
 
-Floating viewer, plot, table and heatmap controls share `show_controls`: `true`/`'always'`, `'hover'`, `false`/`'never'`, or `{ mode, hidden, style }`. For example, `{ mode: 'hover', hidden: ['controls'] }` keeps a plot’s fullscreen button and hides its settings pane. `false` hides all plot chrome; `controls_open` independently controls whether the settings pane is open.
+Floating viewer, plot, table and heatmap controls share `show_controls`: `true`/`'always'`, `'hover'`, `false`/`'never'`, or `{ mode, hidden, style }`. For example, `{ mode: 'hover', hidden: ['controls'] }` keeps a plot’s fullscreen button and hides its settings pane. `false` hides all plot chrome; `controls_open` independently controls whether the settings pane is open. Every chart, domain plot and viewer defaults to `'hover'` (`DEFAULT_CONTROLS_MODE`); only the `Trajectory` and `NebViewer` playback bars default to `'always'`.
+
+Viewers share one keyboard shortcut registry (`SHORTCUTS`): press <kbd>?</kbd> over a viewer (or click its keyboard button) to list the shortcuts of everything under the pointer, and <kbd>r</kbd> resets the camera of any hovered 3D viewer.
 
 Every component with a hover tooltip (plots, phase and convex-hull diagrams, `HeatmapMatrix`, `PeriodicTable`, `Structure`, `BrillouinZone`, `FermiSurface`, `ChemPotDiagram`) takes one `tooltip` prop: omitted shows the default, `false` hides it, a snippet replaces its content (`Structure` appends it below the site info), and a config object tunes the default where a component defines one (`{ prefix, suffix }` for phase diagrams, hulls, BZ and Fermi surfaces, `{ detail_level }` for `ChemPotDiagram`).
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { track_settings } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
@@ -64,7 +64,7 @@
       x_zero_line: true,
       y_zero_line: true,
     }),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     show_normalize_control = false,
     show_units_control = false,

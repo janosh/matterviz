@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { format_num } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
@@ -29,7 +30,7 @@
     mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     current_frame = null,
     on_frame_click,

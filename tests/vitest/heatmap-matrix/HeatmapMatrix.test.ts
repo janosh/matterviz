@@ -2,7 +2,11 @@
 
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
-import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
+import {
+  type AxisItem,
+  type HeatmapDomainMode,
+  VIRTUAL_CELL_THRESHOLD,
+} from '#lib/heatmap-matrix/index.js'
 import { format_num } from '#lib/labels.js'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
@@ -930,11 +934,24 @@ describe(`virtualization`, () => {
       values: labels.map((_unused_param_u, row) =>
         labels.map((_unused_value, col) => row + col),
       ),
-      virtualize: true,
+      virtual: true,
       tile_size: `${STRIDE}px`,
       ...extra,
     })
   }
+  // Unmeasured (happy-dom has no layout), a window holds its overscan or min_window tracks
+  const side = Math.sqrt(VIRTUAL_CELL_THRESHOLD)
+  test.each([
+    [`unset at the threshold renders every cell`, side, undefined, side ** 2],
+    [`unset past the threshold windows`, side + 1, undefined, 3 ** 2],
+    [`false never windows`, side + 1, false, (side + 1) ** 2],
+    [`an object tunes the window`, 10, { overscan: 1, min_window: 5 }, 5 ** 2],
+  ] as const)(`virtual %s`, (_desc, n_items, virtual, n_cells) => {
+    const items = Array.from({ length: n_items }, (_unused, idx) => `I${idx}`)
+    mount_matrix({ x: items, y: items, values: items.map(() => items.map(() => 1)), virtual })
+    expect(query_all(`.cell[data-x]`)).toHaveLength(n_cells)
+  })
+
   test.each([`auto`, `robust`] as const)(
     `%s with explicit bounds only reads and colors rendered cells`,
     async (domain_mode) => {

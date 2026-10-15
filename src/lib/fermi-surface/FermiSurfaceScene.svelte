@@ -476,6 +476,7 @@
   position={computed_camera_position}
   fov={controls.fov}
   zoom={scene_camera.zoom}
+  reset_zoom={scene_camera.reset_to_fit}
   orbit_props={scene_camera.orbit_props}
   gizmo={controls.gizmo}
 />

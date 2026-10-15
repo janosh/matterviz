@@ -228,6 +228,33 @@ describe(`convex hull replacement state`, () => {
     expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
   })
 
+  // The face color bar draws what the faces use: color_scale over the faces' formation
+  // energies in formation_energy mode (it used to keep the uniform mode's alpha ramp)
+  test.each([
+    [`formation_energy`, true],
+    [`uniform`, false],
+  ] as const)(`%s face mode color bar uses color_scale: %s`, async (mode, uses_scale) => {
+    const entries = [
+      ...[`Li`, `Fe`, `O`].map((element) => make_phase({ [element]: 1 })),
+      make_phase({ Li: 2, O: 1 }, -1.2),
+      make_phase({ Fe: 1, O: 1 }, -0.9),
+      make_phase({ Li: 1, Fe: 1, O: 2 }, -1.5),
+    ]
+    const target = await mount_hull({
+      entries,
+      color_mode: `stability`,
+      show_hull_faces: true,
+      hull_face_color_mode: mode,
+      color_scale: `interpolateReds`,
+    })
+    const bars = [...target.querySelectorAll<HTMLElement>(`.colorbar`)]
+    const face_bar = bars.find((bar) => bar.textContent?.includes(`Formation energy`))
+    const gradient = face_bar?.querySelector<HTMLElement>(`[style*="linear-gradient"]`)
+    const style = gradient?.getAttribute(`style`) ?? ``
+    expect(style).toContain(`linear-gradient`)
+    for (const end of [0, 1]) expect(style.includes(interpolateReds(end))).toBe(uses_scale)
+  })
+
   // One export pane for every dimensionality: the 2D plot as SVG/PNG, 3D/4D as a PNG
   // redrawn at export resolution; entries as CSV (element amounts as columns) and JSON
   test.each([

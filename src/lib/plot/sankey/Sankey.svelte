@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { format_value } from '#lib/labels.js'
@@ -63,7 +64,7 @@
     on_node_hover,
     on_link_click,
     on_link_hover,
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,

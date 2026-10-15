@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { BarPlotOptions } from '#lib/plot/index.js'
   // Shell shared by the bar plots that histogram one-or-many structures (#lib/bond-angles,
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
@@ -37,7 +38,7 @@
     loading = $bindable(false),
     loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     on_bar_change,
     ...rest

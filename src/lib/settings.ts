@@ -12,6 +12,7 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { is_plain_object } from '#lib/utils.js'
+import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
 type NumberBounds = { minimum?: number; maximum?: number; multipleOf?: number }
@@ -28,6 +29,8 @@ export interface SettingType<T = unknown> extends NumberBounds {
   items?: NumberBounds
   additionalProperties?: { type: `string` | `number` | `boolean` | `object` }
   web_only?: true
+  // A value shape richer than the default's: a color scale is a scheme name or a config object
+  kind?: `color_scale`
 }
 
 // The option labels of an enum setting, for controls that render their <select> from the schema
@@ -136,6 +139,8 @@ type NormalizeSettings<Definition> = {
 const define_settings = <Definition extends SettingsDefinition>(definition: Definition) =>
   definition as unknown as NormalizeSettings<Definition>
 const typed_setting = <Value>(definition: SettingType<Value>): SettingType<Value> => definition
+const color_scale_setting = (description: string) =>
+  typed_setting<ColorScale>({ value: `interpolateViridis`, description, kind: `color_scale` })
 
 // Settings shared by the sunburst + treemap sections below so the two charts'
 // options can't drift; `node` names the chart's visual unit (arc/cell) and
@@ -223,10 +228,7 @@ const convex_hull_settings = (
       description: `Color mode for ${hull} points`,
       enum: { stability: `Stability`, energy: `Energy` },
     },
-    color_scale: typed_setting<ColorScale>({
-      value: `interpolateViridis`,
-      description: `D3 interpolate color scale for ${hull} energy mode`,
-    }),
+    color_scale: color_scale_setting(`D3 interpolate color scale for ${hull} energy mode`),
     show_stable: { value: true, description: `Show stable phases in ${hull}` },
     show_unstable: { value: true, description: `Show unstable phases in ${hull}` },
     show_stable_labels: {
@@ -432,10 +434,9 @@ export const SETTINGS_CONFIG = define_settings({
         property: `Site Property`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
-    atom_color_scale: typed_setting<ColorScale>({
-      value: `interpolateViridis`,
-      description: `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
-    }),
+    atom_color_scale: color_scale_setting(
+      `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
+    ),
     atom_color_scale_type: {
       value: `continuous`,
       description: `Color scale type for property-based coloring`,
@@ -591,10 +592,7 @@ export const SETTINGS_CONFIG = define_settings({
         uniform: `uniform`,
       },
     }),
-    vector_color_scale: typed_setting<ColorScale>({
-      value: `interpolateViridis`,
-      description: `D3 color scale for magnitude coloring mode`,
-    }),
+    vector_color_scale: color_scale_setting(`D3 color scale for magnitude coloring mode`),
     vector_normalize: {
       value: false,
       description: `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
@@ -732,10 +730,9 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Quantity mapped onto the Fermi surface color scale`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
-    color_scale: typed_setting<ColorScale>({
-      value: `interpolateViridis`,
-      description: `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
-    }),
+    color_scale: color_scale_setting(
+      `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
+    ),
     representation: {
       value: `solid`,
       description: `How to render the Fermi surface`,
@@ -1303,10 +1300,12 @@ const valid_array = (value: unknown, setting: SettingType, reference: readonly u
   )
 }
 
-// Whether `value` may stand in for the schema default: enum membership, a finite number inside
+// Whether `value` may stand in for the schema default: its kind's shape (a color scale name or
+// config), enum membership, a finite number inside
 // minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems
 // (items inside `items`), a plain object for free-form maps, else the default's primitive type.
 export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
+  if (setting.kind === `color_scale`) return is_color_scale(value)
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)
   if (Array.isArray(setting.value)) return valid_array(value, setting, setting.value)

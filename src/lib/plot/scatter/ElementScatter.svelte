@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { element_data } from '#lib/element/index.js'
@@ -14,7 +15,7 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     ...rest
   }: ScatterPlotOptions & {

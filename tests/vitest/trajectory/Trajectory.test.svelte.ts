@@ -336,7 +336,7 @@ describe(`display modes`, () => {
     if (_kind === `constant-value` || _kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
-      ).toBe(`Automatic: Structure-only (V: next, Shift+V: previous)`)
+      ).toBe(`Automatic: Structure-only (V / Shift+V)`)
   })
 
   test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
@@ -440,7 +440,7 @@ describe(`display modes`, () => {
       frame_count: 3,
       frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
-    expect(view_mode_button.title).toBe(`Plot-only (V: next, Shift+V: previous)`)
+    expect(view_mode_button.title).toBe(`Plot-only (V / Shift+V)`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
     expect(target.querySelector(`.histogram`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()
@@ -1311,6 +1311,12 @@ describe(`panes`, () => {
     const target = mount_trajectory(props)
     await tick()
     expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    // Trajectory forwards its keys to playback, so the nav buttons name their shortcuts
+    const nav_keys = [`Previous step`, `Pause`, `Next step`].map((label) =>
+      doc_query(`[aria-label="${label}"]`).getAttribute(`aria-keyshortcuts`),
+    )
+    expect(nav_keys).toEqual([`ArrowLeft`, `Space`, `ArrowRight`])
+    expect(doc_query(`.shortcuts-btn`).getAttribute(`aria-keyshortcuts`)).toBe(`?`)
     expect(target.querySelector(`.x-quantity-select`)).not.toBeNull()
 
     props.active_pane = `spectroscopy`

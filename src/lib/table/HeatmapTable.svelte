@@ -1,7 +1,11 @@
 <script lang="ts" generics="Row extends object">
   import type { D3InterpolateName } from '#lib/colors/index.js'
   import type { ShowControlsProp } from '#lib/controls.js'
-  import { track_settings, normalize_show_controls } from '#lib/controls.js'
+  import {
+    DEFAULT_CONTROLS_MODE,
+    track_settings,
+    normalize_show_controls,
+  } from '#lib/controls.js'
   import {
     contrast_color_memo,
     contrast_text_color,
@@ -123,7 +127,7 @@
     backdrop = undefined,
     show_row_numbers = false,
     allow_better_toggle = false,
-    show_controls = $bindable({ mode: `hover`, hidden: [`controls`] }),
+    show_controls = $bindable({ mode: DEFAULT_CONTROLS_MODE, hidden: [`controls`] }),
     controls_open = $bindable(false),
     ...rest
   }: HTMLAttributes<HTMLDivElement> &

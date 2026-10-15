@@ -31,7 +31,8 @@
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { clamp, reciprocal_lattice } from '#lib/math.js'
   import { to_error } from '#lib/utils.js'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+  import { viewer_keys } from '#lib/shortcuts.js'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
@@ -250,18 +251,18 @@
     }
   })
 
-  function onkeydown(event: KeyboardEvent) {
-    if (event.defaultPrevented || event.isComposing) return
-    // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
-    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
-    if (event.repeat) return // holding `i` would flicker the pane
-
-    if (event.key === `i`) info_pane_open = !info_pane_open
-    else if (event.key === `Escape`) {
+  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp
+  const keys = viewer_keys(() => ({
+    i: () => {
+      info_pane_open = !info_pane_open
+    },
+    r: () => reset_scene_cameras(wrapper),
+    Escape: () => {
       if (info_pane_open) info_pane_open = false
-      else controls_open = false
-    }
-  }
+      else if (controls_open) controls_open = false
+      else return false
+    },
+  }))
 </script>
 
 <div
@@ -273,10 +274,10 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
-  {onkeydown}
   {...rest}
   class={[`brillouin-zone`, rest.class]}
   {@attach drop_zone}
+  {@attach keys}
 >
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}
@@ -296,6 +297,7 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--bz-bg-fullscreen"
+      shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, bz_data: zone, bz_order, fullscreen: value })}
     >

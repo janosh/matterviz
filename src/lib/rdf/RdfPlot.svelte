@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
@@ -43,7 +44,7 @@
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     on_bin_hover,
     on_sites_hover,

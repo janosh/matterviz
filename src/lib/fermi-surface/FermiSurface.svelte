@@ -39,7 +39,8 @@
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { viewer_keys } from '#lib/shortcuts.js'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BandGridData,
     FermiErrorData,
@@ -373,18 +374,15 @@
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  function handle_keydown(event: KeyboardEvent) {
-    if (event.defaultPrevented || event.isComposing) return
-    if (is_editable_event_target(event.target)) return
-    // Only handle shortcuts when component is focused/hovered or contains focus
-    if (!wrapper?.contains(document.activeElement) && !hovered) return
-
-    // `f` is owned by FullscreenButton, which arbitrates it between nested viewers
-    if (event.key === `Escape`) controls_open = false
-  }
+  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp
+  const keys = viewer_keys(() => ({
+    r: () => reset_scene_cameras(wrapper),
+    Escape: () => {
+      if (!controls_open) return false
+      controls_open = false
+    },
+  }))
 </script>
-
-<svelte:window onkeydown={handle_keydown} />
 
 <div
   role="region"
@@ -397,6 +395,7 @@
   {...rest}
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
   {@attach drop_zone}
+  {@attach keys}
 >
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
@@ -414,6 +413,7 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
+      shortcut_scopes={[`viewer`, `camera`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ fermi_data: surface_data, bz_data, fullscreen: value })}
     >

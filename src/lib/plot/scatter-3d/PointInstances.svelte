@@ -10,11 +10,13 @@
   import { T, useThrelte } from '@threlte/core'
   import { INSTANCE_STRIDE } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import type { Material, SphereGeometry } from 'three/webgpu'
-  import { Color, InstancedMesh, Matrix4, SRGBColorSpace, Vector3 } from 'three/webgpu'
+  import { SphereInstances } from '#lib/scene/picking.js'
+  import { Color, Matrix4, SRGBColorSpace, Vector3 } from 'three/webgpu'
 
-  // One InstancedMesh for many spheres sharing a caller-owned geometry and material. `packed`
-  // is what to draw in instance-tween's layout, read reactively off the plot's clock, so the
-  // buffers rewrite on every tween frame.
+  // One InstancedMesh for many spheres sharing a caller-owned geometry and material, picked by
+  // an analytic ray-sphere pass before the per-instance triangle test. `packed` is what to draw
+  // in instance-tween's layout, read reactively off the plot's clock, so the buffers rewrite on
+  // every tween frame.
   let {
     packed,
     geometry,
@@ -38,7 +40,7 @@
   // A new mesh only when the instance count, geometry or material changes; buffers refill only
   // on a new frame, so an idle on-demand scene stops rendering
   const count = $derived(packed.length / INSTANCE_STRIDE)
-  const mesh = $derived(new InstancedMesh(geometry, material, count))
+  const mesh = $derived(new SphereInstances(geometry, material, count))
   $effect(() => {
     const current = mesh
     return () => current.dispose() // frees only the instance buffers

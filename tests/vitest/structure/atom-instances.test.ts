@@ -33,6 +33,8 @@ import {
   Vector2,
 } from 'three/webgpu'
 import { expect, test, vi } from 'vitest'
+import { SphereInstances } from '#lib/scene/picking.js'
+import { make_rng } from '../numeric-helpers'
 
 const cell_point = (cell: Matrix4, axis: StructureCutaway[`axis`], depth: number) =>
   new Vector3(0.5, 0.5, 0.5).setComponent(axis, depth).applyMatrix4(cell)
@@ -422,6 +424,51 @@ test.each([8, 15, 20])(
     actual.dispose()
     translated.dispose()
     native.dispose()
+    geometry.dispose()
+    material.dispose()
+  },
+)
+
+test.each([
+  [1, 300, 8],
+  [2, 2000, 16],
+  [3, 50, 20],
+])(
+  `SphereInstances picks like native instancing on random clouds (seed %i, %i points)`,
+  (seed, n_points, segments) => {
+    const rng = make_rng(seed)
+    const geometry = new SphereGeometry(1, segments, segments)
+    const material = new MeshBasicMaterial()
+    const [fast, native] = [SphereInstances, InstancedMesh].map(
+      (Kind) => new Kind(geometry, material, n_points),
+    )
+    const matrix = new Matrix4()
+    for (let idx = 0; idx < n_points; idx++) {
+      const radius = 0.05 + 0.4 * rng()
+      matrix
+        .makeScale(radius, radius, radius)
+        .setPosition(rng() * 8 - 4, rng() * 8 - 4, rng() * 8 - 4)
+      for (const mesh of [fast, native]) mesh.setMatrixAt(idx, matrix)
+    }
+    for (const mesh of [fast, native]) {
+      mesh.rotation.set(0.3, -0.5, 0.1)
+      mesh.position.set(1, -2, 0.5)
+      mesh.updateMatrixWorld(true)
+    }
+    let n_hit_rays = 0
+    for (let ray_idx = 0; ray_idx < 60; ray_idx++) {
+      const origin = new Vector3(rng() * 2 - 1, rng() * 2 - 1, 20)
+      const target = new Vector3(rng() * 8 - 4, rng() * 8 - 4, rng() * 8 - 4).applyMatrix4(
+        native.matrixWorld,
+      )
+      const raycaster = new Raycaster(origin, target.sub(origin).normalize())
+      const [actual, expected] = [fast, native].map((mesh) => raycaster.intersectObject(mesh))
+      const values = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
+      expect(values(actual)).toEqual(values(expected))
+      expect(actual[0]?.instanceId).toBe(expected[0]?.instanceId)
+      if (expected.length) n_hit_rays++
+    }
+    expect(n_hit_rays).toBeGreaterThan(5) // the rays exercise real hits, not just misses
     geometry.dispose()
     material.dispose()
   },

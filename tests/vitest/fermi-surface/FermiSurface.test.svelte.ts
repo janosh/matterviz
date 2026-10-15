@@ -98,7 +98,7 @@ test.each([
   const state = $state({ controls_open: true })
   mounted.push(mount(FermiSurface, { target: document.body, props: state }))
   await tick()
-  doc_query(`.fermi-surface`).dispatchEvent(new MouseEvent(`mouseenter`))
+  doc_query(`.fermi-surface`).dispatchEvent(new PointerEvent(`pointerenter`))
   const event = new KeyboardEvent(`keydown`, {
     key: `Escape`,
     isComposing: is_composing,

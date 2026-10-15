@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { format_value } from '#lib/labels.js'
   import { DEG_TO_RAD } from '#lib/math.js'
   import type {
@@ -79,7 +80,7 @@
     on_node_click,
     on_node_hover,
     on_zoom,
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,

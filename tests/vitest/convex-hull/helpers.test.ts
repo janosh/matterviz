@@ -8,6 +8,7 @@ import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
+import { create_color_scale, resolve_color_scale } from '#lib/plot/core/scales.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -58,7 +59,9 @@ describe(`helpers: energy color scale + point color`, () => {
     expect([0, 0.013, 0.05, 0.2, 0.31, 0.5].map((val) => scale?.(val))).toEqual(colors)
   })
 
-  test(`formation-energy faces share the energy color scale over 0-based energies`, () => {
+  // The face color bar draws resolve_color_scale(color_scale, face_e_form_range(...)), so its
+  // gradient must map formation energies to exactly the colors the faces get
+  test(`formation-energy faces and their color bar share one range`, () => {
     const faces = [-1, -0.5, -0.2, 0].map((e_form, facet_idx) => ({ e_form, facet_idx }))
     const face_color = draw.face_color_resolver(faces as draw.HullFace[], {
       mode: `formation_energy`,
@@ -67,12 +70,26 @@ describe(`helpers: energy color scale + point color`, () => {
       element_colors: {},
       elements: [],
     })
-    expect(faces.map((face) => face_color(face as draw.HullFace))).toEqual([
-      `#440154`,
-      `#21918c`,
-      `#7ad151`,
-      `#fde725`,
-    ])
+    const face_colors = faces.map((face) => face_color(face as draw.HullFace))
+    expect(face_colors).toEqual([`#440154`, `#21918c`, `#7ad151`, `#fde725`])
+    const bar = resolve_color_scale(
+      `interpolateViridis`,
+      draw.face_e_form_range([-1, -0.5, -0.2, 0]),
+    )
+    expect(bar.value_range).toEqual([-1, 0])
+    const bar_scale = create_color_scale(bar, [0, 1]) // resolved ends ignore the auto range
+    expect(faces.map(({ e_form }) => bar_scale(e_form))).toEqual(face_colors)
+    // a near-flat hull still spans 0.1 eV/atom instead of a zero-width range
+    expect(draw.face_e_form_range([-0.3, -0.29])).toEqual([-0.3, -0.3 + 0.1])
+  })
+
+  test(`hull_face_e_forms averages each drawn face, 4 per tetrahedron`, () => {
+    const vertex = (e_form_per_atom: number) => ({ e_form_per_atom }) as ConvexHullEntry
+    const triangle = [vertex(-0.3), vertex(0), vertex(-0.6)]
+    const tetrahedron = [vertex(-0.4), vertex(0), vertex(-0.8), vertex(-1.2)]
+    expect(draw.hull_face_e_forms([triangle, tetrahedron])).toEqual(
+      [-0.3, -2 / 3, -0.8, -1.6 / 3, -0.4].map((value) => expect.closeTo(value, 12)),
+    )
   })
 
   test(`stability mode colours and explicit is_stable=false overriding zero distance`, () => {

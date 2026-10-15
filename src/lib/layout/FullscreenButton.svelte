@@ -5,10 +5,10 @@
   // collapses the props type below to `any`.
   import WidgetFullscreenButton from 'svelte-widgets/FullscreenButton.svelte'
   import { ExitFullscreen, Fullscreen } from 'svelte-widgets/icons'
-  import { forward_window_keydown } from 'svelte-widgets/attachments'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
   import { host } from '#lib/host.js'
+  import { SHORTCUTS, shortcut_title, viewer_keys } from '#lib/shortcuts.js'
+  import { FULLSCREEN_BUTTON_LABELS } from 'svelte-widgets/labels'
 
   // svelte-widgets' button flips the bound flag on click and reports only browser-initiated
   // transitions (Esc, F11) through `on_change`. Viewers forward every real transition to
@@ -58,22 +58,22 @@
     // A host that cannot fullscreen an element (host.fullscreen) offers neither button nor key.
     if (!root || !host.fullscreen) return
     root.setAttribute(VIEWER_ATTR, ``)
-    const handle = (event: KeyboardEvent) => {
-      if (hidden) return false
-      if (event.key !== `f` || event.repeat || is_modifier_chord(event)) return false
-      if (is_editable_event_target(event.target)) return false
-      // Nested viewers (a Structure inside a Trajectory) leave the key to the outer one:
-      // both are hovered at once and would each fullscreen their own root on one press.
-      // Only the keyboard defers — the nested viewer's own button still works.
-      if (root.parentElement?.closest(`[${VIEWER_ATTR}]`)) return false
-      fullscreen = !fullscreen
-      shortcut_flash.show(`fullscreen`)
-      return true
-    }
-    const detach = forward_window_keydown({ handle })(root)
+    // Nested viewers (a Structure inside a Trajectory) leave the key to the outer one: both
+    // are hovered at once and would each fullscreen their own root on one press. Only the
+    // keyboard defers — the nested viewer's own button still works.
+    const detach = viewer_keys(() =>
+      hidden || root.parentElement?.closest(`[${VIEWER_ATTR}]`)
+        ? {}
+        : {
+            f: () => {
+              fullscreen = !fullscreen
+              shortcut_flash.show(`fullscreen`)
+            },
+          },
+    )(root)
     return () => {
       root.removeAttribute(VIEWER_ATTR)
-      detach?.()
+      detach()
     }
   })
 </script>
@@ -81,6 +81,11 @@
 {#if host.fullscreen}<WidgetFullscreenButton
     bind:fullscreen
     {wrapper}
+    aria-keyshortcuts={SHORTCUTS.fullscreen.keys}
+    title={shortcut_title(
+      `fullscreen`,
+      { ...FULLSCREEN_BUTTON_LABELS, ...rest.labels }[fullscreen ? `exit` : `enter`],
+    )}
     {...rest}
     icons={{
       // Fill 76.8% of the icon box to visually balance the rounded gear.

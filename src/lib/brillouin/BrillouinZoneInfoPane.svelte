@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import { shortcut_attrs } from '#lib/shortcuts.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '#lib/labels.js'
   import type { Crystal } from '#lib/structure/index.js'
@@ -94,6 +95,7 @@
     pane_name="Brillouin zone info"
     class_prefix="bz-info"
     closed_icon={info_pane_icon}
+    toggle_props={shortcut_attrs(`info_pane`)}
   >
     <InfoPaneCards cards={pane_cards} empty_label="Brillouin zone info" />
   </ViewerPane>

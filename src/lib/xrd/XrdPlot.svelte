@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { track_settings } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
@@ -50,7 +50,7 @@
     orientation = `vertical`,
     wavelength = null,
     radiation = $bindable(`xray`),
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     x_axis = {},
     y_axis = {},

@@ -5,7 +5,8 @@ import { get_formula_label_segments } from '#lib/composition/format.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
-import { array_min, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
+import { array_extent, clamp, mean, to_radians, type Vec2, type Vec3 } from '#lib/math.js'
+import { create_color_scale } from '#lib/plot/core/scales.js'
 import {
   centered_rect,
   pad_rect,
@@ -24,7 +25,6 @@ import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'
 import {
   entry_is_stable,
   get_composition_label_entries,
-  get_energy_color_scale,
   get_entry_label,
   same_entry,
 } from './helpers'
@@ -510,30 +510,25 @@ export function build_hull_faces(
   facet_entries: readonly (readonly ConvexHullEntry[])[],
   project: ProjectPoint,
 ): HullFace[] {
-  const faces: HullFace[] = []
-  const add_face = (
-    vertices: readonly ConvexHullEntry[],
-    projected: Projected[],
-    facet_idx: number,
-  ) =>
-    faces.push({
-      vertices,
-      projected,
-      facet_idx,
-      e_form: mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0)),
-      depth: mean(projected.map((point) => point.depth)),
+  return face_vertex_sets(facet_entries)
+    .map(({ vertices, facet_idx }) => {
+      const projected = vertices.map((vertex) => project(vertex.x, vertex.y, vertex.z))
+      const depth = mean(projected.map((point) => point.depth))
+      return { vertices, projected, facet_idx, e_form: face_e_form(vertices), depth }
     })
-  for (const [facet_idx, facet] of facet_entries.entries()) {
-    const projected = facet.map((vertex) => project(vertex.x, vertex.y, vertex.z))
-    if (facet.length === 3) add_face(facet, projected, facet_idx)
-    else {
-      for (const skip of facet.keys()) {
-        add_face(facet.toSpliced(skip, 1), projected.toSpliced(skip, 1), facet_idx)
-      }
-    }
-  }
-  return faces.toSorted((left, right) => left.depth - right.depth)
+    .toSorted((left, right) => left.depth - right.depth)
 }
+
+// Vertex sets of the drawn faces: each triangle facet, or the 4 triangles of a tetrahedron
+const face_vertex_sets = (facet_entries: readonly (readonly ConvexHullEntry[])[]) =>
+  facet_entries.flatMap((facet, facet_idx) =>
+    (facet.length === 3
+      ? [facet]
+      : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1))
+    ).map((vertices) => ({ vertices, facet_idx })),
+  )
+const face_e_form = (vertices: readonly ConvexHullEntry[]): number =>
+  mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0))
 
 type FaceColorOpts = {
   mode: HullFaceColorMode
@@ -557,6 +552,18 @@ function dominant_element(
   return elements[totals.indexOf(Math.max(...totals))]
 }
 
+// formation_energy face mode spans the faces' formation energies, at least 0.1 eV/atom wide
+// (unset value_range ends of color_scale fit this); the face color bar reads the same range
+export function face_e_form_range(e_forms: readonly number[]): Vec2 {
+  const [lower, upper] = array_extent(e_forms)
+  return [lower, Math.max(upper, lower + 0.1)]
+}
+
+// Mean formation energies of the faces build_hull_faces draws for these facets
+export const hull_face_e_forms = (
+  facet_entries: readonly (readonly ConvexHullEntry[])[],
+): number[] => face_vertex_sets(facet_entries).map(({ vertices }) => face_e_form(vertices))
+
 // Colour resolver for one frame's faces per hull_face_color_mode
 export function face_color_resolver(
   faces: HullFace[],
@@ -564,13 +571,11 @@ export function face_color_resolver(
 ): (face: HullFace) => string {
   const { mode, uniform_color, color_scale, element_colors, elements } = opts
   if (mode === `formation_energy`) {
-    const min_e_form = array_min(faces.map((face) => face.e_form))
-    const scale = get_energy_color_scale(
-      `energy`,
+    const scale = create_color_scale(
       color_scale,
-      faces.map((face) => ({ e_above_hull: face.e_form - min_e_form })), // 0-based
+      face_e_form_range(faces.map((face) => face.e_form)),
     )
-    return (face) => scale?.(face.e_form - min_e_form) ?? uniform_color
+    return (face) => scale(face.e_form)
   }
   if (mode === `dominant_element`) {
     return (face) => element_colors[dominant_element(face.vertices, elements)] ?? `#888888`

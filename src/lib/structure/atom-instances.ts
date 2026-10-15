@@ -4,6 +4,7 @@ import { is_image_site } from './site'
 import { is_full_occupancy, single_element_occupancy } from './partial-occupancy'
 import { InstanceColors } from './instance-colors'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
+import { ray_sphere_candidates } from '#lib/scene/picking.js'
 import type { Material, Intersection, Raycaster } from 'three/webgpu'
 import {
   DynamicDrawUsage,
@@ -79,6 +80,8 @@ const candidate = new Mesh()
 const candidate_hits: Intersection[] = []
 const candidate_indices: number[] = []
 const hit_point = new Vector3()
+// xyz then uniform radius per atom
+const PACKED_ATOM = { stride: 4, position_at: 0, scale_at: 3 }
 
 // Invisible full-sphere targets need no triangle test (which can miss exactly at a pole).
 export function enable_atom_sphere_picking(mesh: Mesh, visible_scale = 1): void {
@@ -243,26 +246,17 @@ export class AtomInstances extends Mesh<InstancedBufferGeometry> {
     const planes = cutaway_planes(this)
     // Local-space planes let sphere bounds stay conservative under nonuniform transforms.
     const local_planes = planes.map((plane) => plane.clone().applyMatrix4(scratch_matrix))
-    const { origin, direction } = local_ray
     const values = this.positions.array
     candidate.geometry = this.geometry
     candidate.material = this.material
-    candidate_indices.length = 0
-    for (let idx = 0; idx < this.count; idx++) {
-      const offset = idx * 4
-      const scale = values[offset + 3]
-      const delta_x = values[offset] + scale * sphere.center.x - origin.x
-      const delta_y = values[offset + 1] + scale * sphere.center.y - origin.y
-      const delta_z = values[offset + 2] + scale * sphere.center.z - origin.z
-      const radius = Math.abs(scale) * sphere.radius
-      const along = delta_x * direction.x + delta_y * direction.y + delta_z * direction.z
-      // Residual components avoid cancellation in distance² - along² for far-away rays.
-      const perp_x = delta_x - along * direction.x
-      const perp_y = delta_y - along * direction.y
-      const perp_z = delta_z - along * direction.z
-      if (along < -radius || perp_x ** 2 + perp_y ** 2 + perp_z ** 2 > radius ** 2) continue
-      candidate_indices.push(idx)
-    }
+    ray_sphere_candidates(
+      local_ray,
+      sphere,
+      values,
+      this.count,
+      PACKED_ATOM,
+      candidate_indices,
+    )
     // Keep the full-trajectory scan separate from clipping and triangle intersection work.
     for (const idx of candidate_indices) {
       if (local_planes.length) {

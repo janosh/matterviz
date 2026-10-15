@@ -6,6 +6,22 @@ import { clamp01 } from '#lib/utils.js'
 import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 
+// Visible markers past which charts in `auto` mode paint one canvas instead of SVG nodes
+export const CANVAS_MARKER_THRESHOLD = 1000
+
+// Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
+// keyword. Memoized: a plot authors only a handful of distinct paint strings.
+const canvas_color_safety = new Map<string, boolean>()
+export const canvas_safe_color = (color: string): boolean => {
+  let safe = canvas_color_safety.get(color)
+  if (safe === undefined) {
+    if (canvas_color_safety.size >= 1024) canvas_color_safety.clear()
+    safe = color === `none` || d3_color(color) !== null
+    canvas_color_safety.set(color, safe)
+  }
+  return safe
+}
+
 export interface CanvasMarker {
   cx: number
   cy: number

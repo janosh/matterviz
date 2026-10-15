@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { plot_color } from '#lib/colors/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -39,6 +40,9 @@
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
+  import ShortcutsHelp from '#lib/layout/ShortcutsHelp.svelte'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import { canvas_overlay_png_blob } from '#lib/io/export.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
@@ -84,7 +88,7 @@
     // Gizmo
     gizmo = true,
     // Controls
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -248,6 +252,11 @@
   }
 </script>
 
+{#snippet chrome_buttons(dims: { height: number; width: number; fullscreen: boolean })}
+  <ShortcutsHelp scopes={[`viewer`, `camera`]} {wrapper} />
+  {@render header_controls?.(dims)}
+{/snippet}
+
 <ChartShell
   chart_class="scatter-3d"
   css_prefix="scatter3d"
@@ -259,10 +268,11 @@
   {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
-  {header_controls}
+  header_controls={chrome_buttons}
   {export_sources}
   {children}
   {...rest}
+  {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}
 >
   {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls

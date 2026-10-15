@@ -648,6 +648,7 @@
   position={camera_position}
   {fov}
   zoom={scene_camera.zoom}
+  reset_zoom={scene_camera.reset_to_fit}
   near={0.1}
   ortho_near={-100}
   far={1000}

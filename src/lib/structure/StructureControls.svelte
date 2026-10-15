@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SHORTCUTS } from '#lib/shortcuts.js'
   import { numeric_sites, snapshot_topologies } from './site'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
@@ -1097,6 +1098,7 @@
           type="button"
           class="reset-camera"
           title={RESET_VIEW_TITLE}
+          aria-keyshortcuts={SHORTCUTS.reset_camera.keys}
           onclick={on_reset_camera}
         >
           <Icon icon={Reset} />

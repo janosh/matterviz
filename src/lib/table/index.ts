@@ -142,10 +142,11 @@ export type Pagination =
       on_page_size_change?: (page_size: number) => void
     }
 
-// Infinite-scroll virtualization config (off by default; true to enable, object for tuning).
-// overscan: extra rows rendered above/below the viewport for smooth scrolling.
-// min_window: minimum number of rows kept in the DOM (also the fallback render
-// count when the scroll container height is unknown, e.g. during SSR).
+// Scroll virtualization config shared by HeatmapTable (rows) and HeatmapMatrix (rows and
+// columns): true to enable, an object for tuning, false to render everything.
+// overscan: extra rows/tracks rendered past each viewport edge for smooth scrolling.
+// min_window: minimum number of rows/tracks kept in the DOM (also the fallback render
+// count when the scroll container size is unknown, e.g. during SSR).
 export type VirtualScroll = boolean | { overscan?: number; min_window?: number }
 
 // Search configuration (boolean to enable, object for full control).

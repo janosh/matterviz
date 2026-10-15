@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -25,7 +26,7 @@
     error_msg = $bindable(),
     x_axis = {},
     y_axis = {},
-    show_controls = $bindable(true),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     on_curve_hover,
     ...rest

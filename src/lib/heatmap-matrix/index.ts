@@ -79,6 +79,8 @@ type ElementAxisOrdering =
 // #lib star exports, so new names must stay unique there.
 // Fits unset color_scale.value_range ends. auto: data min/max; robust: 2nd-98th percentile
 export type HeatmapDomainMode = `auto` | `robust`
+// Visible cells past which HeatmapMatrix windows its grid unless `virtual` says otherwise
+export const VIRTUAL_CELL_THRESHOLD = 2500
 export type SymmetricMode = false | `lower` | `upper`
 
 export type HeatmapTooltipProp = TooltipProp<CellContext>

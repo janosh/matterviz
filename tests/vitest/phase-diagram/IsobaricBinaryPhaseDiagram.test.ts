@@ -53,6 +53,19 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
+  // A 2D chart reveals its buttons on hover like every other chart (it used to pin them), and
+  // its row carries the keyboard shortcuts button
+  test.each([
+    [undefined, `hover-visible`],
+    [`always`, `always-visible`],
+  ] as const)(`show_controls=%s gives a %s button row`, async (show_controls, row_class) => {
+    const wrapper = await mount_diagram(show_controls ? { show_controls } : {})
+    const row = wrapper.querySelector(`section.control-buttons`)
+    expect(row?.classList.contains(row_class)).toBe(true)
+    expect(row?.querySelector(`.shortcuts-btn`)).not.toBeNull()
+    expect(wrapper.getAttribute(`data-mv-shortcuts`)).toBe(`viewer binary-phase-diagram`)
+  })
+
   // A container briefly narrower than the margins (mid-resize) gave a negative plot width,
   // which the SVG rejected (`<rect> attribute width: A negative value is not valid`)
   test(`renders no plot while smaller than its margins`, async () => {

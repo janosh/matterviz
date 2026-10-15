@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
@@ -119,7 +120,12 @@
   import type { Sides } from '#lib/plot/core/layout.js'
   import { stride_sample } from '#lib/plot/core/layout.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
-  import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
+  import {
+    CANVAS_MARKER_THRESHOLD,
+    type CanvasMarker,
+    canvas_safe_color,
+    draw_markers,
+  } from '#lib/plot/core/canvas-markers.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
   import {
     attach_canvas,
@@ -127,7 +133,6 @@
     prepare_canvas,
     resolve_line_tween,
   } from '#lib/plot/core/utils.js'
-  import { color as d3_color } from 'd3-color'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -146,7 +151,6 @@
   // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
   const OBSTACLE_SAMPLE_LIMIT = 500
-  const CANVAS_MARKER_THRESHOLD = 1000
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
@@ -160,7 +164,7 @@
     // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
     display = $bindable({ ...DEFAULTS.plot.display }),
     styles = $bindable({}),
-    show_controls = $bindable(`hover`),
+    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -928,18 +932,6 @@
     (keys.size > 0 && keys.has(roving_key(point.series_idx, point.point_idx))) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
-  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
-  // keyword. Memoized: a plot authors only a handful of distinct paint strings.
-  const canvas_color_safety = new Map<string, boolean>()
-  const canvas_safe_color = (color: string): boolean => {
-    let safe = canvas_color_safety.get(color)
-    if (safe === undefined) {
-      if (canvas_color_safety.size >= 1024) canvas_color_safety.clear()
-      safe = color === `none` || d3_color(color) !== null
-      canvas_color_safety.set(color, safe)
-    }
-    return safe
-  }
   // Canvas markers for every plain point, or null when markers must be SVG: canvas not
   // requested, no points shown, per-point DOM handlers other than clicks needed, or a paint
   // value canvas can't parse. One pass decides the mode and builds the markers.

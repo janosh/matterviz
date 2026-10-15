@@ -77,6 +77,43 @@ describe(`Settings`, () => {
     [`array for a map`, SETTINGS_CONFIG.structure.vector_configs, [], false],
     [`boolean`, SETTINGS_CONFIG.structure.show_atoms, false, true],
     [`string for a boolean`, SETTINGS_CONFIG.structure.show_atoms, `yes`, false],
+    // color scales: a scheme name or a ColorScaleConfig object, not just the default's string
+    [
+      `color scale name`,
+      SETTINGS_CONFIG.structure.atom_color_scale,
+      `interpolatePlasma`,
+      true,
+    ],
+    [`unknown scheme`, SETTINGS_CONFIG.structure.atom_color_scale, `interpolateNope`, false],
+    [
+      `color scale config`,
+      SETTINGS_CONFIG.structure.atom_color_scale,
+      {
+        type: { type: `arcsinh`, threshold: 2 },
+        scheme: `interpolateMagma`,
+        value_range: [null, 2],
+        palette_range: [1, 0],
+      },
+      true,
+    ],
+    [
+      `config with an unknown key`,
+      SETTINGS_CONFIG.structure.atom_color_scale,
+      { foo: 1 },
+      false,
+    ],
+    [
+      `config with a bad value_range`,
+      SETTINGS_CONFIG.structure.atom_color_scale,
+      { value_range: [0, `1`] },
+      false,
+    ],
+    [
+      `degenerate palette_range`,
+      SETTINGS_CONFIG.structure.atom_color_scale,
+      { palette_range: [0.5, 0.5] },
+      false,
+    ],
   ] as const)(`is_valid_setting_value: %s`, (_label, setting, value, valid) => {
     expect(is_valid_setting_value(value, setting)).toBe(valid)
   })
@@ -609,7 +646,7 @@ describe(`Structure viewer state serialization`, () => {
         show_image_atoms: false,
         atom_color_config: {
           mode: `coordination`,
-          color_scale: `interpolatePlasma`,
+          color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },
           scale_type: `continuous`,
         },
         supercell_scaling: `2x3x1`,
@@ -631,7 +668,8 @@ describe(`Structure viewer state serialization`, () => {
             cell_edge_opacity: 0.8,
             show_image_atoms: false,
             atom_color_mode: `coordination`,
-            atom_color_scale: `interpolatePlasma`,
+            // a config object survives the round trip instead of falling back to the default
+            atom_color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },
           },
         },
         viewer: {

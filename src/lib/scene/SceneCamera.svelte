@@ -9,9 +9,10 @@
   import { type ComponentProps, untrack } from 'svelte'
   import type { GizmoOptions } from './gizmo'
   import Gizmo from './Gizmo.svelte'
-  import { attach_pan_gesture, read_pan_offset, set_pan_offset } from './pan'
+  import { attach_pan_gesture, clear_pan_offset, read_pan_offset, set_pan_offset } from './pan'
   import type { build_orbit_props } from './props.svelte'
   import { camera_flight_registry, create_camera_flight_controller } from './camera-flight'
+  import { camera_resets } from './camera-reset'
   import { lock_fly_to } from './fly-to'
   import { OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
@@ -26,6 +27,7 @@
     up = [0, 1, 0],
     orbit_props,
     gizmo = false,
+    reset_zoom,
     orbit_controls = $bindable(undefined),
   }: {
     camera_projection?: CameraProjection
@@ -41,6 +43,8 @@
     up?: Vec3
     orbit_props: ReturnType<typeof build_orbit_props>
     gizmo?: boolean | GizmoOptions
+    // Drops a stored user zoom before a camera reset reads `zoom` (scene_camera.reset_to_fit)
+    reset_zoom?: () => void
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
   } = $props()
 
@@ -99,6 +103,30 @@
       speed: () => (orbit_props.enablePan ? orbit_props.panSpeed : 0),
       size: () => size.current,
     })
+  })
+  // Camera reset (reset_scene_cameras): back to the position, orbit target and zoom the props
+  // describe, without pan. Props are read when it runs, so it follows their current values.
+  $effect(() => {
+    const controls = orbit_controls
+    const canvas = renderer.domElement
+    if (!controls || !(canvas instanceof HTMLCanvasElement)) return
+    const reset = () => {
+      reset_zoom?.()
+      const camera = controls.object
+      camera.position.set(...position)
+      controls.target.set(...orbit_props.target)
+      if (camera instanceof OrthographicCamera) {
+        camera.zoom = zoom
+        camera.updateProjectionMatrix()
+      }
+      clear_pan_offset(camera)
+      controls.update()
+      invalidate()
+    }
+    camera_resets.set(canvas, reset)
+    return () => {
+      if (camera_resets.get(canvas) === reset) camera_resets.delete(canvas)
+    }
   })
   // A resize changes the pixel grid the offset is defined on; re-apply it at the new size
   $effect(() => {

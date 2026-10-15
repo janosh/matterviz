@@ -1,9 +1,13 @@
 <script lang="ts">
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import { Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import type { FormulaLabelSegment } from '#lib/composition/format.js'
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import {
+    DEFAULT_CONTROLS_MODE,
+    normalize_show_controls,
+    type ShowControlsProp,
+  } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
@@ -94,7 +98,7 @@
 
   let {
     entries = [],
-    show_controls = `hover`,
+    show_controls = DEFAULT_CONTROLS_MODE,
     config = {},
     width = 800,
     height = 600,
@@ -1149,13 +1153,14 @@
     : `${render_height}px`}"
   role="application"
   tabindex="0"
-  onkeydown={(event) => {
-    // `f` is owned by FullscreenButton; chords stay the browser's (Cmd/Ctrl+F = find)
-    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
-    if (event.repeat) return // holding `c` would spin through color modes
-    if (event.key === `Escape`) clear_hover_lock()
-    else if (event.key === `c`) cycle_color_mode()
-  }}
+  {@attach viewer_keys(() => ({
+    c: cycle_color_mode,
+    r: reset_camera_view,
+    Escape: () => {
+      if (!locked_hover_formula) return false
+      clear_hover_lock()
+    },
+  }))}
   onpointerdown={(event) => {
     const target = event.target
     if (locked_hover_formula && (target === wrapper || target instanceof HTMLCanvasElement)) {
@@ -1171,6 +1176,7 @@
     bind:fullscreen
     {wrapper}
     fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
+    shortcut_scopes={[`viewer`, `camera`, `chempot-3d`]}
   >
     {#if controls_config.visible(`export`)}
       <ExportPane
