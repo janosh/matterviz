@@ -17,6 +17,7 @@
 <script lang="ts">
   import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
@@ -47,6 +48,8 @@
     export_filename = css_prefix,
     on_export,
     controls,
+    empty = false,
+    live_message,
     body,
     children,
     ...rest
@@ -76,6 +79,11 @@
       export_sources?: ExportSources
       // The controls pane receives layout props and visibility; this row owns mode and style.
       controls?: Snippet<[PaneToggleProps, boolean]>
+      // No data to plot: the body stays, overlaid with the shared empty-state message
+      empty?: boolean
+      // Announced to screen readers via a polite live region, e.g. where a keyboard cursor
+      // over marks with no focusable element of their own landed
+      live_message?: string
       // Chart content, rendered once the container is measured
       body: Snippet
       children?: Snippet<[Dims]>
@@ -122,10 +130,21 @@
     />
     {@render body()}
     {@render children?.(dims)}
+    {#if empty}<EmptyState overlay role="status" />{/if}
   {/if}
+  {#if live_message}<span class="sr-only" aria-live="polite">{live_message}</span>{/if}
 </div>
 
 <style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
   .chart-shell {
     position: relative;
     width: var(--chart-shell-width);

@@ -233,6 +233,9 @@
     pointer-events: none;
     animation: ring-pulse var(--effect-ring-duration, 1s) ease-in-out
       var(--effect-ring-iterations, infinite);
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
   }
   .effect-ring.pulse {
     --effect-ring-duration: 1.2s;

@@ -4,7 +4,7 @@ import { create_settling_tween, SETTLE_MS } from '#lib/plot/core/settling-tween.
 import { flushSync, mount, unmount } from 'svelte'
 import type { TweenOptions } from 'svelte/motion'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { translate_of } from '../setup'
+import { stub_reduced_motion, translate_of } from '../setup'
 
 // Long enough that any animated step is still far from its target when we assert.
 const SLOW = { duration: 60_000 }
@@ -94,6 +94,17 @@ describe(`create_settling_tween`, () => {
       set_live(undefined)
       set(20)
       expect(tween.current).not.toBe(20) // interaction over, animating again
+    })
+  })
+
+  // Covers every plot geometry tween (Sunburst/Treemap zoom, ScatterPoint, Line, FillArea)
+  test(`reduce motion snaps settled updates, even over an explicit live duration`, () => {
+    stub_reduced_motion(() => true)
+    with_tween(0, ({ tween, set, set_live }) => {
+      settle()
+      set_live(SLOW)
+      set(10)
+      expect(tween.current).toBe(10)
     })
   })
 

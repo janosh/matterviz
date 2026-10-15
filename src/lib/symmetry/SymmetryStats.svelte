@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
+  import EmptyState from '#lib/EmptyState.svelte'
   import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { SymmetryDataset, SymmetrySettings } from './analyze'
   import {
@@ -219,7 +220,7 @@
       </details>
     {/if}
   {:else}
-    <div class="no-data">No symmetry data available</div>
+    <EmptyState role="status" message="No symmetry data available" />
   {/if}
 </div>
 
@@ -275,15 +276,5 @@
   .settings-explorer tr.current {
     background: color-mix(in srgb, var(--accent-color, #0066cc) 18%, transparent);
     font-weight: bold;
-  }
-  .no-data {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: var(--sym-stats-no-data-min-height, 100px);
-    padding: var(--sym-stats-no-data-padding, 2em);
-    background: var(--sym-stats-no-data-bg, var(--surface-bg, #f5f5f5));
-    border-radius: var(--sym-stats-no-data-border-radius, 4pt);
-    color: var(--sym-stats-no-data-color, var(--text-muted, #666));
   }
 </style>

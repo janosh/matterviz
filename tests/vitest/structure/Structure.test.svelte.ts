@@ -2580,7 +2580,10 @@ describe(`Structure empty states`, () => {
   ])(`shows the expected message for %s`, (_description, test_structure, loading, message) => {
     mount_structure({ structure: test_structure as AnyStructure, loading })
     const text = document.body.textContent ?? ``
-    if (message) expect(text).toContain(message)
+    if (message)
+      expect(document.querySelector(`.empty-state.overlay[role="status"]`)?.textContent).toBe(
+        message,
+      )
     else
       for (const empty of [`No structure provided`, `No sites found`])
         expect(text).not.toContain(empty)

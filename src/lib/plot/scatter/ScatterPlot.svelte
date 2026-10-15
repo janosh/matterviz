@@ -110,6 +110,7 @@
     get_relative_coords,
     is_activation_key,
     range_bounds,
+    step_point_cursor,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
   import {
@@ -1578,18 +1579,8 @@
   })
 
   function move_kbd_cursor(event: KeyboardEvent): boolean {
-    const { total } = kbd_nav
-    if (total === 0) return false
-    const forward = event.key === `ArrowRight` || event.key === `ArrowDown`
-    const backward = event.key === `ArrowLeft` || event.key === `ArrowUp`
-    const current = kbd_cursor_at?.nav_idx
-    let next: number
-    if (event.key === `Home`) next = 0
-    else if (event.key === `End`) next = total - 1
-    else if (forward || backward) {
-      const step = forward ? 1 : -1
-      next = current == null ? (forward ? 0 : total - 1) : (current + step + total) % total
-    } else return false
+    const next = step_point_cursor(event.key, kbd_cursor_at?.nav_idx ?? null, kbd_nav.total)
+    if (next === null) return false
     event.preventDefault()
     const point = kbd_point(next)
     kbd_cursor = point && { series_idx: point.series_idx, point_idx: point.point_idx }
@@ -1695,6 +1686,11 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series_in.some((srs) => srs?.x.length) &&
+    !fill_regions.length &&
+    !ref_lines.length &&
+    !user_content &&
+    !children}
   {frame}
   {export_sources}
   plot_class="scatter"

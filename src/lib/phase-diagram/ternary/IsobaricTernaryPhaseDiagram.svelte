@@ -7,6 +7,7 @@
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
   import {
     DEFAULT_ELEMENT_TO_GAS,
@@ -559,9 +560,10 @@
       {/if}
     </div>
   {:else if entries.length === 0}
-    <div class="empty">
-      Drop a JSON file of convex-hull entries (3 elements) to compute a ternary T–x diagram
-    </div>
+    <EmptyState
+      role="status"
+      message="Drop a JSON file of convex-hull entries (3 elements) to compute a ternary T–x diagram"
+    />
   {/if}
 
   {#if hover && model && section && tooltip !== false}
@@ -822,14 +824,6 @@
         text-decoration: underline;
       }
     }
-  }
-  .empty {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    opacity: 0.7;
-    text-align: center;
-    padding: 1em;
   }
   .muted {
     opacity: 0.7;

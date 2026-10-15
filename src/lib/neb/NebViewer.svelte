@@ -8,6 +8,7 @@
   import type { ShowControlsProp } from '#lib/controls.js'
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import EmptyState from '#lib/EmptyState.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
@@ -15,15 +16,19 @@
   import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { display_idx, format_num, parse_warnings_notice } from '#lib/labels.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import { FullscreenButton, ShortcutsHelp } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
+  import {
+    create_sequence_player,
+    is_sequence_key_target,
+  } from '#lib/layout/sequence-player.svelte.js'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import { clamp } from '#lib/math.js'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
   import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-  import { to_error } from '#lib/utils.js'
+  import { handle_and_prevent, to_error } from '#lib/utils.js'
+  import { forward_window_keydown } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {
@@ -161,6 +166,12 @@
     should_auto_play: () => auto_play && Boolean(active),
   })
 
+  // Playback keys work while the viewer is focused or hovered, as in Trajectory, not only
+  // while its slider has focus. The root runs first and prevents the default, which turns
+  // the window forward's pass into a no-op.
+  const onkeydown = (event: KeyboardEvent): boolean =>
+    !event.defaultPrevented && is_sequence_key_target(event) && playback.handle_keydown(event)
+
   // Keep the public binding aligned with the clamped image shown after changing paths. With
   // no path yet there is nothing to clamp against, so a bound index waits for its paths.
   $effect(() => {
@@ -247,16 +258,25 @@
   })
 </script>
 
-<div {...rest} bind:this={wrapper} class={[`neb-viewer`, rest.class]} {@attach drop_zone}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+  role="application"
+  aria-label="Reaction path viewer"
+  tabindex="0"
+  onkeydown={handle_and_prevent(onkeydown)}
+  {...rest}
+  bind:this={wrapper}
+  class={[`neb-viewer`, rest.class]}
+  {@attach drop_zone}
+  {@attach forward_window_keydown({ handle: onkeydown })}
+>
   {#if !active || !profile}
-    <div class="empty">
-      <StatusMessage
-        message={allow_file_drop
-          ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
-          : `No reaction path to display`}
-        style="border: none"
-      />
-    </div>
+    <EmptyState
+      role="status"
+      message={allow_file_drop
+        ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
+        : `No reaction path to display`}
+    />
   {:else}
     <SequenceControlBar
       class="neb-controls"
@@ -289,6 +309,7 @@
         aria_label="NEB image"
         aria_valuetext={image_caption}
         disable_step_while_playing={false}
+        keyboard_hints
       />
       {#if controls_config.visible(`energy`)}
         <span class="image-status">
@@ -297,6 +318,7 @@
         </span>
       {/if}
 
+      <ShortcutsHelp scopes={[`viewer`, `sequence`]} {wrapper} />
       {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
@@ -305,7 +327,6 @@
           bg_css_var="--neb-bg-fullscreen"
           on_change={on_fullscreen_change}
           class="fullscreen-button"
-          style="margin-inline-start: auto"
         />
       {/if}
       {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
@@ -382,6 +403,10 @@
     --sequence-controls-wrap: wrap;
     --sequence-slider-min-width: 80pt;
   }
+  /* push the chrome buttons (shortcuts, fullscreen, export) to the bar's end */
+  .neb-viewer :global(.neb-controls > .shortcuts-btn) {
+    margin-inline-start: auto;
+  }
   .neb-viewer:fullscreen {
     width: 100vw;
     height: 100vh;
@@ -404,12 +429,6 @@
   .neb-viewer.dragover {
     outline: 2px dashed var(--accent-color, #4e79a7);
     outline-offset: 4px;
-  }
-  .empty {
-    outline: 2px dashed var(--border-color, #ccc);
-    border-radius: var(--border-radius, 3pt);
-    text-align: center;
-    padding: 2em 1em;
   }
   .path-control {
     display: flex;

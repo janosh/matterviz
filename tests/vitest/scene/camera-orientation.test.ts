@@ -11,6 +11,7 @@ import { DEFAULTS } from '#lib/settings.js'
 import { is_valid_zone_axis, zone_axis_direction } from '#lib/scene/zone-axis.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
+import { stub_reduced_motion } from '../setup'
 
 // Deliberately triclinic (no 90-degree angle) so direct and reciprocal directions genuinely
 // differ — a cubic-only test cannot tell the two conventions apart.
@@ -276,6 +277,15 @@ describe(`camera fly-to`, () => {
     const forward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
     const to_target = controls.target.clone().sub(camera.position).normalize()
     expect(forward.distanceTo(to_target)).toBeLessThan(1e-12)
+  })
+
+  test(`lands on the first frame under reduced motion`, () => {
+    stub_reduced_motion(() => true)
+    const { fly, offset } = make_rig([0, 0, 10])
+    fly.start([1, 0, 0])
+    fly.step(0.001) // 1 ms of a 400 ms flight
+    expect(fly.active).toBe(false)
+    expect(to_array(offset())).toEqual([10, 0, 0].map((val) => expect.closeTo(val, 10)))
   })
 
   // A lerp between opposite offsets passes through zero: the camera held still, spent a frame

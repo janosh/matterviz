@@ -427,6 +427,7 @@
 </script>
 
 <ChartShell
+  empty={!data.nodes.length}
   chart_class="sankey"
   css_prefix="sankey"
   bind:wrapper

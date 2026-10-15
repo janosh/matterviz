@@ -2,6 +2,7 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { Check } from 'svelte-widgets/icons'
+  import { motion_duration } from '#lib/effects.svelte.js'
   import { is_valid_supercell_input } from '#lib/structure/supercell.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
   import { click_outside, tooltip } from 'svelte-widgets/attachments'
@@ -140,7 +141,7 @@
   </button>
 
   {#if menu_open}
-    <div class="dropdown" transition:fade={{ duration: 100 }}>
+    <div class="dropdown" transition:fade={{ duration: motion_duration(100) }}>
       <div class="cell-type-row">
         {#each cell_types as { type, label, tooltip: cell_tooltip } (type)}
           {@const disabled = type !== `original` && !sym_data}

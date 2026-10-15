@@ -90,7 +90,7 @@ describe(`ChemPot temperature config wiring`, () => {
   ])(`$label`, async ({ config }) => {
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => undefined)
     await mount_2d_with_config(config)
-    expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeNull()
     expect(error_spy).toHaveBeenCalledWith(
       `ChemPotDiagram2D:`,
@@ -103,7 +103,7 @@ describe(`ChemPot temperature config wiring`, () => {
       interpolate_temperature: true,
       max_interpolation_gap: 700,
     })
-    expect(document.querySelector(`.error-state`)).toBeNull()
+    expect(document.querySelector(`.empty-state`)).toBeNull()
     // one export entry point: the plot's own pane, with the domains added as JSON
     expect(document.querySelectorAll(`button.export-toggle`)).toHaveLength(1)
     expect(await click_export(null)).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
@@ -140,7 +140,7 @@ describe(`ChemPot temperature config wiring`, () => {
     })
     // Fe + O alone are below the 3-entry minimum for a 3D diagram; the slider stays since
     // the dataset still has temperature data to pick from
-    expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
     expect(slider_value()).toBe(`1`)
   })
@@ -151,7 +151,7 @@ describe(`ChemPot temperature config wiring`, () => {
       temperature: 300,
       config: { ...base_config, interpolate_temperature: false },
     })
-    expect(document.querySelector(`.error-state`)).toBeNull()
+    expect(document.querySelector(`.empty-state`)).toBeNull()
     document.querySelector<HTMLButtonElement>(`.chempot-controls-toggle`)?.click()
     await tick()
     const options = [...document.querySelectorAll(`#chempot-proj-x option`)].map(

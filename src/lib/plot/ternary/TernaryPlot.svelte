@@ -459,6 +459,7 @@
 </script>
 
 <ChartShell
+  empty={!series_in.some((srs) => srs.points.length)}
   chart_class="ternary"
   css_prefix="ternary"
   bind:wrapper

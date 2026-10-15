@@ -1,3 +1,9 @@
+import { prefersReducedMotion } from 'svelte/motion'
+
+// Animation length honoring the OS "reduce motion" setting: 0 (snap) while it is on. Reactive
+// when read in an effect or template, so flipping the setting applies without a reload.
+export const motion_duration = (ms: number): number => (prefersReducedMotion.current ? 0 : ms)
+
 type PulseAnimationOptions = {
   step?: number // phase advance per frame
   on_tick?: () => void
@@ -52,8 +58,9 @@ export function create_pulse_animation(
     }
   })
 
+  // Reduced motion holds the pulse at its resting phase: highlights stay visible, just still
   $effect(() => {
-    if (!active()) return stop()
+    if (!active() || prefersReducedMotion.current) return stop()
     // Pause, don't stop: `time` survives so the pulse resumes mid-phase, and resetting it
     // would republish `unit` to every consumer — the repaints this gate exists to avoid.
     if (!on_screen) return cancel_frame()

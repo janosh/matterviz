@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type {
@@ -78,6 +79,8 @@
     // Announced to screen readers via a polite live region. Charts whose marks aren't
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
+    // No data to plot: the axes stay, overlaid with the shared empty-state message
+    empty?: boolean
     header_controls?: Snippet<[Dims]>
     // Data formats this chart can export, on top of the SVG/PNG of its frame
     export_sources?: ExportSources
@@ -116,6 +119,7 @@
     idle_cursor = `crosshair`,
     on_key_down,
     live_message,
+    empty = false,
     header_controls,
     export_sources = {},
     export_formats,
@@ -289,6 +293,7 @@
     </svg>
 
     {@render overlays?.()}
+    {#if empty}<EmptyState overlay role="status" />{/if}
   {/if}
 
   <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->

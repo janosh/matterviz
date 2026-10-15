@@ -8,6 +8,7 @@ import {
   pan_range_by_pixels,
   resolve_axis_ranges,
   series_hover_props,
+  step_point_cursor,
   sync_y2_range,
   vec2_equal,
   zoom_range_by_factor,
@@ -366,6 +367,28 @@ describe(`invert_rect_range`, () => {
   ])(`%s`, (_desc, domain, [a_px, b_px], current, expected) => {
     const scale = create_scale(`linear`, domain, [0, 100])
     expect(invert_rect_range(scale, a_px, b_px, current)).toEqual(expected)
+  })
+})
+
+describe(`step_point_cursor`, () => {
+  it.each([
+    [`ArrowRight`, null, 0],
+    [`ArrowDown`, null, 0],
+    [`ArrowLeft`, null, 2],
+    [`ArrowUp`, null, 2],
+    [`ArrowRight`, 1, 2],
+    [`ArrowRight`, 2, 0], // wraps forward
+    [`ArrowLeft`, 0, 2], // and backward
+    [`Home`, 1, 0],
+    [`End`, null, 2],
+    [`Enter`, 1, null], // left to activation handling
+    [`a`, null, null],
+  ] as const)(`%s from %s over 3 points lands on %s`, (key, current, expected) => {
+    expect(step_point_cursor(key, current, 3)).toBe(expected)
+  })
+
+  it(`has nowhere to go without points`, () => {
+    expect(step_point_cursor(`Home`, null, 0)).toBeNull()
   })
 })
 

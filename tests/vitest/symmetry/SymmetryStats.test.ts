@@ -48,7 +48,7 @@ describe(`SymmetryStats`, () => {
       mount_stats({ sym_data })
 
       const container = doc_query(`.symmetry-stats`)
-      const no_data_div = container.querySelector(`.no-data`)
+      const no_data_div = container.querySelector(`.empty-state[role="status"]`)
 
       expect(no_data_div).toBeInstanceOf(HTMLElement)
       expect(no_data_div?.textContent).toContain(`No symmetry data available`)

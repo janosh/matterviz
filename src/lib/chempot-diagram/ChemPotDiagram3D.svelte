@@ -10,6 +10,7 @@
   } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
   import { json_source, type ExportSources } from '#lib/io/export.js'
@@ -1322,10 +1323,10 @@
         style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
       />
     {:else}
-      <div class="error-state" role="alert" aria-live="polite">
+      <EmptyState role="alert" aria-live="polite">
         <p>Cannot compute chemical potential diagram.</p>
         <p>{diagram_error ?? `Need at least 2 elements with elemental reference entries.`}</p>
-      </div>
+      </EmptyState>
     {/if}
   {:else if mounted && webgpu_available()}
     {#if diagram_computing}
@@ -1514,13 +1515,5 @@
     flex: 1;
     min-width: 0;
     padding: 2px 4px;
-  }
-  .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-color, #666);
   }
 </style>

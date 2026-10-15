@@ -1,7 +1,7 @@
 // Tween that snaps while a plot is still settling and animates genuine changes after.
 
 import { untrack } from 'svelte'
-import { Tween, type TweenOptions } from 'svelte/motion'
+import { prefersReducedMotion, Tween, type TweenOptions } from 'svelte/motion'
 
 // How long after creation a change still counts as the plot resolving its own geometry rather
 // than the data moving. Generous enough to cover a font load or a couple of layout passes; a
@@ -42,7 +42,9 @@ export function create_settling_tween<T>(
     const value = source()
     if (is_same(target, value)) return
     target = value
-    void tween.set(value, performance.now() < settled_at ? { duration: 0 } : live?.())
+    // Reduced motion snaps like the settling window, overriding any `live` duration
+    const snap = performance.now() < settled_at || prefersReducedMotion.current
+    void tween.set(value, snap ? { duration: 0 } : live?.())
   })
 
   return {

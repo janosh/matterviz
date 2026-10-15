@@ -78,3 +78,15 @@ test(`spots expose hover and a toggling pin matched by hkl, by pointer and keybo
   expect(state).toMatchObject({ hovered_spot: null, selected_spot: null })
   await unmount(component)
 })
+
+test(`a pattern without spots overlays the shared empty state`, async () => {
+  const component = mount(SaedPattern, {
+    target: document.body,
+    props: { pattern: { ...pattern, spots: [] } },
+  })
+  await resize_element(query(document.body, `.saed-pattern`), 400, 400)
+  expect(
+    document.querySelector(`.saed-pattern .empty-state.overlay[role="status"]`)?.textContent,
+  ).toMatch(/No reflections satisfy the excitation condition/)
+  await unmount(component)
+})

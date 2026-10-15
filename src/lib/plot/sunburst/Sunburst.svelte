@@ -378,6 +378,7 @@
 </script>
 
 <ChartShell
+  empty={Array.isArray(data) && !data.length}
   chart_class="sunburst"
   css_prefix="sunburst"
   css_var_fallbacks={{ flex: `1 1 auto` }}

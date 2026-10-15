@@ -8,6 +8,7 @@ import { reaction_paths } from '#site/neb/index.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  assertHoverScopedShortcut,
   mock_fullscreen,
   bind_props,
   export_via_pane,
@@ -191,7 +192,9 @@ test(`hovering another path's spline selects an image of that path`, async () =>
 describe(`NebViewer`, () => {
   test(`shows a drop prompt when no path is supplied`, async () => {
     const viewer = await mount_viewer()
-    expect(viewer.textContent).toContain(`Drop a matterviz-reaction-path JSON`)
+    expect(viewer.querySelector(`.empty-state[role="status"]`)?.textContent).toContain(
+      `Drop a matterviz-reaction-path JSON`,
+    )
     expect(viewer.querySelector(`.scatter`)).toBeNull()
   })
 
@@ -326,9 +329,9 @@ describe(`NebViewer`, () => {
   })
 
   test.each([
-    [`the next button`, `[title="Next image"]`, 0, 2, false],
-    [`the previous button`, `[title="Previous image"]`, 2, 2, false],
-    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1, true],
+    [`the next button`, `[aria-label="Next image"]`, 0, 2, false],
+    [`the previous button`, `[aria-label="Previous image"]`, 2, 2, false],
+    [`the previous button at the first image`, `[aria-label="Previous image"]`, 0, 1, true],
   ])(
     `stepping with %s moves to image %i -> %i`,
     async (_name, selector, start_idx, label, disabled) => {
@@ -438,14 +441,43 @@ describe(`NebViewer`, () => {
         expected_label,
       )
     }
-    // NebViewer's keys work on the focused slider only: its buttons claim no shortcut
-    expect(viewer.querySelector(`.play-button`)?.hasAttribute(`aria-keyshortcuts`)).toBe(false)
+    // NebViewer forwards its keys to playback, so the play button names its shortcut and the
+    // chrome lists them all behind `?`
+    expect(viewer.querySelector(`.play-button`)?.getAttribute(`aria-keyshortcuts`)).toBe(
+      `Space`,
+    )
+    expect(
+      query(viewer, `.neb-controls > .shortcuts-btn`).getAttribute(`aria-keyshortcuts`),
+    ).toBe(`?`)
 
     const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
     path_select.value = `curved hop`
     path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await flush_render()
     expect([state.active_path_key, state.active_image_idx]).toEqual([`curved hop`, 0])
+  })
+
+  // Like Trajectory, playback keys belong to the hovered or focused viewer, not just the slider
+  test(`playback keys work from the hovered or focused root, not from its form fields`, async () => {
+    const state = $state({ active_image_idx: 0 })
+    const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
+    expect([viewer.getAttribute(`role`), viewer.tabIndex]).toEqual([`application`, 0])
+    await assertHoverScopedShortcut({
+      viewer,
+      trigger: () =>
+        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight` })),
+      read_state: () => state.active_image_idx,
+    })
+    const press = async (target: HTMLElement, key: string) => {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      await flush_render()
+      return event.defaultPrevented
+    }
+    expect([await press(viewer, `End`), state.active_image_idx]).toEqual([true, 6])
+    expect([await press(viewer, `Home`), state.active_image_idx]).toEqual([true, 0])
+    const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
+    expect([await press(path_select, `End`), state.active_image_idx]).toEqual([false, 0])
   })
 
   test(`auto-plays images and can be paused`, async () => {

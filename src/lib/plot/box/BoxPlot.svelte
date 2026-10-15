@@ -723,6 +723,7 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series_in.some((srs) => srs.y.length)}
   {frame}
   {export_sources}
   plot_class="box-plot"

@@ -1,12 +1,13 @@
 // FermiSurfaceBands: a Fermi surface linked to the band structure of the same calculation
 import type * as backdrop from '#lib/colors/backdrop.svelte.js'
 import { sheet_color } from '#lib/fermi-surface/constants.js'
+import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import FermiSurfaceBands from '#lib/fermi-surface/FermiSurfaceBands.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import { band_crossings, band_k_path, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
 import type { Vec2 } from '#lib/math.js'
 import type { BaseBandStructure } from '#lib/spectral/types.js'
-import { createRawSnippet, flushSync } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fire, mount_sized, mouse, plot_svg } from '../setup'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -20,6 +21,20 @@ vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
     resolve_color_token: (node: Element, value: string) => {
       resolved.push({ node, value })
       return actual.resolve_color_token(node, value)
+    },
+  }
+})
+
+// FermiSurface's live props, to watch the k_path FermiSurfaceBands hands the 3D scene
+const fermi_surface = vi.hoisted(() => ({
+  props: null as ComponentProps<typeof FermiSurface> | null,
+}))
+vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, async (original) => {
+  const { default: Component } = await original<{ default: typeof FermiSurface }>()
+  return {
+    default: (...[anchor, props]: Parameters<typeof FermiSurface>) => {
+      fermi_surface.props = props
+      return Component(anchor, props)
     },
   }
 })
@@ -228,6 +243,26 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
     [lerp_x(9, 0.6), fermi_y, fermi_css],
   ]
   expect_dots(fermi_dots())
+  // One k_path object per path: hovers update its markers and hovered q-point through getters,
+  // so the 3D k-path's path-derived state (sym points, segment meshes) is not rebuilt per hover
+  type ScenePath = ComponentProps<typeof FermiSurface>[`k_path`]
+  const k_path_reads: { k_path: ScenePath; path?: object }[] = []
+  const k_marker_counts: number[] = []
+  const hover_qpoints: (number | null | undefined)[] = []
+  onTestFinished(
+    $effect.root(() => {
+      $effect(() => {
+        const k_path = fermi_surface.props?.k_path
+        k_path_reads.push({ k_path, path: k_path?.path })
+      })
+      $effect(() => {
+        const k_path = fermi_surface.props?.k_path
+        k_marker_counts.push(k_path?.k_markers?.length ?? -1)
+        hover_qpoints.push(k_path?.hovered_qpoint_index)
+      })
+    }),
+  )
+  flushSync()
 
   await hover(8) // band 8 at Γ: 0.1 eV, 0.2 below E_F
   expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
@@ -244,6 +279,12 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   await leave()
   expect([reference_y(), selected_strokes()]).toEqual([undefined, 0])
   expect(wrapper.querySelector(`rect.highlighted-segment`)).toBeNull()
+  expect(k_path_reads).toHaveLength(1)
+  expect(k_path_reads[0].path).toBe(k_path_reads[0].k_path?.path)
+  expect([k_marker_counts, hover_qpoints]).toEqual([
+    [2, 4, 2],
+    [null, 0, null],
+  ])
 
   // band 3 is not in the grid: no preview, and a click pins nothing
   await click(3)

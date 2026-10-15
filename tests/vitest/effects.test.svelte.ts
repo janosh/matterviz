@@ -1,7 +1,11 @@
 import FlashHarness from './fixtures/FlashHarness.svelte'
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
-import { trigger_intersection } from './setup'
-import { type create_flash, pulsing_highlight_opacity } from '#lib/effects.svelte.js'
+import { stub_reduced_motion, trigger_intersection } from './setup'
+import {
+  type create_flash,
+  motion_duration,
+  pulsing_highlight_opacity,
+} from '#lib/effects.svelte.js'
 import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -129,6 +133,53 @@ describe(`create_pulse_animation`, () => {
     flushSync()
     expect(requested_frames.size).toBe(0)
     void unmount(component)
+  })
+})
+
+describe(`reduced motion`, () => {
+  test.each([
+    [false, 400],
+    [true, 0],
+  ])(`motion_duration with reduce=%s gives %s ms`, (reduced, expected) => {
+    stub_reduced_motion(() => reduced)
+    expect(motion_duration(400)).toBe(expected)
+  })
+
+  test(`holds a pulse at rest while reduce motion is on, resumes when it turns off`, () => {
+    install_animation_frame_mock()
+    const prefs = $state({ reduced: true })
+    stub_reduced_motion(() => prefs.reduced)
+    const component = mount(PulseAnimationHarness, {
+      target: document.body,
+      props: { active: () => true },
+    })
+    flushSync()
+    expect(requested_frames.size).toBe(0)
+    flushSync(() => (prefs.reduced = false))
+    expect(requested_frames.size).toBe(1)
+    void unmount(component)
+  })
+
+  // Default 400 ms tween: after the (always snapped) first placement, a move glides unless
+  // reduce motion is on
+  test.each([false, true])(`create_placed_tween snaps moves when reduced=%s`, (reduced) => {
+    stub_reduced_motion(() => reduced)
+    const state = $state({ x: 10 })
+    let placed_tween: ReturnType<typeof create_placed_tween> | undefined
+    const dispose = $effect.root(() => {
+      placed_tween = create_placed_tween({
+        placement: () => ({ x: state.x, y: 20 }),
+        dims: () => ({ width: 100, height: 100 }),
+        responsive: () => true,
+        element: () => document.body,
+      })
+    })
+    flushSync()
+    expect(placed_tween?.coords.current).toEqual({ x: 10, y: 20 })
+    flushSync(() => (state.x = 50))
+    expect(placed_tween?.coords.target).toEqual({ x: 50, y: 20 })
+    expect(placed_tween?.coords.current.x === 50).toBe(reduced)
+    dispose()
   })
 })
 

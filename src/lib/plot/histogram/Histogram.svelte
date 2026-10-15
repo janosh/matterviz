@@ -509,6 +509,7 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series_in.some((srs) => srs.values.length)}
   {frame}
   {export_sources}
   plot_class="histogram"

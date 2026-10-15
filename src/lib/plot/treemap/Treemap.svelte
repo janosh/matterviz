@@ -389,6 +389,7 @@
 </script>
 
 <ChartShell
+  empty={Array.isArray(data) && !data.length}
   chart_class="treemap"
   css_prefix="treemap"
   {chrome_color}

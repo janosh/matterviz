@@ -166,8 +166,8 @@ test(`an error state keeps the controls, so the setting that caused it can be un
     config: { elements: [], default_min_limit: 5 },
   })
   calls.list.at(-1)?.resolve()
-  await vi.waitFor(() => expect(document.querySelector(`.error-state`)).not.toBeNull())
-  const labels = [...document.querySelectorAll(`.error-state label`)]
+  await vi.waitFor(() => expect(document.querySelector(`.empty-state`)).not.toBeNull())
+  const labels = [...document.querySelectorAll(`.empty-state label`)]
   expect(labels.some((label) => label.textContent?.includes(`Min limit`))).toBe(true)
 })
 

@@ -4,6 +4,7 @@
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { json_source } from '#lib/io/export.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -248,12 +249,12 @@
     style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
   />
 {:else if !diagram_data}
-  <div class="error-state" role="alert" aria-live="polite">
+  <EmptyState role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
     <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
     <!-- the setting that caused the error stays editable -->
     {@render chempot_controls(null)}
-  </div>
+  </EmptyState>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -332,14 +333,6 @@
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;
     z-index: 11;
-  }
-  .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-color, #666);
   }
   .domain-label {
     font-size: 12px;

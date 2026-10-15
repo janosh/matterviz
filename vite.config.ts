@@ -18,6 +18,7 @@ import { defineConfig } from 'vite-plus'
 import { configDefaults } from 'vitest/config'
 import { BaseSequencer, type TestSpecification } from 'vitest/node'
 import * as shared from './src/vite-plugins.ts'
+import { prop_docs_plugin } from './src/scripts/prop-docs.ts'
 
 // svelte-widgets' default highlighter only knows starry-night's `common` bundle plus
 // Svelte, which would leave the tsx/vue fences in the framework-interop docs unstyled
@@ -157,6 +158,7 @@ const plugins = [
   raw_text_plugin,
   starry_night_theme_plugin,
   source_links(),
+  prop_docs_plugin(),
   sveltekit({
     extensions: [`.svelte`, `.svx`, `.md`],
     preprocess: [docs.preprocess],

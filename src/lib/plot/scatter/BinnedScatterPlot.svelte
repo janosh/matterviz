@@ -857,6 +857,7 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series.some((srs) => srs.x.length) && !children}
   {frame}
   plot_class="binned-scatter"
   css_prefix="binned-scatter"

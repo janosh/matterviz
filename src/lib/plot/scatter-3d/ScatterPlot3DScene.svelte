@@ -58,6 +58,7 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+  import { is_activation_key, step_point_cursor } from '#lib/plot/core/interactions.js'
   import {
     collect_size_range,
     create_size_scale,
@@ -381,6 +382,31 @@
         make_event_data(point, native instanceof MouseEvent ? native : undefined),
       )
     },
+  }
+
+  // Keyboard cursor over the markers, driven from the plot root (one tab stop) like the 2D
+  // ScatterPlot: arrows walk point_instances in (series, point) order, Home/End jump,
+  // Enter/Space click the hovered marker and Escape clears it. Returns the point the cursor is
+  // on, null once cleared, undefined for keys it leaves alone.
+  export function handle_key(
+    event: KeyboardEvent,
+  ): InternalPoint3D<Metadata> | null | undefined {
+    if (event.key === `Escape`) {
+      if (!hovered_point) return undefined
+      hovered_point = null
+      on_point_hover?.(null)
+      return null
+    }
+    if (hovered_point && is_activation_key(event)) {
+      on_point_click?.(make_event_data(hovered_point))
+      return hovered_point
+    }
+    const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
+    if (next === null) return undefined
+    const { point } = point_instances[next]
+    hovered_point = point
+    on_point_hover?.(make_event_data(point))
+    return point
   }
 
   $effect(() => {

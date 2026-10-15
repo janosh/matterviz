@@ -240,7 +240,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     doc_query(`.ternary-section canvas`)
     unmount_all()
     mount_diagram({ entries: [] })
-    expect(doc_query(`.empty`).textContent).toMatch(/Drop a JSON file/)
+    expect(doc_query(`.empty-state[role="status"]`).textContent).toMatch(/Drop a JSON file/)
   })
 
   test(`a composition click pins it; the pin itself or Escape removes it, as does a new dataset`, () => {

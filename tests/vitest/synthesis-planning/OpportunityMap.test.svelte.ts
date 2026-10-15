@@ -34,7 +34,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
     conditions: initial,
     max_routes: 2,
   })
-  const onconditionschange = vi.fn((next: SynthesisConditions) => {
+  const on_conditions_change = vi.fn((next: SynthesisConditions) => {
     conditions = next
   })
   const component = mount(OpportunityMap, {
@@ -47,7 +47,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
       get conditions() {
         return conditions
       },
-      onconditionschange,
+      on_conditions_change,
     },
   })
   onTestFinished(() => {
@@ -88,7 +88,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   expect(document.querySelector<HTMLSelectElement>(`select`)?.value).toBe(`O2`)
   first.click()
   await tick()
-  expect(onconditionschange).toHaveBeenCalledWith(
+  expect(on_conditions_change).toHaveBeenCalledWith(
     { ...initial, temperature: 300, partial_pressures: { O2: 1e-8 } },
     undefined,
   )
@@ -110,4 +110,71 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   await tick()
   expect(document.querySelector(`[role="alert"]`)?.textContent).toContain(`minimum`)
   expect(stub.posted).toHaveLength(2)
+})
+
+// Best-route colours cycle the 4-colour palette (route 5 wears route 1's), and a cell whose
+// best route is not shortlisted (stale sweep) stays neutral and unnumbered, tooltip included
+test(`preferred-route colours wrap past 4 routes and leave unknown routes neutral`, async () => {
+  const conditions: SynthesisConditions = {
+    temperature: 1000,
+    open_species: [`O2`],
+    partial_pressures: { O2: 0.21 },
+  }
+  const plan = plan_synthesis({ entries, target: `BaTiO3`, conditions, max_routes: 1 })
+  const [route] = plan.routes
+  const routes = [1, 2, 3, 4, 5].map((num) => ({
+    ...route,
+    id: `route-${num}`,
+    reaction: { ...route.reaction, equation: `equation ${num}` },
+  }))
+  // one cell per best route (lowest selectivity margin among downhill ones), then a ghost
+  const cells = [...routes.map(({ id }) => id), `ghost`].map((id, idx) => ({
+    temperature: 300 + idx,
+    pressure: 1e-8,
+    e_above_hull: 0,
+    routes: [
+      { id, driving_force: -0.5, selectivity_margin: -0.2 },
+      { id: `route-1`, driving_force: 0.1, selectivity_margin: -0.9 }, // uphill: ignored
+    ],
+  }))
+  install_stub_worker(() => cells)
+  const component = mount(OpportunityMap, {
+    target: document.body,
+    props: {
+      entries,
+      target: plan.target.id,
+      routes,
+      conditions,
+      on_conditions_change: vi.fn(),
+    },
+  })
+  onTestFinished(() => {
+    compute_opportunity_map_async.cancel()
+    return unmount(component)
+  })
+  await vi.waitFor(() => expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(6))
+  const color = document.querySelectorAll<HTMLSelectElement>(`select`)[1]
+  color.value = `preferred`
+  color.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await tick()
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.map-grid button`)]
+  const fills = buttons.map(({ style }) => style.background)
+  expect(buttons.map(({ textContent }) => textContent)).toEqual([`1`, `2`, `3`, `4`, `5`, `–`])
+  expect(buttons[5].getAttribute(`aria-label`)).toMatch(/; best route outside the shortlist$/)
+  expect(new Set(fills.slice(0, 4)).size).toBe(4)
+  expect([fills[4], fills[5]]).toEqual([fills[0], ``])
+  const legend = [...document.querySelectorAll<HTMLLIElement>(`.opportunity-map ol li`)]
+  expect(legend.map(({ style }) => style.borderColor)).toEqual(fills.slice(0, 5))
+  for (const [idx, fill, text] of [
+    [4, fills[0], `Route 5`],
+    [5, null, `Best route outside the shortlist`],
+  ] as const) {
+    buttons[idx].focus()
+    await tick()
+    const tooltip = doc_query(`.plot-tooltip`)
+    expect_tooltip_paint(tooltip, fill)
+    expect(tooltip.textContent).toContain(text)
+    expect(tooltip.textContent).not.toContain(`Route 0`)
+    buttons[idx].blur()
+  }
 })

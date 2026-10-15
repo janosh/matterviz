@@ -13,7 +13,6 @@ import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import * as animations from 'svelte/animate'
-import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
 import {
   bind_props,
@@ -22,6 +21,7 @@ import {
   fire,
   keydown,
   mouse,
+  stub_reduced_motion,
   trigger_resize_observer,
 } from '../setup'
 
@@ -288,7 +288,7 @@ describe(`HeatmapTable`, () => {
       `sorts missing values with row animation $duration ms ($reduced/$virtual)`,
       async ({ row_animation_ms, reduced, virtual, duration }) => {
         const flip = vi.spyOn(animations, `flip`).mockReturnValue({ duration: 0 })
-        const preference = vi.spyOn(reduced_motion, `current`, `get`).mockReturnValue(reduced)
+        stub_reduced_motion(() => reduced)
         const bounds = vi
           .spyOn(HTMLTableRowElement.prototype, `getBoundingClientRect`)
           .mockImplementation(function (this: HTMLTableRowElement) {
@@ -296,7 +296,6 @@ describe(`HeatmapTable`, () => {
           })
         onTestFinished(() => {
           flip.mockRestore()
-          preference.mockRestore()
           bounds.mockRestore()
         })
         const data = [

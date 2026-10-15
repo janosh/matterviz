@@ -3,11 +3,13 @@ import { type Component, mount, unmount } from 'svelte'
 import type { WebGLRenderer } from 'three'
 
 // Keep real Threlte attachment/disposal while replacing only the GPU renderer.
-export function mount_scene(render: Component) {
+export function mount_scene<Exports extends Record<string, unknown>>(
+  render: Component<Record<string, never>, Exports>,
+) {
   const contexts: ReturnType<typeof createThrelteContext>[] = []
   const noop = () => {}
   const canvas = document.createElement(`canvas`)
-  const Harness: Component = (anchor) => {
+  const Harness: Component<Record<string, never>, Exports> = (anchor) => {
     const info = { render: { calls: 0 } }
     // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
     const dom = document.createElement(`div`)
@@ -39,6 +41,8 @@ export function mount_scene(render: Component) {
   const component = mount(Harness, { target: document.body })
   const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
   return {
+    // whatever the rendered component exports (e.g. ScatterPlot3DScene's handle_key)
+    exports: component,
     canvas,
     scene,
     camera,

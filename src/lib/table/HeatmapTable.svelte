@@ -12,6 +12,7 @@
     resolve_backdrop,
     resolve_css_color,
   } from '#lib/colors/index.js'
+  import { motion_duration } from '#lib/effects.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportProps, ExportSources } from '#lib/io/export.js'
   import { format_num } from '#lib/labels.js'
@@ -85,7 +86,6 @@
   import { Columns, Cross, Search as SearchIcon } from 'svelte-widgets/icons'
   import { onMount, type Snippet, tick, untrack } from 'svelte'
   import { flip } from 'svelte/animate'
-  import { prefersReducedMotion as reduced_motion } from 'svelte/motion'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -1863,7 +1863,7 @@
         {/snippet}
         {#if display_rows.length === 0}
           <tr class="empty-row"><td colspan={body_colspan}>No data</td></tr>
-        {:else if row_animation_ms > 0 && !virtual_config && !reduced_motion.current}
+        {:else if motion_duration(row_animation_ms) > 0 && !virtual_config}
           {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
             {@const abs_idx = display_range.start + row_idx}
             <tr animate:flip={{ duration: row_animation_ms }} {...row_attrs(row, abs_idx)}>

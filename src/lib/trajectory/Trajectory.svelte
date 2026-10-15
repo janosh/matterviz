@@ -34,7 +34,6 @@
     TwoColumns,
   } from 'svelte-widgets/icons'
   import { handle_and_prevent, html_to_text, to_error } from '#lib/utils.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
     display_idx,
     from_display_idx,
@@ -54,6 +53,7 @@
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import { is_sequence_key_target } from '#lib/layout/sequence-player.svelte.js'
   import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
@@ -1162,19 +1162,8 @@
     // Bound on the root and on the window: a click leaves the viewer focused *and*
     // hovered, so both would run and a toggle would cancel itself out. The root fires
     // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented || event.isComposing) return false
-    // Leave form fields alone; sequence controls handle their own navigation keys and let
-    // the viewer shortcuts they do not use bubble here
-    const target = event.target instanceof HTMLElement ? event.target : null
-    const is_sequence_slider = target?.classList.contains(`step-slider`)
-    if (!is_sequence_slider && target && is_editable_event_target(event.target)) {
-      if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
-        target.blur()
-      }
+    if (event.defaultPrevented || event.isComposing || !is_sequence_key_target(event))
       return false
-    }
-    // Space presses a focused button or toggles a <summary>; playback must not swallow that
-    if (event.key === ` ` && target?.closest(`button, summary, [role="button"]`)) return false
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false

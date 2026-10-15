@@ -127,6 +127,9 @@
   }
   g.shell {
     animation: spin-right linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
   }
   text {
     text-anchor: middle;

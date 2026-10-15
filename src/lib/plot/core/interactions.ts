@@ -36,6 +36,23 @@ export const pointer_pos = (
 export const is_activation_key = (evt: KeyboardEvent): boolean =>
   !evt.defaultPrevented && !evt.isComposing && (evt.key === `Enter` || evt.key === ` `)
 
+// Next flat index of a one-tab-stop keyboard cursor over `total` points (ScatterPlot,
+// ScatterPlot3D): arrows step and wrap (entering from either end while unset), Home/End jump.
+// null for keys it leaves alone and when there is nothing to walk.
+export function step_point_cursor(
+  key: string,
+  current: number | null,
+  total: number,
+): number | null {
+  if (total === 0) return null
+  if (key === `Home`) return 0
+  if (key === `End`) return total - 1
+  const forward = key === `ArrowRight` || key === `ArrowDown`
+  if (!forward && key !== `ArrowLeft` && key !== `ArrowUp`) return null
+  if (current === null) return forward ? 0 : total - 1
+  return (current + (forward ? 1 : -1) + total) % total
+}
+
 // True when focus is leaving `root` entirely rather than moving between marks inside it.
 // Charts treat focus as the keyboard's hover, so a focusout that lands on the next mark is
 // the equivalent of sliding the pointer along and must not clear the tooltip; one that

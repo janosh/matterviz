@@ -3,6 +3,7 @@
 // Svelte Tween per point. Reading `current` is reactive, so anything drawn from it (instance
 // buffers, the hover halo) follows the animation.
 
+import { motion_duration } from '#lib/effects.svelte.js'
 import { cubicOut } from 'svelte/easing'
 import type { TweenOptions } from 'svelte/motion'
 import { Color, SRGBColorSpace } from 'three/webgpu'
@@ -83,7 +84,7 @@ export function create_instance_tween(): InstanceTweenClock {
       const same_keys = same_items(next_keys, keys)
       if (same_keys && same_items(next_target, target)) return
       delay = options.delay ?? DEFAULTS.delay
-      duration = options.duration ?? DEFAULTS.duration
+      duration = motion_duration(options.duration ?? DEFAULTS.duration)
       easing = options.easing ?? DEFAULTS.easing
       if (duration <= 0) from = next_target.slice()
       else if (same_keys) from = current.slice() // the common re-encoding case: no lookups

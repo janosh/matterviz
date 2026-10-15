@@ -7,6 +7,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
@@ -1493,7 +1494,11 @@
       />
     {:else if !loading}
       <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
-      <p class="warn">{structure ? `No sites found in structure` : `No structure provided`}</p>
+      <EmptyState
+        overlay
+        role="status"
+        message={structure ? `No sites found in structure` : `No structure provided`}
+      />
     {/if}
   {/if}
   <ViewerError bind:message={error_msg} dismissible />
@@ -1579,12 +1584,6 @@
   .structure :global(canvas),
   .structure :global(section.control-buttons) {
     user-select: none;
-  }
-  p.warn {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-content: center;
   }
   /* Transient notices sit inside the viewer (so they follow it into fullscreen) and never
     intercept pointer events meant for the canvas beneath */

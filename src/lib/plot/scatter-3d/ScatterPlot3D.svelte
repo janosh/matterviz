@@ -9,6 +9,8 @@
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { resolve_axis_range } from '#lib/plot/core/interactions.js'
+  import { format_num } from '#lib/labels.js'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -214,6 +216,24 @@
     return { ...opts, offset: { bottom: 70, ...opts.offset } }
   })
 
+  // Keys reach the scene's marker cursor only while the plot root itself has focus, so typing
+  // in the controls pane or legend never walks the points
+  let scene_ref = $state<ReturnType<typeof ScatterPlot3DScene<Metadata>>>()
+  let live_message = $state(``)
+  function handle_key_down(event: KeyboardEvent): void {
+    if (event.target !== event.currentTarget || is_modifier_chord(event)) return
+    const point = scene_ref?.handle_key(event)
+    if (point === undefined) return
+    event.preventDefault()
+    live_message = point ? point_label(point) : ``
+  }
+  const point_label = ({ x, y, z, series_idx, point_idx }: InternalPoint3D<Metadata>) => {
+    const axes = [resolved_x_axis, resolved_y_axis, resolved_z_axis]
+    const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
+    const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
+    return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+  }
+
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
     tooltip_point = data?.point ?? null
@@ -258,6 +278,7 @@
 {/snippet}
 
 <ChartShell
+  empty={!series_in.some((srs) => srs.x.length) && !surfaces.length}
   chart_class="scatter-3d"
   css_prefix="scatter3d"
   css_var_fallbacks={{ 'min-height': `400px`, 'border-radius': `var(--border-radius, 3pt)` }}
@@ -271,7 +292,15 @@
   header_controls={chrome_buttons}
   {export_sources}
   {children}
+  {live_message}
+  role="application"
+  aria-label="3D scatter plot of {resolved_x_axis.label}, {resolved_y_axis.label} and {resolved_z_axis.label}"
+  tabindex={0}
   {...rest}
+  onkeydown={(event) => {
+    rest.onkeydown?.(event)
+    handle_key_down(event)
+  }}
   {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}
 >
   {#snippet controls(toggle_props, show_controls)}
@@ -296,6 +325,7 @@
     {#if mounted && webgpu_available()}
       <Canvas createRenderer={create_renderer}>
         <ScatterPlot3DScene
+          bind:this={scene_ref}
           {series}
           {surfaces}
           {ranges}

@@ -69,6 +69,13 @@ test(
   },
 )
 
+test(`shows the shared empty state until entries and a target are given`, () => {
+  mount_planner({ entries: [], target: `` })
+  expect(document.querySelector(`.empty-state[role="status"]`)?.textContent).toMatch(
+    /Provide thermodynamic entries and a target/,
+  )
+})
+
 test.each([
   [{ max_routes: 0 }, `max_routes`],
   [{ target_mass_g: 0 }, `target_mass_g`],
@@ -230,7 +237,7 @@ test(`experiment cards edit and copy each firing without losing quantities or as
   const props = $state({
     route,
     target_mass_g: 1,
-    onassumptionschange: (
+    on_assumptions_change: (
       step: `final` | `intermediate`,
       assumptions: typeof route.recipe.assumptions,
     ) => {

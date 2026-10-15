@@ -2,6 +2,7 @@
   // Interactive synthesis planner: pick a target and firing conditions, browse ranked precursor
   // routes, inspect each route's competing phases, reaction slice and bench recipe. The plan
   // itself comes from `plan_synthesis`, the same pure function agents call.
+  import EmptyState from '#lib/EmptyState.svelte'
   import { create_flash } from '#lib/effects.svelte.js'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/index.js'
   import type { GasSpecies, HullAnnotations, PhaseData } from '#lib/convex-hull/index.js'
@@ -525,7 +526,7 @@
           routes={map_routes}
           conditions={{ ...computed_plan.conditions, gas_provider: conditions.gas_provider }}
           selected_route_id={selected_route_id ?? undefined}
-          onconditionschange={(next_conditions, route_id) => {
+          on_conditions_change={(next_conditions, route_id) => {
             planning = true
             conditions = next_conditions
             if (route_id) selected_route_id = route_id
@@ -616,7 +617,7 @@
             <RecipeCard
               route={selected_route}
               bind:target_mass_g
-              onassumptionschange={(step, assumptions) => {
+              on_assumptions_change={(step, assumptions) => {
                 experiment_choices[route_id] = {
                   ...experiment_choices[route_id],
                   [step]: assumptions,
@@ -628,7 +629,10 @@
       {/if}
     </div>
   {:else if !planning && !error}
-    <p class="empty">Provide thermodynamic entries and a target to plan a synthesis.</p>
+    <EmptyState
+      role="status"
+      message="Provide thermodynamic entries and a target to plan a synthesis."
+    />
   {/if}
 </div>
 
@@ -696,8 +700,7 @@
   .summary,
   .warn,
   .error,
-  .progress,
-  .empty {
+  .progress {
     margin: 0;
   }
   .warn {

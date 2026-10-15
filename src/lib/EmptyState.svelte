@@ -2,15 +2,22 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
-  // `children` takes precedence over the plain-text `message`
+  // `children` takes precedence over the plain-text `message` (`` renders a bare container).
+  // `overlay` lays it over a still-rendered parent (empty plot axes, a blank canvas) without
+  // blocking that parent's pointer events.
   let {
-    message,
+    message = `No data to display`,
+    overlay = false,
     children,
     ...rest
-  }: { message?: string; children?: Snippet } & HTMLAttributes<HTMLDivElement> = $props()
+  }: {
+    message?: string
+    overlay?: boolean
+    children?: Snippet
+  } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
-<div {...rest} class={[`empty-state`, rest.class]}>
+<div {...rest} class={[`empty-state`, rest.class, { overlay }]}>
   {#if children}
     {@render children()}
   {:else if message}
@@ -32,6 +39,11 @@
     min-height: inherit;
     text-align: center;
     box-sizing: border-box;
+  }
+  .empty-state.overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
   }
   .empty-state > :global(:is(p, h3, ul, strong)),
   .empty-state > .message {

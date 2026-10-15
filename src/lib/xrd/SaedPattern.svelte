@@ -6,6 +6,7 @@
   // equal-axis-scaling option (AxisConfig exposes range but nothing that couples the two
   // axes). Rather than ship a pattern that shears with the container, the geometry is laid out
   // here from one shared px-per-(1/Å) factor.
+  import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
@@ -189,7 +190,11 @@
     </text>
   </svg>
   {#if pattern.spots.length === 0}
-    <p class="empty">No reflections satisfy the excitation condition down {zone_text}.</p>
+    <EmptyState
+      overlay
+      role="status"
+      message="No reflections satisfy the excitation condition down {zone_text}."
+    />
   {/if}
 </div>
 
@@ -247,12 +252,5 @@
     font-size: 10px;
     fill: var(--text-color-muted, #888);
     text-anchor: middle;
-  }
-  .empty {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: var(--text-color-muted, #888);
   }
 </style>
