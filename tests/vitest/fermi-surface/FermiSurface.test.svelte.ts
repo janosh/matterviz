@@ -5,6 +5,7 @@ import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/p
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { can_create_worker } from '#lib/worker-client.svelte.js'
 import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
 import type { Vec3 } from '#lib/math.js'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
@@ -16,6 +17,7 @@ beforeEach(mock_parse_worker)
 const extraction = vi.hoisted(() => ({
   jobs: null as { settle: () => Float32Array; fail: (error: Error) => void }[] | null,
   release: vi.fn(),
+  cancel: vi.fn(),
 }))
 vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
   const actual = await original<typeof extract_async>()
@@ -23,7 +25,7 @@ vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
     ...actual,
     create_latest_extractor: () => {
       const real = actual.create_latest_extractor()
-      return (...args: Parameters<typeof real>) => {
+      const extract = (...args: Parameters<typeof real>) => {
         if (!extraction.jobs) return real(...args)
         const { promise, resolve, reject } = Promise.withResolvers<FermiSurfaceData>()
         const settle = () => {
@@ -34,8 +36,13 @@ vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
         extraction.jobs.push({ settle, fail: reject })
         return promise
       }
+      const cancel = () => {
+        extraction.cancel()
+        real.cancel()
+      }
+      return Object.assign(extract, { cancel })
     },
-    release_fermi_worker: extraction.release,
+    register_fermi_viewer: () => extraction.release,
   }
 })
 
@@ -210,15 +217,18 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   expect(n_vertices_at_01).toBeGreaterThan(n_vertices_at_0 ?? 0)
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
 
-  // A new interpolation factor upsamples every band first: the spinner overlays the Canvas
-  // for one painted frame before that blocks
+  // A new interpolation factor upsamples every band first: without workers (as here, and in
+  // anywidget) that blocks the page, so the spinner overlays the Canvas for one painted frame
+  expect(can_create_worker()).toBe(false)
   props.interpolation_factor = 2
   flushSync()
   expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
     `Extracting Fermi surface...`,
   )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
-  await vi.advanceTimersByTimeAsync(40)
+  await vi.advanceTimersByTimeAsync(16) // the spinner's frame: nothing extracted yet
+  expect([spinner_shown(), n_vertices()]).toEqual([true, n_vertices_at_01])
+  await vi.advanceTimersByTimeAsync(20)
   expect(spinner_shown()).toBe(false)
   expect(n_vertices()).toBeGreaterThan(n_vertices_at_01)
 
@@ -391,13 +401,16 @@ test(`results commit in job order, only the newest reports errors, none land aft
     target: document.body,
     props: bind_props({ on_error, band_data }, props),
   })
-  const request_mu = (mu: number) => {
+  // one frame per request (two while the grid is cold): the main thread extracts per frame
+  fake_frames()
+  const request_mu = async (mu: number) => {
     props.mu = mu
     flushSync()
+    await vi.advanceTimersByTimeAsync(40)
   }
-  await tick()
-  request_mu(0.1)
-  request_mu(0.2)
+  await vi.advanceTimersByTimeAsync(40)
+  await request_mu(0.1)
+  await request_mu(0.2)
   // a superseded extraction failing (e.g. its worker was torn down) goes unreported and
   // leaves the spinner up; the newest surface commits, and an older one resolving later does
   // not replace it (typed arrays are not proxied by $state, so identity shows)
@@ -409,19 +422,20 @@ test(`results commit in job order, only the newest reports errors, none land aft
   await tick()
   expect(props.fermi_data?.isosurfaces[0].positions).toBe(positions)
   expect([props.error_msg, on_error.mock.calls.length]).toEqual([undefined, 0])
-  request_mu(0.3)
+  await request_mu(0.3)
   jobs[3].fail(new Error(`boom`))
   await tick()
   const error_msg = `Fermi surface extraction failed: boom`
   expect(props.error_msg).toBe(error_msg)
   expect(on_error).toHaveBeenCalledExactlyOnceWith({ error_msg })
-  // unmounting releases the worker, and after it neither a newer result nor the newest
-  // job's error lands
-  request_mu(0.4)
-  request_mu(0.5)
-  extraction.release.mockClear()
+  // unmounting cancels the waiting request and releases the worker, and after it neither a
+  // newer result nor the newest job's error lands
+  await request_mu(0.4)
+  await request_mu(0.5)
+  for (const spy of [extraction.release, extraction.cancel]) spy.mockClear()
   await unmount(component)
-  expect(extraction.release).toHaveBeenCalledOnce()
+  const { release, cancel } = extraction
+  expect([release.mock.calls.length, cancel.mock.calls.length]).toEqual([1, 1])
   jobs[4].settle()
   jobs[5].fail(new Error(`worker gone`))
   await tick()

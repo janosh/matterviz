@@ -1,4 +1,5 @@
 // FermiSurfaceBands: a Fermi surface linked to the band structure of the same calculation
+import type * as backdrop from '#lib/colors/backdrop.svelte.js'
 import { sheet_color } from '#lib/fermi-surface/constants.js'
 import FermiSurfaceBands from '#lib/fermi-surface/FermiSurfaceBands.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
@@ -9,6 +10,19 @@ import { createRawSnippet, flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fire, mount_sized, mouse, plot_svg } from '../setup'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
+
+// the nodes CSS colour tokens are resolved on, for three.js (which parses no var())
+const resolved = vi.hoisted(() => [] as { node: Element; value: string }[])
+vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
+  const actual = await original<typeof backdrop>()
+  return {
+    ...actual,
+    resolve_color_token: (node: Element, value: string) => {
+      resolved.push({ node, value })
+      return actual.resolve_color_token(node, value)
+    },
+  }
+})
 
 // Ten electronic bands of one run; the grid holds bands 8 and 9 (band_indices). Band 8 runs
 // 0.1 → 0.5 eV through E_F = 0.3 like the grid's |k| sphere, the others lie far from it
@@ -167,6 +181,11 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
       (path) => Number(path.getAttribute(`stroke-width`)) >= 3,
     ).length
   expect(wrapper.querySelectorAll(`.marker`)).toHaveLength(0) // lines only
+  // the 3D crossing markers resolve the 2D dots' colours where the dots do, inside Bands
+  // (whose bands_props.style may set them)
+  const fermi_nodes = resolved.filter(({ value }) => value === BANDS_CSS_COLORS.fermi)
+  const on_dots_svg = fermi_nodes.map(({ node }) => node.classList.contains(`band-crossings`))
+  expect(new Set(on_dots_svg)).toEqual(new Set([true]))
   expect(reference_y()).toBeUndefined() // mu = 0: only the E_F line
   // band lines in their sheet's colour (FermiSurfaceScene's sheet_color), bands without a sheet
   // in the grid muted
@@ -273,6 +292,17 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   props.fermi_props = { color_property: `property`, show_controls: { hidden: [`controls`] } }
   flushSync()
   expect(line_style(8)).toEqual([sheet_color(8, null, `property`), `2.5`])
+  // with grid properties the sheets are coloured by them and the band lines keep the caller's
+  // style, also at an energy without sheets (as when hovering one)
+  props.band_data = { ...band_data, properties: { v_F: band_data.energies } }
+  for (const mu of [0, -0.5]) {
+    props.mu = mu
+    await vi.advanceTimersByTimeAsync(50)
+    flushSync()
+    expect(line_style(8)).toEqual([`#123456`, `2.5`])
+  }
+  props.band_data = band_data
+  props.mu = 0
   // the spin channel Bands hides (its control or bands_props) gets no crossings either
   for (const [band_spin_mode, dots] of [
     [`down_only`, () => []],

@@ -68,13 +68,19 @@ export async function extract_fermi_surface_async(
     return run_extraction({ token, grid, send_grid }, options)
   }
   const send_grid = !worker_grids.has(token)
-  const result = await request(send_grid).catch((error: unknown) => {
-    // A failed worker's successor holds no grids, a live one may have evicted this one: retry
-    // once with the grid, and send every other grid afresh next time
-    worker_grids.clear()
-    if (send_grid) throw error
-    return request(true)
-  })
+  n_in_flight++
+  const result = await request(send_grid)
+    .catch((error: unknown) => {
+      // A failed worker's successor holds no grids, a live one may have evicted this one:
+      // retry once with the grid, and send every other grid afresh next time
+      worker_grids.clear()
+      if (send_grid) throw error
+      return request(true)
+    })
+    .finally(() => {
+      n_in_flight--
+      if (release_deferred) release_if_unused()
+    })
   const factors = worker_grids
     .get(token)
     ?.add(resolved_factor(grid, options.interpolation_factor ?? 1))
@@ -82,21 +88,40 @@ export async function extract_fermi_surface_async(
   return lru_set(cache, key, result, RESULT_CACHE_SIZE)
 }
 
-// A viewer's unmount path: ends the worker unless another viewer's extraction is in flight
-export function release_fermi_worker(): void {
+// Mounted viewers share the worker and its upsampled grids (megabytes each): the last one to
+// unmount ends it, once the extractions still in flight have landed
+let n_viewers = 0
+let n_in_flight = 0
+let release_deferred = false
+const release_if_unused = (): void => {
+  release_deferred = n_viewers === 0 && n_in_flight > 0
+  if (n_viewers > 0 || release_deferred) return
   run_extraction.release()
   worker_grids.clear()
+}
+// A viewer's mount path, returning its unmount path
+export function register_fermi_viewer(): () => void {
+  n_viewers++
+  release_deferred = false
+  return () => {
+    n_viewers--
+    release_if_unused()
+  }
 }
 
 // Latest-wins scheduling for one viewer: one extraction in flight and only the newest request
 // waiting, so a pointer sweep skips stale energies. Replaced requests resolve null; cached
-// results resolve at once and supersede the waiting request.
+// results resolve at once and supersede the waiting request. `cancel` (on unmount) drops the
+// waiting request, resolving it null.
 export function create_latest_extractor() {
   let busy = false
   let waiting: { run: () => void; resolve: (result: null) => void } | undefined
-  return (grid: BandGridData, options: FermiSurfaceOptions) => {
+  const cancel = (): void => {
     waiting?.resolve(null) // only ever set while busy
     waiting = undefined
+  }
+  const extract = (grid: BandGridData, options: FermiSurfaceOptions) => {
+    cancel()
     if (result_cache.get(grid)?.has(options_key(grid, options))) {
       return extract_fermi_surface_async(grid, options)
     }
@@ -115,4 +140,5 @@ export function create_latest_extractor() {
       else run()
     })
   }
+  return Object.assign(extract, { cancel })
 }

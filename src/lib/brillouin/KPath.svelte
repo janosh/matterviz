@@ -8,7 +8,15 @@
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
+  import {
+    Color,
+    CylinderGeometry,
+    InstancedMesh,
+    Matrix4,
+    MeshBasicMaterial,
+    MeshStandardMaterial,
+    SphereGeometry,
+  } from 'three/webgpu'
   import type { KPathData } from './types'
   import { bz_mark_sizes, k_path_segments, k_path_sym_points, KPATH_COLORS } from './geometry'
 
@@ -36,17 +44,15 @@
   } = $props()
 
   const { invalidate } = useThrelte()
-  // A caller spreading a fresh props object per hover (FermiSurfaceScene) re-runs every prop
-  // read: these stop it before the meshes rebuild (clearing that hover) and spheres get new args
+  // A caller spreading a fresh props object per hover re-runs every prop read: this stops it
+  // before the meshes rebuild (which clears that hover)
   const stable_path = $derived(path)
-  const stable_size = $derived(size)
-  const stable_edge = $derived(edge_width)
-  const mark_sizes = $derived(bz_mark_sizes(stable_size, stable_edge))
+  const mark_sizes = $derived(bz_mark_sizes(size, edge_width))
   // Same k-point, with a tolerance scaled to the zone: positions come from the same fold but
   // may be recomputed by the caller
   const same_point = (point_a: Vec3, point_b: Vec3) =>
     math.euclidean_dist(point_a, point_b) < 1e-6 * size
-  const sym_points = $derived(k_path_sym_points(stable_path, 1e-6 * stable_size))
+  const sym_points = $derived(k_path_sym_points(stable_path, 1e-6 * size))
 
   // One instanced mesh for all segments plus a wider invisible one for hover, instead of two
   // meshes per segment: band paths run to hundreds of segments.
@@ -55,11 +61,18 @@
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
   // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
   const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
+  // k_markers: unlit dots drawn over everything (sheets they sit on included), one instance
+  // each, so markers that change per hover never compile a material
+  const marker_geometry = new SphereGeometry(1, 12, 8)
+  const marker_material = new MeshBasicMaterial({ depthTest: false, transparent: true })
   const tint = new Color() // setColorAt copies it
+  const transform = new Matrix4()
   $effect(() => () => {
     kpath_geometry.dispose()
     kpath_material.dispose()
     kpath_proxy_material.dispose()
+    marker_geometry.dispose()
+    marker_material.dispose()
   })
   const kpath_meshes = $derived.by(() => {
     const [count, radius] = [k_path_segs.length, mark_sizes.kpath]
@@ -74,6 +87,23 @@
       write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, radius * 2)
     }
     return { line, proxy }
+  })
+  const marker_mesh = $derived.by(() => {
+    const mesh = new InstancedMesh(marker_geometry, marker_material, k_markers.length)
+    Object.assign(mesh, { renderOrder: 1000, frustumCulled: false, raycast: () => undefined })
+    const radius = 2 * mark_sizes.kpath
+    for (const [idx, { position, color }] of k_markers.entries()) {
+      mesh.setMatrixAt(
+        idx,
+        transform.makeScale(radius, radius, radius).setPosition(...position),
+      )
+      mesh.setColorAt(idx, tint.set(color))
+    }
+    return mesh
+  })
+  $effect(() => {
+    const mesh = marker_mesh
+    return () => mesh.dispose()
   })
   // Threlte drops a replaced or unmounted mesh without a pointerleave, so a rebuild or unmount
   // while hovered clears the hover here, or the parent keeps a stale q-point. Null, as the old
@@ -157,13 +187,7 @@
   </extras.HTML>
 {/each}
 
-<!-- drawn over everything so a dot on a sheet stays visible through it -->
-{#each k_markers as { position, color }, idx (idx)}
-  <T.Mesh {position} renderOrder={1000}>
-    <T.SphereGeometry args={[2 * mark_sizes.kpath, 12, 8]} />
-    <T.MeshBasicMaterial {color} depthTest={false} transparent />
-  </T.Mesh>
-{/each}
+{#if k_markers.length}<T is={marker_mesh} dispose={false} />{/if}
 
 <!-- Hovered k-point highlight -->
 {#if hovered_k_point}

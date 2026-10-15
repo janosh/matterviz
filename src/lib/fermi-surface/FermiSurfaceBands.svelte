@@ -21,7 +21,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { sheet_color } from './constants'
   import FermiSurface from './FermiSurface.svelte'
-  import { vertex_property } from './geometry'
   import type { BandGridJson } from './parse'
   import type { BandGridData, FermiSurfaceData } from './types'
 
@@ -74,16 +73,16 @@
   let band_spin_mode = $derived<BandsSpinMode>(bands_props.band_spin_mode ?? `overlay`)
   let surface = $state.raw<FermiSurfaceData>()
   let wrapper = $state<HTMLDivElement>()
+  let crossings_svg = $state<SVGSVGElement>()
   let color_property = $derived(fermi_props.color_property ?? DEFAULTS.fermi.color_property)
   let x_positions = $state.raw<Record<string, Vec2>>({})
 
-  // Property mode colours a sheet by vertex only where it carries a property, else the scene
-  // keeps its flat sheet colour (which the band lines then take)
+  // Property mode colours sheets by vertex where the grid carries properties (every sheet
+  // samples all of them), else the scene keeps flat sheet colours (which the band lines then
+  // take). Read off the grid, not the shown surface, so previewing an energy without sheets
+  // does not flip the band colours.
   const vertex_colored = $derived(
-    color_property === `property` &&
-      (surface?.isosurfaces ?? []).some((iso) =>
-        Object.keys(iso.properties ?? {}).some((name) => vertex_property(iso, name)),
-      ),
+    color_property === `property` && Object.keys(band_data.properties ?? {}).length > 0,
   )
   // Each band line in its sheet's colour over the caller's style (grid bands only, the rest
   // muted unless the caller colours them), unless the sheets are coloured by a property.
@@ -103,10 +102,11 @@
     }
   })
   // three.js parses neither var() nor light-dark(), so the 3D markers take Bands' E_F and
-  // reference line colours resolved on the wrapper, re-read on theme changes
+  // reference line colours resolved where the 2D dots resolve them (inside Bands, so a
+  // caller's bands_props.style applies to both), re-read on theme changes
   let level_rgb = $state({ fermi: `#e74c3c`, reference: `#d48860` })
   $effect(() => {
-    const node = wrapper
+    const node = crossings_svg
     if (!node) return
     const read = () => {
       level_rgb = {
@@ -120,25 +120,46 @@
   // Where the shown sheets' bands (in the shown spin channels) cross E_F and the shown
   // surface's energy (if another), coloured like the bands plot's line at that energy: dots on
   // the bands, markers on the 3D k-path
-  const crossings = $derived.by(() => {
+  const crossings_at = (energy: number, level: `fermi` | `reference`) => {
     const k_points = link.k_path?.points
     if (!k_points) return []
-    const levels: [number, `fermi` | `reference`][] = [[band_data.fermi_energy, `fermi`]]
-    if (shown_mu !== 0) levels.push([band_data.fermi_energy + shown_mu, `reference`])
     const hidden_spin =
       band_spin_mode === `up_only` ? `down` : band_spin_mode === `down_only` ? `up` : null
     const include = (band_idx: number, spin: `up` | `down`) =>
       grid_bands.has(band_idx) &&
       (shown_bands?.includes(band_idx) ?? true) &&
       spin !== hidden_spin
-    return levels.flatMap(([energy, level]) =>
-      band_crossings(band_struct, energy, k_points, x_positions, include).map((crossing) => ({
-        ...crossing,
-        energy,
-        level,
-      })),
+    return band_crossings(band_struct, energy, k_points, x_positions, include).map(
+      (crossing) => ({ ...crossing, energy, level }),
     )
-  })
+  }
+  // E_F's own, so hovering (which previews other energies) neither recomputes nor replaces them
+  const fermi_crossings = $derived(crossings_at(band_data.fermi_energy, `fermi`))
+  const crossings = $derived(
+    shown_mu === 0
+      ? fermi_crossings
+      : [...fermi_crossings, ...crossings_at(band_data.fermi_energy + shown_mu, `reference`)],
+  )
+  const k_markers = $derived(
+    crossings.map(({ k, level }) => ({ position: k, color: level_rgb[level] })),
+  )
+  // One object per path whose hover state are getters: a new object per hover would re-run
+  // every KPath prop read, path-derived state included
+  const k_path = $derived(
+    link.k_path && {
+      path: link.k_path,
+      get hovered_qpoint_index() {
+        return link.active_qpoint
+      },
+      get highlighted_qpoint_range() {
+        return link.highlighted_qpoint_range
+      },
+      on_kpath_hover: link.hover_path,
+      get k_markers() {
+        return k_markers
+      },
+    },
+  )
 </script>
 
 <div {...rest} bind:this={wrapper} class={[`fermi-surface-bands`, rest.class]}>
@@ -159,13 +180,7 @@
       }
     }
     k_marker={link.hovered_k_point}
-    k_path={link.k_path && {
-      path: link.k_path,
-      hovered_qpoint_index: link.active_qpoint,
-      highlighted_qpoint_range: link.highlighted_qpoint_range,
-      on_kpath_hover: link.hover_path,
-      k_markers: crossings.map(({ k, level }) => ({ position: k, color: level_rgb[level] })),
-    }}
+    {k_path}
     on_point_hover={(hover) => {
       hovered_band = hover?.band_index ?? null
       fermi_props.on_point_hover?.(hover)
@@ -208,7 +223,12 @@
   >
     {#snippet children(ctx)}
       {@render bands_props.children?.(ctx)}
-      <svg class="band-crossings" width={ctx.width} height={ctx.height}>
+      <svg
+        bind:this={crossings_svg}
+        class="band-crossings"
+        width={ctx.width}
+        height={ctx.height}
+      >
         {#each crossings as { x, energy, level }, idx (idx)}
           {#if in_range(x, ctx.x_range) && in_range(energy, ctx.y_range)}
             <circle
@@ -246,6 +266,7 @@
     gap: var(--fermi-bands-gap, 1em);
     &:fullscreen {
       padding: 1em;
+      grid-auto-rows: minmax(0, 1fr);
       background: var(--fullscreen-bg, var(--page-bg, Canvas));
       > :global(*) {
         height: 100%;

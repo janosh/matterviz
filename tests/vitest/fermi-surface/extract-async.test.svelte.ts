@@ -31,7 +31,7 @@ const {
   create_latest_extractor,
   extract_fermi_surface_async,
   fermi_extraction_warm,
-  release_fermi_worker,
+  register_fermi_viewer,
 } = await import(`#lib/fermi-surface/extract-async.js`)
 afterEach(stub.reset)
 
@@ -100,15 +100,29 @@ test(`latest-wins: one extraction in flight, newer requests replace waiting ones
   expect(await pending).not.toBeNull()
   expect(await superseded).toBeNull()
   expect(posted_mus()).toEqual([0.1, 0.4, 0.5])
+  // an unmounting viewer cancels its waiting request: it resolves null and never posts
+  const [running, cancelled] = [request(0.7), request(0.8)]
+  extract.cancel()
+  expect(await cancelled).toBeNull()
+  expect(await running).not.toBeNull()
+  expect(posted_mus()).toEqual([0.1, 0.4, 0.5, 0.7])
 })
 
 test(`warmth follows the grids the worker holds, and a lost grid is re-sent once`, async () => {
   const grids = [1, 2, 3, 4, 5].map(() => load_cu())
+  // a viewer unmounting keeps the worker and its grids warm for the others still mounted
+  const unregister = [register_fermi_viewer(), register_fermi_viewer()]
   await extract_fermi_surface_async(grids[0], { mu: 0.1 })
+  unregister[0]()
   expect(fermi_extraction_warm(grids[0])).toBe(true)
-  // a released worker is replaced by one holding no grids
-  release_fermi_worker()
-  expect(fermi_extraction_warm(grids[0])).toBe(false)
+  // the last one unmounting mid-extraction ends the worker once that extraction lands, and
+  // its replacement holds no grids
+  const in_flight = extract_fermi_surface_async(grids[0], { mu: 0.15 })
+  unregister[1]()
+  const worker = stub.instances.at(-1)
+  expect([worker?.terminated, fermi_extraction_warm(grids[0])]).toEqual([0, true])
+  expect((await in_flight).isosurfaces.length).toBeGreaterThan(0)
+  expect([worker?.terminated, fermi_extraction_warm(grids[0])]).toEqual([1, false])
   await extract_fermi_surface_async(grids[0], { mu: 0.2 })
   expect(fermi_extraction_warm(grids[0])).toBe(true)
   // the worker keeps 4 grids: a fifth evicts the first, which is then sent again up front

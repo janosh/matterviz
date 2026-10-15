@@ -36,6 +36,7 @@
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
+  import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import type {
     BandGridData,
@@ -234,10 +235,14 @@
   let committed_job_id = 0
   let extracting = $state(false)
   // nothing commits, reports or clears the spinner after unmount
-  $effect(() => () => {
-    committed_job_id = Infinity
-    extraction_job_id = Infinity
-    extraction.release_fermi_worker()
+  $effect(() => {
+    const unregister = extraction.register_fermi_viewer()
+    return () => {
+      committed_job_id = Infinity
+      extraction_job_id = Infinity
+      extract_latest.cancel()
+      unregister()
+    }
   })
   $effect(() => {
     const job_id = ++extraction_job_id
@@ -249,24 +254,38 @@
     const factor = previewing
       ? preview_interpolation_factor(grid, interpolation_factor)
       : interpolation_factor
-    extracting = !extraction.fermi_extraction_warm(grid, factor)
-    extract_latest(grid, { mu: mean, interpolation_factor: factor, wigner_seitz })
-      .then(
-        (result) => {
-          if (!result || job_id < committed_job_id || grid !== grid_data) return
-          committed_job_id = job_id
-          fermi_data = result
-          error_msg = undefined
-        },
-        (err: unknown) => {
-          if (job_id !== extraction_job_id) return
-          error_msg = `Fermi surface extraction failed: ${to_error(err).message}`
-          on_error?.({ error_msg })
-        },
-      )
-      .finally(() => {
-        if (job_id === extraction_job_id) extracting = false
-      })
+    const options = { mu: mean, interpolation_factor: factor, wigner_seitz }
+    const cold = !extraction.fermi_extraction_warm(grid, factor)
+    extracting = cold
+    const extract = () =>
+      extract_latest(grid, options)
+        .then(
+          (result) => {
+            if (!result || job_id < committed_job_id || grid !== grid_data) return
+            committed_job_id = job_id
+            fermi_data = result
+            error_msg = undefined
+          },
+          (err: unknown) => {
+            if (job_id !== extraction_job_id) return
+            error_msg = `Fermi surface extraction failed: ${to_error(err).message}`
+            on_error?.({ error_msg })
+          },
+        )
+        .finally(() => {
+          if (job_id === extraction_job_id) extracting = false
+        })
+    if (can_create_worker()) {
+      extract()
+      return
+    }
+    // On the main thread (no workers, e.g. anywidget) extraction blocks: mu changes batch per
+    // frame, and a grid or factor still to upsample first gives the spinner a painted frame
+    let frame = requestAnimationFrame(() => {
+      if (cold) frame = requestAnimationFrame(extract)
+      else extract()
+    })
+    return () => cancelAnimationFrame(frame)
   })
 
   async function handle_export(
