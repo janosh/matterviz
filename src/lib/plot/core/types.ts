@@ -255,7 +255,7 @@ export interface ScatterHandlerProps<
   color_bar?: {
     value?: number | null
     title?: string | null
-    scale?: unknown
+    color_scale?: ColorScale
     tick_format?: string | null
   }
 }
@@ -301,8 +301,9 @@ export interface ArcsinhScaleConfig {
 // Scale type can be a simple string or arcsinh config object
 export type ScaleType = ScaleTypeName | ArcsinhScaleConfig
 
-// The one value -> color mapping every color-mapped component takes as `color_scale`
-// (plots, ternary, sunburst/treemap, heatmap matrix, periodic table, Fermi surface, …)
+// The one value -> color mapping every color-mapped component (plots, ternary, sunburst/
+// treemap, heatmap matrix, periodic table, Fermi surface, convex hull, chempot diagram,
+// structure atoms/vectors, …) and ColorBar take as `color_scale`
 export type ColorScaleConfig = {
   type?: ScaleType // spacing of the colors over value_range: linear, log or arcsinh
   // Prefixed d3 interpolator name (`interpolateViridis`, not `Viridis`), or a t in [0, 1] ->
@@ -311,6 +312,7 @@ export type ColorScaleConfig = {
   // Data values mapped to the palette ends; a null or unset end fits the data
   value_range?: [number | null, number | null]
   // Fraction of the palette to use, e.g. [0.25, 1] to keep low counts visibly colored.
+  // A descending slice ([1, 0]) reverses the palette.
   palette_range?: Vec2
 }
 // A bare interpolator name is shorthand for { scheme: name }
@@ -413,9 +415,6 @@ export type HoverConfig = {
   // a full 2D spatial index for tens of thousands of samples. `y` ignores horizontal distance
   // (e.g. a spectrum with a vertical frequency axis).
   mode?: `nearest` | `x` | `y`
-  // Call hover handlers without mutating/rendering tooltip state. Time-series scrubbers can use
-  // this to keep pointer frames free of tooltip DOM work while another pane updates live.
-  show_tooltip?: boolean
 }
 
 // Kernel density contours drawn under each visible series (ScatterPlot `density_contours`).
@@ -632,15 +631,6 @@ export type AxisLoader<Result> = (
   property_key: string,
   signal: AbortSignal,
 ) => Promise<Result>
-
-// How a ColorBar gets its colors:
-//   - a d3 interpolator name, sampled across the bar's `range`
-//   - `interpolator`: a unit function of t in [0, 1], also sampled across `range`
-//   - `fn`: maps data values straight to colors over the domain it declares
-export type ColorBarScale =
-  | D3InterpolateName
-  | { interpolator: (fraction: number) => string }
-  | { fn: (value: number) => string; domain?: Vec2 }
 
 // Option for color scale dropdown in ColorBar
 export interface ColorScaleOption {

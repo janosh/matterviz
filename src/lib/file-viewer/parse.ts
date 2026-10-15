@@ -39,6 +39,7 @@ import {
   open_trajectory,
   VaspoutElectronicOnlyError,
 } from '#lib/trajectory/parse/index.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'
@@ -61,9 +62,14 @@ type Result<Type extends ViewType, Data> = { type: Type; data: Data; filename: s
 
 export type ParseResult =
   | Result<`trajectory`, TrajectoryRun>
-  | (Result<`structure`, AnyStructure> & { prediction?: StructureToolPrediction })
+  // `warnings`: the parser's recoverable issues (skipped rows, guessed elements, placeholder
+  // cells, truncated grids), shown by the viewer as dismissible notices
+  | (Result<`structure`, AnyStructure> & {
+      prediction?: StructureToolPrediction
+      warnings: string[]
+    })
   | Result<`fermi_surface`, BandGridData | FermiSurfaceData>
-  | Result<`isosurface`, VolumetricFileData>
+  | (Result<`isosurface`, VolumetricFileData> & { warnings: string[] })
   | Result<`convex_hull`, PhaseData[]>
   | Result<`phase_diagram`, PhaseDiagramData>
   | Result<`json_browser`, unknown>
@@ -124,6 +130,29 @@ const trajectory_result = async (
   }
 }
 
+// Parse a volumetric file (null when not one), collecting its warnings onto the result
+const volumetric_result = (
+  content: string,
+  filename: string,
+): Extract<ParseResult, { type: `isosurface` }> | null => {
+  const collector = create_warning_collector(() => {})
+  const data = parse_volumetric_file(content, filename, collector.warn)
+  return data && { type: `isosurface`, data, filename, warnings: collector.warnings }
+}
+
+// Parse a structure file, collecting its warnings onto the result (not the console: the
+// viewer shows them)
+const structure_result = (
+  content: string,
+  filename: string,
+  structure_id: string,
+): Extract<ParseResult, { type: `structure` }> => {
+  const collector = create_warning_collector(() => {})
+  const structure = parse_structure_file(content, filename, collector.warn)
+  const data = { ...structure, id: structure_id }
+  return { type: `structure`, data, filename, warnings: collector.warnings }
+}
+
 // Route file content to the parser for its format and wrap the result with its view type
 export const parse_file_content = async (
   source: TrajectorySource,
@@ -158,6 +187,7 @@ export const parse_file_content = async (
         type: `isosurface`,
         data: await parse_vaspwave_charge(buffer, filename),
         filename,
+        warnings: [],
       }
     }
     if (
@@ -182,8 +212,8 @@ export const parse_file_content = async (
     KNOWN_FORMAT_EXT_REGEX.test(own_name) || STRUCTURE_EXTENSIONS_REGEX.test(own_name)
   const is_cube = VOLUMETRIC_EXT_RE.test(basename)
   if (is_cube || (VASP_VOLUMETRIC_REGEX.test(basename) && !names_other_format)) {
-    const data = parse_volumetric_file(content, filename)
-    if (data) return { type: `isosurface`, data, filename }
+    const result = volumetric_result(content, filename)
+    if (result) return result
     // a VASP name over structure content (POSCAR_from_CHGCAR) falls through to the parsers
     if (is_cube) throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
@@ -207,15 +237,14 @@ export const parse_file_content = async (
       parsed_json.schema.startsWith(`matterviz-prediction-`)
     ) {
       const prediction = prediction_from_json(parsed_json)
-      return { type: `structure`, data: prediction.input, prediction, filename }
+      return { type: `structure`, data: prediction.input, prediction, filename, warnings: [] }
     }
     const detected = detect_view_type(parsed_json)
     if (detected === `structure`) {
       // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.); a shape that
       // looks like a structure but fails the detailed parse still gets the JSON browser
       try {
-        const structure = parse_structure_file(content, filename)
-        return { type: `structure`, data: { ...structure, id: structure_id }, filename }
+        return structure_result(content, filename, structure_id)
       } catch {
         return { type: `json_browser`, data: parsed_json, filename }
       }
@@ -225,6 +254,7 @@ export const parse_file_content = async (
         type: `isosurface`,
         data: volume_json_to_isosurface_input(parsed_json),
         filename,
+        warnings: [],
       }
     }
     if (detected === `fermi_surface` || detected === `band_grid`) {
@@ -263,16 +293,16 @@ export const parse_file_content = async (
   // below, while VASP-named and .cube files surface their parse errors above.
   const volumetric = (() => {
     try {
-      return parse_volumetric_file(content, filename)
+      return volumetric_result(content, filename)
     } catch {
       return null
     }
   })()
-  if (volumetric) return { type: `isosurface`, data: volumetric, filename }
+  if (volumetric) return volumetric
 
   // CIF, POSCAR, XYZ, ...: parse_structure_file throws descriptive reasons on failure but can
   // still return zero atoms (a CIF with cell params but no _atom_site records)
-  const structure = parse_structure_file(content, filename)
-  if (!structure.sites?.length) throw new Error(`No atoms found in ${filename}`)
-  return { type: `structure`, data: { ...structure, id: structure_id }, filename }
+  const result = structure_result(content, filename, structure_id)
+  if (!result.data.sites?.length) throw new Error(`No atoms found in ${filename}`)
+  return result
 }

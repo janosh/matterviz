@@ -38,6 +38,8 @@
     zone_axis_direction,
   } from '#lib/scene/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
+  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
+  import type { ColorScale } from '#lib/plot/core/types.js'
   import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import type { StructurePaneSize, StructureViewState } from '#lib/settings/viewer-state.js'
@@ -184,8 +186,11 @@
     )
     atom_color_config = scale_type ? { ...next, scale_type } : next
   }
-  const set_atom_color_scale = (scale: AtomColorConfig[`scale`]): void => {
-    atom_color_config = { ...atom_color_config, scale }
+  const vector_color_scale = $derived(
+    scene_props.vector_color_scale ?? DEFAULTS.structure.vector_color_scale,
+  )
+  const set_atom_color_scale = (color_scale: ColorScale): void => {
+    atom_color_config = { ...atom_color_config, color_scale }
   }
 
   const apply_view_state = (state: StructureViewState): void => {
@@ -207,7 +212,7 @@
     )
     atom_color_config = {
       ...resolved,
-      scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
+      color_scale: structure_settings.atom_color_scale ?? DEFAULTS.structure.atom_color_scale,
       scale_type: structure_settings.atom_color_scale_type ?? resolved.scale_type,
     }
     color_scheme = state.settings.color_scheme
@@ -912,7 +917,7 @@
         (value) => (color_scheme = value),
       ),
       atom_color_mode: atom_coloring,
-      atom_color_scale: local(() => atom_color_config.scale, set_atom_color_scale),
+      atom_color_scale: local(() => atom_color_config.color_scale, set_atom_color_scale),
       atom_color_property_key: atom_coloring,
     }),
     bonds: scene_section(`Bonds`, bond_rows),
@@ -1244,7 +1249,11 @@
           <label {...setting_row(`atom_color_scale`)}>
             <span>Color scale</span>
             <ColorScaleSelect
-              bind:value={() => atom_color_config.scale, set_atom_color_scale}
+              bind:value={
+                () => scheme_name(atom_color_config.color_scale),
+                (scheme) =>
+                  set_atom_color_scale(with_scheme(atom_color_config.color_scale, scheme))
+              }
               color_bar={{ tick_labels: 0, wrapper_style: `width: 100%;` }}
               style="min-width: 0; border: none"
               aria-label="Color scale"
@@ -1329,8 +1338,11 @@
                 <span>Color scale</span>
                 <ColorScaleSelect
                   bind:value={
-                    () => scene_props.vector_color_scale,
-                    (vector_color_scale) => update_scene({ vector_color_scale })
+                    () => scheme_name(vector_color_scale),
+                    (scheme) =>
+                      update_scene({
+                        vector_color_scale: with_scheme(vector_color_scale, scheme),
+                      })
                   }
                   style="min-width: 0; border: none"
                 />

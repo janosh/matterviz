@@ -1,16 +1,17 @@
-// Generic tooltip configuration types for prefix/suffix customization
-// Prefix/suffix are rendered via {@html} - ensure values are developer-defined, not user input
+// Shared tooltip prop types
 import type { Snippet } from 'svelte'
 
+// Every hover-tooltip component's `tooltip` prop: false hides the tooltip, a snippet replaces its
+// content, a config object (on components that define one) customizes the default content and
+// undefined shows the default
+export type TooltipProp<SnippetArg, Config = never> = Snippet<[SnippetArg]> | Config | false
+
+// Prefix/suffix around a default tooltip's content. Rendered via {@html}: ensure values are
+// developer-defined, not user input
 export type TooltipConfig<T> = {
   prefix?: string | ((data: T) => string)
   suffix?: string | ((data: T) => string)
 }
-
-// Union type: snippet replaces content entirely, config adds prefix/suffix
-export type TooltipProp<T, SnippetArgs extends unknown[] = [{ hover_data: T }]> =
-  | Snippet<SnippetArgs>
-  | TooltipConfig<T>
 
 export { default as KCoords } from './KCoords.svelte'
 export { default as TooltipContent } from './TooltipContent.svelte'

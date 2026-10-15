@@ -35,6 +35,9 @@ import {
   strip_closing_faces,
 } from '#lib/chempot-diagram/compute.js'
 import { get_domain_color_data } from '#lib/chempot-diagram/color.js'
+import type { ChemPotColorMode } from '#lib/chempot-diagram/types.js'
+import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
+import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { filter_entries_at_temperature, slim_phase_entry } from '#lib/convex-hull/helpers.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Vec2 } from '#lib/math.js'
@@ -1586,15 +1589,62 @@ describe(`best_form_energy_for_formula`, () => {
     const color_data = get_domain_color_data({
       formulas: [`A`, `B`, `AB`],
       color_mode: `formation_energy`,
-      color_scale: `interpolateViridis`,
-      reverse_color_scale: false,
+      color_scale: { scheme: `interpolateViridis` },
       entries: color_entries,
       el_refs: AB_REFS,
       energy_stats: get_energy_stats_by_formula(color_entries),
     })
 
-    expect(color_data.color_range).toMatchObject({ min: -1, max: 0 })
+    expect(color_data.color_bar?.color_scale.value_range).toEqual([-1, 0])
     expect(color_data.colors.size).toBe(3)
+  })
+
+  // Colors pinned from the pre-ColorScaleConfig API (reverse_color_scale flag), so moving
+  // reversal to palette_range [1, 0] changed no color
+  test.each<[ChemPotColorMode, ColorScaleConfig, string[], Vec2]>([
+    [
+      `formation_energy`,
+      CHEMPOT_DEFAULTS.color_scale, // reversed Spectral
+      [
+        `rgb(191, 39, 73)`,
+        `rgb(191, 39, 73)`,
+        `rgb(94, 79, 162)`,
+        `rgb(177, 224, 161)`,
+        `rgb(158, 1, 66)`,
+      ],
+      [-1, 0.06666666666666643],
+    ],
+    [
+      `energy`,
+      { scheme: `interpolateViridis`, palette_range: [0, 1] },
+      [`#fde725`, `#31688e`, `#440154`, `#31688e`, `#22a884`],
+      [-3.5, -2],
+    ],
+    [
+      `entries`,
+      { scheme: `interpolateViridis`, palette_range: [1, 0] },
+      [`#fde725`, `#fde725`, `#440154`, `#fde725`, `#fde725`],
+      [1, 2],
+    ],
+  ])(`%s domain colors with %o`, (color_mode, color_scale, colors, value_range) => {
+    const color_entries = [
+      ...Object.values(AB_REFS),
+      make_phase({ A: 1, B: 1 }, -3.5),
+      make_phase({ A: 2, B: 1 }, -3.0),
+      make_phase({ A: 1, B: 2 }, -2.6),
+      make_phase({ A: 1, B: 1 }, -3.1),
+    ]
+    const formulas = [`A`, `B`, `AB`, `A2B`, `AB2`]
+    const { colors: by_formula, color_bar } = get_domain_color_data({
+      formulas,
+      color_mode,
+      color_scale,
+      entries: color_entries,
+      el_refs: AB_REFS,
+      energy_stats: get_energy_stats_by_formula(color_entries),
+    })
+    expect(formulas.map((formula) => by_formula.get(formula))).toEqual(colors)
+    expect(color_bar?.color_scale.value_range).toEqual(value_range)
   })
 
   test(`formation energy from real data: Fe-Li-O system`, () => {

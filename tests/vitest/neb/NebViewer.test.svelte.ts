@@ -526,11 +526,22 @@ describe(`NebViewer`, () => {
       `img-0.json: image 1 of 3`,
     )
 
+    // recoverable parse issues of a batch show as one dismissible notice, cleared next drop
+    const xyz = (energy: number, x_coord: number) =>
+      `2\nenergy=${energy} pbc="bogus"\nH 0 0 0\nH ${x_coord} 0 0`
+    drop([new File([xyz(-10, 0.7)], `a.xyz`), new File([xyz(-9, 0.9)], `b.xyz`)])
+    await vi.waitFor(() =>
+      expect(viewer.querySelector(`.status-message.warning`)?.textContent).toMatch(
+        /2 parse warnings: Invalid EXTXYZ pbc/,
+      ),
+    )
+
     // identical consecutive images give no path tangent: refused with its reason
     drop(path_file(`dup`, [first, first, second]))
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
     )
+    expect(viewer.querySelector(`.status-message.warning`)).toBeNull()
     expect(state.active_path_key).toBe(`dropped images`)
 
     vi.spyOn(console, `error`).mockImplementation(() => undefined)

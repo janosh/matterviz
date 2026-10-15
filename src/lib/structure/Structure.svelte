@@ -21,6 +21,7 @@
     TwoColumns,
   } from 'svelte-widgets/icons'
   import { handle_and_prevent } from '#lib/utils.js'
+  import { parse_warnings_notice } from '#lib/labels.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
@@ -65,8 +66,12 @@
   import * as symmetry from '#lib/symmetry/index.js'
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
-  import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import {
+    forward_window_keydown,
+    tooltip as attach_tooltip,
+  } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -163,7 +168,7 @@
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     atom_color_field,
-    atom_tooltip,
+    tooltip,
     atom_opacity = 1,
     volume_color_field,
     volume_opacity = 0.35,
@@ -176,6 +181,7 @@
     on_error,
     loading = $bindable(false),
     error_msg = $bindable(),
+    parse_warnings = $bindable([]),
     dragover = $bindable(false),
     prediction,
     trajectory_position_stream,
@@ -259,10 +265,14 @@
     on_error?: EventHandler
     loading?: boolean
     error_msg?: string
+    // bindable: recoverable issues the parser reported for the loaded file (skipped rows,
+    // guessed elements), shown as one dismissible notice
+    parse_warnings?: string[]
     dragover?: boolean
     prediction?: StructureToolPrediction
     atom_color_field?: AtomColorField
-    atom_tooltip?: Snippet<[{ site: Site; site_idx: number }]>
+    // Hovered-atom tooltip: false hides it, a snippet adds rows below the built-in site info
+    tooltip?: TooltipProp<{ site: Site; site_idx: number }>
     atom_opacity?: number
     volume_color_field?: AtomColorField
     volume_opacity?: number
@@ -312,6 +322,8 @@
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
       toast_store.clear() // a previous load's notice doesn't describe this one
+      parse_warnings =
+        opened.type === `structure` || opened.type === `isosurface` ? opened.warnings : []
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
@@ -543,7 +555,7 @@
         const config: AtomColorConfig = {
           mode: `property`,
           property_key: color_property,
-          scale: `interpolateRdBu`,
+          color_scale: `interpolateRdBu`,
           scale_type: `continuous`,
         }
         if (tool_overlay_visible) atom_color_config = config
@@ -748,6 +760,8 @@
   // === symmetry ===
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
+  // Writable so the notice can be dismissed
+  let parse_warning_msg = $derived(parse_warnings_notice(parse_warnings))
   let last_symmetry_structure: AnyStructure | null = null
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
@@ -934,7 +948,7 @@
     scene_props: {
       ...scene_props,
       atom_color_field,
-      atom_tooltip,
+      tooltip,
       atom_opacity,
       volume_color_field,
       volume_opacity,
@@ -1160,6 +1174,14 @@
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
   <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
   <ViewerNotices>
+    {#if parse_warning_msg}
+      <StatusMessage
+        bind:message={parse_warning_msg}
+        type="warning"
+        dismissible
+        class="parse-warnings"
+      />
+    {/if}
     {#if scene_shown && analyze_symmetry && symmetry_error}
       <StatusMessage
         bind:message={symmetry_error}
@@ -1280,7 +1302,7 @@
             {sym_data}
             wyckoff_positions={session.wyckoff_rows}
             toggle_props={{ style: shortcut_flash.style(`info`) }}
-            {@attach tooltip({ content: `Structure info pane` })}
+            {@attach attach_tooltip({ content: `Structure info pane` })}
           />
         {/if}
 

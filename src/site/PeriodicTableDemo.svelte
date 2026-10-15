@@ -128,7 +128,7 @@
   bind:active_element={selected.element}
   bind:active_category={selected.category}
   links="name"
-  tooltip={heatmap_key ? custom_tooltip : true}
+  tooltip={heatmap_key ? custom_tooltip : undefined}
   show_photo
 >
   {#snippet inset()}

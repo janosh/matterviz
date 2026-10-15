@@ -7,7 +7,7 @@
   // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
   // pan/zoom, marginals and the title come from the shared Cartesian frame.
   import { host } from '#lib/host.js'
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Point2D, Vec2 } from '#lib/math.js'
   import { create_pulse_animation } from '#lib/effects.svelte.js'
@@ -56,8 +56,7 @@
   import {
     collect_size_range,
     create_color_scale,
-    resolve_value_range,
-    to_color_scale_config,
+    resolve_color_scale,
     create_size_scale,
   } from '#lib/plot/core/scales.js'
   import type {
@@ -149,7 +148,7 @@
       color_bar?: ColorBarDecorationProps | null
       density?: BinnedDensityConfig
       overlays?: BinnedOverlaysConfig
-      tooltip?: Snippet<[BinnedPointPayload<Metadata, PointData>]>
+      tooltip?: TooltipProp<BinnedPointPayload<Metadata, PointData>>
       point_data?: BinnedPointDataFn<Metadata, PointData>
       point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
       selected_point_id?: string | number | null
@@ -182,7 +181,7 @@
   const x_scale_type = $derived(x_axis.scale_type ?? `linear`)
   const y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: true, right: true }),
+    normalize_marginals(marginals, { top: true, right: true }, tooltip === false),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
@@ -367,17 +366,13 @@
       ),
     ),
   )
-  // the bar spans the shared scale's domain: an explicit value_range, else the count range
-  const color_bar_domain = $derived(
-    resolve_value_range(density_settings.color_scale, auto_color_range),
-  )
   const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
   const color_bar_props = $derived.by((): ColorBarDecorationProps | null => {
     if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
-      scale_type:
-        color_bar.scale_type ?? to_color_scale_config(density_settings.color_scale).type,
+      // the bar spans the shared scale's domain: an explicit value_range, else the count range
+      color_scale: resolve_color_scale(density_settings.color_scale, auto_color_range),
       title: `${color_bar.title ?? `Density`} (${density_result.visible_count.toLocaleString()} points)`,
       tick_format: color_bar.tick_format ?? `.2~s`,
       tick_labels: color_bar.tick_labels ?? 4,
@@ -950,14 +945,7 @@
     {/if}
 
     {#if show_colorbar && color_bar_props}
-      <ColorBarDecoration
-        decoration={colorbar}
-        color_bar={{
-          ...color_bar_props,
-          scale: { fn: color_scales[0], domain: color_bar_domain },
-          range: color_bar_domain,
-        }}
-      />
+      <ColorBarDecoration decoration={colorbar} color_bar={color_bar_props} />
     {/if}
 
     {#if has_plot_size && annotation}
@@ -971,7 +959,7 @@
       </div>
     {/if}
 
-    {#if hovered_bin}
+    {#if hovered_bin && tooltip !== false}
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
@@ -992,7 +980,7 @@
           `${fmt_y(bin_y[0])} - ${fmt_y(bin_y[1])}`,
         )}
       </PlotTooltip>
-    {:else if hovered_point}
+    {:else if hovered_point && tooltip !== false}
       {@const props = point_payload(hovered_point)}
       <PlotTooltip
         x={tooltip_pos.x}

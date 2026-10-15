@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -44,7 +44,7 @@
     accumulate_extent,
     collect_scale_ranges,
     create_color_scale,
-    resolve_value_range,
+    resolve_color_scale,
     to_color_scale_config,
     create_scale,
     create_size_scale,
@@ -241,7 +241,9 @@
       // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
       // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
-      tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
+      // false still calls hover handlers but skips all tooltip state and DOM work, e.g. for a
+      // time-series scrubber that updates another pane live
+      tooltip?: TooltipProp<ScatterHandlerProps<Metadata>>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
@@ -609,7 +611,7 @@
   })
 
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: true, right: true }),
+    normalize_marginals(marginals, { top: true, right: true }, tooltip === false),
   )
   // A series' color as a whole (palette fallback) for the marks that summarize it:
   // marginals and density contours
@@ -1291,7 +1293,7 @@
     }
     // Construct handler props synchronously to avoid stale derived reads
     const props = construct_handler_props(closest_point)
-    tooltip_point = hover_config.show_tooltip === false ? null : closest_point
+    tooltip_point = tooltip === false ? null : closest_point
     if (evt && props) on_point_hover?.({ ...props, event: evt, point: closest_point })
   }
 
@@ -1439,7 +1441,7 @@
       color_bar: {
         value: finite_color_value,
         title: color_bar?.title ?? null,
-        scale: color_scale,
+        color_scale,
         tick_format: color_bar?.tick_format ?? null,
       },
     }
@@ -1715,7 +1717,7 @@
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
   idle_cursor={plot_click_armed ? `pointer` : `crosshair`}
-  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover || on_plot_click
+  on_mouse_move={tooltip !== false || on_point_hover || on_plot_click
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1987,7 +1989,7 @@
 
   {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
-    {#if handler_props && hovered && tooltip_point}
+    {#if handler_props && hovered && tooltip_point && tooltip !== false}
       {@const { point_label, series_idx } = tooltip_point}
       {@const tooltip_bg_color = pick_tooltip_bg(
         tooltip_point,
@@ -2035,16 +2037,13 @@
     {/if}
 
     {#if color_bar && show_colorbar}
-      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <ColorBarDecoration
         decoration={colorbar}
         color_bar={{
           show_scale: has_color_scale,
           tick_labels: 4,
           tick_side: `primary`,
-          scale: { fn: color_scale_fn, domain: color_domain },
-          scale_type: color_scale_config.type,
-          range: color_domain,
+          color_scale: resolve_color_scale(color_scale_config, auto_color_range),
           bar_style: `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.horizontal_bar_height}px; ${color_bar.style ?? ``}`,
           ...color_bar,
         }}

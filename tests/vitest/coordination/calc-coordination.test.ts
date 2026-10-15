@@ -11,7 +11,7 @@ import {
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized } from '../setup'
+import { create_drop_event, mount_sized } from '../setup'
 import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
 // Simple cubic structure (NaCl-like)
@@ -180,13 +180,54 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     expect(root.textContent).toContain(`Count`)
   })
 
+  // Drops open through open_material: bars plus a parse-warning notice named by file, unless
+  // drops are off or the host's on_file_drop takes the raw file
+  const cell = [`a`, `b`, `c`].map((axis) => `_cell_length_${axis} 5`)
+  const angles = [`alpha`, `beta`, `gamma`].map((angle) => `_cell_angle_${angle} 90`)
+  const loop = [`label`, `type_symbol`, `fract_x`, `fract_y`, `fract_z`]
+  const cif = [
+    `data_si`,
+    ...cell,
+    ...angles,
+    `loop_`,
+    ...loop.map((tag) => `_atom_site_${tag}`),
+  ]
+    .concat(`Si1 Si 0 0 0`, `Si2 Si abc 0 0`)
+    .join(`\n`)
   test.each([
-    [true, `Drag and drop structure files`],
-    [false, `No coordination data to display`],
-  ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
-    const root = await mount_plot({ structures: {}, allow_file_drop })
-    expect(root.textContent).toContain(message)
-  })
+    [true, `Drag and drop structure files`, false],
+    [true, `Drag and drop structure files`, true],
+    [false, `No coordination data to display`, false],
+  ])(
+    `allow_file_drop=%s shows %s when empty (host on_file_drop=%s)`,
+    async (allow_file_drop, message, intercept) => {
+      const on_file_drop = intercept ? vi.fn() : undefined
+      const root = await mount_plot({ structures: {}, allow_file_drop, on_file_drop })
+      expect(root.textContent).toContain(message)
+      const container = root.parentElement
+      const file = new File([cif], `si.cif`)
+      root.dispatchEvent(create_drop_event(file))
+      if (on_file_drop) {
+        await vi.waitFor(() =>
+          expect(on_file_drop).toHaveBeenCalledWith(cif, `si.cif`, {
+            source_filename: `si.cif`,
+            file,
+          }),
+        )
+      } else if (allow_file_drop) {
+        await vi.waitFor(() =>
+          expect(container?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement),
+        )
+        expect(container?.querySelector(`.status-message.warning`)?.textContent).toMatch(
+          /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
+        )
+        return
+      }
+      await tick()
+      expect(container?.querySelector(`svg`)).toBeNull()
+      expect(root.textContent).toContain(message)
+    },
+  )
 
   // neighbor_query throws on a non-finite position; an unguarded compute derived would take
   // the whole render down with it. The healthy structure next to it must still plot.

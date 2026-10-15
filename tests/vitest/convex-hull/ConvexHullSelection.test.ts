@@ -581,6 +581,8 @@ describe(`convex hull replacement state`, () => {
         create_drop_event(new File([json], `hull.json`)),
       )
       await vi.waitFor(() => expect(test_text(`stable-count`)).toBe(`${dropped.length}`))
+      // on_file_load reports the entries with their source
+      expect(test_text(`loaded-file`)).toBe(`hull.json < hull.json`)
     },
   )
 
@@ -624,6 +626,20 @@ describe(`convex hull replacement state`, () => {
       expect(document.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
     },
   )
+
+  // tooltip=false hides the 3D hover tooltip (2D defers to ScatterPlot's tooltip prop)
+  test.each([undefined, false] as const)(`3d hover tooltip=%s`, async (tooltip) => {
+    const entries = [`Li`, `O`, `Na`].map((element) => make_phase({ [element]: 1 }))
+    const target = await mount_hull({ entries, tooltip })
+    target
+      .querySelector(`canvas`)
+      ?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+      )
+    flushSync()
+    expect(target.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
+    expect(document.querySelector(`.tooltip-content`) !== null).toBe(tooltip === undefined)
+  })
 
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
   // to animate one ring. The rings now live on a transparent canvas stacked over the hull.

@@ -942,9 +942,17 @@ test.each([`linear`, `log`, `arcsinh`] as const)(
     const interpolate = color_interpolator(config)
     expect(scale(1)).toBe(interpolate(0))
     expect(scale(100)).toBe(interpolate(1))
-    expect(() => color_interpolator({ palette_range: [1, 0] })).toThrow(
-      `Invalid palette_range`,
-    )
+    // out-of-range values clamp to the clipped ends instead of extrapolating past them
+    expect([scale(0.5), scale(1e3)]).toEqual([interpolate(0), interpolate(1)])
+    // a descending palette_range runs the scheme backwards
+    const reversed = create_color_scale({ ...config, palette_range: [1, 0.3] }, [1, 100])
+    expect([reversed(1), reversed(100)]).toEqual([interpolate(1), interpolate(0)])
+    for (const palette_range of [
+      [0.5, 0.5],
+      [-0.1, 1],
+      [0, 1.1],
+    ] as Vec2[])
+      expect(() => color_interpolator({ palette_range })).toThrow(`Invalid palette_range`)
   },
 )
 

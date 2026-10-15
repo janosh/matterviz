@@ -22,9 +22,12 @@
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
   import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import type { ColorRamp } from '#lib/plot/core/color-ramp.js'
-  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import {
+    color_interpolator,
+    resolve_value_range,
+    to_color_scale_config,
+  } from '#lib/plot/core/scales.js'
+  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { virtual_window } from 'svelte-widgets/virtual'
   import { rows_to_csv } from 'svelte-widgets/csv'
@@ -63,7 +66,7 @@
     missing = {},
     backdrop = undefined,
     domain_mode = $bindable(`auto`),
-    color_bar = $bindable(null),
+    color_bar = $bindable({}),
     // Interaction props
     active_cell = $bindable(null),
     selected_cells = $bindable([]),
@@ -98,12 +101,12 @@
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
     show_values = $bindable(false),
-    show_controls = false,
+    show_controls = `hover`,
     controls_open = $bindable(false),
     controls_props = {},
     x_axis = {},
     y_axis = {},
-    tooltip = false,
+    tooltip,
     cell,
     children,
     ...rest
@@ -165,7 +168,7 @@
       show_col_summaries?: boolean
       // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
       show_values?: boolean | string
-      // Controls pane (opt-in, renders HeatmapMatrixControls inside the shell)
+      // Controls pane (HeatmapMatrixControls inside the shell)
       show_controls?: ShowControlsProp<`controls`>
       controls_open?: boolean
       controls_props?: Pick<
@@ -294,29 +297,28 @@
   )
   // Resolve unspecified bounds lazily; explicit ranges need no data-domain scan.
   let [cs_min, cs_max] = $derived(resolve_value_range(color_scale, () => data_domain))
-  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
   // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
   // positive value instead so the colors still spread over the data. A degenerate domain
   // maps everything to the midpoint color; a log domain entirely <= 0 maps nothing (null).
-  let ramp = $derived.by((): ColorRamp | null => {
+  // The bar spans the cell ramp's domain in the caller's bound order, so a lifted log floor
+  // shows on it too instead of the raw cs_min <= 0 flooring it at LOG_EPS.
+  let ramp = $derived.by(() => {
     const [lower, upper] = [Math.min(cs_min, cs_max), Math.max(cs_min, cs_max)]
-    let floor = lower
-    if (use_log && lower !== upper) {
-      if (upper <= 0) return null
-      if (lower <= 0) floor = value_stats.min_pos ?? upper
-    }
-    if (floor === upper) {
-      const mid_color = resolve_color_ramp(color_bar_scale, [0, 1]).color_fn(0.5)
-      return { color_fn: () => mid_color, domain: [lower, upper] }
-    }
-    return resolve_color_ramp(color_bar_scale, [floor, upper], color_scale_config.type)
-  })
-  // Color bar span in the caller's bound order: the cell ramp's domain, so a lifted log floor
-  // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
-  let color_bar_range = $derived.by((): Vec2 => {
-    if (!ramp) return [cs_min, cs_max]
-    const [lower, upper] = ramp.domain
-    return cs_min <= cs_max ? [lower, upper] : [upper, lower]
+    const unmappable = use_log && lower !== upper && upper <= 0
+    const floor =
+      use_log && !unmappable && lower !== upper && lower <= 0
+        ? (value_stats.min_pos ?? upper)
+        : lower
+    const degenerate = floor === upper
+    const [start, end]: Vec2 = unmappable || degenerate ? [lower, upper] : [floor, upper]
+    const { color_fn, bar_scale } = resolve_color_ramp(
+      color_scale_config,
+      cs_min <= cs_max ? [start, end] : [end, start],
+    )
+    if (unmappable) return { color_fn: null, bar_scale }
+    if (!degenerate) return { color_fn, bar_scale }
+    const mid_color = color_interpolator(color_scale_config)(0.5)
+    return { color_fn: () => mid_color, bar_scale }
   })
   let color_bar_side = $derived(color_bar?.orientation === `vertical` ? `right` : `bottom`)
   // fill for cells with no mappable value (default transparent)
@@ -328,7 +330,7 @@
   function value_to_color(val: CellValue): string | null {
     if (cell_is_missing(val)) return missing_fill || null
     if (typeof val !== `number`) return val
-    return ramp ? ramp.color_fn(val) : missing_fill || null
+    return ramp.color_fn ? ramp.color_fn(val) : missing_fill || null
   }
   // Resolve only rendered or inspected cells. Svelte tracks each call's data/scale
   // dependencies, so virtualized matrices never allocate colors for offscreen cells.
@@ -1014,9 +1016,7 @@
       title="Value"
       tick_labels={5}
       tick_format=".3~f"
-      range={color_bar_range}
-      scale_type={color_scale_config.type}
-      scale={color_bar_scale}
+      color_scale={ramp.bar_scale}
       wrapper_style={color_bar_side === `right`
         ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
         : `--cbar-width: 180px;`}

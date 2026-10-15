@@ -9,11 +9,12 @@
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { display_idx, format_num } from '#lib/labels.js'
+  import { display_idx, format_num, parse_warnings_notice } from '#lib/labels.js'
   import { FullscreenButton } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
@@ -21,6 +22,7 @@
   import { clamp } from '#lib/math.js'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
+  import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
   import { to_error } from '#lib/utils.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
@@ -165,17 +167,20 @@
     if (n_images > 0 && active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
+  // The latest drop's recoverable parse warnings, one dismissible notice
+  let parse_warning_msg = $state<string>()
   // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_batch: (dropped) => {
-      error_msg = undefined
+      ;[error_msg, parse_warning_msg] = [undefined, undefined]
       const files = dropped.map(({ content, filename }) => ({
         content: as_text(content),
         filename,
       }))
       try {
-        const parsed = parse_dropped_paths(files)
+        const collector = create_warning_collector(() => {})
+        const parsed = parse_dropped_paths(files, collector.warn)
         // Profile before accepting, so an unplottable path is refused with its reason
         for (const path of Object.values(parsed)) path_profile(path, profile_options)
         for (const [key, path] of Object.entries(parsed)) {
@@ -183,6 +188,7 @@
           active_path_key = key
         }
         active_image_idx = 0
+        parse_warning_msg = parse_warnings_notice(collector.warnings)
       } catch (exc) {
         const names = files.map(({ filename }) => filename).join(`, `)
         error_msg = `${names}: ${to_error(exc).message}`
@@ -360,6 +366,9 @@
   {#if profile_failures.length > 0}
     <StatusMessage message={profile_failures.join(`; `)} type="error" />
   {/if}
+  <ViewerNotices>
+    <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
+  </ViewerNotices>
   <ViewerError bind:message={error_msg} dismissible />
 </div>
 

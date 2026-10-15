@@ -40,7 +40,7 @@
     from_display_idx,
     parse_axis_label,
     format_num,
-    plural,
+    parse_warnings_notice,
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
@@ -57,7 +57,7 @@
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { StructurePane, StructureOptions } from '#lib/structure/index.js'
+  import type { Site, StructurePane, StructureOptions } from '#lib/structure/index.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
@@ -260,10 +260,7 @@
     pane_ratio?: number
     structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
     supercell_scaling?: string
-    scatter_props?: Omit<
-      ScatterPlotOptions,
-      `tooltip` | `x_axis` | `y_axis` | `y2_axis` | `hidden_series`
-    >
+    scatter_props?: Omit<ScatterPlotOptions, `x_axis` | `y_axis` | `y2_axis` | `hidden_series`>
     histogram_props?: Omit<
       HistogramOptions,
       `series` | `hidden_series` | `mode` | `selected_series_idx` | `x2_axis` | `y2_axis`
@@ -863,9 +860,7 @@
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
   // Writable so the banner can be dismissed
   let warning_msg = $derived(
-    trajectory && trajectory.warnings.length > 0
-      ? `${plural(trajectory.warnings.length, `parse warning`)}: ${trajectory.warnings.join(`; `)}`
-      : undefined,
+    trajectory ? parse_warnings_notice(trajectory.warnings) : undefined,
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
@@ -1761,6 +1756,54 @@
         : undefined}
     >
       {#if show_structure}
+        {#snippet site_tooltip({ site, site_idx }: { site: Site; site_idx: number })}
+          {#if structure_props.tooltip}{@render structure_props.tooltip({
+              site,
+              site_idx,
+            })}{/if}
+          {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
+            {@const probe = hotspot_probe(
+              hotspot_result,
+              hotspot_values,
+              field_geometry,
+              site.xyz,
+            )}
+            <div
+              style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
+            >
+              {#if probe}
+                <div>
+                  Bin-average {hotspot_metric === `energy`
+                    ? `kinetic energy`
+                    : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
+                  <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
+                </div>
+                <div>
+                  {Number.isFinite(probe.ratio)
+                    ? `${format_num(probe.ratio, `.3~g`)}× mean`
+                    : `Ratio to mean unavailable (zero mean)`}
+                </div>
+                <div>
+                  {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
+                  frames
+                </div>
+              {:else}
+                <div>
+                  Bin-average heat unavailable (outside grid, missing or underpopulated bin)
+                </div>
+              {/if}
+              <div>
+                Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
+                · {hotspot_result.weighting} weighting
+              </div>
+              <div>
+                Viewing frame {session.scene_frame ? display_idx(session.scene_frame.idx) : ``} ·
+                {hotspot_result.options.coordinates ?? `device`} grid
+              </div>
+            </div>
+          {/if}
+        {/snippet}
+
         <Structure
           allow_file_drop={false}
           style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
@@ -1772,6 +1815,7 @@
             ...structure_props,
           }}
           show_controls={nested_controls(structure_props.show_controls)}
+          tooltip={structure_props.tooltip === false ? false : site_tooltip}
           bind:scene_props={trail_scene_props}
           bind:atom_color_config
           {atom_color_field}
@@ -1813,53 +1857,7 @@
           bind:hidden_elements
           bind:selected_sites
           bind:highlighted_sites
-        >
-          {#snippet atom_tooltip({ site, site_idx })}
-            {@render structure_props.atom_tooltip?.({ site, site_idx })}
-            {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
-              {@const probe = hotspot_probe(
-                hotspot_result,
-                hotspot_values,
-                field_geometry,
-                site.xyz,
-              )}
-              <div
-                style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
-              >
-                {#if probe}
-                  <div>
-                    Bin-average {hotspot_metric === `energy`
-                      ? `kinetic energy`
-                      : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
-                    <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
-                  </div>
-                  <div>
-                    {Number.isFinite(probe.ratio)
-                      ? `${format_num(probe.ratio, `.3~g`)}× mean`
-                      : `Ratio to mean unavailable (zero mean)`}
-                  </div>
-                  <div>
-                    {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
-                    frames
-                  </div>
-                {:else}
-                  <div>
-                    Bin-average heat unavailable (outside grid, missing or underpopulated bin)
-                  </div>
-                {/if}
-                <div>
-                  Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
-                  · {hotspot_result.weighting} weighting
-                </div>
-                <div>
-                  Viewing frame {session.scene_frame
-                    ? display_idx(session.scene_frame.idx)
-                    : ``} · {hotspot_result.options.coordinates ?? `device`} grid
-                </div>
-              </div>
-            {/if}
-          {/snippet}
-        </Structure>
+        />
       {/if}
 
       {#if show_structure && show_plot}
@@ -1885,8 +1883,30 @@
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
         {:else if plot_type === `time-series`}
+          {#snippet series_tooltip({
+            x: coord_x,
+            y: coord_y,
+            raw_y,
+            metadata,
+            label,
+          }: ScatterHandlerProps)}
+            <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
+            {@const value_label = String(metadata?.series_label || label || `Value`)}
+            <TooltipValue label={value_label} value={format_num(coord_y)} />
+            {#if typeof raw_y === `number`}
+              <span style="opacity: 0.65"
+                >&nbsp;(<TooltipValue
+                  label="raw"
+                  value={format_num(raw_y)}
+                  unit={parse_axis_label(value_label).unit}
+                />)</span
+              >
+            {/if}
+          {/snippet}
+
           <ScatterPlot
             {...scatter_props}
+            tooltip={scatter_props.tooltip ?? series_tooltip}
             show_controls={nested_controls(scatter_props.show_controls)}
             series={scatter_series}
             bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
@@ -1909,26 +1929,6 @@
                 base_plot_series.some((srs) => is_energy_property(srs.id)),
               )}
               {@render scatter_props.controls_extra?.(config)}
-            {/snippet}
-            {#snippet tooltip({
-              x: coord_x,
-              y: coord_y,
-              raw_y,
-              metadata,
-              label,
-            }: ScatterHandlerProps)}
-              <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
-              {@const value_label = String(metadata?.series_label || label || `Value`)}
-              <TooltipValue label={value_label} value={format_num(coord_y)} />
-              {#if typeof raw_y === `number`}
-                <span style="opacity: 0.65"
-                  >&nbsp;(<TooltipValue
-                    label="raw"
-                    value={format_num(raw_y)}
-                    unit={parse_axis_label(value_label).unit}
-                  />)</span
-                >
-              {/if}
             {/snippet}
           </ScatterPlot>
         {:else}

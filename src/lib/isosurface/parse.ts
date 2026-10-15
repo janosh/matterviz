@@ -21,6 +21,7 @@ import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { normalize_scientific_notation, parse_leading_num, to_error } from '#lib/utils.js'
 import { transpose_x_fastest } from './grid'
+import type { WarnFn } from '#lib/trajectory/parse/shared.js'
 import { make_volume, type VolumetricFileData } from './types'
 
 // === Parse error contract ===
@@ -274,14 +275,22 @@ const infer_vasp_kind = (blocks: readonly { values: Float64Array }[]): VaspVolum
 // volumetric blocks on a 3D grid. ELFCAR and LOCPOT values are kept as is; density files
 // (CHGCAR, AECCAR*, PARCHG) store rho·V_cell and are divided by the cell volume. The kind
 // comes from the `filename` (see vasp_kind_from_name), else from the content (infer_vasp_kind).
-export function parse_chgcar(content: string, filename = ``): VolumetricFileData {
+export function parse_chgcar(
+  content: string,
+  filename = ``,
+  warn: WarnFn = console.warn,
+): VolumetricFileData {
   // Strip leading whitespace
   let pos = 0
   while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
 
   // Shared POSCAR-family header. `lenient` reads any mode line but C/K... as Direct, like VASP
   const cursor = text_cursor(content, pos)
-  const parsed = parse_vasp_header(cursor, { format: `CHGCAR`, coord_mode: `lenient` })
+  const parsed = parse_vasp_header(cursor, {
+    format: `CHGCAR`,
+    coord_mode: `lenient`,
+    warn,
+  })
   if (!parsed.ok) throw new Error(parsed.error)
   const { scale, lattice, elements, counts, is_direct } = parsed.header
   pos = cursor.position()
@@ -368,7 +377,7 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
       // A truncated first block leaves nothing usable; a truncated later block (a run cut
       // short mid-write) must not discard the intact first one
       if (vol_idx === 0) throw new Error(message)
-      console.warn(`${message} Keeping the intact first block only.`)
+      warn(`${message} Keeping the intact first block only.`)
       blocks.length = 1
       break
     }
@@ -409,8 +418,9 @@ export function parse_chgcar(content: string, filename = ``): VolumetricFileData
 // Units: if grid dimensions are positive, coordinates are in Bohr; if negative, in Angstrom.
 export function parse_cube(
   content: string,
-  options: { periodic?: boolean } = {},
+  options: { periodic?: boolean; warn?: WarnFn } = {},
 ): VolumetricFileData {
+  const { warn = console.warn } = options
   // Quick line count check: need at least 7 lines (2 title + 1 header + 3 voxel + 1 atom)
   let line_count = 0
   for (let idx = 0; idx < content.length && line_count < 7; idx++) {
@@ -493,7 +503,7 @@ export function parse_cube(
 
     // Validate: need atomic_number, charge, x, y, z (5 tokens, indices 2-4 finite)
     if (atom_line.length < 5 || !atom_line.slice(2, 5).every(Number.isFinite)) {
-      console.warn(
+      warn(
         `.cube atom ${display_idx(atom_idx)}: malformed line "${cur.line.trim()}", skipping`,
       )
       continue
@@ -502,7 +512,7 @@ export function parse_cube(
     // Z = 0 is the cube encoding for a ghost/BSSE centre: basis functions with no nucleus, so
     // nothing to render. Skip it like a malformed line instead of failing the whole file.
     if (atom_line[0] === 0) {
-      console.warn(`.cube atom ${display_idx(atom_idx)}: skipping Z = 0 ghost/BSSE centre`)
+      warn(`.cube atom ${display_idx(atom_idx)}: skipping Z = 0 ghost/BSSE centre`)
       continue
     }
     // Any other Z off the table is a malformed header, never hydrogen
@@ -638,11 +648,14 @@ function looks_like_volumetric(content: string, filename?: string): VolumetricFo
 export function parse_volumetric_file(
   content: string,
   filename?: string,
+  warn: WarnFn = console.warn,
 ): VolumetricFileData | null {
   const format = looks_like_volumetric(content, filename)
   if (!format) return null
   try {
-    return format === `cube` ? parse_cube(content) : parse_chgcar(content, filename)
+    return format === `cube`
+      ? parse_cube(content, { warn })
+      : parse_chgcar(content, filename, warn)
   } catch (error) {
     throw new Error(
       `Failed to parse ${format === `cube` ? `.cube` : `VASP volumetric (CHGCAR-like)`} file${filename ? ` '${filename}'` : ``}: ${to_error(error).message}`,

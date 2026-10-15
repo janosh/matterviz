@@ -232,6 +232,42 @@ test(`loads strings, URLs and dropped files; caller-owned structures skip fetchi
   expect(fetch_spy.mock.calls.map(([url]) => url)).toEqual([`/loaded.poscar`])
 })
 
+// Parser warnings (host-supplied or from a dropped file) show as one dismissible notice; the
+// next load replaces them
+test(`parse warnings render as a dismissible notice and reset on the next load`, async () => {
+  const state = $state<{ parse_warnings?: string[] }>({ parse_warnings: [`host warning`] })
+  mount_structure(bind_props({ structure }, state))
+  await tick()
+  expect(doc_query(`.viewer-notices > .parse-warnings`).textContent).toContain(
+    `1 parse warning: host warning`,
+  )
+  const cell = [`a`, `b`, `c`].map((axis) => `_cell_length_${axis} 5`)
+  const angles = [`alpha`, `beta`, `gamma`].map((angle) => `_cell_angle_${angle} 90`)
+  const loop = [
+    `loop_`,
+    ...[`label`, `type_symbol`, `fract_x`, `fract_y`, `fract_z`].map(
+      (tag) => `_atom_site_${tag}`,
+    ),
+  ]
+  const cif = [`data_t`, ...cell, ...angles, ...loop, `Si1 Si 0 0 0`, `Si2 Si abc 0 0`].join(
+    `\n`,
+  )
+  const zone = doc_query(`.structure`)
+  zone.dispatchEvent(create_drop_event(new File([cif], `bad.cif`)))
+  await vi.waitFor(() =>
+    expect(state.parse_warnings).toEqual([
+      expect.stringMatching(/^CIF: skipped 1 atom-site row/),
+    ]),
+  )
+  await tick()
+  expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: CIF: skipped/)
+  doc_query<HTMLButtonElement>(`.parse-warnings button`).click()
+  await tick()
+  expect(document.querySelector(`.parse-warnings`)).toBeNull()
+  zone.dispatchEvent(create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `clean.poscar`)))
+  await vi.waitFor(() => expect(state.parse_warnings).toEqual([]))
+})
+
 test(`drag hover state is bindable, respects allow_file_drop, and custom drop handlers get raw content`, async () => {
   const enabled = $state({ dragover: false })
   const disabled = $state({ dragover: false })
@@ -1115,7 +1151,7 @@ test.each([
   async (reset, visible_at_reset) => {
     const original_color: AtomColorConfig = {
       mode: `element`,
-      scale: `interpolateViridis`,
+      color_scale: `interpolateViridis`,
       scale_type: `categorical`,
     }
     const state = $state<{
@@ -1143,12 +1179,15 @@ test.each([
     expect(state.isosurface_settings.layers).toHaveLength(1)
     flushSync(() => {
       state.isosurface_settings.layers[0].isovalue = 0.123
-      state.atom_color_config = { ...state.atom_color_config, scale: `interpolateViridis` }
+      state.atom_color_config = {
+        ...state.atom_color_config,
+        color_scale: `interpolateViridis`,
+      }
     })
     flushSync(() =>
       tool_props.on_overlay({ ...overlay, site_properties: [...overlay.site_properties] }),
     )
-    expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
+    expect(state.atom_color_config.color_scale).toBe(`interpolateViridis`)
     flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
     expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `magmom` })
     expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
@@ -1167,7 +1206,7 @@ test.each([
       expect(state.atom_color_config).toEqual(visible ? predicted_colors : original_color)
       if (!visible)
         flushSync(() => {
-          original_color.scale = `interpolatePlasma`
+          original_color.color_scale = `interpolatePlasma`
           state.atom_color_config = { ...original_color }
         })
     }

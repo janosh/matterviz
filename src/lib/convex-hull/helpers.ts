@@ -1,4 +1,3 @@
-import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
@@ -12,7 +11,8 @@ import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
 import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
-import { scaleSequential } from 'd3-scale'
+import { create_color_scale } from '#lib/plot/core/scales.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type {
   ConvexHullConfig,
   ConvexHullEntry,
@@ -133,15 +133,14 @@ export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
   color_mode: `stability` | `energy`,
-  color_scale: D3InterpolateName,
+  color_scale: ColorScale, // unset value_range ends fit the entries' hull distances
   plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
   const dists = color_mode === `energy` ? finite_hull_dists(plot_entries) : []
   if (dists.length === 0) return null
   const [lower, max_dist] = array_extent(dists)
   const upper = Math.max(max_dist, 0.1, lower + 1e-6)
-  const interpolator = get_d3_interpolator(color_scale)
-  return scaleSequential(interpolator).domain([lower, upper])
+  return create_color_scale(color_scale, [lower, upper])
 }
 
 // Point color resolver (shared)

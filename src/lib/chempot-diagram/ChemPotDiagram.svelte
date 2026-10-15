@@ -4,7 +4,7 @@
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import { entry_elements, get_ternary_combinations } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
+  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
@@ -16,6 +16,8 @@
     temperature = $bindable(),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     highlighted_formula = null, // shown in every view while none is hovered, any spelling
+    // false hides the domain tooltip, a snippet replaces its content, { detail_level } trims it
+    tooltip,
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -24,6 +26,7 @@
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
     highlighted_formula?: string | null
+    tooltip?: ChemPotTooltipProp
   } = $props()
 
   const all_elements = $derived(entry_elements(entries))
@@ -85,6 +88,7 @@
       {width}
       {height}
       {highlighted_formula}
+      {tooltip}
       bind:temperature
       bind:hover_info
     />
@@ -103,6 +107,7 @@
             width={grid_width}
             height={grid_height}
             highlighted_formula={grid_hover?.formula ?? highlighted_formula}
+            {tooltip}
             bind:temperature
             bind:hover_info={
               () => pane_hovers[pane_idx], (info) => set_pane_hover(pane_idx, info)

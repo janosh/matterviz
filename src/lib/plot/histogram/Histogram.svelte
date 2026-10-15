@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
@@ -141,7 +141,7 @@
       // visible series. Labels are display text and need not be unique or present.
       selected_series_idx?: number
       mode?: `single` | `overlay`
-      tooltip?: Snippet<[HistogramHandlerProps]>
+      tooltip?: TooltipProp<HistogramHandlerProps>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[Required<PlotConfig>]>
@@ -306,7 +306,7 @@
   // Pass the histogram's `bins` as the marginal's histogram bin count (not strip thickness)
   // so a histogram marginal inherits the main binning; CDF marginals ignore it.
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: { type: `cdf`, bins } }),
+    normalize_marginals(marginals, { top: { type: `cdf`, bins } }, tooltip === false),
   )
 
   const frame = create_cartesian_frame({
@@ -632,7 +632,7 @@
   {/snippet}
 
   {#snippet overlays()}
-    {#if hover_info && hovered}
+    {#if hover_info && hovered && tooltip !== false}
       {@const { value, count, y: coord_y } = hover_info}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip

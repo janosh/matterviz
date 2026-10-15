@@ -1120,6 +1120,25 @@ describe(`BinnedScatterPlot`, () => {
     expect(render_mode()).toBe(`density`)
   })
 
+  // tooltip=false hides the density-bin and the point tooltip alike
+  test.each([
+    [`density`, undefined, 247],
+    [`density`, false, 247],
+    [`points`, undefined, 280],
+    [`points`, false, 280],
+  ] as const)(`%s mode tooltip=%s`, async (mode, tooltip, client_y) => {
+    mount_plot({
+      series: [{ x: [0.5], y: [0.5] }],
+      ...(mode === `density` ? density_mode({ bin_px: 100 }) : point_mode()),
+      ...unit_axes,
+      tooltip,
+    })
+    await settle()
+    hover_plot(420, client_y)
+    await tick()
+    expect(document.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
+  })
+
   test(`matches density tooltip background to hovered bin color`, async () => {
     const on_point_click = vi.fn()
     mount_plot({

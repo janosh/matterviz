@@ -1,10 +1,14 @@
-// Headless color-ramp helpers shared by ColorBar, HeatmapMatrix and PeriodicTable: turn a
-// ColorBarScale into a data→color function and sample it evenly in scale space (linear,
-// log or arcsinh spacing) for a CSS gradient.
-import { get_d3_interpolator } from '#lib/colors/index.js'
+// Headless color-ramp helpers shared by ColorBar, HeatmapMatrix, PeriodicTable and
+// TernaryPlot: position colors and ticks along a ramp and sample it evenly in scale space
+// (linear, log or arcsinh spacing) for a CSS gradient.
 import type { Vec2 } from '#lib/math.js'
-import { color_interpolator, create_scale, log_color_domain } from '#lib/plot/core/scales.js'
-import type { ColorBarScale, ColorScale, ScaleType } from '#lib/plot/core/types.js'
+import {
+  color_interpolator,
+  create_scale,
+  log_color_domain,
+  to_color_scale_config,
+} from '#lib/plot/core/scales.js'
+import type { ColorScale, ColorScaleConfig, ScaleType } from '#lib/plot/core/types.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { clamp01 } from '#lib/utils.js'
 import { scaleLog } from 'd3-scale'
@@ -22,28 +26,32 @@ export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Ve
   return scaleLog().domain(log_color_domain(domain)).range(output)
 }
 
-// A component's color_scale prop as a ColorBar scale: its (palette_range-clipped) scheme
-export const to_color_bar_scale = (color_scale: ColorScale): ColorBarScale => ({
-  interpolator: color_interpolator(color_scale),
-})
-
-// A prebuilt `fn` scale maps data itself over the domain it declares (else `range`);
-// interpolator names/functions are stretched across `range` with `scale_type` spacing
-// (log floors non-positive bounds at LOG_EPS; equal bounds hit the midpoint). The low
-// bound always maps to t=0, so a descending `range` samples high-to-low.
+// Value -> color along a ramp over `range` (positions from color_ramp_scale, clamped to the
+// ends), plus the ColorBar color_scale drawing the same colors. The lower bound always takes
+// the palette start, so a descending range only flips the bar: its bar_scale reverses
+// palette_range too, as ColorBar maps value_range[0] to the palette start.
 export const resolve_color_ramp = (
-  scale: ColorBarScale,
+  color_scale: ColorScale,
   range: Vec2,
-  scale_type: ScaleType = `linear`,
-): ColorRamp => {
-  if (typeof scale === `object` && `fn` in scale) {
-    return { color_fn: scale.fn, domain: scale.domain ?? range }
+): { color_fn: (value: number) => string; bar_scale: ColorScaleConfig } => {
+  const config = to_color_scale_config(color_scale)
+  const [start, end] = range
+  const [palette_start, palette_end] = config.palette_range ?? [0, 1]
+  const descending = start > end
+  const position = color_ramp_scale(
+    config.type ?? `linear`,
+    descending ? [end, start] : range,
+    [0, 1],
+  )
+  const interpolate = color_interpolator(config)
+  return {
+    color_fn: (value) => interpolate(clamp01(position(value))),
+    bar_scale: {
+      ...config,
+      value_range: range,
+      palette_range: descending ? [palette_end, palette_start] : [palette_start, palette_end],
+    },
   }
-  const interpolator =
-    typeof scale === `object` ? scale.interpolator : get_d3_interpolator(scale)
-  const [lower, upper] = range[0] <= range[1] ? range : [range[1], range[0]]
-  const position = color_ramp_scale(scale_type, [lower, upper], [0, 1])
-  return { color_fn: (value) => interpolator(clamp01(position(value))), domain: range }
 }
 
 // `steps` colors at positions evenly spaced in scale space from domain[0] to domain[1]

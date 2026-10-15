@@ -182,8 +182,10 @@ const parse_text = (
   const data = whole()
   if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
     let structure: AnyStructure | undefined
+    // Kept apart until the read succeeds: a failed sniff's warnings describe no run
+    const xyz_collector = create_warning_collector(() => {})
     try {
-      structure = parse_xyz(data)
+      structure = parse_xyz(data, xyz_collector.warn)
     } catch (error) {
       // A declared XYZ format is authoritative; an unrecognized name can still hold JSON.
       if (xyz_hint)
@@ -191,12 +193,14 @@ const parse_text = (
           cause: error,
         })
     }
-    if (structure)
+    if (structure) {
+      for (const message of xyz_collector.warnings) collector.warn(message)
       return parsed({
         format: `xyz`,
         frames: [{ structure, step: 0, metadata: {} }],
         metadata: {},
       })
+    }
   }
   let value: unknown
   try {

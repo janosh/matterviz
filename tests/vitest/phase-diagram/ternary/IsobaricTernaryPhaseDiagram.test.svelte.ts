@@ -4,6 +4,7 @@ import type {
   SectionHover,
   TernaryDisplay,
   TernaryPhaseDiagram,
+  TernaryPhaseHover,
 } from '#lib/phase-diagram/index.js'
 import {
   compute_section,
@@ -18,9 +19,15 @@ import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ter
 import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
 import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
-import { type Component, flushSync, mount, unmount } from 'svelte'
+import { type Component, createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, expect_tooltip_paint, set_input } from '../../setup'
+import {
+  bind_props,
+  create_drop_event,
+  doc_query,
+  expect_tooltip_paint,
+  set_input,
+} from '../../setup'
 import { make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -159,6 +166,25 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     move_to([0.45, 0.25])
     expect(doc_query(`.ternary-tooltip`).textContent).toContain(`%`)
     expect_tooltip_paint(doc_query(`.ternary-tooltip`), null)
+  })
+
+  // tooltip=false hides the hover tooltip, a snippet replaces its content
+  test.each([
+    [`false`, false, null],
+    [
+      `snippet`,
+      createRawSnippet((hover: () => TernaryPhaseHover) => ({
+        render: () => `<b>${hover().kind}</b>`,
+      })),
+      `section`,
+    ],
+  ] as const)(`tooltip %s`, async (_label, tooltip, expected_text) => {
+    mount_diagram({ tooltip })
+    await wait_for_events()
+    move_to([1, 0])
+    expect(document.querySelector(`.ternary-tooltip`)?.textContent?.trim() ?? null).toBe(
+      expected_text,
+    )
   })
 
   test(`stability map steps T itself but lets shift+arrows reach the host`, async () => {
@@ -668,3 +694,26 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   flushSync()
   expect(state.gas_pressures.O2).toBe(1e-12)
 })
+
+// Dropped entry arrays replace the shown entries and report through on_file_load
+test.each([true, false])(
+  `allow_file_drop=%s gates dropped entry files`,
+  async (allow_file_drop) => {
+    const on_file_load = vi.fn()
+    mount_diagram({ allow_file_drop, on_file_load })
+    const file = new File([JSON.stringify(toy_entries)], `toy.json`)
+    doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+    if (allow_file_drop) {
+      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+      expect(on_file_load).toHaveBeenCalledWith({
+        entries: toy_entries,
+        filename: `toy.json`,
+        source_filename: `toy.json`,
+        file,
+      })
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(on_file_load).not.toHaveBeenCalled()
+    }
+  },
+)

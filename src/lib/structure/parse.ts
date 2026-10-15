@@ -1,4 +1,4 @@
-import { display_idx } from '#lib/labels.js'
+import { display_idx, plural } from '#lib/labels.js'
 import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
@@ -51,7 +51,7 @@ import {
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, type WarnFn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
 import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
@@ -60,7 +60,8 @@ import { load as yaml_load } from 'js-yaml'
 export { is_structure_file } from '#lib/structure/format-detect.js'
 
 // Format parsers throw local errors describing the invalid input. The dispatcher adds
-// filename context; recoverable issues such as skipped atoms remain warnings.
+// filename context; recoverable issues such as skipped atoms go to the caller's `warn`
+// (console.warn by default), which the file viewer collects onto its parse result.
 
 // Parse coordinates from a line, repairing malformed runs like "1.0-2.0-3.0"
 function parse_coordinate_line(line: string): number[] {
@@ -234,14 +235,14 @@ function resolve_optimade_element(
   }
 }
 
-export const parse_poscar = (content: string): Crystal => {
+export const parse_poscar = (content: string, warn: WarnFn = console.warn): Crystal => {
   // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
   const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
 
   if (lines.length < 8) throw new Error(`POSCAR file too short`)
 
   const cursor = lines_cursor(lines)
-  const parsed = parse_vasp_header(cursor, { format: `POSCAR` })
+  const parsed = parse_vasp_header(cursor, { format: `POSCAR`, warn })
   if (!parsed.ok) throw new Error(parsed.error)
   const { scale, lattice: scaled_lattice, elements, counts } = parsed.header
   const { has_selective_dynamics, is_direct } = parsed.header
@@ -249,7 +250,7 @@ export const parse_poscar = (content: string): Crystal => {
   const poscar_frac_to_cart = math.create_frac_to_cart(complete_lattice_matrix(scaled_lattice))
   const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
   if (!is_direct && !poscar_cart_to_frac.exact) {
-    console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
+    warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
   }
   // The header cursor stops on the first coordinate line
   const first_coord_line = cursor.position()
@@ -301,10 +302,11 @@ export const parse_poscar = (content: string): Crystal => {
 // complete frame; a frame the writer was still appending (atom block past the end of the
 // file, or a half-written last line) is dropped with a warning by index_xyz_frames, and a
 // file with no complete frame at all is an error, not a silently empty structure.
-export const parse_xyz = (content: string): AnyStructure => {
+export const parse_xyz = (content: string, warn: WarnFn = console.warn): AnyStructure => {
   // content.trim() also drops Unicode whitespace such as a BOM, which TextLines keeps
   const lines = new TextLines(content.trim())
-  const collector = create_warning_collector()
+  // Own collector (forwarding to `warn`) so a failure can name the warnings that explain it
+  const collector = create_warning_collector(warn)
   const frames = index_xyz_frames(lines, collector.warn)
   // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
   // Tinker-style title after the count (`6 methane`) or a Properties layout with another
@@ -344,6 +346,7 @@ export const parse_xyz = (content: string): AnyStructure => {
 // in place would map the whole asymmetric unit onto the origin, inventing an atom there.
 const parse_symmetry_expression = (
   expr_input: string,
+  warn: WarnFn,
 ): { coefficients: Vec3; translation: number } | null => {
   const coefficients: Vec3 = [0, 0, 0]
   let translation = 0
@@ -366,13 +369,13 @@ const parse_symmetry_expression = (
     const parts = term.split(`/`)
     // skip malformed terms like "1/2/3"
     if (parts.length > 2) {
-      console.warn(`Skipping malformed symmetry term '${term}'`)
+      warn(`CIF: skipping malformed symmetry term '${term}'`)
       continue
     }
     const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
     if (!Number.isFinite(value)) {
-      console.warn(`Rejecting symmetry op with unresolvable term '${term}'`)
+      warn(`CIF: rejecting symmetry op with unresolvable term '${term}'`)
       return null
     }
     translation += sign * value
@@ -388,14 +391,14 @@ type ParsedSymOp = { coefficients: [Vec3, Vec3, Vec3]; translations: Vec3 }
 // of re-running the expression parser (regex match, split, indexOf) per atom — that was
 // O(atoms x ops x 3) string parses where O(ops x 3) suffices.
 // Ops arrive pre-normalized (quotes + whitespace already stripped, see cif_symop_of).
-const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
+const parse_symmetry_ops = (operations: string[], warn: WarnFn): ParsedSymOp[] =>
   operations.flatMap((operation) => {
     // Lowercased first: CIF is case-insensitive for these and real files ship `'X, Y, Z'`
     const parts = operation.toLowerCase().split(`,`)
     // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that leaves positions alone
     if (parts.length === 4 && /^[+-]?1$/.test(parts[3])) parts.pop()
     if (parts.length !== 3) return []
-    const [x_expr, y_expr, z_expr] = parts.map(parse_symmetry_expression)
+    const [x_expr, y_expr, z_expr] = parts.map((expr) => parse_symmetry_expression(expr, warn))
     if (!x_expr || !y_expr || !z_expr) return []
     return [
       {
@@ -726,7 +729,7 @@ const keep_one_disorder_group = (
   })
 }
 
-export const parse_cif = (content: string): Crystal => {
+export const parse_cif = (content: string, warn: WarnFn = console.warn): Crystal => {
   const text = content.trim()
   if (!text) throw new Error(`CIF file is empty`)
 
@@ -752,16 +755,22 @@ export const parse_cif = (content: string): Crystal => {
         failure = `CIF atom-site loop has neither _atom_site_type_symbol nor _atom_site_label`
         continue
       }
+      // One warning per loop, not per row: a broken column can reject thousands of rows
+      const skipped: string[] = []
       const atoms = keep_one_disorder_group(atom_rows, header_indices)
         .map((tokens, atom_idx) => {
           try {
             return parse_cif_atom_data(tokens, header_indices, coord_cols.columns, atom_idx)
           } catch (error) {
-            console.warn(`Skipping invalid atom data: ${error}`)
+            skipped.push(to_error(error).message)
             return null
           }
         })
         .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+      if (atoms.length > 0 && skipped.length > 0) {
+        const more = skipped.length > 1 ? ` (and ${skipped.length - 1} more)` : ``
+        warn(`CIF: skipped ${plural(skipped.length, `atom-site row`)}: ${skipped[0]}${more}`)
+      }
       if (atoms.length > 0) return { coord_cols, atoms, block_id: block_ids[data_start] }
       failure = `No valid atoms found in CIF file`
     }
@@ -790,7 +799,7 @@ export const parse_cif = (content: string): Crystal => {
 
   const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
   if (ambiguous_labels.size > 0) {
-    console.warn(
+    warn(
       `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
     )
   }
@@ -854,7 +863,7 @@ export const parse_cif = (content: string): Crystal => {
 
   // apply_symmetry_ops always emits the untransformed position, so an identity op (`x,y,z`)
   // only re-emits same-row duplicates: dropping it halves the index lookups of a P1 file
-  const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops).filter(
+  const ops_to_use = parse_symmetry_ops(already_enumerated ? [] : symmetry_ops, warn).filter(
     ({ coefficients, translations }) =>
       translations.some((shift) => shift !== 0) ||
       coefficients.some((row, dim) => row.some((coef, col) => coef !== (dim === col ? 1 : 0))),
@@ -871,7 +880,7 @@ export const parse_cif = (content: string): Crystal => {
       ? CENTERING_VECTORS[centering_letter]
       : []
   // mcif centering ops are pure translations applied on top of every op, like centering vectors
-  const magn_centering = parse_symmetry_ops(already_enumerated ? [] : centering_ops)
+  const magn_centering = parse_symmetry_ops(already_enumerated ? [] : centering_ops, warn)
     .map(({ translations }) => translations)
     .filter((shift) => shift.some((coord) => coord !== 0))
 
@@ -975,7 +984,7 @@ export const parse_cif = (content: string): Crystal => {
     if (reconciles) ({ sites, n_overlaps } = centered)
   }
   if (n_overlaps > 0) {
-    console.warn(
+    warn(
       `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the first row's species (a repeated species at its larger occupancy) and dropped the rest instead of summing`,
     )
   }
@@ -1109,7 +1118,7 @@ export function json_species(species: unknown, where: string): Species[] {
 // for its frames (MSD/VACF unwrap by minimum image and the viewer wraps for display).
 export function structure_from_json(
   raw: StructureLike,
-  { wrap = true }: { wrap?: boolean } = {},
+  { wrap = true, warn = console.warn }: { wrap?: boolean; warn?: WarnFn } = {},
 ): AnyStructure {
   const { lattice: raw_lattice, sites: raw_sites, ...rest } = raw
   if (!raw_lattice) {
@@ -1131,7 +1140,10 @@ export function structure_from_json(
   const matrix = matrix3x3_from_rows(raw_lattice.matrix, `JSON lattice matrix`)
   const lattice = make_lattice(matrix, is_pbc(raw_lattice.pbc) ? raw_lattice.pbc : undefined)
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
-  const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
+  const cart_to_frac = cart_to_frac_with_fallback(matrix, {
+    context: `JSON lattice`,
+    warn,
+  }).convert
   const sites = raw_sites.map((raw_site, idx) => {
     const species = json_species(raw_site.species, `JSON site ${display_idx(idx)}`)
     const site = { ...raw_site, species, properties: raw_site.properties ?? {} }
@@ -1181,25 +1193,25 @@ export function normalize_fractional_coords<T extends AnyStructure>(structure: T
 }
 
 // JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)
-const parse_json_structure: FormatParser = (content) => {
+const parse_json_structure: FormatParser = (content, warn) => {
   const parsed: unknown = JSON.parse(content)
   // A root OPTIMADE envelope is authoritative, including its missing-atom diagnostics.
   const root_optimade = optimade_structure_from_raw(parsed)
-  if (root_optimade) return optimade_to_structure(root_optimade)
+  if (root_optimade) return optimade_to_structure(root_optimade, warn)
   for (const record of json_structure_records(parsed)) {
     const optimade = optimade_with_sites(record)
-    if (optimade) return optimade_to_structure(optimade)
-    if (is_structure_like(record)) return structure_from_json(record)
+    if (optimade) return optimade_to_structure(optimade, warn)
+    if (is_structure_like(record)) return structure_from_json(record, { warn })
   }
   throw new Error(`JSON content does not contain a valid structure format`)
 }
 
-type FormatParser = (content: string) => AnyStructure
+type FormatParser = (content: string, warn: WarnFn) => AnyStructure
 
 // The whole CIF family is routed by content, which catches mmCIF saved under a .cif name
 // and keeps magnetic .mcif and dotted small-molecule CIF2 files on the plain CIF path.
-const parse_cif_family: FormatParser = (content) =>
-  is_mmcif_content(content) ? parse_mmcif(content) : parse_cif(content)
+const parse_cif_family: FormatParser = (content, warn) =>
+  is_mmcif_content(content) ? parse_mmcif(content, warn) : parse_cif(content, warn)
 
 // Extension -> parser. The extensions needing an extra condition (`.data`, POSCAR's many
 // names) stay in the caller below.
@@ -1287,13 +1299,18 @@ function parser_for_content(content: string): FormatParser | null {
 // Parse a structure from file content in any supported format. A filename's extension is
 // authoritative (it never falls through to content sniffing); without one, or with an
 // unknown one, the format is sniffed from the content. Failures retain their local cause
-// and include the requested filename so callers can surface them directly.
-export function parse_structure_file(content: string, filename?: string): AnyStructure {
+// and include the requested filename so callers can surface them directly. Recoverable
+// issues (skipped rows, placeholder cells, guessed elements) go to `warn`.
+export function parse_structure_file(
+  content: string,
+  filename?: string,
+  warn: WarnFn = console.warn,
+): AnyStructure {
   try {
     const parser =
       (filename ? parser_for_filename(filename, content) : null) ?? parser_for_content(content)
     if (!parser) throw new Error(`Unable to determine file format`)
-    return parser(content)
+    return parser(content, warn)
   } catch (error) {
     throw new Error(
       `Failed to parse structure${filename ? ` from '${filename}'` : ``}: ${to_error(error).message}`,
@@ -1363,7 +1380,10 @@ const optimade_lattice = ({
 // being dropped, since a structure rendered with silently missing atoms is worse than an
 // error. The remaining attributes (formula, provider fields, ...) become `properties`; per
 // site, the mass and a non-trivial concentration of the chosen element are kept.
-export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure {
+export function optimade_to_structure(
+  optimade: OptimadeStructure,
+  warn: WarnFn = console.warn,
+): AnyStructure {
   const {
     lattice_vectors: _lattice_vectors, // read by optimade_lattice, excluded from properties
     cartesian_site_positions: positions,
@@ -1383,7 +1403,7 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
 
   const lattice = optimade_lattice(optimade.attributes)
   const cart_to_frac = lattice
-    ? cart_to_frac_with_fallback(lattice.matrix, { context: `OPTIMADE lattice` }).convert
+    ? cart_to_frac_with_fallback(lattice.matrix, { context: `OPTIMADE lattice`, warn }).convert
     : null
 
   const sites = positions.map((position, idx) => {

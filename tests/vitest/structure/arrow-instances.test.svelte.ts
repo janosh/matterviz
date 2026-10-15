@@ -26,6 +26,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
 import { expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { EPS } from '#lib/math.js'
+import * as d3_sc from 'd3-scale-chromatic'
 
 vi.mock(`@threlte/core`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
@@ -477,4 +478,21 @@ test(`fresh layer arrays upload reused arrow positions, vectors, scales and colo
     for (const component of mounts) await unmount(component)
     threlte_stub.reset()
   }
+})
+
+// Magnitude mode maps |force| over [0, max] unless vector_color_scale.value_range says
+// otherwise; palette_range [1, 0] reverses it (bare-name colors match the pre-config API)
+test.each<[VectorLayerOptions[`vector_color_scale`], number[]]>([
+  [`interpolateViridis`, [1 / 3, 1, 0]],
+  [{ scheme: `interpolateViridis`, value_range: [0, 2] }, [0.5, 1, 0]],
+  [{ scheme: `interpolateViridis`, palette_range: [1, 0] }, [2 / 3, 0, 1]],
+])(`magnitude colors follow vector_color_scale %j`, (vector_color_scale, fractions) => {
+  const options = {
+    ...vector_options(),
+    vector_color_mode: `magnitude` as const,
+    vector_color_scale,
+    vector_configs: { magmom: { visible: false } },
+  }
+  const [layer] = build_vector_layers(vector_structure(), options, [])
+  expect(layer.arrows.colors).toEqual(fractions.map(d3_sc.interpolateViridis))
 })

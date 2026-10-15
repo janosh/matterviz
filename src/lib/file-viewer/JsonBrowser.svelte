@@ -20,6 +20,7 @@
     structure_from_json,
   } from '#lib/structure/parse.js'
   import { to_error } from '#lib/utils.js'
+  import { create_warning_collector, type WarnFn } from '#lib/trajectory/parse/shared.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
@@ -324,26 +325,30 @@
   // === Component mounting ===
 
   // Throws rather than casting: attach_viewer turns this into a panel message naming the problem
-  function prepare_structure(val: unknown): AnyStructure {
+  function prepare_structure(val: unknown, warn?: WarnFn): AnyStructure {
     const optimade = optimade_structure_from_raw(val)
-    if (optimade) return optimade_to_structure(optimade)
+    if (optimade) return optimade_to_structure(optimade, warn)
     if (!is_structure_like(val)) {
       throw new TypeError(
         `JSON value is neither an OPTIMADE response nor a pymatgen-style structure`,
       )
     }
-    return structure_from_json(val)
+    return structure_from_json(val, { warn })
   }
 
   // Raw JSON values need promoting to the typed inputs the viewers expect (structures get
   // lattices/coordinates normalised, volumetric grids become typed arrays); the shared
-  // mount_viewer table then does the same dispatch as the webview entry point
+  // mount_viewer table then does the same dispatch as the webview entry point. A structure's
+  // conversion warnings go to the Structure viewer's notice.
   function json_to_viewer_input(
     detected_type: RenderableType,
     val: unknown,
-  ): { type: ViewerMountType; data: unknown } {
-    if (detected_type === `structure`)
-      return { type: `structure`, data: prepare_structure(val) }
+  ): { type: ViewerMountType; data: unknown; parse_warnings?: string[] } {
+    if (detected_type === `structure`) {
+      const collector = create_warning_collector(() => {})
+      const data = prepare_structure(val, collector.warn)
+      return { type: `structure`, data, parse_warnings: collector.warnings }
+    }
     if (detected_type === `volumetric`)
       return { type: `isosurface`, data: volume_json_to_isosurface_input(val) }
     if (detected_type === `brillouin_zone`) {
@@ -374,8 +379,12 @@
     let app: ReturnType<typeof mount> | null = null
     let error_el: HTMLElement | null = null
     try {
-      const { type, data } = json_to_viewer_input(panel.detected_type, panel.val)
-      app = mount_viewer(target, type, data, { defaults: merged_defaults, on_close })
+      const { type, data, parse_warnings } = json_to_viewer_input(
+        panel.detected_type,
+        panel.val,
+      )
+      const options = { defaults: merged_defaults, on_close, parse_warnings }
+      app = mount_viewer(target, type, data, options)
     } catch (error) {
       console.error(`JsonBrowser: mount failed for ${panel.detected_type}:`, error)
       // A blank panel would look like an empty dataset; say what went wrong instead

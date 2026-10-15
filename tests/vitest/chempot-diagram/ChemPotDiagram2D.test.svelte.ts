@@ -4,7 +4,14 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, expect_tooltip_paint, mouse, resize_element } from '../setup'
+import {
+  doc_query,
+  expect_tooltip_paint,
+  marker_position,
+  mouse,
+  plot_svg,
+  resize_element,
+} from '../setup'
 
 // Every compute request is held until the test resolves it, so "while recomputing" states are
 // observable; requests record their config and abort signal
@@ -125,6 +132,32 @@ test(`recomputes run only for compute-relevant changes, keep the plot, abort sup
   expect(calls.list.slice(2).map(({ signal }) => signal?.aborted)).toEqual([true, false])
 })
 
+// Hovering a domain point shows exactly one tooltip (the ChemPot one, not also the inner
+// plot's): undefined shows the detailed default, a config object trims it, false hides it
+test.each([
+  [undefined, true, true],
+  [{ detail_level: `compact` }, true, false],
+  [false, false, false],
+] as const)(
+  `tooltip=%o shows tooltip: %s, axis ranges: %s`,
+  async (tooltip, shown, ranges) => {
+    await mount_2d({ entries: binary_temp_entries, temperature: 300, tooltip })
+    await resolve_latest()
+    await size_plot()
+    const svg = plot_svg()
+    svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 600, height: 450 })
+    const { x: coord_x, y: coord_y } = marker_position(document, 0)
+    svg.dispatchEvent(mouse(`mouseenter`))
+    svg.dispatchEvent(mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    flushSync()
+    expect(document.querySelectorAll(`.plot-tooltip`)).toHaveLength(shown ? 1 : 0)
+    const tooltip_el = document.querySelector(`.chempot-tooltip`)
+    expect(tooltip_el !== null).toBe(shown)
+    expect(tooltip_el?.textContent?.includes(`Axis ranges`) ?? false).toBe(ranges)
+  },
+)
+
 test(`an error state keeps the controls, so the setting that caused it can be undone`, async () => {
   // a floor above every formation energy leaves no domains; an empty elements list means all
   // elements (not an unsupported 0-element system that never reaches the 2D error state)
@@ -177,4 +210,16 @@ test(`projections from a larger system draw closed straight outlines, switching 
   expect(line_paths()).toEqual(li_o_paths)
   await resolve_latest()
   expect(line_paths()).not.toEqual(li_o_paths)
+})
+
+// config.color_bar styles the continuous-mode legend (spread over the defaults), null hides it
+test.each([
+  [undefined, `Formation energy (eV/atom)`],
+  [{ title: `ΔH_f` }, `ΔH_f`],
+  [null, null],
+])(`config.color_bar=%j sets the legend ColorBar title %j`, async (color_bar, title) => {
+  await mount_2d({ entries: binary_temp_entries, config: { color_bar } })
+  await resolve_latest()
+  const label = document.querySelector(`.chempot-legend .colorbar .label`)
+  expect(label?.textContent ?? null).toBe(title)
 })

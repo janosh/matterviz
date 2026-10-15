@@ -425,6 +425,22 @@ test.each([
   expect([style.background, style.color]).toEqual([bg, text])
 })
 
+// tooltip=false drops the hovered point's tooltip (the hover halo stays)
+test.each([undefined, false] as const)(`3D tooltip=%s`, (tooltip) => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      series: [{ x: [1], y: [1], z: [1] }],
+      hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
+      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      gizmo: false,
+      tooltip,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  expect(document.querySelector(`.tooltip`) !== null).toBe(tooltip === undefined)
+})
+
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame
   vi.useFakeTimers({ toFake: [`performance`] })

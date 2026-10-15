@@ -1,7 +1,6 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '#lib/constants.js'
 import type { HullFaceColorMode } from '#lib/convex-hull/types.js'
@@ -11,6 +10,7 @@ import type { Vec2, Vec3 } from '#lib/math.js'
 import type { GizmoOptions } from '#lib/scene/gizmo.js'
 import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { is_plain_object } from '#lib/utils.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
@@ -223,10 +223,10 @@ const convex_hull_settings = (
       description: `Color mode for ${hull} points`,
       enum: { stability: `Stability`, energy: `Energy` },
     },
-    color_scale: {
+    color_scale: typed_setting<ColorScale>({
       value: `interpolateViridis`,
       description: `D3 interpolate color scale for ${hull} energy mode`,
-    },
+    }),
     show_stable: { value: true, description: `Show stable phases in ${hull}` },
     show_unstable: { value: true, description: `Show unstable phases in ${hull}` },
     show_stable_labels: {
@@ -432,7 +432,7 @@ export const SETTINGS_CONFIG = define_settings({
         property: `Site Property`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
-    atom_color_scale: typed_setting<D3InterpolateName>({
+    atom_color_scale: typed_setting<ColorScale>({
       value: `interpolateViridis`,
       description: `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
     }),
@@ -591,7 +591,7 @@ export const SETTINGS_CONFIG = define_settings({
         uniform: `uniform`,
       },
     }),
-    vector_color_scale: typed_setting<D3InterpolateName>({
+    vector_color_scale: typed_setting<ColorScale>({
       value: `interpolateViridis`,
       description: `D3 color scale for magnitude coloring mode`,
     }),
@@ -732,7 +732,7 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Quantity mapped onto the Fermi surface color scale`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
-    color_scale: typed_setting<D3InterpolateName>({
+    color_scale: typed_setting<ColorScale>({
       value: `interpolateViridis`,
       description: `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
     }),

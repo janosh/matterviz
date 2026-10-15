@@ -236,7 +236,7 @@ describe(`PeriodicTable`, () => {
 
   test(`a touch tap previews a tile first and only a second tap on it activates`, () => {
     const on_activate = vi.fn<(element: ChemicalElement) => void>()
-    mount(PeriodicTable, { target: document.body, props: { on_activate, tooltip: true } })
+    mount(PeriodicTable, { target: document.body, props: { on_activate } })
     const [hydrogen, helium] = document.querySelectorAll<HTMLElement>(`.element-tile`)
     tap(hydrogen, `touch`) // first tap: select only
     expect(hydrogen.classList.contains(`active`)).toBe(true)
@@ -620,7 +620,8 @@ describe(`PeriodicTable`, () => {
     expect(hydrogen_tile.getAttribute(`href`)).toBe(expected_href)
   })
 
-  test.each([true, false])(`tooltip=%s shows a hover tooltip`, async (tooltip) => {
+  // on by default like every other component's tooltip; false opts out
+  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
     mount(PeriodicTable, {
       target: document.body,
       props: { tooltip, style: `--tooltip-bg: #4fc3f7` },
@@ -629,7 +630,7 @@ describe(`PeriodicTable`, () => {
     hydrogen_tile.dispatchEvent(mouseenter)
     await tick()
     const tooltip_el = document.querySelector<HTMLElement>(`.tooltip`)
-    expect(Boolean(tooltip_el)).toBe(tooltip)
+    expect(Boolean(tooltip_el)).toBe(tooltip === undefined)
     if (tooltip_el) {
       expect(tooltip_el.textContent).toContain(`Hydrogen`)
       expect(tooltip_el.style.getPropertyValue(`--tooltip-auto-color`)).toBe(`black`)
@@ -649,7 +650,7 @@ describe(`PeriodicTable`, () => {
     vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(
       new DOMRect(0, 0, 80.2 * scale),
     )
-    mount(PeriodicTable, { target: document.body, props: { tooltip: true } })
+    mount(PeriodicTable, { target: document.body, props: {} })
     doc_query(`.element-tile`).dispatchEvent(mouseenter)
     await tick()
     expect(doc_query(`.tooltip`).style.width).toBe(`81px`)
@@ -711,7 +712,6 @@ describe(`PeriodicTable`, () => {
             42,
             [4, 5, 6],
           ] as never,
-          tooltip: true,
         },
       })
       const tiles = [...document.querySelectorAll<HTMLElement>(`.element-tile`)]

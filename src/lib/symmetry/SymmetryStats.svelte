@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { SymmetryDataset, SymmetrySettings } from './analyze'
@@ -25,14 +25,14 @@
   let {
     sym_data,
     settings = $bindable(default_sym_settings),
-    show_tooltips = true,
+    tooltip,
     children,
     label = `Symmetry`,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     sym_data?: SymmetryDataset | null
     settings?: SymmetrySettings
-    show_tooltips?: boolean
+    tooltip?: false // false drops the explanatory hover titles
     children?: SymmetrySnippet
     label?: SymmetrySnippet | string
   } = $props()
@@ -78,7 +78,7 @@
     free_params: `Internal degrees of freedom: number of free fractional-coordinate parameters (x, y, z in the ITA representative coordinates) summed over occupied Wyckoff orbits. 0 means all atomic positions are fully fixed by symmetry.`,
     settings: `All settings of this space group in the International Tables (origin choices, unique axes, cell choices, hexagonal vs rhombohedral axes). The setting detected for this structure is highlighted.`,
   }
-  const tooltips: Record<string, string> = $derived(show_tooltips ? titles : {})
+  const tooltips: Record<string, string> = $derived(tooltip === false ? {} : titles)
 
   // Step the precision input by its own order of magnitude (1e-4 steps in 1e-4 increments)
   const symprec_step = $derived(
@@ -98,7 +98,7 @@
     {/if}
 
     <label>
-      <span {@attach tooltip()} title={tooltips.symprec}>Precision</span>
+      <span {@attach attach_tooltip()} title={tooltips.symprec}>Precision</span>
       <input
         type="number"
         step={symprec_step}
@@ -113,7 +113,7 @@
       />
     </label>
     <label>
-      <span {@attach tooltip()} title={tooltips.algo}>Algorithm</span>
+      <span {@attach attach_tooltip()} title={tooltips.algo}>Algorithm</span>
 
       <select
         value={settings.algo}
@@ -135,9 +135,10 @@
     {@const stat_tiles = [
       {
         label: `Space Group`,
-        title: show_tooltips
-          ? `${titles.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${titles.hermann_mauguin}`
-          : undefined,
+        title:
+          tooltip !== false
+            ? `${titles.space_group} at ${settings.symprec} (using ${settings.algo} algo). ${titles.hermann_mauguin}`
+            : undefined,
         value: `${sym_data.number} (${display_hm_symbol})`,
       },
       {
@@ -171,14 +172,14 @@
     ].filter((tile) => typeof tile === `object`)}
     <div class="stats-grid">
       {#each stat_tiles as tile (tile.label)}
-        <div title={tile.title} {@attach tooltip()}>
+        <div title={tile.title} {@attach attach_tooltip()}>
           {tile.label} <strong>{tile.value}</strong>
         </div>
       {/each}
       <div
         class="sym-ops-summary"
         title="{sym_ops_counts.translations} translations + {sym_ops_counts.rotations} rotations + {sym_ops_counts.roto_translations} roto-translations"
-        {@attach tooltip()}
+        {@attach attach_tooltip()}
       >
         Total sym ops: <strong>{sym_data.operations.length}</strong>
         ({sym_ops_counts.translations}T + {sym_ops_counts.rotations}R + {sym_ops_counts.roto_translations}RT)
@@ -186,7 +187,7 @@
     </div>
     {#if settings_entries.length > 1}
       <details class="settings-explorer">
-        <summary title={tooltips.settings} {@attach tooltip()}>
+        <summary title={tooltips.settings} {@attach attach_tooltip()}>
           {settings_entries.length} settings of space group {sym_data.number}
         </summary>
         <table>

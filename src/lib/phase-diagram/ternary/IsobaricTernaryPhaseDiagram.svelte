@@ -12,7 +12,7 @@
     DEFAULT_ELEMENT_TO_GAS,
     GAS_STOICHIOMETRY,
   } from '#lib/convex-hull/gas-thermodynamics.js'
-  import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
+  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
@@ -26,6 +26,7 @@
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
@@ -46,17 +47,12 @@
     Decomposition,
     DiagramProgress,
     FreeEnergyMode,
-    PhaseTemperatureHover,
-    SectionHover,
     TernaryDisplay,
     TernaryPhaseDiagram,
     TernaryPhaseDiagramOptions,
+    TernaryPhaseHover,
   } from './types'
   import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from './types'
-
-  type Hover =
-    | { kind: `section`; data: SectionHover }
-    | { kind: `phase_t`; data: PhaseTemperatureHover }
 
   let {
     entries: entries_prop,
@@ -76,8 +72,10 @@
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     wrapper = $bindable(),
-    on_file_drop,
+    allow_file_drop = true,
+    on_file_load,
     title,
+    tooltip,
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -101,8 +99,13 @@
     fullscreen?: boolean
     fullscreen_toggle?: boolean
     wrapper?: HTMLDivElement
-    on_file_drop?: (entries: PhaseData[], filename: string) => void
+    // Dropped JSON arrays of convex-hull entries replace `entries`
+    allow_file_drop?: boolean
+    // Called with each dropped file's entries once they are shown
+    on_file_load?: (data: PhaseEntriesLoadData) => void
     title?: string
+    // false hides the hover tooltip, a snippet replaces its content
+    tooltip?: TooltipProp<TernaryPhaseHover>
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
 
@@ -125,7 +128,7 @@
     fallback: TERNARY_COLORS.pin,
   })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
-  let hover = $state<Hover | null>(null)
+  let hover = $state<TernaryPhaseHover | null>(null)
   let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null
@@ -333,9 +336,9 @@
   let dragover = $state(false)
   let drop_error = $state<string | null>(null)
   const handle_drop = create_file_drop_handler({
-    allow: () => true,
+    allow: () => allow_file_drop,
     on_error: (message) => (drop_error = message),
-    on_drop: (content, filename) => {
+    on_drop: (content, filename, metadata) => {
       try {
         const parsed: unknown = JSON.parse(
           typeof content === `string` ? content : new TextDecoder().decode(content),
@@ -344,8 +347,8 @@
           throw new Error(`Expected a JSON array of convex-hull entries`)
         drop_error = null
         selected_phase = null
-        if (on_file_drop) on_file_drop(parsed as PhaseData[], filename)
-        else dropped_entries = parsed as PhaseData[]
+        dropped_entries = parsed as PhaseData[]
+        on_file_load?.({ entries: dropped_entries, filename, ...metadata })
       } catch (error) {
         drop_error = `${filename}: ${to_error(error).message}`
       }
@@ -373,7 +376,10 @@
     dragover = false
     void handle_drop(event)
   }}
-  {...drag_over_handlers({ set_dragover: (over) => (dragover = over) })}
+  {...drag_over_handlers({
+    allow: () => allow_file_drop,
+    set_dragover: (over) => (dragover = over),
+  })}
 >
   <ViewerChrome
     {controls_config}
@@ -557,7 +563,7 @@
     </div>
   {/if}
 
-  {#if hover && model && section}
+  {#if hover && model && section && tooltip !== false}
     <PlotTooltip
       x={hover.data.position[0]}
       y={hover.data.position[1]}
@@ -569,7 +575,9 @@
         : undefined}
       style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
     >
-      {#if hover.kind === `section` && hover.data.kind === `composition`}
+      {#if typeof tooltip === `function`}
+        {@render tooltip(hover)}
+      {:else if hover.kind === `section` && hover.data.kind === `composition`}
         {@const { barycentric, decomposition } = hover.data}
         <div>
           {#each model.elements as element, idx (element)}

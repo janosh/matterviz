@@ -6,24 +6,27 @@
   import { format_num } from '#lib/labels.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { domain_formula_text } from './controls-state.svelte'
-  import type { ChemPotHoverInfo } from './types'
+  import type { ChemPotHoverInfo, ChemPotTooltipProp } from './types'
 
   let {
     hover_info,
     pinned,
-    detail_level,
+    tooltip,
     constrain_to,
     bg_color,
   }: {
     hover_info: ChemPotHoverInfo
     pinned: boolean
-    detail_level: `compact` | `detailed`
+    tooltip?: ChemPotTooltipProp // a snippet replaces the content below
     // container size the tooltip is flipped/clamped inside
     constrain_to: { width: number; height: number }
     bg_color?: string // the hovered domain's fill
   } = $props()
 
   const fmt = (value: number): string => format_num(value, `.4~g`)
+  const detail_level = $derived(
+    (typeof tooltip === `object` && tooltip.detail_level) || `detailed`,
+  )
 </script>
 
 <PlotTooltip
@@ -34,55 +37,59 @@
   {bg_color}
   class="chempot-tooltip"
 >
-  <h4>
-    {#each get_formula_label_segments(domain_formula_text(hover_info.formula)) as segment, idx (idx)}
-      {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
-    {/each}
-  </h4>
-  {#if pinned}
-    <p>Pinned · Press Esc to unlock</p>
-  {/if}
-  {#if hover_info.view === `2d`}
-    <p>2D domain · Points: {hover_info.n_points}</p>
+  {#if typeof tooltip === `function`}
+    {@render tooltip(hover_info)}
   {:else}
-    <p>
-      {hover_info.is_elemental ? `Elemental phase` : `Compound phase`}
-      {#if hover_info.is_draw_formula}<span> · Overlay target</span>{/if}
-    </p>
-    <p>
-      Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
-      {hover_info.n_points}
-    </p>
-    <p>
-      Entries: {hover_info.matching_entry_count}
-      {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
-        · E/atom: {fmt(hover_info.min_energy_per_atom)} to {fmt(
-          hover_info.max_energy_per_atom,
-        )}
-        <small>eV</small>
-      {/if}
-    </p>
-  {/if}
-  {#if detail_level === `detailed`}
-    <h5>Axis ranges</h5>
-    {#each hover_info.axis_ranges as axis_range (axis_range.element)}
+    <h4>
+      {#each get_formula_label_segments(domain_formula_text(hover_info.formula)) as segment, idx (idx)}
+        {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
+      {/each}
+    </h4>
+    {#if pinned}
+      <p>Pinned · Press Esc to unlock</p>
+    {/if}
+    {#if hover_info.view === `2d`}
+      <p>2D domain · Points: {hover_info.n_points}</p>
+    {:else}
       <p>
-        {axis_range.element}: {fmt(axis_range.min_val)} to {fmt(axis_range.max_val)}
-        <small>eV</small>
+        {hover_info.is_elemental ? `Elemental phase` : `Compound phase`}
+        {#if hover_info.is_draw_formula}<span> · Overlay target</span>{/if}
       </p>
-    {/each}
-    {#if hover_info.view === `3d`}
       <p>
-        Centroid: ({hover_info.ann_loc.map((val) => format_num(val, `.3~g`)).join(`, `)})
-        <small>eV</small>
+        Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
+        {hover_info.n_points}
       </p>
-      {#if hover_info.neighbors.length > 0}
-        <h5>Neighbors ({hover_info.neighbors.length})</h5>
-        <p>{hover_info.neighbors.map(domain_formula_text).join(`, `)}</p>
-      {/if}
-      {#if hover_info.touches_limits.length > 0}
-        <h5>Touches bounds</h5>
-        <p>{hover_info.touches_limits.join(`, `)}</p>
+      <p>
+        Entries: {hover_info.matching_entry_count}
+        {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
+          · E/atom: {fmt(hover_info.min_energy_per_atom)} to {fmt(
+            hover_info.max_energy_per_atom,
+          )}
+          <small>eV</small>
+        {/if}
+      </p>
+    {/if}
+    {#if detail_level === `detailed`}
+      <h5>Axis ranges</h5>
+      {#each hover_info.axis_ranges as axis_range (axis_range.element)}
+        <p>
+          {axis_range.element}: {fmt(axis_range.min_val)} to {fmt(axis_range.max_val)}
+          <small>eV</small>
+        </p>
+      {/each}
+      {#if hover_info.view === `3d`}
+        <p>
+          Centroid: ({hover_info.ann_loc.map((val) => format_num(val, `.3~g`)).join(`, `)})
+          <small>eV</small>
+        </p>
+        {#if hover_info.neighbors.length > 0}
+          <h5>Neighbors ({hover_info.neighbors.length})</h5>
+          <p>{hover_info.neighbors.map(domain_formula_text).join(`, `)}</p>
+        {/if}
+        {#if hover_info.touches_limits.length > 0}
+          <h5>Touches bounds</h5>
+          <p>{hover_info.touches_limits.join(`, `)}</p>
+        {/if}
       {/if}
     {/if}
   {/if}

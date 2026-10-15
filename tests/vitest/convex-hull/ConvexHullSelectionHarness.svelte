@@ -47,6 +47,7 @@
     MAGNETIC_ORDERING_CATEGORY,
   )
   let selected_entry = $state<ConvexHullEntry | null>(null)
+  let loaded_file = $state(``) // on_file_load's source, as `filename < source_filename`
   // Read by the draw code but only reachable through `config`, so it exercises whether the
   // renderer's repaint list covers config as well as the individual toggles.
   let config = $state({ show_labels: true })
@@ -70,6 +71,7 @@
   Refresh Entries
 </button>
 <span data-testid="selected-entry">{selected_entry?.entry_id ?? `none`}</span>
+<span data-testid="loaded-file">{loaded_file}</span>
 <span data-testid="stable-count">{stable_entries.length}</span>
 <span data-testid="unstable-count">{unstable_entries.length}</span>
 <button
@@ -104,7 +106,10 @@
   {config}
   {entry_category}
   {allow_file_drop}
-  on_file_drop={(dropped) => (entries = dropped)}
+  on_file_load={(loaded) => {
+    entries = loaded.entries
+    loaded_file = `${loaded.filename} < ${loaded.source_filename}`
+  }}
   bind:selected_entry
   bind:this={hull}
 />

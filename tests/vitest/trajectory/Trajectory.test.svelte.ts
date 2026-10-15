@@ -224,7 +224,7 @@ describe(`display modes`, () => {
     props.structure_props.atom_color_config = {
       mode: `property`,
       property_key: `force`,
-      scale: `interpolateViridis`,
+      color_scale: `interpolateViridis`,
       scale_type: `continuous`,
     }
     await vi.waitFor(() => expect(prepared?.frame.vector_keys).toEqual([`force`]))
@@ -277,7 +277,7 @@ describe(`display modes`, () => {
         mode: `custom`,
         color_fn: (site: Site) =>
           Array.isArray(site.properties.velocity) ? site.properties.velocity[0] : 0,
-        scale: `interpolateViridis`,
+        color_scale: `interpolateViridis`,
         scale_type: `continuous`,
       },
     }

@@ -30,7 +30,7 @@
   import type {
     PhaseDiagramConfig,
     PhaseDiagramData,
-    PhaseDiagramTooltipConfig,
+    PhaseDiagramTooltipProp,
     PhaseHoverInfo,
     PhaseRegion,
     TempUnit,
@@ -77,6 +77,7 @@
     on_export,
     diagram_input = $bindable<DiagramInput | null>(null),
     editor_open = $bindable(false),
+    allow_file_drop = true,
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     tooltip,
@@ -109,12 +110,13 @@
       // Diagram input editor (for SVG drop editing)
       diagram_input?: DiagramInput | null
       editor_open?: boolean
+      // Dropped phase-diagram SVGs replace the diagram (through diagram_input)
+      allow_file_drop?: boolean
       // Axis configuration
       x_axis?: AxisConfig
       y_axis?: AxisConfig
-      // Custom tooltip - can be a snippet (replaces default), config object (adds prefix/suffix),
-      // or false to disable tooltip entirely
-      tooltip?: Snippet<[PhaseHoverInfo]> | PhaseDiagramTooltipConfig | false
+      // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
+      tooltip?: PhaseDiagramTooltipProp
       children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
     } = $props()
 
@@ -169,7 +171,7 @@
   // expands dropped folders and serializes overlapping drops; only the SVG filter and the
   // parse are specific to this diagram.
   const handle_svg_drop = create_file_drop_handler({
-    allow: () => true,
+    allow: () => allow_file_drop,
     on_drop: (content, filename, { file }) => {
       if (!filename.endsWith(`.svg`) && file?.type !== `image/svg+xml`) return
       if (typeof content !== `string`) return
@@ -477,7 +479,7 @@
     ? `Missing phase diagram data. Provide diagram data through the data prop.`
     : `${component_a}-${component_b} binary phase diagram`}
   ondrop={handle_svg_drop}
-  ondragover={(event_value) => event_value.preventDefault()}
+  ondragover={(event) => allow_file_drop && event.preventDefault()}
 >
   <ViewerNotices>
     {#if input_error}<StatusMessage message={input_error} type="error" />{/if}
@@ -842,21 +844,17 @@
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
         {/if}
-        {#if typeof tooltip === `function`}
-          {@render tooltip(effective_hover_info)}
-        {:else}
-          <PhaseDiagramTooltip
-            hover_info={effective_hover_info}
-            temperature_unit={temp_unit}
-            data_temperature_unit={data_temp_unit}
-            composition_unit={comp_unit}
-            {component_a}
-            {component_b}
-            boundaries={effective_data.boundaries}
-            {use_subscripts}
-            {tooltip}
-          />
-        {/if}
+        <PhaseDiagramTooltip
+          hover_info={effective_hover_info}
+          temperature_unit={temp_unit}
+          data_temperature_unit={data_temp_unit}
+          composition_unit={comp_unit}
+          {component_a}
+          {component_b}
+          boundaries={effective_data.boundaries}
+          {use_subscripts}
+          {tooltip}
+        />
       </PlotTooltip>
     {/if}
 

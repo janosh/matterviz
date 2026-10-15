@@ -4,6 +4,7 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import type { WarnFn } from '#lib/trajectory/parse/shared.js'
 import {
   cell_frame,
   cif_block_ids,
@@ -82,7 +83,7 @@ const mmcif_element = (
   )
 }
 
-export const parse_mmcif = (content: string): AnyStructure => {
+export const parse_mmcif = (content: string, warn: WarnFn = console.warn): AnyStructure => {
   const lines = normalize_cif_names(content.split(/\r?\n/))
 
   const block_ids = cif_block_ids(lines)
@@ -119,7 +120,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   // from the atom names, which are ambiguous (`CA` is an alpha carbon in a protein but
   // calcium in a ligand)
   if (indices.symbol === undefined) {
-    console.warn(
+    warn(
       `mmCIF _atom_site loop has no type_symbol column; inferring elements from label_atom_id`,
     )
   }
@@ -132,7 +133,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
   const n_raw_rows = data_rows.length
   data_rows = data_rows.filter((row) => row.length > last_coord_col)
   if (data_rows.length < n_raw_rows) {
-    console.warn(
+    warn(
       `mmCIF: skipped ${n_raw_rows - data_rows.length} _atom_site row(s) that stop short ` +
         `of the coordinate columns (multi-line records are not supported)`,
     )
@@ -147,7 +148,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
       : data_rows.filter((row) => row[model_col] === first_model)
   if (model_rows.length < data_rows.length) {
     const model_count = new Set(data_rows.map((row) => row[model_col])).size
-    console.warn(
+    warn(
       `mmCIF contains ${model_count} models; parsed model ${first_model} and skipped ${
         data_rows.length - model_rows.length
       } atom rows from the rest`,
@@ -182,7 +183,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
           (row) => text_at(row, `label`) ?? ``,
         )
   if (rows.length < model_rows.length) {
-    console.warn(
+    warn(
       `mmCIF: skipped ${
         model_rows.length - rows.length
       } atom(s) with alternate location indicators`,
@@ -203,7 +204,7 @@ export const parse_mmcif = (content: string): AnyStructure => {
     /^\s*_(?:space_group_symop|symmetry_equiv)\./i.test(line),
   )
   if (symmetry_ops.length > 0) {
-    console.warn(
+    warn(
       `mmCIF: symmetry operations and assembly generation are not applied; showing the deposited coordinates only`,
     )
   }
@@ -211,8 +212,9 @@ export const parse_mmcif = (content: string): AnyStructure => {
   // The `_cell` block, or null for a molecule: absent cell tags, or the 1 1 1 90 90 90
   // placeholder MD and docking tools write for aperiodic systems
   const { lattice_matrix, to_frac } = cell_frame(
-    drop_placeholder_cell(read_cell_params(block_lines, `mmCIF`), `mmCIF`, `_cell`),
+    drop_placeholder_cell(read_cell_params(block_lines, `mmCIF`), `mmCIF`, `_cell`, warn),
     `mmCIF _cell`,
+    warn,
   )
   // Cartesian mmCIF coordinates are left unwrapped so macromolecules stay intact
 

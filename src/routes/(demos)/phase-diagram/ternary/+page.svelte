@@ -138,7 +138,7 @@
       bind:selected_phase
       title="{system_title} · {current_entries.length} entries"
       style="height: 780px"
-      on_file_drop={(entries, filename) => {
+      on_file_load={({ entries, filename }) => {
         loads.cancel()
         loading = false
         error_message = null

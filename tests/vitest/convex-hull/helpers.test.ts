@@ -7,6 +7,8 @@ import {
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
+import * as d3_sc from 'd3-scale-chromatic'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
@@ -35,6 +37,42 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(color_at(0.5)).toBe(color_at(0.5 + 1e-9))
     // No distance → neutral grey
     expect(helpers.get_point_color_for_entry({}, `energy`, undefined, scale)).toBe(`#666`)
+  })
+
+  // A bare name keeps the colors of the pre-ColorScaleConfig API (pinned); a config's
+  // value_range replaces the [min, max(max, 0.1)] auto range and palette_range [1, 0] reverses
+  test.each<[ColorScale, (string | undefined)[]]>([
+    [`interpolateViridis`, [`#440154`, `#471063`, `#453882`, `#2eb37c`, `#fde725`, `#fde725`]],
+    [
+      { scheme: `interpolateViridis`, value_range: [0, 1] },
+      [0, 0.013, 0.05, 0.2, 0.31, 0.5].map(d3_sc.interpolateViridis),
+    ],
+    [
+      { scheme: `interpolateViridis`, palette_range: [1, 0] },
+      // reversed over the auto range [0, 0.31], clamped past it
+      [0, 0.013, 0.05, 0.2, 0.31, 0.31].map((val) => d3_sc.interpolateViridis(1 - val / 0.31)),
+    ],
+  ])(`get_energy_color_scale maps hull distances through %j`, (color_scale, colors) => {
+    const entries = [0, 0.013, 0.05, 0.2, 0.31].map((e_above_hull) => ({ e_above_hull }))
+    const scale = helpers.get_energy_color_scale(`energy`, color_scale, entries)
+    expect([0, 0.013, 0.05, 0.2, 0.31, 0.5].map((val) => scale?.(val))).toEqual(colors)
+  })
+
+  test(`formation-energy faces share the energy color scale over 0-based energies`, () => {
+    const faces = [-1, -0.5, -0.2, 0].map((e_form, facet_idx) => ({ e_form, facet_idx }))
+    const face_color = draw.face_color_resolver(faces as draw.HullFace[], {
+      mode: `formation_energy`,
+      uniform_color: `#123456`,
+      color_scale: `interpolateViridis`,
+      element_colors: {},
+      elements: [],
+    })
+    expect(faces.map((face) => face_color(face as draw.HullFace))).toEqual([
+      `#440154`,
+      `#21918c`,
+      `#7ad151`,
+      `#fde725`,
+    ])
   })
 
   test(`stability mode colours and explicit is_stable=false overriding zero distance`, () => {

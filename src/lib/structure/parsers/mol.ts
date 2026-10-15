@@ -2,6 +2,7 @@
 // Cartesian coordinates without a unit cell and an authoritative bond block.
 import type { BondOrder, Molecule, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import type { WarnFn } from '#lib/trajectory/parse/shared.js'
 import {
   element_from_candidates,
   is_num_token,
@@ -18,10 +19,10 @@ import type { RawBond } from './shared'
 // single-or-aromatic, double-or-aromatic, any) that carry no definite order.
 const MOL_BOND_ORDERS: Record<number, BondOrder> = { 1: 1, 2: 2, 3: 3, 4: `aromatic` }
 
-const mol_bond_order = (code: number, context: string): BondOrder => {
+const mol_bond_order = (code: number, context: string, warn: WarnFn): BondOrder => {
   const order = MOL_BOND_ORDERS[code]
   if (order !== undefined) return order
-  console.warn(`${context}: query bond type ${code} has no definite order, treating as single`)
+  warn(`${context}: query bond type ${code} has no definite order, treating as single`)
   return 1
 }
 
@@ -51,7 +52,7 @@ type MolBlock = {
 
 // V2000: fixed-column atom block (x/y/z in 10-char fields, symbol at cols 32-34) followed
 // by a bond block of `atom_1 atom_2 type` triples, both counted by the counts line.
-const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
+const parse_v2000 = (lines: string[], counts_idx: number, warn: WarnFn): MolBlock => {
   const counts = read_int_fields(lines[counts_idx], 2)
   const [num_atoms, num_bonds] = counts
   if (counts.length !== 2 || num_atoms <= 0)
@@ -99,7 +100,7 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
     bonds.push({
       atom_id_1,
       atom_id_2,
-      order: mol_bond_order(code, `MOL bond ${bond_idx + 1}`),
+      order: mol_bond_order(code, `MOL bond ${bond_idx + 1}`, warn),
     })
   }
 
@@ -109,7 +110,7 @@ const parse_v2000 = (lines: string[], counts_idx: number): MolBlock => {
 
 // V3000: free-format `M  V30` tagged lines inside BEGIN/END ATOM and BOND blocks.
 // Atom rows are `index symbol x y z aamap`, bond rows are `index type atom_1 atom_2`.
-const parse_v3000 = (lines: string[]): MolBlock => {
+const parse_v3000 = (lines: string[], warn: WarnFn): MolBlock => {
   const v30_lines = lines
     .filter((line) => line.trimStart().toUpperCase().startsWith(`M  V30`))
     .map((line) => line.trimStart().slice(6).trim())
@@ -149,14 +150,14 @@ const parse_v3000 = (lines: string[]): MolBlock => {
     bonds.push({
       atom_id_1,
       atom_id_2,
-      order: mol_bond_order(code, `MOL V3000 bond '${row}'`),
+      order: mol_bond_order(code, `MOL V3000 bond '${row}'`, warn),
     })
   }
 
   return { sites, bonds, site_idx_by_atom_id }
 }
 
-export const parse_mol = (content: string): Molecule => {
+export const parse_mol = (content: string, warn: WarnFn = console.warn): Molecule => {
   const all_lines = content.split(/\r?\n/)
   // SDF concatenates records terminated by `$$$$`; only the first is parsed. Every
   // terminator ends one record, plus an unterminated final record when content follows
@@ -167,9 +168,7 @@ export const parse_mol = (content: string): Molecule => {
     const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
     const n_records = terminators.length + Number(trailing.some((line) => line.trim() !== ``))
     if (n_records > 1) {
-      console.warn(
-        `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
-      )
+      warn(`SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`)
     }
   }
 
@@ -181,12 +180,15 @@ export const parse_mol = (content: string): Molecule => {
       throw new Error(
         `MOL file too short: expected a 3-line header plus a counts line, got ${lines.length} lines`,
       )
-    console.warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
+    warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
     counts_idx = 3
   }
 
   const { sites, bonds, site_idx_by_atom_id } = /V3000\s*$/i.test(lines[counts_idx])
-    ? parse_v3000(lines)
-    : parse_v2000(lines, counts_idx)
-  return parsed_result(sites, resolve_bonds(bonds, site_idx_by_atom_id, `MOL bond block`))
+    ? parse_v3000(lines, warn)
+    : parse_v2000(lines, counts_idx, warn)
+  return parsed_result(
+    sites,
+    resolve_bonds(bonds, site_idx_by_atom_id, `MOL bond block`, warn),
+  )
 }

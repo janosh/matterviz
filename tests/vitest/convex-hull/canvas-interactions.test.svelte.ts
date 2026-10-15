@@ -35,7 +35,7 @@ function mount_selection(
       allow_file_drop: () => false,
       on_point_click: () => undefined,
       on_point_hover: () => undefined,
-      on_file_drop: () => undefined,
+      on_file_load: () => undefined,
       entry_category: () => null,
       wrapper: () => undefined,
       actions: () => ({}),

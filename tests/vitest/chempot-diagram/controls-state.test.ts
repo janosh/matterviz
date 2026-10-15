@@ -82,12 +82,14 @@ test(`color scale and reversal labels target their own controls`, async () => {
       candidate.textContent?.trim().startsWith(text),
     )
     expect(label?.control?.tagName).toBe(tag)
-    if (tag === `INPUT`) label?.control?.dispatchEvent(new Event(`change`, { bubbles: true }))
+    if (label?.control instanceof HTMLSelectElement) label.control.value = `interpolateViridis`
+    label?.control?.dispatchEvent(new Event(`change`, { bubbles: true }))
   }
-  expect(set).toHaveBeenCalledWith(
-    `reverse_color_scale`,
-    !CHEMPOT_DEFAULTS.reverse_color_scale,
-  )
+  // both edit the shared color_scale config: the scheme, and reversal as a flipped palette_range
+  expect(set.mock.calls).toEqual([
+    [`color_scale`, { scheme: `interpolateViridis`, palette_range: [1, 0] }],
+    [`color_scale`, { scheme: `interpolateSpectral`, palette_range: [0, 1] }],
+  ])
 })
 
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {

@@ -144,8 +144,15 @@
   const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
 </script>
 
+{#snippet cn_tooltip(info: BarHandlerProps<PlotMetadata>)}
+  CN: {format_value(info.x, `.0f`)}
+  <br />
+  Sites: {format_value(info.y, `.0f`)}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
+  tooltip={rest.tooltip ?? cn_tooltip}
   bind:show_controls
   bind:controls_open
   series={bar_series}
@@ -158,10 +165,4 @@
   bind:loading
   bind:error_msg
   on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
->
-  {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
-    CN: {format_value(info.x, `.0f`)}
-    <br />
-    Sites: {format_value(info.y, `.0f`)}
-  {/snippet}
-</StructureBarPlot>
+/>

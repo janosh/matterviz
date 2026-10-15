@@ -1,7 +1,7 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { track_settings } from '#lib/controls.js'
-  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
@@ -72,7 +72,7 @@
     // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
     resolved_padding = $bindable(),
     ...rest
-  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
+  }: Omit<ScatterPlotOptions, `controls_extra`> & {
     doses: Record<string, DosData>
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
@@ -280,8 +280,27 @@
 </script>
 
 {#if series_data.length > 0}
+  {#snippet dos_tooltip({ x_formatted, y_formatted, label }: ScatterHandlerProps)}
+    {@const tooltip_data = format_dos_tooltip({
+      x_formatted,
+      y_formatted,
+      label: label ?? null,
+      is_horizontal,
+      is_phonon,
+      units: unit,
+      x_axis_label: internal_x_axis.label ?? ``,
+      y_axis_label: internal_y_axis.label ?? ``,
+      num_series: Object.keys(doses).length,
+    })}
+    {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
+    {#each tooltip_data.lines as line, line_idx (line_idx)}
+      <TooltipValue {...line} />{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
+    {/each}
+  {/snippet}
+
   <ScatterPlot
     {...rest}
+    tooltip={rest.tooltip ?? dos_tooltip}
     series={series_data}
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
@@ -298,24 +317,6 @@
     bind:show_controls
     bind:controls_open
   >
-    {#snippet tooltip({ x_formatted, y_formatted, label })}
-      {@const tooltip_data = format_dos_tooltip({
-        x_formatted,
-        y_formatted,
-        label: label ?? null,
-        is_horizontal,
-        is_phonon,
-        units: unit,
-        x_axis_label: internal_x_axis.label ?? ``,
-        y_axis_label: internal_y_axis.label ?? ``,
-        num_series: Object.keys(doses).length,
-      })}
-      {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
-      {#each tooltip_data.lines as line, line_idx (line_idx)}
-        <TooltipValue {...line} />{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
-      {/each}
-    {/snippet}
-
     {#snippet controls_extra()}
       {#if has_spin_polarized}
         <SettingsSection

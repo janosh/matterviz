@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
@@ -162,7 +162,7 @@
       show_legend?: boolean
       bar?: BarStyle
       line?: LineStyle
-      tooltip?: Snippet<[BarHandlerProps<Metadata>]>
+      tooltip?: TooltipProp<BarHandlerProps<Metadata>>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<
@@ -450,6 +450,7 @@
     normalize_marginals(
       marginals,
       vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
+      tooltip === false,
     ),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
@@ -990,7 +991,7 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && tooltip_anchor}
+    {#if hover_info && tooltip_anchor && tooltip !== false}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
         x={tooltip_anchor[0]}

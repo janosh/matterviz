@@ -16,6 +16,7 @@ import type {
   StructureBond,
 } from '#lib/structure/index.js'
 import { get_bond_key, normalize_structure_bond } from '#lib/structure/bonding.js'
+import type { WarnFn } from '#lib/trajectory/parse/shared.js'
 import { normalize_scientific_notation } from '#lib/utils.js'
 
 // === Numeric coercion ===
@@ -318,13 +319,14 @@ export const drop_placeholder_cell = (
   params: readonly number[] | null,
   format: string,
   cell_name: string,
+  warn: WarnFn,
 ): readonly number[] | null => {
   if (!params) return null
   if (!is_placeholder_cell(params)) {
     assert_cell_lengths(params, `${format} ${cell_name}`)
     return params
   }
-  console.warn(
+  warn(
     `${format}: ignoring placeholder ${cell_name} (${params.join(` `)}), treating as molecule`,
   )
   return null
@@ -336,12 +338,14 @@ export const drop_placeholder_cell = (
 export const cell_frame = (
   params: readonly number[] | null,
   context: string,
+  warn: WarnFn,
 ): { lattice_matrix: math.Matrix3x3 | null; to_frac: (xyz: Vec3) => Vec3 } => {
   if (!params) return { lattice_matrix: null, to_frac: () => [0, 0, 0] }
   const lattice_matrix = cell_params_to_matrix(params)
   const { convert } = cart_to_frac_with_fallback(lattice_matrix, {
     axis_lengths: [params[0], params[1], params[2]],
     context,
+    warn,
   })
   return { lattice_matrix, to_frac: convert }
 }
@@ -447,7 +451,7 @@ const approximate_cart_to_frac = (
 // console.warn; trajectory readers pass their collector).
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
-  opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
+  opts: { axis_lengths?: Vec3; context?: string; warn?: WarnFn } = {},
 ): { convert: (xyz: Vec3, target?: Vec3) => Vec3; exact: boolean } => {
   try {
     return { convert: math.create_cart_to_frac(complete_lattice_matrix(matrix)), exact: true }
@@ -496,6 +500,7 @@ export const resolve_bonds = (
   raw_bonds: readonly RawBond[],
   site_idx_by_atom_id: ReadonlyMap<number, number>,
   context: string,
+  warn: WarnFn,
 ): StructureBond[] => {
   const bonds = new Map<string, StructureBond>()
   let dropped = 0
@@ -512,7 +517,7 @@ export const resolve_bonds = (
     bonds.set(key, normalize_structure_bond(site_idx_1, site_idx_2, order))
   }
   if (dropped > 0) {
-    console.warn(
+    warn(
       `${context}: dropped ${dropped} bond(s) referencing unknown atom ids or bonding an atom to itself`,
     )
   }

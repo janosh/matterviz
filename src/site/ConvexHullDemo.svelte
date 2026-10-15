@@ -75,7 +75,7 @@
     <ConvexHull
       entries={quaternary_entries}
       controls={{ title: active_name }}
-      on_file_drop={(dropped) => loaded_data.set(active_name, dropped)}
+      on_file_load={({ entries }) => loaded_data.set(active_name, entries)}
       style="height: 500px"
     />
   </div>

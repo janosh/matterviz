@@ -101,6 +101,7 @@ const drop_zone_widgets = new Set([
   `convex_hull`,
   `fermi_surface`,
   `brillouin_zone`,
+  `phase_diagram`,
   `xrd`,
   `rdf_plot`,
 ])

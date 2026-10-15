@@ -29,6 +29,7 @@ const structure_result: ParseResult = {
   type: `structure`,
   data: { sites: [] },
   filename: `mp-1.cif`,
+  warnings: [],
 }
 const frame: TrajectoryFrame = {
   step: 0,
@@ -566,7 +567,7 @@ describe(`parse_in_worker`, () => {
   ])(`%s`, async (_label, size, owns_content, expected_transfers) => {
     const worker = make_fake_worker((request) => ({
       id: request.id,
-      result: { type: `structure`, data: { sites: [] }, filename: `x.bin` },
+      result: { type: `structure`, data: { sites: [] }, filename: `x.bin`, warnings: [] },
     }))
     const content = new ArrayBuffer(size)
     await parse_in_worker(content, `x.bin`, false, {

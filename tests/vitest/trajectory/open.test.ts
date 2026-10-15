@@ -102,12 +102,13 @@ describe(`loading policy`, () => {
   )
 
   it.each([undefined, `frame.xyz`, `blob-id`])(
-    `opens a single XYZ frame named %s`,
+    `opens a single XYZ frame named %s, keeping its warnings on the run`,
     async (filename) => {
-      const run = await open(`1\ncomment\nHe 0.5 0 0\n`, filename)
+      const run = await open(`1\npbc="bogus"\nHe 0.5 0 0\n`, filename)
       expect(run.frame_count).toBe(1)
       expect(run.provenance.format).toBe(`xyz`)
       expect(run.preview.structure.sites[0].xyz).toEqual([0.5, 0, 0])
+      expect(run.warnings).toEqual([expect.stringMatching(/^Invalid EXTXYZ pbc/)])
     },
   )
 

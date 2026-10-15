@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
@@ -11,8 +11,8 @@
   import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
-  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
+  import { resolve_value_range } from '#lib/plot/core/scales.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
   import {
@@ -94,7 +94,7 @@
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
       legend?: LegendConfig | null
       show_legend?: boolean
-      tooltip?: Snippet<[TernaryPointProps<Metadata>]>
+      tooltip?: TooltipProp<TernaryPointProps<Metadata>>
       on_point_click?: (
         data: TernaryPointProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -195,9 +195,7 @@
   })
   let color_bar_visible = $derived(color_bar !== null && color_extent[0] <= color_extent[1])
   let value_range = $derived(resolve_value_range(color_scale, color_extent))
-  let color_scale_type = $derived(to_color_scale_config(color_scale).type)
-  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
-  let color_ramp = $derived(resolve_color_ramp(color_bar_scale, value_range, color_scale_type))
+  let color_ramp = $derived(resolve_color_ramp(color_scale, value_range))
   const point_color = (point: PlacedPoint): string =>
     point.color_value === null
       ? series_color(point.series_idx)
@@ -492,7 +490,7 @@
       </g>
     </svg>
 
-    {#if hover_info}
+    {#if hover_info && tooltip !== false}
       <PlotTooltip
         x={hover_pos.x}
         y={hover_pos.y}
@@ -547,9 +545,7 @@
 
     {#if color_bar_visible && color_bar}
       <ColorBar
-        scale={color_bar_scale}
-        range={value_range}
-        scale_type={color_scale_type}
+        color_scale={color_ramp.bar_scale}
         {...color_bar}
         style="position: absolute; bottom: {COLOR_BAR_GAP}px; left: 50%; transform: translateX(-50%); width: var(--ternary-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {color_bar.style ??
           ``}"

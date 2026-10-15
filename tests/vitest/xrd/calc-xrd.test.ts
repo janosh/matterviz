@@ -7,8 +7,8 @@ import type { Crystal } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { apply_symmetry_operations } from '#lib/symmetry/wyckoff.js'
 import {
-  add_xrd_pattern,
   compute_xrd_pattern,
+  structure_xrd_pattern,
   electron_wavelength,
   enumerate_reciprocal_points,
   structure_factors_squared,
@@ -828,35 +828,25 @@ describe(`radiation types`, () => {
   })
 })
 
-describe(`add_xrd_pattern`, () => {
-  const cubic_json = JSON.stringify(make_simple_cubic_structure(3))
+describe(`structure_xrd_pattern`, () => {
   // Bragg angle of the (100) line of the a = 3 Å simple cubic cell: 2θ = 2·asin(λ / 2a)
   const two_theta_100 = (wavelength: number) => (2 * Math.asin(wavelength / 6) * 180) / Math.PI
 
   // null wavelength → compute_xrd_pattern's CuKa default
   test.each([
-    [`JSON string`, cubic_json, null, WAVELENGTHS.CuKa],
-    [`ArrayBuffer`, new TextEncoder().encode(cubic_json).buffer, null, WAVELENGTHS.CuKa],
-    [`JSON string at MoKa`, cubic_json, WAVELENGTHS.MoKa, WAVELENGTHS.MoKa],
-  ])(`computes a pattern from a %s`, async (_label, content, wavelength, expected) => {
-    const entry = await add_xrd_pattern(content, `test.json`, wavelength)
-    expect(entry.label).toBe(`test.json`)
-    expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
+    [null, WAVELENGTHS.CuKa],
+    [WAVELENGTHS.MoKa, WAVELENGTHS.MoKa],
+  ])(`computes a pattern at wavelength %s`, async (wavelength, expected) => {
+    const pattern = await structure_xrd_pattern(make_simple_cubic_structure(3), wavelength)
+    expect(pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
     // dropped structures get their point group analyzed: Pm-3m merges all six (100)
-    expect(entry.pattern.family_grouping).toBe(`symmetry`)
-    expect(entry.pattern.hkls?.[0]).toEqual([{ hkl: [1, 0, 0], multiplicity: 6 }])
+    expect(pattern.family_grouping).toBe(`symmetry`)
+    expect(pattern.hkls?.[0]).toEqual([{ hkl: [1, 0, 0], multiplicity: 6 }])
   })
 
-  test.each([
-    [`invalid JSON`, `invalid json`, /./],
-    // strip the lattice
-    [
-      `structure without lattice`,
-      JSON.stringify({ ...make_simple_cubic_structure(3), lattice: undefined }),
-      /must have a lattice/,
-    ],
-  ])(`throws for %s`, async (_label, content, pattern) => {
-    await expect(add_xrd_pattern(content, `test.json`, null)).rejects.toThrow(pattern)
+  test(`throws for a structure without a lattice`, async () => {
+    const { lattice: _lattice, ...molecule } = make_simple_cubic_structure(3)
+    await expect(structure_xrd_pattern(molecule, null)).rejects.toThrow(/must have a lattice/)
   })
 })
 

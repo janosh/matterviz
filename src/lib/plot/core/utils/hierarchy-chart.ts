@@ -9,7 +9,7 @@ import { format_value } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
 import { resolve_pattern } from '#lib/plot/core/patterns.js'
-import { create_color_scale, resolve_value_range } from '#lib/plot/core/scales.js'
+import { create_color_scale, resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -17,7 +17,7 @@ import {
   measure_text_line,
   resolve_font_spec,
 } from '#lib/plot/core/text-metrics.js'
-import type { ColorScale, LegendItem } from '#lib/plot/core/types.js'
+import type { ColorScale, ColorScaleConfig, LegendItem } from '#lib/plot/core/types.js'
 import type {
   PositionedArc,
   SunburstLabelText,
@@ -185,12 +185,13 @@ export function compute_node_infos<Metadata>(
 
 // Continuous metric coloring: when color_values is given, nodes are colored by
 // their metric on a d3 colormap (nodes returning null keep their categorical
-// color). The user accessor runs exactly once per node.
+// color). The user accessor runs exactly once per node. color_scale comes back with its
+// value_range resolved for the color bar.
 export function compute_metric_colors<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   color_values: ((arc: PositionedArc<Metadata>) => number | null) | undefined,
   color_scale: ColorScale,
-): { range: Vec2; colors: string[]; color_fn: (value: number) => string } | null {
+): { color_scale: ColorScaleConfig & { value_range: Vec2 }; colors: string[] } | null {
   if (!color_values) return null
   // Collect finite values and their extent together; spreading a large array into
   // Math.min/max would overflow the call stack.
@@ -204,12 +205,11 @@ export function compute_metric_colors<Metadata>(
     return val
   })
   if (min_val > max_val) return null // no finite values
-  const auto_range: Vec2 = [min_val, max_val]
-  const color_fn = create_color_scale(color_scale, auto_range)
+  const resolved = resolve_color_scale(color_scale, [min_val, max_val])
+  const color_fn = create_color_scale(resolved, resolved.value_range)
   return {
-    range: resolve_value_range(color_scale, auto_range),
+    color_scale: resolved,
     colors: vals.map((val, idx) => (val == null ? arcs[idx].color : color_fn(val))),
-    color_fn,
   }
 }
 

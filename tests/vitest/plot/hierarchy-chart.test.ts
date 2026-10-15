@@ -1,4 +1,5 @@
 import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
+import { create_color_scale } from '#lib/plot/core/scales.js'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -86,7 +87,7 @@ describe(`hierarchy chart helpers`, () => {
       expect(compute_metric_colors(arcs, color_values, `interpolateViridis`)).toBeNull()
     }
     const derived = compute_metric_colors(arcs, (arc) => arc.value, `interpolateViridis`)
-    expect(derived?.range).toEqual([1, 6])
+    expect(derived?.color_scale.value_range).toEqual([1, 6])
     expect(derived?.colors).toHaveLength(arcs.length)
     for (const [value_range, expected] of [
       [
@@ -102,8 +103,11 @@ describe(`hierarchy chart helpers`, () => {
         scheme: `interpolateViridis`,
         value_range: [...value_range],
       })
-      expect(fixed?.range).toEqual(expected)
-      expect(fixed?.color_fn(expected[1])).toBe(`#fde725`) // top of viridis at the upper bound
+      expect(fixed?.color_scale.value_range).toEqual(expected)
+      // top of viridis at the upper bound
+      expect(fixed && create_color_scale(fixed.color_scale, [0, 1])(expected[1])).toBe(
+        `#fde725`,
+      )
     }
     const partial = compute_metric_colors(
       arcs,

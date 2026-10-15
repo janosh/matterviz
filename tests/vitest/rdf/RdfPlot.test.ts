@@ -233,21 +233,27 @@ describe(`RdfPlot`, () => {
     })
   })
 
-  test(`dropped crystals are plotted, lattice-less molecules are reported`, async () => {
+  // Drops open through open_material, whose parse warnings reach a notice named by file
+  test(`dropped crystals are plotted with their parse warnings, molecules are reported`, async () => {
     const empty = await mount_sized_rdf_plot({})
-    const poscar = `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`
-    empty.dispatchEvent(create_drop_event(new File([poscar], `POSCAR`)))
+    const cell = `_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90`
+    const loop = `loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z`
+    const cif = `data_si\n${cell}\n${loop}\nSi1 Si 0 0 0\nSi2 Si abc 0 0\n`
+    empty.dispatchEvent(create_drop_event(new File([cif], `si.cif`)))
     await vi.waitFor(() =>
       expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
         `1 structure loaded`,
       ),
+    )
+    expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+      /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
     )
     // the populated plot is a drop zone too
     const plot = document.querySelector(`.scatter`)
     if (!plot) throw new Error(`RdfPlot did not render the dropped crystal`)
     plot.dispatchEvent(create_drop_event(new File([`1\n\nSi 0 0 0\n`], `mol.xyz`)))
     await vi.waitFor(() =>
-      expect(document.body.textContent).toMatch(/mol\.xyz has no lattice or sites/),
+      expect(document.body.textContent).toMatch(/mol\.xyz: no lattice or sites/),
     )
     expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
       `1 structure loaded`,
@@ -274,7 +280,7 @@ describe(`RdfPlot`, () => {
 
   // drop errors, structure failures and the parent's own error_msg are separate sources:
   // none may overwrite or clear another, whatever order they arrive in
-  const drop_msg = `mol.xyz has no lattice or sites`
+  const drop_msg = `mol.xyz: no lattice or sites`
   const failure_re = /broken: .*non-finite/
   test.each<[string, string[], (string | RegExp)[], string?]>([
     [`drop error, then a cutoff change`, [`drop-broken`, `drop`, `change-cutoff`], [drop_msg]],

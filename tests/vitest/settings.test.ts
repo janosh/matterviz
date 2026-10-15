@@ -609,7 +609,7 @@ describe(`Structure viewer state serialization`, () => {
         show_image_atoms: false,
         atom_color_config: {
           mode: `coordination`,
-          scale: `interpolatePlasma`,
+          color_scale: `interpolatePlasma`,
           scale_type: `continuous`,
         },
         supercell_scaling: `2x3x1`,

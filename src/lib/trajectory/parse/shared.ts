@@ -21,16 +21,23 @@ export interface WarningCollector {
   readonly warnings: string[]
 }
 
+const log_to_console: WarnFn = (message, error) => {
+  if (error === undefined) console.warn(message)
+  else console.warn(`${message}:`, error)
+}
+
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
-export const create_warning_collector = (): WarningCollector => {
+// `log` also sees every warning: the console by default, since a lazy run's later frame reads
+// warn after its summary has crossed to the UI, or an enclosing collector (a structure parser
+// reading XYZ through the trajectory reader forwards into the file's own collector)
+export const create_warning_collector = (log: WarnFn = log_to_console): WarningCollector => {
   const warnings: string[] = []
   const seen_keys = new Set<string>()
   const warn: WarnFn = (message, error) => {
     const detail = error === undefined ? `` : `: ${to_error(error).message}`
     warnings.push(`${message}${detail}`)
-    if (error === undefined) console.warn(message)
-    else console.warn(`${message}:`, error)
+    log(message, error)
   }
   return {
     warn,

@@ -5,8 +5,9 @@
   import { add_alpha, default_element_colors } from '#lib/colors/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
+  import type { ColorScaleConfig } from '#lib/plot/core/types.js'
   import { create_renderer, Gizmo, webgpu_available } from '#lib/scene/index.js'
-  import { clamp01 } from '#lib/utils.js'
   import { Canvas, T } from '@threlte/core'
   import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
   import * as extras from '@threlte/extras'
@@ -235,12 +236,10 @@
 
   // Formation energy colour bar for the face shading (uniform / formation_energy modes)
   const e_form_range = $derived<Vec2>([plot_entries.length > 0 ? energy_range.min : -1, 0])
-  const e_form_color_scale_fn = $derived.by(() => {
-    const [min_fe, max_fe] = e_form_range
-    const denom = Math.max(1e-6, max_fe - min_fe)
-    // alpha 0 at 0 eV, up to hull_face_opacity at the most negative energy
-    return (value: number) =>
-      add_alpha(hull_face_color, (1 - clamp01((value - min_fe) / denom)) * hull_face_opacity)
+  // alpha 0 at 0 eV, up to hull_face_opacity at the most negative energy
+  const e_form_color_scale = $derived<ColorScaleConfig>({
+    scheme: (frac) => add_alpha(hull_face_color, (1 - frac) * hull_face_opacity),
+    value_range: e_form_range,
   })
 
   const style = $derived(`${hull_style_css(merged_config.colors)}; ${rest.style ?? ``}`)
@@ -284,8 +283,7 @@
   {#if color_mode === `energy` && plot_entries.length > 0}
     <ColorBar
       title="Energy above hull (eV/atom)"
-      range={hull_distance_range(plot_entries)}
-      scale={color_scale}
+      color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries))}
       wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"
@@ -295,8 +293,7 @@
   {#if plot_entries.length > 0 && show_hull_faces && (hull_face_color_mode === `uniform` || hull_face_color_mode === `formation_energy`)}
     <ColorBar
       title="Formation energy (eV/atom)"
-      scale={{ fn: e_form_color_scale_fn, domain: e_form_range }}
-      range={e_form_range}
+      color_scale={e_form_color_scale}
       wrapper_style="position: absolute; bottom: 1em; right: 1em; width: min(200px, 50cqw - 2.5em);"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"

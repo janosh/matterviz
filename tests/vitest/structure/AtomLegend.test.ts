@@ -14,16 +14,18 @@ import { simple_structure } from '../test-fixtures'
 
 let mounted_components: ReturnType<typeof mount>[] = []
 
-type WithoutScale<Config> = Config extends AtomColorConfig ? Omit<Config, `scale`> : never
+type WithoutColorScale<Config> = Config extends AtomColorConfig
+  ? Omit<Config, `color_scale`>
+  : never
 type AtomLegendTestProps = Omit<ComponentProps<typeof AtomLegend>, `atom_color_config`> & {
-  atom_color_config?: WithoutScale<AtomColorConfig>
+  atom_color_config?: WithoutColorScale<AtomColorConfig>
 }
 
 const mount_legend = (props: AtomLegendTestProps): ReturnType<typeof mount> => {
   const component_props = props as ComponentProps<typeof AtomLegend>
   if (props.atom_color_config) {
     component_props.atom_color_config = {
-      scale: DEFAULT_ATOM_COLOR_CONFIG.scale,
+      color_scale: DEFAULT_ATOM_COLOR_CONFIG.color_scale,
       ...props.atom_color_config,
     }
   }

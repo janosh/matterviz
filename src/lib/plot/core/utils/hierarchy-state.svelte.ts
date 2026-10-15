@@ -18,6 +18,7 @@ import { filter_padding } from '#lib/plot/core/layout.js'
 import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
 import type { ColorScale, LegendConfig, LegendItem } from '#lib/plot/core/types.js'
 import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart.js'
+import type { TooltipProp } from '#lib/tooltip/index.js'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -81,7 +82,7 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   padding?: Sides
   legend?: LegendConfig | null
   show_legend?: boolean
-  tooltip?: Snippet<[NodeProps<Metadata>]>
+  tooltip?: TooltipProp<NodeProps<Metadata>>
   on_node_click?: (data: NodeProps<Metadata> & { event: MouseEvent | KeyboardEvent }) => void
   on_node_hover?: (
     data: (NodeProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,

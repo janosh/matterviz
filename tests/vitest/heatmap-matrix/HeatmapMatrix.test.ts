@@ -453,7 +453,7 @@ describe(`click and dblclick handlers`, () => {
     expect(roles()).toEqual([`table`, `cell`])
     // focus reaching a static cell (e.g. a button in a `cell` snippet) adds no tab stop
     cell_at(0, 0).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-    expect(query_all(`[tabindex]`)).toEqual([])
+    expect(query_all(`.grid [tabindex]`)).toEqual([])
     flushSync(() => (disabled.current = false))
     expect(tab_stops()).toEqual([cell_at(1, 1)])
   })
@@ -790,7 +790,6 @@ describe(`milestone feature props`, () => {
 
   test(`tooltip_mode=both hides hover tooltip when no pinned cell`, async () => {
     mount_matrix({
-      tooltip: true,
       tooltip_mode: `both`,
       values: [[`#000000`, null, `rgba(0, 0, 255, 0.5)`]],
     })
@@ -813,6 +812,18 @@ describe(`milestone feature props`, () => {
     first_cell.dispatchEvent(mouse(`mouseout`))
     await Promise.resolve()
     expect(tooltip_el.classList.contains(`visible`)).toBe(false)
+  })
+
+  // tooltip, color bar and controls toggle default on like the charts; false/null opt out
+  test.each([
+    [{}, true],
+    [{ tooltip: false, color_bar: null, show_controls: false }, false],
+  ] as const)(`%o shows tooltip, color bar and controls: %s`, async (props, shown) => {
+    mount_matrix({ values: numbered_values, ...props })
+    await tick()
+    for (const sel of [`.tooltip`, `.colorbar`, `button.heatmap-matrix-controls-toggle`]) {
+      expect(document.querySelector(sel) !== null, sel).toBe(shown)
+    }
   })
 
   test(`symmetric summaries ignore hidden upper triangle`, () => {

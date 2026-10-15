@@ -15,7 +15,7 @@ import {
   resize_element,
   set_input,
 } from '../setup'
-import { gzip_bytes } from '../test-fixtures'
+import { gzip_bytes, init_moyo_for_tests } from '../test-fixtures'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
 import { trigger_intersection } from '../environment'
 
@@ -626,6 +626,35 @@ describe(`XrdPlot`, () => {
       )
     },
   )
+
+  // Structure files open through open_material (worker parse) and show its warnings; measured
+  // data files still parse here
+  test(`dropped structure and data files plot, with the structure's parse warnings`, async () => {
+    await init_moyo_for_tests() // symmetry-merged reflections of the dropped structure
+    const target = await mount_xrd({ patterns: [] })
+    const cell = [`a`, `b`, `c`].map((axis) => `_cell_length_${axis} 4`)
+    const angles = [`alpha`, `beta`, `gamma`].map((angle) => `_cell_angle_${angle} 90`)
+    const loop = [`label`, `type_symbol`, `fract_x`, `fract_y`, `fract_z`]
+    const cif = [
+      `data_si`,
+      ...cell,
+      ...angles,
+      `loop_`,
+      ...loop.map((tag) => `_atom_site_${tag}`),
+    ]
+      .concat(`Si1 Si 0 0 0`, `Si2 Si abc 0 0`)
+      .join(`\n`)
+    query(target, `.xrd-empty-state`).dispatchEvent(
+      create_drop_event([new File([cif], `si.cif`), new File([`10 100\n20 50`], `scan.xy`)]),
+    )
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+        /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
+      ),
+    )
+    expect(document.body.textContent).toContain(`si.cif`)
+    expect(document.body.textContent).toContain(`scan.xy`)
+  })
 
   test(`an empty dropped file is reported, not forwarded`, async () => {
     const on_file_drop = vi.fn()

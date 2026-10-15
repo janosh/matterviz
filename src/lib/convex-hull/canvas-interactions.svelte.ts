@@ -3,7 +3,7 @@
 // clipboard copy, keyboard and file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
 import { create_canvas_surface } from '#lib/canvas-surface.svelte.js'
-import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { create_flash, create_pulse_animation } from '#lib/effects.svelte.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { open_material } from '#lib/file-viewer/open.js'
@@ -30,6 +30,7 @@ import type {
   HighlightStyle,
   HoverData3D,
   PhaseData,
+  PhaseEntriesLoadData,
 } from './types'
 
 interface HullSelectionInputs {
@@ -42,7 +43,7 @@ interface HullSelectionInputs {
   allow_file_drop: () => boolean
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
-  on_file_drop: () => ((entries: PhaseData[]) => void) | undefined
+  on_file_load: () => ((data: PhaseEntriesLoadData) => void) | undefined
   // Categorical classification config (for category line in copied entry text)
   entry_category: () => EntryCategoryConfig | null
   wrapper: () => HTMLElement | undefined
@@ -191,7 +192,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
           }
           const entries = opened.data
           process_hull_entries(entries)
-          inputs.on_file_drop()?.(entries)
+          inputs.on_file_load()?.({ entries, ...opened.provenance })
         } finally {
           opened.dispose()
         }
@@ -261,7 +262,7 @@ interface CanvasInteractionInputs extends Pick<
   highlighted_entries: () => (string | PhaseData)[]
   highlight_style: () => HighlightStyle | undefined
   color_mode: () => `stability` | `energy`
-  color_scale: () => D3InterpolateName
+  color_scale: () => ColorScale
   colors: () => ConvexHullConfig[`colors`] | undefined
   labels: () => { show_labels?: boolean } & Pick<
     draw.LabelOpts,

@@ -12,13 +12,11 @@ import {
   scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
 } from '#lib/scattering/index.js'
-import type { Crystal } from '#lib/structure/index.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
+import type { AnyStructure, Crystal } from '#lib/structure/index.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
 import { to_error } from '#lib/utils.js'
-import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
-import { is_xrd_data_file, parse_xrd_file } from './parse'
+import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -675,37 +673,19 @@ export async function xrd_symmetry_rotations(structure: Crystal): Promise<math.M
   return point_group_rotations(operations)
 }
 
-// Dropped file content as a plot entry: measured data files (.xy, .brml, …) are parsed,
-// structure files (CIF, POSCAR, JSON, …) get a computed pattern. Throws on anything it cannot
-// read; the drop handler that calls this reports the error with the filename.
-export async function add_xrd_pattern(
-  content: string | ArrayBufferLike,
-  filename: string,
-  wavelength: number | null, // Probe wavelength in Angstrom for structure-based calculation
-  radiation: RadiationType = `xray`, // Probe particle for structure-based calculation
-): Promise<PatternEntry> {
-  if (is_xrd_data_file(filename)) {
-    // SharedArrayBuffer-backed content is copied into a plain ArrayBuffer
-    const buffer_content: string | ArrayBuffer =
-      typeof content === `string` || content instanceof ArrayBuffer
-        ? content
-        : new Uint8Array(content).slice().buffer
-    return { label: filename, pattern: await parse_xrd_file(buffer_content, filename) }
+// Pattern of a dropped structure, with its point group merging equivalent reflections.
+// Throws for anything without a lattice and sites.
+export async function structure_xrd_pattern(
+  structure: AnyStructure,
+  wavelength: number | null, // Probe wavelength in Angstrom, null for the radiation's default
+  radiation: RadiationType = `xray`,
+): Promise<XrdPattern> {
+  if (!is_crystal(structure)) {
+    throw new Error(`Cannot compute XRD: structure must have a lattice and atomic sites`)
   }
-
-  const text_content =
-    typeof content === `string` ? content : new TextDecoder().decode(content)
-  const parsed_structure = parse_structure_file(text_content, filename)
-  if (!is_crystal(parsed_structure)) {
-    throw new Error(
-      `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
-        `Supported formats: CIF, POSCAR, JSON, XYZ`,
-    )
-  }
-  const pattern = compute_xrd_pattern(parsed_structure, {
-    wavelength: typeof wavelength === `number` ? wavelength : undefined,
+  return compute_xrd_pattern(structure, {
+    wavelength: wavelength ?? undefined,
     radiation,
-    symmetry_rotations: await xrd_symmetry_rotations(parsed_structure),
+    symmetry_rotations: await xrd_symmetry_rotations(structure),
   })
-  return { label: filename || `Dropped structure`, pattern }
 }

@@ -373,3 +373,22 @@ test.each([
     pointer(divider, `pointerup`, max_client_x)
   },
 )
+
+// A structure panel's JSON conversion warnings reach the Structure viewer's notice
+test(`a structure panel shows its conversion warnings`, async () => {
+  const site = { species: [{ element: `Si`, occu: 1 }], xyz: [1, 0, 1], properties: {} }
+  const matrix = [
+    [4, 0, 0],
+    [4, 0, 0],
+    [0, 0, 4],
+  ]
+  mount_browser({ value: { structure: { lattice: { matrix }, sites: [site] } } })
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledOnce())
+  const [, type, , options] = vi.mocked(mount_viewer).mock.calls[0]
+  expect(type).toBe(`structure`)
+  expect(options.parse_warnings).toEqual([expect.stringMatching(/^Singular JSON lattice/)])
+  await vi.waitFor(() =>
+    expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: Singular/),
+  )
+})

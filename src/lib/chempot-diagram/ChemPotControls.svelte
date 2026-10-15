@@ -3,6 +3,7 @@
   // potentials, labels, axis padding and floor, region colouring. `children` renders extra
   // checkboxes next to the built-in ones (the 3D overlay toggles).
   import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { Snippet } from 'svelte'
   import type { ChemPotControlKey, ChemPotControlValues } from './controls-state.svelte'
   import {
@@ -26,6 +27,9 @@
     const value = (event.currentTarget as HTMLInputElement).valueAsNumber
     if (Number.isFinite(value)) set(key, value)
   }
+  // Reversal is a descending palette_range
+  const color_scale = $derived(to_color_scale_config(values.color_scale))
+  const [palette_start, palette_end] = $derived(color_scale.palette_range ?? [0, 1])
 </script>
 
 <div class="chempot-checks">
@@ -83,9 +87,12 @@
     <label style="flex: 1; min-width: 0">
       <span>Color scale:</span>
       <select
-        value={values.color_scale}
+        value={typeof color_scale.scheme === `string` ? color_scale.scheme : ``}
         onchange={(event) =>
-          set(`color_scale`, event.currentTarget.value as D3InterpolateName)}
+          set(`color_scale`, {
+            ...color_scale,
+            scheme: event.currentTarget.value as D3InterpolateName,
+          })}
       >
         {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
           <option {value}>{label}</option>
@@ -96,8 +103,9 @@
       <span>Reverse:</span>
       <input
         type="checkbox"
-        checked={values.reverse_color_scale}
-        onchange={() => set(`reverse_color_scale`, !values.reverse_color_scale)}
+        checked={palette_start > palette_end}
+        onchange={() =>
+          set(`color_scale`, { ...color_scale, palette_range: [palette_end, palette_start] })}
       />
     </label>
   </div>

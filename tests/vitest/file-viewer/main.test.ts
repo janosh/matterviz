@@ -18,7 +18,7 @@ import { deflateSync as deflate_sync, gzipSync as gzip_sync } from 'node:zlib'
 import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, assert, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   IDENTITY_MATRIX3,
   make_crystal,
@@ -81,6 +81,52 @@ test.each([
   if (error) await expect(promise).rejects.toThrow(error)
   else expect(await promise).toMatchObject({ type: `structure`, filename })
 })
+
+// Recoverable parser issues ride on the structure/volumetric result into the mounted viewer,
+// and nothing is logged: the viewer's notice is where they are shown
+const warn_cif = (rows: string) =>
+  `data_t\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n${rows}`
+test.each([
+  [
+    `a CIF row with bad coordinates`,
+    `bad.cif`,
+    warn_cif(`Si1 Si 0 0 0\nSi2 Si abc 0 0`),
+    /^CIF: skipped 1 atom-site row: /,
+  ],
+  [
+    `ambiguous CIF labels`,
+    `amb.cif`,
+    warn_cif(`CO1 . 0 0 0`),
+    /ambiguous all-caps atom-site labels.*'CO1' read as Co/,
+  ],
+  [
+    `a Cartesian POSCAR on a singular lattice`,
+    `POSCAR`,
+    `x\n1.0\n5 0 0\n5 0 0\n0 0 5\nSi\n1\nCartesian\n1 0 1`,
+    /^POSCAR: singular lattice/,
+  ],
+  [
+    `a CHGCAR with a VASP 4 header and a truncated second block`,
+    `CHGCAR`,
+    `x\n1.0\n4 0 0\n0 4 0\n0 0 4\n1\nDirect\n0 0 0\n\n2 2 2\n1 2 3 4 5 6 7 8\n2 2 2\n1 2\n`,
+    [/^CHGCAR: no element symbols/, /^CHGCAR block 2 .*Keeping the intact first block only/],
+  ],
+])(
+  `parse warnings of %s land on the result and the viewer`,
+  async (_label, filename, content, warnings) => {
+    const warn_spy = vi.spyOn(console, `warn`)
+    onTestFinished(() => warn_spy.mockRestore())
+    const result = await parse_file_content(content, filename)
+    assert(
+      result.type === `structure` || result.type === `isosurface`,
+      `expected a structure or volume, got ${result.type}`,
+    )
+    expect(result.warnings).toEqual([warnings].flat().map((re) => expect.stringMatching(re)))
+    expect(warn_spy).not.toHaveBeenCalled()
+    create_display(make_container(), result)
+    expect(last_mount_props().parse_warnings).toBe(result.warnings)
+  },
+)
 
 // A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
 test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(

@@ -181,9 +181,16 @@
   {@render rest.user_content?.(ctx)}
 {/snippet}
 
+{#snippet structure_type_tooltip(info: BarHandlerProps<PlotMetadata>)}
+  {info.x}
+  <br />
+  {value_label}: {format_num(info.y, normalize ? `.3~f` : `d`)}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
   {...series_hover_props(type_hover, rest)}
+  tooltip={rest.tooltip ?? structure_type_tooltip}
   user_content={layout === `over_frames` ? frame_overlay : rest.user_content}
   on_point_click={on_frame_click
     ? (event) => {
@@ -204,10 +211,4 @@
   bind:loading
   bind:error_msg
   style={rest.style ?? `height: 300px;`}
->
-  {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
-    {info.x}
-    <br />
-    {value_label}: {format_num(info.y, normalize ? `.3~f` : `d`)}
-  {/snippet}
-</StructureBarPlot>
+/>

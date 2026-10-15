@@ -1,9 +1,9 @@
-import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import { extract_formula_elements } from '#lib/composition/parse.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import { array_extent } from '#lib/math.js'
+import { array_extent, type Vec2 } from '#lib/math.js'
+import { create_color_scale, resolve_color_scale } from '#lib/plot/core/scales.js'
+import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { group } from 'd3-array'
-import { scaleSequential } from 'd3-scale'
 import {
   best_form_energy_for_formula as best_form_energy,
   formula_key_from_composition,
@@ -32,34 +32,24 @@ const COLOR_MODE_LABELS: Record<Exclude<ChemPotColorMode, `none` | `arity`>, str
   entries: `Entry count`,
 }
 
-// Resolve D3 interpolator with optional reverse for chempot color scales.
-export function get_chempot_interpolator(
-  name: D3InterpolateName,
-  reverse: boolean,
-): (frac: number) => string {
-  const raw = get_d3_interpolator(name)
-  return reverse ? (frac: number) => raw(1 - frac) : raw
-}
-
-// min/max of the active numeric mode's values with the colour-bar title
-export interface ChemPotColorRange {
-  min: number
-  max: number
-  label: string
+// ColorBar props of the active numeric mode: its title and the color scale with value_range
+// resolved against the drawn domains' values
+export interface ChemPotColorBar {
+  title: string
+  color_scale: ColorScaleConfig & { value_range: Vec2 }
 }
 
 interface ChemPotDomainColorData {
   colors: Map<string, string>
-  color_range: ChemPotColorRange | null // null for none/arity (categorical)
+  color_bar: ChemPotColorBar | null // null for none/arity (categorical)
 }
 
-// Per-formula domain colors plus color-bar range for the active color mode.
+// Per-formula domain colors plus color-bar props for the active color mode.
 // Shared by ChemPotDiagram2D and ChemPotDiagram3D.
 export function get_domain_color_data(opts: {
   formulas: string[]
   color_mode: ChemPotColorMode
-  color_scale: D3InterpolateName
-  reverse_color_scale: boolean
+  color_scale: ColorScaleConfig
   // Entries + raw (non-renormalized) elemental refs for formation energy lookups
   entries: PhaseData[]
   el_refs: Record<string, PhaseData>
@@ -67,7 +57,7 @@ export function get_domain_color_data(opts: {
 }): ChemPotDomainColorData {
   const { formulas, color_mode, entries, el_refs, energy_stats } = opts
   const colors = new Map<string, string>()
-  if (color_mode === `none`) return { colors, color_range: null }
+  if (color_mode === `none`) return { colors, color_bar: null }
 
   if (color_mode === `arity`) {
     for (const formula of formulas) {
@@ -75,7 +65,7 @@ export function get_domain_color_data(opts: {
       const color_idx = Math.min(n_elements, ARITY_COLORS.length) - 1
       colors.set(formula, ARITY_COLORS[Math.max(0, color_idx)])
     }
-    return { colors, color_range: null }
+    return { colors, color_bar: null }
   }
 
   const entries_by_formula =
@@ -99,19 +89,15 @@ export function get_domain_color_data(opts: {
   const values = [...value_by_formula.values()]
   if (values.length === 0) {
     for (const formula of formulas) colors.set(formula, `#999`)
-    return { colors, color_range: null }
+    return { colors, color_bar: null }
   }
   const [min_val, max_raw] = array_extent(values)
   const max_val = Math.max(max_raw, min_val + 1e-6) // a flat range still needs a domain
-  const scale = scaleSequential(
-    get_chempot_interpolator(opts.color_scale, opts.reverse_color_scale),
-  ).domain([min_val, max_val])
+  const color_scale = resolve_color_scale(opts.color_scale, [min_val, max_val])
+  const scale = create_color_scale(color_scale, color_scale.value_range)
   for (const formula of formulas) {
     const value = value_by_formula.get(formula)
     colors.set(formula, value === undefined ? `#999` : scale(value))
   }
-  return {
-    colors,
-    color_range: { min: min_val, max: max_val, label: COLOR_MODE_LABELS[color_mode] },
-  }
+  return { colors, color_bar: { title: COLOR_MODE_LABELS[color_mode], color_scale } }
 }

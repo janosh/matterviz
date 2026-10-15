@@ -3,11 +3,12 @@
   // the exact stability windows as solid bars and transition temperatures as dashed lines.
   // Click/drag sets the temperature; clicking a formula selects the phase. Everything but the
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
-  import { add_alpha, get_d3_interpolator } from '#lib/colors/index.js'
+  import { add_alpha } from '#lib/colors/index.js'
+  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
+  import { resolve_value_range } from '#lib/plot/core/scales.js'
   import { get_formula_label_segments } from '#lib/composition/format.js'
-  import { clamp } from '#lib/math.js'
+  import { clamp, type Vec2 } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import { clamp01 } from '#lib/utils.js'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'
@@ -94,9 +95,11 @@
   const t_of = (pixel_x: number) =>
     t_min + ((pixel_x - label_width) / plot_width) * (t_max - t_min)
   const row_top = (row: number) => top_pad + row * row_height
-  const ramp = $derived(get_d3_interpolator(settings.color_scale))
-  const color_of = (e_above_hull: number) =>
-    ramp(clamp01(e_above_hull / Math.max(settings.max_e_above_hull, 1e-9)))
+  const color_of = $derived.by(() => {
+    const auto_range: Vec2 = [0, Math.max(settings.max_e_above_hull, 1e-9)]
+    const range = resolve_value_range(settings.color_scale, auto_range)
+    return resolve_color_ramp(settings.color_scale, range).color_fn
+  })
 
   // === Drawing ===
 
@@ -206,7 +209,7 @@
       height,
       dpr,
       text_color,
-      settings.color_scale,
+      JSON.stringify(settings.color_scale),
       settings.max_e_above_hull,
       settings.show_event_lines,
       row_height,

@@ -19,7 +19,7 @@
     highlight_key_of,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
+  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
 
   let {
     entries = [],
@@ -30,6 +30,7 @@
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    tooltip,
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -38,6 +39,7 @@
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
     highlighted_formula?: string | null
+    tooltip?: ChemPotTooltipProp
   } = $props()
   // Plot wrapper element (pointer hit-testing), bound from the ScatterPlot
   let wrapper = $state<HTMLDivElement>()
@@ -60,11 +62,9 @@
     element_padding,
     default_min_limit,
     color_mode,
-    color_scale,
-    reverse_color_scale,
     diagram_data,
     domain_colors,
-    color_range,
+    color_bar,
   } = $derived(chempot)
 
   const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
@@ -289,23 +289,24 @@
       {export_sources}
       controls_extra={chempot_controls}
       user_content={domain_labels}
+      // hover drives the ChemPot tooltip below; the plot's own point tooltip would double it
       on_point_hover={handle_hover}
       on_point_click={handle_click}
+      tooltip={false}
       style="--scatter-width: 100%; --scatter-height: {render_height}px"
     />
     <ChemPotLegend
       {color_mode}
-      {color_scale}
-      {reverse_color_scale}
-      {color_range}
+      {color_bar}
+      color_bar_props={config.color_bar}
       formulas={Object.keys(draw_domains)}
       style="bottom: 60px; left: 50px"
     />
-    {#if chempot.show_tooltip && hover_info?.view === `2d`}
+    {#if tooltip !== false && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}
         pinned={locked_hover_formula === hover_info.formula}
-        detail_level={chempot.tooltip_detail_level}
+        {tooltip}
         bg_color={domain_colors.get(hover_info.formula)}
         constrain_to={{ width: render_width, height: render_height }}
       />

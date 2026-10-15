@@ -1,4 +1,4 @@
-import { get_d3_interpolator } from '#lib/colors/index.js'
+import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { Vec2 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import {
@@ -651,31 +651,59 @@ export const resolve_value_range = (
   return [lower ?? auto_lower, upper ?? auto_upper]
 }
 
-// t in [0, 1] -> color over the palette_range slice of the scheme. Shared by density cells,
-// legend ramps and color bars so clipped palettes stay identical.
+// Scheme picker (ColorScaleSelect) binding: the name it shows (undefined for a function
+// scheme) and the color scale with a picked scheme swapped in, a bare name staying a name
+export const scheme_name = (color_scale: ColorScale): D3InterpolateName | undefined => {
+  const { scheme } = to_color_scale_config(color_scale)
+  return typeof scheme === `string` ? scheme : undefined
+}
+export const with_scheme = (
+  color_scale: ColorScale,
+  scheme: D3InterpolateName | undefined,
+): ColorScale =>
+  typeof color_scale === `string` && scheme
+    ? scheme
+    : { ...to_color_scale_config(color_scale), scheme }
+
+// The config with both value_range ends resolved: a ColorBar given it draws exactly the colors
+// create_color_scale(color_scale, auto_range) maps
+export const resolve_color_scale = (
+  color_scale: ColorScale,
+  auto_range: Vec2 | (() => Vec2),
+): ColorScaleConfig & { value_range: Vec2 } => ({
+  ...to_color_scale_config(color_scale),
+  value_range: resolve_value_range(color_scale, auto_range),
+})
+
+// t in [0, 1] -> color over the palette_range slice of the scheme (a descending slice runs
+// the palette backwards). Shared by density cells, legend ramps and color bars so clipped
+// palettes stay identical.
 export function color_interpolator(color_scale: ColorScale) {
   const { scheme = SCALE_DEFAULTS.scheme, palette_range = [0, 1] } =
     to_color_scale_config(color_scale)
   const [start, end] = palette_range
-  if (!(start >= 0 && end <= 1 && start < end))
+  const in_unit = (frac: number) => frac >= 0 && frac <= 1
+  if (!(in_unit(start) && in_unit(end) && start !== end))
     throw new Error(`Invalid palette_range: ${palette_range}`)
   const interpolate = typeof scheme === `function` ? scheme : get_d3_interpolator(scheme)
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }
 
+// Data value -> color. Values outside value_range take the end colors (clamped), so a
+// clipped or cyclic palette never extrapolates past its ends.
 export function create_color_scale(color_scale: ColorScale, auto_range: Vec2) {
   const { type: scale_type } = to_color_scale_config(color_scale)
   const value_range = resolve_value_range(color_scale, auto_range)
   const interpolator = color_interpolator(color_scale)
   const type_name = get_scale_type_name(scale_type)
   if (type_name === `log`) {
-    return scaleSequentialLog(interpolator).domain(log_color_domain(value_range))
+    return scaleSequentialLog(interpolator).domain(log_color_domain(value_range)).clamp(true)
   }
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
     return create_arcsinh_color_scale(interpolator, value_range, threshold)
   }
-  return scaleSequential(interpolator).domain(value_range)
+  return scaleSequential(interpolator).domain(value_range).clamp(true)
 }
 
 // D3-compatible arcsinh colour scale whose domain getter/setter keeps one stable instance

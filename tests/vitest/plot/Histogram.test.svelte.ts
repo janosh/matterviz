@@ -523,6 +523,18 @@ describe(`Histogram`, () => {
     expect_tooltip_paint(doc_query(`.plot-tooltip`), last ?? ``)
   })
 
+  // tooltip=false hides the tooltip but keeps the hover handlers
+  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
+    const on_bar_hover = vi.fn()
+    await mount_histogram({ series: [series_of([0, 1])], on_bar_hover, tooltip })
+    document
+      .querySelector(`g.histogram-series path[role="button"]`)
+      ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenCalled()
+    expect(document.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
+  })
+
   // the tooltip must not be a snapshot: it tracks rebinned data under a resting pointer
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()

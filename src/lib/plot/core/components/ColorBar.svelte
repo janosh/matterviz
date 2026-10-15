@@ -3,19 +3,18 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { format_num, format_tick_values } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
-  import {
-    color_ramp_scale,
-    resolve_color_ramp,
-    sample_color_ramp,
-  } from '#lib/plot/core/color-ramp.js'
+  import { color_ramp_scale, sample_color_ramp } from '#lib/plot/core/color-ramp.js'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'
   import {
+    create_color_scale,
     generate_arcsinh_ticks,
     generate_log_ticks,
     integer_ticks,
     is_integer_format,
+    resolve_value_range,
     tick_label_format,
+    to_color_scale_config,
   } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import {
@@ -25,10 +24,9 @@
   } from '#lib/plot/core/text-metrics.js'
   import type {
     AxisOption,
-    ColorBarScale,
+    ColorScale,
     ColorScaleOption,
     Orientation,
-    ScaleType,
   } from '#lib/plot/core/types.js'
   import {
     get_arcsinh_threshold,
@@ -44,20 +42,18 @@
     title,
     categories,
     show_scale = true,
-    scale,
+    color_scale = SCALE_DEFAULTS.scheme,
     bar_style,
     title_style,
     wrapper_style,
     tick_labels = 4,
     tick_format,
-    range = [0, 1],
     orientation = `horizontal`,
     snap_ticks = true,
     steps = 50,
-    nice_range = $bindable(range),
+    nice_range = $bindable(),
     title_side,
     tick_side = `primary`,
-    scale_type = `linear`,
     property_options,
     selected_property_key,
     loading = false,
@@ -73,9 +69,11 @@
     categories?: Record<string, string>
     // Keep property selection available when the plot has no values to color.
     show_scale?: boolean
-    // Either a d3 interpolator name, sampled across `range`, or a prebuilt function
-    // with the data domain it expects. One or the other, never both.
-    scale?: ColorBarScale
+    // The color mapping the bar draws, the same config the colored component takes: scheme,
+    // palette_range, type (spacing of colors and ticks) and value_range (the span the bar
+    // covers, [0, 1] where unset). value_range[0] sits at the bar's start, so a descending
+    // range runs the bar high-to-low.
+    color_scale?: ColorScale
     // Defaults to the side opposite the ticks (left of a vertical bar with inside ticks)
     title_side?: `left` | `right` | `top` | `bottom`
     bar_style?: string
@@ -83,25 +81,23 @@
     wrapper_style?: string
     tick_labels?: (string | number)[] | number // explicit tick values, or how many to generate
     tick_format?: string // d3-format spec, or d3-time-format spec when it starts with `%`
-    range?: Vec2
     // 'primary' = bottom (horizontal) / right (vertical), 'secondary' = the opposite edge,
     // 'inside' = centered within the bar, hiding the first/last tick
     tick_side?: `primary` | `secondary` | `inside`
     orientation?: Orientation
-    snap_ticks?: boolean // extend `range` to nice bounds; log/arcsinh ticks are always pretty
+    snap_ticks?: boolean // extend value_range to nice bounds; log/arcsinh ticks are always pretty
     steps?: number // number of gradient color stops sampled from the scale
-    nice_range?: Vec2 // read-only binding: the niced range when snapping ticks, else `range`
-    scale_type?: ScaleType // spacing of ticks, and of colors when `scale` names an interpolator
+    nice_range?: Vec2 // read-only binding: the niced range when snapping ticks, else value_range
     // Property selection (makes the title an interactive dropdown)
     property_options?: AxisOption[]
     selected_property_key?: string
-    // The caller owns loading and commits selected_property_key/range/title together.
+    // The caller owns loading and commits selected_property_key/color_scale/title together.
     loading?: boolean
     on_property_change?: (key: string) => void
-    // Dropdown labels only; the caller supplies the committed color mapping through `scale`.
+    // Dropdown labels only; the caller supplies the committed mapping through `color_scale`.
     color_scale_options?: ColorScaleOption[]
     selected_color_scale_key?: string
-    // The caller commits the selected key and `scale` together.
+    // The caller commits the selected key and `color_scale` together.
     on_color_scale_change?: (key: string) => void
     // Opaque surface behind the bar, used to resolve translucent scale colors.
     backdrop?: string
@@ -124,6 +120,10 @@
     title_side || (outside_tick_side ? opposite_side[outside_tick_side] : `left`),
   )
   const n_ticks = $derived(Array.isArray(tick_labels) ? tick_labels.length : tick_labels)
+  const config = $derived(to_color_scale_config(color_scale))
+  const scale_type = $derived(config.type ?? `linear`)
+  const range = $derived(resolve_value_range(config, [0, 1]))
+  const color_fn = $derived(create_color_scale(config, range))
   const type_name = $derived(get_scale_type_name(scale_type))
 
   // Maps tick values to their position along the bar in percent. Generated ticks snap by
@@ -160,16 +160,15 @@
     nice_range = snap_ticks && !Array.isArray(tick_labels) ? [...tick_domain] : range
   })
 
-  const ramp = $derived(resolve_color_ramp(scale ?? SCALE_DEFAULTS.scheme, range, scale_type))
   // Sample the displayed domain without changing the caller's data-to-color mapping.
   const gradient_stops = $derived(
-    sample_color_ramp({ ...ramp, domain: tick_domain }, scale_type, steps).join(`, `),
+    sample_color_ramp({ color_fn, domain: tick_domain }, scale_type, steps).join(`, `),
   )
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {
       return pick_contrast_color({
-        background: ramp.color_fn(value),
+        background: color_fn(value),
         backdrop: backdrop.current,
       })
     } catch {

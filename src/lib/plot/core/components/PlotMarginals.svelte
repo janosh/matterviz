@@ -78,9 +78,9 @@
   // Keep strip pointer/mouse events off the host plot's own handlers (hover, pan, zoom)
   const stop = (event: Event) => event.stopPropagation()
 
-  // A strip shows a hover tooltip unless opted out via hover:false or replaced by a custom snippet
+  // A strip shows a hover tooltip unless opted out via tooltip:false or drawn by a custom snippet
   const is_hoverable = (config: ResolvedMarginalConfig) =>
-    config.hover !== false && !config.snippet
+    config.tooltip !== false && !config.snippet
 
   // PlotMarginals renders inside the <svg>, which can't host an HTML tooltip. Portal the tooltip
   // div to be a sibling of the <svg> (in the positioned plot wrapper) so it positions in wrapper px
@@ -566,7 +566,7 @@
     </g>
   {/if}
   <!-- Transparent hit-rect for hover tooltips. Sits outside the pointer-events:none <g> (so it
-       opts back in) and only on built-in strips the user hasn't opted out of via hover:false.
+       opts back in) and only on built-in strips the user hasn't opted out of via tooltip:false.
        stopPropagation keeps strip pointer/mouse moves from reaching the host plot's own
        hover/pan-zoom handlers (avoids a double tooltip and accidental drag-from-strip). -->
   {#if hit_test}

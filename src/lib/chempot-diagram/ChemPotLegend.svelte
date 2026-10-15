@@ -2,40 +2,38 @@
   // Colour legend shared by ChemPotDiagram2D and ChemPotDiagram3D: a colour bar for the
   // continuous modes, one swatch per element count for arity mode, nothing for `none`.
   // The caller positions it (absolute) through `style`.
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { ColorBar } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ChemPotColorRange } from './color'
-  import { ARITY_COLORS, arity_legend_labels, get_chempot_interpolator } from './color'
-  import type { ChemPotColorMode } from './types'
+  import type { ChemPotColorBar } from './color'
+  import { ARITY_COLORS, arity_legend_labels } from './color'
+  import type { ChemPotColorMode, ChemPotDiagramConfig } from './types'
 
   let {
     color_mode,
-    color_scale,
-    reverse_color_scale,
-    color_range,
+    color_bar,
+    color_bar_props = {},
     formulas,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     color_mode: ChemPotColorMode
-    color_scale: D3InterpolateName
-    reverse_color_scale: boolean
-    color_range: ChemPotColorRange | null
+    color_bar: ChemPotColorBar | null // the active numeric mode's title and color scale
+    color_bar_props?: ChemPotDiagramConfig[`color_bar`] // user ColorBar props, null hides it
     formulas: string[] // drawn domains; their element counts set the arity rows
   } = $props()
 </script>
 
-{#if color_range}
-  <div {...rest} class={[`chempot-legend`, rest.class]}>
-    <ColorBar
-      title={color_range.label}
-      range={[color_range.min, color_range.max]}
-      scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
-      wrapper_style="width: 200px"
-      bar_style="height: 12px"
-      title_style="margin-bottom: 4px"
-    />
-  </div>
+{#if color_bar}
+  {#if color_bar_props}
+    <div {...rest} class={[`chempot-legend`, rest.class]}>
+      <ColorBar
+        {...color_bar}
+        wrapper_style="width: 200px"
+        bar_style="height: 12px"
+        title_style="margin-bottom: 4px"
+        {...color_bar_props}
+      />
+    </div>
+  {/if}
 {:else if color_mode === `arity`}
   <div {...rest} class={[`chempot-legend`, `arity-legend`, rest.class]}>
     {#each arity_legend_labels(formulas) as label, idx (label)}

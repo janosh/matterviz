@@ -6,7 +6,7 @@
     update_atom_coordinates,
     update_ordered_atom_positions,
   } from './atom-instances'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
@@ -93,6 +93,7 @@
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import {
     BufferGeometry,
@@ -238,7 +239,7 @@
     symmetry_elements_props = {},
     symmetry_declutter = true,
     atom_label,
-    atom_tooltip,
+    tooltip,
     camera_is_moving = $bindable(false),
     series_key = undefined,
     width = 0,
@@ -328,7 +329,7 @@
     vector_scale?: number
     vector_color?: string
     vector_color_mode?: VectorColorMode
-    vector_color_scale?: D3InterpolateName
+    vector_color_scale?: ColorScale
     vector_normalize?: boolean
     vector_uniform_thickness?: boolean
     vector_origin_gap?: number
@@ -380,7 +381,8 @@
     // configured appearance.
     symmetry_declutter?: boolean
     atom_label?: Snippet<[{ site: Site; site_idx: number }]>
-    atom_tooltip?: Snippet<[{ site: Site; site_idx: number }]>
+    // false hides the hovered-atom tooltip, a snippet adds rows below the built-in site info
+    tooltip?: TooltipProp<{ site: Site; site_idx: number }>
     site_label_size?: number
     site_label_offset?: Vec3
     site_label_bg_color?: string
@@ -2337,7 +2339,7 @@
       {/if}
 
       <!-- hovered site tooltip -->
-      {#if hovered_site && !camera_is_moving && (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
+      {#if hovered_site && tooltip !== false && !camera_is_moving && (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
         {@const abc = hovered_site.abc.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
@@ -2364,7 +2366,10 @@
           {#if hovered_bond_summary}
             <div class="coordinates">Bonds: {hovered_bond_summary}</div>
           {/if}
-          {@render atom_tooltip?.({ site: hovered_site, site_idx: hovered_idx ?? -1 })}
+          {#if tooltip}{@render tooltip({
+              site: hovered_site,
+              site_idx: hovered_idx ?? -1,
+            })}{/if}
         </CanvasTooltip>
       {/if}
 

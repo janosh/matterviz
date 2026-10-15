@@ -1,7 +1,6 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
 import { add_alpha, plot_color } from '#lib/colors/index.js'
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import { get_formula_label_segments } from '#lib/composition/format.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -14,6 +13,7 @@ import {
   rects_overlap,
 } from '#lib/plot/core/layout.js'
 import type { Rect } from '#lib/plot/core/layout.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { SpatialIndex } from '#lib/plot/core/spatial-index.js'
 import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -538,7 +538,7 @@ export function build_hull_faces(
 type FaceColorOpts = {
   mode: HullFaceColorMode
   uniform_color: string
-  color_scale: D3InterpolateName
+  color_scale: ColorScale
   element_colors: Record<string, string>
   elements: ElementSymbol[]
 }

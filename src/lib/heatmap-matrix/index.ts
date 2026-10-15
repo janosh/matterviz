@@ -1,6 +1,6 @@
 import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
 import { element_data } from '#lib/element/index.js'
-import type { Snippet } from 'svelte'
+import type { TooltipProp } from '#lib/tooltip/index.js'
 
 // === Types ===
 
@@ -81,8 +81,7 @@ type ElementAxisOrdering =
 export type HeatmapDomainMode = `auto` | `robust`
 export type SymmetricMode = false | `lower` | `upper`
 
-// Tooltip snippet type for HeatmapMatrix
-export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
+export type HeatmapTooltipProp = TooltipProp<CellContext>
 
 // All built-in string ordering keys
 export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrderingKey[]

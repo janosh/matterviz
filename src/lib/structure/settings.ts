@@ -47,7 +47,7 @@ export type StructureOptions = Pick<
   Pick<
     ComponentProps<typeof Structure>,
     | 'children'
-    | 'atom_tooltip'
+    | 'tooltip'
     | 'apply_supercell_scaling'
     | 'show_host_tool'
     | 'scene_props'

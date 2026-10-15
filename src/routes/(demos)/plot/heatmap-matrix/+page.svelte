@@ -118,8 +118,6 @@
         y_items={axis_items}
         values={en_diff_values}
         color_scale="interpolateViridis"
-        color_bar={{}}
-        show_controls="hover"
         controls_props={{ children: full_controls }}
         hide_empty={hide_mode}
         virtualize
@@ -136,7 +134,6 @@
           await save(data, `${filename}.${format}`, mime)
           last_export_status = `Exported ${format.toUpperCase()}`
         }}
-        tooltip
         on_click={(cell: CellContext) => (clicked_cell = cell)}
       />
     </LazyDemo>
@@ -180,7 +177,6 @@
       values={small_values}
       color_scale="interpolatePlasma"
       symmetric="lower"
-      show_controls="hover"
       controls_props={{ children: subset_controls }}
       tile_size="20px"
       gap="1px"
@@ -224,7 +220,6 @@
     tile_size="50px"
     gap="2px"
     label_style="font-size: 0.85em;"
-    tooltip
     style="margin: 1em auto"
   >
     {#snippet cell(ctx)}

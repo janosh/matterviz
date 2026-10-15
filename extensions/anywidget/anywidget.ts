@@ -569,7 +569,11 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `camera_projection`,
     ]),
   },
-  phase_diagram: { component: IsobaricBinaryPhaseDiagram, drive: drive_props([`data`]) },
+  phase_diagram: {
+    component: IsobaricBinaryPhaseDiagram,
+    static_props: no_file_drop,
+    drive: drive_props([`data`]),
+  },
   xrd: {
     component: XrdPlot,
     base_drive: style_base_drive,

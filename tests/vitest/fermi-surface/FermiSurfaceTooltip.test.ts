@@ -1,7 +1,7 @@
 // Tests for FermiSurfaceTooltip component
 import { SPIN_COLORS } from '#lib/fermi-surface/constants.js'
 import FermiSurfaceTooltip from '#lib/fermi-surface/FermiSurfaceTooltip.svelte'
-import type { FermiHoverData, FermiTooltipConfig } from '#lib/fermi-surface/types.js'
+import type { FermiHoverData, FermiTooltipProp } from '#lib/fermi-surface/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -17,7 +17,7 @@ const mock_hover_data = (overrides: Partial<FermiHoverData> = {}): FermiHoverDat
 })
 
 const mount_tooltip = (
-  props: { hover_data?: FermiHoverData; tooltip?: FermiTooltipConfig } = {},
+  props: { hover_data?: FermiHoverData; tooltip?: FermiTooltipProp } = {},
 ) =>
   mount(FermiSurfaceTooltip, {
     target: document.body,

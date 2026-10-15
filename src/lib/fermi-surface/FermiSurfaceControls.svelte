@@ -6,7 +6,12 @@
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import {
+    resolve_value_range,
+    scheme_name,
+    to_color_scale_config,
+    with_scheme,
+  } from '#lib/plot/core/scales.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
@@ -268,11 +273,8 @@
           <ColorScaleSelect
             {...ISO_COLORMAP_SELECT_PROPS}
             bind:value={
-              () =>
-                typeof color_scale_config.scheme === `string`
-                  ? color_scale_config.scheme
-                  : undefined,
-              (scheme) => (color_scale = { ...color_scale_config, scheme })
+              () => scheme_name(color_scale),
+              (scheme) => (color_scale = with_scheme(color_scale, scheme))
             }
             aria-label="Fermi surface color scale"
           />

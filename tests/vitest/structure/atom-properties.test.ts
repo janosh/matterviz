@@ -2,6 +2,7 @@ import type { ElementSymbol } from '#lib'
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import * as math from '#lib/math.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { Vec3 } from '#lib/math.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
 import * as atom_properties from '#lib/structure/atom-properties.js'
@@ -79,6 +80,20 @@ describe(`Color Scales`, () => {
       ).formatHex(),
     )
     expect(atom_properties.apply_color_scale(values, `interpolateViridis`).colors).toEqual(
+      expected,
+    )
+  })
+
+  // A ColorScaleConfig's value_range and palette_range reach the atom colors: set ends replace
+  // the data extent (values past them clamp), a descending palette_range reverses the ramp
+  test.each<[ColorScale, number[]]>([
+    [{ scheme: `interpolateViridis`, value_range: [0, 10] }, [0.1, 0.2, 0.5, 1]],
+    [{ scheme: `interpolateViridis`, value_range: [null, 2] }, [0, 1, 1, 1]],
+    [{ scheme: `interpolateViridis`, palette_range: [1, 0] }, [1, 8 / 9, 5 / 9, 0]],
+  ])(`apply_color_scale honors %j`, (color_scale, fractions) => {
+    const interp = get_d3_interpolator(`interpolateViridis`)
+    const expected = fractions.map((frac) => rgb(interp(frac)).formatHex())
+    expect(atom_properties.apply_color_scale([1, 2, 5, 10], color_scale).colors).toEqual(
       expected,
     )
   })
@@ -410,16 +425,24 @@ describe(`normalize_atom_color_config`, () => {
   // oxlint-disable-next-line unicorn/prefer-structured-clone
   const as_serialized = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
-  test(`preserves valid JSON-safe configurations and serialized payloads`, () => {
-    const config = {
-      mode: `property`,
-      property_key: `charge`,
-      scale: `interpolatePlasma`,
-      scale_type: `categorical`,
-    } as const satisfies atom_properties.AtomColorConfig
-    expect(atom_properties.normalize_atom_color_config(config)).toBe(config)
-    expect(atom_properties.normalize_atom_color_config(as_serialized(config))).toEqual(config)
-  })
+  test.each<ColorScale>([
+    `interpolatePlasma`,
+    { scheme: `interpolatePlasma`, value_range: [0, null] },
+  ])(
+    `preserves valid JSON-safe configurations and serialized payloads with color_scale %j`,
+    (color_scale) => {
+      const config = {
+        mode: `property`,
+        property_key: `charge`,
+        color_scale,
+        scale_type: `categorical`,
+      } as const satisfies atom_properties.AtomColorConfig
+      expect(atom_properties.normalize_atom_color_config(config)).toBe(config)
+      expect(atom_properties.normalize_atom_color_config(as_serialized(config))).toEqual(
+        config,
+      )
+    },
+  )
 
   test(`serialized custom mode cannot reach get_custom_colors without a function`, () => {
     const config = as_serialized({ mode: `custom` }) as atom_properties.AtomColorConfig
@@ -436,7 +459,7 @@ describe(`normalize_atom_color_config`, () => {
       { mode: `coordination` },
       {
         mode: `coordination`,
-        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
         scale_type: `continuous`,
       },
     ],
@@ -444,7 +467,7 @@ describe(`normalize_atom_color_config`, () => {
       { mode: `wyckoff` },
       {
         mode: `wyckoff`,
-        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
         scale_type: `categorical`,
       },
     ],
@@ -453,7 +476,7 @@ describe(`normalize_atom_color_config`, () => {
       {
         mode: `property`,
         property_key: `charge`,
-        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
         scale_type: `continuous`,
       },
     ],
@@ -462,7 +485,7 @@ describe(`normalize_atom_color_config`, () => {
       {
         mode: `property`,
         property_key: CNA_TYPE_PROPERTY,
-        scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.scale,
+        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
         scale_type: `categorical`,
       },
     ],
@@ -737,11 +760,11 @@ describe(`get_atom_colors`, () => {
     // to t=0.5, where different interpolators can coincide and the check goes vacuous
     // oxfmt-ignore
     const chain = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1.5, 0, 0] }, { xyz: [3, 0, 0] }])
-    const coord_colors = (scale: `interpolatePlasma` | `interpolateViridis`) =>
+    const coord_colors = (color_scale: `interpolatePlasma` | `interpolateViridis`) =>
       atom_properties.get_atom_colors(chain, {
         ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
         mode: `coordination`,
-        scale,
+        color_scale,
       })
     const result_plasma = coord_colors(`interpolatePlasma`)
     expect(new Set(result_plasma.values).size).toBeGreaterThan(1)

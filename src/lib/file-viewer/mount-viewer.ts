@@ -29,6 +29,8 @@ export type ViewerMountType = Exclude<RenderableType, `volumetric`> | `isosurfac
 
 export interface MountViewerOptions {
   prediction?: StructureToolPrediction
+  // A parsed structure/volumetric file's recoverable warnings, shown by Structure as a notice
+  parse_warnings?: string[]
   defaults: DefaultSettings
   // Closes the hosting panel (JsonBrowser); viewers without a close affordance ignore it
   on_close?: () => void
@@ -43,7 +45,7 @@ export function mount_viewer(
   target: HTMLElement,
   type: ViewerMountType,
   data: unknown,
-  { defaults, on_close, prediction }: MountViewerOptions,
+  { defaults, on_close, prediction, parse_warnings }: MountViewerOptions,
 ): ReturnType<typeof mount> {
   target.innerHTML = ``
   void target.offsetHeight // force layout so Three.js measures real dimensions
@@ -60,14 +62,19 @@ export function mount_viewer(
   if (type === `structure`) {
     return mount(Structure, {
       target,
-      props: { structure: data as AnyStructure, prediction, ...structure_props },
+      props: {
+        structure: data as AnyStructure,
+        prediction,
+        parse_warnings,
+        ...structure_props,
+      },
     })
   }
   if (type === `isosurface`) {
     const { structure, volumes } = data as VolumetricFileData
     return mount(Structure, {
       target,
-      props: { structure, volumetric_data: volumes, ...structure_props },
+      props: { structure, volumetric_data: volumes, parse_warnings, ...structure_props },
     })
   }
   if (type === `fermi_surface` || type === `band_grid`) {

@@ -69,7 +69,12 @@
     swizzle_to_render,
     vertex_mean,
   } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotHoverInfo3D } from './types'
+  import type {
+    ChemPotDiagramConfig,
+    ChemPotHoverInfo,
+    ChemPotHoverInfo3D,
+    ChemPotTooltipProp,
+  } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
@@ -97,6 +102,7 @@
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    tooltip,
   }: {
     entries: PhaseData[]
     show_controls?: ShowControlsProp<`controls` | `fullscreen` | `export` | `formulas`>
@@ -106,6 +112,7 @@
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
     highlighted_formula?: string | null
+    tooltip?: ChemPotTooltipProp
   } = $props()
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
@@ -131,7 +138,6 @@
     default_min_limit,
     color_mode,
     color_scale,
-    reverse_color_scale,
     diagram_data,
     computing: diagram_computing,
     error: diagram_error,
@@ -139,7 +145,7 @@
     available_temperatures,
     energy_stats: entry_energy_stats_by_formula,
     domain_colors,
-    color_range,
+    color_bar,
   } = $derived(chempot)
   const formulas_to_draw = $derived(chempot.resolve(`formulas_to_draw`))
   const draw_formula_meshes = $derived(chempot.resolve(`draw_formula_meshes`))
@@ -1008,7 +1014,6 @@
       auto_rotate,
       color_mode,
       color_scale,
-      reverse_color_scale,
       camera_position: orbit_controls_ref?.object?.position ?? null,
       camera_target: orbit_controls_ref?.target ?? null,
       orthographic_zoom: camera_projection === `orthographic` ? orthographic_zoom : null,
@@ -1361,18 +1366,17 @@
     </div>
     <ChemPotLegend
       {color_mode}
-      {color_scale}
-      {reverse_color_scale}
-      {color_range}
+      {color_bar}
+      color_bar_props={config.color_bar}
       formulas={render_domains.map((domain) => domain.formula)}
       style="bottom: 16px; left: 1em"
     />
   {/if}
-  {#if chempot.show_tooltip && hover_info?.view === `3d`}
+  {#if tooltip !== false && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
       pinned={locked_hover_formula === hover_info.formula}
-      detail_level={chempot.tooltip_detail_level}
+      {tooltip}
       bg_color={overlay_formulas.has(hover_info.formula)
         ? overlay_color(hover_info.formula)
         : domain_colors.get(hover_info.formula)}

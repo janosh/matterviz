@@ -1,11 +1,7 @@
 import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { Vec2 } from '#lib'
-import type {
-  AxisOption,
-  ColorBarScale,
-  ColorScaleOption,
-  ScaleType,
-} from '#lib/plot/core/types.js'
+import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { AxisOption, ColorScaleOption, ScaleType } from '#lib/plot/core/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
@@ -34,9 +30,8 @@ describe(`ColorBar layout`, () => {
   test(`forwards title/bar/wrapper styles and positions horizontal ticks`, () => {
     mount_bar({
       title: `Test Horizontal`,
-      scale: `interpolateViridis`,
+      color_scale: { scheme: `interpolateViridis`, value_range: [0, 100] },
       tick_labels: 5, // D3 nice().ticks(5) for [0, 100] -> [0, 20, 40, 60, 80, 100]
-      range: [0, 100],
       title_side: `left`,
       tick_side: `primary`, // primary = bottom for horizontal
       bar_style: `width: 200px; height: 20px;`,
@@ -65,7 +60,7 @@ describe(`ColorBar layout`, () => {
     mount_bar({
       title: `Vertical`,
       orientation: `vertical`,
-      range: [-50, 50],
+      color_scale: { value_range: [-50, 50] },
       tick_labels: 4, // D3 nice().ticks(4) for [-50, 50] -> [-60, -40, -20, 0, 20, 40, 60]
       tick_side: `secondary`, // secondary = left for vertical
     })
@@ -83,14 +78,15 @@ describe(`ColorBar layout`, () => {
 
   test(`rejects invalid scales`, () => {
     // only canonical `interpolate*` names resolve; the cast exercises the runtime guard
-    const scale = `Viridis` as ColorBarScale
-    expect(() => mount_bar({ scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
+    const color_scale = `Viridis` as D3InterpolateName
+    expect(() => mount_bar({ color_scale })).toThrow(`Unknown D3 color interpolator: Viridis`)
   })
 
   test.each([{ range: [1e308, 1.1e308] }, { range: [Number.MIN_VALUE, 1e-300] }])(
     `rejects unrepresentable log tick domains for $range`,
     ({ range }) => {
-      expect(() => mount_bar({ range, scale_type: `log` })).toThrow(/log.*range/i)
+      const color_scale = { value_range: range, type: `log` }
+      expect(() => mount_bar({ color_scale })).toThrow(/log.*range/i)
     },
   )
 
@@ -101,7 +97,7 @@ describe(`ColorBar layout`, () => {
     [{ tick_labels: 0 }, undefined],
     [{ tick_side: `inside` as const }, undefined],
   ])(`outside ticks mark a bar gutter class %j`, (props, gutter_class) => {
-    mount_bar({ range: [0, 1], tick_labels: 2, ...props })
+    mount_bar({ tick_labels: 2, ...props })
     const bar = doc_query(`.colorbar > div.bar`)
     expect(bar.classList.contains(`tick-primary`)).toBe(gutter_class === `tick-primary`)
     expect(bar.classList.contains(`tick-secondary`)).toBe(gutter_class === `tick-secondary`)
@@ -175,9 +171,8 @@ describe(`ColorBar tick_side='inside'`, () => {
       mount_bar({
         orientation,
         tick_side: `inside`,
-        range: [...range],
+        color_scale: { scheme: `interpolateViridis`, value_range: [...range] },
         tick_labels: 6,
-        scale: `interpolateViridis`,
       })
       expect(
         tick_spans().map((span) => [span.textContent, span.style[prop], span.style.color]),
@@ -192,7 +187,8 @@ describe(`ColorBar tick_side='inside'`, () => {
     [`translucent`, `rgba(255, 255, 255, 0.1)`, `white`],
     [`unresolved`, `var(--missing-scale-color)`, `inherit`],
   ])(`handles %s custom scale colors for inside ticks`, async (_desc, color, expected) => {
-    mount_bar({ tick_side: `inside`, scale: { fn: () => color }, style: `--page-bg: black` })
+    const color_scale = { scheme: () => color }
+    mount_bar({ tick_side: `inside`, color_scale, style: `--page-bg: black` })
     await tick()
     expect(doc_query(`.tick-label`).style.color).toBe(expected)
   })
@@ -201,7 +197,7 @@ describe(`ColorBar tick_side='inside'`, () => {
 describe(`ColorBar tick labels`, () => {
   test(`updates the formatter when switching between numeric, date, and default labels`, async () => {
     const state = $state<{ tick_format?: string }>({ tick_format: undefined })
-    mount_bar(bind_props({ range: [0, 1], tick_labels: 3, snap_ticks: false }, state))
+    mount_bar(bind_props({ tick_labels: 3, snap_ticks: false }, state))
     const label_widths: number[] = []
     const epoch_year = String(new Date(0).getFullYear())
     for (const [spec, expected] of [
@@ -229,7 +225,8 @@ describe(`ColorBar tick labels`, () => {
   test.each([false, true])(
     `keeps fitting decimal ticks after resizing (reversed=%s)`,
     async (reversed) => {
-      mount_bar({ range: reversed ? [3.5, 0] : [0, 3.5], tick_labels: 5 })
+      const value_range = reversed ? [3.5, 0] : [0, 3.5]
+      mount_bar({ color_scale: { value_range }, tick_labels: 5 })
       const bar = doc_query(`.colorbar .bar`)
       // happy-dom doesn't resolve the padding shorthand's CSS variable into longhands.
       for (const label of tick_spans()) {
@@ -306,8 +303,12 @@ describe(`ColorBar tick labels`, () => {
     [{ range: [0, 0.1], tick_labels: 5, tick_format: `.1f` }, [`0.0`, `0.1`]],
     // no integer fits: an integer format falls back to decimal ticks and labels
     [{ range: [0.2, 0.8], tick_labels: 4, tick_format: `d` }, [`0.2`, `0.4`, `0.6`, `0.8`]],
-  ])(`renders labels for %j`, (props, expected) => {
-    mount_bar({ snap_ticks: false, ...props })
+  ])(`renders labels for %j`, ({ range, scale_type, ...props }, expected) => {
+    mount_bar({
+      snap_ticks: false,
+      ...props,
+      color_scale: { value_range: range, type: scale_type },
+    })
     expect(tick_texts()).toEqual(expected)
   })
 
@@ -320,8 +321,10 @@ describe(`ColorBar tick labels`, () => {
     `positions rounded arcsinh ticks at their labeled values (reversed=%s, format %s)`,
     (reversed, tick_format) => {
       mount_bar({
-        range: reversed ? [38, 0] : [0, 38],
-        scale_type: { type: `arcsinh`, threshold: 0.25 },
+        color_scale: {
+          value_range: reversed ? [38, 0] : [0, 38],
+          type: { type: `arcsinh`, threshold: 0.25 },
+        },
         tick_format,
         tick_labels: 4,
       })
@@ -360,7 +363,14 @@ describe(`ColorBar tick labels`, () => {
     async ({ range, values, labels }) => {
       const state = $state({ nice_range: [0, 1] as Vec2 })
       mount_bar(
-        bind_props({ range, scale_type: `log`, tick_labels: 3, snap_ticks: false }, state),
+        bind_props(
+          {
+            color_scale: { value_range: range, type: `log` },
+            tick_labels: 3,
+            snap_ticks: false,
+          },
+          state,
+        ),
       )
       await tick()
       expect(state.nice_range).toEqual(range)
@@ -377,7 +387,7 @@ describe(`ColorBar tick labels`, () => {
 
   test(`formats intra-day ticks with a time format`, () => {
     mount_bar({
-      range: [day(0, 1), day(0, 1, 23, 59, 59)],
+      color_scale: { value_range: [day(0, 1), day(0, 1, 23, 59, 59)] },
       tick_format: `%H:%M`,
       tick_labels: 5,
       snap_ticks: false,
@@ -399,7 +409,11 @@ describe(`ColorBar tick labels`, () => {
     // a descending log range runs high-to-low instead of collapsing to one point
     [`log`, [1000, 1], [`1k`, `100`, `10`, `1`]],
   ])(`%s ticks for range %j`, (scale_type, range, ticks) => {
-    mount_bar({ range, scale_type, tick_labels: 4, snap_ticks: true })
+    mount_bar({
+      color_scale: { value_range: range, type: scale_type },
+      tick_labels: 4,
+      snap_ticks: true,
+    })
     expect(tick_texts()).toEqual(ticks)
     tick_spans().forEach((span, idx) =>
       expect(Number(span.style.left.replace(`%`, ``))).toBeCloseTo(
@@ -413,7 +427,8 @@ describe(`ColorBar tick labels`, () => {
     `descending %s ticks stay in visual order after measurement and inside the bar`,
     async (scale_type) => {
       const state = $state<{ tick_side: `primary` | `inside` }>({ tick_side: `primary` })
-      mount_bar(bind_props({ range: [1000, 1], scale_type, tick_labels: 4 }, state))
+      const color_scale = { value_range: [1000, 1], type: scale_type }
+      mount_bar(bind_props({ color_scale, tick_labels: 4 }, state))
       await tick()
       expect(tick_texts()).toEqual([`1k`, `100`, `10`, `1`])
       state.tick_side = `inside`
@@ -424,52 +439,63 @@ describe(`ColorBar tick labels`, () => {
 })
 
 describe(`ColorBar gradient`, () => {
+  // Niced ends past value_range take the end colors: a cyclic or clipped palette must not
+  // wrap around or run past its ends in the extension
   test.each([
-    { range: [1, 9], expected: [0, 5, 10] },
-    { range: [9, 1], expected: [10, 5, 0] },
-  ] satisfies { range: Vec2; expected: number[] }[])(
-    `samples the explicit mapping over the displayed domain despite palette options for $range`,
-    ({ range, expected }) => {
-      const color = (value: number) => `rgb(${20 * value}, 0, 0)`
+    { range: [1, 9], expected: [0, 5, 10], fractions: [0, 0.5, 1] },
+    { range: [9, 1], expected: [10, 5, 0], fractions: [0, 0.5, 1] },
+  ] satisfies { range: Vec2; expected: number[]; fractions: number[] }[])(
+    `samples the color scale over the displayed domain despite palette options for $range`,
+    ({ range, expected, fractions }) => {
+      const scheme = (frac: number) => `rgb(${Math.round(255 * frac)}, 0, 0)`
       mount_bar({
-        range,
+        color_scale: { scheme, value_range: range },
         tick_labels: 4,
         steps: 3,
-        scale: { fn: color },
         color_scale_options,
         selected_color_scale_key: `plasma`,
       })
       const labels = tick_texts()
       expect([labels[0], labels.at(-1)]).toEqual([expected[0], expected.at(-1)].map(String))
       expect(doc_query(`.colorbar .bar`).getAttribute(`style`)).toContain(
-        expected.map(color).join(`, `),
+        fractions.map(scheme).join(`, `),
       )
     },
   )
 
   test(`log gradient spans positive bounds below LOG_EPS`, () => {
-    mount_bar({ range: [1e-12, 1e-6], scale_type: `log`, steps: 3, tick_labels: 4 })
+    const color_scale = { value_range: [1e-12, 1e-6], type: `log` }
+    mount_bar({ color_scale, steps: 3, tick_labels: 4 })
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
     // with the floor clamped at 1e-9 the midpoint 1e-9 would render the bottom color
     expect(gradient.match(/#[0-9a-f]{6}/g)).toEqual([0, 0.5, 1].map(d3_sc.interpolateViridis))
   })
 
-  test(`descending range reverses the gradient and reports the niced range`, async () => {
-    const state = $state({ nice_range: [0, 1] as Vec2 })
-    mount_bar(bind_props({ range: [99, 0] as Vec2, tick_labels: 4, steps: 3 }, state))
-    await tick()
-    expect(state.nice_range).toEqual([100, 0])
-    const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
-    const [first, , last] = gradient.match(/#[0-9a-f]{6}/g) ?? []
-    expect(first).toBe(d3_sc.interpolateViridis(1)) // value 99 sits at the left end
-    expect(last).toBe(d3_sc.interpolateViridis(0))
-  })
+  // value_range[0] takes the palette start (as in every color-mapped component), so a
+  // descending range keeps the gradient and flips the ticks; reversing the palette too keeps
+  // each value's color and flips the gradient instead
+  test.each([
+    [undefined, 0, 1],
+    [[1, 0], 1, 0],
+  ] as const)(
+    `descending range with palette_range %j reports the niced range`,
+    async (palette_range, left_frac, right_frac) => {
+      const state = $state({ nice_range: [0, 1] as Vec2 })
+      const color_scale = { value_range: [99, 0], palette_range }
+      mount_bar(bind_props({ color_scale, tick_labels: 4, steps: 3 }, state))
+      await tick()
+      expect(state.nice_range).toEqual([100, 0])
+      expect(tick_texts()[0]).toBe(`100`)
+      const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
+      const [first, , last] = gradient.match(/#[0-9a-f]{6}/g) ?? []
+      expect([first, last]).toEqual([left_frac, right_frac].map(d3_sc.interpolateViridis))
+    },
+  )
 
   test(`samples a custom interpolator once per step across [0, 1]`, () => {
     const custom_scale = vi.fn((frac: number): string => `rgb(${frac * 255}, 0, 0)`)
     mount_bar({
-      scale: { interpolator: custom_scale },
-      range: [0, 1],
+      color_scale: { scheme: custom_scale },
       color_scale_options: [{ key: `custom`, label: `Custom` }],
       selected_color_scale_key: `custom`,
     }) // default steps=50
@@ -506,7 +532,7 @@ describe(`ColorBar Interactive Selects`, () => {
   ] as const)(
     `renders controls and static title for %j`,
     (props, property_label, scale_label) => {
-      mount_bar({ ...props, title: `Static`, range: [0, 10] })
+      mount_bar({ ...props, title: `Static`, color_scale: { value_range: [0, 10] } })
       for (const [selector, expected] of [
         [`button.property-select`, property_label],
         [`button.color-scale-select`, scale_label],
@@ -527,7 +553,7 @@ describe(`ColorBar Interactive Selects`, () => {
     async (categories) => {
       const state = $state({
         selected_property_key: `energy`,
-        range: [0, 10] as Vec2,
+        color_scale: { value_range: [0, 10] as Vec2 },
         loading: false,
         show_scale: true,
       })
@@ -538,13 +564,13 @@ describe(`ColorBar Interactive Selects`, () => {
       await select_option(trigger, `Volume`)
       expect(on_property_change).toHaveBeenCalledExactlyOnceWith(`volume`)
       expect(trigger.textContent).toContain(`Energy`)
-      expect(state.range).toEqual([0, 10])
+      expect(state.color_scale.value_range).toEqual([0, 10])
       state.loading = true
       await tick()
       expect(trigger.disabled).toBe(true)
       Object.assign(state, {
         selected_property_key: `volume`,
-        range: [10, 20],
+        color_scale: { value_range: [10, 20] as Vec2 },
         loading: false,
       })
       await tick()
@@ -571,12 +597,14 @@ describe(`ColorBar Interactive Selects`, () => {
   )
 
   test.each([false, true])(
-    `palette selection waits for the caller to commit (function scale: %s)`,
+    `palette selection waits for the caller to commit (function scheme: %s)`,
     async (function_scale) => {
       const state = $state({
         selected_color_scale_key: `plasma`,
         color_scale_options,
-        scale: function_scale ? { fn: d3_sc.interpolatePlasma } : `interpolatePlasma`,
+        color_scale: function_scale
+          ? { scheme: d3_sc.interpolatePlasma }
+          : `interpolatePlasma`,
       })
       const on_color_scale_change = vi.fn()
       mount_bar(bind_props({ on_color_scale_change, steps: 3 }, state))
@@ -593,7 +621,9 @@ describe(`ColorBar Interactive Selects`, () => {
 
       Object.assign(state, {
         selected_color_scale_key: `inferno`,
-        scale: function_scale ? { fn: d3_sc.interpolateInferno } : `interpolateInferno`,
+        color_scale: function_scale
+          ? { scheme: d3_sc.interpolateInferno }
+          : `interpolateInferno`,
       })
       await tick()
       expect(trigger.textContent).toContain(`Inferno`)
@@ -601,7 +631,7 @@ describe(`ColorBar Interactive Selects`, () => {
       Object.assign(state, {
         selected_color_scale_key: `inferno`,
         color_scale_options: [{ key: `inferno`, label: `Updated` }],
-        scale: function_scale ? { fn: d3_sc.interpolateMagma } : `interpolateMagma`,
+        color_scale: function_scale ? { scheme: d3_sc.interpolateMagma } : `interpolateMagma`,
       })
       await tick()
       expect(doc_query(`.color-scale-select`).textContent).toContain(`Updated`)

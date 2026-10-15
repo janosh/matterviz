@@ -6,14 +6,13 @@
   // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
   // handling, tooltip, legend and color bar. Each chart renders its geometry into the
   // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { compute_element_placement } from '#lib/plot/core/layout.js'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
@@ -41,7 +40,7 @@
     dblclick_target?: `svg` | `group`
     extra_defs?: Snippet
     marks: Snippet
-    tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
+    tooltip?: TooltipProp<SunburstNodeHandlerProps<Metadata>>
   } = $props()
 
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -123,7 +122,7 @@
   </g>
 </svg>
 
-{#if chart_state.hover_info}
+{#if chart_state.hover_info && tooltip !== false}
   {@const info = chart_state.hover_info}
   <PlotTooltip
     x={chart_state.hover_pos.x}
@@ -172,11 +171,8 @@
 
 {#if chart_state.metric && chart_state.color_bar}
   {@const { cbar, chart, color_bar } = chart_state}
-  {@const { color_fn, range } = chart_state.metric}
   <ColorBar
-    scale={{ fn: color_fn, domain: range }}
-    scale_type={to_color_scale_config(chart_state.color_scale).type}
-    {range}
+    color_scale={chart_state.metric.color_scale}
     {...color_bar}
     tick_side={cbar.tick_side}
     wrapper_style="{cbar.is_vertical

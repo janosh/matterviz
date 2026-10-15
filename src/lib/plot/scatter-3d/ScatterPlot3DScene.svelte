@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
@@ -128,7 +128,7 @@
     hovered_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
-    tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
+    tooltip?: TooltipProp<Scatter3DHandlerEvent<Metadata>>
     tooltip_portal?: HTMLElement
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
@@ -796,30 +796,32 @@
     </T.Mesh>
 
     {@const data = make_event_data(hover_point)}
-    <extras.HTML
-      position={hover_drawn.position}
-      calculatePosition={hover_geometry.tooltip_position}
-      style="translate: -50% -100%; pointer-events: none"
-      portal={tooltip_portal}
-      zIndexRange={[1000, 1000]}
-    >
-      {#if tooltip}
-        {@render tooltip(data)}
-      {:else}
-        <div
-          class="tooltip"
-          style:background={hover_paint?.background}
-          style:color={hover_paint?.color}
-        >
-          {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
-            <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
-          {/each}
-          {#if data.color_value != null}
-            <div>value: {format_num(data.color_value, `.3~g`)}</div>
-          {/if}
-        </div>
-      {/if}
-    </extras.HTML>
+    {#if tooltip !== false}
+      <extras.HTML
+        position={hover_drawn.position}
+        calculatePosition={hover_geometry.tooltip_position}
+        style="translate: -50% -100%; pointer-events: none"
+        portal={tooltip_portal}
+        zIndexRange={[1000, 1000]}
+      >
+        {#if tooltip}
+          {@render tooltip(data)}
+        {:else}
+          <div
+            class="tooltip"
+            style:background={hover_paint?.background}
+            style:color={hover_paint?.color}
+          >
+            {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
+              <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
+            {/each}
+            {#if data.color_value != null}
+              <div>value: {format_num(data.color_value, `.3~g`)}</div>
+            {/if}
+          </div>
+        {/if}
+      </extras.HTML>
+    {/if}
   {/if}
 {/if}
 

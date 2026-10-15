@@ -98,7 +98,7 @@
     highlighted_qpoint_range = null,
     on_kpath_hover,
     children,
-    tooltip_config,
+    tooltip,
     on_file_load,
     on_error,
     on_fullscreen_change,
@@ -142,7 +142,7 @@
     // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
-    tooltip_config?: BZTooltipProp
+    tooltip?: BZTooltipProp
     on_file_load?: (data: BZHandlerData) => void
     on_error?: (data: BZHandlerData) => void
     on_fullscreen_change?: (data: BZHandlerData) => void
@@ -360,7 +360,7 @@
       </Canvas>
 
       <!-- Hover tooltip -->
-      {#if hover_data}
+      {#if hover_data && tooltip !== false}
         <PlotTooltip
           x={hover_data.screen_position.x}
           y={hover_data.screen_position.y}
@@ -368,7 +368,7 @@
           fixed
           style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
-          <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
+          <BrillouinZoneTooltip {hover_data} {tooltip} />
         </PlotTooltip>
       {/if}
     {/if}

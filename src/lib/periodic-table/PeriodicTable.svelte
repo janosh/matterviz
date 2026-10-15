@@ -23,12 +23,13 @@
   import { ELEM_SYMBOLS } from '#lib/labels.js'
   import { array_extent, type Point2D, type Vec2 } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
-  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
   import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
@@ -61,7 +62,7 @@
     split_layout = undefined,
     color_bar = {},
     inset,
-    tooltip = false,
+    tooltip,
     on_activate,
     onkeydown: on_table_keydown,
     ...rest
@@ -102,19 +103,13 @@
     // auto color bar shown when heatmap_values is provided; null hides it
     color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
-    tooltip?:
-      | Snippet<
-          [
-            {
-              element: ChemicalElement
-              value: HeatValue | null
-              active: boolean
-              bg_color: string | null
-              scale_context: ScaleContext
-            },
-          ]
-        >
-      | boolean
+    tooltip?: TooltipProp<{
+      element: ChemicalElement
+      value: HeatValue | null
+      active: boolean
+      bg_color: string | null
+      scale_context: ScaleContext
+    }>
     on_activate?: (element: ChemicalElement) => void
   } = $props()
 
@@ -299,8 +294,7 @@
       heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1],
     )
   })
-  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
-  let ramp = $derived(resolve_color_ramp(color_bar_scale, heat_range, color_scale_config.type))
+  let ramp = $derived(resolve_color_ramp(color_scale_config, heat_range))
 
   // whether a value maps to a heatmap color (false => use the missing fallback). 0 is a
   // real value; only absent/null/non-finite (and <=0 in log mode) count as missing. a
@@ -386,11 +380,9 @@
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
       <ColorBar
-        scale={color_bar_scale}
-        range={heat_range}
+        color_scale={ramp.bar_scale}
         tick_labels={3}
         tick_side="primary"
-        scale_type={color_scale_config.type}
         bar_style="width: 100%;"
         {...color_bar}
       />

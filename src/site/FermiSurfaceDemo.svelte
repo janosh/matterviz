@@ -134,7 +134,7 @@
     active_file = source_filename
     if (sync_url) set_file_param(source_filename)
   }}
-  tooltip_config={{
+  tooltip={{
     suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,
   }}
   {...rest}

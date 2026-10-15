@@ -34,5 +34,5 @@ export type BrillouinZoneOptions = Pick<
   | 'show_controls'
   | 'fullscreen_toggle'
   | 'png_dpi'
-  | 'tooltip_config'
+  | 'tooltip'
 >

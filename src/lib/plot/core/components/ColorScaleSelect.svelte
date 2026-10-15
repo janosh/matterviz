@@ -57,7 +57,7 @@
     {#if type === `selected` || open || previews_built}
       <ColorBar
         title={label}
-        scale={scheme}
+        color_scale={scheme}
         tick_labels={0}
         title_side="left"
         wrapper_style="width: 100%; --cbar-gap: 6px; --cbar-label-text-align: left;"

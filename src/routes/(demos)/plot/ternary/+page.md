@@ -178,21 +178,21 @@ The `tooltip` snippet and the `on_point_click` / `on_point_hover` callbacks rece
 
 ## Props
 
-| Prop             | Type                                  | Default                        | Description                                                                         |
-| ---------------- | ------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
-| `series`         | `TernarySeries[]`                     | `[]`                           | Series of composition triples; see the fields below.                                |
-| `labels`         | `[string, string, string]`            | `['A', 'B', 'C']`              | Corner labels in triple order: right, top, left.                                    |
-| `grid_step`      | `number`                              | `0.1`                          | Fraction between grid lines and ticks; `0` draws neither.                           |
-| `show_grid`      | `boolean`                             | `true`                         | Draw the constant-fraction grid lines.                                              |
-| `show_ticks`     | `boolean`                             | `true`                         | Draw tick marks and labels along the edges.                                         |
-| `tick_format`    | `string`                              | `'.0%'`                        | d3-format spec for tick labels and tooltip fractions (values in `[0, 1]`).          |
-| `color_scale`    | `ColorScale`                          | `'interpolateViridis'`         | Scheme, `type` and `value_range` (default data min/max) for `color_values`.         |
-| `color_bar`      | `ColorBar` props or `null`            | `{}`                           | Color bar settings; `null` hides it.                                                |
-| `legend`         | `LegendConfig` or `null`              | `{}`                           | Legend settings; shown automatically with two or more series, `show_legend` forces. |
-| `tooltip`        | `Snippet<[TernaryPointProps]>`        |                                | Replaces the default fractions tooltip.                                             |
-| `on_point_click` | `(props & { event }) => void`         |                                | Click or Enter/Space on a marker.                                                   |
-| `on_point_hover` | `(props & { event } \| null) => void` |                                | Hover or focus enter/leave; `null` on leave.                                        |
-| `padding`        | `Sides`                               | `{t: 30, b: 34, l: 50, r: 50}` | Space around the triangle for corner and tick labels.                               |
+| Prop             | Type                                    | Default                        | Description                                                                         |
+| ---------------- | --------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
+| `series`         | `TernarySeries[]`                       | `[]`                           | Series of composition triples; see the fields below.                                |
+| `labels`         | `[string, string, string]`              | `['A', 'B', 'C']`              | Corner labels in triple order: right, top, left.                                    |
+| `grid_step`      | `number`                                | `0.1`                          | Fraction between grid lines and ticks; `0` draws neither.                           |
+| `show_grid`      | `boolean`                               | `true`                         | Draw the constant-fraction grid lines.                                              |
+| `show_ticks`     | `boolean`                               | `true`                         | Draw tick marks and labels along the edges.                                         |
+| `tick_format`    | `string`                                | `'.0%'`                        | d3-format spec for tick labels and tooltip fractions (values in `[0, 1]`).          |
+| `color_scale`    | `ColorScale`                            | `'interpolateViridis'`         | Scheme, `type` and `value_range` (default data min/max) for `color_values`.         |
+| `color_bar`      | `ColorBar` props or `null`              | `{}`                           | Color bar settings; `null` hides it.                                                |
+| `legend`         | `LegendConfig` or `null`                | `{}`                           | Legend settings; shown automatically with two or more series, `show_legend` forces. |
+| `tooltip`        | `Snippet<[TernaryPointProps]> \| false` |                                | Replaces the default fractions tooltip; `false` hides it.                           |
+| `on_point_click` | `(props & { event }) => void`           |                                | Click or Enter/Space on a marker.                                                   |
+| `on_point_hover` | `(props & { event } \| null) => void`   |                                | Hover or focus enter/leave; `null` on leave.                                        |
+| `padding`        | `Sides`                                 | `{t: 30, b: 34, l: 50, r: 50}` | Space around the triangle for corner and tick labels.                               |
 
 `TernarySeries` fields: `points` (triples), `label`, `color`, `markers` (`'points'` default, `'line'`, `'line+points'`), `point_style` (one `PointStyle` or one per point), `line_style`, `color_values`, `metadata`, `visible`, `id`.
 

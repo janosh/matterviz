@@ -41,7 +41,8 @@ import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query } from '../setup'
 import { make_crystal } from '../test-fixtures'
-import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
+import type { Component, ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, untrack } from 'svelte'
 import {
   type Color,
   InstancedBufferAttribute,
@@ -1332,6 +1333,19 @@ test(`Scene marks a volumetric slice plane with a translucent fan fill and a clo
   state.slice_polygon = square.slice(0, 2)
   flushSync()
   expect(plane_meshes()).toEqual({ outlines: [], fill: undefined })
+})
+
+// The hovered-atom tooltip is on by default, a snippet appends rows below the site info and
+// false hides it
+const extra_row = createRawSnippet(() => ({ render: () => `<div class="extra-row">x</div>` }))
+test.each([
+  [`default`, undefined, true, false],
+  [`snippet`, extra_row, true, true],
+  [`false`, false, false, false],
+] as const)(`%s atom tooltip: site info %s, extra row %s`, (_label, tooltip, info, extra) => {
+  mount_carbon({ active_sites: [0], hovered_idx: 0, tooltip })
+  expect(document.querySelector(`.coordinates`) !== null).toBe(info)
+  expect(document.querySelector(`.extra-row`) !== null).toBe(extra)
 })
 
 // THREE.Color cannot parse the default CSS-variable color: it warned and kept the old color

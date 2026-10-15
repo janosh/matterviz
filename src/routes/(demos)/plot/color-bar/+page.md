@@ -10,11 +10,10 @@ ColorBar with tick labels; compare `tick_side`:
 {#each [// [scale, tick_side, tick_labels, range, label_text]
   [`interpolateViridis`, `primary`, [0, 0.25, 0.5, 0.75, 1], [0, 1]], [`interpolateMagma`, `secondary`, 10, [100, 1631]], [`interpolateCividis`, `primary`, 4, [-99.9812, -10]]] as [scale, tick_side, tick_labels, range]}
   <ColorBar
-    title="scale={scale} &emsp; tick_side={tick_side} &emsp; range={range}"
-    {scale}
+    title="scheme={scale} &emsp; tick_side={tick_side} &emsp; range={range}"
+    color_scale={{ scheme: scale, value_range: range }}
     {tick_side}
     {tick_labels}
-    {range}
     tick_format=".4"
     title_style="padding: 3pt;"
     --cbar-padding="3em"
@@ -112,9 +111,8 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
   {#snippet inset()}
     <TableInset style="place-items: center; padding: 2em">
       <ColorBar
-        scale="interpolateInferno"
+        color_scale={{ scheme: `interpolateInferno`, value_range: heat_range }}
         title="Atomic Mass (u)"
-        range={heat_range}
         tick_labels={5}
         tick_side="primary"
         --cbar-width="calc(100% - 2em)"
@@ -154,7 +152,7 @@ Example demonstrating `title_side` and `tick_side` interaction:
           {bar_style}
           title="Label"
           tick_labels={num_ticks}
-          range={current_range}
+          color_scale={{ value_range: current_range }}
         />
       </div>
     {/each}
@@ -202,7 +200,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 >
   <ColorBar
     title="YYYY-MM-DD"
-    range={date_range}
+    color_scale={{ value_range: date_range }}
     tick_format="%Y-%m-%d"
     bar_style="width: 200px"
     tick_labels={2}
@@ -210,7 +208,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
   <ColorBar
     title="Month Day"
-    range={date_range}
+    color_scale={{ value_range: date_range }}
     bar_style="width: 500px"
     tick_format="%b %d"
     tick_labels={7}
@@ -218,7 +216,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
   <ColorBar
     title="Vertical - Mmm DD, YY"
-    range={date_range}
+    color_scale={{ value_range: date_range }}
     tick_format="%b %d, '%y"
     tick_labels={4}
     orientation="vertical"
@@ -229,7 +227,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
 
 ## Interactive Property and Color Scale Selection
 
-Use `property_options`, `selected_property_key`, and `on_property_change` for property selection. The caller owns the data: set `loading` while fetching, then update the selected key and range together when the request succeeds. Palette selection follows the same pattern: `on_color_scale_change` requests a key, and the caller commits it through `selected_color_scale_key`. The caller derives `scale` from that same key so the chart and legend share one color mapping. Palette options only provide keys and labels.
+Use `property_options`, `selected_property_key`, and `on_property_change` for property selection. The caller owns the data: set `loading` while fetching, then update the selected key and range together when the request succeeds. Palette selection follows the same pattern: `on_color_scale_change` requests a key, and the caller commits it through `selected_color_scale_key`. The caller derives `color_scale` from that same key so the chart and legend share one color mapping. Palette options only provide keys and labels.
 
 ```svelte example
 <script lang="ts">
@@ -274,13 +272,12 @@ Use `property_options`, `selected_property_key`, and `on_property_change` for pr
 
 <ColorBar
   title="Formation Energy (eV/atom)"
-  range={current_range}
   tick_labels={5}
   {property_options}
   selected_property_key={selected_property}
   on_property_change={(key) => (selected_property = key)}
   {color_scale_options}
-  scale={color_scales[selected_color_scale]}
+  color_scale={{ scheme: color_scales[selected_color_scale], value_range: current_range }}
   selected_color_scale_key={selected_color_scale}
   on_color_scale_change={(key) => (selected_color_scale = key)}
   --cbar-width="600px"
@@ -329,14 +326,13 @@ Vertical orientation with the title on different sides:
 >
   <ColorBar
     title="Energy"
-    range={range_left}
     orientation="vertical"
     title_side="left"
     {property_options}
     selected_property_key={prop_left}
     on_property_change={(key) => (prop_left = key)}
     {color_scale_options}
-    scale={color_scales[scale_left]}
+    color_scale={{ scheme: color_scales[scale_left], value_range: range_left }}
     selected_color_scale_key={scale_left}
     on_color_scale_change={(key) => (scale_left = key)}
     bar_style="height: 200px;"
@@ -344,14 +340,13 @@ Vertical orientation with the title on different sides:
 
   <ColorBar
     title="Force"
-    range={range_right}
     orientation="vertical"
     title_side="right"
     {property_options}
     selected_property_key={prop_right}
     on_property_change={(key) => (prop_right = key)}
     {color_scale_options}
-    scale={color_scales[scale_right]}
+    color_scale={{ scheme: color_scales[scale_right], value_range: range_right }}
     selected_color_scale_key={scale_right}
     on_color_scale_change={(key) => (scale_right = key)}
     bar_style="height: 200px;"
@@ -361,7 +356,7 @@ Vertical orientation with the title on different sides:
 
 ## Large Value Ranges (Linear and Log)
 
-Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a positive range (min and max > 0). The linear bar uses SI-prefixed ticks via `tick_format='.1s'`; bars without `tick_format` use the default tick formatter.
+Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`). Log needs a positive range (min and max > 0). The linear bar uses SI-prefixed ticks via `tick_format='.1s'`; bars without `tick_format` use the default tick formatter.
 
 ```svelte example
 <script lang="ts">
@@ -373,37 +368,34 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
 >
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
-    range={[0, 1e6]}
+    color_scale={{ value_range: [0, 1e6] }}
     tick_labels={5}
     tick_format=".1s"
   />
 
   <ColorBar
     title="Large Log Range (1 to 1e9)"
-    range={[1, 1e9]}
-    scale_type="log"
+    color_scale={{ value_range: [1, 1e9], type: `log` }}
     bar_style="width: 400px"
     tick_labels={10}
   />
 
   <ColorBar
     title="Vertical Log Range (10 to 1e7)"
-    range={[10, 1e7]}
-    scale_type="log"
+    color_scale={{ value_range: [10, 1e7], type: `log` }}
     orientation="vertical"
   />
 
   <ColorBar
     title="Vertical Linear Range<br>(10 to 1e7) with line breaks"
     title_style="margin: 1em;"
-    range={[10, 1e7]}
+    color_scale={{ value_range: [10, 1e7] }}
     orientation="vertical"
   />
 
   <ColorBar
     title="Small Log Range (0.01 to 100)"
-    range={[0.01, 100]}
-    scale_type="log"
+    color_scale={{ value_range: [0.01, 100], type: `log` }}
     tick_format=".3"
     bar_style="width: 400px"
     tick_labels={5}
@@ -420,6 +412,7 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
   const scale_types = [`linear`, `log`, `arcsinh`]
   let scale_type = $state(`arcsinh`)
   let threshold = $state(1)
+  let type = $derived(scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type)
 </script>
 
 <div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center; flex-wrap: wrap">
@@ -446,36 +439,28 @@ Large numeric ranges on linear and log scales (`scale_type='log'`). Log needs a 
 >
   <ColorBar
     title="Symmetric Range (-1000 to 1000)"
-    range={[-1000, 1000]}
-    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    scale="interpolateRdBu"
+    color_scale={{ scheme: `interpolateRdBu`, value_range: [-1000, 1000], type }}
     tick_labels={7}
     bar_style="width: 350px"
   />
 
   <ColorBar
     title="Asymmetric Range (-100 to 1000)"
-    range={[-100, 1000]}
-    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    scale="interpolatePuOr"
+    color_scale={{ scheme: `interpolatePuOr`, value_range: [-100, 1000], type }}
     tick_labels={6}
     bar_style="width: 350px"
   />
 
   <ColorBar
     title="Vertical Arcsinh (-500 to 500)"
-    range={[-500, 500]}
-    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
     orientation="vertical"
-    scale="interpolateBrBG"
+    color_scale={{ scheme: `interpolateBrBG`, value_range: [-500, 500], type }}
     bar_style="height: 200px"
   />
 
   <ColorBar
     title="Near-Zero Focus (-10 to 10)"
-    range={[-10, 10]}
-    scale_type={scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type}
-    scale="interpolatePiYG"
+    color_scale={{ scheme: `interpolatePiYG`, value_range: [-10, 10], type }}
     tick_labels={5}
     bar_style="width: 350px"
   />

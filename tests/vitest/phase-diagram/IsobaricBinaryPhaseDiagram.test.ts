@@ -2,7 +2,7 @@ import { format_hover_info_text, get_phase_color } from '#lib/phase-diagram/util
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
-import { type ComponentProps, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
 import { create_hover_info, lever_rule, pts, rect } from './fixtures/test-data'
@@ -127,6 +127,18 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.special-points`)?.textContent).toContain(`E`)
     expect(wrapper.querySelector(`.x-axis`)?.textContent).toContain(`Cu (at%)`)
     expect(wrapper.querySelector(`.y-axis`)?.textContent).toContain(`Temperature (K)`)
+  })
+
+  // a snippet replaces the default tooltip content, false hides the tooltip
+  test.each([
+    [`snippet`, createRawSnippet(() => ({ render: () => `<b>custom</b>` })), `custom`],
+    [`false`, false, null],
+  ] as const)(`tooltip %s`, async (_label, tooltip, text) => {
+    const wrapper = await mount_diagram({ tooltip })
+    await hover_at(wrapper, 0.5, 750)
+    const container = wrapper.querySelector(`.tooltip-container`)
+    expect(container?.textContent?.trim() ?? null).toBe(text)
+    expect(wrapper.querySelector(`.phase-diagram-tooltip`)).toBeNull()
   })
 
   test(`hover reports phase info and the two-phase lever rule/tie-line, clears on leave`, async () => {
@@ -282,10 +294,23 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   // the parser, and that an unrelated file is ignored rather than reported.
   test(`dropped SVG reaches the parser, other files are ignored`, async () => {
     const wrapper = await mount_diagram()
-    const drop = async (file: File) => {
-      wrapper.dispatchEvent(create_drop_event(file))
+    const drop = async (file: File, target = wrapper) => {
+      target.dispatchEvent(create_drop_event(file))
       await tick()
     }
+    const empty_svg = () =>
+      new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
+        type: `image/svg+xml`,
+      })
+
+    // allow_file_drop=false ignores the drop and leaves the browser's dragover default alone
+    const disabled = await mount_diagram({ allow_file_drop: false })
+    const dragover = new DragEvent(`dragover`, { bubbles: true, cancelable: true })
+    disabled.dispatchEvent(dragover)
+    expect(dragover.defaultPrevented).toBe(false)
+    await drop(empty_svg(), disabled)
+    await tick()
+    expect(disabled.querySelector(`.error`)).toBeNull()
 
     await drop(new File([`not an svg`], `notes.txt`, { type: `text/plain` }))
     await tick()
@@ -294,11 +319,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // a contentless SVG throws inside parse_phase_diagram_svg, and the shared handler
     // reports it against the dropped filename as a visible error banner (not a console
     // message) — which is what proves the parse ran on it
-    await drop(
-      new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
-        type: `image/svg+xml`,
-      }),
-    )
+    await drop(empty_svg())
     await vi.waitFor(() =>
       expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toContain(`pd.svg`),
     )

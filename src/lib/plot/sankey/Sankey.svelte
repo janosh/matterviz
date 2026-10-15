@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { format_value } from '#lib/labels.js'
   import type { BasePlotProps, LegendConfig, Orientation } from '#lib/plot/index.js'
@@ -94,7 +94,7 @@
       padding?: Sides
       legend?: LegendConfig | null
       show_legend?: boolean
-      tooltip?: Snippet<[SankeyHandlerProps<Metadata>]>
+      tooltip?: TooltipProp<SankeyHandlerProps<Metadata>>
       // Fully replace the default node rect / link ribbon. NOTE: this also replaces the
       // built-in hover/focus/click + tooltip wiring, so re-implement any interactivity
       // you need inside the snippet.
@@ -562,7 +562,7 @@
       </g>
     </svg>
 
-    {#if hover_info}
+    {#if hover_info && tooltip !== false}
       <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color, or for
     a url(...) gradient ribbon the source node color it fades from. -->
       <PlotTooltip

@@ -2,12 +2,13 @@
 // #lib/coordination): normalising the three accepted `structures` prop shapes and turning a
 // dropped file into a new entry.
 
-import { as_text } from '#lib/io/decompress.js'
-import { create_file_drop_handler } from '#lib/io/file-drop.js'
+import { deliver_raw_file, open_material } from '#lib/file-viewer/open.js'
+import type { MaterialSource } from '#lib/file-viewer/open.js'
+import { raw_file_drop_zone } from '#lib/io/file-drop.js'
 import type { FileLoadCallback } from '#lib/io/index.js'
 import type { AnyStructure } from '#lib/structure/index.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
 import { to_error } from '#lib/utils.js'
+import type { Attachment } from 'svelte/attachments'
 
 export interface StructureEntry {
   label: string
@@ -75,32 +76,55 @@ export const compute_structure_entries = <Data>(
   return { entries: computed, error: failures.length > 0 ? failures.join(`; `) : undefined }
 }
 
-// Drop handler that parses each dropped file into a StructureEntry. Callers read as getters
-// so a reactive prop is not captured at construction time; `on_file_drop` returning a
-// callback replaces the parsing entirely so the caller can take over the drop.
-export const create_structure_drop_handler = (opts: {
+// A structure opened from a dropped file, with its parser's recoverable warnings
+export interface DroppedStructure {
+  structure: AnyStructure
+  filename: string
+  warnings: string[]
+}
+
+// Open a dropped source through open_material (worker parse, decompression, URL drops) as a
+// structure; a volumetric file (CHGCAR, .cube) carries one too
+export const open_dropped_structure = async (
+  source: MaterialSource,
+): Promise<DroppedStructure> => {
+  const opened = await open_material(source)
+  try {
+    const { filename } = opened
+    if (opened.type === `structure`) {
+      return { structure: opened.data, filename, warnings: opened.warnings }
+    }
+    if (opened.type === `isosurface`) {
+      return { structure: opened.data.structure, filename, warnings: opened.warnings }
+    }
+    throw new Error(`${filename} is ${opened.type}, not a structure`)
+  } finally {
+    opened.dispose()
+  }
+}
+
+// Drop zone for the plots computed from dropped structures: files open through
+// open_dropped_structure like every viewer's, unless the host's `on_file_drop` takes the raw
+// file instead. Callers read as getters so a reactive prop is not captured at construction
+// time. A throwing `on_structure` rejects that file (e.g. a molecule where a cell is needed)
+// and is reported with the drop.
+export const structure_drop_zone = ({
+  on_file_drop,
+  on_structure,
+  ...opts
+}: {
   allow: () => boolean
-  on_entry: (entry: StructureEntry) => void
+  on_file_drop: () => FileLoadCallback | undefined
+  on_structure: (dropped: DroppedStructure) => void
   on_error: (msg: string) => void
   set_loading: (loading: boolean) => void
-  on_file_drop?: () => FileLoadCallback | undefined
-}): ((event: DragEvent) => Promise<void>) =>
-  create_file_drop_handler({
-    allow: opts.allow,
-    on_drop: (content, filename, metadata) => {
-      const custom_handler = opts.on_file_drop?.()
-      if (custom_handler) return custom_handler(content, filename, metadata)
-      try {
-        const structure = parse_structure_file(as_text(content), filename)
-        if (!structure?.sites?.length) {
-          opts.on_error(`${filename} has no sites, nothing to plot`)
-          return
-        }
-        opts.on_entry({ label: filename || `Dropped structure`, structure })
-      } catch (exc) {
-        opts.on_error(`Failed to process structure: ${to_error(exc).message}`)
-      }
+  on_dragover?: (over: boolean) => void
+}): Attachment<HTMLElement> =>
+  raw_file_drop_zone({
+    ...opts,
+    on_drop: async (source) => {
+      const host_drop = on_file_drop()
+      if (host_drop) return deliver_raw_file(source, host_drop)
+      on_structure(await open_dropped_structure(source))
     },
-    on_error: opts.on_error,
-    set_loading: opts.set_loading,
   })

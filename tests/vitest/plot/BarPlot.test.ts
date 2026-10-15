@@ -546,6 +546,16 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // tooltip=false hides the tooltip but keeps the hover handlers
+  test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
+    const on_bar_hover = vi.fn()
+    const plot = await mount_sized_bar_plot({ series: grouped, on_bar_hover, tooltip })
+    plot.querySelector(`path[role="button"]`)?.dispatchEvent(mouse(`mousemove`))
+    await tick()
+    expect(on_bar_hover).toHaveBeenCalledOnce()
+    expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
+  })
+
   // the export holds the data as the caller gave it: category names (not their indices), no
   // hidden series, no zero rows for categories a series lacks. export_formats narrows the
   // pane and on_export takes over saving.

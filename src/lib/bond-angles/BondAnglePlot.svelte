@@ -117,8 +117,20 @@
   })
 </script>
 
+{#snippet angle_tooltip(info: BarHandlerProps<BondAngleMetadata>)}
+  {@const half_width = (info.metadata?.bin_width ?? bin_width) / 2}
+  {format_num(info.x - half_width, `.1f`)}–{format_num(info.x + half_width, `.1f`)}
+  <small>°</small>
+  <br />
+  {normalize === `density` ? `Density` : `Angles`}: {format_num(
+    info.y,
+    normalize === `density` ? `.4~f` : `.0f`,
+  )}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
+  tooltip={rest.tooltip ?? angle_tooltip}
   bind:show_controls
   bind:controls_open
   series={bar_series}
@@ -130,15 +142,4 @@
   bind:loading
   bind:error_msg
   on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
->
-  {#snippet tooltip(info: BarHandlerProps<BondAngleMetadata>)}
-    {@const half_width = (info.metadata?.bin_width ?? bin_width) / 2}
-    {format_num(info.x - half_width, `.1f`)}–{format_num(info.x + half_width, `.1f`)}
-    <small>°</small>
-    <br />
-    {normalize === `density` ? `Density` : `Angles`}: {format_num(
-      info.y,
-      normalize === `density` ? `.4~f` : `.0f`,
-    )}
-  {/snippet}
-</StructureBarPlot>
+/>

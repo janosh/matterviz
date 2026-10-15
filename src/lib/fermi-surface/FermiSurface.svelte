@@ -20,11 +20,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import {
-    create_color_scale,
-    resolve_value_range,
-    to_color_scale_config,
-  } from '#lib/plot/core/scales.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -51,7 +47,7 @@
     FermiHoverData,
     FermiSurfaceData,
     FermiSurfaceSettings,
-    FermiTooltipConfig,
+    FermiTooltipProp,
     SpinChannel,
   } from './types'
   import { is_fermi_surface_data } from './types'
@@ -109,7 +105,7 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     children,
-    tooltip_config,
+    tooltip,
     on_file_drop,
     on_file_load,
     on_error,
@@ -159,7 +155,7 @@
       on_file_load?: (data: FermiFileLoadData) => void
       on_error?: (data: FermiErrorData) => void
       on_fullscreen_change?: (data: FermiFullscreenData) => void
-      tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
+      tooltip?: FermiTooltipProp
       on_point_hover?: (data: FermiHoverData | null) => void
     } & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -341,7 +337,8 @@
         )
       : [0, 1],
   )
-  const value_range = $derived(resolve_value_range(color_scale, fitted_value_range))
+  // Shared by the surface and its ColorBar so both draw the same colors
+  const resolved_color_scale = $derived(resolve_color_scale(color_scale, fitted_value_range))
 
   // BZ of whichever reciprocal lattice is available (priority order)
   const k_lattice = $derived(
@@ -468,7 +465,7 @@
           fermi_data={surface_data}
           {bz_data}
           {color_property}
-          color_scale={{ ...to_color_scale_config(color_scale), value_range }}
+          color_scale={resolved_color_scale}
           property_name={active_property}
           property_label={custom_property_label}
           {slice_plane}
@@ -499,9 +496,7 @@
       {#if color_bar && color_property === `property` && active_property !== undefined}
         <ColorBar
           title={property_label(active_property, custom_property_label)}
-          scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
-          scale_type={to_color_scale_config(color_scale).type}
-          range={value_range}
+          color_scale={resolved_color_scale}
           snap_ticks={false}
           tick_labels={3}
           orientation="horizontal"
@@ -514,7 +509,7 @@
 
       <!-- Hover tooltip; a k-path point reads like a Brillouin zone hover, in its tint -->
       {@const hovered = hover_data ?? kpath_hover_data}
-      {#if hovered}
+      {#if hovered && tooltip !== false}
         <PlotTooltip
           {...hovered.screen_position}
           offset={{ x: 12, y: -12 }}
@@ -523,7 +518,7 @@
           style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
           {#if hover_data}
-            <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
+            <FermiSurfaceTooltip {hover_data} {tooltip} />
           {:else if kpath_hover_data}
             <BrillouinZoneTooltip hover_data={kpath_hover_data} />
           {/if}

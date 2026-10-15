@@ -5,7 +5,6 @@
   import { normalize_show_controls } from '#lib/controls.js'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -81,7 +80,7 @@
     fullscreen_toggle = true,
     enable_info_pane = true,
     allow_file_drop = true,
-    on_file_drop,
+    on_file_load,
     enable_click_selection = true,
     enable_structure_preview = true,
     hull_face_color_mode: hull_face_color_mode_prop,
@@ -186,7 +185,7 @@
     allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
-    on_file_drop: () => on_file_drop,
+    on_file_load: () => on_file_load,
     entry_category: () => entry_category,
     wrapper: () => wrapper,
     actions: () => ({
@@ -286,7 +285,7 @@
     info_pane_open = defaults.info_pane_open
     controls_open = defaults.legend_pane_open
     color_mode = defaults.color_mode
-    color_scale = defaults.color_scale as D3InterpolateName
+    color_scale = defaults.color_scale
     show_stable = defaults.show_stable
     show_unstable = defaults.show_unstable
     hidden_categories = []
@@ -400,7 +399,7 @@
     {/if}
   </ViewerChrome>
 
-  {#if context && selection.hover_data}
+  {#if context && selection.hover_data && tooltip !== false}
     {@const { entry, position } = selection.hover_data}
     <!-- one above the control buttons so a tooltip near the top-right corner covers them -->
     <PlotTooltip

@@ -1,5 +1,7 @@
 import { display_idx } from '#lib/labels.js'
-import { get_d3_interpolator, type D3InterpolateName } from '#lib/colors/index.js'
+import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
+import { resolve_value_range } from '#lib/plot/core/scales.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import * as math from '#lib/math.js'
 import type { Vec3 } from '#lib/math.js'
@@ -57,7 +59,7 @@ export type VectorLayerOptions = VectorGeometrySettings &
     vector_color: string
     palette: Partial<Record<ElementSymbol, string>>
     char_atom_spacing: number
-    vector_color_scale: D3InterpolateName
+    vector_color_scale: ColorScale // magnitude mode; unset value_range ends fit [0, max]
   }
 
 // sRGB blend from spin-down blue to spin-up red by the original vector direction.
@@ -102,7 +104,12 @@ export function build_vector_layers(
       : prepare_vector_geometry(structure, options, options, char_atom_spacing)
   if (geometry.layers.length === 0) return []
   const is_single = geometry.layers.length === 1
-  const interpolator = get_d3_interpolator(vector_color_scale)
+  const { max_magnitude } = geometry
+  const magnitude_range = resolve_value_range(vector_color_scale, [
+    0,
+    max_magnitude > 1e-10 ? max_magnitude : 1,
+  ])
+  const magnitude_color = resolve_color_ramp(vector_color_scale, magnitude_range).color_fn
   return geometry.layers.map(({ key, site_indices, placements }, layer_idx) => {
     const configured_color = vector_configs[key]?.color
     const layer_color = configured_color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
@@ -144,11 +151,7 @@ export function build_vector_layers(
       }
       const magnitude = magnitudes ? magnitudes[site_idx] : Math.hypot(...vector)
       colors[idx] =
-        mode === `spin_direction`
-          ? spin_direction_color(vector)
-          : interpolator(
-              geometry.max_magnitude > 1e-10 ? magnitude / geometry.max_magnitude : 0,
-            )
+        mode === `spin_direction` ? spin_direction_color(vector) : magnitude_color(magnitude)
     }
     colors.length = site_indices.length
     return { key, arrows: { placements, colors } }

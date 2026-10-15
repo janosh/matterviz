@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
   import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
@@ -199,7 +199,7 @@
       violin_width?: number
       violin_style?: ViolinStyle
       kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
-      tooltip?: Snippet<[BoxHandlerProps<Metadata>]>
+      tooltip?: TooltipProp<BoxHandlerProps<Metadata>>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
@@ -551,7 +551,11 @@
   )
   // Marginals are opt-in and bind to the value axis.
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, vertical ? { right: true } : { top: true }),
+    normalize_marginals(
+      marginals,
+      vertical ? { right: true } : { top: true },
+      tooltip === false,
+    ),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     visible_boxes.map((box_item) => {
@@ -998,7 +1002,7 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && hovered}
+    {#if hover_info && hovered && tooltip !== false}
       <PlotTooltip
         x={hover_info.cx}
         y={hover_info.cy}

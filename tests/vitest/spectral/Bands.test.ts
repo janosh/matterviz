@@ -180,7 +180,7 @@ describe(`Bands component`, () => {
           show_legend: true,
           legend: {},
           display: { x_grid: false, y_grid: false },
-          hover_config: { show_tooltip: false },
+          tooltip: false as const,
           on_point_click: vi.fn(),
           on_point_hover,
           point_tween: { duration: 0 },

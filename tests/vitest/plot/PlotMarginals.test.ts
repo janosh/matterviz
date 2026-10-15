@@ -375,14 +375,16 @@ describe(`marginal hover tooltips`, () => {
     expect(root.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
-  // hover:false and custom snippets both opt out of the hit-rect while still drawing the strip;
-  // a snippet also replaces the built-in bars
+  // tooltip:false and custom snippets both opt out of the hit-rect while still drawing the
+  // strip; a snippet also replaces the built-in bars
+  // so does the host plot's tooltip={false}, which strips inherit
   test.each([
-    [`hover: false`, { type: `histogram`, hover: false }, false],
-    [`a custom snippet`, { type: `histogram`, snippet: marker_snippet }, true],
-  ] as const)(`%s renders the strip but no hit-rect`, async (_desc, top, custom) => {
+    [`tooltip: false`, { type: `histogram`, tooltip: false }, false, undefined],
+    [`a custom snippet`, { type: `histogram`, snippet: marker_snippet }, true, undefined],
+    [`the plot's tooltip: false`, { type: `histogram` }, false, false],
+  ] as const)(`%s renders the strip but no hit-rect`, async (_desc, top, custom, tooltip) => {
     const build_index = vi.spyOn(marginal_utils, `create_marginal_hit_test`)
-    const root = await mount_scatter({ marginals: { top } })
+    const root = await mount_scatter({ marginals: { top }, tooltip })
     expect(root.querySelector(`.marginal-top .custom-marker`) !== null).toBe(custom)
     expect(root.querySelectorAll(`.marginal-top rect`).length > 0).toBe(!custom)
     expect(root.querySelector(`.marginal-hit`)).toBeNull()

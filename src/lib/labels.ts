@@ -329,6 +329,12 @@ export const from_display_idx = (value: number): number => value - 1
 export const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? `` : `s`}`
 
+// One notice for a file's recoverable parse warnings, or undefined when there are none
+export const parse_warnings_notice = (warnings: readonly string[]): string | undefined =>
+  warnings.length > 0
+    ? `${plural(warnings.length, `parse warning`)}: ${warnings.join(`; `)}`
+    : undefined
+
 // Replace common fractional values with unicode glyphs (e.g. 1/2 → ½). The integer part is
 // dropped: callers format fractional coordinates and stoichiometric remainders.
 export function format_fractional(value: number): string {

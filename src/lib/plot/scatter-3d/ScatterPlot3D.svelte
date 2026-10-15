@@ -27,7 +27,7 @@
     auto_scale_range,
     collect_series_extent,
     create_color_scale,
-    resolve_value_range,
+    resolve_color_scale,
     to_color_scale_config,
   } from '#lib/plot/core/scales.js'
   import {
@@ -330,16 +330,13 @@
 
     <!-- Color Bar -->
     {#if has_color_bar && color_bar}
-      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <!-- spread first, so the corner placement and default bar size below append to the
       caller's styles instead of being dropped by it -->
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {...color_bar}
-        scale={{ fn: color_scale_fn, domain: color_domain }}
-        scale_type={color_scale_type}
-        range={color_domain}
+        color_scale={resolve_color_scale(color_scale, auto_color_range)}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar.wrapper_style ??
           ``}"
         bar_style="width: 200px; height: 16px; {color_bar.bar_style ?? ``}"
