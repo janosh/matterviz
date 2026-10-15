@@ -13,12 +13,14 @@
     pinned,
     detail_level,
     constrain_to,
+    bg_color,
   }: {
     hover_info: ChemPotHoverInfo
     pinned: boolean
     detail_level: `compact` | `detailed`
     // container size the tooltip is flipped/clamped inside
     constrain_to: { width: number; height: number }
+    bg_color?: string // the hovered domain's fill
   } = $props()
 
   const fmt = (value: number): string => format_num(value, `.4~g`)
@@ -29,6 +31,7 @@
   y={hover_info.pointer?.y ?? 4}
   {constrain_to}
   fallback_size={{ width: 200, height: 100 }}
+  {bg_color}
   class="chempot-tooltip"
 >
   <h4>

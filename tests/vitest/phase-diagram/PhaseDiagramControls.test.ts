@@ -22,13 +22,13 @@ const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {})
 }
 
 describe(`PhaseDiagramControls`, () => {
-  test(`renders sections and controls when open, export only when enabled`, () => {
-    const target = mount_controls({ enable_export: true })
+  test(`renders sections and controls when open`, () => {
+    const target = mount_controls({})
     expect(target.innerHTML).toContain(`Phase diagram controls`)
     const expected_text =
       `Visibility|Labels|Grid|Comp. labels|Appearance|Font size|Colors|Background|` +
       `Boundaries|Tie-line display|Line width|Endpoint radius|Cursor radius|Axes|` +
-      `X-axis ticks|Y-axis ticks|Export|PNG DPI`
+      `X-axis ticks|Y-axis ticks`
     for (const text of expected_text.split(`|`)) expect(target.textContent).toContain(text)
     const checkboxes = [...target.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)]
     for (const label_text of [`Boundaries`, `Labels`, `Grid`, `Comp. labels`]) {
@@ -37,14 +37,8 @@ describe(`PhaseDiagramControls`, () => {
       )
       expect(checkbox?.checked, `checkbox "${label_text}" not found`).toBe(true)
     }
-    const dpi_value = target.querySelector<HTMLElement>(`.dpi-value`)
-    const input = dpi_value?.querySelector(`input`)
-    const readout = dpi_value?.querySelector(`span`)
-    if (!dpi_value || !input || !readout) throw new Error(`DPI controls are missing`)
-    expect(dpi_value.style.display).toBe(`inline-flex`)
-    expect(input.style.opacity).not.toBe(`0.8`)
-    expect(readout.style.opacity).toBe(`0.8`)
-    expect(mount_controls({ enable_export: false }).textContent).not.toContain(`Export`)
+    // PNG DPI lives in the export pane, not duplicated here
+    expect(target.textContent).not.toContain(`PNG DPI`)
   })
 
   test(`ignores empty axis tick inputs and clamps finite values`, () => {
@@ -84,7 +78,6 @@ describe(`PhaseDiagramControls`, () => {
       data: sample_data, // special points present → the radius input renders
       show_labels: false,
       x_axis: { ticks: 9 },
-      png_dpi: 72,
       config: {
         font_size: 16,
         special_point_radius: 8,
@@ -116,7 +109,7 @@ describe(`PhaseDiagramControls`, () => {
     expect(
       target.querySelector(`button[aria-label="Reset appearance to defaults"]`),
     ).toBeNull()
-    for (const section of [`visibility`, `colors`, `tie-line display`, `axes`, `export`]) {
+    for (const section of [`visibility`, `colors`, `tie-line display`, `axes`]) {
       const selector = `button[aria-label="Reset ${section} to defaults"]`
       query<HTMLButtonElement>(target, selector).click()
       await tick()

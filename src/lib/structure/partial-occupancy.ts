@@ -3,7 +3,10 @@ import type { Site } from '#lib/structure/index.js'
 import { is_image_site } from '#lib/structure/site.js'
 
 const PARTIAL_OCCUPANCY_SLICE_GAP_RAD = 1e-3
-const OCCUPANCY_EPS = 1e-6
+// One tolerance for "fully occupied" in rendering and export: admits occupancies printed to 3
+// decimals (3 x 0.333) and float sums like 0.7 + 0.2 + 0.1 = 0.9999999999999999
+export const OCCUPANCY_TOL = 1e-3
+const NO_HIDDEN_ELEMENTS: ReadonlySet<string> = new Set()
 const MIN_PHI_LENGTH = 1e-4
 const MERGE_DISTANCE_TOLERANCE = 1e-8
 // Bucket edge for the merge lookup, far wider than the tolerance so a group almost never sits
@@ -37,16 +40,48 @@ export type SliceGeometry = {
   render_end_cap: boolean
 }
 
-// Allocation-free: runs for every site of every trajectory frame
-const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {
+// Summed occupancy of a site's species when the visible ones all name one element (Fe2+ and
+// Fe3+ count as one Fe), else NaN (several elements, or none visible). Answers "one element,
+// fully occupied?" for rendering and export alike. Allocation-free: runs for every site of
+// every trajectory frame.
+export const single_element_occupancy = (
+  species: Site[`species`],
+  hidden_elements: ReadonlySet<string> = NO_HIDDEN_ELEMENTS,
+): number => {
+  let visible_element: string | undefined
   let n_visible = 0
-  let total_visible_occupancy = 0
-  for (const { element, occu } of site.species) {
+  let occupancy = 0
+  for (const { element, occu } of species) {
     if (hidden_elements.size > 0 && hidden_elements.has(element)) continue
-    n_visible++
-    total_visible_occupancy += occu
+    if (n_visible++ === 0) visible_element = element
+    else if (element !== visible_element) return NaN
+    occupancy += occu ?? 1 // hand-built sites may omit occu
   }
-  return n_visible === 1 && total_visible_occupancy < 1 - OCCUPANCY_EPS
+  return n_visible === 0 ? NaN : occupancy
+}
+
+export const is_full_occupancy = (occupancy: number): boolean =>
+  Math.abs(occupancy - 1) <= OCCUPANCY_TOL
+
+// A site's species as drawn: each element once with its occupancies summed, so mixed-valence
+// Fe2+ 0.5 / Fe3+ 0.5 is one full Fe sphere rather than two half wedges with a seam. Returns
+// the input itself when no element repeats (the common case allocates nothing).
+export const merge_species_by_element = (species: Site[`species`]): Site[`species`] => {
+  if (species.length < 2) return species
+  const repeats = species.some(
+    (spec, idx) => species.findIndex(({ element }) => element === spec.element) !== idx,
+  )
+  if (!repeats) return species
+  const merged = new Map<string, Site[`species`][number]>()
+  for (const spec of species) {
+    const prev = merged.get(spec.element)
+    const occu = spec.occu ?? 1 // hand-built sites may omit it
+    merged.set(
+      spec.element,
+      prev ? { ...prev, occu: (prev.occu ?? 1) + occu } : { ...spec, occu },
+    )
+  }
+  return [...merged.values()]
 }
 
 // Disordered sites are often stored as separate single-species partial sites at the same
@@ -73,7 +108,8 @@ export const merge_split_partial_sites = (
   const groups_by_bucket = new Map<string, number[]>()
   const bucket_of = (coord: number) => Math.round(coord / MERGE_BUCKET_SIZE)
   for (const [site_idx, site] of sites.entries()) {
-    if (!is_split_partial_site(site, hidden_elements)) {
+    // one visible element short of full occupancy (NaN compares false)
+    if (!(single_element_occupancy(site.species, hidden_elements) < 1 - OCCUPANCY_TOL)) {
       render_sites.push(make_render_site(site_idx, [site_idx]))
       continue
     }
@@ -126,15 +162,17 @@ export const merge_split_partial_sites = (
   return render_sites
 }
 
-export const compute_slice_geometry = (visible_species: Site[`species`]): SliceGeometry[] => {
+export const compute_slice_geometry = (site_species: Site[`species`]): SliceGeometry[] => {
+  const visible_species = merge_species_by_element(site_species)
   if (visible_species.length === 0) return []
-  // Ordered site (the common case): one full turn, no gap, no caps
+  // Ordered site (the common case): one full turn, no gap, no caps. Occupancy is exactly 1, not
+  // a merged float sum like 0.9999999999999999 that consumers comparing to 1 would read partial
   const [only] = visible_species
-  if (visible_species.length === 1 && Math.abs(only.occu - 1) <= OCCUPANCY_EPS) {
+  if (visible_species.length === 1 && is_full_occupancy(only.occu)) {
     return [
       {
         element: only.element,
-        occupancy: only.occu,
+        occupancy: 1,
         start_phi: 0,
         end_phi: 2 * Math.PI,
         phi_length: 2 * Math.PI,
@@ -149,10 +187,10 @@ export const compute_slice_geometry = (visible_species: Site[`species`]): SliceG
   )
   // Preserve total angular coverage at one full turn for invalid overfull inputs.
   const occupancy_scale_factor =
-    total_visible_occupancy > 1 + OCCUPANCY_EPS ? 1 / total_visible_occupancy : 1
+    total_visible_occupancy > 1 + OCCUPANCY_TOL ? 1 / total_visible_occupancy : 1
   // Sum of scaled occupancies equals total * scale (avoids a second O(n) pass)
   const normalized_total_occupancy = total_visible_occupancy * occupancy_scale_factor
-  const has_vacancy_gap = normalized_total_occupancy < 1 - OCCUPANCY_EPS
+  const has_vacancy_gap = normalized_total_occupancy < 1 - OCCUPANCY_TOL
   const last_visible_species_idx = visible_species.length - 1
   let start_angle = 0
   return visible_species.map(({ element, occu }, species_idx) => {

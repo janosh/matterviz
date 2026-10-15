@@ -75,8 +75,8 @@ You can make fat and skinny bars:
 <PeriodicTable
   {heatmap_values}
   style="margin: 2em auto 4em"
-  bind:color_scale
-  color_bar_props={{ title: heat_label }}
+  {color_scale}
+  color_bar={{ title: heat_label }}
   links="name"
 />
 
@@ -107,8 +107,7 @@ For more control, you can also manually add a `ColorBar` inside a custom `TableI
 <PeriodicTable
   {heatmap_values}
   style="margin: 2em auto"
-  color_scale="interpolateInferno"
-  color_scale_range={heat_range}
+  color_scale={{ scheme: `interpolateInferno`, value_range: heat_range }}
 >
   {#snippet inset()}
     <TableInset style="place-items: center; padding: 2em">

@@ -41,10 +41,10 @@ const CONTAINER_SELECTOR = `#test-scatter-3d`
 async function open_controls_pane(page: Page): Promise<Locator> {
   const container = page.locator(CONTAINER_SELECTOR)
   await container.hover()
-  const toggle = container.locator(`button.pane-toggle`)
+  const toggle = container.locator(`button.control-pane-toggle`)
   await expect(toggle).toBeVisible({ timeout: 5000 })
   await toggle.click()
-  const pane = container.locator(`.draggable-pane`)
+  const pane = container.locator(`.control-pane`)
   await expect(pane).toBeVisible({ timeout: 5000 })
   return pane
 }
@@ -252,7 +252,7 @@ test.describe(`ScatterPlot3D`, () => {
     await controls_pane
       .getByRole(`combobox`, { name: /Projection/ })
       .selectOption(`orthographic`)
-    await page.locator(`${CONTAINER_SELECTOR} button.pane-toggle`).click()
+    await page.locator(`${CONTAINER_SELECTOR} button.control-pane-toggle`).click()
     await expect(controls_pane).toBeHidden()
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
@@ -352,7 +352,7 @@ test.describe(`ScatterPlot3D`, () => {
       await axis_label.scrollIntoViewIfNeeded()
       const pane_bounds = await require_bbox(pane, `controls pane at ${width}px`)
       const covered_labels = await page.locator(CONTAINER_SELECTOR).evaluate((container) => {
-        const pane_element = container.querySelector(`.draggable-pane`)
+        const pane_element = container.querySelector(`.control-pane`)
         if (!pane_element) throw new Error(`Missing open controls pane`)
         const pane_rect = pane_element.getBoundingClientRect()
         return [...container.querySelectorAll(`.tick-label, .axis-label`)]

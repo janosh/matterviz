@@ -5,6 +5,7 @@
   import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index.js'
   import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Column, RowData } from '#lib/table/index.js'
+  import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import {
     build_bar_series,
@@ -242,7 +243,7 @@
             data={table_data}
             columns={table_columns}
             search
-            export_data
+            export_formats={TABLE_EXPORT_FORMATS}
             allow_better_toggle
             show_controls
             virtual

@@ -1,7 +1,9 @@
 import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
-import { download } from '#lib/io/fetch.js'
+import { download, type DownloadData } from '#lib/io/fetch.js'
 import type { FileSaver } from './file-export.svelte'
+import type { ExportItem, ExportPaneContext, ExportSection } from './types'
 import { clamp } from '#lib/math.js'
+import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { create_structure_filename } from '#lib/structure/export.js'
 import { abortable, to_error } from '#lib/utils.js'
@@ -100,39 +102,36 @@ function validate_capture_size(
     )
 }
 
-// GPU canvases temporarily adjust renderer pixel ratio; plain 2D canvases are drawn into a
-// scaled offscreen canvas. Returns the Blob rather than downloading it.
+// PNG of a live canvas at `png_dpi` (72 DPI = one pixel per CSS pixel), independent of the
+// screen's devicePixelRatio. GPU canvases re-render their registered scene at that pixel ratio
+// (the drawing buffer is cleared after present, so even a same-size capture renders first);
+// plain 2D canvases encode as-is when their backing store already has the target size.
 export async function canvas_to_png_blob(
   canvas: HTMLCanvasElement,
   png_dpi = DEFAULT_PNG_DPI,
-  scene: Scene | null = null,
-  camera: Camera | null = null,
 ): Promise<Blob> {
-  const resolution_multiplier = dpi_to_scale(png_dpi)
-  const resize = resolution_multiplier > 1.1
+  const scale = dpi_to_scale(png_dpi)
   const renderer = renderer_registry.get(canvas)
 
   if (!renderer) {
-    if (!resize) return canvas_to_blob(canvas)
-    const scaled_canvas = document.createElement(`canvas`)
-    scaled_canvas.width = Math.max(1, Math.round(canvas.width * resolution_multiplier))
-    scaled_canvas.height = Math.max(1, Math.round(canvas.height * resolution_multiplier))
-    const context = scaled_canvas.getContext(`2d`)
-    if (!context) throw new Error(`Canvas 2D context not available`)
-    context.drawImage(canvas, 0, 0, scaled_canvas.width, scaled_canvas.height)
-    return canvas_to_blob(scaled_canvas, `Failed to generate high-resolution PNG`)
+    const width = Math.max(1, Math.round((canvas.clientWidth || canvas.width) * scale))
+    const height = Math.max(1, Math.round((canvas.clientHeight || canvas.height) * scale))
+    if (width === canvas.width && height === canvas.height) return canvas_to_blob(canvas)
+    return paint_png_blob(width, height, 1, (ctx) =>
+      ctx.drawImage(canvas, 0, 0, width, height),
+    )
   }
 
   await wait_for_renderer(renderer)
+  const view = scene_registry.get(canvas)
   const orig_pixel_ratio = renderer.getPixelRatio()
   const orig_size = renderer.getSize(new Vector2())
-  // Scale the live ratio so HiDPI exports retain their display resolution.
-  const pixel_ratio = orig_pixel_ratio * (resize ? resolution_multiplier : 1)
-  validate_capture_size(renderer, orig_size, pixel_ratio)
+  const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
+  validate_capture_size(renderer, orig_size, scale)
 
   try {
-    if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, pixel_ratio)
-    if (scene && camera) renderer.render(scene, camera)
+    if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
+    if (view) renderer.render(view.scene, view.camera)
     return await canvas_to_blob(canvas)
   } finally {
     if (resize)
@@ -140,45 +139,351 @@ export async function canvas_to_png_blob(
   }
 }
 
-// Export structure as PNG image from canvas (triggers browser download)
+// PNG of a scene drawn in CSS pixels: `paint` runs on a fresh canvas pre-scaled by `scale`,
+// so canvas-drawn marks come out crisp instead of as an upscaled screen bitmap
+export function paint_png_blob(
+  width: number,
+  height: number,
+  scale: number,
+  paint: (ctx: CanvasRenderingContext2D) => void,
+): Promise<Blob> {
+  const canvas = document.createElement(`canvas`)
+  canvas.width = Math.max(1, Math.round(width * scale))
+  canvas.height = Math.max(1, Math.round(height * scale))
+  const ctx = canvas.getContext(`2d`)
+  if (!ctx) throw new Error(`Canvas 2D context not available`)
+  ctx.scale(scale, scale)
+  paint(ctx)
+  return canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
+}
+
+// Export a canvas as PNG named `<basename>-<dpi>dpi.png` (triggers browser download)
 export async function export_canvas_as_png(
-  canvas: HTMLCanvasElement | null,
+  canvas: HTMLCanvasElement,
   structure_or_filename: AnyStructure | string | undefined,
   png_dpi = DEFAULT_PNG_DPI,
-  scene: Scene | null = null,
-  camera: Camera | null = null,
   save: FileSaver = download,
 ): Promise<void> {
-  if (!canvas) {
-    if (typeof window !== `undefined`) console.warn(`Canvas not found for PNG export`)
-    return
-  }
-
   const basename =
     typeof structure_or_filename === `string`
       ? structure_or_filename
       : create_structure_filename(structure_or_filename, `png`)
-
   const filename = `${basename.replace(/\.png$/i, ``)}-${Math.round(png_dpi)}dpi.png`
-
-  await save(await canvas_to_png_blob(canvas, png_dpi, scene, camera), filename, `image/png`)
+  await save(await canvas_to_png_blob(canvas, png_dpi), filename, `image/png`)
 }
 
-interface SvgExportOptions {
-  // Extra user-space units around the viewBox in the exported clone. Useful
-  // when strokes are centered on a chart edge and would otherwise be clipped.
-  // `stroke` derives the padding from half the largest rendered stroke width.
-  viewbox_padding?: number | `stroke`
+// === Export model ===
+// Every exporting component lists the serializers it supports as `ExportSources` and hands
+// them to one ExportPane, which turns them into download/copy buttons. Callers pick formats
+// with `export_formats` and may take over saving with `on_export`.
+
+export type ExportFormat = `png` | `svg` | `csv` | `json` | `md` | `tex`
+export const EXPORT_MIME: Record<ExportFormat, string> = {
+  png: `image/png`,
+  svg: `image/svg+xml;charset=utf-8`,
+  csv: `text/csv;charset=utf-8`,
+  json: `application/json`,
+  md: `text/markdown;charset=utf-8`,
+  tex: `text/x-tex;charset=utf-8`,
+}
+const EXPORT_ORDER = Object.keys(EXPORT_MIME) as ExportFormat[]
+const EXPORT_LABELS: Partial<Record<ExportFormat, string>> = { md: `Markdown`, tex: `LaTeX` }
+
+// Serializes one format; PNG sources receive the pane's DPI, the others ignore it
+export type ExportSource = (png_dpi: number) => DownloadData | Promise<DownloadData>
+export type ExportSources = Partial<Record<ExportFormat, ExportSource>>
+
+// The serialized file handed to `on_export`, alongside the pane's destination and DPI
+export interface ExportContext extends ExportPaneContext {
+  data: DownloadData
+  mime: string
 }
 
-// Helper to ensure font-family is set on SVG root
-function set_svg_font_family(svg: SVGElement) {
-  const style = svg.getAttribute(`style`) ?? ``
-  if (!style.includes(`font-family`)) {
-    svg.setAttribute(`style`, `${style}${style ? `;` : ``}font-family:sans-serif;`)
+// The export props every chart and viewer accepts
+export interface ExportProps {
+  // Formats offered (default: all the component supports); [] hides the export pane
+  export_formats?: readonly ExportFormat[]
+  // Default base name of exported files; the pane appends each format's extension
+  export_filename?: string
+  // Receives each serialized file instead of the default save (downloads or chosen folder)
+  on_export?: (format: ExportFormat, context: ExportContext) => void | Promise<void>
+}
+
+// Serialize one format and save it, or hand it to on_export
+export async function run_export(
+  format: ExportFormat,
+  source: ExportSource,
+  context: ExportPaneContext,
+  on_export?: ExportProps[`on_export`],
+): Promise<void> {
+  const data = await source(context.png_dpi)
+  const mime = EXPORT_MIME[format]
+  if (on_export) return on_export(format, { ...context, data, mime })
+  return context.save(data, `${context.filename}.${format}`, mime)
+}
+
+// Pane sections for the offered sources: an Image section (PNG, SVG) and a Data section
+// (CSV, JSON, Markdown, LaTeX). Every text format also gets a copy-to-clipboard button.
+export function export_sections(
+  sources: ExportSources,
+  { export_formats, on_export }: Omit<ExportProps, `export_filename`> = {},
+): ExportSection[] {
+  const items = (image: boolean): ExportItem[] =>
+    EXPORT_ORDER.flatMap((format) => {
+      const source = sources[format]
+      if (!source || (format === `png` || format === `svg`) !== image) return []
+      if (export_formats && !export_formats.includes(format)) return []
+      const copy_text = async () => {
+        const data = await source(DEFAULT_PNG_DPI)
+        return typeof data === `string` ? data : null
+      }
+      return [
+        {
+          label: EXPORT_LABELS[format] ?? format.toUpperCase(),
+          show_dpi: format === `png`,
+          on_download: (context) => run_export(format, source, context, on_export),
+          copy_text: format === `png` ? undefined : copy_text,
+        },
+      ]
+    })
+  return [
+    { title: `Image`, items: items(true) },
+    { title: `Data`, items: items(false) },
+  ].filter((section) => section.items.length > 0)
+}
+
+const require_element = <El>(element: El | null | undefined, kind: string): El => {
+  if (!element) throw new Error(`No ${kind} to export yet: the view has not rendered`)
+  return element
+}
+
+// SVG and PNG sources for a live SVG figure, looked up per export since it may re-mount
+export const svg_sources = (get_svg: () => SVGElement | null | undefined): ExportSources => ({
+  png: (png_dpi) => svg_to_png_blob(require_element(get_svg(), `SVG`), png_dpi),
+  svg: () => svg_to_string(require_element(get_svg(), `SVG`)),
+})
+
+// PNG source for a live canvas (2D or GPU-rendered)
+export const canvas_sources = (
+  get_canvas: () => HTMLCanvasElement | null | undefined,
+): ExportSources => ({
+  png: (png_dpi) => canvas_to_png_blob(require_element(get_canvas(), `canvas`), png_dpi),
+})
+
+export const json_source =
+  (get_data: () => unknown): ExportSource =>
+  () =>
+    JSON.stringify(get_data(), null, 2)
+
+// === SVG serialization ===
+
+const SVG_NS = `http://www.w3.org/2000/svg`
+
+// Paint properties a standalone SVG must carry itself (it loses the page stylesheets), with
+// their initial values. Inherited ones are written only where they change from the parent,
+// the others only where they leave their initial value, so the file stays small. The fonts
+// have no fixed initial value, so the root always pins the page's.
+const INHERITED_STYLES: Record<string, string> = {
+  fill: `rgb(0, 0, 0)`,
+  'fill-opacity': `1`,
+  stroke: `none`,
+  'stroke-width': `1`,
+  'stroke-opacity': `1`,
+  'stroke-dasharray': `none`,
+  'stroke-linecap': `butt`,
+  'stroke-linejoin': `miter`,
+  'font-family': ``,
+  'font-size': ``,
+  'font-weight': `400`,
+  'font-style': `normal`,
+  'text-anchor': `start`,
+  'dominant-baseline': `auto`,
+  'paint-order': `normal`,
+  visibility: `visible`,
+}
+const OWN_STYLES: Record<string, string> = {
+  opacity: `1`,
+  'stop-color': `rgb(0, 0, 0)`,
+  'stop-opacity': `1`,
+}
+// Containers whose content only renders where referenced, so nothing in them is stripped
+const DEFINITION_TAGS = new Set([
+  `defs`,
+  `clipPath`,
+  `mask`,
+  `pattern`,
+  `marker`,
+  `symbol`,
+  `linearGradient`,
+  `radialGradient`,
+  `filter`,
+])
+const SHAPE_TAGS = new Set([
+  `rect`,
+  `circle`,
+  `ellipse`,
+  `path`,
+  `line`,
+  `polyline`,
+  `polygon`,
+])
+const is_no_paint = (paint: string): boolean =>
+  paint === `none` || paint === `transparent` || /^rgba\(.*,\s*0\)$/.test(paint)
+
+type ResolvedStyles = Record<string, string>
+
+// Write each paint property onto `clone` where it differs from what the clone would inherit,
+// and drop authored ones that are redundant. Reads the browser's computed style, falling back
+// to the authored attribute for engines that don't compute SVG presentation attributes.
+function inline_styles(
+  live: Element,
+  clone: Element,
+  parent: ResolvedStyles | null,
+): ResolvedStyles {
+  const computed = getComputedStyle(live)
+  const resolved: ResolvedStyles = {}
+  const style = (clone as SVGElement).style
+  for (const [props, inherited] of [
+    [INHERITED_STYLES, true],
+    [OWN_STYLES, false],
+  ] as const) {
+    for (const [prop, initial] of Object.entries(props)) {
+      const expected = (inherited ? parent?.[prop] : undefined) ?? initial
+      // empty strings mean "not set" at every level, hence find(Boolean) rather than ??
+      const value = (
+        [
+          computed.getPropertyValue(prop),
+          (live as SVGElement).style?.getPropertyValue(prop),
+          live.getAttribute(prop),
+        ].find(Boolean) ?? expected
+      )
+        .replaceAll(/(?<num>\d)px\b/g, `$<num>`)
+        .replace(/^normal$/, prop === `font-weight` ? `400` : `normal`)
+      resolved[prop] = value
+      style?.removeProperty(prop)
+      if (value === expected) clone.removeAttribute(prop)
+      else clone.setAttribute(prop, value)
+    }
   }
-  // Also set as attribute for extra robustness
-  svg.setAttribute(`font-family`, `sans-serif`)
+  if (style && !style.length) clone.removeAttribute(`style`)
+  // Read for stripping, never written: an element is either exported visible or dropped
+  resolved.display = [computed.display, live.getAttribute(`display`)].find(Boolean) ?? `inline`
+  return resolved
+}
+
+// Hidden elements, transparent hit targets and interaction-only markup render nothing
+function renders_nothing(live: Element, styles: ResolvedStyles): boolean {
+  if (live.hasAttribute(`data-export-exclude`)) return true
+  if (live.hasAttribute(`data-export-only`)) return false
+  if (styles.display === `none` || styles.opacity === `0`) return true
+  if (styles.visibility === `hidden` && live.childElementCount === 0) return true
+  return (
+    SHAPE_TAGS.has(live.localName) &&
+    (live.localName === `line` || is_no_paint(styles.fill)) && // lines have no fill
+    (is_no_paint(styles.stroke) || styles[`stroke-width`] === `0`)
+  )
+}
+
+// A <canvas> inside a <foreignObject> is a live bitmap, not markup: the serializer would emit
+// an empty element. Swap it for an <image> of its pixels, repainted at `scale` when the chart
+// registered a painter for it (see canvas_painters) so raster exports stay sharp.
+function foreign_canvas_image(live: Element, scale: number): SVGImageElement | null {
+  const canvas = live.querySelector(`canvas`)
+  if (!canvas?.width || !canvas.height) return null
+  const painter = canvas_painters.get(canvas)
+  let source = canvas
+  if (painter) {
+    source = document.createElement(`canvas`)
+    painter(source, scale)
+  }
+  let href: string
+  try {
+    href = source.toDataURL(`image/png`)
+  } catch {
+    return null // tainted by a cross-origin draw: nothing can be read back
+  }
+  const image = document.createElementNS(SVG_NS, `image`)
+  for (const attr of [`x`, `y`, `width`, `height`]) {
+    const value = live.getAttribute(attr)
+    if (value != null) image.setAttribute(attr, value)
+  }
+  image.setAttribute(`href`, href)
+  return image
+}
+
+type WalkState = { max_stroke: number; raster_scale: number }
+
+// Walk the live tree and its clone in lockstep: inline styles, strip what renders nothing,
+// rasterize foreign canvases and track the widest stroke (for edge padding)
+function prepare_clone(
+  live: Element,
+  clone: Element,
+  parent: ResolvedStyles | null,
+  in_defs: boolean,
+  state: WalkState,
+): void {
+  const styles = inline_styles(live, clone, parent)
+  // Static stand-ins for interactive markup, hidden on screen
+  if (live.hasAttribute(`data-export-only`)) clone.removeAttribute(`display`)
+  if (!in_defs && renders_nothing(live, styles)) return clone.remove()
+  if (live.localName === `foreignObject`) {
+    if (!live.querySelector(`canvas`)) return
+    const image = foreign_canvas_image(live, state.raster_scale)
+    if (image) clone.replaceWith(image)
+    else clone.remove()
+    return
+  }
+  if (!in_defs && !is_no_paint(styles.stroke)) {
+    // stroke widths may carry units (`1.5px`), which Number() rejects
+    const stroke_width = Number.parseFloat(styles[`stroke-width`]) // oxlint-disable-line unicorn/prefer-number-coercion
+    state.max_stroke = Math.max(state.max_stroke, stroke_width || 0)
+  }
+  const children_in_defs = in_defs || DEFINITION_TAGS.has(live.localName)
+  const clone_children = [...clone.children]
+  ;[...live.children].forEach((child, idx) => {
+    if (clone_children[idx])
+      prepare_clone(child, clone_children[idx], styles, children_in_defs, state)
+  })
+}
+
+// Matches decimals with 3+ fraction digits (optionally in exponent form), rounded to 2 places:
+// 0.01 user units is far below a pixel, and long floats dominate chart file sizes
+const LONG_DECIMAL = /-?\d*\.\d{3,}(?:e[-+]?\d+)?|-?\d+(?:\.\d+)?e-\d+/gi
+const round_decimals = (text: string): string =>
+  text.replaceAll(LONG_DECIMAL, (match) => String(Math.round(Number(match) * 100) / 100 || 0))
+// Markup the standalone file has no use for: interaction and test hooks and event routing.
+// Classes stay as layer names for editing the figure in vector tools, minus Svelte's
+// scoping hashes, which only meant something to the page stylesheet.
+const DROP_ATTR = /^(?:data-|aria-|role$|tabindex$|pointer-events$|cursor$)/
+const INTERACTION_STYLES = [`cursor`, `pointer-events`, `user-select`, `touch-action`]
+
+function minify_clone(root: Element): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
+  const comments: Node[] = []
+  while (walker.nextNode()) comments.push(walker.currentNode)
+  for (const comment of comments) comment.parentNode?.removeChild(comment)
+  for (const element of [root, ...root.querySelectorAll(`*`)]) {
+    const style = (element as SVGElement).style
+    for (const prop of INTERACTION_STYLES) style?.removeProperty(prop)
+    if (style && !style.length) element.removeAttribute(`style`)
+    const classes = element
+      .getAttribute(`class`)
+      ?.replaceAll(/\bsvelte-\w+\b/g, ``)
+      .trim()
+    if (classes) element.setAttribute(`class`, classes.replaceAll(/\s+/g, ` `))
+    else element.removeAttribute(`class`)
+    // a snapshot: the live NamedNodeMap shifts as attributes are removed
+    for (const { name, value } of Array.from(element.attributes)) {
+      if (DROP_ATTR.test(name)) element.removeAttribute(name)
+      else if (![`href`, `xlink:href`, `id`, `font-family`].includes(name))
+        element.setAttribute(name, round_decimals(value))
+    }
+  }
+  // Groups emptied by the stripping above render nothing (definition containers may be
+  // referenced by id, so they stay)
+  for (const group of [...root.querySelectorAll(`g`)].toReversed()) {
+    if (!group.firstElementChild && !group.closest(`defs`)) group.remove()
+  }
 }
 
 type SvgViewbox = [x: number, y: number, width: number, height: number]
@@ -205,176 +510,51 @@ function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
   return padded.every(Number.isFinite) && padded[2] > 0 && padded[3] > 0 ? padded : null
 }
 
-function resolve_viewbox_padding(svg: SVGElement, options: SvgExportOptions): number {
-  if (options.viewbox_padding !== `stroke`) {
-    return Number.isFinite(options.viewbox_padding)
-      ? Math.max(0, options.viewbox_padding ?? 0)
-      : 0
-  }
-  let max_stroke_width = 0
-  for (const element of [svg, ...svg.querySelectorAll(`*`)]) {
-    const computed = getComputedStyle(element)
-    const inline_style = (element as SVGElement).style
-    // Inline style wins over the computed value, which wins over the presentation attribute
-    const style_value = (inline_val: string, prop: string): string =>
-      [inline_val, computed.getPropertyValue(prop), element.getAttribute(prop)].find(
-        Boolean,
-      ) ?? ``
-    const stroke = style_value(inline_style.stroke, `stroke`)
-    if (!stroke || stroke === `none` || stroke === `transparent`) continue
-    // oxlint-disable-next-line unicorn/prefer-number-coercion -- CSS lengths include units
-    const stroke_width = Number.parseFloat(
-      style_value(inline_style.strokeWidth, `stroke-width`),
-    )
-    if (Number.isFinite(stroke_width))
-      max_stroke_width = Math.max(max_stroke_width, stroke_width)
-  }
-  return max_stroke_width / 2
-}
-
-// Copy the given computed-style props from each live SVG element to its clone counterpart;
-// identical structure lets querySelectorAll(`*`) walk both in lockstep. Writes clone-only.
-function inline_computed_styles(
-  live: SVGElement,
-  clone: SVGElement,
-  properties: readonly string[],
-) {
-  const live_els = [live, ...live.querySelectorAll(`*`)]
-  const clone_els = [clone, ...clone.querySelectorAll(`*`)]
-  for (const [idx, live_el] of live_els.entries()) {
-    const computed = getComputedStyle(live_el)
-    for (const prop of properties) {
-      const val = computed.getPropertyValue(prop)
-      if (val) clone_els[idx].setAttribute(prop, val)
-    }
-  }
-}
-
-// A <canvas> inside a <foreignObject> is a live bitmap, not markup: the serializer emits
-// the empty element and the pixels are lost, so an exported dense scatter comes out with
-// no points at all. Swap each one for an <image> carrying the same pixels.
-function inline_foreign_canvases(source: SVGElement, clone: SVGElement): void {
-  const originals = [...source.querySelectorAll(`foreignObject`)]
-  const copies = [...clone.querySelectorAll(`foreignObject`)]
-  originals.forEach((original, idx) => {
-    const canvas = original.querySelector(`canvas`)
-    const copy = copies[idx]
-    if (!canvas?.width || !canvas.height || !copy) return
-    let href: string
-    try {
-      href = canvas.toDataURL(`image/png`)
-    } catch {
-      return // tainted by a cross-origin draw; leaving the blank foreignObject is all we can do
-    }
-    const image = document.createElementNS(`http://www.w3.org/2000/svg`, `image`)
-    for (const attr of [`x`, `y`, `width`, `height`]) {
-      const value = copy.getAttribute(attr)
-      if (value != null) image.setAttribute(attr, value)
-    }
-    image.setAttribute(`href`, href)
-    copy.replaceWith(image)
-  })
-}
-
-// Clone, inline the given computed-style props, ensure font-family + xmlns, then serialize
-// to a standalone SVG string. Never mutates the live element.
-function serialize_svg_for_export(
-  svg_element: SVGElement,
-  inline_styles: readonly string[] = [],
-  viewbox_padding = 0,
-  raster_size?: [width: number, height: number],
-): string {
-  const clone = svg_element.cloneNode(true) as SVGElement
-  if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
-  // After the style pass, which walks source and clone in parallel by index
-  inline_foreign_canvases(svg_element, clone)
-  // Interactive HTML controls taint a rasterized SVG. Components supply static SVG
-  // replacements using the same label layout, while transient tooltips are omitted.
-  for (const element of clone.querySelectorAll(`[data-export-exclude]`)) element.remove()
-  for (const element of clone.querySelectorAll(`[data-export-only]`)) {
-    element.removeAttribute(`display`)
-    element.removeAttribute(`data-export-only`)
-  }
-  const padded_viewbox =
-    viewbox_padding > 0 || raster_size ? svg_viewbox(svg_element, viewbox_padding) : null
-  if (padded_viewbox) clone.setAttribute(`viewBox`, padded_viewbox.join(` `))
-  if (raster_size) {
-    const [width, height] = raster_size
-    clone.setAttribute(`width`, String(width))
-    clone.setAttribute(`height`, String(height))
-    clone.style.width = `${width}px`
-    clone.style.height = `${height}px`
-  }
-  set_svg_font_family(clone)
-  if (!clone.hasAttribute(`xmlns`)) {
-    clone.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
-  }
-  return new XMLSerializer().serializeToString(clone)
-}
-
-// Wrap serialize_svg_for_export's output as a full SVG document string (XML declaration +
-// DOCTYPE + SVG), suitable for saving to file.
-export function svg_to_svg_string(
-  svg_element: SVGElement,
-  // CSS props to inline from computed styles as presentation attributes; a standalone SVG
-  // drops page stylesheets (e.g. Svelte component styles), so class-based styling is lost.
-  inline_styles: readonly string[] = [],
-  options: SvgExportOptions = {},
-): string {
-  const viewbox_padding = resolve_viewbox_padding(svg_element, options)
-  const svg_string = serialize_svg_for_export(svg_element, inline_styles, viewbox_padding)
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
-}
-
-// Export SVG element as SVG file (triggers browser download)
-export function export_svg_as_svg(
-  svg_element: SVGElement | null,
-  filename: string,
-  inline_styles: readonly string[] = [],
-  options: SvgExportOptions = {},
-  save: FileSaver = download,
-): void | Promise<void> {
-  if (!svg_element) {
-    console.warn(`SVG element not found for export`)
-    return
-  }
-  const svg_content = svg_to_svg_string(svg_element, inline_styles, options)
-  return save(svg_content, filename, `image/svg+xml;charset=utf-8`)
-}
-
-// Rasterize an SVG using its viewBox or viewport dimensions.
-export async function svg_to_png_blob(
-  svg_element: SVGElement,
-  png_dpi = DEFAULT_PNG_DPI,
-  inline_styles: readonly string[] = [],
-  options: SvgExportOptions = {},
-): Promise<Blob> {
-  const padding = resolve_viewbox_padding(svg_element, options)
-  const padded_viewbox = svg_viewbox(svg_element, padding)
-  if (!padded_viewbox) throw new Error(`Invalid SVG dimensions for PNG export`)
-  const [, , width, height] = padded_viewbox
-  if (!Number.isFinite(png_dpi) || png_dpi <= 0) {
-    throw new Error(`Invalid PNG DPI for export`)
-  }
-
-  const resolution_multiplier = dpi_to_scale(png_dpi)
+// Standalone SVG markup of a live figure, never mutating it: computed paint styles inlined
+// minimally, HTML overlays (legends, color bars) redrawn as SVG, hidden and interaction-only
+// elements dropped, coordinates rounded to 2 decimals, and the viewBox padded by half the
+// widest stroke so edge strokes aren't clipped. Foreign canvases embed at `scale`; a raster
+// export also sizes the root to its viewBox times `scale` in pixels.
+function serialize_svg(
+  svg: SVGElement,
+  scale: number,
+  raster = false,
+): { markup: string; size: [width: number, height: number] | null } {
+  const clone = svg.cloneNode(true) as SVGElement
+  const state: WalkState = { max_stroke: 0, raster_scale: scale }
+  prepare_clone(svg, clone, null, false, state)
+  for (const overlay of export_overlays(svg)) clone.append(overlay)
+  minify_clone(clone)
+  const viewbox = svg_viewbox(svg, state.max_stroke / 2)
   // Floor at 1px: small viewBoxes at low DPI round to 0 and make toBlob fail confusingly
-  const pixel_width = Math.max(1, Math.round(width * resolution_multiplier))
-  const pixel_height = Math.max(1, Math.round(height * resolution_multiplier))
+  const size: [number, number] | null = viewbox
+    ? ([viewbox[2], viewbox[3]].map((len) =>
+        raster ? Math.max(1, Math.round(len * scale)) : Math.round(len * 100) / 100,
+      ) as [number, number])
+    : null
+  if (viewbox) clone.setAttribute(`viewBox`, round_decimals(viewbox.join(` `)))
+  if (size) set_attrs(clone, { width: size[0], height: size[1] })
+  clone.style.removeProperty(`width`)
+  clone.style.removeProperty(`height`)
+  if (!clone.style.length) clone.removeAttribute(`style`)
+  clone.setAttribute(`xmlns`, SVG_NS)
+  return { markup: new XMLSerializer().serializeToString(clone), size }
+}
 
-  const canvas = document.createElement(`canvas`)
-  const ctx = canvas.getContext(`2d`)
-  if (!ctx) throw new Error(`Canvas 2D context not available`)
+// Standalone SVG file content of a live figure (see serialize_svg)
+export const svg_to_string = (svg: SVGElement): string =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n${serialize_svg(svg, dpi_to_scale(DEFAULT_PNG_DPI)).markup}`
 
-  canvas.width = pixel_width
-  canvas.height = pixel_height
-
-  const serialized = serialize_svg_for_export(svg_element, inline_styles, padding, [
-    pixel_width,
-    pixel_height,
-  ])
-  const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
-  const svg_data_url = URL.createObjectURL(svg_blob)
+// Rasterize a live SVG figure at `png_dpi` (72 DPI = one pixel per viewBox unit)
+export async function svg_to_png_blob(
+  svg: SVGElement,
+  png_dpi = DEFAULT_PNG_DPI,
+): Promise<Blob> {
+  if (!Number.isFinite(png_dpi) || png_dpi <= 0) throw new Error(`Invalid PNG DPI for export`)
+  const { markup, size } = serialize_svg(svg, dpi_to_scale(png_dpi), true)
+  if (!size) throw new Error(`Invalid SVG dimensions for PNG export`)
+  const [width, height] = size
+  const url = URL.createObjectURL(new Blob([markup], { type: EXPORT_MIME.svg }))
   const listeners = new AbortController()
   try {
     const img = new Image()
@@ -388,40 +568,161 @@ export async function svg_to_png_blob(
             () => reject(new Error(`Failed to load SVG for PNG export`)),
             event_options,
           )
-          img.src = svg_data_url
+          img.src = url
         }),
-      export_timeout_ms((pixel_width * pixel_height * 4) / 1e6),
+      export_timeout_ms((width * height * 4) / 1e6),
       `SVG image load`,
     )
-    ctx.clearRect(0, 0, pixel_width, pixel_height)
-    ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
-    return await canvas_to_blob(canvas)
+    return await paint_png_blob(width, height, 1, (ctx) =>
+      ctx.drawImage(img, 0, 0, width, height),
+    )
   } catch (error) {
     throw to_error(error)
   } finally {
     listeners.abort()
-    URL.revokeObjectURL(svg_data_url)
+    URL.revokeObjectURL(url)
   }
 }
 
-// Export SVG element as PNG (triggers browser download)
-export async function export_svg_as_png(
-  svg_element: SVGElement | null,
-  filename: string,
-  png_dpi = DEFAULT_PNG_DPI,
-  inline_styles: readonly string[] = [],
-  options: SvgExportOptions = {},
-  save: FileSaver = download,
-): Promise<void> {
-  if (!svg_element) {
-    console.warn(`SVG element not found for PNG export`)
-    return
+// === HTML overlays ===
+// Legends and color bars are HTML laid over a chart's SVG. Components mark such roots with
+// `data-export-overlay`; on export each is redrawn as static SVG at its on-screen position.
+
+type Attrs = Record<string, string | number>
+const set_attrs = <El extends Element>(element: El, attrs: Attrs): El => {
+  for (const [name, value] of Object.entries(attrs)) element.setAttribute(name, String(value))
+  return element
+}
+const svg_el = (tag: string, attrs: Attrs) =>
+  set_attrs(document.createElementNS(SVG_NS, tag), attrs)
+
+// ColorBar only draws `to right` (horizontal) and `to top` (vertical) gradients
+const GRADIENT_VECTORS: Record<string, [number, number, number, number]> = {
+  right: [0, 0, 1, 0],
+  top: [0, 1, 0, 0],
+}
+
+// ColorBar's computed `linear-gradient(to <side>, <color> <offset>, ...)` as an SVG gradient
+// vector plus [color, offset] stops, or null for any other background
+export function parse_linear_gradient(background_image: string) {
+  const { side = ``, args = `` } =
+    /^linear-gradient\(to (?<side>\w+), (?<args>.*)\)$/s.exec(background_image.trim())
+      ?.groups ?? {}
+  const vector = GRADIENT_VECTORS[side]
+  if (!vector) return null
+  // split on commas outside parentheses (color functions like rgb(1, 2, 3) nest their own),
+  // then each stop at the space before its offset
+  const stops = args.split(/,(?![^(]*\))/).map((stop) => stop.trim().split(/\s+(?=\S+$)/))
+  return { vector, stops }
+}
+
+// Redraw an HTML overlay as SVG in the coordinate frame of `origin` (the chart SVG's box):
+// solid and gradient backgrounds become rects, nested SVGs (legend markers) are cloned in
+// place, text runs become <text> at their laid-out position with the computed font.
+function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGElement {
+  // clipPath and linearGradient never render themselves, so they can live in the group
+  const group = svg_el(`g`, {})
+  const box = (rect: DOMRect) => ({
+    x: rect.left - origin.left,
+    y: rect.top - origin.top,
+    width: rect.width,
+    height: rect.height,
+  })
+  // A scrolling legend shows only what fits its box
+  if (![``, `visible`].includes(getComputedStyle(root).overflowY)) {
+    const id = unique_id(`export-overlay-clip`)
+    const clip = svg_el(`clipPath`, { id })
+    const clip_box = box(root.getBoundingClientRect())
+    clip.append(svg_el(`rect`, clip_box))
+    group.append(clip)
+    group.setAttribute(`clip-path`, `url(#${id})`)
   }
-  await save(
-    await svg_to_png_blob(svg_element, png_dpi, inline_styles, options),
-    filename,
-    `image/png`,
-  )
+
+  const add_background = (element: Element, style: CSSStyleDeclaration, opacity: number) => {
+    const rect = box(element.getBoundingClientRect())
+    if (!(rect.width > 0 && rect.height > 0)) return
+    // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS lengths include px
+    const radius = Number.parseFloat(style.borderTopLeftRadius) || 0
+    const gradient = parse_linear_gradient(style.backgroundImage)
+    let fill = style.backgroundColor
+    if (gradient) {
+      const id = unique_id(`export-overlay-gradient`)
+      const [x1, y1, x2, y2] = gradient.vector
+      const element_gradient = svg_el(`linearGradient`, { id, x1, y1, x2, y2 })
+      for (const [color, offset] of gradient.stops) {
+        element_gradient.append(svg_el(`stop`, { offset, 'stop-color': color }))
+      }
+      group.append(element_gradient)
+      fill = `url(#${id})`
+    } else if (!fill || is_no_paint(fill)) return
+    group.append(svg_el(`rect`, { ...rect, ...(radius && { rx: radius }), fill, opacity }))
+  }
+
+  const add_text = (node: Text, style: CSSStyleDeclaration, opacity: number) => {
+    const text = node.textContent?.replaceAll(/\s+/g, ` `).trim()
+    if (!text) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rect = box(range.getBoundingClientRect())
+    if (!(rect.width > 0 || rect.height > 0)) return
+    const text_el = svg_el(`text`, {
+      x: rect.x,
+      y: rect.y + rect.height / 2,
+      'dominant-baseline': `central`,
+      fill: style.color,
+      'font-size': style.fontSize,
+      'font-family': style.fontFamily,
+      'font-weight': style.fontWeight,
+      'font-style': style.fontStyle,
+      opacity,
+    })
+    text_el.textContent = text
+    group.append(text_el)
+  }
+
+  const walk = (element: Element, parent_opacity: number) => {
+    // Interactive controls have no static rendering (and raster exports must stay untainted)
+    if (element.matches(`input, select, button, textarea, [data-export-exclude]`)) return
+    const style = getComputedStyle(element)
+    if (style.display === `none` || style.visibility === `hidden`) return
+    const opacity = parent_opacity * (style.opacity === `` ? 1 : Number(style.opacity))
+    if (!(opacity > 0)) return
+    if (element instanceof SVGSVGElement) {
+      const clone = element.cloneNode(true) as SVGSVGElement
+      prepare_clone(element, clone, null, false, { max_stroke: 0, raster_scale: 1 })
+      const nested_box = box(element.getBoundingClientRect())
+      group.append(set_attrs(clone, { ...nested_box, opacity }))
+      return
+    }
+    add_background(element, style, opacity)
+    for (const child of element.childNodes) {
+      if (child instanceof Text) add_text(child, style, opacity)
+      else if (child instanceof Element) walk(child, opacity)
+    }
+  }
+  walk(root, 1)
+  return group
+}
+
+// SVG redraws of the HTML overlays a chart lays over `svg` (siblings marked data-export-overlay)
+function export_overlays(svg: SVGElement): SVGElement[] {
+  const overlays = [
+    ...(svg.parentElement?.querySelectorAll<HTMLElement>(`[data-export-overlay]`) ?? []),
+  ].filter((overlay) => !svg.contains(overlay))
+  if (overlays.length === 0) return []
+  const origin = svg.getBoundingClientRect()
+  return overlays.map((overlay) => overlay_to_svg(overlay, origin))
+}
+
+// An HTML element (e.g. a CSS-grid heatmap) as a standalone SVG: the overlay redraw applied
+// to the element itself inside an SVG of its size, so HTML figures share the SVG/PNG path
+export function html_to_svg(element: HTMLElement): SVGSVGElement {
+  const rect = element.getBoundingClientRect()
+  if (!(rect.width > 0 && rect.height > 0))
+    throw new Error(`Cannot export an element that has not been laid out (zero size)`)
+  const svg = svg_el(`svg`, { viewBox: `0 0 ${rect.width} ${rect.height}` }) as SVGSVGElement
+  svg.append(overlay_to_svg(element, rect))
+  return svg
 }
 
 // Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately

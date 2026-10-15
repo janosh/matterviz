@@ -17,9 +17,12 @@ import {
   perceived_brightness,
   pick_contrast_color,
   PLOT_COLORS,
+  tooltip_paint,
   watch_dark_mode,
 } from '#lib/colors/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
+import { mock_canvas_context } from './setup'
+import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
@@ -158,20 +161,56 @@ test.each([
 describe(`pick_contrast_color`, () => {
   it.each<[Paint, string]>([
     [{ background: `#000000` }, `white`],
-    [{ background: `#4fc3f7` }, `black`], // light cyan: black wins under WCAG and APCA alike
-    // mid-tones where the WCAG 2 ratio picks black (4.8:1 vs 4.4:1 on the steelblue) but the
-    // pair reads worse than white: APCA flips near luminance 0.32 instead of 0.18
-    [{ background: `#4e79a7` }, `white`], // PLOT_COLORS[0] steelblue, luminance 0.18
-    [{ background: `#e15759` }, `white`], // PLOT_COLORS[2] red, luminance 0.24
-    [{ background: `#59a14f` }, `white`], // PLOT_COLORS[4] green, luminance 0.28
-    [{ background: `#f28e2c` }, `black`], // PLOT_COLORS[1] orange, luminance 0.38
-    [{ background: `#808080` }, `white`], // mid gray, luminance 0.22
+    [{ background: `#4fc3f7` }, `black`], // light cyan
+    [{ background: `#1f77b4` }, `white`], // dark blue: white 4.8:1 vs black 4.4:1
+    // near-tie: black edges ahead (4.60 vs 4.57) but white reaches AA, so white wins
+    [{ background: `#4e79a7` }, `white`], // PLOT_COLORS[0] steelblue
+    // mid-tones where white text falls below 4.5:1 WCAG (white:black ratio in comments)
+    [{ background: `#00a1ff` }, `black`], // Vesta Pa 2.8:7.5
+    [{ background: `#59a14f` }, `black`], // PLOT_COLORS[4] green 3.2:6.6
+    [{ background: `#808080` }, `black`], // mid gray 3.9:5.3
     [{ background: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
     [{ background: `rgba(255, 255, 255, 0.1)`, backdrop: `black` }, `white`],
     [{ background: `rgba(0, 0, 0, 0.1)`, backdrop: `white` }, `black`],
     [{ background: `transparent`, backdrop: `black` }, `white`],
   ])(`pick_contrast_color(%o) = %s`, (paint, expected) => {
     expect(pick_contrast_color(paint)).toBe(expected)
+  })
+
+  it(`prefers white at AA, else the higher ratio, on every element-scheme and d3-scale color`, () => {
+    // independent oracle: WCAG 2 relative luminance and contrast ratio
+    const luminance = (color: string): number => {
+      const { r: red, g: green, b: blue } = d3_rgb(color)
+      const [lin_r, lin_g, lin_b] = [red, green, blue].map((channel) => {
+        const fraction = channel / 255
+        return fraction <= 0.04045 ? fraction / 12.92 : ((fraction + 0.055) / 1.055) ** 2.4
+      })
+      return 0.2126 * lin_r + 0.7152 * lin_g + 0.0722 * lin_b
+    }
+    const ratio = (lum_a: number, lum_b: number) =>
+      (Math.max(lum_a, lum_b) + 0.05) / (Math.min(lum_a, lum_b) + 0.05)
+    const scale_names = Object.keys(d3_sc).filter(is_d3_interpolate_name)
+    const backgrounds = new Set([
+      ...Object.values(ELEMENT_COLOR_SCHEMES).flatMap(Object.values),
+      ...PLOT_COLORS,
+      ...scale_names.flatMap((name) =>
+        Array.from({ length: 21 }, (_, idx) => get_d3_interpolator(name)(idx / 20)),
+      ),
+    ])
+    expect(backgrounds.size).toBeGreaterThan(1000)
+    const failures = [...backgrounds].flatMap((background) => {
+      const bg_lum = luminance(background)
+      const picked = pick_contrast_color({ background })
+      const [black, white] = [ratio(0, bg_lum), ratio(1, bg_lum)]
+      const picked_ratio = picked === `black` ? black : white
+      // white whenever it reaches AA, otherwise whichever contrasts more; black or white
+      // always reaches ≥ 4.58:1, so the pick meets AA too
+      const expected_ratio = white >= 4.5 ? white : Math.max(black, white)
+      return picked_ratio !== expected_ratio || picked_ratio < 4.5
+        ? [`${background}: ${picked} at ${picked_ratio} (black ${black}, white ${white})`]
+        : []
+    })
+    expect(failures).toEqual([])
   })
 
   it.each<[Paint, string]>([
@@ -191,6 +230,44 @@ describe(`pick_contrast_color`, () => {
     [{ background: `#000000` }, `white`],
   ])(`contrast_text_color(%o) = %s`, (paint, expected) => {
     expect(contrast_text_color(paint)).toBe(expected)
+  })
+
+  // opaque fills dress the tooltip as is, translucent ones flattened to their hue; fills JS
+  // can't resolve keep the neutral themed chip
+  it.each([
+    [`#59a14f`, { background: `#59a14f`, color: `black` }],
+    [`#1f3a5f`, { background: `#1f3a5f`, color: `white` }],
+    [`rgba(255, 255, 255, 0.5)`, { background: `rgb(255, 255, 255)`, color: `black` }],
+    [`rgba(0, 0, 0, 0.85)`, { background: `rgb(0, 0, 0)`, color: `white` }],
+    [`var(--fill)`, null],
+    [`transparent`, null],
+    [`none`, null],
+    [null, null],
+  ])(`tooltip_paint(%s) = %o`, (fill, expected) => {
+    expect(tooltip_paint(fill)).toEqual(expected)
+  })
+
+  // Colors only a browser parses (oklch, …) cost a canvas pixel write + readback each
+  it(`canvas color parses are memoized`, () => {
+    vi.stubGlobal(`CanvasRenderingContext2D`, Object) // only checked for existence
+    const get_image_data = vi.fn(() => ({ data: [10, 20, 30, 255] }))
+    let fill_style = ``
+    const ctx = mock_canvas_context({ getImageData: get_image_data })
+    Object.defineProperty(ctx, `fillStyle`, {
+      get: () => fill_style,
+      set: (value: string) => (fill_style = value),
+    })
+    try {
+      const color = `oklch(0.4 0.1 250 / 1)`
+      const paints = [tooltip_paint(color), tooltip_paint(color), tooltip_paint(color)]
+      expect(paints).toEqual(
+        Array.from({ length: 3 }, () => ({ background: color, color: `white` })),
+      )
+      expect(get_image_data).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    }
   })
 
   it(`contrast_color_memo matches pick_contrast_color and follows backdrop/alpha changes`, () => {

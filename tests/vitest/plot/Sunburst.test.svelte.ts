@@ -5,6 +5,7 @@ import { PLOT_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
+  click_export,
   fire,
   flush_render,
   keydown,
@@ -201,17 +202,33 @@ describe(`Sunburst`, () => {
     expect(n_arcs(plot)).toBe(expected_arcs)
   })
 
-  // boolean props that remove a feature's DOM when false
+  // props that remove a feature's DOM when switched off
   test.each([
-    [`show_labels`, `.arc-label`, {}],
-    [`export_buttons`, `[aria-label="Download SVG"]`, { controls_open: true }], // buttons live in the controls pane
-    [`show_breadcrumbs`, `.breadcrumbs`, { zoom_root_id: `A` }],
-  ] as const)(`%s=false removes %s`, async (prop, selector, extra) => {
+    [`show_labels`, `.arc-label`, {}, { show_labels: false }],
+    [`export_formats`, `button.export-toggle`, {}, { export_formats: [] }],
+    [`show_breadcrumbs`, `.breadcrumbs`, { zoom_root_id: `A` }, { show_breadcrumbs: false }],
+  ] as const)(`turning off %s removes %s`, async (_prop, selector, extra, off) => {
     // each mount lives in its own container, so both variants can coexist
     const shown = await mount_sized_sunburst({ data: tree, ...extra })
-    const hidden = await mount_sized_sunburst({ data: tree, ...extra, [prop]: false })
+    const hidden = await mount_sized_sunburst({ data: tree, ...extra, ...off })
     expect(shown.querySelectorAll(selector).length).toBeGreaterThan(0)
     expect(hidden.querySelectorAll(selector)).toHaveLength(0)
+  })
+
+  test(`CSV export lists every node by its label path`, async () => {
+    const on_export = vi.fn()
+    const plot = await mount_sized_sunburst({ data: tree, on_export })
+    expect(await click_export(`CSV`, plot)).toEqual([`PNG`, `SVG`, `CSV`])
+    await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+    const [format, { data, filename }] = on_export.mock.calls[0]
+    expect([format, filename]).toEqual([`csv`, `sunburst`])
+    expect(String(data).split(`\n`)).toEqual([
+      `path,depth,value,fraction`,
+      `A,1,10,0.5`,
+      `A / A1,2,4,0.2`,
+      `A / A2,2,6,0.3`,
+      `B,1,10,0.5`,
+    ])
   })
 
   // labels auto-contrast with the arc fill (white labels would vanish on light arcs, black
@@ -220,6 +237,7 @@ describe(`Sunburst`, () => {
     [`#ffe0b3`, `black`],
     [`#1f3a5f`, `white`],
     [`#4e79a7`, `white`],
+    [`#e15759`, `black`], // PLOT_COLORS red: white only 3.7:1
   ])(`arc label on %s renders %s text for contrast`, async (color, expected_fill) => {
     const plot = await mount_sized_sunburst({ data: [{ label: `N`, color, value: 10 }] })
     expect(plot.querySelector(`.arc-label`)?.getAttribute(`fill`)).toBe(expected_fill)
@@ -680,6 +698,31 @@ describe(`Sunburst display options`, () => {
     expect(colorbar?.style.getPropertyValue(`--cbar-height`)).toBe(
       `var(--sunburst-colorbar-height, 150px)`,
     )
+  })
+
+  // color_scale type and value_range reach both the arcs and the color bar
+  test(`log color_scale with a fixed value_range spans arcs and bar`, async () => {
+    const plot = await mount_sized_sunburst({
+      data: tree,
+      color_values: (arc: PositionedArc) => arc.value,
+      color_scale: {
+        scheme: (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`,
+        type: `log`,
+        value_range: [1, 100],
+      },
+      color_bar: { tick_format: `d` },
+    })
+    const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
+      Number(label.textContent),
+    )
+    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([1, 100])
+    const reds = ([`A`, `B`] as const).map((label) =>
+      Number(
+        /rgb\((?<red>\d+)/.exec(arc_path(plot, label).getAttribute(`fill`) ?? ``)?.groups?.red,
+      ),
+    )
+    // A and B sum to 10: half way up a log ramp over [1, 100] (127.5 rounds either way)
+    expect(reds).toEqual(Array(2).fill(expect.toBeOneOf([127, 128])))
   })
 
   test.each([

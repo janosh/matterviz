@@ -124,7 +124,7 @@
     text_color: tile_font_color ?? undefined,
   }}
   {heatmap_values}
-  bind:color_scale
+  {color_scale}
   bind:active_element={selected.element}
   bind:active_category={selected.category}
   links="name"

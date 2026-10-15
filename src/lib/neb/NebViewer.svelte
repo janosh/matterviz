@@ -10,6 +10,9 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { display_idx, format_num } from '#lib/labels.js'
   import { FullscreenButton } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
@@ -29,11 +32,11 @@
     ReactionPathInput,
   } from './index'
   import NebPlot from './NebPlot.svelte'
-  import { parse_dropped_paths } from './parse'
+  import { parse_dropped_paths, REACTION_PATH_FORMAT } from './parse'
   import type { PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
 
-  type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `fullscreen`
+  type NebControlName = `path` | `nav` | `step` | `fps` | `energy` | `export` | `fullscreen`
 
   let {
     paths,
@@ -56,34 +59,38 @@
     plot_props = { style: `height: 460px` },
     structure_props = { style: `height: 460px` },
     on_fullscreen_change,
+    export_formats,
+    export_filename = `reaction-path`,
+    on_export,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    paths?: ReactionPathInput
-    coord_mode?: ReactionCoordMode
-    energy_reference?: EnergyReference
-    // Path metric, pbc, spline sampling and force usage; the x-axis mode is `coord_mode`
-    coord_options?: Omit<PathSplineOptions, `mode`>
-    show_spline?: boolean
-    active_path_key?: string
-    active_image_idx?: number
-    allow_file_drop?: boolean
-    fps?: number
-    fps_range?: readonly [number, number]
-    auto_play?: boolean
-    // 'always' | 'hover' | 'never' | { mode, hidden: NebControlName[], style }
-    show_controls?: ShowControlsProp<NebControlName>
-    pane_ratio?: number
-    fullscreen_toggle?: boolean
-    fullscreen?: boolean
-    wrapper?: HTMLDivElement
-    error_msg?: string
-    plot_props?: Omit<
-      ScatterPlotOptions,
-      `controls_extra` | `on_point_hover` | `on_point_click`
-    >
-    structure_props?: StructureOptions
-    on_fullscreen_change?: (fullscreen: boolean) => void
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    ExportProps & {
+      paths?: ReactionPathInput
+      coord_mode?: ReactionCoordMode
+      energy_reference?: EnergyReference
+      // Path metric, pbc, spline sampling and force usage; the x-axis mode is `coord_mode`
+      coord_options?: Omit<PathSplineOptions, `mode`>
+      show_spline?: boolean
+      active_path_key?: string
+      active_image_idx?: number
+      allow_file_drop?: boolean
+      fps?: number
+      fps_range?: readonly [number, number]
+      auto_play?: boolean
+      // 'always' | 'hover' | 'never' | { mode, hidden: NebControlName[], style }
+      show_controls?: ShowControlsProp<NebControlName>
+      pane_ratio?: number
+      fullscreen_toggle?: boolean
+      fullscreen?: boolean
+      wrapper?: HTMLDivElement
+      error_msg?: string
+      plot_props?: Omit<
+        ScatterPlotOptions,
+        `controls_extra` | `on_point_hover` | `on_point_click`
+      >
+      structure_props?: StructureOptions
+      on_fullscreen_change?: (fullscreen: boolean) => void
+    } = $props()
 
   const dropped_paths = new SvelteMap<string, ReactionPath>()
   let controls_height = $state(0)
@@ -190,6 +197,26 @@
       (profile && energy_reference === `initial` ? profile.analysis.initial_energy : 0),
   )
 
+  // === Export ===
+  // PNG of the shown image's structure view; CSV of every profiled path's energy profile on
+  // the current reaction coordinate; JSON in the native (re-loadable) reaction-path format
+  const export_sources = {
+    ...canvas_sources(() => wrapper?.querySelector(`.structure-pane canvas`)),
+    csv: csv_source(() => ({
+      header: [`path`, `image`, `reaction_coordinate`, `energy`, `energy_rel_initial`],
+      rows: profiled.flatMap(({ key, profile: { coords, energies, analysis } }) =>
+        energies.map((energy, idx) => [
+          key,
+          display_idx(idx),
+          coords[idx],
+          energy,
+          energy - analysis.initial_energy,
+        ]),
+      ),
+    })),
+    json: json_source(() => ({ format: REACTION_PATH_FORMAT, paths: plotted_paths })),
+  }
+
   const barrier_stats = $derived.by(() => {
     if (!profile) return []
     const { analysis, spline } = profile
@@ -273,6 +300,19 @@
           on_change={on_fullscreen_change}
           class="fullscreen-button"
           style="margin-inline-start: auto"
+        />
+      {/if}
+      {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+        <ExportPane
+          filename={export_filename}
+          sources={export_sources}
+          {export_formats}
+          {on_export}
+          toggle_props={{
+            class: `neb-export-toggle`,
+            title: `Export reaction path`,
+            style: `position: static`,
+          }}
         />
       {/if}
     </SequenceControlBar>

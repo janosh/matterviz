@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import {
   drag_plot_area,
+  expect_combined_fullscreen,
   expect_synced_y_ticks,
   get_chart_svg,
   measure_plot_area,
@@ -12,6 +13,14 @@ import {
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/bands-and-dos`, { waitUntil: `networkidle` })
+  })
+
+  // stacked, the bands hold the button; side by side in fullscreen, the DOS takes it over
+  test(`bands and DOS go fullscreen as one component`, async ({ page }) => {
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
+    await container.evaluate((element) => (element.style.width = `400px`))
+    await expect(container).toHaveClass(/\bstacked\b/)
+    await expect_combined_fullscreen(container, [`.scatter`, `.scatter >> nth=1`])
   })
 
   test(`renders bands and DOS side by side in a grid with a shared y-axis`, async ({

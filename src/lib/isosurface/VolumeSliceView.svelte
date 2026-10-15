@@ -46,19 +46,12 @@
   })
 
   // Only the plane and resolution decide the sampled values: a string key compares by value,
-  // so rendering-only edits (colormap, contours, colour range, 3D plane toggle) repaint without
+  // so rendering-only edits (colour scale, contours, 3D plane toggle) repaint without
   // re-sampling
   let sampling_key = $derived.by(() => {
     if (!sampling_settings) return null
-    const {
-      render_mode,
-      colormap,
-      contour_levels,
-      color_range,
-      symmetric,
-      show_plane,
-      ...plane
-    } = sampling_settings
+    const { render_mode, color_scale, contour_levels, symmetric, show_plane, ...plane } =
+      sampling_settings
     return JSON.stringify(plane)
   })
 
@@ -90,11 +83,10 @@
     <VolumeSlice
       slice={computed_slice}
       mode={render_settings.render_mode}
-      colormap={render_settings.colormap}
-      color_range={render_settings.color_range}
+      color_scale={render_settings.color_scale}
       symmetric={render_settings.symmetric}
       contour_levels={render_settings.contour_levels}
-      colorbar_title={volume?.label ?? `Value`}
+      color_bar={{ title: volume?.label ?? `Value` }}
       bind:canvas
     />
     {#if resolved_settings.plane_mode === `hkl`}

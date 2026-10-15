@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { require_bbox } from '../helpers'
@@ -186,19 +187,34 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.plot-tooltip`)).toContainText(`Other`)
   })
 
-  test(`controls pane opens and its SVG/PNG export buttons download files`, async ({
+  test(`header export pane downloads a styled SVG, a 2x PNG and a node CSV`, async ({
     page,
   }) => {
     const section = page.locator(`#basic-sunburst`)
-    await section.locator(`.sunburst`).hover() // toggle fades in on hover
-    await section.locator(`.sunburst-controls-toggle`).click() // export buttons live in the pane
-    await expect(section.locator(`.sunburst-controls-pane`)).toBeVisible()
-    const svg_download = page.waitForEvent(`download`)
-    await section.locator(`[aria-label="Download SVG"]`).click()
-    expect((await svg_download).suggestedFilename()).toBe(`sunburst.svg`)
-    const png_download = page.waitForEvent(`download`)
-    await section.locator(`[aria-label="Download PNG"]`).click()
-    expect((await png_download).suggestedFilename()).toBe(`sunburst.png`)
+    await section.locator(`.sunburst`).hover() // header chrome fades in on hover
+    await section.locator(`.sunburst .export-toggle`).click()
+    const pane = section.locator(`.export-pane`)
+    await expect(pane).toBeVisible()
+    const box = await require_bbox(section.locator(`.sunburst > svg`))
+    for (const format of [`SVG`, `PNG`, `CSV`]) {
+      const downloaded = page.waitForEvent(`download`)
+      await pane.getByRole(`button`, { name: `Download ${format}`, exact: true }).click()
+      const download = await downloaded
+      expect(download.suggestedFilename()).toBe(`sunburst.${format.toLowerCase()}`)
+      const filepath = await download.path()
+      if (!filepath) throw new Error(`Missing ${format} download`)
+      const contents = await readFile(filepath)
+      if (format === `SVG`) {
+        const svg = contents.toString()
+        // standalone: page styles inlined minimally, no interaction markup left behind
+        expect(svg).toMatch(/<path[^>]* fill="rgb\(/)
+        expect(svg).not.toMatch(/ (?:data-|aria-|tabindex=|role=)/)
+      } else if (format === `PNG`) {
+        expect(contents.subarray(1, 4).toString()).toBe(`PNG`)
+        // default 144 DPI = exactly 2x CSS pixels (IHDR width/height at bytes 16-23)
+        expect(contents.readUInt32BE(16)).toBeGreaterThanOrEqual(Math.round(box.width * 2))
+      } else expect(contents.toString().split(`\n`)[0]).toBe(`path,depth,value,fraction`)
+    }
   })
 
   test(`metric colorbar reserves space and never overlaps the arcs`, async ({ page }) => {

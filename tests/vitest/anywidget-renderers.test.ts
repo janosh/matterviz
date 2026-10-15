@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
+const { disable_workers } = vi.hoisted(() => ({ disable_workers: vi.fn() }))
 // Swap matterviz components for a recording stub to exercise the real widget wiring
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
@@ -37,6 +38,7 @@ vi.mock(`matterviz`, async () => {
     ...Object.fromEntries(component_names.map((name) => [name, stub_module.default])),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
+    disable_workers,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
     trajectory_from_json: (value: unknown) => ({ run_of: value }),
   }
@@ -51,6 +53,13 @@ vi.mock(`matterviz/theme/embedded`, () => ({
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
+// read now: mock call records don't survive into the tests
+const disable_workers_calls = disable_workers.mock.calls.length
+
+// blob:/CDN/file:// bundle URLs can't host same-origin workers
+test(`importing the widget bundle forces main-thread compute once`, () => {
+  expect(disable_workers_calls).toBe(1)
+})
 
 const as_model = (mock: MockModel) => mock as unknown as Parameters<typeof mount_spec>[0]
 const listener_count = (model: MockModel) =>
@@ -210,7 +219,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
         `zoom_root_id`,
       ]),
     )
-    for (const key of [`color_scale`, `color_range`, `color_bar`])
+    for (const key of [`color_scale`, `color_bar`])
       expect(WIDGET_MODEL_KEYS.treemap).not.toContain(key)
   })
 })
@@ -259,8 +268,9 @@ describe(`widget config wiring`, () => {
     [`band_structure`, `band_structs`, { sample: { type: `phonon`, branches: [] } }],
     [`dos`, `doses`, { sample: { type: `electronic`, energies: [], densities: [] } }],
     [`bands_and_dos`, `fermi_level`, 0],
-    [`periodic_table`, `log`, true],
-    [`heatmap_matrix`, `log`, true],
+    [`periodic_table`, `color_scale`, { type: `log`, value_range: [1, null] }],
+    [`periodic_table`, `color_bar`, null],
+    [`heatmap_matrix`, `color_bar`, { orientation: `vertical` }],
     [`composition`, `patterns`, { Fe: `/`, O: { shape: `dots`, size: 6 } }],
     [`scatter_plot_3d`, `point_tween`, { duration: 300, delay: 50 }],
     [`structure`, `cutaway`, { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2 }],

@@ -149,16 +149,20 @@ describe(`MD HDF5`, () => {
     async (vectors) => {
       const run = await open(await fixture())
       const full = await materialize_frame_result(run.read_frame(1))
+      // read_frame is synchronous: reading the spy right after the call keeps slices from any
+      // other in-flight async work (e.g. a previous case's disposal) out of the recorded paths
       const slices = vi.spyOn(Dataset.prototype, `slice`)
       onTestFinished(() => slices.mockRestore())
-      const frame = await run.read_frame(1, undefined, { vectors })
-      const expected = vectors ?? [`force`, `velocity`]
-      expect(frame.vector_keys).toEqual(expected)
+      const frame_result = run.read_frame(1, undefined, { vectors })
       const paths = new Set(
         slices.mock.instances.map((dataset) =>
           dataset instanceof Dataset ? dataset.path : undefined,
         ),
       )
+      slices.mockRestore()
+      const frame = await frame_result
+      const expected = vectors ?? [`force`, `velocity`]
+      expect(frame.vector_keys).toEqual(expected)
       expect(paths.has(`/frames/forces`)).toBe(expected.includes(`force`))
       expect(paths.has(`/frames/velocities`)).toBe(expected.includes(`velocity`))
       const result = materialize_frame(frame)

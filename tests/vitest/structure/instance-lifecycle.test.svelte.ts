@@ -1,4 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
+import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -21,6 +22,7 @@ import StructureScene from '#lib/structure/StructureScene.svelte'
 import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
 import { pack_arrows } from '#lib/structure/arrow-instances.js'
 import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
+import { PartialAtoms } from '#lib/structure/partial-atoms.js'
 import Bond from '#lib/structure/Bond.svelte'
 import * as bond_component from '#lib/structure/Bond.svelte'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
@@ -37,13 +39,12 @@ import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
-import { bind_props } from '../setup'
+import { bind_props, doc_query } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
   type Color,
   InstancedBufferAttribute,
-  InstancedMesh,
   Matrix4,
   Mesh,
   type Object3D,
@@ -345,6 +346,59 @@ test.each([
   expect(hover.hovered_idx).toBe(front_idx)
 })
 
+// The tooltip wears the hovered mark's one flat fill (translucent ones flattened, per
+// tooltip_paint), text contrasted: an atom's colour or a lattice arrow's tint. Colour fields
+// and a site drawn as several visible elements' wedges (unless a property colour paints the
+// whole site) stay neutral.
+const c_n_site: Site = {
+  ...make_site(`C`, [0, 0, 0], [0, 0, 0], `C`),
+  species: ([`C`, `N`] as const).map((element) => ({
+    element,
+    occu: 0.5,
+    oxidation_state: 0,
+  })),
+}
+const lone_c = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
+// pymatgen mixed valence: one element listed per oxidation state
+const fe_mixed_site: Site = {
+  ...make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`),
+  species: [2, 3].map((oxidation_state) => ({ element: `Fe`, occu: 0.5, oxidation_state })),
+}
+// Bi/Zr disorder stored as two half-occupied sites at one position: drawn as one wedged atom
+const split_bi_zr = {
+  sites: ([`Bi`, `Zr`] as const).map((element) =>
+    make_site(element, [0, 0, 0], [0, 0, 0], element, {}, 0.5),
+  ),
+}
+// oxfmt-ignore
+test.each<[string, SceneProps, string?, string?, Vec3?]>([
+  [`ordered site`, { structure: lone_c }, default_element_colors.C, `white`],
+  [`disordered site`, { structure: { sites: [c_n_site] } }],
+  [`mixed-valence site`, { structure: { sites: [fe_mixed_site] } }, default_element_colors.Fe, `black`],
+  [`split two-site disorder`, { structure: split_bi_zr }],
+  // hiding N leaves a lone C wedge, drawn (and so painted) in C's colour
+  [`disordered site with one element hidden`, { structure: { sites: [c_n_site] }, hidden_elements: new Set([`N`]) }, default_element_colors.C, `white`],
+  [`property-coloured disordered site`, { structure: { sites: [c_n_site] }, property_colors: { colors: [`#fedcba`], values: [1] } }, `#fedcba`, `black`],
+  // property colours that don't reach this site leave its element wedges
+  [`disordered site past the property colours`, { structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, -5], `C`), c_n_site] }, property_colors: { colors: [`#123456`], values: [1] } }],
+  [`atom colour field`, { structure: lone_c, atom_color_field: { dims: [1, 1, 1], colors: new Float32Array([1, 0, 0, 1]), pbc: [true, true, true], cartesian_to_fractional: new Matrix4() } }],
+  [`translucent property colour`, { structure: lone_c, property_colors: { colors: [`rgba(18, 52, 86, 0.5)`], values: [1] } }, `rgb(18, 52, 86)`, `white`],
+  [`translucent atoms`, { structure: lone_c, atom_opacity: 0.5 }, default_element_colors.C, `white`],
+  // the half-length A arrow's shaft spans x in [-1, 0.9] at y = z = -1, clear of the atom at (2, 2, 2)
+  [`lattice vector A`, { structure: make_crystal(4, [[`C`, [0.5, 0.5, 0.5]]]) }, AXIS_COLORS[0][2], `black`, [0, -1, 10]],
+])(`%s tooltip background`, (_label, props, bg = ``, text_color = ``, ray_origin = [0, 0, 10]) => {
+  const interactivity = spy_interactivity()
+  // nothing renders in happy-dom, so the arrow meshes' world matrices need a manual update
+  mount_structure({ show_bonds: `never`, ...props }).scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(...ray_origin), new Vector3(0, 0, -1))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  const { style } = doc_query(`[role="tooltip"]`)
+  expect([style.background, style.color]).toEqual([bg, text_color])
+})
+
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path
 test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   const interactivity = spy_interactivity()
@@ -444,26 +498,18 @@ test.each<[string, number, SceneProps]>([
   expect(mesh?.geometry.index?.count).toBe(triangles * 3)
 })
 
-// Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at equal occupancy
-test(`Scene draws one wedge per species of a site listing an element twice`, () => {
-  const species = [2, 3].map((oxidation_state) => ({
-    element: `Fe`,
-    occu: 0.5,
-    oxidation_state,
-  }))
-  const site = { ...make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`), species } as Site
-  const { scene } = mount_structure({ structure: { sites: [site] }, show_bonds: `never` })
-  // Both wedges are instances of one shared lune, turned about Y to their start azimuths
-  const wedges = scene
-    .getObjectsByProperty(`isInstancedMesh`, true)
-    .filter((object) => object instanceof InstancedMesh)
-  expect(wedges.map(({ geometry }) => geometry.type)).toEqual([`SphereGeometry`])
-  const matrix = new Matrix4()
-  const wedge_phis = Array.from({ length: wedges[0].count }, (_unused, idx) => {
-    wedges[0].getMatrixAt(idx, matrix)
-    return Math.atan2(matrix.elements[8], matrix.elements[0])
+// Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at partial occupancy: drawn as
+// one full atom like plain Fe (no seamed half wedges)
+test(`Scene draws a mixed-valence site as one full atom`, () => {
+  const { scene } = mount_structure({
+    structure: { sites: [fe_mixed_site] },
+    show_bonds: `never`,
   })
-  expect(wedge_phis.map(Math.abs)).toEqual([expect.closeTo(0, 2), expect.closeTo(Math.PI, 2)])
+  const wedge_groups: PartialAtoms[] = []
+  scene.traverse((object) => {
+    if (object instanceof PartialAtoms) wedge_groups.push(object)
+  })
+  expect([sphere_count(scene), wedge_groups]).toEqual([1, []])
 })
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {

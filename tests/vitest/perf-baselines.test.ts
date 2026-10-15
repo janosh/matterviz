@@ -12,6 +12,12 @@ import {
 } from '#lib/convex-hull/thermodynamics.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import {
+  extract_fermi_surface,
+  preview_interpolation_factor,
+} from '#lib/fermi-surface/compute.js'
+import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
+import type { BandGridData } from '#lib/fermi-surface/types.js'
 import { parse_chgcar } from '#lib/isosurface/parse.js'
 import { JsonTree } from 'svelte-widgets/json-tree'
 import { marching_cubes } from '#lib/marching-cubes.js'
@@ -44,6 +50,7 @@ import {
   make_molecule,
   make_rocksalt,
   make_struct,
+  read_maybe_gz,
 } from './test-fixtures'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
 
@@ -79,6 +86,9 @@ const BASELINES = {
   // 2026-09-28: M5 Max/Node 24.21/Vitest 5; 260 ms median (538 MB: 21k frames of 1000 atoms,
   // opened indexed; median of 5 loaded runs' reference ratios), normalized from 32.8 ms.
   'XYZ Blob past the string limit open': (260 * REFERENCE_MS) / 32.8,
+  // 2026-10-15: M5 Max/Node 24.22/Vitest 5; 21.4 ms median in suite order (18.5 ms isolated;
+  // median of 3 runs' reference ratios), normalized from its 29.6 ms reference.
+  'Fermi Cu 25^3 d-band hover sweep': (21.4 * REFERENCE_MS) / 29.6,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -653,6 +663,33 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     )
     await measure(`make_supercell 1000 sites x 3x3x3`, () => {
       expect(make_supercell(structure, `3x3x3`).sites).toHaveLength(27_000)
+    })
+  })
+
+  // Band-plot hover on the Fermi + bands demo (fcc Cu, 25^3 x 4 bands): each pointer move
+  // extracts at a new mu at the preview factor (auto, 48/25 = 1.92x), reusing the band grids
+  // the first hover upsampled (cached by grid identity; that upsampling adds only ~20%), so
+  // this times the marching-cubes work the extraction worker takes off the hover path.
+  test(`Fermi Cu 25^3 d-band hover sweep`, async () => {
+    const filename = `cu_fcc_bands.bxsf`
+    const text = read_maybe_gz(`src/site/fermi-surfaces/${filename}.gz`)
+    const band_data = parse_fermi_file(text, filename) as BandGridData
+    expect(band_data.k_grid).toEqual([25, 25, 25])
+    const interpolation_factor = preview_interpolation_factor(band_data, 0)
+    expect(interpolation_factor).toBe(1.92)
+    // 8 hover energies through Cu's d bands, 1-4.5 eV below E_F
+    const mus = Array.from({ length: 8 }, (_, idx) => -4.5 + 0.5 * idx)
+    const sweep = () =>
+      mus.reduce(
+        (n_sheets, mu) =>
+          n_sheets +
+          extract_fermi_surface(band_data, { mu, interpolation_factor }).isosurfaces.length,
+        0,
+      )
+    const n_sheets = sweep() // upsamples the crossed bands, as the first hover does; JIT warm-up
+    expect(n_sheets).toBeGreaterThan(mus.length)
+    await measure(`Fermi Cu 25^3 d-band hover sweep`, () => {
+      expect(sweep()).toBe(n_sheets)
     })
   })
 

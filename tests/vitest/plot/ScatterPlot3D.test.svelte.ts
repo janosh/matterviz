@@ -42,7 +42,15 @@ import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
-import { mock_fullscreen, bind_props, expect_plot_controls, query, set_input } from '../setup'
+import {
+  bind_props,
+  expect_plot_controls,
+  export_via_pane,
+  mock_fullscreen,
+  mount_sized,
+  query,
+  set_input,
+} from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({
@@ -390,6 +398,27 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
 })
 
+// The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
+// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint)
+test.each([
+  [`#ffffff`, `#ffffff`, `black`],
+  [`rgba(255, 255, 255, 0.5)`, `rgb(255, 255, 255)`, `black`],
+  [`var(--marker-fill)`, ``, ``],
+])(`3D tooltip fill %s: %j bg, %j text`, (fill, bg, text) => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
+      hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
+      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const { style } = query(document.body, `.tooltip`)
+  expect([style.background, style.color]).toEqual([bg, text])
+})
+
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame
   vi.useFakeTimers({ toFake: [`performance`] })
@@ -589,6 +618,25 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await tick()
   }
 
+  test(`exports a PNG of the scene and a CSV of the visible points`, async () => {
+    const on_export = vi.fn()
+    const series = [basic_series, { ...basic_series, label: `Hidden`, visible: false }]
+    const plot = await mount_sized(
+      ScatterPlot3D,
+      { series, on_export },
+      { selector: `.scatter-3d` },
+    )
+    const result = await export_via_pane(on_export, `CSV`, plot)
+    expect(result.offered).toEqual([`PNG`, `CSV`])
+    expect(result.filename).toBe(`scatter3d`)
+    expect(String(result.data).split(`\n`)).toEqual([
+      `series,x,y,color_value,size_value,z`,
+      ...basic_series.x.map(
+        (x, idx) => `Test Series,${x},${basic_series.y[idx]},,,${basic_series.z[idx]}`,
+      ),
+    ])
+  })
+
   test(`page initializes without query access during prerendering`, async () => {
     mounted_component = mount(ScatterTestPage, { target: container })
     await tick()
@@ -607,7 +655,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(query(container, `.scatter-3d`).getAttribute(`style`)).toContain(
       `--chart-shell-fullscreen-bg: var(--scatter3d-fullscreen-bg, var(--scatter3d-bg, var(--plot-bg, transparent)))`,
     )
-    const pane = query(container, `.draggable-pane`)
+    const pane = query(container, `.draggable-pane:not(.export-pane)`)
     expect(pane.style.display).toBe(props.controls_open ? `grid` : `none`)
   })
 

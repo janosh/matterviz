@@ -1,17 +1,18 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
-import { export_png_file, export_svg_file } from '#lib/chempot-diagram/export.js'
+import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type * as scene_module from '#lib/scene/index.js'
 import type * as threlte_core from '@threlte/core'
 import type * as convex_module from 'three/examples/jsm/geometries/ConvexGeometry.js'
+import { ARITY_COLORS } from '#lib/chempot-diagram/color.js'
 import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, set_input } from '../setup'
+import { bind_props, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -58,6 +59,12 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   const canvas = document.createElement(`canvas`)
   wrapper.append(canvas)
   vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
+  // a HiDPI backing store already at the 2x export size is encoded without resampling
+  Object.assign(canvas, { width: 400, height: 200 })
+  Object.defineProperties(canvas, {
+    clientWidth: { value: 200 },
+    clientHeight: { value: 100 },
+  })
   // the WebGPU frame is encoded (a 2D drawImage of the canvas reads no pixels) and composited
   const frame_blob = new Blob([`frame`], { type: `image/png` })
   canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
@@ -76,9 +83,8 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
     },
   }
   vi.spyOn(document, `createElement`).mockReturnValue(output as unknown as HTMLCanvasElement)
-  const save = vi.fn()
   const settled = vi.fn()
-  void export_png_file(wrapper, `diagram`, 144, save).then(settled, settled)
+  void chempot_png_blob(wrapper, 144).then(settled, settled)
   await vi.runAllTimersAsync()
   expect([output.width, output.height]).toEqual([400, 200])
   expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
@@ -86,25 +92,18 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(frame, 0, 0, 200, 100)
   expect(frame.close).toHaveBeenCalledOnce()
   if (outcome === `success`) {
-    expect(settled).toHaveBeenCalledExactlyOnceWith(undefined)
-    expect(save).toHaveBeenCalledExactlyOnceWith(blob, `diagram.png`, `image/png`)
+    expect(settled).toHaveBeenCalledExactlyOnceWith(blob)
     // the SVG embeds that encoded frame too: toDataURL of a presented WebGPU canvas is blank
-    await export_svg_file(wrapper, `diagram`, {}, save)
-    const svg_image = `<image href="data:image/png;base64,${btoa(`frame`)}"`
-    expect(save).toHaveBeenLastCalledWith(
-      expect.stringContaining(svg_image),
-      `diagram.svg`,
-      `image/svg+xml`,
-    )
+    const svg = await chempot_svg_string(wrapper, {})
+    expect(svg).toContain(`<image href="data:image/png;base64,${btoa(`frame`)}"`)
   } else {
     expect(settled).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         message: expect.stringContaining(
-          outcome === `empty` ? `Failed to generate PNG blob` : `toBlob timed out`,
+          outcome === `empty` ? `Failed to generate high-resolution PNG` : `toBlob timed out`,
         ),
       }),
     )
-    expect(save).not.toHaveBeenCalled()
   }
   expect(vi.getTimerCount()).toBe(0)
 })
@@ -361,6 +360,23 @@ test.each([
   const n_edges = info?.view === `3d` ? info.n_edges : 0
   expect(n_edges > 0).toBe(has_domain)
   expect(scene().highlight_edges?.getAttribute(`position`).count ?? 0).toBe(2 * n_edges)
+})
+
+// A drawn overlay is cut out of the base hull and wears its overlay colour, so its tooltip must
+// too; other domains keep their (arity) domain colour
+test(`domain tooltips match their drawn colour`, async () => {
+  const scene = await mount_diagram<HighlightScene & { formula_meshes: { color: string }[] }>({
+    entries,
+    config: { default_min_limit: -25, formulas_to_draw: [`Fe2O3`], draw_formula_meshes: true },
+  })
+  const tip_bg = (formula: string) => {
+    const mesh = scene().hover_meshes.find((hover_mesh) => hover_mesh.formula === formula)
+    scene().on_domain_hover(mesh, pointer_event)
+    flushSync()
+    return query(document.body, `.chempot-tooltip`).style.backgroundColor
+  }
+  expect(tip_bg(`Fe2O3`)).toBe(scene().formula_meshes[0].color)
+  expect(ARITY_COLORS).toContain(tip_bg(`Li2O`))
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it

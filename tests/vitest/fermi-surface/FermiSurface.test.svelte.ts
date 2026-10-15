@@ -1,18 +1,61 @@
 import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
+import type * as extract_async from '#lib/fermi-surface/extract-async.js'
 import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { bind_props, mock_parse_worker, create_drop_event, doc_query } from '../setup'
+import { can_create_worker } from '#lib/worker-client.svelte.js'
+import {
+  bind_props,
+  click_export,
+  create_drop_event,
+  doc_query,
+  mock_parse_worker,
+} from '../setup'
 import type { Vec3 } from '#lib/math.js'
 import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
 
+// Extraction stays real unless a test sets `jobs` to settle them by hand, in request order:
+// `settle` resolves one with its real surface and returns the mesh positions, `fail` rejects it
+const extraction = vi.hoisted(() => ({
+  jobs: null as { settle: () => Float32Array; fail: (error: Error) => void }[] | null,
+  release: vi.fn(),
+  cancel: vi.fn(),
+}))
+vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
+  const actual = await original<typeof extract_async>()
+  return {
+    ...actual,
+    create_latest_extractor: () => {
+      const real = actual.create_latest_extractor()
+      const extract = (...args: Parameters<typeof real>) => {
+        if (!extraction.jobs) return real(...args)
+        const { promise, resolve, reject } = Promise.withResolvers<FermiSurfaceData>()
+        const settle = () => {
+          const surface = extract_fermi_surface(...args)
+          resolve(surface)
+          return surface.isosurfaces[0].positions
+        }
+        extraction.jobs.push({ settle, fail: reject })
+        return promise
+      }
+      const cancel = () => {
+        extraction.cancel()
+        real.cancel()
+      }
+      return Object.assign(extract, { cancel })
+    },
+    register_fermi_viewer: () => extraction.release,
+  }
+})
+
 const mounted: ReturnType<typeof mount>[] = []
 
 afterEach(async () => {
+  extraction.jobs = null
   vi.restoreAllMocks()
   vi.useRealTimers()
   for (const component of mounted.splice(0)) await unmount(component)
@@ -180,15 +223,18 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   expect(n_vertices_at_01).toBeGreaterThan(n_vertices_at_0 ?? 0)
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
 
-  // A new interpolation factor upsamples every band first: the spinner overlays the Canvas
-  // for one painted frame before that blocks
+  // A new interpolation factor upsamples every band first: without workers (as here, and in
+  // anywidget) that blocks the page, so the spinner overlays the Canvas for one painted frame
+  expect(can_create_worker()).toBe(false)
   props.interpolation_factor = 2
   flushSync()
   expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
     `Extracting Fermi surface...`,
   )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
-  await vi.advanceTimersByTimeAsync(40)
+  await vi.advanceTimersByTimeAsync(16) // the spinner's frame: nothing extracted yet
+  expect([spinner_shown(), n_vertices()]).toEqual([true, n_vertices_at_01])
+  await vi.advanceTimersByTimeAsync(20)
   expect(spinner_shown()).toBe(false)
   expect(n_vertices()).toBeGreaterThan(n_vertices_at_01)
 
@@ -346,4 +392,75 @@ test(`band_data with nested JSON energies is extracted like the typed grid`, asy
   const committed = props.fermi_data
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data).toBe(committed)
+})
+
+test(`results commit in job order, only the newest reports errors, none land after unmount`, async () => {
+  const jobs: NonNullable<typeof extraction.jobs> = []
+  extraction.jobs = jobs
+  const [on_error, band_data] = [vi.fn(), typed_grid(sphere_energies(6))]
+  const props = $state<{ fermi_data?: FermiSurfaceData; error_msg?: string; mu: number }>({
+    fermi_data: undefined,
+    error_msg: undefined,
+    mu: 0,
+  })
+  const component = mount(FermiSurface, {
+    target: document.body,
+    props: bind_props({ on_error, band_data }, props),
+  })
+  // one frame per request (two while the grid is cold): the main thread extracts per frame
+  fake_frames()
+  const request_mu = async (mu: number) => {
+    props.mu = mu
+    flushSync()
+    await vi.advanceTimersByTimeAsync(40)
+  }
+  await vi.advanceTimersByTimeAsync(40)
+  await request_mu(0.1)
+  await request_mu(0.2)
+  // a superseded extraction failing (e.g. its worker was torn down) goes unreported and
+  // leaves the spinner up; the newest surface commits, and an older one resolving later does
+  // not replace it (typed arrays are not proxied by $state, so identity shows)
+  jobs[0].fail(new Error(`worker gone`))
+  await tick()
+  expect(document.body.textContent).toContain(`Extracting Fermi surface...`)
+  const positions = jobs[2].settle()
+  jobs[1].settle()
+  await tick()
+  expect(props.fermi_data?.isosurfaces[0].positions).toBe(positions)
+  expect([props.error_msg, on_error.mock.calls.length]).toEqual([undefined, 0])
+  await request_mu(0.3)
+  jobs[3].fail(new Error(`boom`))
+  await tick()
+  const error_msg = `Fermi surface extraction failed: boom`
+  expect(props.error_msg).toBe(error_msg)
+  expect(on_error).toHaveBeenCalledExactlyOnceWith({ error_msg })
+  // unmounting cancels the waiting request and releases the worker, and after it neither a
+  // newer result nor the newest job's error lands
+  await request_mu(0.4)
+  await request_mu(0.5)
+  for (const spy of [extraction.release, extraction.cancel]) spy.mockClear()
+  await unmount(component)
+  const { release, cancel } = extraction
+  expect([release.mock.calls.length, cancel.mock.calls.length]).toEqual([1, 1])
+  jobs[4].settle()
+  jobs[5].fail(new Error(`worker gone`))
+  await tick()
+  expect(props.fermi_data?.isosurfaces[0].positions).toBe(positions)
+  expect([props.error_msg, on_error.mock.calls.length]).toEqual([error_msg, 1])
+})
+
+// The viewer's one export pane: a PNG of the view plus the visible sheets as 3D models
+test.each([
+  [{}, [`PNG`, `STL`, `OBJ`, `GLB`]],
+  [{ export_formats: [] }, null],
+  [{ show_controls: { hidden: [`export-pane`] } }, null],
+] as const)(`export pane with %j offers %j`, async (props, offered) => {
+  const band_data = typed_grid(sphere_energies(5))
+  mounted.push(mount(FermiSurface, { target: document.body, props: { band_data, ...props } }))
+  // the chrome (with the controls toggle) mounts once the band grid is loaded
+  const controls_toggle = () => document.querySelector(`.fermi-surface .pane-toggle`)
+  await vi.waitFor(() => expect(controls_toggle()).not.toBeNull())
+  const toggle = document.querySelector(`.fermi-export-toggle`)
+  expect(toggle === null).toBe(offered === null)
+  if (offered) expect(await click_export(null, document)).toEqual(offered)
 })

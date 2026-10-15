@@ -7,7 +7,9 @@ import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { is_plain_object } from '#lib/utils.js'
 import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
 import { get_element_counts } from './density'
+import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
+import { structure_json_data } from './site'
 
 // Filename-safe text: HTML tags stripped, filesystem-invalid characters replaced by `_`,
 // underscore runs condensed, no leading or trailing underscore
@@ -60,12 +62,9 @@ export function create_structure_filename(
 // POSCAR and XYZ hold one fully occupied element per site, so a disordered site (several
 // elements, or a total occupancy below 1) has no faithful representation there: refuse it
 // rather than silently write a full atom of its first species. Species differing only in
-// oxidation state (Fe2+ 0.5 + Fe3+ 0.5) still name one fully occupied element. The tolerance
-// admits occupancies printed to 3 decimals (3 x 0.333).
-const is_disordered_site = (site: Site): boolean =>
-  new Set(site.species.map(({ element }) => element)).size > 1 ||
-  (site.species.length > 0 &&
-    site.species.reduce((sum, { occu }) => sum + (occu ?? 1), 0) < 1 - 1e-3)
+// oxidation state (Fe2+ 0.5 + Fe3+ 0.5) still name one fully occupied element.
+const is_disordered_site = ({ species }: Site): boolean =>
+  species.length > 0 && !(single_element_occupancy(species) >= 1 - OCCUPANCY_TOL)
 const disordered_site_error = (site: Site, idx: number): string =>
   `Site ${display_idx(idx)} has partial or mixed occupancy (${site.species
     .map(({ element, occu }) => `${element}:${occu}`)
@@ -282,6 +281,11 @@ function get_cif_block_name(structure: AnyStructure): string {
 const cif_token = (value: string): string =>
   !/\s|^[_#$'";[\]]/.test(value) ? value : value.includes(`'`) ? `"${value}"` : `'${value}'`
 
+// CIF type symbol of a species: the element plus its charge when decorated (`Fe2+`, `O2-`,
+// `Ag+`, `Fe2.5+`), the form pymatgen's CifWriter writes and parse_cif reads back
+const cif_type_symbol = (element: string, ox: number | undefined): string =>
+  !ox ? element : `${element}${Math.abs(ox) === 1 ? `` : Math.abs(ox)}${ox > 0 ? `+` : `-`}`
+
 // CIF and POSCAR write fractional coordinates against the cell, so both need a lattice matrix
 function require_lattice(structure: AnyStructure | undefined, format: string): Crystal {
   if (!structure?.sites) throw new Error(`No structure or sites to export`)
@@ -322,6 +326,25 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     }
   }
 
+  // Elements only and occupancy-weighted, like pymatgen's CifWriter: without it pymatgen
+  // cannot check a file with charged type symbols against its composition
+  const formula = plain_formula(structure)
+  if (formula) lines.push(`_chemical_formula_sum ${cif_token(formula)}`)
+
+  // Decorated species always get charged type symbols (parse_cif reads them back). The
+  // _atom_type loop pymatgen's CifParser decorates from is written only when every species is
+  // decorated (like its CifWriter): it strips the loop keys' charges (a plain Fe next to Fe3+
+  // would read back as Fe3+) and makes every species an ion
+  const all_species = structure.sites.flatMap((site) => site.species)
+  const decorated = all_species.length > 0 && all_species.every((spec) => spec.oxidation_state)
+  if (decorated) {
+    const symbols = all_species.map(
+      ({ element, oxidation_state: ox }) => `${cif_type_symbol(element, ox)} ${ox}`,
+    )
+    lines.push(``, `loop_`, `_atom_type_symbol`, `_atom_type_oxidation_number`)
+    for (const row of new Set(symbols)) lines.push(`  ${row}`)
+  }
+
   lines.push(
     ``,
     // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
@@ -351,13 +374,15 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     const coords_str = get_frac_coords(site, cart_to_frac, idx)
       .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
-    const species_list = site.species.length ? site.species : [{ element: `X`, occu: 1 }]
+    const species_list = site.species.length
+      ? site.species
+      : [{ element: `X`, occu: 1, oxidation_state: 0 }]
     // parse_cif names a merged site after its first row, so that row keeps the site label
     const site_label = site.label || `${species_list[0]?.element || `X`}${idx + 1}`
     for (const [spec_idx, species] of species_list.entries()) {
-      const elem = species?.element || `X`
+      const symbol = cif_type_symbol(species.element, species.oxidation_state)
       const label = cif_token(spec_idx === 0 ? site_label : `${site_label}_${spec_idx}`)
-      lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
+      lines.push(`${label} ${symbol} ${coords_str} ${(species.occu ?? 1).toFixed(8)}`)
     }
   }
 
@@ -413,7 +438,7 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
 
 export function structure_to_json_str(structure?: AnyStructure): string {
   if (!structure) throw new Error(`No structure to export`)
-  return JSON.stringify(structure, null, 2)
+  return JSON.stringify(structure_json_data(structure), null, 2)
 }
 
 // Text export formats: serializer + file extension + MIME type per format

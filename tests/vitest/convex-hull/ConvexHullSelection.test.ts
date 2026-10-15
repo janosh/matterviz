@@ -9,7 +9,9 @@ import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  click_export,
   create_drop_event,
+  export_via_pane,
   doc_query,
   marker_fill,
   mock_parse_worker,
@@ -224,6 +226,67 @@ describe(`convex hull replacement state`, () => {
     ]
     await mount_hull({ entries })
     expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
+  })
+
+  // One export pane for every dimensionality: the 2D plot as SVG/PNG, 3D/4D as a PNG
+  // redrawn at export resolution; entries as CSV (element amounts as columns) and JSON
+  test.each([
+    [
+      [`Li`, `O`],
+      [`PNG`, `SVG`, `CSV`, `JSON`],
+    ],
+    [
+      [`Li`, `Fe`, `O`],
+      [`PNG`, `CSV`, `JSON`],
+    ],
+    [
+      [`Li`, `Fe`, `P`, `O`],
+      [`PNG`, `CSV`, `JSON`],
+    ],
+  ])(`%j hull exports %j`, async (elements, offered) => {
+    const entries = [
+      ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
+      make_phase({ [elements[0]]: 2, [elements.at(-1) ?? ``]: 1 }, -2, { entry_id: `mix` }),
+    ]
+    const on_export = vi.fn()
+    const target = await mount_hull({ entries, on_export })
+    const result = await export_via_pane(on_export, `CSV`, target)
+    expect(result.offered).toEqual(offered)
+    const [header, ...rows] = String(result.data).split(`\n`)
+    expect(header).toBe(
+      [
+        `entry_id,formula`,
+        ...elements.toSorted(),
+        `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`,
+      ].join(`,`),
+    )
+    expect(rows.map((row) => row.split(`,`)[0]).toSorted()).toEqual(
+      [...elements, `mix`].toSorted(),
+    )
+    on_export.mockClear()
+    await click_export(`JSON`, target)
+    await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+    const records = JSON.parse(on_export.mock.calls[0][1].data)
+    expect(records.find((rec: { entry_id: string }) => rec.entry_id === `mix`)).toMatchObject({
+      e_form_per_atom: expect.any(Number),
+      e_above_hull: 0,
+      is_stable: true,
+    })
+    if (elements.length === 2) return
+    // the canvas hull redraws into a fresh 2x canvas rather than upscaling the screen bitmap
+    const sizes: number[][] = []
+    vi.spyOn(HTMLCanvasElement.prototype, `toBlob`).mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+    ) {
+      sizes.push([this.width, this.height])
+      callback(new Blob([`png`], { type: `image/png` }))
+    })
+    on_export.mockClear()
+    await click_export(`PNG`, target)
+    await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+    expect(on_export.mock.calls[0][1].data).toBeInstanceOf(Blob)
+    expect(sizes).toEqual([[1600, 1200]]) // 2x the unmeasured canvas's 800x600 CSS size
   })
 
   // synthetic corners close the hull but are no data entries, so the pane counts skip them

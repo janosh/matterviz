@@ -1,9 +1,8 @@
 <script lang="ts">
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
-  import type { ExportSection } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+  import { json_source, svg_sources, type ExportProps } from '#lib/io/export.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
@@ -15,16 +14,19 @@
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
+    export_formats,
+    on_export,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    export_pane_open?: boolean
-    data?: PhaseDiagramData
-    wrapper?: HTMLDivElement
-    filename?: string
-    png_dpi?: number
-    icon_style?: string
-    toggle_props?: PaneToggleProps
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    Omit<ExportProps, `export_filename`> & {
+      export_pane_open?: boolean
+      data?: PhaseDiagramData
+      wrapper?: HTMLDivElement
+      filename?: string
+      png_dpi?: number
+      icon_style?: string
+      toggle_props?: PaneToggleProps
+    } = $props()
 
   // Generate filename with components if available (requires exactly 2 components)
   const full_filename = $derived(
@@ -39,57 +41,19 @@
   const get_svg = (): SVGSVGElement | null =>
     wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`) ?? null
 
-  const json_string = (): string | null => (data ? JSON.stringify(data, null, 2) : null)
-
-  const sections = $derived<ExportSection[]>([
-    {
-      title: `Image`,
-      tooltip: `Download or copy the phase diagram`,
-      items: [
-        {
-          label: `SVG`,
-          on_download: ({ filename, save }) => {
-            const svg = get_svg()
-            if (svg) return export_svg_as_svg(svg, `${filename}.svg`, [], {}, save)
-          },
-          copy_text: () => {
-            const svg = get_svg()
-            return svg ? new XMLSerializer().serializeToString(svg) : null
-          },
-        },
-        {
-          label: `PNG`,
-          show_dpi: true,
-          on_download: ({ filename, save }) => {
-            const svg = get_svg()
-            if (svg) return export_svg_as_png(svg, `${filename}.png`, png_dpi, [], {}, save)
-          },
-        },
-      ],
-    },
-    {
-      title: `Data`,
-      tooltip: `Export phase diagram data as JSON`,
-      items: [
-        {
-          label: `JSON`,
-          disabled: !data,
-          on_download: ({ filename, save }) => {
-            const content = json_string()
-            if (content) return save(content, `${filename}.json`, `application/json`)
-          },
-          copy_text: json_string,
-        },
-      ],
-    },
-  ])
+  const sources = $derived({
+    ...svg_sources(get_svg),
+    ...(data && { json: json_source(() => data) }),
+  })
 </script>
 
 <ExportPane
   filename={full_filename}
   bind:export_pane_open
   bind:png_dpi
-  {sections}
+  {sources}
+  {export_formats}
+  {on_export}
   {icon_style}
   toggle_props={{
     class: `pd-export-toggle`,

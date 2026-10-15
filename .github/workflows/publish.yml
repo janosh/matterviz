@@ -105,6 +105,10 @@ jobs:
   ci:
     name: Lint, type-check and test
     needs: prepare
+    # a called workflow's jobs can't exceed these: ci.yml's e2e-gate reads past runs
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/ci.yml
 
   # Build alongside CI; every publisher below requires both CI and all artifacts.

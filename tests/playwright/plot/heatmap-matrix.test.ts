@@ -37,14 +37,19 @@ test(`settings align fields and rows at different pane widths, exports download 
     for (const gap of layout.row_gaps) expect(gap).toBeCloseTo(layout.expected_gap, 1)
   }
 
-  await pane
-    .getByRole(`textbox`, { name: `File name`, exact: true })
-    .fill(`element-differences`)
   await pane.getByPlaceholder(`Filter labels/keys`).fill(`Co`)
   await expect(page.locator(`.heatmap`).first().locator(`.cell`)).toHaveCount(1)
+  // the export pane sits beside the controls toggle in the same hover chrome
+  await page.locator(`.heatmap .export-toggle`).first().click({ force: true })
+  const export_pane = page.locator(`.export-pane.pane-open`)
+  await export_pane
+    .getByRole(`textbox`, { name: `File name`, exact: true })
+    .fill(`element-differences`)
   for (const format of [`csv`, `json`]) {
     const downloaded = page.waitForEvent(`download`)
-    await pane.getByRole(`button`, { name: `Export ${format.toUpperCase()}` }).click()
+    await export_pane
+      .getByRole(`button`, { name: `Download ${format.toUpperCase()}`, exact: true })
+      .click()
     const file = await downloaded
     expect(file.suggestedFilename()).toBe(`element-differences.${format}`)
     const file_path = await file.path()

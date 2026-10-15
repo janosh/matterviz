@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
@@ -9,6 +8,7 @@
   import type { PhaseData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
+  import { json_source, type ExportSources } from '#lib/io/export.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
@@ -47,11 +47,9 @@
     highlight_key_of,
   } from './controls-state.svelte'
   import {
+    chempot_png_blob,
+    chempot_svg_string,
     export_glb_file,
-    export_json_file,
-    export_png_file,
-    export_svg_file,
-    get_json_string,
     get_view_settings,
   } from './export'
   import type { VisibleDomainLabel } from './compute'
@@ -1001,7 +999,6 @@
     chempot.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 
-  let png_dpi = $state(DEFAULT_PNG_DPI)
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
   const current_view_settings = (): Record<string, unknown> =>
@@ -1027,36 +1024,24 @@
     view: current_view_settings(),
   })
 
-  const export_sections = $derived<ExportSection[]>([
+  const export_sources: ExportSources = {
+    png: (png_dpi) => chempot_png_blob(wrapper, png_dpi),
+    svg: () => chempot_svg_string(wrapper, current_view_settings()),
+    json: json_source(export_json_payload),
+  }
+  const export_sections: ExportSection[] = [
     {
-      title: `Export Image`,
+      title: `Extras`,
       items: [
-        {
-          label: `SVG`,
-          on_download: ({ filename, save }) =>
-            export_svg_file(wrapper, filename, current_view_settings(), save),
-        },
-        {
-          label: `PNG`,
-          show_dpi: true,
-          on_download: ({ filename, save }) =>
-            export_png_file(wrapper, filename, png_dpi, save),
-        },
-      ],
-    },
-    {
-      title: `Export Data`,
-      items: [
-        {
-          label: `JSON`,
-          on_download: ({ filename, save }) =>
-            export_json_file(export_json_payload(), filename, save),
-          copy_text: () => get_json_string(export_json_payload()),
-        },
         {
           label: `View`,
+          hint: `Camera and display settings as JSON`,
           on_download: ({ filename, save }) =>
-            export_json_file(current_view_settings(), `${filename}-view`, save),
+            save(
+              JSON.stringify(current_view_settings(), null, 2),
+              `${filename}-view.json`,
+              `application/json`,
+            ),
         },
         {
           label: `GLB`,
@@ -1075,7 +1060,7 @@
         },
       ],
     },
-  ])
+  ]
 
   onDestroy(() => {
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
@@ -1186,7 +1171,7 @@
       <ExportPane
         filename={export_basename}
         bind:export_pane_open
-        bind:png_dpi
+        sources={export_sources}
         sections={export_sections}
         pane_props={{ class: `chempot-export-pane` }}
         toggle_props={{
@@ -1388,6 +1373,9 @@
       {hover_info}
       pinned={locked_hover_formula === hover_info.formula}
       detail_level={chempot.tooltip_detail_level}
+      bg_color={overlay_formulas.has(hover_info.formula)
+        ? overlay_color(hover_info.formula)
+        : domain_colors.get(hover_info.formula)}
       constrain_to={{ width: container_width, height: container_height }}
     />
   {/if}

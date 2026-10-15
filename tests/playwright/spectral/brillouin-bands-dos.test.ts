@@ -3,6 +3,7 @@ import {
   canvas_screenshot,
   drag_plot_area,
   expect_canvas_changed,
+  expect_combined_fullscreen,
   expect_synced_y_ticks,
   get_chart_svg,
   IS_CI,
@@ -45,6 +46,13 @@ test.describe(`BrillouinBandsDos Component Tests`, { lock: `brillouin-3d` }, () 
     await expect(page.locator(default_bz_canvas_selector).first()).toBeVisible({
       timeout: 20000,
     })
+  })
+
+  // at screen width the three panels sit side by side, each the full height
+  test(`BZ, bands and DOS go fullscreen as one component`, async ({ page }) => {
+    const panels = [`.scatter`, `.scatter >> nth=1`, `.brillouin-zone`]
+    const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
+    await expect_combined_fullscreen(container, panels, `.brillouin-zone`)
   })
 
   test(`renders all three panels with content`, async ({ page }) => {

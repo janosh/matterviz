@@ -1,6 +1,7 @@
 import type { ShowControlsProp } from '#lib/controls.js'
 import Sankey from '#lib/plot/sankey/Sankey.svelte'
 import { plot_color } from '#lib/colors/index.js'
+import { color as d3_color } from 'd3-color'
 import type {
   SankeyData,
   SankeyLinkHandlerProps,
@@ -9,7 +10,7 @@ import type {
 import type { ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
-import { fire, keydown, mount_sized, mouse, plot_svg, query } from '../setup'
+import { export_via_pane, fire, keydown, mount_sized, mouse, plot_svg, query } from '../setup'
 
 const data: SankeyData = {
   nodes: [
@@ -112,6 +113,28 @@ describe(`Sankey`, () => {
     const first_path = plot.querySelector(`.links path`)
     expect(first_path?.getAttribute(`stroke`)?.startsWith(`url(#`)).toBe(true)
   })
+
+  // an explicit link color wins over the node color in both ribbon and tooltip; a static
+  // var() ribbon resolves to its own grey, not the source node's color
+  test.each<[`source` | `target` | `static`, string?, string?]>([
+    [`source`],
+    [`target`],
+    [`source`, `#123456`],
+    [`static`, undefined, `#888888`],
+  ])(
+    `link tooltip wears the ribbon color in %s mode (link color %s)`,
+    async (link_color_mode, color, expected) => {
+      const links = data.links.map((link) => ({ ...link, color: color ?? link.color }))
+      const plot = await mount_sized_sankey({ data: { ...data, links }, link_color_mode })
+      const link = query(plot, `.links path`)
+      await fire(link, mouse(`mousemove`, { clientX: 200, clientY: 100 }))
+      const tooltip = query(plot, `.plot-tooltip`)
+      const hex = (css: string | null) => d3_color(css ?? ``)?.formatHex()
+      expect(hex(tooltip.style.backgroundColor)).toBe(
+        expected ?? hex(link.getAttribute(`stroke`)),
+      )
+    },
+  )
 
   test(`hovering a node then a link swaps the tooltip and fires each callback once`, async () => {
     const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]
@@ -403,4 +426,36 @@ describe(`bucket_sankey_data`, () => {
     const ids = bucket_sankey_data(collide, { min_fraction: 0.1 }).nodes.map((node) => node.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
+})
+
+// CSV holds the laid-out links by node label, JSON the whole graph by node id
+test.each([
+  [`CSV`, `source,target,value\nA,C,8\nB,C,4\nC,D,12`],
+  [
+    `JSON`,
+    JSON.stringify(
+      {
+        nodes: [
+          { id: 0, label: `A`, value: 8, color: `#e15759` },
+          { id: 1, label: `B`, value: 4, color: `#4e79a7` },
+          { id: 2, label: `C`, value: 12, color: `#59a14f` },
+          { id: 3, label: `D`, value: 12, color: plot_color(3) },
+        ],
+        links: [
+          { source: 0, target: 2, value: 8 },
+          { source: 1, target: 2, value: 4 },
+          { source: 2, target: 3, value: 12 },
+        ],
+      },
+      null,
+      2,
+    ),
+  ],
+])(`Sankey %s export`, async (format, expected) => {
+  const on_export = vi.fn()
+  const plot = await mount_sized_sankey({ data, on_export })
+  const result = await export_via_pane(on_export, format, plot)
+  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
+  expect([result.format, result.filename]).toEqual([format.toLowerCase(), `sankey`])
+  expect(result.data).toBe(expected)
 })

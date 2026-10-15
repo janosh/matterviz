@@ -3,7 +3,7 @@ import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
 import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, mock_object_url, set_select } from '../setup'
+import { click_export, doc_query, mock_object_url, set_select } from '../setup'
 
 const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   total: 100,
@@ -447,9 +447,9 @@ describe(`ConvexHullStats`, () => {
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls (HeatmapTable built-in) should still be available without filters
-      expect(
-        document.querySelector(`.table-container button[aria-label="Export"]`),
-      ).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.table-container button.export-toggle`)).toBeInstanceOf(
+        HTMLElement,
+      )
     })
 
     // Math.max(1, ...arities) threw RangeError past ~125k entries
@@ -472,9 +472,9 @@ describe(`ConvexHullStats`, () => {
     }
 
     test.each([
-      { format: `CSV`, ext: `csv`, mime_type: `text/csv` },
+      { format: `CSV`, ext: `csv`, mime_type: `text/csv;charset=utf-8` },
       { format: `JSON`, ext: `json`, mime_type: `application/json` },
-    ])(`exports $format via dropdown and closes menu`, async ({ format, ext, mime_type }) => {
+    ])(`exports $format via the export pane`, async ({ format, ext, mime_type }) => {
       const { create, revoke } = mock_object_url()
       let downloaded_as = ``
       // download() clicks a detached anchor; capture filename from the click target
@@ -485,15 +485,13 @@ describe(`ConvexHullStats`, () => {
         })
       onTestFinished(() => anchor_click.mockRestore())
       mount_stats_table(export_props)
-      doc_query(`.table-container button[aria-label="Export"]`).click()
-      flushSync()
-
-      const options = Array.from(
-        document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
-      )
-      options.find((element) => element.textContent?.includes(format))?.click()
-      await vi.waitFor(() => expect(document.querySelector(`.dropdown-pane`)).toBeNull())
-      expect(create).toHaveBeenCalledTimes(1)
+      expect(await click_export(format, doc_query(`.table-container`))).toEqual([
+        `CSV`,
+        `JSON`,
+        `Markdown`,
+        `LaTeX`,
+      ])
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
       expect((create.mock.calls[0][0] as Blob).type).toBe(mime_type)
       expect(anchor_click).toHaveBeenCalledTimes(1)
       expect(revoke).toHaveBeenCalledTimes(1)

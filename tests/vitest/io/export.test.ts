@@ -2,20 +2,22 @@ import {
   canvas_to_png_blob,
   dpi_to_scale,
   export_canvas_as_png,
-  export_svg_as_png,
-  export_svg_as_svg,
+  export_sections,
   export_trajectory_video,
+  html_to_svg,
   render_video_frames,
   renderer_registry,
   scene_registry,
   svg_to_png_blob,
-  svg_to_svg_string,
+  svg_to_string,
+  type ExportSources,
 } from '#lib/io/export.js'
+import { canvas_painters } from '#lib/plot/core/utils.js'
 import { download } from '#lib/io/fetch.js'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
 
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
@@ -155,7 +157,9 @@ const mock_offscreen_canvas = (): HTMLCanvasElement & {
   const canvas = {
     width: 0,
     height: 0,
-    getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
+    getContext: vi
+      .fn()
+      .mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn(), scale: vi.fn() }),
     toBlob: make_mock_canvas().toBlob,
   }
   vi.spyOn(document, `createElement`).mockReturnValue(canvas as unknown as HTMLElement)
@@ -187,7 +191,7 @@ const mock_image = (src_behaviour: `load` | `error` | `throw` | `never`, delay_m
 describe(`dpi_to_scale`, () => {
   test.each([
     [72, 1], // baseline
-    [150, 150 / 72],
+    [144, 2],
     [1440, 10], // capped at 10x
     [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
     [0, 1 / 72],
@@ -217,41 +221,53 @@ describe(`canvas_to_png_blob`, () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  test(`scales plain 2D canvases for high-DPI export`, async () => {
-    const scaled_canvas = mock_offscreen_canvas()
-    const canvas = make_mock_canvas()
-
-    await canvas_to_png_blob(canvas, 150)
-
-    expect([scaled_canvas.width, scaled_canvas.height]).toEqual([1667, 1250])
-    const context = scaled_canvas.getContext.mock.results[0].value as { drawImage: unknown }
-    expect(context.drawImage).toHaveBeenCalledWith(canvas, 0, 0, 1667, 1250)
-    expect(scaled_canvas.toBlob).toHaveBeenCalledOnce()
-  })
-
-  test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
-    const { canvas, renderer } = make_canvas_with_renderer()
-    await canvas_to_png_blob(canvas, 72)
-    expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
-  })
+  test.each([
+    // backing store already at 2x CSS size (a HiDPI screen): encoded as-is, no resampling
+    { client: [400, 300], dpi: 144, direct: true, size: [800, 600] },
+    // 1x screen: redrawn into an offscreen canvas at the export size
+    { client: [800, 600], dpi: 144, direct: false, size: [1600, 1200] },
+    // unmeasured (detached) canvases treat their backing store as CSS pixels
+    { client: [0, 0], dpi: 150, direct: false, size: [1667, 1250] },
+  ])(
+    `2D canvas at $dpi DPI with CSS size $client -> $size (direct=$direct)`,
+    async ({ client, dpi, direct, size }) => {
+      const canvas = make_mock_canvas()
+      Object.assign(canvas, { clientWidth: client[0], clientHeight: client[1] })
+      const scaled_canvas = mock_offscreen_canvas()
+      await canvas_to_png_blob(canvas, dpi)
+      expect(canvas.toBlob).toHaveBeenCalledTimes(direct ? 1 : 0)
+      if (direct) return
+      expect([scaled_canvas.width, scaled_canvas.height]).toEqual(size)
+      const context = scaled_canvas.getContext.mock.results[0].value as { drawImage: unknown }
+      expect(context.drawImage).toHaveBeenCalledWith(canvas, 0, 0, ...size)
+    },
+  )
 
   test.each([
-    [300, 1, 300 / 72],
-    [300, 2, 2 * (300 / 72)],
-    [7200, 1, 10],
+    [72, 1, 1, false],
+    [300, 1, 300 / 72, true],
+    // the export ratio is absolute: a HiDPI screen's ratio is not multiplied in again
+    [300, 2, 300 / 72, true],
+    [144, 2, 2, false],
+    [7200, 1, 10, true],
   ])(
-    `DPI %s scales display ratio %s to %s, renders and restores`,
-    async (dpi, display_ratio, expected_ratio) => {
+    `GPU canvas at DPI %s with display ratio %s renders at ratio %s (resize=%s)`,
+    async (dpi, display_ratio, expected_ratio, resize) => {
       const { canvas, renderer } = make_canvas_with_renderer()
       renderer.getPixelRatio.mockReturnValue(display_ratio)
-      const scene = {} as Scene
-      const camera = {} as Camera
-      await canvas_to_png_blob(canvas, dpi, scene, camera)
-      expect(renderer.render).toHaveBeenCalledWith(scene, camera)
-      expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
-        [800, 600, expected_ratio],
-        [800, 600, display_ratio],
-      ])
+      const view = { scene: {} as Scene, camera: {} as Camera }
+      scene_registry.set(canvas, view)
+      await canvas_to_png_blob(canvas, dpi)
+      // the drawing buffer is cleared after present, so even same-size captures re-render
+      expect(renderer.render).toHaveBeenCalledExactlyOnceWith(view.scene, view.camera)
+      expect(renderer.setDrawingBufferSize.mock.calls).toEqual(
+        resize
+          ? [
+              [800, 600, expected_ratio],
+              [800, 600, display_ratio],
+            ]
+          : [],
+      )
     },
   )
 
@@ -261,9 +277,7 @@ describe(`canvas_to_png_blob`, () => {
       vi.useFakeTimers()
       const { canvas, renderer } = make_canvas_with_renderer()
       renderer.init = vi.fn().mockReturnValue(new Promise<void>(() => {})) // never settles
-      const pending = canvas_to_png_blob(canvas, dpi, {} as Scene, {} as Camera).catch(
-        (error: unknown) => error,
-      )
+      const pending = canvas_to_png_blob(canvas, dpi).catch((error: unknown) => error)
       await vi.advanceTimersByTimeAsync(6000)
       expect(await pending).toMatchObject({
         message: `GPU initialization timed out after 5000ms`,
@@ -275,14 +289,13 @@ describe(`canvas_to_png_blob`, () => {
   )
 
   test.each([
-    [800, 600],
-    [600, 800],
-  ])(`refuses oversized HiDPI PNGs for %s×%s before resizing`, async (width, height) => {
+    [900, 600],
+    [600, 900],
+  ])(`refuses oversized PNGs for %s×%s before resizing`, async (width, height) => {
     const { canvas, renderer } = make_canvas_with_renderer()
     renderer.getSize.mockReturnValue(new Vector2(width, height))
-    renderer.getPixelRatio.mockReturnValue(2)
-    await expect(canvas_to_png_blob(canvas, 432)).rejects.toThrow(
-      `Export resolution ${width * 12}×${height * 12} exceeds this GPU's 8192px limit`,
+    await expect(canvas_to_png_blob(canvas, 720)).rejects.toThrow(
+      `Export resolution ${width * 10}×${height * 10} exceeds this GPU's 8192px limit`,
     )
     expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
     expect(canvas.toBlob).not.toHaveBeenCalled()
@@ -305,14 +318,13 @@ describe(`canvas_to_png_blob`, () => {
     `restores the renderer and rejects when high-DPI %s fails`,
     async (failure_stage) => {
       const { canvas, renderer } = make_canvas_with_renderer()
+      scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera })
       const method = failure_stage === `toBlob` ? canvas.toBlob : renderer[failure_stage]
       vi.mocked(method).mockImplementationOnce(() => {
         throw new Error(`${failure_stage} failed`)
       })
 
-      await expect(canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)).rejects.toThrow(
-        `${failure_stage} failed`,
-      )
+      await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`${failure_stage} failed`)
       expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
       expect(canvas.toBlob).toHaveBeenCalledTimes(failure_stage === `toBlob` ? 1 : 0)
     },
@@ -337,48 +349,35 @@ describe(`canvas_to_png_blob`, () => {
   })
 })
 
-describe(`svg_to_svg_string`, () => {
+const parse_svg = (markup: string): Element =>
+  new DOMParser().parseFromString(markup, `image/svg+xml`).documentElement
+
+describe(`svg_to_string`, () => {
   test.each([
     [undefined, false],
     [`0 0 200 150`, false],
     [`0 0 100 100`, true],
-  ])(
-    `emits standalone SVG with viewBox=%s, xmlns=%s without mutation`,
-    async (viewbox, xmlns) => {
-      const svg = make_svg(viewbox)
-      if (xmlns) svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
-      const original_attrs = svg.attributes.length
-      const result = svg_to_svg_string(svg)
-      expect(result).toContain(`font-family`)
-      expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!DOCTYPE svg /)
-      expect(result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g)).toHaveLength(1)
-      if (viewbox) expect(result).toContain(`viewBox="${viewbox}"`)
-      else expect(result).not.toContain(`viewBox=`)
-      expect(svg.attributes).toHaveLength(original_attrs)
-      await export_svg_as_svg(svg, `output.svg`)
-      expect(download).toHaveBeenCalledExactlyOnceWith(
-        result,
-        `output.svg`,
-        `image/svg+xml;charset=utf-8`,
-      )
-    },
-  )
-
-  test.each([
-    { name: `pads the export`, padding: 2, expected: `-2 -2 104 54` },
-    { name: `ignores overflowing padding`, padding: Number.MAX_VALUE, expected: `0 0 100 50` },
-  ])(`$name without mutating the source viewBox`, ({ padding, expected }) => {
-    const svg = make_svg(`0 0 100 50`)
-    const result = svg_to_svg_string(svg, [], { viewbox_padding: padding })
-    expect(result).toContain(`viewBox="${expected}"`)
-    expect(svg.getAttribute(`viewBox`)).toBe(`0 0 100 50`)
+  ])(`emits standalone SVG with viewBox=%s, xmlns=%s without mutation`, (viewbox, xmlns) => {
+    const svg = make_svg(viewbox)
+    if (xmlns) svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+    const original_attrs = svg.attributes.length
+    const result = svg_to_string(svg)
+    expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>\n<svg /)
+    expect(result).not.toContain(`<!DOCTYPE`)
+    expect(result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g)).toHaveLength(1)
+    if (viewbox) {
+      expect(result).toContain(`viewBox="${viewbox}"`)
+      const [, , width, height] = viewbox.split(` `)
+      expect(result).toContain(`width="${width}" height="${height}"`)
+    } else expect(result).not.toContain(`viewBox=`)
+    expect(svg.attributes).toHaveLength(original_attrs)
   })
 
   test.each([
     { attribute_width: `4`, style_width: ``, expected: `-2 -2 104 54` },
     { attribute_width: `2`, style_width: `8px`, expected: `-4 -4 108 58` },
   ])(
-    `derives viewBox padding from rendered stroke width $style_width`,
+    `pads the viewBox by half the widest stroke $style_width`,
     ({ attribute_width, style_width, expected }) => {
       const svg = make_svg(`0 0 100 50`)
       const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
@@ -386,10 +385,202 @@ describe(`svg_to_svg_string`, () => {
       rect.setAttribute(`stroke-width`, attribute_width)
       if (style_width) rect.style.strokeWidth = style_width
       svg.append(rect)
-      const result = svg_to_svg_string(svg, [], { viewbox_padding: `stroke` })
-      expect(result).toContain(`viewBox="${expected}"`)
+      expect(svg_to_string(svg)).toContain(`viewBox="${expected}"`)
+      expect(svg.getAttribute(`viewBox`)).toBe(`0 0 100 50`)
     },
   )
+
+  test(`inlines stylesheet colors and fonts minimally and drops redundant attributes`, () => {
+    const style = document.createElement(`style`)
+    style.textContent = `.tick-label { fill: rgb(200, 0, 0); font-size: 13px } .themed { stroke: rgb(0, 0, 200); stroke-width: 3px }`
+    document.head.append(style)
+    onTestFinished(() => style.remove())
+    document.body.innerHTML = `<svg viewBox="0 0 100 100" style="cursor: crosshair" class="svelte-4hqm71"><g fill="blue"><text class="tick-label svelte-1stqk4m">1</text><rect class="themed" width="10" height="10"/><circle fill="blue" r="2"/></g></svg>`
+    const svg = document.querySelector(`svg`)
+    if (!svg) throw new Error(`svg not mounted`)
+    const exported = parse_svg(svg_to_string(svg))
+    const [text, rect, circle] = [`text`, `rect`, `circle`].map((tag) =>
+      exported.querySelector(tag),
+    )
+    // class-based styles survive without the page stylesheet...
+    expect(text?.getAttribute(`fill`)).toBe(`rgb(200, 0, 0)`)
+    expect(text?.getAttribute(`font-size`)).toBe(`13`)
+    expect(rect?.getAttribute(`stroke`)).toBe(`rgb(0, 0, 200)`)
+    expect(rect?.getAttribute(`stroke-width`)).toBe(`3`)
+    // ...inherited values are written once on the ancestor, not repeated per child
+    expect(exported.querySelector(`g`)?.getAttribute(`fill`)).toBe(`blue`)
+    expect(circle?.hasAttribute(`fill`)).toBe(false)
+    // classes stay as layer names for vector editors, minus Svelte scoping hashes
+    expect(text?.getAttribute(`class`)).toBe(`tick-label`)
+    expect(exported.getAttributeNames()).not.toContain(`class`)
+    expect(exported.getAttributeNames()).not.toContain(`style`) // interaction-only cursor
+  })
+
+  test(`strips hidden, transparent and interaction-only markup but keeps export-only`, () => {
+    document.body.innerHTML = `<svg viewBox="0 0 100 100" role="application" tabindex="0">
+      <!-- svelte anchor -->
+      <rect class="visible" width="5" height="5" fill="red" data-series-id="a" aria-label="bar"/>
+      <rect width="5" height="5" fill="red" display="none"/>
+      <rect width="5" height="5" fill="red" opacity="0"/>
+      <circle class="marker-hit-target" r="8" fill="transparent"/>
+      <line x1="0" x2="5" stroke="transparent" stroke-width="8"/>
+      <g data-export-exclude><text>tooltip</text></g>
+      <g><rect width="1" height="1" display="none"/></g>
+      <text data-export-only display="none">static label</text>
+      <defs><clipPath id="clip"><rect width="5" height="5" fill="none"/></clipPath></defs>
+    </svg>`
+    const svg = document.querySelector(`svg`)
+    if (!svg) throw new Error(`svg not mounted`)
+    const result = svg_to_string(svg)
+    const exported = parse_svg(result)
+    expect(exported.querySelectorAll(`rect`)).toHaveLength(2) // the visible one + clip shape
+    expect(exported.querySelector(`circle, line`)).toBeNull()
+    expect([...exported.querySelectorAll(`text`)].map((el) => el.textContent)).toEqual([
+      `static label`,
+    ])
+    expect(exported.querySelector(`text`)?.hasAttribute(`display`)).toBe(false)
+    expect(exported.querySelectorAll(`g`)).toHaveLength(0) // emptied groups are dropped
+    expect(exported.querySelector(`clipPath rect`)).not.toBeNull()
+    expect(result).not.toMatch(/<!--|data-|aria-|role=|tabindex=/)
+  })
+
+  test(`rounds coordinates to 2 decimals, leaving text, ids and hrefs untouched`, () => {
+    document.body.innerHTML = `<svg viewBox="0 0 100.123456 50"><path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" stroke="black"/><text x="10.98765">0.123456</text></svg>`
+    const svg = document.querySelector(`svg`)
+    if (!svg) throw new Error(`svg not mounted`)
+    const exported = parse_svg(svg_to_string(svg))
+    expect(exported.querySelector(`path`)?.getAttribute(`d`)).toBe(`M1.23,2.5L-3,0`)
+    expect(exported.querySelector(`path`)?.id).toBe(`p0.123456`)
+    expect(exported.querySelector(`text`)?.getAttribute(`x`)).toBe(`10.99`)
+    expect(exported.querySelector(`text`)?.textContent).toBe(`0.123456`)
+    expect(exported.getAttribute(`viewBox`)).toBe(`-0.5 -0.5 101.12 51`)
+  })
+
+  test(`a 1000-point chart exports at under a third of its raw markup`, () => {
+    const style = document.createElement(`style`)
+    style.textContent = `.series { fill: rgb(31, 119, 180); stroke: white; stroke-width: 0.5px }`
+    document.head.append(style)
+    onTestFinished(() => style.remove())
+    const rng = (idx: number) => Math.abs(Math.sin(idx * 12.9898) * 43758.5453) % 400
+    const points = Array.from(
+      { length: 1000 },
+      (_, idx) =>
+        `<!----><circle class="pt" cx="${rng(idx)}" cy="${rng(idx + 1)}" r="3" data-point-idx="${idx}" role="button" tabindex="-1" aria-label="point ${idx}"></circle>`,
+    ).join(``)
+    document.body.innerHTML = `<svg viewBox="0 0 400 400"><g class="series">${points}</g></svg>`
+    const svg = document.querySelector(`svg`)
+    if (!svg) throw new Error(`svg not mounted`)
+    const result = svg_to_string(svg)
+    expect(result.length).toBeLessThan(svg.outerHTML.length / 3)
+    const circles = parse_svg(result).querySelectorAll(`circle`)
+    expect(circles).toHaveLength(1000)
+    // colors inherited from the group are written once there, not on 1000 circles
+    expect(parse_svg(result).querySelector(`g`)?.getAttribute(`fill`)).toBe(
+      `rgb(31, 119, 180)`,
+    )
+    expect(circles[0].getAttributeNames().toSorted()).toEqual([`class`, `cx`, `cy`, `r`])
+  })
+
+  test(`embeds foreign canvases via their registered painter at the export scale`, () => {
+    document.body.innerHTML = `<svg viewBox="0 0 100 50"><foreignObject x="0" y="0" width="100" height="50"><canvas width="100" height="50"></canvas></foreignObject></svg>`
+    const canvas = document.querySelector(`canvas`)
+    const svg = document.querySelector(`svg`)
+    if (!canvas || !svg) throw new Error(`canvas not mounted`)
+    Object.assign(canvas, { width: 100, height: 50 })
+    const painter = vi.fn((target: HTMLCanvasElement) => {
+      target.toDataURL = () => `data:image/png;base64,PAINTED`
+    })
+    canvas_painters.set(canvas, painter)
+    const image = parse_svg(svg_to_string(svg)).querySelector(`image`)
+    expect(painter).toHaveBeenCalledExactlyOnceWith(expect.any(HTMLCanvasElement), 2)
+    expect(image?.getAttribute(`href`)).toBe(`data:image/png;base64,PAINTED`)
+    expect(image?.getAttribute(`width`)).toBe(`100`)
+  })
+})
+
+describe(`html_to_svg`, () => {
+  test(`redraws an HTML grid's cell backgrounds and text as SVG`, () => {
+    document.body.innerHTML = `<div class="grid"><span style="background-color: rgb(255, 0, 0)">Fe</span></div>`
+    const grid = document.querySelector<HTMLElement>(`.grid`)
+    if (!grid) throw new Error(`grid not mounted`)
+    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+      new DOMRect(0, 0, 40, 20),
+    )
+    const exported = parse_svg(svg_to_string(html_to_svg(grid)))
+    expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
+    expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
+  })
+})
+
+describe(`export_sections`, () => {
+  const sources: ExportSources = {
+    png: vi.fn(async (png_dpi: number) => new Blob([`${png_dpi}`])),
+    svg: () => `<svg/>`,
+    csv: () => `a,b`,
+    json: () => `{}`,
+  }
+  const context = (save = vi.fn()) => ({
+    filename: `chart`,
+    save,
+    prepare: vi.fn(),
+    png_dpi: 300,
+  })
+  const labels = (sections: ReturnType<typeof export_sections>) =>
+    sections.map(({ title, items }) => [title, items.map((item) => item.label)])
+
+  test.each([
+    [
+      undefined,
+      [
+        [`Image`, [`PNG`, `SVG`]],
+        [`Data`, [`CSV`, `JSON`]],
+      ],
+    ],
+    [
+      [`json`, `png`] as const,
+      [
+        [`Image`, [`PNG`]],
+        [`Data`, [`JSON`]],
+      ],
+    ],
+    [[`csv`, `md`] as const, [[`Data`, [`CSV`]]]], // formats without a source are skipped
+    [[] as const, []], // [] hides everything
+  ])(`export_formats=%j offers %j`, (export_formats, expected) => {
+    expect(labels(export_sections(sources, { export_formats }))).toEqual(expected)
+  })
+
+  test.each([
+    [`png`, `chart.png`, `image/png`],
+    [`svg`, `chart.svg`, `image/svg+xml;charset=utf-8`],
+    [`csv`, `chart.csv`, `text/csv;charset=utf-8`],
+    [`json`, `chart.json`, `application/json`],
+  ] as const)(`%s saves %s as %s`, async (format, filename, mime) => {
+    const items = export_sections(sources).flatMap((section) => section.items)
+    const item = items.find((entry) => entry.label === format.toUpperCase())
+    const save = vi.fn()
+    await item?.on_download?.(context(save))
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.anything(), filename, mime)
+    if (format === `png`) expect(sources.png).toHaveBeenCalledWith(300) // the pane's DPI
+    expect(item?.show_dpi).toBe(format === `png`)
+    expect(Boolean(item?.copy_text)).toBe(format !== `png`)
+  })
+
+  test(`on_export receives the serialized file instead of the default save`, async () => {
+    const on_export = vi.fn()
+    const [section] = export_sections(sources, { export_formats: [`csv`], on_export })
+    const save = vi.fn()
+    await section.items[0].on_download?.(context(save))
+    expect(save).not.toHaveBeenCalled()
+    expect(on_export).toHaveBeenCalledExactlyOnceWith(
+      `csv`,
+      expect.objectContaining({
+        data: `a,b`,
+        mime: `text/csv;charset=utf-8`,
+        filename: `chart`,
+      }),
+    )
+    expect(await section.items[0].copy_text?.()).toBe(`a,b`)
+  })
 })
 
 describe(`svg_to_png_blob`, () => {
@@ -424,14 +615,6 @@ describe(`svg_to_png_blob`, () => {
     )
   })
 
-  test(`rejects padding that overflows PNG dimensions`, async () => {
-    await expect(
-      svg_to_png_blob(make_svg(`0 0 100 50`), 72, [], {
-        viewbox_padding: Number.MAX_VALUE,
-      }),
-    ).rejects.toThrow(`Invalid SVG dimensions`)
-  })
-
   test.each([
     { viewBox: `0,0,100,100`, dpi: 72, size: 100, label: `comma-separated viewBox` },
     { viewBox: `0 0 100 100`, dpi: 144, size: 200, label: `2x multiplier` },
@@ -444,28 +627,32 @@ describe(`svg_to_png_blob`, () => {
   })
 
   test.each([
-    { source_viewbox: undefined, padding: 0, size: [200, 100], viewbox: `0 0 100 50` },
-    { source_viewbox: undefined, padding: 2, size: [208, 108], viewbox: `-2 -2 104 54` },
-    { source_viewbox: `0 0 100 50`, padding: 0, size: [200, 100], viewbox: `0 0 100 50` },
-    { source_viewbox: `0 0 100 50`, padding: 2, size: [208, 108], viewbox: `-2 -2 104 54` },
+    { source_viewbox: undefined, stroke: 0, size: [200, 100], viewbox: `0 0 100 50` },
+    { source_viewbox: undefined, stroke: 4, size: [208, 108], viewbox: `-2 -2 104 54` },
+    { source_viewbox: `0 0 100 50`, stroke: 0, size: [200, 100], viewbox: `0 0 100 50` },
+    { source_viewbox: `0 0 100 50`, stroke: 4, size: [208, 108], viewbox: `-2 -2 104 54` },
   ])(
-    `serializes viewBox $source_viewbox as an image blob with $padding padding`,
-    async ({ source_viewbox, padding, size, viewbox }) => {
+    `serializes viewBox $source_viewbox with stroke $stroke as an image blob`,
+    async ({ source_viewbox, stroke, size, viewbox }) => {
       const svg = make_svg(source_viewbox)
       // CSS overrides the attributes; export must follow the rendered viewport.
       svg.setAttribute(`width`, `80`)
       svg.setAttribute(`height`, `40`)
       svg.style.width = `100px`
       svg.style.height = `50px`
+      if (stroke) {
+        const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
+        Object.entries({ stroke: `red`, 'stroke-width': stroke }).forEach(([key, val]) =>
+          rect.setAttribute(key, String(val)),
+        )
+        svg.append(rect)
+      }
       document.body.append(svg)
-      await svg_to_png_blob(svg, 144, [], { viewbox_padding: padding })
+      await svg_to_png_blob(svg, 144)
       expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual(size)
       const svg_blob = object_url.create.mock.calls[0][0] as Blob
       expect(svg_blob.type).toBe(`image/svg+xml;charset=utf-8`)
-      const exported = new DOMParser().parseFromString(
-        await svg_blob.text(),
-        `image/svg+xml`,
-      ).documentElement
+      const exported = parse_svg(await svg_blob.text())
       expect(exported.getAttribute(`viewBox`)).toBe(viewbox)
       expect(exported.getAttribute(`width`)).toBe(String(size[0]))
       expect(exported.getAttribute(`height`)).toBe(String(size[1]))
@@ -486,7 +673,7 @@ describe(`svg_to_png_blob`, () => {
 
   test.each([
     [`success`, `load`, null],
-    [`empty`, `load`, `Failed to generate PNG blob`],
+    [`empty`, `load`, `Failed to generate high-resolution PNG`],
     [`throw`, `load`, `encoding failed`],
     [`timeout`, `load`, `toBlob timed out`],
     [`image-throw`, `throw`, `image setup failed`],
@@ -529,36 +716,6 @@ describe(`export_canvas_as_png`, () => {
     mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
     await export_canvas_as_png(make_mock_canvas(), filename, 150)
     expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
-  })
-
-  test(`delegates to canvas_to_png_blob for high-DPI with renderer`, async () => {
-    const { canvas, renderer } = make_canvas_with_renderer()
-    const scene = {} as Scene
-    const camera = {} as Camera
-    await export_canvas_as_png(canvas, `test.png`, 150, scene, camera)
-    expect(download).toHaveBeenCalledExactlyOnceWith(
-      expect.any(Blob),
-      `test-150dpi.png`,
-      `image/png`,
-    )
-    // the renderer was bumped to the 150 dpi ratio, re-rendered with the given scene and
-    // camera, then restored to its original ratio
-    expect(renderer.setDrawingBufferSize.mock.calls).toEqual([
-      [800, 600, dpi_to_scale(150)],
-      [800, 600, 1],
-    ])
-    expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
-  })
-})
-
-describe(`export_svg_as_png`, () => {
-  test(`downloads the rasterized PNG under the given filename`, async () => {
-    const canvas = mock_offscreen_canvas()
-    mock_object_url()
-    mock_image(`load`)
-    await export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, 144)
-    expect([canvas.width, canvas.height]).toEqual([200, 200])
-    expect(download).toHaveBeenCalledWith(expect.any(Blob), `test.png`, `image/png`)
   })
 })
 
@@ -966,14 +1123,4 @@ describe(`export_trajectory_video`, () => {
     expect(on_save).toHaveBeenCalledTimes(custom_save ? 1 : 0)
     for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce()
   })
-})
-
-test.each([
-  [export_canvas_as_png, `Canvas not found for PNG export`],
-  [export_svg_as_svg, `SVG element not found for export`],
-  [export_svg_as_png, `SVG element not found for PNG export`],
-] as const)(`null input warns: %s`, async (export_image, message) => {
-  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-  await export_image(null, `test`)
-  expect(warn).toHaveBeenCalledWith(message)
 })

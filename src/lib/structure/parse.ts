@@ -3,11 +3,11 @@ import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
+import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { is_pbc, type Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, Site, Species } from '#lib/structure/index.js'
 import { shift_bonds_for_moved_sites } from '#lib/structure/bonding.js'
 import {
   is_lammps_data_content,
@@ -54,7 +54,7 @@ import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { parse_leading_num, to_error } from '#lib/utils.js'
+import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
 import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '#lib/structure/format-detect.js'
@@ -480,6 +480,8 @@ type CifAtom = {
   ambiguity?: string // how an ambiguous all-caps label was read (see cif_row_element)
   coords: Vec3
   occupancy: number
+  type_symbol?: string // the raw _atom_site_type_symbol, keys the _atom_type oxidation loop
+  oxidation_state: number // from a charged type symbol (`Fe2+`) or the _atom_type loop, else 0
 }
 
 // CIF labels (and the odd type symbol) that name water, deuterium or a polyatomic group
@@ -523,6 +525,17 @@ const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => 
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 2))) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 1)))
   )
+}
+
+// The oxidation state a charged CIF type symbol carries (`Fe2+` 2, `O2-` -2, `Ag+` 1,
+// `Fe2.5+` 2.5), else 0; a group symbol's (`NO3-`) belongs to no element. Unlike pymatgen,
+// this decorates without an _atom_type_oxidation_number loop. Sign-first symbols (`O-2`,
+// `Fe+2`) are not the CIF convention and read 0 without a loop, as in pymatgen.
+const cif_type_symbol_oxidation = (raw_symbol = ``): number => {
+  if (cif_group_element(raw_symbol)) return 0
+  const { magnitude = `1`, sign } =
+    /^[A-Za-z]{1,2}(?<magnitude>\d+(?:\.\d+)?)?(?<sign>[+-])$/.exec(raw_symbol)?.groups ?? {}
+  return sign ? Number(`${sign}${magnitude}`) : 0
 }
 
 // The element a CIF atom-site row names, read in priority order. _atom_site_type_symbol is an
@@ -571,9 +584,9 @@ const parse_cif_atom_data = (
   coord_indices: number[],
   atom_idx: number,
 ): CifAtom => {
-  const { label, symbol = -1, occupancy = -1 } = indices
+  const { label, symbol = -1, occupancy: occu_idx = -1 } = indices
 
-  const coords_triplet = vec3_from_values(
+  const coords = vec3_from_values(
     coord_indices.map((idx) => {
       const coord_str = raw_data[idx]
       if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
@@ -585,21 +598,26 @@ const parse_cif_atom_data = (
   )
 
   // Explicit 0 is kept; missing / `.` / `?` (null) default to fully occupied.
-  const occu =
-    (occupancy >= 0 && raw_data[occupancy]
-      ? parse_cif_uncertain_number(raw_data[occupancy])
+  const occupancy =
+    (occu_idx >= 0 && raw_data[occu_idx]
+      ? parse_cif_uncertain_number(raw_data[occu_idx])
       : null) ?? 1
 
   // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
   const raw_label = label === undefined ? undefined : raw_data[label]
+  // an unset type symbol (`?`/`.`) is missing, so the element read from the label keys the
+  // _atom_type oxidation lookup
+  const type_symbol =
+    symbol >= 0 && !is_cif_unset(raw_data[symbol]) ? raw_data[symbol] : undefined
   const { element, ambiguity } = cif_row_element(
-    symbol >= 0 ? raw_data[symbol] : undefined,
+    type_symbol,
     raw_label,
     atom_idx,
     indices.residue !== undefined,
   )
   const id = raw_label && !is_cif_unset(raw_label) ? raw_label : undefined
-  return { id, element, ambiguity, coords: coords_triplet, occupancy: occu }
+  const oxidation_state = cif_type_symbol_oxidation(type_symbol)
+  return { id, element, ambiguity, coords, occupancy, type_symbol, oxidation_state }
 }
 
 // The symop column tag (old `_symmetry_` and current `_space_group_` spellings; parse_cif
@@ -787,16 +805,28 @@ export const parse_cif = (content: string): Crystal => {
     axis_lengths: [lattice_a, lattice_b, lattice_c],
   }).convert
 
-  // Inspect optional _atom_type_number_in_cell loop to see if atom sites are already expanded
+  // Optional _atom_type loops: _atom_type_number_in_cell tells whether atom sites are already
+  // expanded, _atom_type_oxidation_number decorates the rows of each type symbol. Counts come
+  // from the first loop with a count column only (a second one restates them, so summing
+  // across loops doubled every count); oxidation numbers are read from every loop.
   const atom_type_counts: Record<string, number> = {}
+  const atom_type_oxidation = new Map<string, number>()
+  let counts_read = false
   for (const { headers, data_start } of iter_cif_loops(block_lines)) {
     const hdrs = headers.map((hdr) => hdr.toLowerCase())
     const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
-    const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
-    if (sym_idx === -1 || num_idx === -1) continue
+    if (sym_idx === -1) continue
+    const ox_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_oxidation_number`))
+    const num_idx: number = counts_read
+      ? -1
+      : hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
+    counts_read ||= num_idx !== -1
     for (const line of cif_loop_lines(block_lines, data_start)) {
       const toks = split_cif_tokens(line)
-      if (toks.length <= Math.max(sym_idx, num_idx)) continue
+      const ox =
+        ox_idx === -1 || !toks[ox_idx] ? null : parse_cif_uncertain_number(toks[ox_idx])
+      if (toks[sym_idx] && ox !== null) atom_type_oxidation.set(toks[sym_idx], ox)
+      if (num_idx === -1 || toks.length <= Math.max(sym_idx, num_idx)) continue
       // Rows that normalize to the same element (Fe2+ and Fe3+) sum; the count drops a
       // standard uncertainty (`8(0)`) like any CIF number and a non-element row is skipped
       const sym = cif_type_symbol_element(toks[sym_idx])
@@ -805,7 +835,14 @@ export const parse_cif = (content: string): Crystal => {
         atom_type_counts[sym] = (atom_type_counts[sym] ?? 0) + Math.trunc(num)
       }
     }
-    break
+  }
+  // Keyed by the row's exact type symbol (else its element), as pymatgen looks it up; unlike
+  // pymatgen, which strips loop keys' charges, a bare `Fe` row never picks up an `Fe3+` entry.
+  // The loop's number wins over the symbol's charge, as in pymatgen: it is the unrounded value
+  // (`Fe2.67+` vs 2.6666666666666665) and the symbol only a label for it.
+  for (const atom of atoms) {
+    const loop_ox = atom_type_oxidation.get(atom.type_symbol ?? atom.element)
+    if (loop_ox !== undefined) atom.oxidation_state = loop_ox
   }
 
   const observed_counts = count_elements(atoms.map((atom) => atom.element))
@@ -842,9 +879,10 @@ export const parse_cif = (content: string): Crystal => {
   // centering). Positions within CIF_SITE_TOLERANCE of each other (minimum image) are
   // ONE site: a symmetry image landing on an existing image of the same row is a
   // duplicate and dropped, while another row at that position contributes its species
-  // (disordered sites, e.g. Bi 0.5 / Zr 0.5), summing occupancies when the element
-  // repeats (Fe2+ / Fe3+ rows) up to full occupancy. This is what pymatgen's CifParser does and is what lets
-  // a CIF written from a disordered structure read back with the same site count.
+  // (disordered sites, e.g. Bi 0.5 / Zr 0.5, or Fe2+ 0.5 / Fe3+ 0.5), summing occupancies
+  // when the same species repeats up to full occupancy. This is what pymatgen's CifParser
+  // does and is what lets a CIF written from a disordered structure read back with the same
+  // site count.
   // Sites keep the row's _atom_site_label (refinement labels like `Fe1`/`OH2` survive a
   // parse -> structure_to_cif_str round trip); without a label column they are named
   // `${element}${site_idx + 1}` like every other parser's.
@@ -862,7 +900,7 @@ export const parse_cif = (content: string): Crystal => {
     const last_row_at_site: number[] = []
     let n_overlaps = 0
     for (const [row_idx, atom] of atoms.entries()) {
-      const { element, occupancy, id } = atom
+      const { element, occupancy, oxidation_state, id } = atom
       const coords = wrap_to_unit_cell(
         coord_cols.coords_type === `fract` ? atom.coords : cart_to_frac(atom.coords),
       )
@@ -877,20 +915,29 @@ export const parse_cif = (content: string): Crystal => {
             ? `${id}${n_row_sites > 0 ? `_${n_row_sites}` : ``}`
             : `${element}${sites.length + 1}`
           n_row_sites++
-          sites.push(make_site(element, abc, frac_to_cart(abc), label, {}, occupancy))
+          const site = make_site(element, abc, frac_to_cart(abc), label, {}, occupancy)
+          site.species[0].oxidation_state = oxidation_state
+          sites.push(site)
           continue
         }
         if (last_row_at_site[site_idx] === row_idx) continue // symmetry duplicate
         last_row_at_site[site_idx] = row_idx
         const { species } = sites[site_idx]
-        const same_element = species.find((spec) => spec.element === element)
-        if (!same_element) species.push({ element, occu: occupancy, oxidation_state: 0 })
-        else if (same_element.occu + occupancy <= 1 + CIF_OCCUPANCY_TOLERANCE)
-          same_element.occu += occupancy
-        else {
+        // Fe2+ and Fe3+ rows on one site stay two species, as in pymatgen, but share one
+        // element's occupancy
+        const same_species = species.find(
+          (spec) => spec.element === element && spec.oxidation_state === oxidation_state,
+        )
+        let element_occu = occupancy
+        for (const spec of species) if (spec.element === element) element_occu += spec.occu
+        if (element_occu <= 1 + CIF_OCCUPANCY_TOLERANCE) {
+          if (same_species) same_species.occu += occupancy
+          else species.push({ element, occu: occupancy, oxidation_state })
+        } else {
           // past full occupancy these rows are one atom listed twice (e.g. Na1 and Na2
-          // related by a symop), not a disordered site: keep the larger occupancy
-          same_element.occu = Math.max(same_element.occu, occupancy)
+          // related by a symop, or Na+ and Na rows), not a disordered site: a repeated
+          // species keeps the larger occupancy, a differently charged one is dropped
+          if (same_species) same_species.occu = Math.max(same_species.occu, occupancy)
           n_overlaps++
         }
       }
@@ -916,17 +963,20 @@ export const parse_cif = (content: string): Crystal => {
     // Adopt centering only when per-element counts reconcile exactly. Checking
     // the total alone is insufficient: it can coincide while individual element
     // counts are wrong (e.g. expected Fe 1 / O 3 but centering yields Fe 2 / O 2).
-    // species entries, not sites: a disordered site holds one entry per merged row
-    const species = centered.sites.flatMap((site) => site.species)
-    const counts = count_elements(species.map((spec) => spec.element))
+    // Each element once per site, like the per-element expected counts: a disordered site
+    // holds one entry per element (Bi/Zr), while Fe2+ and Fe3+ species share one Fe position
+    const elements = centered.sites.flatMap((site) => [
+      ...new Set(site.species.map((spec) => spec.element)),
+    ])
+    const counts = count_elements(elements)
     const reconciles =
-      species.length === expected_total &&
+      elements.length === expected_total &&
       Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
     if (reconciles) ({ sites, n_overlaps } = centered)
   }
   if (n_overlaps > 0) {
     console.warn(
-      `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the larger occupancy instead of summing`,
+      `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the first row's species (a repeated species at its larger occupancy) and dropped the rest instead of summing`,
     )
   }
 
@@ -1018,6 +1068,40 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
   )
 }
 
+// Why a JSON species entry is unusable, else undefined. A non-element symbol is most likely a
+// pymatgen DummySpecies (`X`, `Xa`), which has no element to draw.
+const json_species_issue = (entry: Record<string, unknown>): string | undefined => {
+  const { element, occu, oxidation_state } = entry
+  if (!species_symbol(entry)) {
+    return typeof element === `string` && element
+      ? `${element} is not an element (pymatgen DummySpecies are not supported)`
+      : `expected an element symbol`
+  }
+  if (occu != null && !(typeof occu === `number` && Number.isFinite(occu) && occu >= 0))
+    return `occu must be a finite number >= 0`
+  if (oxidation_state != null && !Number.isFinite(oxidation_state))
+    return `oxidation_state must be a finite number or null`
+  return undefined
+}
+
+// A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
+// (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols.
+// Values are checked here since CIF export and rendering do arithmetic on them.
+function json_species({ species }: { species?: unknown }, idx: number): Species[] {
+  const where = `JSON site ${display_idx(idx)}`
+  if (!Array.isArray(species) || !species.length) throw new Error(`${where} has no species`)
+  return species.map((raw: unknown) => {
+    const entry = typeof raw === `string` ? { element: raw } : raw
+    const invalid = (issue: string) =>
+      new Error(`${where} has an invalid species: ${JSON.stringify(raw)} (${issue})`)
+    if (!is_plain_object(entry)) throw invalid(`expected an element symbol or object`)
+    const issue = json_species_issue(entry)
+    if (issue) throw invalid(issue)
+    const { occu, oxidation_state } = entry
+    return { ...entry, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
+  })
+}
+
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
 // site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
@@ -1036,6 +1120,7 @@ export function structure_from_json(
         )
       return {
         ...site,
+        species: json_species(site, idx),
         properties: site.properties ?? {},
         xyz: site.xyz,
         abc: site.abc ?? ([0, 0, 0] as Vec3),
@@ -1048,7 +1133,8 @@ export function structure_from_json(
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
-    const site = { ...raw_site, properties: raw_site.properties ?? {} }
+    const species = json_species(raw_site, idx)
+    const site = { ...raw_site, species, properties: raw_site.properties ?? {} }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }

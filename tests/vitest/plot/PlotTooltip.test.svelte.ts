@@ -1,9 +1,10 @@
 import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
 import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
+import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
 import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip.js'
 import { color as d3_color } from 'd3-color'
 import { createRawSnippet, flushSync, mount, type ComponentProps } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query, trigger_resize_observer } from '../setup'
 
 const make_children = (text: string = `Test`) =>
@@ -82,82 +83,122 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.zIndex).toBe(`9999`)
   })
 
-  // Contrast ratios are covered in colors.test.ts; here only the wiring + null skip.
+  // Contrast ratios are covered in colors.test.ts; here only the wiring. No fill (or one
+  // that resolves to nothing) paints the neutral --tooltip-bg chip (resolved where it renders)
   test.each([
-    [`#000000`, `white`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
-    [`#4fc3f7`, `black`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
-    [null, ``, ``, ``],
-  ])(
-    `sets background %s and contrasting text %s`,
-    (background, _text, expected_bg, expected_text) => {
-      const tooltip = mount_tooltip({ bg_color: background })
-      expect(d3_color(tooltip.style.backgroundColor)?.formatRgb() ?? ``).toBe(expected_bg)
-      expect(d3_color(tooltip.style.color)?.formatRgb() ?? ``).toBe(expected_text)
-    },
-  )
+    [`#000000`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
+    [`#4fc3f7`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
+    [`rgba(79, 195, 247, 0.4)`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`], // flattened
+    [null, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
+    [`transparent`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
+    [`var(--unset-color)`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
+  ])(`bg_color %s paints %s with %s text`, (background, expected_bg, expected_text) => {
+    document.body.style.setProperty(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    onTestFinished(() => {
+      document.body.style.removeProperty(`--tooltip-bg`)
+    })
+    const tooltip = mount_tooltip({ bg_color: background })
+    expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
+    expect(d3_color(tooltip.style.color)?.formatRgb()).toBe(expected_text)
+  })
+
+  // hover_tooltip's mark-fill getter may yield nothing (e.g. a mark without a palette color):
+  // the tooltip falls back to the neutral chip instead of losing its background
+  test.each([
+    [() => null, `rgb(5, 5, 5)`, `white`],
+    [undefined, `rgb(5, 5, 5)`, `white`],
+    [() => `#4fc3f7`, `rgb(79, 195, 247)`, `black`],
+  ])(`hover_tooltip with fill getter %s paints %s`, (bg_color, expected_bg, expected_text) => {
+    document.body.style.setProperty(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    onTestFinished(() => {
+      document.body.style.removeProperty(`--tooltip-bg`)
+    })
+    const mark = document.createElement(`span`)
+    document.body.append(mark)
+    const cleanup = $effect.root(() => {
+      $effect(() => hover_tooltip(make_children(), bg_color)(mark))
+    })
+    onTestFinished(cleanup)
+    flushSync()
+    mark.dispatchEvent(new PointerEvent(`pointerenter`, { clientX: 5, clientY: 5 }))
+    flushSync()
+    const tooltip = doc_query(`.plot-tooltip`)
+    expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
+    expect(tooltip.style.color).toBe(expected_text)
+  })
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
-    const tooltip = mount_tooltip({
-      bg_color: `var(--series-color)`,
-      style: `--series-color: white`,
+    document.body.style.setProperty(`--series-color`, `white`)
+    onTestFinished(() => {
+      document.body.style.removeProperty(`--series-color`)
     })
-    await vi.waitFor(() => expect(tooltip.style.color).toBe(`black`))
-
-    tooltip.style.setProperty(`--series-color`, `black`)
+    const tooltip = mount_tooltip({ bg_color: `var(--series-color)` })
+    expect([
+      d3_color(tooltip.style.backgroundColor)?.formatHex(),
+      tooltip.style.color,
+    ]).toEqual([`#ffffff`, `black`])
+    document.body.style.setProperty(`--series-color`, `black`)
     await vi.waitFor(() => expect(tooltip.style.color).toBe(`white`))
   })
 
-  // Tooltip props change on every mousemove; the measure + color observers must be
-  // created once per host element, not rebuilt per move (was 2 MutationObservers/move).
-  test(`mousemoves re-read colors without rebuilding observers`, () => {
-    const count_constructions = <Name extends `ResizeObserver` | `MutationObserver`>(
-      name: Name,
-    ) => {
-      const Original = globalThis[name]
-      let count = 0
-      globalThis[name] = new Proxy(Original, {
-        construct(target, args, new_target) {
-          count++
-          return Reflect.construct(target, args, new_target)
-        },
-      })
-      return {
-        get count() {
-          return count
-        },
-        restore: () => (globalThis[name] = Original),
+  // Tooltip props change on every mousemove: the measure + color observers must be created
+  // once per host element (was 2 MutationObservers/move), and moving must not re-read
+  // computed styles (its own style:left/top writes used to trigger a re-resolve each move)
+  test.each([`#000000`, `var(--series-color)`])(
+    `%s: mousemoves rebuild no observers and read no computed styles`,
+    async (bg_color) => {
+      const count_constructions = (name: `ResizeObserver` | `MutationObserver`) => {
+        const Original = globalThis[name]
+        let count = 0
+        vi.stubGlobal(
+          name,
+          new Proxy(Original, {
+            construct(target, args, new_target) {
+              count++
+              return Reflect.construct(target, args, new_target)
+            },
+          }),
+        )
+        onTestFinished(() => {
+          vi.stubGlobal(name, Original)
+        })
+        return {
+          get count() {
+            return count
+          },
+        }
       }
-    }
-    const resize_observers = count_constructions(`ResizeObserver`)
-    const mutation_observers = count_constructions(`MutationObserver`)
-    try {
-      const props = $state<{ x: number; y: number; bg_color: string | null }>({
-        x: 0,
-        y: 0,
-        bg_color: `#000000`,
-      })
+      const resize_observers = count_constructions(`ResizeObserver`)
+      const mutation_observers = count_constructions(`MutationObserver`)
+      const computed_styles = vi.spyOn(globalThis, `getComputedStyle`)
+      onTestFinished(() => computed_styles.mockRestore())
+      const props = $state({ x: 0, y: 0, bg_color })
       mount(PlotTooltip, {
         target: document.body,
         props: Object.assign(props, { children: make_children() }),
       })
       flushSync()
       const tooltip = doc_query(`.plot-tooltip`)
-      const at_mount = [resize_observers.count, mutation_observers.count]
+      const at_mount = [
+        resize_observers.count,
+        mutation_observers.count,
+        computed_styles.mock.calls.length,
+      ]
       expect(at_mount[0]).toBe(1)
       for (let idx = 1; idx <= 50; idx++) {
         props.x = idx
         props.y = 2 * idx
-        props.bg_color = idx % 2 ? `#ffffff` : `#000000`
         flushSync()
       }
+      await new Promise((resolve) => setTimeout(resolve, 0)) // MutationObserver callbacks
       expect(tooltip.style.left).toBe(`56px`)
-      expect(tooltip.style.color).toBe(`white`) // last bg is black → still re-reads
-      expect([resize_observers.count, mutation_observers.count]).toEqual(at_mount)
-    } finally {
-      resize_observers.restore()
-      mutation_observers.restore()
-    }
-  })
+      expect([
+        resize_observers.count,
+        mutation_observers.count,
+        computed_styles.mock.calls.length,
+      ]).toEqual(at_mount)
+    },
+  )
 
   // Position clamping is covered in layout.test.ts; this only checks wrap width = box - 16.
   test(`wraps inside a constrained width`, () => {

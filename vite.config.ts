@@ -180,7 +180,10 @@ export default defineConfig({
   build: { ...config.build, reportCompressedSize: false },
   plugins,
   optimizeDeps: { rolldownOptions: { plugins: [scan_virtual_relative_imports] } },
+  // ES workers keep lazily imported chunks (h5wasm, ~4 MB) separate: the default iife format
+  // inlines them, so every file parse loaded HDF5 support
   worker: {
+    format: `es`,
     plugins: shared.json_gz_worker_plugins(json_gz_options),
   },
   fmt: {
@@ -240,15 +243,15 @@ export default defineConfig({
   // the staged files, and run the (whole-project) Svelte type check only when a TS/Svelte
   // file is staged. Commands get the staged paths appended; svelte-check takes no file list,
   // so those two run as thunks that ignore the names. No shell: one command per entry.
-  // --config stops svelte-check loading every nested vite.config (e.g. scratch checkouts in tmp/).
+  // `pnpm typecheck` passes svelte-check --config: without it svelte-check crawls the whole
+  // workspace and loads every nested vite/svelte config (e.g. scratch checkouts in tmp/).
   staged: {
     '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
     '*.{ts,js,mjs,svelte}': [
       // Files under lint ignorePatterns (e.g. extensions/**) can be the only ones staged
       `vp lint --no-error-on-unmatched-pattern`,
       () => `npx svelte-kit sync`,
-      () =>
-        `npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning`,
+      () => `pnpm typecheck`,
     ],
   },
 

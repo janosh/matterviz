@@ -24,6 +24,7 @@
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
+  import type { ExportProps, ExportSources } from '#lib/io/export.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -40,37 +41,44 @@
     chrome_color,
     controls_toggle_props,
     header_controls,
+    export_sources = {},
+    export_formats,
+    export_filename = css_prefix,
+    on_export,
     controls,
     body,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    // Wrapper class the chart is selected by (`sankey`, `treemap`)
-    chart_class: string
-    // Prefix of this chart's public CSS variables (`sankey`, `scatter3d`)
-    css_prefix: string
-    // Per-chart fallbacks for chart_css_defaults entries whose default differs
-    css_var_fallbacks?: Record<string, string>
-    wrapper?: HTMLDivElement
-    // Measured container size, 0 until the first layout pass
-    width?: number
-    height?: number
-    fullscreen?: boolean
-    fullscreen_toggle?: boolean
-    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-    // Color for the chrome icons, from whatever the chart paints under the top-right
-    // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
-    // rest props after their own, so a `style` they set would be clobbered by any caller
-    // that passes one - which every sized mount does.
-    chrome_color?: string
-    controls_toggle_props?: PaneToggleProps
-    header_controls?: Snippet<[Dims]>
-    // The controls pane receives layout props and visibility; this row owns mode and style.
-    controls?: Snippet<[PaneToggleProps, boolean]>
-    // Chart content, rendered once the container is measured
-    body: Snippet
-    children?: Snippet<[Dims]>
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> &
+    ExportProps & {
+      // Wrapper class the chart is selected by (`sankey`, `treemap`)
+      chart_class: string
+      // Prefix of this chart's public CSS variables (`sankey`, `scatter3d`)
+      css_prefix: string
+      // Per-chart fallbacks for chart_css_defaults entries whose default differs
+      css_var_fallbacks?: Record<string, string>
+      wrapper?: HTMLDivElement
+      // Measured container size, 0 until the first layout pass
+      width?: number
+      height?: number
+      fullscreen?: boolean
+      fullscreen_toggle?: boolean
+      show_controls?: ShowControlsProp<`controls` | `fullscreen`>
+      // Color for the chrome icons, from whatever the chart paints under the top-right
+      // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
+      // rest props after their own, so a `style` they set would be clobbered by any caller
+      // that passes one - which every sized mount does.
+      chrome_color?: string
+      controls_toggle_props?: PaneToggleProps
+      header_controls?: Snippet<[Dims]>
+      // What the chart can export (its figure and data), offered in the header's export pane
+      export_sources?: ExportSources
+      // The controls pane receives layout props and visibility; this row owns mode and style.
+      controls?: Snippet<[PaneToggleProps, boolean]>
+      // Chart content, rendered once the container is measured
+      body: Snippet
+      children?: Snippet<[Dims]>
+    } = $props()
 
   const css_vars = $derived(
     Object.entries(chart_css_defaults(css_prefix))
@@ -103,6 +111,12 @@
       {chrome_color}
       {controls_toggle_props}
       {header_controls}
+      export_pane={{
+        sources: export_sources,
+        export_formats,
+        on_export,
+        filename: export_filename,
+      }}
       {controls}
     />
     {@render body()}

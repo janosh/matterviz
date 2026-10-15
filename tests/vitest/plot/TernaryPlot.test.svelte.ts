@@ -1,9 +1,10 @@
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
-import type { TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
+import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  export_via_pane,
   fire,
   keydown,
   mount_sized,
@@ -306,8 +307,9 @@ describe(`TernaryPlot`, () => {
         },
         { points: [[1, 1, 1]], color_values: [-1000], visible: false },
       ],
+      // a t in [0, 1] scheme over the auto [0, 5] value range
       color_scale: {
-        fn: (value: number) => (value > 2 ? `rgb(255, 0, 0)` : `rgb(0, 0, 255)`),
+        scheme: (frac: number) => (frac > 0.4 ? `rgb(255, 0, 0)` : `rgb(0, 0, 255)`),
       },
       color_bar: { title: `E (eV)` },
     })
@@ -324,6 +326,40 @@ describe(`TernaryPlot`, () => {
       Number(label.textContent),
     )
     expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 5])
+  })
+
+  // type spaces the colors and value_range ends override the data extent, on markers and bar
+  test.each<[ColorScaleConfig, number[], number[]]>([
+    [{ type: `log` }, [0, 128, 255], [1, 100]],
+    [{ value_range: [0, 200] }, [1, 13, 128], [0, 200]],
+    [{ type: `log`, value_range: [null, 1000] }, [0, 85, 170], [1, 1000]],
+  ])(`color_scale %j`, async (config, expected_reds, bar_range) => {
+    const red_ramp = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
+    const plot = await mount_ternary({
+      series: [
+        {
+          points: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ],
+          color_values: [1, 10, 100],
+        },
+      ],
+      color_scale: { ...config, scheme: red_ramp },
+      color_bar: { tick_format: `d` },
+    })
+    const reds = markers(plot).map((marker) =>
+      Number(
+        /rgb\((?<red>\d+)/.exec(marker.querySelector(`.marker`)?.getAttribute(`fill`) ?? ``)
+          ?.groups?.red,
+      ),
+    )
+    expect(reds).toEqual(expected_reds)
+    const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
+      Number(label.textContent),
+    )
+    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual(bar_range)
   })
 
   test.each<Partial<ComponentProps<typeof TernaryPlot>>>([
@@ -343,4 +379,17 @@ describe(`TernaryPlot`, () => {
     expect(markers(plot)).toHaveLength(0)
     expect(plot.querySelectorAll(`.corner-labels text`)).toHaveLength(3)
   })
+})
+
+// CSV rows hold each visible point's normalized fractions under the corner labels
+test(`TernaryPlot CSV export lists normalized fractions per series`, async () => {
+  const on_export = vi.fn()
+  const plot = await mount_ternary({ series, labels: [`A`, `B`, `C`], on_export })
+  const result = await export_via_pane(on_export, `CSV`, plot)
+  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`])
+  expect(result.filename).toBe(`ternary-A-B-C`)
+  const [header, ...rows] = String(result.data).split(`\n`)
+  expect(header).toBe(`series,A,B,C,color_value`)
+  expect(rows).toContain(`Oxides,0.2,0.2,0.6,`) // raw counts [2, 2, 6] normalized
+  expect(rows).toHaveLength(5)
 })

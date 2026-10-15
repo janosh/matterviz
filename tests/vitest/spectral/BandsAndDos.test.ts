@@ -1,7 +1,7 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import BrillouinBandsDos from '#lib/spectral/BrillouinBandsDos.svelte'
 import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
-import { flushSync } from 'svelte'
+import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -262,5 +262,26 @@ describe(`bands/DOS wrappers`, () => {
     await fire(plot_svg(dos_plot), new MouseEvent(`dblclick`, { bubbles: true }))
     expect(y_ticks(bands_plot)).toEqual(initial)
     expect(y_ticks(dos_plot)).toEqual(initial)
+  })
+
+  // One fullscreen button in the top-right plot's header (DOS side by side, bands when stacked)
+  // beside the caller's controls, hidden by fullscreen_toggle or that plot's show_controls
+  const kinds = [`default`, `fullscreen_toggle`, `show_controls`] as const
+  const cases = wrappers.flatMap((row) => kinds.map((kind) => [...row, kind] as const))
+  it.each(cases)(`fullscreen btn in %s at %ipx, %s`, async (selector, width, Comp, kind) => {
+    const [host_idx, shown] = [width === 1200 ? 1 : 0, Number(kind === `default`)]
+    const hidden = { show_controls: { hidden: [`fullscreen`] as const } }
+    const [bands_props, dos_props] = [`bands`, `dos`].map((name, idx) => ({
+      header_controls: createRawSnippet(() => ({ render: () => `<i class=${name}></i>` })),
+      ...(kind === `show_controls` && idx === host_idx ? hidden : {}),
+    }))
+    const fullscreen_toggle = kind !== `fullscreen_toggle`
+    const props = { ...pair_props, bands_props, dos_props, fullscreen_toggle }
+    const root = await mount_sized(Comp, props, { selector, width, height: 600 })
+    const plots = [...root.querySelectorAll(`.scatter`)]
+    const in_plots = (sel: string) => plots.map((plot) => plot.querySelectorAll(sel).length)
+    expect([...in_plots(`.bands`), ...in_plots(`.dos`)]).toEqual([1, 0, 0, 1])
+    expect(in_plots(`.fullscreen-btn`)).toEqual(host_idx ? [0, shown] : [shown, 0])
+    expect(root.querySelectorAll(`.fullscreen-btn`)).toHaveLength(shown)
   })
 })

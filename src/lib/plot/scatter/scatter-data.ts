@@ -206,10 +206,6 @@ const is_transparent_or_none = (color: string | undefined | null): boolean =>
   color === `transparent` ||
   /rgba\([^)]+[,/]\s*0(?:\.0*)?\s*\)$/.test(color)
 
-// Type-guard negation of is_transparent_or_none so usable colors narrow to string
-const is_opaque_color = (color: string | undefined | null): color is string =>
-  !is_transparent_or_none(color)
-
 // Legend rows in render order, for both the rendered legend and the solver's footprint tracker.
 // A null series keeps its index (points and styles are looked up by it) but contributes no row,
 // else the legend shows a phantom `Series N`.
@@ -380,35 +376,30 @@ export const lookalike_legend_label = (
     JSON.stringify([legend_group, label, display_style]),
   )?.label
 
-// Resolve tooltip background color: point color-scale value, then point fill, then point
-// stroke (points marker), then line color cascade (line marker), then dark fallback
+// The hovered point's visible color for its tooltip: color-scale value, then point fill, then
+// point stroke (points marker), then the line color cascade (line marker: series stroke, first
+// point fill, first color value, first point stroke). Undefined: PlotTooltip's neutral chip.
 export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   point: { color_value?: number | null; point_style?: PointStyle },
   series: DataSeries<Metadata> | undefined,
   color_scale_fn: (value: number) => string,
-): string {
+): string | undefined {
   const { color_value, point_style } = point
-
-  const scale_color = color_value != null ? color_scale_fn(color_value) : undefined
-  if (is_opaque_color(scale_color)) return scale_color
-  const fill_color = point_style?.fill
-  if (is_opaque_color(fill_color)) return fill_color
-  if (has_marker(series, `points`)) {
-    const stroke_color = point_style?.stroke
-    if (is_opaque_color(stroke_color)) return stroke_color
-  }
+  const scale = (value: number | null | undefined) =>
+    value == null ? undefined : color_scale_fn(value)
+  const candidates = [scale(color_value), point_style?.fill]
+  const has_points = has_marker(series, `points`)
+  if (has_points) candidates.push(point_style?.stroke)
   if (has_marker(series, `line`)) {
     const series_style = first_point_style(series)
-    const first_color_value = series?.color_values?.[0]
-    let line_color_candidate = series?.line_style?.stroke
-    if (is_transparent_or_none(line_color_candidate)) line_color_candidate = series_style?.fill
-    if (is_transparent_or_none(line_color_candidate) && first_color_value != null)
-      line_color_candidate = color_scale_fn(first_color_value)
-    if (is_transparent_or_none(line_color_candidate) && has_marker(series, `points`))
-      line_color_candidate = series_style?.stroke
-    if (is_opaque_color(line_color_candidate)) return line_color_candidate
+    candidates.push(
+      series?.line_style?.stroke,
+      series_style?.fill,
+      scale(series?.color_values?.[0]),
+    )
+    if (has_points) candidates.push(series_style?.stroke)
   }
-  return `rgba(0, 0, 0, 0.7)`
+  return candidates.find((color): color is string => !is_transparent_or_none(color))
 }
 
 // Strict ordering enables bounded spline context. Duplicate/non-finite x values keep

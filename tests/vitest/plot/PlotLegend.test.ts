@@ -69,7 +69,7 @@ describe(`PlotLegend`, () => {
     mount_legend({
       series_data: [
         legend_item(`Blue`, 0, {
-          color_scale: { scheme: `interpolateBlues`, color_range: [0.3, 1] },
+          color_scale: { scheme: `interpolateBlues`, palette_range: [0.3, 1] },
         }),
         legend_item(`Red`, 1, { color_scale: `interpolateReds` }),
       ],

@@ -10,11 +10,12 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   expect_plot_controls,
+  export_via_pane,
+  form_controls,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
   query,
-  form_controls,
   roving_tabindexes,
   svg_rect,
   with_measured_text,
@@ -748,4 +749,16 @@ describe(`BoxPlot`, () => {
       plot.querySelector(`button[aria-label="Reset box / violin to defaults"]`),
     ).toBeNull()
   })
+})
+
+// One CSV row per visible box with its five-number summary and outliers
+test(`BoxPlot CSV export lists each box's summary statistics`, async () => {
+  const on_export = vi.fn()
+  const plot = await mount_sized_box_plot({ series: [basic], on_export })
+  const result = await export_via_pane(on_export, `CSV`, plot)
+  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`])
+  const [header, row] = String(result.data).split(`\n`)
+  expect(header.split(`,`).slice(0, 3)).toEqual([`series`, `n`, `min`])
+  expect(header.endsWith(`,outliers`)).toBe(true)
+  expect(row.startsWith(`Box A,`)).toBe(true)
 })

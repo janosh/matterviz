@@ -15,6 +15,7 @@ import {
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import type { AnyStructure } from './index'
+import { structure_json_data } from './site'
 
 // Reuse IDs only for the same physical quantity, units and normalization.
 export type StructureToolVolume = VolumetricData
@@ -201,6 +202,9 @@ export function copy_prediction_input(value: unknown): AnyStructure {
         invalid(`input.sites[${idx}].species.element`, `unknown element: ${entry.element}`)
       if (typeof entry.occu !== `number` || entry.occu < 0)
         invalid(`input.sites[${idx}].species.occu`, `expected nonnegative occupancy`)
+      // prediction_to_json drops undecorated (0) oxidation states, as pymatgen omits them
+      if (typeof (entry.oxidation_state ??= 0) !== `number`)
+        invalid(`input.sites[${idx}].species.oxidation_state`, `expected a number`)
     }
   }
   if (input.lattice !== undefined) {
@@ -332,6 +336,7 @@ export function prediction_to_json(prediction: StructureToolPrediction): string 
   return JSON.stringify({
     schema: `matterviz-prediction-v1`,
     ...snapshot,
+    input: structure_json_data(snapshot.input),
     volumes: snapshot.volumes?.map(({ values, ...metadata }) => ({
       ...metadata,
       values: Array.from(values),

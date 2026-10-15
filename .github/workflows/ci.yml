@@ -17,7 +17,9 @@ permissions:
 concurrency:
   # Reusable calls keep the caller's event and workflow name. Give each release run its
   # own group so dispatching another version cannot cancel or replace its CI gate.
-  group: ${{ github.workflow }}-${{ github.workflow == 'CI' && (github.event.pull_request.number || github.ref) || github.run_id }}
+  # Pushes to an open PR (synchronize) use their own group (see e2e-gate), so they cannot cancel
+  # the E2E run that started when the PR was opened or reopened.
+  group: ${{ github.workflow }}-${{ github.workflow == 'CI' && (github.event.pull_request.number || github.ref) || github.run_id }}${{ github.event.action == 'synchronize' && '-sync' || '' }}
   cancel-in-progress: ${{ github.workflow == 'CI' }}
 
 jobs:
@@ -40,7 +42,7 @@ jobs:
       - name: Format, lint and type-check the whole repo
         run: |
           pnpm exec vp check
-          npx svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning
+          pnpm typecheck
       - name: Run prek checks
         uses: j178/prek-action@main
 
@@ -138,8 +140,42 @@ jobs:
           RESULT: ${{ needs.unit-test-shards.result == 'success' && needs.publint.result == 'success' && 'success' || 'failure' }}
         run: test "$RESULT" = success
 
+  # The full E2E suite (~15 min) runs when a PR is opened or reopened, on merge to main, on
+  # manual dispatch and as the release gate. Later pushes to an open PR (synchronize) skip it
+  # only while the PR's latest decided E2E gate passed: once it fails (or before any run has
+  # decided), every push runs E2E until it passes, so a red E2E can't turn green by skipping.
+  e2e-gate:
+    name: Decide whether E2E runs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          run=true
+          if [ "$ACTION" = synchronize ]; then
+            # newest first; cancelled or still running runs decide nothing
+            for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=pull_request&status=completed&branch=$HEAD_REF&per_page=30" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and .head_repository.full_name == \"$HEAD_REPO\") | .id"); do
+              gate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" \
+                --jq '.jobs[] | select(.name == "E2E tests (shard 1/4)") | .conclusion')
+              if [ "$gate" = success ]; then run=false; break; fi
+              if [ "$gate" = failure ]; then break; fi
+            done
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   build-site:
     name: Build browser test site
+    needs: e2e-gate
+    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -156,6 +192,8 @@ jobs:
 
   e2e-source:
     name: E2E source inspection
+    needs: e2e-gate
+    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -209,11 +247,12 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  # These four names are required by the main ruleset. Each gates the complete matrix.
+  # These four names are required by the main ruleset (e2e-gate reads shard 1's). Each gates
+  # the complete matrix and accepts skipped E2E jobs only when e2e-gate skipped them on purpose.
   e2e-tests:
     name: E2E tests (shard ${{ matrix.shard }}/4)
     if: always()
-    needs: [e2e-test-shards, e2e-source]
+    needs: [e2e-gate, e2e-test-shards, e2e-source]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -221,5 +260,5 @@ jobs:
     steps:
       - name: Require all E2E test shards
         env:
-          RESULT: ${{ needs.e2e-test-shards.result == 'success' && needs.e2e-source.result == 'success' && 'success' || 'failure' }}
+          RESULT: ${{ ((needs.e2e-test-shards.result == 'success' && needs.e2e-source.result == 'success') || (needs.e2e-gate.outputs.run == 'false' && needs.e2e-test-shards.result == 'skipped' && needs.e2e-source.result == 'skipped')) && 'success' || 'failure' }}
         run: test "$RESULT" = success

@@ -12,9 +12,10 @@ interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Must inline `new URL('./x-worker.js', import.meta.url)` at the call site: Vite detects
   // workers syntactically and cannot follow the URL through a variable.
   create_worker: () => Worker
-  // SSR / no-Worker fallback, run on the main thread. Receives `undefined` when the caller
-  // omitted options, exactly as the worker's compute does, so a defaulted `options = {}`
-  // parameter serves both paths. The progress callback stays outside cloneable worker options.
+  // Main-thread implementation where no worker can be created (see can_create_worker).
+  // Receives `undefined` when the caller omitted options, exactly as the worker's compute
+  // does, so a defaulted `options = {}` parameter serves both paths. The progress callback
+  // stays outside cloneable worker options.
   compute_sync: (
     input: Input,
     options: Options | undefined,
@@ -55,6 +56,18 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   // Terminates the worker only when nothing is in flight (a component's unmount path)
   release: () => void
 }
+
+// Where Worker is missing (SSR) or a host called disable_workers, jobs run on the main thread;
+// a worker that can be constructed but then fails still rejects its requests
+let workers_disabled = false
+// For hosts that can't load bundled worker files: anywidget imports matterviz's single-file
+// bundle from a blob:, CDN or file:// URL, against which worker URLs either fail to resolve or
+// resolve cross-origin. Call once at startup to run every job on the main thread.
+export const disable_workers = (): void => {
+  workers_disabled = true
+}
+export const can_create_worker = (): boolean =>
+  !workers_disabled && typeof Worker !== `undefined`
 
 const abort_error = (signal: AbortSignal, label: string): Error => {
   const error = to_error(signal.reason ?? `${label} worker request aborted`)
@@ -250,9 +263,9 @@ export function create_worker_client<
   }
 
   // Constructor failures reject the request instead of silently moving expensive work onto
-  // the UI thread. Environments without Worker use the explicit synchronous implementation.
+  // the UI thread. Environments that cannot create workers use compute_sync.
   function ensure_worker(): Worker | null {
-    if (typeof Worker === `undefined`) return null
+    if (!can_create_worker()) return null
     if (worker) return worker
     const active_worker = create_worker()
     worker = active_worker

@@ -552,8 +552,7 @@
     }
   }
   .legend-item:hover,
-  .legend-item:focus,
-  .legend-item.active {
+  .legend-item:focus {
     background-color: var(--plot-legend-item-hover-bg-color);
   }
   .legend-item.active {

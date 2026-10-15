@@ -13,7 +13,7 @@ import * as export_funcs from '#lib/structure/export.js'
 import { mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
-import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
+import type { Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, mock_canvas_context, set_input } from '../setup'
@@ -349,9 +349,7 @@ describe(`StructureExportPane`, () => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         slice_canvas,
         `charge-density-slice`,
-        150,
-        null,
-        null,
+        144,
         expect.any(Function),
       )
     })
@@ -533,10 +531,9 @@ describe(`StructureExportPane`, () => {
     expect(toggle.querySelector(`svg`)).not.toBeNull()
   })
 
-  const mock_camera = { type: `PerspectiveCamera` } as Camera
   test.each([
-    { desc: `explicit dpi + camera`, props: { png_dpi: 200, camera: mock_camera } },
-    { desc: `default dpi (150), no camera`, props: {} },
+    { desc: `explicit dpi`, props: { png_dpi: 200 } },
+    { desc: `default dpi (144 = 2x)`, props: {} },
   ])(`PNG export button invokes export_canvas_as_png with $desc`, async ({ props }) => {
     mount_pane({
       structure: simple_structure,
@@ -553,9 +550,7 @@ describe(`StructureExportPane`, () => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(
         wrapper_div.querySelector(`canvas`),
         `structure-basename`,
-        props.png_dpi ?? 150,
-        mock_scene,
-        props.camera,
+        props.png_dpi ?? 144,
         expect.any(Function),
       )
     })

@@ -5,9 +5,7 @@
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import type { ExportSection } from '#lib/io/index.js'
-  import ExportPane from '#lib/io/ExportPane.svelte'
-  import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
+  import { json_source } from '#lib/io/export.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { DataSeries, UserContentProps } from '#lib/plot/core/types.js'
@@ -21,7 +19,6 @@
     highlight_key_of,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
-  import { export_json_file, get_json_string } from './export'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
 
   let {
@@ -42,9 +39,8 @@
     hover_info?: ChemPotHoverInfo | null
     highlighted_formula?: string | null
   } = $props()
-  // Plot wrapper element (export and pointer hit-testing), bound from the ScatterPlot
+  // Plot wrapper element (pointer hit-testing), bound from the ScatterPlot
   let wrapper = $state<HTMLDivElement>()
-  let export_pane_open = $state(false)
   let container_width = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
   const render_width = $derived(container_width > 0 ? container_width : width)
@@ -210,47 +206,15 @@
   }
 
   // === Export ===
-  const get_svg_element = (): SVGSVGElement | null =>
-    wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
-
+  // The plot's own export pane, with the computed domains added as JSON
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
-  const json_payload = $derived({
-    elements: diagram_data?.elements ?? [],
-    domains: draw_domains,
-    lims: diagram_data?.lims ?? [],
-  })
-
-  const export_sections = $derived<ExportSection[]>([
-    {
-      title: `Export Image`,
-      items: [
-        {
-          label: `SVG`,
-          on_download: ({ filename, save }) => {
-            const svg = get_svg_element()
-            if (svg) return export_svg_as_svg(svg, `${filename}.svg`, [], {}, save)
-          },
-        },
-        {
-          label: `PNG`,
-          on_download: ({ filename, save }) => {
-            const svg = get_svg_element()
-            if (svg) return export_svg_as_png(svg, `${filename}.png`, undefined, [], {}, save)
-          },
-        },
-      ],
-    },
-    {
-      title: `Export Data`,
-      items: [
-        {
-          label: `JSON`,
-          on_download: ({ filename, save }) => export_json_file(json_payload, filename, save),
-          copy_text: () => get_json_string(json_payload),
-        },
-      ],
-    },
-  ])
+  const export_sources = {
+    json: json_source(() => ({
+      elements: diagram_data?.elements ?? [],
+      domains: draw_domains,
+      lims: diagram_data?.lims ?? [],
+    })),
+  }
 </script>
 
 {#snippet domain_labels(props: UserContentProps)}
@@ -264,19 +228,6 @@
       {domain_formula_text(formula)}
     </text>
   {/each}
-{/snippet}
-
-{#snippet export_toggle()}
-  <ExportPane
-    filename={export_basename}
-    bind:export_pane_open
-    sections={export_sections}
-    pane_props={{ class: `chempot-export-pane` }}
-    toggle_props={{
-      class: `chempot-export-toggle`,
-      title: `Export chemical potential diagram`,
-    }}
-  />
 {/snippet}
 
 {#snippet chempot_controls(_props: unknown)}
@@ -334,7 +285,8 @@
       bind:y_axis
       legend={null}
       show_controls
-      header_controls={export_toggle}
+      export_filename={export_basename}
+      {export_sources}
       controls_extra={chempot_controls}
       user_content={domain_labels}
       on_point_hover={handle_hover}
@@ -354,6 +306,7 @@
         {hover_info}
         pinned={locked_hover_formula === hover_info.formula}
         detail_level={chempot.tooltip_detail_level}
+        bg_color={domain_colors.get(hover_info.formula)}
         constrain_to={{ width: render_width, height: render_height }}
       />
     {/if}

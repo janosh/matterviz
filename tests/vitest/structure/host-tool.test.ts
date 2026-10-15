@@ -19,6 +19,7 @@ import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { StructureToolGeometry } from '#lib/structure/prediction.js'
+import { structure_to_json_str } from '#lib/structure/export.js'
 import { create_frac_to_cart, det_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import {
   fcc_primitive_matrix,
@@ -195,7 +196,8 @@ describe(`host prediction ownership`, () => {
       schema: `matterviz-prediction-v1`,
       run_id: run.id,
       provenance: { ...provenance, settings: { seed: 0 } },
-      input: state.structure,
+      // the same pymatgen-compatible sites as the structure JSON export
+      input: JSON.parse(structure_to_json_str(state.structure)),
       result,
       site_properties: [{ charge: 0.5, dipole: [1, 2, 3] }],
     })
@@ -385,6 +387,9 @@ test(`prediction import preserves input, fields and provenance, recomputes range
   }
   const text = prediction_to_json(prediction)
   const restored = prediction_from_json(text)
+  // undecorated species drop oxidation_state on export (pymatgen would read Cu0+), get 0 back
+  expect(JSON.parse(text).input.sites[0].species).toEqual([{ element: `Cu`, occu: 1 }])
+  expect(restored.input).toEqual(input)
   expect(restored.volumes?.[0].values).toEqual(density.values)
   expect(restored.volumes?.[0].data_range).toEqual({ min: 1, max: 5, abs_max: 5, mean: 1.5 })
   expect(restored.volumes?.[0].signed).toBe(false)
@@ -407,6 +412,9 @@ test(`prediction import preserves input, fields and provenance, recomputes range
   expect(() => prediction_from_json(text.replace(`"Cu"`, `"DefinitelyNotAnElement"`))).toThrow(
     `input.sites[0].species.element`,
   )
+  expect(() =>
+    prediction_from_json(text.replace(`"occu":1`, `"occu":1,"oxidation_state":"2+"`)),
+  ).toThrow(`input.sites[0].species.oxidation_state`)
   for (const key of [`pbc`, `a`, `volume`]) {
     const malformed = JSON.parse(text)
     Reflect.deleteProperty(malformed.input.lattice, key)
@@ -507,9 +515,9 @@ test.each([
   const exported = JSON.parse(prediction_to_json(prediction))
   expect(exported.geometry.positions[0]).toEqual([0.1, 0, 0])
   expect(exported.geometry.lattice).toEqual(lattice)
-  // The input, not the geometry, stays the run's identity.
-  expect(exported.input).toEqual(state.structure)
   const restored = prediction_from_json(JSON.stringify(exported))
+  // The input, not the geometry, stays the run's identity.
+  expect(restored.input).toEqual(state.structure)
   expect(restored.geometry).toEqual(exported.geometry)
   expect(prediction_to_json(restored)).toBe(prediction_to_json(prediction))
   // Displayed sites take the geometry, with fractional coordinates in the (relaxed) cell.

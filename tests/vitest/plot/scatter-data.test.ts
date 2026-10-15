@@ -373,23 +373,23 @@ describe(`pick_tooltip_bg`, () => {
   const base: DataSeries = { x: [1], y: [1] }
   // fill is transparent so the cascade must move past it to the point stroke
   const see_thru = { point_style: { fill: `rgba(0, 0, 0, 0)`, stroke: `blue` } }
-  const dark = `rgba(0, 0, 0, 0.7)` // ultimate fallback
+  const neutral = undefined // PlotTooltip's theme chip
 
   // cascade: color_value -> point fill -> point stroke (points marker only) -> series
   // line cascade (stroke -> first point fill -> first color value -> first point stroke)
   // oxfmt-ignore
-  test.each<[string, Parameters<typeof pick_tooltip_bg>[0], DataSeries | undefined, string]>([
+  test.each<[string, Parameters<typeof pick_tooltip_bg>[0], DataSeries | undefined, string | undefined]>([
     [`color_value through scale wins over point fill`, { color_value: 0.7, point_style: { fill: `red` } }, base, `scale(0.7)`],
     [`point_style fill wins when no color_value`, { point_style: { fill: `red` } }, base, `red`],
     [`transparent fill falls through to point stroke`, see_thru, base, `blue`],
-    [`line-only markers skip point stroke`, see_thru, { ...base, markers: `line` }, dark],
+    [`line-only markers skip point stroke`, see_thru, { ...base, markers: `line` }, neutral],
     [`line cascade: series stroke`, {}, { ...base, line_style: { stroke: `green` } }, `green`],
     [`line cascade: first point fill`, {}, { ...base, point_style: [{ fill: `gold` }] }, `gold`],
     [`line cascade: first color value`, {}, { ...base, color_values: [0.2] }, `scale(0.2)`],
     [`line cascade: first point stroke`, {}, { ...base, point_style: { stroke: `navy` } }, `navy`],
-    [`dark default when nothing usable`, {}, base, dark],
-    [`dark default for undefined series`, {}, undefined, dark],
-    [`dark default for transparent point fill`, { point_style: { fill: `transparent` } }, base, dark],
+    [`neutral when nothing usable`, {}, base, neutral],
+    [`neutral for undefined series`, {}, undefined, neutral],
+    [`neutral for transparent point fill`, { point_style: { fill: `transparent` } }, base, neutral],
   ])(`%s`, (_desc, point, series, expected) => {
     expect(pick_tooltip_bg(point, series, color_scale)).toBe(expected)
   })

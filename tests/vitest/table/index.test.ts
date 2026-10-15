@@ -38,9 +38,9 @@ const calc_cell_color = (
   val: number | null | undefined,
   all_values: CellVal[],
   better: `higher` | `lower` | undefined,
-  color_scale: D3InterpolateName | null = `interpolateViridis`,
-  scale_type: `linear` | `log` = `linear`,
-) => make_cell_color_scale(all_values, better, color_scale, scale_type)(val)
+  scheme: D3InterpolateName | null = `interpolateViridis`,
+  type: `linear` | `log` = `linear`,
+) => make_cell_color_scale(all_values, better, scheme && { scheme, type })(val)
 
 describe(`column stats and color domains`, () => {
   const values = [...Array.from({ length: 20 }, (_unused_value, idx) => idx * 5), 10_000]
@@ -104,13 +104,7 @@ describe(`column stats and color domains`, () => {
 
   it(`keeps log scaling when a supplied domain reaches zero`, () => {
     const bg_of_10 = (scale_type: `linear` | `log`, domain?: [number, number]) =>
-      make_cell_color_scale(
-        [1, 10, 100],
-        `higher`,
-        `interpolateViridis`,
-        scale_type,
-        domain,
-      )(10).bg
+      make_cell_color_scale([1, 10, 100], `higher`, { type: scale_type }, domain)(10).bg
     expect(bg_of_10(`log`, [0, 100])).not.toBe(bg_of_10(`linear`, [0, 100]))
     expect(bg_of_10(`log`, [0, 100])).toBe(bg_of_10(`log`))
   })
@@ -138,14 +132,24 @@ describe(`column stats and color domains`, () => {
       const scale = make_cell_color_scale(
         column_values,
         `higher`,
-        `interpolateViridis`,
-        scale_type,
+        { type: scale_type },
         [1, 10],
       )
       expect(scale(10_000).bg).toBe(scale(10).bg)
       expect(scale(5).bg).not.toBe(scale(10).bg)
     },
   )
+
+  // color_scale.value_range ends override the data domain and clamp; palette_range clips
+  it(`honors value_range and palette_range like the other color-mapped components`, () => {
+    const cell_values = [0, 50, 100]
+    const fixed = make_cell_color_scale(cell_values, `higher`, { value_range: [null, 50] })
+    const full = make_cell_color_scale([0, 50], `higher`)
+    for (const val of [0, 25, 50]) expect(fixed(val).bg).toBe(full(val).bg)
+    expect(fixed(100).bg).toBe(full(50).bg) // clamped at the fixed max
+    const clipped = make_cell_color_scale(cell_values, `higher`, { palette_range: [0.5, 1] })
+    expect(clipped(0).bg).toBe(make_cell_color_scale(cell_values, `higher`)(50).bg)
+  })
 })
 
 describe(`make_cell_color_scale`, () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
@@ -12,7 +12,8 @@
     PolyhedronMesh,
     ReciprocalVectors,
   } from '#lib/brillouin/index.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Point2D, Vec3 } from '#lib/math.js'
+  import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     bind_renderer,
     create_scene_camera,
@@ -36,12 +37,12 @@
     Plane,
     Vector3,
   } from 'three/webgpu'
-  import { BAND_COLORS, property_label as display_label, SPIN_COLORS } from './constants'
+  import { property_label as display_label, sheet_color } from './constants'
   import {
     apply_vertex_colors,
     build_isosurface_geometry,
     nearest_face_vertex,
-    property_color_range,
+    property_value_range,
     property_names,
     vertex_property,
   } from './geometry'
@@ -55,6 +56,7 @@
     FermiIsosurface,
     FermiSurfaceData,
     FermiSurfaceSettings,
+    SpinChannel,
   } from './types'
 
   let {
@@ -65,11 +67,11 @@
     color_property = DEFAULTS.fermi.color_property,
     color_scale = DEFAULTS.fermi.color_scale,
     property_name: requested_property, // coloured by in `property` mode (default: the first)
-    color_range, // colour-scale [min, max]; unset fits the property's finite values
     property_label, // display label of the unnamed property (see DEFAULT_PROPERTY_NAME)
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
+    selected_spins,
     // BZ styling
     show_bz = DEFAULTS.fermi.show_bz,
     bz_opacity = DEFAULTS.fermi.bz_opacity,
@@ -86,6 +88,7 @@
     scene = $bindable(),
     camera = $bindable(),
     hover_data = $bindable<FermiHoverData | null>(null),
+    kpath_hover_data = $bindable<BZHoverData | null>(null),
     width = 0,
     height = 0,
     // camera/lighting/interaction props, resolved against the shared defaults below
@@ -97,14 +100,15 @@
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
       property_name?: string
-      color_range?: Vec2
       property_label?: string
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
       // a band structure's k-path to draw (its hovered point is the k_marker dot)
       k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
+      selected_spins?: SpinChannel[]
       hover_data?: FermiHoverData | null
+      kpath_hover_data?: BZHoverData | null // the hovered k-path point, for a zone tooltip
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
@@ -159,7 +163,9 @@
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
-      (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),
+      ({ band_index, spin }) =>
+        (selected_bands?.includes(band_index) ?? true) &&
+        (selected_spins?.includes(spin) ?? true),
     ) ?? [],
   )
 
@@ -193,16 +199,16 @@
     requested_property ?? property_names(fermi_data?.isosurfaces ?? [])[0],
   )
 
-  // Colour range of the property across all visible surfaces unless the caller fixed one
+  // Colour value range: set color_scale.value_range ends, else the property's finite values
+  // across all visible surfaces
   let property_range = $derived(
-    color_range ?? property_color_range(visible_surfaces, property_name),
+    resolve_value_range(color_scale, () =>
+      property_value_range(visible_surfaces, property_name),
+    ),
   )
 
-  // Flat colour for a surface (material colour, tooltip background)
-  function get_surface_color(surface: FermiIsosurface): string {
-    if (color_property === `spin` && surface.spin) return SPIN_COLORS[surface.spin]
-    return BAND_COLORS[surface.band_index % BAND_COLORS.length]
-  }
+  const get_surface_color = (surface: FermiIsosurface): string =>
+    sheet_color(surface.band_index, surface.spin, color_property)
 
   // One BufferGeometry per visible surface object, built once and kept for as long as the
   // surface stays visible: the positions/normals/index buffers are shared with the surface, so
@@ -238,9 +244,7 @@
   // Vertex-colour attributes follow the colour property/scale/range; mutating the geometry
   // bypasses the <T> props Threlte watches, so the on-demand renderer is told to repaint
   $effect(() => {
-    const spec = use_vertex_colors
-      ? { colormap: color_scale, color_range: property_range }
-      : null
+    const spec = use_vertex_colors ? { color_scale, value_range: property_range } : null
     for (const [idx, geometry] of geometries.entries()) {
       const values = vertex_property(visible_surfaces[idx], property_name)
       if (geometry) apply_vertex_colors(geometry, values, spec)
@@ -297,7 +301,9 @@
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
       hover_enabled.set(!moving)
-      if (moving) hover_data = null
+      if (!moving) return
+      hover_data = null
+      kpath_hover_data = null
     },
   })
 
@@ -310,7 +316,7 @@
   // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
   // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
   const SURFACE_DEPTH_BIAS_STEP = 8
-  const make_material = (surface: FermiIsosurface, surface_idx: number) => {
+  const make_material = (surface_idx: number, color: string | true) => {
     const material =
       representation === `wireframe`
         ? new MeshBasicMaterial({ wireframe: true })
@@ -326,11 +332,8 @@
             // (three's default), so a distinct mask forces one pipeline per surface. Drop once fixed
             stencilFuncMask: surface_idx + 1,
           })
-    // A surface without per-vertex properties keeps its flat colour even in property mode,
-    // otherwise vertexColors would read a missing attribute
-    material.vertexColors =
-      use_vertex_colors && vertex_property(surface, property_name) !== undefined
-    if (!material.vertexColors) material.color.set(get_surface_color(surface))
+    material.vertexColors = color === true
+    if (color !== true) material.color.set(color)
     material.transparent = is_transparent
     // three draws a transparent DoubleSide material as back- then front-face passes, and one
     // raycast picks either side (an open sheet seen from its concave side shows only back faces)
@@ -339,15 +342,32 @@
   }
   // One material per surface, shared by every symmetry copy so a tiled cubic surface needs 1
   // material rather than 48 — hence built here instead of via <T.Mesh*Material>, which
-  // would instantiate one per <T.Mesh>. Rebuilt whenever colouring, transparency or
-  // representation change (a handful of objects; three reuses the compiled pipeline for
-  // identical parameters) and the previous set is disposed by the effect below
-  const materials = $derived(visible_surfaces.map(make_material))
+  // would instantiate one per <T.Mesh>. Cached by all make_material reads, so re-extracted sheets
+  // (every frame of a mu drag) skip three's ~2 ms node-builder pass for each new material
+  const material_cache = new Map<string, MeshBasicMaterial | MeshStandardMaterial>()
+  const materials = $derived(
+    visible_surfaces.map((surface, surface_idx) => {
+      // A surface without per-vertex properties keeps its flat colour even in property mode,
+      // otherwise vertexColors would read a missing attribute
+      const color =
+        (use_vertex_colors && vertex_property(surface, property_name) !== undefined) ||
+        get_surface_color(surface)
+      const key = `${representation}|${surface_idx}|${color}|${is_transparent}`
+      const material = material_cache.get(key) ?? make_material(surface_idx, color)
+      material_cache.set(key, material)
+      return material
+    }),
+  )
   $effect(() => {
-    const current = materials
-    return () => {
-      for (const material of current) material.dispose()
+    const used = new Set(materials)
+    for (const [key, material] of material_cache) {
+      if (used.has(material)) continue
+      material.dispose()
+      material_cache.delete(key)
     }
+  })
+  $effect(() => () => {
+    for (const material of material_cache.values()) material.dispose()
   })
   // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
   $effect(() => {
@@ -381,6 +401,25 @@
   const inverse_symmetry_ops = $derived(
     symmetry_ops.map((sym_matrix) => new Matrix4().fromArray(sym_matrix).invert()),
   )
+
+  // The hovered k-path point as a Brillouin zone viewer hover, also passed on to the caller
+  const on_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
+    const position_cartesian = k_path?.path.points[qpoint_idx ?? -1]
+    kpath_hover_data =
+      position_cartesian && screen_position && bz_data
+        ? {
+            position_cartesian,
+            position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+            screen_position,
+            is_ibz: false,
+            bz_order: bz_data.order,
+            bz_volume: bz_data.volume,
+            ibz_volume: null,
+            symmetry_multiplicity: null,
+          }
+        : null
+    k_path?.on_kpath_hover?.(qpoint_idx, screen_position)
+  }
 
   // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
   // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
@@ -467,7 +506,12 @@
   <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
 
   {#if k_path}
-    <KPath {...k_path} size={scene_size} edge_width={DEFAULTS.brillouin.edge_width} />
+    <KPath
+      {...k_path}
+      size={scene_size}
+      edge_width={DEFAULTS.brillouin.edge_width}
+      {on_kpath_hover}
+    />
   {/if}
   {#if k_marker}
     <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->

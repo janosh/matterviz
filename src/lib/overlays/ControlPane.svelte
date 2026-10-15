@@ -56,7 +56,7 @@
     }}
     pane_props={{
       ...pane_props,
-      class: [pane_class, pane_props.class],
+      class: [`control-pane`, pane_class, pane_props.class],
       // Prepend compact defaults so a caller's pane_style overrides individual vars without
       // dropping padding/gap
       style: [`--pane-padding: 8px 10px; --pane-gap: 0`, pane_style, pane_props.style]

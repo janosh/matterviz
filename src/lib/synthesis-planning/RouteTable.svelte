@@ -1,6 +1,6 @@
 <script lang="ts">
   // Ranked routes as a sortable heatmap table; clicking a row selects the route
-  import { HeatmapTable } from '#lib/table/index.js'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import type { Column, RowData } from '#lib/table/index.js'
   import { format_equation_html } from './format'
   import { describe_downhill_windows } from './thermo'
@@ -119,7 +119,8 @@
     density="compact"
     pagination={{ page_size: 15, page_sizes: [15, 30, 100] }}
     search={{ placeholder: `Filter reactions…` }}
-    export_data={{ filename: `synthesis-routes` }}
+    export_formats={TABLE_EXPORT_FORMATS}
+    export_filename="synthesis-routes"
   />
 </div>
 

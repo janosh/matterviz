@@ -3,7 +3,6 @@ import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
   auto_interpolation_factor,
   band_carriers,
-  band_grids_prepared,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
@@ -16,6 +15,7 @@ import {
   slice_shading_rgba,
   upsample_grid,
 } from '#lib/fermi-surface/compute.js'
+import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import { IDENTITY_4x4, lattice_point_group_matrices } from '#lib/fermi-surface/symmetry.js'
 import type { SliceEnergyMap } from '#lib/fermi-surface/compute.js'
 import type {
@@ -27,6 +27,8 @@ import type {
 import { vertex_count } from '#lib/fermi-surface/types.js'
 import * as math from '#lib/math.js'
 import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
+import { SphereGeometry } from 'three'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { describe, expect, test } from 'vitest'
 import {
   BOX_TRI_FACES,
@@ -35,21 +37,33 @@ import {
   IDENTITY_MATRIX3,
   make_fermi_isosurface,
   make_fermi_surface,
+  read_maybe_gz,
 } from '../test-fixtures'
 
 // Vertex `idx` of a typed-array mesh as a Vec3
-const vertex_at = ({ positions }: FermiIsosurface, idx: number): Vec3 => [
+const vertex_at = ({ positions }: Pick<FermiIsosurface, `positions`>, idx: number): Vec3 => [
   positions[3 * idx],
   positions[3 * idx + 1],
   positions[3 * idx + 2],
 ]
-const vertices_of = (surface: FermiIsosurface): Vec3[] =>
+const vertices_of = (surface: Pick<FermiIsosurface, `positions`>): Vec3[] =>
   Array.from({ length: vertex_count(surface) }, (_, idx) => vertex_at(surface, idx))
+// A position rounded to a 1e-5 grid, so coincident but unshared vertices get one key
+const pos_key = (point: Vec3) => point.map((coord) => Math.round(coord * 1e5)).join(`,`)
+// How many triangles use each edge, with its ends keyed by key_of(vertex index)
+const edge_uses = ({ indices }: FermiIsosurface, key_of: (idx: number) => string) => {
+  const uses = new Map<string, number>()
+  for (const [at, idx] of indices.entries()) {
+    const next = indices[at % 3 === 2 ? at - 2 : at + 1]
+    const edge = [key_of(idx), key_of(next)].toSorted().join(`|`)
+    uses.set(edge, (uses.get(edge) ?? 0) + 1)
+  }
+  return uses
+}
 
-// Summed triangle area of a mesh — the marching-cubes accuracy metric used below
-const surface_area = (surface: FermiIsosurface): number => {
-  const { positions, indices } = surface
-  let total = 0
+// Area of each triangle of a mesh, and their sum: the marching-cubes accuracy metric used below
+const triangle_areas = ({ positions, indices }: FermiIsosurface): number[] => {
+  const areas: number[] = []
   for (let tri = 0; tri < indices.length; tri += 3) {
     const [idx0, idx1, idx2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
     const edge = (idx: number): Vec3 => [
@@ -57,10 +71,13 @@ const surface_area = (surface: FermiIsosurface): number => {
       positions[3 * idx + 1] - positions[3 * idx0 + 1],
       positions[3 * idx + 2] - positions[3 * idx0 + 2],
     ]
-    total += 0.5 * Math.hypot(...math.cross_3d(edge(idx1), edge(idx2)))
+    const cross = math.cross_3d(edge(idx1), edge(idx2))
+    areas.push(0.5 * Math.hypot(...cross))
   }
-  return total
+  return areas
 }
+const surface_area = (surface: FermiIsosurface): number =>
+  triangle_areas(surface).reduce((sum, area) => sum + area, 0)
 const total_area = (data: FermiSurfaceData): number =>
   data.isosurfaces.reduce((sum, surface) => sum + surface_area(surface), 0)
 
@@ -418,9 +435,11 @@ describe(`Wigner-Seitz folding and preview resolution`, () => {
     })
   }
 
-  // Folding moves whole triangles by lattice vectors: the area is unchanged and every triangle
-  // centroid ends nearer Γ than any other lattice point (inside the zone), checked against
-  // n ∈ {−3..3}³. A cubic lattice's zone is its cell: folding moves nothing.
+  // Folding moves triangles by lattice vectors and clips those crossing a zone face at it: the
+  // area is unchanged, every vertex ends inside the zone (nearer Γ than any other lattice
+  // point, checked against n ∈ {−3..3}³), the open edges all lie on zone faces and close into
+  // loops, and every cut on face G meets the cut on face −G shifted by G. A cubic lattice's
+  // zone is its cell: folding moves nothing.
   test.each([
     [`fcc`, FCC_RECIPROCAL],
     [`sheared fcc`, SHEARED_FCC],
@@ -438,46 +457,151 @@ describe(`Wigner-Seitz folding and preview resolution`, () => {
       // 1.2e-8 (sheared) off; translating in f64 instead preserves the area exactly
       expect(total_area(folded) / total_area(cell)).toBeCloseTo(1, 7)
       const frac_to_cart = math.create_frac_to_cart(k_lattice)
-      const lattice_points = Array.from({ length: 7 ** 3 }, (_, idx) =>
+      const others = Array.from({ length: 7 ** 3 }, (_, idx) =>
         frac_to_cart([idx / 49, idx / 7, idx].map((n) => (Math.floor(n) % 7) - 3) as Vec3),
-      )
-      let n_moved = 0
+      ).filter((point) => Math.hypot(...point) > 0)
+      // signed distance past the zone, |k| − |k − G| for the nearest other lattice point G
+      // (0 on the face of G)
+      const past_zone = (point: Vec3): { dist: number; face: Vec3 } => {
+        const dists = others.map((other) => math.euclidean_dist(point, other))
+        const nearest = dists.indexOf(Math.min(...dists))
+        return { dist: Math.hypot(...point) - dists[nearest], face: others[nearest] }
+      }
+      let [n_moved, max_outside, max_off_face, n_unpaired] = [0, -Infinity, 0, 0]
       for (const [surface_idx, surface] of folded.isosurfaces.entries()) {
         if (surface.positions !== cell.isosurfaces[surface_idx].positions) n_moved++
-        const { indices } = surface
-        for (let tri = 0; tri < indices.length; tri += 3) {
-          const corners = [0, 1, 2].map((corner) => vertex_at(surface, indices[tri + corner]))
-          const centroid = math.scale(math.add(...corners), 1 / 3)
-          const nearest = Math.min(
-            ...lattice_points.map((point) => math.euclidean_dist(centroid, point)),
-          )
-          expect(Math.hypot(...centroid)).toBeLessThanOrEqual(nearest + 1e-6)
+        for (const idx of new Set(surface.indices)) {
+          max_outside = Math.max(max_outside, past_zone(vertex_at(surface, idx)).dist)
+        }
+        // ends of edges used by one triangle, i.e. the face cuts (vertices merged by position,
+        // as the cell's periodic seams are not shared)
+        const open_degree = new Map<string, number>()
+        const uses = edge_uses(surface, (idx) => pos_key(vertex_at(surface, idx)))
+        for (const [edge, count] of uses) {
+          for (const key of count === 1 ? edge.split(`|`) : []) {
+            open_degree.set(key, (open_degree.get(key) ?? 0) + 1)
+          }
+        }
+        expect(open_degree.size).toBeGreaterThan(0) // the sphere crosses the zone faces
+        // cuts close into loops: each end is shared by two open edges
+        expect([...open_degree.values()].every((degree) => degree % 2 === 0)).toBe(true)
+        for (const key of open_degree.keys()) {
+          const point = key.split(`,`).map((coord) => Number(coord) / 1e5) as Vec3
+          const { dist, face } = past_zone(point)
+          max_off_face = Math.max(max_off_face, Math.abs(dist))
+          // its periodic image across that face is on the cut there too
+          if (!open_degree.has(pos_key(math.subtract(point, face)))) n_unpaired++
         }
       }
-      expect(n_moved).toBeGreaterThan(0) // the sphere crosses the zone faces
+      // Clipping runs in f64, storage is Float32 (eps 1.2e-7 at |k| ≤ 1.2): measured 6.5e-8 /
+      // 6.6e-8 past the zone (fcc / sheared), where whole-triangle folding left vertices 0.11 / 0.25
+      // outside. Open points carry the key rounding (√3·5e-6): measured 1.1e-5 off their face.
+      expect(max_outside).toBeLessThan(2e-7)
+      expect(max_off_face).toBeLessThan(2e-5)
+      expect(n_unpaired).toBe(0)
+      expect(n_moved).toBeGreaterThan(0)
       const cubic = make_band_data(12, sphere, { periodic: true, fermi_energy: 0.3 })
       const [cubic_sheet] = extract_fermi_surface(cubic).isosurfaces
       expect(fold_to_wigner_seitz(cubic_sheet, IDENTITY_MATRIX3)).toBe(cubic_sheet)
     },
   )
 
+  // Real sheets as parsed: Float32 vertices exactly on a zone face sit ~1e-8 past it and count
+  // as on it, rather than being clipped a rounding error away from themselves into zero-area,
+  // non-manifold slivers. MgB2 at mu = 0.3 crosses no face, so folding only moves whole
+  // triangles. Slivers drop by height, not area: an area threshold at Float32 scale also drops
+  // real small cut triangles (Cu: area off by 1.1e-6 instead of 2.5e-9).
+  test.each([
+    [`mgb2_vfermi.frmsf`, 0, true],
+    [`mgb2_vfermi.frmsf`, 0.3, false],
+    [`cu_fs.bxsf`, -0.3, true],
+  ])(`folds %s at mu = %s without slivers, conserving area`, (filename, mu, clips) => {
+    const path = `src/site/fermi-surfaces/${filename}.gz`
+    const band_data = parse_fermi_file(read_maybe_gz(path), filename) as BandGridData
+    const cell = extract_fermi_surface(band_data, { mu })
+    let [n_degenerate, n_non_manifold, n_clipped, n_orphans, folded_area] = [0, 0, 0, 0, 0]
+    for (const sheet of cell.isosurfaces) {
+      const folded = fold_to_wigner_seitz(sheet, band_data.k_lattice)
+      if (folded.indices.length !== sheet.indices.length) n_clipped++
+      // every appended (cut or shifted) vertex is used: a cut at an end already on the face
+      // duplicates that end into a sliver whose drop orphans it
+      const used = new Set(folded.indices)
+      for (let idx = vertex_count(sheet); idx < vertex_count(folded); idx++)
+        n_orphans += Number(!used.has(idx))
+      folded_area += surface_area(folded)
+      n_degenerate += triangle_areas(folded).filter((area) => area === 0).length
+      const uses = edge_uses(folded, (idx) => vertex_at(folded, idx).join(`,`))
+      n_non_manifold += [...uses.values()].filter((count) => count > 2).length
+    }
+    // with a 1e-9 face tolerance, MgB2 at mu = 0: 20 zero-area triangles, 20 edges shared by 3+
+    expect([n_degenerate, n_non_manifold, n_orphans]).toEqual([0, 0, 0])
+    expect(n_clipped > 0).toBe(clips)
+    // shifted and cut vertices re-stored as Float32: measured ≤ 1.7e-8 over 11 fixtures
+    expect(Math.abs(folded_area / total_area(cell) - 1)).toBeLessThan(1e-7)
+  })
+
+  // A closed UV sphere (radius 0.6, generically rotated so no vertex sits on a face) poking
+  // through every face of the cubic zone (faces at ±0.5), plus a collinear triangle across one
+  // whose zero-height pieces must drop. Normals are radial and properties the input coordinates,
+  // so a cut at k on chord AB must carry normal k/|k| and properties k (both linear along AB
+  // before normalizing), a lattice vector from its folded position. Cut and shifted vertices
+  // are shared by the triangles meeting at them, so open edges agree by index and by position.
+  test(`clip cuts interpolate normals and properties, share vertices and drop slivers`, () => {
+    const PROP_NAMES = [`k_x`, `k_y`, `k_z`]
+    const uv_sphere = new SphereGeometry(0.6, 16, 12).deleteAttribute(`normal`)
+    const geometry = mergeVertices(uv_sphere.deleteAttribute(`uv`)).rotateX(0.3).rotateZ(0.7)
+    // the collinear triangle first, so sphere vertex indices shift by 3
+    const collinear = [0.3, 0.7, 0.45].flatMap((coord) => [coord, 0, 0])
+    const positions = Float32Array.from([...collinear, ...geometry.attributes.position.array])
+    const points = vertices_of({ positions })
+    const sphere_indices = (geometry.index?.array ?? []).map((idx) => idx + 3)
+    const sheet = make_fermi_isosurface(points, [], {
+      indices: Uint32Array.from([0, 1, 2, ...sphere_indices]),
+      normals: Float32Array.from(points.flatMap((point) => math.normalize_vec(point))),
+      properties: Object.fromEntries(
+        PROP_NAMES.map((name, axis) => [name, positions.filter((_, at) => at % 3 === axis)]),
+      ),
+    })
+    const folded = fold_to_wigner_seitz(sheet, IDENTITY_MATRIX3)
+    const [shift_errs, normal_errs]: number[][] = [[], []]
+    for (let idx = points.length; idx < vertex_count(folded); idx++) {
+      const input = PROP_NAMES.map((name) => folded.properties?.[name][idx] ?? NaN) as Vec3
+      const shift = math.subtract(input, vertex_at(folded, idx))
+      shift_errs.push(...shift.map((coord) => Math.abs(coord - Math.round(coord))))
+      const normal = vertex_at({ positions: folded.normals }, idx)
+      normal_errs.push(math.euclidean_dist(normal, math.normalize_vec(input)))
+    }
+    expect(normal_errs.length).toBeGreaterThan(100) // appended vertices
+    // Float32 storage (eps 1.2e-7 at |k| ≤ 0.6): measured 6.4e-8 (normals), 0 (shifts)
+    expect(Math.max(...normal_errs)).toBeLessThan(1e-6)
+    expect(Math.max(...shift_errs)).toBeLessThan(1e-6)
+    expect(Math.min(...triangle_areas(folded))).toBeGreaterThan(0)
+    const n_open = (key_of: (idx: number) => string) =>
+      [...edge_uses(folded, key_of).values()].filter((count) => count === 1).length
+    const n_open_by_pos = n_open((idx) => pos_key(vertex_at(folded, idx)))
+    expect(n_open_by_pos).toBeGreaterThan(0)
+    expect(n_open(String)).toBe(n_open_by_pos)
+  })
+
   // previews cap the factor at the mesh's auto factor (16 points → 3), never raise it; two
   // upsampled grids per band stay cached, so a preview and the full surface do not evict each
-  // other while a third factor evicts the oldest
+  // other while a third factor evicts the oldest. A cached grid is visible as a surface that
+  // ignores later edits to the raw energies.
   test(`preview factor and the two-factor grid cache`, () => {
     const previews = [4, 3, 2, 0].map((factor) =>
       preview_interpolation_factor(sphere_data(FCC_RECIPROCAL, 1), factor),
     )
     expect(previews).toEqual([3, 3, 2, 3])
     const band_data = make_band_data(8, sphere, { periodic: true, fermi_energy: 0.3 })
-    const prepared = (...factors: number[]) =>
-      factors.map((factor) => band_grids_prepared(band_data, factor))
-    expect(prepared(2)).toEqual([false])
-    extract_fermi_surface(band_data, { interpolation_factor: 2 })
-    extract_fermi_surface(band_data, { interpolation_factor: 3 })
-    expect(prepared(2, 3)).toEqual([true, true])
-    extract_fermi_surface(band_data, { interpolation_factor: 4 })
-    expect(prepared(2, 3, 4)).toEqual([false, true, true])
+    const positions = (interpolation_factor: number) =>
+      extract_fermi_surface(band_data, { interpolation_factor }).isosurfaces[0].positions
+    const cached = [2, 3].map(positions)
+    const { values } = band_data.energies[0][0]
+    for (const [idx, value] of values.entries()) values[idx] = 1.1 * value
+    expect([2, 3].map(positions)).toEqual(cached)
+    positions(4)
+    expect(positions(3)).toEqual(cached[1])
+    expect(positions(2)).not.toEqual(cached[0])
   })
 })
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
   import type { BandsOptions, DosOptions } from './index'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -16,6 +17,8 @@
     dos_props = {},
     shared_y_axis = true,
     sync_y_zoom = true,
+    fullscreen = $bindable(false),
+    fullscreen_toggle = true,
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -27,6 +30,8 @@
     dos_props?: DosOptions
     shared_y_axis?: boolean
     sync_y_zoom?: boolean
+    fullscreen?: boolean // both plots fullscreen together (one button, top-right plot's header)
+    fullscreen_toggle?: boolean // also hidden by the top-right plot's show_controls
     children?: Snippet<[HoveredData]>
   } = $props()
 
@@ -36,6 +41,7 @@
   const stack_below_width = 520
   let clientWidth = $state(800)
   let stacked = $derived(clientWidth < stack_below_width)
+  let wrapper = $state<HTMLDivElement>()
 
   const sync = create_bands_dos_sync({
     band_structs: () => band_structs,
@@ -51,7 +57,21 @@
   })
 </script>
 
-<div {...rest} class={[`bands-and-dos`, { stacked }, rest.class]} bind:clientWidth>
+{#snippet fullscreen_button()}
+  <PanelsFullscreenButton
+    bind:fullscreen
+    toggle={fullscreen_toggle}
+    controls={(stacked ? bands_props : dos_props).show_controls}
+    {wrapper}
+  />
+{/snippet}
+
+<div
+  {...rest}
+  class={[`bands-and-dos`, { stacked }, rest.class]}
+  bind:clientWidth
+  bind:this={wrapper}
+>
   {@render children?.({ hovered_frequency: sync.hovered_frequency })}
   <Bands
     {...bands_props}
@@ -64,7 +84,13 @@
     bind:hovered_frequency={sync.hovered.bands}
     reference_frequency={sync.hovered_frequency}
     padding={{ r: 15, ...bands_props.padding, ...sync.shared_padding }}
-  />
+    fullscreen_toggle={false}
+  >
+    {#snippet header_controls(dims)}
+      {@render bands_props.header_controls?.(dims)}
+      {#if stacked}{@render fullscreen_button()}{/if}
+    {/snippet}
+  </Bands>
 
   <Dos
     {...dos_props}
@@ -79,7 +105,13 @@
     bind:hovered_frequency={sync.hovered.dos}
     reference_frequency={sync.hovered_frequency}
     padding={{ l: stacked ? undefined : 15, ...dos_props.padding, ...sync.shared_padding }}
-  />
+    fullscreen_toggle={false}
+  >
+    {#snippet header_controls(dims)}
+      {@render dos_props.header_controls?.(dims)}
+      {#if !stacked}{@render fullscreen_button()}{/if}
+    {/snippet}
+  </Dos>
 </div>
 
 <style>
@@ -89,5 +121,14 @@
   }
   .bands-and-dos.stacked {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .bands-and-dos:fullscreen {
+    padding: 1em;
+    grid-auto-rows: minmax(0, 1fr);
+    background: var(--fullscreen-bg, var(--page-bg, Canvas));
+    > :global(*) {
+      height: 100%;
+      min-height: 0;
+    }
   }
 </style>

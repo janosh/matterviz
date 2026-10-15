@@ -284,7 +284,8 @@ describe(`cartesian frame`, () => {
       gear.click()
       await tick()
       expect(gear.getAttribute(`aria-expanded`)).toBe(`true`)
-      expect(plot.querySelector(`.plot-controls-pane.pane-open`)).not.toBeNull()
+      // every control pane carries `control-pane`, like its toggle `control-pane-toggle`
+      expect(plot.querySelector(`.control-pane.plot-controls-pane.pane-open`)).not.toBeNull()
       const toggle = query<HTMLButtonElement>(plot, `.fullscreen-btn`)
       expect(plot.classList.contains(`fullscreen`)).toBe(false)
       expect(toggle.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)

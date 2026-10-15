@@ -39,6 +39,11 @@ export interface FileLoadData extends Partial<FileLoadMeta> {
   filename?: string
 }
 
+// What an export pane hands each download: the destination plus the pane's PNG resolution
+export interface ExportPaneContext extends FileExportContext {
+  png_dpi: number
+}
+
 // Single item in an export pane section, rendered as `label [⬇] [📋] [(DPI: input)]`
 export interface ExportItem {
   label: string
@@ -49,7 +54,7 @@ export interface ExportItem {
   // Visible, accessible explanation for disabled download/copy buttons.
   disabled_reason?: string
   // Click handler for the ⬇ download button (omit to hide the button)
-  on_download?: (context: FileExportContext) => unknown
+  on_download?: (context: ExportPaneContext) => unknown
   // Lazy clipboard content for the 📋 copy button (omit to hide); runs on click only, return
   // (or resolve) null/empty to no-op, must not throw
   copy_text?: () => string | null | Promise<string | null>

@@ -51,4 +51,5 @@ export * from './vacf'
 // The shape every `compute_*_async` worker client shares (`.cancel` / `.release` and the
 // per-request `signal` / `on_progress` options)
 export type { WorkerClient, WorkerRequestOptions } from './worker-client.svelte'
+export { disable_workers } from './worker-client.svelte'
 export * from './xrd'

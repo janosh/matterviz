@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     is_color,
@@ -25,6 +24,8 @@
   import { array_extent, type Point2D, type Vec2 } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
   import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -46,8 +47,7 @@
     disabled = false,
     heatmap_values = [],
     links = null,
-    log = false,
-    color_scale = $bindable(`interpolateViridis`),
+    color_scale = `interpolateViridis`,
     active_element = $bindable(null),
     active_category = $bindable(null),
     active_elements = $bindable([]),
@@ -55,13 +55,11 @@
     lanth_act_tiles = tile_props?.show_symbol === false
       ? []
       : [...default_f_block_inset_tiles],
-    color_scale_range = [null, null],
     color_overrides = {},
     labels = {},
     missing = {},
     split_layout = undefined,
-    show_color_bar = true,
-    color_bar_props = {},
+    color_bar = {},
     inset,
     tooltip = false,
     on_activate,
@@ -81,8 +79,7 @@
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Partial<Record<ElementSymbol, string>> | null
-    log?: boolean
-    color_scale?: D3InterpolateName | ((num: number) => string)
+    color_scale?: ColorScale
     active_element?: ChemicalElement | null
     active_category?: ElementCategory | null
     // array of element symbols or ChemicalElement objects to highlight
@@ -97,16 +94,13 @@
       number: string
       category: ElementCategory
     }[]
-    color_scale_range?: [number | null, number | null]
     color_overrides?: Partial<Record<ElementSymbol, string>>
     labels?: Partial<Record<ElementSymbol, string>>
     missing?: MissingCellStyle // styling for tiles with no heatmap value
     // control the layout of multi-value splits for all tiles
     split_layout?: SplitLayout
-    // automatically show a color bar when heatmap_values is provided (default: true)
-    show_color_bar?: boolean
-    // props to pass to the ColorBar component (e.g. { title: 'Bar Title', tick_labels: 5 })
-    color_bar_props?: Partial<ComponentProps<typeof ColorBar>>
+    // auto color bar shown when heatmap_values is provided; null hides it
+    color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
     tooltip?:
       | Snippet<
@@ -278,11 +272,15 @@
     }
   }
 
+  let color_scale_config = $derived(to_color_scale_config(color_scale))
+  let use_log = $derived(get_scale_type_name(color_scale_config.type) === `log`)
   // Numeric heat values usable by the active scale; blank/color strings and missing data
   // cannot enter the domain or labels. Log scales also exclude non-positive values.
   const to_heat_num = (value: number | string | false | null | undefined): number | null => {
     const num = typeof value === `string` && value.trim() ? Number(value) : value
-    return typeof num === `number` && Number.isFinite(num) && (!log || num > 0) ? num : null
+    return typeof num === `number` && Number.isFinite(num) && (!use_log || num > 0)
+      ? num
+      : null
   }
 
   let heat_nums = $derived(
@@ -291,18 +289,18 @@
       .map(to_heat_num)
       .filter((num): num is number => num !== null),
   )
-  // data span shared by tile colors and the auto ColorBar; explicit color_scale_range wins,
+  // data span shared by tile colors and the auto ColorBar; explicit value_range ends win,
   // except a non-positive log min, which has no log image and would otherwise floor the ramp
   // at LOG_EPS and squash every tile into its top end: the smallest positive value stands in
   let heat_range = $derived.by((): Vec2 => {
-    const [min_override, max_override] = color_scale_range
-    const min_lifted = log && min_override !== null && min_override <= 0 ? null : min_override
-    if (min_lifted !== null && max_override !== null) return [min_lifted, max_override]
-    const [data_min, data_max] = heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1]
-    return [min_lifted ?? data_min, max_override ?? data_max]
+    const [lower, upper] = color_scale_config.value_range ?? [null, null]
+    const lifted = use_log && lower !== null && lower <= 0 ? null : lower
+    return resolve_value_range({ value_range: [lifted, upper] }, () =>
+      heat_nums.length > 0 ? array_extent(heat_nums) : [0, 1],
+    )
   })
   let color_bar_scale = $derived(to_color_bar_scale(color_scale))
-  let ramp = $derived(resolve_color_ramp(color_bar_scale, heat_range, log ? `log` : `linear`))
+  let ramp = $derived(resolve_color_ramp(color_bar_scale, heat_range, color_scale_config.type))
 
   // whether a value maps to a heatmap color (false => use the missing fallback). 0 is a
   // real value; only absent/null/non-finite (and <=0 in log mode) count as missing. a
@@ -348,7 +346,7 @@
     }))
   }
 
-  let should_show_color_bar = $derived(show_color_bar && !inset && heat_nums.length > 0)
+  let should_show_color_bar = $derived(color_bar && !inset && heat_nums.length > 0)
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
@@ -392,9 +390,9 @@
         range={heat_range}
         tick_labels={3}
         tick_side="primary"
-        scale_type={log ? `log` : `linear`}
+        scale_type={color_scale_config.type}
         bar_style="width: 100%;"
-        {...color_bar_props}
+        {...color_bar}
       />
     </TableInset>
   {:else}

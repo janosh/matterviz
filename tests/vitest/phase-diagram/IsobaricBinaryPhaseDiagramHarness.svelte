@@ -18,7 +18,7 @@
   {data}
   bind:hovered_region
   editor_open
-  enable_export={false}
+  export_formats={[]}
   fullscreen_toggle={false}
   show_controls={{ hidden: [`controls`] }}
 />

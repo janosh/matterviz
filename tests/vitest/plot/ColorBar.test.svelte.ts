@@ -151,7 +151,7 @@ describe(`ColorBar tick_side='inside'`, () => {
       [
         [`20`, `20%`, `white`],
         [`40`, `40%`, `white`],
-        [`60`, `60%`, `white`], // viridis(0.6) is a mid-tone teal (luminance 0.28)
+        [`60`, `60%`, `black`], // viridis(0.6) teal: white only 3.0:1, black 7.0:1
         [`80`, `80%`, `black`],
       ],
     ],
@@ -163,8 +163,8 @@ describe(`ColorBar tick_side='inside'`, () => {
         [`20`, `87.5%`, `white`],
         [`30`, `75%`, `white`],
         [`40`, `62.5%`, `white`],
-        [`50`, `50%`, `white`], // viridis' mid-tone teals (luminance 0.22–0.28) take white
-        [`60`, `37.5%`, `white`],
+        [`50`, `50%`, `black`], // viridis' mid-tone teals: black beats white's < 4.5:1
+        [`60`, `37.5%`, `black`],
         [`70`, `25%`, `black`],
         [`80`, `12.5%`, `black`],
       ],

@@ -308,8 +308,6 @@
           bind:export_pane_open
           bz_data={zone}
           {wrapper}
-          {scene}
-          {camera}
           bind:png_dpi
           filename={current_filename || `brillouin-zone`}
         />

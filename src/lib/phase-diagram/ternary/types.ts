@@ -178,7 +178,8 @@ export const TERNARY_COLORS = Object.freeze({
 })
 
 export type SectionHover =
-  | { kind: `phase`; phase: DiagramPhase; e_above_hull: number; position: Vec2 }
+  // color: the hovered point's drawn fill, which its tooltip wears
+  | { kind: `phase`; phase: DiagramPhase; e_above_hull: number; position: Vec2; color: string }
   | {
       kind: `composition`
       barycentric: Vec3

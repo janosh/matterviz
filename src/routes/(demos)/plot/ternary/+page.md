@@ -95,7 +95,7 @@ Every series draws one marker per triple. Hover a marker for its fractions, clic
 
 ## Points colored by a property
 
-`color_values` maps a number per point through `color_scale` (any d3 interpolator name, an interpolator function or a `{ fn }` mapping values straight to colors) and draws a color bar below the triangle. `color_range` fixes the span; it defaults to the min/max of every visible series. Null entries fall back to the series color.
+`color_values` maps a number per point through `color_scale` (a d3 interpolator name or a `ColorScaleConfig` like `{ scheme, type: 'log', value_range }`) and draws a color bar below the triangle. `color_scale.value_range` fixes the span; unset or `null` ends default to the min/max of every visible series. Null entries fall back to the series color.
 
 ```svelte example
 <script lang="ts">
@@ -186,8 +186,7 @@ The `tooltip` snippet and the `on_point_click` / `on_point_hover` callbacks rece
 | `show_grid`      | `boolean`                             | `true`                         | Draw the constant-fraction grid lines.                                              |
 | `show_ticks`     | `boolean`                             | `true`                         | Draw tick marks and labels along the edges.                                         |
 | `tick_format`    | `string`                              | `'.0%'`                        | d3-format spec for tick labels and tooltip fractions (values in `[0, 1]`).          |
-| `color_scale`    | `ColorBarScale`                       | `'interpolateViridis'`         | Scale for `color_values`.                                                           |
-| `color_range`    | `[number, number]`                    | data min/max                   | Span of the color scale.                                                            |
+| `color_scale`    | `ColorScale`                          | `'interpolateViridis'`         | Scheme, `type` and `value_range` (default data min/max) for `color_values`.         |
 | `color_bar`      | `ColorBar` props or `null`            | `{}`                           | Color bar settings; `null` hides it.                                                |
 | `legend`         | `LegendConfig` or `null`              | `{}`                           | Legend settings; shown automatically with two or more series, `show_legend` forces. |
 | `tooltip`        | `Snippet<[TernaryPointProps]>`        |                                | Replaces the default fractions tooltip.                                             |

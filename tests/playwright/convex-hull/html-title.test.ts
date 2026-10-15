@@ -44,8 +44,9 @@ test.describe(`ConvexHull HTML Title Rendering`, () => {
           )
           .toBeGreaterThan(title_bottom)
       }
+      // every toolbar icon, the export toggle included, shares one size
       const icons = diagram.locator(`:scope > .control-buttons > button > svg`)
-      await expect(icons).toHaveCount(4)
+      await expect(icons).toHaveCount(5)
       const sizes = await icons.evaluateAll((elements) =>
         elements.map((element) => {
           const { width, height } = element.getBoundingClientRect()

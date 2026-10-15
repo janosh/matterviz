@@ -3,12 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import {
-    chart_export_filename,
-    create_chart_exporter,
-    series_to_csv_rows,
-  } from '#lib/plot/core/utils/chart-export.js'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
     BarHandlerProps,
@@ -16,7 +11,7 @@
     BarSeries,
     BarStyle,
     BasePlotProps,
-    ColorScaleConfig,
+    ColorScale,
     InternalPoint,
     LayerZIndex,
     LegendConfig,
@@ -63,6 +58,7 @@
     collect_scale_ranges,
     create_axis_scales,
     create_color_scale,
+    to_color_scale_config,
     create_size_scale,
     log_floor_scale,
   } from '#lib/plot/core/scales.js'
@@ -181,7 +177,7 @@
           | null,
       ) => void
       // Line marker props (matching ScatterPlot)
-      color_scale?: ColorScaleConfig | D3InterpolateName
+      color_scale?: ColorScale
       size_scale?: SizeScaleConfig
       on_point_click?: (
         data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -471,9 +467,7 @@
   )
   // Finite color/size bounds of the visible line series drive the shared color/size scales.
   // Reads only the scale types, so scheme/radius changes don't re-scan the values.
-  const color_scale_type = $derived(
-    typeof color_scale === `string` ? undefined : color_scale.type,
-  )
+  const color_scale_type = $derived(to_color_scale_config(color_scale).type)
   const size_scale_type = $derived(size_scale.type)
   const scale_ranges = $derived(
     collect_scale_ranges(
@@ -621,15 +615,17 @@
   // === Export ===
   // The caller's visible series as given (category names, no padding for absent categories),
   // unlabelled ones numbered by input position as in the legend
-  const handle_export = create_chart_exporter(frame, () =>
-    series_to_csv_rows(
-      series.flatMap((srs, series_idx) =>
-        srs.visible === false
-          ? []
-          : [{ label: srs.label ?? `Series ${series_idx + 1}`, x: srs.x, y: srs.y }],
+  const export_sources = {
+    csv: csv_source(() =>
+      series_to_csv_rows(
+        series.flatMap((srs, series_idx) =>
+          srs.visible === false
+            ? []
+            : [{ label: srs.label ?? `Series ${series_idx + 1}`, x: srs.x, y: srs.y }],
+        ),
       ),
     ),
-  )
+  }
 </script>
 
 {#snippet ref_lines_layer(coord_z: LayerZIndex)}
@@ -643,6 +639,7 @@
 
 <CartesianFrame
   {frame}
+  {export_sources}
   plot_class="bar-plot"
   css_prefix="barplot"
   css_var_fallbacks={{
@@ -966,8 +963,6 @@
 
   {#snippet controls(toggle_props, show_controls)}
     <BarPlotControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
       {toggle_props}
       pane_props={controls_pane_props}
       {show_controls}

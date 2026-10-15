@@ -1,6 +1,7 @@
 import type { Vec3 } from '#lib/math.js'
 import type { Site } from './index'
 import { is_image_site } from './site'
+import { is_full_occupancy, single_element_occupancy } from './partial-occupancy'
 import { InstanceColors } from './instance-colors'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
 import type { Material, Intersection, Raycaster } from 'three/webgpu'
@@ -56,9 +57,9 @@ export function update_ordered_atom_positions<
       atom.occupancy !== 1 ||
       is_image_site(site) ||
       site.provenance?.completion ||
-      site.species.length !== 1 ||
-      site.species[0].occu !== 1 ||
-      atom.element !== site.species[0].element
+      // mixed-valence Fe2+ / Fe3+ still draws as one full Fe sphere
+      site.species[0]?.element !== atom.element ||
+      !is_full_occupancy(single_element_occupancy(site.species))
     )
       return null
   }

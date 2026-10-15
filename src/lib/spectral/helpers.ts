@@ -638,6 +638,18 @@ const plotted_branches = (
   })
 }
 
+// Plot x of a q-point on a plotted branch with x-range [x_start, x_end]
+const branch_x = (
+  { distance }: types.BaseBandStructure,
+  { start_index, end_index }: types.Branch,
+  [x_start, x_end]: Vec2,
+  qpoint_idx: number,
+): number => {
+  const span = distance[end_index] - distance[start_index]
+  if (span === 0) return x_start // zero-length segment
+  return x_start + ((distance[qpoint_idx] - distance[start_index]) / span) * (x_end - x_start)
+}
+
 // Rescaled x-position of a q-point index along the band plot path. Inverse of
 // find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
 // Returns null if the index doesn't fall on a plotted branch.
@@ -646,16 +658,99 @@ export function qpoint_x_position(
   qpoint_index: number,
   x_positions: Record<string, Vec2>,
 ): number | null {
-  if (!band_struct.branches.length) return null
-  for (const [branch, [x_start, x_end]] of plotted_branches(band_struct, x_positions)) {
-    if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
-    const d_start = band_struct.distance[branch.start_index]
-    const d_end = band_struct.distance[branch.end_index]
-    if (d_end === d_start) return x_start // zero-length segment
-    const ratio = (band_struct.distance[qpoint_index] - d_start) / (d_end - d_start)
-    return x_start + ratio * (x_end - x_start)
+  for (const [branch, range] of plotted_branches(band_struct, x_positions)) {
+    if (qpoint_index >= branch.start_index && qpoint_index <= branch.end_index)
+      return branch_x(band_struct, branch, range, qpoint_index)
   }
   return null
+}
+
+// Bands' line colours, also FermiSurfaceBands' crossing dots and muted lines
+export const BANDS_CSS_COLORS = {
+  fermi: `var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`,
+  reference: `var(--bands-reference-line-color, light-dark(#d48860, #c47850))`,
+  muted: `var(--bands-muted-color, light-dark(#b9c2d0, #48566c))`,
+} as const
+
+const is_per_mode_style = (
+  kwargs: types.LineKwargs,
+): kwargs is { acoustic?: types.BandLineStyle; optical?: types.BandLineStyle } =>
+  `acoustic` in kwargs || `optical` in kwargs
+// The caller's style for one band line: per band and spin, per acoustic/optical mode, or shared
+export const band_line_style = (
+  kwargs: types.LineKwargs,
+  band_idx: number,
+  spin: `up` | `down`,
+  is_acoustic: boolean,
+  structure: string,
+): types.BandLineStyle => {
+  if (typeof kwargs === `function`) return kwargs(band_idx, spin, structure)
+  return is_per_mode_style(kwargs)
+    ? (kwargs[is_acoustic ? `acoustic` : `optical`] ?? {})
+    : kwargs
+}
+
+// Where a band meets an energy (e.g. E_F) along the plotted path: its plot x and Cartesian k,
+// interpolated linearly between the q-points around a sign change, so the k sits on the drawn
+// k-path where it pierces that energy's isosurface. A q-point exactly at the energy (a band
+// passing through it, touching it from either side, a branch starting there, every q-point of
+// a flat run) is one crossing at the q-point.
+export interface BandCrossing {
+  band_idx: number
+  spin: `up` | `down`
+  x: number
+  k: Vec3
+}
+export function band_crossings(
+  band_struct: types.BaseBandStructure,
+  energy: number,
+  k_points: Vec3[], // band_struct's q-points in Cartesian k (band_k_path's points)
+  x_positions: Record<string, Vec2>, // Bands' x_positions
+  include: (band_idx: number, spin: `up` | `down`) => boolean = () => true,
+): BandCrossing[] {
+  const crossings: BandCrossing[] = []
+  // a q-point shared by two branches (same index, or a repeated q-point where they meet) is
+  // one crossing
+  const seen = new Set<string>()
+  const { bands, spin_down_bands = [] } = band_struct
+  for (const [branch, range] of plotted_branches(band_struct, x_positions)) {
+    const { start_index, end_index } = branch
+    const x_at = (qpoint_idx: number) => branch_x(band_struct, branch, range, qpoint_idx)
+    for (const [spin, channel] of [
+      [`up`, bands],
+      [`down`, spin_down_bands],
+    ] as const) {
+      for (const [band_idx, energies] of channel.entries()) {
+        if (!include(band_idx, spin)) continue
+        for (let qpoint_idx = start_index; qpoint_idx <= end_index; qpoint_idx++) {
+          const [e_here, e_next] = [energies[qpoint_idx], energies[qpoint_idx + 1]]
+          if (e_here === energy) {
+            const [x, k] = [x_at(qpoint_idx), k_points[qpoint_idx]]
+            const key = `${spin} ${band_idx} ${x} ${k}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            crossings.push({ band_idx, spin, x, k })
+          } else if (
+            qpoint_idx < end_index &&
+            Number.isFinite(e_here + e_next) &&
+            e_next !== energy &&
+            e_here < energy !== e_next < energy
+          ) {
+            const frac = (energy - e_here) / (e_next - e_here)
+            const k_here = k_points[qpoint_idx]
+            const k_step = subtract(k_points[qpoint_idx + 1], k_here)
+            crossings.push({
+              band_idx,
+              spin,
+              x: x_at(qpoint_idx) + frac * (x_at(qpoint_idx + 1) - x_at(qpoint_idx)),
+              k: add(k_here, scale_vec(k_step, frac)),
+            })
+          }
+        }
+      }
+    }
+  }
+  return crossings
 }
 
 // First and last q-point index of the path branch (e.g. Γ→X) containing a q-point, for

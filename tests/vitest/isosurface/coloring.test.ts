@@ -2,15 +2,15 @@
 import {
   auto_color_config,
   compute_scalar_range,
-  fit_color_range,
+  fit_value_range,
   is_signed_range,
   scalars_to_vertex_colors,
 } from '#lib/isosurface/coloring.js'
 import { describe, expect, test } from 'vitest'
 
 const viridis_opts = {
-  colormap: `interpolateViridis` as const,
-  color_range: [0, 10] as [number, number],
+  color_scale: `interpolateViridis` as const,
+  value_range: [0, 10] as [number, number],
   fallback_color: `#ff0000`,
 }
 
@@ -24,7 +24,7 @@ describe(`scalars_to_vertex_colors`, () => {
   test(`RdBu runs red → near-white → blue across the range, one triplet per scalar`, () => {
     const colors = scalars_to_vertex_colors(new Float32Array([0, 5, 10]), {
       ...viridis_opts,
-      colormap: `interpolateRdBu`,
+      color_scale: `interpolateRdBu`,
     })
     expect(colors).toHaveLength(9)
     const [low, mid, high] = [0, 1, 2].map((idx) => rgb_at(colors, idx))
@@ -53,11 +53,11 @@ describe(`scalars_to_vertex_colors`, () => {
   test(`inverted color range flips the colormap`, () => {
     const forward = scalars_to_vertex_colors(new Float32Array([0, 10]), {
       ...viridis_opts,
-      color_range: [0, 10],
+      value_range: [0, 10],
     })
     const flipped = scalars_to_vertex_colors(new Float32Array([0, 10]), {
       ...viridis_opts,
-      color_range: [10, 0],
+      value_range: [10, 0],
     })
     expect(rgb_at(flipped, 0)).toEqual(rgb_at(forward, 1))
     expect(rgb_at(flipped, 1)).toEqual(rgb_at(forward, 0))
@@ -78,9 +78,28 @@ describe(`scalars_to_vertex_colors`, () => {
   test(`zero-span range maps everything to one mid color`, () => {
     const colors = scalars_to_vertex_colors(new Float32Array([5, 7]), {
       ...viridis_opts,
-      color_range: [5, 5],
+      value_range: [5, 5],
     })
     expect(rgb_at(colors, 0)).toEqual(rgb_at(colors, 1))
+  })
+
+  // color_scale type spaces values and palette_range clips the scheme, like the 2D plots
+  test(`log type and palette_range match the linear full-palette colors they reduce to`, () => {
+    const linear = scalars_to_vertex_colors(new Float32Array([0, 5, 10]), viridis_opts)
+    const log = scalars_to_vertex_colors(new Float32Array([1, 10, 100, 0, -1]), {
+      ...viridis_opts,
+      color_scale: { type: `log` },
+      value_range: [1, 100],
+    })
+    for (const idx of [0, 1, 2]) expect(rgb_at(log, idx)).toEqual(rgb_at(linear, idx))
+    // no log image: non-positive scalars get the fallback (#ff0000 is linear [1, 0, 0])
+    for (const idx of [3, 4]) expect(rgb_at(log, idx)).toEqual([1, 0, 0])
+    const clipped = scalars_to_vertex_colors(new Float32Array([0, 10]), {
+      ...viridis_opts,
+      color_scale: { palette_range: [0.5, 1] },
+    })
+    expect(rgb_at(clipped, 0)).toEqual(rgb_at(linear, 1))
+    expect(rgb_at(clipped, 1)).toEqual(rgb_at(linear, 2))
   })
 
   test(`fills a caller-provided output array in place when sizes match`, () => {
@@ -94,7 +113,7 @@ describe(`scalars_to_vertex_colors`, () => {
   })
 })
 
-describe(`fit_color_range`, () => {
+describe(`fit_value_range`, () => {
   // `auto` centres on zero only for signed data, `true` always does, `false` never does
   test.each([
     { symmetric: `auto`, range: [-1, 3], expected: [-3, 3] },
@@ -109,7 +128,7 @@ describe(`fit_color_range`, () => {
   ] as const)(
     `symmetric=$symmetric fits $range to $expected`,
     ({ symmetric, range, expected }) => {
-      expect(fit_color_range(range[0], range[1], symmetric)).toEqual(expected)
+      expect(fit_value_range(range[0], range[1], symmetric)).toEqual(expected)
     },
   )
 })
@@ -167,10 +186,10 @@ describe(`auto_color_config`, () => {
   test.each([
     [`signed data gets diverging RdBu with a symmetric`, -3, `interpolateRdBu`, [-5, 5]],
     [`non-negative data gets Viridis over the [min, max]`, 1, `interpolateViridis`, [1, 5]],
-  ])(`%s range`, (_label, min, colormap, color_range) => {
-    expect(auto_color_config({ min, max: 5, abs_max: 5, mean: 1 })).toMatchObject({
-      colormap,
-      color_range,
+  ])(`%s range`, (_label, min, scheme, value_range) => {
+    expect(auto_color_config({ min, max: 5, abs_max: 5, mean: 1 })).toEqual({
+      scheme,
+      value_range,
     })
   })
 })

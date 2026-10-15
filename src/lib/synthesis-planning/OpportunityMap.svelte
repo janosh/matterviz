@@ -30,6 +30,9 @@
   let pending = $state(false)
   let error = $state(``)
   const palette = [`#4e79a7`, `#e69f00`, `#9c6ade`, `#009e73`]
+  // cycles past the palette; an unknown route (-1) is neutral
+  const route_color = (idx: number): string | undefined =>
+    idx < 0 ? undefined : palette[idx % palette.length]
   const scan_gas = $derived(
     conditions.open_species?.includes(gas) ? gas : conditions.open_species?.[0],
   )
@@ -111,15 +114,15 @@
     metric === `preferred`
       ? best_route(cell)
       : cell.routes.find(({ id: identifier }) => identifier === active_route_id)
-  const cell_color = (cell: OpportunityCell): string => {
+  const cell_color = (cell: OpportunityCell): string | undefined => {
     if (metric === `stability`)
-      return `hsl(215 65% ${92 - 55 * Math.min(1, cell.e_above_hull / 0.3)}%)`
+      return `hsl(215, 65%, ${92 - 55 * Math.min(1, cell.e_above_hull / 0.3)}%)`
     const route = shown_route(cell)
     if (!route) return `#aaa`
     if (metric === `preferred`)
-      return palette[routes.findIndex(({ id: identifier }) => identifier === route.id)]
+      return route_color(routes.findIndex(({ id: identifier }) => identifier === route.id))
     const margin = route.selectivity_margin
-    return `hsl(${margin < 0 ? 150 : 8} 55% ${90 - 40 * Math.min(1, Math.abs(margin) / 0.3)}%)`
+    return `hsl(${margin < 0 ? 150 : 8}, 55%, ${90 - 40 * Math.min(1, Math.abs(margin) / 0.3)}%)`
   }
   const cell_label = (cell: OpportunityCell): string => {
     const route = shown_route(cell)
@@ -242,7 +245,7 @@
             <button
               type="button"
               style:background={cell_color(cell)}
-              {@attach hover_tooltip(cell_tooltip)}
+              {@attach hover_tooltip(cell_tooltip, () => cell_color(cell))}
               aria-label={cell_label(cell)}
               aria-pressed={cell.temperature === conditions.temperature &&
                 Math.abs(
@@ -276,7 +279,7 @@
             : `Green = target favored over competing products; red = competitors favored or reaction uphill. Darker = larger margin (0–300 meV/atom).`}
       </p>
       {#if metric === `preferred`}<ol>
-          {#each routes as route, idx}<li style:border-color={palette[idx]}>
+          {#each routes as route, idx}<li style:border-color={route_color(idx)}>
               {route.reaction.equation}
             </li>{/each}
         </ol>{/if}

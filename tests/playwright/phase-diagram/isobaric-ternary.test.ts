@@ -78,6 +78,11 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     ])
     await kelvin.fill(String(Math.round((t_min + t_max) / 2)))
     await kelvin.press(`Enter`)
+    // the event in effect is marked by its accent edge alone (0px wide with border-style none)
+    const active_event = page.locator(`${DIAGRAM} .phase-event-list li.active`)
+    await expect(active_event).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+    await expect(active_event).not.toHaveCSS(`border-left-color`, `rgba(0, 0, 0, 0)`)
+    await expect(active_event).not.toHaveCSS(`border-left-width`, `0px`)
     const t_before = Number(await kelvin.inputValue())
     const box = await require_bbox(canvas, `prism canvas`)
     const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]

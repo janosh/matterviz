@@ -318,6 +318,16 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
     ),
   ).toBeNull()
   expect(atoms[0].position).toEqual([0.25, 0, 0])
+  // Mixed-valence species of the atom's element draw one full sphere, so they keep the path,
+  // also when their occupancies sum to 0.9999999999999999 (0.7 + 0.2 + 0.1)
+  const mixed_valence = [0.7, 0.2, 0.1].map((occu, idx) => ({
+    element: `Si` as const,
+    occu,
+    oxidation_state: idx + 2,
+  }))
+  expect(
+    update_ordered_atom_positions(atoms, [first, { ...last, species: mixed_valence }]),
+  ).not.toBeNull()
   const coordinates = Float64Array.of(1e12 + 0.25, -0, 1e-12, 99, -1e12 - 0.5, 2, -3, 99)
   const original_coordinates = coordinates.slice()
   const previous_positions = atoms.map(({ position }) => position)

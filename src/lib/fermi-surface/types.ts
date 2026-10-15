@@ -2,12 +2,16 @@
 import type { FileLoadData } from '#lib/io/types.js'
 import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { DefaultSettings } from '#lib/settings.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 // Viewer settings FermiSurface forwards to FermiSurfaceControls (bound) and FermiSurfaceScene
-// (read-only); defaults live in DEFAULTS.fermi
-export type FermiSurfaceSettings = Omit<DefaultSettings[`fermi`], `fullscreen_toggle`>
+// (read-only); defaults live in DEFAULTS.fermi, whose color_scale is a bare scheme name
+export type FermiSurfaceSettings = Omit<
+  DefaultSettings[`fermi`],
+  `fullscreen_toggle` | `color_scale`
+> & { color_scale: ColorScale }
 
 export type SpinChannel = `up` | `down` | null
 

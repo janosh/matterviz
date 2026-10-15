@@ -1,4 +1,4 @@
-import { format_hover_info_text } from '#lib/phase-diagram/utils.js'
+import { format_hover_info_text, get_phase_color } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
@@ -140,6 +140,13 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(info?.lever_rule).toBeUndefined()
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`Liquid`)
     expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
+    // a single-phase region's tooltip wears its opaque palette hue (not the translucent drawn
+    // fill), shown through the card; a two-phase gradient keeps the neutral card
+    const tip_bgs = () => [
+      doc_query(`.tooltip-container`).style.backgroundColor,
+      getComputedStyle(doc_query(`.phase-diagram-tooltip`)).backgroundColor,
+    ]
+    expect(tip_bgs()).toEqual([get_phase_color(`Liquid`, `hex`), `transparent`])
 
     await hover_at(wrapper, 0.25, 250) // inside the α + β field spanning x: [0, 1]
     expect(on_phase_hover.mock.lastCall?.[0]?.lever_rule).toMatchObject({
@@ -156,6 +163,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     if (!tie_line?.parentElement) throw new Error(`missing tie line`)
     expect(getComputedStyle(tie_line.parentElement).pointerEvents).toBe(`none`)
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`α + β`)
+    expect(tip_bgs()).toEqual([``, ``])
 
     // outside the plot area (left of the y-axis) -> hover cleared
     plot_svg(wrapper).dispatchEvent(
@@ -164,6 +172,20 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     await tick()
     expect(on_phase_hover).toHaveBeenLastCalledWith(null)
     expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
+  })
+
+  test.each([
+    [`#123456`, `#123456`],
+    // a translucent explicit fill is flattened so labels never show through
+    [`rgba(18, 52, 86, 0.5)`, `rgb(18, 52, 86)`],
+  ])(`explicit region color %s backs the tooltip as %j`, async (color, expected) => {
+    const [liquid, ...rest] = eutectic.regions
+    const wrapper = await mount_diagram({
+      data: { ...eutectic, regions: [{ ...liquid, color }, ...rest] },
+    })
+    await hover_at(wrapper, 0.5, 750)
+    const { style } = doc_query(`.tooltip-container`)
+    expect([style.backgroundColor, style.color]).toEqual([expected, `white`])
   })
 
   test(`click locks the tooltip; click again or Escape unlocks`, async () => {

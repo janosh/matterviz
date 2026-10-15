@@ -44,7 +44,7 @@ export const TRAJECTORY_ENERGY_KEYS = [
 ] as const
 
 // Default resolution for PNG export, shared by every viewer's export pane and the export helpers
-export const DEFAULT_PNG_DPI = 150
+export const DEFAULT_PNG_DPI = 144 // exactly 2x CSS pixels
 // Scale both video dimensions relative to the viewer's drawing buffer.
 export const DEFAULT_VIDEO_RESOLUTION = 3
 

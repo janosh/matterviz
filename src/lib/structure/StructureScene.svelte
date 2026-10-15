@@ -84,7 +84,11 @@
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { to_error } from '#lib/utils.js'
-  import { compute_slice_geometry, merge_split_partial_sites } from './partial-occupancy'
+  import {
+    compute_slice_geometry,
+    merge_species_by_element,
+    merge_split_partial_sites,
+  } from './partial-occupancy'
   import { PartialAtoms, type PartialAtom } from './partial-atoms'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -1837,6 +1841,18 @@
       ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
       : active_highlight_color,
   )
+  // The hovered atom's tooltip wears its fill when the drawn atom shows one color: a property
+  // color, or one visible element (merged across oxidation states and split partial sites,
+  // full or partial occupancy). Element wedges and color fields keep the neutral chip.
+  const hovered_tooltip_bg = $derived.by(() => {
+    const atom = atom_groups.first_by_site.get(hovered_idx ?? -1)
+    if (!atom || atom_color_field) return null
+    if (property_colors?.colors[atom.site_idx]) return atom.color
+    const visible = merge_species_by_element(atom.species).filter(
+      ({ element }) => !hidden_elements.has(element),
+    )
+    return visible.length === 1 ? atom.color : null
+  })
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
@@ -2326,7 +2342,7 @@
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
           atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
-        <CanvasTooltip position={hovered_site.xyz}>
+        <CanvasTooltip position={hovered_site.xyz} bg_color={hovered_tooltip_bg}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}

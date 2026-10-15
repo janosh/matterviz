@@ -1,3 +1,5 @@
+import type { ColorProperty, SpinChannel } from './types'
+
 // Band colors (ColorBrewer Set1 palette for categorical data)
 export const BAND_COLORS = [
   `#e41a1c`, // red
@@ -14,6 +16,17 @@ export const BAND_COLORS = [
 
 // Flat colours of the spin channels in `spin` colouring mode, also FermiSurfaceTooltip's badge
 export const SPIN_COLORS = { up: BAND_COLORS[0], down: BAND_COLORS[1] } as const
+
+// Flat colour of a band's sheet (material, tooltip background, FermiSurfaceBands' band lines):
+// its spin channel's in `spin` colouring mode, else its band's
+export const sheet_color = (
+  band_index: number,
+  spin: SpinChannel,
+  color_property: ColorProperty,
+): string =>
+  color_property === `spin` && spin
+    ? SPIN_COLORS[spin]
+    : BAND_COLORS[band_index % BAND_COLORS.length]
 
 // Key of a per-vertex property its source leaves unnamed (an IFermi/JSON `properties` array,
 // a scalar FRMSF colour block). FermiSurface's custom_property_label relabels it for display.

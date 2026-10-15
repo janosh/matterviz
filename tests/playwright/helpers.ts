@@ -1,4 +1,10 @@
-import { expect, type Locator, type Page, test as base } from '@playwright/test'
+import {
+  type ConsoleMessage,
+  expect,
+  type Locator,
+  type Page,
+  test as base,
+} from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
 
@@ -513,10 +519,10 @@ export async function open_plot_controls(
   plot: Locator,
 ): Promise<{ toggle: Locator; pane: Locator }> {
   await plot.hover()
-  const toggle = plot.locator(`button.pane-toggle`)
+  const toggle = plot.locator(`button.control-pane-toggle`)
   await expect(toggle).toBeVisible()
   await toggle.click()
-  const pane = plot.locator(`.draggable-pane`)
+  const pane = plot.locator(`.control-pane`)
   await expect(pane).toBeVisible()
   return { toggle, pane }
 }
@@ -789,4 +795,67 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
   await expect(structure_div.locator(`.undo-redo-container`)).toBeVisible({
     timeout,
   })
+}
+
+// A multi-panel component (Fermi surface + bands, bands + DOS, BZ + bands + DOS) has one
+// fullscreen button that takes it fullscreen with every panel over 80% of the screen height.
+// Enters by `f` over `key_panel` (a 3D panel's own shortcut must defer), exits via the
+// Fullscreen API (Esc) back to the inline panel sizes, then the synced button toggles both ways.
+export async function expect_combined_fullscreen(
+  container: Locator,
+  panels: string[],
+  key_panel = panels[0],
+): Promise<void> {
+  const button = container.locator(`.fullscreen-btn`) // strict: exactly one, before and after
+  const is_fullscreen = () => container.evaluate((elem) => document.fullscreenElement === elem)
+  const panel_height = async (panel: string) =>
+    (await require_bbox(container.locator(panel).first())).height
+  const heights = () => Promise.all(panels.map(panel_height))
+  const inline_heights = await heights()
+  // the browser's own fullscreenchange must land before the exit below: svelte-widgets'
+  // sync clears its pending request only on a matching change event, so exiting within the
+  // same frame strands the request and the button's next click is skipped as a duplicate
+  const entered = container.evaluate(
+    () =>
+      new Promise((resolve) =>
+        document.addEventListener(`fullscreenchange`, resolve, { once: true }),
+      ),
+  )
+  await container.locator(key_panel).first().hover()
+  await container.page().keyboard.press(`f`)
+  await entered
+  await expect.poll(is_fullscreen).toBe(true)
+  const min_height = 0.8 * (await container.evaluate(() => innerHeight))
+  await expect.poll(async () => Math.min(...(await heights()))).toBeGreaterThan(min_height)
+  await expect(button).toHaveAttribute(`aria-pressed`, `true`)
+  await container.evaluate(() => document.exitFullscreen())
+  // the button's flag follows the browser's exit (else a click would toggle a stale flag off)
+  await expect(button).toHaveAttribute(`aria-pressed`, `false`)
+  const max_drift = async () =>
+    Math.max(...(await heights()).map((height, idx) => Math.abs(height - inline_heights[idx])))
+  await expect.poll(max_drift).toBeLessThan(0.5)
+  // a click that misses fullscreen reports what did go fullscreen and any browser errors
+  const page = container.page()
+  const console_errors: string[] = []
+  const on_console = (msg: ConsoleMessage) => {
+    if (msg.type() === `error`) console_errors.push(msg.text())
+  }
+  page.on(`console`, on_console)
+  for (const fullscreen of [true, false]) {
+    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
+    await expect(button).toHaveAttribute(`aria-pressed`, String(!fullscreen))
+    await button.click()
+    try {
+      await expect.poll(is_fullscreen).toBe(fullscreen)
+    } catch (error) {
+      const element = await page.evaluate(() => document.fullscreenElement?.className ?? null)
+      const pressed = await button.getAttribute(`aria-pressed`)
+      throw new Error(
+        `click to fullscreen=${fullscreen} missed: fullscreen element ${element}, ` +
+          `aria-pressed=${pressed}, console errors: ${console_errors.join(` | `) || `none`}`,
+        { cause: error },
+      )
+    }
+  }
+  page.off(`console`, on_console)
 }

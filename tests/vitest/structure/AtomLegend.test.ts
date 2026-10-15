@@ -349,14 +349,14 @@ describe(`AtomLegend Component`, () => {
     })
 
     // translucent overrides composite against the page backdrop (white in jsdom) rather
-    // than throwing; a faint wash reads as a light cell, half black as mid grey
+    // than throwing; a faint wash and half black (mid grey, unlike opaque black) both take black
     // oxfmt-ignore
     test.each([
       [`empty unique_values`, [], [], []],
       [`single value`, [42], [`rgb(255, 128, 0)`], [`black`]],
-      [`two values`, [1, 2], [`red`, `blue`], [`white`, `white`]],
-      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`], [`white`, `black`, `white`, `white`]],
-      [`translucent override`, [1, 2], [`rgba(0, 0, 0, 0.1)`, `rgba(0, 0, 0, 0.5)`], [`black`, `white`]],
+      [`two values`, [1, 2], [`red`, `blue`], [`black`, `white`]],
+      [`multiple values`, [1, 2, 3, 4], [`red`, `yellow`, `green`, `blue`], [`black`, `black`, `white`, `white`]],
+      [`translucent override`, [1, 2], [`rgba(0, 0, 0, 0.1)`, `rgba(0, 0, 0, 0.5)`], [`black`, `black`]],
     ])(
       `handles %s without errors or NaN`,
       (_desc, unique_values, legend_colors, text_colors) => {
@@ -399,8 +399,8 @@ describe(`AtomLegend Component`, () => {
         `rgba(0, 0, 0, 0.5)`,
       ])
       // translucent swatch composites against the page backdrop (white in jsdom) instead of
-      // throwing, so half-transparent black reads as mid grey and takes white text
-      expect(labels.map((label) => label.style.color)).toEqual([`white`, `black`, `white`])
+      // throwing, so half-transparent black reads as mid grey and takes black text
+      expect(labels.map((label) => label.style.color)).toEqual([`black`, `black`, `black`])
     })
 
     test(`formats Wyckoff orbit IDs correctly`, () => {

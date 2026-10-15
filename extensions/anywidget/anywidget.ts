@@ -11,6 +11,7 @@ import {
   ChemPotDiagram,
   Composition,
   ConvexHull,
+  disable_workers,
   Dos,
   FermiSurface,
   HeatmapMatrix,
@@ -40,11 +41,16 @@ import {
   drive_props,
   get_prop,
   next_event_id,
+  nullable_prop,
   reactive_widget,
   set_model,
   throttle,
   writeback_prop,
 } from './reactive.svelte'
+
+// The bundle loads from a blob:, CDN or file:// URL, against which bundled worker files either
+// fail to resolve or resolve cross-origin (new Worker throws), so compute on the main thread
+disable_workers()
 
 const styled_shadow_roots = new WeakSet<ShadowRoot>()
 
@@ -537,7 +543,6 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       `color_property`,
       `color_scale`,
       `property_name`,
-      `color_range`,
       `custom_property_label`,
       `representation`,
       `surface_opacity`,
@@ -574,17 +579,17 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   periodic_table: {
     component: PeriodicTable,
     base_drive: style_base_drive,
-    drive: drive_props([
-      `heatmap_values`,
-      `color_scale`,
-      `color_scale_range`,
-      `color_overrides`,
-      `labels`,
-      `show_color_bar`,
-      `gap`,
-      `missing`,
-      `log`,
-    ]),
+    drive: [
+      ...drive_props([
+        `heatmap_values`,
+        `color_scale`,
+        `color_overrides`,
+        `labels`,
+        `gap`,
+        `missing`,
+      ]),
+      nullable_prop(`color_bar`),
+    ],
   },
   rdf_plot: {
     component: RdfPlot,
@@ -603,21 +608,22 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
-    drive: drive_props([
-      `x_items`,
-      `y_items`,
-      `values`,
-      `color_scale`,
-      `color_scale_range`,
-      `missing`,
-      `x_axis`,
-      `y_axis`,
-      `tile_size`,
-      `gap`,
-      `show_values`,
-      `label_style`,
-      `log`,
-    ]),
+    drive: [
+      ...drive_props([
+        `x_items`,
+        `y_items`,
+        `values`,
+        `color_scale`,
+        `missing`,
+        `x_axis`,
+        `y_axis`,
+        `tile_size`,
+        `gap`,
+        `show_values`,
+        `label_style`,
+      ]),
+      nullable_prop(`color_bar`),
+    ],
   },
   spacegroup_bar: {
     component: SpacegroupBarPlot,
@@ -667,7 +673,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `show_legend`,
         `value_format`,
         `padding`,
-        `export_buttons`,
+        `export_formats`,
         `export_filename`,
         `fullscreen_toggle`,
       ]),

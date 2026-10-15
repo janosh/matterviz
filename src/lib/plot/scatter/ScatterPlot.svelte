@@ -3,13 +3,9 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '#lib/tooltip/index.js'
+  import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
-  import {
-    chart_export_filename,
-    create_chart_exporter,
-    series_to_csv_rows,
-  } from '#lib/plot/core/utils/chart-export.js'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
+  import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
   import { format_value, format_value_or_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -17,7 +13,7 @@
   import type {
     AxisRanges,
     BasePlotProps,
-    ColorScaleConfig,
+    ColorScale,
     DataSeries,
     DensityContourConfig,
     ErrorBand,
@@ -48,6 +44,8 @@
     accumulate_extent,
     collect_scale_ranges,
     create_color_scale,
+    resolve_value_range,
+    to_color_scale_config,
     create_scale,
     create_size_scale,
     empty_extent,
@@ -123,7 +121,12 @@
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
-  import { attach_canvas, prepare_canvas, resolve_line_tween } from '#lib/plot/core/utils.js'
+  import {
+    attach_canvas,
+    canvas_painters,
+    prepare_canvas,
+    resolve_line_tween,
+  } from '#lib/plot/core/utils.js'
   import { color as d3_color } from 'd3-color'
   import {
     build_fill_legend_items,
@@ -202,6 +205,7 @@
     fullscreen_toggle = true,
     children,
     header_controls,
+    export_sources: extra_export_sources = {},
     controls_extra,
     axis_loading = null,
     on_axis_change,
@@ -240,10 +244,13 @@
       tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
+      // the data a wrapping component plots
+      export_sources?: ExportSources
       controls_extra?: Snippet<
         [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
       >
-      color_scale?: ColorScaleConfig | D3InterpolateName
+      color_scale?: ColorScale
       size_scale?: SizeScaleConfig
       // Reference circles for size_values, shown when the size scale maps 2+ legend values to
       // distinct marker radii (null hides)
@@ -623,9 +630,7 @@
         }))
       : [],
   )
-  const color_scale_config = $derived<ColorScaleConfig>(
-    typeof color_scale === `string` ? { scheme: color_scale } : color_scale,
-  )
+  const color_scale_config = $derived(to_color_scale_config(color_scale))
   // Finite color and size bounds across all series. NaN/null entries
   // fall back to the series color/radius per point, so they must not widen either scale.
   // Reads only the scale types, so scheme/radius changes don't re-scan the values.
@@ -994,9 +999,14 @@
   })
 
   let canvas_element = $state<HTMLCanvasElement>()
-  $effect(() => {
-    const surface = prepare_canvas(canvas_element, width, height)
+  // Also registered as the canvas's export painter, redrawing at the export pixel ratio
+  const paint_markers = (canvas?: HTMLCanvasElement, pixel_ratio?: number) => {
+    const surface = prepare_canvas(canvas, width, height, pixel_ratio)
     if (surface) draw_markers(surface.ctx, canvas_markers ?? [], surface)
+  }
+  $effect(() => {
+    paint_markers(canvas_element)
+    if (canvas_element) canvas_painters.set(canvas_element, paint_markers)
   })
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
@@ -1651,7 +1661,10 @@
         }),
       },
     }))
-  const handle_export = create_chart_exporter(frame, () => series_to_csv_rows(csv_series()))
+  const export_sources = $derived({
+    csv: csv_source(() => series_to_csv_rows(csv_series())),
+    ...extra_export_sources,
+  })
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}
@@ -1689,6 +1702,7 @@
 
 <CartesianFrame
   {frame}
+  {export_sources}
   plot_class="scatter"
   css_prefix="scatter"
   css_var_fallbacks={{ 'min-height': `350px` }}
@@ -1952,8 +1966,6 @@
 
   {#snippet controls(toggle_props, show_controls)}
     <ScatterPlotControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
       {toggle_props}
       pane_props={controls_pane_props}
       {show_controls}
@@ -2023,10 +2035,7 @@
     {/if}
 
     {#if color_bar && show_colorbar}
-      {@const color_domain = [
-        color_scale_config.value_range?.[0] ?? auto_color_range[0],
-        color_scale_config.value_range?.[1] ?? auto_color_range[1],
-      ] as Vec2}
+      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <ColorBarDecoration
         decoration={colorbar}
         color_bar={{

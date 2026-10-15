@@ -68,7 +68,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     expect(Math.max(...fills.map(([, opacity]) => Number(opacity)))).toBeLessThanOrEqual(0.2)
 
     // SpacegroupBarPlot sets show_controls={false} and show_legend={false}
-    await expect(plot.locator(`.pane-toggle`)).toBeHidden()
+    await expect(plot.locator(`.control-pane-toggle`)).toBeHidden()
     await expect(plot.locator(`.legend`)).toBeHidden()
 
     // count annotations ("10.5%", "23%") show until their checkbox is unchecked

@@ -6,6 +6,7 @@
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
   import type { ExportItem, ExportSection } from './types'
+  import { export_sections, type ExportProps, type ExportSources } from './export'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Snippet } from 'svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
@@ -21,6 +22,9 @@
   let {
     export_pane_open = $bindable(false),
     sections = [],
+    sources = {},
+    export_formats,
+    on_export,
     filename = `export`,
     state = new FileExportState(() => filename),
     busy = false,
@@ -33,7 +37,12 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean
+    // Pane-specific sections, listed after the standard ones built from `sources`
     sections?: ExportSection[]
+    // Serializers for the standard formats (PNG, SVG, CSV, JSON, ...), see export_sections
+    sources?: ExportSources
+    export_formats?: ExportProps[`export_formats`]
+    on_export?: ExportProps[`on_export`]
     filename?: string
     state?: FileExportState
     busy?: boolean
@@ -48,6 +57,10 @@
   } = $props()
 
   const pane_id = $props.id()
+  const all_sections = $derived([
+    ...export_sections(sources, { export_formats, on_export }),
+    ...sections,
+  ])
   const [min_dpi, max_dpi] = [50, 600]
 
   // Clamp DPI into [min_dpi, max_dpi] on input change (fires on blur, before any download click)
@@ -79,83 +92,84 @@
   {/if}
 {/snippet}
 
-<ViewerPane
-  bind:open={export_pane_open}
-  pane_name="export options"
-  class_prefix="export"
-  pane_props={{
-    ...rest,
-    ...pane_props,
-    class: [rest.class, pane_props?.class],
-  }}
-  {toggle_props}
-  closed_icon={export_variant}
-  {icon_style}
->
-  {#if export_pane_open}
-    <ExportDestination {state} disabled={busy} />
-    {@render header?.()}
-    {#each sections as section, sec_idx (section.title ?? sec_idx)}
-      {#if section.title}
-        <h4>
-          {@render export_label(section.title, section.tooltip, `Export section details`)}
-        </h4>
-      {/if}
-      <div class="export-grid">
-        {#each section.items as item, item_idx (item.label)}
-          {@const copy_key = `${sec_idx}-${item_idx}`}
-          <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
-          {@const why = item.disabled ? item.disabled_reason : undefined}
-          {@const hint_id = why ? `${pane_id}-${copy_key}-hint` : undefined}
-          {@const why_suffix = why ? ` — ${why}` : ``}
-          <span class="export-item" class:disabled={item.disabled}>
-            {@render export_label(item.label, item.hint, `Export format details`)}
-            {#if item.on_download}
-              <button
-                type="button"
-                onclick={() => item.on_download && state.run(item.on_download)}
-                disabled={busy || state.disabled || item.disabled}
-                aria-label={`Download ${item.label}`}
-                aria-describedby={hint_id}
-                title={`Download ${item.label}${
-                  item.show_dpi ? ` (${png_dpi} DPI)` : ``
-                }${why_suffix}`}
-              >
-                ⬇
-              </button>
-            {/if}
-            {#if item.copy_text}
-              <button
-                type="button"
-                onclick={() => handle_copy(item, copy_key)}
-                disabled={busy || item.disabled}
-                aria-label="Copy {item.label} to clipboard"
-                aria-describedby={hint_id}
-                title={`Copy ${item.label} to clipboard${why_suffix}`}
-              >
-                {copied.has(copy_key) ? `✅` : `📋`}
-              </button>
-            {/if}
-            {#if why}<small id={hint_id} class="disabled-reason">{why}</small>{/if}
-            {#if item.show_dpi}
-              <span class="dpi-input"
-                >(DPI: <input
-                  type="number"
-                  min={min_dpi}
-                  max={max_dpi}
-                  bind:value={png_dpi}
-                  onchange={clamp_dpi}
-                  title="Export resolution in dots per inch"
-                />)</span
-              >
-            {/if}
-          </span>
-        {/each}
-      </div>
-    {/each}
-    {@render children?.()}
-  {/if}
-</ViewerPane>
+{#if all_sections.length || header || children}<ViewerPane
+    bind:open={export_pane_open}
+    pane_name="export options"
+    class_prefix="export"
+    pane_props={{
+      ...rest,
+      ...pane_props,
+      class: [rest.class, pane_props?.class],
+    }}
+    {toggle_props}
+    closed_icon={export_variant}
+    {icon_style}
+  >
+    {#if export_pane_open}
+      <ExportDestination {state} disabled={busy} />
+      {@render header?.()}
+      {#each all_sections as section, sec_idx (section.title ?? sec_idx)}
+        {#if section.title}
+          <h4>
+            {@render export_label(section.title, section.tooltip, `Export section details`)}
+          </h4>
+        {/if}
+        <div class="export-grid">
+          {#each section.items as item, item_idx (item.label)}
+            {@const copy_key = `${sec_idx}-${item_idx}`}
+            <!-- not a <label>: it would forward label-text clicks to the first (download) button -->
+            {@const why = item.disabled ? item.disabled_reason : undefined}
+            {@const hint_id = why ? `${pane_id}-${copy_key}-hint` : undefined}
+            {@const why_suffix = why ? ` — ${why}` : ``}
+            <span class="export-item" class:disabled={item.disabled}>
+              {@render export_label(item.label, item.hint, `Export format details`)}
+              {#if item.on_download}
+                <button
+                  type="button"
+                  onclick={() =>
+                    state.run((context) => item.on_download?.({ ...context, png_dpi }))}
+                  disabled={busy || state.disabled || item.disabled}
+                  aria-label={`Download ${item.label}`}
+                  aria-describedby={hint_id}
+                  title={`Download ${item.label}${
+                    item.show_dpi ? ` (${png_dpi} DPI)` : ``
+                  }${why_suffix}`}
+                >
+                  ⬇
+                </button>
+              {/if}
+              {#if item.copy_text}
+                <button
+                  type="button"
+                  onclick={() => handle_copy(item, copy_key)}
+                  disabled={busy || item.disabled}
+                  aria-label="Copy {item.label} to clipboard"
+                  aria-describedby={hint_id}
+                  title={`Copy ${item.label} to clipboard${why_suffix}`}
+                >
+                  {copied.has(copy_key) ? `✅` : `📋`}
+                </button>
+              {/if}
+              {#if why}<small id={hint_id} class="disabled-reason">{why}</small>{/if}
+              {#if item.show_dpi}
+                <span class="dpi-input"
+                  >(DPI: <input
+                    type="number"
+                    min={min_dpi}
+                    max={max_dpi}
+                    bind:value={png_dpi}
+                    onchange={clamp_dpi}
+                    title="Export resolution in dots per inch"
+                  />)</span
+                >
+              {/if}
+            </span>
+          {/each}
+        </div>
+      {/each}
+      {@render children?.()}
+    {/if}
+  </ViewerPane>{/if}
 
 <style>
   h4 {

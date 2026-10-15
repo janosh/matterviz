@@ -1,5 +1,5 @@
 import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
-import { svg_to_svg_string } from '#lib/io/export.js'
+import { svg_to_string } from '#lib/io/export.js'
 import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET } from '#lib/plot/core/layout.js'
 import { get_text_metrics_revision } from '#lib/plot/core/text-metrics.js'
 import { TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
@@ -349,7 +349,7 @@ describe(`PlotAxis`, () => {
       expect(Number(foreign_obj.getAttribute(`height`))).toBe(24) // closed PopoverSelect trigger
       const static_label = query(svg, `text[data-export-only]`)
       expect(static_label.getAttribute(`display`)).toBe(`none`)
-      const exported = new DOMParser().parseFromString(svg_to_svg_string(svg), `image/svg+xml`)
+      const exported = new DOMParser().parseFromString(svg_to_string(svg), `image/svg+xml`)
       expect(exported.querySelector(`foreignObject`)).toBeNull()
       const exported_label = exported.querySelector(`text.axis-label`)
       expect(exported_label?.textContent).toContain(expected)

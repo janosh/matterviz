@@ -4,8 +4,9 @@ import type {
   ColorProperty,
   FermiSurfaceData,
 } from '#lib/fermi-surface/types.js'
+import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test } from 'vitest'
 import { bind_props, doc_query, set_input, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
@@ -65,22 +66,6 @@ describe(`FermiSurfaceControls`, () => {
     },
   )
 
-  test.each([false, true])(`export controls require a handler: %s`, async (has_handler) => {
-    const on_export = vi.fn()
-    await render_controls({ on_export: has_handler ? on_export : undefined })
-    const buttons = document.querySelectorAll<HTMLButtonElement>(`.export-buttons button`)
-    expect(buttons).toHaveLength(has_handler ? 3 : 0)
-    for (const button of buttons) {
-      button.click()
-      await tick()
-    }
-    expect(on_export.mock.calls.map(([format]) => format)).toEqual(
-      has_handler ? [`stl`, `obj`, `glb`] : [],
-    )
-    for (const [, context] of on_export.mock.calls)
-      expect(context).toMatchObject({ filename: `fermi-surface`, save: expect.any(Function) })
-  })
-
   test.each<{
     name: string
     band_indices?: number[]
@@ -120,12 +105,14 @@ describe(`FermiSurfaceControls`, () => {
       fermi_data: named([`λ`, `Δ`]),
       color_property: `property`,
       property_name: undefined,
-      color_range: [0, 2],
-      fitted_color_range: [0.1, 0.9],
+      color_scale: { scheme: `interpolateMagma`, value_range: [0, 2] },
+      fitted_value_range: [0.1, 0.9],
     })
+    const fixed_range = () =>
+      to_color_scale_config(state.color_scale ?? `interpolateViridis`).value_range
     await render_controls(state)
     // a range passed with no property survives init
-    expect([state.property_name, state.color_range]).toEqual([`λ`, [0, 2]])
+    expect([state.property_name, fixed_range()]).toEqual([`λ`, [0, 2]])
     const select_css = `select[aria-label="Fermi surface colouring property"]`
     const select = doc_query<HTMLSelectElement>(select_css)
     expect(Array.from(select.options, (option) => option.value)).toEqual([`λ`, `Δ`])
@@ -134,26 +121,43 @@ describe(`FermiSurfaceControls`, () => {
     )
     expect([min_input.value, max_input.placeholder]).toEqual([`0`, `0.9`])
     set_input(max_input, `5`)
-    expect(state.color_range).toEqual([0, 5])
+    // edits keep the scheme
+    expect(state.color_scale).toEqual({ scheme: `interpolateMagma`, value_range: [0, 5] })
     // a partial entry (`-` on the way to `-3`) reads as `` with badInput: the range stays
     Object.defineProperty(min_input, `validity`, {
       value: { badInput: true },
       configurable: true,
     })
     set_input(min_input, ``)
-    expect(state.color_range).toEqual([0, 5])
+    expect(fixed_range()).toEqual([0, 5])
     Reflect.deleteProperty(min_input, `validity`)
     set_input(max_input, ``) // emptied → back to fitting the data
-    expect(state.color_range).toBeUndefined()
-    state.color_range = [0, 2]
+    expect(fixed_range()).toBeUndefined()
+    state.color_scale = { value_range: [0, 2] }
     set_select(select, `Δ`)
     await tick()
-    expect([state.property_name, state.color_range]).toEqual([`Δ`, undefined])
-    state.color_range = [0, 2]
+    expect([state.property_name, fixed_range()]).toEqual([`Δ`, undefined])
+    state.color_scale = { value_range: [0, 2] }
     state.fermi_data = named([`v`]) // Δ gone: first property, fitted range, no selector
     await tick()
-    expect([state.property_name, state.color_range]).toEqual([`v`, undefined])
+    expect([state.property_name, fixed_range()]).toEqual([`v`, undefined])
     expect(document.querySelector(select_css)).toBeNull()
+  })
+
+  // a property the data lacks drops its fixed range already at init, keeping the scheme
+  test(`drops a stale property's fixed range on mount`, async () => {
+    const properties = { λ: new Float32Array(1) }
+    const state = $state<ComponentProps<typeof FermiSurfaceControls>>({
+      fermi_data: make_fermi_surface([make_fermi_isosurface([[0, 0, 0]], [], { properties })]),
+      color_property: `property`,
+      property_name: `gone`,
+      color_scale: { scheme: `interpolateMagma`, value_range: [0, 2] },
+    })
+    await render_controls(state)
+    expect([state.property_name, state.color_scale]).toEqual([
+      `λ`,
+      { scheme: `interpolateMagma`, value_range: undefined },
+    ])
   })
 
   test(`resets authored appearance and bands against the current dataset`, async () => {

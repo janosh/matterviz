@@ -564,7 +564,10 @@
       fixed
       offset={{ x: 14, y: 10 }}
       class="ternary-tooltip"
-      style="background: var(--tooltip-bg, rgba(20, 20, 30, 0.92)); color: var(--tooltip-text, #fff); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
+      bg_color={hover.kind === `section` && hover.data.kind === `phase`
+        ? hover.data.color
+        : undefined}
+      style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
     >
       {#if hover.kind === `section` && hover.data.kind === `composition`}
         {@const { barycentric, decomposition } = hover.data}

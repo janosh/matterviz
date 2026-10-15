@@ -4,6 +4,7 @@
 import { expect, type Page } from '@playwright/test'
 import {
   drop_file,
+  expect_combined_fullscreen,
   IS_CI,
   require_bbox,
   test_without_errors as test,
@@ -101,6 +102,11 @@ test.describe(`FermiSurface smoke`, () => {
     await pane.getByLabel(`Projection`).selectOption(`orthographic`)
     await pane.getByRole(`button`, { name: `Reset camera to defaults` }).click()
     await expect(pane.getByLabel(`Projection`)).toHaveValue(`perspective`)
+    // the visible sheets download as 3D models from the export pane
+    const viewer = page.locator(VIEWER)
+    await viewer.hover()
+    await viewer.locator(`.fermi-export-toggle`).click()
+    const export_pane = viewer.locator(`.export-pane`)
     for (const format of [`STL`, `OBJ`, `GLB`]) {
       const extensions = format === `OBJ` ? [`obj`, `mtl`] : [format.toLowerCase()]
       const downloads = extensions.map((extension) =>
@@ -108,7 +114,9 @@ test.describe(`FermiSurface smoke`, () => {
           download.suggestedFilename().endsWith(`.${extension}`),
         ),
       )
-      await pane.getByRole(`button`, { name: format, exact: true }).click()
+      await export_pane
+        .getByRole(`button`, { name: `Download ${format}`, exact: true })
+        .click()
       for (const download of await Promise.all(downloads))
         expect(await download.failure()).toBeNull()
     }
@@ -138,4 +146,55 @@ test.describe(`FermiSurface smoke`, () => {
     await pane.getByRole(`button`, { name: `Reset chemical potential to defaults` }).click()
     await expect(offset).toHaveValue(`0`)
   })
+})
+
+// hovering a symmetry label in 3D marks its k on the bands with a dashed vertical line and
+// shows a Brillouin zone tooltip for that k-point; one button takes both views fullscreen
+test(`fermi-surface-bands: k-path label hover, one fullscreen`, async ({ page }) => {
+  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
+  await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+  const qpoint_line = page.locator(`.fermi-surface-bands line.hovered-qpoint-line`)
+  await expect(qpoint_line).toHaveCount(0)
+  // label chips follow the 3D view, which software GPUs (CI) may still be settling: re-hover
+  // until the pointer lands on the chip where it now sits
+  const k_label = page.locator(`.sym-label`, { hasText: /^K$/ })
+  await expect(async () => {
+    await k_label.hover()
+    await expect(qpoint_line).toHaveCount(1, { timeout: 1000 })
+  }).toPass()
+  await expect(qpoint_line).toHaveCSS(`stroke-dasharray`, `5px, 3px`)
+  // K = (3/4, 3/4, 0)·2π/a for fcc Cu, i.e. (3/8, 3/8, 3/4) in the reciprocal basis
+  const tooltip = page.locator(`.plot-tooltip`, { hasText: `BZ Volume` })
+  await expect(tooltip).toContainText(`(0.375, 0.375, 0.75)`)
+  // in the hover tint of the path segments (KPATH_COLORS.hover = #ff6b35)
+  await expect(tooltip).toHaveCSS(`background-color`, `rgb(255, 107, 53)`)
+  await page.mouse.move(0, 0)
+  await expect(qpoint_line).toHaveCount(0)
+  await expect(tooltip).toHaveCount(0)
+  await expect_combined_fullscreen(page.locator(`.fermi-surface-bands`), [VIEWER, `.scatter`])
+})
+
+// band lines take their sheet's colour (the hovered sheet's tooltip colour) and Cu's band 6 is
+// dotted where it crosses E_F (five times along the path)
+test(`fermi-surface-bands: band colours match sheets, E_F crossings dotted`, async ({
+  page,
+}) => {
+  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
+  const canvas = await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
+  await expect(page.locator(`.fermi-surface-bands .band-crossings circle`)).toHaveCount(5)
+  // the sheet below-left of Γ, off the k-path
+  const box = await require_bbox(canvas, `Fermi surface canvas`)
+  await page.mouse.move(box.x + 0.35 * box.width, box.y + 0.62 * box.height)
+  const tooltip = page.locator(`${VIEWER} .plot-tooltip`, { hasText: /Band \d+/ })
+  await expect(tooltip).toBeVisible()
+  const band_idx =
+    Number(/Band (?<num>\d+)/.exec((await tooltip.textContent()) ?? ``)?.groups?.num) - 1
+  const band_rgb = await page.evaluate((band) => {
+    const series = [...document.querySelectorAll(`.fermi-surface-bands g[data-series-id]`)]
+    const group = series.find(
+      (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band,
+    )
+    return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
+  }, band_idx)
+  await expect(tooltip).toHaveCSS(`background-color`, band_rgb ?? `no band ${band_idx}`)
 })

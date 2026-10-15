@@ -1,5 +1,5 @@
-import type { D3InterpolateName } from '#lib/colors/index.js'
-import type { Vec2, Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { VolumeSliceMode } from './slice-rendering'
 
 export type VolumeSlicePlaneMode = `hkl` | `cartesian`
@@ -14,9 +14,8 @@ export interface VolumeSliceSettings {
   cartesian_up: Vec3
   resolution: number
   render_mode: VolumeSliceMode
-  colormap: D3InterpolateName
+  color_scale: ColorScale // unset value_range ends fit the slice
   contour_levels: number
-  color_range?: Vec2
   symmetric: boolean | `auto`
   // Mark the slice plane in an accompanying 3D view (Structure's split layout)
   show_plane: boolean
@@ -30,7 +29,7 @@ const DEFAULT_VOLUME_SLICE_SETTINGS: Readonly<VolumeSliceSettings> = {
   cartesian_up: [1, 0, 0],
   resolution: 1024,
   render_mode: `both`,
-  colormap: `interpolateRdBu`,
+  color_scale: `interpolateRdBu`,
   contour_levels: 10,
   symmetric: `auto`,
   show_plane: true,
@@ -45,7 +44,7 @@ export function create_volume_slice_settings(
     cartesian_point,
     cartesian_normal = DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_normal,
     cartesian_up = DEFAULT_VOLUME_SLICE_SETTINGS.cartesian_up,
-    color_range,
+    color_scale = DEFAULT_VOLUME_SLICE_SETTINGS.color_scale,
     ...rest
   } = overrides
   return {
@@ -55,6 +54,12 @@ export function create_volume_slice_settings(
     cartesian_point: cartesian_point ? ([...cartesian_point] as Vec3) : undefined,
     cartesian_normal: [...cartesian_normal] as Vec3,
     cartesian_up: [...cartesian_up] as Vec3,
-    color_range: color_range ? ([...color_range] as Vec2) : undefined,
+    color_scale:
+      typeof color_scale === `string`
+        ? color_scale
+        : {
+            ...color_scale,
+            value_range: color_scale.value_range && [...color_scale.value_range],
+          },
   }
 }

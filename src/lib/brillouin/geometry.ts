@@ -90,6 +90,23 @@ export function k_path_segments({ points, labels, branches }: KPathData) {
   })
 }
 
+// Labeled points merged by position: paths revisit symmetry points and stacked translucent chips
+// turn opaque. Labels at one spot join like the bands' `K | U` ticks; the first q-point is kept.
+export function k_path_sym_points({ points, labels }: KPathData, tolerance: number) {
+  const merged: { position: Vec3; labels: string[]; qpoint_idx: number }[] = []
+  for (const [qpoint_idx, position] of points.entries()) {
+    const label = labels[qpoint_idx]
+    if (!label) continue
+    const known = merged.find((sym) => math.euclidean_dist(sym.position, position) < tolerance)
+    if (!known) merged.push({ position, labels: [label], qpoint_idx })
+    else if (!known.labels.includes(label)) known.labels.push(label)
+  }
+  return merged
+}
+
+// path, hovered-segment and highlighted-stretch tints; host hover tooltips match `hover`
+export const KPATH_COLORS = { base: `#ffcc00`, hover: `#ff6b35`, range: `#ff9a3c` } as const
+
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.
 // `edge_width` is a fraction of the zone's half-size ½·bz_size.
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({

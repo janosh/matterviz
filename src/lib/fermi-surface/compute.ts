@@ -1,7 +1,8 @@
 // Fermi surface computation and analysis functions
-import { get_d3_interpolator } from '#lib/colors/index.js'
+// d3 directly, not #lib/colors: its barrel pulls Svelte modules into the extraction worker
 import { rgb } from 'd3-color'
-import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
+import { interpolateRdBu } from 'd3-scale-chromatic'
+import { compute_brillouin_zone, generate_bz_vertices } from '#lib/brillouin/compute.js'
 import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -215,13 +216,15 @@ const grid_layout = (band_data: BandGridData): { periodic: boolean; index0_frac:
 }
 
 // interpolation_factor 0 means auto
-const resolved_factor = (band_data: BandGridData, factor: number): number =>
+export const resolved_factor = (band_data: BandGridData, factor: number): number =>
   factor > 0 ? factor : auto_interpolation_factor(band_data.k_grid)
 const grid_key = (band_data: BandGridData, factor: number): string =>
   `${resolved_factor(band_data, factor)}|${band_data.periodic}|${band_data.grid_shift}`
 
-// One band's grid upsampled and rolled to the Γ-centred cell. Two cached per grid, so a hover
-// preview and the full-resolution surface do not evict each other.
+// Upsampled grids cached per band, oldest out, so a hover preview and the full-resolution
+// surface do not evict each other
+export const PREPARED_FACTORS_PER_BAND = 2
+// One band's grid upsampled and rolled to the Γ-centred cell (cached, see above)
 function prepared_band_grid(
   band_data: BandGridData,
   raw_energies: BandEnergyGrid,
@@ -238,20 +241,13 @@ function prepared_band_grid(
   const centered = center_grid_on_gamma(upsampled, periodic, index0_frac)
   cache.set(key, centered)
   const [oldest] = cache.keys() // Maps iterate in insertion order
-  if (cache.size > 2) cache.delete(oldest)
+  if (cache.size > PREPARED_FACTORS_PER_BAND) cache.delete(oldest)
   return centered
 }
 
 // Factor for a pointer-driven preview: capped at the k-mesh's auto factor so updates keep up
 export const preview_interpolation_factor = (band_data: BandGridData, factor: number) =>
   Math.min(resolved_factor(band_data, factor), auto_interpolation_factor(band_data.k_grid))
-
-// Whether every band crossing E_F + mu is upsampled at this factor already, so extracting only
-// reruns marching cubes (cheap) instead of upsampling first (slow at high factors)
-export const band_grids_prepared = (band_data: BandGridData, factor: number, mu = 0) =>
-  [...crossing_bands(band_data, band_data.fermi_energy + mu)].every(({ grid }) =>
-    prepared_grids.get(grid)?.has(grid_key(band_data, factor)),
-  )
 
 // Every band the level `isovalue` crosses, with its spin channel and absolute band index
 function* crossing_bands(band_data: BandGridData, isovalue: number) {
@@ -330,12 +326,108 @@ export function extract_fermi_surface(
   }
 }
 
-// Move a band-grid surface from the Γ-centred cell into the Wigner-Seitz zone, so sheets line
-// up with a k-path drawn through it: each triangle shifts by the lattice vector nearest its
-// centroid, i.e. by centroid minus its minimum image from Γ. min_image_displacement searches
-// in a reduced basis, so this stays exact for sheared or supercell bases, whose nearest lattice
-// vector can have indices beyond ±1. Triangles stay whole (the zone boundary steps at mesh
-// resolution); vertices shared by triangles that shift differently are duplicated.
+// Tolerance (× zone radius) for a point to count as on a zone face: 4 f32 ulps, as Float32
+// vertices exactly on a face sit up to ~1e-7 relative past it, and must not be cut off again
+const ZONE_FACE_RTOL = 4 * 2 ** -23
+
+// Bragg plane {k : k·normal ≤ dist = |G|/2} of lattice vector G, indices of G in k_lattice basis
+type ZonePlane = { normal: Vec3; dist: number; indices: Vec3 }
+
+// Lattice vectors within max_len of Γ, nearest (so Γ) first, with their k_lattice indices.
+// Enumerated in a reduced basis, where |nᵢ| ≤ max_len·|cᵢ| (cᵢ the dual rows) is exact.
+function lattice_vectors_within(k_lattice: math.Matrix3x3, max_len: number) {
+  const basis = math.reduce_basis(k_lattice)
+  const ranges = math
+    .reciprocal_lattice(basis)
+    .map((row) => Math.floor(max_len * Math.hypot(...row)))
+  const to_frac = math.create_cart_to_frac(k_lattice)
+  const found: { cart: Vec3; len: number; indices: Vec3 }[] = []
+  for (let n_1 = -ranges[0]; n_1 <= ranges[0]; n_1++) {
+    for (let n_2 = -ranges[1]; n_2 <= ranges[1]; n_2++) {
+      for (let n_3 = -ranges[2]; n_3 <= ranges[2]; n_3++) {
+        const cart = [0, 1, 2].map(
+          (axis) => n_1 * basis[0][axis] + n_2 * basis[1][axis] + n_3 * basis[2][axis],
+        ) as Vec3
+        const len = Math.hypot(...cart)
+        if (len <= max_len) {
+          found.push({ cart, len, indices: to_frac(cart).map(Math.round) as Vec3 })
+        }
+      }
+    }
+  }
+  return found.toSorted((vec_a, vec_b) => vec_a.len - vec_b.len)
+}
+
+// The Wigner-Seitz zone's faces (Bragg planes holding ≥ 3 zone vertices; ones touching only an
+// edge or corner never cut it) and circumradius, cached as building costs more than most folds
+type ZoneBounds = { planes: ZonePlane[]; radius: number }
+const zone_bounds_cache = new WeakMap<math.Matrix3x3, ZoneBounds>()
+function wigner_seitz_planes(k_lattice: math.Matrix3x3): ZoneBounds {
+  const cached = zone_bounds_cache.get(k_lattice)
+  if (cached) return cached
+  const vertices = generate_bz_vertices(k_lattice, 1)
+  const radius = math.array_max(vertices.map((vertex) => Math.hypot(...vertex)))
+  const tol = ZONE_FACE_RTOL * radius
+  const planes = lattice_vectors_within(k_lattice, 2 * radius + tol)
+    .slice(1)
+    .map(({ cart, len, indices }) => ({
+      normal: math.scale(cart, 1 / len),
+      dist: len / 2,
+      indices,
+    }))
+    .filter(
+      ({ normal, dist }) =>
+        vertices.filter((vertex) => math.dot(vertex, normal) >= dist - tol).length >= 3,
+    )
+  const bounds = { planes, radius }
+  zone_bounds_cache.set(k_lattice, bounds)
+  return bounds
+}
+
+// A clipped polygon's vertex: key (input index, or plane(edge end keys) of a cut), pos, attrs
+type ClipVertex = { key: string; pos: Vec3; attrs: number[] }
+
+// Sutherland-Hodgman: the part of a convex polygon inside one plane, cut points interpolated
+// linearly and keyed by plane and sorted edge ends, so neighbouring triangles share them
+function clip_polygon(
+  polygon: ClipVertex[],
+  { normal, dist }: ZonePlane,
+  plane_idx: number,
+  tol: number,
+): ClipVertex[] {
+  // scalar loop: runs per plane for every candidate shift of every straddling triangle
+  const offsets: number[] = []
+  let all_inside = true
+  for (const { pos } of polygon) {
+    const offset = pos[0] * normal[0] + pos[1] * normal[1] + pos[2] * normal[2] - dist
+    offsets.push(offset)
+    all_inside &&= offset <= tol
+  }
+  if (all_inside) return polygon
+  const clipped: ClipVertex[] = []
+  for (const [idx, current] of polygon.entries()) {
+    const next_idx = (idx + 1) % polygon.length
+    const [next, d_cur, d_next] = [polygon[next_idx], offsets[idx], offsets[next_idx]]
+    if (d_cur <= tol) clipped.push(current)
+    // a cut strictly between the ends (an end within tol of the plane is the cut itself)
+    if (d_cur <= tol !== d_next <= tol && Math.abs(d_cur) > tol && Math.abs(d_next) > tol) {
+      const frac = d_cur / (d_cur - d_next)
+      const lerp = (from: readonly number[], to: readonly number[]) =>
+        from.map((val, axis) => val + frac * (to[axis] - val))
+      const attrs = lerp(current.attrs, next.attrs)
+      const inv_normal_len = 1 / (Math.hypot(attrs[0], attrs[1], attrs[2]) || 1)
+      for (let axis = 0; axis < 3; axis++) attrs[axis] *= inv_normal_len
+      const key = `${plane_idx}(${[current.key, next.key].toSorted().join(`|`)})`
+      clipped.push({ key, pos: lerp(current.pos, next.pos) as Vec3, attrs })
+    }
+  }
+  return clipped
+}
+
+// Move a band-grid surface from the Γ-centred cell into the Wigner-Seitz zone to line up with
+// k-paths: each triangle shifts by the lattice vector G nearest its centroid (exact for sheared
+// bases too), and one still crossing a zone face is clipped there, each piece shifting by the
+// G + H whose zone it lands in, so sheets end in continuous cuts matching on opposite faces.
 export function fold_to_wigner_seitz(
   surface: FermiIsosurface,
   k_lattice: math.Matrix3x3,
@@ -343,59 +435,192 @@ export function fold_to_wigner_seitz(
   const { positions, indices, normals, properties } = surface
   // built once per surface: caches the reduced search basis for every triangle
   const converters = math.create_lattice_converters(k_lattice)
-  const shifts: Vec3[] = [] // distinct lattice vectors G, exact from their integer indices
-  const shift_ids = new Map<string, number>() // indices `n1,n2,n3` → position in shifts
+  const { planes, radius } = wigner_seitz_planes(k_lattice)
+  const tol = ZONE_FACE_RTOL * radius
+  const inradius = Math.min(...planes.map(({ dist }) => dist)) - tol
   const n_vertices = vertex_count(surface)
-  const shifted_vertex = new Map<number, number>() // shift · n_vertices + vertex → appended vertex
-  const out_indices = indices.slice()
+  // [normal_x, normal_y, normal_z, dist] per zone face, for the per-vertex scalar loops
+  const faces = Float64Array.from(planes.flatMap(({ normal, dist }) => [...normal, dist]))
+  const shift_ids = new Map<number, number>() // packed indices (|nᵢ| ≪ 2¹⁵) → id
+  const shift_carts: Vec3[] = []
+  const shift_id_of = (shift: Vec3): number => {
+    const key = ((shift[0] + 32768) * 65536 + shift[1] + 32768) * 65536 + shift[2] + 32768
+    const shift_id = shift_ids.get(key) ?? shift_carts.push(converters.frac_to_cart(shift)) - 1
+    shift_ids.set(key, shift_id)
+    return shift_id
+  }
+  const zero: Vec3 = [0, 0, 0]
+  const zero_shift = shift_id_of(zero)
+  // appended output vertices (input vertices keep their index under G = 0)
+  const out_positions: number[] = []
+  const out_normals: number[] = []
+  const prop_entries = Object.entries(properties ?? {})
+  const props = prop_entries.map(([name, values]) => ({ name, values, extra: [] as number[] }))
+  const out_indices: number[] = []
+  const append = (pos: Vec3, attrs: number[]): number => {
+    out_positions.push(...pos)
+    out_normals.push(attrs[0], attrs[1], attrs[2])
+    for (const [prop_idx, { extra }] of props.entries()) extra.push(attrs[3 + prop_idx])
+    return n_vertices + out_positions.length / 3 - 1
+  }
+  const vec_at = (arr: ArrayLike<number>, idx: number): Vec3 => [
+    arr[3 * idx],
+    arr[3 * idx + 1],
+    arr[3 * idx + 2],
+  ]
+  // normal then properties; missing normals read as undefined, and out_normals is dropped then
+  const vertex_attrs = (idx: number) => [
+    ...vec_at(normals, idx),
+    ...props.map(({ values }) => values[idx]),
+  ]
+  // output index of each input vertex per shift id (−1 until emitted)
+  const shifted_vertex: Int32Array[] = []
+  const emit_original = (idx: number, shift_id: number): number => {
+    if (shift_id === zero_shift) return idx
+    shifted_vertex[shift_id] ??= new Int32Array(n_vertices).fill(-1)
+    const out_ids = shifted_vertex[shift_id]
+    if (out_ids[idx] === -1) {
+      const pos = math.subtract(vec_at(positions, idx), shift_carts[shift_id])
+      out_ids[idx] = append(pos, vertex_attrs(idx))
+    }
+    return out_ids[idx]
+  }
+  const cut_vertex = new Map<string, number>() // `shift id|cut key` → output index
+  // whether a point lies more than margin past a zone face; if so, worst_plane is the face it
+  // is furthest past (points within the inradius skip the plane loop)
+  let worst_plane = 0
+  const past_face = ([pos_x, pos_y, pos_z]: Vec3, margin: number): boolean => {
+    if (pos_x * pos_x + pos_y * pos_y + pos_z * pos_z <= (inradius + margin) ** 2) return false
+    let worst = -Infinity
+    for (let at = 0; at < faces.length; at += 4) {
+      const offset =
+        pos_x * faces[at] + pos_y * faces[at + 1] + pos_z * faces[at + 2] - faces[at + 3]
+      if (offset > worst) [worst_plane, worst] = [at / 4, offset]
+    }
+    return worst > margin
+  }
+
+  // Each vertex's own shift: the G (Γ, else its worst face's) whose zone it clears by 2·tol, or
+  // −1. Slack is concave, so if all corners clear G's zone, the centroid does by tol: G is its
+  // minimum image and nothing needs clipping.
+  const own_shift = new Int32Array(n_vertices).fill(-1)
+  for (let idx = 0; idx < n_vertices; idx++) {
+    const pos = vec_at(positions, idx)
+    if (!past_face(pos, -2 * tol)) own_shift[idx] = zero_shift
+    else {
+      const shift_id = shift_id_of(planes[worst_plane].indices)
+      if (!past_face(math.subtract(pos, shift_carts[shift_id]), -2 * tol))
+        own_shift[idx] = shift_id
+    }
+  }
+
+  // Clip candidates H, rebuilt whenever a triangle reaches further: a point within r of a
+  // centroid inside the zone lies in the zone of some H with |H| ≤ 2·radius + r
+  let [neighbors, max_reach] = [[] as { cart: Vec3; indices: Vec3 }[], -1]
   for (let tri = 0; tri < indices.length; tri += 3) {
-    const offsets = [0, 1, 2].map((corner) => 3 * indices[tri + corner])
+    const [idx_0, idx_1, idx_2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
+    const tri_shift = own_shift[idx_0]
+    const shared =
+      tri_shift !== -1 && tri_shift === own_shift[idx_1] && tri_shift === own_shift[idx_2]
+    if (shared && tri_shift === zero_shift) {
+      out_indices.push(idx_0, idx_1, idx_2)
+      continue
+    }
+    const corner_ids = [idx_0, idx_1, idx_2]
+    const [at_0, at_1, at_2] = [3 * idx_0, 3 * idx_1, 3 * idx_2]
     const centroid = [0, 1, 2].map(
-      (axis) => offsets.reduce((sum, offset) => sum + positions[offset + axis], 0) / 3,
+      (axis) => (positions[at_0 + axis] + positions[at_1 + axis] + positions[at_2 + axis]) / 3,
     ) as Vec3
+    // a shared G ≠ 0 must also beat Γ by the 1e-6 tie margin below by more than rounding
+    if (
+      shared &&
+      Math.hypot(...centroid) -
+        Math.hypot(...math.subtract(centroid, shift_carts[tri_shift])) >
+        1e-6 + tol
+    ) {
+      for (const idx of corner_ids) out_indices.push(emit_original(idx, tri_shift))
+      continue
+    }
     const image = math.min_image_displacement([0, 0, 0], centroid, k_lattice, converters)
     // ties stay at G = 0
-    if (Math.hypot(...image) >= Math.hypot(...centroid) - 1e-6) continue
-    const n_frac = converters.cart_to_frac(math.subtract(centroid, image)).map(Math.round)
-    const n_key = n_frac.join(`,`)
-    const shift_id = shift_ids.get(n_key) ?? shifts.length
-    if (shift_id === shifts.length) {
-      shift_ids.set(n_key, shift_id)
-      shifts.push(converters.frac_to_cart(n_frac as Vec3))
+    const base_shift: Vec3 =
+      Math.hypot(...image) >= Math.hypot(...centroid) - 1e-6
+        ? zero
+        : (converters.cart_to_frac(math.subtract(centroid, image)).map(Math.round) as Vec3)
+    const base_id = shift_id_of(base_shift)
+    const base_cart = shift_carts[base_id]
+    const corner_pos = corner_ids.map((idx) => vec_at(positions, idx))
+    if (!corner_pos.some((pos) => past_face(math.subtract(pos, base_cart), tol))) {
+      for (const idx of corner_ids) out_indices.push(emit_original(idx, base_id))
+      continue
     }
-    for (let corner = tri; corner < tri + 3; corner++) {
-      const key = shift_id * n_vertices + indices[corner]
-      const shifted = shifted_vertex.get(key) ?? n_vertices + shifted_vertex.size
-      shifted_vertex.set(key, shifted)
-      out_indices[corner] = shifted
+    const corners: ClipVertex[] = corner_ids.map((idx, corner) => ({
+      key: String(idx),
+      pos: corner_pos[corner],
+      attrs: vertex_attrs(idx),
+    }))
+    const tri_radius = Math.max(...corner_pos.map((pos) => math.euclidean_dist(pos, centroid)))
+    const reach = radius + tri_radius + tol
+    if (reach + radius > max_reach) {
+      max_reach = reach + radius
+      neighbors = lattice_vectors_within(k_lattice, max_reach)
+    }
+    const [rel_x, rel_y, rel_z] = math.subtract(centroid, base_cart)
+    for (const { cart, indices: neighbor } of neighbors) {
+      // base + H is off the exact frac_to_cart(shift) by ~1e-16 relative rounding, ≪ tol
+      if (Math.hypot(rel_x - cart[0], rel_y - cart[1], rel_z - cart[2]) > reach + tol) continue
+      const shift = math.add(base_shift, neighbor)
+      const shift_cart = converters.frac_to_cart(shift)
+      if (math.euclidean_dist(centroid, shift_cart) > reach) continue
+      let polygon = corners.map((corner) => ({
+        ...corner,
+        pos: math.subtract(corner.pos, shift_cart),
+      }))
+      for (const [plane_idx, plane] of planes.entries()) {
+        polygon = clip_polygon(polygon, plane, plane_idx, tol)
+        if (polygon.length < 3) break
+      }
+      if (polygon.length < 3) continue
+      const shift_id = shift_id_of(shift)
+      const ids = polygon.map(({ key, pos, attrs }) => {
+        if (!key.includes(`(`)) return emit_original(Number(key), shift_id)
+        const cut_key = `${shift_id}|${key}`
+        let out_idx = cut_vertex.get(cut_key)
+        if (out_idx === undefined) cut_vertex.set(cut_key, (out_idx = append(pos, attrs)))
+        return out_idx
+      })
+      // fan triangulation keeps the winding; slivers (height ≤ tol, below Float32 resolution) drop
+      for (let fan = 1; fan + 1 < polygon.length; fan++) {
+        const [pos_a, pos_b, pos_c] = [polygon[0].pos, polygon[fan].pos, polygon[fan + 1].pos]
+        const twice_area = Math.hypot(
+          ...math.cross_3d(math.subtract(pos_b, pos_a), math.subtract(pos_c, pos_a)),
+        )
+        const longest = Math.max(
+          math.euclidean_dist(pos_a, pos_b),
+          math.euclidean_dist(pos_b, pos_c),
+          math.euclidean_dist(pos_c, pos_a),
+        )
+        if (twice_area > tol * longest) out_indices.push(ids[0], ids[fan], ids[fan + 1])
+      }
     }
   }
-  if (shifted_vertex.size === 0) return surface
-  // a per-vertex array (stride values each) with every shifted vertex's values appended
-  const extend = (values: Float32Array, stride = 1): Float32Array => {
-    if (!values.length) return values
-    const out = new Float32Array(stride * (n_vertices + shifted_vertex.size))
+  // nothing appended leaves every kept triangle as it was, so nothing changed unless one dropped
+  if (out_positions.length === 0 && out_indices.length === indices.length) return surface
+  const extend = (values: Float32Array, extra: number[]): Float32Array => {
+    const out = new Float32Array(values.length + extra.length)
     out.set(values)
-    for (const [key, shifted] of shifted_vertex) {
-      const vertex = key % n_vertices
-      out.set(values.subarray(stride * vertex, stride * (vertex + 1)), stride * shifted)
-    }
+    out.set(extra, values.length)
     return out
-  }
-  const out_positions = extend(positions, 3)
-  for (const [key, shifted] of shifted_vertex) {
-    for (let axis = 0; axis < 3; axis++)
-      out_positions[3 * shifted + axis] -= shifts[Math.floor(key / n_vertices)][axis]
   }
   return {
     ...surface,
-    positions: out_positions,
-    normals: extend(normals, 3),
-    indices: out_indices,
+    positions: extend(positions, out_positions),
+    normals: normals.length === positions.length ? extend(normals, out_normals) : normals,
+    indices: Uint32Array.from(out_indices),
     properties:
       properties &&
       Object.fromEntries(
-        Object.entries(properties).map(([name, values]) => [name, extend(values)]),
+        props.map(({ name, values, extra }) => [name, extend(values, extra)]),
       ),
   }
 }
@@ -605,12 +830,11 @@ export function slice_shading_rgba(
   let abs_max = 0
   for (const value of nearest)
     if (Number.isFinite(value)) abs_max = Math.max(abs_max, Math.abs(value))
-  const interpolator = get_d3_interpolator(`interpolateRdBu`)
   for (let idx = 0; idx < n_pixels; idx++) {
     const value = nearest[idx]
     if (!Number.isFinite(value) || abs_max === 0) continue
     // RdBu: below E_F (occupied) red, above blue
-    const color = rgb(interpolator(0.5 + (0.5 * value) / abs_max))
+    const color = rgb(interpolateRdBu(0.5 + (0.5 * value) / abs_max))
     pixels.set([color.r, color.g, color.b, 255 * opacity * 2], 4 * idx)
   }
   return pixels

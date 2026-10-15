@@ -16,6 +16,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  expect_tooltip_paint,
+  export_via_pane,
   form_controls,
   mount_sized,
   mouse,
@@ -511,6 +513,16 @@ describe(`Histogram`, () => {
     },
   )
 
+  test(`tooltip takes the color of the hovered bar's own series`, async () => {
+    await mount_histogram({ series: [series_of([0, 1]), series_of([5, 6])], mode: `overlay` })
+    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
+    const [first, last] = [bars[0], bars.at(-1)].map((bar) => bar?.getAttribute(`fill`))
+    expect(first).not.toBe(last)
+    bars.at(-1)?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect_tooltip_paint(doc_query(`.plot-tooltip`), last ?? ``)
+  })
+
   // the tooltip must not be a snapshot: it tracks rebinned data under a resting pointer
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()
@@ -897,4 +909,20 @@ describe(`Histogram`, () => {
       compute_count_range([hist], { scale_type: `linear`, y_limit, range_padding: 0 }),
     ).toEqual([0, 1])
   })
+})
+
+// Bins have an extent, so the CSV reports edges and both count and plotted value
+test(`Histogram CSV export lists bin edges and counts`, async () => {
+  const on_export = vi.fn()
+  const plot = await mount_histogram({
+    series: [{ values: [1, 1, 2, 3, 3, 3], label: `vals` }],
+    bins: 2,
+    show_controls: `hover`,
+    on_export,
+  })
+  const result = await export_via_pane(on_export, `CSV`, plot)
+  expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`])
+  const [header, ...rows] = String(result.data).split(`\n`)
+  expect(header).toBe(`series,bin_start,bin_end,count,value`)
+  expect(rows.reduce((sum, row) => sum + Number(row.split(`,`)[3]), 0)).toBe(6)
 })

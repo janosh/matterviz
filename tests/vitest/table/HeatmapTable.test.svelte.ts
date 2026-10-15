@@ -9,6 +9,7 @@ import type {
   SummaryStat,
 } from '#lib/table/index.js'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import * as animations from 'svelte/animate'
@@ -129,7 +130,7 @@ describe(`HeatmapTable`, () => {
     element.click()
     await tick()
   }
-  const open_export_menu = () => click(doc_query(`button[aria-label="Export"]`))
+  const open_export_menu = () => click(doc_query(`button.export-toggle`))
 
   it.each([false, true])(
     `renders table structure, hidden columns and row numbers=%s`,
@@ -577,16 +578,24 @@ describe(`HeatmapTable`, () => {
     [`black`, `white`],
   ])(`maps scale types and contrasts opacity over a %s page`, async (page_bg, text_color) => {
     const columns: Column[] = [
+      { ...heatmap_col, id: `Linear`, label: `Linear`, better: `higher` },
       {
         ...heatmap_col,
-        id: `Linear`,
-        label: `Linear`,
+        id: `Log`,
+        label: `Log`,
         better: `higher`,
-        scale_type: `linear`,
+        color_scale: { scheme: `interpolateViridis`, type: `log` },
       },
-      { ...heatmap_col, id: `Log`, label: `Log`, better: `higher`, scale_type: `log` },
+      // a scheme picked in the controls keeps the column's log type
+      {
+        ...heatmap_col,
+        id: `Picked`,
+        label: `Picked`,
+        better: `higher`,
+        color_scale: { scheme: `interpolatePlasma`, type: `log` },
+      },
     ]
-    const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val }))
+    const data = [0, 10, 100, 1000].map((val) => ({ Linear: val, Log: val, Picked: val }))
 
     // a faint wash so the page shows through: viridis' dark purple at 50% would be a
     // mid-tone that takes white text over either page
@@ -595,15 +604,17 @@ describe(`HeatmapTable`, () => {
       columns,
       heatmap_opacity: 0.2,
       style: `--page-bg: ${page_bg}`,
+      column_prefs: { Picked: { color_scale: `interpolateViridis` } },
     })
     await tick()
 
-    const [linear_styles, log_styles] = columns.map(({ label }) =>
+    const [linear_styles, log_styles, picked_styles] = columns.map(({ label }) =>
       Array.from(
         document.querySelectorAll(`td[data-col="${label}"]`),
         (cell) => cell.getAttribute(`style`) ?? ``,
       ),
     )
+    expect(picked_styles).toEqual(log_styles)
 
     // Both scale types color every cell, including zero, but map positive values differently
     expect(
@@ -1092,20 +1103,17 @@ describe(`HeatmapTable`, () => {
     })
 
     // The two menus overlap, so only one may be open. ToggleMenu owns its own open state,
-    // so the column side has to route through the shared `open_dropdown` slot to close.
+    // so each side closes the other when it opens.
     it.each([[`columns`], [`export`]] as const)(
       `opening the %s menu closes the other`,
       async (first) => {
-        mount_sample({
-          show_column_toggle: true,
-          export_data: true,
-        })
+        mount_sample({ show_column_toggle: true, export_formats: TABLE_EXPORT_FORMATS })
         const columns_btn = () => doc_query(`.column-toggles > button`)
-        const export_btn = () => doc_query<HTMLButtonElement>(`button[aria-label="Export"]`)
+        const export_btn = () => doc_query<HTMLButtonElement>(`button.export-toggle`)
         const open_menus = () =>
           [
             document.querySelector(`.column-menu`),
-            document.querySelector(`.dropdown-pane`),
+            document.querySelector(`.export-pane.pane-open`),
           ].filter(Boolean).length
 
         await click(first === `columns` ? columns_btn() : export_btn())
@@ -2102,33 +2110,30 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Export`, () => {
-    const export_option = (label: string) =>
-      [
-        ...document.querySelectorAll<HTMLButtonElement>(`.dropdown-pane .dropdown-option`),
-      ].find((btn) => btn.textContent?.includes(label))
+    const download_labels = () =>
+      [...document.querySelectorAll(`.export-pane button[aria-label^="Download "]`)].map(
+        (btn) => btn.getAttribute(`aria-label`)?.replace(`Download `, ``),
+      )
     it.each([
-      { desc: `true shows CSV and JSON`, export_data: true, present: [`CSV`, `JSON`] },
-      {
-        desc: `formats restricts the options`,
-        export_data: { formats: [`csv`] as `csv`[] },
-        present: [`CSV`],
-        absent: [`JSON`],
-      },
-    ])(`export_data=$desc`, async ({ export_data, present, absent }) => {
-      mount_sample({ export_data })
+      [
+        `TABLE_EXPORT_FORMATS offers every format`,
+        { export_formats: TABLE_EXPORT_FORMATS },
+        [`CSV`, `JSON`, `Markdown`, `LaTeX`],
+      ],
+      [`export_formats restricts the options`, { export_formats: [`csv`] as const }, [`CSV`]],
+      [`no export pane by default`, {}, null],
+    ])(`%s`, async (_desc, props, expected) => {
+      mount_sample(props)
+      if (!expected) {
+        expect(document.querySelector(`button.export-toggle`)).toBeNull()
+        return
+      }
       await open_export_menu()
-
-      const dropdown = document.querySelector(`.dropdown-pane`)
-      for (const fmt of present) expect(dropdown?.textContent).toContain(fmt)
-      for (const fmt of absent ?? []) expect(dropdown?.textContent).not.toContain(fmt)
+      expect(download_labels()).toEqual(expected)
       doc_query(`.table-container`).dispatchEvent(new MouseEvent(`mouseleave`))
       await tick()
-      expect(dropdown?.isConnected).toBe(true)
-      // an outside press is the browser's light dismiss of the native popover
-      expect(dropdown?.getAttribute(`popover`)).toBe(`auto`)
-      if (dropdown) dismiss_popover(dropdown)
-      await tick()
-      expect(dropdown?.isConnected).toBe(false)
+      // an open pane keeps the hover toolbar visible
+      expect(doc_query(`.control-buttons`).classList.contains(`force-visible`)).toBe(true)
     })
 
     // Shared helper: mount, optionally interact, trigger an export, return blob text
@@ -2144,14 +2149,17 @@ describe(`HeatmapTable`, () => {
         .mockImplementation(() => {})
 
       try {
-        mount_table({ export_data: true, show_column_toggle: true, ...props } as TableProps)
+        mount_table({
+          show_column_toggle: true,
+          export_formats: TABLE_EXPORT_FORMATS,
+          ...props,
+        } as TableProps)
         if (before_export) await before_export()
         await open_export_menu()
-        const format_btn = export_option(format)
-        assert(format_btn)
+        const format_btn = doc_query<HTMLButtonElement>(`[aria-label="Download ${format}"]`)
         format_btn.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
         await tick()
-        // A closed Columns menu must not clear the sibling export menu on pointerdown.
+        // A closed Columns menu must not clear the sibling export pane on pointerdown.
         expect(format_btn.isConnected).toBe(true)
         await click(format_btn)
 
@@ -2172,12 +2180,12 @@ describe(`HeatmapTable`, () => {
         [`Model,Ef & ΔH`, `"say ""hi"", ok",1`],
       ],
       [
-        `MD`,
+        `Markdown`,
         { Model: `a\nb|c`, 'E<sub>f</sub>': 1 },
         [`| Model | Ef |`, `| :--- | ---: |`, `| a<br>b\\|c | 1 |`],
       ],
       [
-        `TEX`,
+        `LaTeX`,
         { Model: `Fe_2 & x^2 100%`, 'E<sub>f</sub>': 1 },
         [
           `\\begin{tabular}{lr}`,
@@ -2205,11 +2213,11 @@ describe(`HeatmapTable`, () => {
       mount_table({
         data: [{ Model: `Model\tA\nB`, Score: 1, Value: 2 }],
         columns: sample_columns,
-        export_data: true,
+        export_formats: [`csv`],
       })
       await open_export_menu()
 
-      await click(export_option(`Copy`))
+      await click(doc_query(`[aria-label="Copy TSV to clipboard"]`))
 
       expect(navigator.clipboard.writeText).toHaveBeenCalledExactlyOnceWith(
         `Model\tScore\tValue\nModel A B\t1\t2`,
@@ -2244,10 +2252,7 @@ describe(`HeatmapTable`, () => {
         show_controls: { mode: `always`, style: `opacity: 0.5` },
       })
       mount_table(
-        bind_props(
-          { data: sample_data, columns: [heatmap_col], search: true, export_data: true },
-          state,
-        ),
+        bind_props({ data: sample_data, columns: [heatmap_col], search: true }, state),
       )
       const row = doc_query(`.control-buttons`)
       expect(row.classList.contains(`always-visible`)).toBe(true)

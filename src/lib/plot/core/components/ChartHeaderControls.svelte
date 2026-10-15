@@ -9,12 +9,13 @@
     shows_fullscreen_toggle,
     type ShowControlsProp,
   } from '#lib/controls.js'
+  import ExportPane from '#lib/io/ExportPane.svelte'
   import { FullscreenButton } from '#lib/layout/index.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
-  import type { Snippet } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
 
-  // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, controls-pane
-  // toggle, fullscreen button). Must be a direct child of the wrapper whose hover reveals it.
+  // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, export pane,
+  // controls-pane toggle, fullscreen button). Must be a direct child of the wrapper whose hover reveals it.
   let {
     dims,
     fullscreen = $bindable(false),
@@ -26,6 +27,7 @@
     chrome_color,
     controls_toggle_props,
     header_controls,
+    export_pane,
     controls,
   }: {
     dims: Dims
@@ -39,6 +41,8 @@
     chrome_color?: string
     controls_toggle_props?: PaneToggleProps
     header_controls?: Snippet<[Dims]>
+    // Every chart's one export entry point (hidden when no format is offered)
+    export_pane?: ComponentProps<typeof ExportPane>
     // The controls pane receives layout props and visibility; this row owns mode and style.
     controls?: Snippet<[PaneToggleProps, boolean]>
   } = $props()
@@ -59,6 +63,12 @@
 >
   {#if controls_config.mode !== `never`}
     {@render header_controls?.(dims)}
+    {#if export_pane}
+      <ExportPane
+        {...export_pane}
+        toggle_props={{ title: `Export`, ...export_pane.toggle_props }}
+      />
+    {/if}
   {/if}
   {@render controls?.(toggle_props, controls_config.visible(`controls`))}
   {#if fullscreen || show_toggle}

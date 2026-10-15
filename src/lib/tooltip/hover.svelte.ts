@@ -4,17 +4,23 @@ import type { Attachment } from 'svelte/attachments'
 import { on } from 'svelte/events'
 
 // Rich content for HTML and SVG marks whose native title cannot render unit markup.
+// `bg_color` gets the mark's fill for the tooltip (nullish: PlotTooltip's neutral chip); read
+// in a child effect so a re-derived mark updates the open tooltip rather than remounting it.
 export const hover_tooltip =
-  (children: Snippet): Attachment<HTMLElement | SVGElement> =>
+  (
+    children: Snippet,
+    bg_color?: () => string | null | undefined,
+  ): Attachment<HTMLElement | SVGElement> =>
   (node) => {
     const props = $state({
       x: 0,
       y: 0,
       fixed: true,
       children,
-      bg_color: `var(--tooltip-bg, light-dark(#eee, #333))`,
+      bg_color: undefined as string | null | undefined,
       role: `tooltip`,
     })
+    if (bg_color) $effect.pre(() => void (props.bg_color = bg_color()))
     let close: (() => void) | undefined
     let hovered = false
     let focused = false

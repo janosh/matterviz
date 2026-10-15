@@ -289,6 +289,7 @@
     "movie": "node src/scripts/movie.mjs",
     "build:site": "vp build && pagefind --site build",
     "test": "vitest run && playwright test",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning",
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && node src/scripts/check-dist-imports.mjs",

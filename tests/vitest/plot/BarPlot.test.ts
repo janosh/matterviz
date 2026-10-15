@@ -13,6 +13,7 @@ import {
   keydown,
   mount_sized,
   mouse,
+  click_export,
   one_tab_stop,
   pattern_id_of,
   query,
@@ -546,35 +547,43 @@ describe(`BarPlot`, () => {
   )
 
   // the export holds the data as the caller gave it: category names (not their indices), no
-  // hidden series, no zero rows for categories a series lacks
-  test(`CSV export lists the caller's visible series with category names`, async () => {
+  // hidden series, no zero rows for categories a series lacks. export_formats narrows the
+  // pane and on_export takes over saving.
+  test.each([
+    [`default`, {}, [`PNG`, `SVG`, `CSV`]],
+    [`csv only + on_export`, { export_formats: [`csv`] as const }, [`CSV`]],
+  ])(`CSV export lists the caller's visible series (%s)`, async (desc, props, offered) => {
     const save = vi.fn()
     vi.stubGlobal(`download`, save) // the global hook download() defers to
     onTestFinished(() => {
       vi.unstubAllGlobals()
     })
+    const on_export = desc === `default` ? undefined : vi.fn()
     const plot = await mount_sized_bar_plot({
       series: [
         { x: [`A`, `B`], y: [1, 2], label: `kept` },
         { x: [`C`], y: [3], label: `hidden`, visible: false },
         { x: [`B`], y: [4] },
       ],
-      controls_open: true,
+      x_axis: { label: `Category` },
+      ...props,
+      on_export,
     })
-    const csv_button = () =>
-      [...plot.querySelectorAll<HTMLElement>(`button.export-btn`)].find(
-        (btn) => btn.textContent?.trim() === `CSV`,
-      )
-    await vi.waitFor(() => expect(csv_button()).toBeDefined())
-    csv_button()?.click()
-    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
-    const [csv] = save.mock.calls[0]
-    expect(csv.trim().split(/\r?\n/)).toEqual([
+    expect(await click_export(`CSV`, plot)).toEqual(offered)
+    const handler = on_export ?? save
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce())
+    const csv = on_export ? on_export.mock.calls[0][1].data : save.mock.calls[0][0]
+    expect(String(csv).split(/\r?\n/)).toEqual([
       `series,x,y`,
       `kept,A,1`,
       `kept,B,2`,
       `Series 3,B,4`,
     ])
+    if (on_export) {
+      expect(save).not.toHaveBeenCalled()
+      expect(on_export.mock.calls[0][0]).toBe(`csv`)
+      expect(on_export.mock.calls[0][1].filename).toBe(`Category`)
+    } else expect(save.mock.calls[0][1]).toBe(`Category.csv`)
   })
 
   test(`default tooltip shows series label for multi-series on hover`, async () => {

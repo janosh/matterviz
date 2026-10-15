@@ -9,6 +9,8 @@ import {
   collect_size_range,
   create_color_scale,
   color_interpolator,
+  resolve_value_range,
+  to_color_scale_config,
   create_scale,
   empty_extent,
   generate_arcsinh_ticks,
@@ -21,7 +23,7 @@ import {
   tick_label_format,
 } from '#lib/plot/core/scales.js'
 import type { TicksOption } from '#lib/plot/core/scales.js'
-import type { ScaleType } from '#lib/plot/core/types.js'
+import type { ColorScale, ScaleType } from '#lib/plot/core/types.js'
 import {
   get_arcsinh_threshold,
   get_scale_type_name,
@@ -931,11 +933,43 @@ describe(`scales`, () => {
 test.each([`linear`, `log`, `arcsinh`] as const)(
   `clipped %s color scale matches legend endpoints`,
   (type) => {
-    const config = { scheme: `interpolateBlues`, color_range: [0.3, 1] as Vec2, type } as const
+    const config = {
+      scheme: `interpolateBlues`,
+      palette_range: [0.3, 1] as Vec2,
+      type,
+    } as const
     const scale = create_color_scale(config, [1, 100])
     const interpolate = color_interpolator(config)
     expect(scale(1)).toBe(interpolate(0))
     expect(scale(100)).toBe(interpolate(1))
-    expect(() => color_interpolator({ color_range: [1, 0] })).toThrow(`Invalid color_range`)
+    expect(() => color_interpolator({ palette_range: [1, 0] })).toThrow(
+      `Invalid palette_range`,
+    )
   },
 )
+
+test.each<[ColorScale, Vec2]>([
+  [`interpolateViridis`, [1, 9]],
+  [{ value_range: [2, 5] }, [2, 5]],
+  [{ value_range: [null, 5] }, [1, 5]],
+  [{ value_range: [2, null] }, [2, 9]],
+  [{ value_range: [null, null] }, [1, 9]],
+])(`resolve_value_range(%j) fills unset ends from the data`, (color_scale, expected) => {
+  expect(resolve_value_range(color_scale, [1, 9])).toEqual(expected)
+  // a thunk auto range is computed only when an end is unset
+  const auto_range = vi.fn((): Vec2 => [1, 9])
+  expect(resolve_value_range(color_scale, auto_range)).toEqual(expected)
+  const fully_set = typeof color_scale === `object` && !color_scale.value_range?.includes(null)
+  expect(auto_range).toHaveBeenCalledTimes(fully_set ? 0 : 1)
+  // create_color_scale maps the resolved ends to the palette ends
+  const scale = create_color_scale(color_scale, [1, 9])
+  const interpolate = color_interpolator(color_scale)
+  expect([scale(expected[0]), scale(expected[1])]).toEqual([interpolate(0), interpolate(1)])
+})
+
+test(`function schemes and bare names normalize to one config`, () => {
+  const red_ramp = (fraction: number) => `rgb(${Math.round(fraction * 255)}, 0, 0)`
+  expect(to_color_scale_config(`interpolateBlues`)).toEqual({ scheme: `interpolateBlues` })
+  const interpolate = color_interpolator({ scheme: red_ramp, palette_range: [0.5, 1] })
+  expect([interpolate(0), interpolate(1)]).toEqual([`rgb(128, 0, 0)`, `rgb(255, 0, 0)`])
+})

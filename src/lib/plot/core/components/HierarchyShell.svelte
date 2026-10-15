@@ -13,6 +13,7 @@
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { compute_element_placement } from '#lib/plot/core/layout.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
@@ -171,9 +172,11 @@
 
 {#if chart_state.metric && chart_state.color_bar}
   {@const { cbar, chart, color_bar } = chart_state}
+  {@const { color_fn, range } = chart_state.metric}
   <ColorBar
-    scale={chart_state.color_scale}
-    range={chart_state.metric.range}
+    scale={{ fn: color_fn, domain: range }}
+    scale_type={to_color_scale_config(chart_state.color_scale).type}
+    {range}
     {...color_bar}
     tick_side={cbar.tick_side}
     wrapper_style="{cbar.is_vertical

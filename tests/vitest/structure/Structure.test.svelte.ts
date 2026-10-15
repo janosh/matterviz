@@ -1635,13 +1635,16 @@ describe(`Structure`, () => {
       expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
     )
 
-    for (const [value, color_range] of [
+    for (const [value, value_range] of [
       [`1`, [1, 7]],
       [``, undefined],
     ] as const) {
       set_aria_input(`Slice color minimum`, value)
       await tick()
-      expect(props.slice_settings?.color_range).toEqual(color_range)
+      expect(props.slice_settings?.color_scale).toEqual({
+        scheme: `interpolateRdBu`,
+        value_range,
+      })
     }
   })
 

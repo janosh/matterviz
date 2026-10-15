@@ -8,6 +8,7 @@
   import { create_renderer, Gizmo, webgpu_available } from '#lib/scene/index.js'
   import { clamp01 } from '#lib/utils.js'
   import { Canvas, T } from '@threlte/core'
+  import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
@@ -144,6 +145,11 @@
     // oxfmt-ignore
     repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config, overlay],
   })
+  // PNG export: the scene redrawn at export resolution rather than the screen bitmap scaled up
+  export const to_png_blob = (png_dpi: number): Promise<Blob> => {
+    const { width, height } = interactions.canvas_dims
+    return paint_png_blob(width, height, dpi_to_scale(png_dpi), render_frame)
+  }
   export const get_actions = (): Record<string, () => void> => ({
     r: interactions.reset_camera,
     ...strategy.actions?.(camera, interactions.view_scale),

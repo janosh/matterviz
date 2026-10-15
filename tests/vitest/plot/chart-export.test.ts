@@ -1,19 +1,12 @@
-import { export_svg_as_png, export_svg_as_svg } from '#lib/io/export.js'
-import { download } from '#lib/io/fetch.js'
+import { parse_linear_gradient } from '#lib/io/export.js'
 import {
-  create_chart_exporter,
+  chart_export_filename,
+  csv_source,
   export_filename,
-  parse_linear_gradient,
   series_to_csv_rows,
   to_csv,
 } from '#lib/plot/core/utils/chart-export.js'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
-
-vi.mock('#lib/io/fetch.js', () => ({ download: vi.fn() }))
-vi.mock('#lib/io/export.js', () => ({
-  export_svg_as_png: vi.fn(),
-  export_svg_as_svg: vi.fn(),
-}))
+import { describe, expect, test } from 'vitest'
 
 describe(`to_csv`, () => {
   test.each([
@@ -75,55 +68,17 @@ describe(`export_filename`, () => {
   })
 })
 
-// Every chart shares this branch, so it is tested once here rather than per chart
-describe(`create_chart_exporter`, () => {
-  const svg = {} as SVGElement
-  const frame = {
-    svg_element: svg,
-    title_config: { text: `My Chart` },
-    axes: { x: { label: `E (eV)` }, y: { label: `n` } },
-  }
-  const make = () => create_chart_exporter(frame, () => ({ header: [`a`], rows: [[1]] }))
-
-  beforeEach(() => vi.clearAllMocks())
-
-  test(`csv writes the table under the configured name and draws no image`, async () => {
-    await make()(`csv`)
-    expect(download).toHaveBeenCalledWith(
-      `a\n1`,
-      `My-Chart-E-eV-n.csv`,
-      expect.stringContaining(`csv`),
-    )
-    expect(export_svg_as_png).not.toHaveBeenCalled()
-    expect(export_svg_as_svg).not.toHaveBeenCalled()
-    const save = vi.fn()
-    await make()(`csv`, { filename: `My results`, save, prepare: vi.fn() })
-    expect(save).toHaveBeenCalledExactlyOnceWith(
-      `a\n1`,
-      `My results.csv`,
-      expect.stringContaining(`csv`),
-    )
+test(`chart_export_filename slugs the title and axis labels; csv_source builds lazily`, () => {
+  const frame = { title_config: { text: `My Chart` }, axes: { x: { label: `E (eV)` }, y: {} } }
+  expect(chart_export_filename(frame)).toBe(`My-Chart-E-eV`)
+  let built = 0
+  const source = csv_source(() => {
+    built++
+    return { header: [`a`], rows: [[1], [Number.NaN]] }
   })
-
-  test.each([
-    [`png`, export_svg_as_png],
-    [`svg`, export_svg_as_svg],
-  ] as const)(`%s renders the image and writes no csv`, async (format, exporter) => {
-    await make()(format)
-    // Only the leading args are the contract here; styles/dpi belong to the io helpers
-    expect(vi.mocked(exporter).mock.calls[0].slice(0, 2)).toEqual([
-      svg,
-      `My-Chart-E-eV-n.${format}`,
-    ])
-    expect(download).not.toHaveBeenCalled()
-    const save = vi.fn()
-    await make()(format, { filename: `My figure`, save, prepare: vi.fn() })
-    expect(vi.mocked(exporter).mock.lastCall?.slice(0, 2)).toEqual([
-      svg,
-      `My figure.${format}`,
-    ])
-    expect(vi.mocked(exporter).mock.lastCall?.at(-1)).toBe(save)
-  })
+  expect(built).toBe(0)
+  expect(source(144)).toBe(`a\n1\n`)
+  expect(built).toBe(1)
 })
 
 // Computed ColorBar backgrounds, whose colors carry their own commas. Only ColorBar's

@@ -6,6 +6,7 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import Histogram from '#lib/plot/histogram/Histogram.svelte'
   import type { Column, RowData } from '#lib/table/index.js'
+  import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { escape_html } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
@@ -382,7 +383,8 @@
     style="width: 100%"
     root_style="min-width: 0; margin-inline: 0; flex: 1 1 0"
     on_row_click={on_entry_click ? handle_row_click : undefined}
-    export_data={{ filename: export_filename }}
+    export_formats={TABLE_EXPORT_FORMATS}
+    {export_filename}
   />
 {/snippet}
 

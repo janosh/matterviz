@@ -10,8 +10,9 @@ import {
 } from '#lib/composition/chart.js'
 import PieChart from '#lib/composition/PieChart.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, expect_tooltip_paint } from '../setup'
 
 const lfp: CompositionType = { Li: 1, Fe: 1, P: 1, O: 4 }
 const mount_chart = <T extends Component<{ composition: CompositionType }>>(
@@ -27,9 +28,15 @@ const CHARTS = [
 
 describe(`shared segment helpers`, () => {
   test.each(CHARTS)(
-    `%o shows rich unit tooltips and cleans up hover state`,
+    `%o shows rich unit tooltips in the segment color and cleans up hover state`,
     async (chart, selector) => {
-      const component = mount_chart(chart, { composition: { Fe: 2, O: 3 } })
+      const scheme = new SvelteMap([[`current`, `Vesta`]])
+      const component = mount_chart(chart, {
+        composition: { Fe: 2, O: 3 },
+        get color_scheme() {
+          return scheme.get(`current`)
+        },
+      } as ComponentProps<typeof chart>)
       flushSync()
       const mark = doc_query(selector)
       expect(mark.querySelector(`title`)).toBeNull()
@@ -38,6 +45,7 @@ describe(`shared segment helpers`, () => {
       flushSync()
       const tip = doc_query(`.plot-tooltip`)
       expect(tip.textContent?.trim()).toBe(`Fe: 2 atoms (40 %)`)
+      expect_tooltip_paint(tip, mark.getAttribute(`fill`) ?? ``)
       expect([...tip.querySelectorAll(`small`)].map((node) => node.textContent)).toEqual([
         `atoms`,
         `%`,
@@ -56,6 +64,12 @@ describe(`shared segment helpers`, () => {
       expect(document.querySelector(`.plot-tooltip`)).toBeNull()
       mark.dispatchEvent(new MouseEvent(`pointerenter`))
       flushSync()
+      // re-derived segments keep the open tooltip (no remount) and their new color follows
+      const reopened = doc_query(`.plot-tooltip`)
+      scheme.set(`current`, `Jmol`)
+      flushSync()
+      expect(doc_query(`.plot-tooltip`)).toBe(reopened)
+      expect_tooltip_paint(reopened, ELEMENT_COLOR_SCHEMES.Jmol.Fe)
       await unmount(component)
       expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     },
@@ -127,6 +141,11 @@ describe(`shared segment helpers`, () => {
     expect(document.querySelector(`#${ids[0]} rect`)?.getAttribute(`fill`)).not.toBe(
       `transparent`,
     )
+    // ...but the hover tooltip still wears the element color rather than going see-through
+    flushSync()
+    marks[1].dispatchEvent(new MouseEvent(`pointerenter`))
+    flushSync()
+    expect_tooltip_paint(doc_query(`.plot-tooltip`), ELEMENT_COLOR_SCHEMES.Vesta.O)
   })
 
   const fe2o3 = { Fe: 2, O: 3 }

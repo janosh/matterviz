@@ -1,3 +1,4 @@
+import { tooltip_paint } from '#lib/colors/index.js'
 import type { Rect } from '#lib/plot/core/layout.js'
 import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
@@ -103,6 +104,15 @@ export const doc_query = <T extends Element = HTMLElement>(
   selector: string,
   element_constructor?: Element_constructor<T>,
 ): T => query(document, selector, element_constructor)
+
+// Assert a tooltip wears `fill` per tooltip_paint (opaque as is, translucent flattened, with
+// contrasting text); null: the CSS theme chip, i.e. no inline paint
+export const expect_tooltip_paint = (tooltip: HTMLElement, fill: string | null): void => {
+  const { backgroundColor: background, color } = tooltip.style
+  const expected = fill === null ? { background: ``, color: `` } : tooltip_paint(fill)
+  if (!expected) throw new Error(`tooltip_paint gives no paint for fill ${fill}`)
+  expect({ background, color }).toEqual(expected)
+}
 
 // Wait for a button to render (e.g. a controls-pane toggle whose content mounts on first
 // open), click it and flush the update. Returns the button for follow-up assertions.
@@ -751,4 +761,49 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
       next_error = null
     },
   }
+}
+
+// Re-imports a module graph with workers disabled, as anywidget runs matterviz's bundle
+export const import_without_workers = async <Module>(
+  load: () => Promise<Module>,
+): Promise<Module> => {
+  vi.resetModules()
+  const { disable_workers } = await import(`#lib/worker-client.svelte.js`)
+  disable_workers()
+  return load()
+}
+
+// Open the export pane inside `root` and click one format's download button. Returns the
+// pane's download labels so callers can assert which formats a component offers.
+export async function click_export(
+  format: string | null,
+  root: ParentNode = document,
+): Promise<string[]> {
+  const toggle = root.querySelector<HTMLButtonElement>(`button.export-toggle`)
+  if (!toggle) throw new Error(`No export pane toggle in ${root.nodeName}`)
+  if (toggle.getAttribute(`aria-expanded`) !== `true`) toggle.click()
+  await tick()
+  const buttons = [
+    ...document.querySelectorAll<HTMLButtonElement>(`button[aria-label^="Download "]`),
+  ]
+  if (format) {
+    const button = buttons.find(
+      (btn) => btn.getAttribute(`aria-label`) === `Download ${format}`,
+    )
+    if (!button) throw new Error(`No Download ${format} button`)
+    button.click()
+  }
+  return buttons.map((btn) => btn.getAttribute(`aria-label`)?.replace(`Download `, ``) ?? ``)
+}
+
+// Export one format through the pane and return what the component's `on_export` received
+export async function export_via_pane(
+  on_export: ReturnType<typeof vi.fn>,
+  format: string,
+  root: ParentNode = document,
+): Promise<{ offered: string[]; format: string; data: unknown; filename: string }> {
+  const offered = await click_export(format, root)
+  await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+  const [called_format, { data, filename }] = on_export.mock.calls[0]
+  return { offered, format: called_format, data, filename }
 }

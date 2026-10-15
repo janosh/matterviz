@@ -269,7 +269,8 @@
             data={frame_table.rows}
             columns={frame_table.columns}
             search={{ placeholder: `Filter frames`, fuzzy: true }}
-            export_data={{ formats: [`csv`, `json`], filename: `trajectory-frames` }}
+            export_formats={[`csv`, `json`]}
+            export_filename="trajectory-frames"
             initial_sort={{ column: `frame` }}
             on_row_click={row_click_handler(on_step_change, `frame`)}
             {...table_props}
@@ -287,10 +288,8 @@
               data={atom_rows}
               columns={atom_columns}
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
-              export_data={{
-                formats: [`csv`, `json`],
-                filename: atom_sample ? `frame-atoms-sample` : `frame-atoms`,
-              }}
+              export_formats={[`csv`, `json`]}
+              export_filename={atom_sample ? `frame-atoms-sample` : `frame-atoms`}
               initial_sort={{ column: `site` }}
               on_row_click={row_click_handler(on_site_select, `site`)}
               {...table_props}

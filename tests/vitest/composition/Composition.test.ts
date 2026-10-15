@@ -130,6 +130,8 @@ describe(`Composition component`, () => {
     expect(doc_query(`.bubble-chart`)).toBeInstanceOf(SVGSVGElement)
     click_menu_item(`Export files…`)
     await tick()
-    expect(document.body.textContent).toContain(`Export composition`)
+    // the shared pane, with PNG at the pane's DPI and a copyable SVG
+    expect(document.querySelector(`[aria-label="Download PNG"]`)).not.toBeNull()
+    expect(document.querySelector(`[aria-label="Copy SVG to clipboard"]`)).not.toBeNull()
   })
 })

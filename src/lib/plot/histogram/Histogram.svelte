@@ -1,9 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import {
-    chart_export_filename,
-    create_chart_exporter,
-  } from '#lib/plot/core/utils/chart-export.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
     BarStyle,
@@ -491,12 +488,14 @@
   // === Export ===
   // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
   // format would collapse them to.
-  const handle_export = create_chart_exporter(frame, () => ({
-    header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
-    rows: histogram_bins.flatMap((hist) =>
-      hist.bins.map((bin) => [hist.label, bin.x0, bin.x1, bin.count, bin.value]),
-    ),
-  }))
+  const export_sources = {
+    csv: csv_source(() => ({
+      header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
+      rows: histogram_bins.flatMap((hist) =>
+        hist.bins.map((bin) => [hist.label, bin.x0, bin.x1, bin.count, bin.value]),
+      ),
+    })),
+  }
 </script>
 
 {#snippet ref_lines_layer(coord_z: LayerZIndex)}
@@ -510,6 +509,7 @@
 
 <CartesianFrame
   {frame}
+  {export_sources}
   plot_class="histogram"
   css_prefix="histogram"
   css_var_fallbacks={{ 'svg-max-height': `100%` }}
@@ -607,8 +607,6 @@
 
   {#snippet controls(toggle_props, show_controls)}
     <HistogramControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
       {toggle_props}
       pane_props={controls_pane_props}
       {show_controls}
@@ -642,6 +640,7 @@
         y={frame.scales[hover_info.active_y_axis](coord_y)}
         avoid_cursor={false}
         offset={{ x: 5, y: -10 }}
+        bg_color={series_color(hover_info.series_idx)}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}

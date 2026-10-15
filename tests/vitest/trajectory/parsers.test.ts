@@ -1952,6 +1952,8 @@ describe(`JSON`, () => {
     [`species object`, { species: { element: `Si` } }, /species/],
     [`null element`, { species: [{ element: null }] }, /species/],
     [`blank element`, { species: [{ element: `  ` }] }, /species/],
+    [`unknown element string`, { species: [`Xx`] }, /species/],
+    [`unknown element object`, { species: [{ element: `Xx` }] }, /species/],
     [`coords object`, { coords: { a: 1 } }, /coords/],
     [`2x3 lattice`, { lattice: cubic(1).slice(0, 2) }, /Expected 3x3 matrix/],
     [`3x2 lattice`, { lattice: [[1, 0], [0, 1], [0, 0]] }, /lattice matrix row 1: expected 3 coordinates, got 2/],

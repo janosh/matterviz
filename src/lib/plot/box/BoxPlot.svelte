@@ -3,10 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import {
-    chart_export_filename,
-    create_chart_exporter,
-  } from '#lib/plot/core/utils/chart-export.js'
+  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
   import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
@@ -686,14 +683,16 @@
     `whisker_high`,
     `max`,
   ] as const satisfies readonly StatCol[]
-  const handle_export = create_chart_exporter(frame, () => ({
-    header: [`series`, ...cols, `outliers`],
-    rows: visible_boxes.map(({ series: srs, idx, stats }) => [
-      srs.label ?? `box ${idx + 1}`,
-      ...cols.map((col) => stats[col]),
-      stats.outliers.join(` `),
-    ]),
-  }))
+  const export_sources = {
+    csv: csv_source(() => ({
+      header: [`series`, ...cols, `outliers`],
+      rows: visible_boxes.map(({ series: srs, idx, stats }) => [
+        srs.label ?? `box ${idx + 1}`,
+        ...cols.map((col) => stats[col]),
+        stats.outliers.join(` `),
+      ]),
+    })),
+  }
 </script>
 
 {#snippet seg(point_1: Vec2, point: Vec2, stroke: string, stroke_width: number, dash?: string)}
@@ -720,6 +719,7 @@
 
 <CartesianFrame
   {frame}
+  {export_sources}
   plot_class="box-plot"
   css_prefix="boxplot"
   css_var_fallbacks={{
@@ -963,8 +963,6 @@
 
   {#snippet controls(toggle_props, show_controls)}
     <BoxPlotControls
-      on_export={handle_export}
-      export_filename={chart_export_filename(frame)}
       {toggle_props}
       pane_props={controls_pane_props}
       {show_controls}

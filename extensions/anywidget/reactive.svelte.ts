@@ -126,6 +126,20 @@ export const drive_prop = (key: string): DrivenProp => ({
 
 export const drive_props = (keys: readonly string[]): DrivenProp[] => keys.map(drive_prop)
 
+// Like drive_prop, but a trait set to None reaches the component as null instead of its
+// default, for props where null means off (e.g. color_bar=None hides the bar)
+export const nullable_prop = (key: string): DrivenProp => ({
+  prop: key,
+  deps: [key],
+  compute: (model) => {
+    try {
+      return model.get(key)
+    } catch {
+      return undefined
+    }
+  },
+})
+
 // Prop composed from several traits; recomputed whenever any dep changes.
 export const derived_prop = (
   prop: string,

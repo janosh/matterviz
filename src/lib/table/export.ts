@@ -4,13 +4,8 @@ import { html_to_text } from '#lib/utils.js'
 import { csv_line } from 'svelte-widgets/csv'
 import type { RowData } from './index'
 
-export type ExportFormat = `csv` | `json` | `md` | `tex`
-export const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
-  csv: `text/csv`,
-  json: `application/json`,
-  md: `text/markdown`,
-  tex: `text/x-tex`,
-}
+// Every format a table can export, for opting in: <HeatmapTable export_formats={TABLE_EXPORT_FORMATS}>
+export const TABLE_EXPORT_FORMATS = [`csv`, `json`, `md`, `tex`] as const
 
 export type TableMatrix = {
   headers: string[]

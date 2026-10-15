@@ -1,8 +1,5 @@
 <script lang="ts">
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
-  import ExportDestination from '#lib/io/ExportDestination.svelte'
-  import ExportButtons from '#lib/io/ExportButtons.svelte'
-  import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
 
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
@@ -42,9 +39,6 @@
     padding_inner = $bindable(DEFAULTS.treemap.padding_inner),
     padding_top = $bindable(DEFAULTS.treemap.padding_top),
     padding_outer = $bindable(DEFAULTS.treemap.padding_outer),
-    export_buttons = true,
-    on_export,
-    export_filename = chart,
     toggle_props = {},
     pane_props = {},
     children,
@@ -69,15 +63,10 @@
     padding_inner?: number
     padding_top?: number
     padding_outer?: number
-    export_filename?: string
-    export_buttons?: boolean // show SVG/PNG download buttons in the pane
-    on_export?: (format: `svg` | `png`, context: FileExportContext) => void | Promise<void>
     toggle_props?: HTMLAttributes<HTMLButtonElement>
     pane_props?: HTMLAttributes<HTMLDivElement>
     children?: Snippet
   } = $props()
-
-  const export_state = new FileExportState(() => export_filename)
 
   let current_values = $derived({
     value_mode,
@@ -200,45 +189,4 @@
       <input type="checkbox" bind:checked={show_breadcrumbs} />
     </label>
   </SettingsSection>
-  {#if export_buttons && on_export}
-    <ExportDestination state={export_state} />
-    <!-- --hier-btn-*: forward the chart's own theming vars (--sunburst-btn-bg /
-      --treemap-btn-bg); when unset, the outer var() falls back to the gray default -->
-    <div
-      class="export-row"
-      style="--hier-btn-bg: var(--{chart}-btn-bg); --hier-btn-hover-bg: var(--{chart}-btn-hover-bg)"
-    >
-      Export
-      <ExportButtons
-        state={export_state}
-        formats={[`svg`, `png`] as const}
-        {on_export}
-        button_props={(format) => ({
-          class: `export-btn`,
-          'aria-label': `Download ${format.toUpperCase()}`,
-        })}
-      />
-    </div>
-  {/if}
 </ControlPane>
-
-<style>
-  .export-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 0.85em;
-  }
-  .export-row :global(.export-btn) {
-    background: var(--hier-btn-bg, rgba(128, 128, 128, 0.15));
-    color: inherit;
-    border: none;
-    border-radius: 3pt;
-    padding: 1px 6px;
-    cursor: pointer;
-  }
-  .export-row :global(.export-btn:hover) {
-    background: var(--hier-btn-hover-bg, rgba(128, 128, 128, 0.35));
-  }
-</style>
