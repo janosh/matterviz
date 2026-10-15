@@ -62,6 +62,7 @@
     collect_size_range,
     create_size_scale,
     generate_ticks,
+    get_tick_label,
   } from '#lib/plot/core/scales.js'
   import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
 
@@ -150,6 +151,10 @@
   // In Three.js, Y is vertical. We map user's Z → Three.js Y (vertical) and user's Y →
   // Three.js Z (depth). So scene_z here refers to Three.js Y.
   const [scene_x, scene_y, scene_z] = SCENE_SIZE
+  // Surfaces and reference planes/lines keyed by id, else input position. Prefixed so an
+  // unnamed item's position never collides with another item's numeric id.
+  const item_key = ({ id }: { id?: string | number }, idx: number): string =>
+    id != null ? `id:${id}` : `idx:${idx}`
   const half_x = scene_x / 2
   const half_y = scene_y / 2
   const half_z = scene_z / 2
@@ -698,7 +703,10 @@
         {/each}
       {/if}
       <extras.HTML position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
-        <span class="tick-label">{format_num(tick_val, axis.format || `.2~g`)}</span>
+        <span class="tick-label"
+          >{get_tick_label(tick_val, axis.ticks) ??
+            format_num(tick_val, axis.format || `.2~g`)}</span
+        >
       </extras.HTML>
     {/each}
     {#if display.show_axis_labels !== false}
@@ -719,16 +727,26 @@
 {/if}
 
 <T is={THREE.ClippingGroup} clippingPlanes={box_clip}>
-  {#each surfaces.filter((srf) => srf.visible !== false) as surface (surface.id ?? surfaces.indexOf(surface))}
-    <Surface3D config={surface} {x_range} {y_range} {z_range} {scene_x} {scene_y} {scene_z} />
+  {#each surfaces as surface, idx (item_key(surface, idx))}
+    {#if surface.visible !== false}
+      <Surface3D
+        config={surface}
+        {x_range}
+        {y_range}
+        {z_range}
+        {scene_x}
+        {scene_y}
+        {scene_z}
+      />
+    {/if}
   {/each}
 
-  {#each ref_planes.filter((plane) => plane.visible !== false) as ref_plane (ref_plane.id ?? ref_planes.indexOf(ref_plane))}
-    <ReferencePlane {ref_plane} {ranges} />
+  {#each ref_planes as ref_plane, idx (item_key(ref_plane, idx))}
+    {#if ref_plane.visible !== false}<ReferencePlane {ref_plane} {ranges} />{/if}
   {/each}
 
-  {#each ref_lines.filter((line) => line.visible !== false) as ref_line (ref_line.id ?? ref_lines.indexOf(ref_line))}
-    <ReferenceLine3D {ref_line} {ranges} />
+  {#each ref_lines as ref_line, idx (item_key(ref_line, idx))}
+    {#if ref_line.visible !== false}<ReferenceLine3D {ref_line} {ranges} />{/if}
   {/each}
 
   <!-- Series lines connecting points (fat lines using Line2) -->

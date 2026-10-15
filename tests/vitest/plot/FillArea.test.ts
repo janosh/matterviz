@@ -41,10 +41,10 @@ describe(`FillArea`, () => {
   // a hover handler alone must also put the region in the tab order for keyboard users;
   // without a label the aria-label falls back to the region index
   test.each([
-    [`click handler`, { on_click: () => {} }, `0`],
-    [`hover handler only`, { on_hover: () => {} }, `0`],
-    [`no handlers`, {}, `-1`],
-  ])(`a region with a %s has tabindex %s`, (_name, handlers, expected) => {
+    [`a click handler`, `0`, { on_click: () => {} }],
+    [`a hover handler only`, `0`, { on_hover: () => {} }],
+    [`no handlers`, `-1`, {}],
+  ])(`a region with %s has tabindex %s`, (_name, expected, handlers) => {
     mount_fill({ ...handlers, region: { ...base_region, label: undefined }, region_idx: 5 })
     const region = doc_query(`g.fill-region`)
     expect(region.getAttribute(`tabindex`)).toBe(expected)

@@ -696,6 +696,11 @@ describe(`plan_synthesis`, () => {
       { entries: toy_entries, target: `O`, conditions: { open_species: [`O2`] } },
       /Target O is replaced by open O2 at these conditions/,
     ],
+    // a CO2 solid id: open CO2 gas keeps the formula, so the solid has no slot to take
+    [
+      { entries: ba_ti_c_o, target: `agm003212195`, conditions: { open_species: [`CO2`] } },
+      /Target CO2 is replaced by open CO2 at these conditions/,
+    ],
     [{ conditions: { temperature: -1 } }, /conditions.temperature/],
     [{ conditions: { temperature: 2001 } }, /conditions.temperature/],
     [{ conditions: { open_species: [`Ar`] } }, /unsupported Ar/],

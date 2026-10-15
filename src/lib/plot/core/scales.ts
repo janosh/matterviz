@@ -56,6 +56,18 @@ const assert_tick_count = (count: number, requested: string, span: number): void
 // Dedupe and sort numeric array (used in tick generation)
 const dedupe_sort = (arr: number[]): number[] => math.sorted_numbers(new Set(arr))
 
+// Formats that print every value as an integer: `d` types (`d`, `,d`, `~d`) and zero-precision
+// fixed point (`.0f`, `,.0f`), but no time (`%d`) or percent (`.0%`) format
+export const is_integer_format = (format: string | null | undefined): boolean =>
+  typeof format === `string` &&
+  !format.includes(`%`) &&
+  (format.endsWith(`d`) || format.endsWith(`.0f`))
+
+// Tick positions an integer format can label: each tick rounded to the integer its label
+// reads, without repeats or values outside the domain (input order kept)
+export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] =>
+  [...new Set(ticks.map(Math.round))].filter((tick) => math.in_range(tick, domain))
+
 // --- Arcsinh Scale Implementation ---
 // The arcsinh scale provides smooth transition between linear (near zero) and
 // logarithmic (for large |x|) behavior. Unlike log, it handles negative values.
@@ -268,12 +280,11 @@ export function generate_ticks(
 
   if (Array.isArray(ticks_option)) return ticks_option
 
-  // Integer formats (`d`, `,d`, not time `%d`) round each generated label: 0.5 steps read
-  // `0, 1, 1, 2`. Explicit positions and label maps returned above are the caller's.
-  if (format?.endsWith(`d`) && !format.startsWith(`%`)) {
-    const [lower, upper] = [Math.ceil(min_val), Math.floor(max_val)]
+  // Integer formats round each generated label: 0.5 steps read `0, 1, 1, 2`. Explicit
+  // positions and label maps returned above are the caller's.
+  if (is_integer_format(format)) {
     const ticks = generate_ticks(domain, scale_type, ticks_option, scale_fn, { default_count })
-    return dedupe_sort(ticks.map(Math.round).filter((tick) => tick >= lower && tick <= upper))
+    return math.sorted_numbers(integer_ticks(ticks, domain))
   }
 
   if (is_time_scale(scale_type)) {
@@ -531,9 +542,30 @@ export function nice_range_from_extent(
   return type_name === `log` ? validate_log_range(result) : result
 }
 
+// d3's fine log ticks step through every mantissa 1-9 whatever the count (17 ticks on
+// [0.0184, 0.993] for 6 requested). Keep the set closest to the count among all ticks and the
+// 1-2-5 or 1 mantissas (ties keep the denser, a thinned set needs two ticks), then every n-th
+// tick of it if that still overshoots by more than one ([2..8] -> [2, 4, 6, 8] for 5).
+const thin_log_ticks = (ticks: number[], count: number): number[] => {
+  const mantissa = (tick: number): number => tick / 10 ** Math.floor(Math.log10(tick) + 1e-9)
+  const has_mantissa = (digits: number[]) => (tick: number) =>
+    digits.some((digit) => Math.abs(mantissa(tick) - digit) < 1e-9)
+  const best = [[1, 2, 5], [1]]
+    .map((digits) => ticks.filter(has_mantissa(digits)))
+    .filter((subset) => subset.length >= 2)
+    .reduce(
+      (closest, subset) =>
+        Math.abs(subset.length - count) < Math.abs(closest.length - count) ? subset : closest,
+      ticks,
+    )
+  if (best.length <= count + 1) return best
+  const stride = Math.ceil(best.length / (count + 1))
+  return best.filter((_, idx) => idx % stride === 0)
+}
+
 // Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
-// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks for
-// sub-decade domains (e.g. after zooming) where fewer than two powers of 10 fit.
+// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks (thinned
+// toward the count) for sub-decade domains (e.g. after zooming) where fewer than two powers fit.
 export function generate_log_ticks(min: number, max: number, count?: number): number[] {
   ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
@@ -544,7 +576,9 @@ export function generate_log_ticks(min: number, max: number, count?: number): nu
   const tick_count = count !== undefined && count > 0 ? count : 5
   // Powers of ten, or d3's fine mantissa ticks when fewer than two powers fall in range
   const fine_ticks =
-    in_range_powers.length < 2 ? scaleLog().domain([min, max]).ticks(tick_count) : []
+    in_range_powers.length < 2
+      ? thin_log_ticks(scaleLog().domain([min, max]).ticks(tick_count), tick_count)
+      : []
   const base_ticks = fine_ticks.length > 0 ? fine_ticks : in_range_powers
   // Decades the domain actually spans: floor/ceil of the bounds would count [0.5, 50] as three
   if (Math.log10(max / min) < 3 && tick_count > 5) {

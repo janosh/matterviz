@@ -202,7 +202,7 @@ export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): s
 // of which a shared-x column layout can represent without inventing blanks.
 export interface CsvSeries {
   label?: string
-  x: readonly number[]
+  x: readonly (number | string)[] // category names for categorical bar charts
   y: readonly number[]
   // Extra per-point channels, emitted as their own columns when any series has them
   extras?: Record<string, readonly (number | null | undefined)[] | undefined>

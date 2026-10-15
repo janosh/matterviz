@@ -279,6 +279,22 @@ describe(`decoration solver`, () => {
     const reserved_pad = { t: 0, b: 0, l: 0, r: 270 }
     const with_marginal = solve_decorations({ ...scene_for([legend_item]), reserved_pad })
     expect(with_marginal.placements[0].layout_tracks).toBe(2)
+    // a vertical legend fits along the height instead, less top/bottom strips: 4 rows of 80 px
+    // fit 400 - 20 - 40 = 340 px, but only 1 fits the 140 px a 200 px top strip leaves
+    const vertical_item: LegendDecorationItem = {
+      ...legend_item,
+      auto_tracks: {
+        ...auto_tracks,
+        orientation: `vertical`,
+        item_extents: Array.from({ length: 4 }, () => ({ width: 100, height: 80 })),
+      },
+    }
+    const vertical_tracks = (top_strip: number) =>
+      solve_decorations({
+        ...scene_for([vertical_item]),
+        reserved_pad: { t: top_strip, b: 0, l: 0, r: 0 },
+      }).placements[0].layout_tracks
+    expect([vertical_tracks(0), vertical_tracks(200)]).toEqual([4, 1])
   })
 
   test(`keeps crowding decisions independent of other decorations`, () => {

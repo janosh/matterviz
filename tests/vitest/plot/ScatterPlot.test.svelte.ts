@@ -236,8 +236,10 @@ describe(`ScatterPlot`, () => {
     })
   })
 
-  // No pointer event updates or clears the tooltip when the host swaps data or hides a series
+  // No pointer event updates or clears the tooltip when the host swaps data or hides a series,
+  // so the plot itself must tell on_point_hover once the point is gone
   test(`tooltip follows its point through data changes and closes when it is gone`, async () => {
+    const on_point_hover = vi.fn()
     const state = $state<{
       series: DataSeries[]
       hidden_series: (string | number)[]
@@ -248,7 +250,10 @@ describe(`ScatterPlot`, () => {
       tooltip_point: null,
     })
     const plot = await mount_sized_scatter_plot(
-      bind_props({ point_tween: { duration: 0 }, color_bar: null, hovered: true }, state),
+      bind_props(
+        { point_tween: { duration: 0 }, color_bar: null, hovered: true, on_point_hover },
+        state,
+      ),
     )
     const tooltip_text = () =>
       plot.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `).trim()
@@ -274,11 +279,20 @@ describe(`ScatterPlot`, () => {
     flushSync()
     expect(tooltip_text()).toBeUndefined()
     expect(state.tooltip_point).toBeNull()
+    expect(on_point_hover).toHaveBeenCalledExactlyOnceWith(null)
     hover_point(1)
     expect(tooltip_text()).toContain(`x: 6 y: 60`)
     state.hidden_series = [`a`]
     flushSync()
     expect(tooltip_text()).toBeUndefined()
+    expect(on_point_hover).toHaveBeenCalledTimes(2)
+    state.hidden_series = []
+    hover_point(0)
+    state.series = []
+    flushSync()
+    expect(state.tooltip_point).toBeNull()
+    expect(on_point_hover).toHaveBeenCalledTimes(3)
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`image export redraws the legend and color bar, then cleans up`, async () => {
@@ -308,12 +322,14 @@ describe(`ScatterPlot`, () => {
     expect(svg.querySelector(`.export-overlay`)).toBeNull()
   })
 
-  test(`CSV export names unlabelled series by input position past hidden ones`, async () => {
+  // CSV series names match the legend: label, else series metadata.label, else `Series N`
+  test(`CSV export names series as the legend does, numbered past hidden ones`, async () => {
     const save = vi.fn()
     vi.stubGlobal(`download`, save) // the global hook download() defers to
     const series = [
       { x: [1], y: [10], visible: false },
       { x: [2], y: [20] },
+      { x: [3], y: [30], metadata: { label: `from meta` } },
     ]
     await mount_sized_scatter_plot({ series, controls_open: true })
     const csv_button = () =>
@@ -324,8 +340,9 @@ describe(`ScatterPlot`, () => {
     csv_button()?.click()
     await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
     const [csv] = save.mock.calls[0]
-    expect(csv).toContain(`series 2,2,20`)
-    expect(csv).not.toContain(`series 1`)
+    expect(csv).toContain(`Series 2,2,20`)
+    expect(csv).toContain(`from meta,3,30`)
+    expect(csv).not.toContain(`Series 1`)
   })
 
   test(`error bands draw on their series' y axis and hide with it`, async () => {

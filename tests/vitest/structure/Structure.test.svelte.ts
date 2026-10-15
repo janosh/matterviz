@@ -287,17 +287,26 @@ test.each([false, true])(
   },
 )
 
-// The session's own edits keep the pose and moved-camera state; a file loaded mid-edit is a
-// new series and re-frames
-test.each([true, false])(
-  `edit-atoms keeps the camera only for edits (edit=%s)`,
-  async (edit) => {
+// The session's own writes (an edit, a cell-type bake) keep the pose and moved-camera state;
+// a file loaded mid-edit is a new series and re-frames
+test.each([`edit`, `bake`, `load`] as const)(
+  `edit-atoms keeps the camera only for its own writes (%s)`,
+  async (change) => {
     mock_gpu()
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      measure_mode: `edit-atoms`,
+    // the bake needs live symmetry analysis of a cell whose conventional cell differs
+    if (change === `bake`) vi.stubEnv(`VITEST`, ``)
+    await init_moyo_for_tests()
+    const state = $state<{ structure?: AnyStructure; cell_type: symmetry.CellType }>({
+      structure:
+        change === `bake`
+          ? make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
+          : structure,
+      cell_type: `original`,
     })
-    mount_structure(props)
+    const analysis = mount_structure(
+      bind_props({ measure_mode: `edit-atoms` as const }, state),
+    )
+    if (change === `bake`) await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
     await tick()
     const scene = scene_stub.props
     if (!scene?.on_add_atom) throw new Error(`scene stub missing on_add_atom`)
@@ -309,15 +318,39 @@ test.each([true, false])(
     doc_query<HTMLButtonElement>(`.view-layout-dropdown button`).click() // lists reset-camera
     flushSync()
     expect(document.querySelector(`.reset-camera`)).not.toBeNull()
-    if (edit) scene.on_add_atom([0, 0, 0], `C`)
-    else props.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+    if (change === `edit`) scene.on_add_atom([0, 0, 0], `C`)
+    else if (change === `bake`) state.cell_type = `conventional`
+    else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
     flushSync()
+    if (change === `bake`)
+      expect([state.cell_type, state.structure?.sites.length]).toEqual([`original`, 4])
+    const kept = change !== `load`
     const { camera_position, camera_target } = scene_stub.props ?? {}
-    expect(camera_position).toEqual(edit ? [9, 9, 9] : undefined)
-    expect(camera_target).toEqual(edit ? [1, 1, 1] : undefined)
-    expect(document.querySelector(`.reset-camera`) !== null).toBe(edit)
+    expect(camera_position).toEqual(kept ? [9, 9, 9] : undefined)
+    expect(camera_target).toEqual(kept ? [1, 1, 1] : undefined)
+    expect(document.querySelector(`.reset-camera`) !== null).toBe(kept)
   },
 )
+
+// An external supercell (a phonon mode cell) carries unit_cell_idx into a cell the scene never
+// sees, while reference-structure displacements index the displayed sites: the scene's own
+// unit_cell_idx default folded both copies onto site 1, drawing the wrong arrows
+test(`hands the scene the session's base-index rule for an external supercell`, async () => {
+  mock_gpu()
+  const supercell = make_supercell(
+    make_crystal(5, [{ element: `C`, abc: [0, 0, 0] }]),
+    `2x1x1`,
+  )
+  expect(supercell.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 0])
+  mount_structure({
+    structure: supercell,
+    reference_structure: supercell,
+    show_image_atoms: false,
+  })
+  await tick()
+  const to_base_site_idx = scene_stub.props?.to_base_site_idx
+  expect(supercell.sites.map((site, idx) => to_base_site_idx?.(site, idx))).toEqual([0, 1])
+})
 
 test.each([
   [`coordinates`, SAMPLE_CHGCAR_CONTENT, `Direct\n0 0 0`, `Direct\n0.5 0 0`, true],
@@ -2965,37 +2998,36 @@ describe(`source acquisition`, () => {
     return { responses, props }
   }
 
-  // on_file_load/on_error report the requested URL, never a superseded source's completion
-  test.each([`resolve`, `reject`] as const)(
-    `ignores a superseded source URL's %s`,
-    async (outcome) => {
-      const [on_file_load, on_error] = [vi.fn(), vi.fn()]
-      const { responses, props } = await mount_pending_url({ on_file_load, on_error })
-      props.source = `/b.json`
-      await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-      const settle = (url: string, element: string) => {
-        const pending = responses.get(url)?.shift()
-        if (outcome === `resolve`) pending?.resolve(new Response(structure_json(element)))
-        else pending?.reject(new Error(`${url} failed`))
-      }
-      // a stale failure lands while the new source is pending, a stale success after it loaded
-      if (outcome === `reject`) settle(`/a.json`, `H`)
-      settle(`/b.json`, `He`)
-      await vi.waitFor(() =>
-        expect((outcome === `resolve` ? on_file_load : on_error).mock.calls).toHaveLength(1),
-      )
-      if (outcome === `resolve`) settle(`/a.json`, `H`)
-      await tick()
-      expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual(
-        outcome === `resolve` ? [1, 0] : [0, 1],
-      )
-      if (outcome === `resolve`)
-        expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(
-          `He`,
-        )
-      else expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
-    },
-  )
+  // on_file_load/on_error report the requested URL, never a superseded source's completion.
+  // Mounts /a.json, switches to /b.json and waits until both requests are pending.
+  const supersede_source_url = async () => {
+    const [on_file_load, on_error] = [vi.fn(), vi.fn()]
+    const { responses, props } = await mount_pending_url({ on_file_load, on_error })
+    props.source = `/b.json`
+    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+    const pending = (url: string) => responses.get(url)?.shift()
+    return { on_file_load, on_error, pending }
+  }
+
+  test(`ignores a superseded source URL's success landing after the new source loaded`, async () => {
+    const { on_file_load, on_error, pending } = await supersede_source_url()
+    pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+    pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
+    await tick()
+    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([1, 0])
+    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+  })
+
+  test(`ignores a superseded source URL's failure landing while the new source is pending`, async () => {
+    const { on_file_load, on_error, pending } = await supersede_source_url()
+    pending(`/a.json`)?.reject(new Error(`/a.json failed`))
+    pending(`/b.json`)?.reject(new Error(`/b.json failed`))
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+    await tick()
+    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([0, 1])
+    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
+  })
 
   test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {
     const { responses, props } = await mount_pending_url({

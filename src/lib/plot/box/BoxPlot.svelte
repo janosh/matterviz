@@ -74,7 +74,8 @@
   import { get_scale_type_name } from '#lib/plot/core/types.js'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '#lib/plot/core/svg.js'
@@ -658,10 +659,7 @@
     hover_key = null
     on_box_hover?.(null)
   }
-  // New data dropped the hovered item: end the hover so on_box_hover hears null too
-  $effect.pre(() => {
-    if (hover_key && !hover_info) untrack(clear_hover)
-  })
+  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 

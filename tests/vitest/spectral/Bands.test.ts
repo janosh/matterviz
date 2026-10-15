@@ -1,4 +1,5 @@
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
+import type { AxisRanges } from '#lib/plot/core/types.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
 import type { ComponentProps } from 'svelte'
@@ -566,6 +567,42 @@ describe(`Bands component`, () => {
     expect(last_tick_x()).toBeCloseTo(before, 6)
     expect(fermi_x_end()).toBeCloseTo(before, 6)
     expect(y_ticks()).toEqual(y_before)
+  })
+
+  it(`drops a bound view while no plot is shown so a remount fits the new path`, async () => {
+    // BandsAndDos keeps the bound view in sync state that outlives the plot, which unmounts
+    // while no band data is loaded; the remounted plot must not restore the old path's range
+    const state = fromStore(
+      writable<{
+        band_structs: Record<string, BaseBandStructure>
+        view?: Partial<AxisRanges>
+      }>({
+        band_structs: { '': base_band_structure },
+      }),
+    )
+    await mount_sized(
+      Bands,
+      {
+        get band_structs() {
+          return state.current.band_structs
+        },
+        get view() {
+          return state.current.view
+        },
+        set view(view) {
+          state.current = { ...state.current, view }
+        },
+      },
+      { selector: `.scatter` },
+    )
+    expect(state.current.view?.x).toEqual([0, 3])
+    state.current = { ...state.current, band_structs: {} }
+    flushSync()
+    expect(document.querySelector(`.scatter`)).toBeNull()
+    const long_path = { ...base_band_structure, distance: [0, 10, 20, 30] }
+    state.current = { ...state.current, band_structs: { '': long_path } }
+    await tick()
+    expect(state.current.view?.x).toEqual([0, 30])
   })
 
   it(`renders with a caller range that is itself unset without looping`, async () => {

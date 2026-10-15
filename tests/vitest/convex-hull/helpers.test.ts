@@ -134,31 +134,48 @@ describe(`canvas-draw: markers and hit testing`, () => {
     ).toBe(entry)
   })
 
-  // `both` is size + colour, as in the 2D ScatterPlot path
+  // `both` is size + colour, as in the 2D ScatterPlot path. ring_growth: how far past
+  // size * size_multiplier the ring reaches, in marker radii (null = no ring); at time 0 the
+  // pulse sits mid-cycle (pulse_val = 0.5), so its ring grows by 0.5 * pulse_val. raw_stroke:
+  // the ring strokes the user's color as given, its own alpha included
   test.each([
-    [`color`, true, false],
-    [`size`, false, true],
-    [`both`, true, true],
-  ] as const)(`pulse overlay draws highlight effect %s`, (effect, recolored, ring) => {
-    const calls: unknown[][] = [] // [method or property, ...args]
-    const ctx = new Proxy({} as CanvasRenderingContext2D, {
-      get: (_target, key) =>
-        key === `canvas`
-          ? { width: 1, height: 1 }
-          : (...args: unknown[]) => calls.push([key, ...args]),
-      set: (_target, key, value) => calls.push([key, value]) > 0,
-    })
-    const entry = { x: 0, y: 0, z: 0, is_stable: false } as ConvexHullEntry
-    const highlight_style = { ...helpers.merge_highlight_style({ effect }), color: `#123456` }
-    const opts = { scale: 1, shadow_factor: 0, selected_entry: null, highlight_style }
-    const hull_opts = { ...opts, is_highlighted: () => true, get_point_color: () => `#000000` }
-    const point = { entry, projected: { x: 0, y: 0, depth: 0 } }
-    draw.draw_pulse_overlay(ctx, [point], hull_opts, { time: 0, opacity: 1 })
-    const last_fill = calls.findLast(([key]) => key === `fillStyle`)?.[1]
-    expect(last_fill).toBe(recolored ? `#123456` : `#000000`)
-    const radius = draw.point_radius(entry) * highlight_style.size_multiplier
-    expect(calls.some((call) => call[0] === `arc` && call[3] === radius)).toBe(ring)
-  })
+    [`color`, true, null, false],
+    [`size`, false, 0, true],
+    [`both`, true, 0, true],
+    [`pulse`, false, 0.25, false],
+  ] as const)(
+    `pulse overlay draws highlight effect %s`,
+    (effect, recolored, ring_growth, raw_stroke) => {
+      const calls: unknown[][] = [] // [method or property, ...args]
+      const ctx = new Proxy({} as CanvasRenderingContext2D, {
+        get: (_target, key) =>
+          key === `canvas`
+            ? { width: 1, height: 1 }
+            : (...args: unknown[]) => calls.push([key, ...args]),
+        set: (_target, key, value) => calls.push([key, value]) > 0,
+      })
+      const entry = { x: 0, y: 0, z: 0, is_stable: false } as ConvexHullEntry
+      const color = `rgba(18, 52, 86, 0.5)`
+      const highlight_style = { ...helpers.merge_highlight_style({ effect }), color }
+      const opts = { scale: 1, shadow_factor: 0, selected_entry: null, highlight_style }
+      const hull_opts = {
+        ...opts,
+        is_highlighted: () => true,
+        get_point_color: () => `#000000`,
+      }
+      const point = { entry, projected: { x: 0, y: 0, depth: 0 } }
+      draw.draw_pulse_overlay(ctx, [point], hull_opts, { time: 0, opacity: 1 })
+      const last_fill = calls.findLast(([key]) => key === `fillStyle`)?.[1]
+      expect(last_fill).toBe(recolored ? color : `#000000`)
+      const size = draw.point_radius(entry)
+      const radius = size * highlight_style.size_multiplier + (ring_growth ?? 0) * size
+      expect(calls.some((call) => call[0] === `arc` && call[3] === radius)).toBe(
+        ring_growth !== null,
+      )
+      const strokes = calls.filter(([key]) => key === `strokeStyle`).map((call) => call[1])
+      expect(strokes.includes(color)).toBe(raw_stroke)
+    },
+  )
 
   test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {
     const fillText = vi.fn()

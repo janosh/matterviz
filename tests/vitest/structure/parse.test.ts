@@ -324,8 +324,9 @@ describe(`XYZ Parser`, () => {
   it(`case-normalises symbols and skips atoms with unknown ones`, () => {
     const result = parse_xyz(`3\nTest\nXx 0 0 0\nFE 1 1 1\nX 2 2 2\n`)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Fe`])
-    expect(() => parse_xyz(`1\nTest\nXx 0 0 0\n`)).toThrow(
-      `no atom with a recognised element symbol`,
+    // the last of two frames is read, and the error names it 1-based
+    expect(() => parse_xyz(`1\nfirst\nH 0 0 0\n1\nsecond\nXx 0 0 0\n`)).toThrow(
+      `XYZ frame 2 (line 4) has no atom with a recognised element symbol`,
     )
   })
 
@@ -1771,7 +1772,8 @@ describe(`parse_structure_file`, () => {
 
     // oxfmt-ignore
     test.each([
-      [`no xyz and no lattice`, { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] }, /has no xyz/],
+      [`no xyz and no lattice`, { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] }, `JSON site 1 has no xyz and the structure has no lattice`],
+      [`a site without coordinates`, { sites: [bare_site(`H`), { species: [{ element: `H` }] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has neither abc nor xyz coordinates`],
       [`2-row lattice matrix`, { sites: [bare_site(`H`)], lattice: { matrix: [[1, 0, 0], [0, 1, 0]] } }, /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)
@@ -2437,10 +2439,33 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(carbon_bond?.bond_length).toBeCloseTo(1.5121, 3)
   })
 
-  test(`PDB keeps occupancy, residue, chain and B-factor per site`, () => {
+  // The occupancy column is refinement metadata, kept as a site property: as species occu
+  // it marked PDB atoms partially occupied and made XYZ/POSCAR export refuse them
+  test.each([
+    [`PDB`, `0.61`, 0.61],
+    [`PDB`, `0.00`, 0],
+    [`mmCIF`, `1.00`, 1],
+    [`mmCIF`, `0.61`, 0.61],
+    [`mmCIF`, `0.00`, 0],
+  ])(`%s occupancy %s is site property %s, species stay whole`, (format, token, occupancy) => {
+    const content =
+      format === `PDB`
+        ? glycine_pdb.replace(/ 1\.00 /, ` ${token.padStart(4)} `)
+        : `data_x\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.occupancy\nN 0.0 0.0 0.0 ${token}`
+    const site = parse_structure_file(content, format === `PDB` ? `gly.pdb` : `gly.mmcif`)
+      .sites[0]
+    expect(site.species).toEqual([{ element: `N`, occu: 1, oxidation_state: 0 }])
+    expect(site.properties.occupancy).toBe(occupancy)
+  })
+
+  test(`PDB keeps residue, chain, occupancy and B-factor per site`, () => {
     const site = parse_structure_file(glycine_pdb, `glycine.pdb`).sites[0]
-    expect(site.species[0].occu).toBe(1)
-    expect(site.properties).toEqual({ residue: `GLY`, chain: `A`, b_factor: 24.31 })
+    expect(site.properties).toEqual({
+      residue: `GLY`,
+      chain: `A`,
+      occupancy: 1,
+      b_factor: 24.31,
+    })
   })
 
   test.each([
@@ -2459,9 +2484,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
   })
 
   // PDB, mmCIF and MOL name hydrogen isotopes D/T, which fell through to the per-index fallback
-  test(`element_from_candidates reads deuterium and tritium as hydrogen`, () => {
+  test(`element_from_candidates reads D/T as hydrogen and names bad atoms 1-based`, () => {
     const elements = [`D`, `t`].map((symbol) => element_from_candidates([symbol], 1))
     expect(elements).toEqual([`H`, `H`])
+    expect(() => element_from_candidates([undefined, `Qq`], 1)).toThrow(
+      `Atom 2: 'Qq' is not an element symbol`,
+    )
   })
 
   test(`MOL bond type 4 is aromatic and unsupported query types fall back to single`, () => {
@@ -2700,13 +2728,13 @@ describe(`molecular and LAMMPS structure formats`, () => {
   test.each([
     // Both readings find a valid type: molecule id 1 is indistinguishable from a charge
     // of 1, and guessing would silently label the atoms from the wrong column
-    [`ambiguous`, 2, [`1 1 1 1.0 1.0 1.0`, `2 1 2 2.0 2.0 2.0`], /both charge and molecular put a valid atom type/],
+    [`an ambiguous`, 2, [`1 1 1 1.0 1.0 1.0`, `2 1 2 2.0 2.0 2.0`], /both charge and molecular put a valid atom type/],
     // Neither column 2 nor column 3 holds a declared type
-    [`unreadable`, 2, [`1 5 9 1.0 1.0 1.0`], /none of \[charge, molecular\] puts an integer atom type in 1\.\.2/],
+    [`an unreadable`, 2, [`1 5 9 1.0 1.0 1.0`], /none of \[charge, molecular\] puts an integer atom type in 1\.\.2/],
     // `sphere` columns declared as `full`: the type column then holds the diameter, which
     // must not be rounded into an invented element
-    [`mis-declared`, 1, [`1 1 1.5 2.7 1.0 1.0 1.0`], /non-integer atom type '1.5' in column 3/, ` # full`],
-  ])(`LAMMPS data rejects an %s atom style`, (_name, types, rows, expected, style = ``) => {
+    [`a mis-declared`, 1, [`1 1 1.5 2.7 1.0 1.0 1.0`], /non-integer atom type '1.5' in column 3/, ` # full`],
+  ])(`LAMMPS data rejects %s atom style`, (_name, types, rows, expected, style = ``) => {
     expect(() => parse_structure_file(lammps_no_style(types, rows, style), `test.lmp`)).toThrow(expected)
   })
 
@@ -2756,13 +2784,32 @@ describe(`molecular and LAMMPS structure formats`, () => {
 describe(`multi-model / multi-record structure files`, () => {
   const pdb_model = (serial: number, xyz: number[]) =>
     `MODEL        ${serial}\n${pdb_atom_line(1, ` C  `, xyz, `C`)}\nENDMDL`
-  const pdb_conformer = (alt_loc: string, xyz: number[], res_name = `MOL`) => {
-    const line = pdb_atom_line(1, ` CB `, xyz, `C`)
-    return `${line.slice(0, 16)}${alt_loc}${res_name}${line.slice(20)}`
+  // res_id is columns 22-27: chain, resSeq and insertion code
+  const pdb_conformer = (
+    alt_loc: string,
+    xyz: number[],
+    res_name = `MOL`,
+    atom_name = ` CB `,
+    res_id = `A   1 `,
+  ) => {
+    const line = pdb_atom_line(1, atom_name, xyz, `C`)
+    return `${line.slice(0, 16)}${alt_loc}${res_name} ${res_id}${line.slice(27)}`
   }
+  const pdb_lines = (...lines: Parameters<typeof pdb_conformer>[]) =>
+    lines.map((args) => pdb_conformer(...args)).join(`\n`)
   const mmcif_loop = (tags: string[], rows: string[]) =>
     [`data_test`, `loop_`, ...tags.map((tag) => `_atom_site.${tag}`), ...rows].join(`\n`)
   const xyz_tags = [`Cartn_x`, `Cartn_y`, `Cartn_z`]
+  const alt_tags = [
+    `type_symbol`,
+    `label_atom_id`,
+    `label_alt_id`,
+    `auth_asym_id`,
+    `label_asym_id`,
+    `auth_seq_id`,
+    `pdbx_PDB_ins_code`,
+    ...xyz_tags,
+  ]
   // frames differ in coordinates as well as count so leakage of frame 2 is visible
   const dump_frame = (num_atoms: number, coord: number) =>
     lammps_dump(
@@ -2798,10 +2845,21 @@ describe(`multi-model / multi-record structure files`, () => {
     [`PDB keeps only alternate location A`, `alt.pdb`, `${pdb_conformer(`A`, [1, 2, 3])}\n${pdb_conformer(`B`, [4, 5, 6])}`, [[`C`, [1, 2, 3]]]],
     // an atom listed only under B/C keeps its first conformer rather than vanishing
     [`PDB keeps the first listed alternate location`, `alt.pdb`, `${pdb_conformer(`B`, [1, 2, 3])}\n${pdb_conformer(`C`, [4, 5, 6])}`, [[`C`, [1, 2, 3]]]],
-    // C listed only as B/C conformers, N as A/B: one site each, at its first position
-    [`mmCIF keeps each atom's first alternate conformer`, `alt.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_seq_id`, ...xyz_tags], [`C C B 1 0.0 0.0 0.0`, `C C C 1 0.5 0.0 0.0`, `N N A 1 1.0 0.0 0.0`, `N N B 1 1.5 0.0 0.0`, `O O . 1 2.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`N`, [1, 0, 0]], [`O`, [2, 0, 0]]]],
-    // microheterogeneity: conformers A/B are different residues at the same resSeq
-    [`PDB keeps the first residue of a microheterogeneous site`, `micro.pdb`, `${pdb_conformer(`A`, [1, 2, 3], `GLY`)}\n${pdb_conformer(`B`, [4, 5, 6], `ALA`)}`, [[`C`, [1, 2, 3]]]],
+    // one residue (label_seq_id 1, no auth_seq_id) lists C as B/C and N as A/B: its first
+    // listed conformer is B, so N is read from B too rather than mixing conformers per atom
+    [`mmCIF keeps each residue's first alternate conformer`, `alt.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_seq_id`, ...xyz_tags], [`C C B 1 0.0 0.0 0.0`, `C C C 1 0.5 0.0 0.0`, `N N A 1 1.0 0.0 0.0`, `N N B 1 1.5 0.0 0.0`, `O O . 1 2.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`N`, [1.5, 0, 0]], [`O`, [2, 0, 0]]]],
+    // without auth_seq_id, label_seq_id tells residues 1 and 2 apart
+    [`mmCIF falls back to label_seq_id for the residue`, `alt.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_seq_id`, ...xyz_tags], [`C C A 1 0.0 0.0 0.0`, `C C B 2 1.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`C`, [1, 0, 0]]]],
+    // microheterogeneity: conformers A/B are different residues at the same resSeq, and
+    // ALA's B-only CB must not graft onto GLY
+    [`PDB keeps the first residue of a microheterogeneous site`, `micro.pdb`, pdb_lines([`A`, [1, 0, 0], `GLY`, ` N  `], [`A`, [2, 0, 0], `GLY`, ` CA `], [`B`, [4, 0, 0], `ALA`, ` N  `], [`B`, [5, 0, 0], `ALA`, ` CA `], [`B`, [6, 0, 0], `ALA`, ` CB `]), [[`C`, [1, 0, 0]], [`C`, [2, 0, 0]]]],
+    // a blank-altLoc OG is the atom; its B row would be a ghost, while B-only CB stays
+    [`PDB drops alt locs of an atom that has a blank-altLoc row`, `blank.pdb`, pdb_lines([` `, [0, 0, 0], `SER`, ` OG `], [`B`, [0.6, 0, 0], `SER`, ` OG `], [`B`, [2, 0, 0], `SER`, ` CB `]), [[`C`, [0, 0, 0]], [`C`, [2, 0, 0]]]],
+    [`PDB keys alt locs per chain`, `chains.pdb`, pdb_lines([`A`, [1, 0, 0], `MOL`, ` CB `, `A   1 `], [`B`, [2, 0, 0], `MOL`, ` CB `, `B   1 `]), [[`C`, [1, 0, 0]], [`C`, [2, 0, 0]]]],
+    [`PDB keys alt locs per insertion code`, `icode.pdb`, pdb_lines([`A`, [1, 0, 0], `MOL`, ` CB `, `A  52 `], [`B`, [2, 0, 0], `MOL`, ` CB `, `A  52A`]), [[`C`, [1, 0, 0]], [`C`, [2, 0, 0]]]],
+    [`mmCIF keys alt locs per auth chain`, `chains.mmcif`, mmcif_loop(alt_tags, [`C C A A A 1 ? 0.0 0.0 0.0`, `C C B B A 1 ? 1.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`C`, [1, 0, 0]]]],
+    [`mmCIF keys alt locs per label_asym_id`, `asym.mmcif`, mmcif_loop(alt_tags, [`C C A A A 1 ? 0.0 0.0 0.0`, `C C B A B 1 ? 1.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`C`, [1, 0, 0]]]],
+    [`mmCIF keys alt locs per insertion code`, `icode.mmcif`, mmcif_loop(alt_tags, [`C C A A A 52 ? 0.0 0.0 0.0`, `C C B A A 52 A 1.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`C`, [1, 0, 0]]]],
     // waters have label_seq_id `.`, so only auth_seq_id tells HOH 101/102/103 apart
     [`mmCIF keeps each water's first alternate conformer`, `water.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_comp_id`, `label_seq_id`, `auth_seq_id`, `label_asym_id`, ...xyz_tags], [`O O B HOH . 101 A 0.0 0.0 0.0`, `O O A HOH . 102 A 5.0 0.0 0.0`, `O O B HOH . 102 A 5.5 0.0 0.0`, `O O A HOH . 103 A 9.0 0.0 0.0`]), [[`O`, [0, 0, 0]], [`O`, [5, 0, 0]], [`O`, [9, 0, 0]]]],
     [`mmCIF keeps only the first pdbx_PDB_model_num`, `models.mmcif`, mmcif_loop([`type_symbol`, ...xyz_tags, `pdbx_PDB_model_num`], [`C 0.0 0.0 0.0 1`, `N 1.0 0.0 0.0 1`, `C 5.0 5.0 5.0 2`]), [[`C`, [0, 0, 0]], [`N`, [1, 0, 0]]]],

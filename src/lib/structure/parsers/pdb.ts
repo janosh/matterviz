@@ -132,12 +132,13 @@ export const parse_pdb = (content: string): AnyStructure => {
       `PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`,
     )
   }
-  // altLoc is column 17; the atom is named by atom name, chain and resSeq + iCode. resName
+  // altLoc is column 17; a residue is chain + resSeq + iCode (columns 22-27). resName
   // stays out of the key: microheterogeneity lists different residues per conformer.
   const atom_lines = keep_first_alt_locs(
     model_lines,
     (line) => (line[16] === ` ` ? undefined : line[16]),
-    (line) => `${line.slice(12, 16)}|${line.slice(21, 27)}`,
+    (line) => line.slice(21, 27),
+    (line) => line.slice(12, 16),
   )
   if (atom_lines.length < model_lines.length) {
     console.warn(
@@ -165,22 +166,16 @@ export const parse_pdb = (content: string): AnyStructure => {
     const b_factor = num_field(line, 60, 66)
     const residue = line.slice(17, 20).trim()
     const chain = line.slice(21, 22).trim()
+    // The occupancy column is refinement metadata (alt-loc weights, unmodeled atoms at 0),
+    // not compositional disorder, so it stays a site property and the species is whole
     const properties: Record<string, unknown> = {
       ...(residue && { residue }),
       ...(chain && { chain }),
+      ...(Number.isFinite(occupancy) && { occupancy }),
       ...(Number.isFinite(b_factor) && { b_factor }),
     }
 
-    sites.push(
-      make_site(
-        element,
-        abc,
-        xyz,
-        `${element}${atom_idx + 1}`,
-        properties,
-        Number.isFinite(occupancy) ? occupancy : 1,
-      ),
-    )
+    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`, properties))
     record_atom_id(site_idx_by_serial, atom_serials[atom_idx], sites.length - 1)
   }
 

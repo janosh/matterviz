@@ -442,6 +442,19 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
   })
 })
 
+// A slightly distorted fcc still analyzes as Fm-3m, but its std_cell volume is not exactly 4x
+// the input's: the volume ratio gave a charge of 4.0000009 that bond-order perception, which
+// looks charges up by exact key, could not use
+test(`scales charge to an exact integer for a real moyo conventional cell`, async () => {
+  await init_moyo_for_tests()
+  const matrix = fcc_primitive_matrix(3.61)
+  matrix[0][0] += 1e-6
+  const prim = make_crystal(matrix, [{ element: `Cu`, abc: [0, 0, 0] }], { charge: 1 })
+  const sym_data = await analyze_structure_symmetry(prim, { symprec: 1e-3 })
+  expect(sym_data.number).toBe(225)
+  expect(transform_cell(prim, `conventional`, sym_data).charge).toBe(4)
+})
+
 describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   beforeAll(init_moyo_for_tests)
 

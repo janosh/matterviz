@@ -521,6 +521,17 @@
     return x_start === null || x_end === null ? null : [x_start, x_end]
   })
 
+  // The plot is only mounted while there is something to draw, but a bound view outlives it in
+  // the host (e.g. BandsAndDos sync state). ScatterPlot honors a view passed at mount, so drop
+  // the view when the plot goes away or a remount would restore the old path's range.
+  const show_plot = $derived(series_data.length > 0 && !strict_path_error)
+  $effect(() => {
+    if (!show_plot) return
+    return () => {
+      view = undefined
+    }
+  })
+
   const path_settings = track_settings(
     () => ({
       path_mode,
@@ -536,7 +547,7 @@
   )
 </script>
 
-{#if series_data.length > 0 && !strict_path_error}
+{#if show_plot}
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}

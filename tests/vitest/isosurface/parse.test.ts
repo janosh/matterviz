@@ -66,14 +66,42 @@ describe(`parse_decimal_token`, () => {
   // Fast path (integer mantissa < 2^53, |exp10| <= 22) and every fallback trigger must
   // agree with Number(normalize_scientific_notation(token)) bit for bit (Object.is, so
   // -0 and NaN are distinguished)
-  // oxfmt-ignore
-  test.each(
-    `0 -0 1 +1 .5 5. 1.e2 +.5e-1 0.1 0.7 3.14159265358979 0.12345678901E+02 -1.5D+02 1d5 1D-05 1.0D-04 9.42600000000E-125 123456789012345678 9007199254740993 1e23 1e-23 1e22 1e-22 0.0000000000000000000001 1.7976931348623157e308 5e-324 abc 1.2.3 1e e5 .e2 1e+ --1 1-2 −1.5 1*^5`.split(` `),
-  )(`%s matches Number()`, (token) => {
-    const padded = `  ${token}\n`
-    const reference = Number(normalize_scientific_notation(token))
-    expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
-  })
+  const fast_path = [
+    `0`,
+    `-0`,
+    `1`,
+    `+1`,
+    `.5`,
+    `5.`,
+    `1.e2`,
+    `+.5e-1`,
+    `0.1`,
+    `0.7`,
+    `3.14159265358979`,
+  ]
+  const fortran = [`0.12345678901E+02`, `-1.5D+02`, `1d5`, `1D-05`, `1.0D-04`]
+  // mantissas past 2^53, |exp10| past 22 and the ends of the float range
+  const fallback = [
+    `9.42600000000E-125`,
+    `123456789012345678`,
+    `9007199254740993`,
+    `1e23`,
+    `1e-23`,
+    `1e22`,
+    `1e-22`,
+    `0.0000000000000000000001`,
+    `1.7976931348623157e308`,
+    `5e-324`,
+  ]
+  const invalid = [`abc`, `1.2.3`, `1e`, `e5`, `.e2`, `1e+`, `--1`, `1-2`, `−1.5`, `1*^5`]
+  test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
+    `%s matches Number()`,
+    (token) => {
+      const padded = `  ${token}\n`
+      const reference = Number(normalize_scientific_notation(token))
+      expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
+    },
+  )
 
   // Fortran drops the exponent letter for 3-digit exponents; two digits still need a letter
   test.each([
@@ -475,7 +503,7 @@ describe(`parse_cube`, () => {
     // oxfmt-ignore
     const result = parse_cube(make_cube({ n_atoms: 2, atoms: [[0, 0, 0, 0, 0], [6, 0, 1, 1, 1]] }))
     expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`C`])
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`Z = 0 ghost/BSSE centre`))
+    expect(warn).toHaveBeenCalledWith(`.cube atom 1: skipping Z = 0 ghost/BSSE centre`)
     const clean = parse_cube(make_cube({ n_atoms: 1, atoms: [[6, 0, 1, 1, 1]] }))
     expect(result?.volumes).toEqual(clean?.volumes)
   })
@@ -545,6 +573,7 @@ describe(`parse_cube`, () => {
   })
 
   test(`skips malformed atom lines and parses valid ones`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     // the middle atom line has only 2 tokens
     const result = parse_cube(
       make_cube({
@@ -557,6 +586,8 @@ describe(`parse_cube`, () => {
       }),
     )
     expect(result.structure.sites.map((site) => site.species[0].element)).toEqual([`C`, `O`])
+    // atoms are numbered from 1
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\.cube atom 2: malformed line /))
   })
 })
 

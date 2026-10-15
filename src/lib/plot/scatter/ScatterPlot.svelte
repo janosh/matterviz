@@ -136,6 +136,7 @@
     strict_x_direction,
     pick_tooltip_bg,
     scatter_legend_rows,
+    scatter_series_label,
     scatter_line_style,
   } from './scatter-data'
 
@@ -1559,13 +1560,16 @@
   })
 
   // A data swap or host-hidden series fires no pointer event, so re-resolve the hovered point
-  // on every data change (tracking its new values, or closing once it is gone)
+  // on every data change (tracking its new values, or closing once it is gone, which the host
+  // hears as on_point_hover(null))
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
       if (!tooltip_point) return
       const next = plotted_point(tooltip_point)
-      if (next !== tooltip_point) tooltip_point = next
+      if (next === tooltip_point) return
+      tooltip_point = next
+      if (!next) on_point_hover?.(null)
     })
   })
 
@@ -1628,10 +1632,10 @@
   })
 
   // === Export ===
-  // Unlabelled series are numbered by input position, as in the legend
+  // Series are named as in the legend (unlabelled ones numbered by input position)
   const csv_series = () =>
     filtered_series.map((series_data) => ({
-      label: series_data.label ?? `series ${series_data.orig_series_idx + 1}`,
+      label: scatter_series_label(series_data, series_data.orig_series_idx),
       x: series_data.filtered_data.map((point) => point.x),
       y: series_data.filtered_data.map((point) => point.y),
       extras: {

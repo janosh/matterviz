@@ -200,6 +200,41 @@ test(`reference line and plane span a reversed axis range`, async () => {
   }
 })
 
+// An unnamed plane's position must not share a key with another plane's numeric id: duplicate
+// keys throw, and a toggled plane would otherwise rebuild (or replace) its neighbours
+test(`reference planes key by id or position without collisions across visibility toggles`, async () => {
+  const visible = $state({ first: false })
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      get ref_planes() {
+        return [
+          { type: `xy` as const, z: 0.2, visible: visible.first },
+          { type: `xy` as const, z: 0.5 },
+          { type: `xy` as const, z: 0.8, id: 1 },
+        ]
+      },
+      ranges: { x: [0, 1], y: [0, 1], z: [0, 1] },
+      display: { show_axes: false },
+      gizmo: false,
+    }),
+  )
+  try {
+    flushSync()
+    // the background planes use PlaneGeometry, reference planes a plain BufferGeometry quad
+    const planes = () =>
+      find_objects(scene, Mesh).filter((mesh) => mesh.geometry.type === `BufferGeometry`)
+    const before = planes()
+    expect(before).toHaveLength(2)
+    visible.first = true
+    flushSync()
+    const after = planes()
+    expect(after).toHaveLength(3)
+    for (const mesh of before) expect(after).toContain(mesh)
+  } finally {
+    await unmount_scene()
+  }
+})
+
 // Every object under `root` of the given class
 const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   root: Object3D,
@@ -296,7 +331,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     const tick_labels = [...document.querySelectorAll(`.tick-label`)].map(
       (node) => node.textContent,
     )
-    expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `0`, `2`, `0`, `1`, `2`, `3`, `4`])
+    expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `a`, `b`, `0`, `1`, `2`, `3`, `4`])
     expect(instances().count).toBe(4)
     expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
     const [group, ...others] = find_objects(scene, ClippingGroup)

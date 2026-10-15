@@ -3,6 +3,7 @@ import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { bind_props } from '../setup'
 import { make_phase } from '../test-fixtures'
 
 // Entry with tabulated free energies
@@ -112,6 +113,26 @@ describe(`ChemPot temperature config wiring`, () => {
     expect(document.querySelector(`.chempot-export-pane.pane-open`)).not.toBeNull()
     expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
     expect(slider_value()).toBe(`700`)
+  })
+
+  // Without interpolation an untabulated T snaps to the nearest tabulated one (lower on
+  // ties); with it only out-of-range T snap
+  test.each([
+    [false, 500, 600],
+    [false, 450, 300],
+    [true, 500, 500],
+    [true, 1200, 900],
+  ])(`interpolate_temperature=%s snaps T=%s to %s`, async (interpolate, temperature, want) => {
+    const temps = [300, 600, 900]
+    const entries = [
+      temp_phase({ Li: 1 }, -1, temps, [-1.2, -1, -0.8]),
+      temp_phase({ O: 1 }, -2, temps, [-2.2, -2, -1.8]),
+      temp_phase({ Li: 1, O: 1 }, -1.6, temps, [-1.8, -1.6, -1.4]),
+    ]
+    const state = { temperature }
+    const config = { ...base_config, interpolate_temperature: interpolate }
+    await mount_settled(ChemPotDiagram2D, bind_props({ entries, config }, state))
+    expect(state.temperature).toBe(want)
   })
 
   test(`3D honors interpolate_temperature override`, async () => {

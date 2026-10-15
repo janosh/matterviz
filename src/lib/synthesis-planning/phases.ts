@@ -233,7 +233,7 @@ export function place_target(
     )
   }
   const ground_state = phases[idx]
-  if (ground_state.id !== resolved.id) phases[idx] = { ...resolved, e_above_hull_0K: NaN }
+  if (ground_state.id !== resolved.id) phases[idx] = { ...resolved }
   return { target: phases[idx], ground_state }
 }
 

@@ -614,30 +614,100 @@ describe(`clean_multi_series`, () => {
     [0, NaN, 4, 6, 8],
     [10, 12, NaN, 16, 18],
   ]
-  type Row = [string, number[], number[][], CleaningConfig]
-  type Expected = [number[], number[][], Partial<Record<keyof CleaningQuality, number[]>>]
-  // each row: inputs, then the expected x, cleaned y and per-series quality counts.
-  // The last interpolates before filtering, as clean_series does: filled values can violate bounds
-  // oxfmt-ignore
-  it.each<[...Row, ...Expected]>([
-    [`empty y`, [0, 1, 2], [], {},
-      [0, 1, 2], [], {}],
-    [`shared valid indices`, x_5, gapped, {},
-      [0, 3, 4], [[0, 6, 8], [10, 16, 18]], { points_removed: [2, 2] }],
-    [`per-series interpolation`, x_5, gapped, { invalid_values: `interpolate` },
-      x_5, [[0, 2, 4, 6, 8], [10, 12, 14, 16, 18]], { invalid_values_found: [1, 1] }],
-    [`clamped bounds`, [0, 1, 2], [[-5, 5, 15], [0, 10, 20]], { bounds: { min: 0, max: 10 } },
-      [0, 1, 2], [[0, 5, 10], [0, 10, 10]], { bounds_violations: [2, 1] }],
-    [`filtered bounds`, x_5, [[-10, 5, 10, 15, 100], [0, 5, 10, 15, 20]], { bounds: { min: 0, max: 20, mode: `filter` } },
-      [1, 2, 3], [[5, 10, 15], [5, 10, 15]], { bounds_violations: [2, 0] }],
-    [`interpolation then filtering`, [0, 1, 2], [[-5, NaN, 5], [0, 5, 10]], { invalid_values: `interpolate`, bounds: { min: 1, max: 10, mode: `filter` } },
-      [2], [[5], [10]], { bounds_violations: [2, 1] }],
-  ])(`cleans %s`, (_desc, x_values, y_arrays, config, x_expected, cleaned_y, quality) => {
+  type CleanCase = {
+    desc: string
+    x_values: number[]
+    y_arrays: number[][]
+    config: CleaningConfig
+    x_expected: number[]
+    cleaned_y: number[][]
+    quality: Partial<Record<keyof CleaningQuality, number[]>> // per-series counts
+  }
+  it.each<CleanCase>([
+    {
+      desc: `empty y`,
+      x_values: [0, 1, 2],
+      y_arrays: [],
+      config: {},
+      x_expected: [0, 1, 2],
+      cleaned_y: [],
+      quality: {},
+    },
+    {
+      desc: `shared valid indices`,
+      x_values: x_5,
+      y_arrays: gapped,
+      config: {},
+      x_expected: [0, 3, 4],
+      cleaned_y: [
+        [0, 6, 8],
+        [10, 16, 18],
+      ],
+      quality: { points_removed: [2, 2] },
+    },
+    {
+      desc: `per-series interpolation`,
+      x_values: x_5,
+      y_arrays: gapped,
+      config: { invalid_values: `interpolate` },
+      x_expected: x_5,
+      cleaned_y: [
+        [0, 2, 4, 6, 8],
+        [10, 12, 14, 16, 18],
+      ],
+      quality: { invalid_values_found: [1, 1] },
+    },
+    {
+      desc: `clamped bounds`,
+      x_values: [0, 1, 2],
+      y_arrays: [
+        [-5, 5, 15],
+        [0, 10, 20],
+      ],
+      config: { bounds: { min: 0, max: 10 } },
+      x_expected: [0, 1, 2],
+      cleaned_y: [
+        [0, 5, 10],
+        [0, 10, 10],
+      ],
+      quality: { bounds_violations: [2, 1] },
+    },
+    {
+      desc: `filtered bounds`,
+      x_values: x_5,
+      y_arrays: [
+        [-10, 5, 10, 15, 100],
+        [0, 5, 10, 15, 20],
+      ],
+      config: { bounds: { min: 0, max: 20, mode: `filter` } },
+      x_expected: [1, 2, 3],
+      cleaned_y: [
+        [5, 10, 15],
+        [5, 10, 15],
+      ],
+      quality: { bounds_violations: [2, 0] },
+    },
+    // interpolates before filtering, as clean_series does: filled values can violate bounds
+    {
+      desc: `interpolation then filtering`,
+      x_values: [0, 1, 2],
+      y_arrays: [
+        [-5, NaN, 5],
+        [0, 5, 10],
+      ],
+      config: { invalid_values: `interpolate`, bounds: { min: 1, max: 10, mode: `filter` } },
+      x_expected: [2],
+      cleaned_y: [[5], [10]],
+      quality: { bounds_violations: [2, 1] },
+    },
+  ])(`cleans $desc`, ({ x_values, y_arrays, config, x_expected, cleaned_y, quality }) => {
     const result = clean_multi_series(x_values, y_arrays, config)
     expect(result).toMatchObject({ x: x_expected, cleaned_y })
     expect(result.quality).toHaveLength(y_arrays.length)
     for (const [key, counts] of Object.entries(quality))
-      expect(result.quality.map((entry) => entry[key as keyof CleaningQuality])).toEqual(counts)
+      expect(result.quality.map((entry) => entry[key as keyof CleaningQuality])).toEqual(
+        counts,
+      )
   })
 
   // silently truncating to the shortest array hid upstream length bugs

@@ -27,6 +27,20 @@ const sweep_result: StructureIdSweep = {
   frame_stride: 6,
 }
 
+// Passthrough that records the props the pane hands its plot
+const plot_props = vi.hoisted(() => ({
+  current: undefined as Record<string, unknown> | undefined,
+}))
+vi.mock(`#lib/structure-id/StructureTypePlot.svelte`, async (import_original) => {
+  const original = await import_original<{ default: (...args: unknown[]) => unknown }>()
+  return {
+    default: (anchor: unknown, props: Record<string, unknown>) => {
+      plot_props.current = props
+      return original.default(anchor, props)
+    },
+  }
+})
+
 let mounted_component: ReturnType<typeof mount> | undefined
 afterEach(async () => {
   if (mounted_component) await unmount(mounted_component)
@@ -163,4 +177,31 @@ test(`hovering a structure type reports its atoms from the analysed frame neares
     expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
     expect(document.body.textContent).not.toContain(hint)
   }
+})
+
+// The plot's Frame axis counts from 1 like the step input; clicks hand back 0-based indices
+test(`numbers plotted frames from 1 and seeks clicked frames 0-based`, async () => {
+  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
+  const on_frame_select = vi.fn()
+  const result = {
+    frame_numbers: [0, 10],
+    results: [fcc_result, fcc_result],
+    frame_stride: 10,
+  }
+  mounted_component = mount(TrajectoryStructureIdPane, {
+    target: document.body,
+    props: {
+      pane_open: true,
+      run: make_run(20),
+      result,
+      current_frame_idx: 3,
+      on_frame_select,
+    },
+  })
+  await settle()
+  const { frame_labels, current_frame, on_frame_click } = plot_props.current ?? {}
+  expect([frame_labels, current_frame]).toEqual([[1, 11], 4])
+  if (typeof on_frame_click !== `function`) throw new Error(`plot got no on_frame_click`)
+  on_frame_click(11)
+  expect(on_frame_select).toHaveBeenCalledWith(10)
 })

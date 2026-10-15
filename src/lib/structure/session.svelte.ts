@@ -191,6 +191,17 @@ function same_topology(
   return true
 }
 
+// Whether a cell transform left the cell as it was: same site count and lattice to 1e-6 Å
+// (moyo rebuilds the basis in floating point, so exact equality would miss it)
+const same_cell = (transformed: AnyStructure, raw: AnyStructure): boolean => {
+  if (transformed.sites.length !== raw.sites.length) return false
+  if (!(`lattice` in transformed) || !(`lattice` in raw)) return false
+  const raw_matrix = raw.lattice.matrix
+  return transformed.lattice.matrix.every((row, row_idx) =>
+    row.every((val, col_idx) => Math.abs(val - raw_matrix[row_idx][col_idx]) < 1e-6),
+  )
+}
+
 // Per-key change detection for the invalidation effect: true when `value` differs from the
 // value last seen under `key` (never on the first sight). A plain Map on purpose: it is read
 // and written inside the effect it serves.
@@ -561,17 +572,26 @@ export class StructureSession {
         // undo away) on entering edit-atoms or switching cell type while editing. Without
         // symmetry data that view is not shown yet, so the bake waits for it to arrive.
         const base = this.base_structure
+        const raw = inputs.structure()
         if (
           measure_mode === `edit-atoms` &&
           (mode_changed || transform_changed || sym_data_changed) &&
           inputs.cell_type() !== `original` &&
           sym_data &&
           base &&
-          inputs.structure()
+          raw
         ) {
-          this.clear_selection() // picked on the previous cell
-          this.push_undo()
-          this.write_structure($state.snapshot(base))
+          // An input already in that cell (same lattice and site count) needs no bake: it
+          // would push an identical undo entry and drop the selection for nothing
+          if (!same_cell(base, raw)) {
+            this.clear_selection() // picked on the previous cell
+            this.push_undo()
+            // The viewer's camera pre-effect runs before this one re-runs on the written
+            // structure, so own_write is set here rather than on that re-run
+            this.is_internal_edit = true
+            this.own_write = true
+            inputs.set_structure($state.snapshot(base))
+          }
           inputs.set_cell_type(`original`)
         }
         if (bonds_unavailable) {

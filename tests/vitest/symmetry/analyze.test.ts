@@ -39,7 +39,8 @@ const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDa
   angle_tolerance: { type: `Default` },
 })
 
-// The cell conversion only reads pbc/charge/id/properties from the original structure.
+// The cell conversion only reads pbc/charge/id/properties (and the site count charge scales
+// by) from the original structure.
 // Distinct lattice parameter (a=4) detects whether a transformation happened.
 const original = make_crystal(4, [])
 const to_structure = (std_cell: MoyoCell, structure = original) =>
@@ -146,15 +147,15 @@ describe(`transform_cell`, () => {
     )
   })
 
-  // charge is per cell, scaled by the volume ratio to the 4Å original: it used to be copied
-  // unchanged, then divided by orbits.length (Infinity for the mock's empty orbits)
+  // charge is per cell, scaled by the site count ratio to the 1-site original: it used to be
+  // copied unchanged, then divided by orbits.length (Infinity for the mock's empty orbits)
   test.each([
     [`conventional`, 5, 2],
     [`primitive`, 3, 1],
   ] as const)(`returns %s cell with a=%d and %d sites`, (cell_type, expected_a, n_sites) => {
     const bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }]
     const structure = {
-      ...original,
+      ...make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }]),
       charge: 2,
       properties: { bonds, custom_metadata: `kept` },
     }
@@ -162,7 +163,7 @@ describe(`transform_cell`, () => {
     expect(result).not.toBe(structure)
     expect(result.lattice.a).toBeCloseTo(expected_a, 5)
     expect(result.sites).toHaveLength(n_sites)
-    expect(result.charge).toBeCloseTo((2 * expected_a ** 3) / 4 ** 3, 12)
+    expect(result.charge).toBe(2 * n_sites)
     expect(result.properties).toEqual({ custom_metadata: `kept` }) // bonds dropped
     expect(transform_cell(original, cell_type, sym_data).charge).toBeUndefined()
   })

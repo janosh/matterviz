@@ -107,13 +107,14 @@ export type HullPointOpts = {
 const is_pulsing = (entry: ConvexHullEntry, opts: HullPointOpts): boolean =>
   same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
 
-// A circle at `projected` in `color`, filled and/or stroked at the given alphas
+// A circle at `projected` in `color`, filled and/or stroked at the given alphas (an unset
+// stroke alpha keeps the color's own)
 function draw_ring(
   ctx: CanvasRenderingContext2D,
   { x, y }: Projected,
   radius: number,
   color: string,
-  { fill, stroke }: { fill?: number; stroke?: { alpha: number; width: number } },
+  { fill, stroke }: { fill?: number; stroke?: { alpha?: number; width: number } },
 ): void {
   ctx.beginPath()
   ctx.arc(x, y, radius, 0, 2 * Math.PI)
@@ -123,7 +124,7 @@ function draw_ring(
   }
   if (stroke) {
     ctx.lineWidth = stroke.width
-    ctx.strokeStyle = add_alpha(color, stroke.alpha)
+    ctx.strokeStyle = stroke.alpha === undefined ? color : add_alpha(color, stroke.alpha)
     ctx.stroke()
   }
 }
@@ -151,7 +152,7 @@ function draw_highlight_effect(
     const stroke = { alpha: opacity * 0.8, width: 1.5 * scale }
     draw_ring(ctx, projected, hl_size, color, { fill: opacity * 0.4, stroke })
   } else if (effect === `size` || effect === `both`) {
-    draw_ring(ctx, projected, hl_size, color, { stroke: { alpha: 1, width: 2 * scale } })
+    draw_ring(ctx, projected, hl_size, color, { stroke: { width: 2 * scale } })
   }
 }
 

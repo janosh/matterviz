@@ -75,11 +75,9 @@ const disordered_site_reason = (structure: AnyStructure): string | undefined => 
   return idx === -1 ? undefined : disordered_site_error(structure.sites[idx], idx)
 }
 
-// The element of an ordered site, or `X` when it has no species
-const site_element = (site: Site, idx: number): string => {
-  if (is_disordered_site(site)) throw new Error(disordered_site_error(site, idx))
-  return site.species[0]?.element || `X`
-}
+// The element of an ordered site (callers refuse disordered ones up front), or `X` when it
+// has no species
+const site_element = (site: Site): string => site.species[0]?.element || `X`
 
 // cart→frac converter built on first use: a singular lattice (extXYZ `Lattice="... 0 0 0"`)
 // has no inverse, and a site that already carries abc never needs one
@@ -258,7 +256,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
-    lines.push(`${site_element(site, site_idx)} ${columns.join(` `)}`)
+    lines.push(`${site_element(site)} ${columns.join(` `)}`)
   }
   return lines.join(`\n`)
 }
@@ -367,6 +365,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
 }
 
 export function structure_to_poscar_str(input?: AnyStructure): string {
+  if (!input?.sites) throw new Error(`No structure or sites to export`)
+  const reason = poscar_export_unavailable_reason(input)
+  if (reason) throw new Error(`POSCAR export: ${reason}`)
   const structure = require_lattice(input, `POSCAR`)
   const { lattice } = structure
 
@@ -384,7 +385,7 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
   // VASP wants one block per species: site indices grouped by element in first-appearance order
   const sites_by_element = new Map<string, number[]>()
   for (const [idx, site] of structure.sites.entries()) {
-    const element = site_element(site, idx)
+    const element = site_element(site)
     const group = sites_by_element.get(element)
     if (group) group.push(idx)
     else sites_by_element.set(element, [idx])

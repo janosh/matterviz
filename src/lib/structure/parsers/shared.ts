@@ -263,20 +263,30 @@ export const read_cell_params = (
   return params.length < tags.length ? null : params
 }
 
-// Alternate location indicators list one atom at several positions (overlapping ghost atoms):
-// keep each atom's (`atom_key`) first listed conformer, not just `A`. Rows without one stay.
+// Alternate location indicators list one atom at several positions (overlapping ghost atoms).
+// Each residue (`residue_key`) keeps one conformer: its first listed alt loc, not just `A`,
+// so microheterogeneity (GLY in A, ALA in B at one resSeq) never mixes the two residues.
+// Rows without an alt loc always stay, and an atom (`atom_name`) that has such a row drops
+// its alt-loc rows, which would otherwise draw a ghost copy next to it.
 export function keep_first_alt_locs<Row>(
   rows: readonly Row[],
   alt_loc: (row: Row) => string | undefined,
-  atom_key: (row: Row) => string,
+  residue_key: (row: Row) => string,
+  atom_name: (row: Row) => string,
 ): Row[] {
   const first_loc = new Map<string, string>()
+  const blank_atoms = new Set<string>()
+  for (const row of rows) {
+    const loc = alt_loc(row)
+    const key = residue_key(row)
+    if (loc === undefined) blank_atoms.add(`${key}|${atom_name(row)}`)
+    else if (!first_loc.has(key)) first_loc.set(key, loc)
+  }
   return rows.filter((row) => {
     const loc = alt_loc(row)
     if (loc === undefined) return true
-    const key = atom_key(row)
-    if (!first_loc.has(key)) first_loc.set(key, loc)
-    return first_loc.get(key) === loc
+    const key = residue_key(row)
+    return first_loc.get(key) === loc && !blank_atoms.has(`${key}|${atom_name(row)}`)
   })
 }
 
@@ -293,7 +303,7 @@ export const cell_params_to_matrix = (params: readonly number[]): math.Matrix3x3
 
 // MD, docking and format-conversion tools emit a 1 1 1 90 90 90 cell (VMD 0 0 0 90 90 90)
 // as a placeholder for genuinely aperiodic systems, so such cells mean "no cell"
-export const is_placeholder_cell = (params: readonly number[]): boolean =>
+const is_placeholder_cell = (params: readonly number[]): boolean =>
   [0, 1].some((edge) =>
     params.slice(0, 3).every((length) => Math.abs(length - edge) < 1e-6),
   ) && params.slice(3).every((angle) => Math.abs(angle - 90) < 1e-6)

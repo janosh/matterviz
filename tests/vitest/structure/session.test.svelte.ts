@@ -16,7 +16,7 @@ import { MAX_HISTORY, StructureSession } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-import { analyze_structure_symmetry } from '#lib/symmetry/analyze.js'
+import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
@@ -308,6 +308,42 @@ describe(`symmetry-aware display`, () => {
     expect(session.delete_selected()).toBe(true)
     flushSync()
     expect(host.structure?.sites).toHaveLength(3)
+  })
+
+  it(`bakes a cell type switch when symmetry data is already present`, async () => {
+    await init_moyo_for_tests()
+    const structure = prim_fcc_cu()
+    const sym_data = await analyze_structure_symmetry(structure)
+    const { host, session } = make_session({ structure, sym_data, measure_mode: `edit-atoms` })
+    host.cell_type = `conventional`
+    flushSync()
+    const { length: n_undo } = session.history.undo_stack
+    expect([host.cell_type, host.structure?.sites.length, n_undo]).toEqual([`original`, 4, 1])
+  })
+
+  // An input already in the requested cell bakes to itself: no undo entry, the pick stays
+  it(`skips the bake when the cell type leaves the cell unchanged`, async () => {
+    await init_moyo_for_tests()
+    const prim = prim_fcc_cu()
+    const conventional = transform_cell(
+      prim,
+      `conventional`,
+      await analyze_structure_symmetry(prim),
+    )
+    const sym_data = await analyze_structure_symmetry(conventional)
+    const { host, session } = make_session({
+      structure: conventional,
+      sym_data,
+      measure_mode: `edit-atoms`,
+    })
+    const input = host.structure
+    host.selected_sites = [2]
+    host.cell_type = `conventional`
+    flushSync()
+    expect(host.cell_type).toBe(`original`)
+    expect(host.structure).toBe(input)
+    expect(session.history.undo_stack).toHaveLength(0)
+    expect(host.selected_sites).toEqual([2])
   })
 })
 

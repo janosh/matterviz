@@ -6,7 +6,7 @@ import { SvelteMap } from 'svelte/reactivity'
 import { point_in_rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
 import { measure_text_width } from '#lib/plot/core/tick-layout.js'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   clip_rect,
   inside_clip_path,
@@ -508,29 +508,73 @@ describe(`BarPlot`, () => {
     }
   })
 
-  // the tooltip must not be a snapshot: it tracks new data under a resting pointer
-  test(`a resting hover follows replaced data and closes once its bar is gone`, async () => {
-    const [s0, s1] = grouped
-    // a reactive getter lets this plain .ts test replace the series under the resting pointer
-    const current = new SvelteMap<string, BarSeries[]>([[`series`, [s0, s1]]])
-    const plot = await mount_sized_bar_plot({
-      get series() {
-        return current.get(`series`)
-      },
+  // the tooltip must not be a snapshot: it tracks new data under a resting pointer, and
+  // closes (telling the host) once its bar is gone or hidden, which fires no pointer event
+  test.each([
+    [`series removed`, [grouped[0]]],
+    [`bar removed`, [grouped[0], { ...grouped[1], x: [1], y: [6] }]],
+    [`series hidden`, [grouped[0], { ...grouped[1], visible: false }]],
+  ])(
+    `a resting hover follows replaced data and closes once its bar is %s`,
+    async (_, gone) => {
+      const [s0, s1] = grouped
+      const on_bar_hover = vi.fn()
+      // a reactive getter lets this plain .ts test replace the series under the resting pointer
+      const current = new SvelteMap<string, BarSeries[]>([[`series`, [s0, s1]]])
+      const plot = await mount_sized_bar_plot({
+        get series() {
+          return current.get(`series`)
+        },
+        on_bar_hover,
+      })
+      const tooltip_after = (series: BarSeries[]) => {
+        current.set(`series`, series)
+        flushSync()
+        return plot.querySelector(`.plot-tooltip`)?.textContent ?? null
+      }
+      // S1's second bar
+      plot
+        .querySelectorAll(`.bar-series[data-series-idx="1"] path[role="button"]`)[1]
+        .dispatchEvent(mouse(`mousemove`))
+      await tick()
+      expect(tooltip_after([s0, { ...s1, y: [6, 37] }])).toMatch(/y: 37/)
+      expect(on_bar_hover).toHaveBeenCalledOnce()
+      expect(tooltip_after(gone)).toBeNull()
+      expect(on_bar_hover).toHaveBeenCalledTimes(2)
+      expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+    },
+  )
+
+  // the export holds the data as the caller gave it: category names (not their indices), no
+  // hidden series, no zero rows for categories a series lacks
+  test(`CSV export lists the caller's visible series with category names`, async () => {
+    const save = vi.fn()
+    vi.stubGlobal(`download`, save) // the global hook download() defers to
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
     })
-    const tooltip_after = (series: BarSeries[]) => {
-      current.set(`series`, series)
-      flushSync()
-      return plot.querySelector(`.plot-tooltip`)?.textContent ?? null
-    }
-    // S1's second bar
-    plot
-      .querySelectorAll(`.bar-series[data-series-idx="1"] path[role="button"]`)[1]
-      .dispatchEvent(mouse(`mousemove`))
-    await tick()
-    expect(tooltip_after([s0, { ...s1, y: [6, 37] }])).toMatch(/y: 37/)
-    expect(tooltip_after([s0])).toBeNull()
-    expect(tooltip_after([s0, { ...s1, x: [1], y: [6] }])).toBeNull()
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { x: [`A`, `B`], y: [1, 2], label: `kept` },
+        { x: [`C`], y: [3], label: `hidden`, visible: false },
+        { x: [`B`], y: [4] },
+      ],
+      controls_open: true,
+    })
+    const csv_button = () =>
+      [...plot.querySelectorAll<HTMLElement>(`button.export-btn`)].find(
+        (btn) => btn.textContent?.trim() === `CSV`,
+      )
+    await vi.waitFor(() => expect(csv_button()).toBeDefined())
+    csv_button()?.click()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
+    const [csv] = save.mock.calls[0]
+    expect(csv.trim().split(/\r?\n/)).toEqual([
+      `series,x,y`,
+      `kept,A,1`,
+      `kept,B,2`,
+      `Series 3,B,4`,
+    ])
   })
 
   test(`default tooltip shows series label for multi-series on hover`, async () => {

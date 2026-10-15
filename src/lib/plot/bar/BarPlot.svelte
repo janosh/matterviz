@@ -76,6 +76,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
@@ -514,12 +515,21 @@
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
   // Hover state is indices only: the tooltip follows new data and closes once its mark is gone
-  let hover_key = $state<{ series_idx: number; bar_idx: number; color: string } | null>(null)
-  const hover_info = $derived(
-    hover_key && hover_key.bar_idx < (internal_series[hover_key.series_idx]?.x.length ?? 0)
-      ? get_bar_data(hover_key.series_idx, hover_key.bar_idx, hover_key.color)
-      : null,
-  )
+  // or hidden. `line` marks a line-series point, whose hover callback is on_point_hover.
+  let hover_key = $state<{
+    series_idx: number
+    bar_idx: number
+    color: string
+    line?: boolean
+  } | null>(null)
+  const hover_info = $derived.by(() => {
+    if (!hover_key) return null
+    const { series_idx, bar_idx, color } = hover_key
+    const srs = internal_series[series_idx]
+    return srs && srs.visible !== false && bar_idx < srs.x.length
+      ? get_bar_data(series_idx, bar_idx, color)
+      : null
+  })
 
   function get_bar_data(
     series_idx: number,
@@ -600,18 +610,24 @@
     hover_key = null
     on_point_hover?.(null)
   }
+  clear_stale_hover(
+    () => hover_key && !hover_info,
+    () => (hover_key?.line ? clear_point_hover() : clear_hover()),
+  )
 
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
   let group_info = $derived(compute_group_info(internal_series, mode))
 
   // === Export ===
+  // The caller's visible series as given (category names, no padding for absent categories),
+  // unlabelled ones numbered by input position as in the legend
   const handle_export = create_chart_exporter(frame, () =>
     series_to_csv_rows(
-      internal_series.map((srs, series_idx) => ({
-        label: srs.label ?? `series ${series_idx + 1}`,
-        x: srs.x,
-        y: srs.y,
-      })),
+      series.flatMap((srs, series_idx) =>
+        srs.visible === false
+          ? []
+          : [{ label: srs.label ?? `Series ${series_idx + 1}`, x: srs.x, y: srs.y }],
+      ),
     ),
   )
 </script>
@@ -722,7 +738,7 @@
                 if (!point) return clear_point_hover()
                 hovered = true
                 const fill = line_point_fill(point, color)
-                hover_key = { series_idx, bar_idx: point.idx, color: fill }
+                hover_key = { series_idx, bar_idx: point.idx, color: fill, line: true }
                 const point_data = get_bar_data(series_idx, point.idx, fill)
                 on_point_hover?.({ ...point_data, event: evt, point })
               }}

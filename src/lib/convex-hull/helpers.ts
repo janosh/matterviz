@@ -433,8 +433,9 @@ export interface TemperatureAnalysis {
   available_temperatures: number[] // sorted unique T values (union across all entries)
 }
 
-// Snap an unset, out-of-range or (without interpolation) untabulated temperature to the lowest
-// available one; left alone when there is no temperature data
+// Snap an unset temperature to the lowest available one, and an out-of-range or (without
+// interpolation) untabulated one to the nearest (lower on ties); left alone when there is no
+// temperature data
 export function get_valid_temperature(
   temperature: number | undefined,
   temps: readonly number[],

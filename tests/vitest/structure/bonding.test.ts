@@ -1919,6 +1919,16 @@ describe(`neighbor_query`, () => {
     }
   })
 
+  test(`rejects a non-finite position naming its 1-based site`, () => {
+    const molecule = make_molecule([
+      [`H`, [0, 0, 0]],
+      [`H`, [Number.NaN, 0, 0]],
+    ])
+    expect(() => bonding.neighbor_query(molecule, { cutoff: 2 })).toThrow(
+      `neighbor_query: site 2 has a non-finite position (NaN, 0, 0)`,
+    )
+  })
+
   test(`rejects a degenerate lattice and absurd cutoffs, not in-band bond perception`, () => {
     const flat = make_crystal(
       [

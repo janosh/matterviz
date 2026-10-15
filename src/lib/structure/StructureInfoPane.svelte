@@ -173,7 +173,11 @@
         value: `${get_electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
-      { label: `Charge`, value: `${structure.charge || 0}e`, key: `structure-charge` },
+      {
+        label: `Charge`,
+        value: `${format_num(structure.charge || 0)}e`,
+        key: `structure-charge`,
+      },
     ]
     // Only display scalar values (skip arrays and objects)
     for (const [key, value] of Object.entries(structure.properties ?? {})) {

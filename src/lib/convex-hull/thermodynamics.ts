@@ -209,10 +209,10 @@ const id_of = (entry: PhaseData): string => {
 }
 
 // Raw energy above hull (eV/atom, negative below it, e.g. for exclude_from_hull entries) of
-// `entries` against the hull of reference_entries, aligned with `entries`. Formation energies come from e_form_per_atom
-// when present, else from the lowest-energy unary references; pure elements without a
-// reference default to E_form = 0. Entries that can't be placed (missing reference element,
-// zero atoms) get NaN.
+// `entries` against the hull of reference_entries, aligned with `entries`. Formation energies
+// come from e_form_per_atom when present, else from the lowest-energy unary references; pure
+// elements without a reference default to E_form = 0. Entries that can't be placed (missing
+// reference element, zero atoms) get NaN.
 export function e_above_hull_distances(
   entries: PhaseData[],
   reference_entries: PhaseData[],

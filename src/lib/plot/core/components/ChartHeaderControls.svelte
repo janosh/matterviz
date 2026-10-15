@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  // Live size and fullscreen state passed to header_controls/children snippets
+  export type Dims = { height: number; width: number; fullscreen: boolean }
+</script>
+
 <script lang="ts">
   import {
     normalize_show_controls,
@@ -7,8 +12,6 @@
   import { FullscreenButton } from '#lib/layout/index.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
-
-  type Dims = { height: number; width: number; fullscreen: boolean }
 
   // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, controls-pane
   // toggle, fullscreen button). Must be a direct child of the wrapper whose hover reveals it.

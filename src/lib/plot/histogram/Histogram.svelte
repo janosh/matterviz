@@ -65,7 +65,8 @@
   } from '#lib/plot/histogram/histogram.js'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '#lib/settings.js'
-  import { type Snippet, untrack } from 'svelte'
+  import type { Snippet } from 'svelte'
+  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '#lib/math.js'
   import {
@@ -475,10 +476,7 @@
     hover_key = null
     on_bar_hover?.(null)
   }
-  // New data dropped the hovered item: end the hover so on_bar_hover hears null too
-  $effect.pre(() => {
-    if (hover_key && !hover_info) untrack(clear_hover)
-  })
+  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const handle_bar_click =

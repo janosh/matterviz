@@ -22,11 +22,10 @@
   // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
   // …) so every chart is themed the same way.
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
+  import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-
-  type Dims = { height: number; width: number; fullscreen: boolean }
 
   let {
     chart_class,

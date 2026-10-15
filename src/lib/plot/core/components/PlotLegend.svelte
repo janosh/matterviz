@@ -91,6 +91,7 @@
     on_group_double_click?: (group_name: string, series_indices: number[]) => void
     on_drag_start?: (event: MouseEvent) => void
     on_drag?: (event: MouseEvent) => void
+    // usually the mouseup, but a mousemove with no button held when the mouseup was lost
     on_drag_end?: (event: MouseEvent) => void
     // Callback when hover state changes (for placement stability)
     on_hover_change?: (is_hovered: boolean) => void

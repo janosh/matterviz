@@ -461,20 +461,24 @@ describe(`scales`, () => {
       { min: 2, max: 400, ticks: 8, expected: [2, 5, 10, 20, 50, 100, 200] },
       // same span, small count: powers of ten only
       { min: 1, max: 50, ticks: 5, expected: [1, 10] },
-      // sub-decade domains fall back to d3 mantissa ticks inside the domain
-      { min: 2, max: 8, ticks: 5, expected: [2, 3, 4, 5, 6, 7, 8] },
-      { min: 0.2, max: 0.8, ticks: 5, expected: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] },
+      // sub-decade domains fall back to d3 mantissa ticks inside the domain, every other one
+      // when all of them overshoot the count by more than one
+      { min: 2, max: 8, ticks: 5, expected: [2, 4, 6, 8] },
+      { min: 0.2, max: 0.8, ticks: 5, expected: [0.2, 0.4, 0.6, 0.8] },
       { min: 1.5, max: 1.6, ticks: 5, expected: [1.5, 1.52, 1.54, 1.56, 1.58, 1.6] },
-      // under two powers of ten in range, d3's fine ticks beat sparser 1-2-5 mantissas
+      // under two powers of ten in range, d3's fine ticks or their 1-2-5 mantissas, whichever
+      // is closer to the count (d3 alone gave 17 ticks on [0.0184, 0.993] for 6 or even 2)
       { min: 0.5, max: 5, ticks: 10, expected: [0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5] },
-      { min: 50, max: 500, ticks: 6, expected: [50, 60, 70, 80, 90, 100, 200, 300, 400, 500] },
+      { min: 50, max: 500, ticks: 6, expected: [50, 100, 200, 500] },
+      { min: 0.0184, max: 0.993, ticks: 6, expected: [0.02, 0.05, 0.1, 0.2, 0.5] },
+      { min: 0.0184, max: 0.993, ticks: 2, expected: [0.02, 0.1, 0.5] },
       // narrow domains straddling a power of ten must not emit ticks past max
-      { min: 0.92, max: 0.99, ticks: 5, expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] },
+      { min: 0.92, max: 0.99, ticks: 5, expected: [0.92, 0.94, 0.96, 0.98] },
       // a generous count on a domain holding fewer than two 1-2-5 mantissas must still
       // produce ticks (the mantissa list alone was [] for [0.92, 0.99] and [7, 8], [2] for [2, 3])
       { min: 0.92, max: 0.99, ticks: 8, expected: [0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] },
-      { min: 7, max: 8, ticks: 8, expected: [7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8] },
-      { min: 2, max: 3, ticks: 8, expected: [2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3] },
+      { min: 7, max: 8, ticks: 8, expected: [7, 7.2, 7.4, 7.6, 7.8, 8] },
+      { min: 2, max: 3, ticks: 8, expected: [2, 2.2, 2.4, 2.6, 2.8, 3] },
       // non-positive bounds clamp to LOG_EPS before the power scan
       { min: -10, max: 100, ticks: 5, expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1, 10, 100] },
       { min: 1e-12, max: 1, ticks: 5, expected: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1] },
@@ -551,9 +555,10 @@ describe(`scales`, () => {
     })
 
     type Ymd = [number, number, number]
+    type TimeTickCase = { ticks: TicksOption; start: Ymd; end: Ymd; expected: Ymd[] }
     const weekly: Ymd[] = [1, 8, 15, 22, 29].map((day) => [2023, 0, day])
     // oxfmt-ignore
-    test.each<{ ticks: TicksOption; start: Ymd; end: Ymd; expected: Ymd[] }>([
+    test.each<TimeTickCase>([
       // count request: d3 picks a nice interval, here monthly over 2.5 months
       { ticks: 5, start: [2023, 0, 1], end: [2023, 2, 15], expected: [[2023, 0, 1], [2023, 1, 1], [2023, 2, 1]] },
       { ticks: `month`, start: [2023, 0, 15], end: [2023, 5, 10], expected: [1, 2, 3, 4, 5].map((month) => [2023, month, 1]) },
@@ -574,8 +579,10 @@ describe(`scales`, () => {
 
     const fine_steps = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
+    type TickOptions = Parameters<typeof generate_ticks>[4]
+    type TickCase = [string, Vec2, ScaleType, number | undefined, TickOptions, number[]]
     // oxfmt-ignore
-    test.each<[string, Vec2, ScaleType, number | undefined, { default_count?: number; format?: string } | undefined, number[]]>([
+    test.each<TickCase>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
       [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
@@ -588,6 +595,10 @@ describe(`scales`, () => {
       [`grouped integer format`, [0, 1], `linear`, 10, { format: `,d` }, [0, 1]],
       [`integer format on a descending domain`, [2, 0], `linear`, 10, { format: `d` }, [0, 1, 2]],
       [`integer format with no integer to label`, [0.2, 0.8], `linear`, 10, { format: `d` }, []],
+      // zero-precision fixed point prints integers too
+      [`.0f is an integer format`, [0, 2], `linear`, 10, { format: `.0f` }, [0, 1, 2]],
+      [`grouped .0f is an integer format`, [0, 1], `linear`, 10, { format: `,.0f` }, [0, 1]],
+      [`.0% percent is not an integer format`, [0, 2], `linear`, 10, { format: `.0%` }, fine_steps],
       [`decimal format keeps fine steps`, [0, 2], `linear`, 10, { format: `.1f` }, fine_steps],
       [`time-style %d is not an integer format`, [0, 2], `linear`, 10, { format: `%d` }, fine_steps],
       [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],

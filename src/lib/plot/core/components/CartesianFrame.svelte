@@ -15,6 +15,7 @@
   } from '#lib/plot/core/marginals.js'
   import PlotMarginals from '#lib/plot/core/components/PlotMarginals.svelte'
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
+  import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import { chart_css_defaults } from '#lib/plot/core/components/ChartShell.svelte'
   import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
@@ -74,7 +75,7 @@
     // Announced to screen readers via a polite live region. Charts whose marks aren't
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
-    header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    header_controls?: Snippet<[Dims]>
     controls_toggle_props?: PaneToggleProps
     controls?: Snippet<[PaneToggleProps, boolean]>
     // Caller-drawn SVG rendered first inside the plot SVG, with the scales and ranges

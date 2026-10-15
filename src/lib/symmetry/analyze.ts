@@ -252,7 +252,8 @@ export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEn
 // same row-major serialization for output as for input, so the flat basis is row-major with
 // each row a lattice vector. `bonds` are dropped: site indices change under any cell
 // transform, so stale bond indices would mis-render. `charge` is per cell, so it scales by
-// the new cell's volume relative to the original's.
+// the new cell's site count relative to the original's: an exact rational ratio, where the
+// volume ratio carried float noise into the integer charge bond-order perception looks up.
 const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
   const matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
   const frac_to_cart = math.create_frac_to_cart(matrix)
@@ -268,9 +269,7 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
     lattice: { matrix, pbc: original.lattice.pbc, ...math.calc_lattice_params(matrix) },
     sites,
     charge:
-      original.charge &&
-      (original.charge * Math.abs(math.det_3x3(matrix))) /
-        Math.abs(math.det_3x3(original.lattice.matrix)),
+      original.charge && (original.charge * cell.positions.length) / original.sites.length,
     id: original.id,
     ...(Object.keys(properties).length > 0 ? { properties } : {}),
   }

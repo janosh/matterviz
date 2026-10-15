@@ -321,6 +321,21 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelector(`.analysis select`)).toBeNull()
   })
 
+  // A cell transform's scaled charge carried float noise (4.000000000000149) into the row
+  test.each([
+    [4.000000000000149, `4e`],
+    [-2, `−2e`],
+    [undefined, `0e`],
+  ])(`formats a structure charge of %s as %s`, (charge, expected) => {
+    mount_info_pane({
+      structure: { ...get_dummy_structure(`H`, 1, true), charge },
+      pane_open: true,
+    })
+    expect(doc_query(`[data-testid="structure-charge"]`).textContent).toBe(
+      `Charge ${expected}`,
+    )
+  })
+
   test(`renders symmetry between Cell and Selected sites when sym_data is present`, () => {
     const periodic_structure = get_dummy_structure(`H`, 4, true)
     // Structure headings precede the selected-site inspector.
