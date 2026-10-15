@@ -3,7 +3,7 @@ import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { coerce_elem_symbol, is_elem_symbol } from '#lib/element/helpers.js'
+import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { is_pbc, type Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -54,7 +54,6 @@ import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { species_symbol } from '#lib/trajectory/parse/pymatgen.js'
 import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
 import { load as yaml_load } from 'js-yaml'
 
@@ -530,7 +529,8 @@ const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => 
 
 // The oxidation state a charged CIF type symbol carries (`Fe2+` 2, `O2-` -2, `Ag+` 1,
 // `Fe2.5+` 2.5), else 0; a group symbol's (`NO3-`) belongs to no element. Unlike pymatgen,
-// this decorates without an _atom_type_oxidation_number loop.
+// this decorates without an _atom_type_oxidation_number loop. Sign-first symbols (`O-2`,
+// `Fe+2`) are not the CIF convention and read 0 without a loop, as in pymatgen.
 const cif_type_symbol_oxidation = (raw_symbol = ``): number => {
   if (cif_group_element(raw_symbol)) return 0
   const { magnitude = `1`, sign } =
@@ -803,15 +803,21 @@ export const parse_cif = (content: string): Crystal => {
   }).convert
 
   // Optional _atom_type loops: _atom_type_number_in_cell tells whether atom sites are already
-  // expanded, _atom_type_oxidation_number decorates rows whose type symbol carries no charge
+  // expanded, _atom_type_oxidation_number decorates the rows of each type symbol. Counts come
+  // from the first loop with a count column only (a second one restates them, so summing
+  // across loops doubled every count); oxidation numbers are read from every loop.
   const atom_type_counts: Record<string, number> = {}
   const atom_type_oxidation = new Map<string, number>()
+  let counts_read = false
   for (const { headers, data_start } of iter_cif_loops(block_lines)) {
     const hdrs = headers.map((hdr) => hdr.toLowerCase())
     const sym_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_symbol`))
     if (sym_idx === -1) continue
-    const num_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
     const ox_idx = hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_oxidation_number`))
+    const num_idx: number = counts_read
+      ? -1
+      : hdrs.findIndex((hdr) => hdr.endsWith(`_atom_type_number_in_cell`))
+    counts_read ||= num_idx !== -1
     for (const line of cif_loop_lines(block_lines, data_start)) {
       const toks = split_cif_tokens(line)
       const ox =
@@ -828,9 +834,12 @@ export const parse_cif = (content: string): Crystal => {
     }
   }
   // Keyed by the row's exact type symbol (else its element), as pymatgen looks it up; unlike
-  // pymatgen, which strips loop keys' charges, a bare `Fe` row never picks up an `Fe3+` entry
+  // pymatgen, which strips loop keys' charges, a bare `Fe` row never picks up an `Fe3+` entry.
+  // The loop's number wins over the symbol's charge, as in pymatgen: it is the unrounded value
+  // (`Fe2.67+` vs 2.6666666666666665) and the symbol only a label for it.
   for (const atom of atoms) {
-    atom.oxidation_state ||= atom_type_oxidation.get(atom.type_symbol ?? atom.element) ?? 0
+    const loop_ox = atom_type_oxidation.get(atom.type_symbol ?? atom.element)
+    if (loop_ox !== undefined) atom.oxidation_state = loop_ox
   }
 
   const observed_counts = count_elements(atoms.map((atom) => atom.element))
@@ -964,7 +973,7 @@ export const parse_cif = (content: string): Crystal => {
   }
   if (n_overlaps > 0) {
     console.warn(
-      `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the larger occupancy instead of summing`,
+      `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the first row's species (a repeated species at its larger occupancy) and dropped the rest instead of summing`,
     )
   }
 
@@ -1056,15 +1065,35 @@ export function is_structure_like(obj: unknown): obj is StructureLike {
   )
 }
 
+// Why a JSON species entry is unusable, else undefined. A non-element symbol is most likely a
+// pymatgen DummySpecies (`X`, `Xa`), which has no element to draw.
+const json_species_issue = (entry: Record<string, unknown>): string | undefined => {
+  const { element, occu, oxidation_state } = entry
+  if (!species_symbol(entry)) {
+    return typeof element === `string` && element
+      ? `${element} is not an element (pymatgen DummySpecies are not supported)`
+      : `expected an element symbol`
+  }
+  if (occu != null && !(typeof occu === `number` && Number.isFinite(occu) && occu >= 0))
+    return `occu must be a finite number >= 0`
+  if (oxidation_state != null && !Number.isFinite(oxidation_state))
+    return `oxidation_state must be a finite number or null`
+  return undefined
+}
+
 // A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
-// (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols
+// (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols.
+// Values are checked here since CIF export and rendering do arithmetic on them.
 function json_species({ species }: { species?: unknown }, idx: number): Species[] {
   const where = `JSON site ${display_idx(idx)}`
   if (!Array.isArray(species) || !species.length) throw new Error(`${where} has no species`)
   return species.map((raw: unknown) => {
     const entry = typeof raw === `string` ? { element: raw } : raw
-    if (!is_plain_object(entry) || !species_symbol(entry))
-      throw new Error(`${where} has an invalid species: ${JSON.stringify(raw)}`)
+    const invalid = (issue: string) =>
+      new Error(`${where} has an invalid species: ${JSON.stringify(raw)} (${issue})`)
+    if (!is_plain_object(entry)) throw invalid(`expected an element symbol or object`)
+    const issue = json_species_issue(entry)
+    if (issue) throw invalid(issue)
     const { occu, oxidation_state } = entry
     return { ...entry, occu: occu ?? 1, oxidation_state: oxidation_state ?? 0 } as Species
   })

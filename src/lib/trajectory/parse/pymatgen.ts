@@ -1,7 +1,7 @@
 // Pymatgen Trajectory JSON parsing
 import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/types.js'
-import { is_elem_symbol } from '#lib/element/helpers.js'
+import { species_symbol } from '#lib/element/helpers.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
@@ -13,14 +13,6 @@ import {
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import { is_plain_object } from '#lib/utils.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
-
-// Element symbol of one pymatgen species entry: an Element/Species dict, or the plain string
-// `Trajectory(species=["Si", "O"], ...)` serializes to. Undefined for anything else (including
-// a blank, null or unknown element), so the caller can reject the whole array with one message.
-export const species_symbol = (species: unknown): ElementSymbol | undefined => {
-  const symbol = is_plain_object(species) ? species.element : species
-  return typeof symbol === `string` && is_elem_symbol(symbol) ? symbol : undefined
-}
 
 // Replace every numpy array MontyEncoder wrote ({"@module": "numpy", "@class": "array",
 // "data": [...]}) by its data, at any depth (base_positions, lattice, site and frame

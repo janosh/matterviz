@@ -134,8 +134,12 @@ describe(`partial occupancy slice flags`, () => {
       occu,
       oxidation_state,
     })
-    const full = [fe(0.5, 2), fe(0.5, 3)]
-    expect(compute_slice_geometry(full)).toEqual(compute_slice_geometry(species([`Fe`, 1])))
+    const sphere = compute_slice_geometry(species([`Fe`, 1]))
+    expect(compute_slice_geometry([fe(0.5, 2), fe(0.5, 3)])).toEqual(sphere)
+    // 0.7 + 0.2 + 0.1 sums to 0.9999999999999999 but is one full sphere with occupancy 1, as is
+    // 0.9995 within the tolerance export uses to call a site ordered
+    expect(compute_slice_geometry([fe(0.7, 2), fe(0.2, 3), fe(0.1, 4)])).toEqual(sphere)
+    expect(compute_slice_geometry(species([`Fe`, 0.9995]))).toEqual(sphere)
     expect(compute_slice_geometry([fe(0.3, 2), ...species([`O`, 0.2]), fe(0.3, 3)])).toEqual(
       compute_slice_geometry(species([`Fe`, 0.6], [`O`, 0.2])),
     )

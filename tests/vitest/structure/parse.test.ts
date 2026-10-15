@@ -755,6 +755,8 @@ O2   O   0.410  0.140  0.880  1.000`
       [`no _atom_type_number_in_cell to reconcile against skips it`, `F m -3 m`, `90 90 90`, [], 1],
       // both rows normalize to Fe, so I-centering expands the one Fe to the summed total of 2
       [`_atom_type rows Fe2+/Fe3+ sum per element`, `I m -3 m`, `90 90 90`, [`Fe2+ 1`, `Fe3+ 1`], 2],
+      // a second _atom_type loop restating the counts must not double them (Fe 4 rejected I)
+      [`a second count loop is ignored`, `I m -3 m`, `90 90 90`, [`Fe 2`, `loop_\n_atom_type_symbol\n_atom_type_number_in_cell\nFe 2`], 2],
     ])(`centering: %s`, (_desc, symbol, angles, atom_types, expected) => {
       expect(parse_cif(make_cif(symbol, { angles, atom_types })).sites).toHaveLength(expected)
     })
@@ -1213,17 +1215,28 @@ O3 O2- 0.75 0.25 0.75`
       [`Fe2.5+`, `Fe`, 2.5],
       [`Zr`, `Zr`, 0],
       [`NO3-`, `N`, 0],
+      // sign-first symbols are not the CIF convention: undecorated without a loop, as in pymatgen
+      [`O-2`, `O`, 0],
+      [`Fe+2`, `Fe`, 0],
     ])(`reads type symbol %s as %s with oxidation state %d`, (symbol, element, ox) => {
       const result = parse_cif(`data_t\n${cell5}\n${site_loop}\nX1 ${symbol} 0 0 0`)
       expect(result.sites[0].species).toEqual([{ element, occu: 1, oxidation_state: ox }])
     })
 
     // pymatgen decorates from _atom_type_oxidation_number, looked up by the row's exact type
-    // symbol (its element without a type-symbol column); a charged symbol keeps its own charge
+    // symbol (its element without a type-symbol column); the loop's number wins over a charged
+    // symbol's, keeping a rounded label's full precision
     test.each([
       [`bare symbol`, `${site_loop}\nFe1 Fe 0 0 0`, `Fe 3`, 3],
       [`label-only row`, `${label_loop}\nFe1 0 0 0 1`, `Fe 3`, 3],
-      [`charged symbol`, `${site_loop}\nFe1 Fe2+ 0 0 0`, `Fe2+ 3`, 2],
+      [`charged symbol`, `${site_loop}\nFe1 Fe2+ 0 0 0`, `Fe2+ 3`, 3],
+      [
+        `rounded charged symbol`,
+        `${site_loop}\nFe1 Fe2.67+ 0 0 0`,
+        `Fe2.67+ 2.6666666666666665`,
+        2.6666666666666665,
+      ],
+      [`sign-first symbol`, `${site_loop}\nFe1 Fe+2 0 0 0`, `Fe+2 2`, 2],
       // pymatgen also strips loop keys to `Fe`, reading a plain Fe next to Fe3+ as Fe3+
       [`bare symbol with only a charged key`, `${site_loop}\nFe1 Fe 0 0 0`, `Fe3+ 3`, 0],
     ])(`_atom_type_oxidation_number decorates a %s`, (_desc, atoms, atom_type, ox) => {
@@ -1329,13 +1342,15 @@ loop_
   // twice rather than a disordered site, so summing gave Na:2 on both sites. pymatgen rejects
   // the file (occupancy_tolerance=1) or rescales to 1 (occupancy_tolerance=2); the larger
   // row's occupancy is kept here, with a warning. Differently charged rows (Na+ and Na) stay
-  // separate species but still share one Na occupancy, so the later one is dropped.
+  // separate species but still share one Na occupancy, so the later one is dropped, even when
+  // its occupancy is larger (Na+ 0.6 then Na 0.9 keeps Na+ 0.6), as the warning says.
   const na = (occu: number, oxidation_state = 0) => [{ element: `Na`, occu, oxidation_state }]
   const symops = `loop_\n_symmetry_equiv_pos_as_xyz\n'x,y,z'\n'x+1/2,y+1/2,z'`
   // oxfmt-ignore
   test.each([
     [`${symops}\n${label_loop}\nNa1 0 0 0 1\nNa2 0.5 0.5 0 0.9`, [[[0, 0, 0], na(1)], [[0.5, 0.5, 0], na(1)]]],
     [`${site_loop}\n_atom_site_occupancy\nNa1 Na+ 0 0 0 1\nNa2 Na 0 0 0 1`, [[[0, 0, 0], na(1, 1)]]],
+    [`${site_loop}\n_atom_site_occupancy\nNa1 Na+ 0 0 0 0.6\nNa2 Na 0 0 0 0.9`, [[[0, 0, 0], na(0.6, 1)]]],
   ])(
     `keeps one full occupancy when same-element rows overlap past it %#`,
     (loops, expected) => {
@@ -1346,6 +1361,7 @@ loop_
         String(msg).includes(`same-element rows overlap`),
       )
       expect(overlap_warnings).toHaveLength(1)
+      expect(overlap_warnings[0][0]).toContain(`kept the first row's species`)
       warn_spy.mockRestore()
     },
   )
@@ -1840,6 +1856,12 @@ describe(`parse_structure_file`, () => {
       [`an empty species array`, { sites: [bare_site(`H`), { species: [], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has no species`],
       [`an unknown element in a species object`, { sites: [{ species: [{ element: `Xx`, occu: 1 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: {"element":"Xx","occu":1}`],
       [`a species object without element`, { sites: [{ species: [{ occu: 1 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: {"occu":1}`],
+      // pymatgen writes a DummySpecies as {"element": "X", "oxidation_state": 0.0, ...}
+      [`a pymatgen DummySpecies`, { sites: [{ species: [{ element: `X`, oxidation_state: 0, spin: null, occu: 1 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `(X is not an element (pymatgen DummySpecies are not supported))`],
+      // string values used to pass and crash CIF export (toFixed) or write `FeNaN-`
+      [`a string occu`, { sites: [{ species: [{ element: `Fe`, occu: `0.5` }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 1 has an invalid species: {"element":"Fe","occu":"0.5"} (occu must be a finite number >= 0)`],
+      [`a negative occu`, { sites: [bare_site(`H`), { species: [{ element: `Fe`, occu: -0.5 }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `JSON site 2 has an invalid species: {"element":"Fe","occu":-0.5} (occu must be a finite number >= 0)`],
+      [`a string oxidation_state`, { sites: [{ species: [{ element: `Fe`, occu: 1, oxidation_state: `2+` }], abc: [0, 0, 0] }], lattice: cubic_lattice_json(2) }, `(oxidation_state must be a finite number or null)`],
       [`2-row lattice matrix`, { sites: [bare_site(`H`)], lattice: { matrix: [[1, 0, 0], [0, 1, 0]] } }, /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)

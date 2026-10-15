@@ -313,10 +313,15 @@ describe(`Export functionality`, () => {
 
   describe(`Error handling and edge cases`, () => {
     const molecule: AnyStructure = { sites: [make_site(`H`)] }
+    const species_less: AnyStructure = {
+      sites: [make_site(`H`), { ...make_site(`H`), species: [] }],
+    }
     // oxfmt-ignore
     it.each([
       [structure_to_xyz_str, `nothing`, undefined, `No structure or sites to export`],
       [structure_to_json_str, `nothing`, undefined, `No structure to export`],
+      // pymatgen and parse_structure_file both reject a species-less site on read
+      [structure_to_json_str, `a site without species`, species_less, `Site 2 has no species, so it has no JSON form`],
       [structure_to_cif_str, `nothing`, undefined, `No structure or sites to export`],
       [structure_to_poscar_str, `nothing`, undefined, `No structure or sites to export`],
       [structure_to_cif_str, `a molecule`, molecule, `CIF export: A unit cell is required`],

@@ -7,6 +7,7 @@ import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { is_plain_object } from '#lib/utils.js'
 import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
 import { get_element_counts } from './density'
+import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
 import { structure_json_data } from './site'
 
@@ -61,12 +62,9 @@ export function create_structure_filename(
 // POSCAR and XYZ hold one fully occupied element per site, so a disordered site (several
 // elements, or a total occupancy below 1) has no faithful representation there: refuse it
 // rather than silently write a full atom of its first species. Species differing only in
-// oxidation state (Fe2+ 0.5 + Fe3+ 0.5) still name one fully occupied element. The tolerance
-// admits occupancies printed to 3 decimals (3 x 0.333).
-const is_disordered_site = (site: Site): boolean =>
-  new Set(site.species.map(({ element }) => element)).size > 1 ||
-  (site.species.length > 0 &&
-    site.species.reduce((sum, { occu }) => sum + (occu ?? 1), 0) < 1 - 1e-3)
+// oxidation state (Fe2+ 0.5 + Fe3+ 0.5) still name one fully occupied element.
+const is_disordered_site = ({ species }: Site): boolean =>
+  species.length > 0 && !(single_element_occupancy(species) >= 1 - OCCUPANCY_TOL)
 const disordered_site_error = (site: Site, idx: number): string =>
   `Site ${display_idx(idx)} has partial or mixed occupancy (${site.species
     .map(({ element, occu }) => `${element}:${occu}`)
