@@ -3,7 +3,7 @@
   // Small floating Brillouin zone that marks one or more symmetry points on the k-path; Bands
   // opens it when a symmetry-point tick label is clicked. Same FloatingPopup shell as the
   // convex hull's StructurePopup.
-  import type { Matrix3x3, Vec3 } from '#lib/math.js'
+  import type { Matrix3x3 } from '#lib/math.js'
   import { FloatingPopup } from '#lib/overlays/index.js'
   import { KCoords } from '#lib/tooltip/index.js'
   import { to_error } from '#lib/utils.js'
@@ -11,13 +11,12 @@
   import BrillouinZone from './BrillouinZone.svelte'
   import { compute_brillouin_zone } from './compute'
   import { BZ_POPUP_DEFAULT_WIDTH } from './types'
-  import type { BZPopupPoint, KPathLabel } from './types'
+  import type { BZPopupPoint, KPathData } from './types'
 
   let {
     k_lattice,
     points,
-    k_path_points = [],
-    k_path_labels = [],
+    k_path,
     width = BZ_POPUP_DEFAULT_WIDTH,
     height = 240,
     bz_props = {},
@@ -28,8 +27,7 @@
     k_lattice: Matrix3x3
     points: BZPopupPoint[]
     // Full k-path (Cartesian) so the marked point is seen in context; see BrillouinZone
-    k_path_points?: Vec3[]
-    k_path_labels?: KPathLabel[]
+    k_path?: KPathData
     width?: number
     height?: number
     bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>
@@ -58,8 +56,7 @@
       <BrillouinZone
         {...bz_props}
         {bz_data}
-        {k_path_points}
-        {k_path_labels}
+        {k_path}
         highlighted_k_points={points.map(({ position }) => position)}
         show_controls={false}
         fullscreen_toggle={false}

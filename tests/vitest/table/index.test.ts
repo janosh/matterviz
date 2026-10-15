@@ -75,23 +75,20 @@ describe(`column stats and color domains`, () => {
     expect([stats.q_lo, stats.median, stats.q_hi]).toEqual([5, 50, 95])
   })
 
-  // The last case would report an Infinity mean if the stats summed before dividing: four
-  // values at MAX_VALUE/2 overflow the running sum though each is perfectly representable.
+  // summing before dividing would overflow MAX_VALUE/2 x 4 to an Infinity mean
   const huge = Number.MAX_VALUE / 2
   it.each([
-    [`a single value`, [7], { min: 7, max: 7, mean: 7, median: 7, q_lo: 7, q_hi: 7 }],
-    [`all-equal values`, [3, 3, 3], { min: 3, max: 3, mean: 3, median: 3, q_lo: 3, q_hi: 3 }],
-    [
-      `values whose sum overflows`,
-      [huge, huge, huge, huge],
-      { min: huge, max: huge, mean: huge, median: huge, q_lo: huge, q_hi: huge },
-    ],
-  ])(`handles %s without collapsing`, (_desc, input, expected) => {
+    [`a single value`, [7]],
+    [`all-equal values`, [3, 3, 3]],
+    [`values whose sum overflows`, [huge, huge, huge, huge]],
+  ])(`handles %s without collapsing`, (_desc, input) => {
+    const [val] = input
     const stats = compute_column_stats(input)
-    expect(stats).toMatchObject(expected)
+    if (!stats) throw new Error(`expected stats`)
+    const { min, max, mean, median, q_lo, q_hi } = stats
+    expect([min, max, mean, median, q_lo, q_hi]).toEqual(Array(6).fill(val))
     // a zero-width quantile range must fall back to min/max, not produce an empty domain
-    if (stats)
-      expect(resolve_color_domain(stats, `quantile`)).toEqual([expected.min, expected.max])
+    expect(resolve_color_domain(stats, `quantile`)).toEqual([val, val])
   })
 
   it(`treats non-finite values as uncolorable everywhere`, () => {
@@ -118,19 +115,11 @@ describe(`column stats and color domains`, () => {
     expect(bg_of_10(`log`, [0, 100])).toBe(bg_of_10(`log`))
   })
 
+  // oxfmt-ignore
   it.each([
-    [
-      [-8, 1, 2],
-      [-8, 8],
-    ],
-    [
-      [1, 2, 3],
-      [-3, 3],
-    ],
-    [
-      [0, 0],
-      [-1, 1],
-    ],
+    [[-8, 1, 2], [-8, 8]],
+    [[1, 2, 3], [-3, 3]],
+    [[0, 0], [-1, 1]],
   ])(`centers a diverging domain on zero for %s`, (input, expected) => {
     const stats = compute_column_stats(input)
     if (!stats) throw new Error(`expected stats`)
@@ -259,9 +248,11 @@ it.each([
   expect(middle_ellipsis_parts(text)).toEqual(expected)
 })
 
-describe(`strip_html`, () => {
+// Entity cells render decoded via {@html}, so search, sort and export must read them decoded
+// too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`. strip_html leaves
+// entities alone, so it is checked on entity-free inputs only.
+describe(`strip_html, html_to_text and cell_text`, () => {
   it.each([
-    [`<span>hello</span>`, `hello`],
     [`<div><span>nested</span></div>`, `nested`],
     [`<a href="https://example.com" class="link">link text</a>`, `link text`],
     [`plain text`, `plain text`],
@@ -269,28 +260,20 @@ describe(`strip_html`, () => {
     [`before<br/>after`, `beforeafter`],
     [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
     [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
+    [`<b>T < 300 K</b>`, `T < 300 K`],
     [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
     [`<!-- note -->kept`, `kept`],
     [`<span title="x>0" data-y='a>b'>Si</span>`, `Si`], // `>` inside quoted attributes
-  ])(`strip_html(%j) = %j`, (input, expected) => {
-    expect(strip_html(input)).toBe(expected)
-  })
-
-  // Entity cells render decoded via {@html}, so search, sort and export must read them decoded
-  // too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`. A comparison pair in
-  // prose is not a tag (one must open with a letter, `/` or `!`), so it must survive intact.
-  it.each([
-    [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`],
-    [`<b>T < 300 K</b>`, `T < 300 K`],
     [`AT&amp;T`, `AT&T`],
     [`<b>&Delta;H</b> = &minus;5&nbsp;&plusmn;&#160;0.1&#x3bc;m`, `ΔH = −5\u00A0±\u00A00.1μm`],
     [`&Aring; &angst; &Ouml;l &eacute; &ccedil; &micro; &deg; &times;`, `Å Å Öl é ç µ ° ×`],
     [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
     [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
     [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
-    [`<span title="x>0">Si</span> &amp; Ge`, `Si & Ge`], // `>` inside a quoted attribute
-    [`&bogus; &constructor; &#x110000; a & b`, `&bogus; &constructor; &#x110000; a & b`],
-  ])(`html_to_text and cell_text: %j -> %j`, (input, expected) => {
+    [`&bogus; &constructor; a & b`, `&bogus; &constructor; a & b`],
+    [`&#0;&#xD800;&#x110000;`, `\uFFFD\uFFFD\uFFFD`], // NUL, surrogate, out-of-range: U+FFFD
+  ])(`%j -> %j`, (input, expected) => {
+    if (!input.includes(`&`)) expect(strip_html(input)).toBe(expected)
     expect(html_to_text(input)).toBe(expected)
     expect(cell_text(input)).toBe(expected)
   })
@@ -347,20 +330,12 @@ describe(`compare_rows`, () => {
   })
 
   it(`puts numbers before strings and compares strings in natural order`, () => {
-    expect(order([`10`, `abc`, `9`, `a2`, `a10`, 2])).toEqual([
-      2,
-      `9`,
-      `10`,
-      `a2`,
-      `a10`,
-      `abc`,
-    ])
+    const mixed = order([`10`, `abc`, `9`, `a2`, `a10`, 2])
+    expect(mixed).toEqual([2, `9`, `10`, `a2`, `a10`, `abc`])
     expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
   })
 
-  // Sorting used to read the raw cell, so a markup cell compared by its tag name: `<b>Mango</b>`
-  // sorted under `b`, ahead of `<i>Zebra</i>` and `<span>Apple</span>`, and every markup cell
-  // sorted ahead of every plain one because `<` precedes every letter.
+  // sorting the raw cell compared markup by tag name and put all markup ahead of plain text
   it(`orders markup cells by their visible text, not their tags`, () => {
     // oxfmt-ignore
     expect(order([`<span>Apple</span>`, `<i>Zebra</i>`, `<b>Mango</b>`]))
@@ -369,16 +344,13 @@ describe(`compare_rows`, () => {
     expect(order([`<b>Beta</b>`, `Alpha`, `<i>Gamma</i>`, `Delta`]))
       .toEqual([`Alpha`, `<b>Beta</b>`, `Delta`, `<i>Gamma</i>`])
     expect(order([`Zeta`, `&Ouml;l`, `Beta`])).toEqual([`Beta`, `&Ouml;l`, `Zeta`]) // as Öl
-    // a non-numeric data-sort-value still wins over the rendered text: `Zulu` alone would
-    // sort last, `aaa` puts it first (a numeric one makes it a number, which sorts earlier still)
+    // a non-numeric data-sort-value still wins over the rendered text
     // oxfmt-ignore
     expect(order([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`]))
       .toEqual([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`])
   })
 
-  // A boolean or object cell (both admitted by CellVal) reached the comparator as a non-string,
-  // and the type-mismatch branch answered "the other one first" in BOTH directions. That is not
-  // a total order, so the same rows came out in a different order depending on how they went in.
+  // the type-mismatch branch answered "the other one first" both ways: not a total order
   it.each([
     [`a boolean`, true],
     [`an object`, { a: 1 }],
@@ -425,8 +397,7 @@ describe(`compare_rows`, () => {
     expect(sort_table_rows(dates, criteria)[0]).toBe(dates[0])
   })
 
-  // Every case sorts on a primary key that ties, so only a working secondary criterion can
-  // produce the expected name order
+  // every primary key ties, so only a working secondary criterion yields the name order
   const by_name: SortCriterion = { key: `name`, ascending: true }
   const by_score: SortCriterion = { key: `score`, ascending: true }
   // oxfmt-ignore
@@ -571,30 +542,20 @@ describe(`date/time columns`, () => {
 describe(`virtual_window`, () => {
   const base = { item_size: 10, count: 100, viewport: 50 }
 
-  it.each([
-    // [scroll, overscan, min_window] -> exact [start, end]
-    [0, 0, 0, [0, 5]],
-    [123, 0, 0, [12, 18]], // partially visible rows at both edges count
-    [120, 2, 0, [10, 19]],
-    [0, 2, 0, [0, 7]], // overscan clamped at the top
-    [990, 2, 0, [93, 100]], // past the end: clamped to the last page, then overscan
-    [5000, 0, 0, [95, 100]],
-    [0, 0, 30, [0, 30]], // min_window extends the window
-    [900, 0, 30, [90, 100]], // but never past count
-    [-40, 0, 0, [0, 1]], // negative scroll (leading label track): only the first row peeks in
-  ])(`scroll=%d overscan=%d min_window=%d -> %j`, (scroll, overscan, min_window, expected) => {
-    expect(virtual_window({ ...base, scroll, overscan, min_window })).toEqual({
-      start: expected[0],
-      end: expected[1],
-    })
-  })
-
-  it(`renders min_window rows while the viewport is unmeasured and nothing for empty data`, () => {
-    expect(virtual_window({ ...base, viewport: 0, scroll: 0, min_window: 60 })).toEqual({
-      start: 0,
-      end: 60,
-    })
-    expect(virtual_window({ ...base, count: 0, scroll: 0 })).toEqual({ start: 0, end: 0 })
+  it.each<[Partial<Parameters<typeof virtual_window>[0]>, [number, number]]>([
+    [{ scroll: 0 }, [0, 5]],
+    [{ scroll: 123 }, [12, 18]], // partially visible rows at both edges count
+    [{ scroll: 120, overscan: 2 }, [10, 19]],
+    [{ scroll: 0, overscan: 2 }, [0, 7]], // overscan clamped at the top
+    [{ scroll: 990, overscan: 2 }, [93, 100]], // clamped to the last page, then overscan
+    [{ scroll: 5000 }, [95, 100]],
+    [{ scroll: 0, min_window: 30 }, [0, 30]], // min_window extends the window
+    [{ scroll: 900, min_window: 30 }, [90, 100]], // but never past count
+    [{ scroll: -40 }, [0, 1]], // negative scroll (leading label track): first row peeks in
+    [{ scroll: 0, viewport: 0, min_window: 60 }, [0, 60]], // unmeasured viewport
+    [{ scroll: 0, count: 0 }, [0, 0]], // empty data
+  ])(`%o -> %j`, (opts, [start, end]) => {
+    expect(virtual_window({ ...base, scroll: 0, ...opts })).toEqual({ start, end })
   })
 })
 

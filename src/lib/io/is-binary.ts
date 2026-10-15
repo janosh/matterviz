@@ -9,9 +9,11 @@ import {
 } from '#lib/constants.js'
 
 // === (1) string-content heuristic ===
-// Detect binary from decoded text: a NUL byte or a high ratio of non-printable chars. Only
+// Detect binary from UTF-8-decoded text: a NUL byte or a high ratio of non-text chars. Only
 // the leading window is inspected (like file(1)): a 25 MB trajectory is classified in
 // microseconds instead of a full 50 ms scan, and binary headers sit at the front anyway.
+// Non-text: C0 controls except 9-13 (tab..CR), DEL, C1 controls and U+FFFD (undecodable
+// bytes). Letters past ASCII (Å, é, α) are text.
 const BINARY_SNIFF_CHARS = 8192
 export const is_binary = (content: string): boolean => {
   if (!content) return false
@@ -19,24 +21,18 @@ export const is_binary = (content: string): boolean => {
   if (sample.includes(`\0`)) return true
 
   let binary_char_count = 0
-  let printable_ascii_count = 0
-
   for (let char_idx = 0; char_idx < sample.length; char_idx += 1) {
     const char_code = sample.charCodeAt(char_idx)
     if (
       char_code <= 8 ||
       (char_code >= 14 && char_code <= 31) ||
-      (char_code >= 127 && char_code <= 255)
+      (char_code >= 127 && char_code <= 159) ||
+      char_code === 0xfffd
     ) {
       binary_char_count += 1
     }
-    // 9-13 (tab, LF, VT, FF, CR) are text: excluding them read CRLF XYZ as binary
-    if ((char_code >= 32 && char_code <= 126) || (char_code >= 9 && char_code <= 13)) {
-      printable_ascii_count += 1
-    }
   }
-
-  return binary_char_count / sample.length > 0.1 || printable_ascii_count / sample.length < 0.7
+  return binary_char_count / sample.length > 0.1
 }
 
 // === (2) magic-byte signatures ===

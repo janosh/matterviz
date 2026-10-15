@@ -127,7 +127,9 @@
     range: [-0.5, (cn_ticks.at(-1) ?? 4) + 0.5] as Vec2,
     ticks: cn_ticks,
   })
+  // Wraps the caller's on_bar_change rather than replacing it: passing both props must call both
   const report_sites: StructurePlotProps[`on_bar_change`] = (bar) => {
+    rest.on_bar_change?.(bar)
     // Series metadata names the bar's element or structure (see `groups`)
     const { element, structure_label } = bar?.metadata ?? {}
     on_sites_hover?.(

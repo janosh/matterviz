@@ -8,7 +8,7 @@ import { colors, selected } from '#lib/state.svelte.js'
 import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import type { ComponentProps } from 'svelte'
-import { createRawSnippet, flushSync, mount, tick } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, keydown, mouse, query, set_input } from '../setup'
 import { CATEGORY_COUNTS } from '../test-fixtures'
@@ -37,6 +37,14 @@ const tile_bg_reds = (count: number): number[] =>
     .map((tile) => Number(/\d+/.exec(tile.style.backgroundColor)?.[0]))
 // color_scale whose red channel reads back the normalized position on the ramp
 const red_scale = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
+// tooltip snippet that hands its props to on_render
+const capture_tooltip = <T>(on_render: (props: T) => void) =>
+  createRawSnippet<[T]>((props) => ({
+    render: () => {
+      on_render(props())
+      return `<span>tt</span>`
+    },
+  }))
 
 describe(`PeriodicTable`, () => {
   afterEach(() => {
@@ -59,8 +67,7 @@ describe(`PeriodicTable`, () => {
     expect(Boolean(doc_query(`.periodic-table`).textContent?.trim())).toBe(has_text)
   })
 
-  // regression: a tile_props style was spread after the {style} that sets each tile's grid
-  // placement, overwriting grid-column/grid-row and collapsing the table
+  // regression: a tile_props style overwrote each tile's grid placement
   test(`tile_props style and text color merge into main and inset tiles`, () => {
     mount(PeriodicTable, {
       target: document.body,
@@ -97,10 +104,14 @@ describe(`PeriodicTable`, () => {
     expect(state.active_element?.symbol).toBe(expected)
   })
 
-  test(`row and section resets restore shipped periodic-table defaults`, async () => {
+  // also: the root CSS tokens the controls write (e.g. --tooltip-bg) must leave on unmount
+  test(`row and section resets restore defaults; root CSS vars clear on unmount`, async () => {
     const category = `noble gas`
     colors.category[category] = `#123456`
-    mount(PeriodicTableControls, { target: document.body })
+    const root_style = document.documentElement.style
+    const controls = mount(PeriodicTableControls, { target: document.body })
+    flushSync()
+    expect(root_style.getPropertyValue(`--tooltip-bg`)).toBe(`#000000`)
     expect(document.querySelector(`[aria-label="Reset font sizes to defaults"]`)).toBeNull()
     const click_reset = async (selector: string): Promise<void> => {
       doc_query<HTMLButtonElement>(selector).click()
@@ -124,6 +135,7 @@ describe(`PeriodicTable`, () => {
     set_input(category_input, `#654321`)
     await tick()
     expect([auto_font_input.checked, font_color_input.disabled]).toEqual([false, false])
+    expect(root_style.getPropertyValue(`--elem-tile-border-radius`)).toBe(`5pt`)
 
     await click_reset(`[data-key="tile_border_radius"] .setting-reset-button`)
     expect(number_input(`tile_border_radius`).valueAsNumber).toBe(1)
@@ -135,6 +147,9 @@ describe(`PeriodicTable`, () => {
 
     await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
+    await unmount(controls)
+    for (const prop of [`--tooltip-bg`, `--elem-tile-border-radius`, `--ptable-gap`])
+      expect(root_style.getPropertyValue(prop)).toBe(``)
   })
 
   test(`rejects an unknown runtime reset key`, async () => {
@@ -143,10 +158,7 @@ describe(`PeriodicTable`, () => {
     const input = number_input(`tile_border_radius`)
     set_input(input, 5)
     await tick()
-
-    const reset_button = doc_query<HTMLButtonElement>(
-      `[data-key="tile_border_radius"] .setting-reset-button`,
-    )
+    const reset_button = query(row, `.setting-reset-button`)
     row.dataset.key = `unknown-control`
     reset_button.click()
     await tick()
@@ -179,8 +191,7 @@ describe(`PeriodicTable`, () => {
     outside_input.focus()
     await tick()
     expect(state.active_element).toBeNull()
-    expect(hydrogen.tabIndex).toBe(0)
-    expect(lithium.tabIndex).toBe(-1)
+    expect([hydrogen.tabIndex, lithium.tabIndex]).toEqual([0, -1])
 
     // arrow keys outside the table leave its active element alone
     outside_input.dispatchEvent(keydown(`ArrowDown`))
@@ -211,13 +222,10 @@ describe(`PeriodicTable`, () => {
     source.dispatchEvent(keydown(key))
     await tick()
     expect(document.activeElement).toBe(target)
-    expect(source.tabIndex).toBe(-1)
-    expect(target.tabIndex).toBe(0)
+    expect([source.tabIndex, target.tabIndex]).toEqual([-1, 0])
   })
 
-  // a tap is a pointerdown then the click; the compat mouseenter a browser adds is left out so
-  // the tile has to be selected by the pointerdown itself. Returns whether the click's default
-  // (link navigation) was prevented
+  // pointerdown + click without the compat mouseenter; returns whether the click was prevented
   const tap = (tile: HTMLElement, pointerType: string): boolean => {
     tile.dispatchEvent(Object.assign(mouse(`pointerdown`), { pointerType }))
     const click = mouse(`click`, { cancelable: true })
@@ -247,28 +255,19 @@ describe(`PeriodicTable`, () => {
     // a hash link keeps happy-dom from navigating away on the unprevented clicks
     mount(PeriodicTable, { target: document.body, props: { links: { H: `#h` } } })
     const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
-    expect([tap(tile, `touch`), tap(tile, `touch`), tap(tile, `mouse`)]).toEqual([
-      true,
-      false,
-      false,
-    ])
+    const taps = [tap(tile, `touch`), tap(tile, `touch`), tap(tile, `mouse`)]
+    expect(taps).toEqual([true, false, false])
   })
 
   test(`links keep native semantics when an activation callback is also supplied`, async () => {
     const on_activate = vi.fn<(element: ChemicalElement) => void>()
     const warning = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    mount(PeriodicTable, {
-      target: document.body,
-      props: { links: `symbol`, on_activate },
-    })
+    mount(PeriodicTable, { target: document.body, props: { links: `symbol`, on_activate } })
     await tick()
     const tile = doc_query<HTMLAnchorElement>(`[data-element-symbol="H"]`)
     tile.addEventListener(`click`, (event) => event.preventDefault())
     tile.click()
-    for (const key of [`Enter`, ` `]) {
-      tile.dispatchEvent(keydown(key))
-    }
-
+    for (const key of [`Enter`, ` `]) tile.dispatchEvent(keydown(key))
     expect(tile.tagName).toBe(`A`)
     expect(tile.getAttribute(`role`)).toBe(`link`)
     expect(tile.getAttribute(`href`)).toBe(`/h`)
@@ -307,7 +306,6 @@ describe(`PeriodicTable`, () => {
 
       doc_query(`ul.options > li`).click()
       await tick()
-
       const selected_text =
         doc_query(`div.multiselect > ul.selected`).textContent?.trim() ?? ``
       // the picked label maps to a real element property, whose key lands in the URL
@@ -402,9 +400,7 @@ describe(`PeriodicTable`, () => {
     )
   })
 
-  // missing-color resolution for the first tile (H), which is missing whenever a heatmap
-  // is shown without an H value. `color` is a CSS color or `element-category`; the default
-  // is `#666` under a heatmap and element category colors for a plain table ([] heatmap).
+  // missing-color resolution for H (absent from every heatmap below)
   test.each([
     [{ He: 5 }, { color: `element-category` }, `#ff8c00`], // category color
     [{ He: 5 }, { color: `#ff0000` }, `#ff0000`], // explicit color
@@ -433,10 +429,9 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  // 0 is a real, colorable value (not missing); only absent/null/<=0-in-log are missing
+  // 0 is real data; a non-symbol key is warned about without dropping the whole heatmap
   test(`zero maps through the color scale, absent elements use the missing fallback`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    // a non-symbol key is ignored with a warning, not a reason to drop the whole heatmap
     const heatmap_values = { H: 0, He: 10, nope: 5 }
     mount(PeriodicTable, {
       target: document.body,
@@ -446,11 +441,10 @@ describe(`PeriodicTable`, () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       `PeriodicTable heatmap_values: keys must be element symbols, got nope`,
     )
-    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
-    expect(tiles[0].style.backgroundColor).not.toBe(`#666`) // H=0 -> scale color, not missing
-    expect(tiles[0].style.backgroundColor).not.toBe(``) // a real color is applied
-    expect(tiles[1].style.backgroundColor).not.toBe(`#666`) // He=10 -> scale color
-    expect(tiles[2].style.backgroundColor).toBe(`#666`) // Li absent -> missing
+    const [hydrogen, helium, lithium] = document.querySelectorAll<HTMLElement>(`.element-tile`)
+    for (const tile of [hydrogen, helium])
+      expect([``, `#666`]).not.toContain(tile.style.backgroundColor)
+    expect(lithium.style.backgroundColor).toBe(`#666`)
   })
 
   test.each([
@@ -472,9 +466,7 @@ describe(`PeriodicTable`, () => {
     }
   })
 
-  // missing decorations (label/style) apply only to tiles whose value is genuinely
-  // missing: absent keys and non-finite values (NaN) are missing, while present
-  // numbers and explicit colors are real data that never gets decorated.
+  // missing label/style decorate only absent, non-finite or blank values
   test.each([
     [`absent object key`, { He: 5 }, [true, false]], // H absent -> missing, He present
     [`NaN is missing`, [NaN, 5], [true, false]], // NaN -> missing, value 5 present
@@ -542,17 +534,11 @@ describe(`PeriodicTable`, () => {
   )
 
   // an override paints a solid tile: multi-value segment colors are suppressed, labels kept
+  // oxfmt-ignore
   test.each([
     [`numeric`, [1, 2, 3], [`1`]],
     [`color`, [`#ff0000`, `#00ff00`], []],
-    [
-      `multi-value`,
-      [
-        [1, 2],
-        [3, 4],
-      ],
-      [`1`, `2`],
-    ],
+    [`multi-value`, [[1, 2], [3, 4]], [`1`, `2`]],
   ])(
     `color_overrides take precedence over %s heatmap values`,
     (_kind, heatmap_values, labels) => {
@@ -578,12 +564,9 @@ describe(`PeriodicTable`, () => {
   // log-mode tooltip scale_context.min must be the smallest positive bound, not cs_min
   test(`log-mode tooltip scale_context.min uses the smallest positive value`, async () => {
     let captured_min: number | undefined
-    const tooltip = createRawSnippet<[{ scale_context: { min: number } }]>((props) => ({
-      render: () => {
-        captured_min = props().scale_context.min
-        return `<span>tt</span>`
-      },
-    }))
+    const tooltip = capture_tooltip<{ scale_context: { min: number } }>((props) => {
+      captured_min = props.scale_context.min
+    })
     mount(PeriodicTable, {
       target: document.body,
       props: { heatmap_values: [0, 2, 8], log: true, tooltip },
@@ -594,8 +577,7 @@ describe(`PeriodicTable`, () => {
     expect(captured_min).toBe(2) // smallest positive (cs_min_pos), not 0 (cs_min)
   })
 
-  // the tooltip's `active` ignored active_elements while the tile honoured it. The parent
-  // pins active_element to null (its setter drops hover writes) to isolate active_elements.
+  // tooltip `active` ignored active_elements; active_element is pinned to null to isolate them
   test.each([
     [[`H`], true],
     [[], false],
@@ -603,12 +585,9 @@ describe(`PeriodicTable`, () => {
     `tooltip active with active_elements=%j is %s`,
     async (active_elements, expected) => {
       let captured_active: boolean | undefined
-      const tooltip = createRawSnippet<[{ active: boolean }]>((props) => ({
-        render: () => {
-          captured_active = props().active
-          return `<span>tt</span>`
-        },
-      }))
+      const tooltip = capture_tooltip<{ active: boolean }>((props) => {
+        captured_active = props.active
+      })
       const props = Object.defineProperty(
         { tooltip, active_elements: [...active_elements] },
         `active_element`,
@@ -623,7 +602,6 @@ describe(`PeriodicTable`, () => {
     },
   )
 
-  // links=`symbol` is covered by the native-semantics test above
   test.each([
     [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
     [null, `DIV`, null],
@@ -642,10 +620,8 @@ describe(`PeriodicTable`, () => {
     const hydrogen_tile = doc_query(`.element-tile`)
     hydrogen_tile.dispatchEvent(mouseenter)
     await tick()
-
     const tooltip_el = document.querySelector<HTMLElement>(`.tooltip`)
     expect(Boolean(tooltip_el)).toBe(tooltip)
-
     if (tooltip_el) {
       expect(tooltip_el.textContent).toContain(`Hydrogen`)
       expect(tooltip_el.style.getPropertyValue(`--tooltip-auto-color`)).toBe(`black`)
@@ -739,11 +715,7 @@ describe(`PeriodicTable`, () => {
       expect([``, `transparent`]).not.toContain(tiles[3].style.backgroundColor) // single number
       expect(tiles[4].querySelector(`.segment.horizontal-top`)).toBeInstanceOf(HTMLElement)
       // array tiles list their values in the tooltip
-      for (const [idx, name] of [
-        [0, `Hydrogen`],
-        [1, `Helium`],
-        [2, `Lithium`],
-      ] as const) {
+      for (const [idx, name] of [`Hydrogen`, `Helium`, `Lithium`].entries()) {
         tiles[idx].dispatchEvent(mouseenter)
         await tick()
         const tooltip_text = doc_query(`.tooltip`).textContent
@@ -778,23 +750,13 @@ describe(`PeriodicTable`, () => {
     }
 
     test(`shows ColorBar with correct structure and defaults`, () => {
-      mount(PeriodicTable, {
-        target: document.body,
-        // Use range [0, 100] which produces exactly 3 nice ticks: 0, 50, 100
-        props: { heatmap_values: [0, 50, 100] },
-      })
-
-      const table_inset = document.querySelector(`.table-inset`)
-      const colorbar = table_inset?.querySelector(`.colorbar`)
-      const bar = colorbar?.querySelector(`.bar`)
-
-      // Structure: TableInset > ColorBar > bar with gradient
-      expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(table_inset)
-      expect(colorbar).toBeInstanceOf(HTMLElement)
-      expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
-
-      // Defaults: 3 ticks on primary side (d3's snap_ticks produces nice values)
-      expect(colorbar?.querySelectorAll(`.tick-label.tick-primary`).length).toBe(3)
+      // [0, 100] snaps to exactly 3 nice ticks: 0, 50, 100
+      mount(PeriodicTable, { target: document.body, props: { heatmap_values: [0, 50, 100] } })
+      const table_inset = doc_query(`.table-inset`)
+      const colorbar = query(table_inset, `.colorbar`)
+      expect(doc_query(`.periodic-table`).firstElementChild).toBe(table_inset)
+      expect(query(colorbar, `.bar`).style.background).toContain(`linear-gradient`)
+      expect(colorbar.querySelectorAll(`.tick-label.tick-primary`)).toHaveLength(3)
     })
 
     test.each([
@@ -822,7 +784,6 @@ describe(`PeriodicTable`, () => {
           }),
         },
       })
-
       expect(document.querySelector(`.colorbar`)).toBeNull()
       expect(rendered).toBe(true)
     })
@@ -843,7 +804,6 @@ describe(`PeriodicTable`, () => {
       })
       const inset = doc_query(`.table-inset`)
       const colorbar = query(inset, `.colorbar`)
-      // auto-colorbar-inset class provides styling via CSS (place-items, padding)
       expect(inset.classList.contains(`auto-colorbar-inset`)).toBe(true)
       expect(colorbar.style.width).toBe(`70%`)
       expect(colorbar.querySelector(`.label`)?.textContent).toBe(`Test Property`)
@@ -863,8 +823,7 @@ describe(`PeriodicTable`, () => {
       expect(tile_bg_reds(4)).toEqual([0, 85, 170, 255])
     })
 
-    // tiles and the auto ColorBar share one ramp: an explicit color_scale_range clamps
-    // out-of-range values to the end colors instead of extrapolating
+    // tiles and the auto ColorBar share one ramp clamped to an explicit color_scale_range
     test(`color_scale_range clamps tile colors without scanning the data extent`, () => {
       const extent_spy = vi.spyOn(math, `array_extent`)
       mount(PeriodicTable, {
@@ -880,8 +839,7 @@ describe(`PeriodicTable`, () => {
       expect(tick_extent()).toEqual([0, 10])
     })
 
-    // a non-positive explicit min has no log image: tiles and bar start at the smallest
-    // positive value instead of flooring at LOG_EPS and squashing every tile to the top
+    // a non-positive min has no log image: start at the smallest positive value, not LOG_EPS
     test(`log mode lifts a non-positive color_scale_range min to the smallest positive value`, () => {
       mount(PeriodicTable, {
         target: document.body,

@@ -1,6 +1,6 @@
 // KPath against the recording Threlte stub (no WebGPU renderer)
 import KPath from '#lib/brillouin/KPath.svelte'
-import type { Vec3 } from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { Color, type InstancedMesh, Vector3 } from 'three/webgpu'
@@ -22,8 +22,13 @@ test(`k-path hover, segment tints, mesh disposal and hover reset`, async () => {
   const on_kpath_hover = vi.fn()
   // oxfmt-ignore
   const k_path_points: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1]]
+  const path = (points: Vec3[]) => ({
+    points,
+    labels: points.map(() => null),
+    branches: [[0, points.length - 1] as Vec2],
+  })
   const props: ComponentProps<typeof KPath> = $state({
-    k_path_points,
+    path: path(k_path_points),
     on_kpath_hover,
     size: 1,
   })
@@ -49,7 +54,7 @@ test(`k-path hover, segment tints, mesh disposal and hover reset`, async () => {
   const disposed: string[] = []
   for (const [name, mesh] of Object.entries({ line, proxy }))
     mesh.addEventListener(`dispose`, () => disposed.push(name))
-  props.k_path_points = k_path_points.slice(0, 3)
+  props.path = path(k_path_points.slice(0, 3))
   flushSync()
   expect(disposed.toSorted()).toEqual([`line`, `proxy`])
   expect(meshes().map((node_props) => (node_props.is as InstancedMesh).count)).toEqual([2, 2])

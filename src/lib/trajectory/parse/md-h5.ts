@@ -1,12 +1,18 @@
 // Lossless MD fixed-cell trajectories: static topology once, then independently
 // compressed frames. Only the committed prefix is visible; atomic data stays on demand.
+import { display_idx } from '#lib/labels.js'
 import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { calc_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
 import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
-import { convert_atomic_numbers, create_sampled_frame, values_per_sample } from '../helpers'
+import {
+  convert_atomic_numbers,
+  create_sampled_frame,
+  preview_atom_stride,
+  values_per_sample,
+} from '../helpers'
 import type { PositionStreamOptions, TrajectoryPositionStream } from '../index'
 import type { Dataset, File as H5File } from 'h5wasm'
 import {
@@ -14,6 +20,7 @@ import {
   dataset_at,
   read_numeric_buffer,
   read_numeric_samples,
+  require_shape,
   resolve_stream_channels,
   sampled_property_rows,
   string_value,
@@ -52,11 +59,8 @@ const required = (file: H5File, path: string): Dataset => {
   if (!dataset) throw new Error(`${FORMAT} is missing ${path}`)
   return dataset
 }
-const ensure_shape = (dataset: Dataset, path: string, expected: number[]): void => {
-  const shape = dataset.shape ?? []
-  if (shape.length !== expected.length || shape.some((size, idx) => size !== expected[idx]))
-    throw new Error(`${FORMAT} ${path} has shape [${shape}], expected [${expected}]`)
-}
+const ensure_shape = (dataset: Dataset, path: string, expected: number[]): void =>
+  require_shape(dataset.shape ?? [], expected, path, FORMAT)
 const scalar = (file: H5File, path: string): number => {
   const dataset = required(file, path)
   ensure_shape(dataset, path, [])
@@ -242,7 +246,7 @@ export const parse_md_h5_file = (
   }
   const check_frame = (frame_idx: number): void => {
     if (!is_valid_index(frame_idx, frame_count))
-      throw new Error(`${FORMAT} frame ${frame_idx} is outside the committed prefix`)
+      throw new Error(`${FORMAT} frame ${display_idx(frame_idx)} is past the committed prefix`)
   }
   const channels: Record<string, { name: string; width: number; unit: string }> =
     Object.fromEntries(
@@ -286,7 +290,9 @@ export const parse_md_h5_file = (
             ? atom_masses[atom_idx]
             : element_by_symbol.get(elements[atom_idx])?.atomic_mass
         if (mass === undefined || mass <= 0)
-          throw new Error(`${FORMAT} missing ${mass_source} mass for atom ${atom_idx}`)
+          throw new Error(
+            `${FORMAT} missing ${mass_source} mass for atom ${display_idx(atom_idx)}`,
+          )
         batch_masses[idx] = mass
       }
     }
@@ -388,7 +394,7 @@ export const parse_md_h5_file = (
   }
   let preview = replica?.preview
   if (!preview && n_atoms > ATOM_BATCH_SIZE) {
-    const preview_stride = Math.ceil(n_atoms / 2000)
+    const preview_stride = preview_atom_stride(n_atoms)
     const preview_values = read_numeric_buffer(datasets.positions, `/frames/positions`, [
       [0, 1],
       [0, n_atoms, preview_stride],

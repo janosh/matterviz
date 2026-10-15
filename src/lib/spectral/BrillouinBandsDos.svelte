@@ -106,8 +106,7 @@
     style="grid-area: bz; min-width: 0; min-height: 0; overflow: hidden; height: 100%; {bz_props.style ??
       ``}"
     {structure}
-    k_path_points={link.k_path_points}
-    k_path_labels={link.k_path_labels}
+    k_path={link.k_path}
     hovered_k_point={link.hovered_k_point}
     hovered_qpoint_index={link.active_qpoint}
     highlighted_qpoint_range={link.highlighted_qpoint_range}

@@ -290,7 +290,9 @@ test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
   // oxfmt-ignore
   const k_path_points: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]]
   const scene_props = $state<ComponentProps<typeof FermiSurfaceScene>>({
-    k_path: { k_path_points },
+    k_path: {
+      path: { points: k_path_points, labels: [null, null, null], branches: [[0, 2]] },
+    },
     k_marker: k_path_points[1],
   })
   mount_scene(scene_props)

@@ -11,6 +11,7 @@ import { display_cache_budget, display_frame_bytes } from './prepare'
 import type { NumericFrame, FrameChannels } from './frame'
 import { encode_frame, FrameView, materialize_frame } from './frame'
 import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
+import { display_idx } from '#lib/labels.js'
 import { clamp } from '#lib/math.js'
 import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
@@ -505,7 +506,9 @@ export function create_trajectory_session(
     const run = inputs.run()
     if (frame_failure) return Promise.reject(frame_failure)
     if (disposed || !run || idx !== inputs.index())
-      return Promise.reject(new Error(`Frame ${idx} is not the requested display frame`))
+      return Promise.reject(
+        new Error(`Frame ${display_idx(idx)} is not the requested display frame`),
+      )
     if (
       current_frame &&
       scene_frame?.run === run &&

@@ -116,7 +116,7 @@ export const lib_aliases: { find: string | RegExp; replacement: string }[] = [
 
 // wasm-bindgen's moyo glue resolves moyo_wasm_bg.wasm next to itself, which breaks once
 // bundled. Rewrite that lookup to `source` (a JS expression); `prelude` is prepended verbatim
-// for any import the expression needs.
+// for any import the expression needs. Glue without the literal fails the build (else 404s).
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
 export const vite_plugin_moyo_wasm_source = (
   name: string,
@@ -126,7 +126,9 @@ export const vite_plugin_moyo_wasm_source = (
   name,
   enforce: `pre`,
   transform(code, identifier) {
-    if (!identifier.includes(`@spglib/moyo-wasm`) || !code.includes(moyo_glue_url)) return null
+    if (!identifier.includes(`@spglib/moyo-wasm/moyo_wasm.js`)) return null
+    if (!code.includes(moyo_glue_url))
+      throw new Error(`${name}: ${moyo_glue_url} not found in ${identifier}`)
     return { code: prelude + code.replace(moyo_glue_url, source), map: null }
   },
 })

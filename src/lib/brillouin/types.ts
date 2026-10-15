@@ -13,8 +13,11 @@ export type BZPopupPoint = { label: string; frac_coords: Vec3; position: Vec3 }
 // popup inside the plot before it has measured anything
 export const BZ_POPUP_DEFAULT_WIDTH = 320
 
-// Point of a band-structure k-path in a reciprocal-space scene (Cartesian Å⁻¹, null if unlabelled)
-export type KPathLabel = { position: Vec3; label: string | null }
+// A band structure's k-path in a reciprocal-space scene: Cartesian k-points (Å⁻¹), their
+// symmetry-point labels (index-aligned, null if unlabelled) and the inclusive q-point index
+// ranges [start, end] of its continuous branches. Steps between branches are not path: a jump
+// (U|K) or the repeated point at a junction (X, X).
+export type KPathData = { points: Vec3[]; labels: (string | null)[]; branches: Vec2[] }
 
 // Hover data for BZ tooltip
 export type BZHoverData = {

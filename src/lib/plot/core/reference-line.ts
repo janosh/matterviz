@@ -51,10 +51,10 @@ export type RefLineAxes = {
 const reference_annotation_id = (line_idx: number): string =>
   `reference-annotation-${line_idx}`
 
+// `idx` is the line's position in the caller's `ref_lines` (what click/hover events report as
+// `line_idx`), so it is assigned before hidden lines are dropped
 export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLine[] =>
-  (ref_lines ?? [])
-    .filter((line) => line.visible !== false)
-    .map((line, idx) => ({ ...line, idx }))
+  (ref_lines ?? []).flatMap((line, idx) => (line.visible === false ? [] : [{ ...line, idx }]))
 
 // The single place a line's x_axis/y_axis is read. Bounds are sorted so an inverted range
 // such as [1, 0] keeps its lines.

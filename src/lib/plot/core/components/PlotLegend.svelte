@@ -8,6 +8,7 @@
   import type { LegendItemExtent } from '#lib/plot/core/decorations/tracks.js'
   import {
     get_legend_grid_cells,
+    LEGEND_FILTER_THRESHOLD,
     suggest_legend_tracks,
   } from '#lib/plot/core/decorations/tracks.js'
   import type { FillPattern } from '#lib/plot/core/patterns.js'
@@ -59,7 +60,7 @@
     active_series_idx = null,
     active_fill_idx = null,
     filterable = true,
-    filter_threshold = 12,
+    filter_threshold = LEGEND_FILTER_THRESHOLD,
     filter_query = $bindable(``),
     draggable = true,
     root_element = $bindable<HTMLDivElement | undefined>(undefined),
@@ -190,13 +191,18 @@
     drag_controller = undefined
     is_dragging = false
   }
+  const finish_drag = (event: MouseEvent) => {
+    end_drag()
+    on_drag_end(event)
+  }
   onDestroy(() => {
     end_drag()
     on_item_hover?.(null)
   })
 
   function handle_legend_mouse_down(event: MouseEvent) {
-    if (!draggable) return
+    // Primary button only: a right-click's mouseup can vanish into the context menu
+    if (!draggable || event.button !== 0) return
     // Only start drag from non-interactive legend areas
     const target = event.target
     if (target instanceof Element && target.closest(`.legend-item, .legend-group-header`))
@@ -211,19 +217,14 @@
     window.addEventListener(
       `mousemove`,
       (move_event) => {
+        // A mouseup lost outside the window ends the drag at the next bare move
+        if (!(move_event.buttons & 1)) return finish_drag(move_event)
         move_event.preventDefault()
         on_drag(move_event)
       },
       { signal },
     )
-    window.addEventListener(
-      `mouseup`,
-      (up_event) => {
-        end_drag()
-        on_drag_end(up_event)
-      },
-      { signal },
-    )
+    window.addEventListener(`mouseup`, finish_drag, { signal })
   }
 
   let div_style = $derived(
@@ -445,11 +446,11 @@
       <!-- Sibling controls, never nested: in visibility mode the chevron expands and the
            label toggles visibility; in collapse mode the whole header is one expand toggle -->
       <div
-        class={['legend-group-header', { hidden: !group_visible }]}
+        class={[`legend-group-header`, { hidden: !group_visible }]}
         {...header_toggles ? collapse_toggle(cell.group) : {}}
       >
         <span
-          class={['group-chevron', { collapsed: is_collapsed }]}
+          class={[`group-chevron`, { collapsed: is_collapsed }]}
           {...header_toggles ? { 'aria-hidden': true } : collapse_toggle(cell.group)}>▶</span
         >
         {#if header_toggles}

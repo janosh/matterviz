@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
@@ -18,6 +19,7 @@ import { parse_mol } from '#lib/structure/parsers/mol.js'
 import { mol2_has_lattice, parse_mol2 } from '#lib/structure/parsers/mol2.js'
 import { parse_pdb, pdb_has_lattice } from '#lib/structure/parsers/pdb.js'
 import {
+  assert_cell_lengths,
   capitalize_symbol,
   cart_to_frac_with_fallback,
   cell_params_to_matrix,
@@ -226,7 +228,7 @@ function resolve_optimade_element(
   const stripped = species_name.replace(/\d+$/, ``)
   if (is_elem_symbol(stripped)) return { symbol: stripped, sym_idx: -1, spec }
   return {
-    symbol: parse_element_symbol(species_name, `OPTIMADE site ${index + 1}`),
+    symbol: parse_element_symbol(species_name, `OPTIMADE site ${display_idx(index)}`),
     sym_idx: -1,
     spec,
   }
@@ -324,7 +326,10 @@ export const parse_xyz = (content: string): AnyStructure => {
   const { structure } = build_xyz_frame(
     lines,
     last,
-    { frame_label: `frame ${frame_idx} (line ${last.start + 1})`, default_step: frame_idx },
+    {
+      frame_label: `frame ${display_idx(frame_idx)} (line ${last.start + 1})`,
+      default_step: frame_idx,
+    },
     collector,
   )
   // Wrap periodic axes into [0, 1) and recompute xyz so rendered atoms sit in the primary
@@ -774,6 +779,7 @@ export const parse_cif = (content: string): Crystal => {
 
   const cell_params = read_cell_params(block_lines, `CIF`)
   if (!cell_params) throw new Error(`Insufficient cell parameters in CIF file`)
+  assert_cell_lengths(cell_params, `CIF cell`)
   const [lattice_a, lattice_b, lattice_c, alpha, beta, gamma] = cell_params
   const lattice_matrix = cell_params_to_matrix(cell_params)
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
@@ -1025,7 +1031,9 @@ export function structure_from_json(
   if (!raw_lattice) {
     const sites = raw_sites.map((site, idx) => {
       if (!site.xyz)
-        throw new Error(`JSON site ${idx} has no xyz and the structure has no lattice`)
+        throw new Error(
+          `JSON site ${display_idx(idx)} has no xyz and the structure has no lattice`,
+        )
       return {
         ...site,
         properties: site.properties ?? {},
@@ -1044,7 +1052,7 @@ export function structure_from_json(
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }
-    throw new Error(`JSON site ${idx} has neither abc nor xyz coordinates`)
+    throw new Error(`JSON site ${display_idx(idx)} has neither abc nor xyz coordinates`)
   })
   const structure = { ...rest, lattice, sites }
   return wrap ? normalize_fractional_coords(structure) : structure
@@ -1295,8 +1303,8 @@ export function optimade_to_structure(optimade: OptimadeStructure): AnyStructure
   const sites = positions.map((position, idx) => {
     const species_name = species_at_sites[idx]
     if (typeof species_name !== `string` || !species_name)
-      throw new Error(`OPTIMADE site ${idx} has no species name`)
-    const xyz = vec3_from_values(position, `OPTIMADE atom position ${idx + 1}`)
+      throw new Error(`OPTIMADE site ${display_idx(idx)} has no species name`)
+    const xyz = vec3_from_values(position, `OPTIMADE atom position ${display_idx(idx)}`)
     const {
       symbol: element,
       sym_idx,

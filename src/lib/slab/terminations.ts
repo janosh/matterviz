@@ -1,5 +1,6 @@
 // Split an oriented bulk cell into atomic layers and turn the gaps between them into the
 // distinct ways the crystal can be cleaved.
+import { display_idx } from '#lib/labels.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -155,7 +156,7 @@ function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): numbe
       const image_idx = grid.find(target, keys[anchor_idx])
       if (image_idx < 0) {
         throw new Error(
-          `Symmetry translation ${JSON.stringify(translation)} maps site ${anchor_idx} to ` +
+          `Symmetry translation ${JSON.stringify(translation)} maps site ${display_idx(anchor_idx)} to ` +
             `${JSON.stringify(target)}, where no matching site was found`,
         )
       }

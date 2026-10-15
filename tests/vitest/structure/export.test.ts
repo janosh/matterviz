@@ -7,6 +7,7 @@ import {
   create_structure_filename,
   export_structure_as,
   fractional_export_unavailable_reason,
+  poscar_export_unavailable_reason,
   xyz_export_unavailable_reason,
   structure_to_cif_str,
   structure_to_json_str,
@@ -280,7 +281,7 @@ describe(`Export functionality`, () => {
         [structure_to_poscar_str, fractional_export_unavailable_reason],
         [structure_to_xyz_str, xyz_export_unavailable_reason],
       ]) {
-        expect(reason(structure)).toContain(`No valid coordinates found for site 0`)
+        expect(reason(structure)).toContain(`No valid coordinates found for site 1`)
         expect(() => serialize(structure)).toThrow(reason(structure))
       }
       // A valid alternative must not silently replace the format's authoritative source.
@@ -590,7 +591,7 @@ describe(`Export functionality`, () => {
             ],
             abc: [0.25, 0.25, 0.25],
             xyz: [2.5, 2.5, 2.5],
-            label: `Cu1`,
+            label: `M1`,
             properties: {},
           },
         ],
@@ -599,7 +600,7 @@ describe(`Export functionality`, () => {
       const atom_rows = cif_content
         .split(`\n`)
         .filter((line) => /^\S+ (?:Cu|Au) /.test(line.trim()))
-      expect(atom_rows).toHaveLength(2)
+      expect(atom_rows.map((line) => line.trim().split(/\s+/)[0])).toEqual([`M1`, `M1_1`])
 
       // each element's row carries the site coords and its OWN occupancy (col order:
       // label element x y z occupancy) — distinct occupancies catch a swapped assignment
@@ -613,13 +614,60 @@ describe(`Export functionality`, () => {
       expect(cif_occ(`Cu`)).toBeCloseTo(0.7, 8)
       expect(cif_occ(`Au`)).toBeCloseTo(0.3, 8)
 
-      // Round-trip: each element keeps its own partial occupancy through parse_cif
-      const species = parse_cif(cif_content).sites.flatMap((site) => site.species)
+      // Round-trip: each element keeps its own partial occupancy through parse_cif, and the
+      // merged site keeps its label (the first row's)
+      const reparsed_sites = parse_cif(cif_content).sites
+      expect(reparsed_sites.map(({ label }) => label)).toEqual([`M1`])
+      const species = reparsed_sites.flatMap((site) => site.species)
       expect(Object.fromEntries(species.map(({ element, occu }) => [element, occu]))).toEqual({
         Cu: expect.closeTo(0.7, 8),
         Au: expect.closeTo(0.3, 8),
       })
       expect(species).toHaveLength(2)
+
+      // POSCAR and XYZ hold one fully occupied element per site: refuse a mixed site (rather
+      // than keep Cu only) and a partial one (rather than write a full Cu)
+      const [site] = disordered.sites
+      const cu = (occu: number) => ({
+        ...disordered,
+        sites: [{ ...site, species: [{ element: `Cu` as const, occu, oxidation_state: 0 }] }],
+      })
+      for (const [struct, species_str] of [
+        [disordered, `Cu:0.7, Au:0.3`],
+        [cu(0.7), `Cu:0.7`],
+      ] as const) {
+        const msg = `Site 1 has partial or mixed occupancy (${species_str})`
+        for (const to_str of [structure_to_poscar_str, structure_to_xyz_str]) {
+          expect(() => to_str(struct)).toThrow(msg)
+        }
+        for (const reason of [
+          poscar_export_unavailable_reason,
+          xyz_export_unavailable_reason,
+        ]) {
+          expect(reason(struct)).toContain(msg)
+        }
+        expect(fractional_export_unavailable_reason(struct)).toBeUndefined()
+      }
+      // occupancies printed to 3 decimals still count as full
+      expect(poscar_export_unavailable_reason(cu(0.999))).toBeUndefined()
+
+      // species differing only in oxidation state are one element: POSCAR/XYZ write plain Fe,
+      // and the unlabeled site's CIF rows get element-derived labels
+      const fe_species = [2, 3].map((oxidation_state) => ({
+        element: `Fe` as const,
+        occu: 0.5,
+        oxidation_state,
+      }))
+      const mixed_valence = {
+        ...disordered,
+        sites: [{ ...site, label: ``, species: fe_species }],
+      }
+      for (const reason of [poscar_export_unavailable_reason, xyz_export_unavailable_reason]) {
+        expect(reason(mixed_valence)).toBeUndefined()
+      }
+      expect(structure_to_poscar_str(mixed_valence)).toContain(`Fe`)
+      expect(structure_to_xyz_str(mixed_valence).split(`\n`)[2]).toMatch(/^Fe /)
+      expect(structure_to_cif_str(mixed_valence)).toMatch(/^Fe1 Fe [^\n]+\nFe1_1 Fe /m)
     })
 
     const occu_site = (occu: number | undefined) => ({

@@ -264,7 +264,8 @@ describe(`spatial kinetic hotspots`, () => {
     ],
     [{ ...velocity_options, max_bytes: 1 }, /budget/],
     [{ ...velocity_options, retained_bytes: 128 * 1024 ** 2 }, /budget/],
-    [{ ...velocity_options, frame_stride: 0 }, /Invalid hotspot frame/],
+    [{ ...velocity_options, frame_stride: 0 }, /: frames 1–3 \(stride 0\)/],
+    [{ ...velocity_options, preview_frame: 3 }, /Invalid hotspot preview frame 4$/],
     [{ ...velocity_options, bins: 129, grid: undefined }, /Bins per axis/],
     [{ energy_key: `ke`, energy_unit: `eV`, motion: `local` }, /cannot remove motion/],
     [{ velocity_unit: `m/s` }, /Select mass units for recorded masses/],
@@ -325,7 +326,7 @@ describe(`spatial kinetic hotspots`, () => {
       }
       await expect(
         calculate_hotspots(3, read, { ...velocity_options, selection_key: `mobile` }),
-      ).rejects.toThrow(`Invalid coordinates or atom count at frame 0, atom 0`)
+      ).rejects.toThrow(`Invalid coordinates or atom count at frame 1, atom 1`)
     },
   )
 

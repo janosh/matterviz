@@ -23,15 +23,15 @@ export function strip_compression_extensions(
 
 type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 // Formats the platform DecompressionStream inflates natively
-export type StreamCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2`>
+export type StreamCompressionFormat = Exclude<CompressionFormat, `zip` | `xz` | `bz2` | `lzw`>
 // Formats this module can inflate in the browser: stream formats plus single-file ZIP
-// archives (via fflate). xz and bz2 have no decoder.
+// archives (via fflate). xz, bz2 and lzw have no decoder.
 type BrowserCompressionFormat = StreamCompressionFormat | `zip`
 
 export const is_stream_compression_format = (
   format: CompressionFormat | null,
 ): format is StreamCompressionFormat =>
-  format !== null && format !== `zip` && format !== `xz` && format !== `bz2`
+  format !== null && ![`zip`, `xz`, `bz2`, `lzw`].includes(format)
 
 export const is_browser_decompressible_format = (
   format: CompressionFormat | null,
@@ -269,6 +269,10 @@ interface ClassifyPayloadOptions {
 
 type LoadedPayload<Content> = { content: Content; filename: string }
 
+// Real payloads nest 2-3 wrappers deep; the cap stops self-reproducing archives (ZIP or gzip
+// quines) from unwrapping forever
+export const MAX_WRAPPER_LAYERS = 8
+
 // Every loader funnels here: inflate each browser-decompressible wrapper (the compressed bytes
 // stream straight out of the Blob, never buffered), then classify the payload the way parsers
 // expect: HDF5 as a Blob when asked, known binary formats as ArrayBuffer so a lossy UTF-8
@@ -284,7 +288,7 @@ export async function classify_payload(
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   let payload_names = [...names]
   let sniff_compression = compression_by_magic
-  while (true) {
+  for (let layer = 0; ; layer++) {
     signal?.throwIfAborted()
     const gzip_magic = sniff_compression && has_gzip_magic(new Uint8Array(await head(2)))
     const format = gzip_magic ? `gzip` : compression_wrapper_of(payload_names, source)
@@ -307,6 +311,11 @@ export async function classify_payload(
         bytes[0] >>> 4 <= 7 &&
         ((bytes[0] << 8) | bytes[1]) % 31 === 0
       if (!has_zlib_header) continue
+    }
+    if (layer >= MAX_WRAPPER_LAYERS) {
+      throw new Error(
+        `${source ?? names[0]} nests more than ${MAX_WRAPPER_LAYERS} compression layers`,
+      )
     }
     blob = await consume_decompressed(
       blob,

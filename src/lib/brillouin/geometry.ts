@@ -1,4 +1,5 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { KPathData } from './types'
 import * as math from '#lib/math.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
@@ -70,17 +71,23 @@ export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>
 export const k_space_size = (k_lattice: Matrix3x3 | undefined): number =>
   k_lattice ? k_lattice.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 3 : 10
 
-// K-path segments to draw (point pairs with the index of the first). Paths are densely sampled,
-// so a segment far longer than the median step bridges a discontinuity (e.g. `U|K`) and is
-// skipped. Zero-length steps (labels repeat at branch boundaries) draw nothing and stay out of
-// the median, which they would drag down.
-export function k_path_segments(points: readonly Vec3[]) {
-  const lengths = points.slice(1).map((point, idx) => math.euclidean_dist(point, points[idx]))
-  const steps = lengths.filter(Boolean).toSorted((len_a, len_b) => len_a - len_b)
-  const cutoff = steps.length < 2 ? Infinity : steps[Math.floor(steps.length / 2)] * 10
-  return lengths.flatMap((length, idx) =>
-    length > 0 && length <= cutoff ? [{ idx, from: points[idx], to: points[idx + 1] }] : [],
-  )
+// K-path segments to draw (point pairs with the index of the first): every nonzero step inside
+// a branch. Continuity comes from the band data's branches, never from step lengths: in
+// anisotropic cells (c/a ≫ 1) one real segment's steps can exceed another's many times over.
+export function k_path_segments({ points, labels, branches }: KPathData) {
+  if (labels.length !== points.length)
+    throw new Error(`k-path has ${labels.length} labels for ${points.length} points`)
+  return branches.flatMap(([start, end]) => {
+    const in_range = 0 <= start && start <= end && end < points.length
+    if (!(in_range && Number.isInteger(start) && Number.isInteger(end)))
+      throw new Error(
+        `k-path branch [${start}, ${end}] is no index range into ${points.length} points`,
+      )
+    return points.slice(start, end).flatMap((from, offset) => {
+      const [idx, to] = [start + offset, points[start + offset + 1]]
+      return math.euclidean_dist(from, to) > 0 ? [{ idx, from, to }] : []
+    })
+  })
 }
 
 // Line and marker sizes scale with `bz_size` so large and small (supercell) zones look alike.

@@ -1,10 +1,5 @@
 <script lang="ts">
-  import {
-    normalize_show_controls,
-    shows_fullscreen_toggle,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type {
@@ -19,6 +14,7 @@
     outer_strip_reservation,
   } from '#lib/plot/core/marginals.js'
   import PlotMarginals from '#lib/plot/core/components/PlotMarginals.svelte'
+  import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import { chart_css_defaults } from '#lib/plot/core/components/ChartShell.svelte'
   import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
   import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
@@ -173,12 +169,6 @@
   })
 
   onDestroy(() => pan_zoom.destroy())
-  const controls_config = $derived(normalize_show_controls(show_controls))
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
-  const toggle_props = $derived({
-    ...controls_toggle_props,
-    style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-  })
 </script>
 
 <svelte:window
@@ -196,18 +186,17 @@
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if measured}
-    <div class={[`header-controls`, controls_config.class]} style={controls_config.style}>
-      {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
-      {@render controls?.(toggle_props, controls_config.visible(`controls`))}
-      {#if fullscreen || show_toggle}
-        <FullscreenButton
-          bind:fullscreen
-          hidden={!show_toggle}
-          {wrapper}
-          bg_css_var="--{css_prefix}-fullscreen-bg"
-        />
-      {/if}
-    </div>
+    <ChartHeaderControls
+      {dims}
+      bind:fullscreen
+      {wrapper}
+      {css_prefix}
+      {fullscreen_toggle}
+      {show_controls}
+      {controls_toggle_props}
+      {header_controls}
+      {controls}
+    />
   {/if}
   {#if !require_size || measured}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -340,31 +329,6 @@
     border: var(--plot-frame-dragover-border);
     background-color: var(--plot-frame-dragover-bg);
   }
-  .header-controls {
-    position: absolute;
-    top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
-    right: var(--fullscreen-btn-right, 4px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    --icon-size: var(--ctrl-btn-icon-size, 1rem);
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  /* lifted while its pane is open: every chart's row shares one z-index, so a chart further
-     down the page painted its chrome over a pane dragged onto it */
-  .header-controls:has(:global(.draggable-pane.pane-open)) {
-    z-index: var(--z-index-viewer-pane-open, 12);
-  }
-  .header-controls.always-visible,
-  .plot-frame:hover .header-controls,
-  .plot-frame .header-controls:focus-within,
-  .header-controls:has(:global([aria-expanded='true'])) {
-    opacity: 1;
-  }
   svg {
     width: var(--plot-frame-svg-width);
     height: var(--plot-frame-svg-height);
@@ -374,10 +338,5 @@
     fill: var(--text-color);
     font-weight: var(--plot-frame-font-weight);
     font-size: var(--plot-frame-font-size);
-  }
-  @media (hover: none) {
-    .header-controls.hover-visible {
-      opacity: 1;
-    }
   }
 </style>

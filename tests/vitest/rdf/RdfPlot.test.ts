@@ -253,6 +253,24 @@ describe(`RdfPlot`, () => {
       `1 structure loaded`,
     )
   })
+
+  test(`reports a structure the neighbour search rejects and still plots the others`, async () => {
+    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+    broken.sites[0].xyz = [NaN, 0, 0]
+    const plot = await mount_sized_rdf_plot({ structures: { good: nacl_structure, broken } })
+    expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
+    await vi.waitFor(() => expect(document.body.textContent).toMatch(/broken: .*non-finite/))
+  })
+
+  test(`the failure message clears once the broken structure is removed`, async () => {
+    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+    broken.sites[0].xyz = [NaN, 0, 0]
+    const structures = { good: nacl_structure, broken }
+    const target = await mount_harness({ pattern: create_synthetic_pattern(), structures })
+    await vi.waitFor(() => expect(target.textContent).toMatch(/broken: .*non-finite/))
+    target.querySelector<HTMLButtonElement>(`.drop-broken`)?.click()
+    await vi.waitFor(() => expect(target.textContent).not.toMatch(/non-finite/))
+  })
 })
 
 describe(`PdfPlot`, () => {

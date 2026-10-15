@@ -1,6 +1,7 @@
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import { create_display } from '#lib/file-viewer/main.js'
-import { base64_to_array_buffer, parse_file_content } from '#lib/file-viewer/parse.js'
+import { parse_file_content } from '#lib/file-viewer/parse.js'
+import { base64_to_array_buffer } from '#lib/utils.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
 import type { DownloadData } from '#lib/io/fetch.js'
@@ -13,11 +14,7 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import {
-  deflateRawSync as deflate_raw_sync,
-  deflateSync as deflate_sync,
-  gzipSync as gzip_sync,
-} from 'node:zlib'
+import { deflateSync as deflate_sync, gzipSync as gzip_sync } from 'node:zlib'
 import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
@@ -29,16 +26,13 @@ import {
   read_maybe_gz,
 } from '../test-fixtures'
 
-// parse_structure_file throws on parse failure but can still return a structure with
-// zero atoms (e.g. a CIF with cell params but no _atom_site records). Wrap it in a spy that
-// defaults to the real parser so single tests can return that shape and exercise
-// parse_file_content's no-atoms guard.
+// Spy defaulting to the real parser so a test can return a zero-atom structure (cell-only CIF)
 vi.mock('#lib/structure/parse.js', async (import_original) => {
   const original = await import_original<typeof structure_parse_module>()
   return { ...original, parse_structure_file: vi.fn(original.parse_structure_file) }
 })
 
-// Spy on the mocked mount to assert which props create_display passes to components.
+// Spy on mount to assert which props create_display passes to components
 vi.mock('svelte', async (import_original) => ({
   ...(await import_original<typeof svelte_module>()),
   mount: vi.fn(() => ({})),
@@ -69,44 +63,23 @@ const with_defaults = (defaults: unknown, body: () => void): void => {
   }
 }
 
-describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
-  test.each([
-    [`SGVsbG8gV29ybGQ=`, `Hello World`, 11], // Basic ASCII, one `=` pad
-    [``, ``, 0], // Empty string
-    [`QQ==`, `A`, 1], // Single character, two `=` pads
-    [`QUI=`, `AB`, 2], // Two characters, one `=` pad
-  ])(`base64_to_array_buffer: %s → %s (%i bytes)`, (base64, expected, byte_length) => {
-    const result = base64_to_array_buffer(base64)
-    expect(result).toBeInstanceOf(ArrayBuffer)
-    expect(result.byteLength).toBe(byte_length)
-    expect(new TextDecoder().decode(result)).toBe(expected)
-  })
-
-  // Both padding classes at a size past 256, so every byte value appears in each
-  test.each([1024, 8192])(`handles typical ASE trajectory file size: %i bytes`, (size) => {
-    // bytes cycle through 0-255, so full equality also proves byte-order
-    // preservation for every possible byte value
-    const data = new Uint8Array(size)
-    for (let idx = 0; idx < size; idx++) data[idx] = idx % 256
-    const result = base64_to_array_buffer(uint8_as_base64(data))
-    expect(result.byteLength).toBe(size)
-    expect(Array.from(new Uint8Array(result))).toEqual(Array.from(data))
-  })
+// 0/1/2 bytes cover the no/two/one `=` padding classes; byte values cycle 0-255 past 256
+test.each([0, 1, 2, 1024, 8192])(`base64_to_array_buffer round-trips %i bytes`, (size) => {
+  const data = Uint8Array.from({ length: size }, (_, idx) => idx % 256)
+  const result = base64_to_array_buffer(uint8_as_base64(data))
+  expect(result).toBeInstanceOf(ArrayBuffer)
+  expect(new Uint8Array(result)).toEqual(data)
 })
 
-describe(`parse_file_content structure guard`, () => {
-  // parse_structure_file is mocked above; vary its return to exercise the no-atoms guard.
-  // error=string asserts a throw, error=null asserts a successful structure result.
-  test.each([
-    [`empty cell-only CIF`, { sites: [] }, `empty.cif`, `No atoms found in empty.cif`],
-    [`missing sites property`, {}, `empty.cif`, `No atoms found in empty.cif`],
-    [`valid structure`, { sites: [{ species: [] }] }, `ok.cif`, null],
-  ])(`%s`, async (_label, parsed, filename, error) => {
-    vi.mocked(parse_structure_file).mockReturnValueOnce(parsed as never)
-    const promise = parse_file_content(`data_test`, filename)
-    if (error) await expect(promise).rejects.toThrow(error)
-    else expect(await promise).toMatchObject({ type: `structure`, filename })
-  })
+test.each([
+  [`empty cell-only CIF`, { sites: [] }, `empty.cif`, `No atoms found in empty.cif`],
+  [`missing sites property`, {}, `empty.cif`, `No atoms found in empty.cif`],
+  [`valid structure`, { sites: [{ species: [] }] }, `ok.cif`, null],
+])(`parse_file_content structure guard: %s`, async (_label, parsed, filename, error) => {
+  vi.mocked(parse_structure_file).mockReturnValueOnce(parsed as never)
+  const promise = parse_file_content(`data_test`, filename)
+  if (error) await expect(promise).rejects.toThrow(error)
+  else expect(await promise).toMatchObject({ type: `structure`, filename })
 })
 
 // A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
@@ -120,10 +93,7 @@ test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(
   },
 )
 
-// Files used to open as the wrong kind, or with data dropped, depending only on their name:
-// multi-frame dumps/XDATCARs as one structure, CHG and renamed CHGCARs without their grid, a
-// VASP token overriding a .cif, directory names steering the route, and a pymatgen
-// trajectory JSON needing a keyword in its name
+// Content, not the name, decides the kind: names used to drop frames or grids or misroute files
 test.each([
   [`mdanalysis-chain-dump.lammpstrj`, `md.dump`, `trajectory`],
   [`vasp-XDATCAR-traj.gz`, `Si_run`, `trajectory`],
@@ -158,8 +128,7 @@ test(`multi-frame XYZ text opens as a trajectory run`, async () => {
   run.dispose()
 })
 
-// Text past one JS string reaches only the chunked trajectory reader, whatever its name: nothing
-// else can parse it, and decoding it first throws the engine's string-length RangeError
+// Text past one JS string reaches only the chunked trajectory reader, never a string decode
 test(`routes a byte payload past the string limit to the trajectory reader`, async () => {
   const blob = new Blob([`data_big`])
   Object.defineProperty(blob, `size`, { value: MAX_STRING_CHARS + 1 })
@@ -175,8 +144,7 @@ test(`routes a byte payload past the string limit to the trajectory reader`, asy
   expect(decode).not.toHaveBeenCalled()
 })
 
-// The host's matterviz.trajectory.atom_type_mapping arrives in load_options with string keys
-// (JSON); the LAMMPS reader names the types from it instead of guessing atomic numbers
+// The host's atom_type_mapping (JSON string keys) names LAMMPS types instead of guessed Z
 test.each([
   [{ '1': `Si`, '2': `O` }, [`Si`, `O`, `O`], 0],
   [undefined, [`H`, `He`, `He`], 1],
@@ -235,7 +203,6 @@ test(`parse_file_content renders convex hull JSON whose filename contains convex
     { composition: { Cu: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
     { composition: { Al: 1, Cu: 1 }, energy: -0.2, e_form_per_atom: -0.1, e_above_hull: 0, is_stable: true },
   ]
-
   await expect(
     parse_file_content(JSON.stringify(convex_hull_entries), `Al-Cu-convex-hull.json`),
   ).resolves.toMatchObject({
@@ -263,9 +230,7 @@ test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, asyn
     },
     reciprocal_space: { reciprocal_lattice: IDENTITY_MATRIX3 },
   }
-
   const result = await parse_file_content(JSON.stringify(ifermi_surface), `surface.json`)
-
   if (result.type !== `fermi_surface`) throw new Error(`expected Fermi surface result`)
   if (!is_fermi_surface_data(result.data)) throw new Error(`expected Fermi surface data`)
   // Positive band key → spin up; the mesh lands in renderer-ready typed arrays
@@ -282,8 +247,7 @@ test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, asyn
   expect([sheet.band_index, sheet.spin]).toEqual([1, `up`])
 })
 
-// Regression: the site-less structure wrapping a volumetric JSON carried the bare 3x3 matrix
-// as `lattice`, so StructureScene crashed on lattice.matrix (JsonBrowser panels shared it)
+// The site-less structure wrapping volumetric JSON carried a bare 3x3 `lattice`, crashing StructureScene
 test.each([true, false])(
   `parse_file_content wraps volumetric JSON (periodic=%s) in a structure with a full lattice`,
   async (periodic) => {
@@ -324,8 +288,7 @@ test.each([true, false])(
 )
 
 describe(`vaspout.h5 electronic routing`, () => {
-  // Parsed content details are covered by tests/vitest/trajectory/vaspout-h5.test.ts;
-  // these tests only check routing and the mount contract.
+  // Only routing and the mount contract; parsed content is in trajectory/vaspout-h5.test.ts
   test(`bands-only vaspout.h5 routes to vaspout_electronic and mounts electronic bands`, async () => {
     const base64 = fixture_base64(`vaspout-tinisn-bands-only.h5`)
     const result = await parse_file_content(base64, `vaspout.h5`, true)
@@ -335,8 +298,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(data.bands).not.toBeNull()
 
     create_display(make_container(), result)
-    const mount_props = last_mount_props()
-    expect(mount_props.band_structs).toEqual({ '': data.bands })
+    expect(last_mount_props().band_structs).toEqual({ '': data.bands })
     expect(data.bands).toMatchObject({ type: `electronic` })
   })
 
@@ -362,8 +324,7 @@ describe(`vaspout.h5 electronic routing`, () => {
     run.dispose()
   })
 
-  // VASP HDF5 outputs are often archived gzipped; the inner filename must
-  // drive routing after binary decompression.
+  // The inner filename drives routing after binary decompression
   test.each([
     [`vaspout-tinisn-bands-only.h5`, `vaspout.h5.gz`, `vaspout_electronic`],
     [`vaspwave-si-charge.h5`, `vaspwave.h5.gz`, `isosurface`],
@@ -374,12 +335,10 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(result.filename).toBe(gz_filename.replace(/\.gz$/, ``))
   })
 
-  // ULM-encoded .traj bytes are not valid UTF-8: text decompression would corrupt them and
-  // the ASE parser would reject the header, so a successful open proves the bytes survived
+  // ULM .traj bytes are not UTF-8, so a successful open proves no text decode corrupted them
   test.each([
     [`.gz`, gzip_sync],
     [`.deflate`, deflate_sync],
-    [`.z`, deflate_raw_sync],
     [`.zip`, (data: Uint8Array) => zipSync({ [`relax.traj`]: data })],
     [`.traj.zip`, (data: Uint8Array) => zipSync({ [`relax.traj.gz`]: gzip_sync(data) })],
   ] as const)(
@@ -408,8 +367,7 @@ test.each([
   [`phase_diagram`, {}, `data`, undefined],
   [`structure`, { sites: [] }, `structure`, false],
 ] as const)(`create_display mounts %s data`, (type, data, prop_name, allow_file_drop) => {
-  // Minimal stubs: this asserts which prop create_display forwards data to, not that the
-  // payload is a well-formed member of its view type
+  // Minimal stubs: asserts which prop receives the data, not that the payload is well-formed
   create_display(make_container(), { type, data, filename: `test.json` } as ParseResult)
   const mount_props = last_mount_props()
   expect(mount_props[prop_name]).toBe(data)
@@ -428,8 +386,7 @@ describe(`create_display trajectory display options`, () => {
     filename: `relax.h5`,
   })
 
-  // Regression: non-VS Code hosts leave --vscode-* unset. Falling
-  // back to dark hex made light-mode traj shells black and bleached info-pane text.
+  // Non-VS Code hosts leave --vscode-* unset; a dark hex fallback blackened light-mode shells
   test(`viewer shell follows MatterViz theme tokens when VS Code vars are absent`, () => {
     const container = make_container()
     create_display(container, trajectory_result())
@@ -492,9 +449,7 @@ describe(`create_display trajectory display options`, () => {
     })
   })
 
-  // Regression: the webview used to forward invented keys (markers, point_size, show_grid,
-  // bin_count, ...) that no plot component declares, so they were spread onto the wrapper
-  // div and the corresponding VS Code settings did nothing
+  // Invented keys (markers, show_grid, bin_count, ...) used to land on the wrapper div unread
   test(`plot settings reach Trajectory's scatter/histogram props under their real names`, () => {
     const defaults = {
       plot: { display: { x_grid: false } },
@@ -544,11 +499,8 @@ describe(`create_display trajectory display options`, () => {
   )
 })
 
-// A file past the host's inline limit arrives as a marker instead of its bytes.
-// Handling it here (rather than in the host entry point, as it used to be) is
-// what lets callers that parse through this module (such as a desktop host's worker
-// wrapper) reach the host's streaming bridge at all. Before this, a marker fell
-// through to the structure parser and died with "XYZ frame too short".
+// A file past the host's inline limit arrives as a marker; it once fell through to the
+// structure parser and died with "XYZ frame too short"
 describe(`LARGE_FILE markers`, () => {
   const marker = `LARGE_FILE:/data/movie.extxyz:268435456`
   const backing = trajectory_from_frames(
@@ -559,8 +511,7 @@ describe(`LARGE_FILE markers`, () => {
     { provenance: { filename: `movie.extxyz`, format: `xyz` } },
   )
 
-  // post_request listens on globalThis, a real EventTarget in the webview but
-  // not in vitest's node environment.
+  // post_request listens on globalThis, not an EventTarget in vitest's node environment
   const with_host = (
     respond: (request: Record<string, unknown>) => Record<string, unknown>,
   ): { post_message: ReturnType<typeof vi.fn>; message_bus: EventTarget } => {
@@ -576,8 +527,7 @@ describe(`LARGE_FILE markers`, () => {
     return { post_message, message_bus }
   }
 
-  // The bridge caches the host handle at import (and main.ts above already loaded it without
-  // one), so take a fresh copy of the module graph after acquireVsCodeApi is in place.
+  // The bridge caches the host handle at import, so re-import after stubbing acquireVsCodeApi
   const fresh_parse = async () => {
     vi.resetModules()
     return (await import(`#lib/file-viewer/parse.js`)).parse_file_content
@@ -589,7 +539,6 @@ describe(`LARGE_FILE markers`, () => {
   })
 
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
-    // The host keeps the indexed run and hands over only its summary; plot rows follow
     const summary = { ...summarize_run(backing), properties: { rows: [], complete: false } }
     const { post_message, message_bus } = with_host((request) =>
       request.command === `request_frame`
@@ -610,8 +559,7 @@ describe(`LARGE_FILE markers`, () => {
       command: `request_large_file`,
       request_id: expect.any(String),
       file_path: `/data/movie.extxyz`,
-      // The host picks its per-format indexer from the name.
-      filename: `movie.extxyz`,
+      filename: `movie.extxyz`, // the host picks its indexer by name
     })
     expect(result.type).toBe(`trajectory`)
     const run = result.data as TrajectoryRun
@@ -742,25 +690,28 @@ describe(`LARGE_FILE markers`, () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  test(`says so plainly when no host is listening`, async () => {
-    await expect((await fresh_parse())(marker, `movie.extxyz`)).rejects.toThrow(
-      /no host bridge is available/,
-    )
-  })
-
-  test(`refuses formats the host cannot index`, async () => {
-    const { post_message } = with_host(() => ({}))
-    await expect(
-      (await fresh_parse())(`LARGE_FILE:/data/charge.cube:268435456`, `charge.cube`),
-    ).rejects.toThrow(`only supported for indexed trajectories`)
-    expect(post_message).not.toHaveBeenCalled()
-  })
-
-  test(`a malformed marker fails instead of parsing as file content`, async () => {
-    await expect(
-      parse_file_content(`LARGE_FILE:/data/movie.extxyz:not-a-number`, `movie.extxyz`),
-    ).rejects.toThrow(`Malformed large file marker`)
-  })
+  test.each([
+    [false, marker, `movie.extxyz`, `no host bridge is available`],
+    [
+      true,
+      `LARGE_FILE:/data/charge.cube:1`,
+      `charge.cube`,
+      `only supported for indexed trajectories`,
+    ],
+    [
+      true,
+      `LARGE_FILE:/data/movie.extxyz:not-a-number`,
+      `movie.extxyz`,
+      `Malformed large file marker`,
+    ],
+  ])(
+    `host=%s: rejects %s without a host request`,
+    async (has_host, content, filename, msg) => {
+      const post_message = has_host && with_host(() => ({})).post_message
+      await expect((await fresh_parse())(content, filename)).rejects.toThrow(msg)
+      if (post_message) expect(post_message).not.toHaveBeenCalled()
+    },
+  )
 })
 
 describe(`VSCode Download Integration`, () => {
@@ -769,8 +720,7 @@ describe(`VSCode Download Integration`, () => {
     vi.unstubAllGlobals()
   })
 
-  // Reset modules (clears the cached vscode_api in file-viewer/main.ts), mock the VS Code
-  // API, then install the download override. Returns the postMessage mock to assert on.
+  // Fresh module graph (drops the cached vscode_api), stubbed API, download override installed
   const init_download = async () => {
     vi.resetModules()
     const mock_post_message = vi.fn()
@@ -786,7 +736,6 @@ describe(`VSCode Download Integration`, () => {
 
   test(`sets up global download override when VSCode API is available`, async () => {
     const mock_post_message = await init_download()
-    expect(typeof globalThis.download).toBe(`function`)
     globalThis.download(`test content`, `test.json`, `application/json`)
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `saveAs`,
@@ -796,15 +745,11 @@ describe(`VSCode Download Integration`, () => {
     })
   })
 
-  // Both binary download paths need a FileReader stub whose async read is driven by
-  // fake timers. `outcome` picks which of the two listeners main.ts registers fires:
-  // `load` also fills in `result` from the real Blob for end-to-end correctness.
+  // Timer-driven FileReader stub firing `outcome`'s listener; `load` encodes the real Blob
   const stub_file_reader = (outcome: `load` | `error`) => {
     vi.useFakeTimers()
-
     const FakeFileReader = vi.fn(function (this: FileReader) {
-      // Per instance, not per stub: overlapping downloads would otherwise share one
-      // listener and result, so the second read would clobber the first
+      // Per instance so overlapping downloads don't clobber each other's result
       let listener: (() => void) | undefined
       let result: string | null = null
 
@@ -827,9 +772,7 @@ describe(`VSCode Download Integration`, () => {
     vi.stubGlobal(`FileReader`, FakeFileReader)
   }
 
-  // The shared `download` contract also admits an ArrayBuffer and a view over one, and that is
-  // exactly what the STL and GLB scene exports pass. readAsDataURL takes a Blob only, so both
-  // failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast and no file.
+  // STL/GLB exports pass an ArrayBuffer or view, which readAsDataURL (Blob-only) used to reject
   test.each([
     [`a Blob`, () => new Blob([`fake stl data`], { type: `model/stl` })],
     [`an ArrayBuffer`, () => new TextEncoder().encode(`fake stl data`).buffer],
@@ -839,7 +782,6 @@ describe(`VSCode Download Integration`, () => {
     const mock_post_message = await init_download()
     globalThis.download(make_data(), `structure.stl`, `model/stl`)
     await vi.runAllTimersAsync()
-
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `saveAs`,
       content: `data:model/stl;base64,ZmFrZSBzdGwgZGF0YQ==`,
@@ -850,7 +792,6 @@ describe(`VSCode Download Integration`, () => {
 
   test.each([``, `   `])(`rejects invalid filename: "%s"`, async (filename) => {
     const mock_post_message = await init_download()
-
     globalThis.download(`test content`, filename, `application/json`)
     expect(mock_post_message).not.toHaveBeenCalled()
   })
@@ -860,7 +801,6 @@ describe(`VSCode Download Integration`, () => {
     const mock_post_message = await init_download()
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
     await vi.runAllTimersAsync()
-
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `error`,
       text: `Failed to read binary data for download`,
@@ -869,11 +809,9 @@ describe(`VSCode Download Integration`, () => {
 
   test(`handles general exceptions during download`, async () => {
     const mock_post_message = await init_download()
-
     mock_post_message.mockImplementationOnce(() => {
       throw new Error(`Network error`)
     })
-
     globalThis.download(`test content`, `test.json`, `application/json`)
     expect(mock_post_message).toHaveBeenCalledWith({
       command: `error`,

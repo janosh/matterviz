@@ -19,6 +19,7 @@ import {
   read_numeric_buffer,
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   read_numeric_samples,
+  require_shape,
   resolve_stream_channels,
   sampled_property_rows,
   signal_descriptors as describe_signals,
@@ -57,13 +58,8 @@ const values_of = (dataset: Dataset, path: string): number[] => {
   return values
 }
 
-const ensure_shape = (shape: number[], expected: number[], path: string): void => {
-  if (shape.length !== expected.length || shape.some((size, idx) => size !== expected[idx])) {
-    throw new Error(
-      `Reference MD HDF5 dataset ${path} has shape [${shape.join(`, `)}], expected [${expected.join(`, `)}]`,
-    )
-  }
-}
+const ensure_shape = (shape: number[], expected: number[], path: string): void =>
+  require_shape(shape, expected, path, `Reference MD HDF5`)
 
 const is_pbc_value = (value: unknown): boolean =>
   value === true || value === false || value === 0 || value === 1
@@ -434,7 +430,7 @@ export const parse_reference_md_h5_file = (
   const assert_frame_number = (frame_number: number): void => {
     if (!is_valid_index(frame_number, n_frames)) {
       throw new Error(
-        `Reference MD frame ${frame_number} is outside 0..${Math.max(n_frames - 1, 0)}`,
+        `Reference MD frame index ${frame_number} is outside 0..${Math.max(n_frames - 1, 0)}`,
       )
     }
   }

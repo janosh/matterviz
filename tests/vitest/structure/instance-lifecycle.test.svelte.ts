@@ -29,7 +29,7 @@ import {
   pack_bonds,
   prepare_bond_placements,
 } from '#lib/structure/bond-rendering.js'
-import type { Polyhedron, PolyhedraColorMode } from '#lib/structure/polyhedra.js'
+import type { Polyhedron } from '#lib/structure/polyhedra.js'
 import { cache_prepared_polyhedra, merge_polyhedra_buffers } from '#lib/structure/polyhedra.js'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { colors } from '#lib/state.svelte.js'
@@ -42,7 +42,6 @@ import { make_crystal } from '../test-fixtures'
 import { type Component, type ComponentProps, flushSync, untrack } from 'svelte'
 import {
   type Color,
-  CylinderGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
@@ -83,6 +82,37 @@ const meshes_of = <Kind extends Object3D>(
     .filter((mesh): mesh is Kind => mesh instanceof kind)
 const sphere_count = (scene: Object3D): number =>
   meshes_of(scene, AtomInstances).reduce((sum, mesh) => sum + mesh.count, 0)
+// The merged polyhedra faces: the one plain vertex-colored mesh
+const polyhedra_faces = (scene: Object3D): Mesh | undefined =>
+  scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find(
+      (mesh): mesh is Mesh =>
+        mesh instanceof Mesh &&
+        ![AtomInstances, BondMesh, ArrowMesh].some((kind) => mesh instanceof kind) &&
+        Boolean(mesh.geometry.getAttribute(`color`)),
+    )
+type SceneProps = Partial<ComponentProps<typeof StructureScene>>
+// Mount a gizmo-free StructureScene (getters in props stay live, state keys bind two-way),
+// flushed and unmounted after the test
+const mount_structure = (props: SceneProps, state: SceneProps = {}) => {
+  const mounted = mount_scene((anchor) =>
+    StructureScene(anchor, bind_props(Object.assign(props, { gizmo: false }), state)),
+  )
+  onTestFinished(mounted.unmount_scene)
+  flushSync()
+  return mounted
+}
+// A lone carbon atom with its other props bound to `state`
+const mount_carbon = (state: SceneProps) =>
+  mount_structure(
+    {
+      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
+      show_bonds: `never`,
+      show_polyhedra: `never`,
+    },
+    state,
+  )
 // Both ends of every instanced bond cylinder
 const bond_endpoints = (bond: BondMesh): number[][][] =>
   Array.from({ length: bond.count }, (_unused, bond_idx) =>
@@ -102,6 +132,12 @@ const SIO4_CORNERS: Vec3[] = [
   [-SIO4_ARM, SIO4_ARM, -SIO4_ARM],
   [-SIO4_ARM, -SIO4_ARM, SIO4_ARM],
 ]
+const sio4 = (properties: Site[`properties`] = {}) => ({
+  sites: [
+    make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`, properties),
+    ...SIO4_CORNERS.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`, properties)),
+  ],
+})
 
 test.each(
   ([`plane`, `slab`] as const).flatMap((mode) =>
@@ -113,38 +149,17 @@ test.each(
   `$mode cutaway selects whole atoms=$whole_atoms at occupancy=$occupancy while keeping visible surfaces pickable`,
   ({ mode, whole_atoms, occupancy }) => {
     const interactivity = spy_interactivity()
-    const settings: StructureCutaway = {
-      mode,
-      axis: 2,
-      position: mode === `plane` ? 0.1 : 0,
-      thickness: 0.2,
-      whole_atoms,
-      cartesian_to_fractional: new Matrix4(),
-    }
-    let cutaway = $state<StructureCutaway | undefined>()
-    let structure = $state({
-      sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`, {}, occupancy)],
-    })
-    const { unmount_scene } = mount_scene((anchor) =>
-      StructureScene(anchor, {
-        get structure() {
-          return structure
-        },
-        get cutaway() {
-          return cutaway
-        },
-        show_bonds: `never`,
-        show_polyhedra: `never`,
-        gizmo: false,
-      }),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
+    const position = mode === `plane` ? 0.1 : 0
+    const settings = { ...whole_atom_cutaway(), mode, position, whole_atoms }
+    const carbon = (z_coord: number) =>
+      make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, occupancy)
+    const state = $state<SceneProps>({ structure: { sites: [carbon(0)] }, cutaway: undefined })
+    mount_structure({ show_bonds: `never`, show_polyhedra: `never` }, state)
     const { interactiveObjects: targets } = interactivity()
     const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
     const hits = () => ray.intersectObjects(targets, true)
     expect(hits()[0]?.distance).toBeLessThan(2)
-    cutaway = settings
+    state.cutaway = settings
     flushSync()
     // Center selection preserves the near sphere surface across the slab boundary.
     // Surface clipping instead exposes the vacancy cap at z=0 for partial occupancy.
@@ -154,19 +169,17 @@ test.each(
     if (whole_atoms) {
       // Moving atoms must leave and reenter a fixed slice instead of reusing its old selection.
       for (const z_coord of [0.3, 0]) {
-        structure = {
-          sites: [make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, occupancy)],
-        }
+        state.structure = { sites: [carbon(z_coord)] }
         flushSync()
         if (z_coord) expect(hits()).toEqual([])
         else expect(hits()[0]?.distance).toBeLessThan(2)
       }
     }
-    cutaway = { ...settings, position: -0.3 }
+    state.cutaway = { ...settings, position: -0.3 }
     flushSync()
     expect(hits()).toEqual([])
     // Disabling clipping restores the full-sphere target, including its pole-safe hover.
-    cutaway = undefined
+    state.cutaway = undefined
     flushSync()
     expect(hits()[0]?.distance).toBeLessThan(2)
   },
@@ -235,20 +248,16 @@ test.each(
       return next
     }
     let structure = $state.raw(make_structure(0))
-    const { scene, unmount_scene } = mount_scene((anchor) =>
-      StructureScene(anchor, {
-        get structure() {
-          return structure
-        },
-        cutaway: whole_atom_cutaway(),
-        show_bonds,
-        show_polyhedra: `always`,
-        polyhedra_neighbor_mode: `bonded`,
-        polyhedra_excluded_elements: [`Si`],
-        gizmo: false,
-      }),
-    )
-    onTestFinished(unmount_scene)
+    const { scene } = mount_structure({
+      get structure() {
+        return structure
+      },
+      cutaway: whole_atom_cutaway(),
+      show_bonds,
+      show_polyhedra: `always`,
+      polyhedra_neighbor_mode: `bonded`,
+      polyhedra_excluded_elements: [`Si`],
+    })
     for (const [center_z, vertex_z] of [
       [0, 0.5],
       [0, 0.75],
@@ -257,16 +266,9 @@ test.each(
     ]) {
       structure = make_structure(center_z, vertex_z)
       flushSync()
-      const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
       const atoms = meshes_of(scene, AtomInstances)
       const [bond] = meshes_of(scene, BondMesh)
-      const faces = meshes.find(
-        (mesh) =>
-          mesh instanceof Mesh &&
-          mesh.geometry.getAttribute(`normal`) &&
-          !(mesh instanceof AtomInstances) &&
-          !(mesh instanceof BondMesh),
-      )
+      const faces = polyhedra_faces(scene)
       if (center_z) {
         expect(atoms).toHaveLength(0)
         expect(bond).toBeUndefined()
@@ -285,14 +287,12 @@ test.each(
         expect.arrayContaining([[0, 0, 0], [1, 0, vertex_z], ...vertices.slice(1)]),
       )
       for (const mesh of atoms) expect(cutaway_planes(mesh)).toEqual([])
-      expect(faces).toBeInstanceOf(Mesh)
-      if (!(faces instanceof Mesh)) throw new Error(`Missing complete polyhedron`)
+      if (!faces) throw new Error(`Missing complete polyhedron`)
       expect(cutaway_planes(faces)).toEqual([])
       expect(faces.geometry.getAttribute(`position`).count).toBe(12)
       if (show_bonds === `never`) expect(bond).toBeUndefined()
       else {
-        expect(bond).toBeInstanceOf(BondMesh)
-        if (!(bond instanceof BondMesh)) throw new Error(`Missing complete bonds`)
+        if (!bond) throw new Error(`Missing complete bonds`)
         expect(bond.count).toBe(4)
         expect(cutaway_planes(bond)).toEqual([])
         for (const endpoint of bond_endpoints(bond).flat()) {
@@ -307,21 +307,7 @@ test.each(
 test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
   const interactivity = spy_interactivity()
   const state = $state({ camera_is_moving: false, dragging_atoms: false })
-  const { unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
-      get camera_is_moving() {
-        return state.camera_is_moving
-      },
-      get dragging_atoms() {
-        return state.dragging_atoms
-      },
-      show_bonds: `never`,
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  mount_carbon(state)
   const { enabled } = interactivity()
   for (const [camera_is_moving, dragging_atoms, hover] of [
     [false, false, true],
@@ -345,33 +331,18 @@ test.each([
   [-10, 1, 0.5],
 ])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
   const interactivity = spy_interactivity()
-  const hover = $state<{ idx: number | null }>({ idx: null })
-  const { unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: {
-        sites: [0, -3].map((z_coord, idx) =>
-          make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
-        ),
-      },
-      get hovered_idx() {
-        return hover.idx
-      },
-      set hovered_idx(value) {
-        hover.idx = value
-      },
-      show_bonds: `never`,
-      gizmo: false,
-    }),
+  const hover = $state<SceneProps>({ hovered_idx: null })
+  const sites = [0, -3].map((z_coord, idx) =>
+    make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
   )
-  onTestFinished(unmount_scene)
-  flushSync()
+  mount_structure({ structure: { sites }, show_bonds: `never` }, hover)
   // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
   const scene_interactivity = interactivity()
   scene_interactivity.compute = (_event, state) =>
     state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
   scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
   flushSync()
-  expect(hover.idx).toBe(front_idx)
+  expect(hover.hovered_idx).toBe(front_idx)
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path
@@ -391,14 +362,7 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
     added_bonds: [],
   })
   const sites = [0, 3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
-  const { unmount_scene } = mount_scene((anchor) =>
-    StructureScene(
-      anchor,
-      bind_props({ structure: { sites }, show_bonds: `never` as const, gizmo: false }, state),
-    ),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  mount_structure({ structure: { sites }, show_bonds: `never` }, state)
   const scene_interactivity = interactivity()
   // Cast a ray straight down onto x and press there, as a click does
   const click = (x_coord: number, init: MouseEventInit = {}, type = `click`) => {
@@ -445,27 +409,38 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
 })
 
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
-// show: hidden, translucent or tiny atoms
-test.each([
+// show: hidden, translucent or tiny atoms. A polyhedron center hidden by
+// polyhedra_hide_center_atoms drops its sphere but keeps its (thin, so otherwise covered)
+// bonds, with or without a whole-atom cutaway (which otherwise renders complete atoms).
+test.each<[string, number, SceneProps]>([
   [`default atoms`, 16, {}],
   [`hidden atoms`, 32, { show_atoms: false }],
   [`translucent atoms`, 32, { atom_opacity: 0.5 }],
   [`atoms thinner than the bonds`, 32, { atom_radius: 0.1 }],
-])(`Scene bonds with %s draw %i triangles per cylinder`, (_label, triangles, props) => {
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: {
-        sites: [0, 1.4].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+  ...[false, true].flatMap((hide_centers) =>
+    [false, true].map((slab): [string, number, SceneProps] => [
+      `SiO4 centers hidden=${hide_centers} in whole-atom slab=${slab}`,
+      hide_centers ? 32 : 16,
+      {
+        structure: sio4(),
+        show_polyhedra: `always`,
+        polyhedra_hide_center_atoms: hide_centers,
+        bond_thickness: 0.05,
+        cutaway: slab ? whole_atom_cutaway() : undefined,
       },
-      show_bonds: `always`,
-      show_polyhedra: `never`,
-      gizmo: false,
-      ...props,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+    ]),
+  ),
+])(`Scene bonds with %s draw %i triangles per cylinder`, (_label, triangles, props) => {
+  const { scene } = mount_structure({
+    structure: {
+      sites: [0, 1.4].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+    },
+    show_bonds: `always`,
+    show_polyhedra: `never`,
+    ...props,
+  })
   const [mesh] = meshes_of(scene, BondMesh)
+  expect(mesh?.count).toBe(props.structure ? 4 : 1)
   expect(mesh?.geometry.index?.count).toBe(triangles * 3)
 })
 
@@ -477,15 +452,7 @@ test(`Scene draws one wedge per species of a site listing an element twice`, () 
     oxidation_state,
   }))
   const site = { ...make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`), species } as Site
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure: { sites: [site] },
-      show_bonds: `never`,
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  const { scene } = mount_structure({ structure: { sites: [site] }, show_bonds: `never` })
   // Both wedges are instances of one shared lune, turned about Y to their start azimuths
   const wedges = scene
     .getObjectsByProperty(`isInstancedMesh`, true)
@@ -543,25 +510,20 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
     return next
   }
   let structure = $state.raw(make_structure())
-  let bond_color = $state(`gray`)
-  const { unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
+  const state = $state({ bond_color: `gray` })
+  mount_structure(
+    {
       get structure() {
         return structure
-      },
-      get bond_color() {
-        return bond_color
       },
       show_atoms: false,
       show_bonds: `always`,
       show_polyhedra: `never`,
       bonding_options: {},
-      gizmo: false,
       interactive: false,
-    }),
+    },
+    state,
   )
-  onTestFinished(unmount_scene)
-  flushSync()
   expect(received_colors).toHaveLength(1)
   structure = make_structure()
   flushSync()
@@ -570,7 +532,7 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
   flushSync()
   expect(received_colors).toHaveLength(2)
   expect(received_colors[1][1]).toBe(`#123456`)
-  bond_color = `white`
+  state.bond_color = `white`
   flushSync()
   expect(received_colors).toHaveLength(3)
   structure = make_structure(1)
@@ -599,22 +561,16 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     return new BondFrame(structure, columns, placements)
   }
   let bonds = $state.raw(make_frame(3))
-  let site_colors = $state([`red`, `red`])
-  let thickness = $state(0.1)
+  const state = $state({ site_colors: [`red`, `red`], thickness: 0.1 })
+  const props = {
+    get bonds() {
+      return bonds
+    },
+    ambient_light: 0.7,
+    directional_light: 0.3,
+  }
   const { scene, unmount_scene } = mount_scene((anchor) =>
-    Bond(anchor, {
-      get bonds() {
-        return bonds
-      },
-      get site_colors() {
-        return site_colors
-      },
-      get thickness() {
-        return thickness
-      },
-      ambient_light: 0.7,
-      directional_light: 0.3,
-    }),
+    Bond(anchor, bind_props(props, state)),
   )
   onTestFinished(unmount_scene)
   flushSync()
@@ -628,30 +584,26 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     throw new Error(`Expected an instanced color attribute`)
   for (const count of [1, 2, 3]) {
     bonds = make_frame(count)
-    const order = vi.spyOn(
-      untrack(() => bonds),
-      `order`,
-    )
+    const order = vi.spyOn(bonds, `order`)
     flushSync()
     expect(mesh.count).toBe(count)
     expect(order).not.toHaveBeenCalled()
     expect(mesh.geometry.getAttribute(`instanceColorStart`)).toBe(colors_start)
   }
+  const rgb = (color: string) => css_to_linear_rgb(color).map(Math.fround)
   for (const palette of [
     [`red`, `blue`],
     [`green`, `green`],
     [`blue`, `red`],
     [`red`, `red`],
   ]) {
-    site_colors = palette
+    state.site_colors = palette
     flushSync()
     for (const [buffer, color] of [
       [colors_start, palette[0]],
       [colors_end, palette[1]],
     ] as const)
-      expect(Array.from(buffer.array)).toEqual(
-        Array.from({ length: 3 }, () => css_to_linear_rgb(color).map(Math.fround)).flat(),
-      )
+      expect(Array.from(buffer.array)).toEqual(Array(3).fill(rgb(color)).flat())
   }
   // Simulate GPU uploads: the CPU array alone cannot expose lost pending ranges.
   const uploaded = colors_start.array.slice()
@@ -666,7 +618,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     colors_start.clearUpdateRanges()
   }
   bonds = make_frame(1)
-  site_colors = [`lime`, `lime`]
+  state.site_colors = [`lime`, `lime`]
   flushSync()
   upload_colors()
   bonds = make_frame(3)
@@ -675,42 +627,36 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   expect(uploaded).toEqual(colors_start.array)
 
   bonds = make_frame(2, true)
-  site_colors = [`red`, `red`, `red`, `red`]
+  state.site_colors = [`red`, `red`, `red`, `red`]
   flushSync()
   upload_colors()
   flushSync(() => {
-    site_colors[0] = `lime`
+    state.site_colors[0] = `lime`
   })
   flushSync(() => {
-    site_colors[2] = `blue`
+    state.site_colors[2] = `blue`
   })
   upload_colors()
   expect(uploaded).toEqual(colors_start.array)
   // In-place palette edits recolor even though the bonds and palette array are unchanged
-  const rgb = (color: string) => css_to_linear_rgb(color).map(Math.fround)
-  expect(Array.from(colors_start.array.subarray(0, 6))).toEqual([
-    ...rgb(`lime`),
-    ...rgb(`blue`),
-  ])
+  const recolored = Array.from(colors_start.array.subarray(0, 6))
+  expect(recolored).toEqual([`lime`, `blue`].flatMap(rgb))
   // An identical bond topology with an identical palette skips the per-cylinder loop
   bonds = make_frame(2, true)
-  const order = vi.spyOn(
-    untrack(() => bonds),
-    `order`,
-  )
+  const order = vi.spyOn(bonds, `order`)
   flushSync()
   expect(order).not.toHaveBeenCalled()
   const uploads = update.mock.calls.length
   const centers = mesh.centers.array.slice()
   for (const value of [-0.2, 0, 0.2]) {
-    thickness = value
+    state.thickness = value
     flushSync()
     expect(mesh.thickness).toBe(value)
     expect(update).toHaveBeenCalledTimes(uploads)
     expect(mesh.centers.array).toEqual(centers)
   }
   // A uniform but incomplete palette must still report the absent endpoint color.
-  site_colors = [`red`]
+  state.site_colors = [`red`]
   expect(() => flushSync()).toThrow(`Missing bond endpoint color for site indices 0, 1`)
 })
 
@@ -726,51 +672,39 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
   const update_atoms = vi.spyOn(AtomInstances.prototype, `update_atoms`)
   const on_rendered = vi.fn()
   const fit_bounds = vi.spyOn(camera_fit, `structure_fit_frame`)
-  let get_reset_target: (() => Vec3) | undefined
+  const bound = $state<SceneProps>({ get_reset_target: undefined })
   onTestFinished(() => update_atoms.mockRestore())
   onTestFinished(() => fit_bounds.mockRestore())
-  const { scene, render_frame, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      get structure() {
-        return structure
-      },
-      get render_token() {
-        return structure
-      },
-      on_rendered,
-      get get_reset_target() {
-        return get_reset_target
-      },
-      set get_reset_target(value) {
-        get_reset_target = value
-      },
-      get property_colors() {
-        return property_colors
-      },
-      measure_mode: `edit-atoms`,
-      atom_opacity: 0.6,
-      get element_radius_overrides() {
-        // Function bindings supply fresh, value-equal options on coordinate updates.
-        void structure
-        return { C: carbon_radius }
-      },
-      show_bonds: `never`,
-      show_polyhedra: `never`,
-      polyhedra_hide_center_atoms: true,
-      gizmo: false,
-      interactive: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  const props: SceneProps = {
+    get structure() {
+      return structure
+    },
+    get render_token() {
+      return structure
+    },
+    on_rendered,
+    get property_colors() {
+      return property_colors
+    },
+    measure_mode: `edit-atoms`,
+    atom_opacity: 0.6,
+    get element_radius_overrides() {
+      // Function bindings supply fresh, value-equal options on coordinate updates.
+      void structure
+      return { C: carbon_radius }
+    },
+    show_bonds: `never`,
+    show_polyhedra: `never`,
+    polyhedra_hide_center_atoms: true,
+    interactive: false,
+  }
+  const { scene, render_frame } = mount_structure(props, bound)
   expect(on_rendered).not.toHaveBeenCalled()
   render_frame()
   expect(on_rendered).toHaveBeenCalledExactlyOnceWith(untrack(() => structure))
   render_frame()
   expect(on_rendered).toHaveBeenCalledOnce()
-  const atoms = scene
-    .getObjectsByProperty(`type`, `Mesh`)
-    .find((object) => object instanceof AtomInstances)
+  const [atoms] = meshes_of(scene, AtomInstances)
   if (!atoms) throw new Error(`Expected an instanced atom mesh`)
   const element_colors = atoms.colors.array.slice()
   property_colors = { colors: [`red`, `blue`, `green`], values: [0, 1, 2] }
@@ -803,7 +737,7 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     }
   }
   expect(fit_bounds).toHaveBeenCalledTimes(initial_fits)
-  expect(get_reset_target?.()[1]).toBe(2)
+  expect(bound.get_reset_target?.()[1]).toBe(2)
   expect(fit_bounds).toHaveBeenCalledTimes(initial_fits + 1)
   property_colors = null
   flushSync()
@@ -932,36 +866,24 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
   if (!columns) throw new Error(`Expected numeric sites`)
   const get_site = vi.spyOn(columns, `get`)
   onTestFinished(() => get_site.mockRestore())
-  let mode = $state<PolyhedraColorMode>(`uniform`)
-  let show_edges = $state(false)
-  let show_polyhedra = $state(true)
-  let defer_expensive_geometry = $state(false)
-  const property_colors = {
-    colors: [`red`, `blue`],
-    values: [0, 1, 2, 1, 2],
+  const state = $state<SceneProps>({
+    polyhedra_color_mode: `uniform`,
+    polyhedra_show_edges: false,
+    show_polyhedra: `always`,
+    defer_expensive_geometry: false,
+  })
+  const property_colors = { colors: [`red`, `blue`], values: [0, 1, 2, 1, 2] }
+  const props: SceneProps = {
+    structure,
+    property_colors,
+    show_atoms: false,
+    show_bonds: `never`,
+    gizmo: false,
+    interactive: false,
+    polyhedra_color: `yellow`,
   }
   const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure,
-      property_colors,
-      show_atoms: false,
-      show_bonds: `never`,
-      get show_polyhedra() {
-        return show_polyhedra ? `always` : `never`
-      },
-      gizmo: false,
-      interactive: false,
-      polyhedra_color: `yellow`,
-      get polyhedra_color_mode() {
-        return mode
-      },
-      get polyhedra_show_edges() {
-        return show_edges
-      },
-      get defer_expensive_geometry() {
-        return defer_expensive_geometry
-      },
-    }),
+    StructureScene(anchor, bind_props(props, state)),
   )
   const disposal = vi.fn()
   const face_disposal = vi.fn()
@@ -969,19 +891,17 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     flushSync() // Initial camera fitting may inspect sites; subsequent colors must not.
     get_site.mockClear()
     expect(scene.getObjectByProperty(`isLineSegments2`, true)).toBeUndefined()
-    show_edges = true
+    state.polyhedra_show_edges = true
     flushSync()
     const edges = scene.getObjectByProperty(`isLineSegments2`, true)
-    const faces = scene
-      .getObjectsByProperty(`type`, `Mesh`)
-      .find((mesh) => mesh instanceof Mesh && mesh.geometry.getAttribute(`normal`))
-    if (!(edges instanceof LineSegments2) || !(faces instanceof Mesh))
+    const faces = polyhedra_faces(scene)
+    if (!(edges instanceof LineSegments2) || !faces)
       throw new Error(`Expected polyhedra faces and outlines`)
     edges.material.addEventListener(`dispose`, disposal)
     const face_geometry = faces.geometry
     face_geometry.addEventListener(`dispose`, face_disposal)
     for (const value of [`vertex`, `center`, `uniform`] as const) {
-      mode = value
+      state.polyhedra_color_mode = value
       flushSync()
       expect(scene.getObjectById(edges.id)).toBe(edges)
       // vertex sites 1-4 alternate O (odd) / H (even), see the atomic numbers above
@@ -1001,13 +921,13 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(get_site).not.toHaveBeenCalled()
     }
     for (const visible of [false, true]) {
-      show_edges = visible
+      state.polyhedra_show_edges = visible
       flushSync()
       expect(edges.visible).toBe(visible)
-      show_polyhedra = false
+      state.show_polyhedra = `never`
       flushSync()
       expect(scene.getObjectById(edges.id)).toBeUndefined()
-      show_polyhedra = true
+      state.show_polyhedra = `always`
       flushSync()
       expect(scene.getObjectById(edges.id)).toBe(edges)
       expect(edges.visible).toBe(visible)
@@ -1015,11 +935,10 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(face_disposal).not.toHaveBeenCalled()
     }
     // Deferred geometry keeps the last hulls while their inputs change
-    defer_expensive_geometry = true
-    show_polyhedra = false
+    Object.assign(state, { defer_expensive_geometry: true, show_polyhedra: `never` })
     flushSync()
     expect(scene.getObjectById(edges.id)).toBe(edges)
-    defer_expensive_geometry = false
+    state.defer_expensive_geometry = false
     flushSync()
     expect(scene.getObjectById(edges.id)).toBeUndefined()
   } finally {
@@ -1183,92 +1102,29 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
   },
 )
 
-// Open bond cylinders rely on an opaque sphere covering each end. A polyhedron center hidden
-// by polyhedra_hide_center_atoms drops its sphere but keeps its bonds, with or without a
-// whole-atom cutaway (which otherwise renders complete atoms and skips caps).
-test.each([
-  { hide_centers: false, whole_atom_slab: false, capped: false },
-  { hide_centers: false, whole_atom_slab: true, capped: false },
-  { hide_centers: true, whole_atom_slab: false, capped: true },
-  { hide_centers: true, whole_atom_slab: true, capped: true },
-])(
-  `bonds capped=$capped with hidden centers=$hide_centers, whole-atom slab=$whole_atom_slab`,
-  ({ hide_centers, whole_atom_slab, capped }) => {
-    const structure = {
-      sites: [
-        make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`),
-        ...SIO4_CORNERS.map((xyz, idx) => make_site(`O`, [0, 0, 0], xyz, `O${idx}`)),
-      ],
-    }
-    const { scene, unmount_scene } = mount_scene((anchor) =>
-      StructureScene(anchor, {
-        structure,
-        show_bonds: `always`,
-        show_polyhedra: `always`,
-        polyhedra_hide_center_atoms: hide_centers,
-        // Thin bonds, so opaque atoms alone always cover the open ends
-        bond_thickness: 0.05,
-        cutaway: whole_atom_slab ? whole_atom_cutaway() : undefined,
-        gizmo: false,
-      }),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
-    const [bond] = meshes_of(scene, BondMesh)
-    expect(bond?.count).toBe(4)
-    const cylinder_indices = (open_ended: boolean) =>
-      new CylinderGeometry(1, 1, 1, 8, 1, open_ended).index?.count
-    expect(bond?.geometry.index?.count).toBe(cylinder_indices(!capped))
-  },
-)
-
 // Whole-atom mode selects sites instead of clipping their atoms, bonds and polyhedra, but
 // per-site overlays (force arrows here) must keep the slice's surface clip, and every kept
 // atom keeps its label, including the shell endpoints outside the slice
 test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint labels`, () => {
-  const structure = {
-    sites: [
-      make_site(`Si`, [0, 0, 0], [0, 0, 0], `Si0`, { force: [0.5, 0, 0] }),
-      ...SIO4_CORNERS.map((xyz, idx) =>
-        make_site(`O`, [0, 0, 0], xyz, `O${idx}`, { force: [0.5, 0, 0] }),
-      ),
-    ],
-  }
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure,
-      show_bonds: `always`,
-      show_polyhedra: `always`,
-      show_site_labels: true,
-      cutaway: whole_atom_cutaway(),
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  const { scene } = mount_structure({
+    structure: sio4({ force: [0.5, 0, 0] }),
+    show_bonds: `always`,
+    show_polyhedra: `always`,
+    show_site_labels: true,
+    cutaway: whole_atom_cutaway(),
+  })
   const clipped = (object: Object3D): boolean => {
     for (let node = object.parent; node; node = node.parent) {
       if (node instanceof StructureCutawayGroup) return node.enabled
     }
     throw new Error(`${object.type} has no cutaway group`)
   }
-  const meshes = scene.getObjectsByProperty(`type`, `Mesh`)
   const [atoms, bonds, arrows] = [
     meshes_of(scene, AtomInstances),
     meshes_of(scene, BondMesh),
     meshes_of(scene, ArrowMesh),
   ]
-  // The merged polyhedra faces: the one plain vertex-colored mesh
-  const polyhedra = meshes.find(
-    (mesh) =>
-      mesh instanceof Mesh &&
-      !(
-        mesh instanceof AtomInstances ||
-        mesh instanceof BondMesh ||
-        mesh instanceof ArrowMesh
-      ) &&
-      Boolean(mesh.geometry.getAttribute(`color`)),
-  )
+  const polyhedra = polyhedra_faces(scene)
   expect([atoms.length, bonds.length]).toEqual([1, 1])
   expect(arrows.length).toBeGreaterThan(0) // shafts and heads
   expect(polyhedra).toBeDefined()
@@ -1283,31 +1139,16 @@ test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint 
 // When only site_idx_2 is a selected center, the shell bond must start at the center itself
 // (drawing the stored copy put a stray atom and a ghost center across the cell instead).
 test.each([
-  {
-    case: `center at site_idx_2 only`,
-    z_1: 3,
-    expected_bonds: [
-      [
-        [0, 0, 0.05],
-        [0, 0, -1],
-      ],
-    ],
-  },
+  { case: `center at site_idx_2 only`, z_1: 3, bonds_z: [[0.05, -1]] },
   {
     case: `both ends are centers`,
     z_1: -0.05,
-    expected_bonds: [
-      [
-        [0, 0, -0.05],
-        [0, 0, 4.05],
-      ],
-      [
-        [0, 0, 0.05],
-        [0, 0, -4.05],
-      ],
+    bonds_z: [
+      [-0.05, 4.05],
+      [0.05, -4.05],
     ],
   },
-])(`whole-atom shell bonds with a periodic bond: $case`, ({ z_1, expected_bonds }) => {
+])(`whole-atom shell bonds with a periodic bond: $case`, ({ z_1, bonds_z }) => {
   // Cl image one 4 A cell up from its own position at z = 0.05
   const pos_2: Vec3 = [0, 0, 4.05]
   const structure = {
@@ -1325,31 +1166,21 @@ test.each([
     cell_shift: [0, 0, 1],
   }
   cache_prepared_bonds(structure, `electroneg_ratio`, {}, [bond])
-  const { scene, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(anchor, {
-      structure,
-      show_bonds: `always`,
-      show_polyhedra: `never`,
-      cutaway: whole_atom_cutaway(),
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  const { scene } = mount_structure({
+    structure,
+    show_bonds: `always`,
+    show_polyhedra: `never`,
+    cutaway: whole_atom_cutaway(),
+  })
   const [bond_mesh] = meshes_of(scene, BondMesh)
   if (!bond_mesh) throw new Error(`no bond mesh rendered`)
+  // Each bond's two ends on the z axis, in either order
+  const on_axis = (z_coord: number) => [0, 0, z_coord].map((val) => expect.closeTo(val, 6))
   const drawn = bond_endpoints(bond_mesh)
-  expect(drawn).toHaveLength(expected_bonds.length)
-  for (const [start, end] of expected_bonds) {
-    const match = drawn.find((ends) =>
-      [start, end].every((point) =>
-        ends.some((drawn_end) =>
-          drawn_end.every((val, axis) => Math.abs(val - point[axis]) < 1e-6),
-        ),
-      ),
-    )
-    expect(match, `bond ${start} -> ${end}`).toBeDefined()
-  }
+  expect(drawn).toHaveLength(bonds_z.length)
+  expect(drawn).toEqual(
+    expect.arrayContaining(bonds_z.map((ends) => expect.arrayContaining(ends.map(on_axis)))),
+  )
 })
 
 // A shell neighbor reached through a periodic bond is placed twice: at the bond's stored
@@ -1395,17 +1226,12 @@ test.each([`center first`, `center second`])(
           },
     )
     cache_prepared_bonds(structure, `electroneg_ratio`, {}, bonds)
-    const { scene, unmount_scene } = mount_scene((anchor) =>
-      StructureScene(anchor, {
-        structure,
-        show_bonds: `always`,
-        show_polyhedra: `always`,
-        cutaway: whole_atom_cutaway(),
-        gizmo: false,
-      }),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
+    const { scene } = mount_structure({
+      structure,
+      show_bonds: `always`,
+      show_polyhedra: `always`,
+      cutaway: whole_atom_cutaway(),
+    })
     expect(sphere_count(scene)).toBe(5) // Ti plus its 4 O images
   },
 )
@@ -1419,17 +1245,12 @@ test.each([false, true])(
       [`Fe`, [0, 0, 0.5]],
       [`Fe`, [0, 0, 0.1]],
     ])
-    const { scene, unmount_scene } = mount_scene((anchor) =>
-      StructureScene(anchor, {
-        structure,
-        show_bonds: `never`,
-        show_polyhedra: `never`,
-        cutaway: { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2, whole_atoms },
-        gizmo: false,
-      }),
-    )
-    onTestFinished(unmount_scene)
-    flushSync()
+    const { scene } = mount_structure({
+      structure,
+      show_bonds: `never`,
+      show_polyhedra: `never`,
+      cutaway: { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2, whole_atoms },
+    })
     // Whole-atom mode keeps only the selected z = 0.5 atom; surface mode clips the cell's atoms
     if (whole_atoms) expect(sphere_count(scene)).toBe(1)
     else
@@ -1438,18 +1259,6 @@ test.each([false, true])(
       ).toHaveLength(2)
   },
 )
-
-// A lone carbon atom with its other props bound to `state`, unmounted after the test
-const mount_carbon = (state: Partial<ComponentProps<typeof StructureScene>>) => {
-  const structure = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
-  const props = { structure, show_bonds: `never` as const, show_polyhedra: `never` as const }
-  const mounted = mount_scene((anchor) =>
-    StructureScene(anchor, bind_props({ ...props, gizmo: false }, state)),
-  )
-  onTestFinished(mounted.unmount_scene)
-  flushSync()
-  return mounted
-}
 
 test(`Scene marks a volumetric slice plane with a translucent fan fill and a closed outline`, () => {
   // oxfmt-ignore
@@ -1553,6 +1362,7 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     camera_is_moving: boolean
     camera_target?: Vec3
     camera_position: Vec3
+    camera?: SceneProps[`camera`]
   }>({
     structure: step.from ?? follow_crystal(4),
     series_key: `series`,
@@ -1560,39 +1370,11 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     camera_is_moving: false,
     camera_target: pose.target,
     camera_position: pose.position,
+    camera: undefined,
   })
-  let controls: ComponentProps<typeof StructureScene>[`orbit_controls`]
-  let live_camera: ComponentProps<typeof StructureScene>[`camera`]
-  const { canvas, unmount_scene } = mount_scene((anchor) =>
-    StructureScene(
-      anchor,
-      bind_props(
-        {
-          width: 800,
-          height: 600,
-          show_bonds: `never` as const,
-          gizmo: false,
-          get orbit_controls() {
-            return controls
-          },
-          set orbit_controls(value) {
-            controls = value
-          },
-          get camera() {
-            return live_camera
-          },
-          set camera(value) {
-            live_camera = value
-          },
-        },
-        state,
-      ),
-    ),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
+  const { canvas } = mount_structure({ width: 800, height: 600, show_bonds: `never` }, state)
   expect(state.camera_target).toEqual(pose.target)
-  if (step.live) live_camera?.position.set(...step.live)
+  if (step.live) state.camera?.position.set(...step.live)
   if (step.clear_target) {
     state.camera_target = undefined
     flushSync()
@@ -1632,3 +1414,33 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     shifted(step.live ?? pose.position).map((coord) => expect.closeTo(coord, 9)),
   )
 })
+
+// An external supercell's unit_cell_idx points into a cell the scene never sees, while
+// displacements index base_structure: following it drew no arrow for the moved atom
+test.each([
+  [`following unit_cell_idx`, undefined, 0],
+  [`the host's base-index rule`, (_site: Site, site_idx: number) => site_idx, 1],
+])(
+  `displacement arrows of an external supercell with %s`,
+  (_name, to_base_site_idx, n_arrows) => {
+    const reference = make_crystal(10, [
+      [`C`, [0, 0, 0]],
+      [`C`, [0.5, 0, 0]],
+    ])
+    const sites = reference.sites.map((site, idx) => ({
+      ...site,
+      xyz: [site.xyz[0] + idx * 0.3, site.xyz[1], site.xyz[2]] as Vec3,
+      provenance: { unit_cell_idx: 0 },
+    }))
+    const tiled = { ...reference, sites }
+    const { scene } = mount_structure({
+      structure: tiled,
+      base_structure: tiled,
+      reference_structure: reference,
+      show_displacement_arrows: true,
+      to_base_site_idx,
+    })
+    const arrow_counts = meshes_of(scene, ArrowMesh).map((mesh) => mesh.count)
+    expect(Math.max(0, ...arrow_counts)).toBe(n_arrows)
+  },
+)

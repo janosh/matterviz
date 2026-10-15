@@ -12,43 +12,20 @@ const full_refs = [
 const compound = make_phase({ Fe: 1, O: 1 }, -7.5, precomputed)
 
 describe(`compute_energy_mode_info`, () => {
-  const complete_entries = [...full_refs, compound]
+  const complete = [...full_refs, compound]
+  const no_hull_dist = [
+    ...full_refs,
+    make_phase({ Fe: 1, O: 1 }, -7.5, { e_form_per_atom: -1 }),
+  ]
+  const no_e_form = [...full_refs, make_phase({ Fe: 1, O: 1 }, -7.5)]
   test.each([
-    [`user choice`, complete_entries, `precomputed`, false, `precomputed`, true],
-    [
-      `corrections invalidate precomputed energies`,
-      complete_entries,
-      `precomputed`,
-      true,
-      `on-the-fly`,
-      true,
-    ],
+    [`user choice`, complete, `precomputed`, false, `precomputed`, true],
+    [`corrections void precomputed`, complete, `precomputed`, true, `on-the-fly`, true],
     // build_hull_model fills missing hull distances from the precomputed E_form, so they
     // don't force recomputing E_form (which overwrote E_form-only data with 0 eV energies)
-    [
-      `missing hull distances`,
-      [...full_refs, make_phase({ Fe: 1, O: 1 }, -7.5, { e_form_per_atom: -1 })],
-      `precomputed`,
-      false,
-      `precomputed`,
-      true,
-    ],
-    [
-      `missing E_form`,
-      [...full_refs, make_phase({ Fe: 1, O: 1 }, -7.5)],
-      `precomputed`,
-      false,
-      `on-the-fly`,
-      true,
-    ],
-    [
-      `missing O reference`,
-      [full_refs[0], compound],
-      `on-the-fly`,
-      true,
-      `precomputed`,
-      false,
-    ],
+    [`missing hull distances`, no_hull_dist, `precomputed`, false, `precomputed`, true],
+    [`missing E_form`, no_e_form, `precomputed`, false, `on-the-fly`, true],
+    [`no O reference`, [full_refs[0], compound], `on-the-fly`, true, `precomputed`, false],
   ] as const)(`%s`, (_label, entries, mode, corrections, energy_mode, can_compute) => {
     expect(compute_energy_mode_info([...entries], mode, corrections)).toMatchObject({
       energy_mode,
@@ -119,19 +96,37 @@ describe(`compute_hull_model`, () => {
     },
   )
 
-  test(`precomputed E_form without unary references still gets hull distances`, () => {
-    // no Fe/O entries: E_form cannot be recomputed, so the precomputed values build the hull
+  // Precomputed E_form builds the hull when E_form can't be recomputed (no Fe/O entries) and
+  // when quickhull finds no facets: too few points used to fall back to the plane E_form = 0,
+  // putting a lone off-zero unary 0.1 eV above the hull it alone defines
+  test(`precomputed E_form without unary references or facets gets hull distances`, () => {
     const entries = [
       make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: -1.5 }),
       make_phase({ Fe: 2, O: 3 }, -5, { e_form_per_atom: -1.7 }),
       // a value carried by the data is kept in precomputed mode
       make_phase({ Fe: 1, O: 2 }, -5, { e_form_per_atom: -0.5, e_above_hull: 0.9 }),
     ]
+    const on_hull = { e_above_hull: 0, is_stable: true }
     expect(compute_hull_model(entries).entries.slice(0, 3)).toMatchObject([
-      { e_above_hull: 0, is_stable: true },
-      { e_above_hull: 0, is_stable: true },
+      on_hull,
+      on_hull,
       { e_above_hull: 0.9 },
     ])
+    // Excluded entries keep raw signed distances to the tilted line E = 0.1 x_Fe
+    const flat = compute_hull_model([
+      make_phase({ Fe: 1 }, -8, { e_form_per_atom: 0.1 }),
+      make_phase({ O: 1 }, -5, { e_form_per_atom: 0 }),
+      make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: 0.3, exclude_from_hull: true }),
+      make_phase({ Fe: 2, O: 1 }, -5, { e_form_per_atom: -0.5, exclude_from_hull: true }),
+    ])
+    const excluded = (dist: number) => ({
+      e_above_hull: expect.closeTo(dist, 12),
+      is_stable: false,
+    })
+    expect(flat).toMatchObject({
+      facets: [],
+      entries: [on_hull, on_hull, excluded(0.25), excluded(-0.5 - 0.2 / 3)],
+    })
   })
 
   // E_form-only data (no energy, or a 0 eV placeholder) keeps its E_form in either mode:

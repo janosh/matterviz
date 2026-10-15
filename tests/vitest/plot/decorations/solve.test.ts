@@ -275,6 +275,10 @@ describe(`decoration solver`, () => {
       auto_tracks: { ...auto_tracks, available_edge_length: 210 },
     }
     expect(solve_decorations(scene_for([narrow_item])).placements[0].layout_tracks).toBe(2)
+    // marginal strips shrink the edge the legend has to fit along (480 - 270 = 210 px)
+    const reserved_pad = { t: 0, b: 0, l: 0, r: 270 }
+    const with_marginal = solve_decorations({ ...scene_for([legend_item]), reserved_pad })
+    expect(with_marginal.placements[0].layout_tracks).toBe(2)
   })
 
   test(`keeps crowding decisions independent of other decorations`, () => {

@@ -10,6 +10,7 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
+import { display_idx } from '#lib/labels.js'
 import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { to_error } from '#lib/utils.js'
@@ -164,12 +165,12 @@ const request_host_frame = (
     host_api,
     { command: `request_frame`, file_path, filename, frame_index: frame_idx },
     10_000,
-    `Frame ${frame_idx} timeout after 10s`,
+    `Frame ${display_idx(frame_idx)} timeout after 10s`,
     (data, resolve, reject) => {
       if (data.command !== `frame_response`) return false
       if (data.error) reject(new Error(data.error))
       else if (data.frame) resolve(data.frame)
-      else reject(new Error(`Host returned no trajectory frame ${frame_idx}`))
+      else reject(new Error(`Host returned no trajectory frame ${display_idx(frame_idx)}`))
       return true
     },
     signal,

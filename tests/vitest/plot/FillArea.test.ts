@@ -4,7 +4,6 @@ import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, fire, keydown, mouse } from '../setup'
 
-// Mock scale functions
 const mock_x_scale = Object.assign((val: number) => val * 10, {
   invert: (pixel_x: number) => pixel_x / 10,
 })
@@ -39,19 +38,21 @@ const mount_fill = (props: Partial<ComponentProps<typeof FillArea>> = {}) =>
   })
 
 describe(`FillArea`, () => {
-  // a hover handler alone must also put the region in the tab order for keyboard users
+  // a hover handler alone must also put the region in the tab order for keyboard users;
+  // without a label the aria-label falls back to the region index
   test.each([
     [`click handler`, { on_click: () => {} }, `0`],
     [`hover handler only`, { on_hover: () => {} }, `0`],
     [`no handlers`, {}, `-1`],
   ])(`a region with a %s has tabindex %s`, (_name, handlers, expected) => {
-    mount_fill(handlers)
-    expect(doc_query(`g.fill-region`).getAttribute(`tabindex`)).toBe(expected)
+    mount_fill({ ...handlers, region: { ...base_region, label: undefined }, region_idx: 5 })
+    const region = doc_query(`g.fill-region`)
+    expect(region.getAttribute(`tabindex`)).toBe(expected)
+    expect(region.getAttribute(`aria-label`)).toBe(`Fill region 6`)
   })
 
-  // A region split by gaps renders one FillArea per segment. They are one logical
-  // region, so N segments must not become N identical tab stops or N identical pattern tiles:
-  // only the first emits the <defs>, the rest reference them through the shared defs_id.
+  // A region split by gaps renders one FillArea per segment, but N segments must not become
+  // N tab stops or N pattern tiles: only the first emits <defs>, the rest share defs_id
   test.each([
     [`first segment`, true, `0`, null, 1],
     [`later segment`, false, `-1`, `true`, 0],
@@ -77,26 +78,25 @@ describe(`FillArea`, () => {
     const on_hover = vi.fn()
     mount_fill({ on_hover })
     const region = doc_query(`g.fill-region`)
-
     await fire(region, new FocusEvent(`focus`))
     expect(on_hover).toHaveBeenCalledOnce()
     expect(on_hover.mock.calls[0][0]).toMatchObject({ region_idx: 0 })
-
     await fire(region, new FocusEvent(`blur`))
     expect(on_hover).toHaveBeenLastCalledWith(null)
   })
 
   test.each([
-    [`tomato`, `tomato`],
-    [undefined, `steelblue`],
-  ])(`renders fill %s with its clip, label and opacity`, (fill, expected) => {
-    mount_fill({ region: { ...base_region, fill } })
+    [{ fill: `tomato` }, false, `tomato`, `0.3`],
+    [{ fill: undefined }, false, `steelblue`, `0.3`],
+    [{ hover_style: { fill: `red`, fill_opacity: 0.8 } }, true, `red`, `0.8`],
+  ])(`renders %j (hovered=%s) with clip and label`, (props, is_hovered, fill, opacity) => {
+    mount_fill({ region: { ...base_region, ...props }, is_hovered })
     const group = doc_query(`.fill-region`)
     expect(group.getAttribute(`clip-path`)).toBe(`url(#clip-0)`)
     expect(group.getAttribute(`aria-label`)).toBe(`Test Fill Region`)
     const path = doc_query(`.fill-region path`)
-    expect(path.getAttribute(`fill`)).toBe(expected)
-    expect(path.getAttribute(`fill-opacity`)).toBe(`0.3`)
+    expect(path.getAttribute(`fill`)).toBe(fill)
+    expect(path.getAttribute(`fill-opacity`)).toBe(opacity)
   })
 
   test(`pattern bakes the fill opacity into the tile so the texture stays legible`, () => {
@@ -160,7 +160,6 @@ describe(`FillArea`, () => {
       const group = doc_query(`.fill-region`)
       const event_type = type === `click` ? `click` : `mouseenter`
       await fire(group, mouse(event_type, { clientX: 50, clientY: 50 }))
-
       for (const handler of [region_handler, prop_handler]) {
         expect(handler).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({
@@ -174,7 +173,6 @@ describe(`FillArea`, () => {
           }),
         )
       }
-
       // hover also clears on mouseleave
       if (type === `hover`) {
         await fire(group, mouse(`mouseleave`))
@@ -183,18 +181,6 @@ describe(`FillArea`, () => {
       }
     },
   )
-
-  test(`applies hover style when region is hovered`, () => {
-    const region: FillRegion = {
-      ...base_region,
-      hover_style: { fill: `red`, fill_opacity: 0.8 },
-    }
-    mount_fill({ region, is_hovered: true })
-
-    const path = doc_query(`.fill-region path`)
-    expect(path.getAttribute(`fill`)).toBe(`red`)
-    expect(path.getAttribute(`fill-opacity`)).toBe(`0.8`)
-  })
 
   test.each([
     [`pointer`, base_region, { on_click: () => {} }], // on_click prop
@@ -207,7 +193,8 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region`).style.cursor).toBe(expected)
   })
 
-  // Enter and Space activate like a button; any other key must not fire a click
+  // Enter and Space activate like a button; any other key must not fire a click, and a
+  // hover-only (focusable but not clickable) region must not swallow Space's page scroll
   test.each([
     [`Enter`, 1],
     [` `, 1],
@@ -215,20 +202,19 @@ describe(`FillArea`, () => {
   ])(`keydown %j fires the click handler %i times`, async (key, n_calls) => {
     const on_click = vi.fn()
     mount_fill({ on_click })
-
-    await fire(doc_query(`.fill-region`), keydown(key))
-
+    mount_fill({ on_hover: () => {} })
+    const [clickable, hover_only] = document.querySelectorAll(`.fill-region`)
+    const event = keydown(key, { cancelable: true })
+    await fire(clickable, event)
+    expect(event.defaultPrevented).toBe(n_calls > 0)
+    const hover_only_event = keydown(key, { cancelable: true })
+    await fire(hover_only, hover_only_event)
+    expect(hover_only_event.defaultPrevented).toBe(false)
     expect(on_click).toHaveBeenCalledTimes(n_calls)
     if (n_calls > 0) {
       expect(on_click).toHaveBeenCalledWith(
         expect.objectContaining({ region_idx: 0, region_id: `test-fill` }),
       )
     }
-  })
-
-  // a provided label is asserted in the fill-rendering test above
-  test(`aria-label falls back to the region index`, () => {
-    mount_fill({ region: { ...base_region, label: undefined }, region_idx: 5 })
-    expect(doc_query(`.fill-region`).getAttribute(`aria-label`)).toBe(`Fill region 5`)
   })
 })

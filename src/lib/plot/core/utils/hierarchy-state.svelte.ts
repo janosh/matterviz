@@ -387,8 +387,9 @@ export class HierarchyChartState<
       // root dissolves a `min_fraction` bucket, but `max_children` is a rank cap that
       // re-applies identically at any zoom, and a parent that is already the view root
       // does not move at all - in both cases the click would otherwise do nothing.
-      if (parent) this.expanded_parents.add(parent.id)
+      // After zoom_to, whose reset to a root-level parent clears every expansion
       this.zoom_to(parent)
+      if (parent) this.expanded_parents.add(parent.id)
       return
     }
     if (this.chart === `sunburst`) {

@@ -201,7 +201,7 @@ describe(`collect_structure_id_sweep`, () => {
     const trajectory = frame_run([make_fcc([2, 2, 2]), with_vacancy(make_fcc([2, 2, 2]), 0)])
     await expect(
       collect_structure_id_sweep(trajectory, { max_frames: 2, options: { skip_csp: true } }),
-    ).rejects.toThrow(/frame 1 has 31 atoms but frame 0 has 32/)
+    ).rejects.toThrow(/frame 2 has 31 atoms but frame 1 has 32/)
   })
 
   it(`preserves out-of-cell coordinates on a non-periodic axis`, async () => {

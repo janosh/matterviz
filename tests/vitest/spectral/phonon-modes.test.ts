@@ -329,7 +329,8 @@ describe(`phonon_mode_trajectory`, () => {
     [`oversized supercell`, make_mode_data(), first_mode, { supercell: [500, 500, 1] }, /would display 250000 sites.*exceeding the 200000 limit/],
     [`q-point index out of range`, make_mode_data(), { qpoint_idx: 1, mode_idx: 0 }, {}, /q-point index 1 is outside/],
     [`mode index out of range`, make_mode_data(), { qpoint_idx: 0, mode_idx: 1 }, {}, /mode index 1 is outside/],
-    [`a missing eigenvector`, no_eigenvector, first_mode, {}, /has no eigenvector/],
+    // messages number modes and q-points from 1, like the mode explorer
+    [`a missing eigenvector`, no_eigenvector, first_mode, {}, /mode 1 at q-point 1 has no eigenvector/],
     [`a zero mass`, zero_mass, first_mode, {}, /invalid mass 0/],
   ])(`rejects %s`, (_name, data, selection, options, error) => {
     expect(() => phonon_mode_trajectory(data, selection, options)).toThrow(error)
@@ -502,9 +503,7 @@ describe(`phonon band helpers`, () => {
       )
     } else expect(bands.recip_lattice).toBeUndefined()
     expect(bands.bands).toEqual([[1, 2]])
-    expect(bands.branches).toEqual([
-      { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-    ])
+    expect(bands.branches).toEqual([{ start_index: 0, end_index: 1, name: `GAMMA-X` }])
     expect(bands.qpoints.map(({ label }) => label)).toEqual([`GAMMA`, `X`])
     expect(bands.labels_dict).toEqual({ GAMMA: [0, 0, 0], X: [0.5, 0, 0] })
   })
@@ -522,6 +521,11 @@ describe(`phonon band helpers`, () => {
     expect(() => phonon_band_structure_from_modes(make_mode_data())).toThrow(
       /no band path metadata/,
     )
+    // a ragged q-point is named 1-based, like the other messages
+    data.qpoints = make_mode_data().qpoints.map((qpoint) => ({ ...qpoint, distance: 0 }))
+    data.qpoints.push({ q_position: [0.5, 0, 0], distance: 1, modes: [] })
+    data.path_segments = [{ start_index: 0, end_index: 1, start_label: ``, end_label: `` }]
+    expect(() => phonon_band_structure_from_modes(data)).toThrow(`Q-point 2 is missing mode 1`)
   })
 
   it.each([

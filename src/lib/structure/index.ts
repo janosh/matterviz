@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import type { CompositionType } from '#lib/composition/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol, element_data } from '#lib/element/index.js'
@@ -173,7 +174,7 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 | null {
     for (let idx = 0; idx < numbers.length; idx++) {
       const weight = atomic_masses.get(numbers[idx])
       if (weight === undefined)
-        throw new Error(`Invalid atomic number ${numbers[idx]} at site ${idx}`)
+        throw new Error(`Invalid atomic number ${numbers[idx]} at site ${display_idx(idx)}`)
       const offset = idx * stride
       sum_x += weight * coordinates[offset]
       sum_y += weight * coordinates[offset + 1]

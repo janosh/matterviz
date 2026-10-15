@@ -3,7 +3,16 @@
   import type { RdfPattern } from '#lib/rdf/index.js'
   import type { Crystal } from '#lib/structure/index.js'
 
-  let { pattern, pdf_structure }: { pattern: RdfPattern; pdf_structure?: Crystal } = $props()
+  let {
+    pattern,
+    pdf_structure,
+    structures: init_structures,
+  }: {
+    pattern: RdfPattern
+    pdf_structure?: Crystal
+    structures?: { good: Crystal; broken?: Crystal }
+  } = $props()
+  let structures = $derived(init_structures)
   let x_label = $state(`Initial r`)
   // mirrors PdfPlot's bindable error_msg back out so a test can see it reach the parent
   let pdf_error = $state<string | undefined>()
@@ -12,8 +21,12 @@
 <button class="change-rdf-axis" onclick={() => (x_label = `Updated r`)}>
   Update RDF axis
 </button>
+<button class="drop-broken" onclick={() => (structures &&= { good: structures.good })}>
+  Keep only the good structure
+</button>
 <RdfPlot
   patterns={{ label: `Test`, pattern }}
+  {structures}
   x_axis={{ label: x_label }}
   style="width: 400px; height: 300px;"
 />

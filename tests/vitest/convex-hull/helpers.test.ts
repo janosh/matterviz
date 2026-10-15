@@ -7,7 +7,7 @@ import {
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
 // depends on which energy fields are absent
@@ -80,23 +80,19 @@ describe(`helpers: energy color scale + point color`, () => {
 })
 
 describe(`canvas-draw: markers and hit testing`, () => {
+  class StubPath2D {
+    constructor(public data?: string) {}
+    arc(): void {}
+  }
+  beforeEach(() => vi.stubGlobal(`Path2D`, StubPath2D))
   afterEach(() => vi.unstubAllGlobals())
 
-  // canvas hover/selection drawing must not throw on non-finite sizes
-  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    `create_marker_path handles non-finite size %s`,
-    (size) => {
-      class StubPath2D {
-        constructor(public data?: string) {}
-        arc(): void {}
-      }
-      vi.stubGlobal(`Path2D`, StubPath2D)
-      // Falls back to a zero-radius marker instead of throwing
-      expect(draw.create_marker_path(size, `circle`)).toEqual(
-        draw.create_marker_path(0, `circle`),
-      )
-    },
-  )
+  // canvas hover/selection drawing falls back to a zero-radius marker instead of throwing
+  test.each([NaN, Infinity, -Infinity])(`create_marker_path handles size %s`, (size) => {
+    expect(draw.create_marker_path(size, `circle`)).toEqual(
+      draw.create_marker_path(0, `circle`),
+    )
+  })
 
   test(`marker_path_data returns d3 symbols for known markers, null otherwise`, () => {
     expect(draw.marker_path_data(5, `circle`)).toMatch(/^M/)
@@ -136,6 +132,32 @@ describe(`canvas-draw: markers and hit testing`, () => {
         draw.build_hull_pick_index([behind, point], 1),
       ),
     ).toBe(entry)
+  })
+
+  // `both` is size + colour, as in the 2D ScatterPlot path
+  test.each([
+    [`color`, true, false],
+    [`size`, false, true],
+    [`both`, true, true],
+  ] as const)(`pulse overlay draws highlight effect %s`, (effect, recolored, ring) => {
+    const calls: unknown[][] = [] // [method or property, ...args]
+    const ctx = new Proxy({} as CanvasRenderingContext2D, {
+      get: (_target, key) =>
+        key === `canvas`
+          ? { width: 1, height: 1 }
+          : (...args: unknown[]) => calls.push([key, ...args]),
+      set: (_target, key, value) => calls.push([key, value]) > 0,
+    })
+    const entry = { x: 0, y: 0, z: 0, is_stable: false } as ConvexHullEntry
+    const highlight_style = { ...helpers.merge_highlight_style({ effect }), color: `#123456` }
+    const opts = { scale: 1, shadow_factor: 0, selected_entry: null, highlight_style }
+    const hull_opts = { ...opts, is_highlighted: () => true, get_point_color: () => `#000000` }
+    const point = { entry, projected: { x: 0, y: 0, depth: 0 } }
+    draw.draw_pulse_overlay(ctx, [point], hull_opts, { time: 0, opacity: 1 })
+    const last_fill = calls.findLast(([key]) => key === `fillStyle`)?.[1]
+    expect(last_fill).toBe(recolored ? `#123456` : `#000000`)
+    const radius = draw.point_radius(entry) * highlight_style.size_multiplier
+    expect(calls.some((call) => call[0] === `arc` && call[3] === radius)).toBe(ring)
   })
 
   test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {
@@ -429,6 +451,12 @@ describe(`helpers: is_entry_highlighted`, () => {
     [`empty list`, both, [], false],
     [`entry has no ids (string)`, {}, [`mp-1`], false],
     [`entry has no ids (object)`, {}, [both], false],
+    [
+      `id-less or null item never matches an entry without entry_id`,
+      only_sid,
+      [{}, null],
+      false,
+    ],
     // String matching
     [`string matches entry_id`, both, [`mp-1`], true],
     [`string matches structure_id`, both, [`s-1`], true],
@@ -504,6 +532,22 @@ describe(`helpers: temperature interpolation`, () => {
       },
     )
   })
+
+  // without interpolation a non-tabulated T would drop every entry with G(T) data, so it
+  // snaps to the nearest tabulated one (as does an out-of-range T with interpolation)
+  test.each([
+    [700, [], true, 700],
+    [700, [300, 900], true, 700],
+    [undefined, [300, 900], true, 300],
+    [1200, [300, 900], true, 900],
+    [100, [300, 900], true, 300],
+    [700, [300, 900], false, 900],
+    [400, [300, 900], false, 300],
+    [600, [300, 900], false, 300],
+    [900, [300, 900], false, 900],
+  ] as const)(`get_valid_temperature(%s, %j, %s) = %s`, (temp, temps, interp, want) =>
+    expect(helpers.get_valid_temperature(temp, temps, interp)).toBe(want),
+  )
 
   describe(`interpolate_energy_at_temperature`, () => {
     test.each([

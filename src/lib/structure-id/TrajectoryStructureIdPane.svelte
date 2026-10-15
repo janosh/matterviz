@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { TrajectoryRun } from '#lib/trajectory/index.js'
   import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
@@ -105,23 +105,25 @@
     </p>
   {/snippet}
   {#snippet children({ input, collecting })}
-    <!-- results come from the sweep, so there is nothing a dropped file could add -->
+    <!-- results come from the sweep, so there is nothing a dropped file could add. The Frame
+    axis counts from 1 like the step input; seeks hand back the 0-based index -->
     <StructureTypePlot
       id_results={input?.results ?? []}
-      frame_labels={input?.frame_numbers}
+      frame_labels={input?.frame_numbers.map(display_idx)}
       layout="over_frames"
       {normalize}
       loading={collecting}
       {error_msg}
       allow_file_drop={false}
-      current_frame={current_frame_idx}
-      on_frame_click={on_frame_select}
+      current_frame={current_frame_idx === null ? null : display_idx(current_frame_idx)}
+      on_frame_click={on_frame_select &&
+        ((frame_number) => on_frame_select(from_display_idx(frame_number)))}
       on_type_hover={on_atoms_hover && hover_type}
     />
     {#if hover_frame !== null && hover_frame !== current_frame_idx}
       <p class="hint">
-        Highlighted atoms are classified in frame {hover_frame}, the analysed frame nearest the
-        one shown
+        Highlighted atoms are classified in frame {display_idx(hover_frame)}, the analysed
+        frame nearest the one shown
       </p>
     {/if}
   {/snippet}

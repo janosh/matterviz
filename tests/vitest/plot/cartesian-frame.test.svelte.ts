@@ -58,6 +58,14 @@ type FrameChart = {
   secondary_props: (values: number[]) => Record<string, unknown>
 }
 
+const xy_secondary_props = (values: number[]) => ({
+  series: [
+    { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y` },
+    { x: [1, 2, 3], y: values, label: `Y2`, y_axis: `y2` },
+    { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y` },
+  ],
+})
+
 const frame_charts: FrameChart[] = [
   {
     name: `BarPlot`,
@@ -77,13 +85,7 @@ const frame_charts: FrameChart[] = [
       mode: `stacked`,
     }),
     secondary_axes: [`x2`, `y2`],
-    secondary_props: (values) => ({
-      series: [
-        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y` },
-        { x: [1, 2, 3], y: values, label: `Y2`, y_axis: `y2` },
-        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y` },
-      ],
-    }),
+    secondary_props: xy_secondary_props,
   },
   {
     name: `BoxPlot`,
@@ -160,13 +162,7 @@ const frame_charts: FrameChart[] = [
       }
     },
     secondary_axes: [`x2`, `y2`],
-    secondary_props: (values) => ({
-      series: [
-        { x: [1, 2, 3], y: [1, 2, 3], label: `Main`, y_axis: `y` },
-        { x: [1, 2, 3], y: values, label: `Y2`, y_axis: `y2` },
-        { x: values, y: [5, 15, 25], label: `X2`, x_axis: `x2`, y_axis: `y` },
-      ],
-    }),
+    secondary_props: xy_secondary_props,
   },
 ]
 
@@ -244,10 +240,8 @@ const mount_chart = (
 ): Promise<HTMLElement> =>
   mount_sized(chart.component, props, { selector: chart.selector, ...size })
 
-const legend_px = (plot: HTMLElement, prop: `left` | `top`): number => {
-  const legend = query(plot, `.legend`)
-  return Number(legend.style[prop].replace(`px`, ``))
-}
+const legend_px = (plot: HTMLElement, prop: `left` | `top`): number =>
+  Number(query(plot, `.legend`).style[prop].replace(`px`, ``))
 const legend_outside = (plot: HTMLElement): boolean => {
   const clip = clip_rect(plot)
   return legend_px(plot, `top`) >= clip.y + clip.height
@@ -265,7 +259,7 @@ describe(`cartesian frame`, () => {
   afterEach(() => vi.restoreAllMocks())
 
   test.each(frame_charts)(
-    `$name shares fullscreen transitions and reactive controls visibility`,
+    `$name renders children and shares fullscreen and reactive controls visibility`,
     async (chart) => {
       mock_fullscreen()
       const state = $state<{ show_controls: ShowControlsProp }>({ show_controls: `hover` })
@@ -275,10 +269,14 @@ describe(`cartesian frame`, () => {
           {
             ...chart.props(),
             controls_toggle_props: { class: `custom-controls`, style: `color: tomato` },
+            children: createRawSnippet(() => ({
+              render: () => `<div class="custom-child"></div>`,
+            })),
           },
           state,
         ),
       )
+      expect(plot.querySelector(`.custom-child`)).not.toBeNull()
       const gear = query<HTMLButtonElement>(plot, `.header-controls > .control-pane-toggle`)
       expect(gear.style.position).toBe(`static`)
       expect(gear.style.color).toBe(`tomato`)
@@ -375,6 +373,7 @@ describe(`cartesian frame`, () => {
       const clip = clip_rect(plot)
       const position = (frac_x: number, frac_y: number): MouseEventInit => ({
         bubbles: true,
+        buttons: 1, // a real drag holds the primary button down
         clientX: clip.x + clip.width * frac_x,
         clientY: clip.y + clip.height * frac_y,
       })
@@ -408,39 +407,30 @@ describe(`cartesian frame`, () => {
     },
   )
 
-  // The frame owns legend dragging: a dropped legend keeps the drop position (clamped to the
-  // plot) and leaves solver ownership, so the data-decoration-* stamps go away
-  // The drag measures the legend and the SVG once at grab time (2 rect reads), never per
-  // mousemove, so dragging doesn't force a reflow per frame
+  // The frame owns legend dragging: a dropped legend keeps the drop position and leaves solver
+  // ownership (no data-decoration-* stamps). The drag measures the legend and the SVG once at
+  // grab time (2 rect reads), never per mousemove, so dragging doesn't force a reflow per frame
   test.each(frame_charts)(`$name legend drag pins it where it was dropped`, async (chart) => {
     await mount_chart(chart, { ...chart.props(), show_legend: true })
     const legend = doc_query(`.legend`)
     expect(legend.getAttribute(`data-decoration-x`)).not.toBeNull()
     const rect_spy = vi.spyOn(Element.prototype, `getBoundingClientRect`)
     const offset_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`)
-    try {
-      // jsdom reports zero-origin rects, so the drop lands at cursor minus the grab offset
-      legend.dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true, clientX: 100, clientY: 50 }),
-      )
-      for (let step = 1; step <= 20; step++) {
-        window.dispatchEvent(
-          new MouseEvent(`mousemove`, { clientX: 100 + step * 10, clientY: 50 + step * 7.5 }),
-        )
-        flushSync()
-      }
-      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
-      await tick()
-      expect([rect_spy.mock.calls.length, offset_spy.mock.calls.length]).toEqual([2, 0])
-    } finally {
-      rect_spy.mockRestore()
-      offset_spy.mockRestore()
+    // jsdom reports zero-origin rects, so the drop lands at cursor minus the grab offset
+    legend.dispatchEvent(
+      new MouseEvent(`mousedown`, { bubbles: true, clientX: 100, clientY: 50 }),
+    )
+    for (let step = 1; step <= 20; step++) {
+      // primary button held: a bare move ends the drag
+      const [clientX, clientY] = [100 + step * 10, 50 + step * 7.5]
+      window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, clientX, clientY }))
+      flushSync()
     }
+    window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 300, clientY: 200 }))
+    await tick()
+    expect([rect_spy.mock.calls.length, offset_spy.mock.calls.length]).toEqual([2, 0])
     const pinned = doc_query(`.legend`)
-    expect({ left: pinned.style.left, top: pinned.style.top }).toEqual({
-      left: `200px`,
-      top: `150px`,
-    })
+    expect([pinned.style.left, pinned.style.top]).toEqual([`200px`, `150px`])
     expect(pinned.getAttribute(`data-decoration-x`)).toBeNull()
   })
 
@@ -464,16 +454,6 @@ describe(`cartesian frame`, () => {
       expect(explicit.getAttribute(`aria-label`)).toBeNull()
     },
   )
-
-  test.each(frame_charts)(`$name renders the children snippet`, async (chart) => {
-    const plot = await mount_chart(chart, {
-      ...chart.props(),
-      children: createRawSnippet(() => ({
-        render: () => `<div class="custom-child">Custom overlay content</div>`,
-      })),
-    })
-    expect(plot.querySelector(`.custom-child`)?.textContent).toBe(`Custom overlay content`)
-  })
 
   // Auto-padding has to measure the custom strings the axis actually draws, not the numeric
   // tick values behind them, or the labels tilt into a band nobody reserved
@@ -746,13 +726,16 @@ describe(`cartesian frame`, () => {
         show_controls: true,
         controls_open: true,
       })
-      const y_tick_count = () => plot.querySelectorAll(`g.y-axis .tick`).length
-      const before = y_tick_count()
-      expect(before).toBeGreaterThan(0)
       const y_input = doc_query<HTMLInputElement>(`input[aria-label="Y axis tick count"]`)
-      set_input(y_input, `${before * 3}`)
-      await tick()
-      expect(y_tick_count()).toBeGreaterThan(before)
+      // From a sparse count up: Histogram's integer count axis has only so many integers
+      const tick_count_for = async (count: number): Promise<number> => {
+        set_input(y_input, `${count}`)
+        await tick()
+        return plot.querySelectorAll(`g.y-axis .tick`).length
+      }
+      const sparse = await tick_count_for(2)
+      expect(sparse).toBeGreaterThan(0)
+      expect(await tick_count_for(10)).toBeGreaterThan(sparse)
     },
   )
 
@@ -834,18 +817,16 @@ describe(`cartesian frame`, () => {
         ],
       })
       await tick()
-      const label_of = (text: string) => annotation_of(plot, text)
-      const marks = query(plot, `svg ${chart.series_selector}`)
-      for (const text of [`behind`, `front`]) {
-        expect(inside_clip_path(label_of(text)), `annotation must escape the clip-path`).toBe(
-          false,
-        )
-      }
+      const [behind, front] = [`behind`, `front`].map((text) => annotation_of(plot, text))
+      expect([behind, front].map(inside_clip_path)).toEqual([false, false])
       // document order encodes paint order: below-lines < marks < above-all
-      const behind_order = marks.compareDocumentPosition(label_of(`behind`))
-      const front_order = marks.compareDocumentPosition(label_of(`front`))
-      expect(behind_order & Node.DOCUMENT_POSITION_PRECEDING).not.toBe(0)
-      expect(front_order & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+      const marks = query(plot, `svg ${chart.series_selector}`)
+      expect(
+        marks.compareDocumentPosition(behind) & Node.DOCUMENT_POSITION_PRECEDING,
+      ).not.toBe(0)
+      expect(marks.compareDocumentPosition(front) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+        0,
+      )
     },
   )
 
@@ -948,18 +929,17 @@ describe(`cartesian frame`, () => {
         },
       })
       const wrapper = query(plot, `.colorbar-wrapper`)
-      expect([wrapper.style.left, wrapper.style.right, wrapper.style.top]).toEqual([
-        ``,
-        `9px`,
-        `17px`,
-      ])
+      const { left, right, top } = wrapper.style
+      expect([left, right, top]).toEqual([``, `9px`, `17px`])
       expect(wrapper.getAttribute(`data-decoration-x`)).toBeNull()
       // the pinned bar fills its wrapper; decoration-only keys never reach ColorBar's div
       const bar_wrapper = query(wrapper, `.colorbar`)
-      expect([bar_wrapper.style.width, bar_wrapper.style.height]).toEqual([`100%`, `100%`])
-      expect(bar_wrapper.style.right).toBe(``)
-      expect(bar_wrapper.getAttributeNames()).not.toContain(`axis_clearance`)
-      expect(bar_wrapper.getAttributeNames()).not.toContain(`responsive`)
+      const { width, height, right: bar_right } = bar_wrapper.style
+      expect([width, height, bar_right]).toEqual([`100%`, `100%`, ``])
+      const attr_names = bar_wrapper.getAttributeNames()
+      expect(
+        attr_names.filter((name) => [`axis_clearance`, `responsive`].includes(name)),
+      ).toEqual([])
       const bar = query(wrapper, `.colorbar .bar`)
       expect([bar.style.width, bar.style.height]).toEqual([`14px`, `160px`])
     },

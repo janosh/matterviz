@@ -204,7 +204,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         config.scale_type ?? `linear`,
         config.ticks,
         axis_scales[axis],
-        { default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis] },
+        {
+          default_count: opts.tick_counts?.[axis] ?? DEFAULT_TICK_COUNTS[axis],
+          format: config.format,
+        },
       )
     }
     return Object.fromEntries(FACET_AXES.map((axis) => [axis, axis_ticks(axis)])) as Record<

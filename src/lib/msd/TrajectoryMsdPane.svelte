@@ -2,7 +2,7 @@
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { TrajectoryPositionStream, TrajectoryRun } from '#lib/trajectory/index.js'
   import type { AnalysisPaneContext } from '#lib/trajectory/analysis.js'
-  import { position_buffers, suggest_analysis_frame_stride } from '#lib/trajectory/analysis.js'
+  import { position_buffers } from '#lib/trajectory/analysis.js'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { collect_msd_positions } from './collect'
   import type { EinsteinFitOptions, MsdOptions, MsdResult } from './index'
@@ -60,8 +60,7 @@
   analysis_name="MSD"
   collect={collect_msd_positions}
   frame_steps={(input) => input.steps}
-  suggest_stride={(source, frame_count) =>
-    suggest_analysis_frame_stride(source, undefined, position_buffers(source), frame_count)}
+  position_buffers={run ? position_buffers(run) : 1}
   compute_label="Compute MSD"
   recollect_label="Recollect positions"
   {default_dt}

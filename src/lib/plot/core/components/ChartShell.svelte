@@ -15,17 +15,13 @@
 </script>
 
 <script lang="ts">
-  import {
-    normalize_show_controls,
-    shows_fullscreen_toggle,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
   // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
   // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
   // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
   // …) so every chart is themed the same way.
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -86,13 +82,6 @@
       .join(` `),
   )
   const dims = $derived({ width, height, fullscreen })
-  // ControlPane positions its toggle absolutely by default; static joins the header flex row
-  const toggle_props = $derived({
-    ...controls_toggle_props,
-    style: `position: static; ${controls_toggle_props?.style ?? ``}`,
-  })
-  const controls_config = $derived(normalize_show_controls(show_controls))
-  const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
 </script>
 
 <div
@@ -104,22 +93,19 @@
   style={`${css_vars} ${rest.style ?? ``}`}
 >
   {#if width && height}
-    <div
-      class={[`header-controls`, controls_config.class]}
-      style={controls_config.style}
-      style:--chart-chrome-color={chrome_color}
-    >
-      {#if controls_config.mode !== `never`}{@render header_controls?.(dims)}{/if}
-      {@render controls?.(toggle_props, controls_config.visible(`controls`))}
-      {#if fullscreen || show_toggle}
-        <FullscreenButton
-          bind:fullscreen
-          hidden={!show_toggle}
-          {wrapper}
-          bg_css_var="--{css_prefix}-fullscreen-bg"
-        />
-      {/if}
-    </div>
+    <ChartHeaderControls
+      {dims}
+      bind:fullscreen
+      {wrapper}
+      {css_prefix}
+      {fullscreen_toggle}
+      {show_controls}
+      corner
+      {chrome_color}
+      {controls_toggle_props}
+      {header_controls}
+      {controls}
+    />
     {@render body()}
     {@render children?.(dims)}
   {/if}
@@ -155,47 +141,5 @@
     borders - padding made the chart overflow + clip its bottom 2em */
     border-top: var(--plot-fullscreen-padding-top, 2em) solid var(--chart-shell-fullscreen-bg);
     box-sizing: border-box;
-  }
-  .header-controls {
-    --icon-size: var(--ctrl-btn-icon-size, 1rem);
-    position: absolute;
-    /* tucked into the corner: the chrome floats over the chart itself, and further in
-       it straddles cell boundaries and header labels instead of clearing them */
-    top: var(--ctrl-btn-top, 2px);
-    right: var(--fullscreen-btn-right, 2px);
-    z-index: var(--fullscreen-btn-z-index, 10);
-    display: flex;
-    align-items: center;
-    gap: var(--chart-chrome-gap, 3px);
-    opacity: 0;
-    transition:
-      opacity 0.2s,
-      background-color 0.2s;
-  }
-  /* Applied to the buttons, not inherited from the row: a <button> does not inherit
-     `color` (the UA stylesheet sets `buttontext`), so the gear kept its default while the
-     fullscreen button - which declares `color: inherit` itself - followed along. Scoping
-     to direct-child buttons also keeps it out of the controls pane, which is a child of
-     this row and would otherwise render its whole contents in the contrast color. */
-  .header-controls > :global(button) {
-    color: var(--chart-chrome-color, inherit);
-  }
-  /* lifted while its pane is open: every chart's row shares one z-index, so a chart further
-     down the page painted its chrome over a pane dragged onto it */
-  .header-controls:has(:global(.draggable-pane.pane-open)) {
-    z-index: var(--z-index-viewer-pane-open, 12);
-  }
-  /* revealed on hover, while focused, and while the controls pane is open */
-  .header-controls.always-visible,
-  .chart-shell:hover .header-controls,
-  .header-controls:focus-within,
-  .header-controls:has(:global(.pane-open)),
-  .header-controls:has(:global([aria-expanded='true'])) {
-    opacity: 1;
-  }
-  @media (hover: none) {
-    .header-controls.hover-visible {
-      opacity: 1;
-    }
   }
 </style>

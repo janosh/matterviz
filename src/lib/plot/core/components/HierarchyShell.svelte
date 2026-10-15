@@ -159,7 +159,10 @@
     {...chart_state.legend}
     series_data={chart_state.legend_items}
     on_toggle={chart_state.legend?.on_toggle ?? chart_state.toggle_category}
-    on_item_hover={chart_state.legend_hover}
+    on_item_hover={(item) => {
+      chart_state.legend_hover(item)
+      chart_state.legend?.on_item_hover?.(item)
+    }}
     style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
       chart_state.legend?.style ?? ``
     }`}

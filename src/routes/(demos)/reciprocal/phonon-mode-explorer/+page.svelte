@@ -29,6 +29,7 @@
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
   import { to_error } from '#lib/utils.js'
   import { glob_basename, glob_default } from '#site/imports.js'
+  import { latest_load } from '#site/state.svelte.js'
   import { untrack } from 'svelte'
 
   type FixtureSource = { name: string; href: string }
@@ -252,10 +253,10 @@
     }),
   )
 
-  // Monotonic request id so a slow fixture that resolves after a newer click is discarded
-  let load_request = 0
+  // A slow fixture that resolves after a newer click or a file drop is discarded
+  const loads = latest_load()
   const activate_fixture = async (filename: string): Promise<ModeFixture | undefined> => {
-    const request = ++load_request
+    const is_current = loads.start()
     selected_filename = filename
     uploaded_dataset = undefined
     load_error = undefined
@@ -267,7 +268,7 @@
     } catch (error) {
       error_message = `Failed to load ${filename}: ${to_error(error).message}`
     }
-    if (request !== load_request) return undefined // superseded by a newer click
+    if (!is_current()) return undefined // superseded by a newer click or a drop
     fixture_loading = false
     load_error = error_message
     if (fixture) selected_fixture = fixture
@@ -341,6 +342,8 @@
         throw new Error(`expected a .yaml or .yml phonopy mode file, got '${filename}'`)
       }
       const modes = parse_phonon_modes(file_io.as_text(content))
+      loads.cancel() // else a fixture still loading would apply its state to this upload
+      fixture_loading = false
       uploaded_dataset = { modes, filename: metadata.source_filename ?? filename }
       apply_explorer_state(initial_state(uploaded_dataset))
       load_error = undefined
@@ -351,6 +354,15 @@
       if (value) [dragover, load_error] = [false, undefined]
     },
   })
+
+  // Bundled fixtures have no URL, so a dropped chip names only the fixture: load it directly
+  const handle_drop = (event: DragEvent): void => {
+    const chip_name = file_io.dropped_file_url(event)
+    const chip = fixture_files.find((file) => file.name === chip_name)
+    if (!chip) return void handle_file_drop(event)
+    event.preventDefault()
+    void select_fixture(chip)
+  }
 
   const mode_fixture_url_entries = (fixture: ModeFixture): UrlParamEntry[] => {
     const default_state = initial_state(fixture.dataset)
@@ -433,7 +445,7 @@
   class="explorer-shell bleed-1400"
   class:dragover
   aria-busy={upload_loading || fixture_loading}
-  ondrop={handle_file_drop}
+  ondrop={handle_drop}
   {...file_io.drag_over_handlers({
     allow: () => true,
     set_dragover: (value) => (dragover = value),

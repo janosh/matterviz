@@ -16,7 +16,7 @@ test.each([
   [`C:\\data\\movie.traj`, true],
   [`bands.bxsf.gz`, true],
   [`density.cube.deflate`, true],
-  [`CHGCAR.z`, true],
+  [`CHGCAR.z`, false], // Unix compress (LZW) has no decoder
   [`vaspout.h5`, true],
   [`md_run.hdf5`, true],
   [`data.h5`, false],
@@ -99,7 +99,7 @@ test.each([
 test.each([
   [`movie.xyz.gz`, `movie.xyz`],
   [`movie.extxyz.deflate`, `movie.extxyz`],
-  [`movie.traj.z`, `movie.traj`],
+  [`movie.traj.z`, null],
   [`movie.xyz.bz2`, null],
   [`movie.xyz.gz.gz`, `movie.xyz`],
   [`movie.xyz.xz.gz`, null],

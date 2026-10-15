@@ -1,32 +1,36 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import { goto } from '$app/navigation'
-  import type { ChemicalElement, ElementCategory, ElementSymbol } from '#lib'
+  import type { ChemicalElement, ElementSymbol } from '#lib'
   import { element_data, PeriodicTable } from '#lib'
   import { array_max, array_min, type Vec2 } from '#lib/math.js'
   import { TableInset } from '#lib/periodic-table/index.js'
   import { ColorBar } from '#lib/plot/index.js'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
 
-  // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value
+  // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value.
+  // Unknown values are NaN, which the table draws as a missing (gray) segment rather than
+  // coloring them like a real 0.
   const four_fold_quadrants = [
-    [`Atomic Radius (Å)`, (element: ChemicalElement) => element.atomic_radius || 0],
+    [`Atomic Radius (Å)`, (element: ChemicalElement) => element.atomic_radius ?? NaN],
     [
       `Electronegativity × 100`,
-      (element: ChemicalElement) => (element.electronegativity || 0) * 100,
+      (element: ChemicalElement) => (element.electronegativity ?? NaN) * 100,
     ],
-    [`Covalent Radius (Å)`, (element: ChemicalElement) => element.covalent_radius || 0],
+    [`Covalent Radius (Å)`, (element: ChemicalElement) => element.covalent_radius ?? NaN],
     [
       `|Electron Affinity| (kJ/mol)`,
-      (element: ChemicalElement) => Math.abs(element.electron_affinity || 0),
+      (element: ChemicalElement) => Math.abs(element.electron_affinity ?? NaN),
     ],
   ] as const
   const four_fold_data = element_data.map((element) =>
     four_fold_quadrants.map(([, value_of]) => value_of(element)),
   )
   const four_fold_ranges = four_fold_quadrants.map(([title], quadrant_idx): [string, Vec2] => {
-    const values = four_fold_data.map((quadrants) => quadrants[quadrant_idx])
-    return [title, [array_min(values.filter((val) => val > 0)), array_max(values)]]
+    const values = four_fold_data
+      .map((quadrants) => quadrants[quadrant_idx])
+      .filter(Number.isFinite)
+    return [title, [array_min(values), array_max(values)]]
   })
 
   const on_activate = (element: ChemicalElement) => {
@@ -41,8 +45,6 @@
   let missing_use_category: boolean = $state(false)
   let missing_label: string = $state(``)
   let missing_opacity: number = $state(1)
-  let missing_active_element: ChemicalElement | null = $state(null)
-  let missing_active_category: ElementCategory | null = $state(null)
 
   let missing_config = $derived({
     color: missing_use_category ? `element-category` : missing_color,
@@ -124,8 +126,6 @@
     tile_props={{ show_name: window_width > 800 }}
     heatmap_values={missing_heatmap_values}
     missing={missing_config}
-    bind:active_element={missing_active_element}
-    bind:active_category={missing_active_category}
     links="name"
     tooltip
     style="margin: 1em auto; max-width: 1000px"

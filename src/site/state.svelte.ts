@@ -123,3 +123,16 @@ export const nav_routes = group_nav_routes(
     .map(({ route }) => route)
     .filter((route) => !HIDDEN_NAV_PREFIXES.some((prefix) => has_prefix(route, prefix))),
 )
+
+// Latest-wins guard for async demo loads: write state only while the `is_current()` returned
+// by `start()` holds; `cancel()` supersedes every load in flight (e.g. on a file drop)
+export const latest_load = () => {
+  let latest_id = 0
+  return {
+    start: (): (() => boolean) => {
+      const load_id = ++latest_id
+      return () => load_id === latest_id
+    },
+    cancel: (): void => void latest_id++,
+  }
+}

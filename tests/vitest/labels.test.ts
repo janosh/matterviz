@@ -46,46 +46,34 @@ test.each([
 })
 
 // Consumers resolve property keys case-insensitively (`config[key] ?? config[key.toLowerCase()]`),
-// so capitalised duplicates (`Energy`, `Fmax`, `Alpha`) must not creep back in
+// so capitalised duplicates (`Energy`, `Fmax`, `Alpha`) must not creep back in, and a
+// capitalised key (`Force Max`) would be unreachable from `FORCE MAX` or `force max`
 test(`trajectory_property_config keys are lowercase`, () => {
   const keys = Object.keys(trajectory_property_config)
-  expect(keys.filter((key) => key !== key.toLowerCase() && !key.includes(` `))).toEqual([])
+  expect(keys.filter((key) => key !== key.toLowerCase())).toEqual([])
 })
 
+// oxfmt-ignore
 test.each([
   // no explicit format: DEFAULT_FMT picks the SI form at |x| >= 1 and plain decimals below
-  [1234, undefined, `1.23k`],
-  [0.123, undefined, `0.123`],
-  [1.2, `.3f`, `1.200`],
-  [0, undefined, `0`],
+  [1234, undefined, `1.23k`], [0.123, undefined, `0.123`], [1.2, `.3f`, `1.200`],
+  [0, undefined, `0`], [1, undefined, `1`], [1000, undefined, `1k`],
+  [1_000_000, undefined, `1M`], [1_000_000_000, undefined, `1G`], [0.001, undefined, `0.001`],
+  [0.1, undefined, `0.1`], [-1.1, undefined, `−1.1`],
   // d3 scientific formats render 0 as "0e+0"; collapse to a plain 0 (keeping any prefix/suffix)
-  [0, `.2~e`, `0`],
-  [-0, `.2~e`, `0`],
-  [0, `$.2e`, `$0`],
-  [0, `.2~%`, `0%`],
-  [1, undefined, `1`],
-  [1000, undefined, `1k`],
-  [1_000_000, undefined, `1M`],
-  [1_000_000_000, undefined, `1G`],
-  [0.1, undefined, `0.1`],
-  [0.001, undefined, `0.001`],
-  [-0.000001, undefined, `−0.000001`],
-  [-0.0000001, undefined, `−1e-7`],
-  [-1.1, undefined, `−1.1`],
-  [-1.14123, undefined, `−1.14`],
-  [-1.14123e-7, `.5~g`, `−1.1412e-7`],
+  [0, `.2~e`, `0`], [-0, `.2~e`, `0`], [0, `$.2e`, `$0`], [0, `.2~%`, `0%`],
+  [-0.000001, undefined, `−0.000001`], [-0.0000001, undefined, `−1e-7`],
+  [-1.14123, undefined, `−1.14`], [-1.14123e-7, `.5~g`, `−1.1412e-7`],
   // past yotta d3 has no SI prefix left (1e27 read 1,000Y and 1e100 ran past 100 chars)
-  [9.99e26, undefined, `999Y`],
-  [1e27, undefined, `1e27`],
-  [-1.234e27, undefined, `−1.23e27`],
-  [1e100, undefined, `1e100`],
-  [Number.MAX_VALUE, undefined, `1.8e308`],
+  [9.99e26, undefined, `999Y`], [1e27, undefined, `1e27`], [-1.234e27, undefined, `−1.23e27`],
+  [1e100, undefined, `1e100`], [Number.MAX_VALUE, undefined, `1.8e308`],
 ])(`format_num(%s, %s) = %s`, (num, fmt, expected) => {
   expect(format_num(num, fmt)).toBe(expected)
 })
 
 // adaptive labels gain precision only until adjacent distinct values render distinctly;
 // an explicit format is authoritative even when it collides
+// oxfmt-ignore
 test.each([
   [[-1539, -1538, -1537], undefined, [`−1539`, `−1538`, `−1537`]],
   [[-1539.000001, -1539.000002], undefined, [`−1539.000001`, `−1539.000002`]],
@@ -94,26 +82,17 @@ test.each([
   [[-1539, -1538], `.3~s`, [`-1.54k`, `-1.54k`]],
   // labels must resolve the tick step, not just differ from their neighbours: d3.ticks(998,
   // 1000.5, 5) read 1k, 1.001k for the last two ticks
-  [
-    [998, 998.5, 999, 999.5, 1000, 1000.5],
-    undefined,
-    [`998`, `998.5`, `999`, `999.5`, `1000`, `1000.5`],
-  ],
+  [[998, 998.5, 999, 999.5, 1000, 1000.5], undefined,
+    [`998`, `998.5`, `999`, `999.5`, `1000`, `1000.5`]],
   // no adjacent collision at the default precision, but 1005 still rounded to 1.01k
   [[995, 1000, 1005], undefined, [`995`, `1000`, `1005`]],
   [[999_000, 999_500, 1_000_000, 1_000_500], undefined, [`999k`, `999.5k`, `1M`, `1.0005M`]],
   [[0, 0.5, 1, 1.5], undefined, [`0`, `0.5`, `1`, `1.5`]],
   // log-axis decades: compact scientific below 0.01 instead of 0.000001, SI above 1
-  [
-    [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10],
-    undefined,
-    [`1e-9`, `1e-8`, `1e-7`, `1e-6`, `1e-5`, `1e-4`, `1e-3`, `0.01`, `0.1`, `1`, `10`],
-  ],
-  [
-    [1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4],
-    undefined,
-    [`1e-6`, `2e-6`, `5e-6`, `1e-5`, `2e-5`, `5e-5`, `1e-4`],
-  ],
+  [[1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10], undefined,
+    [`1e-9`, `1e-8`, `1e-7`, `1e-6`, `1e-5`, `1e-4`, `1e-3`, `0.01`, `0.1`, `1`, `10`]],
+  [[1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4], undefined,
+    [`1e-6`, `2e-6`, `5e-6`, `1e-5`, `2e-5`, `5e-5`, `1e-4`]],
   [[1, 10, 100, 1000, 10_000], undefined, [`1`, `10`, `100`, `1k`, `10k`]],
   // evenly spaced ticks over a wide range stay linear-formatted
   [[0, 2000, 4000, 6000], undefined, [`0`, `2k`, `4k`, `6k`]],
@@ -185,141 +164,61 @@ test.each([
   expect(superscript_digits(input)).toBe(expected)
 })
 
-test.each([
+test.each<[Vec3, string | undefined, string]>([
   [[1, 2, 3], undefined, `(1, 2, 3)`],
   [[1.23456, -2.34567, 1e-5], undefined, `(1.23, −2.35, 0.00001)`],
   [[0.5, 1e6, -1], `.2f`, `(0.50, 1000000.00, −1.00)`],
-] as [Vec3, string | undefined, string][])(
-  `format_vec3(%j, %j) is %j`,
-  (vec, fmt, expected) => {
-    expect(format_vec3(vec, fmt)).toBe(expected)
-  },
-)
+])(`format_vec3(%j, %j) is %j`, (vec, fmt, expected) => {
+  expect(format_vec3(vec, fmt)).toBe(expected)
+})
 
 // The integer part is dropped and negatives wrap into [0, 1), so -0.25 reads as ¾. The zero
 // glyph matches up to and including eps (1e-3); every other fraction strictly below eps.
+// oxfmt-ignore
 test.each([
-  [0, `0`],
-  [1, `0`],
-  [0.5, `½`],
-  [1.5, `½`],
-  [-10.5, `½`],
-  [0.25, `¼`],
-  [0.75, `¾`],
-  [0.333333333, `⅓`],
-  [0.666666667, `⅔`],
-  [666.67 / 1000, `⅔`], // Mn666.67Sc333.33 normalised composition
-  [333.33 / 1000, `⅓`],
-  [0.2, `⅕`],
-  [0.4, `⅖`],
-  [0.6, `⅗`],
-  [0.8, `⁴⁄₅`],
-  [0.166666667, `⅙`],
-  [0.125, `⅛`],
-  [0.083333333, `¹⁄₁₂`],
-  [-0.5, `½`],
-  [-0.25, `¾`],
-  [-0.75, `¼`],
-  [-0.333333333, `⅔`],
-  [-0.125, `⁷⁄₈`],
-  [0.1, `0.1`],
-  [0.65, `0.65`],
-  [0.999, `0.999`],
-  [-0.1, `−0.1`],
-  [0.001, `0`],
-  [0.001 - 1e-6, `0`],
-  [0.001 + 1e-6, `0.001001`],
-  [1.001, `0`],
-  [1.001 - 1e-6, `0`],
-  [0.5 + 1e-3 - 1e-6, `½`],
-  [0.5 + 1e-3 + 1e-6, `0.501`],
-  [0.25 + 1e-3 - 1e-6, `¼`],
-  [0.25 + 1e-3 + 1e-6, `0.251`],
+  [0, `0`], [1, `0`], [0.5, `½`], [1.5, `½`], [-10.5, `½`], [0.25, `¼`], [0.75, `¾`],
+  [0.333333333, `⅓`], [0.666666667, `⅔`], [-0.5, `½`], [-0.75, `¼`],
+  [666.67 / 1000, `⅔`], [333.33 / 1000, `⅓`], // Mn666.67Sc333.33 normalised composition
+  [0.2, `⅕`], [0.4, `⅖`], [0.6, `⅗`], [0.8, `⁴⁄₅`], [0.166666667, `⅙`], [0.125, `⅛`],
+  [0.083333333, `¹⁄₁₂`], [-0.25, `¾`], [-0.333333333, `⅔`], [-0.125, `⁷⁄₈`],
+  [0.1, `0.1`], [0.65, `0.65`], [0.999, `0.999`], [0.998, `0.998`], [-0.1, `−0.1`],
+  [0.001, `0`], [0.001 - 1e-6, `0`], [0.001 + 1e-6, `0.001001`], [1.001, `0`],
+  [1.001 - 1e-6, `0`], [0.5 + 1e-3 - 1e-6, `½`], [0.5 + 1e-3 + 1e-6, `0.501`],
+  [0.25 + 1e-3 - 1e-6, `¼`], [0.25 + 1e-3 + 1e-6, `0.251`],
   // symmetric around integers: just below one wraps to just below 1, still the zero glyph
-  [-1e-7, `0`],
-  [1e-7, `0`],
-  [0.9995, `0`],
-  [1.0005, `0`],
-  [0.9999999, `0`],
-  [-0.0005, `0`],
-  [0.998, `0.998`],
-  [Infinity, `Infinity`],
-  [-Infinity, `-Infinity`],
-  [NaN, `NaN`],
+  [-1e-7, `0`], [1e-7, `0`], [0.9995, `0`], [1.0005, `0`], [0.9999999, `0`], [-0.0005, `0`],
+  [Infinity, `Infinity`], [-Infinity, `-Infinity`], [NaN, `NaN`],
 ])(`format_fractional(%s) = %s`, (input, expected) => {
   expect(format_fractional(input)).toBe(expected)
 })
 
 describe(`format_value`, () => {
+  // oxfmt-ignore
   test.each([
-    // Basic decimal formatting
-    { value: 123.456, formatter: `.2f`, expected: `123.46` },
-    { value: 123.4, formatter: `.2f`, expected: `123.4` },
-    { value: 123.0, formatter: `.2f`, expected: `123` },
-    { value: 0.001, formatter: `.3f`, expected: `0.001` },
-    { value: 0.1, formatter: `.3f`, expected: `0.1` },
-    { value: 0.0, formatter: `.4f`, expected: `0` },
-
-    // Scientific notation, positive exponents without d3's redundant + sign
-    { value: 1000000, formatter: `.2e`, expected: `1.00e6` },
-    { value: 0.000001, formatter: `.2e`, expected: `1.00e-6` },
-    { value: 1.06e29, formatter: `.3~g`, expected: `1.06e29` },
-
-    // Integer formatting
-    { value: 42, formatter: `d`, expected: `42` },
-    { value: 42.7, formatter: `d`, expected: `43` },
-    { value: -42.3, formatter: `d`, expected: `-42` },
-    { value: 0, formatter: `d`, expected: `0` },
-
-    // Comma-separated formatting
-    { value: 1234.5, formatter: `,.1f`, expected: `1,234.5` },
-    { value: 1234.0, formatter: `,.1f`, expected: `1,234` },
-    { value: 12345678.9, formatter: `,.2f`, expected: `12,345,678.9` },
-    { value: 999.999, formatter: `,.0f`, expected: `1,000` },
-
-    // Percentage formatting
-    { value: 0.123, formatter: `.1%`, expected: `12.3%` },
-    { value: 0.1, formatter: `.1%`, expected: `10%` },
-    { value: 1.0, formatter: `.0%`, expected: `100%` },
-    { value: 0.0, formatter: `.1%`, expected: `0%` },
+    // trailing zeros are stripped
+    [123.456, `.2f`, `123.46`], [123.4, `.2f`, `123.4`], [123.0, `.2f`, `123`], [0.0, `.4f`, `0`],
+    [0.001, `.3f`, `0.001`], [0.0001, `.4f`, `0.0001`], [-123.456, `.2f`, `-123.46`],
+    [999.9999, `.2f`, `1000`],
+    // scientific notation, positive exponents without d3's redundant + sign
+    [1000000, `.2e`, `1.00e6`], [0.000001, `.2e`, `1.00e-6`], [1.06e29, `.3~g`, `1.06e29`],
+    [42, `d`, `42`], [42.7, `d`, `43`], [-42.3, `d`, `-42`], [0, `d`, `0`],
+    [1234.5, `,.1f`, `1,234.5`], [1234.0, `,.1f`, `1,234`], [12345678.9, `,.2f`, `12,345,678.9`],
+    [999.999, `,.0f`, `1,000`],
+    [0.123, `.1%`, `12.3%`], [0.1, `.1%`, `10%`], [1.0, `.0%`, `100%`], [0.0, `.1%`, `0%`],
     // only `%`-type formats strip zeros before the sign; `p` and padded outputs stay verbatim
-    { value: 1e-7, formatter: `.2p`, expected: `0.000010%` },
-    { value: 0.5, formatter: `<8.2%`, expected: `50.00%  ` },
-    { value: 1.5, formatter: `<8.2f`, expected: `1.50    ` },
-
-    // Currency formatting
-    { value: 1234.5, formatter: `$,.2f`, expected: `$1,234.50` },
-    { value: 1234.0, formatter: `$,.2f`, expected: `$1,234.00` },
-    { value: 0.99, formatter: `$,.2f`, expected: `$0.99` },
-    { value: -50.25, formatter: `$,.2f`, expected: `-$50.25` },
-
-    // Special values
-    { value: NaN, formatter: `.2f`, expected: `NaN` },
-    { value: Infinity, formatter: `.2f`, expected: `Infinity` },
-    { value: -Infinity, formatter: `.2f`, expected: `-Infinity` },
-
-    // Edge cases
-    { value: -0, formatter: `.2f`, expected: `0` },
-    { value: -0, formatter: `.0f`, expected: `0` },
-    { value: -0, formatter: `.0%`, expected: `0%` },
-    { value: -0, formatter: `$,.2f`, expected: `$0.00` },
-    // Scientific zeros collapse to plain 0 (same path plot ticks use via format_value_or_num)
-    { value: -0, formatter: `.2e`, expected: `0` },
-    { value: 0, formatter: `$.2e`, expected: `$0` },
-    { value: -0.001, formatter: `.2f`, expected: `0` },
-    { value: 0.0001, formatter: `.4f`, expected: `0.0001` },
-    { value: 999.9999, formatter: `.2f`, expected: `1000` },
-    { value: -123.456, formatter: `.2f`, expected: `-123.46` },
-
-    // No formatter/empty formatter
-    { value: 123.456, formatter: ``, expected: `123.456` },
-    { value: 123.456, formatter: undefined, expected: `123.456` },
-  ])(
-    `formats $value with formatter "$formatter" as "$expected"`,
-    ({ value, formatter, expected }) => {
-      expect(format_value(value, formatter)).toBe(expected)
-    },
-  )
+    [1e-7, `.2p`, `0.000010%`], [0.5, `<8.2%`, `50.00%  `], [1.5, `<8.2f`, `1.50    `],
+    // currency keeps its zeros
+    [1234.5, `$,.2f`, `$1,234.50`], [1234.0, `$,.2f`, `$1,234.00`], [-50.25, `$,.2f`, `-$50.25`],
+    [0.99, `$,.2f`, `$0.99`],
+    [NaN, `.2f`, `NaN`], [Infinity, `.2f`, `Infinity`], [-Infinity, `.2f`, `-Infinity`],
+    [-0, `.2f`, `0`], [-0, `.0f`, `0`], [-0, `.0%`, `0%`], [-0, `$,.2f`, `$0.00`],
+    [-0.001, `.2f`, `0`],
+    // scientific zeros collapse to plain 0 (same path plot ticks use via format_value_or_num)
+    [-0, `.2e`, `0`], [0, `$.2e`, `$0`],
+    [123.456, ``, `123.456`], [123.456, undefined, `123.456`],
+  ])(`format_value(%s, %j) = %j`, (value, formatter, expected) => {
+    expect(format_value(value, formatter)).toBe(expected)
+  })
 
   test.each([
     [new Date(2023, 0, 1).getTime(), `%Y-%m-%d`, `2023-01-01`],

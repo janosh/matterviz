@@ -49,11 +49,11 @@
   const slider_to_pressure = (value: number): number =>
     10 ** (LOG_P_MIN + (value / 100) * LOG_P_RANGE)
 
-  // Format pressure as plain text (no HTML) for the number input
+  // Plain-text pressure for the number input; only exact powers of ten (up to float noise) get 1eN
   function format_pressure(pressure: number): string {
     const log_pressure = Math.log10(pressure)
     const exponent = Math.round(log_pressure)
-    if (Math.abs(log_pressure - exponent) < 0.1) return `1e${exponent}`
+    if (Math.abs(log_pressure - exponent) < 1e-9) return `1e${exponent}`
     if (pressure >= 0.01 && pressure < 100) return pressure.toPrecision(2)
     return pressure.toExponential(1)
   }

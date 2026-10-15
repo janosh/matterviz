@@ -248,7 +248,7 @@ function facet_weights(
 
 // Which tie-triangle contains each composition and with what weights: independent of T, so
 // computed once per topology and reused for every temperature in the interval
-export interface FacetAssignment {
+interface FacetAssignment {
   facets: number[][]
   facet_of: Int32Array // -1 when outside the hull's domain
   weights: Float64Array // 3 per phase

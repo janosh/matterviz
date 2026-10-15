@@ -5,6 +5,7 @@
 // Frames are analysed one at a time in the RDF worker and only the n_pairs x n_bins
 // histograms come back, so a 100k-frame run never needs its positions in memory at once
 // (unlike MSD/VACF, which are lag analyses and need the whole series).
+import { display_idx } from '#lib/labels.js'
 import { calc_lattice_params } from '#lib/math.js'
 import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
@@ -166,7 +167,7 @@ export async function collect_trajectory_rdf(
     async ({ structure, step }, frame_number) => {
       if (!Number.isFinite(step)) {
         throw new TypeError(
-          `collect_trajectory_rdf: frame ${frame_number} has invalid step ${step}`,
+          `collect_trajectory_rdf: frame ${display_idx(frame_number)} has invalid step ${step}`,
         )
       }
       frame_steps.push(step)
@@ -199,13 +200,13 @@ export async function collect_trajectory_rdf(
         })
       if (composition_changed) {
         throw new Error(
-          `collect_trajectory_rdf: frame ${frame_number} has a different composition or atom ` +
-            `order than frame ${reference.frame_number}; a time-averaged g(r) needs one composition`,
+          `collect_trajectory_rdf: frame ${display_idx(frame_number)} has a different composition or atom ` +
+            `order than frame ${display_idx(reference.frame_number)}; a time-averaged g(r) needs one composition`,
         )
       }
       if (!has_usable_lattice(structure)) {
         throw new Error(
-          `collect_trajectory_rdf: frame ${frame_number}: ${lattice_unavailable_reason(structure, true)}`,
+          `collect_trajectory_rdf: frame ${display_idx(frame_number)}: ${lattice_unavailable_reason(structure, true)}`,
         )
       }
       const volume = calc_lattice_params(structure.lattice.matrix).volume
@@ -221,7 +222,7 @@ export async function collect_trajectory_rdf(
   const accumulators = frames[0].patterns.map((pattern) => {
     if (!pattern.element_pair) {
       throw new Error(
-        `collect_trajectory_rdf: frame ${frame_numbers[0]} returned an unlabelled g(r)`,
+        `collect_trajectory_rdf: frame ${display_idx(frame_numbers[0])} returned an unlabelled g(r)`,
       )
     }
     return {

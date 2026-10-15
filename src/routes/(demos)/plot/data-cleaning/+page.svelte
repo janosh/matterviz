@@ -377,8 +377,8 @@
       .join(`, `)
     const { series, quality } = cleaned_result
 
-    return `import { clean_series } from '#lib/plot/index.js'
-import type { DataSeries, CleaningConfig } from '#lib/plot/index.js'
+    return `import { clean_series } from 'matterviz/plot'
+import type { DataSeries, CleaningConfig } from 'matterviz/plot'
 
 const series: DataSeries = {
   x: [${x_preview}, ...],

@@ -17,10 +17,8 @@
   } = $props()
 
   let { x: x_range, y: y_range, z: z_range } = $derived(ranges)
-  // Transform data coords to Three.js coordinates
   const to_coords = $derived(create_to_threejs(ranges))
 
-  // Apply span constraints or use full range
   let [x_min, x_max] = $derived(span_or(ref_plane.x_span, x_range))
   let [y_min, y_max] = $derived(span_or(ref_plane.y_span, y_range))
   let [z_min, z_max] = $derived(span_or(ref_plane.z_span, z_range))
@@ -42,30 +40,27 @@
     if (ref_plane.visible === false) return null
 
     if (ref_plane.type === `xy`) {
-      const zval = ref_plane.z
       return quad([
-        [x_min, y_min, zval],
-        [x_max, y_min, zval],
-        [x_max, y_max, zval],
-        [x_min, y_max, zval],
+        [x_min, y_min, ref_plane.z],
+        [x_max, y_min, ref_plane.z],
+        [x_max, y_max, ref_plane.z],
+        [x_min, y_max, ref_plane.z],
       ])
     }
     if (ref_plane.type === `xz`) {
-      const yval = ref_plane.y
       return quad([
-        [x_min, yval, z_min],
-        [x_max, yval, z_min],
-        [x_max, yval, z_max],
-        [x_min, yval, z_max],
+        [x_min, ref_plane.y, z_min],
+        [x_max, ref_plane.y, z_min],
+        [x_max, ref_plane.y, z_max],
+        [x_min, ref_plane.y, z_max],
       ])
     }
     if (ref_plane.type === `yz`) {
-      const xval = ref_plane.x
       return quad([
-        [xval, y_min, z_min],
-        [xval, y_max, z_min],
-        [xval, y_max, z_max],
-        [xval, y_min, z_max],
+        [ref_plane.x, y_min, z_min],
+        [ref_plane.x, y_max, z_min],
+        [ref_plane.x, y_max, z_max],
+        [ref_plane.x, y_min, z_max],
       ])
     }
     if (ref_plane.type === `normal`) {
@@ -90,15 +85,10 @@
       cross_3d(normalized, Math.abs(normalized[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]),
     )
     const v_dir = cross_3d(normalized, u_dir)
-    // Scale to cover bounding box
-    const scale = Math.max(x_max - x_min, y_max - y_min, z_max - z_min) * 2
-    const [point_x, point_y, point_z] = point
-    // Offset the point by u_dir * offset_u + v_dir * offset_v
-    const corner = (offset_u: number, offset_v: number): Vec3 => [
-      point_x + u_dir[0] * offset_u + v_dir[0] * offset_v,
-      point_y + u_dir[1] * offset_u + v_dir[1] * offset_v,
-      point_z + u_dir[2] * offset_u + v_dir[2] * offset_v,
-    ]
+    // Scale to cover the bounding box, whichever way each axis runs
+    const scale = Math.max(...[x_max - x_min, y_max - y_min, z_max - z_min].map(Math.abs)) * 2
+    const corner = (u_off: number, v_off: number) =>
+      point.map((coord, axis) => coord + u_dir[axis] * u_off + v_dir[axis] * v_off) as Vec3
     return quad([
       corner(-scale, -scale),
       corner(scale, -scale),
@@ -107,7 +97,6 @@
     ])
   }
 
-  // Material properties (with defaults)
   let style = $derived({
     color: ref_plane.style?.color ?? `#4488ff`,
     opacity: ref_plane.style?.opacity ?? 0.3,

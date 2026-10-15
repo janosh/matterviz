@@ -219,8 +219,8 @@ export const DEFAULT_GAS_PRESSURES: Readonly<Record<GasSpecies, number>> = {
 
 // Source of gas thermodynamic data, so callers can swap in their own tables
 export interface GasThermodynamicsProvider {
-  // Get standard chemical potential μ°(T) at reference pressure P₀=1 bar
-  // Returns value in eV/molecule (not per atom)
+  // Standard chemical potential μ°(T) at reference pressure P₀ = 1 bar, in eV PER ATOM of
+  // the gas (μ per molecule divided by its atom count), on the 0 K enthalpy scale
   get_standard_chemical_potential(gas: GasSpecies, temperature: number): number
 }
 

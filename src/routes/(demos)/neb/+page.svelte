@@ -2,7 +2,7 @@
   import LazyDemo from '#site/LazyDemo.svelte'
   import { analyze_barrier, NebPlot, NebViewer, path_spline } from '#lib/neb/index.js'
   import { download } from '#lib/io/index.js'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num } from '#lib/labels.js'
   import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index.js'
   import InputFormat from './input-format.md'
 
@@ -25,11 +25,12 @@
 
   <h2 id="discrete-and-fitted-barriers">Discrete and fitted barriers</h2>
   <p>
-    The highest computed image is #{analysis.ts_image_idx}, at
+    The highest computed image is #{display_idx(analysis.ts_image_idx)}, at
     {format_num(analysis.forward_barrier, `.4~`)} eV. The {spline.method} fit peaks
-    {format_num(spline.fitted_max.energy - analysis.ts_energy, `.3~`)} eV higher between images #{spline
-      .fitted_max.between_images[0]} and #{spline.fitted_max.between_images[1]}; the viewer
-    reports both values explicitly.
+    {format_num(spline.fitted_max.energy - analysis.ts_energy, `.3~`)} eV higher between images #{display_idx(
+      spline.fitted_max.between_images[0],
+    )} and #{display_idx(spline.fitted_max.between_images[1])}; the viewer reports both values
+    explicitly.
   </p>
 
   <h2 id="comparing-mechanisms">Comparing mechanisms</h2>

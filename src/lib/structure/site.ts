@@ -1,5 +1,6 @@
 // Shared single-species Site construction used by all structure/trajectory/volumetric parsers,
 // plus the site-provenance reads every consumer of supercell/image-atom copies shares
+import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
 import { is_valid_index } from '#lib/math.js'
@@ -78,7 +79,9 @@ export class NumericSites {
     if (!identity) {
       const element = element_from_atomic_number(this.numbers[idx])
       if (!element)
-        throw new Error(`Invalid atomic number ${this.numbers[idx]} at site ${idx}`)
+        throw new Error(
+          `Invalid atomic number ${this.numbers[idx]} at site ${display_idx(idx)}`,
+        )
       identity = {
         species: [{ element, occu: 1, oxidation_state: 0 }],
         label: `${element}${idx + 1}`,
@@ -164,3 +167,17 @@ export const get_image_source_idx = (site: Site | undefined, site_idx: number): 
 // their own ancestor.
 export const get_orig_site_idx = (site: Site | undefined, site_idx: number): number =>
   site?.provenance?.unit_cell_idx ?? get_image_source_idx(site, site_idx)
+
+// Copy of `structure` with `rows[row_of(site)]` (e.g. host-tool predictions) merged over each
+// site's properties
+export const merge_site_properties = <Structure extends AnyStructure>(
+  structure: Structure,
+  rows: readonly (Record<string, unknown> | undefined)[],
+  row_of = (_site: Site, site_idx: number): number => site_idx,
+): Structure => ({
+  ...structure,
+  sites: structure.sites.map((site, site_idx) => ({
+    ...site,
+    properties: { ...site.properties, ...rows[row_of(site, site_idx)] },
+  })),
+})

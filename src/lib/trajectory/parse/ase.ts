@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
@@ -243,7 +244,8 @@ export function decode_ase_frame(
   if (numbers.length !== n_atoms)
     throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
   const pbc_value = frame_data.pbc ?? fallback_pbc ?? inherited?.pbc
-  if (pbc_value === undefined) throw new Error(`missing pbc (ASE writes it in frame 0)`)
+  if (pbc_value === undefined)
+    throw new Error(`missing pbc (ASE writes it in the first frame)`)
   const pbc = ase_pbc(pbc_value)
 
   // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
@@ -251,7 +253,7 @@ export function decode_ase_frame(
   const forces = checked_site_forces(
     raw_forces,
     n_atoms,
-    `ASE calculator forces of frame ${step}`,
+    `ASE calculator forces of frame ${display_idx(step)}`,
     warn,
   )
   const metadata = {
@@ -288,7 +290,7 @@ export function decode_ase_frame(
         const mass = ase_momentum_mass(
           elements[atom_idx],
           masses?.[atom_idx],
-          `ASE atom ${atom_idx}`,
+          `ASE atom ${display_idx(atom_idx)}`,
         )
         return momentum.map((component) => ase_velocity(component, mass))
       })
@@ -359,7 +361,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     Number(live().view.getBigInt64(offsets_pos + frame_idx * 8, true))
   const frame_error = (frame_idx: number, offset: number, error: unknown): Error =>
     new Error(
-      `ASE trajectory frame ${frame_idx} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
+      `ASE trajectory frame ${display_idx(frame_idx)} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
       { cause: error },
     )
   // Numbers and pbc in effect at each frame, cached once both are known. ASE repeats them only
@@ -502,8 +504,10 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
         const atomic_number = elements.value(atom_idx)
         const symbol = element_from_atomic_number(atomic_number)
         if (!symbol)
-          throw new Error(`ASE atom ${atom_idx} has invalid atomic number ${atomic_number}`)
-        const label = `ASE atom ${atom_idx}`
+          throw new Error(
+            `ASE atom ${display_idx(atom_idx)} has invalid atomic number ${atomic_number}`,
+          )
+        const label = `ASE atom ${display_idx(atom_idx)}`
         const recorded_mass =
           momenta || mass_source
             ? ase_momentum_mass(symbol, masses ? masses.value(atom_idx) : undefined, label)
@@ -527,7 +531,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
           const selected = selection.value(atom_idx)
           if (selected !== 0 && selected !== 1)
             throw new Error(
-              `ASE selection ${selection_key} at atom ${atom_idx} must be 0 or 1`,
+              `ASE selection ${selection_key} at atom ${display_idx(atom_idx)} must be 0 or 1`,
             )
           batch.selected[idx] = selected
         }

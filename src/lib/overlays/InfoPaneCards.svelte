@@ -44,8 +44,9 @@
     const normalized_filter = filter.trim().toLowerCase()
     if (!normalized_filter) return cards
     return cards.flatMap((card) => {
+      // match rendered text, not markup: `F<sub>max</sub>` answers `fmax`, not `sub`
       const rows = card.rows.filter(({ label, value }: InfoPaneRow) =>
-        `${card.title} ${card.subtitle ?? ``} ${label} ${value}`
+        html_to_text(`${card.title} ${card.subtitle ?? ``} ${label} ${value}`)
           .toLowerCase()
           .includes(normalized_filter),
       )

@@ -2,7 +2,7 @@
 // resolver rather than read off `trajectory.frames`, because an indexed trajectory keeps only
 // a handful of frames in memory and would otherwise export a truncated file.
 import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { trajectory_property_config } from '#lib/labels.js'
+import { display_idx, trajectory_property_config } from '#lib/labels.js'
 import { structure_to_poscar_str, structure_to_xyz_str } from '#lib/structure/export.js'
 import { to_error, yield_turn } from '#lib/utils.js'
 import { rows_to_csv } from 'svelte-widgets/csv'
@@ -32,15 +32,15 @@ export function trajectory_export_basename(filename: string): string {
   return base || `trajectory`
 }
 
-// Zero-padded so a directory listing or `cat *.vasp` sorts in trajectory order
+// 1-based frame number, zero-padded so `ls` or `cat *.vasp` sorts in trajectory order
 export function poscar_frame_filename(
   filename: string,
   frame_idx: number,
   total_frames: number,
 ): string {
-  const width = Math.max(4, String(Math.max(0, total_frames - 1)).length)
-  const padded_idx = String(frame_idx).padStart(width, `0`)
-  return `${trajectory_export_basename(filename)}_frame_${padded_idx}.vasp`
+  const width = Math.max(4, String(total_frames).length)
+  const padded = String(display_idx(frame_idx)).padStart(width, `0`)
+  return `${trajectory_export_basename(filename)}_frame_${padded}.vasp`
 }
 
 // Recomputed from the cell on read, or written explicitly below, so re-emitting them in the
@@ -102,14 +102,14 @@ async function* iter_export_frames(
     } catch (error) {
       signal?.throwIfAborted()
       throw new Error(
-        `Failed to load trajectory frame ${frame_idx}: ${to_error(error).message}`,
+        `Failed to load trajectory frame ${display_idx(frame_idx)}: ${to_error(error).message}`,
         { cause: error },
       )
     }
     signal?.throwIfAborted()
     // Emitting a short file would look like a successful export of a shorter run
     if (!frame?.structure?.sites) {
-      throw new Error(`Trajectory frame ${frame_idx} is not available for export`)
+      throw new Error(`Trajectory frame ${display_idx(frame_idx)} is not available for export`)
     }
     yield [frame_idx, frame]
     const completed = frame_idx - start_frame + 1
@@ -128,7 +128,7 @@ const serialize_frame = <T>(frame_idx: number, serialize: () => T): T => {
     return serialize()
   } catch (error) {
     throw new Error(
-      `Failed to serialize trajectory frame ${frame_idx}: ${to_error(error).message}`,
+      `Failed to serialize trajectory frame ${display_idx(frame_idx)}: ${to_error(error).message}`,
       { cause: error },
     )
   }
@@ -183,8 +183,8 @@ export async function create_poscar_frame_range_zip(
 
 // === Per-frame property tables (CSV/JSON) ===
 
-// One frame's numbers: the frame index and MD step that identify it, plus every numeric
-// property the extractor (or the pre-extracted plot metadata) yielded for it.
+// One frame's numbers: the 0-based frame index (1-based only in the CSV/JSON written below)
+// and MD step that identify it, plus every numeric property the extractor (or the pre-extracted plot metadata) yielded for it.
 export interface TrajectoryPropertyRow {
   frame: number
   step: number
@@ -297,7 +297,10 @@ export function frame_rows_to_csv({ rows }: TrajectoryPropertyTable): string {
     })
   return rows_to_csv(
     rows.map(({ frame, step, properties }) => {
-      const record: Record<string, number | string | null> = { frame, step }
+      const record: Record<string, number | string | null> = {
+        frame: display_idx(frame),
+        step,
+      }
       for (const { key, header } of columns) record[header] = properties[key] ?? null
       return record
     }),
@@ -315,11 +318,15 @@ export function frame_rows_to_json(table: TrajectoryPropertyTable): string {
   }
   return `${JSON.stringify(
     {
-      frame_range: [start_frame, end_frame],
+      frame_range: [start_frame, end_frame].map(display_idx),
       n_frames: rows.length,
       source,
       units,
-      rows: rows.map(({ frame, step, properties }) => ({ ...properties, frame, step })),
+      rows: rows.map(({ frame, step, properties }) => ({
+        ...properties,
+        frame: display_idx(frame),
+        step,
+      })),
     },
     null,
     2,

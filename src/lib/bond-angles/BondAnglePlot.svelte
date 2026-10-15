@@ -85,7 +85,9 @@
   const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))
 
   // bar_idx is the angle bin: every series shares the bin_width binning on one x axis
+  // Wraps the caller's on_bar_change rather than replacing it: passing both props must call both
   const report_sites: StructurePlotProps[`on_bar_change`] = (bar) => {
+    rest.on_bar_change?.(bar)
     const { structure_label, triplet } = bar?.metadata ?? {}
     on_sites_hover?.(
       bar &&

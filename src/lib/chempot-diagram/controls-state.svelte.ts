@@ -3,6 +3,7 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
+import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D } from '#lib/math.js'
 import { to_error } from '#lib/utils.js'
@@ -14,7 +15,7 @@ import {
   get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
 } from './compute'
-import { get_temp_filter_payload, get_valid_temperature } from './temperature'
+import { get_temp_filter_payload } from './temperature'
 import {
   CHEMPOT_DEFAULTS,
   type ChemPotColorMode,
@@ -106,7 +107,11 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     }),
   )
   $effect(() => {
-    const next = get_valid_temperature(opts.temperature.get(), slice.available_temperatures)
+    const next = get_valid_temperature(
+      opts.temperature.get(),
+      slice.available_temperatures,
+      interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature,
+    )
     if (next !== opts.temperature.get()) opts.temperature.set(next)
   })
 

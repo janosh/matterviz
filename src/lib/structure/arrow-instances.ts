@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import { get_d3_interpolator, type D3InterpolateName } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import * as math from '#lib/math.js'
@@ -137,7 +138,8 @@ export function build_vector_layers(
       }
       if (mode === `spin_direction` || !magnitudes) {
         const source = read?.(site_idx)
-        if (!source) throw new Error(`Prepared vector ${key} is missing at site ${site_idx}`)
+        if (!source)
+          throw new Error(`Prepared vector ${key} is missing at site ${display_idx(site_idx)}`)
         vector = source
       }
       const magnitude = magnitudes ? magnitudes[site_idx] : Math.hypot(...vector)

@@ -68,8 +68,9 @@ test(`passes the frame window, cap and skip_csp to the sweep, relays progress, s
   expect(max_frames.closest(`label`)?.textContent).toContain(`Max frames`)
   set_input(max_frames, `3`)
   for (const [label, value] of [
-    [`Start frame`, `2`],
-    [`End frame (exclusive)`, `18`],
+    // 1-based inclusive frames 3-18 are the 0-based window [2, 18)
+    [`Start frame`, `3`],
+    [`End frame`, `18`],
   ]) {
     const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
     set_input(input, value)
@@ -154,7 +155,10 @@ test(`hovering a structure type reports its atoms from the analysed frame neares
     await hover(`mouseenter`)
     const atoms = { frame_number: analysed, atom_indices: [0, 1, 2, 3] }
     expect(on_atoms_hover).toHaveBeenLastCalledWith(atoms)
-    expect(document.body.textContent?.includes(`${hint} ${analysed}`)).toBe(shown !== analysed)
+    // the hint numbers frames from 1 like the step input
+    expect(document.body.textContent?.includes(`${hint} ${analysed + 1},`)).toBe(
+      shown !== analysed,
+    )
     await hover(`mouseleave`)
     expect(on_atoms_hover).toHaveBeenLastCalledWith(null)
     expect(document.body.textContent).not.toContain(hint)

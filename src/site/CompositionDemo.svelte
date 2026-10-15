@@ -1,6 +1,7 @@
 <script lang="ts">
   import LazyDemo from './LazyDemo.svelte'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { to_error } from '#lib/utils.js'
   import type { CompositionType } from 'matterviz'
   import {
     Composition,
@@ -10,10 +11,23 @@
 
   let { show_grid = false, show_interactive = false } = $props()
 
-  let formula = $state(`LiFePO4`)
-  let parsed_composition: CompositionType = $derived(parse_composition(formula))
+  let formula = $state(``)
+  // Typing passes through invalid input (`{Fe: 2`, `Xy`): keep the last valid charts, show why
+  let parsed = $state<{ composition: CompositionType; error: string | null }>({
+    composition: {},
+    error: null,
+  })
+  const set_formula = (value: string): void => {
+    formula = value
+    try {
+      parsed = { composition: parse_composition(value), error: null }
+    } catch (error) {
+      parsed.error = to_error(error).message
+    }
+  }
+  set_formula(`LiFePO4`)
 
-  const compositions = [
+  const compositions: [string, string | CompositionType][] = [
     [`Uranium`, `U`],
     [`Water`, `H2O`],
     [`Iron Oxide`, `Fe2O3`],
@@ -25,41 +39,29 @@
     [`Ethanol`, `C2H6O`],
     [`Glucose`, `C6H12O6`],
     [`Caffeine`, `C8H10N4O2`],
-    [`Steel`, JSON.stringify({ Fe: 98, C: 2 })],
-    [`Bronze`, JSON.stringify({ Cu: 88, Sn: 12 })],
-    [`Stainless Steel`, JSON.stringify({ Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 })],
-    [`Lithium Phosphate`, JSON.stringify({ Li: 1, P: 1, O: 4 })],
+    [`Steel`, { Fe: 98, C: 2 }],
+    [`Bronze`, { Cu: 88, Sn: 12 }],
+    [`Stainless Steel`, { Fe: 70, Cr: 18, Ni: 8, Mn: 2, Si: 1, C: 1 }],
+    [`Lithium Phosphate`, { Li: 1, P: 1, O: 4 }],
     [`Aluminum Oxide`, `Al2O3`],
     [`Silicon Carbide`, `SiC`],
-    [`Cantor Alloy`, JSON.stringify({ Co: 20, Cr: 20, Fe: 20, Mn: 20, Ni: 20 })],
-    [`Refractory HEA`, JSON.stringify({ Ti: 20, Zr: 20, Nb: 20, Mo: 20, V: 20 })],
+    [`Cantor Alloy`, { Co: 20, Cr: 20, Fe: 20, Mn: 20, Ni: 20 }],
+    [`Refractory HEA`, { Ti: 20, Zr: 20, Nb: 20, Mo: 20, V: 20 }],
   ]
-
-  // JSON-object entries above render as e.g. Fe98C2, plain strings pass through as-is
-  // (malformed JSON degrades to the raw string instead of crashing the page)
-  const get_formula_display = (composition_formula: string): string => {
-    try {
-      return get_electro_neg_formula(
-        composition_formula.startsWith(`{`)
-          ? JSON.parse(composition_formula)
-          : composition_formula,
-      )
-    } catch {
-      return composition_formula
-    }
-  }
 </script>
 
 {#if show_grid}
   {#each [`pie`, `bubble`, `bar`] as const as mode (mode)}
-    <h2 id="as-chart">As {mode} chart</h2>
+    <h2 id="as-{mode}-chart">As {mode} chart</h2>
     <div class="composition-grid">
-      {#each compositions as [name, formula] (formula)}
+      {#each compositions as [name, composition] (name)}
         <div class="composition-card">
           <h3>{name}</h3>
-          <div class="card-formula">{@html sanitize_html(get_formula_display(formula))}</div>
+          <div class="card-formula">
+            {@html sanitize_html(get_electro_neg_formula(composition))}
+          </div>
           <LazyDemo label={name} height={mode === `bar` ? `30px` : `200px`}>
-            <Composition composition={formula} {mode} />
+            <Composition {composition} {mode} />
           </LazyDemo>
         </div>
       {/each}
@@ -71,16 +73,20 @@
   <label>
     Enter a chemical formula (e.g. Fe2O3, H2O, ...) or a composition object (e.g. {`{Li: 1, Fe: 1, P: 1, O: 4}`}):
     <input
-      bind:value={formula}
+      bind:value={() => formula, set_formula}
       placeholder={`e.g. Fe2O3, H2O, or {Fe: 2, O: 3}`}
+      aria-invalid={Boolean(parsed.error)}
       style="display: block; margin: 1em auto; padding: 2pt 6pt; font-size: 1.2em"
     />
   </label>
+  {#if parsed.error}
+    <p role="alert" style="text-align: center; color: var(--error-color)">{parsed.error}</p>
+  {/if}
   <div class="composition-grid">
-    {#each [[`Pie Chart`, `pie`, `Vesta`], [`Bubble Chart`, `bubble`, `Jmol`], [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }], [`Percentages`, `pie`, `Muted`]] as const as [name, mode, color_scheme, props = { }] (name)}
+    {#each [[`Pie Chart`, `pie`, `Vesta`], [`Bubble Chart`, `bubble`, `Jmol`], [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }], [`Percentages`, `pie`, `Muted`, { show_percentages: true }]] as const as [name, mode, color_scheme, props = { }] (name)}
       <div class="composition-card">
         <h3>{name}</h3>
-        <Composition composition={parsed_composition} {mode} {color_scheme} {...props} />
+        <Composition composition={parsed.composition} {mode} {color_scheme} {...props} />
       </div>
     {/each}
   </div>

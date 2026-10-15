@@ -450,9 +450,7 @@ export function hkl_slice_plane(
   position: number,
 ): CartesianPlane | null {
   if (miller_indices.every((index) => index === 0)) return null
-  // normalized below, so the 2π convention of the reciprocal lattice is immaterial
-  const recip = math.reciprocal_lattice(volume.lattice)
-  const plane_normal = math.create_frac_to_cart(recip)(miller_indices)
+  const plane_normal = math.miller_plane_normal(volume.lattice, miller_indices)
   if (Math.hypot(...plane_normal) < PLANE_TOLERANCE) return null // degenerate normal
   const normal = math.normalize_vec(plane_normal)
   const corner = bounded_cell_corner(volume, UNIT_CELL_RANGE)

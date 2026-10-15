@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { create_sequence_player } from './sequence-player.svelte'
 
@@ -93,12 +93,12 @@
   <div class="step-section">
     <input
       type="number"
-      min="0"
-      max={max_index}
-      value={index}
-      oninput={(event) => playback.go_to(event.currentTarget.valueAsNumber)}
+      min="1"
+      max={display_idx(max_index)}
+      value={display_idx(index)}
+      oninput={(event) => playback.go_to(from_display_idx(event.currentTarget.valueAsNumber))}
       onchange={({ currentTarget }) =>
-        queueMicrotask(() => (currentTarget.value = String(index)))}
+        queueMicrotask(() => (currentTarget.value = String(display_idx(index))))}
       class="step-input"
       style={playback.shortcut_flash.style(`step`)}
       title={`Enter ${item_name} number to jump to`}
@@ -129,7 +129,7 @@
         class="step-slider"
         title={`Drag to navigate ${item_name}s`}
         aria-label={aria_label ?? item_name}
-        aria-valuetext={aria_valuetext}
+        aria-valuetext={aria_valuetext ?? `${display_idx(index)} of ${count}`}
       />
       {#if step_label_positions.length}
         <div class="step-labels">
@@ -137,7 +137,7 @@
             {@const adjusted_position = count > 1 ? 1.5 + (step_idx / (count - 1)) * 98 : 1.5}
             <div class="step-tick" style:left="{adjusted_position}%"></div>
             <div class="step-label" style:left="{adjusted_position}%">
-              {format_num(step_idx, `.3~s`)}
+              {format_num(display_idx(step_idx), `.3~s`)}
             </div>
           {/each}
         </div>

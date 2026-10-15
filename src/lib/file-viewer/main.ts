@@ -11,6 +11,7 @@ import {
   build_structure_props_from_settings as structure_props,
 } from '#lib/settings.js'
 import type { DefaultSettings } from '#lib/settings.js'
+import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { DownloadData } from '#lib/io/fetch.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
@@ -218,16 +219,16 @@ export const setup_vscode_download = (): void => {
       if (typeof data === `string`) {
         send_message(data, false)
       } else {
-        const reader = new FileReader()
-        reader.addEventListener(`load`, () => send_message(reader.result as string, true))
-        reader.addEventListener(`error`, () => {
-          console.error(`Failed to read binary data for download`)
-          post_to_host(`error`, `Failed to read binary data for download`)
-        })
         // readAsDataURL takes a Blob only, and the shared `download` contract also admits an
         // ArrayBuffer / view - which is exactly what the STL and GLB scene exports pass, so
         // both failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast.
-        reader.readAsDataURL(data instanceof Blob ? data : new Blob([data], { type }))
+        blob_to_data_url(data instanceof Blob ? data : new Blob([data], { type })).then(
+          (url) => send_message(url, true),
+          () => {
+            console.error(`Failed to read binary data for download`)
+            post_to_host(`error`, `Failed to read binary data for download`)
+          },
+        )
       }
     } catch (error) {
       console.error(`VSCode download failed:`, error)

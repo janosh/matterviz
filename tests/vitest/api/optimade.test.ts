@@ -57,33 +57,42 @@ describe(`OPTIMADE API utilities`, () => {
   })
 })
 
-test.each([true, false])(
-  `clearing the input discards a structure (settled=%s)`,
-  async (settled) => {
+// a pending, shown or failed load of the old ID must not leave its structure on screen
+test.each([
+  [``, false],
+  [``, true],
+  [`mp-404`, true],
+])(
+  `changing the input to %j discards the structure (settled=%s)`,
+  async (next_id, settled) => {
     const api = await import(`#lib/api/optimade.js`)
     const pending = Promise.withResolvers<(typeof MOCK_STRUCTURES)[string]>()
     vi.spyOn(api, `fetch_optimade_providers`).mockResolvedValue(MOCK_PROVIDERS)
     vi.spyOn(api, `fetch_suggested_structures`).mockResolvedValue([])
     const fetch_structure = vi
       .spyOn(api, `fetch_optimade_structure`)
-      .mockReturnValue(pending.promise)
+      .mockImplementation((id) =>
+        id === `mp-1`
+          ? pending.promise
+          : Promise.reject(new Error(`Structure ${id} not found`)),
+      )
     const component = mount(Viewer, { target: document.body, props: { structure_id: `mp-1` } })
+    const heading = () => document.querySelector(`.structure-column h2`)
     try {
       await vi.waitFor(() => expect(fetch_structure).toHaveBeenCalled())
       if (settled) {
         pending.resolve(MOCK_STRUCTURES[`mp-1`])
-        await vi.waitFor(() =>
-          expect(document.querySelector(`.structure-column h2`)).not.toBeNull(),
-        )
+        await vi.waitFor(() => expect(heading()).not.toBeNull())
       }
       const input = document.querySelector<HTMLInputElement>(`input.structure-input`)
       if (!input) throw new Error(`Structure input missing`)
-      set_input(input, ``)
+      set_input(input, next_id)
       await tick()
       pending.resolve(MOCK_STRUCTURES[`mp-1`])
-      await tick()
-      expect(document.querySelector(`.structure-column h2`)).toBeNull()
-      expect(document.querySelector(`.structure-column`)?.textContent).not.toContain(`Loading`)
+      const column = () => document.querySelector(`.structure-column`)?.textContent
+      await vi.waitFor(() => expect(column()).not.toContain(`Loading`))
+      if (next_id) expect(column()).toContain(`Structure ${next_id} not found`)
+      expect(heading()).toBeNull()
     } finally {
       await unmount(component)
       vi.restoreAllMocks()
@@ -169,27 +178,30 @@ describe(`OPTIMADE requests`, () => {
     },
   )
 
-  test(`discovery failures reject and can be retried; child URLs retain their version`, async () => {
-    const providers = provider_at(`https://index.example.org`)
-    mock_fetch.mockRejectedValueOnce(new Error(`offline`)).mockResolvedValueOnce(
-      Response.json({
-        data: [
-          {
-            type: `links`,
-            attributes: { link_type: `child`, base_url: `https://child.example.org/v1.2/` },
-          },
-        ],
-      }),
-    )
-    await expect(fetch_suggested_structures(`mp`, providers)).rejects.toThrow(`offline`)
-    expect(mock_fetch).toHaveBeenCalledTimes(1)
-    await expect(fetch_suggested_structures(`mp`, providers)).resolves.toEqual([])
-    expect(mock_fetch.mock.calls.map(([url]) => url)).toEqual([
-      `https://index.example.org/v1/links`,
-      `https://index.example.org/v1/links`,
-      `https://child.example.org/v1.2/structures?page_limit=12&page_offset=0`,
-    ])
-  })
+  // base_url may also be a JSON:API link object, on which `.replace` threw a TypeError
+  test.each([`https://child.example.org/v1.2/`, { href: `https://child.example.org/v1.2/` }])(
+    `discovery failures reject and can be retried; child %j keeps its version`,
+    async (base_url) => {
+      const index = `https://index-${typeof base_url}.example.org`
+      mock_fetch.mockRejectedValueOnce(new Error(`offline`)).mockResolvedValueOnce(
+        Response.json({
+          data: [
+            { type: `links`, attributes: { link_type: `child`, base_url: null } },
+            { type: `links`, attributes: { link_type: `child`, base_url } },
+          ],
+        }),
+      )
+      const providers = provider_at(index)
+      await expect(fetch_suggested_structures(`mp`, providers)).rejects.toThrow(`offline`)
+      expect(mock_fetch).toHaveBeenCalledTimes(1)
+      await expect(fetch_suggested_structures(`mp`, providers)).resolves.toEqual([])
+      expect(mock_fetch.mock.calls.map(([url]) => url)).toEqual([
+        `${index}/v1/links`,
+        `${index}/v1/links`,
+        `https://child.example.org/v1.2/structures?page_limit=12&page_offset=0`,
+      ])
+    },
+  )
 
   test.each([`providers`, `discovery`] as const)(
     `coalesces concurrent %s requests, retries failures and starts TTL on completion`,

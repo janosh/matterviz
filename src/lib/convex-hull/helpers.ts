@@ -296,13 +296,10 @@ export function is_entry_highlighted<T extends { entry_id?: string; structure_id
   if (!entry_id && !structure_id) return false
 
   return highlighted_list.some((item) => {
-    if (typeof item === `string`) {
-      return item === entry_id || item === structure_id
-    }
-    // Object: match by structure_id if present, else fall back to entry_id
-    return item?.structure_id
-      ? structure_id === item.structure_id
-      : item?.entry_id === entry_id
+    if (typeof item === `string`) return item === entry_id || item === structure_id
+    // Object: match by structure_id if present, else by a defined entry_id
+    if (item?.structure_id) return structure_id === item.structure_id
+    return item?.entry_id !== undefined && item.entry_id === entry_id
   })
 }
 
@@ -340,13 +337,12 @@ const METRIC_ENERGY: Record<
   e_above_hull: (entry) => (is_finite(entry.e_above_hull) ? entry.e_above_hull : null),
 }
 
+// The first metric an entry can supply, in METRIC_ENERGY's preference order
 function get_label_representative_energy(entry: PhaseData): number {
-  if (is_finite(entry.e_form_per_atom)) return entry.e_form_per_atom
-  if (is_finite(entry.energy_per_atom)) return entry.energy_per_atom
-  const energy_per_atom = compute_energy_per_atom(entry)
-  if (energy_per_atom !== null) return energy_per_atom
-  if (is_finite(entry.energy)) return entry.energy
-  if (is_finite(entry.e_above_hull)) return entry.e_above_hull
+  for (const metric_energy of Object.values(METRIC_ENERGY)) {
+    const energy = metric_energy(entry)
+    if (energy !== null) return energy
+  }
   return Number.POSITIVE_INFINITY
 }
 
@@ -435,6 +431,24 @@ export function compute_all_polymorph_stats(
 export interface TemperatureAnalysis {
   has_temp_data: boolean
   available_temperatures: number[] // sorted unique T values (union across all entries)
+}
+
+// Snap an unset, out-of-range or (without interpolation) untabulated temperature to the lowest
+// available one; left alone when there is no temperature data
+export function get_valid_temperature(
+  temperature: number | undefined,
+  temps: readonly number[],
+  interpolate: boolean,
+): number | undefined {
+  const [min_temp, max_temp] = [temps[0], temps.at(-1)]
+  if (min_temp === undefined || max_temp === undefined || temperature === undefined)
+    return min_temp ?? temperature
+  const in_range = temperature >= min_temp && temperature <= max_temp
+  if (interpolate ? in_range : temps.includes(temperature)) return temperature
+  // snap to the nearest available temperature (lower one on ties)
+  return temps.reduce((best, temp) =>
+    Math.abs(temp - temperature) < Math.abs(best - temperature) ? temp : best,
+  )
 }
 
 // Analyze entries for temperature-dependent free energy data.

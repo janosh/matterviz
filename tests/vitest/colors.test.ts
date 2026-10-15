@@ -23,9 +23,6 @@ import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 
-// Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
-const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
-
 test(`every d3-scale-chromatic interpolate* export is a registered interpolator`, () => {
   const names = Object.keys(d3_sc).filter((name) => name.startsWith(`interpolate`))
   expect(names.length).toBeGreaterThan(20)
@@ -42,17 +39,10 @@ test(`every d3-scale-chromatic interpolate* export is a registered interpolator`
 
 describe(`Element Color Schemes`, () => {
   test(`all schemes have identical, complete element coverage`, () => {
-    expect(Object.keys(ELEMENT_COLOR_SCHEMES).toSorted()).toEqual([
-      `Alloy`,
-      `Dark Mode`,
-      `Jmol`,
-      `Muted`,
-      `Pastel`,
-      `Vesta`,
-    ])
+    const schemes = [`Alloy`, `Dark Mode`, `Jmol`, `Muted`, `Pastel`, `Vesta`]
+    expect(Object.keys(ELEMENT_COLOR_SCHEMES).toSorted()).toEqual(schemes)
     const expected_keys = Object.keys(ELEMENT_COLOR_SCHEMES.Vesta).toSorted()
-    expect(expected_keys.length).toBeGreaterThanOrEqual(109)
-    expect(expected_keys).toEqual(expect.arrayContaining(EXPECTED_ELEMENTS))
+    expect(expected_keys).toEqual(expect.arrayContaining(ELEM_SYMBOLS.slice(0, 109)))
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
       expect(Object.keys(colors).toSorted(), `${scheme_name} coverage`).toEqual(expected_keys)
     }
@@ -87,52 +77,26 @@ describe(`color constants`, () => {
 })
 
 describe(`is_color function`, () => {
+  // oxfmt-ignore
   test.each([
-    // Valid hex colors
-    [`#ff0000`, true],
-    [`#FF0000`, true],
-    [`#f00`, true],
+    [`#ff0000`, true], [`#FF0000`, true], [`#f00`, true],
     [`#00ff00ab`, true], // 8-digit hex with alpha
-
-    // Valid CSS color functions
-    [`rgb(255, 0, 0)`, true],
-    [`rgb(255,0,0)`, true],
-    [`rgba(255, 0, 0, 0.5)`, true],
-    [`hsl(120, 100%, 50%)`, true],
-    [`hsla(120, 100%, 50%, 0.8)`, true],
-    [`var(--my-color)`, true],
-    [`color(srgb 1 0 0)`, true],
-    [`color(display-p3 1 0.5 0)`, true],
-
-    // Valid named colors
-    [`red`, true],
-    [`rebeccapurple`, true],
+    [`rgb(255, 0, 0)`, true], [`rgb(255,0,0)`, true], [`rgba(255, 0, 0, 0.5)`, true],
+    // rgb/rgba are aliases, as for the browser's canvas parser used where a DOM exists
+    [`rgb(255, 0, 0, 0.5)`, true], [`rgba(255, 0, 0)`, true],
+    [`hsl(120, 100%, 50%)`, true], [`hsla(120, 100%, 50%, 0.8)`, true], [`var(--my-color)`, true],
+    [`color(srgb 1 0 0)`, true], [`color(display-p3 1 0.5 0)`, true],
+    [`red`, true], [`rebeccapurple`, true], [`transparent`, true], [`currentcolor`, true],
     [`RED`, true], // named colors are case-insensitive
-    [`transparent`, true],
-    [`currentcolor`, true],
-
+    [`RGB(255, 0, 0)`, true], // function names are case-insensitive
+    [` #ff0000 `, true], // whitespace is trimmed
     [`pending`, false], // arbitrary words are not colors
-
-    // Invalid patterns - incomplete functions
-    [`rgb`, false],
-    [`var`, false],
-    [`color`, false],
-
-    // Invalid patterns - malformed
+    [`hello world`, false], [``, false], [123, false], [null, false],
+    // incomplete or malformed functions and hex
+    [`rgb`, false], [`var`, false], [`color`, false], [`#gg0000`, false], [`#12`, false],
     [`rgb(255, 0)`, false], // incomplete rgb values are rejected
-    [`rgb(255, 0, 0, 0.5)`, false],
-    [`#gg0000`, false],
-    [`#12`, false],
     [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
     [`#1234567`, false], // 7-digit hex is invalid (regression vs old COLOR_FN_REGEX)
-    [`hello world`, false],
-    [``, false],
-    [123, false],
-    [null, false],
-
-    // Edge cases
-    [` #ff0000 `, true], // whitespace should be trimmed
-    [`RGB(255, 0, 0)`, true], // case insensitive
   ])(`%s -> %s`, (input, expected) => {
     expect(is_color(input)).toBe(expected)
   })
@@ -159,32 +123,21 @@ describe(`is_color function`, () => {
   })
 })
 
+// oxfmt-ignore
 test.each([
   // hex passes through lowercased, short hex expanded
-  [`#ff0000`, `#ff0000`],
-  [`#FF0000`, `#ff0000`],
-  [`#f00`, `#ff0000`],
+  [`#ff0000`, `#ff0000`], [`#FF0000`, `#ff0000`], [`#f00`, `#ff0000`],
   // CSS color functions are parsed, alpha ignored
-  [`rgb(255, 0, 0)`, `#ff0000`],
-  [`rgb(0 128 255)`, `#0080ff`],
-  [`rgb(0, 128, 255)`, `#0080ff`],
-  [`rgba(255, 0, 0, 0.5)`, `#ff0000`],
-  [`rgba(255, 0, 0, 0)`, `#ff0000`],
-  [`hsl(0, 100%, 50%)`, `#ff0000`],
-  [`hsl(120, 100%, 50%)`, `#00ff00`],
-  [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
-  [`red`, `#ff0000`],
+  [`rgb(255, 0, 0)`, `#ff0000`], [`rgb(0 128 255)`, `#0080ff`], [`rgb(0, 128, 255)`, `#0080ff`],
+  [`rgba(255, 0, 0, 0.5)`, `#ff0000`], [`rgba(255, 0, 0, 0)`, `#ff0000`],
+  [`hsl(0, 100%, 50%)`, `#ff0000`], [`hsl(120, 100%, 50%)`, `#00ff00`],
+  [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`], [`red`, `#ff0000`],
   [`green`, `#008000`], // CSS green is #008000, not #00ff00
   // transparent maps to white, whatever its case or padding
-  [`transparent`, `#ffffff`],
-  [` Transparent `, `#ffffff`],
+  [`transparent`, `#ffffff`], [` Transparent `, `#ffffff`],
   // unresolvable inputs (CSS vars included) return the fallback
-  [undefined, `#abcdef`],
-  [``, `#abcdef`],
-  [`var(--color)`, `#abcdef`],
-  [`not-a-color`, `#abcdef`],
-  [`#gggggg`, `#abcdef`],
-  [`rgb(invalid)`, `#abcdef`],
+  [undefined, `#abcdef`], [``, `#abcdef`], [`var(--color)`, `#abcdef`],
+  [`not-a-color`, `#abcdef`], [`#gggggg`, `#abcdef`], [`rgb(invalid)`, `#abcdef`],
 ] as const)(`css_color_to_hex(%s) = %s`, (input, expected) => {
   expect(css_color_to_hex(input, `#abcdef`)).toBe(expected)
 })
@@ -289,6 +242,7 @@ describe(`add_alpha`, () => {
     [`#abc`, 0.3, `rgba(170, 187, 204, 0.3)`],
     [`rgb(100, 150, 200)`, 0.8, `rgba(100, 150, 200, 0.8)`],
     [`rgba(100, 150, 200, 0.2)`, 0.9, `rgba(100, 150, 200, 0.9)`],
+    [`rgb(100, 150, 200, 0.2)`, 0.9, `rgba(100, 150, 200, 0.9)`],
     [`rgba(255, 0, 0, 0)`, 0.5, `rgba(255, 0, 0, 0.5)`],
     [`rgba(100, 100, 100, 1e-5)`, 0.6, `rgba(100, 100, 100, 0.6)`], // scientific notation
     [`rgba(50, 50, 50, 1.5E+2)`, 0.1, `rgba(50, 50, 50, 0.1)`], // uppercase E with +

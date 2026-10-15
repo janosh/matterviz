@@ -16,7 +16,7 @@
   import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { analyze_structure_symmetry } from '#lib/symmetry/index.js'
+  import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -28,11 +28,7 @@
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
 
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
-  import {
-    compute_brillouin_zone,
-    compute_irreducible_bz,
-    extract_point_group_from_operations,
-  } from './compute'
+  import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { clamp, reciprocal_lattice } from '#lib/math.js'
   import { to_error } from '#lib/utils.js'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
@@ -42,7 +38,7 @@
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
-    KPathLabel,
+    KPathData,
   } from './types'
 
   type BrillouinControlName =
@@ -95,8 +91,7 @@
     spinner_props = {},
     loading = $bindable(false),
     error_msg = $bindable(),
-    k_path_points = [],
-    k_path_labels = [],
+    k_path,
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
@@ -132,12 +127,9 @@
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean
     error_msg?: string
-    // K-path points in Cartesian reciprocal space coordinates (not fractional coords)
-    // Should be computed using the reciprocal lattice matrix (includes 2π factor)
-    k_path_points?: Vec3[]
-    // K-path labels with positions in Cartesian reciprocal space coordinates
-    // Each position should match a corresponding point in k_path_points
-    k_path_labels?: KPathLabel[]
+    // Band-structure k-path to draw, in Cartesian reciprocal coordinates from the reciprocal
+    // lattice incl. 2π (spectral's band_k_path builds it from a band structure)
+    k_path?: KPathData
     // Currently hovered k-point in Cartesian reciprocal space coordinates
     hovered_k_point?: Vec3 | null
     // Persistently marked k-points in Cartesian reciprocal coordinates (same treatment as the
@@ -242,7 +234,7 @@
     analyze_structure_symmetry(structure, {})
       .then((sym_data) => {
         if (stale) return
-        const point_group_ops = extract_point_group_from_operations(sym_data.operations)
+        const point_group_ops = point_group_rotations(sym_data.operations)
         ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
         ibz_error = undefined
       })
@@ -351,8 +343,7 @@
           {show_vectors}
           {vector_scale}
           {camera_projection}
-          {k_path_points}
-          {k_path_labels}
+          {k_path}
           {hovered_k_point}
           {highlighted_k_points}
           {hovered_qpoint_index}

@@ -1,7 +1,12 @@
 <script lang="ts">
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
-  import { format_num, trajectory_property_config } from '#lib/labels.js'
+  import {
+    display_idx,
+    format_num,
+    from_display_idx,
+    trajectory_property_config,
+  } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
@@ -33,11 +38,12 @@
   // Per-frame scalars vs per-atom rows
   let active_tab = $state<`frames` | `atoms`>(`frames`)
 
+  // Frame and Site columns are 1-based; clicks hand callbacks the 0-based index
   const row_click_handler = (callback: ((idx: number) => void) | undefined, key: string) =>
     callback
       ? (_event: MouseEvent | KeyboardEvent, row: RowData) => {
-          const idx = row[key]
-          if (typeof idx === `number`) callback(idx)
+          const number = row[key]
+          if (typeof number === `number`) callback(from_display_idx(number))
         }
       : undefined
 
@@ -112,7 +118,7 @@
   let frame_table = $derived.by(() => {
     const property_keys = new Set<string>()
     const rows = frame_source.entries.map(({ frame_number, step, properties }) => {
-      const row: RowData = { frame_idx: frame_number, step }
+      const row: RowData = { frame: display_idx(frame_number), step }
       for (const [key, value] of Object.entries(properties)) {
         // `Step` duplicates the step column
         if (key === `Step`) continue
@@ -122,7 +128,7 @@
       return row
     })
     const columns: Column[] = [
-      { id: `frame_idx`, label: `Frame`, format: `d`, color_scale: null, sticky: true },
+      { id: `frame`, label: `Frame`, format: `d`, color_scale: null, sticky: true },
       { id: `step`, label: `Step`, format: `d`, color_scale: null },
       ...[...property_keys].map((key) => property_column(key)),
     ]
@@ -160,7 +166,7 @@
   })
 
   let atom_columns: Column[] = $derived([
-    { id: `site_idx`, label: `Site`, format: `d`, color_scale: null, sticky: true },
+    { id: `site`, label: `Site`, format: `d`, color_scale: null, sticky: true },
     { id: `element`, label: `Element`, color_scale: null },
     ...FRAC_AXES.map((axis) => ({
       id: `frac_${axis}`,
@@ -183,8 +189,9 @@
     active_sites.map((site, site_idx) => {
       const { species, abc, xyz, properties } = site
       const row: RowData = {
-        site_idx:
+        site: display_idx(
           atom_sample && Array.isArray(atom_indices) ? atom_indices[site_idx] : site_idx,
+        ),
         element: species.map(({ element }) => element).join(`/`),
         frac_a: abc[0],
         frac_b: abc[1],
@@ -263,8 +270,8 @@
             columns={frame_table.columns}
             search={{ placeholder: `Filter frames`, fuzzy: true }}
             export_data={{ formats: [`csv`, `json`], filename: `trajectory-frames` }}
-            initial_sort={{ column: `frame_idx` }}
-            on_row_click={row_click_handler(on_step_change, `frame_idx`)}
+            initial_sort={{ column: `frame` }}
+            on_row_click={row_click_handler(on_step_change, `frame`)}
             {...table_props}
           />
         {:else if selected && item.value === `atoms`}
@@ -284,8 +291,8 @@
                 formats: [`csv`, `json`],
                 filename: atom_sample ? `frame-atoms-sample` : `frame-atoms`,
               }}
-              initial_sort={{ column: `site_idx` }}
-              on_row_click={row_click_handler(on_site_select, `site_idx`)}
+              initial_sort={{ column: `site` }}
+              on_row_click={row_click_handler(on_site_select, `site`)}
               {...table_props}
             />
           {/if}

@@ -116,7 +116,7 @@ describe(`three_compat_alias`, () => {
 })
 
 // The plugin keys on wasm-bindgen's exact glue literal; if a moyo-wasm upgrade changes it
-// the rewrite silently stops and bundles resolve the .wasm next to the glue again
+// the build must fail rather than ship bundles that resolve the .wasm next to the glue again
 describe(`vite_plugin_moyo_wasm_source`, () => {
   const glue_id = `/node_modules/@spglib/moyo-wasm/moyo_wasm.js`
   const glue_literal = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
@@ -141,9 +141,20 @@ describe(`vite_plugin_moyo_wasm_source`, () => {
   })
 
   test.each([
-    [`non-moyo id`, glue_code, `/node_modules/other/index.js`],
-    [`moyo id without the glue literal`, `export const unrelated = 1`, glue_id],
-  ])(`leaves %s untouched`, (_label, code, identifier) => {
-    expect(transform(code, identifier)).toBeNull()
+    [`non-moyo id`, `/node_modules/other/index.js`],
+    [`other moyo-wasm file`, `/node_modules/@spglib/moyo-wasm/moyo_wasm.d.ts`],
+  ])(`leaves a %s untouched`, (_label, identifier) => {
+    expect(transform(glue_code, identifier)).toBeNull()
+  })
+
+  test(`throws when the glue no longer contains the literal`, () => {
+    expect(() => transform(`export const unrelated = 1`, glue_id)).toThrow(
+      `test-moyo: ${glue_literal} not found in ${glue_id}`,
+    )
+  })
+
+  test(`the installed moyo-wasm glue still carries the literal`, () => {
+    const glue_path = `${import.meta.dirname}/../../node_modules/@spglib/moyo-wasm/moyo_wasm.js`
+    expect(readFileSync(glue_path, `utf-8`)).toContain(glue_literal)
   })
 })

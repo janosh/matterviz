@@ -117,10 +117,20 @@ test.each([
   { routes: [] },
   { routes: Array.from({ length: 5 }, () => request.routes[0]) },
   { gas: `H2` as const },
-  { target: `missing` },
   { routes: [{ id: `bad`, precursor_ids: [`missing`] }] },
 ])(`rejects invalid sweep inputs %j`, (invalid) => {
   expect(() => compute_opportunity_map({ ...request, ...invalid })).toThrow(
     /Scan|plan_synthesis/,
+  )
+})
+
+// O2 is open in `request`, so it displaces an elemental O solid
+const o_entry: PhaseData = { composition: { O: 1 }, energy: 0, entry_id: `O` }
+test.each([
+  [`missing`, entries, /Scan target missing matches no entry id or formula/],
+  [`O`, [...entries, o_entry], /Target O is replaced by open O2 at/],
+])(`rejects scan target %s with a specific message`, (target, scan_entries, pattern) => {
+  expect(() => compute_opportunity_map({ ...request, entries: scan_entries, target })).toThrow(
+    pattern,
   )
 })

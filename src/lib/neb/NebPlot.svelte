@@ -113,7 +113,7 @@
   )
 
   const x_label = $derived(
-    coord_mode === `image_index` ? `Image index` : `Reaction coordinate (Å)`,
+    coord_mode === `image_index` ? `Image number` : `Reaction coordinate (Å)`,
   )
   const y_label = $derived(
     energy_reference === `initial`
@@ -181,7 +181,7 @@
         <span>x-axis</span>
         <select id="neb-coord-mode" bind:value={coord_mode}>
           <option value="arc_length">Arc length</option>
-          <option value="image_index">Image index</option>
+          <option value="image_index">Image number</option>
         </select>
       </label>
       <label>

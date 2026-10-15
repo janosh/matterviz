@@ -205,7 +205,8 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   expect(document.body.textContent).toContain(`Settings changed`)
   await set_value(`Grid resolution`, `0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
-  await set_value(`Start frame`, `1`)
+  // 1-based inclusive frames 2-2 are the 0-based half-open window [1, 2)
+  await set_value(`Start frame`, `2`)
   await set_value(`End frame`, `2`)
   await set_value(`Frame stride`, `2`)
   calculate_button().click()
@@ -308,6 +309,7 @@ it(`shows the selected-frame preview and partial average before completion, reta
     current_frame_idx: 1,
     pane_open: true,
     scale: undefined as HotspotScale | undefined,
+    coverage: undefined as HotspotCoverage | undefined,
   })
   await mount_pane(props)
   await set_value(`Velocity units`, `A/ps`)
@@ -316,7 +318,9 @@ it(`shows the selected-frame preview and partial average before completion, reta
   expect(request?.preview_frame).toBe(1)
   await request?.on_preview?.(preview)
   await tick()
-  expect(map_status()).toContain(`Frame 1 preview`)
+  // frame index 1 reads as frame 2; its slider marker shows until an average replaces it
+  expect(map_status()).toContain(`Frame 2 preview`)
+  expect(props.coverage?.preview_frame).toBe(1)
   const preview_scale = structuredClone($state.snapshot(props.scale))
   expect(preview_scale?.unit).toBe(`eV/atom`)
   await fire(control(`Lock numeric color ranges`))
@@ -338,6 +342,7 @@ it(`shows the selected-frame preview and partial average before completion, reta
   await set_value(`Grid resolution`, `2`)
   await request?.on_partial?.(partial)
   await tick()
+  expect(props.coverage?.preview_frame).toBeUndefined()
   expect(props.scale).toBe(locked_scale)
   expect(legend_threshold()).toBe(locked_threshold)
   expect(document.body.textContent).toContain(`Settings changed`)
@@ -370,6 +375,8 @@ it(`shows the selected-frame preview and partial average before completion, reta
   await tick()
   expect(document.querySelector(`.hotspot-progress`)).toBeNull()
   expect(map_status()).toContain(`Time average · 2 frames`)
+  expect(props.coverage).toMatchObject({ busy: false, completed: 2, total: 2 })
+  expect(props.coverage?.preview_frame).toBeUndefined()
   expect(props.scale).toEqual(preview_scale)
   await fire(control(`Lock numeric color ranges`))
   expect(props.scale?.atom_max).toBe((preview_scale?.atom_max ?? 0) * 2)

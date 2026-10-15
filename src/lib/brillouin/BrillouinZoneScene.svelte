@@ -30,7 +30,7 @@
     BrillouinZoneSettings,
     BZHoverData,
     IrreducibleBZData,
-    KPathLabel,
+    KPathData,
   } from './types'
 
   let {
@@ -48,8 +48,7 @@
     ibz_opacity = DEFAULTS.brillouin.ibz_opacity,
     scene = $bindable(),
     camera = $bindable(),
-    k_path_points = [],
-    k_path_labels = [],
+    k_path = { points: [], labels: [], branches: [] },
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
@@ -66,8 +65,7 @@
       width?: number // viewport size, needed to turn the relative initial_zoom into a fit
       height?: number
       ibz_data?: IrreducibleBZData | null
-      k_path_points?: Vec3[]
-      k_path_labels?: KPathLabel[]
+      k_path?: KPathData
       hovered_k_point?: Vec3 | null
       // Persistently marked k-points (Cartesian), e.g. the symmetry point a popup was opened for
       highlighted_k_points?: Vec3[]
@@ -194,7 +192,7 @@
 
 <SceneLights ambient={controls.ambient_light} directional={controls.directional_light} />
 
-<T.Group position={rotation_target}>
+<T.Group>
   {#if bz_data}
     <PolyhedronMesh
       polyhedron={bz_data}
@@ -224,8 +222,7 @@
     {/if}
 
     <KPath
-      {k_path_points}
-      {k_path_labels}
+      path={k_path}
       {hovered_k_point}
       {highlighted_k_points}
       {hovered_qpoint_index}

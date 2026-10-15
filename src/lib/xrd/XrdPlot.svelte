@@ -16,6 +16,7 @@
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { to_error } from '#lib/utils.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
@@ -260,7 +261,7 @@
             },
       )
     } catch (exc) {
-      return exc instanceof Error ? exc.message : String(exc)
+      return to_error(exc).message
     }
   })
   const broadening_error = $derived(typeof broadened === `string` ? broadened : undefined)

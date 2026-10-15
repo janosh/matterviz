@@ -81,8 +81,9 @@ test(`frames tab renders every property row with units`, async () => {
   await mount_pane({ run })
   expect(body_rows()).toHaveLength(4)
   expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
-  expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`0`, `0`])
-  expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`3`, `30`])
+  // Frame column numbers from 1 like the step input; Step is the recorded MD step
+  expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`1`, `0`])
+  expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`4`, `30`])
   expect(document.body.textContent).not.toContain(`Sampled frames`)
 })
 
@@ -95,7 +96,8 @@ test(`sampled atom rows retain source indices and identify exported samples`, as
   await mount_pane({ run, current_frame })
   await open_atoms()
   expect(document.body.textContent).toContain(`Sampled atoms: 3 of 1500`)
-  expect(cell_texts(body_rows()[1])[0]).toBe(`500`)
+  // source atom index 500 is site 501, numbered like the structure's site labels
+  expect(cell_texts(body_rows()[1])[0]).toBe(`501`)
 })
 
 test(`atom rows refresh coordinates and scalar values during fixed-topology playback`, async () => {
@@ -147,8 +149,8 @@ test(`sampled property rows keep their real frame numbers and disclose sampling`
   const rendered = expect_virtualized(100)
   expect_headers(`Temperature (K)`)
   expect(header_texts().some((text) => text.includes(`Volume`))).toBe(false)
-  expect(cell_texts(rendered[0])[0]).toBe(`0`)
-  expect(cell_texts(rendered[1])[0]).toBe(`200`)
+  expect(cell_texts(rendered[0])[0]).toBe(`1`)
+  expect(cell_texts(rendered[1])[0]).toBe(`201`)
 })
 
 test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => {

@@ -107,8 +107,8 @@ const parse_rgb_function = (color: string): RGBColor | undefined => {
   const channels = channel_text.trim().split(comma_syntax ? /\s*,\s*/ : /\s+/)
   let alpha: string | undefined = slash_alpha
   if (comma_syntax && alpha) return undefined
-  if (comma_syntax && channels.length === 4 && color.toLowerCase().startsWith(`rgba`))
-    alpha = channels.pop()
+  // rgb() and rgba() are aliases (CSS Color 4): either takes an optional fourth alpha
+  if (comma_syntax && channels.length === 4) alpha = channels.pop()
   if (channels.length !== 3) return undefined
   const parse_component = (value: string, percent_scale: number): number =>
     value.endsWith(`%`) ? (Number(value.slice(0, -1)) * percent_scale) / 100 : Number(value)

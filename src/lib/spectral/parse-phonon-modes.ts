@@ -9,6 +9,7 @@
 // kappa is u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes that weighting; consumers
 // that need displacements must divide by sqrt(mass) themselves.
 
+import { display_idx } from '#lib/labels.js'
 import { load as yaml_load } from 'js-yaml'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { is_plain_object } from '#lib/utils.js'
@@ -151,10 +152,15 @@ function parse_eigenvector(
   }
   return val.map((atom_block, atom_idx) => {
     if (!Array.isArray(atom_block) || atom_block.length !== 3) {
-      throw new Error(`${context}: eigenvector atom ${atom_idx} needs 3 cartesian components`)
+      throw new Error(
+        `${context}: eigenvector atom ${display_idx(atom_idx)} needs 3 cartesian components`,
+      )
     }
     return atom_block.map((component, dir_idx) =>
-      to_complex(component, `${context}: eigenvector atom ${atom_idx} component ${dir_idx}`),
+      to_complex(
+        component,
+        `${context}: eigenvector atom ${display_idx(atom_idx)} component ${dir_idx}`,
+      ),
     )
   })
 }
@@ -176,21 +182,24 @@ function parse_atoms(data: Record<string, unknown>): PhononModeAtom[] {
   }
   return raw_points.map((point, atom_idx) => {
     if (!is_plain_object(point))
-      throw new Error(`phonopy YAML atom ${atom_idx} is not a mapping`)
+      throw new Error(`phonopy YAML atom ${display_idx(atom_idx)} is not a mapping`)
     const { symbol, mass } = point
     if (typeof symbol !== `string` || symbol.length === 0) {
-      throw new Error(`phonopy YAML atom ${atom_idx} has no 'symbol'`)
+      throw new Error(`phonopy YAML atom ${display_idx(atom_idx)} has no 'symbol'`)
     }
     if (!is_finite_number(mass) || mass <= 0) {
       throw new Error(
-        `phonopy YAML atom ${atom_idx} (${symbol}) has invalid 'mass' (got ${String(mass)})`,
+        `phonopy YAML atom ${display_idx(atom_idx)} (${symbol}) has invalid 'mass' (got ${String(mass)})`,
       )
     }
     const coords = point.coordinates ?? point.position
     return {
       symbol,
       mass,
-      coordinates: to_vec3(coords, `phonopy YAML atom ${atom_idx} (${symbol}) coordinates`),
+      coordinates: to_vec3(
+        coords,
+        `phonopy YAML atom ${display_idx(atom_idx)} (${symbol}) coordinates`,
+      ),
     }
   })
 }
@@ -336,7 +345,7 @@ export function parse_born(content: string): BornChargeData {
     factor: factor_line[0],
     dielectric: to_matrix3x3(dielectric_line, `BORN file dielectric tensor`),
     born_charges: charge_lines.map((line, atom_idx) =>
-      to_matrix3x3(line, `BORN file Born charge tensor for atom ${atom_idx}`),
+      to_matrix3x3(line, `BORN file Born charge tensor for atom ${display_idx(atom_idx)}`),
     ),
   }
 }

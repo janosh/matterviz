@@ -474,6 +474,7 @@
       <StructureScene
         {structure}
         base_structure={session.base_structure}
+        to_base_site_idx={session.to_base_site_idx}
         {reference_structure}
         {series_key}
         {...scene_props}

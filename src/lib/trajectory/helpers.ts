@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import {
   coerce_elem_symbol,
   element_from_atomic_number,
@@ -119,7 +120,9 @@ export const create_structure = (
 
   const sites = positions.map((pos, idx) => {
     if (!is_finite_vec3_like(pos)) {
-      throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
+      throw new Error(
+        `Invalid position at site ${display_idx(idx)}: expected 3 finite coordinates`,
+      )
     }
     const xyz = pos as Vec3
     const abc = cart_to_frac ? cart_to_frac(xyz) : ([0, 0, 0] as Vec3)
@@ -188,6 +191,9 @@ export const create_plot_row_frame = (
   snapshot_topologies.set(frame.structure, numbers)
   return frame
 }
+
+// Atom stride of a sampled preview, so it renders at most ~2000 of a huge frame's atoms
+export const preview_atom_stride = (n_atoms: number): number => Math.ceil(n_atoms / 2000)
 
 // A strided preview keeps full-topology indices without scanning every atom's species.
 export const create_sampled_frame = (

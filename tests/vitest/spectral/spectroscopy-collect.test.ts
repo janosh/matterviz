@@ -179,7 +179,7 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         frames[0].structure.sites[0].properties.mass = Number.POSITIVE_INFINITY
       },
       { mass_source: `auto` },
-      /Recorded mass 0 must be finite and > 0/,
+      /Recorded mass of atom 1 must be finite and > 0/,
     ],
     [
       `requested recorded masses the run lacks`,

@@ -80,21 +80,24 @@ describe(`Trajectory keyboard shortcuts`, () => {
     for (const [init, prevented] of cases) {
       expect(press_window_key(init).defaultPrevented, JSON.stringify(init)).toBe(prevented)
     }
+    // editing contexts keep their keys, and Space presses a focused button or <summary>
     const step_before = state.current_step_idx
-    const select = document.createElement(`select`)
-    const editable = document.createElement(`div`)
-    editable.contentEditable = `true`
-
-    for (const target of [select, editable]) {
+    for (const [tag, key] of [
+      [`select`, `ArrowRight`],
+      [`div`, `ArrowRight`],
+      [`button`, ` `],
+      [`summary`, ` `],
+    ] as const) {
+      const target = document.createElement(tag)
+      if (tag === `div`) target.contentEditable = `true`
       viewer.append(target)
       target.focus()
-      const event = new KeyboardEvent(`keydown`, {
-        key: `ArrowRight`,
-        bubbles: true,
-        cancelable: true,
-      })
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
       target.dispatchEvent(event)
-      expect([state.current_step_idx, event.defaultPrevented]).toEqual([step_before, false])
+      expect([state.current_step_idx, event.defaultPrevented], tag).toEqual([
+        step_before,
+        false,
+      ])
     }
   })
 

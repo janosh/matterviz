@@ -347,7 +347,10 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 
   let y_axis = $derived({
     label: `Count (${y_scale_type})`,
-    scale_type: y_scale_type,
+    scale_type:
+      y_scale_type === `arcsinh`
+        ? { type: `arcsinh`, threshold: arcsinh_threshold }
+        : y_scale_type,
   })
 </script>
 
@@ -1048,7 +1051,6 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
       values: all_data[prop_key][idx],
       label: name,
       color: colors[idx],
-      bar_style: { fill: colors[idx], opacity: 0.4 },
     }))
   }
 
@@ -1112,7 +1114,7 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   }}
   y_axis={{ label: `Count` }}
   {on_axis_change}
-  bar={{ border_radius: 1 }}
+  bar={{ border_radius: 1, opacity: 0.4 }}
   legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
@@ -1272,21 +1274,8 @@ Plot two distributions with independent x-scales on the same histogram. The prim
   const lbs_values = generate_normal(400, 154, 22, rng)
 
   const series = [
-    {
-      x: kg_values.map((_, idx) => idx),
-      values: kg_values,
-      label: `Mass (kg)`,
-      color: `#0ea5e9`,
-      point_style: { fill: `#0ea5e9` },
-    },
-    {
-      x: lbs_values.map((_, idx) => idx),
-      values: lbs_values,
-      label: `Mass (lbs)`,
-      x_axis: `x2`,
-      color: `#f97316`,
-      point_style: { fill: `#f97316` },
-    },
+    { values: kg_values, label: `Mass (kg)`, color: `#0ea5e9` },
+    { values: lbs_values, label: `Mass (lbs)`, x_axis: `x2`, color: `#f97316` },
   ]
 </script>
 

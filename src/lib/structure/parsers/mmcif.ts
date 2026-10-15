@@ -1,6 +1,6 @@
 // mmCIF (PDBx/mmCIF): macromolecular CIF with Cartesian atom sites (`_atom_site.Cartn_x`),
-// shown as deposited (first model, conformer A, no symop expansion or wrapping), which is
-// why it has its own atom-site loop reader rather than parse_cif's.
+// shown as deposited (first model, first conformer per atom, no symop expansion or
+// wrapping), which is why it has its own atom-site loop reader rather than parse_cif's.
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
@@ -13,6 +13,7 @@ import {
   is_cif_loop_header,
   is_cif_unset,
   iter_cif_loops,
+  keep_first_alt_locs,
   leading_letters,
   normalize_cif_names,
   parsed_result,
@@ -43,6 +44,9 @@ const ATOM_SITE_FIELDS: Record<string, string> = {
   occupancy: `occupancy`,
   label_alt_id: `alt_id`,
   label_comp_id: `residue`,
+  auth_seq_id: `auth_seq_id`,
+  pdbx_pdb_ins_code: `ins_code`,
+  label_asym_id: `asym_id`,
   auth_asym_id: `chain`,
   b_iso_or_equiv: `b_factor`,
   pdbx_pdb_model_num: `model`,
@@ -149,13 +153,19 @@ export const parse_mmcif = (content: string): AnyStructure => {
     )
   }
 
-  // Alternate conformers would render as overlapping ghost atoms
   const alt_col = indices.alt_id
   const rows =
     alt_col === undefined
       ? model_rows
-      : model_rows.filter(
-          (row) => is_cif_unset(row[alt_col]) || row[alt_col].toUpperCase() === `A`,
+      : keep_first_alt_locs(
+          model_rows,
+          (row) => (is_cif_unset(row[alt_col]) ? undefined : row[alt_col]),
+          // label_seq_id is `.` for waters/ligands and residue names differ under
+          // microheterogeneity, so key on author numbering + atom name instead
+          (row) =>
+            [`chain`, `asym_id`, `auth_seq_id`, `ins_code`, `label`]
+              .map((field) => (indices[field] === undefined ? `` : row[indices[field]]))
+              .join(`|`),
         )
   if (rows.length < model_rows.length) {
     console.warn(

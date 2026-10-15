@@ -6,11 +6,8 @@ import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
-// Replace the heavy matterviz components with a recording stub so we can exercise
-// the real anywidget widget wiring (drive / derived / writeback key names,
-// scatter click/hover callbacks + event_id) without mounting WebGL/SVG components or
-// pulling the built dist bundle. The theme/css imports are stubbed for the same
-// reason (mount_spec never calls into them directly).
+// Swap matterviz components for a recording stub to exercise the real widget wiring
+// without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
   const component_names = [
@@ -46,20 +43,20 @@ vi.mock(`matterviz`, async () => {
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
+const { stop_theme } = vi.hoisted(() => ({ stop_theme: vi.fn() }))
 vi.mock(`matterviz/theme/embedded`, () => ({
   detect_parent_theme: () => `light`,
-  watch_theme: () => () => {},
+  watch_theme: () => stop_theme,
 }))
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
 
-type ModelArg = Parameters<typeof mount_spec>[0]
-// Cast the mock to the bridge's model type rather than importing anywidget/types.
-const as_model = (mock: MockModel) => mock as unknown as ModelArg
+const as_model = (mock: MockModel) => mock as unknown as Parameters<typeof mount_spec>[0]
+const listener_count = (model: MockModel) =>
+  Object.values(model.listeners).reduce((sum, set) => sum + set.size, 0)
 
-// Mount one widget's spec against a mock model + fresh DOM target, returning the
-// stub it mounted so the test can read driven props / drive $bindable writeback.
+// Mount one widget's spec into a fresh DOM target and return the stub it mounted
 const run_widget = (widget_type: string, model: MockModel) => {
   reset_stub() // clear any prior stub so a failed mount throws instead of returning stale
   const element = document.createElement(`div`)
@@ -69,16 +66,13 @@ const run_widget = (widget_type: string, model: MockModel) => {
   return latest_stub()
 }
 
-// A model seeded with a unique sentinel for every trait any driven prop depends on,
-// so each prop computes to a distinct, defined value.
+// Seed a unique sentinel for every drive dep so each prop computes to a distinct value
 const seeded_model = (widget_type: string, spec: (typeof WIDGETS)[string]): MockModel => {
   const state: Record<string, unknown> = { widget_type }
   for (const dep of new Set(spec.drive.flatMap((driven_prop) => driven_prop.deps)))
     state[dep] = `seed:${dep}`
   return new MockModel(state)
 }
-
-const widget_entries = Object.entries(WIDGETS)
 
 // pymatviz's PlotControlsTraits: every plot widget forwards these flat (never as `controls`)
 const controls_traits = {
@@ -91,40 +85,39 @@ const controls_traits = {
 const pick = (props: Record<string, unknown>, expected: object) =>
   Object.fromEntries(Object.keys(expected).map((key) => [key, props[key]]))
 
-// Generic engine coverage across every registered widget: uses each spec's own
-// compute as the oracle, so it verifies drive seeding + rename + derived recompute
-// flow through mount_spec -> reactive_widget -> the mounted component for all widgets.
-describe(`drive wiring (all widgets)`, () => {
-  test.each(widget_entries)(
-    `%s seeds every non-writeback prop from the model`,
-    (widget_type, spec) => {
-      const model = seeded_model(widget_type, spec)
-      const stub = run_widget(widget_type, model)
-      for (const driven_prop of spec.drive) {
-        if (driven_prop.writeback) continue // covered by writeback round-trip tests below
-        expect(stub.read()[driven_prop.prop]).toEqual(driven_prop.compute(as_model(model)))
-      }
-    },
-  )
+// allow_file_drop reaches only viewers that declare it; others would spread it onto a div
+const drop_zone_widgets = new Set([
+  `structure`,
+  `trajectory`,
+  `convex_hull`,
+  `fermi_surface`,
+  `brillouin_zone`,
+  `xrd`,
+  `rdf_plot`,
+])
 
-  test.each(widget_entries)(
-    `%s re-drives its props when any dep trait changes`,
-    (widget_type, spec) => {
-      const model = seeded_model(widget_type, spec)
-      const stub = run_widget(widget_type, model)
-      for (const driven_prop of spec.drive) {
-        if (driven_prop.writeback) continue
-        // bump every dep (not just the first) so a missing listener on a multi-dep
-        // derived prop is caught, not only deps[0]
-        for (const dep of driven_prop.deps) {
-          model.push_from_python(dep, `bumped:${dep}`)
-          flushSync()
-          expect(stub.read()[driven_prop.prop]).toEqual(driven_prop.compute(as_model(model)))
-        }
+// Each spec's own compute is the oracle; writeback props are covered by the round-trip tests
+test.each(Object.entries(WIDGETS))(
+  `%s seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
+  (widget_type, spec) => {
+    const model = seeded_model(widget_type, spec)
+    const stub = run_widget(widget_type, model)
+    expect(stub.read().allow_file_drop).toBe(
+      drop_zone_widgets.has(widget_type) ? false : undefined,
+    )
+    const driven_props = spec.drive.filter((driven_prop) => !driven_prop.writeback)
+    for (const { prop, compute } of driven_props)
+      expect(stub.read()[prop]).toEqual(compute(as_model(model)))
+    // bump every dep, so a missing listener on a multi-dep derived prop is caught
+    for (const { prop, compute, deps } of driven_props) {
+      for (const dep of deps) {
+        model.push_from_python(dep, `bumped:${dep}`)
+        flushSync()
+        expect(stub.read()[prop]).toEqual(compute(as_model(model)))
       }
-    },
-  )
-})
+    }
+  },
+)
 
 test(`scatter_plot point callbacks write active_point (monotonic event_id) and hovered_point`, () => {
   const model = new MockModel({ widget_type: `scatter_plot`, series: [] })
@@ -138,23 +131,9 @@ test(`scatter_plot point callbacks write active_point (monotonic event_id) and h
   // re-click the same point -> distinct trait value via incremented event_id
   on_point_click({ point })
   expect(model.state.active_point).toEqual({ ...point, event_id: 2 })
-
   // hover is leading-edge with no event_id
   on_point_hover({ point: { series_idx: 1, point_idx: 4, x: 2, y: 6 } })
   expect(model.state.hovered_point).toEqual({ series_idx: 1, point_idx: 4, x: 2, y: 6 })
-})
-
-// drive-only keys (Python -> view) under their exact prop names
-test.each([
-  [`scatter_plot`, `selected_point`, { series_idx: 0, point_idx: 0 }, { point_idx: 3 }],
-  [`structure`, `highlighted_sites`, [], [1, 4]],
-])(`%s %s is driven from Python`, (widget_type, key, initial, next_value) => {
-  const model = new MockModel({ widget_type, [key]: initial })
-  const stub = run_widget(widget_type, model)
-  expect(stub.read()[key]).toEqual(initial)
-  model.push_from_python(key, next_value)
-  flushSync()
-  expect(stub.read()[key]).toEqual(next_value)
 })
 
 describe(`structure wiring`, () => {
@@ -167,70 +146,31 @@ describe(`structure wiring`, () => {
     expect(run_widget(`structure`, model).read().volumetric_data).toEqual(expected)
   })
 
-  test(`scene_props recomputes reactively when a constituent trait changes`, () => {
-    const model = new MockModel({ widget_type: `structure`, atom_radius: 0.5 })
+  // site labels ride in scene_props (Structure has no top-level prop) and unset
+  // auto_rotate/gizmo use the settings defaults so a notebook doesn't spin unlike the page
+  test(`scene_props carries defaults, site labels and clears subkeys reactively`, () => {
+    const model = new MockModel({
+      widget_type: `structure`,
+      atom_radius: 0.5,
+      show_site_labels: true,
+    })
     const stub = run_widget(`structure`, model)
-    expect((stub.read().scene_props as { atom_radius: number }).atom_radius).toBe(0.5)
-
+    const { auto_rotate, gizmo } = DEFAULTS.structure
+    const scene_props = { atom_radius: 0.5, show_site_labels: true, auto_rotate, gizmo }
+    expect(stub.read().scene_props).toMatchObject(scene_props)
+    expect(`show_site_labels` in stub.read()).toBe(false)
     model.push_from_python(`atom_radius`, 1.2)
     flushSync()
-    expect((stub.read().scene_props as { atom_radius: number }).atom_radius).toBe(1.2)
-
-    // cleared -> subkey becomes undefined; the component re-defaults it downstream
-    // (StructureScene $bindable defaults + Structure ?? guards)
+    expect(stub.read().scene_props).toMatchObject({ atom_radius: 1.2 })
+    // cleared -> undefined, re-defaulted downstream by the component
     model.push_from_python(`atom_radius`, null)
     flushSync()
     expect((stub.read().scene_props as { atom_radius?: number }).atom_radius).toBeUndefined()
   })
-
-  test(`unset auto_rotate/gizmo fall back to the settings defaults`, () => {
-    // a notebook structure must not spin when the page embed does not
-    const stub = run_widget(`structure`, new MockModel({ widget_type: `structure` }))
-    expect(stub.read().scene_props).toMatchObject({
-      auto_rotate: DEFAULTS.structure.auto_rotate,
-      gizmo: DEFAULTS.structure.gizmo,
-    })
-  })
-
-  test(`show_site_labels rides in scene_props, not a dead top-level prop`, () => {
-    // Structure forwards label settings to StructureScene via {...scene_props}; it has
-    // no top-level show_site_labels prop, so a top-level drive key would be dropped.
-    const model = new MockModel({ widget_type: `structure`, show_site_labels: true })
-    const stub = run_widget(`structure`, model)
-    expect((stub.read().scene_props as { show_site_labels?: boolean }).show_site_labels).toBe(
-      true,
-    )
-    expect(`show_site_labels` in stub.read()).toBe(false)
-  })
-})
-
-// allow_file_drop reaches only the viewers that declare it; on the others it would fall
-// through ...rest onto the wrapper element
-describe(`static props`, () => {
-  const drop_zone_widgets = new Set([
-    `structure`,
-    `trajectory`,
-    `convex_hull`,
-    `fermi_surface`,
-    `brillouin_zone`,
-    `xrd`,
-    `rdf_plot`,
-  ])
-  test.each(widget_entries)(
-    `%s gets allow_file_drop only if it has a drop zone`,
-    (widget_type, spec) => {
-      const stub = run_widget(widget_type, seeded_model(widget_type, spec))
-      expect(stub.read().allow_file_drop).toBe(
-        drop_zone_widgets.has(widget_type) ? false : undefined,
-      )
-    },
-  )
 })
 
 describe(`WIDGET_MODEL_KEYS contract`, () => {
   test(`includes drive deps and interaction keys`, () => {
-    // spot-check: derived-prop deps, writeback traits and interaction-written
-    // traits all surface in the contract
     expect(WIDGET_MODEL_KEYS.structure).toEqual(
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
@@ -292,9 +232,7 @@ describe(`widget config wiring`, () => {
     expect(stub.read().trajectory).toBeUndefined()
   })
 
-  // The mapping names a LAMMPS dump's atom types for the data_url load; it travels inside
-  // the file viewer's loading_options (never as a top-level prop, which the viewer would
-  // spread onto its wrapper div) and an unset trait leaves loading_options at its default
+  // LAMMPS atom-type names travel inside loading_options, never as a top-level prop
   test(`trajectory folds atom_type_mapping into loading_options`, () => {
     const mapping = { 1: `Si`, 2: `O` }
     const model = new MockModel({ widget_type: `trajectory`, data_url: `/dump.lammpstrj` })
@@ -305,14 +243,12 @@ describe(`widget config wiring`, () => {
     flushSync()
     expect(stub.read().loading_options).toEqual({ atom_type_mapping: mapping })
     expect(`atom_type_mapping` in stub.read()).toBe(false)
-    // clearing the trait (None) or an empty mapping ({}) drops loading_options entirely,
-    // never leaving a `{ atom_type_mapping: null }` shell behind
+    // None or {} drops loading_options entirely, no `{ atom_type_mapping: null }` shell
     for (const cleared of [null, {}]) {
       model.push_from_python(`atom_type_mapping`, mapping)
       flushSync()
       model.push_from_python(`atom_type_mapping`, cleared)
       flushSync()
-      expect(stub.read().loading_options).toBeUndefined()
       expect(`loading_options` in stub.read()).toBe(false)
     }
     expect(WIDGET_MODEL_KEYS.trajectory).toContain(`atom_type_mapping`)
@@ -328,6 +264,8 @@ describe(`widget config wiring`, () => {
     [`composition`, `patterns`, { Fe: `/`, O: { shape: `dots`, size: 6 } }],
     [`scatter_plot_3d`, `point_tween`, { duration: 300, delay: 50 }],
     [`structure`, `cutaway`, { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2 }],
+    [`structure`, `highlighted_sites`, [1, 4]],
+    [`scatter_plot`, `selected_point`, { series_idx: 0, point_idx: 3 }],
   ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {
     const stub = run_widget(widget_type, new MockModel({ widget_type, [prop]: value }))
     expect(stub.read()[prop]).toEqual(value)
@@ -367,8 +305,7 @@ describe(`widget config wiring`, () => {
     expect(`controls` in props).toBe(false)
   })
 
-  // the wrappers (Bands/Dos/RdfPlot/XrdPlot) declare the pane attribute props and hand them
-  // to PlotControls
+  // the Bands/Dos/RdfPlot/XrdPlot wrappers hand the pane attribute props to PlotControls
   test.each([`scatter_plot_3d`, `band_structure`, `dos`, `rdf_plot`, `xrd`] as const)(
     `%s forwards flat controls including the pane attribute props`,
     (widget_type) => {
@@ -394,9 +331,7 @@ describe(`widget config wiring`, () => {
   })
 })
 
-// A missing/None writeback trait must seed (and revert to) the component's own
-// fallback, not null -- null would crash components that call .length/.includes
-// or do arithmetic on these props (see reactive_widget writeback_prop fallback).
+// A missing/None writeback trait seeds (and reverts to) the component fallback, never null
 describe(`writeback wiring`, () => {
   test.each([
     [`structure`, `selected_sites`, [], [3], [5, 6]],
@@ -416,17 +351,14 @@ describe(`writeback wiring`, () => {
   ] as const)(
     `%s %s round-trips and falls back when cleared`,
     (widget_type, key, default_value, local_value, python_value) => {
-      const model = new MockModel({ widget_type }) // omit trait -> bridge seeds default
+      const model = new MockModel({ widget_type })
       const stub = run_widget(widget_type, model)
       expect(stub.read()[key]).toEqual(default_value)
       expect(model.save_count).toBe(0) // initial writeback effects are no-ops
-
-      // component interaction -> model (writeback)
       stub.write(key, local_value)
       flushSync()
       expect(model.state[key]).toEqual(local_value)
-
-      // Python -> component (drive), without a writeback echo
+      // Python -> component without a writeback echo
       const save_count = model.save_count
       model.push_from_python(key, python_value)
       flushSync()
@@ -442,31 +374,40 @@ describe(`writeback wiring`, () => {
 })
 
 describe(`render() lifecycle`, () => {
-  // Drive through the real entry point (not mount_spec directly) so this also covers
-  // cleanup_element + cleanups wiring: the returned disposer must
-  // unregister every model listener, else re-rendering an element leaks them.
+  // via the real entry point, so cleanup_element + cleanups wiring is covered too
   test(`the render() disposer unregisters all model listeners`, () => {
-    const model = new MockModel({
-      widget_type: `structure`,
-      selected_sites: [],
-      hovered_site_idx: null,
-    })
+    const model = new MockModel({ widget_type: `structure` })
     const element = document.createElement(`div`)
     document.body.append(element)
-    const listener_count = () =>
-      Object.values(model.listeners).reduce((sum, set) => sum + set.size, 0)
-
-    // as never: anywidget's RenderProps also wants signal/host/experimental,
-    // which the drive-listener assertions below don't need
+    // as never: RenderProps also wants signal/host/experimental, unused here
     // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el: element,
     } as never) as () => void
     flushSync()
-    expect(listener_count()).toBeGreaterThan(0) // drive listeners registered
-
+    expect(listener_count(model)).toBeGreaterThan(0)
     dispose()
-    expect(listener_count()).toBe(0) // cleanup_element -> reactive disposer -> model.off
+    expect(listener_count(model)).toBe(0)
+  })
+
+  // regression: a mount throwing on a malformed trait leaked every model listener, and
+  // render() left the theme watcher running and the partial DOM in place
+  test(`a throwing mount unregisters the model listeners it added`, () => {
+    const model = new MockModel({ widget_type: `throwing`, series: [] })
+    const element = document.createElement(`div`)
+    const component = () => {
+      element.append(document.createElement(`span`))
+      throw new Error(`bad trait`)
+    }
+    WIDGETS.throwing = { ...WIDGETS.scatter_plot, component }
+    expect(() => mount_spec(as_model(model), element, WIDGETS.throwing)).toThrow(`bad trait`)
+    expect(listener_count(model)).toBe(0)
+    stop_theme.mockClear()
+    const render_props = { model: as_model(model), el: element } as never
+    expect(() => anywidget_module.default.render(render_props)).toThrow(`bad trait`)
+    delete WIDGETS.throwing
+    expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
+    expect(element.childNodes).toHaveLength(0)
   })
 })

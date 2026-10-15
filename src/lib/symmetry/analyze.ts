@@ -1,5 +1,6 @@
 // moyo bridge: the one place a structure is handed to moyo's analyze_cell (the WASM build, or
 // a host backend running moyo natively), plus thin wrappers over its space-group database.
+import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
 import * as math from '#lib/math.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -109,7 +110,7 @@ function site_atomic_number(site: Site, site_idx: number): number {
   }
   const atomic_number = symbol_to_atomic_number(selected)
   if (atomic_number === undefined) {
-    throw new Error(`Unknown element at site ${site_idx}: ${selected}`)
+    throw new Error(`Unknown element at site ${display_idx(site_idx)}: ${selected}`)
   }
   return atomic_number
 }
@@ -250,7 +251,8 @@ export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEn
 // Cell described by a MoyoCell (std_cell or prim_std_cell) as a Crystal. moyo-wasm uses the
 // same row-major serialization for output as for input, so the flat basis is row-major with
 // each row a lattice vector. `bonds` are dropped: site indices change under any cell
-// transform, so stale bond indices would mis-render.
+// transform, so stale bond indices would mis-render. `charge` is per cell, so it scales by
+// the new cell's volume relative to the original's.
 const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
   const matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
   const frac_to_cart = math.create_frac_to_cart(matrix)
@@ -265,7 +267,10 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
   return {
     lattice: { matrix, pbc: original.lattice.pbc, ...math.calc_lattice_params(matrix) },
     sites,
-    charge: original.charge,
+    charge:
+      original.charge &&
+      (original.charge * Math.abs(math.det_3x3(matrix))) /
+        Math.abs(math.det_3x3(original.lattice.matrix)),
     id: original.id,
     ...(Object.keys(properties).length > 0 ? { properties } : {}),
   }

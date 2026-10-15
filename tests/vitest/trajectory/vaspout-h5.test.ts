@@ -201,13 +201,14 @@ describe(`vaspout.h5 parsing`, () => {
 describe(`line-mode k-path labels`, () => {
   const seg_labels = [`GAMMA`, `X`, `X`, `L`]
 
-  it.each([
-    [`explicit per-segment dataset`, 3],
-    [`inferred from label/k-point counts when number_kpoints is absent`, null],
-  ])(`places labels at segment endpoints (%s)`, (_case, per_segment) => {
-    const result = line_mode_labels(seg_labels, per_segment, 6)
-    expect(result?.labels).toEqual([`Γ`, null, `X`, `X`, null, `L`])
-    expect(result?.per_segment).toBe(3)
+  it.each<[string, number | null, string[] | null]>([
+    [`explicit per-segment dataset`, 3, seg_labels],
+    [`inferred from label/k-point counts when number_kpoints is absent`, null, seg_labels],
+    [`unlabelled, split by number_kpoints alone`, 3, null],
+  ])(`places labels at segment endpoints (%s)`, (_case, per_segment, labels) => {
+    const result = line_mode_labels(labels, per_segment, 6)
+    const expected = labels ? [`Γ`, null, `X`, `X`, null, `L`] : Array(6).fill(null)
+    expect(result).toEqual({ labels: expected, per_segment: 3 })
   })
 
   it.each([
@@ -215,7 +216,8 @@ describe(`line-mode k-path labels`, () => {
     [`k-points not divisible into segments`, seg_labels, null, 7],
     [`inferred segment shorter than 2 points`, seg_labels, null, 2],
     [`explicit per-segment mismatching k-point count`, seg_labels, 4, 6],
-    [`missing labels`, null, 3, 6],
+    [`missing labels and number_kpoints`, null, null, 6],
+    [`missing labels, number_kpoints not dividing the path`, null, 4, 6],
   ])(`returns null for %s`, (_case, labels, per_segment, n_kpoints) => {
     expect(line_mode_labels(labels, per_segment, n_kpoints)).toBeNull()
   })
@@ -264,6 +266,7 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
   const opt = `results/electron_eigenvalues_kpoints_opt`
   const scf = `results/electron_eigenvalues`
   const mesh = Array.from({ length: 8 }, (_, idx) => [idx / 8, 0, 0])
+  const mesh_12 = Array.from({ length: 12 }, (_, idx) => [idx / 12, 0, 0])
   const scf_mesh = (mode: string): Remap => ({
     [`${scf}/eigenvalues`]: {
       from: `${opt}/eigenvalues`,
@@ -322,6 +325,10 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
       expect(bands.distance[idx]).toBeGreaterThanOrEqual(bands.distance[idx - 1])
     }
     expect(bands.distance.at(-1)).toBeGreaterThan(0)
+    // like pymatgen, a segment boundary does not advance the distance, not even the U|K jump
+    for (const { start_index } of bands.branches.slice(1)) {
+      expect(bands.distance[start_index]).toBe(bands.distance[start_index - 1])
+    }
   })
 
   // No fixture carries fermiweights, so they are injected (1 spin, 306 k-points, 24 bands)
@@ -359,6 +366,12 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
     [`SCF mesh in Monkhorst-Pack mode`, { ...scf_mesh(`Monkhorst-Pack`), ...hide_opt }, null],
     [`SCF mesh in Automatic mode`, { ...scf_mesh(`Automatic`), ...hide_opt }, null],
     [`unlabelled SCF path in line mode`, { ...scf_mesh(`Line-mode`), ...hide_opt }, { n_kpoints: 8, branch_names: [`path`] }],
+    // number_kpoints alone splits it: the jumps between segments are no path
+    [`unlabelled SCF path in line mode with number_kpoints`, {
+      ...scf_mesh(`Line-mode`),
+      ...hide_opt,
+      [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints`, value: 4 },
+    }, { n_kpoints: 8, branch_names: [`?-?`, `?-?`] }],
     [`labelled SCF line-mode path`, {
       ...hide_opt,
       [`${scf}/eigenvalues`]: { from: `${opt}/eigenvalues` },
@@ -366,6 +379,14 @@ describe(`vaspout.h5 electronic results (DOS + bands)`, () => {
       [`input/kpoints/labels_kpoints`]: { from: `input/kpoints_opt/labels_kpoints` },
       [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints` },
     }, tinisn_path],
+    // 2 points per segment: every pair is a real Γ→X etc. branch, not a jump
+    [`labelled SCF line-mode path with 2-point segments`, {
+      ...hide_opt,
+      [`${scf}/eigenvalues`]: { from: `${opt}/eigenvalues`, value: [mesh_12.map(() => Array.from({ length: 24 }, () => 0))] },
+      [`${scf}/kpoint_coords`]: { from: `${opt}/kpoint_coords`, value: mesh_12 },
+      [`input/kpoints/labels_kpoints`]: { from: `input/kpoints_opt/labels_kpoints` },
+      [`input/kpoints/number_kpoints`]: { from: `input/kpoints_opt/number_kpoints`, value: 2 },
+    }, { n_kpoints: 12, branch_names: tinisn_path.branch_names }],
   ])(`band source for %s`, async (_label, remap, expected) => {
     const bands = await read_remapped(remap)
     expect(

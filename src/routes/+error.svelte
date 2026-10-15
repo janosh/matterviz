@@ -28,6 +28,6 @@
   {/if}
 
   <p>
-    Back to <a href="."> landing page </a>.
+    Back to <a href="/">landing page</a>.
   </p>
 </div>

@@ -271,9 +271,19 @@ const LINE_CURVE_TO_FILL: Record<LineCurve, FillCurveType> = {
   basis: `basis`,
   'catmull-rom': `catmullRom`,
 }
-const line_curve_to_fill = (curve: LineCurve | undefined): FillCurveType =>
-  // ?? monotoneX guards an unknown string from an untyped (Python/JSON) caller
-  (curve ? LINE_CURVE_TO_FILL[curve] : undefined) ?? `monotoneX`
+// Untyped (Python/JSON) callers can send a typo, which must throw, not silently draw monotone
+const lookup_curve = <Name extends string, Curve>(
+  kind: string,
+  map: Record<Name, Curve>,
+  name: Name,
+): Curve => {
+  if (Object.hasOwn(map, name)) return map[name]
+  const expected = Object.keys(map).join(`, `)
+  throw new Error(`Unknown ${kind} curve ${JSON.stringify(name)}, expected one of ${expected}`)
+}
+// null is Python None via JSON: same default as undefined
+const line_curve_to_fill = (curve: LineCurve | null | undefined): FillCurveType =>
+  curve == null ? `monotoneX` : lookup_curve(`line`, LINE_CURVE_TO_FILL, curve)
 
 // Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
 // positions for boundaries that don't define their own (constant/axis/function/data-without-x).
@@ -521,12 +531,12 @@ const CURVE_MAP: Record<FillCurveType, CurveFactory> = {
 }
 
 const get_curve = (curve_type: FillCurveType): CurveFactory =>
-  CURVE_MAP[curve_type] ?? curveMonotoneX
+  lookup_curve(`fill`, CURVE_MAP, curve_type)
 
 // Resolve a public LineCurve (a series' `line_style.curve`) to its d3 CurveFactory. Single source
 // of truth shared by Line.svelte and PlotMarginals.svelte (composes the LineCurve -> FillCurveType
-// -> CurveFactory maps); unknown/undefined falls back to curveMonotoneX.
-export const line_curve_factory = (curve: LineCurve | undefined): CurveFactory =>
+// -> CurveFactory maps); null/undefined mean curveMonotoneX, unknown names throw.
+export const line_curve_factory = (curve: LineCurve | null | undefined): CurveFactory =>
   get_curve(line_curve_to_fill(curve))
 
 const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>

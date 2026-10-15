@@ -822,7 +822,7 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(buffers.edge_positions).toHaveLength(n_edges * 6)
     expect(buffers.edge_colors).toHaveLength(n_edges * 6)
     expect(warn.mock.calls.map(([msg]) => msg)).toEqual(
-      warns ? [expect.stringContaining(`site 7`)] : [],
+      warns ? [expect.stringContaining(`site 8`)] : [],
     )
   })
 

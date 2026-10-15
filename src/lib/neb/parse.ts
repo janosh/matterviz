@@ -26,6 +26,7 @@
 // `{ "format": ..., "paths": { "vacancy": { "images": [...] }, "interstitial": [...] } }`.
 // A `paths` entry is either a full path object or a bare image array.
 
+import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import { finite_vec3_from_values, is_finite_vec3_like } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
@@ -55,7 +56,7 @@ function parse_forces(val: unknown, context: string): Vec3[] | undefined {
   return val.map((entry, atom_idx) => {
     if (!Array.isArray(entry) || !is_finite_vec3_like(entry)) {
       throw new Error(
-        `${context} force ${atom_idx} must be 3 finite numbers, got ${JSON.stringify(entry)}`,
+        `${context} force on atom ${display_idx(atom_idx)} must be 3 finite numbers, got ${JSON.stringify(entry)}`,
       )
     }
     return [entry[0], entry[1], entry[2]] as Vec3
@@ -94,7 +95,7 @@ function parse_path_body(raw: unknown, context: string, energy_unit?: string): R
   }
   const path: ReactionPath = {
     images: body.images.map((image, image_idx) =>
-      parse_image(image, `${context} image ${image_idx}`),
+      parse_image(image, `${context} image ${display_idx(image_idx)}`),
     ),
     ...(typeof body.label === `string` ? { label: body.label } : {}),
     energy_unit: typeof body.energy_unit === `string` ? body.energy_unit : energy_unit,
@@ -163,7 +164,7 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
   const lines = new TextLines(content)
   for (const frame of iter_xyz_frames(lines)) {
     const image_idx = images.length
-    const context = `${filename} frame ${image_idx}`
+    const context = `${filename} frame ${display_idx(image_idx)}`
     const { structure } = build_xyz_frame(
       lines,
       frame,
@@ -179,7 +180,6 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
       structure,
       energy: xyz_comment_energy(frame.comment, context),
       ...(forces.every((force): force is Vec3 => force !== undefined) && { forces }),
-      label: `image ${image_idx}`,
     })
   }
   if (images.length < 2) {
@@ -229,14 +229,23 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
   if (files.length === 0) throw new Error(`parse_dropped_paths got no files`)
   const paths: Record<string, ReactionPath> = {}
   const loose: NebImage[] = []
+  // a shared key (e.g. two files with the same JSON `label`) would silently drop a path
+  const add_path = (key: string, path: ReactionPath, source: string): void => {
+    if (Object.hasOwn(paths, key))
+      throw new Error(
+        `${source} holds a second path keyed "${key}"; give each one its own label`,
+      )
+    paths[key] = path
+  }
 
   for (const { content, filename } of files) {
     if (is_reaction_path_json(content)) {
-      Object.assign(paths, parse_reaction_path_json(content, filename))
+      for (const [key, path] of Object.entries(parse_reaction_path_json(content, filename)))
+        add_path(key, path, filename)
       continue
     }
     if (is_xyz(filename) && count_xyz_frames(content) > 1) {
-      paths[filename] = parse_xyz_reaction_path(content, filename)
+      add_path(filename, parse_xyz_reaction_path(content, filename), filename)
       continue
     }
     const structure = parse_structure_file(content, filename)
@@ -254,7 +263,7 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
   if (loose.length > 0) {
     const path: ReactionPath = { images: loose, label: `dropped images` }
     assert_path(path, `dropped structure files`)
-    paths[`dropped images`] = path
+    add_path(`dropped images`, path, `dropped structure files`)
   }
   return paths
 }

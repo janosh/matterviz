@@ -26,10 +26,10 @@ test.describe(`Bands Component Tests`, () => {
   }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
-    // 4 bands expected from mock data
+    // 4 bands × 2 branches (Γ→X, X→M) from mock data
     const paths = band_paths(plot)
     await expect(paths.first()).toBeVisible()
-    await expect(paths).toHaveCount(4)
+    await expect(paths).toHaveCount(8)
 
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
@@ -45,9 +45,9 @@ test.describe(`Bands Component Tests`, () => {
     [`union-path`, null, []],
     [`intersection-path`, null, []],
     [`union-non-canonical`, null, [`K`]], // K only exists in alt_path
-    // U-K is discontinuous and draws no paths: 2 continuous branches × 4 bands
-    [`discontinuity`, 8, [`U | K`, `Γ`, `X`, `L`]],
-    [`electronic-spin-down-only`, 4, []],
+    // the U→K jump is a gap between branches, so draws no path: 3 branches × 4 bands
+    [`discontinuity`, 12, [`U | K`, `Γ`, `X`, `L`]],
+    [`electronic-spin-down-only`, 8, []],
   ] as const) {
     test(`renders ${identifier} plot with band paths and labels`, async ({ page }) => {
       const plot = page.getByTestId(`${identifier}-plot`)
@@ -74,12 +74,12 @@ test.describe(`Bands Component Tests`, () => {
     await expect(legend).toContainText(`BS1`)
     await expect(legend).toContainText(`BS2`)
 
-    // 2 structures × 4 bands
-    await expect(paths).toHaveCount(8)
-    await legend_items.first().click()
-    await expect(paths).toHaveCount(4, { timeout: 2000 })
+    // 2 structures × 4 bands × 2 branches
+    await expect(paths).toHaveCount(16)
     await legend_items.first().click()
     await expect(paths).toHaveCount(8, { timeout: 2000 })
+    await legend_items.first().click()
+    await expect(paths).toHaveCount(16, { timeout: 2000 })
   })
 
   test(`applies custom line styling and hides legend when configured`, async ({ page }) => {

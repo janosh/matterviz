@@ -1,5 +1,5 @@
 import type { Vec3 } from '#lib/math.js'
-import { clamp } from '#lib/math.js'
+import { clamp, to_radians } from '#lib/math.js'
 import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
 import { untrack } from 'svelte'
 import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'
@@ -243,7 +243,7 @@ export const perspective_distance_for_zoom = (
   zoom: number,
   height_px: number,
   vertical_fov_degrees: number,
-): number => height_px / (2 * zoom * Math.tan((vertical_fov_degrees * Math.PI) / 360))
+): number => height_px / (2 * zoom * Math.tan(to_radians(vertical_fov_degrees) / 2))
 
 // Shared OrbitControls config; `on_start_extra` runs extra cleanup when the camera starts moving
 // (e.g. StructureScene closes hover tooltips/context menus).

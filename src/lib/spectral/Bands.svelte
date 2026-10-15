@@ -203,8 +203,8 @@
   )
 
   // Map segments to x-axis positions, in the physical path order of the first structure
-  // (segments only other structures have, in union mode, follow). Discontinuities sit at the
-  // current x without advancing the path.
+  // (segments only other structures have, in union mode, follow). A jump between branches
+  // advances nothing.
   let internal_x_positions = $derived.by((): Record<string, Vec2> => {
     const canonical_keys = structures[0]?.keys ?? []
     const ordered = [
@@ -215,10 +215,8 @@
     let current_x = 0
     for (const key of ordered) {
       const [band_structure, branch] = all_segments[key][0]
-      const segment_len = helpers.is_discontinuity_branch(branch)
-        ? 0
-        : band_structure.distance[branch.end_index] -
-          band_structure.distance[branch.start_index]
+      const segment_len =
+        band_structure.distance[branch.end_index] - band_structure.distance[branch.start_index]
       positions[key] = [current_x, current_x + segment_len]
       current_x += segment_len
     }
@@ -251,9 +249,7 @@
 
       for (const [branch_idx, branch] of band_structure.branches.entries()) {
         const segment_key = keys[branch_idx]
-        if (helpers.is_discontinuity_branch(branch) || !segments_to_plot.has(segment_key)) {
-          continue
-        }
+        if (!segments_to_plot.has(segment_key)) continue
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1 // exclusive
         const [x_start, x_end] = internal_x_positions[segment_key]
@@ -378,13 +374,8 @@
       : (structures[0]?.bs.recip_lattice ?? null),
   )
   // The first structure's k-path (Cartesian), drawn in the popup for context
-  let k_path_points = $derived(
-    k_lattice && structures[0]
-      ? helpers.extract_k_path_points(structures[0].bs, k_lattice)
-      : [],
-  )
-  let k_path_labels = $derived(
-    structures[0] ? helpers.k_path_labels(structures[0].bs, k_path_points) : [],
+  let k_path = $derived(
+    k_lattice && structures[0] ? helpers.band_k_path(structures[0].bs, k_lattice) : undefined,
   )
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
@@ -574,18 +565,12 @@
     children={frame_children}
   >
     {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
-      {@const segment = Object.entries(internal_x_positions).find(
+      {@const segment_key = Object.entries(internal_x_positions).find(
         ([, [start, end]]) => coord_x >= start && coord_x <= end,
-      )}
-      {@const path =
-        (segment && !segment[0].startsWith(`branch:`)
-          ? segment[0]
-              .replace(/#\d+$/, ``)
-              .split(`_`)
-              .map((lbl) => (lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``))
-              .filter(Boolean)
-              .join(` → `)
-          : ``) || null}
+      )?.[0]}
+      {@const path = segment_key
+        ? helpers.branch_path_label(...all_segments[segment_key][0])
+        : null}
       {@const {
         band_idx,
         spin,
@@ -866,8 +851,7 @@
         {...bz_popup_props}
         {k_lattice}
         points={bz_popup_points}
-        {k_path_points}
-        {k_path_labels}
+        {k_path}
         place="manual"
         arrow_x={clamp(tick_x - left + half_width, 12, 2 * half_width - 12)}
         style="left: {left}px; top: {ctx.height -

@@ -320,6 +320,11 @@ export const format_tick_values = (
 export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.3~`): string =>
   `(${vec.map((coord) => format_num(coord, fmt_spec)).join(`, `)})`
 
+// User-facing numbers of 0-based indices (frames, NEB images, sites, modes) count from 1
+// ("Frame 1 of N"), while props, bindings and data stay 0-based
+export const display_idx = (idx: number): number => idx + 1
+export const from_display_idx = (value: number): number => value - 1
+
 // "1 site" / "3 sites"
 export const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? `` : `s`}`
@@ -414,9 +419,9 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   // Force properties (common variations)
   force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
   fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-  'Force Max': { label: `Force Max`, unit: `eV/Å` },
+  'force max': { label: `Force Max`, unit: `eV/Å` },
   force_norm: { label: `F<sub>norm</sub>`, unit: `eV/Å` },
-  'Force RMS': { label: `Force RMS`, unit: `eV/Å` },
+  'force rms': { label: `Force RMS`, unit: `eV/Å` },
 
   // Structural properties
   volume: { label: `Volume`, unit: `Å³` },

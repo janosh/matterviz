@@ -1,15 +1,11 @@
 // Links a band plot to the band structure's k-path drawn in a Brillouin zone: hovering a band
 // point marks its k-point and shades its path branch (e.g. Γ→X), hovering the k-path marks the
 // q-point on the bands
+import type { KPathData } from '#lib/brillouin/types.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { is_finite_vec3 } from '#lib/math.js'
 import type { BandPointMeta } from './helpers'
-import {
-  branch_qpoint_range,
-  extract_k_path_points,
-  find_qpoint_at_rescaled_x,
-  k_path_labels,
-} from './helpers'
+import { band_k_path, branch_qpoint_range, find_qpoint_at_rescaled_x } from './helpers'
 import type { BaseBandStructure } from './types'
 
 // The band and q-point a Bands point stands for, read from its metadata (null for points
@@ -39,13 +35,9 @@ export function create_band_path_link(inputs: {
   // points carry their own q-point indices, so they map onto band_struct's path by x
   x_positions?: () => Record<string, Vec2> | undefined
 }) {
-  const k_path_points = $derived.by((): Vec3[] => {
+  const k_path = $derived.by((): KPathData | undefined => {
     const [band_struct, k_lattice] = [inputs.band_struct(), inputs.k_lattice()]
-    return band_struct && k_lattice ? extract_k_path_points(band_struct, k_lattice) : []
-  })
-  const labels = $derived.by(() => {
-    const band_struct = inputs.band_struct()
-    return band_struct ? k_path_labels(band_struct, k_path_points) : []
+    return band_struct && k_lattice ? band_k_path(band_struct, k_lattice) : undefined
   })
 
   let band_hover = $state.raw<BandHover | null>(null)
@@ -69,7 +61,7 @@ export function create_band_path_link(inputs: {
   // a band hover wins over a k-path hover
   const active_qpoint = $derived(band_qpoint ?? path_qpoint)
   const hovered_k_point = $derived(
-    active_qpoint === null ? null : (k_path_points[active_qpoint] ?? null),
+    active_qpoint === null ? null : (k_path?.points[active_qpoint] ?? null),
   )
   const highlighted_qpoint_range = $derived.by((): Vec2 | null => {
     const band_struct = inputs.band_struct()
@@ -79,11 +71,8 @@ export function create_band_path_link(inputs: {
   })
 
   return {
-    get k_path_points(): Vec3[] {
-      return k_path_points
-    },
-    get k_path_labels() {
-      return labels
+    get k_path(): KPathData | undefined {
+      return k_path
     },
     get active_qpoint(): number | null {
       return active_qpoint

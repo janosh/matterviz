@@ -146,33 +146,26 @@ describe(`transform_cell`, () => {
     )
   })
 
+  // charge is per cell, scaled by the volume ratio to the 4Å original: it used to be copied
+  // unchanged, then divided by orbits.length (Infinity for the mock's empty orbits)
   test.each([
     [`conventional`, 5, 2],
     [`primitive`, 3, 1],
   ] as const)(`returns %s cell with a=%d and %d sites`, (cell_type, expected_a, n_sites) => {
-    const result = transform_cell(original, cell_type, sym_data)
-    // Must NOT be the same object as original, and must carry the transformed lattice
-    expect(result).not.toBe(original)
+    const bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }]
+    const structure = {
+      ...original,
+      charge: 2,
+      properties: { bonds, custom_metadata: `kept` },
+    }
+    const result = transform_cell(structure, cell_type, sym_data)
+    expect(result).not.toBe(structure)
     expect(result.lattice.a).toBeCloseTo(expected_a, 5)
     expect(result.sites).toHaveLength(n_sites)
+    expect(result.charge).toBeCloseTo((2 * expected_a ** 3) / 4 ** 3, 12)
+    expect(result.properties).toEqual({ custom_metadata: `kept` }) // bonds dropped
+    expect(transform_cell(original, cell_type, sym_data).charge).toBeUndefined()
   })
-
-  test.each([`conventional`, `primitive`] as const)(
-    `preserves non-bond structure properties for %s cell transforms`,
-    (cell_type) => {
-      const structure = {
-        ...original,
-        properties: {
-          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }],
-          custom_metadata: `kept`,
-        },
-      }
-
-      const result = transform_cell(structure, cell_type, sym_data)
-
-      expect(result.properties).toEqual({ custom_metadata: `kept` })
-    },
-  )
 })
 
 describe(`wasm database wrappers without initialized module`, () => {

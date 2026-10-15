@@ -1,6 +1,7 @@
 import { is_vaspwave_filename, parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
 import { describe, expect, it } from 'vitest'
 import { grid_value, read_binary_test_file } from '../test-fixtures'
+import { create_dataset, h5_bytes } from '../trajectory/fixtures'
 
 const VASP_HDF5_FIXTURE_DIR = `tests/vitest/fixtures/vasp-hdf5`
 const read_fixture = (filename: string): ArrayBuffer =>
@@ -25,17 +26,13 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     expect([len_a, len_b, len_c]).toEqual([4, 5, 6].map((len) => expect.closeTo(len, 6)))
     expect(structure.lattice?.volume).toBeCloseTo(CELL_VOLUME, 9)
 
-    expect(volumes).toHaveLength(2)
-    expect(volumes.map((volume) => volume.label)).toEqual([
-      `charge density`,
-      `magnetization density`,
-    ])
+    const labels = volumes.map((volume) => volume.label)
+    expect(labels).toEqual([`charge density`, `magnetization density`])
     for (const volume of volumes) {
-      expect(volume.dims).toEqual([4, 6, 8])
-      expect(volume.order).toBe(`z_fastest`)
+      const { matrix } = structure.lattice
+      expect(volume).toMatchObject({ dims: [4, 6, 8], order: `z_fastest`, periodic: true })
       expect(volume.values).toHaveLength(4 * 6 * 8)
-      expect(volume.periodic).toBe(true)
-      expect(volume.lattice).toEqual(structure.lattice?.matrix)
+      expect(volume.lattice).toEqual(matrix)
     }
 
     const charge = volumes[0]
@@ -67,6 +64,20 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     [`vaspout-si-relax.h5`, /no charge density/],
   ])(`%s rejects with %s`, async (fixture, expected_error) => {
     await expect(parse_fixture(fixture)).rejects.toThrow(expected_error)
+  })
+
+  // used to skip the volume division and return raw rho * V_cell
+  it(`rejects a zero-volume lattice`, async () => {
+    const buffer = await h5_bytes(`flat-vaspwave`, (file) => {
+      const charge = file.create_group(`charge`)
+      create_dataset(charge, `charge`, Array(8).fill(1), [1, 2, 2, 2])
+      create_dataset(charge, `grid`, [2, 2, 2], [3])
+      const positions = file.create_group(`structure`).create_group(`positions`)
+      create_dataset(positions, `lattice_vectors`, [1, 0, 0, 1, 0, 0, 0, 0, 1], [3, 3])
+    })
+    await expect(parse_vaspwave_charge(buffer, `vaspwave.h5`)).rejects.toThrow(
+      `has no volume; cannot normalize charge/charge`,
+    )
   })
 })
 

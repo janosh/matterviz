@@ -539,14 +539,13 @@ export function marching_cubes(
         if (cube_values[6] < isovalue) cube_index |= 64
         if (cube_values[7] < isovalue) cube_index |= 128
 
-        // Empty for a cube entirely inside or outside
+        // Empty for a cube entirely inside or outside. Each triangle spans 3 distinct edges,
+        // each with its own cache slot, so none is degenerate.
         const tri_list = TRI_TABLE[cube_index]
         for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
           const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
           const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
           const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
-          // Skip degenerate triangles (two edges collapsed onto one cached vertex)
-          if (vector_0 === vector_1 || vector_1 === vector_2 || vector_0 === vector_2) continue
           indices = grow(indices, n_indices + 3)
           indices[n_indices++] = vector_0
           indices[n_indices++] = flip_winding ? vector_2 : vector_1

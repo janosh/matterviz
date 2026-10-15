@@ -3,7 +3,8 @@ import * as kde_math from '#lib/plot/box/kde.js'
 import * as box_math from '#lib/plot/box/box-plot.js'
 import type { Vec2 } from '#lib'
 import type { BoxPlotSeries, Orientation, WhiskerMode } from '#lib/plot/index.js'
-import { type ComponentProps, tick } from 'svelte'
+import { type ComponentProps, flushSync, tick } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -42,7 +43,7 @@ const mount_sized_box_plot = (
 ): Promise<HTMLElement> => mount_sized(BoxPlot, props, { selector: `.box-plot`, ...size })
 
 // Boxes only render when they have at least one finite value (finite median)
-const rendered_box_count = (series: BoxPlotSeries[] = []): number =>
+const rendered_box_count = (series: readonly BoxPlotSeries[] = []): number =>
   series.filter((srs) => (srs.visible ?? true) && srs.y.some((val) => Number.isFinite(val)))
     .length
 
@@ -57,19 +58,19 @@ describe(`BoxPlot`, () => {
     expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
   })
 
-  // Smoke matrix: every one of these must still draw one box (and one hit target) per
-  // series with finite data. Named per row so a failure says which config broke.
+  // Every config must draw one box, hit target (and value label if asked) per finite series.
+  // No series means no category labels, so the axis must fall back to generated ticks
   test.each([
+    [`no series`, { series: [] }],
     [`axis labels`, { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Err` } }],
-    [`whisker_mode=minmax`, { series: [basic], whisker_mode: `minmax` as WhiskerMode }],
-    [
-      `whisker_mode=percentile`,
-      { series: [basic], whisker_mode: `percentile` as WhiskerMode },
-    ],
-    [`whisker_mode=std`, { series: [basic], whisker_mode: `std` as WhiskerMode }],
+    ...([`minmax`, `percentile`, `std`] as WhiskerMode[]).map((whisker_mode) => [
+      `whisker_mode=${whisker_mode}`,
+      { series: [basic], whisker_mode },
+    ]),
     [`a clamped y range`, { series: [basic], y_axis: { range: [-3, 3] as Vec2 } }],
     [`an SI tick format`, { series: [basic], y_axis: { format: `.2~s` } }],
     [`controls hidden`, { series: [basic], show_controls: false }],
+    [`value labels`, { series: [basic, { ...basic, label: `B` }], show_value_labels: true }],
     [
       `an invisible series`,
       {
@@ -84,17 +85,15 @@ describe(`BoxPlot`, () => {
     `renders with %s`,
     async (_label, props) => {
       const plot = await mount_sized_box_plot(props)
-      const expected = rendered_box_count(props.series as BoxPlotSeries[])
+      const expected = rendered_box_count(props.series)
       expect(plot.querySelectorAll(`.box-series`)).toHaveLength(expected)
       expect(plot.querySelectorAll(`g.box-series[role="button"]`)).toHaveLength(expected)
+      expect(plot.querySelectorAll(`.value-label`)).toHaveLength(
+        props.show_value_labels ? expected : 0,
+      )
+      expect(plot.querySelectorAll(`g.x-axis g.tick`).length).toBeGreaterThan(0)
     },
   )
-
-  // No slots means no category labels, so the axis must fall back to generated ticks
-  test(`empty series leaves the category axis with generated ticks`, async () => {
-    const plot = await mount_sized_box_plot({ series: [] })
-    expect(plot.querySelectorAll(`g.x-axis g.tick`).length).toBeGreaterThan(0)
-  })
 
   test.each([
     [`vertical`, `y`],
@@ -127,36 +126,19 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  // 2 whiskers + 2 caps + 1 median render as <line>s inside .box-series (tukey, cap_fraction
-  // > 0, show_mean off); the IQR box is a <rect class="iqr-box">
+  // Strokes default to a theme CSS variable so they track light/dark themes; an explicit color
+  // recolors only its own glyph. Rows give the per-color tally of the 5 lines (2 whiskers,
+  // 2 caps, 1 median) and the IQR rect stroke
   const theme_stroke = `var(--text-color, black)`
-  const box_line_strokes = (plot: HTMLElement): (string | null)[] =>
-    [...plot.querySelectorAll(`.box-series line`)].map((element) =>
-      element.getAttribute(`stroke`),
-    )
-
-  // whiskers, median and box outline default to a theme CSS variable (like the axis/tick/grid
-  // colors) so they track light/dark themes instead of being permanently black; an explicit
-  // color recolors only its own glyph, leaving every other stroke on the theme default. Each
-  // case gives the expected per-color line tally (sums to 5) and the IQR rect stroke.
+  // oxfmt-ignore
   test.each([
     [`default`, {}, { [theme_stroke]: 5 }, theme_stroke],
-    [
-      `whisker`,
-      { whisker: { color: `tomato` } },
-      { tomato: 4, [theme_stroke]: 1 },
-      theme_stroke,
-    ],
-    [
-      `median`,
-      { median_style: { color: `gold` } },
-      { gold: 1, [theme_stroke]: 4 },
-      theme_stroke,
-    ],
+    [`whisker`, { whisker: { color: `tomato` } }, { tomato: 4, [theme_stroke]: 1 }, theme_stroke],
+    [`median`, { median_style: { color: `gold` } }, { gold: 1, [theme_stroke]: 4 }, theme_stroke],
     [`box outline`, { box: { stroke_color: `cyan` } }, { [theme_stroke]: 5 }, `cyan`],
   ] as const)(`%s color is theme-aware and isolated`, async (_name, extra, lines, rect) => {
     const plot = await mount_sized_box_plot({ series: [basic], ...extra })
-    const strokes = box_line_strokes(plot)
+    const strokes = [...plot.querySelectorAll(`.box-series line`)].map((line) => line.getAttribute(`stroke`))
     expect(strokes).toHaveLength(5)
     for (const [color, count] of Object.entries(lines)) {
       expect(strokes.filter((stroke) => stroke === color)).toHaveLength(count)
@@ -164,12 +146,6 @@ describe(`BoxPlot`, () => {
     expect(plot.querySelector(`.iqr-box`)?.getAttribute(`stroke`)).toBe(rect)
     // IQR box rect + transparent hover-target rect
     expect(plot.querySelectorAll(`.box-series rect`)).toHaveLength(2)
-  })
-
-  test(`show_value_labels renders one label per box`, async () => {
-    const series = [basic, { ...basic, label: `B`, color: `tomato` }]
-    const plot = await mount_sized_box_plot({ series, show_value_labels: true })
-    expect(plot.querySelectorAll(`.value-label`)).toHaveLength(2)
   })
 
   test(`show_mean keeps the mean line inside the plot even when outliers are hidden`, async () => {
@@ -207,28 +183,22 @@ describe(`BoxPlot`, () => {
       const outlier_series: BoxPlotSeries[] = [
         { y: [...dist(60, 0, 1), 8, 9, -7, -8, 100], label: `Outliers` },
       ]
-      const value_range: Vec2 = [-8, 9]
+      const vertical = orientation === `vertical`
       const tukey = await mount_sized_box_plot({
         series: outlier_series,
         orientation,
-        ...(orientation === `vertical`
-          ? { y_axis: { range: value_range } }
-          : { x_axis: { range: value_range } }),
+        [vertical ? `y_axis` : `x_axis`]: { range: [-8, 9] },
       })
-      const outlier_circles = tukey.querySelectorAll(`.box-series circle`)
+      const outlier_circles = [...tukey.querySelectorAll(`.box-series circle`)]
       expect(outlier_circles.length).toBeGreaterThan(0)
-      const clip_rect = tukey.querySelector(`clipPath rect`)
-      const coordinate = orientation === `vertical` ? `y` : `x`
-      const center = orientation === `vertical` ? `cy` : `cx`
-      const size = orientation === `vertical` ? `height` : `width`
-      const clip_start = Number(clip_rect?.getAttribute(coordinate))
-      const clip_end = clip_start + Number(clip_rect?.getAttribute(size))
-      const centers = [...outlier_circles].map((circle) => Number(circle.getAttribute(center)))
+      const clip = svg_rect(query(tukey, `clipPath rect`))
+      const [clip_start, clip_size] = vertical ? [clip.y, clip.height] : [clip.x, clip.width]
+      const centers = outlier_circles.map((circle) =>
+        Number(circle.getAttribute(vertical ? `cy` : `cx`)),
+      )
       expect(Math.min(...centers)).toBeCloseTo(clip_start)
-      expect(Math.max(...centers)).toBeCloseTo(clip_end)
-      expect(
-        [...outlier_circles].every((circle) => circle.closest(`[clip-path]`) === null),
-      ).toBe(true)
+      expect(Math.max(...centers)).toBeCloseTo(clip_start + clip_size)
+      expect(outlier_circles.filter((circle) => circle.closest(`[clip-path]`))).toEqual([])
       document.body.innerHTML = ``
       const minmax = await mount_sized_box_plot({
         series: outlier_series,
@@ -407,47 +377,65 @@ describe(`BoxPlot`, () => {
         { ...basic, color: `#00ff00`, label: `Green` },
       ],
     })
-    const x_axis = plot.querySelector(`g.x-axis`)
-    const tick_texts = [...(x_axis?.querySelectorAll(`text`) ?? [])].filter((node) =>
-      [`Red`, `Green`].includes(node.textContent?.trim() ?? ``),
-    )
-    expect(tick_texts).toHaveLength(2)
-    expect(tick_texts[0].getAttribute(`fill`)).toBe(`#ff0000`)
-    expect(tick_texts[1].getAttribute(`fill`)).toBe(`#00ff00`)
+    const fills = [...plot.querySelectorAll(`g.x-axis text`)]
+      .filter((node) => [`Red`, `Green`].includes(node.textContent?.trim() ?? ``))
+      .map((node) => node.getAttribute(`fill`))
+    expect(fills).toEqual([`#ff0000`, `#00ff00`])
   })
 
-  // In the default tukey mode the whiskers are not the series min/max once there are outliers
-  test(`hover shows a tooltip labelling the whisker ends and fires on_box_hover`, async () => {
-    const on_box_hover = vi.fn()
-    const series = [{ y: [1, 2, 3, 4, 5, 100], label: `Box A` }]
-    const plot = await mount_sized_box_plot({ series, on_box_hover })
-    const hit = plot.querySelector<SVGGElement>(`g.box-series[role="button"]`)
-    expect(hit).not.toBeNull()
-    hit?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+  // Tukey whiskers are not the series min/max once there are outliers. The tooltip must not
+  // be a snapshot: it tracks replaced data under a resting pointer and closes with its box
+  test(`hover and click report box stats and the tooltip follows replaced data`, async () => {
+    const [on_box_hover, on_box_click] = [vi.fn(), vi.fn()]
+    // a reactive getter lets this plain .ts test replace the series under the resting pointer
+    const current = new SvelteMap<string, BoxPlotSeries[]>([
+      [`series`, [{ y: [1, 2, 3, 4, 5, 100], label: `Box A` }]],
+    ])
+    const plot = await mount_sized_box_plot({
+      get series() {
+        return current.get(`series`)
+      },
+      on_box_hover,
+      on_box_click,
+    })
+    const hit = query(plot, `g.box-series[role="button"]`)
+    hit.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    hit.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     await tick()
     expect(on_box_hover).toHaveBeenCalledOnce()
-    const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    expect(text).toContain(`median`)
-    expect(text).toContain(`whisker high: 5`)
-    expect(text).toContain(`whisker low: 1`)
-    expect(text).not.toContain(`max`)
-    expect(text).not.toContain(`min`)
-    expect(text).toContain(`outliers: 1`)
+    // type-7 median: mean of the two middle order statistics
+    expect(on_box_click).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        box_idx: 0,
+        category_label: `Box A`,
+        stats: expect.objectContaining({ median: 3.5 }),
+      }),
+    )
+    const tooltip_after = (series?: BoxPlotSeries[]) => {
+      if (series) current.set(`series`, series)
+      flushSync()
+      return plot.querySelector(`.plot-tooltip`)?.textContent ?? null
+    }
+    const text = tooltip_after() ?? ``
+    for (const part of [`median`, `whisker high: 5`, `whisker low: 1`, `outliers: 1`]) {
+      expect(text).toContain(part)
+    }
+    expect(text).not.toMatch(/max|min/)
+    expect(tooltip_after([{ y: [1, 2, 30, 40, 50], label: `A` }])).toContain(`median: 30`)
+    expect(tooltip_after([])).toBeNull()
+    expect(on_box_hover).toHaveBeenLastCalledWith(null)
   })
 
-  test(`click fires on_box_click with stats`, async () => {
-    const on_box_click = vi.fn()
-    const plot = await mount_sized_box_plot({ series: [basic], on_box_click })
-    const hit = plot.querySelector<SVGGElement>(`g.box-series[role="button"]`)
-    hit?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    await tick()
-    expect(on_box_click).toHaveBeenCalledOnce()
-    const arg = on_box_click.mock.calls[0][0]
-    expect(arg.box_idx).toBe(0)
-    // type-7 median of the 80 clicked values: mean of the two middle order statistics
-    const sorted = [...basic.y].toSorted((val_a, val_b) => val_a - val_b)
-    expect(arg.stats.median).toBeCloseTo((sorted[39] + sorted[40]) / 2, 12)
-    expect(arg.category_label).toBe(`Box A`)
+  // aria-labels are read aloud: the interpolated median 0.15000000000000002 reads as 0.15
+  test.each([
+    [{}, `box 1: A, median 0.15`],
+    [{ format: `.1%` }, `box 1: A, median 15%`],
+  ])(`aria-label formats the median with value axis %j`, async (y_axis, expected) => {
+    const plot = await mount_sized_box_plot({
+      series: [{ y: [0.1, 0.2], label: `A` }],
+      y_axis,
+    })
+    expect(query(plot, `g.box-series`).getAttribute(`aria-label`)).toBe(expected)
   })
 
   // Hiding series shrinks the obstacle field the frame's solver reads, so an outside legend
@@ -463,20 +451,16 @@ describe(`BoxPlot`, () => {
       legend: { tween: { duration: 0 } },
     })
     await tick()
-    const initial_summary_calls = summary_spy.mock.calls.length
-    expect(initial_summary_calls).toBe(24)
-    const legend = plot.querySelector<HTMLElement>(`.legend`)
-    const clip_rect = plot.querySelector(`clipPath rect`)
-    if (!legend || !clip_rect) throw new Error(`legend or clip rectangle not found`)
-    const is_outside = () =>
-      Number(legend.style.top.replace(`px`, ``)) >
-      Number(clip_rect.getAttribute(`y`)) + Number(clip_rect.getAttribute(`height`))
+    expect(summary_spy).toHaveBeenCalledTimes(24)
+    const legend = query(plot, `.legend`)
+    const is_outside = () => {
+      const clip = svg_rect(query(plot, `clipPath rect`))
+      return Number(legend.style.top.replace(`px`, ``)) > clip.y + clip.height
+    }
     expect(is_outside()).toBe(true)
-    legend
-      .querySelector(`.legend-item`)
-      ?.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    query(legend, `.legend-item`).dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     await vi.waitFor(() => expect(is_outside()).toBe(false))
-    expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
+    expect(summary_spy).toHaveBeenCalledTimes(24) // isolating reuses the box stats
   })
 
   // Drawn extent of a glyph: a box's hover target (whiskers x body width), a violin's outline
@@ -575,25 +559,15 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  // inner IQR-box width: a violin shrinks the default box, and per-series box_width widens it
-  test.each([
-    {
-      name: `violin inner box is narrower than a standalone box`,
-      narrow: () => mount_sized_box_plot({ series: [basic], kind: `violin+box` }),
-      wide: () => mount_sized_box_plot({ series: [basic], kind: `box` }),
-    },
-    {
-      name: `per-series box_width widens the violin inner box`,
-      narrow: () => mount_sized_box_plot({ series: [basic], kind: `violin+box` }),
-      wide: () =>
-        mount_sized_box_plot({ series: [{ ...basic, box_width: 0.8 }], kind: `violin+box` }),
-    },
-  ])(`$name`, async ({ narrow, wide }) => {
-    const rect_w = (plot: HTMLElement) => Number(iqr_box(plot)[0].getAttribute(`width`) ?? `0`)
-    const narrow_plot = await narrow()
-    document.body.innerHTML = ``
-    const wide_plot = await wide()
-    expect(rect_w(narrow_plot)).toBeLessThan(rect_w(wide_plot))
+  test(`violin inner box is narrower than a standalone box unless box_width widens it`, async () => {
+    const iqr_width = async (props: Partial<ComponentProps<typeof BoxPlot>>) => {
+      document.body.innerHTML = ``
+      return Number(iqr_box(await mount_sized_box_plot(props))[0].getAttribute(`width`))
+    }
+    const inner = await iqr_width({ series: [basic], kind: `violin+box` })
+    expect(await iqr_width({ series: [basic], kind: `box` })).toBeGreaterThan(inner)
+    const widened = { series: [{ ...basic, box_width: 0.8 }], kind: `violin+box` } as const
+    expect(await iqr_width(widened)).toBeGreaterThan(inner)
   })
 
   // the KDE grid covers exactly the observed support (no tail extension), so with min/max
@@ -651,33 +625,25 @@ describe(`BoxPlot`, () => {
     },
   )
 
-  test(`split violins share one category slot`, async () => {
-    const series: BoxPlotSeries[] = [
-      { y: dist(80, 0, 1), category: `X`, side: `negative`, label: `Left`, color: `#4e79a7` },
-      { y: dist(80, 1, 1), category: `X`, side: `positive`, label: `Right`, color: `#e15759` },
-    ]
-    const plot = await mount_sized_box_plot({ series, kind: `violin`, show_legend: true })
-    // two violins, but a single category slot (one x-axis tick)
-    const paths = plot.querySelectorAll<SVGPathElement>(`.violin-area`)
-    expect(paths).toHaveLength(2)
-    for (const path of paths) expect(path.getAttribute(`d`)).not.toContain(`NaN`)
-    expect(plot.querySelectorAll(`g.x-axis g.tick`)).toHaveLength(1)
-    expect(plot.querySelector(`g.x-axis g.tick text`)?.textContent?.trim()).toBe(`X`)
-  })
-
-  // uncategorized series must not key slots by index (index labels, merging with category `1`)
+  // uncategorized series must not key slots by index (index labels, merging with category `1`);
+  // split violins share one slot
   // oxfmt-ignore
   test.each([
     [`distinct categories`, [{ category: `A` }, { category: `B` }], [`A`, `B`], {}],
     [`a category spelled like an index`, [{ category: `1` }, { label: `other` }], [`1`, `other`], {}],
     [`a shorter x_axis.categories`, [{ label: `A` }, { label: `B` }, { label: `C` }], [`A`, `B`, `C`], { categories: [`A`, `B`] }],
-  ] as const)(`category slots and tick labels with %s`, async (_name, specs, expected_ticks, x_axis) => {
+    [`split violins`, [{ category: `X`, side: `negative` }, { category: `X`, side: `positive` }], [`X`], {}],
+  ] as const)(`violin slots and tick labels with %s`, async (_name, specs, expected_ticks, x_axis) => {
     const plot = await mount_sized_box_plot({
       series: specs.map((spec, idx) => ({ y: dist(80, idx, 1), ...spec })),
+      kind: `violin`,
       x_axis,
     })
     const ticks = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
     expect(ticks.map((node) => node.textContent?.trim())).toEqual(expected_ticks)
+    const paths = [...plot.querySelectorAll(`.violin-area`)].map((path) => path.getAttribute(`d`))
+    expect(paths).toHaveLength(specs.length)
+    expect(paths.filter((path) => path?.includes(`NaN`))).toEqual([])
   })
 
   // Stats <= 0 (whisker_low is exactly 0 here) clamp to the log floor instead of rendering NaN,
@@ -759,25 +725,22 @@ describe(`BoxPlot`, () => {
       throw new Error(`Show mean/outliers are not checkboxes`)
     }
     expect([mean.checked, outliers.checked]).toEqual([false, true])
-    const initial_summary_calls = summary_spy.mock.calls.length
-    expect(initial_summary_calls).toBeGreaterThan(0)
-    const initial_kde_calls = kde_spy.mock.calls.length
-    expect(initial_kde_calls).toBeGreaterThan(0)
-    // no outliers drawn once they're toggled off; the mean line appears
+    const [kde_calls, summary_calls] = [kde_spy, summary_spy].map(
+      (spy) => spy.mock.calls.length,
+    )
+    expect(Math.min(kde_calls, summary_calls)).toBeGreaterThan(0)
+    // no outliers drawn once they're toggled off; the mean line appears, without re-estimating
     mean.click()
     outliers.click()
     await tick()
     expect([mean.checked, outliers.checked]).toEqual([true, false])
     expect(plot.querySelectorAll(`.box-series circle`)).toHaveLength(0)
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(1)
-    expect(kde_spy).toHaveBeenCalledTimes(initial_kde_calls)
-    expect(summary_spy).toHaveBeenCalledTimes(initial_summary_calls)
-
-    const reset_btn = plot.querySelector<HTMLButtonElement>(
-      `button[aria-label="Reset box / violin to defaults"]`,
-    )
-    if (!reset_btn) throw new Error(`reset button not rendered`)
-    reset_btn.click()
+    expect([kde_spy, summary_spy].map((spy) => spy.mock.calls.length)).toEqual([
+      kde_calls,
+      summary_calls,
+    ])
+    query(plot, `button[aria-label="Reset box / violin to defaults"]`).click()
     await tick()
     expect([mean.checked, outliers.checked]).toEqual([false, true])
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(0)

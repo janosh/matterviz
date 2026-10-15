@@ -93,7 +93,8 @@ function read_positions(
 // line) is a writer still appending: it is dropped with a warning. A malformed coordinate line
 // anywhere else is corruption and fails that frame's read.
 function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[] {
-  if (lines.count < 10) throw new Error(`XDATCAR file too short`)
+  // title, scale, 3 lattice rows, symbols, counts, one config marker and one ion = 9 lines
+  if (lines.count < 9) throw new Error(`XDATCAR file too short`)
 
   const { result: parsed, end: header_end } = parse_xdatcar_header(lines, 0)
   if (!parsed.ok) throw new Error(parsed.error)

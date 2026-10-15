@@ -1,6 +1,7 @@
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import type { Vec2 } from '#lib'
 import { plot_color } from '#lib/colors/index.js'
+import * as marginal_utils from '#lib/plot/core/marginals.js'
 import type { HistogramSeries } from '#lib/plot/histogram/histogram.js'
 import {
   bin_values,
@@ -10,7 +11,7 @@ import {
   log_safe_range,
   normalize_counts,
 } from '#lib/plot/histogram/histogram.js'
-import { tick } from 'svelte'
+import { flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
@@ -133,9 +134,13 @@ describe(`Histogram`, () => {
     [`an explicit y range`, { series: [{ values: [1, 1, 1, 1, 1] }], bins: 5, y_axis: { range: [0, 3] } }, 1, 3],
     // weighted counts are fractional: the raw-count `d` default rounded every tick to 0
     [`fractional weights`, { series: [{ values: [1, 2, 3, 4], weights: [0.1, 0.2, 0.3, 0.4] }], bins: 4 }, 0.4, 0.5],
+    // integer-formatted half steps used to label small counts `0, 1, 1, 2, 2`
+    [`one sample`, { series: [{ values: [1] }] }, 1, 2],
+    [`small counts`, { series: [{ values: [1, 1, 2] }] }, 2, 3],
   ] as const)(`count axis spans the tallest bin for %s`, async (_name, props, lower, upper) => {
     const ticks = await y_ticks_after(props)
-    expect(ticks.length).toBeGreaterThan(0)
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(new Set(ticks).size).toBe(ticks.length)
     expect(Math.max(...ticks)).toBeGreaterThanOrEqual(lower)
     expect(Math.max(...ticks)).toBeLessThanOrEqual(upper)
   })
@@ -181,29 +186,22 @@ describe(`Histogram`, () => {
       const [lower, upper] = count_range(log_series, `log`, [...range])
       expect(lower).toBeGreaterThan(0)
       expect(lower).toBeLessThan(upper)
-      if (range[0] !== null) expect(lower).toBe(range[0])
-      if (range[1] !== null) expect(upper).toBe(range[1])
+      expect([lower, upper]).toEqual(range.map((bound, idx) => bound ?? [lower, upper][idx]))
       const ticks = await log_ticks([...range])
       expect(ticks.length).toBeGreaterThan(0)
-      expect(Math.min(...ticks)).toBeGreaterThan(0)
       expect(Math.min(...ticks)).toBeGreaterThanOrEqual(lower)
       expect(Math.max(...ticks)).toBeLessThanOrEqual(upper)
     }
-
+    // radius 0 keeps bar_boxes' path parser valid
     await mount_histogram({
-      series: [{ values: [1, 100], label: `Sparse tail` }],
+      series: [{ values: [1, 100] }],
       bins: 2,
       bar: { border_radius: 0 },
       y_axis: { scale_type: `log` },
     })
-    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    expect(bars.length).toBeGreaterThan(0)
-    for (const bar of bars) {
-      const height = Number(
-        /v\s*(?<h>-?\d*\.?\d+)/.exec(bar.getAttribute(`d`) ?? ``)?.groups?.h,
-      )
-      expect(height).toBeGreaterThan(2)
-    }
+    const heights = bar_boxes().map(({ height }) => height)
+    expect(heights.length).toBeGreaterThan(0)
+    expect(Math.min(...heights)).toBeGreaterThan(2)
   })
 
   test(`shift-wheel pans a log count axis by decades`, async () => {
@@ -223,7 +221,6 @@ describe(`Histogram`, () => {
     expect(Math.max(...pan_ticks) / Math.min(...pan_ticks)).toBeGreaterThanOrEqual(10)
   })
 
-  const repeated = { values: [0, 1, 2], label: `Repeated` }
   test(`legend swatches stay per-series in single mode`, async () => {
     await mount_histogram({
       series: [`A`, `B`, `C`].map((label) => ({ values: [1, 2, 3], label })),
@@ -293,43 +290,18 @@ describe(`Histogram`, () => {
     expect(y).toBeCloseTo(count / 1000, 12)
   })
 
+  const repeated = { values: [0, 1, 2], label: `Repeated` }
+  // oxfmt-ignore
   test.each([
-    [
-      `skips hidden series`,
-      {
-        series: [
-          { values: [0, 1, 2], label: `Hidden`, visible: false },
-          { values: [1, 1, 2], label: `Visible` },
-        ],
-        show_legend: true,
-      },
-      [`1`],
-    ],
-    [
-      `keeps duplicate labels apart`,
-      { series: [repeated, repeated], show_legend: true },
-      [`0`, `1`],
-    ],
-    [
-      `selects the first visible series for an unavailable index`,
-      {
-        series: [{ values: [1, 2, 3], label: `Band Gap` }],
-        mode: `single`,
-        selected_series_idx: 99,
-      },
-      [`0`],
-    ],
-  ] as const)(
-    `series indexing %s and clips every series group`,
-    async (_name, props, indices) => {
-      await mount_histogram({ ...props })
-      const groups = Array.from(document.querySelectorAll(`g.histogram-series`))
-      expect(groups.map((element) => element.getAttribute(`data-series-idx`))).toEqual(indices)
-      for (const group of groups) {
-        expect(group.getAttribute(`clip-path`)).toMatch(/^url\(#histogram-clip/)
-      }
-    },
-  )
+    [`skips hidden series`, { series: [{ ...repeated, visible: false }, { values: [1, 1, 2] }], show_legend: true }, [`1`]],
+    [`keeps duplicate labels apart`, { series: [repeated, repeated], show_legend: true }, [`0`, `1`]],
+    [`selects the first visible series for an unavailable index`, { series: [repeated], mode: `single`, selected_series_idx: 99 }, [`0`]],
+  ] as const)(`series indexing %s and clips every series group`, async (_name, props, indices) => {
+    await mount_histogram({ ...props })
+    const groups = [...document.querySelectorAll(`g.histogram-series`)]
+    expect(groups.map((element) => element.getAttribute(`data-series-idx`))).toEqual(indices)
+    for (const group of groups) expect(group.getAttribute(`clip-path`)).toMatch(/^url\(#histogram-clip/)
+  })
 
   test(`x2 series bin on their own axis and expose it in the scale-type controls`, async () => {
     await mount_histogram({
@@ -376,36 +348,28 @@ describe(`Histogram`, () => {
     expect(state.series[0]).toBe(first_series)
     expect(state.series[1]).toBe(second_series)
     expect(state.hidden_series).toEqual([1])
-    expect(state.series[1].values).toBe(second_series.values)
   })
 
   // One flip at a time against an ascending reference: bin edges stay ascending, so on a
   // descending x range x_scale(bin.x0) is the bar's RIGHT edge; on a descending y range the
-  // baseline sits ABOVE the bar's value pixel.
+  // baseline sits ABOVE the bar's value pixel, so bars hang from it at unchanged heights
   test(`bars mirror rather than shift or vanish on reversed x and y ranges`, async () => {
-    const props = { series: [{ values: [1, 3, 5, 7, 9], label: `A` }], bins: 5 }
+    const bars_for = async (x_range: Vec2, y_range: Vec2) => {
+      await mount_histogram({
+        series: [{ values: [1, 3, 5, 7, 9] }],
+        bins: 5,
+        x_axis: { range: x_range },
+        y_axis: { range: y_range },
+      })
+      const boxes = bar_boxes()
+      expect(boxes).toHaveLength(5)
+      return boxes
+    }
     const spans = (boxes: ReturnType<typeof bar_boxes>) =>
       boxes.map(({ left, right }) => [left, right])
-
-    // oxfmt-ignore
-    await mount_histogram({ ...props, x_axis: { range: [0, 10] }, y_axis: { range: [0, 100] } })
-    const ascending = bar_boxes()
-    expect(ascending).toHaveLength(5)
-
-    // bin_idx still runs low-to-high in data, so on a flipped x axis the bars run right-to-left
-    // oxfmt-ignore
-    await mount_histogram({ ...props, x_axis: { range: [10, 0] }, y_axis: { range: [0, 100] } })
-    const flipped_x = bar_boxes()
-    expect(flipped_x).toHaveLength(5)
-    expect(spans(flipped_x)).toEqual(spans(ascending).toReversed())
-
-    // flipping the count axis leaves the bars where they are horizontally and only mirrors
-    // them vertically: same heights, but count 0 moves from the bottom of the plot to the top,
-    // so every bar hangs down from the baseline instead of standing on it
-    // oxfmt-ignore
-    await mount_histogram({ ...props, x_axis: { range: [0, 10] }, y_axis: { range: [100, 0] } })
-    const flipped_y = bar_boxes()
-    expect(flipped_y).toHaveLength(5)
+    const ascending = await bars_for([0, 10], [0, 100])
+    expect(spans(await bars_for([10, 0], [0, 100]))).toEqual(spans(ascending).toReversed())
+    const flipped_y = await bars_for([0, 10], [100, 0])
     expect(spans(flipped_y)).toEqual(spans(ascending))
     expect(flipped_y.map((box) => box.height)).toEqual(ascending.map((box) => box.height))
     expect(new Set(ascending.map((box) => box.bottom)).size).toBe(1)
@@ -547,12 +511,18 @@ describe(`Histogram`, () => {
     },
   )
 
+  // the tooltip must not be a snapshot: it tracks rebinned data under a resting pointer
   test(`bar hover/click handlers receive the bin center, count and label`, async () => {
     const on_bar_hover = vi.fn()
     const on_bar_click = vi.fn()
+    // 5 bins over [0, 10]: [0,2) holds fractional weight 2.5 of 5
+    let series = $state([
+      series_of([0, 1, 5, 9], { label: `A`, weights: [1.25, 1.25, 1.5, 1] }),
+    ])
     await mount_histogram({
-      // 5 bins over [0, 10]: [0,2) holds fractional weight 2.5 of 5
-      series: [series_of([0, 1, 5, 9], { label: `A`, weights: [1.25, 1.25, 1.5, 1] })],
+      get series() {
+        return series
+      },
       bins: 5,
       normalize: `probability`,
       x_axis: { range: [0, 10] },
@@ -598,6 +568,61 @@ describe(`Histogram`, () => {
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
     expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    first_bar.dispatchEvent(mouse(`mousemove`))
+    await tick()
+    const tooltip_after = (next: HistogramSeries[]) => {
+      series = next
+      flushSync()
+      return document.querySelector(`.plot-tooltip`)?.textContent ?? null
+    }
+    expect(tooltip_after([series_of([0, 1, 1, 9], { label: `A` })])).toContain(`Count: 3`)
+    expect(tooltip_after([])).toBeNull()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  // rounded corners belong on the bar's tip, which a reversed count range puts at the bottom
+  test.each([
+    [[0, null], `top`],
+    [[6, 0], `bottom`],
+  ] as const)(`count range %j rounds the bar tip at the %s`, async (range, tip_side) => {
+    await mount_histogram({
+      series: [series_of([1, 1, 1])],
+      bins: 1,
+      bar: { border_radius: 3 },
+      y_axis: { range: [...range] },
+    })
+    // bar_path starts on the flat base edge and runs to the rounded edge: M<x>,<start>V<arc>
+    const path = doc_query(`g.histogram-series path`).getAttribute(`d`) ?? ``
+    const { start, arc } =
+      /^M[-\d.]+,(?<start>[-\d.]+)V(?<arc>[-\d.]+)A/.exec(path)?.groups ?? {}
+    const [start_px, arc_px] = [start, arc].map(Number)
+    expect(tip_side === `top` ? arc_px < start_px : arc_px > start_px, path).toBe(true)
+  })
+
+  // aria-labels are read aloud, so bin edges carry the tooltip's formatting, not float noise
+  test(`bar aria-labels format bin edges and normalized values`, async () => {
+    await mount_histogram({
+      series: [series_of([0.15, 0.35, 0.35], { label: `A` })],
+      bins: 3,
+      normalize: `probability`,
+      // the third bin's lower edge is 0.1 + 0.2 = 0.30000000000000004
+      x_axis: { range: [0.1, 0.4] },
+    })
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    expect([...bars].map((bar) => bar.getAttribute(`aria-label`))).toEqual([
+      `A bin 1: 0.1 to 0.2, count 1, value 0.333`,
+      `A bin 3: 0.3 to 0.4, count 2, value 0.667`,
+    ])
+  })
+
+  // weighted bars must get a weighted marginal, else its CDF contradicts the bars beside it
+  test(`marginals receive the series weights`, async () => {
+    const compute = vi.spyOn(marginal_utils, `compute_marginal_curve`)
+    await mount_histogram({
+      series: [series_of([1, 9], { weights: [9, 1] })],
+      marginals: true,
+    })
+    expect(compute.mock.calls.map((call) => call[1])).toContainEqual([9, 1])
   })
 
   // The arithmetic mean of [1, 10] is 5.5, which a log axis draws ~74% across the bar
@@ -646,19 +671,16 @@ describe(`Histogram`, () => {
     const legend_checkbox = form_controls().control(`Show legend`)
     if (!(legend_checkbox instanceof HTMLInputElement)) throw new Error(`no legend checkbox`)
     expect(legend_checkbox.checked).toBe(true)
-    legend_checkbox.click()
+    for (const checked of [false, true]) {
+      legend_checkbox.click()
+      await tick()
+      expect(legend_checkbox.checked).toBe(checked)
+      expect(document.querySelector(`.legend`) !== null).toBe(checked)
+    }
+    const reset_selector = `button[title="Reset histogram to defaults"]`
+    doc_query(reset_selector).click()
     await tick()
-    expect(legend_checkbox.checked).toBe(false)
-    expect(document.querySelector(`.legend`)).toBeNull()
-    legend_checkbox.click()
-    await tick()
-    expect(legend_checkbox.checked).toBe(true)
-    const reset_legend = doc_query<HTMLButtonElement>(
-      `button[title="Reset histogram to defaults"]`,
-    )
-    reset_legend.click()
-    await tick()
-    expect(document.querySelector(`button[title="Reset histogram to defaults"]`)).toBeNull()
+    expect(document.querySelector(reset_selector)).toBeNull()
     expect(legend_checkbox.checked).toBe(true)
   })
 
@@ -845,13 +867,10 @@ describe(`Histogram`, () => {
     expect(weighted.bins.map(({ count }) => count)).toEqual([2.5, 0, 0, 0, 4])
     expect(weighted.bins[0].value).toBeCloseTo(2.5 / 6.5, 12)
 
-    for (const [_name, series, scale_type, expected] of [
-      [`linear empty`, [], `linear`, [0, 1]],
-      [`log empty`, [], `log`, [1, 1]],
-      [`out-of-domain`, [series_of([500, 600])], `linear`, [0, 1]],
-    ] as const) {
-      expect(count_range([...series], scale_type)).toEqual(expected)
-    }
+    // empty, log-empty and out-of-domain series
+    expect(count_range([], `linear`)).toEqual([0, 1])
+    expect(count_range([], `log`)).toEqual([1, 1])
+    expect(count_range([series_of([500, 600])], `linear`)).toEqual([0, 1])
     const lin_range = count_range([series_of([1, 1, 1, 9])], `linear`)
     expect(lin_range[0]).toBe(0)
     expect(lin_range[1]).toBeGreaterThanOrEqual(3)
@@ -867,23 +886,15 @@ describe(`Histogram`, () => {
     ).toBeGreaterThanOrEqual(4)
     // one bin per sample stays finite and fast
     const n_samples = 130_000
-    const [hist] = histogram_bins(
-      [
-        {
-          series_data: series_of(Array.from({ length: n_samples }, (_, idx) => idx)),
-          series_idx: 0,
-        },
-      ],
-      { x_domain: [0, n_samples], bins: n_samples },
-    )
-    expect(hist.bins).toHaveLength(n_samples)
-    expect(hist.bins.every(({ count }) => count === 1)).toBe(true)
+    const series_data = series_of(Array.from({ length: n_samples }, (_, idx) => idx))
+    const [hist] = histogram_bins([{ series_data, series_idx: 0 }], {
+      x_domain: [0, n_samples],
+      bins: n_samples,
+    })
+    expect(hist.bins.map(({ count }) => count)).toEqual(Array(n_samples).fill(1))
+    const y_limit: [null, null] = [null, null]
     expect(
-      compute_count_range([hist], {
-        scale_type: `linear`,
-        y_limit: [null, null],
-        range_padding: 0,
-      }),
+      compute_count_range([hist], { scale_type: `linear`, y_limit, range_padding: 0 }),
     ).toEqual([0, 1])
   })
 })

@@ -2,7 +2,7 @@
   import { wait_for_renderer, renderer_registry, scene_registry } from '#lib/io/export.js'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num } from '#lib/labels.js'
   import { clamp } from '#lib/math.js'
   import { ViewerPane, type PaneProps } from '#lib/overlays/index.js'
   import { to_error } from '#lib/utils.js'
@@ -559,8 +559,9 @@
           >
             <span>/ {format_num(draft.duration)} s</span>
             {#if timeline}<span
-                >MD frame <strong>{timeline.current}</strong>
-                <small>({timeline.start}–{timeline.end})</small></span
+                >MD frame <strong>{display_idx(timeline.current)}</strong>
+                <small>({display_idx(timeline.start)}–{display_idx(timeline.end)})</small
+                ></span
               >{/if}
           </NumberRangeInput>
         </fieldset>

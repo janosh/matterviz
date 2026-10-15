@@ -203,7 +203,7 @@ describe(`frame stride`, () => {
     await set_labeled(`Frame stride`, 5)
     expect(pane_text()).not.toContain(`needs ≥`)
     await set_labeled(`Frame stride`, 1)
-    await set_labeled(`End frame (exclusive)`, 8)
+    await set_labeled(`End frame`, 8)
     expect(pane_text()).toContain(`needs ≥ 2`)
   })
 
@@ -218,6 +218,15 @@ describe(`frame stride`, () => {
     ).toBeNull()
     expect(pane_text()).not.toContain(`atoms ≈`)
     expect(document.querySelector(`.stub-controls p.hint`)).toBeNull()
+  })
+
+  test(`position_buffers alone opts in to the stride budget`, async () => {
+    mount_pane({ suggest_stride: undefined, position_buffers: 2 })
+    await settle()
+    expect(doc_query(`.stub-controls input[aria-label="Frame stride"]`)).toBeInstanceOf(
+      HTMLInputElement,
+    )
+    expect(pane_text()).toContain(`atoms ≈`)
   })
 })
 
@@ -302,12 +311,12 @@ describe(`frame window`, () => {
         expect(button.disabled).toBe(true)
         expect(button.title).toContain(`uniformly spaced steps`)
       }
-      await set_labeled(`End frame (exclusive)`, 5)
+      await set_labeled(`End frame`, 5)
       await set_labeled(`Frame stride`, 2)
       await click_collect() // sampled steps 0, 20, 40: 10 fs, despite irregular skipped steps
       expect(pane_text()).toContain(`10 fs per collected frame`)
-      await set_labeled(`End frame (exclusive)`, 8)
-      await set_labeled(`Start frame`, 5)
+      await set_labeled(`End frame`, 8)
+      await set_labeled(`Start frame`, 6) // 1-based: frame index 5
       await set_labeled(`Frame stride`, 1)
       expect(pane_text()).toContain(`10 fs per collected frame`)
       button.click()
@@ -321,7 +330,7 @@ describe(`frame window`, () => {
       pending.resolve(undefined)
       await vi.waitFor(() => expect(button.disabled).toBe(false))
       expect(pane_text()).toContain(`${sparse ? `3 ps` : `25 fs`} per collected frame`)
-      await set_labeled(`Start frame`, 0)
+      await set_labeled(`Start frame`, 1)
       if (sparse) {
         button.click()
         await vi.waitFor(() => expect(state.error_msg).toContain(`uniformly spaced steps`))
@@ -381,11 +390,19 @@ describe(`frame window`, () => {
     expect(button.disabled).toBe(true)
     await set(`Start time`, `11`)
     expect(button.disabled).toBe(false)
-    await set(`Start frame`, `3`)
-    expect(button.disabled).toBe(true)
-    expect(
-      document.querySelector(`[id="${button.getAttribute(`aria-describedby`)}"]`)?.textContent,
-    ).toContain(`must be nonempty`)
+    // 1-based frames 4-3 (the time window ends at frame 3) form an empty window
+    for (const [start, reason] of [
+      [`4`, `Frame range 4–3 must be whole frames, nonempty and inside 1–4`],
+      [`1.5`, `Frame range 1.5–3 must be whole frames, nonempty and inside 1–4`],
+      [``, `Enter first and last frames inside 1–4`],
+    ]) {
+      await set(`Start frame`, start)
+      expect(button.disabled).toBe(true)
+      expect(
+        document.querySelector(`[id="${button.getAttribute(`aria-describedby`)}"]`)
+          ?.textContent,
+      ).toContain(reason)
+    }
     expect(options).toMatchObject({ start_frame: 2, end_frame: 3 })
     expect(analysis_frame_times({ ...run, properties: make_run(1).properties })).toBeNull()
     expect(analysis_frame_times({ ...run, time_step: undefined })).toBeNull()
@@ -407,7 +424,8 @@ test(`selected-frame checks cancel stale reads, explain failures, and stop on un
   await settle()
   const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
   const compute = doc_query(`.stub-controls button`, HTMLButtonElement)
-  for (const value of [`1`, `2`]) {
+  // 1-based frames 2 and 3 are indices 1 and 2, which need reads (index 0 is the preview)
+  for (const value of [`2`, `3`]) {
     set_input(start, value)
     await settle()
     expect(compute.disabled).toBe(true)
@@ -542,7 +560,7 @@ describe(`trajectory state`, () => {
     button.click()
     await settle()
     // the button is disabled while collecting, so a second run only starts programmatically
-    await set_labeled(`End frame (exclusive)`, 10)
+    await set_labeled(`End frame`, 10)
     expect(signals[0].aborted).toBe(false)
     button.disabled = false
     button.click()

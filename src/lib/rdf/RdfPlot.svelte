@@ -15,7 +15,7 @@
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
-  import type { Snippet } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
   import {
     calculate_all_pair_rdfs,
@@ -93,8 +93,10 @@
     },
   })
 
-  // Computed entries keep the structure they came from, for the atoms behind a hover
-  const entries = $derived.by((): (RdfEntry & { structure?: Crystal })[] => {
+  // Computed entries keep the structure they came from, for the atoms behind a hover. A
+  // structure the neighbour search rejects is reported, and the others still plot.
+  type ComputedEntry = RdfEntry & { structure?: Crystal }
+  const computed = $derived.by((): { entries: ComputedEntry[]; failures: string[] } => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
       ...label_structures(structures),
@@ -104,19 +106,34 @@
       return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
     })
 
-    const computed = struct_list.flatMap(({ struct, label }) => {
+    const failures: string[] = []
+    const curves = struct_list.flatMap(({ struct, label }) => {
       const options = { cutoff, n_bins, pbc }
-      if (mode === `full`)
-        return [{ label, pattern: calculate_rdf(struct, options), structure: struct }]
-      return calculate_all_pair_rdfs(struct, options).map((pair) => ({
-        label: pair.element_pair?.join(`-`) ?? label,
-        legend_group: label, // Group by structure name for multi-structure plots
-        pattern: pair,
-        structure: struct,
-      }))
+      try {
+        if (mode === `full`)
+          return [{ label, pattern: calculate_rdf(struct, options), structure: struct }]
+        return calculate_all_pair_rdfs(struct, options).map((pair) => ({
+          label: pair.element_pair?.join(`-`) ?? label,
+          legend_group: label, // Group by structure name for multi-structure plots
+          pattern: pair,
+          structure: struct,
+        }))
+      } catch (exc) {
+        failures.push(`${label}: ${to_error(exc).message}`)
+        return []
+      }
     })
     // Explicitly supplied patterns come first, in the order they were given
-    return [...(patterns ? [patterns].flat() : []), ...computed]
+    return { entries: [...(patterns ? [patterns].flat() : []), ...curves], failures }
+  })
+  const entries = $derived(computed.entries)
+  // writing a bindable prop from inside the $derived would be state_unsafe_mutation. The last
+  // failure report clears once its structure is gone, but never a file-drop error.
+  let failure_msg: string | undefined
+  $effect(() => {
+    const msg = computed.failures.join(`; `) || undefined
+    if (msg || untrack(() => error_msg) === failure_msg) error_msg = msg
+    failure_msg = msg
   })
 
   // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)

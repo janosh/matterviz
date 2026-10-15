@@ -6,7 +6,7 @@ const volumetric_file_modules = import.meta.glob(`#site/isosurfaces/*.gz`, {
   query: `?url`,
 })
 
-export interface VolumetricFileInfo extends FileInfo {
+interface VolumetricFileInfo extends FileInfo {
   description: string
 }
 

@@ -316,6 +316,14 @@ describe(`XDATCAR`, () => {
     await expect(open(content, `XDATCAR`)).rejects.toThrow(error)
   })
 
+  // the smallest complete XDATCAR (1 ion, 1 frame) is 9 lines, with or without a final newline
+  it.each([``, `\n`])(`opens a minimal XDATCAR ending in %j`, async (tail) => {
+    const content = `${xdatcar(`Si\n1`, [config(1, `0.1 0.2 0.3`)])}${tail}`
+    expect(FORMAT_PATTERNS.vasp(content)).toBe(true)
+    const { frame_count, preview } = await open(content)
+    expect([frame_count, elements_of(preview)]).toEqual([1, [`Si`]])
+  })
+
   it.each([
     [`2.0 ! scale`, [10, 10, 10]],
     [`2 1 3`, [10, 5, 15]],
@@ -367,7 +375,7 @@ describe(`XDATCAR`, () => {
     expect((await materialize_frame_result(indexed.read_frame(2))).step).toBe(3)
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
-    expect(indexed.warnings).toEqual([`Skipping plot data of frame 1: ${error}`])
+    expect(indexed.warnings).toEqual([`Skipping plot data of frame 2: ${error}`])
   })
 })
 
@@ -928,7 +936,7 @@ describe(`LAMMPS`, () => {
     [`an interior frame missing BOX BOUNDS`, `${frame_0}\nITEM: TIMESTEP\n1\nITEM: NUMBER OF ATOMS\n1\n${lammps_frame(`id type x y z`, [`1 1 2 0 0`], { timestep: 2 })}`,
       `LAMMPS frame at timestep 1 is missing "ITEM: BOX BOUNDS" before line`],
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
-      `LAMMPS timestep 0 at frame 1 must be greater than 1 at frame 0`],
+      `LAMMPS timestep 0 at frame 2 must be greater than 1 at frame 1`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {
     // the indexed open's scan makes every check the eager parse does
     for (const index_above_bytes of [Infinity, 0])
@@ -982,10 +990,10 @@ describe(`LAMMPS`, () => {
     ])
     expect(run.warnings).toEqual([])
     await expect(run.collect_positions?.()).rejects.toThrow(
-      `Atom identity changed at frame 2: site 1 had atom ID 2 in the first frame but 3 here`,
+      `Atom identity changed at frame 3: site 2 had atom ID 2 in the first frame but 3 here`,
     )
     await expect(run.collect_positions?.({ frame_stride: 3 })).rejects.toThrow(
-      `Atom count changed at frame 3: expected 2 atoms, got 3`,
+      `Atom count changed at frame 4: expected 2 atoms, got 3`,
     )
   })
 
@@ -1129,8 +1137,14 @@ ITEM: ATOMS id type ${columns}\n1 1 ${coordinates}`
         .preview
       expect(structure.sites[0].xyz).toEqual([6.75, -1.875, 15])
       expect(metadata?.coords_unwrapped).toBe(true)
+      const bad_line = `1 1 ${values.replace(/ 2$/, ` 1.5`)}`
+      await expect(open(`${head}\n${bad_line}`, `img.lammpstrj`)).rejects.toThrow(
+        `non-integer image flags`,
+      )
+      // an indexed open makes the same check on a later frame it does not decode yet
+      const two_frames = `${head}\n1 1 ${values}\n${head.replace(`TIMESTEP\n0`, `TIMESTEP\n1`)}\n${bad_line}`
       await expect(
-        open(`${head}\n1 1 ${values.replace(/ 2$/, ` 1.5`)}`, `img.lammpstrj`),
+        open(two_frames, `img.lammpstrj`, { index_above_bytes: 0 }),
       ).rejects.toThrow(`non-integer image flags`)
     })
   })
@@ -1374,7 +1388,7 @@ describe(`XYZ`, () => {
     const run = await open(`${frame}\n${frame}\n${frame}`, `pbc.extxyz`)
     expect(lattice_of(run.preview).pbc).toEqual(expected)
     expect(run.warnings).toEqual(
-      warns ? [`Invalid EXTXYZ pbc (first seen in frame 0 (line 1)); defaulting to fully periodic [T, T, T]`] : [],
+      warns ? [`Invalid EXTXYZ pbc (first seen in frame 1 (line 1)); defaulting to fully periodic [T, T, T]`] : [],
     )
   })
 
@@ -1499,20 +1513,20 @@ describe(`XYZ`, () => {
       [`Fe`, `Si`, `O`],
     ])
     expect(run.warnings).toEqual([
-      `Skipping XYZ atom with unknown element symbol "X" in frame 0 (line 1) at line 5`,
-      `Skipping XYZ atom with unknown element symbol "X" in frame 1 (line 7) at line 11`,
+      `Skipping XYZ atom with unknown element symbol "X" in frame 1 (line 1) at line 5`,
+      `Skipping XYZ atom with unknown element symbol "X" in frame 2 (line 7) at line 11`,
     ])
   })
 
-  // Frame 1 starts at line 7 (frame 0 is lines 1-6); its 4th atom is line 12. A frame 2
+  // Frame 2 starts at line 7 (frame 1 is lines 1-6); its 4th atom is line 12. A frame 3
   // follows so the bad line cannot be mistaken for a torn tail.
   // oxfmt-ignore
   it.each([
-    [`a short atom line`, four_atoms(`H 1 0`), `XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
-    [`a non-numeric coordinate`, four_atoms(`H 1 abc 0`), `XYZ frame 1 (line 7) line 12 has non-numeric coordinates: "H 1 abc 0"`],
-    [`parseFloat-style trailing junk`, four_atoms(`H 1.0abc 0 0`), `XYZ frame 1 (line 7) line 12 has non-numeric coordinates: "H 1.0abc 0 0"`],
+    [`a short atom line`, four_atoms(`H 1 0`), `XYZ frame 2 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
+    [`a non-numeric coordinate`, four_atoms(`H 1 abc 0`), `XYZ frame 2 (line 7) line 12 has non-numeric coordinates: "H 1 abc 0"`],
+    [`parseFloat-style trailing junk`, four_atoms(`H 1.0abc 0 0`), `XYZ frame 2 (line 7) line 12 has non-numeric coordinates: "H 1.0abc 0 0"`],
     [`no recognised element`, [`Xx 0 0 0`, `Xx 1 0 0`],
-      `XYZ frame 1 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
+      `XYZ frame 2 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
   ])(`rejects a frame with %s, naming frame and line`, async (_label, bad_atoms, error) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(bad_atoms), xyz_frame(four_atoms())].join(`\n`)
     await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)
@@ -1523,19 +1537,19 @@ describe(`XYZ`, () => {
   // or a half-written last atom line.
   // oxfmt-ignore
   it.each([
-    [`missing atom lines`, `4\ncomment\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
-    [`a missing comment line`, `4`, `Dropping truncated final XYZ frame 2 (line 13): 0 of 4 atom lines`],
-    [`a half-written last atom line`, xyz_frame(four_atoms(`H 1 0`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 0"`],
+    [`missing atom lines`, `4\ncomment\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 3 (line 13): 2 of 4 atom lines`],
+    [`a missing comment line`, `4`, `Dropping truncated final XYZ frame 3 (line 13): 0 of 4 atom lines`],
+    [`a half-written last atom line`, xyz_frame(four_atoms(`H 1 0`)), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 0"`],
     // the half-written line is one the frame scan samples (3rd atom line): it used to reject the
     // header outright, so the torn frame vanished without a warning
-    [`a half-written third atom line in a 3-atom frame`, `3\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 2 (line 13): partial atom line 17 "H 0 1"`],
-    [`a missing atom line after a half-written third`, `4\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 2 (line 13): 3 of 4 atom lines`],
-    [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 2 (line 13): partial atom line 18 "H 1 1 1.2e"`],
+    [`a half-written third atom line in a 3-atom frame`, `3\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): partial atom line 17 "H 0 1"`],
+    [`a missing atom line after a half-written third`, `4\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): 3 of 4 atom lines`],
+    [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 1 1.2e"`],
     // truncation wins over a corrupt header: the header of a frame cut short is never decoded
-    [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
+    [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 3 (line 13): 2 of 4 atom lines`],
     // the warning names the frame's own count line, not a numeric comment line inside it
-    [`missing atom lines under a numeric comment`, `4\n3\nH 0 0 0\nH 1 0 0\nH 0 1 0`, `Dropping truncated final XYZ frame 2 (line 13): 3 of 4 atom lines`],
-    [`missing atom lines, with CRLF line endings`, `4\r\ncomment\r\nH 0 0 0\r\nH 1 0 0`, `Dropping truncated final XYZ frame 2 (line 13): 2 of 4 atom lines`],
+    [`missing atom lines under a numeric comment`, `4\n3\nH 0 0 0\nH 1 0 0\nH 0 1 0`, `Dropping truncated final XYZ frame 3 (line 13): 3 of 4 atom lines`],
+    [`missing atom lines, with CRLF line endings`, `4\r\ncomment\r\nH 0 0 0\r\nH 1 0 0`, `Dropping truncated final XYZ frame 3 (line 13): 2 of 4 atom lines`],
   ])(`drops a final frame with %s in both the eager parser and the indexed run`, async (_label, tail, warning) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
     const eager = await open(content, `appending.xyz`)
@@ -1593,14 +1607,14 @@ describe(`XYZ`, () => {
   // oxfmt-ignore
   it.each([
     [`a corrupt Lattice`, xyz_frame(four_atoms(), `Lattice="1 0 0 0 1 0"`), `Invalid EXTXYZ Lattice: expected 9 finite numbers, got "1 0 0 0 1 0"`],
-    [`no recognised element`, xyz_frame([`Xx 0 0 0`, `Xx 1 0 0`]), `XYZ frame 1 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
-    [`a short atom line before the last`, xyz_frame([...four_atoms(`H 1 0`), `H 1 1 1`]), `XYZ frame 1 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
+    [`no recognised element`, xyz_frame([`Xx 0 0 0`, `Xx 1 0 0`]), `XYZ frame 2 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
+    [`a short atom line before the last`, xyz_frame([...four_atoms(`H 1 0`), `H 1 1 1`]), `XYZ frame 2 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
   ])(`throws for a complete final frame with %s in both readers`, async (_label, last_frame, error) => {
     const content = [xyz_frame(four_atoms()), last_frame].join(`\n`)
     await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)
     const indexed = await open(content, `corrupt.xyz`, { index_above_bytes: 0 })
     expect(indexed.frame_count).toBe(2)
-    expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error.replace(`frame 1 (line 7)`, `indexed frame 1`))
+    expect(() => materialize_frame_result(indexed.read_frame(1))).toThrow(error.replace(`frame 2 (line 7)`, `indexed frame 2`))
     await indexed.properties.done
     expect(indexed.warnings).not.toContainEqual(expect.stringContaining(`truncated`))
   })
@@ -1696,7 +1710,7 @@ describe(`ASE`, () => {
     await run.properties.done
     await materialize_frame_result(run.read_frame(1))
     const expected = [0, 1].map(
-      (idx) => `Ignoring ASE calculator forces of frame ${idx}: ${detail}`,
+      (idx) => `Ignoring ASE calculator forces of frame ${idx + 1}: ${detail}`,
     )
     expect(warnings).toEqual(expected)
     expect(run.warnings).toEqual(expected)
@@ -1752,7 +1766,7 @@ describe(`ASE`, () => {
     view.setBigInt64(Number(view.getBigInt64(48 + 4 * 8, true)), 2n ** 40n, true)
     const corrupt = open_ase_frames(buffer, no_warnings)
     expect(summary(corrupt, 6)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
-    expect(() => corrupt.decode(4)).toThrow(`frame 4 of 7`)
+    expect(() => corrupt.decode(4)).toThrow(`frame 5 of 7`)
   })
 
   it.each([4, 70_000])(
@@ -1895,7 +1909,7 @@ describe(`ASE`, () => {
       const frame_1_offset = Number(view.getBigInt64(offsets_pos + 8, true))
       corrupt(view, frame_1_offset)
       const error = new RegExp(
-        `^ASE trajectory frame 1 of 2 \\(byte offset ${frame_1_offset}\\): `,
+        `^ASE trajectory frame 2 of 2 \\(byte offset ${frame_1_offset}\\): `,
       )
 
       expect(() => parse_ase_trajectory(buffer, no_warnings)).toThrow(error)
@@ -1909,7 +1923,7 @@ describe(`ASE`, () => {
       await indexed.properties.done
       expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0])
       expect(indexed.warnings).toEqual([
-        expect.stringMatching(/^Skipping plot data of frame 1/),
+        expect.stringMatching(/^Skipping plot data of frame 2/),
       ])
     },
   )
@@ -2026,7 +2040,7 @@ describe(`JSON`, () => {
       for (const { metadata } of [good, bad]) expect(metadata).not.toHaveProperty(`forces`)
       expect(bad.metadata).not.toHaveProperty(`force_max`)
       expect(bad.structure.sites[0].properties).not.toHaveProperty(`force`)
-      expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 1: ${reason}`])
+      expect(run.warnings).toEqual([`Ignoring pymatgen forces of frame 2: ${reason}`])
     },
   )
 
@@ -2069,9 +2083,9 @@ describe(`JSON`, () => {
     [null, /Invalid data format/],
     [{}, /Unrecognized trajectory format/],
     [[], /at least one frame/],
-    [{ frames: [{ step: 0 }] }, /Invalid structure in trajectory frame 0/],
+    [{ frames: [{ step: 0 }] }, /Invalid structure in trajectory frame 1/],
     [{ sites: [] }, /Invalid structure in single structure/],
-    [{ frames: [{ structure: { sites: [{ ...h_site, xyz: [Number.NaN, 0, 0] }] }, step: 0 }] }, `Frame 0 atom 0 has invalid Cartesian coordinates`],
+    [{ frames: [{ structure: { sites: [{ ...h_site, xyz: [Number.NaN, 0, 0] }] }, step: 0 }] }, `Frame 1 atom 1 has invalid Cartesian coordinates`],
   ])(`trajectory_from_json rejects %j`, (value, error) => {
     expect(() => trajectory_from_json(value)).toThrow(error)
   })
@@ -2093,8 +2107,9 @@ describe(`unsupported format messages`, () => {
   it.each([
     [`test.nc`, ``, `NetCDF`],
     [`test.dcd`, ``, `DCD`],
-    [`test.lammpstrj.bz2`, ``, `BZ2 compression not supported`],
-    [`trajectory.xyz.xz`, ``, `XZ compression not supported`],
+    [`test.lammpstrj.bz2`, ``, `BZ2 decompression is not supported`],
+    [`trajectory.xyz.xz`, ``, `XZ decompression is not supported`],
+    [`movie.xyz.Z`, ``, `LZW decompression is not supported`],
     [`data.json.zip`, ``, null], // single-file ZIPs inflate in the browser
     [`unknown.bin`, String.fromCharCode(0, 1, 2, 3), `Binary format not supported`],
     [`md.dump`, `ITEM: TIMESTEP\n0\n`, null],
@@ -2982,12 +2997,12 @@ describe(`HDF5`, () => {
       /atomic numbers have shape \[2, 2\].*\[3, 2\]/],
     [`partial per-frame cells`, [three_frames, [`atomic_numbers`, two_gold_atoms, [2]], [`cell`, [1, 2].flatMap(() => cubic_cell), [2, 3, 3]]],
       /cells have shape \[2, 3, 3\].*\[3, 3, 3\]/],
-    [`a torn tail with non-zero positions`, torn_tail(frame_positions, [0, 0]), /Invalid HDF5 trajectory frame 1/],
+    [`a torn tail with non-zero positions`, torn_tail(frame_positions, [0, 0]), /Invalid HDF5 trajectory frame 2/],
     [`a torn tail with non-finite positions`, torn_tail([Number.NaN, 0, 0, 0, 0, 0], [0, 0]), /dataset \/positions hyperslab must contain finite numbers/],
-    [`a torn tail with non-zero atomic numbers`, torn_tail(zero_positions, two_gold_atoms, zero_cell), /Invalid HDF5 trajectory frame 1/],
-    [`a torn tail with non-zero cells`, torn_tail(zero_positions, [0, 0], cubic_cell), /Invalid HDF5 trajectory frame 1/],
+    [`a torn tail with non-zero atomic numbers`, torn_tail(zero_positions, two_gold_atoms, zero_cell), /Invalid HDF5 trajectory frame 2/],
+    [`a torn tail with non-zero cells`, torn_tail(zero_positions, [0, 0], cubic_cell), /Invalid HDF5 trajectory frame 2/],
     // Interior corruption must not truncate valid later data
-    [`a corrupt interior frame`, [three_frames, [`atomic_numbers`, [...two_gold_atoms, 0, 0, ...two_gold_atoms], [3, 2]]], /Invalid HDF5 trajectory frame 1/],
+    [`a corrupt interior frame`, [three_frames, [`atomic_numbers`, [...two_gold_atoms, 0, 0, ...two_gold_atoms], [3, 2]]], /Invalid HDF5 trajectory frame 2/],
     [`an unparsable first frame`, [[`positions`, frame_positions, [1, 2, 3]], [`atomic_numbers`, [0, 0], [1, 2]]], /Unknown atomic number/],
     [`missing atomic numbers`, [[`positions`, frame_positions, [1, 2, 3]]], /Missing required dataset\(s\) in TorchSim HDF5 group \/: .*atomic numbers \(atomic_numbers/],
   ])(`rejects %s`, async (_label, datasets, expected) => {

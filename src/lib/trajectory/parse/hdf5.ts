@@ -1,3 +1,4 @@
+import { display_idx } from '#lib/labels.js'
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
 import type { Matrix3x3 } from '#lib/math.js'
@@ -16,6 +17,7 @@ import type * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
+  preview_atom_stride,
   is_supported_trajectory_signal_shape,
   values_per_sample,
 } from '#lib/trajectory/helpers.js'
@@ -607,7 +609,7 @@ const parse_torch_sim_datasets = (
     (valid_frame_count === 0 || last_non_zero_frame_from(valid_frame_count) !== null)
   ) {
     throw new Error(
-      `Invalid HDF5 trajectory frame ${valid_frame_count} from ${position_path}: ${invalid_dynamic.reason}`,
+      `Invalid HDF5 trajectory frame ${display_idx(valid_frame_count)} from ${position_path}: ${invalid_dynamic.reason}`,
     )
   }
   const dropped_steps = n_frames - valid_frame_count
@@ -714,7 +716,7 @@ const parse_torch_sim_datasets = (
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {
     if (!is_valid_index(frame_idx, valid_frame_count)) {
       throw new Error(
-        `TorchSim HDF5 frame ${frame_idx} is outside 0..${valid_frame_count - 1}`,
+        `TorchSim HDF5 frame index ${frame_idx} is outside 0..${valid_frame_count - 1}`,
       )
     }
     // The full display frame already needs all atoms. One hyperslab avoids decompressing
@@ -783,7 +785,7 @@ const parse_torch_sim_datasets = (
     signal?.throwIfAborted()
     const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
     if (!is_valid_index(frame_idx, valid_frame_count))
-      throw new Error(`Invalid HDF5 frame ${frame_idx}`)
+      throw new Error(`Invalid HDF5 frame ${display_idx(frame_idx)}`)
     const { start, count } = atom_range(n_atoms, options)
     const atom_slice: [number, number] = [start, start + count]
     const channel = (key: string, width: number): Float64Array => {
@@ -830,7 +832,7 @@ const parse_torch_sim_datasets = (
             ? element_by_symbol.get(elements[atom_idx])?.atomic_mass
             : atom_masses?.[atom_idx]
         if (mass === undefined || !Number.isFinite(mass) || mass <= 0)
-          throw new Error(`Missing ${mass_source} mass at atom ${atom_idx}`)
+          throw new Error(`Missing ${mass_source} mass at atom ${display_idx(atom_idx)}`)
         return mass
       })
     if (selection_key)
@@ -1004,7 +1006,7 @@ const parse_torch_sim_datasets = (
   }
   let preview
   if (n_atoms > ATOM_BATCH_SIZE) {
-    const stride = Math.ceil(n_atoms / 2000)
+    const stride = preview_atom_stride(n_atoms)
     preview = create_sampled_frame(
       read_position_slice(0, 0, n_atoms, stride),
       elements,

@@ -207,10 +207,7 @@
     untrack(() => ({ duration: 400, easing: cubicInOut, ...tween })),
     {
       is_same: (prev, next) =>
-        prev.x0 === next.x0 &&
-        prev.x1 === next.x1 &&
-        prev.y0 === next.y0 &&
-        prev.n_rings === next.n_rings,
+        ([`x0`, `x1`, `y0`, `n_rings`] as const).every((key) => prev[key] === next[key]),
     },
   )
 
@@ -353,19 +350,13 @@
     screen: ScreenArc,
   ): { transform: string; text: string; font_scale: number } | null {
     const { variants } = chart_state.node_infos[screen.arc.node_idx]
+    const { line_height } = chart_state.label_font
     // Slots are computed once per scale (not per variant); the loop leaves the
     // smallest scale's slots behind for the ellipsis fallback
     let font_scale = 1
     let slots: { room: number; transform: string }[] = []
     for (font_scale of LABEL_FONT_SCALES) {
-      slots = arc_label_slots(
-        screen,
-        shape,
-        label_rotation,
-        radius,
-        font_scale,
-        chart_state.label_font.line_height,
-      )
+      slots = arc_label_slots(screen, shape, label_rotation, radius, font_scale, line_height)
       for (const { text, width: text_w } of variants) {
         const fit = slots.find(({ room }) => text_w * font_scale <= room)
         if (fit) return { transform: fit.transform, text, font_scale }
@@ -386,8 +377,7 @@
   // Where the center circle takes you on click (parent of the current zoom root)
   let zoom_out_label = $derived.by(() => {
     const parent = chart_state.breadcrumb_arcs.at(-2)
-    if (!parent) return ``
-    return parent.depth === 0 ? `full chart` : node_display_name(parent)
+    return !parent ? `` : parent.depth === 0 ? `full chart` : node_display_name(parent)
   })
 </script>
 
@@ -550,7 +540,7 @@
               onclick={chart_state.zoom_out}
             >
               {#if center_label}
-                <tspan x="0" dy={chart_state.zoom_root.value ? `-0.3em` : `0.35em`}>
+                <tspan x="0" dy="-0.3em">
                   {center_label}
                 </tspan>
               {/if}

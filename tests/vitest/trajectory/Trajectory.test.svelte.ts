@@ -685,7 +685,8 @@ describe(`controls`, () => {
     await tick()
     expect(pane.querySelector(`.hotspot-map-status`)).toBe(heat_status)
     expect(target.querySelector(`.structure`)).toBe(structure)
-    expect(heat_status?.textContent).toContain(`Frame 1 preview`)
+    // preview of frame index 1, numbered from 1 like the step input
+    expect(heat_status?.textContent).toContain(`Frame 2 preview`)
     request?.on_progress?.({
       current: 1.8,
       completed: 1,
@@ -792,11 +793,13 @@ describe(`controls`, () => {
     expect(doc_query(`.custom-controls span`).textContent).toBe(`movie.extxyz 2/3`)
   })
 
+  // Labels number frames from 1 like the step input: frame 1, then round numbers up to N.
+  // Explicit arrays are 0-based indices.
   test.each([
-    [`count`, 3, [`0`, `5`, `10`], 11],
-    [`count above frames`, 50, [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`], 11],
-    [`spacing`, -4, [`0`, `4`, `8`, `10`], 11],
-    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`0`, `7`, `10`], 11],
+    [`count`, 3, [`1`, `5`, `10`], 11],
+    [`count above frames`, 50, [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`], 11],
+    [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
+    [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
     [`disabled`, 0, [], 11],
     [`single frame`, 5, [], 1],
   ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {
@@ -812,7 +815,7 @@ describe(`controls`, () => {
     const ticks = [...target.querySelectorAll<HTMLElement>(`.step-tick`)].map(
       (element) => element.style.left,
     )
-    expect(ticks).toEqual(expected.map((label) => `${1.5 + (Number(label) / 10) * 98}%`))
+    expect(ticks).toEqual(expected.map((label) => `${1.5 + ((Number(label) - 1) / 10) * 98}%`))
   })
 })
 
@@ -1152,7 +1155,7 @@ describe(`banners`, () => {
       props.current_step_idx = 1
       await vi.waitFor(() =>
         expect(target.querySelector(`.status-message.error`)?.textContent).toContain(
-          `Failed to load frame 1: disk on fire`,
+          `Failed to load frame 2: disk on fire`,
         ),
       )
       // Back on the preview frame (served synchronously) the banner goes away
@@ -1162,7 +1165,7 @@ describe(`banners`, () => {
       props.current_step_idx = 2
       await vi.waitFor(() =>
         expect(target.querySelector(`.status-message.error`)?.textContent).toContain(
-          `frame 2`,
+          `frame 3`,
         ),
       )
       doc_query<HTMLButtonElement>(`.status-message.error button`).click()
@@ -1242,17 +1245,19 @@ describe(`panes`, () => {
       `range`,
     ])
     const [first_number, first_slider, last_number, last_slider] = frame_inputs
-    set_input(first_number, `1`)
+    // numbered 1..N like the step input
+    expect([first_number.value, first_number.min, last_number.value]).toEqual([`1`, `1`, `3`])
+    set_input(first_number, `2`)
     await tick()
-    expect(first_slider.value).toBe(`1`)
-    expect(last_number.min).toBe(`1`)
-    set_input(last_slider, `1`)
+    expect(first_slider.value).toBe(`2`)
+    expect(last_number.min).toBe(`2`)
+    set_input(last_slider, `2`)
     await tick()
-    expect(last_number.value).toBe(`1`)
+    expect(last_number.value).toBe(`2`)
     last_number.value = ``
     last_number.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(last_number.value).toBe(`1`)
+    expect(last_number.value).toBe(`2`)
     planner.style.left = `123px`
     planner.style.top = `234px`
     const content = doc_query(`.trajectory > .content-area`)
@@ -1482,6 +1487,12 @@ describe(`events`, () => {
     await tick()
     expect(props.fps).toBe(0)
     expect(doc_query<HTMLInputElement>(`.fps-section input`).value).toBe(`0`)
+    // an fps already on the grid is no change, so mounting with it reports nothing
+    const on_grid_change = vi.fn<(data: TrajHandlerData) => void>()
+    const on_grid = $state(default_props({ fps: 10, on_frame_rate_change: on_grid_change }))
+    mount_trajectory(on_grid)
+    await tick()
+    expect(on_grid_change).not.toHaveBeenCalled()
   })
 
   test(`on_fullscreen_change fires with the toggled state`, async () => {
@@ -1539,7 +1550,18 @@ describe(`bindings`, () => {
     expect(on_step_change).toHaveBeenCalledWith(
       expect.objectContaining({ step_idx: expected, frame_count: 3 }),
     )
-    expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(String(expected))
+    // the step input and slider announce the 1-based position; the binding stays 0-based
+    const step_input = doc_query<HTMLInputElement>(`.step-input`)
+    expect([step_input.value, step_input.min, step_input.max]).toEqual([
+      String(expected + 1),
+      `1`,
+      `3`,
+    ])
+    expect(doc_query(`.step-slider`).getAttribute(`aria-valuetext`)).toBe(
+      `${expected + 1} of 3`,
+    )
+    set_input(step_input, `1`)
+    expect(props.current_step_idx).toBe(0)
   })
 
   test(`a run swap keeps the step index but clamps it to the new run`, async () => {
@@ -1591,7 +1613,7 @@ describe(`bindings`, () => {
       expect(props.current_step_idx).toBe(2)
       expect(on_step_change).toHaveBeenLastCalledWith({ step_idx: 2, frame_count: 3 })
       expect(target.querySelector<HTMLInputElement>(`.step-input`)?.value).toBe(
-        show_controls === `never` ? undefined : `2`,
+        show_controls === `never` ? undefined : `3`,
       )
       expect(controller?.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
       expect(controller?.set_step(99)).toBe(2)

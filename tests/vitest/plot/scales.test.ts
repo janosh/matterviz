@@ -456,6 +456,9 @@ describe(`scales`, () => {
       // under three decades with a generous count: 1-2-5 mantissas
       { min: 1, max: 10, ticks: 8, expected: [1, 2, 5, 10] },
       { min: 1, max: 50, ticks: 8, expected: [1, 2, 5, 10, 20, 50] },
+      // decades are counted from the bounds' ratio, not their rounded-out powers of ten
+      { min: 0.5, max: 50, ticks: 10, expected: [0.5, 1, 2, 5, 10, 20, 50] },
+      { min: 2, max: 400, ticks: 8, expected: [2, 5, 10, 20, 50, 100, 200] },
       // same span, small count: powers of ten only
       { min: 1, max: 50, ticks: 5, expected: [1, 10] },
       // sub-decade domains fall back to d3 mantissa ticks inside the domain
@@ -514,9 +517,11 @@ describe(`scales`, () => {
   })
 
   describe(`generate_ticks`, () => {
-    test(`array input - uses provided array directly`, () => {
+    test(`array input is used as-is, even under an integer format`, () => {
       const scale = scaleLinear().domain([0, 100]).range([0, 500])
       expect(generate_ticks([0, 100], `linear`, [10, 30, 50], scale)).toEqual([10, 30, 50])
+      const opts = { format: `d` }
+      expect(generate_ticks([0, 2], `linear`, [0.5, 1.5], scale, opts)).toEqual([0.5, 1.5])
     })
 
     test.each([
@@ -545,108 +550,50 @@ describe(`scales`, () => {
       )
     })
 
-    test.each([
+    type Ymd = [number, number, number]
+    const weekly: Ymd[] = [1, 8, 15, 22, 29].map((day) => [2023, 0, day])
+    // oxfmt-ignore
+    test.each<{ ticks: TicksOption; start: Ymd; end: Ymd; expected: Ymd[] }>([
       // count request: d3 picks a nice interval, here monthly over 2.5 months
-      {
-        ticks: 5,
-        start: [2023, 0, 1],
-        end: [2023, 2, 15],
-        expected: [
-          [2023, 0, 1],
-          [2023, 1, 1],
-          [2023, 2, 1],
-        ],
-      },
-      {
-        ticks: `month`,
-        start: [2023, 0, 15],
-        end: [2023, 5, 10],
-        expected: [
-          [2023, 1, 1],
-          [2023, 2, 1],
-          [2023, 3, 1],
-          [2023, 4, 1],
-          [2023, 5, 1],
-        ],
-      },
-      {
-        ticks: `year`,
-        start: [2020, 5, 15],
-        end: [2025, 2, 10],
-        expected: [
-          [2021, 0, 1],
-          [2022, 0, 1],
-          [2023, 0, 1],
-          [2024, 0, 1],
-          [2025, 0, 1],
-        ],
-      },
-      {
-        ticks: `day`,
-        start: [2023, 0, 30],
-        end: [2023, 1, 3],
-        expected: [
-          [2023, 0, 30],
-          [2023, 0, 31],
-          [2023, 1, 1],
-          [2023, 1, 2],
-          [2023, 1, 3],
-        ],
-      },
+      { ticks: 5, start: [2023, 0, 1], end: [2023, 2, 15], expected: [[2023, 0, 1], [2023, 1, 1], [2023, 2, 1]] },
+      { ticks: `month`, start: [2023, 0, 15], end: [2023, 5, 10], expected: [1, 2, 3, 4, 5].map((month) => [2023, month, 1]) },
+      { ticks: `year`, start: [2020, 5, 15], end: [2025, 2, 10], expected: [2021, 2022, 2023, 2024, 2025].map((year) => [year, 0, 1]) },
+      { ticks: `day`, start: [2023, 0, 30], end: [2023, 1, 3], expected: [[2023, 0, 30], [2023, 0, 31], [2023, 1, 1], [2023, 1, 2], [2023, 1, 3]] },
       // negative number: interval in days
-      {
-        ticks: -7,
-        start: [2023, 0, 1],
-        end: [2023, 0, 29],
-        expected: [
-          [2023, 0, 1],
-          [2023, 0, 8],
-          [2023, 0, 15],
-          [2023, 0, 22],
-          [2023, 0, 29],
-        ],
-      },
+      { ticks: -7, start: [2023, 0, 1], end: [2023, 0, 29], expected: weekly },
       // reversed domain: the interval count must come from the sorted span, not domain[1]-domain[0]
-      {
-        ticks: -7,
-        start: [2023, 0, 29],
-        end: [2023, 0, 1],
-        expected: [
-          [2023, 0, 1],
-          [2023, 0, 8],
-          [2023, 0, 15],
-          [2023, 0, 22],
-          [2023, 0, 29],
-        ],
-      },
+      { ticks: -7, start: [2023, 0, 29], end: [2023, 0, 1], expected: weekly },
     ])(`time ticks for ticks=$ticks from $start`, ({ ticks, start, end, expected }) => {
-      const domain: Vec2 = [
-        new Date(...(start as [number, number, number])).getTime(),
-        new Date(...(end as [number, number, number])).getTime(),
-      ]
-      const scale = scaleTime()
-        .domain([new Date(domain[0]), new Date(domain[1])])
-        .range([0, 500])
+      const domain: Vec2 = [new Date(...start).getTime(), new Date(...end).getTime()]
+      const scale = scaleTime().domain(domain).range([0, 500])
       const result = generate_ticks(domain, `time`, ticks, scale)
       expect(result.map((tick) => new Date(tick))).toEqual(
-        expected.map((parts) => new Date(...(parts as [number, number, number]))),
+        expected.map((parts) => new Date(...parts)),
       )
     })
 
+    const fine_steps = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
     // oxfmt-ignore
-    test.each<[string, Vec2, ScaleType, number | undefined, number | undefined, number[]]>([
+    test.each<[string, Vec2, ScaleType, number | undefined, { default_count?: number; format?: string } | undefined, number[]]>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
       [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
       // reversed (descending) domains are first-class: an interval must still emit ticks
       [`interval on a descending domain`, [10, 0], `linear`, -2, undefined, [0, 2, 4, 6, 8, 10]],
-      [`explicit count wins over default_count`, [0, 100], `linear`, 5, 2, [0, 20, 40, 60, 80, 100]],
-      [`default_count applies without a ticks option`, [0, 100], `linear`, undefined, 2, [0, 50, 100]],
+      [`explicit count wins over default_count`, [0, 100], `linear`, 5, { default_count: 2 }, [0, 20, 40, 60, 80, 100]],
+      [`default_count applies without a ticks option`, [0, 100], `linear`, undefined, { default_count: 2 }, [0, 50, 100]],
+      // an integer format rounds every label, so generated half steps would read `0, 1, 1, 2, 2`
+      [`integer format keeps distinct integer ticks`, [0, 2], `linear`, 10, { format: `d` }, [0, 1, 2]],
+      [`grouped integer format`, [0, 1], `linear`, 10, { format: `,d` }, [0, 1]],
+      [`integer format on a descending domain`, [2, 0], `linear`, 10, { format: `d` }, [0, 1, 2]],
+      [`integer format with no integer to label`, [0.2, 0.8], `linear`, 10, { format: `d` }, []],
+      [`decimal format keeps fine steps`, [0, 2], `linear`, 10, { format: `.1f` }, fine_steps],
+      [`time-style %d is not an integer format`, [0, 2], `linear`, 10, { format: `%d` }, fine_steps],
       [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],
       [`degenerate linear domain`, [0, 0], `linear`, 5, undefined, [0]],
       [`arcsinh mixed range is symmetric around 0`, [-1000, 1000], `arcsinh`, 10, undefined, [-1000, -100, -10, -1, 0, 1, 10, 100, 1000]],
-    ])(`%s`, (_name, domain, type, ticks, default_count, expected) => {
+    ])(`%s`, (_name, domain, type, ticks, opts, expected) => {
       const range: Vec2 = [0, 500]
       const scale =
         type === `log`
@@ -654,7 +601,6 @@ describe(`scales`, () => {
           : type === `arcsinh`
             ? scale_arcsinh(1).domain(domain).range(range)
             : scaleLinear().domain(domain).range(range)
-      const opts = default_count === undefined ? undefined : { default_count }
       const result = generate_ticks(domain, type, ticks, scale, opts)
       expect(result.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
@@ -752,33 +698,23 @@ describe(`scales`, () => {
     })
 
     // raw domain extremes must not become ticks (long labels like 1325.8239811994677)
-    test(`emits clean round ticks for non-round domain (no raw endpoints)`, () => {
-      const min = -1515.343730040983
-      const max = 1325.8239811994677
+    test(`emits clean round ticks for a non-round domain, at any count`, () => {
+      const [min, max] = [-1515.343730040983, 1325.8239811994677]
       const ticks = generate_arcsinh_ticks(min, max, 10, 10)
-      expect(ticks).not.toContain(min)
-      expect(ticks).not.toContain(max)
-      // no tick renders as a long unrounded float
       for (const tick of ticks) expect(`${tick}`.length).toBeLessThanOrEqual(6)
       // still covers the range with powers of 10 on both sides of zero
-      expect(ticks.some((tick) => tick >= 1000)).toBe(true)
-      expect(ticks.some((tick) => tick <= -1000)).toBe(true)
+      expect(Math.max(...ticks)).toBeGreaterThanOrEqual(1000)
+      expect(Math.min(...ticks)).toBeLessThanOrEqual(-1000)
+      // a small count snaps the larger-magnitude boundary to the nearest power of 10
+      const few = generate_arcsinh_ticks(-1500, 1300, 10, 2)
+      expect(few).not.toContain(-1500)
+      expect(few).toEqual(expect.arrayContaining([-1000, 0]))
     })
 
-    test(`small tick count snaps boundary to a clean power of 10`, () => {
-      const ticks = generate_arcsinh_ticks(-1500, 1300, 10, 2)
-      expect(ticks).not.toContain(-1500)
-      expect(ticks).toContain(0)
-      expect(ticks).toContain(-1000) // larger-magnitude boundary snapped to nearest power of 10
-    })
-
+    // ±1 sit almost on 0 in arcsinh space, so their labels would overlap the zero tick
     test(`omits sub-threshold powers that would overlap the zero tick`, () => {
-      // ±1 sit almost on 0 in arcsinh space, so their labels would overlap the zero tick
       const ticks = generate_arcsinh_ticks(-1000, 1000, 10, 10)
       expect(ticks).toContain(0)
-      expect(ticks).not.toContain(1)
-      expect(ticks).not.toContain(-1)
-      // smallest non-zero tick magnitude is at least the threshold
       const min_nonzero = Math.min(...ticks.filter((tick) => tick !== 0).map(Math.abs))
       expect(min_nonzero).toBeGreaterThanOrEqual(10)
     })
@@ -857,6 +793,10 @@ describe(`scales`, () => {
       for (const color of [high, low, tiny]) expect(color).toMatch(/^#[0-9a-f]{6}$/)
       expect(high).not.toBe(low)
       expect(tiny).toBe(zero) // 1e-10 is indistinguishable from 0 in arcsinh space
+      // values around the threshold spread over distinct colors
+      const spread = create_color_scale({ type: { type: `arcsinh`, threshold: 1 } }, [0, 1000])
+      const colors = [0, 1, 10, 100, 1000].map((val) => spread(val))
+      expect(new Set(colors).size).toBe(colors.length)
     })
 
     test.each([1e-10, 1e10, 0.001, 1000])(`handles threshold=%s`, (threshold) => {
@@ -871,12 +811,6 @@ describe(`scales`, () => {
       expect(scale.domain([0, 100])).toBe(scale)
       expect(scale.domain()).toEqual([0, 100])
       expect(scale(0)).not.toBe(color_before)
-    })
-
-    test(`spreads values around the threshold over distinct colors`, () => {
-      const scale = create_color_scale({ type: { type: `arcsinh`, threshold: 1 } }, [0, 1000])
-      const colors = [0, 1, 10, 100, 1000].map((val) => scale(val))
-      expect(new Set(colors).size).toBe(colors.length)
     })
   })
 

@@ -88,7 +88,7 @@ describe(`NebPlot`, () => {
   // oxfmt-ignore
   test.each([
     [`arc_length`, `initial`, `Reaction coordinate (Å)`, `Energy relative to initial state (eV)`],
-    [`image_index`, `absolute`, `Image index`, `Energy (eV)`],
+    [`image_index`, `absolute`, `Image number`, `Energy (eV)`],
   ] as const)(`labels axes for %s mode and %s energy reference`, async (coord_mode, energy_reference, x_label, y_label) => {
     const plot = await mount_plot({
       paths: reaction_paths,
@@ -268,7 +268,7 @@ describe(`NebViewer`, () => {
     change_select(coord_select, `image_index`)
     await flush_render()
     expect(state.coord_mode).toBe(`image_index`)
-    expect(viewer.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Image index`)
+    expect(viewer.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Image number`)
 
     change_select(energy_select, `absolute`)
     await flush_render()
@@ -295,7 +295,9 @@ describe(`NebViewer`, () => {
       expect(button?.disabled).toBe(disabled)
       button?.click()
       await tick()
-      expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(${label}/7)`)
+      expect(viewer.querySelector(`.image-status`)?.textContent).toContain(
+        `image ${label} of 7`,
+      )
     },
   )
 
@@ -307,7 +309,14 @@ describe(`NebViewer`, () => {
     expect(slider?.type).toBe(`range`)
     expect(slider?.max).toBe(`6`)
     // mirrors the visible stepper caption so both convey the same position
-    expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 0 (1 of 7)`)
+    expect(slider?.getAttribute(`aria-valuetext`)).toBe(`image 1 of 7`)
+    // a generic 0-based `image k` label would contradict the position, so it is not shown
+    const images = direct_path.images.map((image, idx) => ({
+      ...image,
+      label: `image ${idx}`,
+    }))
+    const generic = await mount_viewer({ paths: { ...direct_path, images } })
+    expect(generic.querySelector(`.image-status`)?.textContent).toMatch(/^\s*image 1 of 7/)
     expect(
       viewer.querySelector(`.step-section > span[aria-label]`)?.getAttribute(`aria-label`),
     ).toBe(`7 total images`)
@@ -428,6 +437,8 @@ describe(`NebViewer`, () => {
       error_msg: undefined as string | undefined,
     })
     const viewer = await mount_viewer(bind_props({}, state))
+    // without paths there is nothing to clamp against, so the bound index is left alone
+    expect(state.active_image_idx).toBe(1)
     const drop = (files: File | File[]) => viewer.dispatchEvent(create_drop_event(files))
     const [first, second] = direct_path.images
     const path_file = (label: string, images: unknown[]) =>
@@ -457,7 +468,10 @@ describe(`NebViewer`, () => {
     )
     await vi.waitFor(() => expect(state.active_path_key).toBe(`dropped images`))
     expect(state.error_msg).toBeUndefined()
-    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(`(1/3)`)
+    // a file's own image label leads the 1-based position
+    expect(viewer.querySelector(`.image-status`)?.textContent).toContain(
+      `img-0.json: image 1 of 3`,
+    )
 
     // identical consecutive images give no path tangent: refused with its reason
     drop(path_file(`dup`, [first, first, second]))
@@ -544,10 +558,22 @@ describe(`NebViewer`, () => {
     expect(Math.abs(index - arc)).toBeLessThan(2e-3)
   })
 
-  test(`the summary follows the selected path`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths, active_path_key: `curved hop` })
-    const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
-    expect(summary).toContain(`1.14 eV`)
-    expect(summary).toContain(`Fitted saddle (natural-cubic)`)
-  })
+  // Image numbers count from 1 like the stepper; the image-number axis repeats no coordinate
+  test.each([
+    [`arc_length`, /Highest image #5 at [\d.]+ Å/],
+    [`image_index`, /Highest image #5\s+Fitted/],
+  ] as const)(
+    `the summary follows the selected path in %s mode`,
+    async (coord_mode, highest) => {
+      const viewer = await mount_viewer({
+        paths: reaction_paths,
+        active_path_key: `curved hop`,
+        coord_mode,
+      })
+      const summary = viewer.querySelector(`.barrier-summary`)?.textContent ?? ``
+      for (const text of [`1.14 eV`, `Fitted saddle (natural-cubic)`, `above image #5`])
+        expect(summary).toContain(text)
+      expect(summary).toMatch(highest)
+    },
+  )
 })

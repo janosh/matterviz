@@ -58,6 +58,10 @@ export function make_volume(
   fields: Omit<VolumetricData, `values` | `dims` | `order` | `data_range`>,
 ): VolumetricData {
   if (!fields.id?.trim()) throw new TypeError(`Volume id must be a nonempty string`)
+  // Checked first: dims [-2, -2, 2] or [2.5, 2, 2] multiply out to a plausible length
+  if (!dims.every((count) => Number.isSafeInteger(count) && count >= 0)) {
+    throw new RangeError(`Volume dims must be non-negative integers, got ${dims.join(`×`)}`)
+  }
   const expected = dims[0] * dims[1] * dims[2]
   if (values.length !== expected) {
     throw new RangeError(

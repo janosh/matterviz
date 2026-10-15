@@ -25,17 +25,15 @@ export const VELOCITY_SITE_PROPERTY = `velocity`
 // builds the series from the unwrapped positions, so wrapped ones in a cell add the unwrapped
 // copy: 3. Budgeting that path at 1 held ~1.4 GB against a 512 MB budget on a 20k-frame x
 // 1k-atom run. Striding lowers the VDOS Nyquist frequency by the same factor.
+export const vacf_buffers = (run: TrajectoryRun): number =>
+  has_velocities(run.preview) ? 2 : 1 + position_buffers(run)
+
 export const suggest_vacf_frame_stride = (
   run: TrajectoryRun,
   max_bytes?: number,
   frame_count = run.frame_count,
 ): number | null =>
-  suggest_analysis_frame_stride(
-    run,
-    max_bytes,
-    has_velocities(run.preview) ? 2 : 1 + position_buffers(run),
-    frame_count,
-  )
+  suggest_analysis_frame_stride(run, max_bytes, vacf_buffers(run), frame_count)
 
 // A frame carries velocities or it does not; write_frame_velocities enforces that
 // all-or-nothing rule, so site 0 speaks for the whole frame.

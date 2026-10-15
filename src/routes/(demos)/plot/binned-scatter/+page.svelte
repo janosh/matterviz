@@ -218,8 +218,7 @@
   popup on material clicks, and per-family marginal distributions (top histogram + right KDE)
   that track zoom/pan. Interaction matches <code>ScatterPlot</code>: drag a rectangle to zoom,
   shift-drag (or shift-scroll when focused) to pan, double-click to reset the view. Clicking a
-  density bin zooms into it by default (<code>density.bin_click</code> controls this); the axis
-  ranges are written back to the bindable <code>x_axis</code>/<code>y_axis</code> props.
+  density bin zooms into it by default (<code>density.bin_click</code> controls this).
 </p>
 
 <label class="render-mode">

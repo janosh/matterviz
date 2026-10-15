@@ -265,7 +265,7 @@ describe(`reference structures`, () => {
     ])
     await expect(
       analyze_crystal(make_crystal(5, [{ element: `Xx`, abc: [0, 0, 0] }])),
-    ).rejects.toThrow(`Unknown element at site 0: Xx`)
+    ).rejects.toThrow(`Unknown element at site 1: Xx`)
     await expect(analyze_structure_symmetry({ sites: [] }, {})).rejects.toThrow(
       /requires a periodic structure/,
     )

@@ -40,23 +40,11 @@
   }
 
   $effect(() => {
-    if (typeof window === `undefined`) return
     const params = new URLSearchParams(window.location.search)
-
     const source_param = params.get(`source`)
     if (source_param) {
       source = source_param
       structure = undefined
-    }
-    const order = Math.trunc(Number(params.get(`bz_order`) || `1`))
-    if (params.has(`bz_order`) && !isNaN(order)) bz_order = order
-    const projection = params.get(`camera_projection`)
-    if (projection === `perspective` || projection === `orthographic`) {
-      camera_projection = projection
-    }
-    const controls_param = params.get(`show_controls`) as typeof show_controls | null
-    if (controls_param && [`always`, `hover`, `never`].includes(controls_param)) {
-      show_controls = controls_param
     }
     if (params.has(`show_ibz`)) show_ibz = params.get(`show_ibz`) === `true`
   })

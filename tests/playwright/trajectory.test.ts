@@ -181,11 +181,12 @@ test.describe(`Trajectory Component`, () => {
     await expect(empty_trajectory.locator(`button.filename`)).toContainText(`gold.h5`, {
       timeout: LOAD_TIMEOUT,
     })
+    // the step input numbers frames 1..N
     const step_input = empty_trajectory.locator(`.step-input`)
-    await expect(step_input).toHaveValue(`0`)
-    await step_input.fill(`19`)
+    await expect(step_input).toHaveValue(`1`)
+    await step_input.fill(`20`)
     await step_input.press(`Enter`)
-    await expect(step_input).toHaveValue(`19`)
+    await expect(step_input).toHaveValue(`20`)
   })
 
   test(`loads a remote HDF5 Blob once through the lazy worker loader`, async ({ page }) => {
@@ -241,7 +242,7 @@ test.describe(`Trajectory Component`, () => {
       { timeout: LOAD_TIMEOUT },
     )
     expect(source_requests).toBe(1)
-    await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `19`)
+    await expect(empty_trajectory.locator(`.step-input`)).toHaveAttribute(`max`, `20`)
   })
 
   test(`HDF5 worker and main-thread data match exactly @source`, async ({ page }) => {
@@ -482,16 +483,16 @@ test.describe(`Trajectory Component`, () => {
 
   test(`step navigation and play/pause controls work`, async () => {
     const step_input = controls.locator(`.step-input`)
-    await expect(step_input).toHaveValue(`0`)
+    await expect(step_input).toHaveValue(`1`)
     await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
 
     await controls.locator(`button[title^="Next step"]`).click()
-    await expect(step_input).toHaveValue(`1`)
-    await controls.locator(`button[title^="Previous step"]`).click()
-    await expect(step_input).toHaveValue(`0`)
-    await step_input.fill(`2`)
-    await step_input.press(`Enter`)
     await expect(step_input).toHaveValue(`2`)
+    await controls.locator(`button[title^="Previous step"]`).click()
+    await expect(step_input).toHaveValue(`1`)
+    await step_input.fill(`3`)
+    await step_input.press(`Enter`)
+    await expect(step_input).toHaveValue(`3`)
 
     const play_button = controls.locator(`.play-button`)
     await expect(play_button).toHaveText(`▶`)
@@ -516,7 +517,7 @@ test.describe(`Trajectory Component`, () => {
         )
         .join(``)
       await drop_file(page, trajectory_viewer, trajectory_xyz, `hotspot-settings.xyz`)
-      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `1`)
+      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `2`)
       await controls.locator(`.analysis-button`).click()
       await trajectory_viewer
         .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
@@ -661,8 +662,8 @@ test.describe(`Trajectory Component`, () => {
         )
         .join(``)
       await drop_file(page, trajectory_viewer, content, `hotspots.xyz`)
-      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `3`)
-      await controls.locator(`.step-input`).fill(`1`)
+      await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `4`)
+      await controls.locator(`.step-input`).fill(`2`) // frame index 1
       await controls.locator(`.step-input`).press(`Enter`)
       await controls.locator(`.analysis-button`).click()
       await trajectory_viewer
@@ -687,7 +688,8 @@ test.describe(`Trajectory Component`, () => {
       )
       await expect(coverage.locator(`pattern`)).toHaveAttribute(`width`, `2`)
       await expect(coverage.locator(`.completed`)).toHaveAttribute(`width`, `3`)
-      await expect(coverage.locator(`line`)).toHaveAttribute(`x1`, `1`)
+      // the finished time average replaced the frame preview, so neither marker remains
+      await expect(coverage.locator(`line`)).toHaveCount(0)
       await expect(coverage.locator(`.active`)).toHaveCount(0)
       const slider = controls.locator(`.step-slider`)
       expect(
@@ -697,10 +699,10 @@ test.describe(`Trajectory Component`, () => {
       )
       const bounds = await require_bbox(slider, `frame slider`)
       await slider.click({ position: { x: bounds.width - 2, y: bounds.height - 2 } })
-      await expect(controls.locator(`.step-input`)).toHaveValue(`3`)
+      await expect(controls.locator(`.step-input`)).toHaveValue(`4`)
       await expect(trajectory_viewer.locator(`.hotspot-overlay`)).toHaveCount(0)
       await controls.getByRole(`button`, { name: `Play`, exact: true }).click()
-      await expect(controls.locator(`.step-input`)).not.toHaveValue(`3`)
+      await expect(controls.locator(`.step-input`)).not.toHaveValue(`4`)
       await controls.getByRole(`button`, { name: `Pause`, exact: true }).click()
       await expect(atom_canvas).toHaveAttribute(`data-test-mounted`, `true`)
       const heat_toggle = pane.getByLabel(`Heatmap on atoms`)
@@ -790,7 +792,7 @@ test.describe(`Trajectory Component`, () => {
         `2\nLattice="2 0 0 0 2 0 0 0 2" Properties=species:S:1:pos:R:3\nH ${frame_idx * 0.01} 0 0\nO 1 1 1\n`,
     ).join(``)
     await drop_file(page, trajectory_viewer, content, `spectroscopy.xyz`)
-    await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `7`)
+    await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `8`)
     await controls.locator(`.analysis-button`).click()
     await trajectory_viewer
       .getByRole(`button`, {
@@ -822,7 +824,7 @@ test.describe(`Trajectory Component`, () => {
       async ({ page }, test_info) => {
         await trajectory_viewer.scrollIntoViewIfNeeded()
         const step_input = controls.locator(`.step-input`)
-        await step_input.fill(`2`)
+        await step_input.fill(`3`)
         await trajectory_viewer.locator(`.trajectory-export-toggle`).click()
         const pane = trajectory_viewer.locator(`.export-pane.pane-open`)
         await pane
@@ -868,7 +870,7 @@ test.describe(`Trajectory Component`, () => {
         }
         expect(cancel.y - status.bottom).toBeGreaterThanOrEqual(8)
         await expect(export_button).toBeEnabled()
-        await expect(step_input).toHaveValue(`2`)
+        await expect(step_input).toHaveValue(`3`)
         expect(downloads).toBe(0)
         const [download] = await Promise.all([
           page.waitForEvent(`download`),
@@ -877,7 +879,7 @@ test.describe(`Trajectory Component`, () => {
             expect(await pane.locator(`.error-message`).allTextContents()).toEqual([])
           }),
         ])
-        await expect(step_input).toHaveValue(`2`)
+        await expect(step_input).toHaveValue(`3`)
         expect(downloads).toBe(1)
         const format = label.toLowerCase()
         const path = test_info.outputPath(`trajectory.${format}`)
@@ -1022,7 +1024,8 @@ test.describe(`Trajectory Component`, () => {
     test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
       const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
-      await expect(step_labels).toHaveText([`0`, `1`, `2`])
+      // numbered 1..N like the step input
+      await expect(step_labels).toHaveText([`1`, `2`, `3`])
 
       const { controls_bottom, label_bottoms, tick_label_gaps } = await loaded_trajectory
         .locator(`.trajectory-controls`)
@@ -1042,11 +1045,12 @@ test.describe(`Trajectory Component`, () => {
       expect(Math.min(...tick_label_gaps)).toBeGreaterThanOrEqual(1)
 
       await expect(page.locator(`#negative-step-labels .step-label`)).toHaveText([
-        `0`,
         `1`,
         `2`,
+        `3`,
       ])
-      await expect(page.locator(`#array-step-labels .step-label`)).toHaveText([`0`, `2`])
+      // explicit step_labels are 0-based indices
+      await expect(page.locator(`#array-step-labels .step-label`)).toHaveText([`1`, `3`])
     })
 
     test(`viewer surface contrasts the page and hover controls overlay it`, async ({
@@ -1140,7 +1144,7 @@ test.describe(`Trajectory Component`, () => {
         const content_area = viewer.locator(`.content-area`)
         await expect(content_area).toHaveClass(/hide-plot/)
         await expect(content_area.locator(`.structure`)).toBeVisible()
-        await expect(viewer.locator(`.step-input`)).toHaveValue(`0`)
+        await expect(viewer.locator(`.step-input`)).toHaveValue(`1`)
         await expect(
           viewer.locator(`.trajectory-controls span`).filter({ hasText: `/ ${frame_count}` }),
         ).toBeVisible()
@@ -1195,9 +1199,9 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#loaded-trajectory`)
       await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
-      await expect(step_input).toHaveValue(`0`)
-      await step_input.fill(`1`) // fill leaves the input focused
       await expect(step_input).toHaveValue(`1`)
+      await step_input.fill(`2`) // fill leaves the input focused
+      await expect(step_input).toHaveValue(`2`)
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
       await expect(play_button).toHaveText(`▶`)
@@ -1529,9 +1533,9 @@ test(`stepping to a frame with another cell orbits and frames that cell`, async 
     Math.hypot(...position.map((coord, axis) => coord - target[axis]))
   const first = await orbit(viewer, camera)
   const step_input = viewer.locator(`.step-input`)
-  await step_input.fill(`1`)
+  await step_input.fill(`2`) // second frame
   await step_input.press(`Enter`)
-  await expect(step_input).toHaveValue(`1`)
+  await expect(step_input).toHaveValue(`2`)
   const second = await orbit(viewer, camera)
   // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
   expect(second.target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))

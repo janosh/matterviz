@@ -4,16 +4,17 @@
 export type Rng = () => number
 
 // Deterministic uniform [0, 1) generator (LCG). Math.imul keeps the multiply in 32-bit
-// integer space; a plain `*` exceeds 2^53 and silently drops the low bits.
+// integer space; a plain `*` exceeds 2^53 and silently drops the low bits. Dividing by 2^31
+// (not the 2^31 - 1 mask) keeps the top state 0x7fffffff below 1.
 export const seeded_rng = (seed: number): Rng => {
   let state = seed
   return () => {
     state = (Math.imul(state, 1103515245) + 12345) & 0x7fffffff
-    return state / 0x7fffffff
+    return state / 0x80000000
   }
 }
 
-// Uniform draw clamped away from zero, so -log(u) stays finite
+// Uniform draw clamped away from zero, so -log(u) and u^(-k) stay finite
 const positive_uniform = (rng: Rng): number => Math.max(rng(), Number.EPSILON)
 
 // Box-Muller transform for generating normal random numbers
@@ -54,7 +55,7 @@ export function generate_exponential(
   if (count <= 0) throw new Error(`Count must be positive`)
   if (lambda <= 0) throw new Error(`Lambda must be positive`)
 
-  return Array.from({ length: count }, () => -Math.log(1 - positive_uniform(rng)) / lambda)
+  return Array.from({ length: count }, () => -Math.log(positive_uniform(rng)) / lambda)
 }
 
 // Generate uniform distribution data
@@ -92,7 +93,7 @@ export const generate_pareto = (
   x_min: number,
   alpha: number,
   rng: Rng = Math.random,
-) => Array.from({ length: count }, () => x_min * rng() ** (-1 / alpha))
+) => Array.from({ length: count }, () => x_min * positive_uniform(rng) ** (-1 / alpha))
 
 // Generate gamma distribution data (approximation)
 // Note: This approximation works best for integer alpha values

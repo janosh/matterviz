@@ -203,13 +203,14 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       const child_sum = node.children?.reduce((sum, child) => sum + (child.value ?? 0), 0) ?? 0
       // HierarchyNode.value is typed readonly (normally set via .sum()), but manual
       // assignment is the documented d3 way to provide values without aggregation
-      ;(node as { value?: number }).value =
-        node.data.value != null ? clean_value(node.data.value) : child_sum
-      if (node.children && node.data.value != null && child_sum > node.data.value + 1e-9) {
+      const own = node.data.value
+      ;(node as { value?: number }).value = own != null ? clean_value(own) : child_sum
+      // Against the coerced value: a NaN parent renders as 0, collapsing its subtree
+      if (node.children && own != null && child_sum > (node.value ?? 0) + 1e-9) {
         console.warn(
           `Sunburst: children of "${
             node.data.label ?? node.data.id ?? `root`
-          }" sum to ${child_sum}, exceeding its value of ${node.data.value} (value_mode='total')`,
+          }" sum to ${child_sum}, exceeding its value of ${own} (value_mode='total')`,
         )
       }
     })

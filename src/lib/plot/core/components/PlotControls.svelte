@@ -25,6 +25,7 @@
   import {
     get_scale_type_name,
     is_scale_type_name,
+    is_time_scale,
     is_y2_sync_mode,
   } from '#lib/plot/core/types.js'
 
@@ -147,15 +148,11 @@
     const next: RangeInput = [...range_inputs[axis]]
     next[bound] = Number.isFinite(parsed) ? parsed : null
     range_inputs = { ...range_inputs, [axis]: next }
-    if (range_invalid(next)) return
-    update_axis(axis, { range: next })
+    if (!range_invalid(next)) update_axis(axis, { range: next })
   }
 
   const display_settings = track_settings(
-    () => ({
-      ...display_values(),
-      ...display_extra_values,
-    }),
+    () => ({ ...display_values(), ...display_extra_values }),
     `initial`,
   )
   // Each field owns both its complete baseline and the callback that restores it.
@@ -175,8 +172,13 @@
     }
   }
   const axis_range_settings = track_axis_field(`range`)
+  // Epoch timestamps have no linear/log alternative: time axes get no scale select or reset
+  const is_time_axis = (axis: AxisKey): boolean => is_time_scale(axis_config(axis).scale_type)
   const scale_type_settings = track_settings(
-    () => axis_record((axis) => get_scale_type_name(axis_config(axis).scale_type)),
+    () =>
+      axis_record((axis) =>
+        is_time_axis(axis) ? `linear` : get_scale_type_name(axis_config(axis).scale_type),
+      ),
     axis_record(() => `linear` as const),
   )
   const current_sync = $derived(normalize_y2_sync(y2_axis.sync))
@@ -293,12 +295,14 @@
     class="ctrl-line axis-fields"
     changed_keys={scale_type_settings.changed_keys}
     on_reset={() => {
-      for (const axis of all_axes) update_axis(axis, { scale_type: `linear` })
+      for (const axis of all_axes) {
+        if (!is_time_axis(axis)) update_axis(axis, { scale_type: `linear` })
+      }
     }}
     data-testid="scale-type-section"
     layout="flow"
   >
-    {#each visible_axes as [axis, label] (axis)}
+    {#each visible_axes.filter(([axis]) => !is_time_axis(axis)) as [axis, label] (axis)}
       <label>
         <span>{label}</span>
         <select

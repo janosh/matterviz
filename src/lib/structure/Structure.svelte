@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { site_count } from './site'
+  import { merge_site_properties, site_count } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index.js'
@@ -160,7 +160,7 @@
     wrapper = $bindable(),
     width = $bindable(0),
     height = $bindable(0),
-    color_scheme = $bindable(`Vesta`),
+    color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     atom_color_field,
     atom_tooltip,
@@ -186,7 +186,7 @@
     analyze_symmetry = true,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     performance_mode = `quality`,
-    show_image_atoms = $bindable(true),
+    show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
     supercell_scaling = $bindable(`1x1x1`),
     apply_supercell_scaling = true,
     cell_type = $bindable(`original`),
@@ -426,15 +426,8 @@
     const input = session.tool_input
     const geometry = active_overlay?.geometry
     const moved = input && geometry ? apply_tool_geometry(input, geometry) : input
-    return moved && active_prediction?.site_properties
-      ? {
-          ...moved,
-          sites: moved.sites.map((site, idx) => ({
-            ...site,
-            properties: { ...site.properties, ...active_prediction.site_properties?.[idx] },
-          })),
-        }
-      : moved
+    const rows = active_prediction?.site_properties
+    return moved && rows ? merge_site_properties(moved, rows) : moved
   })
   // A host run's atom trails (e.g. a relaxation's ionic path), drawn by the trajectory trail
   // renderer unless a trajectory supplies its own stream. Each run that publishes a trail shows
@@ -1005,19 +998,20 @@
   // === camera context ===
   // A new series (not coordinate-only frames) re-frames the camera unless the caller supplied
   // an explicit pose. Cell changes within a series (supercell, cell type, a dataset's frames)
-  // carry the camera along in StructureScene.
+  // carry the camera along in StructureScene. The session's own writes (atom edits, undo) are
+  // the user's, so the whole pose stays put; a file loaded mid-edit still re-frames.
   let previous_series_key: unknown = untrack(() => series_key)
   $effect.pre(() => {
     if (series_key === previous_series_key) return
     previous_series_key = series_key
     untrack(() => {
+      if (session.own_write) return
       session.clear_moved_panes()
       // Keep an explicit caller pose intact when replacing the structure.
       if (scene_props.camera_target !== undefined || scene_props.camera_position !== undefined)
         return
       camera_position = undefined
-      // In edit-atoms mode structure changes are the user's own edits: keep the orbit target
-      if (measure_mode !== `edit-atoms`) camera_target = undefined
+      camera_target = undefined
     })
   })
 

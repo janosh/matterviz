@@ -187,8 +187,8 @@ function sanitize_svg_content(
 const stringify_html_input = (html: unknown): string => {
   if (html == null) return ``
   if (typeof html === `string`) return html
-  if (typeof html === `number`) return Number.isNaN(html) ? `NaN` : `${html}`
-  if (typeof html === `boolean` || typeof html === `bigint`) return `${html}`
+  if (typeof html === `number` || typeof html === `boolean` || typeof html === `bigint`)
+    return `${html}`
   if (typeof html !== `object`) return ``
   try {
     return JSON.stringify(html) ?? ``

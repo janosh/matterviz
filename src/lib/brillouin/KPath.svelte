@@ -9,12 +9,11 @@
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { Color, CylinderGeometry, InstancedMesh, MeshStandardMaterial } from 'three/webgpu'
-  import type { KPathLabel } from './types'
+  import type { KPathData } from './types'
   import { bz_mark_sizes, k_path_segments } from './geometry'
 
   let {
-    k_path_points,
-    k_path_labels = [],
+    path,
     hovered_k_point = null,
     highlighted_k_points = [],
     hovered_qpoint_index = null,
@@ -23,8 +22,7 @@
     size,
     edge_width = 0,
   }: {
-    k_path_points: Vec3[] // Cartesian k-points (Å⁻¹) along the path
-    k_path_labels?: KPathLabel[]
+    path: KPathData
     hovered_k_point?: Vec3 | null
     highlighted_k_points?: Vec3[]
     hovered_qpoint_index?: number | null
@@ -43,7 +41,7 @@
 
   // One instanced mesh for all segments plus a wider invisible one for hover, instead of two
   // meshes per segment: band paths run to hundreds of segments.
-  const k_path_segs = $derived(k_path_segments(k_path_points))
+  const k_path_segs = $derived(k_path_segments(path))
   const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
   // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
@@ -130,12 +128,12 @@
 {/if}
 
 <!-- Symmetry point spheres + labels at labeled k-path points -->
-{#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
+{#each path.points as position, qpoint_idx (qpoint_idx)}
+  {@const label = path.labels[qpoint_idx]}
   {#if label}
     <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
     tints its chip, and hovering one reports its q-point like hovering the path there -->
     {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
-    {@const qpoint_idx = k_path_points.findIndex((point) => same_point(point, position))}
     <T.Mesh position={[position[0], position[1], position[2]]}>
       <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
       <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
@@ -146,8 +144,8 @@
         style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.3)`}
         style:font-weight={highlighted ? `bold` : null}
         style="padding: 0 3px; border-radius: 2px; color: white"
-        onpointerenter={() => qpoint_idx !== -1 && report_hover(qpoint_idx)}
-        onpointerleave={() => qpoint_idx !== -1 && report_hover(null)}
+        onpointerenter={() => report_hover(qpoint_idx)}
+        onpointerleave={() => report_hover(null)}
       >
         {label}
       </span>

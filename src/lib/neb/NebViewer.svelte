@@ -10,7 +10,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
-  import { format_num } from '#lib/labels.js'
+  import { display_idx, format_num } from '#lib/labels.js'
   import { FullscreenButton } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
@@ -128,7 +128,14 @@
   const n_images = $derived(active?.path.images.length ?? 0)
   const image_idx = $derived(clamp(active_image_idx, 0, Math.max(n_images - 1, 0)))
   const current_image = $derived(active?.path.images[image_idx])
-  const image_caption = $derived(current_image?.label ?? `image ${image_idx}`)
+  // A file's own image label leads unless it just restates an index (`image 0`, often 0-based);
+  // the 1-based position always follows
+  const own_label = $derived(
+    /^image \d+$/i.test(current_image?.label ?? ``) ? `` : current_image?.label,
+  )
+  const image_caption = $derived(
+    `${own_label ? `${own_label}: ` : ``}image ${display_idx(image_idx)} of ${n_images}`,
+  )
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
   const playback = create_sequence_player({
@@ -141,9 +148,10 @@
     should_auto_play: () => auto_play && Boolean(active),
   })
 
-  // Keep the public binding aligned with the clamped image shown after changing paths.
+  // Keep the public binding aligned with the clamped image shown after changing paths. With
+  // no path yet there is nothing to clamp against, so a bound index waits for its paths.
   $effect(() => {
-    if (active_image_idx !== image_idx) active_image_idx = image_idx
+    if (n_images > 0 && active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
   // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch
@@ -181,11 +189,14 @@
   const barrier_stats = $derived.by(() => {
     if (!profile) return []
     const { analysis, spline } = profile
-    const ts_idx = analysis.ts_image_idx
+    const ts_image = `#${display_idx(analysis.ts_image_idx)}`
     const with_unit = (value: number) => `${format_num(value, `.4~`)} ${energy_unit}`
     const excess = format_num(spline.fitted_max.energy - analysis.ts_energy, `.3~`)
-    const coord_unit = coord_mode === `arc_length` ? ` Å` : ``
-    const ts_at = `#${ts_idx} at ${format_num(analysis.ts_coordinate, `.4~`)}${coord_unit}`
+    // on the image-number axis the coordinate is the image number itself
+    const ts_at =
+      coord_mode === `arc_length`
+        ? `${ts_image} at ${format_num(analysis.ts_coordinate, `.4~`)} Å`
+        : ts_image
     return [
       { label: `Forward barrier`, value: with_unit(analysis.forward_barrier) },
       { label: `Reverse barrier`, value: with_unit(analysis.reverse_barrier) },
@@ -193,7 +204,7 @@
       { label: `Highest image`, value: ts_at },
       {
         label: `Fitted saddle (${spline.method})`,
-        value: `+${excess} ${energy_unit} above image #${ts_idx}`,
+        value: `+${excess} ${energy_unit} above image ${ts_image}`,
       },
     ]
   })
@@ -239,12 +250,12 @@
         item_name="image"
         play_title={playback.is_playing ? `Pause` : `Play along the path`}
         aria_label="NEB image"
-        aria_valuetext="{image_caption} ({image_idx + 1} of {n_images})"
+        aria_valuetext={image_caption}
         disable_step_while_playing={false}
       />
       {#if controls_config.visible(`energy`)}
         <span class="image-status">
-          {image_caption} ({image_idx + 1}/{n_images})
+          {image_caption}
           <strong>{format_num(shown_energy, `.4~`)} {energy_unit}</strong>
         </span>
       {/if}

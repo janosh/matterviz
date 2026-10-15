@@ -1,6 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
-import { export_png_file } from '#lib/chempot-diagram/export.js'
+import { export_png_file, export_svg_file } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type * as scene_module from '#lib/scene/index.js'
@@ -58,8 +58,7 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   const canvas = document.createElement(`canvas`)
   wrapper.append(canvas)
   vi.spyOn(canvas, `getBoundingClientRect`).mockReturnValue(new DOMRect(0, 0, 200, 100))
-  // the WebGPU frame is encoded (toBlob works where a 2D drawImage of the canvas reads no
-  // pixels) and the decoded bitmap composited, never the live canvas itself
+  // the WebGPU frame is encoded (a 2D drawImage of the canvas reads no pixels) and composited
   const frame_blob = new Blob([`frame`], { type: `image/png` })
   canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
   const frame = { close: vi.fn() }
@@ -89,6 +88,14 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   if (outcome === `success`) {
     expect(settled).toHaveBeenCalledExactlyOnceWith(undefined)
     expect(save).toHaveBeenCalledExactlyOnceWith(blob, `diagram.png`, `image/png`)
+    // the SVG embeds that encoded frame too: toDataURL of a presented WebGPU canvas is blank
+    await export_svg_file(wrapper, `diagram`, {}, save)
+    const svg_image = `<image href="data:image/png;base64,${btoa(`frame`)}"`
+    expect(save).toHaveBeenLastCalledWith(
+      expect.stringContaining(svg_image),
+      `diagram.svg`,
+      `image/svg+xml`,
+    )
   } else {
     expect(settled).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -119,9 +126,8 @@ const mount_diagram = async <T>(
   }
 }
 
-// Overlay hulls are cached per formula: with k overlays drawn, toggling one more used to
-// rebuild all k + 1 overlay hulls plus the base occlusion hull (2, 3, 4 builds for the three
-// toggles below); now each toggle builds the new overlay's hull and the occlusion hull only
+// Overlay hulls are cached per formula: a toggle used to rebuild all k + 1 overlay hulls plus
+// the occlusion hull, now only the new overlay's hull and the occlusion hull
 test(`toggling a formula overlay builds only that domain's hull`, async () => {
   const scene = await mount_diagram<{
     formula_meshes: { geometry: object; color: string }[]
@@ -162,9 +168,8 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
   expect(new Set(third.formula_meshes.map(({ color }) => color)).size).toBe(3)
   // un-drawing disposes that overlay's geometry and rebuilds only the occlusion hull
   const fe2o3_geometry = first.formula_meshes[0].geometry
-  // Disposal must run after the flush, once the scene holds the new mesh list: the scene's
-  // `formula_meshes` is the component's live derived, so reading it here would re-enter
-  // the derived (and throw) if the eviction still disposed inside it
+  // Disposal must run after the flush: reading the scene's live `formula_meshes` derived
+  // here would re-enter it (and throw) if the eviction still disposed inside it
   const meshes_at_dispose: object[][] = []
   const dispose = vi
     .spyOn(fe2o3_geometry as { dispose(): void }, `dispose`)
@@ -266,11 +271,9 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
 })
 
-// Each hull face lies on exactly one entry's hyperplane, so its owner is the domain whose
-// vertex set holds all three corners. Nearest-centroid labelled six domains owning no face.
-// The "Surface" quick-select used to raycast from each domain's anchor at a FrontSide mesh:
-// rays cast from inside a hull hit only culled back faces, so every domain scored zero hits and
-// the button was a second "select all". It now asks which domains own a face of the envelope.
+// A hull face's owner is the domain holding all three corners (nearest-centroid labelled six
+// faceless domains). "Surface" used to raycast from inside the hull, hit only culled back faces
+// and so select all; it now picks the domains owning an envelope face.
 test(`hull faces are labelled by their owning domain, which the Surface quick-select picks`, async () => {
   const scene = await mount_diagram<{
     render_domains: { formula: string; points_3d: number[][] }[]

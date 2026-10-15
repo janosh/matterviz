@@ -367,10 +367,8 @@
   const show_points = $derived(styles.show_points ?? DEFAULTS.scatter.show_points)
   const show_lines = $derived(styles.show_lines ?? DEFAULTS.scatter.show_lines)
 
-  // Fill region hover state
   let hovered_fill_key = $state<string | null>(null)
-
-  // State to hold the calculated label positions after simulation
+  // Solver-placed label positions, keyed by `series_idx-point_idx`
   let label_positions = $state<Record<string, Point2D>>({})
 
   // Hovering a legend entry fades every other series
@@ -495,10 +493,7 @@
         }
       }
       selected_points = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
-      on_select?.({
-        points: picked,
-        rect: { x: [x_lo, x_hi], y: [y_lo, y_hi] },
-      })
+      on_select?.({ points: picked, rect: { x: [x_lo, x_hi], y: [y_lo, y_hi] } })
     },
     // Live tooltip while rect-dragging: update for the closest point inside the plot
     // bounds, clear when the cursor leaves the svg
@@ -530,13 +525,18 @@
 
   // Two-way `view` sync. Value comparison on both legs keeps the pair from ping-ponging:
   // the frame's write lands as a fresh Vec2 per axis, and a host mirroring it back must
-  // not count as a new zoom.
+  // not count as a new zoom. A `view` passed at mount with a range differing from the
+  // current one wins over the first auto-range mirror (an empty `{}` gets mirrored).
+  let host_view_pending = untrack(() => view) != null
   $effect(() => {
     const current = frame.ranges.current
     const shown = untrack(() => view)
     const in_sync = (axis: FacetAxis) =>
       shown?.[axis] && vec2_equal(shown[axis], current[axis])
-    if (FACET_AXES.every(in_sync)) return
+    const host_wins =
+      host_view_pending && FACET_AXES.some((axis) => shown?.[axis] && !in_sync(axis))
+    host_view_pending = false
+    if (host_wins || FACET_AXES.every(in_sync)) return
     view = Object.fromEntries(FACET_AXES.map((axis) => [axis, [...current[axis]] as Vec2]))
   })
   $effect(() => {
@@ -544,9 +544,8 @@
     for (const axis of FACET_AXES) {
       const range = view[axis]
       const current = untrack(() => frame.ranges.current[axis])
-      if (range && !vec2_equal(range, current)) {
+      if (range && !vec2_equal(range, current))
         frame.facet.update_range(axis, [...range] as Vec2)
-      }
     }
   })
 
@@ -753,9 +752,7 @@
     if (!show_points) return 0
     let count = 0
     for (const series_data of filtered_series) {
-      if (has_marker(series_data, `points`)) {
-        count += series_data.filtered_data.length
-      }
+      if (has_marker(series_data, `points`)) count += series_data.filtered_data.length
     }
     return count
   })
@@ -989,9 +986,8 @@
         hovered_pt.point_label?.text != null ||
         hovered_pt.series_idx !== filtered_series[series_pos].orig_series_idx ||
         points.some((point) => same_logical_point(point, hovered_pt))
-      ) {
+      )
         return points
-      }
       return [...points, hovered_pt]
     })
   })
@@ -1254,9 +1250,8 @@
   // markers_only skips line-only series, e.g. for clicks on canvas markers.
   const closest_hit_at = (x_rel: number, y_rel: number, markers_only = false) => {
     const { mode } = hover_config
-    if (mode === `x` || mode === `y`) {
+    if (mode === `x` || mode === `y`)
       return axis_hover_candidate(mode, x_rel, y_rel, markers_only)
-    }
     const accept = markers_only ? (item: { marker: boolean }) => item.marker : undefined
     const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel }, accept)
     return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
@@ -1270,7 +1265,6 @@
   let plot_click_armed = $state(false)
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
-
     const hit = closest_hit_at(x_rel, y_rel)
     const closest_point = hit?.point ?? null
     // canvas marker clicks reach only series that draw markers; hover still sees every point
@@ -1296,9 +1290,7 @@
   function flush_pending_hover() {
     const next_hover = pending_hover
     pending_hover = undefined
-    if (next_hover) {
-      update_tooltip_point(next_hover.x_rel, next_hover.y_rel, next_hover.event)
-    }
+    if (next_hover) update_tooltip_point(next_hover.x_rel, next_hover.y_rel, next_hover.event)
   }
 
   function queue_mouse_move(evt: MouseEvent) {
@@ -1321,9 +1313,8 @@
       pan_zoom.is_panning ||
       pan_zoom.drag_start ||
       pan_zoom.suppress_click
-    ) {
+    )
       return
-    }
     const coords = get_relative_coords(evt)
     if (!coords) return
     const point = plot_click_target(
@@ -1388,22 +1379,19 @@
 
   $effect(() => {
     const label_series = assigned_series
-    const label_config = actual_label_config
-    const config_key = label_config_key
-    if (label_series !== previous_label_series || config_key !== previous_label_config) {
+    if (label_series !== previous_label_series || label_config_key !== previous_label_config) {
       label_offsets.clear()
       previous_label_series = label_series
-      previous_label_config = config_key
+      previous_label_config = label_config_key
     }
     if (!width || !height || !has_auto_placed_labels) {
       label_positions = {}
       label_offsets.clear()
       return
     }
-
     label_positions = compute_label_positions(
       filtered_series,
-      label_config,
+      actual_label_config,
       frame.scales,
       { width, height, pad },
       label_offsets,
@@ -1465,8 +1453,7 @@
 
   let has_multiple_series = $derived(assigned_series.filter(Boolean).length > 1)
 
-  // Precompute non-click event names from point_events so we don't rebuild
-  // the entries array on every point render.
+  // Non-click point_events names, computed once instead of per rendered point
   let point_event_names = $derived(
     point_events
       ? Object.keys(point_events).filter((name) => name !== `onclick` && name !== `onkeydown`)
@@ -1490,13 +1477,12 @@
       if (series_data.x_error == null && series_data.y_error == null) return []
       const project = series_projector(series_data)
       const { marker_of } = series_appearance(series_data)
-      const cap = error_bar_cap
       const segments: string[] = []
       // A capped bar is the same three strokes on either axis, with the roles of the two
       // coordinates swapped, so the shape is written once and read along each axis
       const bar = (along: Vec2, across: number, vertical: boolean) => {
         const [lo, hi] = along
-        const [near, far] = [across - cap, across + cap]
+        const [near, far] = [across - error_bar_cap, across + error_bar_cap]
         return vertical
           ? `M${near},${lo}H${far}M${across},${lo}V${hi}M${near},${hi}H${far}`
           : `M${lo},${near}V${far}M${lo},${across}H${hi}M${hi},${near}V${far}`
@@ -1509,14 +1495,9 @@
         if (y_span) segments.push(bar(y_span, cx, true))
       }
       if (segments.length === 0) return []
-      const first = series_data.filtered_data[0]
-      return [
-        {
-          series_pos,
-          d: segments.join(``),
-          stroke: first ? marker_of(first).fill : undefined,
-        },
-      ]
+      // segments imply at least one point, so the first one sets the series' bar color
+      const stroke = marker_of(series_data.filtered_data[0]).fill
+      return [{ series_pos, d: segments.join(``), stroke }]
     }),
   )
 
@@ -1647,9 +1628,10 @@
   })
 
   // === Export ===
+  // Unlabelled series are numbered by input position, as in the legend
   const csv_series = () =>
-    filtered_series.map((series_data, series_idx) => ({
-      label: series_data.label ?? `series ${series_idx + 1}`,
+    filtered_series.map((series_data) => ({
+      label: series_data.label ?? `series ${series_data.orig_series_idx + 1}`,
       x: series_data.filtered_data.map((point) => point.x),
       y: series_data.filtered_data.map((point) => point.y),
       extras: {

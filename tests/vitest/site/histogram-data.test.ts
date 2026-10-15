@@ -30,11 +30,13 @@ describe(`histogram-data random generators`, () => {
     (rng) => utils.generate_complex_distribution(size, rng),
   ]
 
-  test(`generators produce correct length and finite values`, () => {
+  // the seeds' first draws are the LCG's top state and exactly 0, which -log(1 - u) and
+  // u^(-1/alpha) turned into Infinity
+  test.each([undefined, 230538014, 2088216195])(`seed %s: right length, finite`, (seed) => {
     for (const make_array of generators) {
-      const arr = make_array()
+      const arr = make_array(seed === undefined ? undefined : utils.seeded_rng(seed))
       expect(arr).toHaveLength(size)
-      arr.forEach((num: number) => expect(Number.isFinite(num)).toBe(true))
+      expect(arr.every(Number.isFinite), String(arr)).toBe(true)
     }
   })
 
@@ -81,16 +83,15 @@ describe(`histogram-data random generators`, () => {
     }
   })
 
-  // The LCG multiply must stay exact: `state * 1103515245` in doubles exceeds 2^53 once
-  // state passes ~8e6 and drops low bits, collapsing the state space. Check against an
-  // exact BigInt reference from seeds that put the product past 2^53 immediately.
-  test.each([1, 12345, 2 ** 24 + 1, 0x7fffffff])(
+  // `state * 1103515245` in doubles passes 2^53 and drops low bits: compare to exact BigInt
+  // steps. 230538014 steps to the top state 0x7fffffff, which used to draw exactly 1
+  test.each([1, 12345, 2 ** 24 + 1, 0x7fffffff, 230538014])(
     `seed %i matches the exact 32-bit LCG and draws from [0, 1)`,
     (seed) => {
       let state = BigInt(seed)
       const exact_draws = Array.from({ length: 20 }, () => {
         state = (state * 1103515245n + 12345n) & 0x7fffffffn
-        return Number(state) / 0x7fffffff
+        return Number(state) / 2 ** 31
       })
       const draws = Array.from({ length: 20 }, utils.seeded_rng(seed))
       expect(draws).toEqual(exact_draws)

@@ -107,6 +107,27 @@ export type HullPointOpts = {
 const is_pulsing = (entry: ConvexHullEntry, opts: HullPointOpts): boolean =>
   same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
 
+// A circle at `projected` in `color`, filled and/or stroked at the given alphas
+function draw_ring(
+  ctx: CanvasRenderingContext2D,
+  { x, y }: Projected,
+  radius: number,
+  color: string,
+  { fill, stroke }: { fill?: number; stroke?: { alpha: number; width: number } },
+): void {
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, 2 * Math.PI)
+  if (fill !== undefined) {
+    ctx.fillStyle = add_alpha(color, fill)
+    ctx.fill()
+  }
+  if (stroke) {
+    ctx.lineWidth = stroke.width
+    ctx.strokeStyle = add_alpha(color, stroke.alpha)
+    ctx.stroke()
+  }
+}
+
 function draw_highlight_effect(
   ctx: CanvasRenderingContext2D,
   projected: Projected,
@@ -116,40 +137,22 @@ function draw_highlight_effect(
   style: Required<HighlightStyle>,
 ): void {
   const { effect, color, size_multiplier, opacity, pulse_speed } = style
+  const hl_size = size * size_multiplier
   if (effect === `pulse`) {
     // Smooth pulsating ring with moderate size and opacity changes
     const pulse_val = 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
-    const hl_size = size * (size_multiplier + 0.5 * pulse_val)
-    const hl_opacity = opacity * (0.5 + 0.5 * pulse_val)
-    ctx.lineWidth = (1.5 + pulse_val) * scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(color, hl_opacity * 0.3)
-    ctx.strokeStyle = add_alpha(color, hl_opacity)
-    ctx.fill()
-    ctx.stroke()
+    const alpha = opacity * (0.5 + 0.5 * pulse_val)
+    const radius = hl_size + 0.5 * size * pulse_val
+    const width = (1.5 + pulse_val) * scale
+    draw_ring(ctx, projected, radius, color, { fill: alpha * 0.3, stroke: { alpha, width } })
   } else if (effect === `glow`) {
     // Soft glow: outer halo plus inner stroked disc
-    const hl_size = size * size_multiplier
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size * 1.3, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(color, opacity * 0.15)
-    ctx.fill()
-    ctx.lineWidth = 1.5 * scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
-    ctx.fillStyle = add_alpha(color, opacity * 0.4)
-    ctx.strokeStyle = add_alpha(color, opacity * 0.8)
-    ctx.fill()
-    ctx.stroke()
-  } else if (effect === `size`) {
-    ctx.lineWidth = 2 * scale
-    ctx.beginPath()
-    ctx.arc(projected.x, projected.y, size * size_multiplier, 0, 2 * Math.PI)
-    ctx.strokeStyle = color
-    ctx.stroke()
+    draw_ring(ctx, projected, hl_size * 1.3, color, { fill: opacity * 0.15 })
+    const stroke = { alpha: opacity * 0.8, width: 1.5 * scale }
+    draw_ring(ctx, projected, hl_size, color, { fill: opacity * 0.4, stroke })
+  } else if (effect === `size` || effect === `both`) {
+    draw_ring(ctx, projected, hl_size, color, { stroke: { alpha: 1, width: 2 * scale } })
   }
-  // effect === `color` is handled by the marker fill
 }
 
 // One depth-sorted point: shadow, animated rings (only when `pulse` is given) and marker
@@ -176,21 +179,18 @@ function draw_hull_point(
   if (pulse) {
     if (same_entry(opts.selected_entry, entry)) {
       const ring = size * (1.8 + 0.3 * Math.sin(pulse.time * 4))
-      ctx.fillStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse.opacity * 0.6)
-      ctx.strokeStyle = add_alpha(`rgba(102, 240, 255, 1)`, pulse.opacity)
-      ctx.lineWidth = 2 * scale
-      ctx.beginPath()
-      ctx.arc(projected.x, projected.y, ring, 0, 2 * Math.PI)
-      ctx.fill()
-      ctx.stroke()
+      const { opacity } = pulse
+      const stroke = { alpha: opacity, width: 2 * scale }
+      draw_ring(ctx, projected, ring, `#66f0ff`, { fill: opacity * 0.6, stroke })
     }
     if (entry_highlighted) {
       draw_highlight_effect(ctx, projected, size, scale, pulse.time, highlight_style)
     }
   }
 
+  const { effect } = highlight_style
   ctx.fillStyle =
-    entry_highlighted && highlight_style.effect === `color`
+    entry_highlighted && (effect === `color` || effect === `both`)
       ? highlight_style.color
       : get_point_color(entry)
   ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`

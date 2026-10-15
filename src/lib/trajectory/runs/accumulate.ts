@@ -1,6 +1,7 @@
 // Frame-major position accumulation shared by every run that reads frames one at a time
 // (memory, indexed text, worker-served). Budgets the buffer up front, validates atom identity
 // across frames and folds optional per-site channels and frame-level signals into the sweep.
+import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { is_finite_vec3, type Matrix3x3, reciprocal_lattice } from '#lib/math.js'
@@ -92,18 +93,22 @@ class PositionAccumulator {
   private cached_lattice: Matrix3x3 | null = null
   private reciprocal: Matrix3x3 | null = null
 
+  private readonly n_frames: number // every `frame_stride`-th frame of the selected window
+
   get collected_frames(): number {
     return this.frame_count
   }
 
   constructor(
-    private readonly n_frames: number,
+    selected_frames: number,
     private readonly n_atoms: number,
     max_bytes: number,
     private readonly frame_stride: number,
     private readonly channels: StreamChannels,
     private readonly signal_shapes: Record<string, number[]>,
   ) {
+    const n_frames = Math.ceil(selected_frames / frame_stride)
+    this.n_frames = n_frames
     if (n_frames < 1) throw new Error(`PositionAccumulator: n_frames must be >= 1`)
     if (n_atoms < 1) throw new Error(`PositionAccumulator: n_atoms must be >= 1`)
     const signal_values_per_frame = Object.values(signal_shapes).reduce(
@@ -113,7 +118,8 @@ class PositionAccumulator {
     const frame_bytes = bytes_per_frame(n_atoms, channels, signal_values_per_frame)
     const needed_bytes = n_frames * frame_bytes
     if (needed_bytes > max_bytes) {
-      const stride = suggested_stride(n_frames, frame_bytes, max_bytes)
+      // from the selected window: relative to the current stride, stride 2 went to 4, then 2
+      const stride = suggested_stride(selected_frames, frame_bytes, max_bytes)
       throw new Error(
         `Collecting ${n_frames} frames x ${n_atoms} atoms needs ${needed_bytes} bytes, ` +
           `over the ${max_bytes} byte budget. Use frame_stride >= ${stride} ` +
@@ -160,7 +166,7 @@ class PositionAccumulator {
     })
     if (sites.length !== this.n_atoms) {
       throw new Error(
-        `Atom count changed at frame ${source_frame_number}: expected ${this.n_atoms} ` +
+        `Atom count changed at frame ${display_idx(source_frame_number)}: expected ${this.n_atoms} ` +
           `atoms, got ${sites.length}. Displacement analysis needs a constant atom count ` +
           `with stable ordering across every frame.`,
       )
@@ -178,7 +184,7 @@ class PositionAccumulator {
         typeof site === `number` ? element_from_atomic_number(site) : site.species[0]?.element
       if (!element) {
         throw new Error(
-          `Frame ${source_frame_number} site ${atom_idx} has no species; cannot identify the atom`,
+          `Frame ${display_idx(source_frame_number)} site ${display_idx(atom_idx)} has no species; cannot identify the atom`,
         )
       }
       const properties = typeof site === `number` ? undefined : site.properties
@@ -190,14 +196,14 @@ class PositionAccumulator {
         this.atom_ids?.push(identifier)
       } else if (this.elements[atom_idx] !== element) {
         throw new Error(
-          `Atom ordering changed at frame ${source_frame_number}: site ${atom_idx} was ` +
+          `Atom ordering changed at frame ${display_idx(source_frame_number)}: site ${display_idx(atom_idx)} was ` +
             `${this.elements[atom_idx]} in the first frame but is ${element} here. Displacement ` +
             `analysis tracks atoms by index, so the ordering must be stable. LAMMPS dumps ` +
             `are unsorted unless the run used "dump_modify <id> sort id".`,
         )
       } else if (this.atom_ids && this.atom_ids[atom_idx] !== identifier) {
         throw new Error(
-          `Atom identity changed at frame ${source_frame_number}: site ${atom_idx} had ` +
+          `Atom identity changed at frame ${display_idx(source_frame_number)}: site ${display_idx(atom_idx)} had ` +
             `atom ID ${this.atom_ids[atom_idx]} in the first frame but ${identifier} here. The atom ` +
             `set changed (GCMC, deposition), so displacement analysis cannot pair atoms ` +
             `across frames.`,
@@ -222,7 +228,7 @@ class PositionAccumulator {
         ) {
           const invalid_value = source ? Array.from(source.subarray(start, start + 3)) : value
           throw new TypeError(
-            `Frame ${source_frame_number} site ${atom_idx} has no finite vec3 property "${key}" (got ` +
+            `Frame ${display_idx(source_frame_number)} site ${display_idx(atom_idx)} has no finite vec3 property "${key}" (got ` +
               `${JSON.stringify(invalid_value)}); every collected frame must carry every requested channel`,
           )
         }
@@ -237,7 +243,7 @@ class PositionAccumulator {
     if (is_first_frame) this.coords_unwrapped = frame_unwrapped
     else if (this.coords_unwrapped !== frame_unwrapped) {
       throw new Error(
-        `coords_unwrapped flipped to ${frame_unwrapped} at frame ${source_frame_number}; ` +
+        `coords_unwrapped flipped to ${frame_unwrapped} at frame ${display_idx(source_frame_number)}; ` +
           `a trajectory must be entirely wrapped or entirely unwrapped`,
       )
     }
@@ -263,7 +269,7 @@ class PositionAccumulator {
       const expected_shape = this.signal_shapes[key]
       if (expected_shape.join(`,`) !== parsed.sample_shape.join(`,`)) {
         throw new Error(
-          `Frame ${source_frame_number} signal "${key}" changed shape from ` +
+          `Frame ${display_idx(source_frame_number)} signal "${key}" changed shape from ` +
             `[${expected_shape.join(`, `)}] to [${parsed.sample_shape.join(`, `)}]`,
         )
       }
@@ -306,7 +312,7 @@ class PositionAccumulator {
     }
     if (far_atoms <= MAX_FAR_MOVING_FRACTION * this.n_atoms) return
     throw new Error(
-      `Frame ${source_frame_number}: ${far_atoms} of ${this.n_atoms} atoms moved more than a ` +
+      `Frame ${display_idx(source_frame_number)}: ${far_atoms} of ${this.n_atoms} atoms moved more than a ` +
         `quarter of the cell since the previous collected frame. Displacement analysis tracks ` +
         `atoms by index, so either the ordering changed (LAMMPS dumps are unsorted unless the ` +
         `run used "dump_modify <id> sort id"; preserved IDs are not checked here) or collected ` +
@@ -397,7 +403,7 @@ const require_frame_signal = (
   const parsed = parse_frame_signal(value, key, n_atoms)
   if (!parsed)
     throw new TypeError(
-      `Frame ${frame_number} has no supported finite numeric metadata signal "${key}" (got ${JSON.stringify(value)})`,
+      `Frame ${display_idx(frame_number)} has no supported finite numeric metadata signal "${key}" (got ${JSON.stringify(value)})`,
     )
   return parsed
 }
@@ -452,8 +458,7 @@ export async function accumulate_positions(
   const first_frame = await load_frame(start_frame)
   signal?.throwIfAborted()
   if (!first_frame)
-    throw new Error(`accumulate_positions: could not read frame ${start_frame}`)
-  const collected = Math.ceil(selected_frames / frame_stride)
+    throw new Error(`accumulate_positions: could not read frame ${display_idx(start_frame)}`)
   const n_atoms =
     `header` in first_frame ? first_frame.sites.length : first_frame.structure.sites.length
   const { metadata } = `header` in first_frame ? first_frame.header : first_frame
@@ -464,7 +469,7 @@ export async function accumulate_positions(
     ]),
   )
   const accumulator = new PositionAccumulator(
-    collected,
+    selected_frames,
     n_atoms,
     max_bytes,
     frame_stride,
@@ -482,7 +487,7 @@ export async function accumulate_positions(
     const frame = await load_frame(frame_number)
     if (!frame) {
       throw new Error(
-        `accumulate_positions: frame ${frame_number} of ${total_frames} could not be read`,
+        `accumulate_positions: frame ${display_idx(frame_number)} of ${total_frames} could not be read`,
       )
     }
     signal?.throwIfAborted()

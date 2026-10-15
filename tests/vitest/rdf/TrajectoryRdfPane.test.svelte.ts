@@ -6,7 +6,7 @@ import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
 import type { TrajectoryRdf } from '#lib/rdf/index.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { mount, tick, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, set_input } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -79,6 +79,9 @@ test.each([
     expect(controls.textContent).not.toContain(`beyond half the cell`)
 
     doc_query(`.trajectory-rdf-controls button`, HTMLButtonElement).click()
+    flushSync()
+    // the empty plot says what is running, not RdfPlot's default for a dropped file
+    expect(doc_query(`.empty-drop`).textContent).toContain(`Binning pair distances`)
     await settle(20)
     expect(state.result).toMatchObject({
       frame_numbers: [0, 5, 10, 15],
@@ -230,7 +233,7 @@ test.each([
   await settle()
   expect(compute.disabled).toBe(true)
   const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
-  set_input(start, `1`)
+  set_input(start, `2`) // 1-based: skips the molecular preview at index 0
   await settle()
   expect(compute.disabled).toBe(false)
   compute.click()

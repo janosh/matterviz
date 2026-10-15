@@ -1,5 +1,5 @@
 import type { BondOrder, BondPair, ElementSymbol, Vec3 } from '#lib'
-import type { Crystal, StructureBond } from '#lib/structure/index.js'
+import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index.js'
 import type { BondEditState } from '#lib/structure/bonding.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import * as bonding from '#lib/structure/bonding.js'
@@ -46,6 +46,16 @@ const sort_bonds = (bonds: BondPair[]): BondPair[] =>
     (left, right) => left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
   )
 
+// number of bonds touching each site
+const bonds_per_site = (bonds: BondPair[], n_sites: number): number[] => {
+  const counts = Array<number>(n_sites).fill(0)
+  for (const { site_idx_1, site_idx_2 } of bonds) {
+    counts[site_idx_1]++
+    counts[site_idx_2]++
+  }
+  return counts
+}
+
 // 4600 H atoms (10.6M pairs) on a 17 x 17 x 16 grid
 const hydrogen_grid = (spacing: number): [string, Vec3][] =>
   Array.from({ length: 4600 }, (_, idx) => [
@@ -76,31 +86,21 @@ describe(`Bonding Algorithms`, () => {
 
   test(`electroneg_ratio generates unique bonds`, () => {
     const bonds = bonding.electroneg_ratio(make_random_structure(50))
-    const bond_pairs = bonds.map(
-      (bond) =>
-        `${Math.min(bond.site_idx_1, bond.site_idx_2)}-${Math.max(
-          bond.site_idx_1,
-          bond.site_idx_2,
-        )}`,
+    const bond_keys = bonds.map((bond) =>
+      bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2),
     )
-    expect(new Set(bond_pairs).size).toBe(bonds.length)
+    expect(new Set(bond_keys).size).toBe(bonds.length)
     // Cross-bin discovery must keep the lower site index, regardless of spatial order.
     const chain = make_struct(
       [7.5, 0, 5, 2.5].map((coord) => ({ element: `Cu`, xyz: [coord, 0, 0] })),
     )
-    expect(
-      bonding
-        .electroneg_ratio(chain)
-        .map(({ site_idx_1, site_idx_2, bond_length }) => [
-          site_idx_1,
-          site_idx_2,
-          bond_length,
-        ]),
-    ).toEqual([
-      [0, 2, 2.5],
-      [1, 3, 2.5],
-      [2, 3, 2.5],
+    const chain_bonds = bonding.electroneg_ratio(chain)
+    expect(chain_bonds.map((bond) => `${bond.site_idx_1}-${bond.site_idx_2}`)).toEqual([
+      `0-2`,
+      `1-3`,
+      `2-3`,
     ])
+    expect(chain_bonds.map((bond) => bond.bond_length)).toEqual([2.5, 2.5, 2.5])
   })
 
   test(`electroneg_ratio handles edge cases`, () => {
@@ -144,23 +144,17 @@ describe(`Explicit Bond Metadata`, () => {
       ])
 
       const bonds = strategy(structure)
-      const computed_bond = bonds.find(
-        (bond) => bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-1`,
-      )
-      const explicit_only_bond = bonds.find(
-        (bond) => bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-2`,
-      )
-
-      expect(computed_bond?.bond_order).toBe(2)
-      expect(explicit_only_bond?.bond_order).toBe(3)
-      expect(explicit_only_bond?.site_idx_1).toBe(0)
-      expect(explicit_only_bond?.site_idx_2).toBe(2)
+      expect(find_bond(bonds, 0, 1)?.bond_order).toBe(2)
+      const explicit_only_bond = find_bond(bonds, 0, 2)
+      expect(explicit_only_bond).toMatchObject({ site_idx_1: 0, site_idx_2: 2, bond_order: 3 })
       expect(explicit_only_bond?.bond_length).toBeCloseTo(5)
     },
   )
 
   const invalid = (idx: number, reason: string) =>
     `Ignoring invalid explicit bond at index ${idx}: ${reason}`
+  const duplicate = (idx: number, sites: string, order: BondOrder) =>
+    `Duplicate explicit bond definition at index ${idx} for site indices ${sites} with order ${order}; will overwrite the previous entry`
   test.each<{
     desc: string
     bonds: unknown[]
@@ -203,10 +197,18 @@ describe(`Explicit Bond Metadata`, () => {
         { site_idx_1: 1, site_idx_2: 0, order: 2 },
       ],
       expected: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-      warnings: [
-        `Duplicate explicit bond definition at index 1 for site indices 1, 0 ` +
-          `with order 2; will overwrite the previous entry`,
+      warnings: [duplicate(1, `1, 0`, 2)],
+    },
+    {
+      // a zero-shift self-bond is invalid, but periodic ones key under their canonical shift
+      desc: `keeps periodic self-bonds distinct from zero-shift ones`,
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 0, order: 1 },
+        { site_idx_1: 0, site_idx_2: 0, order: 2, cell_shift: [1, 0, 0] },
+        { site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [-1, 0, 0] },
       ],
+      expected: [{ site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [1, 0, 0] }],
+      warnings: [invalid(0, `endpoints match`), duplicate(2, `0, 0`, 3)],
     },
   ])(
     `explicit bond metadata $desc with warnings`,
@@ -242,33 +244,15 @@ describe(`Explicit Bond Metadata`, () => {
     },
   ]
 
-  test.each([
-    {
-      desc: `lets overrides win over additions`,
-      base: [],
-      added: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-      removed: [],
-      overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3 }],
-      expected: [{ site_idx_1: 0, site_idx_2: 1, order: 3 }],
-    },
-    {
-      desc: `lets removals win over stale additions and overrides`,
-      base: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-      added: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-      removed: [{ site_idx_1: 1, site_idx_2: 0, order: 1 }],
-      overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3 }],
-      expected: [],
-      visible: false,
-    },
-    {
-      desc: `normalizes reversed bond records`,
-      base: [],
-      added: [{ site_idx_1: 3, site_idx_2: 1, order: 2 }],
-      removed: [],
-      overrides: [],
-      expected: [{ site_idx_1: 1, site_idx_2: 3, order: 2 }],
-    },
-  ] satisfies {
+  const edge = (site_idx_1: number, site_idx_2: number, order: BondOrder) => ({
+    site_idx_1,
+    site_idx_2,
+    order,
+  })
+  const bond_0_1 = (order: BondOrder) => [edge(0, 1, order)]
+
+  // oxfmt-ignore
+  test.each<{
     desc: string
     base: StructureBond[]
     added: StructureBond[]
@@ -276,7 +260,11 @@ describe(`Explicit Bond Metadata`, () => {
     overrides: StructureBond[]
     expected: StructureBond[]
     visible?: boolean
-  }[])(`merge_bond_edits $desc`, ({ base, added, removed, overrides, expected, visible }) => {
+  }>([
+    { desc: `lets overrides win over additions`, base: [], added: bond_0_1(1), removed: [], overrides: bond_0_1(3), expected: bond_0_1(3) },
+    { desc: `lets removals win over stale additions and overrides`, base: bond_0_1(1), added: bond_0_1(1), removed: [edge(1, 0, 1)], overrides: bond_0_1(3), expected: [], visible: false },
+    { desc: `normalizes reversed bond records`, base: [], added: [edge(3, 1, 2)], removed: [], overrides: [], expected: [edge(1, 3, 2)] },
+  ])(`merge_bond_edits $desc`, ({ base, added, removed, overrides, expected, visible }) => {
     expect(bonding.merge_bond_edits(base, added, removed, overrides)).toEqual(expected)
     if (visible !== undefined) {
       expect(
@@ -289,12 +277,6 @@ describe(`Explicit Bond Metadata`, () => {
     }
   })
 
-  const edge = (site_idx_1: number, site_idx_2: number, order: BondOrder) => ({
-    site_idx_1,
-    site_idx_2,
-    order,
-  })
-  const bond_0_1 = (order: BondOrder) => [edge(0, 1, order)]
   // Each edit runs against a calculated 0-1 bond (order 1 unless calc_order says otherwise);
   // reversed targets check the helpers normalize site order. Expected state is a subset.
   type EditCase = [
@@ -319,6 +301,8 @@ describe(`Explicit Bond Metadata`, () => {
     [`deletes a calculated bond`, `delete`, {}, [1, 0], 1, undefined, `deleted-calculated`, true, { removed_bonds: bond_0_1(1) }],
     [`deleting records the calculated order`, `delete`, {}, [1, 0], 1, 2, `deleted-calculated`, true, { removed_bonds: bond_0_1(2) }],
     [`deletes a manually added bond`, `delete`, { added_bonds: [edge(2, 3, 3)] }, [3, 2], 1, undefined, `deleted-added`, true, { added_bonds: [] }],
+    // added while absent, then also calculated (bonding options changed): must leave both sets
+    [`deletes a bond both added and calculated`, `delete`, { added_bonds: bond_0_1(2) }, [1, 0], 1, undefined, `deleted-added`, true, { added_bonds: [], removed_bonds: bond_0_1(1) }],
     [`ignores deleting a missing bond`, `delete`, {}, [4, 5], 1, undefined, `not-visible`, false, {}],
     [`overrides a calculated bond's order`, `order`, {}, [1, 0], 3, undefined, `ordered-calculated`, true, { bond_order_overrides: bond_0_1(3) }],
     [`restores a removed bond when ordering it`, `order`, { removed_bonds: bond_0_1(1) }, [0, 1], 2, undefined, `ordered-calculated`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(2) }],
@@ -338,6 +322,10 @@ describe(`Explicit Bond Metadata`, () => {
           ? bonding.delete_bond(...args)
           : bonding.set_bond_order(...args, order)
     expect(result).toMatchObject({ action, changed, state: after })
+    if (op === `delete` && changed) {
+      const target = { site_idx_1, site_idx_2 }
+      expect(bonding.has_visible_bond(result.state, target, calculated_bonds(calc_order))).toBe(false)
+    }
   })
 
   test(`bond edit helpers preserve periodic cell-shift keys`, () => {
@@ -373,18 +361,17 @@ describe(`Explicit Bond Metadata`, () => {
     )
 
     expect(image_site_idx).toBeGreaterThan(1)
-    expect(
-      bonding.canonicalize_bond_target(
-        { site_idx_1: 0, site_idx_2: image_site_idx },
-        structure_with_images.sites,
-      ),
-    ).toEqual({ site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] })
-    expect(
-      bonding.canonicalize_bond_target(
-        { site_idx_1: image_site_idx, site_idx_2: 0 },
-        structure_with_images.sites,
-      ),
-    ).toEqual({ site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] })
+    for (const [site_idx_1, site_idx_2] of [
+      [0, image_site_idx],
+      [image_site_idx, 0],
+    ]) {
+      const target = { site_idx_1, site_idx_2 }
+      expect(bonding.canonicalize_bond_target(target, structure_with_images.sites)).toEqual({
+        site_idx_1: 0,
+        site_idx_2: 1,
+        cell_shift: [1, 0, 0],
+      })
+    }
   })
 
   test(`parses and renders explicit crystal bonds with cell shifts`, () => {
@@ -418,23 +405,6 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bond.bond_length).toBeCloseTo(1)
     expect(bond.bond_order).toBe(2)
     expect(bond.cell_shift).toEqual([1, 0, 0])
-
-    // matching site indices with opposite shifts must stay two distinct bonds
-    const bonds_by_key = new Map(
-      bonding
-        .explicit_only(structure)
-        .map((bond_pair) => [
-          bonding.get_bond_key(
-            bond_pair.site_idx_1,
-            bond_pair.site_idx_2,
-            bond_pair.cell_shift,
-          ),
-          bond_pair,
-        ]),
-    )
-    expect([...bonds_by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
-    expect(bonds_by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
-    expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
   })
 
   // With image atoms shown, the perceived bond ends on the O image
@@ -453,25 +423,6 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonds.map(({ bond_order }) => bond_order)).toEqual([2, 2])
     const drawn = bonds.map(({ pos_1, pos_2 }) => [...pos_1, ...pos_2].map(Math.round))
     expect(new Set(drawn.map(String)).size).toBe(2)
-  })
-
-  test(`keeps explicit periodic self-bonds distinct from zero-shift self-bonds`, () => {
-    const structure = make_crystal(10, [[`C`, [0.5, 0.5, 0.5]]])
-    structure.properties = {
-      bonds: [
-        { site_idx_1: 0, site_idx_2: 0, order: 1 },
-        { site_idx_1: 0, site_idx_2: 0, order: 2, cell_shift: [1, 0, 0] },
-        { site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [-1, 0, 0] },
-      ],
-    }
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
-    onTestFinished(() => warn_spy.mockRestore())
-    expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
-      { site_idx_1: 0, site_idx_2: 0, order: 3, cell_shift: [1, 0, 0] },
-    ])
-    expect(warn_spy).toHaveBeenCalledWith(
-      expect.stringContaining(`Ignoring invalid explicit bond at index 0`),
-    )
   })
 })
 
@@ -550,7 +501,7 @@ describe(`explicit_only strategy`, () => {
         bond,
       ]),
     )
-
+    // matching site indices with opposite shifts must stay two distinct bonds
     expect([...by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
     // the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the 9 A in-cell distance)
     expect(by_key.get(`0-1@1,0,0`)?.pos_2).toEqual([10.5, 5, 5])
@@ -623,6 +574,10 @@ const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
       ] as Vec3,
     })),
   )
+const diamond_basis: Vec3[] = [
+  [0, 0, 0],
+  [0.25, 0.25, 0.25],
+]
 const bcc = (element: ElementSymbol) =>
   sites_at(element, [
     [0, 0, 0],
@@ -667,24 +622,8 @@ const cn_benchmark: [
   ReturnType<typeof fcc>,
   Record<string, number>,
 ][] = [
-  [
-    `diamond C`,
-    3.567,
-    fcc(`C`, [
-      [0, 0, 0],
-      [0.25, 0.25, 0.25],
-    ]),
-    { C: 4 },
-  ],
-  [
-    `Si diamond`,
-    5.431,
-    fcc(`Si`, [
-      [0, 0, 0],
-      [0.25, 0.25, 0.25],
-    ]),
-    { Si: 4 },
-  ],
+  [`diamond C`, 3.567, fcc(`C`, diamond_basis), { C: 4 }],
+  [`Si diamond`, 5.431, fcc(`Si`, diamond_basis), { Si: 4 }],
   [`fcc Cu`, 3.615, fcc(`Cu`), { Cu: 12 }],
   [`fcc Al`, 4.05, fcc(`Al`), { Al: 12 }],
   [`fcc Pb`, 4.95, fcc(`Pb`), { Pb: 12 }],
@@ -702,10 +641,7 @@ const cn_benchmark: [
     `LuAl2 Laves`,
     7.742,
     [
-      ...fcc(`Lu`, [
-        [0, 0, 0],
-        [0.25, 0.25, 0.25],
-      ]),
+      ...fcc(`Lu`, diamond_basis),
       ...fcc(`Al`, [
         [0.625, 0.625, 0.625],
         [0.375, 0.875, 0.125],
@@ -755,15 +691,7 @@ const cn_benchmark: [
   ],
   [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
   [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
-  [
-    `ZnS zincblende`,
-    5.41,
-    [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])],
-    {
-      Zn: 4,
-      S: 4,
-    },
-  ],
+  [`ZnS zincblende`, 5.41, [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])], { Zn: 4, S: 4 }],
   [
     `CaF2 fluorite`,
     5.463,
@@ -881,11 +809,7 @@ describe(`coordination number benchmark`, () => {
     )
     // image atoms complete the shells of atoms sitting on cell faces
     const imaged = get_pbc_image_sites(base)
-    const counts = Array.from<number>({ length: imaged.sites.length }).fill(0)
-    for (const { site_idx_1, site_idx_2 } of bonding.electroneg_ratio(imaged)) {
-      counts[site_idx_1]++
-      counts[site_idx_2]++
-    }
+    const counts = bonds_per_site(bonding.electroneg_ratio(imaged), imaged.sites.length)
     // only the original unit-cell sites are checked; image copies are partial by design
     const actual: Record<string, number[]> = {}
     for (let idx = 0; idx < base.sites.length; idx++) {
@@ -906,19 +830,20 @@ describe(`coordination number benchmark`, () => {
 
 describe(`Electronegativity-Based Bonding`, () => {
   test.each([
-    [`Na`, `Cl`, 2.3], // ionic
-    [`C`, `C`, 1.5], // covalent, same species
-    [`C`, `O`, 1.5], // covalent, heteronuclear
-  ] as [ElementSymbol, ElementSymbol, number][])(
-    `%s-%s at %s A is a single bond of that length`,
-    (elem_1, elem_2, dist) => {
+    [`Na`, `Cl`, 2.3, 2.5, 1], // ionic
+    [`C`, `C`, 1.5, 2.5, 1], // covalent, same species
+    [`C`, `O`, 1.5, 2.5, 1], // covalent, heteronuclear
+    [`Na`, `Cl`, 10, 5, 0], // inside max_distance_ratio but far too weak
+  ] as [ElementSymbol, ElementSymbol, number, number, number][])(
+    `%s-%s at %s A with max_distance_ratio %s forms %s bonds`,
+    (elem_1, elem_2, dist, max_distance_ratio, n_bonds) => {
       const structure = make_struct([
         { xyz: [0, 0, 0], element: elem_1 },
         { xyz: [dist, 0, 0], element: elem_2 },
       ])
-      const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio: 2.5 })
-      expect(bonds).toHaveLength(1)
-      expect(bonds[0].bond_length).toBeCloseTo(dist, 1)
+      const bonds = bonding.electroneg_ratio(structure, { max_distance_ratio })
+      expect(bonds).toHaveLength(n_bonds)
+      for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(dist, 1)
     },
   )
 
@@ -966,14 +891,6 @@ describe(`Electronegativity-Based Bonding`, () => {
     expect(lenient).toHaveLength(1)
     expect(strict).toHaveLength(0)
   })
-
-  test(`distance constraints`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `Na` },
-      { xyz: [10, 0, 0], element: `Cl` },
-    ])
-    expect(bonding.electroneg_ratio(structure, { max_distance_ratio: 5 })).toHaveLength(0)
-  })
 })
 
 test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
@@ -998,29 +915,9 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   // threshold. Pre-fix the original kept 2 bonds (it saw Long before Short set closest) while the
   // image kept 1; the fix gathers all closest distances before penalizing, so both bond the same.
   const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0.6 })
-  const bond_count = (anchor: number) =>
-    bonds.filter((bond) => bond.site_idx_1 === anchor || bond.site_idx_2 === anchor).length
-
-  expect(bond_count(3)).toBe(bond_count(0)) // image (idx 3) bonds identically to original (idx 0)
+  const counts = bonds_per_site(bonds, structure.sites.length)
+  expect(counts[3]).toBe(counts[0]) // image (idx 3) bonds identically to original (idx 0)
 })
-test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bonds`, () => {
-  // Benzene-like fragment: in raw distance C-H (1.09 Å) < C-C (1.40 Å), so a raw-distance
-  // closest-neighbor penalty would penalize C-C (1.40/1.09 = 1.28). Normalized by
-  // covalent-radii sums, C-C (1.40/1.52 = 0.92) is closer than C-H (1.09/1.07 = 1.02),
-  // so both bonds survive.
-  const structure = make_crystal(10, [
-    { element: `C`, xyz: [0, 0, 0] }, // central C
-    { element: `H`, xyz: [1.09, 0, 0] }, // C-H at 1.09 A (shorter raw distance)
-    { element: `C`, xyz: [0, 1.4, 0] }, // C-C at 1.40 A (closer in normalized space)
-  ])
-
-  const bonds = bonding.electroneg_ratio(structure)
-
-  // Both C1-H1 and C1-C2 must survive (normalized distance keeps the longer C-C bond)
-  expect(find_bond(bonds, 0, 1)).toBeDefined()
-  expect(find_bond(bonds, 0, 2)).toBeDefined()
-})
-
 test(`bonding logic treats original and image atoms consistently`, () => {
   const structure = make_crystal(10, [
     [`C`, [0.02, 0.5, 0.5]], // x=0.2, within the 0.5 Å face tolerance => phase-1 image at 10.2
@@ -1034,48 +931,36 @@ test(`bonding logic treats original and image atoms consistently`, () => {
   )
   expect(c1_img_idx).toBeGreaterThan(2)
 
-  // Compute bonds
   const bonds = bonding.electroneg_ratio(with_images, {
     min_bond_dist: 0.1,
     max_distance_ratio: 5.0,
     strength_threshold: 0.0001,
   })
-
-  const bond_counts = new Map<number, number>()
-  for (const bond of bonds) {
-    bond_counts.set(bond.site_idx_1, (bond_counts.get(bond.site_idx_1) ?? 0) + 1)
-    bond_counts.set(bond.site_idx_2, (bond_counts.get(bond.site_idx_2) ?? 0) + 1)
-  }
-
-  const c1_bonds = bond_counts.get(0) ?? 0
-  const c1_img_bonds = bond_counts.get(c1_img_idx) ?? 0
-
-  expect(c1_img_bonds).toBe(c1_bonds)
-
+  const counts = bonds_per_site(bonds, with_images.sites.length)
+  expect(counts[c1_img_idx]).toBe(counts[0])
   const h_img_idx = with_images.sites.findIndex(
     (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.0) < 0.1,
   )
-  if (h_img_idx !== -1) {
-    const h_bonds = bond_counts.get(2) ?? 0
-    const h_img_bonds = bond_counts.get(h_img_idx) ?? 0
-    expect(h_img_bonds).toBe(h_bonds)
-  }
+  if (h_img_idx !== -1) expect(counts[h_img_idx]).toBe(counts[2])
 })
 
-test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
-  const structure = make_crystal(10, [
-    { element: `Na`, xyz: [0, 0, 0] },
-    { element: `Na`, xyz: [2, 0, 0] }, // weak (metal-metal, same species), short 2.0 A
-    { element: `Cl`, xyz: [0, 3, 0] }, // strong (ionic), longer 3.0 A
-  ])
-
-  // Na-Na (2.0 A) is weak -> rejected by threshold; Na-Cl (3.0 A) is strong -> accepted. If the
-  // rejected Na-Na wrongly set the "closest" distance, Na-Cl would be over-penalized and dropped.
-  const bonds = bonding.electroneg_ratio(structure, { strength_threshold: 0.4 })
-
-  expect(find_bond(bonds, 0, 1)).toBeUndefined() // weak Na-Na rejected
-  expect(find_bond(bonds, 0, 2)).toBeDefined() // strong Na-Cl survives
-})
+// Site 0's closest-neighbor penalty must use distances normalized by covalent-radii sums
+// and only accepted bonds. C-H (1.09 A) is shorter than C-C (1.40 A) raw but not normalized
+// (1.02 vs 0.92), so a raw-distance penalty would drop C-C. Na-Na (2.0 A, weak metal-metal)
+// is rejected by the threshold and must not set the "closest" distance that drops Na-Cl.
+// oxfmt-ignore
+test.each([
+  [`keeps a longer C-C beside a shorter C-H`, [`C`, `H`, `C`], [[0, 0, 0], [1.09, 0, 0], [0, 1.4, 0]], {}, true],
+  [`ignores a rejected weak Na-Na contact`, [`Na`, `Na`, `Cl`], [[0, 0, 0], [2, 0, 0], [0, 3, 0]], { strength_threshold: 0.4 }, false],
+] as [string, ElementSymbol[], Vec3[], { strength_threshold?: number }, boolean][])(
+  `electroneg_ratio closest-neighbor penalty %s`,
+  (_desc, elements, coords, options, keeps_0_1) => {
+    const structure = make_struct(elements.map((element, idx) => ({ element, xyz: coords[idx] })))
+    const bonds = bonding.electroneg_ratio(structure, options)
+    expect(Boolean(find_bond(bonds, 0, 1))).toBe(keeps_0_1)
+    expect(find_bond(bonds, 0, 2)).toBeDefined()
+  },
+)
 
 describe(`remap_bonds_after_deletion`, () => {
   const bond = (
@@ -1342,7 +1227,7 @@ describe(`compute_bonds memo`, () => {
         [],
       )
       expect(() => search.compute_columns(view.update(invalid).structure)).toThrow(
-        `Invalid atomic number 0 at site 0`,
+        `Invalid atomic number 0 at site 1`,
       )
     },
   )
@@ -1406,12 +1291,6 @@ describe(`compute_bonds memo`, () => {
     { xyz: [4, 0, 0], element: `C` },
   ])
 
-  test(`matches the underlying strategy result`, () => {
-    expect(bonding.compute_bonds(structure, `electroneg_ratio`)).toEqual(
-      bonding.electroneg_ratio(structure),
-    )
-  })
-
   test.each([`solid_angle`, `toString`])(`rejects unknown strategy %s by name`, (strategy) => {
     expect(() =>
       bonding.compute_bonds(structure, strategy as bonding.BondingStrategy),
@@ -1420,24 +1299,18 @@ describe(`compute_bonds memo`, () => {
     )
   })
 
-  const other_structure = make_struct([{ xyz: [0, 0, 0] }])
-  test.each([
-    [`different structure`, other_structure, `electroneg_ratio`, {}],
-    [`different strategy`, structure, `explicit_only`, {}],
-    [`different options`, structure, `electroneg_ratio`, { max_distance_ratio: 3 }],
-  ] as const)(`recomputes on %s`, (_desc, struct, strategy, options) => {
-    const base = bonding.compute_bonds(structure, `electroneg_ratio`, {})
-    const next = bonding.compute_bonds(struct, strategy, options)
-    expect(next).not.toBe(base)
-  })
-
   test(`caches per structure and per strategy/options signature`, () => {
     // Several Structure components (or the multi-side view's panes) compute bonds for
     // different structures and settings in one flush; a single memo slot would thrash
+    const other_structure = make_struct([{ xyz: [0, 0, 0] }])
     const eneg = bonding.compute_bonds(structure, `electroneg_ratio`, {})
+    expect(eneg).toEqual(bonding.electroneg_ratio(structure))
     const other = bonding.compute_bonds(other_structure, `electroneg_ratio`, {})
     const wide_opts = { max_distance_ratio: 3 }
     const wide = bonding.compute_bonds(structure, `electroneg_ratio`, wide_opts)
+    const explicit = bonding.compute_bonds(structure, `explicit_only`, {})
+    // a different structure, options or strategy each recompute
+    expect(new Set([eneg, other, wide, explicit]).size).toBe(4)
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, {})).toBe(eneg)
     expect(bonding.compute_bonds(other_structure, `electroneg_ratio`, {})).toBe(other)
     expect(bonding.compute_bonds(structure, `electroneg_ratio`, { ...wide_opts })).toBe(wide)
@@ -1454,11 +1327,8 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
     expect(bonding.electroneg_ratio(rocksalt)).toHaveLength(12) // 8 ions x 3 in-box / 2
     const bonds = bonding.electroneg_ratio(rocksalt, { pbc: rocksalt.lattice.pbc })
     expect(bonds).toHaveLength(24)
-    const per_site = Array.from<number>({ length: 8 }).fill(0)
     let max_len_err = 0
     for (const { site_idx_1, site_idx_2, pos_1, pos_2, bond_length, cell_shift } of bonds) {
-      per_site[site_idx_1]++
-      per_site[site_idx_2]++
       expect(site_idx_1).toBeLessThan(site_idx_2)
       expect(pos_1).toBe(rocksalt.sites[site_idx_1].xyz)
       // pos_2 = partner + cell_shift . lattice, and |pos_2 - pos_1| is the bond length
@@ -1475,7 +1345,7 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
         Math.abs(math.euclidean_dist(pos_1, pos_2) - bond_length),
       )
     }
-    expect(per_site).toEqual(Array(8).fill(6))
+    expect(bonds_per_site(bonds, 8)).toEqual(Array(8).fill(6))
     expect(max_len_err).toBeLessThan(1e-12)
     expect(bonds.filter((bond) => bond.cell_shift !== undefined)).toHaveLength(12)
   })
@@ -1503,17 +1373,10 @@ describe(`electroneg_ratio across periodic boundaries`, () => {
   })
 
   test(`pbc bonds of a 2x2x2 supercell match the unit cell's per-site count`, () => {
+    // the unit cell's 6 per site is asserted in the first test of this block
     const supercell = make_supercell(rocksalt, [2, 2, 2])
-    const count = (structure: Crystal) => {
-      const per_site = Array.from<number>({ length: structure.sites.length }).fill(0)
-      for (const bond of bonding.electroneg_ratio(structure, { pbc: structure.lattice.pbc })) {
-        per_site[bond.site_idx_1]++
-        per_site[bond.site_idx_2]++
-      }
-      return per_site
-    }
-    expect(count(supercell)).toEqual(Array(64).fill(6))
-    expect(count(rocksalt)).toEqual(Array(8).fill(6))
+    const bonds = bonding.electroneg_ratio(supercell, { pbc: supercell.lattice.pbc })
+    expect(bonds_per_site(bonds, 64)).toEqual(Array(64).fill(6))
   })
 })
 
@@ -1601,8 +1464,12 @@ describe(`spatial grid coverage`, () => {
 describe(`neighbor_query`, () => {
   // Reference: every (center, partner, integer image) over a generous ±3 image range on the
   // periodic axes, keyed so both lists can be compared as sets
-  const brute_force = (structure: Crystal, cutoff: number, pbc: readonly boolean[]) => {
-    const [vec_a, vec_b, vec_c] = structure.lattice.matrix
+  const brute_force = (structure: AnyStructure, cutoff: number, pbc: readonly boolean[]) => {
+    // a molecule has no periodic axis, so its zero lattice vectors are never applied
+    const [vec_a, vec_b, vec_c] =
+      `lattice` in structure
+        ? structure.lattice.matrix
+        : Array.from({ length: 3 }, (): Vec3 => [0, 0, 0])
     const range = (axis: number) => (pbc[axis] ? [-3, -2, -1, 0, 1, 2, 3] : [0])
     const found = new Map<string, { dist: number; delta: Vec3 }>()
     for (const [center, site_a] of structure.sites.entries()) {
@@ -1992,12 +1859,7 @@ describe(`neighbor_query`, () => {
     expect(list.neighbors).toHaveLength(6)
     expect(Array.from(list.neighbors)).toEqual([0, 0, 0, 0, 0, 0])
     expect(Array.from(list.distances).every((dist) => Math.abs(dist - 3) < 1e-12)).toBe(true)
-    const fcc_cu = make_crystal(3.6, [
-      { element: `Cu`, abc: [0, 0, 0] },
-      { element: `Cu`, abc: [0.5, 0.5, 0] },
-      { element: `Cu`, abc: [0.5, 0, 0.5] },
-      { element: `Cu`, abc: [0, 0.5, 0.5] },
-    ])
+    const fcc_cu = make_crystal(3.6, fcc(`Cu`))
     const knn = bonding.neighbor_query(fcc_cu, { k: 12 })
     expect(Array.from(knn.offsets)).toEqual([0, 12, 24, 36, 48])
     const nn_dist = 3.6 / Math.SQRT2
@@ -2149,25 +2011,11 @@ describe(`neighbor_query`, () => {
         ] as [string, Vec3][]
       ).map(([element, xyz]) => [element, math.add(xyz, offset)]),
     )
-    const cutoff = 1
-    const list = bonding.neighbor_query(water, { cutoff })
-    const found = new Map<string, number>()
-    for (let center = 0; center < list.n_centers; center++) {
-      for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
-        found.set(`${center}|${list.neighbors[slot]}`, list.distances[slot])
-      }
-    }
-    const expected = new Map<string, number>()
-    for (const [center, site_a] of water.sites.entries()) {
-      for (const [partner, site_b] of water.sites.entries()) {
-        if (center === partner) continue
-        const dist = math.euclidean_dist(site_a.xyz, site_b.xyz)
-        if (dist <= cutoff) expected.set(`${center}|${partner}`, dist)
-      }
-    }
+    const found = as_map(bonding.neighbor_query(water, { cutoff: 1 }))
+    const expected = brute_force(water, 1, [false, false, false])
     expect(expected.size).toBe(6) // two O-H per water, both directions
     expect([...found.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
-    for (const [key, dist] of expected) expect(found.get(key)).toBeCloseTo(dist, 12)
+    for (const [key, { dist }] of expected) expect(found.get(key)?.dist).toBeCloseTo(dist, 12)
   })
 
   // One ejected atom (an MD blow-up frame) stretches the bounding box along one axis. A

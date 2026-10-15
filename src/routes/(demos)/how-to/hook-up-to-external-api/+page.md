@@ -4,9 +4,6 @@
   import { default_highlighter } from 'svelte-widgets/highlight'
   import optimade_viewer_src from '#site/OptimadeStructureViewer.svelte?raw'
 
-  let structure_id = $state(`mp-756175`)
-  let selected_provider = $state(`mp`)
-
   const src_file = {
     title: `OptimadeStructureViewer.svelte`,
     content: optimade_viewer_src,
@@ -20,7 +17,7 @@
 
 The [OPTIMADE](https://www.optimade.org) standard gives a common API over 50+ materials databases. The demo below fetches and renders a structure from any OPTIMADE provider:
 
-<OptimadeStructureViewer structure_id={structure_id} selected_provider={selected_provider} />
+<OptimadeStructureViewer structure_id="mp-756175" selected_provider="mp" />
 
 ## Source Code
 

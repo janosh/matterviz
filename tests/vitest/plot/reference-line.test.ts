@@ -133,35 +133,16 @@ test(`reference annotations dodge obstacles projected onto the marginal-padded c
 
 // Every reader of a line's x_axis/y_axis (the layer and the annotation solver) goes through
 // resolve_ref_line_axes, so secondary axes and inverted ranges behave the same for lines and labels
-test.each<[Pick<RefLine, `x_axis` | `y_axis`>, ReturnType<typeof resolve_ref_line_axes>]>([
-  [
-    {},
-    {
-      x_min: 0,
-      x_max: 10,
-      y_min: 0,
-      y_max: 10,
-      x_scale: axes.scales.x,
-      y_scale: axes.scales.y,
-    },
-  ],
-  [
-    { x_axis: `x2`, y_axis: `y2` },
-    {
-      x_min: 0,
-      x_max: 100,
-      y_min: 0,
-      y_max: 1000,
-      x_scale: axes.scales.x2,
-      y_scale: axes.scales.y2,
-    },
-  ],
-])(
-  `resolve_ref_line_axes resolves %o against its axes with sorted bounds`,
-  (line, expected) => {
-    expect(resolve_ref_line_axes({ type: `horizontal`, y: 1, ...line }, axes)).toEqual(
-      expected,
-    )
+test.each([
+  [undefined, undefined, [0, 10, 0, 10]],
+  [`x2`, `y2`, [0, 100, 0, 1000]],
+] as const)(
+  `resolve_ref_line_axes resolves %s/%s with sorted bounds`,
+  (x_axis, y_axis, [x_min, x_max, y_min, y_max]) => {
+    const line: RefLine = { type: `horizontal`, y: 1, x_axis, y_axis }
+    const [x_scale, y_scale] = [axes.scales[x_axis ?? `x`], axes.scales[y_axis ?? `y`]]
+    const expected = { x_min, x_max, y_min, y_max, x_scale, y_scale }
+    expect(resolve_ref_line_axes(line, axes)).toEqual(expected)
   },
 )
 
@@ -330,12 +311,8 @@ describe(`calculate_annotation_position`, () => {
     [`center`, 100, `middle`],
     [`end`, 196, `end`],
   ] as const)(`position %s on horizontal line`, (position, expected_x, expected_anchor) => {
-    const pos = calculate_annotation_position(0, 100, 200, 100, {
-      position,
-      side: `above`,
-    })
-    expect(pos.x).toBe(expected_x)
-    expect(pos.text_anchor).toBe(expected_anchor)
+    const pos = calculate_annotation_position(0, 100, 200, 100, { position, side: `above` })
+    expect([pos.x, pos.text_anchor]).toEqual([expected_x, expected_anchor])
   })
 
   test(`offset is applied`, () => {
@@ -356,36 +333,22 @@ describe(`calculate_annotation_position`, () => {
   })
 
   // Both vertical directions are regression coverage: bottom-to-top used to invert left/right.
+  // oxfmt-ignore
   test.each([
     [`top-to-bottom vertical`, `left`, [100, 0, 100, 200], 90, 100, `end`],
     [`top-to-bottom vertical`, `right`, [100, 0, 100, 200], 110, 100, `start`],
     [`bottom-to-top vertical`, `left`, [100, 200, 100, 0], 90, 100, `end`],
     [`bottom-to-top vertical`, `right`, [100, 200, 100, 0], 110, 100, `start`],
     [`diagonal`, `left`, [0, 0, 100, 100], 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
-    [
-      `diagonal`,
-      `right`,
-      [0, 0, 100, 100],
-      50 + 10 / Math.SQRT2,
-      50 - 10 / Math.SQRT2,
-      `start`,
-    ],
+    [`diagonal`, `right`, [0, 0, 100, 100], 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
     [`horizontal`, `left`, [0, 100, 200, 100], 100, 110, `end`],
     [`horizontal`, `right`, [0, 100, 200, 100], 100, 90, `start`],
   ] as const)(
     `%s: %s side offset`,
     (_name, side, line_endpoints, expected_x, expected_y, expected_anchor) => {
-      const pos = calculate_annotation_position(
-        line_endpoints[0],
-        line_endpoints[1],
-        line_endpoints[2],
-        line_endpoints[3],
-        {
-          position: `center`,
-          side,
-          gap: 10,
-        },
-      )
+      const [start_x, start_y, end_x, end_y] = line_endpoints
+      const options = { position: `center`, side, gap: 10 } as const
+      const pos = calculate_annotation_position(start_x, start_y, end_x, end_y, options)
       expect(pos.x).toBeCloseTo(expected_x, 5)
       expect(pos.y).toBeCloseTo(expected_y, 5)
       expect(pos.text_anchor).toBe(expected_anchor)
@@ -440,10 +403,7 @@ describe(`reference annotation candidates`, () => {
       fontStretch: `normal`,
       lineHeight: `24px`,
     } as CSSStyleDeclaration)
-    const measured = estimate_reference_annotation_metrics({
-      text: `Em`,
-      font_size: `1.5em`,
-    })
+    const measured = estimate_reference_annotation_metrics({ text: `Em`, font_size: `1.5em` })
     expect(measured.font_size).toBe(30)
     expect(context.font).toContain(`30px`)
   })
@@ -456,12 +416,7 @@ describe(`reference annotation candidates`, () => {
   ] as const)(
     `baseline rectangle for %s starts from dominant baseline geometry`,
     (side, dominant_baseline, text_anchor, expected_y) => {
-      const anchor = {
-        x: 100,
-        y: 100,
-        text_anchor,
-        dominant_baseline,
-      }
+      const anchor = { x: 100, y: 100, text_anchor, dominant_baseline }
       const rect = reference_annotation_text_rect(anchor, metrics)
       expect(rect.y).toBeCloseTo(expected_y, 10)
       expect([rect.width, rect.height]).toEqual([40 + 2 * 2, 9 + 3 + 2 * 2])
@@ -564,13 +519,14 @@ describe(`index_ref_lines`, () => {
 
   test.each([
     {
-      desc: `filters invisible lines`,
+      // idx (handlers' line_idx) indexes the caller's array: hiding earlier lines can't shift it
+      desc: `filters invisible lines keeping their original index`,
       lines: [
         { type: `horizontal`, y: 10, visible: false },
         { type: `vertical`, x: 20 },
         { type: `horizontal`, y: 30, visible: false },
       ] satisfies RefLine[],
-      expected: [{ type: `vertical`, idx: 0 }],
+      expected: [{ type: `vertical`, idx: 1 }],
     },
     {
       // `idx` is the keyed-each key, so lines sharing a public `id` must still get distinct keys

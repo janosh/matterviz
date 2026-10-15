@@ -1,6 +1,7 @@
 <script lang="ts">
   // 2D reference line (horizontal, vertical, diagonal, segment, line) with an optional
   // annotation whose placement the host plot solves together with its other decorations.
+  import { display_idx } from '#lib/labels.js'
   import type { ReferenceAnnotationCandidate } from '#lib/plot/core/decorations/index.js'
   import type { RefLineAxes } from '#lib/plot/core/reference-line.js'
   import {
@@ -63,9 +64,11 @@
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <g
-    class={['reference-line', { hovered: is_hovered }]}
+    class={[`reference-line`, { hovered: is_hovered }]}
     role={is_clickable ? `button` : `img`}
-    aria-label={ref_line.label ?? ref_line.annotation?.text ?? `Reference line ${line_idx}`}
+    aria-label={ref_line.label ??
+      ref_line.annotation?.text ??
+      `Reference line ${display_idx(line_idx)}`}
     tabindex={is_clickable ? 0 : -1}
     style:cursor={is_clickable ? `pointer` : `default`}
     onmouseenter={(evt) => on_hover?.(make_event(evt))}

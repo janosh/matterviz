@@ -82,6 +82,7 @@
   import { unique_id } from '#lib/plot/core/utils.js'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import {
+    bar_width_at,
     compute_bar_auto_ranges,
     compute_group_info,
     compute_stacked_offsets,
@@ -100,7 +101,6 @@
     point: InternalPoint<Metadata>
   }
 
-  // Extended point type with computed screen coordinates (used internally for rendering)
   type LineSeriesPoint = BarLineSeriesPoint<Metadata>
 
   const BAR_LABEL_FONT = { ...DEFAULT_FONT_SPEC, font_size: 11 } // matches .bar-label
@@ -286,8 +286,7 @@
       )
     }
     return series.map((srs, series_idx) => {
-      if (srs.visible === false) return srs
-      const assigned_axis = assignment.assignments[series_idx]
+      const assigned_axis = srs.visible === false ? null : assignment.assignments[series_idx]
       if (!assigned_axis) return srs
       return vertical
         ? { ...srs, y_axis: assigned_axis }
@@ -372,16 +371,13 @@
   ) => {
     const layout = { series_idx, mode, orientation, group_info, cat_scale, val_scale }
     const bases = mode === `stacked` ? stacked_offsets[series_idx] : undefined
-    const { x: coord_x, y: coord_y, bar_width } = srs
     return (bar_idx: number) =>
       compute_bar_rect({
         ...layout,
-        cat_val: coord_x[bar_idx],
-        val: coord_y[bar_idx],
+        cat_val: srs.x[bar_idx],
+        val: srs.y[bar_idx],
         base: bases?.[bar_idx] ?? 0,
-        bar_width_val: Array.isArray(bar_width)
-          ? (bar_width[bar_idx] ?? 0.5)
-          : (bar_width ?? 0.5),
+        bar_width_val: bar_width_at(srs, bar_idx),
       })
   }
 
@@ -423,22 +419,18 @@
       const obstacle_series: ObstacleSeries[] = []
       internal_series.forEach((srs, series_idx) => {
         if (!(srs.visible ?? true)) return
-        const is_line = srs.render_mode === `line`
         const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
         const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
         const category_scale = vertical ? scales[x_axis_key] : scales.y
         const value_scale = value_scale_for(vertical ? y_axis_key : x_axis_key, scales)
 
-        if (is_line) {
-          const line_points = srs.x.map((x_val, point_idx) => {
+        if (srs.render_mode === `line`) {
+          const points = srs.x.map((x_val, point_idx) => {
             const [cat_px, val_px] = [category_scale(x_val), value_scale(srs.y[point_idx])]
             const [px_x, px_y] = vertical ? [cat_px, val_px] : [val_px, cat_px]
             return { x: clamp01(px_x / base_w), y: clamp01(px_y / base_h) }
           })
-          obstacle_series.push({
-            points: line_points,
-            draws_line: has_marker(srs, `line`),
-          })
+          obstacle_series.push({ points, draws_line: has_marker(srs, `line`) })
           return
         }
 
@@ -538,11 +530,8 @@
     const [coord_x, coord_y] = [srs.x[bar_idx], srs.y[bar_idx]]
     const [orient_x, orient_y] =
       orientation === `horizontal` ? [coord_y, coord_x] : [coord_x, coord_y]
-    const metadata = Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata
-    const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y`
     const active_x_axis = srs.x_axis ?? `x`
-    const category_label = category_list[coord_x]
     return {
       x: coord_x,
       y: coord_y,
@@ -552,14 +541,14 @@
       x2_axis,
       y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
       y2_axis,
-      metadata,
+      metadata: Array.isArray(srs.metadata) ? srs.metadata[bar_idx] : srs.metadata,
       color,
-      label,
+      label: srs.labels?.[bar_idx] ?? null,
       series_idx,
       bar_idx,
       active_y_axis,
       active_x_axis,
-      category_label,
+      category_label: category_list[coord_x],
     }
   }
 
@@ -612,9 +601,7 @@
     on_point_hover?.(null)
   }
 
-  // Stack offsets (only for bar series in stacked mode, grouped by the value axis)
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
-
   let group_info = $derived(compute_group_info(internal_series, mode))
 
   // === Export ===
@@ -701,7 +688,6 @@
             opacity={frame.series_opacity(series_idx)}
           >
             {#if is_line}
-              <!-- Render as line -->
               {@const color = srs.color ?? line_state.color}
               {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width}
               {@const line_dash = srs.line_style?.line_dash ?? `none`}
@@ -854,7 +840,6 @@
                 </g>
               {/if}
             {:else}
-              <!-- Render as bars -->
               {@const rect_at = bar_geometry(srs, series_idx)}
               {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
                 {@const color = srs.color ?? bar_state.color}
@@ -984,7 +969,6 @@
   {/snippet}
 
   {#snippet overlays()}
-    <!-- Legend -->
     <PlotLegendLayer
       {frame}
       {legend}

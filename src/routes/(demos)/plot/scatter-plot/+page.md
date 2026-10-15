@@ -1601,7 +1601,7 @@ The color bar picks the corner with the least data density (top-left, top-right,
 </div>
 
 <ScatterPlot
-  series={plot_series.map((srs) => ({ ...srs, markers: 'points+text' }))}
+  series={plot_series.map((srs) => ({ ...srs, markers: `points` }))}
   x_axis={{ label: 'X Position', range: [0, 100], format: '~s' }}
   y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
   color_scale={{ scheme: `interpolateTurbo` }}
@@ -2225,7 +2225,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
 
 <div style="margin-top: 0.5em; font-size: 0.9em">
   {#if hovered_fill}
-    Hovering: {hovered_fill.label ?? `Fill region ${hovered_fill.region_idx}`}
+    Hovering: {hovered_fill.label ?? `Fill region ${hovered_fill.region_idx + 1}`}
   {:else}
     Hover over filled areas to see interaction
   {/if}

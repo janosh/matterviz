@@ -1,5 +1,6 @@
 // functions for measuring distances and angles between structure sites
 
+import { display_idx } from '#lib/labels.js'
 import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math.js'
 import {
   clamp,
@@ -112,7 +113,7 @@ export function compute_displacements(
     const cur_element = site.species[0]?.element
     if (ref_element !== cur_element) {
       throw new Error(
-        `Species mismatch at site ${idx}: reference has ${ref_element}, current has ` +
+        `Species mismatch at site ${display_idx(idx)}: reference has ${ref_element}, current has ` +
           `${cur_element}. Displacements pair sites by index, so both geometries must ` +
           `list the same atoms in the same order.`,
       )

@@ -368,7 +368,7 @@ describe(`run ownership`, () => {
     target.querySelector<HTMLButtonElement>(`[aria-label="Next step"]`)?.click()
     await tick()
     expect(target.querySelector(`.status-message.error`)).toBeNull()
-    expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`1`)
+    expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`2`) // 1-based display
     await unmount(component)
     expect(dispose).toHaveBeenCalledOnce()
   })
@@ -700,7 +700,7 @@ describe(`bindable re-exposure`, () => {
 
       props.current_step_idx = 1
       await tick()
-      expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`1`)
+      expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`2`)
       target.querySelector<HTMLButtonElement>(`[aria-label="Previous step"]`)?.click()
       await tick()
       expect(props.current_step_idx).toBe(0)

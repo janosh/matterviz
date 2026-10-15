@@ -74,17 +74,36 @@ const ALIGN_FNS = {
   justify: sankeyJustify,
 } as const
 
-// Resolve a link source/target reference (id or index) to a node array index.
-// Prefers id lookup (ids may be numeric), falls back to treating numbers as indices.
-function resolve_node_ref(
-  ref: number | string,
-  id_to_idx: Map<string | number, number>,
-  n_nodes: number,
-): number {
-  const by_id = id_to_idx.get(ref)
-  if (by_id !== undefined) return by_id
-  if (typeof ref === `number` && is_valid_index(ref, n_nodes)) return ref
-  throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
+// Resolve a link's source/target ref to a node index (-1 if none): by `id`, else by `label`
+// (ids win across the whole graph; duplicates resolve to the last), else as an index. The map
+// is only built when some ref can't be an index, so index-only data skips scan and warning.
+function node_ref_resolver(
+  { nodes, links }: SankeyData<unknown>,
+  warn_duplicates: boolean,
+): (ref: number | string) => number {
+  const by_ref = new Map<string | number, number>()
+  const needs_lookup =
+    links.some((link) => typeof link.source !== `number` || typeof link.target !== `number`) ||
+    nodes.some((node, idx) => typeof node.id === `number` && node.id !== idx)
+  if (needs_lookup) {
+    const labels = new Map<string | number, number>()
+    nodes.forEach((node, idx) => {
+      const [refs, key] = node.id === undefined ? [labels, node.label] : [by_ref, node.id]
+      if (key === undefined) return // index-only node, resolved via fallback
+      if (warn_duplicates && refs.has(key)) {
+        console.warn(
+          `Sankey: duplicate node ${refs === by_ref ? `id` : `label`} "${key}" — links resolve to the last occurrence. Set unique \`id\`s.`,
+        )
+      }
+      refs.set(key, idx)
+    })
+    for (const [label, idx] of labels) if (!by_ref.has(label)) by_ref.set(label, idx)
+  }
+  return (ref) => {
+    const found = by_ref.get(ref)
+    if (found !== undefined) return found
+    return typeof ref === `number` && is_valid_index(ref, nodes.length) ? ref : -1
+  }
 }
 
 // Build a SankeyData object from parallel flat arrays (e.g. the plotly/matbench
@@ -206,27 +225,11 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
 ): SankeyData<Metadata> {
   if (!(min_fraction > 0) && !(max_links > 0)) return data
 
-  // Identity is `id ?? index`, matching what compute_sankey_layout emits. A label is
-  // *not* identity - labels need not be unique, so keying on one would silently merge
-  // two distinct nodes - but links may still reference a node by label, so lookup
-  // accepts both, id first, mirroring resolve_node_ref.
+  // Identity is `id ?? index`, matching what compute_sankey_layout emits: labels need not be
+  // unique, so keying on one would merge distinct nodes. References resolve as in the layout.
   const keys: (string | number)[] = data.nodes.map((node, idx) => node.id ?? idx)
-  const by_ref = new Map<string | number, number>()
-  // Explicit ids claim their key across the whole graph before any label is considered:
-  // otherwise an earlier node's label shadows a later node's id, and a link naming that
-  // id resolves to the wrong node - which the fold would then remap or swallow.
-  for (const field of [`id`, `label`] as const) {
-    data.nodes.forEach((node, idx) => {
-      const ref = node[field]
-      if (ref !== undefined && !by_ref.has(ref)) by_ref.set(ref, idx)
-    })
-  }
-  const in_range = (idx: number) => idx >= 0 && idx < data.nodes.length
   // -1 for a reference that names no node; such a link is left for the layout to report
-  const resolve = (ref: number | string): number => {
-    const found = by_ref.get(ref) ?? (typeof ref === `number` ? ref : -1)
-    return in_range(found) ? found : -1
-  }
+  const resolve = node_ref_resolver(data, false)
 
   const outgoing: number[][] = data.nodes.map(() => [])
   data.links.forEach((link, link_idx) => {
@@ -235,8 +238,7 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   })
   // A reference that resolves to nothing is not terminal, it is broken: folding those
   // links would replace them with a valid bucket and hide the error the layout reports.
-  const is_terminal = (node_idx: number) =>
-    in_range(node_idx) && outgoing[node_idx].length === 0
+  const is_terminal = (node_idx: number) => node_idx >= 0 && outgoing[node_idx].length === 0
 
   const folded = new Set<number>() // link indices replaced by a bucket
   const buckets: { source: number; value: number; count: number }[] = []
@@ -343,7 +345,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   // Every value has to be a non-negative number before d3 sees it. One NaN or undefined makes
   // the whole layout NaN (`d="M24,NaN..."`, `stroke-width="NaN"`), and one negative value gives
   // an invalid negative stroke-width and quietly subtracts from its source node's total, so the
-  // node box understates its own outflow. Throwing matches resolve_node_ref on a bad node ref.
+  // node box understates its own outflow. Throwing matches the unknown-node-ref error.
   for (const link of data.links) {
     if (!Number.isFinite(link.value) || link.value < 0) {
       throw new Error(
@@ -358,29 +360,12 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
   if (!(width > 0) || !(height > 0) || data.nodes.length === 0 || !has_flow)
     return { nodes: [], links: [] }
 
-  // Resolve ids -> indices and clone into fresh objects (d3 mutates these).
-  // Links may reference a node by explicit `id`, or by `label` when no id is set,
-  // or by zero-based index (handled as a fallback in resolve_node_ref). The id map is
-  // only populated when some ref can't be an index, so index-only data skips the scan.
-  const needs_ref_lookup =
-    data.links.some(
-      (link) => typeof link.source !== `number` || typeof link.target !== `number`,
-    ) || data.nodes.some((node, idx) => typeof node.id === `number` && node.id !== idx)
-
-  const id_to_idx = new Map<string | number, number>()
-  if (needs_ref_lookup) {
-    data.nodes.forEach((node, idx) => {
-      const key = node.id ?? node.label
-      if (key === undefined) return // index-only node, resolved via fallback
-      if (id_to_idx.has(key)) {
-        console.warn(
-          `Sankey: duplicate node ${
-            node.id !== undefined ? `id` : `label`
-          } "${key}" — links resolve to the last occurrence. Set unique \`id\`s.`,
-        )
-      }
-      id_to_idx.set(key, idx)
-    })
+  // Resolve link refs -> node indices and clone into fresh objects (d3 mutates these)
+  const resolve = node_ref_resolver(data, true)
+  const resolve_or_throw = (ref: number | string): number => {
+    const idx = resolve(ref)
+    if (idx < 0) throw new Error(`Sankey link references unknown node: ${JSON.stringify(ref)}`)
+    return idx
   }
 
   const node_copies: NodeExtra[] = data.nodes.map((node, idx) => ({
@@ -393,8 +378,8 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     link_idx: idx,
     color: link.color,
     label: link.label,
-    source: resolve_node_ref(link.source, id_to_idx, data.nodes.length),
-    target: resolve_node_ref(link.target, id_to_idx, data.nodes.length),
+    source: resolve_or_throw(link.source),
+    target: resolve_or_throw(link.target),
     value: link.value,
   }))
 

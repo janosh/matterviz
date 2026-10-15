@@ -373,7 +373,7 @@ describe(`measure: displacement fields`, () => {
     const reference = sites(positions, [`Si`, `Si`, `O`])
     const current = sites(positions, [`Si`, `O`, `Si`])
     expect(() => compute_displacements(reference, current, null)).toThrow(
-      /Species mismatch at site 1: reference has Si, current has O/,
+      /Species mismatch at site 2: reference has Si, current has O/,
     )
   })
 

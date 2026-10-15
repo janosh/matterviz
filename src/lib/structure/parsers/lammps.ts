@@ -285,8 +285,11 @@ export const parse_lammps_data = (content: string): Crystal => {
 export const parse_lammps_dump = (content: string): AnyStructure => {
   // Character offsets of the first two frame headers, so only the first frame's text is
   // handed to the trajectory reader (which splits it into lines itself). Stops after the
-  // second hit: a long dump has thousands of headers and only two matter here.
-  const header_regex = /^[ \t]*ITEM:[ \t]*TIMESTEP/gim
+  // second hit: a long dump has thousands of headers and only two matter here. A frame that
+  // also writes the elapsed time opens with `ITEM: TIME`, consuming the TIMESTEP after its
+  // one value line (bounded, so malformed input cannot make the lazy scan quadratic).
+  const header_regex =
+    /^[ \t]*ITEM:[ \t]*TIME(?:STEP|\b[^\n]*\n[^\n]*\n[ \t]*ITEM:[ \t]*TIMESTEP)\b/gim
   const frame_starts: number[] = []
   let match = header_regex.exec(content)
   while (match && frame_starts.length < 2) {

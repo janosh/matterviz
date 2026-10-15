@@ -74,16 +74,19 @@ test.each([
 })
 
 describe(`create_band_path_link`, () => {
-  test(`k-path points and labels follow the band structure`, () => {
-    const link = make_link()
-    expect(link.k_path_points).toEqual(coords)
-    expect(link.k_path_labels.map(({ label }) => label)).toEqual([`Γ`, ...labels.slice(1)])
-  })
-
   // the first point of X→M (q-point 3) shades X→M, not the Γ→X branch ending at the same x; a
   // band hover wins over a k-path hover until it clears
-  test(`band and path hovers mark the q-point, its k-point and branch`, () => {
+  test(`k-path follows the band structure; hovers mark the q-point, k-point and branch`, () => {
     const link = make_link()
+    const branches = [
+      [0, 2],
+      [3, 5],
+    ]
+    expect(link.k_path).toEqual({
+      points: coords,
+      labels: [`Γ`, ...labels.slice(1)],
+      branches,
+    })
     link.hover_path(1)
     const path_state = {
       active_qpoint: 1,
@@ -107,7 +110,7 @@ describe(`create_band_path_link`, () => {
     const empty = make_link({ band_struct: () => undefined })
     empty.hover_band(hover(1))
     expect(state(empty)).toEqual(idle)
-    expect([empty.k_path_points, empty.k_path_labels]).toEqual([[], []])
+    expect(empty.k_path).toBeUndefined()
     // without a reciprocal lattice the q-point still links but has no k-point
     const no_lattice = make_link({ k_lattice: () => undefined })
     no_lattice.hover_band(hover(4))

@@ -186,9 +186,9 @@ export const parse_composition = (
       }
       return parse_composition(composition)
     }
-    // quote bare keys so {Fe: 2, O: 3} is accepted alongside strict JSON
+    // quote bare keys so {Fe: 2, O: 3} and {26: 2, 8: 3} are accepted alongside strict JSON
     const json = trimmed.replaceAll(
-      /(?<lead>[{,]\s*)(?<key>[A-Za-z]+)\s*:/g,
+      /(?<lead>[{,]\s*)(?<key>[A-Za-z]+|\d+)\s*:/g,
       `$<lead>"$<key>":`,
     )
     let parsed: unknown

@@ -2,7 +2,7 @@
 // stub Worker is installed before the import): the payload must carry one element per site,
 // which the structure-id payload omits, or every pair would histogram as X-X.
 import type { calc_frame_rdfs_async as CalcFrameRdfsAsync } from '#lib/rdf/async-compute.svelte.js'
-import { calc_frame_rdfs, type FrameRdfOptions } from '#lib/rdf/calc-rdf.js'
+import { calculate_all_pair_rdfs, type FrameRdfOptions } from '#lib/rdf/calc-rdf.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
 import { afterEach, beforeAll, expect, test } from 'vitest'
@@ -13,7 +13,7 @@ const stub = install_stub_worker<{
   id: number
   input: StructureIdPayload
   options: FrameRdfOptions
-}>(({ input, options }) => calc_frame_rdfs(structure_from_payload(input), options))
+}>(({ input, options }) => calculate_all_pair_rdfs(structure_from_payload(input), options))
 let calc_frame_rdfs_async: typeof CalcFrameRdfsAsync
 
 beforeAll(async () => {
@@ -37,7 +37,7 @@ test(`ships positions, lattice and species, and matches the sync per-pair histog
     [`Cl`, `Na`],
     [`Na`, `Na`],
   ])
-  expect(result).toEqual(calc_frame_rdfs(crystal, { cutoff: 5, n_bins: 50 }))
+  expect(result).toEqual(calculate_all_pair_rdfs(crystal, { cutoff: 5, n_bins: 50 }))
 })
 
 // Each frame goes to the least-loaded worker of the pool: sequential requests keep reusing the

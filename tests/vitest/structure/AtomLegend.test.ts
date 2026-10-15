@@ -81,8 +81,12 @@ const label_texts = (): (string | undefined)[] =>
 describe(`AtomLegend Component`, () => {
   test.each([
     {
-      desc: `basic rendering with default amounts`,
-      props: { elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }, style: `margin: 20px;` },
+      desc: `basic rendering with default amounts and rest props`,
+      props: {
+        elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 },
+        style: `margin: 20px;`,
+        'data-testid': `test-legend`,
+      },
       expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`],
       check_styling: true,
     },
@@ -107,7 +111,9 @@ describe(`AtomLegend Component`, () => {
       expect(iron_label.querySelector<HTMLInputElement>(`input[type="color"]`)?.value).toBe(
         colors.element.Fe,
       )
-      expect(doc_query(`div`).getAttribute(`style`)).toBe(props.style)
+      const legend = doc_query(`.atom-legend`)
+      expect(legend.getAttribute(`style`)).toBe(props.style)
+      expect(legend.getAttribute(`data-testid`)).toBe(`test-legend`)
     }
   })
 
@@ -265,15 +271,22 @@ describe(`AtomLegend Component`, () => {
   })
 
   describe(`Property Legend - Continuous`, () => {
-    test(`integer values render a titled discrete bar with one labeled segment per value`, () => {
+    test(`integer values render a titled discrete bar of toggleable labeled segments`, async () => {
       mount_legend({
         atom_color_config: coordination(`continuous`),
         property_colors: prop_colors(
           [2, 4, 6, 8],
           [`#440154`, `#31688e`, `#35b779`, `#fde724`],
         ),
+        hidden_prop_vals: new Set<string | number>(),
+        'data-testid': `test-legend`,
+        style: `z-index: 100;`,
       })
 
+      // rest props land on the property legend's root too
+      const legend = doc_query(`.property-legend`)
+      expect(legend.getAttribute(`data-testid`)).toBe(`test-legend`)
+      expect(legend.getAttribute(`style`)).toContain(`z-index: 100`)
       expect(doc_query(`.property-legend h4.legend-header`).textContent).toBe(`Coordination`)
       // Integer (coordination) data renders a discrete bar, not a continuous gradient
       expect(document.querySelector(`.colorbar .bar`)).toBeNull()
@@ -285,6 +298,17 @@ describe(`AtomLegend Component`, () => {
       // Each segment carries the color for its value
       expect(segments[0].style.backgroundColor).toBe(`#440154`)
       expect(segments[3].style.backgroundColor).toBe(`#fde724`)
+
+      const segment = segments[0]
+      const pressed_state = () =>
+        [`aria-pressed`, `aria-label`].map((attr) => segment.getAttribute(attr))
+      expect(pressed_state()).toEqual([`false`, `Hide 2`])
+      segment.click()
+      await tick()
+      expect(pressed_state()).toEqual([`true`, `Show 2`])
+      segment.click()
+      await tick()
+      expect(pressed_state()).toEqual([`false`, `Hide 2`])
     })
 
     test(`renders continuous gradient for non-integer numeric values`, () => {
@@ -297,11 +321,9 @@ describe(`AtomLegend Component`, () => {
         property_colors: prop_colors([0.5, 2.5]),
       })
 
-      // Non-integer data keeps the smooth gradient ColorBar
       expect(document.querySelector(`.discrete-colorbar`)).toBeNull()
       expect(doc_query(`.colorbar .bar`)).toBeInstanceOf(HTMLElement)
-
-      // Legend forwards min/max as gradient tick labels
+      // min/max become the gradient's tick labels
       const tick_labels = [...document.querySelectorAll(`.colorbar .tick-label`)].map(
         (label) => label.textContent,
       )
@@ -324,40 +346,6 @@ describe(`AtomLegend Component`, () => {
       expect(document.querySelectorAll(`.discrete-segment`)).toHaveLength(
         discrete ? n_values : 0,
       )
-    })
-
-    test(`integer property value visibility toggle on discrete bar`, async () => {
-      mount_legend({
-        atom_color_config: coordination(`continuous`),
-        property_colors: prop_colors([4, 6]),
-        hidden_prop_vals: new Set<string | number>(),
-      })
-
-      const segment = doc_query<HTMLButtonElement>(`.discrete-segment`)
-      expect(segment.getAttribute(`aria-pressed`)).toBe(`false`)
-      expect(segment.getAttribute(`aria-label`)).toBe(`Hide 4`)
-
-      segment.click()
-      await tick()
-      expect(segment.getAttribute(`aria-pressed`)).toBe(`true`)
-      expect(segment.getAttribute(`aria-label`)).toBe(`Show 4`)
-
-      segment.click()
-      await tick()
-      expect(segment.getAttribute(`aria-pressed`)).toBe(`false`)
-    })
-
-    test(`applies custom HTML attributes via rest props`, () => {
-      mount_legend({
-        atom_color_config: coordination(`continuous`),
-        property_colors: prop_colors([1, 2]),
-        'data-testid': `test-legend`,
-        style: `z-index: 100;`,
-      })
-
-      const legend = doc_query(`.atom-legend`)
-      expect(legend.getAttribute(`data-testid`)).toBe(`test-legend`)
-      expect(legend.getAttribute(`style`)).toContain(`z-index`)
     })
 
     // translucent overrides composite against the page backdrop (white in jsdom) rather
@@ -421,8 +409,7 @@ describe(`AtomLegend Component`, () => {
         property_colors: prop_colors([`4e|Fe`, `4e|Fe`, `2a|O`]),
       })
 
-      // Format: Element:multiplicity+letter (the orbit id carries the conventional-cell
-      // multiplicity; displayed-atom counts would be inflated by supercells/image atoms)
+      // Element:multiplicity+letter, using the orbit id's conventional-cell multiplicity
       const labels = [...document.querySelectorAll(`.category-label`)].map((label) =>
         label.textContent?.trim(),
       )
@@ -430,30 +417,20 @@ describe(`AtomLegend Component`, () => {
     })
   })
 
-  describe(`Mode Switching Behavior`, () => {
-    const element_config = { mode: `element`, scale_type: `continuous` } as const
-    // oxfmt-ignore
-    test.each([
-      [`element`, element_config, null, true, false],
-      [`coordination`, coordination(`continuous`), prop_colors([4]), false, true],
-      [`element with no elements`, element_config, null, false, false, {}],
-    ])(
-      `%s mode shows element legend=%s, property legend=%s`,
-      (
-        _desc,
-        atom_color_config,
-        property_colors,
-        element_legend,
-        property_legend,
-        elements = { Fe: 2, O: 3 },
-      ) => {
-        mount_legend({ elements, atom_color_config, property_colors })
-
-        expect(document.querySelector(`.element-legend`) !== null).toBe(element_legend)
-        expect(document.querySelector(`.property-legend`) !== null).toBe(property_legend)
-      },
-    )
-  })
+  const element_config = { mode: `element`, scale_type: `continuous` } as const
+  const fe_o = { Fe: 2, O: 3 }
+  test.each([
+    [`element`, element_config, null, fe_o, [true, false]],
+    [`coordination`, coordination(`continuous`), prop_colors([4]), fe_o, [false, true]],
+    [`element with no elements`, element_config, null, {}, [false, false]],
+  ] as const)(
+    `%s mode shows element/property legends`,
+    (_desc, atom_color_config, property_colors, elements, legends) => {
+      mount_legend({ elements, atom_color_config, property_colors })
+      const shown = (sel: string) => document.querySelector(sel) !== null
+      expect([shown(`.element-legend`), shown(`.property-legend`)]).toEqual(legends)
+    },
+  )
 
   describe(`Element Remapping`, () => {
     // oxfmt-ignore
@@ -475,13 +452,27 @@ describe(`AtomLegend Component`, () => {
     )
 
     test(`right-click opens a searchable remap dropdown that Escape closes`, async () => {
-      mount_legend({ elements: { H: 1 } })
+      let element_mapping: Record<string, string> | undefined
+      mount_legend({
+        elements: { Fe: 1 },
+        get element_mapping() {
+          return element_mapping
+        },
+        set element_mapping(val) {
+          element_mapping = val
+        },
+      })
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
       const search_input = await open_remap_menu()
       expect(search_input.placeholder).toBe(`Search elements...`)
-      // unfiltered: one option per element, no reset row while H is still displayed as H
+      // unfiltered: one option per element, no reset row while Fe is still displayed as Fe
       expect(document.querySelectorAll(`.remap-option`)).toHaveLength(ELEM_SYMBOLS.length)
+      // Enter on an empty query must not pick the first listed element (H)
+      search_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      await tick()
+      expect(element_mapping).toBeUndefined()
+      expect(document.querySelector(`.remap-dropdown`)).not.toBeNull()
 
       set_input(search_input, `sodium`)
       await tick()
@@ -490,8 +481,14 @@ describe(`AtomLegend Component`, () => {
       expect(filtered_options[0].textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(
         `11 Na Sodium`,
       )
+      // Enter on a non-empty query picks its first match and closes the menu
+      search_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+      await tick()
+      expect(element_mapping).toEqual({ Fe: `Na` })
+      expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
-      search_input.dispatchEvent(
+      const reopened_input = await open_remap_menu()
+      reopened_input.dispatchEvent(
         new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
       )
       await tick()
@@ -513,6 +510,11 @@ describe(`AtomLegend Component`, () => {
           element_radius_overrides = value
         },
       })
+      // 1-based like the info pane and the scene's site labels
+      const site_0_element = simple_structure.sites[0].species[0].element
+      expect(doc_query(`.site-radius-control .site-label`).textContent).toBe(
+        `${site_0_element}1`,
+      )
       const site_input = doc_query<HTMLInputElement>(`.site-radius-control input`)
       set_input(site_input, `9`) // above MAX_RADIUS: ignored
       expect(site_radius_overrides.size).toBe(0)

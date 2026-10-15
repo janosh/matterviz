@@ -98,11 +98,10 @@ const get_wasm_filename = (ext_path: string): string | undefined => {
   return wasm_filename_cache
 }
 
-// Update the shared VS Code context for files MatterViz can open/view
-const update_supported_resource_context = (uri?: vscode.Uri): void => {
-  // Prefer explicit URI; otherwise fall back to the active editor filename
-  const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document?.fileName || ``
-  const is_supported = is_matterviz_filename(path.basename(file_path))
+// Gate the open keybinding on the active editor only: background opens (git diffs, other
+// extensions' reads) must not flip it under the editor the user sees
+const update_supported_resource_context = (editor?: vscode.TextEditor): void => {
+  const is_supported = is_matterviz_filename(path.basename(editor?.document.fileName ?? ``))
   vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
@@ -658,8 +657,7 @@ export const activate = (context: vscode.ExtensionContext) => {
   extension_version = String(context.extension.packageJSON.version)
   log_info(`MatterViz extension activated (v${extension_version})`)
 
-  // Set initial context for currently active editor
-  update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
+  update_supported_resource_context(vscode.window.activeTextEditor)
 
   context.subscriptions.push(
     vscode.commands.registerCommand(`matterviz.open`, (uri?: vscode.Uri) =>
@@ -670,7 +668,6 @@ export const activate = (context: vscode.ExtensionContext) => {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
-      update_supported_resource_context(document.uri)
       // Auto-open only unambiguous structure/trajectory files (not JSON/YAML keyword matches)
       const file_path = document.uri.fsPath
       if (
@@ -710,9 +707,7 @@ export const activate = (context: vscode.ExtensionContext) => {
       }, 100) // Small delay to allow VS Code to finish opening the document
       auto_render_timers.set(file_path, timer)
     }),
-    vscode.window.onDidChangeActiveTextEditor((editor: vscode.TextEditor | undefined) => {
-      update_supported_resource_context(editor?.document?.uri)
-    }),
+    vscode.window.onDidChangeActiveTextEditor(update_supported_resource_context),
   )
 }
 

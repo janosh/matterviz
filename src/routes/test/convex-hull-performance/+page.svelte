@@ -3,6 +3,7 @@
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
+  import { mulberry32 } from '#lib/math.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'
 
@@ -42,8 +43,9 @@
       reduced_formula: element,
     }))
 
+    const rng = mulberry32(count) // seeded: every run benchmarks the same hull
     for (let idx = 0; idx < count - elements.length; idx++) {
-      const raw = elements.map(() => -Math.log(Math.random() + 1e-10))
+      const raw = elements.map(() => -Math.log(rng() + 1e-10))
       const total = raw.reduce((sum, val) => sum + val, 0)
       const composition: Partial<Record<ElementSymbol, number>> = {}
       const formula: string[] = []
@@ -54,10 +56,7 @@
         formula.push(`${element}${stoich > 1 ? stoich : ``}`)
       })
 
-      const e_form =
-        Math.random() < 0.7
-          ? -2 * Math.random() + 0.2 * Math.random()
-          : -1 + Math.random() * 1.5
+      const e_form = rng() < 0.7 ? -2 * rng() + 0.2 * rng() : -1 + rng() * 1.5
       const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
 
       // Add dummy structure data to first 5 entries for testing click selection
@@ -127,7 +126,6 @@
   }
 
   $effect(() => {
-    if (typeof window === `undefined`) return
     const params = new URLSearchParams(globalThis.location.search)
     const dim_param = params.get(`dim`)
     if (dim_param && Object.hasOwn(ELEMENTS, dim_param)) dimension = dim_param as Dimension
@@ -145,7 +143,6 @@
   })
 
   function update_url(): void {
-    if (typeof window === `undefined`) return
     const params = new URLSearchParams()
     params.set(`dim`, dimension)
     params.set(`count`, String(entry_count))

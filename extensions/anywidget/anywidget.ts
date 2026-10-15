@@ -288,15 +288,19 @@ export const mount_spec = (
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
     { ...spec.static_props, ...interaction?.props },
   )
-  const instance = mount(spec.component as Parameters<typeof mount>[0], {
-    target: element,
-    props,
-  })
-  return () => {
+  let instance: ReturnType<typeof mount> | undefined
+  const teardown = (): void => {
     interaction?.cleanup?.()
     dispose()
-    void unmount(instance)
+    if (instance) void unmount(instance)
   }
+  try {
+    instance = mount(spec.component as Parameters<typeof mount>[0], { target: element, props })
+  } catch (error) {
+    teardown() // a mount throwing on a malformed trait must not leave model listeners behind
+    throw error
+  }
+  return teardown
 }
 
 // === Widget registry ===
@@ -702,9 +706,18 @@ const render: Render = (props) => {
   inject_app_css(element)
   // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
   // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
-  // the element (not the host page's root) leaves the notebook's own scheme alone.
+  // the element (not the host page's root) leaves the notebook's own scheme alone. Started
+  // before mount so the first paint already has it; a throwing mount stops it and clears the
+  // partial DOM.
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
-  const unmount_widget = mount_spec(model, element, spec)
+  let unmount_widget: () => void
+  try {
+    unmount_widget = mount_spec(model, element, spec)
+  } catch (error) {
+    stop_theme()
+    element.replaceChildren()
+    throw error
+  }
   cleanups.set(element, () => {
     stop_theme()
     unmount_widget()

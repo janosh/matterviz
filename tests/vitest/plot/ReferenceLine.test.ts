@@ -126,6 +126,11 @@ describe(`ReferenceLine`, () => {
       ref_line: { type: `horizontal`, y: 50, annotation: { text: `Annotation text` } },
       expected: `Annotation text`,
     },
+    {
+      desc: `1-based index fallback`,
+      ref_line: { type: `horizontal`, y: 50 },
+      expected: `Reference line 1`,
+    },
   ] as const)(`aria-label uses $desc`, ({ ref_line, expected }) => {
     mount_line(ref_line)
     expect(doc_query(`.reference-line`).getAttribute(`aria-label`)).toBe(expected)

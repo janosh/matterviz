@@ -99,6 +99,7 @@
   let has_canvas = $derived(Boolean(image_canvas || wrapper_canvas))
 
   const fractional_reason = $derived(exports.fractional_export_unavailable_reason(structure))
+  const poscar_reason = $derived(exports.poscar_export_unavailable_reason(structure))
   const xyz_reason = $derived(exports.xyz_export_unavailable_reason(structure))
 
   let prediction_error = $state(``)
@@ -141,7 +142,9 @@
             ? xyz_reason
             : format === `json`
               ? undefined
-              : fractional_reason
+              : format === `poscar`
+                ? poscar_reason
+                : fractional_reason
         return {
           label,
           hint,

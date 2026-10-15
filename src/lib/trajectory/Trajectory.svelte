@@ -36,6 +36,8 @@
   import { handle_and_prevent, html_to_text, to_error } from '#lib/utils.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import {
+    display_idx,
+    from_display_idx,
     parse_axis_label,
     format_num,
     plural,
@@ -80,6 +82,7 @@
   } from './hotspot-colors'
   import { collected_frame_idx } from '#lib/structure/trajectory-lines.js'
   import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
+  import { range } from 'd3-array'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
@@ -601,8 +604,8 @@
     on_loop: () => on_loop?.(event_data()),
     on_step_change: () => on_step_change?.(event_data()),
     on_frame_error: (frame_idx, error) => {
-      console.error(`Failed to load frame ${frame_idx}:`, error)
-      const message = `Failed to load frame ${frame_idx}: ${error.message}`
+      console.error(`Failed to load frame ${display_idx(frame_idx)}:`, error)
+      const message = `Failed to load frame ${display_idx(frame_idx)}: ${error.message}`
       if (trajectory) frame_error = { run: trajectory, idx: frame_idx, message }
     },
   })
@@ -627,7 +630,7 @@
     const timeout = AbortSignal.timeout(120_000)
     const signal = cancellation ? AbortSignal.any([cancellation, timeout]) : timeout
     if (!trajectory || !is_valid_index(idx, trajectory.frame_count))
-      throw new RangeError(`Movie source frame ${idx} is unavailable`)
+      throw new RangeError(`Movie source frame ${display_idx(idx)} is unavailable`)
     if (!uses_structure_renderer())
       throw new Error(`Select a view mode containing the structure before rendering a movie`)
     signal.throwIfAborted()
@@ -827,8 +830,12 @@
   $effect(() => {
     if (active_pane === `spectroscopy`) player.pause()
   })
+  // Only on a real change: the initial value is no change, but its normalisation onto the
+  // fps grid (7.26 -> 7.3) is one the host should hear about
+  let reported_fps = untrack(() => fps)
   $effect(() => {
-    void fps
+    if (fps === reported_fps) return
+    reported_fps = fps
     untrack(() => on_frame_rate_change?.(event_data()))
   })
 
@@ -930,28 +937,18 @@
   })
 
   // === plot ===
+  // 0-based frame indices whose 1-based labels read as round numbers: frame 1, then nice ticks
+  // (n > 0) or every |n|th frame plus the last (n < 0). Explicit arrays are 0-based indices.
   let step_label_positions = $derived.by((): number[] => {
     if (!step_labels || total_frames <= 1) return []
     if (Array.isArray(step_labels)) {
       return step_labels.filter((idx) => idx >= 0 && idx < total_frames)
     }
-    if (step_labels > 0) {
-      return scaleLinear()
-        .domain([0, total_frames - 1])
-        .nice()
-        .ticks(Math.min(step_labels, total_frames))
-        .map((tick) => Math.round(tick))
-        .filter(
-          (tick, idx, ticks) =>
-            tick >= 0 && tick < total_frames && ticks.indexOf(tick) === idx,
-        )
-    }
-    const spacing = Math.abs(step_labels)
-    const positions = Array.from(
-      { length: Math.ceil(total_frames / spacing) },
-      (_, idx) => idx * spacing,
-    )
-    return positions.at(-1) === total_frames - 1 ? positions : [...positions, total_frames - 1]
+    const display_ticks =
+      step_labels > 0
+        ? scaleLinear().domain([1, total_frames]).ticks(Math.min(step_labels, total_frames))
+        : [...range(-step_labels, total_frames, -step_labels), total_frames]
+    return [...new Set([1, ...display_ticks.map(Math.round)])].map(from_display_idx)
   })
 
   let extended_config = $derived.by(() => {
@@ -1180,6 +1177,8 @@
       }
       return false
     }
+    // Space presses a focused button or toggles a <summary>; playback must not swallow that
+    if (event.key === ` ` && target?.closest(`button, summary, [role="button"]`)) return false
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
@@ -1853,8 +1852,9 @@
                   · {hotspot_result.weighting} weighting
                 </div>
                 <div>
-                  Viewing frame {session.scene_frame?.idx} · {hotspot_result.options
-                    .coordinates ?? `device`} grid
+                  Viewing frame {session.scene_frame
+                    ? display_idx(session.scene_frame.idx)
+                    : ``} · {hotspot_result.options.coordinates ?? `device`} grid
                 </div>
               </div>
             {/if}

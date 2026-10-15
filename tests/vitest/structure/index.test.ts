@@ -157,7 +157,7 @@ describe(`numeric composition`, () => {
         }).structure as Crystal
         for (const calculate of [struct_utils.get_element_counts, struct_utils.get_density])
           expect(() => calculate(structure)).toThrow(
-            `Invalid atomic number ${atomic_number} at site 1`,
+            `Invalid atomic number ${atomic_number} at site 2`,
           )
       }
     },

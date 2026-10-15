@@ -296,12 +296,16 @@ describe(`XYZ Parser`, () => {
     }
   })
 
-  it(`should select last frame in multi-frame XYZ`, () => {
-    const multi_frame = `2\nframe-1\nH 0 0 0\nH 0 0 1\n1\nframe-2\nHe 1 2 3\n`
-    const result = parse_xyz(multi_frame)
-    expect(result.sites).toHaveLength(1)
-    expect(result.sites[0].species[0].element).toBe(`He`)
-    expect(result.sites[0].xyz).toEqual([1, 2, 3])
+  // The last COMPLETE frame is parsed: a frame the writer was still appending (fewer atom
+  // lines than its count) is dropped with a warning (a file with none is an error, see below)
+  it.each([
+    [`2\nframe-1\nH 0 0 0\nH 0 0 1\n1\nframe-2\nHe 1 2 3\n`, 1, `He`, [1, 2, 3]],
+    [`2\nframe-1\nH 0 0 0\nH 0 0 1\n3\nframe-2\nHe 1 2 3\nHe 4 5 6\n`, 2, `H`, [0, 0, 0]],
+  ])(`selects the last complete XYZ frame %#`, (content, n_sites, element, xyz) => {
+    const result = parse_xyz(content)
+    expect(result.sites).toHaveLength(n_sites)
+    expect(result.sites[0].species[0].element).toBe(element)
+    expect(result.sites[0].xyz).toEqual(xyz)
   })
 
   it(`selects last frame lattice when lattices differ`, () => {
@@ -323,24 +327,6 @@ describe(`XYZ Parser`, () => {
     expect(() => parse_xyz(`1\nTest\nXx 0 0 0\n`)).toThrow(
       `no atom with a recognised element symbol`,
     )
-  })
-
-  // A frame the writer was still appending (fewer atom lines than its count) is dropped
-  // with a warning; the last COMPLETE frame is what gets parsed, and a file with none is
-  // an error naming the torn frame rather than a silently empty structure
-  it.each([
-    [`2\nframe-1\nH 0 0 0\nH 0 0 1\n3\nframe-2\nHe 1 2 3\nHe 4 5 6\n`, 2, `H`],
-    [`3\nonly\nHe 1 2 3\nHe 4 5 6\n`, null, null],
-  ])(`drops a torn trailing frame: %#`, (content, n_sites, element) => {
-    if (n_sites === null) {
-      expect(() => parse_xyz(content)).toThrow(
-        /no complete frame \(Dropping truncated final XYZ frame 0/,
-      )
-      return
-    }
-    const result = parse_xyz(content)
-    expect(result.sites).toHaveLength(n_sites)
-    expect(result.sites[0].species[0].element).toBe(element)
   })
 
   // ASE writes a bounding Lattice even for isolated molecules and marks them pbc="F F F".
@@ -546,6 +532,8 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n1.5\nDirect\n0.0 0.0 0.0`, error: `invalid atom counts` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n-1\nDirect\n0.0 0.0 0.0`, error: `invalid atom counts` },
     { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0`, error: `XYZ file has no complete frame` },
+    // the error names the torn frame rather than returning a silently empty structure
+    { parser: parse_xyz, content: `3\nonly\nHe 1 2 3\nHe 4 5 6\n`, error: /no complete frame \(Dropping truncated final XYZ frame 1\b/ },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0`, error: `3 columns, expected at least 4` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0`, error: `XYZ file has no complete frame` },
     { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0`, error: `non-numeric coordinates` },
@@ -702,14 +690,10 @@ O2   O   0.410  0.140  0.880  1.000`
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
 
-    // Expect exact total sites from CIF header (_atom_type_number_in_cell)
-    // Ru: 4, S: 24, P: 24, N: 16, C: 296, H: 252 → total = 616
+    // per-element counts must match the header's _atom_type_number_in_cell, so symmetry
+    // expansion isn't over-generating
     expect(result.sites).toHaveLength(616)
-
-    // Per-element site counts must match header to ensure symmetry expansion isn't over-generating
     expect(element_counts(result)).toEqual({ C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 })
-
-    // Basic lattice sanity
     const { a: lattice_a, b: lattice_b, c: lattice_c } = result.lattice ?? {}
     expect([lattice_a, lattice_b, lattice_c].every(Number.isFinite)).toBe(true)
   })
@@ -738,16 +722,6 @@ O2   O   0.410  0.140  0.880  1.000`
       ].join(`\n`)
     }
 
-    const centered_cif = (
-      symbol: string,
-      count: number,
-      opts: { angles?: string; with_count?: boolean } = {},
-    ): string =>
-      make_cif(symbol, {
-        angles: opts.angles ?? `90 90 90`,
-        atom_types: opts.with_count === false ? [] : [`Fe ${count}`],
-      })
-
     // round + sort coords so float error (e.g. R's 1/3) and order don't matter
     const sorted_coords = (sites: { abc: number[] }[]): number[][] =>
       rounded_abc(sites).toSorted(
@@ -767,28 +741,21 @@ O2   O   0.410  0.140  0.880  1.000`
       [`B 1 1 2/m`, `90 90 90`, [[0, 0, 0], [0.5, 0, 0.5]]],
       [`R -3`, `90 90 120`, [[0, 0, 0], [0.333333, 0.666667, 0.666667], [0.666667, 0.333333, 0.333333]]],
     ])(`%s expands origin atom to the centered cell`, (symbol, angles, expected) => {
-      const result = parse_cif(centered_cif(symbol, expected.length, { angles }))
-
+      const result = parse_cif(make_cif(symbol, { angles, atom_types: [`Fe ${expected.length}`] }))
       expect(sorted_coords(result.sites)).toEqual(expected)
     })
 
+    // oxfmt-ignore
     test.each([
-      [`hexagonal axes apply R centering`, `90 90 120`, 3],
-      [`rhombohedral axes skip R centering`, `70 70 70`, 1],
-      [`tilted alpha skips R centering`, `80 90 120`, 1],
-    ])(`R-centering: %s`, (_desc, angles, expected) => {
-      const result = parse_cif(centered_cif(`R -3`, 3, { angles }))
-
-      expect(result.sites).toHaveLength(expected)
-    })
-
-    test.each([
-      [`count already satisfied (atoms embed centering)`, `I m -3 m`, 1, true, 1],
-      [`no _atom_type_number_in_cell to reconcile against`, `F m -3 m`, 4, false, 1],
-    ])(`does not apply centering when %s`, (_desc, symbol, count, with_count, expected) => {
-      const result = parse_cif(centered_cif(symbol, count, { with_count }))
-
-      expect(result.sites).toHaveLength(expected)
+      [`hexagonal axes apply R centering`, `R -3`, `90 90 120`, [`Fe 3`], 3],
+      [`rhombohedral axes skip R centering`, `R -3`, `70 70 70`, [`Fe 3`], 1],
+      [`tilted alpha skips R centering`, `R -3`, `80 90 120`, [`Fe 3`], 1],
+      [`count already satisfied (atoms embed centering) skips it`, `I m -3 m`, `90 90 90`, [`Fe 1`], 1],
+      [`no _atom_type_number_in_cell to reconcile against skips it`, `F m -3 m`, `90 90 90`, [], 1],
+      // both rows normalize to Fe, so I-centering expands the one Fe to the summed total of 2
+      [`_atom_type rows Fe2+/Fe3+ sum per element`, `I m -3 m`, `90 90 90`, [`Fe2+ 1`, `Fe3+ 1`], 2],
+    ])(`centering: %s`, (_desc, symbol, angles, atom_types, expected) => {
+      expect(parse_cif(make_cif(symbol, { angles, atom_types })).sites).toHaveLength(expected)
     })
 
     test(`rejects centering when only the total reconciles, not per-element counts`, () => {
@@ -812,14 +779,6 @@ O2   O   0.410  0.140  0.880  1.000`
       // oxfmt-ignore
       expect(sorted_coords(parse_cif(cif).sites)).toEqual([[0, 0, 0], [0, 0, 0.5], [0.5, 0.5, 0], [0.5, 0.5, 0.5]])
     })
-
-    test(`sums _atom_type rows that normalize to the same element (Fe2+/Fe3+)`, () => {
-      // expected Fe = 1 + 1 = 2 (both rows → Fe); I-centering must expand the
-      // single listed Fe to 2 sites to reconcile the summed total
-      const result = parse_cif(make_cif(`I m -3 m`, { atom_types: [`Fe2+ 1`, `Fe3+ 1`] }))
-
-      expect(result.sites).toHaveLength(2)
-    })
   })
 
   it(`should parse CIF with only _atom_site_label (no _atom_site_type_symbol)`, () => {
@@ -835,12 +794,8 @@ O2   O   0.410  0.140  0.880  1.000`
     ]
     const actual = result.sites.map((site) => [site.species[0].element, site.label, site.abc])
     expect(actual).toEqual(expected_sites)
-    for (const site of result.sites) {
-      expect(site.species[0].occu).toBe(1.0)
-      expect(site.xyz).toHaveLength(3)
-    }
-
-    // Check lattice
+    for (const site of result.sites) expect(site.species[0].occu).toBe(1.0)
+    expect_sites_reconstruct(result)
     expect(result.lattice.a).toBe(5.0)
     expect(result.lattice.alpha).toBe(90)
     expect(result.lattice.volume).toBe(125.0)
@@ -1157,15 +1112,6 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(result.sites.map((site) => site.species[0].element)).toEqual(expected)
     })
 
-    it(`should handle malformed loops and missing occupancy`, () => {
-      // rows with too few (O1) and too many (H1) tokens for the declared loop headers
-      const malformed_cif = `data_test\n${cell5}\n${site_loop}\n_atom_site_occupancy\nSi1  Si  0.000  0.000  0.000  1.000\nO1   O   0.250  0.250  0.250\nH1   H   0.500  0.500  0.500  1.000  1.000`
-      const result = parse_cif(malformed_cif)
-
-      expect(result.sites).toHaveLength(3)
-      expect(result.sites[0].species[0].occu).toBe(1.0)
-    })
-
     test.each([
       [`0`, 0],
       [`0.25`, 0.25],
@@ -1399,28 +1345,12 @@ Se5 Se2- 2 a 0.1147(4) 0.5633(4) 0.3288(6) 0.1078(6) 1. 0
 Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
 
     const result = parse_cif(icsd_cif)
-    // Should have 10 unique sites × 2 symmetry operations = 20 total sites
+    // 10 unique sites × 2 symmetry operations
     expect(result.sites).toHaveLength(20)
     expect(result.lattice.a).toBeCloseTo(9.378, 3)
     expect(result.lattice.beta).toBeCloseTo(91.15, 2)
-
-    // Some sites must differ from the original unique sites, proving the
-    // translation-carrying symmetry op was applied
-    const orig_coords = [
-      [0.527, 0.3856, 0.7224],
-      [0.0279, 0.1245, 0.787],
-      [0.6836, 0.1608, 0.8108],
-      [0.8174, 0.6447, 0.1908],
-      [0.4898, 0.7511, 0.8491],
-    ]
-
-    const has_translated_sites = result.sites.some(
-      (site) =>
-        !orig_coords.some((orig) =>
-          orig.every((coord, idx) => Math.abs(coord - site.abc[idx]) < 0.001),
-        ),
-    )
-    expect(has_translated_sites).toBe(true)
+    // Sn1's image under the translation-carrying op 'x+1/2, -y, z+1/2', wrapped into the cell
+    expect(rounded_abc(result.sites)).toContainEqual([0.027, 0.6144, 0.2224])
   })
 
   // GitHub issue #226: compound symmetry operations like x-y, -x+y
@@ -1555,7 +1485,6 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
       [`Pb`, 0.01],
     ])
 
-    // Verify lattice parameters
     expect(result.lattice.a).toBeCloseTo(9.143, 3)
     expect(result.lattice.b).toBeCloseTo(6.335, 3)
     expect(result.lattice.c).toBeCloseTo(7.598, 3)
@@ -1584,13 +1513,10 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
   test(`parses MOF IRMOF-1 CIF with Fm-3m symmetry expansion`, () => {
     const result = parse_cif(mof_issue_127)
 
-    // Fm-3m (space group 225), 192 symmetry ops, 7 unique sites
-    // Same as pymatgen: 424 sites (C=192, H=96, O=104, Zn=32)
+    // Fm-3m (space group 225), 192 symmetry ops, 7 unique sites: same 424 sites as pymatgen
     expect(result.sites).toHaveLength(424)
-
     expect(element_counts(result)).toEqual({ Zn: 32, O: 104, C: 192, H: 96 })
 
-    // Lattice params (cubic, a ≈ 25.832 Å)
     expect(result.lattice.a).toBeCloseTo(25.832, 8)
     expect(result.lattice.alpha).toBeCloseTo(90, 8)
     expect(result.lattice.volume).toBeCloseTo(17237.492730368, 8)
@@ -1734,6 +1660,8 @@ describe(`parse_structure_file`, () => {
       [`deep nesting`, { a: { b: { c: { d: fe_struct() } } } }],
       [`structure array`, { structures: [fe_struct()] }],
       [`multiple items with structure`, [{ id: 1 }, { structure: fe_struct() }]],
+      // the first valid structure wins over invalid items before it and valid ones after it
+      [`mixed valid/invalid array`, [{ invalid: `data` }, { sites: `not_array` }, fe_struct(), get_dummy_structure(`Cu`, 1, true)]],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
       const result = parse_structure_file(content, `test.json`)
@@ -1773,17 +1701,6 @@ describe(`parse_structure_file`, () => {
       expect(result.sites).toHaveLength(1)
       expect(result.sites[0].species[0]).toBe(`H`)
     })
-
-    test(`handles arrays with mixed valid/invalid structures`, () => {
-      const mixed_array = [
-        { invalid: `data` },
-        { sites: `not_array` }, // Invalid structure
-        get_dummy_structure(`Cu`, 1, true), // First valid structure - should be found
-        { another: `structure`, ...fe_struct() }, // Another valid one with Fe
-      ]
-      const result = parse_structure_file(JSON.stringify(mixed_array), `mixed.json`)
-      expect(result.sites[0].species[0].element).toBe(`Cu`) // Should find first valid structure
-    })
   })
 
   describe(`JSON structure promotion`, () => {
@@ -1819,32 +1736,14 @@ describe(`parse_structure_file`, () => {
       },
     )
 
+    // oxfmt-ignore
     test.each([
       [`simple direct structure`, { sites: [bare_site(`H`)] }],
       [`nested in object`, { structure: { sites: [bare_site(`He`)] } }],
       [`nested in array`, [{ structure: { sites: [bare_site(`Li`)] } }]],
-      [
-        `after unrelated lattice metadata`,
-        {
-          metadata: { lattice: cubic_lattice_json(5) },
-          structure: { sites: [bare_site(`He`)] },
-        },
-      ],
-      [
-        `before a periodic structure`,
-        [{ sites: [bare_site(`He`)] }, get_dummy_structure(`Fe`, 1, true)],
-      ],
-      [
-        `after partial OPTIMADE metadata`,
-        {
-          metadata: {
-            type: `structures`,
-            id: `reference`,
-            attributes: { dimension_types: [1, 1, 1] },
-          },
-          structure: { sites: [bare_site(`H`)] },
-        },
-      ],
+      [`after unrelated lattice metadata`, { metadata: { lattice: cubic_lattice_json(5) }, structure: { sites: [bare_site(`He`)] } }],
+      [`before a periodic structure`, [{ sites: [bare_site(`He`)] }, get_dummy_structure(`Fe`, 1, true)]],
+      [`after partial OPTIMADE metadata`, { metadata: { type: `structures`, id: `reference`, attributes: { dimension_types: [1, 1, 1] } }, structure: { sites: [bare_site(`H`)] } }],
       [`after empty OPTIMADE metadata`, { metadata: empty_data, structure: molecule }],
     ])(`finds a lattice-free structure %s`, (_description, input) => {
       const content = JSON.stringify(input)
@@ -1870,25 +1769,10 @@ describe(`parse_structure_file`, () => {
       expect(result.sites).toHaveLength(2)
     })
 
+    // oxfmt-ignore
     test.each([
-      [
-        `no xyz and no lattice`,
-        { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] },
-        /has no xyz/,
-      ],
-      [
-        `2-row lattice matrix`,
-        {
-          sites: [bare_site(`H`)],
-          lattice: {
-            matrix: [
-              [1, 0, 0],
-              [0, 1, 0],
-            ],
-          },
-        },
-        /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/,
-      ],
+      [`no xyz and no lattice`, { sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }] }, /has no xyz/],
+      [`2-row lattice matrix`, { sites: [bare_site(`H`)], lattice: { matrix: [[1, 0, 0], [0, 1, 0]] } }, /Expected 3x3 matrix for JSON lattice matrix, got 2 rows/],
     ])(`fails fast on %s`, (_description, input, message) => {
       expect(() => parse_structure_file(JSON.stringify(input), `test.json`)).toThrow(message)
     })
@@ -2061,7 +1945,7 @@ describe(`optimade_to_structure`, () => {
     [`missing positions and species`, { elements: [`Fe`] }, /missing cartesian_site_positions or species_at_sites/],
     [`missing species_at_sites`, { cartesian_site_positions: [[0, 0, 0]] }, /missing cartesian_site_positions or species_at_sites/],
     [`mismatched positions and species count`, { cartesian_site_positions: [[0, 0, 0], [1, 1, 1]], species_at_sites: [`Fe`] }, /2 positions but 1 species_at_sites/],
-    [`a null species entry`, { cartesian_site_positions: [[0, 0, 0], [1, 0, 0]], species_at_sites: [`Fe`, null] }, /site 1 has no species name/],
+    [`a null species entry`, { cartesian_site_positions: [[0, 0, 0], [1, 0, 0]], species_at_sites: [`Fe`, null] }, /site 2 has no species name/],
     [`a position with too few components`, { cartesian_site_positions: [[0, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 coordinates, got 2/],
     [`a non-numeric position`, { cartesian_site_positions: [[0, `bad`, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 finite coordinates/],
     [`a non-finite position`, { cartesian_site_positions: [[Infinity, 0, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 finite coordinates/],
@@ -2125,43 +2009,33 @@ describe(`optimade_to_structure`, () => {
     })
   })
 
-  it(`should extract species properties (mass) and resolve named species`, () => {
+  // a concentration of 1.0 is the default and not stored; named species resolve through
+  // chemical_symbols, and a disordered site takes the dominant element's (Ni, not
+  // chemical_symbols[0]) mass and concentration
+  it(`extracts species mass and concentration and resolves named species`, () => {
     // oxfmt-ignore
-    const positions = [[0, 0, 0], [2.5, 2.5, 2.5]]
     const result = optimade_to_structure(
       optimade(`test`, {
         lattice_vectors: cubic_vectors(5),
-        cartesian_site_positions: positions,
-        species_at_sites: [`Fe`, `O1`],
+        cartesian_site_positions: [[0, 0, 0], [2.5, 2.5, 2.5], [1, 1, 1]],
+        species_at_sites: [`Fe`, `O1`, `D`],
         species: [
           { name: `Fe`, mass: [55.845], concentration: [1.0] },
           { name: `O1`, chemical_symbols: [`O`], mass: [15.999], concentration: [0.5] },
+          { name: `D`, chemical_symbols: [`Fe`, `Ni`], mass: [55.845, 58.693], concentration: [0.3, 0.7] },
         ],
       }),
     )
-    expect(result.sites[0].properties.mass).toBe(55.845)
-    expect(result.sites[0].properties.concentration).toBeUndefined() // 1.0 is default, not stored
-    // named species 'O1' resolves to element O through chemical_symbols
-    expect(result.sites[1].species[0].element).toBe(`O`)
-    expect(result.sites[1].properties.mass).toBe(15.999)
-    expect(result.sites[1].properties.concentration).toBe(0.5)
-  })
-
-  it(`picks mass/concentration for the dominant element, not index 0`, () => {
-    // Disordered site: dominant element (Ni, conc 0.7) is NOT chemical_symbols[0]
-    // oxfmt-ignore
-    const species = [{ name: `D`, chemical_symbols: [`Fe`, `Ni`], mass: [55.845, 58.693], concentration: [0.3, 0.7] }]
-    const result = optimade_to_structure(
-      optimade(`disordered`, {
-        lattice_vectors: cubic_vectors(5),
-        cartesian_site_positions: [[0, 0, 0]],
-        species_at_sites: [`D`],
-        species,
-      }),
-    )
-    expect(result.sites[0].species[0].element).toBe(`Ni`) // highest concentration wins
-    expect(result.sites[0].properties.mass).toBe(58.693) // mass[1], not mass[0]
-    expect(result.sites[0].properties.concentration).toBe(0.7) // concentration[1], not [0]
+    const summary = result.sites.map(({ species, properties }) => [
+      species[0].element,
+      properties.mass,
+      properties.concentration,
+    ])
+    expect(summary).toEqual([
+      [`Fe`, 55.845, undefined],
+      [`O`, 15.999, 0.5],
+      [`Ni`, 58.693, 0.7],
+    ])
   })
 })
 
@@ -2302,8 +2176,6 @@ describe(`detect_structure_type`, () => {
     [`crystal.mol2`, `@<TRIPOS>MOLECULE\nx\n@<TRIPOS>CRYSIN\n 4 4 4 90 90 90 1 1`, `crystal`],
     [`glycine.pdb`, glycine_pdb, `molecule`],
     [`NaCl-rocksalt.pdb`, nacl_rocksalt_pdb, `crystal`],
-    // A placeholder CRYST1 means aperiodic, as written by MD and docking tools
-    [`dummy.pdb`, `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1`, `molecule`],
     [`Si-diamond.mmcif`, si_diamond_mmcif, `crystal`],
     [`magnetic.mcif`, `data_x\n_atom_site_fract_x`, `crystal`],
     [`Cu-fcc.lmp`, cu_fcc_lmp, `crystal`],
@@ -2428,6 +2300,7 @@ describe(`lattice params derived from matrix-only lattices`, () => {
 
   const identity = (struct: object) => struct
   const wrap_output = (struct: object) => ({ output: { structure: struct } })
+  // oxfmt-ignore
   test.each([
     [`direct pymatgen dict (fast path)`, identity, {}],
     [`nested under output.structure`, wrap_output, {}],
@@ -2435,19 +2308,11 @@ describe(`lattice params derived from matrix-only lattices`, () => {
     [`partial numeric params`, identity, { a: 1, b: 2 }],
     [`non-numeric params`, identity, { a: `3.9`, b: null, volume: NaN }],
     // fully specified but inconsistent with the matrix: the matrix still wins
-    [
-      `inconsistent full params`,
-      identity,
-      { a: 1, b: 2, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 6 },
-    ],
+    [`inconsistent full params`, identity, { a: 1, b: 2, c: 3, alpha: 90, beta: 90, gamma: 90, volume: 6 }],
   ])(`computes a/b/c/angles/volume for %s`, (_name, wrap, extra_lattice) => {
     const lattice = parsed_lattice(wrap(matrix_only_structure(extra_lattice)))
-    expect(lattice.a).toBeCloseTo(3.887614, 5)
-    expect(lattice.b).toBeCloseTo(3.887614, 5)
-    expect(lattice.c).toBeCloseTo(49.0954, 4)
-    expect(lattice.alpha).toBeCloseTo(90, 5)
-    expect(lattice.beta).toBeCloseTo(90, 5)
-    expect(lattice.gamma).toBeCloseTo(90, 5)
+    expect_vec3_close([lattice.a, lattice.b, lattice.c], [3.887614, 3.887614, 49.0954], 5)
+    expect_vec3_close([lattice.alpha, lattice.beta, lattice.gamma], [90, 90, 90], 5)
     expect(lattice.volume).toBeCloseTo(3.887614 * 3.887614 * 49.0954, 2)
   })
 })
@@ -2631,16 +2496,37 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect_sites_reconstruct(result)
   })
 
-  // MD and docking tools write a 1 1 1 90 90 90 cell for aperiodic systems
-  // oxfmt-ignore
-  test.each([
-    [`dummy.pdb`, `CRYST1    1.000    1.000    1.000  90.00  90.00  90.00 P 1           1\n${pdb_atom_line(1, ` C  `, [1, 2, 3], `C`)}`],
-    [`dummy.mol2`, `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n 1.0000 1.0000 1.0000 90.0000 90.0000 90.0000 1 1`],
-  ])(`%s placeholder cell is ignored`, (filename, content) => {
+  // MD and docking tools write a 1 1 1 90 90 90 cell for aperiodic systems (VMD an all-zero
+  // one), so those parse as molecules; any other cell with a non-positive edge is rejected
+  const cell_files: Record<string, (edges: number[]) => string> = {
+    pdb: (edges) =>
+      `CRYST1${edges.map((len) => len.toFixed(3).padStart(9)).join(``)}  90.00  90.00  90.00 P 1           1\n${pdb_atom_line(1, ` C  `, [1, 2, 3], `C`)}`,
+    mol2: (edges) =>
+      `@<TRIPOS>MOLECULE\ncrystal\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n\n@<TRIPOS>ATOM\n      1 C1     1.0000 2.0000 3.0000 C.3    1 RES1  0.0000\n@<TRIPOS>CRYSIN\n ${edges.join(` `)} 90 90 90 1 1`,
+    mmcif: (edges) =>
+      mmcif_cell(1, `Cartn`, [`C 1.0 2.0 3.0`]).replace(
+        `_cell.length_a 1\n_cell.length_b 1\n_cell.length_c 1`,
+        [`a`, `b`, `c`].map((axis, idx) => `_cell.length_${axis} ${edges[idx]}`).join(`\n`),
+      ),
+  }
+  test.each(
+    Object.keys(cell_files).flatMap((format) =>
+      [`1 1 1`, `0 0 0`, `0 5 5`].map((edges) => [format, edges] as const),
+    ),
+  )(`%s cell %s parses as a molecule or throws`, (format, edges) => {
+    const filename = `cell.${format}`
+    const content = cell_files[format](edges.split(` `).map(Number))
+    // detection classes every .mmcif as a crystal by extension alone
+    if (format !== `mmcif`) expect(detect_structure_type(filename, content)).toBe(`molecule`)
+    if (edges === `0 5 5`) {
+      expect(() => parse_structure_file(content, filename)).toThrow(
+        `non-positive edge lengths`,
+      )
+      return
+    }
     const result = parse_structure_file(content, filename)
     expect(`lattice` in result).toBe(false)
     expect(result.sites[0].abc).toEqual([0, 0, 0])
-    expect(detect_structure_type(filename, content)).toBe(`molecule`)
   })
 
   test(`mmCIF dot-notation tags are not swallowed by the CIF parser`, () => {
@@ -2788,8 +2674,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
   // Undeclared atom styles are inferred from the column count; counts shared by two
   // styles (6: charge/molecular, 7: full/sphere) are decided by which reading has a
   // declared atom type in its type column on every row
-  const lammps_no_style = (num_atom_types: number, rows: string[]) =>
-    `# no style comment\n\n${rows.length} atoms\n${num_atom_types} atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nMasses\n\n1 63.546  # Cu\n2 26.9815 # Al\n\nAtoms\n\n${rows.join(
+  const lammps_no_style = (num_atom_types: number, rows: string[], style = ``) =>
+    `# no style comment\n\n${rows.length} atoms\n${num_atom_types} atom types\n0.0 4.0 xlo xhi\n0.0 4.0 ylo yhi\n0.0 4.0 zlo zhi\n\nMasses\n\n1 63.546  # Cu\n2 26.9815 # Al\n\nAtoms${style}\n\n${rows.join(
       `\n`,
     )}`
 
@@ -2817,8 +2703,11 @@ describe(`molecular and LAMMPS structure formats`, () => {
     [`ambiguous`, 2, [`1 1 1 1.0 1.0 1.0`, `2 1 2 2.0 2.0 2.0`], /both charge and molecular put a valid atom type/],
     // Neither column 2 nor column 3 holds a declared type
     [`unreadable`, 2, [`1 5 9 1.0 1.0 1.0`], /none of \[charge, molecular\] puts an integer atom type in 1\.\.2/],
-  ])(`LAMMPS data rejects an %s undeclared atom style`, (_name, types, rows, expected) => {
-    expect(() => parse_structure_file(lammps_no_style(types, rows), `test.lmp`)).toThrow(expected)
+    // `sphere` columns declared as `full`: the type column then holds the diameter, which
+    // must not be rounded into an invented element
+    [`mis-declared`, 1, [`1 1 1.5 2.7 1.0 1.0 1.0`], /non-integer atom type '1.5' in column 3/, ` # full`],
+  ])(`LAMMPS data rejects an %s atom style`, (_name, types, rows, expected, style = ``) => {
+    expect(() => parse_structure_file(lammps_no_style(types, rows, style), `test.lmp`)).toThrow(expected)
   })
 
   // write_data writes wrapped coordinates plus `ix iy iz` image flags; ASE (and the dump
@@ -2839,16 +2728,6 @@ describe(`molecular and LAMMPS structure formats`, () => {
     expect(() => parse_structure_file(lammps_images(`0.5 0 0`), `images.data`)).toThrow(
       /non-integer image flags '0.5 0 0'/,
     )
-  })
-
-  test(`LAMMPS data rejects a non-integer atom type rather than inventing an element`, () => {
-    // `sphere` columns declared as `full`: the type column then holds the diameter
-    const content = lammps_no_style(1, [`1 1 1.5 2.7 1.0 1.0 1.0`]).replace(
-      `Atoms`,
-      `Atoms # full`,
-    )
-    const expected_error = /non-integer atom type '1.5' in column 3/
-    expect(() => parse_structure_file(content, `test.lmp`)).toThrow(expected_error)
   })
 
   // oxfmt-ignore
@@ -2875,23 +2754,71 @@ describe(`molecular and LAMMPS structure formats`, () => {
 })
 
 describe(`multi-model / multi-record structure files`, () => {
-  // Only the first MODEL is read, and the same atom in two conformers keeps only alt loc A
   const pdb_model = (serial: number, xyz: number[]) =>
     `MODEL        ${serial}\n${pdb_atom_line(1, ` C  `, xyz, `C`)}\nENDMDL`
-  const pdb_conformer = (alt_loc: string, xyz: number[]) => {
+  const pdb_conformer = (alt_loc: string, xyz: number[], res_name = `MOL`) => {
     const line = pdb_atom_line(1, ` CB `, xyz, `C`)
-    return `${line.slice(0, 16)}${alt_loc}${line.slice(17)}`
+    return `${line.slice(0, 16)}${alt_loc}${res_name}${line.slice(20)}`
   }
-  test.each([
-    [`the first MODEL`, `${pdb_model(1, [1, 2, 3])}\n${pdb_model(2, [9, 9, 9])}`],
+  const mmcif_loop = (tags: string[], rows: string[]) =>
+    [`data_test`, `loop_`, ...tags.map((tag) => `_atom_site.${tag}`), ...rows].join(`\n`)
+  const xyz_tags = [`Cartn_x`, `Cartn_y`, `Cartn_z`]
+  // frames differ in coordinates as well as count so leakage of frame 2 is visible
+  const dump_frame = (num_atoms: number, coord: number) =>
+    lammps_dump(
+      `pp pp pp`,
+      `id element x y z`,
+      Array.from(
+        { length: num_atoms },
+        (_, idx) => `${idx + 1} Cu ${coord} ${coord} ${coord}`,
+      ),
+    )
+  const timed_frame = (num_atoms: number, coord: number) =>
+    `ITEM: TIME\n0.5\n${dump_frame(num_atoms, coord)}`
+  const mol2_molecule = (element: string) =>
+    `@<TRIPOS>MOLECULE\nx\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n@<TRIPOS>ATOM\n      1 ${element}1     1.0000 2.0000 3.0000 ${element}.3    1 RES1  0.0000`
+  const sdf_record = (symbol: string, num_atoms: number) =>
     [
-      `alternate location A`,
-      `${pdb_conformer(`A`, [1, 2, 3])}\n${pdb_conformer(`B`, [4, 5, 6])}`,
-    ],
-  ])(`PDB keeps only %s`, (_name, content) => {
-    const result = parse_structure_file(content, `models.pdb`)
-    expect(result.sites.map((site) => site.species[0].element)).toEqual([`C`])
-    expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 6)
+      symbol,
+      ``,
+      ``,
+      `  ${num_atoms}  0  0  0  0  0  0  0  0  0999 V2000`,
+      ...Array.from(
+        { length: num_atoms },
+        (_, idx) => `    ${idx}.0000    0.0000    0.0000 ${symbol}   0  0`,
+      ),
+      `M  END`,
+    ].join(`\n`)
+  const sdf_warning = `SDF contains 2 records; parsed the first and skipped 1`
+
+  // Only the first model / record / frame / conformer of each atom is read
+  // oxfmt-ignore
+  test.each([
+    [`PDB keeps only the first MODEL`, `models.pdb`, `${pdb_model(1, [1, 2, 3])}\n${pdb_model(2, [9, 9, 9])}`, [[`C`, [1, 2, 3]]]],
+    [`PDB keeps only alternate location A`, `alt.pdb`, `${pdb_conformer(`A`, [1, 2, 3])}\n${pdb_conformer(`B`, [4, 5, 6])}`, [[`C`, [1, 2, 3]]]],
+    // an atom listed only under B/C keeps its first conformer rather than vanishing
+    [`PDB keeps the first listed alternate location`, `alt.pdb`, `${pdb_conformer(`B`, [1, 2, 3])}\n${pdb_conformer(`C`, [4, 5, 6])}`, [[`C`, [1, 2, 3]]]],
+    // C listed only as B/C conformers, N as A/B: one site each, at its first position
+    [`mmCIF keeps each atom's first alternate conformer`, `alt.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_seq_id`, ...xyz_tags], [`C C B 1 0.0 0.0 0.0`, `C C C 1 0.5 0.0 0.0`, `N N A 1 1.0 0.0 0.0`, `N N B 1 1.5 0.0 0.0`, `O O . 1 2.0 0.0 0.0`]), [[`C`, [0, 0, 0]], [`N`, [1, 0, 0]], [`O`, [2, 0, 0]]]],
+    // microheterogeneity: conformers A/B are different residues at the same resSeq
+    [`PDB keeps the first residue of a microheterogeneous site`, `micro.pdb`, `${pdb_conformer(`A`, [1, 2, 3], `GLY`)}\n${pdb_conformer(`B`, [4, 5, 6], `ALA`)}`, [[`C`, [1, 2, 3]]]],
+    // waters have label_seq_id `.`, so only auth_seq_id tells HOH 101/102/103 apart
+    [`mmCIF keeps each water's first alternate conformer`, `water.mmcif`, mmcif_loop([`type_symbol`, `label_atom_id`, `label_alt_id`, `label_comp_id`, `label_seq_id`, `auth_seq_id`, `label_asym_id`, ...xyz_tags], [`O O B HOH . 101 A 0.0 0.0 0.0`, `O O A HOH . 102 A 5.0 0.0 0.0`, `O O B HOH . 102 A 5.5 0.0 0.0`, `O O A HOH . 103 A 9.0 0.0 0.0`]), [[`O`, [0, 0, 0]], [`O`, [5, 0, 0]], [`O`, [9, 0, 0]]]],
+    [`mmCIF keeps only the first pdbx_PDB_model_num`, `models.mmcif`, mmcif_loop([`type_symbol`, ...xyz_tags, `pdbx_PDB_model_num`], [`C 0.0 0.0 0.0 1`, `N 1.0 0.0 0.0 1`, `C 5.0 5.0 5.0 2`]), [[`C`, [0, 0, 0]], [`N`, [1, 0, 0]]]],
+    [`LAMMPS dump keeps only the first frame`, `traj.dump`, `${dump_frame(2, 1)}\n${dump_frame(3, 3)}`, [[`Cu`, [1, 1, 1]], [`Cu`, [1, 1, 1]]]],
+    // frames opening with `ITEM: TIME` split there, not at the TIMESTEP that follows it
+    [`LAMMPS dump splits frames at ITEM: TIME`, `timed.dump`, `${timed_frame(2, 1)}\n${timed_frame(3, 3)}`, [[`Cu`, [1, 1, 1]], [`Cu`, [1, 1, 1]]]],
+    [`MOL2 keeps the first molecule when a later header is indented`, `two.mol2`, `${mol2_molecule(`C`)}\n  ${mol2_molecule(`N`)}`, [[`C`, [1, 2, 3]]]],
+    // writers routinely omit the last `$$$$`, and the record count must not be off by one
+    [`SDF keeps the first record of a terminated file`, `multi.sdf`, `${sdf_record(`C`, 1)}\n$$$$\n${sdf_record(`N`, 2)}\n$$$$`, [[`C`, [0, 0, 0]]], sdf_warning],
+    [`SDF keeps the first record of an unterminated file`, `multi.sdf`, `${sdf_record(`C`, 1)}\n$$$$\n${sdf_record(`N`, 2)}`, [[`C`, [0, 0, 0]]], sdf_warning],
+  ])(`%s`, (_name, filename, content, expected, warning = ``) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn_spy.mockRestore())
+    const result = parse_structure_file(content, filename)
+    expect(result.sites.map((site) => [site.species[0].element, site.xyz])).toEqual(expected)
+    expect(warn_spy.mock.calls.flat().join(` `)).not.toMatch(/truncated/)
+    if (warning) expect(warn_spy).toHaveBeenCalledWith(warning)
   })
 
   // `END` terminates a PDB *entry*, and files get concatenated (VMD output, docking
@@ -2903,78 +2830,20 @@ describe(`multi-model / multi-record structure files`, () => {
     [`concatenated END-terminated entries`, true],
   ])(`PDB parses only the first entry with %s`, (_name, has_second_entry) => {
     const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const entry_1 = [
-      `CRYST1   20.000   20.000   20.000  90.00  90.00  90.00 P 1           1`,
-      pdb_atom_line(1, ` C  `, [0, 0, 0], `C`),
+    onTestFinished(() => warn_spy.mockRestore())
+    const entry = (len: number, symbol: string) => [
+      `CRYST1${len.toFixed(3).padStart(9).repeat(3)}  90.00  90.00  90.00 P 1           1`,
+      pdb_atom_line(1, ` ${symbol}  `, [1, 1, 1], symbol),
       `END`,
     ]
-    const entry_2 = [
-      `CRYST1    5.000    5.000    5.000  90.00  90.00  90.00 P 1           1`,
-      pdb_atom_line(1, ` O  `, [1, 1, 1], `O`),
-      `END`,
-    ]
-    const content = [...entry_1, ...(has_second_entry ? entry_2 : [])].join(`\n`)
+    const content = [...entry(20, `C`), ...(has_second_entry ? entry(5, `O`) : [])].join(`\n`)
     const result = parse_structure_file(content, `entries.pdb`)
     // the O of the second entry must not merge in, nor its 5 Å cell replace the 20 Å one
-    expect(result.sites).toHaveLength(1)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`C`])
     assert(`lattice` in result, `Failed to read the first entry's CRYST1 cell`)
     expect(result.lattice.a).toBeCloseTo(20, 6)
-    expect(warn_spy.mock.calls.flat()).toEqual(
-      has_second_entry
-        ? [`PDB contains multiple END-terminated entries; parsed the first`]
-        : [],
-    )
-    warn_spy.mockRestore()
-  })
-
-  // Writers routinely omit the last `$$$$`, and the record count must not be off by one
-  test.each([
-    [`a terminated`, true],
-    [`an unterminated`, false],
-  ])(`SDF keeps only the first record and counts %s final record`, (_name, terminated) => {
-    const record = (symbol: string, num_atoms: number) =>
-      [
-        symbol,
-        ``,
-        ``,
-        `  ${num_atoms}  0  0  0  0  0  0  0  0  0999 V2000`,
-        ...Array.from(
-          { length: num_atoms },
-          (_, idx) => `    ${idx}.0000    0.0000    0.0000 ${symbol}   0  0`,
-        ),
-        `M  END`,
-      ].join(`\n`)
-    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const content = `${record(`C`, 1)}\n$$$$\n${record(`N`, 2)}${terminated ? `\n$$$$` : ``}`
-    const result = parse_structure_file(content, `multi.sdf`)
-    expect(result.sites.map((site) => site.species[0].element)).toEqual([`C`])
-    expect(warn_spy).toHaveBeenCalledWith(
-      `SDF contains 2 records; parsed the first and skipped 1`,
-    )
-    warn_spy.mockRestore()
-  })
-
-  test(`mmCIF keeps only the first pdbx_PDB_model_num`, () => {
-    const content = `data_test\nloop_\n_atom_site.type_symbol\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.pdbx_PDB_model_num\nC 0.0 0.0 0.0 1\nN 1.0 0.0 0.0 1\nC 5.0 5.0 5.0 2`
-    const result = parse_structure_file(content, `models.mmcif`)
-    expect(result.sites.map((site) => site.species[0].element)).toEqual([`C`, `N`])
-  })
-
-  test(`LAMMPS dump keeps only the first frame`, () => {
-    // Frames differ in coordinates as well as count so leakage of frame 2 is visible
-    const frame = (num_atoms: number, coord: number) =>
-      lammps_dump(
-        `pp pp pp`,
-        `id element x y z`,
-        Array.from(
-          { length: num_atoms },
-          (_, idx) => `${idx + 1} Cu ${coord} ${coord} ${coord}`,
-        ),
-      )
-    const result = parse_structure_file(`${frame(2, 1)}\n${frame(3, 3)}`, `traj.dump`)
-    expect(result.sites).toHaveLength(2)
-    for (const site of result.sites) expect_vec3_close(site.xyz, [1, 1, 1], 6)
+    const warning = `PDB contains multiple END-terminated entries; parsed the first`
+    expect(warn_spy.mock.calls.flat()).toEqual(has_second_entry ? [warning] : [])
   })
 })
 

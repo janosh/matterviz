@@ -176,6 +176,13 @@ describe(`loading policy`, () => {
       on_progress: () => controller.abort(new Error(`cancelled mid-parse`)),
     })
     await expect(pending).rejects.toThrow(`cancelled mid-parse`)
+    // the aborted open must not leave its copy of the file in h5wasm's in-memory FS
+    const { FS: file_system } = await (await import(`h5wasm`)).ready
+    expect(
+      file_system
+        .readdir(file_system.cwd())
+        .filter((name: string) => name.startsWith(`gold.h5`)),
+    ).toEqual([])
   })
 })
 
@@ -226,7 +233,7 @@ describe(`JSON runs`, () => {
       `invalid XYZ coordinate`,
       `1\ncomment\nHe invalid 0 0`,
       `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ:.*frame 0/,
+      /Failed to parse broken.xyz as XYZ:.*frame 1\b/,
     ],
     [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
     // bytes that are neither ASE nor HDF5 read as text, unless they look binary

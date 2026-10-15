@@ -3,6 +3,7 @@ import type { NavGroup } from '#site/state.svelte.js'
 import {
   file_param,
   group_nav_routes,
+  latest_load,
   NAV_GROUPS,
   nav_routes,
   normalize_static_url,
@@ -112,4 +113,12 @@ describe(`group_nav_routes`, () => {
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
   })
+})
+
+test(`latest_load: only the newest load stays current, cancel supersedes all`, () => {
+  const loads = latest_load()
+  const [first, second] = [loads.start(), loads.start()]
+  expect([first(), second()]).toEqual([false, true])
+  loads.cancel()
+  expect([first(), second(), loads.start()()]).toEqual([false, false, true])
 })

@@ -52,7 +52,7 @@
   <button
     bind:this={trigger}
     type="button"
-    class={['column-filter-trigger', { active: Boolean(filter) }]}
+    class={[`column-filter-trigger`, { active: Boolean(filter) }]}
     aria-label="Filter {html_to_text(col.label)}"
     aria-expanded={open}
     onclick={on_toggle}

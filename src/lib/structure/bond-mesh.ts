@@ -22,7 +22,14 @@ import {
   Mesh,
 } from 'three/webgpu'
 import type { BondData, BondPlacements } from './bond-rendering'
-import { BondFrame, instance_count_for_order, prepare_bond_placements } from './bond-rendering'
+import {
+  BondFrame,
+  bond_order_at,
+  bond_site_1,
+  bond_site_2,
+  instance_count_for_order,
+  prepare_bond_placements,
+} from './bond-rendering'
 import { same_values } from '#lib/math.js'
 import { InstanceColors } from './instance-colors'
 import type { BondPair } from './index'
@@ -165,19 +172,15 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
       return false
     let instance_idx = 0
     for (let idx = 0; idx < bonds.length; idx++) {
-      const site_idx_1 =
-        bonds instanceof BondFrame ? bonds.columns.indices[idx * 2] : bonds[idx].site_idx_1
-      const site_idx_2 =
-        bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
+      const site_idx_1 = bond_site_1(bonds, idx)
+      const site_idx_2 = bond_site_2(bonds, idx)
       const color_start = site_colors[site_idx_1]
       const color_end = site_colors[site_idx_2]
       if (color_start === undefined || color_end === undefined)
         throw new RangeError(
           `Missing bond endpoint color for site indices ${site_idx_1}, ${site_idx_2}`,
         )
-      const copies = instance_count_for_order(
-        bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order,
-      )
+      const copies = instance_count_for_order(bond_order_at(bonds, idx))
       for (let order_idx = 0; order_idx < copies; order_idx++, instance_idx++) {
         this.colors_start.write_color(instance_idx, color_start)
         this.colors_end.write_color(instance_idx, color_end)

@@ -1,5 +1,6 @@
 // Worker-safe composition and density helpers. Kept outside the component barrel so
 // trajectory parsing can extract density without loading Svelte components in a Web Worker.
+import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import * as math from '#lib/math.js'
 import type { Vec3 } from '#lib/math.js'
@@ -21,7 +22,9 @@ const count_elements = (structure: AnyStructure): Partial<Record<ElementSymbol, 
     for (let idx = 0; idx < columns.length; idx++) {
       const element = element_from_atomic_number(columns.numbers[idx])
       if (!element)
-        throw new Error(`Invalid atomic number ${columns.numbers[idx]} at site ${idx}`)
+        throw new Error(
+          `Invalid atomic number ${columns.numbers[idx]} at site ${display_idx(idx)}`,
+        )
       elements[element] = (elements[element] ?? 0) + 1
     }
     if (topology) topology_counts.set(topology, elements)

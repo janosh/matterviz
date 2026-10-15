@@ -69,7 +69,6 @@ const make_unlabeled_band_structure = (
     start_index: branch_idx * 2,
     end_index: branch_idx * 2 + 1,
     name,
-    is_discontinuity: false,
   })),
   labels_dict: {},
 })
@@ -118,9 +117,7 @@ describe(`Bands component`, () => {
           '': {
             ...base_band_structure,
             qpoints: [base_band_structure.qpoints[0], base_band_structure.qpoints[3]],
-            branches: [
-              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-            ],
+            branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
             distance: [0, 3],
             bands: base_band_structure.bands.map((band) => [band[0], band[3]]),
           },
@@ -157,8 +154,8 @@ describe(`Bands component`, () => {
               label: idx % 2 ? `X` : `GAMMA`,
             })),
             branches: [
-              { start_index: 0, end_index: 1, name: `GAMMA-X`, is_discontinuity: false },
-              { start_index: 2, end_index: 3, name: `GAMMA-X`, is_discontinuity: false },
+              { start_index: 0, end_index: 1, name: `GAMMA-X` },
+              { start_index: 2, end_index: 3, name: `GAMMA-X` },
             ],
           },
         },

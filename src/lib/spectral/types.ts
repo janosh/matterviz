@@ -15,13 +15,11 @@ export interface QPoint {
   distance?: number
 }
 
-// Branch representation
+// A continuous path segment (any number of q-points >= 1). Jumps (U|K) lie between branches.
 export interface Branch {
   start_index: number
   end_index: number
   name: string
-  // Override the legacy two-point discontinuity heuristic when branch provenance is known.
-  is_discontinuity?: boolean
 }
 
 // Base band structure interface. q-points are fractional and path distances precomputed; the

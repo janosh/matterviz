@@ -1,4 +1,5 @@
 // Pymatgen Trajectory JSON parsing
+import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -141,7 +142,12 @@ export function parse_pymatgen_trajectory(
     for (const [key, value] of Object.entries(frame_properties[idx] ?? {})) {
       // Per-atom forces go on the sites (`force`), their statistics into the metadata
       if (key === `forces` && Array.isArray(value)) {
-        forces = checked_site_forces(value, n_sites, `pymatgen forces of frame ${idx}`, warn)
+        forces = checked_site_forces(
+          value,
+          n_sites,
+          `pymatgen forces of frame ${display_idx(idx)}`,
+          warn,
+        )
         if (forces) Object.assign(processed_properties, calc_force_stats(forces))
         continue
       }

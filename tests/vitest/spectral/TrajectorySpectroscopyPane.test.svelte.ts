@@ -232,6 +232,29 @@ test.each([
   expect(mocks.collect.mock.lastCall?.[1]).toMatchObject(expected_options)
 })
 
+test(`picking an IR signal clears branch-continuous polarization`, async () => {
+  mocks.compute.mockResolvedValue(make_result(`computed`))
+  const signals = {
+    polarization: { sample_shape: [3], sample_count: 2 },
+    current: { sample_shape: [3], sample_count: 2 },
+  }
+  const target = render_pane({ run: { ...make_run(), signals } })
+  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+  await open_settings(target)
+  const ir_select = query<HTMLSelectElement>(target, `.spectroscopy-controls select`)
+  const branch_box = () =>
+    target.querySelector<HTMLInputElement>(`.spectroscopy-controls input[type="checkbox"]`)
+  set_select(ir_select, `polarization`)
+  await tick()
+  const box = branch_box()
+  if (!box) throw new Error(`Missing branch-continuous checkbox`)
+  box.checked = true
+  box.dispatchEvent(new Event(`change`, { bubbles: true }))
+  for (const key of [`current`, `polarization`]) set_select(ir_select, key)
+  await tick()
+  expect(branch_box()?.checked).toBe(false)
+})
+
 test.each([`signal`, `frame_count`] as const)(
   `recollects a changed %s on the same run`,
   async (field) => {

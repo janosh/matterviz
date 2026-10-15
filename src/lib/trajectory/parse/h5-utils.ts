@@ -62,6 +62,20 @@ export const dataset_shape = (dataset: Dataset, path: string, format: string): n
   return shape
 }
 
+// Throws unless a dataset's shape is exactly `expected` ([] for a scalar)
+export const require_shape = (
+  shape: readonly number[],
+  expected: readonly number[],
+  path: string,
+  format: string,
+): void => {
+  if (shape.length !== expected.length || shape.some((size, idx) => size !== expected[idx])) {
+    throw new Error(
+      `${format} dataset ${path} has shape [${shape.join(`, `)}], expected [${expected.join(`, `)}]`,
+    )
+  }
+}
+
 // Exactly `count` numbers along a single axis (step axes, per-replica ids)
 export const read_numeric_1d = (
   dataset: Dataset,
@@ -69,12 +83,7 @@ export const read_numeric_1d = (
   count: number,
   format: string,
 ): number[] => {
-  const shape = dataset_shape(dataset, path, format)
-  if (shape.length !== 1 || shape[0] !== count) {
-    throw new Error(
-      `${format} dataset ${path} has shape [${shape.join(`, `)}], expected [${count}]`,
-    )
-  }
+  require_shape(dataset_shape(dataset, path, format), [count], path, format)
   return Array.from(read_numeric_samples(dataset, path, count, 1))
 }
 

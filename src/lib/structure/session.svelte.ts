@@ -46,6 +46,7 @@ import {
   get_image_source_idx,
   get_orig_site_idx,
   is_image_site,
+  merge_site_properties,
   snapshot_topologies,
   site_count,
 } from './site'
@@ -342,13 +343,7 @@ export class StructureSession {
     const displayed = this.displayed_structure
     const properties = this.inputs.site_properties?.()
     if (!displayed || !properties || !this.shows_input_frame) return displayed
-    return {
-      ...displayed,
-      sites: displayed.sites.map((site, idx) => ({
-        ...site,
-        properties: { ...site.properties, ...properties[this.to_base_site_idx(site, idx)] },
-      })),
-    }
+    return merge_site_properties(displayed, properties, this.to_base_site_idx)
   })
   // Wyckoff rows of the analyzed cell with site_indices re-expressed onto the displayed
   // structure (conventional/primitive cell, supercell, image atoms), so the table and the
@@ -417,6 +412,9 @@ export class StructureSession {
   // Set before every internal structure write so the invalidation effect keeps history and
   // selection for the session's own edits (external loads/frames clear both)
   private is_internal_edit = false
+  // Whether the change the invalidation effect last saw was such a write (read by the viewer's
+  // camera refit, whose pre-effect runs after this session's)
+  own_write = false
 
   // === edit-bonds ===
   added_bonds = $state<StructureBond[]>([])
@@ -490,6 +488,8 @@ export class StructureSession {
       ].includes(true)
       const measure_mode = inputs.measure_mode()
       const mode_changed = changed(`measure_mode`, measure_mode)
+      const sym_data = inputs.sym_data()
+      const sym_data_changed = changed(`sym_data`, sym_data)
       const bond_mode_changed = changed(`bond_edit_mode`, inputs.bond_edit_mode())
       const bonds_replaced = inputs.bonds() !== this.emitted_bonds
       const bonds_unavailable = measure_mode === `edit-bonds` && !this.bond_edits_enabled
@@ -500,6 +500,7 @@ export class StructureSession {
       untrack(() => {
         if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
         const internal = this.is_internal_edit
+        this.own_write = internal
         this.is_internal_edit = false
         if (structure_changed) {
           // The binding stays undefined until the first edit (source bonds live on the
@@ -554,18 +555,25 @@ export class StructureSession {
         if (mode_changed) {
           this.clear_selection()
           if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
-          if (measure_mode === `edit-atoms`) {
-            this.clear_bond_edits()
-            // Bake a conventional/primitive view into the structure so edits apply to what is
-            // on screen; the original stays one undo away
-            const base = this.base_structure
-            if (inputs.cell_type() !== `original` && base && inputs.structure()) {
-              this.push_undo()
-              this.write_structure($state.snapshot(base))
-              inputs.set_cell_type(`original`)
-            }
-          }
+          if (measure_mode === `edit-atoms`) this.clear_bond_edits()
         } else if (bond_mode_changed && measure_mode === `edit-bonds`) this.clear_selection()
+        // Edits index the raw structure, so a conventional/primitive view is baked into it (one
+        // undo away) on entering edit-atoms or switching cell type while editing. Without
+        // symmetry data that view is not shown yet, so the bake waits for it to arrive.
+        const base = this.base_structure
+        if (
+          measure_mode === `edit-atoms` &&
+          (mode_changed || transform_changed || sym_data_changed) &&
+          inputs.cell_type() !== `original` &&
+          sym_data &&
+          base &&
+          inputs.structure()
+        ) {
+          this.clear_selection() // picked on the previous cell
+          this.push_undo()
+          this.write_structure($state.snapshot(base))
+          inputs.set_cell_type(`original`)
+        }
         if (bonds_unavailable) {
           this.clear_selection()
           this.clear_bond_edits()
@@ -693,7 +701,7 @@ export class StructureSession {
   // may itself carry unit_cell_idx from a supercell built outside the viewer (phonon mode
   // supercells); those index a cell that is not displayed, so they are only followed while the
   // session's own supercell is on screen.
-  private readonly to_base_site_idx = (site: Site, site_idx: number): number => {
+  readonly to_base_site_idx = (site: Site, site_idx: number): number => {
     if (this.supercell_structure !== this.base_structure) {
       return get_orig_site_idx(site, site_idx)
     }

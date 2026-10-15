@@ -7,12 +7,13 @@
 
   let log_scale = $state(true)
   let data_name = $state(`MP`)
-  let color_scale = $derived(`interpolateViridis`)
+  let color_scale = $state(`interpolateViridis`)
   let heatmap_values = $derived(
     Object.values(data_name == `WBM` ? wbm_elem_counts : mp_elem_counts),
   )
   let total = $derived(heatmap_values.reduce((sum, val) => sum + val, 0))
-  let nice_range = $state([])
+  // the ColorBar's rounded tick range, shared with the table so tiles and bar agree
+  let nice_range = $state([null, null])
   // the table inset is only ~10 element cells wide; below this width the controls no
   // longer fit inside it and spill over the heading, so they move below the table
   let demo_width = $state(1000)
@@ -47,12 +48,7 @@
 </h2>
 
 <div bind:clientWidth={demo_width}>
-  <PeriodicTable
-    {heatmap_values}
-    log={log_scale}
-    {color_scale}
-    bind:color_scale_range={nice_range}
-  >
+  <PeriodicTable {heatmap_values} log={log_scale} {color_scale} color_scale_range={nice_range}>
     {#snippet inset({ active_element })}
       <TableInset style="align-content: center; --ptable-inset-padding: 0.25em 0.5em 1.4em">
         {#if controls_in_inset}

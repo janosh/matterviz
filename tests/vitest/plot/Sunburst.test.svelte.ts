@@ -57,15 +57,12 @@ const deep: SunburstNode[] = [
 // duration 0 makes zoom transitions synchronous for assertions
 const mount_sized_sunburst = (
   props: Partial<ComponentProps<typeof Sunburst>>,
+  size = { width: 500, height: 360 },
 ): Promise<HTMLElement> =>
   mount_sized(
     Sunburst,
     { tween: { duration: 0 }, ...props },
-    {
-      selector: `.sunburst`,
-      width: 500,
-      height: 360,
-    },
+    { selector: `.sunburst`, ...size },
   )
 
 // Pre-order node indices for the `tree` fixture (root=0)
@@ -352,17 +349,15 @@ describe(`Sunburst`, () => {
     // a value-only label is never cropped: on a chart small enough that this 10%
     // slice cannot hold "90,000,000,000.1" even at 0.7em, the value stays hidden
     // rather than posing as "90,000,000,0…"
-    const values_only = await mount_sized(
-      Sunburst,
+    const values_only = await mount_sized_sunburst(
       {
-        tween: { duration: 0 },
         data: [
           { label: `wide`, value: 8.1e11 },
           { label: name, value: 9e10 + 0.1 },
         ],
         label_text: `value`,
       },
-      { selector: `.sunburst`, width: 260, height: 200 },
+      { width: 260, height: 200 },
     )
     const texts = [...values_only.querySelectorAll(`.arc-label`)].map((element) =>
       element.textContent?.trim(),
@@ -389,6 +384,11 @@ describe(`Sunburst`, () => {
       [...plot.querySelectorAll(`.arc-label`)]
         .find((element) => element.textContent?.trim().startsWith(text))
         ?.getAttribute(`fill-opacity`)
+    // legend hover dims without hover_info; set_arc_hover's same-arc early return must not
+    // then suppress the arc's own tooltip
+    await fire(plot.querySelector(`.legend-item`), mouse(`mouseenter`))
+    await fire(arc_path(plot, `A`), mouse(`mousemove`))
+    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     await fire(plot.querySelector(`.legend-item`)) // mute A
     expect(opacities()).toEqual([`0.12`, `0.12`, `0.12`, `1`])
     // muted arcs must not keep fully opaque labels floating over invisible arcs
@@ -399,12 +399,23 @@ describe(`Sunburst`, () => {
     expect(label_opacity(`A`)).toBeNull()
   })
 
-  test(`value_mode total respects authoritative parent values`, async () => {
-    const data: SunburstNode[] = [
-      { label: `P`, value: 10, children: [{ label: `c1`, value: 3 }] },
-    ]
-    const plot = await mount_sized_sunburst({ data, value_mode: `total` })
-    expect(plot.querySelector(`.center-label`)?.textContent).toContain(`10`)
+  // The value line always renders, so the name above it must be lifted for any total (a
+  // zero one included), else the pair sits below the center
+  test.each<[SunburstNode, `leaf-sum` | `total`, string]>([
+    [{ label: `kid`, value: 10 }, `leaf-sum`, `10`],
+    [{ label: `kid`, value: 0 }, `leaf-sum`, `0`],
+    // value_mode total trusts a parent's own value over its children's sum
+    [{ label: `P`, value: 10, children: [{ label: `c1`, value: 3 }] }, `total`, `10`],
+  ])(`center label and value straddle the center: %j %s`, async (kid, value_mode, total) => {
+    const plot = await mount_sized_sunburst({
+      data: { label: `root`, children: [kid] },
+      value_mode,
+    })
+    const lines = [...plot.querySelectorAll(`.center-label tspan`)]
+    expect(lines.map((line) => [line.textContent?.trim(), line.getAttribute(`dy`)])).toEqual([
+      [`root`, `-0.3em`],
+      [total, `1.2em`],
+    ])
   })
 
   // Regression guard for the effect_update_depth_exceeded class: a multi-root
@@ -447,12 +458,14 @@ describe(`Sunburst`, () => {
   })
 
   test.each([`Enter`, ` `])(
-    `keyboard activation key %j on an arc triggers click handling`,
-    async (key_name) => {
+    `%j on a branch arc clicks, zooms and focuses the center`,
+    async (key) => {
       const on_node_click = vi.fn()
       const plot = await mount_sized_sunburst({ data: tree, on_node_click })
-      await fire(arc_path(plot, `B`), keydown(key_name))
+      await fire(arc_path(plot, `A`), keydown(key))
       expect(on_node_click).toHaveBeenCalledOnce()
+      await tick() // focus is deferred one extra tick (center tabindex appears after zoom)
+      expect(document.activeElement?.classList.contains(`center-circle`)).toBe(true)
     },
   )
 
@@ -479,16 +492,6 @@ describe(`Sunburst`, () => {
       path.getAttribute(`fill-opacity`),
     )
     expect(opacities).toEqual([`1`, `1`, `1`, `1`, `1`])
-  })
-
-  // legend hover sets hovered_idx without hover_info (dim-only); the same-arc early
-  // return in set_arc_hover must not then suppress the arc's own tooltip forever
-  test(`tooltip still appears on an arc after its legend item was hovered`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, show_legend: true })
-    const legend_item = plot.querySelector(`.legend-item`) // item for category A
-    await fire(legend_item, mouse(`mouseenter`))
-    await fire(arc_path(plot, `A`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
   })
 
   // a fast double-click on the center zoom-out button fires click+click+dblclick;
@@ -528,13 +531,6 @@ describe(`Sunburst`, () => {
   ])(`center circle aria-label when zoomed to %s is "%s"`, async (zoom_root_id, aria) => {
     const plot = await mount_sized_sunburst({ data: deep, zoom_root_id })
     expect(plot.querySelector(`.center-circle`)?.getAttribute(`aria-label`)).toBe(aria)
-  })
-
-  test(`keyboard zoom moves focus to the center circle`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree })
-    await fire(arc_path(plot, `A`), keydown(`Enter`))
-    await tick() // focus is deferred one extra tick (center tabindex appears after zoom)
-    expect(document.activeElement?.classList.contains(`center-circle`)).toBe(true)
   })
 })
 
@@ -796,17 +792,13 @@ describe(`Sunburst display options`, () => {
 })
 
 describe(`controls pane`, () => {
-  test(`inputs drive chart props through snippet function bindings`, async () => {
-    const plot = await mount_sized_sunburst({ data: tree, controls_open: true })
-    expect(n_arcs(plot)).toBe(4)
-    // the max-depth number input is bound via the num_row snippet's get/set pair
-    await set_number_input(plot, `10`, `1`)
-    expect(n_arcs(plot)).toBe(2) // only depth-1 ring left
-  })
-
-  // A threshold alone cannot promise a populated ring, so the rank-based cap that
-  // can has to be reachable from the pane too.
-  test(`exposes max_children alongside min_fraction`, async () => {
+  // A threshold alone cannot promise a populated ring, so the rank-based cap that can has
+  // to be reachable from the pane too
+  test(`max_depth, max_children and min_fraction inputs drive chart props`, async () => {
+    const nested = await mount_sized_sunburst({ data: tree, controls_open: true })
+    expect(n_arcs(nested)).toBe(4)
+    await set_number_input(nested, `10`, `1`) // max_depth
+    expect(n_arcs(nested)).toBe(2) // only depth-1 ring left
     const plot = await mount_sized_sunburst({ data: long_tail, controls_open: true })
     expect(n_arcs(plot)).toBe(8)
     await set_number_input(plot, `20`, `2`) // max_children

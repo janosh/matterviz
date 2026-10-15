@@ -1,4 +1,8 @@
 // `matterviz/trajectory/parse`: the format parsers plus the opener that dispatches to them.
+import {
+  detect_compression_format,
+  is_browser_decompressible_format,
+} from '#lib/io/decompress.js'
 import { is_binary } from '#lib/io/is-binary.js'
 
 export {
@@ -37,14 +41,9 @@ export function get_unsupported_format_message(
   content: string,
 ): string | null {
   const lower = filename.toLowerCase()
-
-  for (const [ext, name] of [
-    [`.bz2`, `BZ2`],
-    [`.xz`, `XZ`],
-  ]) {
-    if (lower.endsWith(ext)) {
-      return `🚫 ${name} compression not supported in browser\nPlease decompress the file first`
-    }
+  const compression = detect_compression_format(filename)
+  if (compression && !is_browser_decompressible_format(compression)) {
+    return `🚫 ${compression.toUpperCase()} decompression is not supported in the browser\nPlease decompress the file first`
   }
 
   const formats = [

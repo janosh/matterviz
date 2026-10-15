@@ -8,7 +8,7 @@
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
-  import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { display_idx, ELEM_SYMBOLS, format_num } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'
   import type { AnyStructure } from '#lib/structure/index.js'
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
@@ -62,7 +62,7 @@
     sym_data?: SymmetryDataset | null
     structure?: AnyStructure | null
     show_mode_toggle?: boolean
-    children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
+    children?: Snippet<[{ mode_menu_open: boolean }]>
   } = $props()
 
   const palette = get_element_palette()
@@ -308,10 +308,10 @@
       {@const main_elem = site.species[0]?.element ?? `?`}
       <div class="site-radius-control">
         <label
-          title="Radius for selected site {site_idx}"
+          title="Radius for selected site {display_idx(site_idx)}"
           {@attach tooltip({ placement: `top` })}
         >
-          <span class="site-label">{main_elem}{site_idx}</span>
+          <span class="site-label">{main_elem}{display_idx(site_idx)}</span>
           <!-- same rule the scene renders with -->
           <input
             type="number"
@@ -440,7 +440,12 @@
               bind:value={remap_search}
               onkeydown={(event) => {
                 if (event.key === `Escape`) close_remap_menu()
-                else if (event.key === `Enter` && filtered_elements.length > 0) {
+                // an empty query lists every element: Enter must not pick H
+                else if (
+                  event.key === `Enter` &&
+                  remap_search.trim() &&
+                  filtered_elements.length > 0
+                ) {
                   remap_element(symbol, filtered_elements[0])
                 }
               }}
@@ -473,7 +478,7 @@
       </div>
     {/each}
     {@render site_radius_control_snippet()}
-    {@render children?.({ mode_menu_open, structure })}
+    {@render children?.({ mode_menu_open })}
   </div>
 {:else if show_property_legend}
   <div
@@ -550,7 +555,7 @@
       {/each}
     {/if}
     {@render site_radius_control_snippet()}
-    {@render children?.({ mode_menu_open, structure })}
+    {@render children?.({ mode_menu_open })}
   </div>
 {/if}
 

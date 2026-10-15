@@ -65,7 +65,7 @@
     ],
   }
 
-  // Band structure with discontinuities (consecutive labeled points = k-space jumps)
+  // Band structure with a discontinuity: the U→K jump is the gap between two branches
   const bs_with_discontinuity: BaseBandStructure = {
     ...mock_band_structure,
     qpoints: [
@@ -73,13 +73,13 @@
       { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
       { label: `X`, frac_coords: [0.5, 0.0, 0.0], distance: 1.0 },
       { label: `U`, frac_coords: [0.625, 0.25, 0.625], distance: 1.05 },
-      { label: `K`, frac_coords: [0.375, 0.375, 0.75], distance: 1.1 },
+      { label: `K`, frac_coords: [0.375, 0.375, 0.75], distance: 1.05 },
       { label: null, frac_coords: [0.25, 0.25, 0.5], distance: 1.6 },
       { label: `L`, frac_coords: [0.5, 0.5, 0.5], distance: 2.0 },
     ],
     branches: [
       { start_index: 0, end_index: 2, name: `GAMMA-X` },
-      { start_index: 3, end_index: 4, name: `U-K` }, // Discontinuity: consecutive labeled points
+      { start_index: 2, end_index: 3, name: `X-U` },
       { start_index: 4, end_index: 6, name: `K-L` },
     ],
     labels_dict: {
@@ -89,7 +89,7 @@
       K: [0.375, 0.375, 0.75],
       L: [0.5, 0.5, 0.5],
     },
-    distance: [0.0, 0.5, 1.0, 1.05, 1.1, 1.6, 2.0],
+    distance: [0.0, 0.5, 1.0, 1.05, 1.05, 1.6, 2.0],
     bands: [
       [0.0, 1.0, 2.0, 3.0, 3.2, 3.8, 4.5],
       [1.0, 2.0, 3.0, 4.0, 4.2, 4.8, 5.5],

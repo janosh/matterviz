@@ -682,13 +682,13 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
     | { reciprocal_lattice?: number[][]; '@class'?: string }
     | undefined
 
-  const k_lattice: Matrix3x3 = reciprocal_space?.reciprocal_lattice
-    ? (reciprocal_space.reciprocal_lattice as Matrix3x3)
-    : [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ]
+  // No identity default: a made-up 1 Å⁻¹ cube would misplace the zone, tiling and slices
+  const k_lattice = reciprocal_space?.reciprocal_lattice
+  if (!math.is_finite_matrix3x3(k_lattice)) {
+    throw new Error(
+      `IFermi JSON needs a finite 3x3 'reciprocal_space.reciprocal_lattice', got ${JSON.stringify(k_lattice)}`,
+    )
+  }
 
   const isosurfaces: FermiIsosurface[] = []
   const band_indices = new Set<number>()

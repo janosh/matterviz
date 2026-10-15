@@ -10,7 +10,7 @@
     thz_per_inverse_time,
     TIME_UNIT_TO_THZ,
   } from '#lib/spectral/frequency-units.js'
-  import { collect_vacf_input, suggest_vacf_frame_stride } from './collect'
+  import { collect_vacf_input, vacf_buffers } from './collect'
   import type { VacfFrequencyUnit, VacfInput, VacfOptions, VacfResult } from './index'
   import VacfPlot from './VacfPlot.svelte'
 
@@ -70,11 +70,9 @@
   analysis_name="VACF"
   collect={collect_vacf_input}
   frame_steps={(input) => input.steps}
-  suggest_stride={(source, frame_count) =>
-    suggest_vacf_frame_stride(source, undefined, frame_count)}
   compute_label="Compute VACF"
   recollect_label="Recollect velocities"
-  bytes_per_atom_frame={input?.velocities ? 48 : 24}
+  position_buffers={run ? vacf_buffers(run) : 1}
   {default_dt}
   {default_time_unit}
   time_unit_fallback="fs"

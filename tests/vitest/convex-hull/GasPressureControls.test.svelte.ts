@@ -3,25 +3,15 @@ import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
 import type { GasSpecies, GasThermodynamicsConfig } from '#lib/convex-hull/types.js'
 import { flushSync, mount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { bind_props } from '../setup'
 
 const mount_controls = (
   config: GasThermodynamicsConfig,
   pressures: Partial<Record<GasSpecies, number>> = {},
 ) => {
   const state = $state({ pressures })
-  mount(GasPressureControls, {
-    target: document.body,
-    props: {
-      config,
-      temperature: 1000,
-      get pressures() {
-        return state.pressures
-      },
-      set pressures(value) {
-        state.pressures = value
-      },
-    },
-  })
+  const props = bind_props({ config, temperature: 1000 }, state)
+  mount(GasPressureControls, { target: document.body, props })
   return state
 }
 const slider = (gas: string) =>
@@ -72,14 +62,18 @@ describe(`GasPressureControls`, () => {
     expect(text_input(`O2`)?.value).toBe(`1e2`)
   })
 
+  // within 0.1 decade of a power of ten used to display as it: 0.8 bar read as 1e0
   test.each([
-    [`5`, 5],
-    [`1e6`, 100], // clamped to 10^LOG_P_MAX
-    [`1e-20`, 1e-10], // clamped to 10^LOG_P_MIN
-  ])(`typed pressure %s commits %s bar`, (typed, expected) => {
+    [`5`, 5, `5.0`],
+    [`1e6`, 100, `1e2`], // clamped to 10^LOG_P_MAX
+    [`1e-20`, 1e-10, `1e-10`], // clamped to 10^LOG_P_MIN
+    [`0.8`, 0.8, `0.80`],
+    [`8e-7`, 8e-7, `8.0e-7`],
+  ])(`typed pressure %s commits %s bar, shown as %s`, (typed, expected, shown) => {
     const state = mount_controls({ enabled_gases: [`H2`] })
     fire(text_input(`H2`), `change`, typed)
     expect(state.pressures.H2).toBeCloseTo(expected, 12)
+    expect(text_input(`H2`)?.value).toBe(shown)
   })
 
   test.each([`abc`, `-1`, `0`])(`invalid typed pressure %s is reverted`, (typed) => {
@@ -95,19 +89,8 @@ describe(`TemperatureSlider`, () => {
   const available_temperatures = [300, 400, 500, 600, 700, 800, 900]
   const mount_slider = (temperature = 300, interpolate_temperature = false) => {
     const state = $state({ temperature })
-    mount(TemperatureSlider, {
-      target: document.body,
-      props: {
-        available_temperatures,
-        interpolate_temperature,
-        get temperature() {
-          return state.temperature
-        },
-        set temperature(value) {
-          state.temperature = value
-        },
-      },
-    })
+    const props = bind_props({ available_temperatures, interpolate_temperature }, state)
+    mount(TemperatureSlider, { target: document.body, props })
     return state
   }
   const range = () =>
