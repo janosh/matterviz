@@ -46,6 +46,7 @@
     FermiSurfaceData,
     FermiSurfaceSettings,
     FermiTooltipConfig,
+    SpinChannel,
   } from './types'
   import { is_fermi_surface_data } from './types'
 
@@ -78,6 +79,7 @@
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands = $bindable(),
+    selected_spins,
     show_bz = $bindable(DEFAULTS.fermi.show_bz),
     bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
     show_vectors = $bindable(DEFAULTS.fermi.show_vectors),
@@ -129,6 +131,7 @@
     // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
     custom_property_label?: string
     selected_bands?: number[]
+    selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
     show_controls?: ShowControlsProp<FermiSurfaceControlName>
     fullscreen?: boolean
     width?: number
@@ -315,7 +318,9 @@
     color_property === `property`
       ? property_color_range(
           surface_data?.isosurfaces.filter(
-            ({ band_index }) => selected_bands?.includes(band_index) ?? true,
+            ({ band_index, spin }) =>
+              (selected_bands?.includes(band_index) ?? true) &&
+              (selected_spins?.includes(spin) ?? true),
           ) ?? [],
           active_property,
         )
@@ -451,6 +456,7 @@
           {representation}
           {surface_opacity}
           {selected_bands}
+          {selected_spins}
           {show_bz}
           {bz_opacity}
           {show_vectors}

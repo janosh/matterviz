@@ -55,6 +55,7 @@
     FermiIsosurface,
     FermiSurfaceData,
     FermiSurfaceSettings,
+    SpinChannel,
   } from './types'
 
   let {
@@ -70,6 +71,7 @@
     representation = DEFAULTS.fermi.representation,
     surface_opacity = DEFAULTS.fermi.surface_opacity,
     selected_bands,
+    selected_spins,
     // BZ styling
     show_bz = DEFAULTS.fermi.show_bz,
     bz_opacity = DEFAULTS.fermi.bz_opacity,
@@ -105,6 +107,7 @@
       // a band structure's k-path to draw (its hovered point is the k_marker dot)
       k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
       selected_bands?: number[]
+      selected_spins?: SpinChannel[]
       hover_data?: FermiHoverData | null
       kpath_hover_data?: BZHoverData | null // the hovered k-path point, for a zone tooltip
     } = $props()
@@ -161,7 +164,9 @@
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
-      (surface) => selected_bands === undefined || selected_bands.includes(surface.band_index),
+      ({ band_index, spin }) =>
+        (selected_bands?.includes(band_index) ?? true) &&
+        (selected_spins?.includes(spin) ?? true),
     ) ?? [],
   )
 

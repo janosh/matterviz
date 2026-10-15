@@ -166,6 +166,29 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
 
 // lattice_point_group_matrices memoized into a module-level SvelteMap inside the `symmetry_ops`
 // $derived, which Svelte 5 rejects. Must stay the only tiled mount here: a warm cache hides it.
+// a band plot hiding a spin channel (FermiSurfaceBands) hides that channel's sheets too
+test.each([
+  [undefined, undefined, 3],
+  [undefined, [`down`], 1],
+  [[0], [`up`], 1],
+  [[1], [`down`], 0],
+] as const)(
+  `selected_bands %j and selected_spins %j show %i sheets`,
+  (bands, spins, n_shown) => {
+    const spin_sheets = [
+      { ...sheet(0), spin: `up` },
+      { ...sheet(0), spin: `down` },
+      { ...sheet(1), spin: `up` },
+    ] as const
+    mount_scene({
+      fermi_data: make_fermi_surface([...spin_sheets]),
+      selected_bands: bands && [...bands],
+      selected_spins: spins && [...spins],
+    })
+    expect(mesh_materials()).toHaveLength(n_shown)
+  },
+)
+
 test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
   mount_scene({ tile_bz: true })
   // cubic (identity) k_lattice: 48 Oh operations × 2 renderable surfaces

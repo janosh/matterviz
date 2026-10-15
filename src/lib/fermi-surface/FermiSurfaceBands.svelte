@@ -69,7 +69,7 @@
     return null
   })
   const shown_bands = $derived(clicked_band === null ? selected_bands : [clicked_band])
-  // Bands' spin control writes this; the hidden channel gets no crossings either
+  // Bands' spin control writes this; the hidden channel gets no crossings or sheets either
   let band_spin_mode = $derived<BandsSpinMode>(bands_props.band_spin_mode ?? `overlay`)
   let surface = $state.raw<FermiSurfaceData>()
   let wrapper = $state<HTMLDivElement>()
@@ -170,6 +170,13 @@
     fullscreen_toggle={false}
     bind:fermi_data={surface}
     bind:color_property
+    selected_spins={band_data.n_spins !== 2
+      ? undefined
+      : band_spin_mode === `up_only`
+        ? [`up`]
+        : band_spin_mode === `down_only`
+          ? [`down`]
+          : undefined}
     wigner_seitz
     previewing={hovered_energy !== null}
     bind:mu={() => shown_mu, (value) => (mu = value)}
