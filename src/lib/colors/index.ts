@@ -274,6 +274,16 @@ export const contrast_text_color = (paint: Paint): string =>
 export const opaque_contrast_color = (background: string): string =>
   is_opaque_color(background) ? pick_contrast_color({ background }) : `currentColor`
 
+// Text for a chip floating over a backdrop JS can't see (a 3D canvas): a translucent bg is
+// judged by its own opaque color, which dominates a mostly opaque chip (rgba(0, 0, 0, 0.85) →
+// white); unresolvable ones (var(), currentcolor, transparent) inherit
+export const chip_contrast_color = (background: string): string => {
+  const parsed = to_rendered_rgb(background.trim())
+  return parsed?.opacity
+    ? pick_contrast_color({ background: parsed.copy({ opacity: 1 }).formatRgb() })
+    : `currentColor`
+}
+
 // A hovered mark's opaque fill with contrasting text for its tooltip, beating the
 // --tooltip-bg/--canvas-tooltip-bg theme tokens that style the neutral chip shown for null
 // (translucent, var() or no fill). Component override vars like var(--scatter3d-tooltip-bg,

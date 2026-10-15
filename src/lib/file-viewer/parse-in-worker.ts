@@ -163,7 +163,16 @@ export const parse_in_worker = async (
   const host_marker = typeof content === `string` && content.startsWith(`LARGE_FILE:`)
   if (host_marker || (!options.worker_factory && !can_create_worker())) {
     options.signal?.throwIfAborted()
-    return parse_file_content(content, filename, is_base64, load_options, options.on_progress)
+    const result = await parse_file_content(
+      content,
+      filename,
+      is_base64,
+      load_options,
+      options.on_progress,
+    )
+    // the parse can't be interrupted, but an abort during it still rejects like the worker path
+    options.signal?.throwIfAborted()
+    return result
   }
   let dispose_pool: (() => void) | undefined
   const result = await parse_file_worker(

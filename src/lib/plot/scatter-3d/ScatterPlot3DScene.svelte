@@ -37,7 +37,7 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { opaque_contrast_color, plot_color, tooltip_paint } from '#lib/colors/index.js'
+  import { chip_contrast_color, plot_color, tooltip_paint } from '#lib/colors/index.js'
   import { extract_series_color } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
@@ -818,7 +818,7 @@
           style:background="var(--scatter3d-tooltip-bg, {paint?.background ??
             `rgba(0, 0, 0, 0.85)`})"
           style:color="var(--scatter3d-tooltip-color, {tooltip_bg_override
-            ? opaque_contrast_color(tooltip_bg_override)
+            ? chip_contrast_color(tooltip_bg_override)
             : (paint?.color ?? `white`)})"
           {@attach read_tooltip_bg}
         >

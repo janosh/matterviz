@@ -435,6 +435,13 @@ describe(`parse_in_worker`, () => {
     const result = await module.parse_in_worker(content, `empty.json`)
     expect(result).toEqual(await parse_file_content(content, `empty.json`))
     if (disabled) expect(worker_global).not.toHaveBeenCalled()
+    // an abort while the main-thread parse runs still rejects, as on the worker path
+    const controller = new AbortController()
+    const pending = module.parse_in_worker(content, `empty.json`, false, {
+      signal: controller.signal,
+    })
+    controller.abort()
+    await expect(pending).rejects.toThrow(/abort/i)
   })
 
   it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {

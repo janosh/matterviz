@@ -398,6 +398,9 @@ test.each([
   [`rgba(255, 255, 255, 0.5)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
   [`var(--marker-fill)`, ``, `rgba(0, 0, 0, 0.85)`, `white`],
   [`#ffffff`, `#000000`, `#ffffff`, `white`],
+  // a translucent override is judged by its own opaque color (the canvas backdrop is unknown)
+  [`#ffffff`, `rgba(0, 0, 0, 0.85)`, `#ffffff`, `white`],
+  [`#000000`, `rgba(255, 255, 255, 0.7)`, `#000000`, `black`],
 ])(`3D tooltip fill %s, override %j: %s bg, %s text`, (fill, override, bg, text) => {
   const sheet = document.createElement(`style`)
   document.head.append(sheet)
