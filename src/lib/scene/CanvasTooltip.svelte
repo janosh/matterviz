@@ -5,6 +5,8 @@
   // keeps clear of the hovered object's screen disk (`anchor_radius`).
   import type { Vec3 } from '#lib/math.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import { T, useTask, useThrelte } from '@threlte/core'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { Group, Vector3 } from 'three/webgpu'
@@ -29,27 +31,8 @@
   const host = $derived(portal ?? dom.parentElement)
 
   type Screen = { x: number; y: number; radius: number }
-  type Bounds = { x: number; y: number; width: number; height: number }
   let screen = $state<Screen | null>(null)
-  let bounds = $state<Bounds | undefined>()
-
-  // The box that would cut the tooltip off, in the host's coordinates: the nearest ancestor
-  // that clips its overflow, else the viewport
-  function clip_bounds(node: HTMLElement): Bounds {
-    const origin = node.getBoundingClientRect()
-    let clip: HTMLElement | null = node
-    // the shorthand lists both axes when they differ, so any clipping value counts
-    const clips = (el: HTMLElement) =>
-      /hidden|clip|scroll|auto/.test(getComputedStyle(el).overflow)
-    while (clip && !clips(clip)) clip = clip.parentElement
-    const { left, top, width, height } = clip?.getBoundingClientRect() ?? {
-      left: 0,
-      top: 0,
-      width: globalThis.innerWidth,
-      height: globalThis.innerHeight,
-    }
-    return { x: left - origin.left, y: top - origin.top, width, height }
-  }
+  let bounds = $state<Rect | undefined>()
 
   const anchor = new Group()
   const [center, edge] = [new Vector3(), new Vector3()]
