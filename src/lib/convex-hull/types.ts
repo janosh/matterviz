@@ -2,6 +2,7 @@ import type { CompositionType } from '#lib/composition/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Point2D, Point3D } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
+import type { FileLoadData } from '#lib/io/types.js'
 
 export interface StructurePopupStats {
   id?: string
@@ -55,6 +56,9 @@ export interface PhaseData {
   // normalized via MAGNETIC_ORDERING_CATEGORY aliases; unrecognized values are ignored.
   magnetic_ordering?: MagneticOrdering | (string & {})
 }
+
+// on_file_load payload of the phase-entry viewers: a dropped file's entries and its source
+export type PhaseEntriesLoadData = FileLoadData & { entries: PhaseData[]; filename: string }
 
 // === Entry categories (generic categorical classification) ===
 

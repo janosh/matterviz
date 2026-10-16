@@ -1,8 +1,6 @@
-// Pipeline-stage timings for the isosurface renderer, published on the User Timing timeline
-// as `isosurface:<stage>` measures with the stage metadata as `detail`. Consumers (the
-// src/routes/test/isosurface-performance benchmark route, DevTools) read them through a
-// PerformanceObserver; nothing is threaded through component props. This module is
-// intentionally not re-exported from the public package barrels.
+// Isosurface pipeline-stage timings as User Timing `isosurface:<stage>` measures (metadata in
+// `detail`), read via PerformanceObserver by the isosurface-performance route and DevTools.
+// Intentionally not re-exported from the public package barrels.
 
 export const ISOSURFACE_MEASURE_PREFIX = `isosurface:`
 
@@ -18,17 +16,15 @@ export type IsosurfaceProfileStage =
 
 export type IsosurfaceProfileMeta = Record<string, boolean | number | string>
 
-// Off by default: record_stage/time_stage sit on the per-vertex hot path, so production
-// renders skip the performance.measure + clearMeasures round trip entirely. The benchmark
-// route switches it on before observing.
+// Off by default: record_stage/time_stage sit on the hot path, so production renders skip
+// performance.measure entirely; the benchmark route switches it on
 let profiling_enabled = false
 export const set_isosurface_profiling = (enabled: boolean): void => {
   profiling_enabled = enabled
 }
 
-// Record a stage whose duration was measured elsewhere. The entry is cleared from the
-// timeline buffer right away so long sessions do not accumulate thousands of measures;
-// observers are notified regardless.
+// Record a stage measured elsewhere. Cleared from the timeline buffer right away so long
+// sessions don't accumulate measures; observers are notified regardless.
 export function record_stage(
   stage: IsosurfaceProfileStage,
   duration_ms: number,

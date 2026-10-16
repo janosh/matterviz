@@ -6,12 +6,7 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import type { StructTextFormat } from '#lib/structure/export.js'
-import {
-  fractional_export_unavailable_reason,
-  poscar_export_unavailable_reason,
-  STRUCT_TEXT_FORMATS,
-  xyz_export_unavailable_reason,
-} from '#lib/structure/export.js'
+import { STRUCT_TEXT_FORMATS } from '#lib/structure/export.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { describe, expect, test } from 'vitest'
 import {
@@ -43,7 +38,6 @@ type Capability = {
   regroups_by_element: boolean // POSCAR writes one block per element
   // The site properties a re-read is expected to return, exactly
   site_properties: (site: Site, structure: AnyStructure) => Record<string, unknown>
-  unavailable_reason: (structure: AnyStructure) => string | undefined
 }
 
 // extXYZ writes a column for every property that is a finite number or a finite 3-vector on
@@ -76,7 +70,6 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     charge_and_pbc: true,
     regroups_by_element: false,
     site_properties: (site) => as_text(site.properties),
-    unavailable_reason: () => undefined,
   },
   xyz: {
     ordered_only: true,
@@ -90,7 +83,6 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     charge_and_pbc: false,
     regroups_by_element: false,
     site_properties: xyz_site_properties,
-    unavailable_reason: xyz_export_unavailable_reason,
   },
   cif: {
     ordered_only: false,
@@ -104,7 +96,6 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
     charge_and_pbc: false,
     regroups_by_element: false,
     site_properties: () => ({}),
-    unavailable_reason: fractional_export_unavailable_reason,
   },
   poscar: {
     ordered_only: true,
@@ -121,7 +112,6 @@ const CAPABILITIES: Record<StructTextFormat, Capability> = {
       `selective_dynamics` in site.properties
         ? { selective_dynamics: site.properties.selective_dynamics }
         : {},
-    unavailable_reason: poscar_export_unavailable_reason,
   },
 }
 
@@ -210,12 +200,12 @@ describe(`structure I/O round-trip contract`, () => {
 
   test.each(cases)(`$name -> $fmt`, ({ structure, fmt }) => {
     const cap = CAPABILITIES[fmt]
-    const { to_str, ext } = STRUCT_TEXT_FORMATS[fmt]
+    const { to_str, ext, unavailable_reason } = STRUCT_TEXT_FORMATS[fmt]
     const lattice = has_lattice(structure)
     const disordered = structure.sites.some(is_disordered)
 
     // The eligibility reason the export pane shows predicts exactly what the exporter does
-    const reason = cap.unavailable_reason(structure)
+    const reason = unavailable_reason(structure)
     const must_refuse =
       (cap.ordered_only && disordered) || (!lattice && fmt !== `json` && fmt !== `xyz`)
     expect(Boolean(reason), String(reason)).toBe(must_refuse)

@@ -13,9 +13,6 @@ import {
 import type { DefaultSettings } from '#lib/settings.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { DownloadData } from '#lib/io/fetch.js'
-import Bands from '#lib/spectral/Bands.svelte'
-import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-import Dos from '#lib/spectral/Dos.svelte'
 import { ensure_moyo_wasm_ready } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
@@ -33,7 +30,7 @@ import type {
 } from './host-protocol'
 import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
-import { mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
+import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { open_material, type OpenedMaterial } from './open'
 import { escape_html, is_plain_object, to_error } from '#lib/utils.js'
@@ -484,27 +481,9 @@ export const create_display = (
     log_message = `Trajectory rendered: ${filename} (${final_trajectory.frame_count} frames)`
   } else if (result.type === `vaspout_electronic`) {
     const { dos, bands } = result.data
+    if (!bands && !dos) throw new Error(`No bands or DOS in electronic result for ${filename}`)
     const spectral_props = { style: `height: 100%`, class: `vaspout-electronic` }
-    if (bands && dos) {
-      app = mount(BandsAndDos, {
-        target: container,
-        props: {
-          band_structs: { '': bands },
-          doses: { '': dos },
-          ...spectral_props,
-        },
-      })
-    } else if (bands) {
-      app = mount(Bands, {
-        target: container,
-        props: { band_structs: { '': bands }, ...spectral_props },
-      })
-    } else if (dos) {
-      app = mount(Dos, {
-        target: container,
-        props: { doses: { '': dos }, ...spectral_props },
-      })
-    } else throw new Error(`No bands or DOS in electronic result for ${filename}`)
+    app = mount_spectral(container, { bands, dos }, spectral_props)
     const parts = [bands ? `bands` : null, dos ? `DOS` : null].filter(Boolean).join(` + `)
     log_message = `Electronic structure rendered: ${filename} (${parts})`
   } else if (result.type === `json_browser`) {
@@ -517,7 +496,8 @@ export const create_display = (
     // Single-viewer results share the dispatch table with JsonBrowser panels
     app = mount_viewer(container, result.type, result.data, {
       defaults,
-      prediction: result.type === `structure` ? result.prediction : undefined,
+      parse_warnings: result.warnings,
+      ...(result.type === `structure` && { prediction: result.prediction }),
     })
     const detail =
       result.type === `convex_hull`

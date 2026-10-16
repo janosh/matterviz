@@ -1,4 +1,4 @@
-import { display_idx } from '#lib/labels.js'
+import { display_idx, plural } from '#lib/labels.js'
 import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
@@ -51,7 +51,7 @@ import {
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
 import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
 import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
@@ -60,7 +60,8 @@ import { load as yaml_load } from 'js-yaml'
 export { is_structure_file } from '#lib/structure/format-detect.js'
 
 // Format parsers throw local errors describing the invalid input. The dispatcher adds
-// filename context; recoverable issues such as skipped atoms remain warnings.
+// filename context; recoverable issues such as skipped atoms go to parse_warn, which the file
+// viewer collects onto its parse result with collect_parse_warnings.
 
 // Parse coordinates from a line, repairing malformed runs like "1.0-2.0-3.0"
 function parse_coordinate_line(line: string): number[] {
@@ -249,7 +250,7 @@ export const parse_poscar = (content: string): Crystal => {
   const poscar_frac_to_cart = math.create_frac_to_cart(complete_lattice_matrix(scaled_lattice))
   const poscar_cart_to_frac = cart_to_frac_with_fallback(scaled_lattice)
   if (!is_direct && !poscar_cart_to_frac.exact) {
-    console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
+    parse_warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
   }
   // The header cursor stops on the first coordinate line
   const first_coord_line = cursor.position()
@@ -304,7 +305,8 @@ export const parse_poscar = (content: string): Crystal => {
 export const parse_xyz = (content: string): AnyStructure => {
   // content.trim() also drops Unicode whitespace such as a BOM, which TextLines keeps
   const lines = new TextLines(content.trim())
-  const collector = create_warning_collector()
+  // Own collector (forwarding to parse_warn) so a failure can name the warnings behind it
+  const collector = create_warning_collector(parse_warn)
   const frames = index_xyz_frames(lines, collector.warn)
   // The frame sampler assumes a bare count line and `symbol x y z` atom lines, so a
   // Tinker-style title after the count (`6 methane`) or a Properties layout with another
@@ -366,13 +368,13 @@ const parse_symmetry_expression = (
     const parts = term.split(`/`)
     // skip malformed terms like "1/2/3"
     if (parts.length > 2) {
-      console.warn(`Skipping malformed symmetry term '${term}'`)
+      parse_warn(`CIF: skipping malformed symmetry term '${term}'`)
       continue
     }
     const [numerator, denominator = `1`] = parts
     const value = Number(numerator) / Number(denominator)
     if (!Number.isFinite(value)) {
-      console.warn(`Rejecting symmetry op with unresolvable term '${term}'`)
+      parse_warn(`CIF: rejecting symmetry op with unresolvable term '${term}'`)
       return null
     }
     translation += sign * value
@@ -395,7 +397,7 @@ const parse_symmetry_ops = (operations: string[]): ParsedSymOp[] =>
     // magnetic ops end in a time-reversal flag (`x,y,z,-1`) that leaves positions alone
     if (parts.length === 4 && /^[+-]?1$/.test(parts[3])) parts.pop()
     if (parts.length !== 3) return []
-    const [x_expr, y_expr, z_expr] = parts.map(parse_symmetry_expression)
+    const [x_expr, y_expr, z_expr] = parts.map((expr) => parse_symmetry_expression(expr))
     if (!x_expr || !y_expr || !z_expr) return []
     return [
       {
@@ -752,16 +754,24 @@ export const parse_cif = (content: string): Crystal => {
         failure = `CIF atom-site loop has neither _atom_site_type_symbol nor _atom_site_label`
         continue
       }
+      // One warning per loop, not per row: a broken column can reject thousands of rows
+      const skipped: string[] = []
       const atoms = keep_one_disorder_group(atom_rows, header_indices)
         .map((tokens, atom_idx) => {
           try {
             return parse_cif_atom_data(tokens, header_indices, coord_cols.columns, atom_idx)
           } catch (error) {
-            console.warn(`Skipping invalid atom data: ${error}`)
+            skipped.push(to_error(error).message)
             return null
           }
         })
         .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
+      if (atoms.length > 0 && skipped.length > 0) {
+        const more = skipped.length > 1 ? ` (and ${skipped.length - 1} more)` : ``
+        parse_warn(
+          `CIF: skipped ${plural(skipped.length, `atom-site row`)}: ${skipped[0]}${more}`,
+        )
+      }
       if (atoms.length > 0) return { coord_cols, atoms, block_id: block_ids[data_start] }
       failure = `No valid atoms found in CIF file`
     }
@@ -790,7 +800,7 @@ export const parse_cif = (content: string): Crystal => {
 
   const ambiguous_labels = new Set(atoms.flatMap((atom) => atom.ambiguity ?? []))
   if (ambiguous_labels.size > 0) {
-    console.warn(
+    parse_warn(
       `CIF has ambiguous all-caps atom-site labels (no usable _atom_site_type_symbol): ${[...ambiguous_labels].join(`, `)}`,
     )
   }
@@ -975,7 +985,7 @@ export const parse_cif = (content: string): Crystal => {
     if (reconciles) ({ sites, n_overlaps } = centered)
   }
   if (n_overlaps > 0) {
-    console.warn(
+    parse_warn(
       `CIF: ${n_overlaps} same-element rows overlap past full occupancy after symmetry expansion; kept the first row's species (a repeated species at its larger occupancy) and dropped the rest instead of summing`,
     )
   }
@@ -1086,9 +1096,9 @@ const json_species_issue = (entry: Record<string, unknown>): string | undefined 
 
 // A JSON site's species as Species: pymatgen writes oxidation_state only for decorated species
 // (null or absent otherwise), hand-written JSON often omits occu or gives bare element symbols.
-// Values are checked here since CIF export and rendering do arithmetic on them.
-function json_species({ species }: { species?: unknown }, idx: number): Species[] {
-  const where = `JSON site ${display_idx(idx)}`
+// Values are checked here since CIF export and rendering do arithmetic on them. `where` names
+// the site in errors.
+export function json_species(species: unknown, where: string): Species[] {
   if (!Array.isArray(species) || !species.length) throw new Error(`${where} has no species`)
   return species.map((raw: unknown) => {
     const entry = typeof raw === `string` ? { element: raw } : raw
@@ -1120,7 +1130,7 @@ export function structure_from_json(
         )
       return {
         ...site,
-        species: json_species(site, idx),
+        species: json_species(site.species, `JSON site ${display_idx(idx)}`),
         properties: site.properties ?? {},
         xyz: site.xyz,
         abc: site.abc ?? ([0, 0, 0] as Vec3),
@@ -1133,7 +1143,7 @@ export function structure_from_json(
   const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
-    const species = json_species(raw_site, idx)
+    const species = json_species(raw_site.species, `JSON site ${display_idx(idx)}`)
     const site = { ...raw_site, species, properties: raw_site.properties ?? {} }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
@@ -1287,7 +1297,8 @@ function parser_for_content(content: string): FormatParser | null {
 // Parse a structure from file content in any supported format. A filename's extension is
 // authoritative (it never falls through to content sniffing); without one, or with an
 // unknown one, the format is sniffed from the content. Failures retain their local cause
-// and include the requested filename so callers can surface them directly.
+// and include the requested filename so callers can surface them directly. Recoverable
+// issues (skipped rows, placeholder cells, guessed elements) go to parse_warn.
 export function parse_structure_file(content: string, filename?: string): AnyStructure {
   try {
     const parser =

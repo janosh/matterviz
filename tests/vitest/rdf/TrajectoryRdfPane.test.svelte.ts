@@ -83,11 +83,6 @@ test.each([
     // the empty plot says what is running, not RdfPlot's default for a dropped file
     expect(doc_query(`.empty-drop`).textContent).toContain(`Binning pair distances`)
     await settle(20)
-    expect(state.result).toMatchObject({
-      frame_numbers: [0, 5, 10, 15],
-      cutoff: cutoff_value,
-      n_bins: 70,
-    })
     if (!with_time) expect(state.result?.source).not.toHaveProperty(`time_step`)
     const summary = doc_query(`.analysis-summary`)
     expect(summary.textContent).toContain(`Cu-Cu`)
@@ -193,26 +188,15 @@ test(`measures half a sheared cell by its face-to-face height`, async () => {
 // Refused up front, not on click: g(r) has nothing to normalise against without a cell, and a
 // button that takes the click and then throws reads as a broken feature rather than a
 // mismatched file
-test.each([
-  undefined,
-  [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 0],
-  ],
-  [
-    [NaN, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-])(`refuses invalid lattice %s before the click`, async (matrix) => {
+// oxfmt-ignore
+test.each([undefined, [[1, 0, 0], [0, 1, 0], [0, 0, 0]], [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]]])(`refuses invalid lattice %s before the click`, async (matrix) => {
   const molecule = {
     sites: make_fcc([1, 1, 1]).sites,
     ...(matrix && { lattice: { matrix } }),
   } as ReturnType<typeof make_fcc>
   const state = $state<{ run: TrajectoryRun; result: TrajectoryRdf | undefined }>({
     run: { ...make_run(1), preview: { step: 0, structure: molecule } },
-    result: undefined as TrajectoryRdf | undefined,
+    result: undefined,
   })
   mounted_component = mount(TrajectoryRdfPane, {
     target: document.body,

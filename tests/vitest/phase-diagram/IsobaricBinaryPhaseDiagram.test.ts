@@ -2,7 +2,7 @@ import { format_hover_info_text, get_phase_color } from '#lib/phase-diagram/util
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
-import { type ComponentProps, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
 import { create_hover_info, lever_rule, pts, rect } from './fixtures/test-data'
@@ -53,6 +53,19 @@ const hover_at = async (
 }
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
+  // A 2D chart reveals its buttons on hover like every other chart (it used to pin them), and
+  // its row carries the keyboard shortcuts button
+  test.each([
+    [undefined, `hover-visible`],
+    [`always`, `always-visible`],
+  ] as const)(`show_controls=%s gives a %s button row`, async (show_controls, row_class) => {
+    const wrapper = await mount_diagram(show_controls ? { show_controls } : {})
+    const row = wrapper.querySelector(`section.control-buttons`)
+    expect(row?.classList.contains(row_class)).toBe(true)
+    expect(row?.querySelector(`.shortcuts-btn`)).not.toBeNull()
+    expect(wrapper.getAttribute(`data-mv-shortcuts`)).toBe(`viewer binary-phase-diagram`)
+  })
+
   // A container briefly narrower than the margins (mid-resize) gave a negative plot width,
   // which the SVG rejected (`<rect> attribute width: A negative value is not valid`)
   test(`renders no plot while smaller than its margins`, async () => {
@@ -129,6 +142,18 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.y-axis`)?.textContent).toContain(`Temperature (K)`)
   })
 
+  // a snippet replaces the default tooltip content, false hides the tooltip
+  test.each([
+    [`snippet`, createRawSnippet(() => ({ render: () => `<b>custom</b>` })), `custom`],
+    [`false`, false, null],
+  ] as const)(`tooltip %s`, async (_label, tooltip, text) => {
+    const wrapper = await mount_diagram({ tooltip })
+    await hover_at(wrapper, 0.5, 750)
+    const container = wrapper.querySelector(`.tooltip-container`)
+    expect(container?.textContent?.trim() ?? null).toBe(text)
+    expect(wrapper.querySelector(`.phase-diagram-tooltip`)).toBeNull()
+  })
+
   test(`hover reports phase info and the two-phase lever rule/tie-line, clears on leave`, async () => {
     const on_phase_hover = vi.fn()
     const wrapper = await mount_diagram({ on_phase_hover })
@@ -180,9 +205,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     [`rgba(18, 52, 86, 0.5)`, `rgb(18, 52, 86)`],
   ])(`explicit region color %s backs the tooltip as %j`, async (color, expected) => {
     const [liquid, ...rest] = eutectic.regions
-    const wrapper = await mount_diagram({
-      data: { ...eutectic, regions: [{ ...liquid, color }, ...rest] },
-    })
+    const data = { ...eutectic, regions: [{ ...liquid, color }, ...rest] }
+    const wrapper = await mount_diagram({ data })
     await hover_at(wrapper, 0.5, 750)
     const { style } = doc_query(`.tooltip-container`)
     expect([style.backgroundColor, style.color]).toEqual([expected, `white`])
@@ -277,15 +301,26 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(fills).toEqual(ids.map((identifier) => `url(#${identifier})`))
   })
 
-  // the SVG drop routes through the shared file-drop handler rather than a FileReader, so
+  const empty_svg_text = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`
+  const empty_svg = () => new File([empty_svg_text], `pd.svg`, { type: `image/svg+xml` })
+  // the SVG drop routes through the shared file-drop zone rather than a FileReader, so
   // it inherits folder expansion and the drop queue. Pin that dropped content still reaches
   // the parser, and that an unrelated file is ignored rather than reported.
   test(`dropped SVG reaches the parser, other files are ignored`, async () => {
-    const wrapper = await mount_diagram()
-    const drop = async (file: File) => {
-      wrapper.dispatchEvent(create_drop_event(file))
+    const on_file_load = vi.fn()
+    const wrapper = await mount_diagram({ on_file_load })
+    const drop = async (file: File, target = wrapper) => {
+      target.dispatchEvent(create_drop_event(file))
       await tick()
     }
+
+    // allow_file_drop=false ignores the drop and never shows the drop highlight
+    const disabled = await mount_diagram({ allow_file_drop: false })
+    disabled.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    expect(disabled.classList.contains(`dragover`)).toBe(false)
+    await drop(empty_svg(), disabled)
+    await tick()
+    expect(disabled.querySelector(`.error`)).toBeNull()
 
     await drop(new File([`not an svg`], `notes.txt`, { type: `text/plain` }))
     await tick()
@@ -294,16 +329,26 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // a contentless SVG throws inside parse_phase_diagram_svg, and the shared handler
     // reports it against the dropped filename as a visible error banner (not a console
     // message) — which is what proves the parse ran on it
-    await drop(
-      new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
-        type: `image/svg+xml`,
-      }),
-    )
+    await drop(empty_svg())
     await vi.waitFor(() =>
       expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toContain(`pd.svg`),
     )
     // the previously rendered diagram is kept behind the banner
     expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+    expect(on_file_load).not.toHaveBeenCalled()
+  })
+
+  // on_file_drop takes the raw file instead of the SVG parse, like every viewer's
+  test(`on_file_drop intercepts dropped files before parsing`, async () => {
+    const on_file_drop = vi.fn()
+    const on_file_load = vi.fn()
+    const wrapper = await mount_diagram({ on_file_drop, on_file_load })
+    const file = empty_svg()
+    wrapper.dispatchEvent(create_drop_event(file))
+    const dropped = [empty_svg_text, `pd.svg`, expect.objectContaining({ file })]
+    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledWith(...dropped))
+    expect(on_file_load).not.toHaveBeenCalled()
+    expect(wrapper.querySelector(`.error`)).toBeNull()
   })
 
   const bad_input: DiagramInput = {
@@ -333,6 +378,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 })
 
 describe(`format_hover_info_text`, () => {
+  const region = { id: `two_phase`, name: `α + β`, vertices: [] }
   test.each([
     { composition: 0.35, unit: `at%`, expected: `Composition: 35 at% Cu (65 at% Al)` },
     { composition: 0.25, unit: `mol%`, expected: `Composition: 25 mol% Cu (75 mol% Al)` },
@@ -340,12 +386,9 @@ describe(`format_hover_info_text`, () => {
     { composition: 0, unit: `at%`, expected: `Composition: 0 at% Cu (100 at% Al)` },
     { composition: 0.333, unit: `at%`, expected: `Composition: 33.3 at% Cu (66.7 at% Al)` },
   ] as const)(`composition $composition as $unit`, ({ composition, unit, expected }) => {
-    const text = format_hover_info_text(create_hover_info({ composition }), {
-      comp_unit: unit,
-      component_a: `Al`,
-      component_b: `Cu`,
-    })
-    expect(text).toContain(expected)
+    const opts = { comp_unit: unit, component_a: `Al`, component_b: `Cu` }
+    const info = create_hover_info({ composition })
+    expect(format_hover_info_text(info, opts)).toContain(expected)
   })
 
   test.each([
@@ -367,26 +410,20 @@ describe(`format_hover_info_text`, () => {
     { unit: `at%`, expected: [`  α: 60.0% (at 20 at%)`, `  β: 40.0% (at 80 at%)`] },
     { unit: `fraction`, expected: [`  α: 60.0% (at 0.2)`, `  β: 40.0% (at 0.8)`] },
   ] as const)(`lever rule in $unit`, ({ unit, expected }) => {
-    const info = create_hover_info({
-      region: { id: `two_phase`, name: `α + β`, vertices: [] },
-      lever_rule,
-    })
+    const info = create_hover_info({ region, lever_rule })
     const lines = format_hover_info_text(info, { comp_unit: unit }).split(`\n`)
     expect(lines).toContain(`Lever Rule:`)
     for (const line of expected) expect(lines).toContain(line)
   })
 
   test(`line structure: header order, blank line before lever rule, none for single phase`, () => {
-    const info = create_hover_info({
-      region: { id: `two_phase`, name: `α + β`, vertices: [] },
-      composition: 0.5,
-      temperature: 1000,
-      lever_rule,
-    })
+    const info = create_hover_info({ region, composition: 0.5, temperature: 1000, lever_rule })
     const lines = format_hover_info_text(info).split(`\n`)
-    expect(lines[0]).toBe(`Phase: α + β`)
-    expect(lines[1]).toBe(`Temperature: 1000 K`)
-    expect(lines[2]).toBe(`Composition: 50 at% B (50 at% A)`) // default component names
+    expect(lines.slice(0, 3)).toEqual([
+      `Phase: α + β`,
+      `Temperature: 1000 K`,
+      `Composition: 50 at% B (50 at% A)`, // default component names
+    ])
     const lever_idx = lines.indexOf(`Lever Rule:`)
     expect(lever_idx).toBeGreaterThan(2)
     expect(lines[lever_idx - 1]).toBe(``)

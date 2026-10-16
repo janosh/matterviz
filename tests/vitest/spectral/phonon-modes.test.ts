@@ -34,13 +34,12 @@ const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_ru
   return Object.assign(run, { frames })
 }
 
-const real_x: Complex[][] = [
-  [
-    [1, 0],
-    [0, 0],
-    [0, 0],
-  ],
-]
+// one atom's complex (x, y, z) eigenvector block
+const cvec3 = (c_x: Complex, c_y: Complex, c_z: Complex): Complex[] => [c_x, c_y, c_z]
+const real_x = [cvec3([1, 0], [0, 0], [0, 0])]
+const first_mode = { qpoint_idx: 0, mode_idx: 0 }
+const run_first_mode = (data: PhononModeData, supercell: Vec3, amplitude = 1, n_frames = 4) =>
+  phonon_mode_trajectory(data, first_mode, { amplitude, supercell, n_frames })
 
 function make_mode_data(
   eigenvector: Complex[][] = real_x,
@@ -55,33 +54,20 @@ function make_mode_data(
       coordinates: [atom_idx / 2, 0, 0],
     })),
     lattice: IDENTITY_MATRIX3,
-    qpoints: [
-      {
-        q_position,
-        distance: null,
-        modes: [{ frequency: 2, eigenvector }],
-      },
-    ],
+    qpoints: [{ q_position, distance: null, modes: [{ frequency: 2, eigenvector }] }],
     path_segments: [],
   }
 }
 
 const displacement_at = (data: PhononModeData, frame_idx: number, site_idx: number): Vec3 => {
-  const trajectory = phonon_mode_trajectory(
-    data,
-    { qpoint_idx: 0, mode_idx: 0 },
-    { amplitude: 1, supercell: [1, 1, 1], n_frames: 4 },
-  )
+  const trajectory = run_first_mode(data, [1, 1, 1])
   return trajectory.frames[frame_idx].structure.sites[site_idx].properties
     .phonon_displacement as Vec3
 }
 
 describe(`phonon_mode_trajectory`, () => {
   it(`defaults to a 3x3x2 supercell with a 0.3 A excursion`, () => {
-    const trajectory = phonon_mode_trajectory(make_mode_data(), {
-      qpoint_idx: 0,
-      mode_idx: 0,
-    })
+    const trajectory = phonon_mode_trajectory(make_mode_data(), first_mode)
     const displacement = trajectory.frames[0].structure.sites[0].properties
       .phonon_displacement as Vec3
     expect(trajectory.metadata).toMatchObject({ amplitude: 0.3, supercell: [3, 3, 2] })
@@ -94,36 +80,15 @@ describe(`phonon_mode_trajectory`, () => {
   })
 
   it(`undoes mass weighting while preserving relative eigenvector amplitudes`, () => {
-    const component = 1 / Math.sqrt(2)
-    const data = make_mode_data(
-      [
-        [
-          [component, 0],
-          [0, 0],
-          [0, 0],
-        ],
-        [
-          [component, 0],
-          [0, 0],
-          [0, 0],
-        ],
-      ],
-      [0, 0, 0],
-      [1, 4],
-    )
+    const block = cvec3([1 / Math.sqrt(2), 0], [0, 0], [0, 0])
+    const data = make_mode_data([block, block], [0, 0, 0], [1, 4])
     expect(displacement_at(data, 0, 0)).toEqual([1, 0, 0])
     expect(displacement_at(data, 0, 1)).toEqual([0.5, 0, 0])
   })
 
   it(`turns complex quadrature components into orthogonal phase motion`, () => {
     const component = 1 / Math.sqrt(2)
-    const data = make_mode_data([
-      [
-        [component, 0],
-        [0, component],
-        [0, 0],
-      ],
-    ])
+    const data = make_mode_data([cvec3([component, 0], [0, component], [0, 0])])
     expect(displacement_at(data, 0, 0)[0]).toBeCloseTo(1, 14)
     expect(displacement_at(data, 0, 0)[1]).toBeCloseTo(0, 14)
     expect(displacement_at(data, 1, 0)[0]).toBeCloseTo(0, 14)
@@ -133,22 +98,13 @@ describe(`phonon_mode_trajectory`, () => {
   it.each([0, -1, 1])(`applies Bloch phase with a basis translated by %s cells`, (shift) => {
     const data = make_mode_data(real_x, [0.5, 0, 0])
     data.atoms[0].coordinates = [shift, 0, 0]
-    const trajectory = phonon_mode_trajectory(
-      data,
-      { qpoint_idx: 0, mode_idx: 0 },
-      { amplitude: 1, supercell: [2, 1, 1], n_frames: 4 },
-    )
-    const sites = trajectory.frames[0].structure.sites
+    const sites = run_first_mode(data, [2, 1, 1]).frames[0].structure.sites
     expect(sites[0].properties.phonon_displacement).toEqual([1, 0, 0])
     expect(sites[1].properties.phonon_displacement).toEqual([-1, 0, 0])
   })
 
   it(`applies Bloch phase to positive-face copies in noncommensurate cells`, () => {
-    const trajectory = phonon_mode_trajectory(
-      make_mode_data(real_x, [0.375, 0, 0]),
-      { qpoint_idx: 0, mode_idx: 0 },
-      { amplitude: 1, supercell: [3, 1, 1], n_frames: 4 },
-    )
+    const trajectory = run_first_mode(make_mode_data(real_x, [0.375, 0, 0]), [3, 1, 1])
     const positive_x_image = trajectory.frames[0].structure.sites.find(
       ({ abc, provenance }) =>
         provenance?.image_of !== undefined &&
@@ -165,17 +121,9 @@ describe(`phonon_mode_trajectory`, () => {
   })
 
   it(`removes arbitrary global complex phase`, () => {
-    const real = phonon_mode_trajectory(make_mode_data(real_x), { qpoint_idx: 0, mode_idx: 0 })
-    const imaginary = phonon_mode_trajectory(
-      make_mode_data([
-        [
-          [0, 1],
-          [0, 0],
-          [0, 0],
-        ],
-      ]),
-      { qpoint_idx: 0, mode_idx: 0 },
-    )
+    const real = phonon_mode_trajectory(make_mode_data(real_x), first_mode)
+    const imaginary_x = [cvec3([0, 1], [0, 0], [0, 0])]
+    const imaginary = phonon_mode_trajectory(make_mode_data(imaginary_x), first_mode)
     const real_positions = real.frames.flatMap((frame) => frame.structure.sites[0].xyz)
     const imaginary_positions = imaginary.frames.flatMap(
       (frame) => frame.structure.sites[0].xyz,
@@ -189,11 +137,7 @@ describe(`phonon_mode_trajectory`, () => {
   })
 
   it(`sets the requested excursion and keeps Cartesian/fractional coordinates consistent`, () => {
-    const trajectory = phonon_mode_trajectory(
-      make_mode_data(),
-      { qpoint_idx: 0, mode_idx: 0 },
-      { amplitude: 0.3, supercell: [2, 1, 1], n_frames: 8 },
-    )
+    const trajectory = run_first_mode(make_mode_data(), [2, 1, 1], 0.3, 8)
     const first_displacement = trajectory.frames[0].structure.sites[0].properties
       .phonon_displacement as Vec3
     expect(Math.hypot(...first_displacement)).toBeCloseTo(0.3, 14)
@@ -319,7 +263,6 @@ describe(`phonon_mode_trajectory`, () => {
   no_eigenvector.qpoints[0].modes[0].eigenvector = null
   const zero_mass = make_mode_data()
   zero_mass.atoms[0].mass = 0
-  const first_mode = { qpoint_idx: 0, mode_idx: 0 }
   type TrajectoryArgs = Parameters<typeof phonon_mode_trajectory>
   // oxfmt-ignore
   it.each<[string, TrajectoryArgs[0], TrajectoryArgs[1], TrajectoryArgs[2], RegExp]>([

@@ -21,16 +21,23 @@ export interface WarningCollector {
   readonly warnings: string[]
 }
 
+const log_to_console: WarnFn = (message, error) => {
+  if (error === undefined) console.warn(message)
+  else console.warn(`${message}:`, error)
+}
+
 // Per-call collector for non-fatal parse warnings (skipped atoms, dropped torn frames, …) so
 // they reach the UI on the run instead of living in module-global state. Fatal failures throw.
-export const create_warning_collector = (): WarningCollector => {
+// `log` also sees every warning: the console by default, since a lazy run's later frame reads
+// warn after its summary has crossed to the UI, or an enclosing collector (a structure parser
+// reading XYZ through the trajectory reader forwards into the file's own collector)
+export const create_warning_collector = (log: WarnFn = log_to_console): WarningCollector => {
   const warnings: string[] = []
   const seen_keys = new Set<string>()
   const warn: WarnFn = (message, error) => {
     const detail = error === undefined ? `` : `: ${to_error(error).message}`
     warnings.push(`${message}${detail}`)
-    if (error === undefined) console.warn(message)
-    else console.warn(`${message}:`, error)
+    log(message, error)
   }
   return {
     warn,
@@ -40,6 +47,28 @@ export const create_warning_collector = (): WarningCollector => {
       warn(message)
     },
     warnings,
+  }
+}
+
+// Synchronous parsers report recoverable issues (skipped rows, guessed elements, placeholder
+// cells) through parse_warn instead of threading a warn argument through every signature.
+// It logs to the console unless collect_parse_warnings has installed a collector. Lazy
+// trajectory readers, which warn after their run has opened, keep an explicit WarnFn.
+let active_warn: WarnFn = log_to_console
+export const parse_warn: WarnFn = (message, error) => active_warn(message, error)
+
+// Run a synchronous parse with its parse_warn calls collected onto the result rather than
+// logged. A nested collection also forwards each warning to the enclosing one.
+export const collect_parse_warnings = <Value>(
+  parse: () => Value,
+): { value: Value; warnings: string[] } => {
+  const outer = active_warn
+  const collector = create_warning_collector(outer === log_to_console ? () => {} : outer)
+  active_warn = collector.warn
+  try {
+    return { value: parse(), warnings: collector.warnings }
+  } finally {
+    active_warn = outer
   }
 }
 

@@ -374,10 +374,7 @@ describe(`layout utility functions`, () => {
       const segments =
         `alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu`.split(` `)
       x_layout([segments.join(` `)], 80, {
-        tick_label: {
-          max_lines: segments.length,
-          auto_layout: { strategies: [`wrap`] },
-        },
+        tick_label: { max_lines: segments.length, auto_layout: { strategies: [`wrap`] } },
       })
 
       expect(measure_text.mock.calls.length).toBeLessThanOrEqual(segments.length ** 2 + 30)
@@ -825,9 +822,7 @@ describe(`layout utility functions`, () => {
       const layout = tick_layout(
         uniform_axis([`temperature`, `temperature`, `temperature`], 100),
         100,
-        {
-          auto_layout: { max_angle: 45, max_band: 40 },
-        },
+        { auto_layout: { max_angle: 45, max_band: 40 } },
       )
       expect(layout.strategy).not.toBe(`ellipsis`)
       expect(layout.visible_tick_indices.length).toBeGreaterThan(0)
@@ -849,10 +844,7 @@ describe(`layout utility functions`, () => {
             axis_extent: { start: 100, end: 0 },
           },
           100,
-          {
-            max_lines: 2,
-            auto_layout: { strategies: [`wrap`] },
-          },
+          { max_lines: 2, auto_layout: { strategies: [`wrap`] } },
           side,
         )
         expect(layout).toMatchObject({ rotation: 0, strategy: `wrap` })
@@ -1012,10 +1004,7 @@ describe(`layout utility functions`, () => {
 
     it(`reserves x2 titles at their rendered offset without double counting`, () => {
       const top_padding = (tick_values: number[], axis: Partial<MeasuredAxis> = {}) =>
-        calc_auto_padding({
-          ...no_padding,
-          x2_axis: slot_axis(tick_values, axis),
-        }).t
+        calc_auto_padding({ ...no_padding, x2_axis: slot_axis(tick_values, axis) }).t
       const title_axis = { label: `Energy` }
       const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2
       expect([top_padding([], title_axis), top_padding([1, 2], title_axis)]).toEqual([

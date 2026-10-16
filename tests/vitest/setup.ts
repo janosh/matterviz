@@ -4,6 +4,7 @@ import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { prefersReducedMotion } from 'svelte/motion'
 import { expect, onTestFinished, vi } from 'vitest'
 
 export {
@@ -179,6 +180,13 @@ export function form_controls(root: ParentNode = document) {
     await tick()
   }
   return { control, set_value }
+}
+
+// Stubs the OS reduce-motion media query for one test. A getter rather than a value so a
+// test can flip it through $state and watch effects that read it react.
+export const stub_reduced_motion = (reduced: () => boolean): void => {
+  const spy = vi.spyOn(prefersReducedMotion, `current`, `get`).mockImplementation(reduced)
+  onTestFinished(() => spy.mockRestore())
 }
 
 export const mouse = (type: string, init: MouseEventInit = {}): MouseEvent =>

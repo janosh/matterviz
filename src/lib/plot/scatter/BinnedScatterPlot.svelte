@@ -2,12 +2,10 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>, PointData extends Record<string, unknown> = Record<string, unknown>"
 >
-  // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to individual
-  // canvas markers once the visible count is small enough, with spatial-index picking,
-  // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
-  // pan/zoom, marginals and the title come from the shared Cartesian frame.
+  // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
+  // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
   import { host } from '#lib/host.js'
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Point2D, Vec2 } from '#lib/math.js'
   import { create_pulse_animation } from '#lib/effects.svelte.js'
@@ -55,9 +53,7 @@
   } from '#lib/plot/scatter/adaptive-density.js'
   import {
     collect_size_range,
-    create_color_scale,
-    resolve_value_range,
-    to_color_scale_config,
+    resolve_color_scale,
     create_size_scale,
   } from '#lib/plot/core/scales.js'
   import type {
@@ -149,7 +145,7 @@
       color_bar?: ColorBarDecorationProps | null
       density?: BinnedDensityConfig
       overlays?: BinnedOverlaysConfig
-      tooltip?: Snippet<[BinnedPointPayload<Metadata, PointData>]>
+      tooltip?: TooltipProp<BinnedPointPayload<Metadata, PointData>>
       point_data?: BinnedPointDataFn<Metadata, PointData>
       point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
       selected_point_id?: string | number | null
@@ -182,7 +178,7 @@
   const x_scale_type = $derived(x_axis.scale_type ?? `linear`)
   const y_scale_type = $derived(y_axis.scale_type ?? `linear`)
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: true, right: true }),
+    normalize_marginals(marginals, { top: true, right: true }, tooltip === false),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
     series.map((srs, idx) => ({
@@ -210,10 +206,8 @@
     measure_text: point_labels.measure_text,
   })
 
-  // Only scan the data for extents when an axis range bound is left to auto. Explicit
-  // bounds are merged in per bound so a facet grid receives the pinned range as this panel's
-  // intrinsic range (never the [0, 1] no-scan sentinel) and the facet padding pass measures
-  // the ticks that actually render.
+  // Only scan the data when a range bound is auto. Explicit bounds merge per bound so facet
+  // grids get the pinned range (not the [0, 1] no-scan sentinel) and measure the real ticks.
   const needs_data_range = (range: AxisConfig[`range`]): boolean =>
     range?.[0] == null || range?.[1] == null
   const pin_range = (axis: AxisConfig, fallback: Vec2): Vec2 => [
@@ -235,9 +229,8 @@
 
   const frame = create_cartesian_frame({
     controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane, only the fullscreen button
-    // No default tick format: format_tick_values skips its duplicate-avoidance escalation
-    // whenever a formatter is supplied, so a fixed default would repeat labels on narrow
-    // ranges (e.g. after a density bin_click zoom). Callers can still pass one in.
+    // No default tick format: a supplied formatter skips format_tick_values' duplicate
+    // avoidance, so a fixed default would repeat labels on narrow ranges
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
     has_x2: () => false,
@@ -273,10 +266,8 @@
     height: frame.chart_height,
   })
 
-  // Density bins depend only on the decoration-independent base padding (plus the fixed
-  // marginal strips, so bins stay `bin_px` wide): their occupied cells are the obstacle field
-  // the decoration solver routes around, so deriving them from the solved pad would feed
-  // each reservation back into the next solve.
+  // Density bins use the decoration-independent base padding (plus fixed marginal strips):
+  // they are the solver's obstacle field, so the solved pad would feed back into the solve
   const density_bin_count = (total: number, start: number, end: number): number =>
     Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   const density_bins = $derived.by(() => {
@@ -360,24 +351,21 @@
   ])
   const color_scales = $derived(
     density_grids.map((_, idx) =>
-      create_color_scale(
+      resolve_color_scale(
         (per_series_density ? series[idx].density_color_scale : undefined) ??
           density_settings.color_scale,
         auto_color_range,
       ),
     ),
   )
-  // the bar spans the shared scale's domain: an explicit value_range, else the count range
-  const color_bar_domain = $derived(
-    resolve_value_range(density_settings.color_scale, auto_color_range),
-  )
-  const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
+  const bin_color = (bin: DensityBin): string =>
+    color_scales[bin.series_idx ?? 0].color_fn(bin.count)
   const color_bar_props = $derived.by((): ColorBarDecorationProps | null => {
     if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
-      scale_type:
-        color_bar.scale_type ?? to_color_scale_config(density_settings.color_scale).type,
+      // the bar spans the shared scale's domain: an explicit value_range, else the count range
+      color_scale: color_scales[0].color_scale,
       title: `${color_bar.title ?? `Density`} (${density_result.visible_count.toLocaleString()} points)`,
       tick_format: color_bar.tick_format ?? `.2~s`,
       tick_labels: color_bar.tick_labels ?? 4,
@@ -545,7 +533,7 @@
         const count = density_grids[series_idx].counts[bin_idx]
         const cache = style_cache[series_idx]
         let fill = cache.get(count)
-        if (!fill) cache.set(count, (fill = color_scales[series_idx](count)))
+        if (!fill) cache.set(count, (fill = color_scales[series_idx].color_fn(count)))
         ctx.fillStyle = fill
         ctx.globalAlpha = per_series_density
           ? 1
@@ -605,8 +593,7 @@
     ctx.globalAlpha = 1
   }
 
-  // Density bins are continuous geometry and clip to the plot area. Point centers are
-  // range-filtered before drawing, so leave their complete marker glyphs visible at the edges.
+  // Density bins clip to the plot area; range-filtered points keep whole glyphs at the edges.
   // Registered per canvas as its export painter, so exports redraw at the export pixel ratio
   const paint = (
     node: HTMLCanvasElement | undefined,
@@ -862,6 +849,7 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series.some((srs) => srs.x.length) && !children}
   {frame}
   plot_class="binned-scatter"
   css_prefix="binned-scatter"
@@ -950,14 +938,7 @@
     {/if}
 
     {#if show_colorbar && color_bar_props}
-      <ColorBarDecoration
-        decoration={colorbar}
-        color_bar={{
-          ...color_bar_props,
-          scale: { fn: color_scales[0], domain: color_bar_domain },
-          range: color_bar_domain,
-        }}
-      />
+      <ColorBarDecoration decoration={colorbar} color_bar={color_bar_props} />
     {/if}
 
     {#if has_plot_size && annotation}
@@ -971,7 +952,7 @@
       </div>
     {/if}
 
-    {#if hovered_bin}
+    {#if hovered_bin && tooltip !== false}
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
@@ -992,7 +973,7 @@
           `${fmt_y(bin_y[0])} - ${fmt_y(bin_y[1])}`,
         )}
       </PlotTooltip>
-    {:else if hovered_point}
+    {:else if hovered_point && tooltip !== false}
       {@const props = point_payload(hovered_point)}
       <PlotTooltip
         x={tooltip_pos.x}

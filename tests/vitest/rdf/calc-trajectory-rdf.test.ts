@@ -5,24 +5,14 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { describe, expect, test } from 'vitest'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
-import { make_crystal } from '../test-fixtures'
+import { make_crystal, make_rocksalt } from '../test-fixtures'
 
 const run_of = (structures: Crystal[]) =>
   trajectory_from_frames(structures.map((structure, step) => ({ step, structure })))
 
 // Rocksalt NaCl in a conventional cell: every Na has 6 Cl at a/2 and 12 Na at a/√2
 const NACL_A = 5.64
-const rocksalt = (a_len = NACL_A): Crystal =>
-  make_crystal(a_len, [
-    [`Na`, [0, 0, 0]],
-    [`Na`, [0.5, 0.5, 0]],
-    [`Na`, [0.5, 0, 0.5]],
-    [`Na`, [0, 0.5, 0.5]],
-    [`Cl`, [0.5, 0, 0]],
-    [`Cl`, [0, 0.5, 0]],
-    [`Cl`, [0, 0, 0.5]],
-    [`Cl`, [0.5, 0.5, 0.5]],
-  ])
+const rocksalt = () => make_rocksalt(NACL_A)
 
 describe(`collect_trajectory_rdf`, () => {
   test(`averages every element pair over the sampled frames and reads off the shells`, async () => {

@@ -16,6 +16,7 @@ import type {
   StructureBond,
 } from '#lib/structure/index.js'
 import { get_bond_key, normalize_structure_bond } from '#lib/structure/bonding.js'
+import { parse_warn, type WarnFn } from '#lib/trajectory/parse/shared.js'
 import { normalize_scientific_notation } from '#lib/utils.js'
 
 // === Numeric coercion ===
@@ -324,7 +325,7 @@ export const drop_placeholder_cell = (
     assert_cell_lengths(params, `${format} ${cell_name}`)
     return params
   }
-  console.warn(
+  parse_warn(
     `${format}: ignoring placeholder ${cell_name} (${params.join(` `)}), treating as molecule`,
   )
   return null
@@ -444,10 +445,10 @@ const approximate_cart_to_frac = (
 // cart→frac converter that falls back to per-axis-length division for singular lattices.
 // axis_lengths defaults to the row norms of the lattice matrix; naming the cell in
 // `context` makes the fallback warn on the caller's behalf (through `warn`, default
-// console.warn; trajectory readers pass their collector).
+// parse_warn; lazy trajectory readers pass their collector).
 export const cart_to_frac_with_fallback = (
   matrix: math.Matrix3x3,
-  opts: { axis_lengths?: Vec3; context?: string; warn?: (message: string) => void } = {},
+  opts: { axis_lengths?: Vec3; context?: string; warn?: WarnFn } = {},
 ): { convert: (xyz: Vec3, target?: Vec3) => Vec3; exact: boolean } => {
   try {
     return { convert: math.create_cart_to_frac(complete_lattice_matrix(matrix)), exact: true }
@@ -460,7 +461,7 @@ export const cart_to_frac_with_fallback = (
     Math.hypot(...matrix[2]),
   ]
   if (opts.context) {
-    const warn = opts.warn ?? console.warn
+    const warn = opts.warn ?? parse_warn
     warn(`Singular ${opts.context}, using axis-length fallback for cart→frac`)
   }
   return {
@@ -512,7 +513,7 @@ export const resolve_bonds = (
     bonds.set(key, normalize_structure_bond(site_idx_1, site_idx_2, order))
   }
   if (dropped > 0) {
-    console.warn(
+    parse_warn(
       `${context}: dropped ${dropped} bond(s) referencing unknown atom ids or bonding an atom to itself`,
     )
   }

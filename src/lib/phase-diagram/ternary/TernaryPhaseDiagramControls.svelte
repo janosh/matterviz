@@ -318,7 +318,7 @@
     <div class="setting color-scale-row">
       <span class="control-label">Colour scale</span>
       <ColorScaleSelect
-        bind:value={() => display.color_scale, (value) => set_display({ color_scale: value })}
+        bind:value={() => display.color_scale, (color_scale) => set_display({ color_scale })}
         placeholder="Select color scale"
       />
     </div>

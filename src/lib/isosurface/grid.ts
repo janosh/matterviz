@@ -64,8 +64,7 @@ export const safe_mod = (val: number, dim: number): number => ((val % dim) + dim
 export const lower_corner = (count: number, floor_g: number, periodic: boolean): number => {
   if (count === 1) return 0
   if (!periodic) return Math.max(0, Math.min(floor_g, count - 2))
-  // World-coordinate samplers already wrap into the cell. Their integer voxel indices
-  // need no modulo; direct fractional callers can still arrive outside the cell.
+  // World-coordinate samplers already wrap into the cell; direct fractional callers may not
   return floor_g >= 0 && floor_g < count ? floor_g : safe_mod(floor_g, count)
 }
 export const upper_corner = (count: number, lower: number, periodic: boolean): number => {
@@ -74,15 +73,10 @@ export const upper_corner = (count: number, lower: number, periodic: boolean): n
   return lower + 1 === count ? 0 : lower + 1
 }
 
-// Copy a nested [x][y][z] array into a z-fastest Float64Array. Rows must all have the
-// same length; ragged input throws instead of silently producing a misaligned grid.
+// Copy a nested [x][y][z] array into a z-fastest Float64Array; ragged input throws
 export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
-  const [size_x, size_y, size_z] = [
-    grid.length,
-    grid[0]?.length ?? 0,
-    grid[0]?.[0]?.length ?? 0,
-  ]
-  const dims: Vec3 = [size_x, size_y, size_z]
+  const dims: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
+  const [size_x, size_y, size_z] = dims
   const values = new Float64Array(size_x * size_y * size_z)
   let offset = 0
   for (const plane of grid) {
@@ -104,8 +98,8 @@ export function flatten_grid(grid: number[][][]): ScalarGrid3D<Float64Array> {
   return { values, dims, order: `z_fastest` }
 }
 
-// Reorder an x-fastest (Fortran/VASP) value block into a z-fastest Float64Array,
-// dividing by `divisor` on the way. The block must hold exactly nx·ny·nz values.
+// Reorder an x-fastest (Fortran/VASP) block of exactly nx·ny·nz values into a z-fastest
+// Float64Array, dividing by `divisor` on the way
 export function transpose_x_fastest(
   data: ArrayLike<number>,
   [size_x, size_y, size_z]: Vec3,

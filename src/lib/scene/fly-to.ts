@@ -3,6 +3,7 @@
 // about a fixed axis at constant radius, so the structure neither zooms nor drifts during the
 // flight and the swing covers its angle at the eased rate. A lerp of the endpoints would cut
 // the corner (dolly in and back out) and, between opposite handles, pass through the target.
+import { motion_duration } from '#lib/effects.svelte.js'
 import type { Vec3 } from '#lib/math.js'
 import * as THREE from 'three/webgpu'
 
@@ -110,7 +111,7 @@ export function create_fly_to(hooks: FlyToHooks) {
     if (!camera) return
     const controls = hooks.controls()
     animation.elapsed += delta_seconds * 1000
-    const duration = hooks.duration_ms()
+    const duration = motion_duration(hooks.duration_ms()) // reduced motion lands at once
     const progress = duration > 0 ? Math.min(1, animation.elapsed / duration) : 1
     const target = controls?.target ?? ORIGIN
     rotation.setFromAxisAngle(axis, animation.angle * ease_in_out(progress))

@@ -3,6 +3,7 @@
   import Popover from 'svelte-widgets/Popover.svelte'
   import { Columns, Reset } from 'svelte-widgets/icons'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { motion_duration } from '#lib/effects.svelte.js'
   import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Column } from '#lib/table/index.js'
@@ -229,7 +230,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
               <div
                 class="section-items"
                 style:grid-template-columns={grid_template(section.items.length)}
-                transition:slide={{ duration: 200 }}
+                transition:slide={{ duration: motion_duration(200) }}
               >
                 {#each section.items as col (col.id)}
                   {@render toggle_item(col)}

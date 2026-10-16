@@ -89,6 +89,17 @@ const timestep_inputs = () => ({
   dt: doc_query(`.stub-controls input[type="number"][step="0.001"]`, HTMLInputElement),
   unit: doc_query(`input[aria-label="Time unit"]`, HTMLInputElement),
 })
+// [use dt, dt, unit, unit disabled]
+const timestep_state = () => {
+  const { use_dt, dt, unit } = timestep_inputs()
+  return [use_dt.checked, dt.valueAsNumber, unit.value, unit.disabled]
+}
+// One atom at the origin per step, 0.5 fs per MD step
+const timed_run = (steps: number[]) =>
+  trajectory_from_frames(
+    steps.map((step) => make_frame(step, [[0, 0, 0]])),
+    { time_step: { value: 0.5, unit: `fs` } },
+  )
 
 describe(`timestep seeding`, () => {
   test(`waits for a complete (dt, unit) pair before enabling physical time, and re-seeds late metadata`, async () => {
@@ -101,28 +112,17 @@ describe(`timestep seeding`, () => {
     mount_pane(bind_props({ time_unit_fallback: `ps` }, defaults))
     defaults.default_dt = 2
     await settle()
-    const { use_dt, dt: delta_time, unit } = timestep_inputs()
-    expect([use_dt.checked, delta_time.valueAsNumber, unit.value, unit.disabled]).toEqual([
-      false,
-      1,
-      `ps`,
-      true,
-    ])
+    expect(timestep_state()).toEqual([false, 1, `ps`, true])
     expect(pane_text()).toContain(`no valid timestep is available: lag axis in frames`)
 
     await click_collect() // Late timing metadata must still seed an already collected input.
     defaults.default_time_unit = `fs`
     await settle()
-    expect([use_dt.checked, delta_time.valueAsNumber, unit.value, unit.disabled]).toEqual([
-      true,
-      2,
-      `fs`,
-      false,
-    ])
+    expect(timestep_state()).toEqual([true, 2, `fs`, false])
     expect(pane_text()).toContain(`2 fs per collected frame`)
 
     // clearing the number input writes null, which is "no timestep", not 0
-    set_input(delta_time, ``)
+    set_input(timestep_inputs().dt, ``)
     await settle()
     expect(pane_text()).toContain(`no valid timestep is available`)
   })
@@ -138,8 +138,7 @@ describe(`timestep seeding`, () => {
     async (_label, default_dt, default_time_unit) => {
       mount_pane({ default_dt, default_time_unit, time_unit_fallback: `ps` })
       await settle()
-      const { use_dt, dt: delta_time, unit } = timestep_inputs()
-      expect([use_dt.checked, delta_time.valueAsNumber, unit.value]).toEqual([false, 1, `ps`])
+      expect(timestep_state()).toEqual([false, 1, `ps`, true])
     },
   )
 
@@ -269,12 +268,7 @@ describe(`frame window`, () => {
     `uses collected timing and preserves it across window edits (sparse=%s)`,
     async (sparse) => {
       const steps = [0, 3, 20, 27, 40, 100, 150, 200]
-      const source = trajectory_from_frames(
-        steps.map((step) => make_frame(step, [[0, 0, 0]])),
-        {
-          time_step: { value: 0.5, unit: `fs` },
-        },
-      )
+      const source = timed_run(steps)
       const read_step = vi.fn(() => steps[0])
       const properties = new TrajectoryProperties([
         {
@@ -350,25 +344,14 @@ describe(`frame window`, () => {
         await settle()
         expect(read_step).toHaveBeenCalled()
       }
-      state.run = trajectory_from_frames(
-        [0, 2, 4].map((step) => make_frame(step, [[0, 0, 0]])),
-        {
-          time_step: { value: 0.5, unit: `fs` },
-        },
-      )
+      state.run = timed_run([0, 2, 4])
       await settle()
-      const { use_dt, dt: delta_time, unit } = timestep_inputs()
-      expect([use_dt.checked, delta_time.valueAsNumber, unit.value]).toEqual([true, 1, `fs`])
+      expect(timestep_state()).toEqual([true, 1, `fs`, false])
     },
   )
 
   test(`maps recorded times to source frames, rejects empty windows, and snapshots collection options`, async () => {
-    const run = trajectory_from_frames(
-      [10, 20, 50, 90].map((step) => make_frame(step, [[0, 0, 0]])),
-      {
-        time_step: { value: 0.5, unit: `fs` },
-      },
-    )
+    const run = timed_run([10, 20, 50, 90])
     const properties = new TrajectoryProperties()
     const collect = mount_pane({ run: { ...run, properties } })
     await settle()

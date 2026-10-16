@@ -21,7 +21,7 @@
     raman_channel = result.raman?.selected_channel ?? `unpolarized`,
     selected_peak_idx = $bindable(),
     show_summary = true,
-    show_controls = $bindable(true),
+    show_controls,
     frequency_range,
     style,
     header_controls,
@@ -168,7 +168,7 @@
   <ScatterPlot
     {...rest}
     legend={spectroscopy_legend}
-    bind:show_controls
+    {show_controls}
     {series}
     on_point_click={(event) => {
       handle_point_click(event)

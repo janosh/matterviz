@@ -196,15 +196,12 @@ export function parse_ras_file(content: string): XrdPattern {
     data_lines.length > 1 &&
     data_lines.every((line) => [2, 3].includes(leading_numbers(line).length))
   if (is_column_data) return parse_xy_file(data_lines.join(`\n`), `Rigaku RAS`)
-  const start = header_number(lines, [`\\*MEAS_SCAN_START\\s+"?`])
-  const step = header_number(lines, [`\\*MEAS_SCAN_STEP\\s+"?`])
+  const grid: Grid = [
+    header_number(lines, [`\\*MEAS_SCAN_START\\s+"?`]),
+    header_number(lines, [`\\*MEAS_SCAN_STEP\\s+"?`]),
+  ]
   const missing = `single-column intensities need *MEAS_SCAN_START and a positive *MEAS_SCAN_STEP`
-  return grid_pattern(
-    data_lines.flatMap(leading_numbers),
-    [start, step],
-    `Rigaku RAS`,
-    missing,
-  )
+  return grid_pattern(data_lines.flatMap(leading_numbers), grid, `Rigaku RAS`, missing)
 }
 
 // Siemens/Bruker UXD: `_KEY=VALUE` header, then either a `_2THETACOUNTS` section of
@@ -401,6 +398,15 @@ type BrmlLayout = {
 }
 const BRML_BLANK = -9999 // Bruker's <BlankingValue> default: never-measured step
 
+// Number in the first of `tags` under `root` whose trimmed text is numeric, else null
+const tag_number = (root: ParentNode | null, tags: string[]): number | null => {
+  for (const tag of tags) {
+    const text = root?.querySelector(tag)?.textContent?.trim() ?? ``
+    if (NUMBER_RE.test(text)) return Number(text)
+  }
+  return null
+}
+
 function brml_layout(doc: Document): BrmlLayout {
   const views = Array.from(doc.querySelectorAll(`DataViews > RawDataView`))
   const blank_values = Array.from(doc.querySelectorAll(`DataViews BlankingValue`), (el) =>
@@ -449,10 +455,9 @@ function brml_layout(doc: Document): BrmlLayout {
 // only when the row count matches the grid's (Stop - Start) / Increment + 1 points
 function brml_scan_axis_grid(doc: Document, n_rows: number): number[] {
   const axis = doc.querySelector(`ScanAxisInfo[AxisId="TwoTheta"]`)
-  const [start, stop, increment] = [`Start`, `Stop`, `Increment`].map((tag) => {
-    const text = axis?.querySelector(tag)?.textContent?.trim() ?? ``
-    return NUMBER_RE.test(text) ? Number(text) : NaN
-  })
+  const [start, stop, increment] = [`Start`, `Stop`, `Increment`].map(
+    (tag) => tag_number(axis, [tag]) ?? NaN,
+  )
   const n_grid = Math.round((stop - start) / increment) + 1
   if (!(increment !== 0 && n_grid === n_rows)) {
     throw new Error(
@@ -494,22 +499,15 @@ function parse_brml_xml(xml_content: string): XrdPattern {
     )
   }
   const values = leading_numbers(list_text)
-  const tag_number = (tags: string[]): number | null => {
-    for (const tag of tags) {
-      const text = doc.querySelector(tag)?.textContent?.trim() ?? ``
-      if (NUMBER_RE.test(text)) return Number(text)
-    }
-    return null
-  }
-  const start = tag_number([
+  const start = tag_number(doc, [
     `Start`,
     `TwoThetaStart`,
     `StartPosition`,
     `ScanAxisBeginPosition`,
   ])
-  const stop = tag_number([`Stop`, `TwoThetaEnd`, `EndPosition`])
+  const stop = tag_number(doc, [`Stop`, `TwoThetaEnd`, `EndPosition`])
   const step =
-    tag_number([`Step`, `StepSize`, `Increment`, `ScanAxisIncrement`, `StepWidth`]) ??
+    tag_number(doc, [`Step`, `StepSize`, `Increment`, `ScanAxisIncrement`, `StepWidth`]) ??
     (stop !== null && start !== null && values.length > 1
       ? (stop - start) / (values.length - 1)
       : null)
@@ -553,17 +551,14 @@ const TEXT_PARSERS: Record<string, (content: string) => XrdPattern> = {
   fxye: parse_gsas_file,
   xrdml: parse_xrdml_file,
 }
-const BINARY_PARSERS: Record<string, (data: ArrayBuffer) => XrdPattern | Promise<XrdPattern>> =
-  {
-    brml: parse_brml_file,
-    raw: parse_bruker_raw_file,
-  }
+type BinaryParser = (data: ArrayBuffer) => XrdPattern | Promise<XrdPattern>
+const BINARY_PARSERS: Record<string, BinaryParser> = {
+  brml: parse_brml_file,
+  raw: parse_bruker_raw_file,
+}
 
 // All supported XRD data file extensions (base formats, without .gz)
-const XRD_FILE_EXTENSIONS = [
-  ...Object.keys(TEXT_PARSERS),
-  ...Object.keys(BINARY_PARSERS),
-] as const
+const XRD_FILE_EXTENSIONS = [...Object.keys(TEXT_PARSERS), ...Object.keys(BINARY_PARSERS)]
 
 const base_extension = (filename: string): string =>
   ext_of(strip_compression_extensions(filename))

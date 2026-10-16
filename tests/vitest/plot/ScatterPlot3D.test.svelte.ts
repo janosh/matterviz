@@ -41,6 +41,9 @@ import {
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+import { canvas_overlay_png_blob } from '#lib/io/export.js'
+import type * as colors from '#lib/colors/index.js'
+import { tooltip_paint } from '#lib/colors/index.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   bind_props,
@@ -50,9 +53,20 @@ import {
   mount_sized,
   query,
   set_input,
+  stub_reduced_motion,
 } from '../setup'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
+// spied on to count tooltip paint derivations per tween frame
+vi.mock(`#lib/colors/index.js`, async (import_original) => {
+  const actual = await import_original<typeof colors>()
+  return { ...actual, tooltip_paint: vi.fn(actual.tooltip_paint) }
+})
+// jsdom has no WebGPU canvas to rasterize; the export test checks what the PNG composites
+vi.mock(`#lib/io/export.js`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  canvas_overlay_png_blob: vi.fn(async () => new Blob([`png`], { type: `image/png` })),
+}))
 vi.mock(`$app/state`, () => ({
   page: {
     url: {
@@ -399,24 +413,80 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
 })
 
 // The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
-// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint)
-test.each([
-  [`#ffffff`, `#ffffff`, `black`],
-  [`rgba(255, 255, 255, 0.5)`, `rgb(255, 255, 255)`, `black`],
-  [`var(--marker-fill)`, ``, ``],
-])(`3D tooltip fill %s: %j bg, %j text`, (fill, bg, text) => {
+// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint);
+// tooltip=false drops the hovered point's tooltip (the hover halo stays)
+// oxfmt-ignore
+test.each<[string, false | undefined, string[] | null]>([
+  [`#ffffff`, undefined, [`#ffffff`, `black`]],
+  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`]],
+  [`var(--marker-fill)`, undefined, [``, ``]],
+  [`#ffffff`, false, null],
+])(`3D tooltip fill %s, tooltip=%s: %j bg and text`, (fill, tooltip, expected) => {
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
       series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
       hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
       gizmo: false,
+      tooltip,
     }),
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const { style } = query(document.body, `.tooltip`)
-  expect([style.background, style.color]).toEqual([bg, text])
+  const tip = document.querySelector<HTMLElement>(`.tooltip`)
+  expect(tip && [tip.style.background, tip.style.color]).toEqual(expected)
+})
+
+// The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
+test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () => {
+  const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+  const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
+  const { exports, unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      // x=9 falls outside the x range, so the cursor skips it
+      series: [
+        { x: [1, 2], y: [1, 1], z: [1, 1] },
+        { x: [3, 9], y: [1, 1], z: [1, 1] },
+      ],
+      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      gizmo: false,
+      on_point_hover,
+      on_point_click,
+      get hovered_point() {
+        return state.hovered_point as never
+      },
+      set hovered_point(value) {
+        state.hovered_point = value
+      },
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const { handle_key } = exports
+  const press = (key: string) => {
+    const point = handle_key(new KeyboardEvent(`keydown`, { key }))
+    flushSync()
+    return point && [point.series_idx, point.point_idx]
+  }
+  // chords, composing and already-handled keys are left alone
+  const arrow_right = (init: KeyboardEventInit) =>
+    new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
+  const handled = arrow_right({ cancelable: true })
+  handled.preventDefault()
+  const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(arrow_right)
+  for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
+  const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
+  // oxfmt-ignore
+  expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
+  expect(on_point_hover).toHaveBeenLastCalledWith(
+    expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
+  )
+  expect(document.querySelector(`.tooltip`)).not.toBeNull()
+  expect(press(`Enter`)).toEqual([0, 0])
+  expect(on_point_click).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0, x: 1 }))
+  expect([`Escape`, `Escape`, `a`].map(press)).toEqual([null, undefined, undefined])
+  expect(state.hovered_point).toBeNull()
+  expect(on_point_hover).toHaveBeenLastCalledWith(null)
 })
 
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
@@ -515,10 +585,13 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     set_xs([9, 4, 1], 1, 6)
     const [start, end, newcomer] = [packed(3, 2, 0), packed(4, 6, 1), packed(1, 6, 1)]
     expect([marker(0), marker(1)]).toEqual([drawn(start), drawn(newcomer)])
+    // the tooltip paint follows the marker's colour, not its tween frames
+    const paint_calls = vi.mocked(tooltip_paint).mock.calls.length
     advance(300)
     // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
     const half = lerp(start, end, 0.5)
     expect(marker(0)).toEqual(drawn(half))
+    expect(document.querySelector(`.tooltip`)).not.toBeNull()
     // the hover halo rides on the moving marker the raycast hits, not on its target
     expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
     expect(halo()?.scale.x).toBe(hover_marker_geometry(half[3]).radius)
@@ -531,6 +604,7 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     advance(150)
     const three_quarters = lerp(start, end, 0.75)
     expect(marker(0)).toEqual(drawn(three_quarters))
+    expect(vi.mocked(tooltip_paint).mock.calls).toHaveLength(paint_calls)
     expect(marker(0, true)).toEqual(shadow_of(three_quarters))
     // retargeting mid-flight starts from the drawn state; growing adds a snapped instance
     set_xs([9, 0, 1, 2], 0, 2)
@@ -575,6 +649,10 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     state.point_tween = { duration: 600 }
     set_xs([9, 0, ...Array(20_000).fill(1)], 0, 2)
     expect(marker(0)).toEqual(drawn(packed(0, 2, 0)))
+    // and so does reduce motion, whatever point_tween asks for
+    stub_reduced_motion(() => true)
+    set_xs([9, 1], 0, 2)
+    expect(marker(0)).toEqual(drawn(packed(1, 2, 0)))
   } finally {
     await unmount_scene()
   }
@@ -620,7 +698,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   test(`exports a PNG of the scene and a CSV of the visible points`, async () => {
     const on_export = vi.fn()
-    const series = [basic_series, { ...basic_series, label: `Hidden`, visible: false }]
+    const color_values = [5, 4, 3, 2, 1]
+    const series = [
+      { ...basic_series, color_values },
+      { ...basic_series, label: `Hidden`, visible: false },
+    ]
     const plot = await mount_sized(
       ScatterPlot3D,
       { series, on_export },
@@ -632,9 +714,40 @@ describe(`ScatterPlot3D smoke tests`, () => {
     expect(String(result.data).split(`\n`)).toEqual([
       `series,x,y,color_value,size_value,z`,
       ...basic_series.x.map(
-        (x, idx) => `Test Series,${x},${basic_series.y[idx]},,,${basic_series.z[idx]}`,
+        (x, idx) =>
+          `Test Series,${x},${basic_series.y[idx]},${color_values[idx]},,${basic_series.z[idx]}`,
       ),
     ])
+    // the PNG composites the HTML color bar and legend over the re-rendered scene canvas
+    const canvas = document.createElement(`canvas`)
+    plot.append(canvas)
+    on_export.mockClear()
+    const png = await export_via_pane(on_export, `PNG`, plot)
+    expect(png.data).toBeInstanceOf(Blob)
+    expect(canvas_overlay_png_blob).toHaveBeenCalledExactlyOnceWith(
+      canvas,
+      [query(plot, `.colorbar`), query(plot, `.legend`)],
+      expect.any(Number),
+    )
+  })
+
+  test.each([
+    [{}, `3D scatter plot of Energy, Y and Z`],
+    [{ 'aria-label': `Custom` }, `Custom`],
+  ])(`labels its root as a focusable application: %j`, async (props, label) => {
+    const onkeydown = vi.fn()
+    await mount_plot({
+      series: [basic_series],
+      x_axis: { label: `Energy` },
+      onkeydown,
+      ...props,
+    })
+    const root = query(container, `.scatter-3d`)
+    const attrs = [`role`, `aria-label`].map((attr) => root.getAttribute(attr))
+    expect([...attrs, root.tabIndex]).toEqual([`application`, label, 0])
+    // a caller's own key handler still runs next to the marker cursor
+    root.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+    expect(onkeydown).toHaveBeenCalledOnce()
   })
 
   test(`page initializes without query access during prerendering`, async () => {
@@ -709,9 +822,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       return first_item
     }
     // unbound: the component owns visibility and greys out the legend entry
-    const on_toggle = vi.fn()
-    const on_double_click = vi.fn()
-    const on_group_toggle = vi.fn()
+    const [on_toggle, on_double_click, on_group_toggle] = [vi.fn(), vi.fn(), vi.fn()]
     await mount_plot({
       series: multi_series.map((srs) => ({ ...srs, legend_group: `Group` })),
       legend: { on_toggle, on_double_click, on_group_toggle },
@@ -739,16 +850,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     // Bound: the toggle writes hidden IDs (plain state here, so
     // the DOM can't re-render from it - that path is covered above)
     const state = { series: multi_series, hidden_series: [] as (string | number)[] }
-    await mount_plot(
-      bind_props(
-        {
-          legend: {
-            on_toggle: () => expect(state.hidden_series).toEqual([0]),
-          },
-        },
-        state,
-      ),
-    )
+    const on_bound_toggle = () => expect(state.hidden_series).toEqual([0])
+    await mount_plot(bind_props({ legend: { on_toggle: on_bound_toggle } }, state))
     click_first_item()
     expect(state.series).toBe(multi_series)
     expect(state.hidden_series).toEqual([0])
@@ -869,10 +972,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
         projection_opacity: 0.3,
         projection_scale: 0.5,
       })
-      expect(
-        container.querySelector(`button[title="Reset projections to defaults"]`),
-      ).toBeNull()
-      expect(container.querySelector(`button[title="Reset display to defaults"]`)).toBeNull()
+      for (const title of [`Reset projections to defaults`, `Reset display to defaults`])
+        expect(container.querySelector(`button[title="${title}"]`)).toBeNull()
       expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, null] })
       // Manual edits preserve an automatic opposite bound, exact small values, and clearing.
       for (const [value, expected] of [
@@ -915,10 +1016,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await expect_plot_controls(container, controls_state, `scatter-3d`)
 
     await unmount(mounted_component)
-    mounted_component = mount(ScatterPlot3DControls, {
-      target: container,
-      props: { show_controls: false },
-    })
+    const props = { show_controls: false }
+    mounted_component = mount(ScatterPlot3DControls, { target: container, props })
     await tick()
     expect(container.querySelector(`.draggable-pane`)).toBeNull()
   })
@@ -938,20 +1037,11 @@ describe(`scene coordinates`, () => {
     expect(points).toHaveLength(count + 2)
     // a legend-hidden series draws nothing, so it must not widen the axes either
     const hidden = { x: [1e9], y: [1e9], z: [1e9], visible: false }
-    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual({
-      x: [0, 220_000],
-      y: [-220_000, 20_000],
-      z: [0, 450_000],
-    })
-    const degenerate = [
-      { x: -0, y: NaN, z: Infinity },
-      { x: 0, y: 2, z: NaN },
-    ]
-    expect(get_3d_auto_ranges([], degenerate)).toEqual({
-      x: [-1, 1],
-      y: [1.8, 2.2],
-      z: [0, 1],
-    })
+    const expected = { x: [0, 220_000], y: [-220_000, 20_000], z: [0, 450_000] }
+    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual(expected)
+    // oxfmt-ignore
+    const degen = [{ x: -0, y: NaN, z: Infinity }, { x: 0, y: 2, z: NaN }]
+    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [0, 1] })
   })
 
   test(`surface bounds sample the drawn vertex grid`, () => {

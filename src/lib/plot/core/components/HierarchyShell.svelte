@@ -2,18 +2,16 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  // Shared markup for the hierarchical part-of-whole charts (Sunburst, Treemap), rendered
-  // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
-  // handling, tooltip, legend and color bar. Each chart renders its geometry into the
-  // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  // Shared markup of Sunburst and Treemap inside a ChartShell: breadcrumbs, the svg with its
+  // delegated pointer/keyboard handling, tooltip, legend and color bar. Each chart renders its
+  // geometry into `marks`; all shared state lives on the HierarchyChartState it passes in.
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { compute_element_placement } from '#lib/plot/core/layout.js'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
@@ -41,7 +39,7 @@
     dblclick_target?: `svg` | `group`
     extra_defs?: Snippet
     marks: Snippet
-    tooltip?: Snippet<[SunburstNodeHandlerProps<Metadata>]>
+    tooltip?: TooltipProp<SunburstNodeHandlerProps<Metadata>>
   } = $props()
 
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -105,9 +103,8 @@
     <PatternDefs patterns={chart_state.node_infos.map((info) => info.pattern)} />
     {@render extra_defs?.()}
   </defs>
-  <!-- Hover/click delegation sits on the chart group (not the node group) so
-  labels - which carry the same data-<chart>-node-idx and are selectable text -
-  forward interactions to their node instead of swallowing them -->
+  <!-- Delegation sits on the chart group (not the node group) so labels, which carry the same
+  data-<chart>-node-idx, forward interactions to their node instead of swallowing them -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <g
     transform={chart_transform}
@@ -123,7 +120,7 @@
   </g>
 </svg>
 
-{#if chart_state.hover_info}
+{#if chart_state.hover_info && tooltip !== false}
   {@const info = chart_state.hover_info}
   <PlotTooltip
     x={chart_state.hover_pos.x}
@@ -137,8 +134,7 @@
     {#if tooltip}
       {@render tooltip(info)}
     {:else}
-      <!-- A bucket's own label can only say what fits inside a thin outer ring, so
-      the count of what it folded away belongs here, where there is room for it. -->
+      <!-- A bucket's label can't fit what it folded away, so that count goes here -->
       <strong>{info.label_path.join(` › `)}</strong>: <TooltipValue
         value={format_value(info.value, chart_state.value_format)}
       />
@@ -172,11 +168,8 @@
 
 {#if chart_state.metric && chart_state.color_bar}
   {@const { cbar, chart, color_bar } = chart_state}
-  {@const { color_fn, range } = chart_state.metric}
   <ColorBar
-    scale={{ fn: color_fn, domain: range }}
-    scale_type={to_color_scale_config(chart_state.color_scale).type}
-    {range}
+    color_scale={chart_state.metric.color_scale}
     {...color_bar}
     tick_side={cbar.tick_side}
     wrapper_style="{cbar.is_vertical

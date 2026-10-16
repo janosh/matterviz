@@ -1,10 +1,8 @@
 <script lang="ts">
-  // Toolbar dropdown shared by the Structure and Trajectory viewers (view layout, measure/edit,
-  // display mode, analysis): an icon toggle anchoring a native popover menu below it (see
-  // anchored_popover). Callers render the options as `<button class="view-mode-option">`
-  // children; the class names are stable hooks for tests and host CSS (--view-mode-* vars).
-  // Menu colors fall back to app.css's --menu-* tokens and then to literal light-dark values,
-  // so hosts that skip app.css still get a styled, positioned menu.
+  // Structure/Trajectory toolbar dropdown: an icon toggle anchoring a native popover menu (see
+  // anchored_popover). Callers render `<button class="view-mode-option">` children; class
+  // names are stable hooks for tests and host CSS (--view-mode-* vars). Colors fall back to
+  // app.css's --menu-* tokens, then literal light-dark values.
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'

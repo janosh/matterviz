@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { element_data } from '#lib/element/index.js'
   import { format_num } from '#lib/labels.js'
   import type { AxisConfig, InternalPoint } from '#lib/plot/core/types.js'
@@ -14,10 +14,10 @@
     y_unit = ``,
     tooltip_point = $bindable(null),
     hovered = $bindable(false),
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     ...rest
-  }: Omit<ScatterPlotOptions, `tooltip`> & {
+  }: ScatterPlotOptions & {
     y: (number | null)[] // positional by atomic number; null/non-finite values are missing
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -42,11 +42,23 @@
   })
 </script>
 
+{#snippet element_tooltip({ x: coord_x, y: coord_y }: ScatterHandlerProps)}
+  {@const elem = element_data[coord_x - 1]}
+  <strong>{elem ? `${coord_x} ${elem.symbol} - ${elem.name}` : `Element ${coord_x}`}</strong
+  ><br />
+  <TooltipValue
+    label={y_axis.label || `Value`}
+    value={format_num(coord_y, y_axis.format ?? `~s`)}
+    unit={y_unit || y_axis.unit}
+  />
+{/snippet}
+
 <ScatterPlot
   color_bar={null}
   padding={{ l: 60, r: 10, t: 5, b: 45 }}
   range_padding={0}
   {...rest}
+  tooltip={rest.tooltip ?? element_tooltip}
   series={[
     {
       x: coord_y.map((_, idx) => idx + 1),
@@ -61,17 +73,6 @@
   bind:hovered
   x_axis={{ label: `Atomic Number`, range: [0, null], ...x_axis }}
   y_axis={{ format: `~s`, ...y_axis }}
-  bind:show_controls
+  {show_controls}
   bind:controls_open
->
-  {#snippet tooltip({ x: coord_x, y: coord_y })}
-    {@const elem = element_data[coord_x - 1]}
-    <strong>{elem ? `${coord_x} ${elem.symbol} - ${elem.name}` : `Element ${coord_x}`}</strong
-    ><br />
-    <TooltipValue
-      label={y_axis.label || `Value`}
-      value={format_num(coord_y, y_axis.format ?? `~s`)}
-      unit={y_unit || y_axis.unit}
-    />
-  {/snippet}
-</ScatterPlot>
+/>

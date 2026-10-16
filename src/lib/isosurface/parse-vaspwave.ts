@@ -1,14 +1,6 @@
-// Parser for VASP vaspwave.h5 charge density: charge/charge on charge/grid
-// plus the embedded structure under structure/positions (dataset paths follow
-// py4vasp's VASP 6.x schema). Full files are hundreds of MB, so embedding hosts
-// are expected to prune them server-side first; this parser sees only
-// charge/{charge,grid} + structure/positions.
-//
-// Prototype scope: charge (+ magnetization) isosurfaces only — wavefunctions
-// are out of scope. The "charge density RMS per SCF step" convergence signal
-// is already covered by OSZICAR's rms(c) column in the vaspout.h5 parser
-// (scf_charge_rms frame metadata); diffing charge grids between live reloads
-// is explicitly out of scope here.
+// Parser for VASP vaspwave.h5 charge (+ magnetization) density: charge/{charge,grid} plus the
+// structure under structure/positions (py4vasp's VASP 6.x schema). Full files run to hundreds
+// of MB, so hosts prune them to these datasets first. Wavefunctions are out of scope.
 import { HDF5_EXT_REGEX } from '#lib/constants.js'
 import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
@@ -31,8 +23,8 @@ const CHARGE_PATH = `charge/charge`
 const CHARGE_GRID_PATH = `charge/grid`
 const STRUCTURE_PREFIX = `structure/positions`
 
-// vaspwave carries charge density/wavefunctions, never a trajectory — used by
-// file-open routing to divert from the HDF5 trajectory dispatcher.
+// vaspwave carries charge density/wavefunctions, never a trajectory: file-open routing uses
+// this to divert it from the HDF5 trajectory dispatcher
 export const is_vaspwave_filename = (filename: string): boolean => {
   const basename = filename.split(/[\\/]/).pop() ?? filename
   return /vaspwave/i.test(basename) && HDF5_EXT_REGEX.test(basename)
@@ -53,8 +45,7 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
     )
   }
 
-  // Sites are optional for rendering (the isosurface needs only the lattice),
-  // so a pruned/torn file missing ion data still opens with an empty cell.
+  // Sites are optional (the isosurface needs only the lattice): missing ions give an empty cell
   const sites: Site[] = []
   const ion_types = to_string_array(read_dataset(h5_file, `${STRUCTURE_PREFIX}/ion_types`))
   const ion_counts = to_number_array(
@@ -80,9 +71,8 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
   }
 }
 
-// VASP writes volumetric data C-order [components, nz, ny, nx]; the grid
-// dataset [nx, ny, nz] disambiguates (when nx == nz both layouts match, so
-// default to the canonical zyx order).
+// VASP writes C-order [components, nz, ny, nx]; the grid dataset [nx, ny, nz] disambiguates
+// (when nx == nz both layouts match, so default to the canonical zyx)
 const charge_axis_order = (spatial_shape: number[], grid_dims: number[]): `zyx` | `xyz` => {
   const [size_x, size_y, size_z] = grid_dims
   const matches = (dims: number[]) => dims.every((dim, idx) => dim === spatial_shape[idx])
@@ -107,8 +97,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
     throw new Error(`vaspwave.h5 file has no charge density (missing ${CHARGE_PATH})`)
   }
   const shape = charge_entity.shape
-  // Only the dimension count is checked here — the spatial axis order (zyx vs
-  // xyz) is disambiguated later by charge_axis_order against CHARGE_GRID_PATH.
+  // Only the rank here; charge_axis_order resolves the spatial axis order
   if (shape.length !== 4) {
     throw new Error(`${CHARGE_PATH} must have 4 dimensions, got [${shape}]`)
   }
@@ -135,8 +124,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   // The flat dataset buffer, C order [component][axis0][axis1][axis2]
   const charge_data = charge_entity.value
   if (!is_numeric_array(charge_data)) throw new Error(`Failed to read ${CHARGE_PATH} data`)
-  // Metadata shape and decoded data can disagree in torn/corrupt files — fail
-  // loudly instead of silently rendering fewer components than the file claims
+  // Shape and decoded data can disagree in torn files: fail instead of dropping components
   if (charge_data.length !== n_components * points_per_component) {
     throw new Error(
       `${CHARGE_PATH} decoded ${charge_data.length} values but its shape [${shape}] claims ${n_components * points_per_component}`,
@@ -173,9 +161,7 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   return { structure, volumes }
 }
 
-export async function parse_vaspwave_charge(
+export const parse_vaspwave_charge = async (
   buffer: ArrayBuffer,
   filename?: string,
-): Promise<VolumetricFileData> {
-  return with_h5_file(buffer, filename, parse_vaspwave_charge_file)
-}
+): Promise<VolumetricFileData> => with_h5_file(buffer, filename, parse_vaspwave_charge_file)

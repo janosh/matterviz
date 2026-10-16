@@ -8,6 +8,7 @@ import { reaction_paths } from '#site/neb/index.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  assertHoverScopedShortcut,
   mock_fullscreen,
   bind_props,
   export_via_pane,
@@ -19,20 +20,13 @@ import {
   query,
   resize_element,
   set_input,
+  set_select,
 } from '../setup'
 
 const direct_path = reaction_paths[`direct hop`]
 
 // SVG annotations are split across text nodes and indented, so compare on squashed text
 const squash = (text: string | null): string => (text ?? ``).replaceAll(/\s+/g, ` `)
-
-// Svelte bind:value on <select> reads querySelector(':checked'); happy-dom does not match
-// that on <option>, so the binding would stick on the first option.
-const change_select = (select: HTMLSelectElement, value: string): void => {
-  select.value = value
-  vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])
-  select.dispatchEvent(new Event(`change`, { bubbles: true }))
-}
 
 // jsdom lays everything out at 0x0, so the scatter plot needs an explicit size before
 // any annotation it positions from the scales can be asserted on.
@@ -191,7 +185,9 @@ test(`hovering another path's spline selects an image of that path`, async () =>
 describe(`NebViewer`, () => {
   test(`shows a drop prompt when no path is supplied`, async () => {
     const viewer = await mount_viewer()
-    expect(viewer.textContent).toContain(`Drop a matterviz-reaction-path JSON`)
+    expect(viewer.querySelector(`.empty-state[role="status"]`)?.textContent).toContain(
+      `Drop a matterviz-reaction-path JSON`,
+    )
     expect(viewer.querySelector(`.scatter`)).toBeNull()
   })
 
@@ -228,11 +224,6 @@ describe(`NebViewer`, () => {
     expect(result.offered).toEqual([`PNG`, `CSV`, `JSON`])
     expect([result.format, result.filename]).toEqual([format.toLowerCase(), `reaction-path`])
     expect(pick(String(result.data))).toEqual(expected)
-  })
-
-  test(`export_formats=[] hides the viewer's export pane`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths, export_formats: [] })
-    expect(viewer.querySelector(`.neb-export-toggle`)).toBeNull()
   })
 
   test(`renders the plot, the structure and the barrier summary together`, async () => {
@@ -307,12 +298,12 @@ describe(`NebViewer`, () => {
       throw new Error(`profile pane controls missing`)
     expect(coord_select.closest(`.plot-controls-pane`)).not.toBeNull()
 
-    change_select(coord_select, `image_index`)
+    set_select(coord_select, `image_index`)
     await flush_render()
     expect(state.coord_mode).toBe(`image_index`)
     expect(viewer.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Image number`)
 
-    change_select(energy_select, `absolute`)
+    set_select(energy_select, `absolute`)
     await flush_render()
     expect(state.energy_reference).toBe(`absolute`)
     expect(viewer.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Energy (eV)`)
@@ -326,9 +317,9 @@ describe(`NebViewer`, () => {
   })
 
   test.each([
-    [`the next button`, `[title="Next image"]`, 0, 2, false],
-    [`the previous button`, `[title="Previous image"]`, 2, 2, false],
-    [`the previous button at the first image`, `[title="Previous image"]`, 0, 1, true],
+    [`the next button`, `[aria-label="Next image"]`, 0, 2, false],
+    [`the previous button`, `[aria-label="Previous image"]`, 2, 2, false],
+    [`the previous button at the first image`, `[aria-label="Previous image"]`, 0, 1, true],
   ])(
     `stepping with %s moves to image %i -> %i`,
     async (_name, selector, start_idx, label, disabled) => {
@@ -375,16 +366,19 @@ describe(`NebViewer`, () => {
     ).toBe(`7 total images`)
   })
 
-  test(`applies shared control visibility names`, async () => {
+  test(`applies shared control visibility names; export_formats=[] drops the export pane`, async () => {
     const viewer = await mount_viewer({
       paths: direct_path,
-      show_controls: {
-        mode: `always`,
-        hidden: [`fps`, `energy`, `fullscreen`],
-      },
+      export_formats: [],
+      show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`] },
     })
-
-    for (const selector of [`.fps-section`, `.image-status`, `.fullscreen-button`]) {
+    const hidden = [
+      `.fps-section`,
+      `.image-status`,
+      `.fullscreen-button`,
+      `.neb-export-toggle`,
+    ]
+    for (const selector of hidden) {
       expect(viewer.querySelector(selector)).toBeNull()
     }
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
@@ -438,12 +432,41 @@ describe(`NebViewer`, () => {
         expected_label,
       )
     }
+    // NebViewer forwards its keys to playback, so the play button names its shortcut and the
+    // chrome lists them all behind `?`
+    expect(viewer.querySelector(`.play-button`)?.getAttribute(`aria-keyshortcuts`)).toBe(
+      `Space`,
+    )
+    expect(
+      query(viewer, `.neb-controls > .shortcuts-btn`).getAttribute(`aria-keyshortcuts`),
+    ).toBe(`?`)
 
-    const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
-    path_select.value = `curved hop`
-    path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    set_select(query<HTMLSelectElement>(viewer, `.path-control select`), `curved hop`)
     await flush_render()
     expect([state.active_path_key, state.active_image_idx]).toEqual([`curved hop`, 0])
+  })
+
+  // Like Trajectory, playback keys belong to the hovered or focused viewer, not just the slider
+  test(`playback keys work from the hovered or focused root, not from its form fields`, async () => {
+    const state = $state({ active_image_idx: 0 })
+    const viewer = await mount_viewer(bind_props({ paths: reaction_paths }, state))
+    expect([viewer.getAttribute(`role`), viewer.tabIndex]).toEqual([`application`, 0])
+    await assertHoverScopedShortcut({
+      viewer,
+      trigger: () =>
+        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight` })),
+      read_state: () => state.active_image_idx,
+    })
+    const press = async (target: HTMLElement, key: string) => {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      await flush_render()
+      return event.defaultPrevented
+    }
+    expect([await press(viewer, `End`), state.active_image_idx]).toEqual([true, 6])
+    expect([await press(viewer, `Home`), state.active_image_idx]).toEqual([true, 0])
+    const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
+    expect([await press(path_select, `End`), state.active_image_idx]).toEqual([false, 0])
   })
 
   test(`auto-plays images and can be paused`, async () => {
@@ -526,11 +549,22 @@ describe(`NebViewer`, () => {
       `img-0.json: image 1 of 3`,
     )
 
+    // recoverable parse issues of a batch show as one dismissible notice, cleared next drop
+    const xyz = (energy: number, x_coord: number) =>
+      `2\nenergy=${energy} pbc="bogus"\nH 0 0 0\nH ${x_coord} 0 0`
+    drop([new File([xyz(-10, 0.7)], `a.xyz`), new File([xyz(-9, 0.9)], `b.xyz`)])
+    await vi.waitFor(() =>
+      expect(viewer.querySelector(`.status-message.warning`)?.textContent).toMatch(
+        /2 parse warnings: Invalid EXTXYZ pbc/,
+      ),
+    )
+
     // identical consecutive images give no path tangent: refused with its reason
     drop(path_file(`dup`, [first, first, second]))
     await vi.waitFor(() =>
       expect(state.error_msg).toMatch(/dup\.json: .*zero-length path tangent/),
     )
+    expect(viewer.querySelector(`.status-message.warning`)).toBeNull()
     expect(state.active_path_key).toBe(`dropped images`)
 
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
@@ -549,28 +583,9 @@ describe(`NebViewer`, () => {
     expect(query(viewer, `.scatter`)).toBe(plot)
   })
 
-  test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {
+  // a rejected request leaving the flag false is FullscreenButton's own (Structure tests it)
+  test(`fullscreen toggling syncs the bound flag and on_fullscreen_change`, async () => {
     mock_fullscreen()
-    const rejected_state = $state({ fullscreen: false })
-    const rejected_callback = vi.fn()
-    const rejected_viewer = await mount_viewer(
-      bind_props(
-        {
-          paths: direct_path,
-          on_fullscreen_change: rejected_callback,
-        },
-        rejected_state,
-      ),
-    )
-    rejected_viewer.requestFullscreen = vi
-      .fn()
-      .mockRejectedValue(new Error(`fullscreen denied`))
-    const console_error = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    rejected_viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)?.click()
-    await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
-    expect(rejected_state.fullscreen).toBe(false)
-    expect(rejected_callback).not.toHaveBeenCalled()
-
     const state = $state({ fullscreen: false, show_controls: true })
     const on_fullscreen_change = vi.fn()
     const viewer = await mount_viewer(

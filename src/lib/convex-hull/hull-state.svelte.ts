@@ -69,10 +69,8 @@ function get_gas_corrected_entries(
 }
 
 export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
-  // Composition keys are normalized once here ("Fe3+" → Fe) so every later stage, including
-  // the unary-reference lookup, sees plain element symbols. Unrecognized keys ("Fe2O3") come
-  // straight from the entries prop, so the throw is caught and surfaced through `error`
-  // instead of propagating out of a $derived mid-render.
+  // Composition keys normalized once ("Fe3+" → Fe) for every later stage. Unrecognized keys
+  // ("Fe2O3") throw, caught and surfaced through `error` rather than mid-render.
   const normalized_source = $derived.by(() => {
     try {
       return {
@@ -133,18 +131,15 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // Pre-compute polymorph stats once for O(1) tooltip lookups
   const polymorph_stats_map = $derived(helpers.compute_all_polymorph_stats(effective_entries))
 
-  // Elements of the entries PROP, before the temperature filter (and gas corrections, which
-  // never touch compositions). A selected temperature outside one element's `temperatures`
-  // may drop every entry of that element; the diagram then keeps its arity and closes the
-  // hull with a synthetic corner (below) instead of unmounting together with the temperature
-  // slider the user would need to recover.
+  // Elements of the entries PROP, before the temperature filter: a temperature that drops
+  // every entry of an element keeps the arity and closes the hull with a synthetic corner
+  // (below) instead of unmounting the temperature slider needed to recover.
   const elements = $derived(normalized_source.elements)
   const dim = $derived(elements.length === 3 || elements.length === 4 ? elements.length : 2)
   const default_threshold = $derived(get_convex_hull_defaults(dim).max_hull_dist_show_phases)
 
-  // Why the entries prop can't be plotted: a rejected composition key, or a dataset whose
-  // element count doesn't match the diagram's arity. Empty entries (data still loading) are
-  // not an error. Components render this message in place of the plot.
+  // Why the entries can't be plotted (rejected key or arity mismatch; empty is not an error),
+  // rendered in place of the plot
   const error = $derived.by((): string | null => {
     if (normalized_source.error) return normalized_source.error
     if (elements.length === 0 || elements.length === dim) return null
@@ -177,9 +172,8 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const next_auto_threshold = $derived(helpers.auto_threshold_reset(default_threshold))
   $effect(() => {
     const current = inputs.max_hull_dist_show_phases()
-    // Keyed on the enriched entries, not raw entries(), so the auto threshold re-derives when
-    // temperature/gas/energy-mode change the hull; the user_changed guard inside
-    // auto_threshold_reset still preserves manual adjustments.
+    // Keyed on enriched entries so the auto threshold re-derives when temperature, gas or
+    // energy mode change the hull (auto_threshold_reset preserves manual adjustments)
     inputs.set_max_hull_dist_show_phases(
       next_auto_threshold(all_enriched_entries, current, auto_default_threshold) ?? current,
     )

@@ -13,9 +13,7 @@ import {
   is_y2_sync_mode,
 } from '#lib/plot/core/types.js'
 
-// Get coordinates of a mouse event relative to an element (the event's
-// currentTarget by default; pass `element` when the handler is delegated and the
-// reference frame differs, e.g. coordinates relative to the svg root)
+// Mouse event coordinates relative to `element` (default: the event's currentTarget)
 export function get_relative_coords(
   evt: MouseEvent,
   element: EventTarget | null = evt.currentTarget,
@@ -36,11 +34,24 @@ export const pointer_pos = (
 export const is_activation_key = (evt: KeyboardEvent): boolean =>
   !evt.defaultPrevented && !evt.isComposing && (evt.key === `Enter` || evt.key === ` `)
 
-// True when focus is leaving `root` entirely rather than moving between marks inside it.
-// Charts treat focus as the keyboard's hover, so a focusout that lands on the next mark is
-// the equivalent of sliding the pointer along and must not clear the tooltip; one that
-// leaves the chart is the equivalent of mouseleave and must. A null relatedTarget (focus
-// going nowhere) counts as leaving.
+// Next flat index of a one-tab-stop keyboard cursor over `total` points: arrows step and
+// wrap, Home/End jump. null for other keys or when there is nothing to walk.
+export function step_point_cursor(
+  key: string,
+  current: number | null,
+  total: number,
+): number | null {
+  if (total === 0) return null
+  if (key === `Home`) return 0
+  if (key === `End`) return total - 1
+  const forward = key === `ArrowRight` || key === `ArrowDown`
+  if (!forward && key !== `ArrowLeft` && key !== `ArrowUp`) return null
+  if (current === null) return forward ? 0 : total - 1
+  return (current + (forward ? 1 : -1) + total) % total
+}
+
+// True when focus leaves `root` entirely (incl. a null relatedTarget) rather than moving
+// between marks, i.e. the keyboard's mouseleave that should clear the tooltip
 export const focus_left = (event: FocusEvent, root: Element | null | undefined): boolean =>
   !root || !(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)
 
@@ -51,9 +62,8 @@ export const create_focus_exit =
     if (focus_left(event, root())) on_exit()
   }
 
-// Resolve a delegated event to the integer value of the nearest ancestor's data
-// attribute (e.g. data-sunburst-node-idx), scoped to `root` so targets outside the
-// component don't leak in. Returns null when the event didn't hit an indexed element.
+// Integer value of the delegated event target's nearest `attr` ancestor within `root`,
+// or null when the event didn't hit an indexed element
 export function closest_data_idx(
   event: Event,
   attr: string,
@@ -94,9 +104,8 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   const y1_span = y1_range[1] - y1_range[0]
   if (y1_span === 0) return y2_base_range
 
-  // Where align_val sits along y1, as a fraction measured from y1's LOW end. The span math
-  // below assumes value rises with the fraction, so solve in ascending space and hand the
-  // pair back pointing y1's way: a descending y1 [10, 0] against y2 data [0, 5] gives [5, 0].
+  // align_val's fraction from y1's LOW end; solve ascending, then hand the pair back pointing
+  // y1's way (descending y1 [10, 0] against y2 data [0, 5] gives [5, 0])
   const descending = y1_span < 0
   const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
@@ -117,12 +126,9 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   return descending ? [y2_max, y2_min] : [y2_min, y2_max]
 }
 
-// Forward/inverse transform pair mapping an axis's data values onto its visual
-// metric (the space where equal pixel steps are equal steps; identity for
-// linear/time). Pan and pinch must be uniform in *screen* space - doing the math
-// linearly on a log axis stretches one end of the view and shifts past zero into
-// an all-NaN domain. Non-positive log bounds recover at LOG_EPS; positive values retain
-// their scale however small.
+// Forward/inverse transforms onto an axis's visual metric (identity for linear/time), so
+// pan and pinch are uniform in screen space (linear math on log axes stretches and crosses
+// zero). Non-positive log bounds recover at LOG_EPS.
 export function axis_transform(scale_type?: ScaleType): {
   forward: (val: number) => number
   inverse: (val: number) => number
@@ -156,9 +162,7 @@ export const snapshot_ranges = (ranges: AxisRanges): AxisRanges => ({
   y2: [...ranges.y2],
 })
 
-// Pan a range by a pixel delta, uniformly in screen space: linear axes shift by a
-// constant amount, log axes by a constant factor (which also can't cross zero).
-// `pixel_span` is the plot's pixel extent along the axis.
+// Pan a range by a pixel delta uniformly in screen space (`pixel_span`: the axis' px extent)
 export function pan_range_by_pixels(
   range: Vec2,
   pixel_delta: number,
@@ -194,9 +198,8 @@ export function zoom_range_by_factor(
 const to_epoch_num = (val: number | Date): number =>
   val instanceof Date ? val.getTime() : val
 
-// Remove window drag/pan listeners and reset the body cursor. Call from onDestroy:
-// a component unmounting mid-drag would otherwise leak its listeners and leave the
-// cursor stuck (the mouseup that normally cleans up never fires after unmount).
+// Remove window drag/pan listeners and reset the body cursor. Call from onDestroy, since
+// unmounting mid-drag otherwise leaks listeners and leaves the cursor stuck.
 export function remove_drag_listeners(
   move_handlers: ((evt: MouseEvent) => void)[],
   up_handlers: ((evt: MouseEvent) => void)[],
@@ -249,10 +252,9 @@ type AxisRangeOverride = {
 }
 type AutoRanges = Record<keyof AxisRanges, readonly number[]>
 
-// A single explicit bound pins that endpoint, never the axis direction. If it crosses the
-// automatic endpoint, extend it by the auto span (at least 10% of a numeric bound;
-// time axes preserve the duration, using one day for a collapsed automatic range).
-// Two explicit endpoints may intentionally describe a descending or collapsed range.
+// A single explicit bound pins that endpoint, never the direction; crossing the auto endpoint
+// extends it by the auto span (min 10% of a numeric bound; time axes keep the duration, or one
+// day). Two explicit endpoints may describe a descending or collapsed range.
 export function resolve_axis_range(
   { range, scale_type }: AxisRangeOverride,
   auto: readonly number[],
@@ -284,10 +286,8 @@ export function resolve_axis_range(
   return lower_fixed ? [lower, inverse(bound + span)] : [inverse(bound - span), upper]
 }
 
-// Merge each axis's explicit range over its auto range (per-bound: a null bound
-// falls back to the auto value). Returns null if any resolved bound is non-finite so
-// the caller can skip the sync - writing NaN breaks scales and, since NaN !== NaN,
-// makes the change comparison never settle (an infinite effect loop).
+// Merge each axis's explicit range over its auto range per bound. Returns null for any
+// non-finite bound so the caller skips the sync (NaN breaks scales and loops effects).
 export function resolve_axis_ranges(
   axes: Record<keyof AxisRanges, AxisRangeOverride>,
   auto: AutoRanges,
@@ -309,10 +309,9 @@ export const PINCH_ZOOM_THRESHOLD = 0.1
 // Guards curr_dist / start_dist scale from blowing up on near-coincident touches
 export const MIN_TOUCH_DISTANCE_PIXELS = 10
 
-// Adopt the new range (expand or shrink) unless nothing backs it: `has_data` is false when
-// every series on the axis is hidden and no bound was pinned, so the auto range is only the
-// default fallback. Keeping the current view then stops the plot jumping on a legend toggle.
-// A value flag, not a range sentinel: data spanning exactly [0, 1] must still be adopted.
+// Adopt the new range unless nothing backs it (`has_data` false: every series hidden, no
+// pin), so a legend toggle doesn't jump the plot. A flag, not a range sentinel: data
+// spanning exactly [0, 1] must still be adopted.
 export function expand_range_if_needed(
   current: Vec2,
   new_range: Vec2,

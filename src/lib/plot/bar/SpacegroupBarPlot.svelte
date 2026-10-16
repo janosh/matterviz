@@ -30,7 +30,6 @@
     ...rest
   }: Omit<
     BarPlotOptions,
-    | `tooltip`
     | `mode`
     | `show_controls`
     | `controls_open`
@@ -199,7 +198,7 @@
   )
 </script>
 
-{#snippet tooltip(info: BarHandlerProps)}
+{#snippet spacegroup_tooltip(info: BarHandlerProps)}
   {@const { x: space_group, y: count } = info}
   {@const system = spg.spacegroup_to_crystal_sys(space_group)}
   Space Group: {format_value(space_group, `.0f`)} ({spg.SPACEGROUP_NUM_TO_SYMBOL[
@@ -336,6 +335,6 @@
   y_axis={y_axis_config}
   {show_legend}
   show_controls={false}
-  {tooltip}
+  tooltip={rest.tooltip ?? spacegroup_tooltip}
   {user_content}
 />

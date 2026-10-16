@@ -25,12 +25,8 @@
 
   // Quad geometry from 4 data-space corners (two triangles: 0-1-2 and 0-2-3)
   const quad = (corners: Vec3[]): THREE.BufferGeometry => {
-    const [value_c_0, value_c_1, value_c_2, value_c_3] = corners.map((corner) =>
-      to_coords(...corner),
-    )
-    const verts = [value_c_0, value_c_1, value_c_2, value_c_0, value_c_2, value_c_3].flatMap(
-      (corner) => [corner.x, corner.y, corner.z],
-    )
+    const pts = corners.map((corner) => to_coords(...corner))
+    const verts = [0, 1, 2, 0, 2, 3].flatMap((idx) => [pts[idx].x, pts[idx].y, pts[idx].z])
     const geo = positions_geometry(verts)
     geo.computeVertexNormals()
     return geo
@@ -38,7 +34,6 @@
 
   let geometry = $derived.by((): THREE.BufferGeometry | null => {
     if (ref_plane.visible === false) return null
-
     if (ref_plane.type === `xy`) {
       return quad([
         [x_min, y_min, ref_plane.z],

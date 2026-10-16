@@ -6,7 +6,7 @@ import { to_error } from '#lib/utils.js'
 import { untrack } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
 import type { MaterialSource, OpenedMaterial } from './open'
-import { acquire_material, MaterialOpenError, open_material, source_provenance } from './open'
+import { deliver_raw_file, MaterialOpenError, open_material, source_provenance } from './open'
 
 export interface MaterialLoaderInputs<Value> {
   source: () => MaterialSource | undefined
@@ -61,15 +61,8 @@ export function create_material_loader<Value>(
     try {
       const on_file_drop = inputs.on_file_drop?.()
       if (on_file_drop) {
-        const payload = await acquire_material(source, controller.signal)
+        await deliver_raw_file(source, on_file_drop, controller.signal)
         if (controller !== active_controller) return
-        const content =
-          payload.data instanceof Blob ? await payload.data.arrayBuffer() : payload.data
-        await on_file_drop(content, payload.filename, {
-          source_filename: payload.source_filename ?? payload.filename,
-          source_url: payload.source_url,
-          file: payload.file,
-        })
       } else {
         const opened = await open_material(source, { signal: controller.signal })
         if (controller !== active_controller) return opened.dispose()

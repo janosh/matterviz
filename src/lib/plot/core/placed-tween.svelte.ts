@@ -2,7 +2,7 @@
 // debounced release, resize detection, and stability gating
 
 import { untrack } from 'svelte'
-import { Tween, type TweenOptions } from 'svelte/motion'
+import { prefersReducedMotion, Tween, type TweenOptions } from 'svelte/motion'
 
 const HOVER_DEBOUNCE_MS = 300
 
@@ -125,8 +125,8 @@ export function create_placed_tween(opts: {
 
     void coords.set(
       { x: placement.x, y: placement.y },
-      // Skip animation on initial placement to avoid jump from (0, 0)
-      has_initial_placement ? undefined : { duration: 0 },
+      // Skip animation on initial placement (avoids a jump from (0, 0)) and for reduced motion
+      has_initial_placement && !prefersReducedMotion.current ? undefined : { duration: 0 },
     )
     // Only lock position after the element has an actual measured size
     if (opts.element()) placed = true

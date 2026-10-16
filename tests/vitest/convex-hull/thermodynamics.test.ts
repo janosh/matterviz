@@ -499,14 +499,10 @@ describe(`calculate_e_above_hull`, () => {
     expect(e_hull(-1.0, [...elem_refs, excluded])).toBeCloseTo(0, 10)
   })
 
+  // oxfmt-ignore
   test.each([
     [`empty refs`, make_elem(`Fe`), [], /cannot be empty/],
-    [
-      `missing element`,
-      make_phase({ Li: 1 }, -2.0),
-      [make_elem(`Fe`)],
-      /not present in reference/,
-    ],
+    [`missing element`, make_phase({ Li: 1 }, -2.0), [make_elem(`Fe`)], /not present in reference/],
     [
       `unrecognized key`,
       make_phase({ Fe2O3: 1 }, -6.5),

@@ -1,4 +1,3 @@
-import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
@@ -12,7 +11,8 @@ import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
 import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
-import { scaleSequential } from 'd3-scale'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type {
   ConvexHullConfig,
   ConvexHullEntry,
@@ -46,7 +46,7 @@ const finite_hull_dists = (entries: readonly StabilityEntry[]): number[] =>
   entries.map((entry) => entry.e_above_hull).filter(is_finite)
 
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
-export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
+export const hull_distance_range = (entries: readonly StabilityEntry[]): [number, number] => {
   const dists = finite_hull_dists(entries)
   if (dists.length === 0) return [0, 0.1]
   const [min_dist, max_dist] = array_extent(dists)
@@ -64,8 +64,7 @@ export const entry_within_hull_dist = (entry: StabilityEntry, max_dist: number):
 // Loose entry shape for category resolution (any PhaseData-like object qualifies)
 type CategorySource = Pick<PhaseData, `data` | `attributes`>
 
-// Normalize a raw value to a canonical category value: case-insensitive match against
-// config.markers keys, then config.aliases. Returns null for unrecognized values.
+// Canonical category value: case-insensitive match on config.markers keys, then aliases
 function normalize_category_value(raw: unknown, config: EntryCategoryConfig): string | null {
   if (typeof raw !== `string`) return null
   const lower = raw.trim().toLowerCase()
@@ -76,11 +75,9 @@ function normalize_category_value(raw: unknown, config: EntryCategoryConfig): st
   return alias && alias in config.markers ? alias : null
 }
 
-// Resolve an entry's category: first *recognized* value wins. Properties are checked in
-// config order (property-major), each looked up top-level, then in the pymatgen `data`
-// and Materials Project `attributes` dicts — so a `magnetic_ordering` in any source
-// beats a generic `ordering`. Unrecognized values (e.g. MP's ordering='Unknown') fall
-// through; returns null when none resolve.
+// An entry's category: the first *recognized* value of config properties in order, each looked
+// up top-level, then in pymatgen `data` and MP `attributes` (so `magnetic_ordering` anywhere
+// beats a generic `ordering`). Unrecognized values (MP's ordering='Unknown') fall through.
 export function get_entry_category(
   entry: CategorySource,
   config: EntryCategoryConfig | null,
@@ -97,9 +94,8 @@ export function get_entry_category(
   return null
 }
 
-// Assign default marker shapes by category (per config.markers). Explicit entry.marker
-// values win. Returns the input array unchanged when no marker was assigned (e.g. when
-// config is null or entries lack category data).
+// Default marker shapes by category (explicit entry.marker wins). Returns the input array
+// unchanged when no marker was assigned.
 export function apply_category_markers<Entry extends PhaseData & { marker?: MarkerSymbol }>(
   entries: Entry[],
   config: EntryCategoryConfig | null,
@@ -133,15 +129,11 @@ export const visible_entries = <Entry extends StabilityEntry & CategorySource>(
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
   color_mode: `stability` | `energy`,
-  color_scale: D3InterpolateName,
+  color_scale: ColorScale, // unset value_range ends fit the entries' hull distances
   plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
-  const dists = color_mode === `energy` ? finite_hull_dists(plot_entries) : []
-  if (dists.length === 0) return null
-  const [lower, max_dist] = array_extent(dists)
-  const upper = Math.max(max_dist, 0.1, lower + 1e-6)
-  const interpolator = get_d3_interpolator(color_scale)
-  return scaleSequential(interpolator).domain([lower, upper])
+  if (color_mode !== `energy` || finite_hull_dists(plot_entries).length === 0) return null
+  return resolve_color_scale(color_scale, hull_distance_range(plot_entries)).color_fn
 }
 
 // Point color resolver (shared)
@@ -151,12 +143,9 @@ export function get_point_color_for_entry(
   colors: ConvexHullConfig[`colors`] | undefined,
   energy_scale: ((value: number) => string) | null,
 ): string {
-  const is_stable = entry_is_stable(entry)
   if (color_mode === `stability`) {
-    return (
-      colors?.[is_stable ? `stable` : `unstable`] ??
-      DEFAULT_HULL_COLORS[is_stable ? `stable` : `unstable`]
-    )
+    const key = entry_is_stable(entry) ? `stable` : `unstable`
+    return colors?.[key] ?? DEFAULT_HULL_COLORS[key]
   }
   return energy_scale && typeof entry.e_above_hull === `number`
     ? energy_scale(entry.e_above_hull)
@@ -170,8 +159,7 @@ export function calc_max_hull_dist_in_data(processed_entries: readonly PhaseData
   return Math.max(0.1, max_hull_dist + 0.001)
 }
 
-// Smart threshold for showing unstable entries based on entry count.
-// Few entries (≤25): show all. Many entries (≥100): use static default. Between: interpolate.
+// Hull distance threshold by entry count: all for ≤25, static default for ≥100, else blended
 export function compute_auto_hull_dist_threshold(
   n_entries: number,
   max_hull_dist_in_data: number,
@@ -184,8 +172,8 @@ export function compute_auto_hull_dist_threshold(
   return max_hull_dist_in_data * (1 - frac) + static_default * frac
 }
 
-// Returns the threshold to apply when the data source changes (undefined = leave as is).
-// A user adjustment away from the previous auto value is preserved across source changes.
+// Threshold to apply when the data source changes (undefined = leave as is), preserving a
+// user adjustment away from the previous auto value
 export function auto_threshold_reset(default_threshold: number) {
   let source: unknown
   let auto_threshold = default_threshold
@@ -212,9 +200,8 @@ export function current_entry<Entry extends { entry_id?: string }>(
   return entries.find((candidate) => candidate === entry) ?? null
 }
 
-// Same logical entry: same object or same entry_id. The id check is proxy-safe — a raw
-// plot entry equals its $state-proxied copy, so the selection effect doesn't reassign
-// forever (effect_update_depth_exceeded) on identity mismatch.
+// Same object or same entry_id. The id check is proxy-safe: a raw entry equals its $state
+// proxy, else the selection effect reassigns forever (effect_update_depth_exceeded).
 export function same_entry<Entry extends { entry_id?: string }>(
   entry_a: Entry | null | undefined,
   entry_b: Entry | null | undefined,
@@ -322,10 +309,8 @@ function compute_energy_per_atom(entry: PhaseData): number | null {
   return total_atoms > 0 ? entry.energy / total_atoms : null
 }
 
-// Energy value per metric, null when the entry cannot supply it. Key order is the preference
-// order a composition group picks from.
-// NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
-// because polymorphs of the same composition on the hull all have e_above_hull=0
+// Energy per metric (null if unavailable), keys in preference order. Absolute energies come
+// before e_above_hull since same-composition polymorphs on the hull all have e_above_hull=0.
 const METRIC_ENERGY: Record<
   Exclude<EnergyMetric, null>,
   (entry: PhaseData) => number | null
@@ -352,15 +337,12 @@ const get_fractional_composition_key = (composition: Record<string, number>): st
     .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
     .join(`|`)
 
-// Pick one label target per normalized composition. Multiple polymorphs, supercell
-// formulas, or same-composition entries often project to the same screen position.
+// One label target per normalized composition (polymorphs and supercell formulas share a spot)
 export function get_composition_label_entries<T extends PhaseData>(entries: Iterable<T>): T[] {
   const label_entry_by_composition = new Map<string, T>()
-
   for (const entry of entries) {
     const comp_key = get_fractional_composition_key(entry.composition)
     if (!comp_key) continue
-
     const existing = label_entry_by_composition.get(comp_key)
     if (
       !existing ||
@@ -369,7 +351,6 @@ export function get_composition_label_entries<T extends PhaseData>(entries: Iter
       label_entry_by_composition.set(comp_key, entry)
     }
   }
-
   return Array.from(label_entry_by_composition.values())
 }
 
@@ -379,23 +360,18 @@ const select_group_energy_metric = (polymorphs: PhaseData[]): EnergyMetric =>
     polymorphs.every((entry) => METRIC_ENERGY[metric](entry) !== null),
   ) ?? null
 
-// Rank each composition's energies once, then exclude same-ID entries by their ranks.
-// Returns a Map keyed by entry_id for O(1) lookups during hover
+// Polymorph stats keyed by entry_id: rank each composition's energies once, then exclude
+// same-ID entries by their ranks
 export function compute_all_polymorph_stats(
   all_entries: PhaseData[],
 ): Map<string, PolymorphStats> {
   const stats_map = new Map<string, PolymorphStats>()
   const zero_stats = { total: 0, higher: 0, lower: 0, equal: 0 }
-
-  // Calculate stats for each polymorph group (grouped by normalized stoichiometry)
   const composition_groups = Map.groupBy(all_entries, (entry) =>
     get_fractional_composition_key(entry.composition),
   )
   for (const polymorphs of composition_groups.values()) {
-    // Select one consistent metric for the entire composition group
     const group_metric = select_group_energy_metric(polymorphs)
-
-    // If no valid metric available, set all entries in group to zero stats
     if (group_metric === null) {
       for (const entry of polymorphs) {
         if (entry.entry_id) stats_map.set(entry.entry_id, zero_stats)
@@ -421,7 +397,6 @@ export function compute_all_polymorph_stats(
       stats_map.set(identifier, { total, higher, lower, equal: total - higher - lower })
     }
   }
-
   return stats_map
 }
 
@@ -433,9 +408,8 @@ export interface TemperatureAnalysis {
   available_temperatures: number[] // sorted unique T values (union across all entries)
 }
 
-// Snap an unset temperature to the lowest available one, and an out-of-range or (without
-// interpolation) untabulated one to the nearest (lower on ties); left alone when there is no
-// temperature data
+// Snap an unset temperature to the lowest available one, an out-of-range or (without
+// interpolation) untabulated one to the nearest (lower on ties)
 export function get_valid_temperature(
   temperature: number | undefined,
   temps: readonly number[],
@@ -452,8 +426,7 @@ export function get_valid_temperature(
   )
 }
 
-// Analyze entries for temperature-dependent free energy data.
-// Returns available temperatures (union of all T values across entries) if any entries have temp data.
+// Union of tabulated temperatures across entries with temperature-dependent free energies
 export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnalysis {
   const unique_temperatures = new Set<number>()
   for (const entry of entries) {
@@ -463,15 +436,11 @@ export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnaly
   const available_temperatures = [...unique_temperatures].toSorted(
     (left_value, right_value) => left_value - right_value,
   )
-  return {
-    has_temp_data: available_temperatures.length > 0,
-    available_temperatures,
-  }
+  return { has_temp_data: available_temperatures.length > 0, available_temperatures }
 }
 
-// Linearly interpolated G(T) between the tightest tabulated temperatures bracketing
-// `temperature` (below < T < above); null when T is outside the tabulated range or the bracket
-// is wider than `max_gap`. Scans every entry: the arrays may be unsorted.
+// G(T) interpolated between the tightest bracketing tabulated temperatures (arrays may be
+// unsorted); null outside the tabulated range or when the bracket exceeds `max_gap`
 export function interpolate_energy_at_temperature(
   entry: PhaseData,
   temperature: number,
@@ -505,10 +474,8 @@ export interface TemperatureFilterOptions {
   max_interpolation_gap?: number
 }
 
-// Filter entries for temperature T, replacing energy with G(T) where available.
-// - Entries WITH temp data at T: use G(T) as energy
-// - Entries WITHOUT any temp data: keep with static energy (e.g., pure element refs)
-// - Entries WITH temp data but MISSING T: interpolate if enabled and possible, else excluded
+// Entries at temperature T with energy G(T). Entries without temp data keep their static
+// energy; ones lacking T are interpolated if enabled and possible, else excluded.
 export function filter_entries_at_temperature(
   entries: PhaseData[],
   temperature: number,
@@ -541,9 +508,8 @@ export function filter_entries_at_temperature(
   })
 }
 
-// Copy of `entry` holding only `composition` (cloned) and the listed keys, so worker
-// payloads and fingerprints carry the fields the computation reads and never the structures
-// or calculation metadata. Undefined fields are left out rather than copied as `undefined`.
+// Copy of `entry` with only `composition` (cloned) and the listed defined keys, so worker
+// payloads and fingerprints never carry structures or calculation metadata
 export function slim_phase_entry<Key extends keyof PhaseData>(
   entry: PhaseData,
   keys: readonly Key[],

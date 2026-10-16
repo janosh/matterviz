@@ -33,14 +33,13 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, html_to_text, to_error } from '#lib/utils.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { html_to_text, to_error } from '#lib/utils.js'
   import {
     display_idx,
     from_display_idx,
     parse_axis_label,
     format_num,
-    plural,
+    parse_warnings_notice,
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
@@ -48,16 +47,18 @@
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { FullscreenButton, SettingsSection, ShortcutsHelp } from '#lib/layout/index.js'
+  import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
+  import { is_sequence_key_target } from '#lib/layout/sequence-player.svelte.js'
   import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { StructurePane, StructureOptions } from '#lib/structure/index.js'
+  import type { Site, StructurePane, StructureOptions } from '#lib/structure/index.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
@@ -86,7 +87,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
-  import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type {
@@ -188,7 +189,6 @@
     loading_options = {},
     allow_file_drop = DEFAULTS.trajectory.allow_file_drop,
     spinner_props = {},
-    error_snippet,
     on_file_load,
     on_error,
     structure_series_key = trajectory,
@@ -220,7 +220,6 @@
     extra_controls,
     active_pane = $bindable(null),
     on_step_change,
-    on_frame_rendered,
     on_play,
     on_pause,
     on_end,
@@ -240,7 +239,6 @@
     >
     allow_file_drop?: boolean
     spinner_props?: ComponentProps<typeof Spinner>
-    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
     on_file_load?: EventHandler
     on_error?: EventHandler
     // Stable identity when a host regenerates frames within the same displayed structure
@@ -260,10 +258,7 @@
     pane_ratio?: number
     structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
     supercell_scaling?: string
-    scatter_props?: Omit<
-      ScatterPlotOptions,
-      `tooltip` | `x_axis` | `y_axis` | `y2_axis` | `hidden_series`
-    >
+    scatter_props?: Omit<ScatterPlotOptions, `x_axis` | `y_axis` | `y2_axis` | `hidden_series`>
     histogram_props?: Omit<
       HistogramOptions,
       `series` | `hidden_series` | `mode` | `selected_series_idx` | `x2_axis` | `y2_axis`
@@ -295,8 +290,6 @@
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     on_step_change?: EventHandler
-    // Emitted after the complete scene is submitted, independently of requested navigation.
-    on_frame_rendered?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
     on_end?: EventHandler
@@ -510,7 +503,6 @@
       structure_props.children ||
       structure_props.on_camera_move ||
       structure_props.on_camera_reset ||
-      on_frame_rendered ||
       on_step_change ||
       on_play ||
       on_pause ||
@@ -863,9 +855,7 @@
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
   // Writable so the banner can be dismissed
   let warning_msg = $derived(
-    trajectory && trajectory.warnings.length > 0
-      ? `${plural(trajectory.warnings.length, `parse warning`)}: ${trajectory.warnings.join(`; `)}`
-      : undefined,
+    trajectory ? parse_warnings_notice(trajectory.warnings) : undefined,
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
@@ -1161,41 +1151,20 @@
   }
 
   // === keyboard ===
-  // Returns true if the key was handled, so the caller can suppress the browser default
-  function onkeydown(event: KeyboardEvent): boolean {
-    // Bound on the root and on the window: a click leaves the viewer focused *and*
-    // hovered, so both would run and a toggle would cancel itself out. The root fires
-    // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented || event.isComposing) return false
-    // Leave form fields alone; sequence controls handle their own navigation keys and let
-    // the viewer shortcuts they do not use bubble here
-    const target = event.target instanceof HTMLElement ? event.target : null
-    const is_sequence_slider = target?.classList.contains(`step-slider`)
-    if (!is_sequence_slider && target && is_editable_event_target(event.target)) {
-      if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
-        target.blur()
-      }
-      return false
-    }
-    // Space presses a focused button or toggles a <summary>; playback must not swallow that
-    if (event.key === ` ` && target?.closest(`button, summary, [role="button"]`)) return false
+  const keys = viewer_keydown((event) => {
+    if (!is_sequence_key_target(event)) return false
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
-    if (
-      key === `v` &&
-      !event.altKey &&
-      !event.repeat &&
-      has_plot_properties &&
-      wrapper?.contains(wrapper.ownerDocument.activeElement)
-    ) {
+    if (key === `v` && !event.altKey && !event.repeat && has_plot_properties) {
       const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
       const next =
         (index + (event.shiftKey ? -1 : 1) + DISPLAY_MODES.length) % DISPLAY_MODES.length
       select_display_mode(DISPLAY_MODES[next].mode)
       shortcut_flash.show(`view`)
       // A mode change may unmount the focused plot/structure; keep subsequent shortcuts here.
-      wrapper.focus({ preventScroll: true })
+      if (wrapper?.contains(wrapper.ownerDocument.activeElement))
+        wrapper.focus({ preventScroll: true })
       return true
     }
     // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
@@ -1207,7 +1176,7 @@
     else if (analysis_menu_open) analysis_menu_open = false
     else return false
     return true
-  }
+  })
 
   // === linked views: analyses point at atoms of the displayed frame ===
   // Inspector rows select atoms like a 3D click; hovering an analysis curve, bar or structure
@@ -1315,14 +1284,13 @@
     : undefined}
   data-scrubbing={scrub_active}
   role="application"
-  aria-keyshortcuts={has_plot_properties ? `V Shift+V` : undefined}
+  aria-keyshortcuts={has_plot_properties ? SHORTCUTS.view_mode.keys : undefined}
   aria-label={!trajectory && allow_file_drop
     ? `Drop trajectory file here to load`
     : `Trajectory viewer`}
   tabindex="0"
   onpointerenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
-  onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory`, actual_layout, rest.class]}
   class:spectroscopy-mode={spectroscopy_open}
@@ -1335,7 +1303,7 @@
     },
     on_error: (message) => report_error(message),
   })}
-  {@attach forward_window_keydown({ handle: onkeydown })}
+  {@attach keys}
 >
   {#if hdf5_selection && hdf5_picker_open}
     <EmptyState
@@ -1410,7 +1378,7 @@
       />
     </div>
   {:else if error_msg}
-    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
+    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} />
   {:else if trajectory}
     {#if hdf5_selection}
       <button
@@ -1498,9 +1466,6 @@
           playback={player}
           {step_label_positions}
           item_name="step"
-          previous_title="Previous step (←) · Home: first · j: −10 · PageUp: −25"
-          play_title={`${player.is_playing ? `Pause` : `Play`} (Space) · ←/→ step · 0-9 jump % · +/- speed · f fullscreen`}
-          next_title="Next step (→) · End: last · l: +10 · PageDown: +25"
           on_index_input={session.scrub}
         >
           {#snippet slider_overlay()}
@@ -1714,7 +1679,10 @@
           {#if has_plot_properties && controls_config.visible(`view-mode`)}
             <ToolbarMenu
               bind:open={view_mode_dropdown_open}
-              label={`${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label} (V: next, Shift+V: previous)`}
+              label={shortcut_title(
+                `view_mode`,
+                `${display_mode === `auto` ? `Automatic: ` : ``}${current_display_mode.label}`,
+              )}
               class="view-mode-dropdown-wrapper"
               button_style={shortcut_flash.style(`view`)}
             >
@@ -1733,6 +1701,14 @@
               {/each}
             </ToolbarMenu>
           {/if}
+          <ShortcutsHelp
+            scopes={[
+              `viewer`,
+              `sequence`,
+              ...(has_plot_properties ? [`trajectory` as const] : []),
+            ]}
+            {wrapper}
+          />
           {#if fullscreen || show_toggle}
             <FullscreenButton
               bind:fullscreen
@@ -1761,6 +1737,54 @@
         : undefined}
     >
       {#if show_structure}
+        {#snippet site_tooltip({ site, site_idx }: { site: Site; site_idx: number })}
+          {#if structure_props.tooltip}{@render structure_props.tooltip({
+              site,
+              site_idx,
+            })}{/if}
+          {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
+            {@const probe = hotspot_probe(
+              hotspot_result,
+              hotspot_values,
+              field_geometry,
+              site.xyz,
+            )}
+            <div
+              style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
+            >
+              {#if probe}
+                <div>
+                  Bin-average {hotspot_metric === `energy`
+                    ? `kinetic energy`
+                    : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
+                  <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
+                </div>
+                <div>
+                  {Number.isFinite(probe.ratio)
+                    ? `${format_num(probe.ratio, `.3~g`)}× mean`
+                    : `Ratio to mean unavailable (zero mean)`}
+                </div>
+                <div>
+                  {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
+                  frames
+                </div>
+              {:else}
+                <div>
+                  Bin-average heat unavailable (outside grid, missing or underpopulated bin)
+                </div>
+              {/if}
+              <div>
+                Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
+                · {hotspot_result.weighting} weighting
+              </div>
+              <div>
+                Viewing frame {session.scene_frame ? display_idx(session.scene_frame.idx) : ``} ·
+                {hotspot_result.options.coordinates ?? `device`} grid
+              </div>
+            </div>
+          {/if}
+        {/snippet}
+
         <Structure
           allow_file_drop={false}
           style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
@@ -1772,6 +1796,7 @@
             ...structure_props,
           }}
           show_controls={nested_controls(structure_props.show_controls)}
+          tooltip={structure_props.tooltip === false ? false : site_tooltip}
           bind:scene_props={trail_scene_props}
           bind:atom_color_config
           {atom_color_field}
@@ -1783,14 +1808,7 @@
             : 1}
           structure={session.current_structure}
           render_token={session.scene_frame}
-          on_rendered={(snapshot) => {
-            if (session.mark_rendered(snapshot) && session.scene_frame)
-              on_frame_rendered?.({
-                step_idx: session.scene_frame.idx,
-                frame_count: session.frame_count,
-                frame: session.scene_frame.frame,
-              })
-          }}
+          on_rendered={session.mark_rendered}
           {structure_series_key}
           bind:display_mode={structure_display_mode}
           trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
@@ -1813,53 +1831,7 @@
           bind:hidden_elements
           bind:selected_sites
           bind:highlighted_sites
-        >
-          {#snippet atom_tooltip({ site, site_idx })}
-            {@render structure_props.atom_tooltip?.({ site, site_idx })}
-            {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
-              {@const probe = hotspot_probe(
-                hotspot_result,
-                hotspot_values,
-                field_geometry,
-                site.xyz,
-              )}
-              <div
-                style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
-              >
-                {#if probe}
-                  <div>
-                    Bin-average {hotspot_metric === `energy`
-                      ? `kinetic energy`
-                      : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
-                    <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
-                  </div>
-                  <div>
-                    {Number.isFinite(probe.ratio)
-                      ? `${format_num(probe.ratio, `.3~g`)}× mean`
-                      : `Ratio to mean unavailable (zero mean)`}
-                  </div>
-                  <div>
-                    {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
-                    frames
-                  </div>
-                {:else}
-                  <div>
-                    Bin-average heat unavailable (outside grid, missing or underpopulated bin)
-                  </div>
-                {/if}
-                <div>
-                  Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
-                  · {hotspot_result.weighting} weighting
-                </div>
-                <div>
-                  Viewing frame {session.scene_frame
-                    ? display_idx(session.scene_frame.idx)
-                    : ``} · {hotspot_result.options.coordinates ?? `device`} grid
-                </div>
-              </div>
-            {/if}
-          {/snippet}
-        </Structure>
+        />
       {/if}
 
       {#if show_structure && show_plot}
@@ -1885,8 +1857,30 @@
             style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
           />
         {:else if plot_type === `time-series`}
+          {#snippet series_tooltip({
+            x: coord_x,
+            y: coord_y,
+            raw_y,
+            metadata,
+            label,
+          }: ScatterHandlerProps)}
+            <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
+            {@const value_label = String(metadata?.series_label || label || `Value`)}
+            <TooltipValue label={value_label} value={format_num(coord_y)} />
+            {#if typeof raw_y === `number`}
+              <span style="opacity: 0.65"
+                >&nbsp;(<TooltipValue
+                  label="raw"
+                  value={format_num(raw_y)}
+                  unit={parse_axis_label(value_label).unit}
+                />)</span
+              >
+            {/if}
+          {/snippet}
+
           <ScatterPlot
             {...scatter_props}
+            tooltip={scatter_props.tooltip ?? series_tooltip}
             show_controls={nested_controls(scatter_props.show_controls)}
             series={scatter_series}
             bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
@@ -1909,26 +1903,6 @@
                 base_plot_series.some((srs) => is_energy_property(srs.id)),
               )}
               {@render scatter_props.controls_extra?.(config)}
-            {/snippet}
-            {#snippet tooltip({
-              x: coord_x,
-              y: coord_y,
-              raw_y,
-              metadata,
-              label,
-            }: ScatterHandlerProps)}
-              <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
-              {@const value_label = String(metadata?.series_label || label || `Value`)}
-              <TooltipValue label={value_label} value={format_num(coord_y)} />
-              {#if typeof raw_y === `number`}
-                <span style="opacity: 0.65"
-                  >&nbsp;(<TooltipValue
-                    label="raw"
-                    value={format_num(raw_y)}
-                    unit={parse_axis_label(value_label).unit}
-                  />)</span
-                >
-              {/if}
             {/snippet}
           </ScatterPlot>
         {:else}
@@ -1980,21 +1954,11 @@
         />
       {/if}
       <p>
-        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, OUTCAR,
-        vasprun.xml, .traj, .h5) or provide trajectory data via props
+        Drop a trajectory file here or provide trajectory data via props. Supported:
+        multi-frame (ext)XYZ, ASE .traj, pymatgen or structure-array JSON, VASP XDATCAR, OUTCAR
+        and vasprun.xml, LAMMPS dumps (.lammpstrj) and HDF5 (.h5, .hdf5), each optionally
+        gzipped.
       </p>
-      <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
-      <ul>
-        <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
-        <li>ASE trajectory files (.traj)</li>
-        <li>Pymatgen trajectory JSON</li>
-        <li>Array of structures with metadata</li>
-        <li>VASP XDATCAR, OUTCAR and vasprun.xml files</li>
-        <li>LAMMPS dump files (.lammpstrj)</li>
-        <li>HDF5 trajectory files (.h5, .hdf5)</li>
-        <li>Compressed files (.gz)</li>
-      </ul>
-      <p>💡 Force vectors will be automatically displayed when present in trajectory data</p>
     </EmptyState>
   {/if}
 </div>
@@ -2195,10 +2159,8 @@
     padding: 2rem;
     border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
-    :where(p, ul) {
+    :where(p) {
       color: var(--text-color-muted);
-    }
-    :where(ul, li, strong) {
       max-width: var(--trajectory-empty-state-max-width, 500px);
       margin-inline: auto;
     }

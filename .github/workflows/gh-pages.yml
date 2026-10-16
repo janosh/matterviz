@@ -19,13 +19,15 @@ jobs:
   build:
     name: Build documentation site
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
 
       - name: Install dependencies
         uses: ./.github/actions/setup
+        with:
+          extensions: anywidget
 
       # adapter-static won't follow symlinks out of static/, so replace each
       # static/<dir> -> ../src/site/<dir> symlink with a real copy (auto-discovered)
@@ -39,6 +41,13 @@ jobs:
 
       - name: Build site
         run: pnpm run build:site
+
+      # Serves main's widget bundle at /anywidget/matterviz.{js,css}: pymatviz's main branch
+      # loads it (MATTERVIZ_ANYWIDGET_VERSION = "main") until an npm release pins a version
+      - name: Build anywidget bundle into the site
+        run: |
+          pnpm -C extensions/anywidget run build
+          cp -r extensions/anywidget/build build/anywidget
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

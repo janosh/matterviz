@@ -1,10 +1,7 @@
 // Geometry for the generic ternary (barycentric) plot: composition triples to triangle
-// coordinates and back, the grid of constant-fraction lines with their tick anchors, and
-// the pixel fit of the unit triangle into a plot area.
-//
-// Corner convention matches the convex hull and the isothermal ternary sections
-// (TRIANGLE_VERTICES): the first component sits at the right corner, the second at the
-// top, the third at the left.
+// coordinates and back, the grid of constant-fraction lines with their tick anchors, and the
+// pixel fit of the unit triangle into a plot area. Corners match the convex hull and
+// isothermal sections (TRIANGLE_VERTICES): first component right, second top, third left.
 import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { LineStyle, Markers, PointStyle } from '#lib/plot/core/types.js'
@@ -87,10 +84,9 @@ export const inside_triangle = (fractions: Vec3, tolerance = TOLERANCE): boolean
   fractions.every((frac) => frac >= -tolerance)
 
 // One grid line: the locus of `component` = `value`, from one edge of the triangle to the
-// other. `from` is the end that carries the tick label and `outward` the unit direction
-// pointing away from the triangle there: fraction ticks of the right corner's component
-// read along the bottom edge, of the top corner's along the right edge and of the left
-// corner's along the left edge, each written on the outside.
+// other. `from` carries the tick label and `outward` points away from the triangle there:
+// ticks of the right corner's component read along the bottom edge, of the top corner's along
+// the right edge and of the left corner's along the left edge, each written on the outside.
 export interface TernaryGridLine {
   component: 0 | 1 | 2
   value: number

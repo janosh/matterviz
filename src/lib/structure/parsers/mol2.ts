@@ -3,6 +3,7 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, BondOrder, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   cell_frame,
   drop_placeholder_cell,
@@ -85,7 +86,7 @@ export const parse_mol2 = (content: string): AnyStructure => {
   const first_record =
     molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
   if (molecule_headers.length > 1) {
-    console.warn(
+    parse_warn(
       `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${
         molecule_headers.length - 1
       }`,
@@ -132,7 +133,7 @@ export const parse_mol2 = (content: string): AnyStructure => {
     if (bond_type === `nc`) continue
     const order = MOL2_BOND_ORDERS[bond_type]
     if (order === undefined) {
-      console.warn(
+      parse_warn(
         `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
       )
     }

@@ -25,7 +25,7 @@
     error_msg = $bindable(),
     x_axis = {},
     y_axis = {},
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     on_curve_hover,
     ...rest
@@ -132,7 +132,7 @@
   {@const summary = result}
   <ScatterPlot
     {...rest}
-    bind:show_controls
+    {show_controls}
     bind:controls_open
     {series}
     x_axis={{ label: summary.x_label, ...x_axis }}

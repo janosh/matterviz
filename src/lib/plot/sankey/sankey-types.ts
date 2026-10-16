@@ -1,4 +1,3 @@
-// === Sankey diagram types ===
 // Public input/event types for the Sankey component; layout-result types
 // (PositionedNode/PositionedLink) live in sankey.ts next to the layout math.
 

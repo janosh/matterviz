@@ -64,4 +64,16 @@ describe(`sync-config`, () => {
       additionalProperties: { type: `object` },
     })
   })
+
+  // A color scale setting takes a scheme name or a config object, so VS Code must accept both
+  test.each([
+    `matterviz.structure.atom_color_scale`,
+    `matterviz.structure.vector_color_scale`,
+    `matterviz.convex_hull.ternary.color_scale`,
+  ])(`%s accepts a scheme name or a color scale config`, (key) => {
+    expect(generated[key]).toMatchObject({
+      type: [`string`, `object`],
+      default: `interpolateViridis`,
+    })
+  })
 })

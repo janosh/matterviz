@@ -7,7 +7,7 @@ import {
 } from '#lib/scene/props.svelte.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 describe(`build_orbit_props`, () => {
   const opts: Parameters<typeof build_orbit_props>[0] = {
@@ -67,21 +67,18 @@ describe(`build_orbit_props`, () => {
     expect(on_start_extra).toHaveBeenCalledTimes(events.includes(`start`) ? 1 : 0)
   })
 
-  describe(`page visibility`, () => {
-    afterEach(() => {
-      page_visibility.visible = true
-    })
-
-    test.each([
-      [true, true],
-      [false, false],
-    ])(`visible=%s keeps autoRotate=%s (speed preserved)`, (visible, auto_rotate_on) => {
+  test.each([true, false])(
+    `page visible=%s gates autoRotate, keeping its speed`,
+    (visible) => {
       page_visibility.visible = visible
+      onTestFinished(() => {
+        page_visibility.visible = true
+      })
       const props = build_orbit_props({ ...opts, auto_rotate: 1.5 })
-      expect(props.autoRotate).toBe(auto_rotate_on)
+      expect(props.autoRotate).toBe(visible)
       expect(props.autoRotateSpeed).toBe(1.5) // resumes at full speed when shown
-    })
-  })
+    },
+  )
 
   describe(`perspective zoom limits`, () => {
     const height = 600

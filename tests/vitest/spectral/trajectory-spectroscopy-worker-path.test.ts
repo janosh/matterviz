@@ -6,41 +6,25 @@ import type {
   TrajectorySpectroscopyOptions,
 } from '#lib/spectral/trajectory-spectroscopy.js'
 import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
-import type { TrajectorySignal } from '#lib/trajectory/index.js'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
-import { make_position_stream } from '../test-fixtures'
-
-const signal = (
-  n_samples: number,
-  sample_shape: number[],
-  sample: (sample_idx: number) => number[],
-): TrajectorySignal => ({
-  values: Float64Array.from(
-    Array.from({ length: n_samples }, (_unused, sample_idx) => sample(sample_idx)).flat(),
-  ),
-  sample_shape,
-  steps: Array.from({ length: n_samples }, (_unused, sample_idx) => sample_idx),
-})
+import { make_position_stream, make_signal } from '../test-fixtures'
 
 const make_input = (): TrajectorySpectroscopyInput => {
   const n_frames = 16
   const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
-  const velocities = signal(n_frames, [2, 3], (sample_idx) => [
-    Math.cos((2 * Math.PI * sample_idx) / 4),
+  const phase = (sample_idx: number) => (2 * Math.PI * sample_idx) / 4
+  const velocities = make_signal(n_frames, [2, 3], (idx) => [
+    Math.cos(phase(idx)),
     0,
     0,
     0,
     0,
     0,
   ])
-  const response = signal(n_frames, [3], (sample_idx) => [
-    Math.sin((2 * Math.PI * sample_idx) / 4),
-    0,
-    0,
-  ])
-  const polarizability = signal(n_frames, [3, 3], (sample_idx) => {
-    const value = 1 + 0.1 * Math.sin((2 * Math.PI * sample_idx) / 4)
+  const response = make_signal(n_frames, [3], (idx) => [Math.sin(phase(idx)), 0, 0])
+  const polarizability = make_signal(n_frames, [3, 3], (sample_idx) => {
+    const value = 1 + 0.1 * Math.sin(phase(sample_idx))
     return [value, 0, 0, 0, value, 0, 0, 0, value]
   })
   return {

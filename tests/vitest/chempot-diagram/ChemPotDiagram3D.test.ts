@@ -217,7 +217,7 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   await tick()
   expect(convex_builds.count - before).toBe(0)
   expect(document.querySelector(`.spinner`)).toBeNull()
-  expect(document.querySelector(`.error-state`)).toBeNull()
+  expect(document.querySelector(`.empty-state`)).toBeNull()
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
 })
 

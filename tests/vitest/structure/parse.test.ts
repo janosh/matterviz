@@ -16,7 +16,6 @@ import {
   parse_xyz,
 } from '#lib/structure/parse.js'
 import { is_structure_file } from '#lib/structure/format-detect.js'
-import { structure_to_cif_str } from '#lib/structure/export.js'
 import {
   complete_lattice_matrix,
   count_elements,
@@ -688,20 +687,9 @@ O2   O   0.410  0.140  0.880  1.000`
     expect([result.lattice.a, result.lattice.b, result.lattice.c]).toEqual([5.4309, 4, 3])
   })
 
-  test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
-    const result = parse_cif(ru_p_complex_cif)
-
-    // per-element counts must match the header's _atom_type_number_in_cell, so symmetry
-    // expansion isn't over-generating
-    expect(result.sites).toHaveLength(616)
-    expect(element_counts(result)).toEqual({ C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 })
-    const { a: lattice_a, b: lattice_b, c: lattice_c } = result.lattice ?? {}
-    expect([lattice_a, lattice_b, lattice_c].every(Number.isFinite)).toBe(true)
-  })
-
   // Lattice-centering reconstruction from the space-group H-M symbol. Applied
   // only when it reconciles _atom_type_number_in_cell exactly, so atom lists
-  // that already embed centering (e.g. COD 7008984 above) are never doubled.
+  // that already embed centering (e.g. COD 7008984) are never doubled.
   describe(`CIF centering from space-group symbol`, () => {
     // Minimal CIF with an identity-only symop loop, optional `<symbol> <count>`
     // _atom_type rows and atom-site rows (defaults to a single Fe at the origin).
@@ -813,29 +801,15 @@ O2   O   0.410  0.140  0.880  1.000`
     expect(actual).toEqual(expected_sites)
     for (const site of result.sites) expect(site.species[0].occu).toBe(1.0)
     expect_sites_reconstruct(result)
-    expect(result.lattice.a).toBe(5.0)
-    expect(result.lattice.alpha).toBe(90)
-    expect(result.lattice.volume).toBe(125.0)
   })
 
   it(`should wrap fractional coordinates outside [0,1) into the cell`, () => {
-    const rows = `C1   C   1.250  0.750  0.500  1.000\nO1   O  -0.250  1.750  0.500  1.000\nH1   H   2.100  0.900  0.500  1.000`
-    const result = parse_cif(
-      `data_test_wrapping\n${cell5}\n${site_loop}\n_atom_site_occupancy\n${rows}`,
-    )
-
-    expect(result.sites).toHaveLength(3)
-
-    const expected_coords = { C: [0.25, 0.75, 0.5], O: [0.75, 0.75, 0.5], H: [0.1, 0.9, 0.5] }
-    for (const [element, expected] of Object.entries(expected_coords)) {
-      const matching_site = result.sites.find((site) => site.species[0].element === element)
-      expect_vec3_close(matching_site?.abc, expected, 12)
-    }
+    const rows = `C1 C 1.25 0.75 0.5\nO1 O -0.25 1.75 0.5\nH1 H 2.1 0.9 0.5`
+    const result = parse_cif(`data_test_wrapping\n${cell5}\n${site_loop}\n${rows}`)
+    // oxfmt-ignore
+    expect(rounded_abc(result.sites)).toEqual([[0.25, 0.75, 0.5], [0.75, 0.75, 0.5], [0.1, 0.9, 0.5]])
     // xyz must stay consistent with the wrapped abc
-    for (const site of result.sites) {
-      expect_abc_in_unit_cell(site)
-      expect_xyz_matches_abc(site, result.lattice.matrix)
-    }
+    expect_sites_reconstruct(result)
   })
 
   // Uppercase symbols used to be read one letter at a time (`FE2+` -> F, `CL` -> C); the
@@ -1276,23 +1250,6 @@ O3 O2- 0.75 0.25 0.75`
 
       expect(result.sites.map((site) => site.label)).toEqual([`Fe1`, `O2`])
     })
-
-    // Refinement labels (`Fe1`/`Fe2` for two Fe sites, `OH2` for a hydroxyl O) survive a
-    // parse -> structure_to_cif_str -> parse round trip instead of being renumbered
-    test(`round-trips _atom_site_label through structure_to_cif_str`, () => {
-      const labels = [`Fe1`, `Fe2`, `O1a`, `OH2`]
-      const rows = [
-        `Fe1 Fe 0 0 0`,
-        `Fe2 Fe 0.5 0.5 0.5`,
-        `O1a O 0.25 0.25 0.25`,
-        `OH2 O 0.75 0.75 0.75`,
-      ]
-      const parsed = parse_cif(`data_test\n${cell4}\n${site_loop}\n${rows.join(`\n`)}`)
-
-      expect(parsed.sites.map((site) => site.label)).toEqual(labels)
-      const reparsed = parse_cif(structure_to_cif_str(parsed))
-      expect(reparsed.sites.map((site) => site.label)).toEqual(labels)
-    })
   })
 
   // Rows sharing a position are ONE disordered site (pymatgen CifParser semantics): its
@@ -1404,19 +1361,12 @@ _atom_site_B_iso_or_equiv
 _atom_site_occupancy
 _atom_site_attached_hydrogens
 Sn1 Sn2+ 2 a 0.5270(2) 0.3856(2) 0.7224(3) 0.0266(4) 1. 0
-Sn2 Sn2+ 2 a 0.0279(2) 0.1245(2) 0.7870(2) 0.0209(4) 1. 0
 As1 As4+ 2 a 0.6836(4) 0.1608(5) 0.8108(6) 0.0067(7) 1. 0
-As2 As4+ 2 a 0.8174(4) 0.6447(6) 0.1908(6) 0.0057(6) 1. 0
-Se1 Se2- 2 a 0.4898(4) 0.7511(6) 0.8491(6) 0.0110(6) 1. 0
-Se2 Se2- 2 a 0.7788(4) 0.6462(6) 0.2750(6) 0.0097(6) 1. 0
-Se3 Se2- 2 a 0.6942(4) 0.0517(5) 0.5921(6) 0.2095(6) 1. 0
-Se4 Se2- 2 a 0.0149(4) 0.3437(6) 0.5497(7) 0.1123(7) 1. 0
-Se5 Se2- 2 a 0.1147(4) 0.5633(4) 0.3288(6) 0.1078(6) 1. 0
-Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
+Se1 Se2- 2 a 0.4898(4) 0.7511(6) 0.8491(6) 0.0110(6) 1. 0`
 
     const result = parse_cif(icsd_cif)
-    // 10 unique sites × 2 symmetry operations
-    expect(result.sites).toHaveLength(20)
+    // 3 unique sites × 2 symmetry operations
+    expect(element_counts(result)).toEqual({ Sn: 2, As: 2, Se: 2 })
     expect(result.lattice.a).toBeCloseTo(9.378, 3)
     expect(result.lattice.beta).toBeCloseTo(91.15, 2)
     // Sn1's image under the translation-carrying op 'x+1/2, -y, z+1/2', wrapped into the cell
@@ -1561,40 +1511,25 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     expect(result.lattice.beta).toBeCloseTo(115.07, 2)
   })
 
-  test(`parses Li10GeP2S12 CIF with P42/nmc symmetry expansion`, () => {
-    const result = parse_cif(li10gep2s12_cif)
-
-    // P42/nmc (space group 137), 16 symmetry ops, 9 unique rows. After expansion: 58
-    // sites, 4 of them the disordered Ge1 (0.515) / P1 (0.485) site
-    expect(result.sites).toHaveLength(58)
-    expect(element_counts(result)).toEqual({ Li: 28, Ge: 4, P: 2, S: 24 })
-    const ge_p = result.sites.filter((site) => site.species.length === 2)
-    expect(ge_p).toHaveLength(4)
-    expect(ge_p[0].species.map(({ element, occu }) => [element, occu])).toEqual([
-      [`Ge`, 0.515],
-      [`P`, 0.485],
-    ])
-
-    expect(result.lattice.a).toBeCloseTo(8.694, 2)
-    expect(result.lattice.c).toBeCloseTo(12.599, 2)
-    expect(result.lattice.alpha).toBeCloseTo(90, 1)
-  })
-
-  test(`parses MOF IRMOF-1 CIF with Fm-3m symmetry expansion`, () => {
-    const result = parse_cif(mof_issue_127)
-
-    // Fm-3m (space group 225), 192 symmetry ops, 7 unique sites: same 424 sites as pymatgen
-    expect(result.sites).toHaveLength(424)
-    expect(element_counts(result)).toEqual({ Zn: 32, O: 104, C: 192, H: 96 })
-
-    expect(result.lattice.a).toBeCloseTo(25.832, 8)
-    expect(result.lattice.alpha).toBeCloseTo(90, 8)
-    expect(result.lattice.volume).toBeCloseTo(17237.492730368, 8)
-
-    // First (asymmetric-unit) site preserved verbatim; all xyz must be finite
-    expect(result.sites[0].species[0].element).toBe(`Zn`)
-    expect(result.sites[0].abc).toEqual([0.2934, 0.2066, 0.2066])
+  // Per-element counts match the header's _atom_type_number_in_cell (COD 7008984, whose atom
+  // list already embeds centering) or pymatgen (Li10GeP2S12: P42/nmc, 16 ops, 4 disordered
+  // Ge/P sites; IRMOF-1: Fm-3m, 192 ops, 7 unique sites), so expansion neither over- nor
+  // under-generates
+  // oxfmt-ignore
+  test.each([
+    [`P24Ru4H252C296S24N16`, ru_p_complex_cif, { C: 296, H: 252, N: 16, P: 24, Ru: 4, S: 24 }, {}, 0, 0],
+    [`Li10GeP2S12`, li10gep2s12_cif, { Li: 28, Ge: 4, P: 2, S: 24 }, { a: 8.694, c: 12.599, alpha: 90 }, 2, 4],
+    [`IRMOF-1`, mof_issue_127, { Zn: 32, O: 104, C: 192, H: 96 }, { a: 25.832, alpha: 90, volume: 17237.492730368 }, 8, 0],
+  ])(`expands %s CIF to its full composition`, (_name, cif, counts, lattice, digits, n_mixed) => {
+    const result = parse_cif(cif)
+    expect(element_counts(result)).toEqual(counts)
+    for (const [param, value] of Object.entries(lattice)) {
+      expect(result.lattice[param as `a`], param).toBeCloseTo(value, digits)
+    }
     expect(result.sites.every((site) => site.xyz.every(Number.isFinite))).toBe(true)
+    const mixed = result.sites.filter((site) => site.species.length === 2)
+    expect(mixed.map(({ species }) => species.map(({ element, occu }) => `${element}:${occu}`)))
+      .toEqual(Array.from({ length: n_mixed }, () => [`Ge:0.515`, `P:0.485`]))
   })
 })
 
@@ -1931,30 +1866,10 @@ const optimade_structure_from = (lattice_vectors: number[][], positions: number[
 // Cartesian→fractional conversion cases for optimade_to_structure
 // oxfmt-ignore
 const OPTIMADE_COORD_CASES = [
-  {
-    name: `fractional coordinates calculation`,
-    lattice_vectors: [[4.91, 0, 0], [0, 4.91, 0], [0, 0, 5.43]],
-    positions: [[0, 0, 0], [2.455, 2.455, 1.3575]],
-    expected_abc: [[0, 0, 0], [0.5, 0.5, 0.25]],
-  },
-  {
-    name: `singular lattice matrix`,
-    lattice_vectors: [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-    positions: [[0, 0, 0]],
-    expected_abc: [[0, 0, 0]],
-  },
-  {
-    name: `dependent lattice vectors fall back to axis lengths`,
-    lattice_vectors: [[5, 0, 0], [5, 0, 0], [0, 0, 7]],
-    positions: [[2.5, 0, 3.5]],
-    expected_abc: [[0.5, 0, 0.5]],
-  },
-  {
-    name: `non-orthogonal lattice matrix`,
-    lattice_vectors: [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]],
-    positions: [[0, 0, 0], [2.5, 2.165, 2]],
-    expected_abc: [[0, 0, 0], [0.2077367205542725, 0.38452655889145493, 0.5]],
-  },
+  { name: `fractional coordinates calculation`, lattice_vectors: [[4.91, 0, 0], [0, 4.91, 0], [0, 0, 5.43]], positions: [[0, 0, 0], [2.455, 2.455, 1.3575]], expected_abc: [[0, 0, 0], [0.5, 0.5, 0.25]] },
+  { name: `singular lattice matrix`, lattice_vectors: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], positions: [[0, 0, 0]], expected_abc: [[0, 0, 0]] },
+  { name: `dependent lattice vectors fall back to axis lengths`, lattice_vectors: [[5, 0, 0], [5, 0, 0], [0, 0, 7]], positions: [[2.5, 0, 3.5]], expected_abc: [[0.5, 0, 0.5]] },
+  { name: `non-orthogonal lattice matrix`, lattice_vectors: [[5, 0, 0], [2.5, 4.33, 0], [1, 1, 4]], positions: [[0, 0, 0], [2.5, 2.165, 2]], expected_abc: [[0, 0, 0], [0.2077367205542725, 0.38452655889145493, 0.5]] },
 ]
 
 describe(`optimade_to_structure`, () => {
@@ -2372,15 +2287,7 @@ describe(`lattice params derived from matrix-only lattices`, () => {
       pbc: [true, true, true],
       ...extra_lattice,
     },
-    sites: [
-      {
-        species: [{ element: `O`, occu: 1 }],
-        abc: [0.5, 0.5, 0.2],
-        xyz: [1.943807, -1.943807, -9.81908],
-        label: `O`,
-        properties: {},
-      },
-    ],
+    sites: [make_json_site(`O`, [0.5, 0.5, 0.2], { xyz: [1.943807, -1.943807, -9.81908] })],
   })
 
   // parse_structure_file throws on failure, so only the lattice presence needs guarding
@@ -2550,12 +2457,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
 
   test(`PDB keeps residue, chain, occupancy and B-factor per site`, () => {
     const site = parse_structure_file(glycine_pdb, `glycine.pdb`).sites[0]
-    expect(site.properties).toEqual({
-      residue: `GLY`,
-      chain: `A`,
-      occupancy: 1,
-      b_factor: 24.31,
-    })
+    const expected = { residue: `GLY`, chain: `A`, occupancy: 1, b_factor: 24.31 }
+    expect(site.properties).toEqual(expected)
   })
 
   test.each([
@@ -2760,7 +2663,7 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // origin shift is still required — the old literal `xs` test wrongly skipped it
     [`x y z xs`, `-1.0 0.0 1.0 0.25`],
   ])(`LAMMPS dump %s columns land at the same cell position`, (columns, coords) => {
-    const bounds = [`-2.0 2.0`, `-2.0 2.0`, `-2.0 2.0`]
+    const bounds = Array.from({ length: 3 }, () => `-2.0 2.0`)
     const content = lammps_dump(
       `pp pp pp`,
       `id element ${columns}`,

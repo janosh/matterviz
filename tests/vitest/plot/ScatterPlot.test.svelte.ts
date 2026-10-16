@@ -62,6 +62,9 @@ const dense = {
   y: Array.from({ length: 40 }, (_, idx) => idx % 7),
 }
 
+// an instantly settled plot without legend or controls
+const bare = { point_tween: { duration: 0 }, legend: null, show_controls: false }
+
 const mount_sized_scatter_plot = (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
@@ -80,15 +83,9 @@ test(`CDF geometry refreshes after domain, scale, style, and data changes`, asyn
   const path = () => query(root, `.marginal-top path[fill="none"]`)
   let previous = path().getAttribute(`d`)
   for (const update of [
-    () => {
-      state.x_axis.range = [1, 4]
-    },
-    () => {
-      state.x_axis.scale_type = `log`
-    },
-    () => {
-      state.series[0].x = [1, 1.5, 3, 4]
-    },
+    () => (state.x_axis.range = [1, 4]),
+    () => (state.x_axis.scale_type = `log`),
+    () => (state.series[0].x = [1, 1.5, 3, 4]),
   ]) {
     update()
     flushSync()
@@ -167,14 +164,15 @@ describe(`ScatterPlot`, () => {
       svg.dispatchEvent(keydown(key))
       await tick()
     }
-    const announced = (plot: HTMLElement) =>
-      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+    const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
     test(`End and arrows step and wrap, Escape clears the announcement`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [dense],
         marker_renderer: `canvas`,
       })
+      // the live region is mounted before its first message, or that message goes unheard
+      expect(announced(plot)).toBe(``)
       const svg = plot_svg(plot)
       for (const [key, expected] of [
         [`End`, `point 40`],
@@ -842,12 +840,7 @@ describe(`ScatterPlot`, () => {
       }>({ tooltip_point: null, selected_points: [], marker_renderer: `canvas` })
       const hover_plot = await mount_sized_scatter_plot(bind_props({ series: [dense] }, state))
       const draws_before_hover = clear_rect.mock.calls.length
-      state.tooltip_point = {
-        x: dense.x[4],
-        y: dense.y[4],
-        series_idx: 0,
-        point_idx: 4,
-      }
+      state.tooltip_point = { x: dense.x[4], y: dense.y[4], series_idx: 0, point_idx: 4 }
       flushSync()
       await tick()
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
@@ -856,17 +849,12 @@ describe(`ScatterPlot`, () => {
       const hovered_fill = query(hover_plot, `path.marker`).getAttribute(`fill`)
       expect(hovered_fill).toMatch(/^var\(--point-fill-color/)
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
-      for (const selected_points of [[4, 5], []]) {
-        state.selected_points = selected_points.map((selected_idx) => ({
-          series_idx: 0,
-          point_idx: selected_idx,
-        }))
+      for (const selected of [[4, 5], []]) {
+        state.selected_points = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
         flushSync()
         await tick()
-        expect(arcs_since_clear).toBe(dense.x.length - selected_points.length)
-        expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(
-          selected_points.length || 1,
-        )
+        expect(arcs_since_clear).toBe(dense.x.length - selected.length)
+        expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(selected.length || 1)
       }
       const removed_canvas = query(hover_plot, `canvas`)
       state.marker_renderer = `svg`
@@ -962,9 +950,7 @@ describe(`ScatterPlot`, () => {
       `url(#series-gradient)`,
       `color-mix(in srgb, red, blue)`,
     ])(`keeps SVG markers for canvas-unsafe color %s`, async (fill) => {
-      const plot = await mount_canvas({
-        series: [{ ...dense, point_style: { fill } }],
-      })
+      const plot = await mount_canvas({ series: [{ ...dense, point_style: { fill } }] })
       expect(plot.querySelector(`canvas.marker-canvas`)).toBeNull()
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(dense.x.length)
     })
@@ -1272,13 +1258,7 @@ describe(`ScatterPlot`, () => {
         })),
       })
       const plot = await mount_sized_scatter_plot(
-        bind_props(
-          {
-            controls_open: true,
-            point_tween: { duration: 0 },
-          },
-          state,
-        ),
+        bind_props({ controls_open: true, point_tween: { duration: 0 } }, state),
       )
       const { control, set_value } = form_controls(plot)
       const series_select = control(`Series`)
@@ -1423,7 +1403,8 @@ describe(`ScatterPlot`, () => {
             },
           ],
           x_axis: { range: [0, 2] },
-          hover_config: { mode: `x`, threshold_px: 5, show_tooltip: false },
+          hover_config: { mode: `x`, threshold_px: 5 },
+          tooltip: false,
           point_tween: { duration: 0 },
           on_point_hover,
           show_legend: true,
@@ -1860,21 +1841,14 @@ describe(`ScatterPlot`, () => {
   })
 
   // an integer-format axis zoomed below one unit has no integer to label: decimal ticks, not
-  // an empty axis or repeated `0`s
-  test(`integer-format axis without an integer in range falls back to decimal ticks`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [{ x: [0, 1], y: [0.2, 0.8] }],
-      y_axis: { format: `d`, range: [0.2, 0.8], ticks: 4 },
-    })
-    expect(axis_tick_labels(plot, `y`)).toEqual([`0.2`, `0.4`, `0.6`, `0.8`])
-  })
-
-  test(`increases automatic tick precision when compact labels would collide`, async () => {
-    const plot = await mount_sized_scatter_plot({
-      series: [{ x: [0, 1], y: [-1539, -1537] }],
-      y_axis: { ticks: [-1539, -1538, -1537] },
-    })
-    expect(axis_tick_labels(plot, `y`)).toEqual([`−1539`, `−1538`, `−1537`])
+  // an empty axis or repeated `0`s; compact labels that would collide gain precision
+  // oxfmt-ignore
+  test.each<[string, number[], AxisConfig, string[]]>([
+    [`integer format without an integer in range`, [0.2, 0.8], { format: `d`, range: [0.2, 0.8], ticks: 4 }, [`0.2`, `0.4`, `0.6`, `0.8`]],
+    [`compact labels that would collide`, [-1539, -1537], { ticks: [-1539, -1538, -1537] }, [`−1539`, `−1538`, `−1537`]],
+  ])(`y tick labels for %s`, async (_desc, y, y_axis, expected) => {
+    const plot = await mount_sized_scatter_plot({ series: [{ x: [0, 1], y }], y_axis })
+    expect(axis_tick_labels(plot, `y`)).toEqual(expected)
   })
 
   const color_series = [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }]
@@ -1968,9 +1942,7 @@ describe(`ScatterPlot`, () => {
         { x: [0, 100], y: [0, 50], label: `B`, visible: false },
       ] as DataSeries[],
     })
-    const plot = await mount_sized_scatter_plot(
-      bind_props({ point_tween: { duration: 0 }, legend: null, show_controls: false }, state),
-    )
+    const plot = await mount_sized_scatter_plot(bind_props({ ...bare }, state))
     expect(axis_tick_labels(plot, `x`)).toContain(`10`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).not.toContain(`50`)
@@ -2049,9 +2021,7 @@ describe(`ScatterPlot`, () => {
       x_axis: { range: [0, 1] as Vec2 },
       y_axis: { range: [0, 1] as Vec2 },
       label_placement_config: { sa_iterations: 0, candidate_gap: 0 },
-      point_tween: { duration: 0 },
-      show_controls: false,
-      legend: null,
+      ...bare,
     })
     const plot = await mount_sized_scatter_plot(props)
     const label_offset = () => {
@@ -2144,7 +2114,8 @@ describe(`ScatterPlot`, () => {
         series: [{ x: [...x_values], y: [...y_values], markers: `points` }],
         x_axis: { range: [0, 2] },
         y_axis: { range: [0, 1] },
-        hover_config: { mode, threshold_px: 5, show_tooltip: false },
+        hover_config: { mode, threshold_px: 5 },
+        tooltip: false,
         point_tween: { duration: 0 },
         on_point_hover,
         legend: null,
@@ -2422,9 +2393,7 @@ describe(`ScatterPlot`, () => {
       size_scale: { radius_range: [2, 10] },
       color_scale: `interpolateViridis`,
       color_bar: {},
-      point_tween: { duration: 0 },
-      legend: null,
-      show_controls: false,
+      ...bare,
     })
     const tick_labels = [...plot.querySelectorAll(`.colorbar .tick-label`)].map(
       (label) => label.textContent,
@@ -2451,9 +2420,7 @@ describe(`ScatterPlot`, () => {
       size_scale: { type: `log`, radius_range: [2, 10] },
       color_scale: { type: `log`, scheme: `interpolateViridis` },
       color_bar: {},
-      point_tween: { duration: 0 },
-      legend: null,
-      show_controls: false,
+      ...bare,
     })
     const markers = [...plot.querySelectorAll<SVGPathElement>(`path.marker`)]
     const expected_scale = scaleSequentialLog(interpolateViridis).domain([1, 100]).clamp(true)
@@ -2561,10 +2528,8 @@ describe(`ScatterPlot`, () => {
           },
         ],
         y_axis: { scale_type: `log` },
-        point_tween: { duration: 0 },
         line_tween: { duration: 0 },
-        legend: null,
-        show_controls: false,
+        ...bare,
       })
       const clip = clip_rect(plot)
       expect(plot.querySelectorAll(`path.marker`)).toHaveLength(2)
@@ -2610,15 +2575,7 @@ describe(`ScatterPlot`, () => {
       view: Partial<AxisRanges> | undefined
     }>({ x_axis: { range: [0, 100] }, y_axis: { range: [0, 10] }, view: undefined })
     const plot = await mount_sized_scatter_plot(
-      bind_props(
-        {
-          series: [{ x: [10, 50, 90], y: [1, 5, 9] }],
-          point_tween: { duration: 0 },
-          legend: null,
-          show_controls: false,
-        },
-        state,
-      ),
+      bind_props({ series: [{ x: [10, 50, 90], y: [1, 5, 9] }], ...bare }, state),
     )
     const svg = plot_svg(plot)
     const clip = clip_rect(plot)
@@ -2674,9 +2631,7 @@ describe(`ScatterPlot`, () => {
             { x: [1, 2, 3], y: [10, 20, 30], y_axis: `y2` as const },
           ],
           y_axis: { range: [0, 10] as Vec2 },
-          point_tween: { duration: 0 },
-          legend: null,
-          show_controls: false,
+          ...bare,
         },
         state,
       ),

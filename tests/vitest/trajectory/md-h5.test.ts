@@ -137,6 +137,12 @@ const fixture = (
     readFileSync(`${process.cwd()}/tests/vitest/trajectory/fixtures/md-booleans.h5`),
   )
 
+const dataset_of = (file: H5File, path: string) => file.get(path) as Dataset
+const replace_attribute = (target: H5File | Dataset, key: string, value: string) => {
+  target.delete_attribute(key)
+  target.create_attribute(key, value)
+}
+
 const open = async (buffer: ArrayBuffer) => {
   const run = await open_trajectory(buffer, { filename: `md.h5` })
   onTestFinished(() => run.dispose())
@@ -209,11 +215,9 @@ describe(`MD HDF5`, () => {
         atoms: 1,
         timestep_fs: 0.5,
         mutate: (file) => {
-          ;(file.get(`/static/global_atom_ids`) as Dataset).write_slice([[0, 1]], [-0])
-          file.delete_attribute(`ensemble`)
-          file.create_attribute(`ensemble`, `NVT`)
-          file.delete_attribute(`active_thermostat`)
-          file.create_attribute(`active_thermostat`, `Langevin`)
+          dataset_of(file, `/static/global_atom_ids`).write_slice([[0, 1]], [-0])
+          replace_attribute(file, `ensemble`, `NVT`)
+          replace_attribute(file, `active_thermostat`, `Langevin`)
         },
       }),
     )
@@ -364,14 +368,8 @@ describe(`MD HDF5`, () => {
     const run = await open(
       await fixture({
         committed: 2,
-        mutate: (file) =>
-          (file.get(`/frames/positions`) as Dataset).write_slice(
-            [
-              [2, 3],
-              [0, 1],
-            ],
-            [NaN, NaN, NaN],
-          ),
+        // oxfmt-ignore
+        mutate: (file) => dataset_of(file, `/frames/positions`).write_slice([[2, 3], [0, 1]], [NaN, NaN, NaN]),
       }),
     )
     expect(run.frame_count).toBe(2)
@@ -499,66 +497,18 @@ describe(`MD HDF5`, () => {
     ).rejects.toThrow(/replica metadata does not match/)
   })
 
+  // oxfmt-ignore
   it.each<readonly [string, Parameters<typeof fixture>[0]]>([
-    [
-      `nonconsecutive step`,
-      {
-        mutate: (file) =>
-          (file.get(`/frames/md_step`) as Dataset).write_slice(
-            [[1, 2]],
-            new BigInt64Array([2310n]),
-          ),
-      },
-    ],
-    [
-      `wrong units`,
-      {
-        mutate: (file) => {
-          const dataset = file.get(`/frames/velocities`) as Dataset
-          dataset.delete_attribute(`units`)
-          dataset.create_attribute(`units`, `A/fs`)
-        },
-      },
-    ],
-    ...[0, -1, NaN].map(
-      (value) => [`invalid timestep ${value}`, { timestep_fs: value }] as const,
-    ),
+    [`nonconsecutive step`, { mutate: (file) => dataset_of(file, `/frames/md_step`).write_slice([[1, 2]], new BigInt64Array([2310n])) }],
+    [`wrong units`, { mutate: (file) => replace_attribute(dataset_of(file, `/frames/velocities`), `units`, `A/fs`) }],
+    ...[0, -1, NaN].map((value) => [`invalid timestep ${value}`, { timestep_fs: value }] as const),
     [`invalid success count`, { committed: 2, successful: true }],
     [`incorrect float32 dtype`, { float32: true }],
     [`velocities already in A/fs (conversion factor 1)`, { velocity_factor: 1 }],
-    [
-      `short committed channel`,
-      { mutate: (file) => (file.get(`/frames/positions`) as Dataset).resize([2, 4, 3]) },
-    ],
-    [
-      `unknown schema`,
-      {
-        mutate: (file) => {
-          file.delete_attribute(`schema`)
-          file.create_attribute(`schema`, `md-trajectory-v9`)
-        },
-      },
-    ],
-    [
-      `reordered IDs`,
-      {
-        mutate: (file) =>
-          (file.get(`/static/global_atom_ids`) as Dataset).write_slice([[0, 2]], [1, 0]),
-      },
-    ],
-    [
-      `nonfinite committed frame`,
-      {
-        mutate: (file) =>
-          (file.get(`/frames/positions`) as Dataset).write_slice(
-            [
-              [0, 1],
-              [0, 1],
-            ],
-            [NaN, NaN, NaN],
-          ),
-      },
-    ],
+    [`short committed channel`, { mutate: (file) => dataset_of(file, `/frames/positions`).resize([2, 4, 3]) }],
+    [`unknown schema`, { mutate: (file) => replace_attribute(file, `schema`, `md-trajectory-v9`) }],
+    [`reordered IDs`, { mutate: (file) => dataset_of(file, `/static/global_atom_ids`).write_slice([[0, 2]], [1, 0]) }],
+    [`nonfinite committed frame`, { mutate: (file) => dataset_of(file, `/frames/positions`).write_slice([[0, 1], [0, 1]], [NaN, NaN, NaN]) }],
   ])(`rejects %s`, async (_label, options) => {
     await expect(open(await fixture(options))).rejects.toThrow(/MD|finite/)
   })

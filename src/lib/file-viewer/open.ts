@@ -3,7 +3,7 @@ import {
   content_byte_size,
   decompress_trajectory_file,
 } from '#lib/io/decompress.js'
-import type { FileLoadMeta } from '#lib/io/index.js'
+import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
 import { basename_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
@@ -106,6 +106,28 @@ export const acquire_material = async (
     signal,
   })
   return { data: classified.content, filename: classified.filename, ...metadata }
+}
+
+// Hand a source's fetched/decompressed bytes or text plus its identity to a reader of its own
+// (a host's raw-file intercept `on_file_drop`, a plot's drop handler) instead of parsing it
+export const deliver_raw_file = async (
+  source: MaterialSource,
+  on_file: FileLoadCallback,
+  signal?: AbortSignal,
+): Promise<void> => {
+  const { data, filename, source_filename, source_url, file } = await acquire_material(
+    source,
+    signal,
+  )
+  const content = data instanceof Blob ? await data.arrayBuffer() : data
+  if ((typeof content === `string` ? content.length : content.byteLength) === 0)
+    throw new Error(`file is empty`)
+  if (signal?.aborted) return
+  await on_file(content, filename, {
+    source_filename: source_filename ?? filename,
+    source_url,
+    file,
+  })
 }
 
 export async function open_material(

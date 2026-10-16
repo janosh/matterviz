@@ -6,6 +6,7 @@ import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import { readFileSync } from 'node:fs'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { doc_query, fire, mouse } from '../setup'
 
 const read_component_source = (component: string): string =>
   readFileSync(
@@ -66,7 +67,7 @@ describe(`create_chempot_overrides`, () => {
   })
 })
 
-test(`color scale and reversal labels target their own controls`, async () => {
+test(`color scale picker and reversal both edit the shared color_scale config`, async () => {
   const set = vi.fn()
   const component = mount(ChemPotControls, {
     target: document.body,
@@ -74,20 +75,18 @@ test(`color scale and reversal labels target their own controls`, async () => {
   })
   onTestFinished(() => unmount(component))
   await tick()
-  for (const [text, tag] of [
-    [`Color scale:`, `SELECT`],
-    [`Reverse:`, `INPUT`],
-  ]) {
-    const label = [...document.querySelectorAll(`label`)].find((candidate) =>
-      candidate.textContent?.trim().startsWith(text),
-    )
-    expect(label?.control?.tagName).toBe(tag)
-    if (tag === `INPUT`) label?.control?.dispatchEvent(new Event(`change`, { bubbles: true }))
-  }
-  expect(set).toHaveBeenCalledWith(
-    `reverse_color_scale`,
-    !CHEMPOT_DEFAULTS.reverse_color_scale,
+  await fire(doc_query(`.multiselect`), mouse(`mouseup`))
+  const options = [...document.querySelectorAll(`[role="option"]`)]
+  await fire(options.find((option) => option.textContent?.trim() === `Viridis`) ?? options[0])
+  const reverse = [...document.querySelectorAll(`label`)].find((label) =>
+    label.textContent?.trim().startsWith(`Reverse:`),
   )
+  reverse?.control?.dispatchEvent(new Event(`change`, { bubbles: true }))
+  // the scheme swaps in, keeping palette_range; reversal flips palette_range
+  expect(set.mock.calls).toEqual([
+    [`color_scale`, { scheme: `interpolateViridis`, palette_range: [1, 0] }],
+    [`color_scale`, { scheme: `interpolateSpectral`, palette_range: [0, 1] }],
+  ])
 })
 
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {

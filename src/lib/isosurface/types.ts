@@ -10,17 +10,15 @@ import { flatten_grid, type ScalarGrid3D } from './grid'
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
 export type DataRange = { min: number; max: number; abs_max: number; mean: number }
 
-// A grid value for display at 3 significant digits, negligible ones (a density's vacuum at
-// ~1e-125) as 0
+// A grid value at 3 significant digits, negligible ones (vacuum density ~1e-125) as 0
 export const format_data_value = (
   value: number,
   { abs_max }: Pick<DataRange, `abs_max`>,
 ): string => format_num(zero_if_negligible(value, abs_max), `.3~g`)
 
-// Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential).
-// Values are stored flat in C order (z fastest: index = (ix * ny + iy) * nz + iz) so the
-// volume itself is a ScalarGrid3D that marching cubes and the geometry worker consume
-// without copying. Parsers transpose Fortran-ordered sources (VASP) once at load time.
+// Volumetric scalar data on a 3D grid (charge density, potential, ...), flat in C order
+// (index = (ix * ny + iy) * nz + iz), so the volume itself is a ScalarGrid3D marching cubes
+// and the geometry worker consume without copying. Parsers transpose Fortran (VASP) order.
 export interface VolumetricData extends ScalarGrid3D<Float64Array> {
   id: string // Stable field identity; independent of array order and display label
   order: `z_fastest`
@@ -28,16 +26,13 @@ export interface VolumetricData extends ScalarGrid3D<Float64Array> {
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
   origin: Vec3 // grid origin in the structure's Cartesian coordinate frame
   data_range: DataRange // precomputed min/max/mean statistics
-  // Whether the grid has periodic boundary conditions (affects coordinate scaling).
-  // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; non-periodic (.cube molecular)
-  // span [0,1] with spacing 1/(N-1).
+  // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; finite ones (molecular .cube) span
+  // [0,1] with spacing 1/(N-1)
   periodic: boolean
   label?: string // e.g. "charge density", "spin density", "orbital"
-  // Stable identity of the file this volume came from (compression-stripped
-  // filename). Reimporting the same source replaces its previous volumes.
+  // Compression-stripped source filename; reimporting a source replaces its volumes
   source?: string
-  // Original filename including compression suffix, for picker/URL identity.
-  source_filename?: string
+  source_filename?: string // with compression suffix, for picker/URL identity
   // Whether negative values are physical (magnetization, orbital, potential) and get a default
   // negative lobe; false for non-negative fields with numerical artifacts (electron density).
   // Unset infers it from the data.
@@ -71,9 +66,8 @@ export function make_volume(
   return { values, dims, order: `z_fastest`, data_range: grid_data_range(values), ...fields }
 }
 
-// Coerce a JSON/IPC payload (pymatviz widget traits, dropped .json files) into a
-// VolumetricData. Accepts flat `values` (typed array or number[]) with `dims`, or the
-// nested `grid` [x][y][z] encoding JSON producers emit, and recomputes data_range.
+// Coerce a JSON/IPC payload (pymatviz widget traits, dropped .json) into a VolumetricData:
+// flat `values` (typed array or number[]) with `dims`, or a nested [x][y][z] `grid`
 export function volume_from_json(raw: unknown): VolumetricData {
   if (typeof raw !== `object` || raw === null) {
     throw new TypeError(`Volumetric data must be an object, got ${typeof raw}`)
@@ -147,11 +141,9 @@ export interface VolumetricFileData {
   volumes: VolumetricData[] // one or more volumes (e.g. total + magnetization for spin-polarized)
 }
 
-// A single isosurface layer at a specific isovalue with its own appearance.
-// Layers reference stable volume IDs: `volume_id`
-// picks the geometry source (marching cubes input) and `color_volume_id`
-// optionally picks a different volume whose scalar field is sampled at surface
-// vertices to drive a colormap (e.g. density surface colored by ESP).
+// One isosurface at an isovalue with its own appearance. `volume_id` picks the geometry
+// source, `color_volume_id` optionally a volume sampled at the surface vertices to drive a
+// colormap (e.g. a density surface colored by ESP).
 export interface IsosurfaceLayer {
   // Any finite value in the volume's units: 0 draws a signed field's nodal surface
   isovalue: number
@@ -167,22 +159,18 @@ export interface IsosurfaceLayer {
   // Scalar-color-source volume ID; unset preserves solid-color behavior
   color_volume_id?: string
   // Color scale for the sampled scalars (default interpolateViridis). An inverted value_range
-  // [max, min] flips the map; unset ends auto-fit to the values sampled on the surface
-  // (symmetric about zero for signed fields).
+  // flips the map; unset ends fit the surface's values (symmetric about 0 for signed fields).
   color_scale?: ColorScale
 }
 
-// Isosurface rendering settings: every rendered surface is an explicit layer (an empty
-// `layers` array renders nothing), plus options shared by all layers.
+// Every rendered surface is an explicit layer (none renders nothing), plus shared options
 export interface IsosurfaceSettings {
   layers: IsosurfaceLayer[]
   wireframe: boolean
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
-  // Fractional display range per lattice axis for periodic volumes, VESTA-style:
-  // e.g. [[-0.15, 2.15], [-0.15, 2.15], [0, 1]] repeats surfaces periodically and
-  // clips them exactly at the fractional bounds. Unset = follow the structure's
-  // integer supercell. Independent of the atom supercell, so structure, surface,
-  // and cell outline remain separately controllable.
+  // VESTA-style fractional range per lattice axis for periodic volumes, e.g. [[-0.15, 2.15],
+  // [-0.15, 2.15], [0, 1]] repeats surfaces and clips them exactly there. Unset follows the
+  // structure's integer supercell; independent of the atom supercell and cell outline.
   display_range?: [Vec2, Vec2, Vec2]
 }
 
@@ -198,8 +186,7 @@ export const LAYER_COLORS = [
   `#ec4899`, // pink
 ] as const
 
-// Compute min/max/abs_max/mean of flat grid values in one pass.
-// Prefer the precomputed `data_range` field on VolumetricData when available.
+// min/max/abs_max/mean of flat grid values in one pass (VolumetricData precomputes it)
 export function grid_data_range(values: ArrayLike<number>): DataRange {
   const count = values.length
   if (count === 0) return { min: 0, max: 0, abs_max: 0, mean: 0 }
@@ -225,10 +212,9 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   halo: 0,
 }
 
-// [isovalue fraction of abs_max, opacity] for the nth shell auto-added to one volume. Shell 0
-// is the usual 20% envelope; each further "+" steps through the 0.8 → 0.1 ladder
-// (alternating inner/outer so consecutive shells never coincide), inner high-isovalue shells
-// more opaque than the outer ones around them so every shell stays visible. Cycles past 6.
+// [isovalue fraction of abs_max, opacity] for the nth shell auto-added to a volume: the usual
+// 20% envelope, then alternating inner/outer steps so shells never coincide, inner ones more
+// opaque so every shell stays visible. Cycles past 6.
 export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number])[] = [
   [0.2, 0.6],
   [0.8, 0.8],
@@ -238,12 +224,10 @@ export const SHELL_STEPS: readonly (readonly [fraction: number, opacity: number]
   [0.35, 0.65],
 ]
 
-// Build a default isosurface layer for a volume: the `shell_idx`th SHELL_STEPS entry (20% of
-// abs_max at opacity 0.6 for the first surface), next unused palette color (the negative lobe
-// takes the swatch after it) and the negative lobe enabled when the field is signed (the
-// volume's `signed` hint, else whether it has non-negligible negative values).
-// `shell_idx` is how many layers the volume already has, so repeated "+" clicks add
-// distinguishable shells instead of coincident copies.
+// Default layer for a volume: the `shell_idx`th SHELL_STEPS entry (`shell_idx` = layers it
+// already has, so repeated "+" adds distinct shells), the next palette color (the negative
+// lobe takes the one after) and the negative lobe on for signed fields (`signed` hint, else
+// non-negligible negative values).
 export const auto_volume_layer = (
   volume: VolumetricData,
   color_offset = 0,
@@ -265,11 +249,9 @@ export const auto_volume_layer = (
 
 // === Isovalue slider aids ===
 
-// Slider isovalues (> 0, the slider's domain) that draw any surface, as (low, high]. Marching
-// cubes counts a corner as below when value < isovalue, so the surface needs
-// min < isovalue <= max and a mirrored negative lobe at -isovalue needs
-// -max <= isovalue < -min. On the positive axis the two always meet in one interval; null
-// when neither lobe can appear there.
+// Positive slider isovalues that draw any surface, as (low, high]. Marching cubes counts a
+// corner below when value < isovalue, so the surface needs min < isovalue <= max and the
+// mirrored lobe -max <= isovalue < -min; these meet in one interval (null if neither draws)
 export function surface_isovalue_band(
   { min, max }: Pick<DataRange, `min` | `max`>,
   show_negative: boolean,
@@ -319,9 +301,8 @@ export interface SnapIsovalueOptions {
   sticky: boolean
 }
 
-// Bin counts of a volume's grid values over the isovalue slider's [low, high], cached per
-// volume. With `mirror` (negative lobe shown) bins count |value|, since one slider value
-// draws both signs.
+// Bin counts of a volume's values over the slider's [low, high], cached per volume. With
+// `mirror` (negative lobe shown) bins count |value|, since one slider value draws both signs.
 const histogram_cache = new WeakMap<VolumetricData, Map<string, Uint32Array>>()
 export function isovalue_histogram(
   volume: VolumetricData,
@@ -348,9 +329,8 @@ export function isovalue_histogram(
   return counts
 }
 
-// Settings for a freshly loaded file: one auto layer on its first volume (further volumes of
-// the same file, e.g. a CHGCAR's magnetization block, stay available as colour sources or
-// for manually added surfaces)
+// Settings for a freshly loaded file: one auto layer on its first volume (later ones, e.g. a
+// CHGCAR's magnetization, stay available as colour sources or manual surfaces)
 export const auto_isosurface_settings = (volume: VolumetricData): IsosurfaceSettings => ({
   ...DEFAULT_ISOSURFACE_SETTINGS,
   layers: [auto_volume_layer(volume)],
@@ -378,9 +358,8 @@ export function remove_volume(
   return { volumes: retained, layers: retain_volume_layers(layers, index_volumes(retained)) }
 }
 
-// Label volumes parsed from a file with a stable `source` id (compression-
-// stripped filename) and a display label (multi-block files like spin-polarized
-// CHGCAR get "<file>: <block label>" labels).
+// Label a file's volumes with a stable `source` (compression-stripped filename) and display
+// label (multi-block files like spin-polarized CHGCAR get "<file>: <block label>")
 export function label_file_volumes(
   volumes: VolumetricData[],
   filename: string,
@@ -406,9 +385,7 @@ export function merge_imported_volumes(
 ) {
   const previous = index_volumes(existing)
   const replacements = index_volumes(incoming)
-  const sources = new Set(
-    incoming.flatMap(({ source }) => (source === undefined ? [] : [source])),
-  )
+  const sources = new Set(incoming.map(({ source }) => source))
   const volumes = existing.flatMap((volume) => {
     const replacement = replacements.get(volume.id)
     if (replacement) return [replacement]

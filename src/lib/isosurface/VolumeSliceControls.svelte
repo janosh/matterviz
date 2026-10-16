@@ -12,6 +12,7 @@
   import { resolve_slice_cartesian_point } from './slice'
   import { create_volume_slice_settings } from './slice-settings'
   import type { VolumeSlicePlaneMode, VolumeSliceSettings } from './slice-settings'
+  import { DEFAULT_SLICE_SCHEME } from './slice-rendering'
   import type { VolumeSliceMode } from './slice-rendering'
 
   type CartesianVectorKey = `cartesian_point` | `cartesian_normal` | `cartesian_up`
@@ -66,7 +67,9 @@
     update_settings({ [key]: vector })
   }
 
-  const color_scale_config = $derived(to_color_scale_config(resolved_settings.color_scale))
+  const color_scale_config = $derived(
+    to_color_scale_config(resolved_settings.color_scale, DEFAULT_SLICE_SCHEME),
+  )
   const update_color_scale = (updates: ColorScaleConfig): void =>
     update_settings({ color_scale: { ...color_scale_config, ...updates } })
 

@@ -35,7 +35,7 @@
     cutoff = $bindable(PDF_DEFAULT_CUTOFF),
     n_bins = $bindable(PDF_DEFAULT_N_BINS),
     show_partials = $bindable(false),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     pbc,
     error_msg = $bindable(),
@@ -187,7 +187,7 @@
   {:else if series.length > 0}
     <ScatterPlot
       {...rest}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {series}
       {ref_lines}
@@ -201,11 +201,7 @@
     {/if}
   {/if}
   <ViewerNotices>
-    <StatusMessage
-      bind:message={() => error_msg, (msg) => !msg && error_report.dismiss()}
-      type="error"
-      dismissible
-    />
+    <StatusMessage bind:message={error_report.message} type="error" dismissible />
   </ViewerNotices>
 </div>
 

@@ -1,6 +1,5 @@
 import { display_idx } from '#lib/labels.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
-import { download } from '#lib/io/fetch.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
@@ -441,19 +440,42 @@ export function structure_to_json_str(structure?: AnyStructure): string {
   return JSON.stringify(structure_json_data(structure), null, 2)
 }
 
-// Text export formats: serializer + file extension + MIME type per format
+// Text export formats: serializer, file extension, MIME type, why a structure can't be written
+// (shown as the export pane's disabled reason; the serializer throws it) and a pane label/hint
 export const STRUCT_TEXT_FORMATS = {
-  json: { to_str: structure_to_json_str, ext: `json`, mime: `application/json` },
-  xyz: { to_str: structure_to_xyz_str, ext: `xyz`, mime: `text/plain` },
-  cif: { to_str: structure_to_cif_str, ext: `cif`, mime: `chemical/x-cif` },
-  poscar: { to_str: structure_to_poscar_str, ext: `poscar`, mime: `text/plain` },
+  json: {
+    to_str: structure_to_json_str,
+    ext: `json`,
+    mime: `application/json`,
+    unavailable_reason: (structure?: AnyStructure) =>
+      structure ? undefined : `No structure loaded`,
+    label: `JSON`,
+    hint: `<a href="https://pymatgen.org" target="_blank">Pymatgen</a> JSON format - Python Materials Genomics structure serialization, widely used in computational materials science`,
+  },
+  xyz: {
+    to_str: structure_to_xyz_str,
+    ext: `xyz`,
+    mime: `text/plain`,
+    unavailable_reason: xyz_export_unavailable_reason,
+    label: `XYZ`,
+    hint: `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
+  },
+  cif: {
+    to_str: structure_to_cif_str,
+    ext: `cif`,
+    mime: `chemical/x-cif`,
+    unavailable_reason: fractional_export_unavailable_reason,
+    label: `CIF`,
+    hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
+  },
+  poscar: {
+    to_str: structure_to_poscar_str,
+    ext: `poscar`,
+    mime: `text/plain`,
+    unavailable_reason: poscar_export_unavailable_reason,
+    label: `POSCAR`,
+    hint: `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
+  },
 } as const
 
 export type StructTextFormat = keyof typeof STRUCT_TEXT_FORMATS
-
-// Serialize structure in the given text format and trigger a browser download. Throws for
-// structures the format cannot express (a molecule as CIF/POSCAR).
-export function export_structure_as(fmt: StructTextFormat, structure: AnyStructure): void {
-  const { to_str, ext, mime } = STRUCT_TEXT_FORMATS[fmt]
-  download(to_str(structure), create_structure_filename(structure, ext), mime)
-}

@@ -39,16 +39,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
 
-  // no outer inset by default: cells tile flush with the container (pass
-  // `padding` to reserve chart-edge space, e.g. for host-drawn annotations)
+  // no outer inset by default: cells tile flush with the container
   const DEFAULT_PADDING: Required<Sides> = { t: 0, b: 0, l: 0, r: 0 }
   const LABEL_MARGIN = 6 // px clearance between label text and cell edges
 
   let {
     data = $bindable([]),
     value_mode = $bindable(DEFAULTS.treemap.value_mode),
-    // descending (unlike Sunburst's input-order default): squarified tiling
-    // reads best with the largest cell top-left and smallest bottom-right
+    // descending (unlike Sunburst): squarified tiling reads best largest-first
     sort = `descending`,
     level_lighten = 0,
     min_fraction = $bindable(DEFAULTS.treemap.min_fraction),
@@ -83,7 +81,7 @@
     on_node_click,
     on_node_hover,
     on_zoom,
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -94,39 +92,32 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
-    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
-    // forward them to the wrapper div as invalid DOM attributes.
+    // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
     Omit<BasePlotProps, `range_padding` | `title`> &
-    // data/value semantics, coloring, legend, export and node handlers are
-    // shared verbatim with Sunburst
+    // data/value semantics, coloring, legend, export and node handlers shared with Sunburst
     HierarchyChartProps<Metadata> & {
       padding_inner?: number // px gap between sibling cells
       padding_top?: number // px header strip on branch cells (0 = no headers)
       padding_outer?: number // px inset of children within their parent (plotly marker.pad)
-      // Structured multiline labels. Unlike cell_content, this keeps built-in
-      // hover/focus/click and tooltip behavior on the underlying cell.
+      // Structured multiline labels; unlike cell_content keeps built-in hover/click/tooltip
       label_formatter?: TreemapLabelFormatter<Metadata>
       label_fit?: TreemapLabelFit // shrink-to-fit (default), hide, or clip at max size
       label_min_font_size?: number // px floor used by shrink mode
       label_max_font_size?: number // px ceiling for leaf/cutoff labels
       parent_label_font_size?: number // px size/ceiling for branch header labels
-      // Zoom transition timing (resizes/data swaps snap instantly, plotly-style).
-      // `interpolate` and `duration`-as-function are the component's own: the tweened
-      // value is a tiling (rects keyed by their arcs), not a bare rect list
+      // Zoom transition timing (resizes/data swaps snap instantly). `interpolate` and
+      // `duration`-as-function are the component's own: the tweened value is a tiling
       tween?: Omit<TweenOptions<Rect[]>, `interpolate` | `duration`> & { duration?: number }
-      // Fully replace the default cell rect + labels. NOTE: this also replaces the
-      // built-in hover/focus/click + tooltip wiring, so re-implement any
-      // interactivity you need inside the snippet.
+      // Fully replace the default cell rect + labels, including the built-in
+      // hover/focus/click + tooltip wiring (re-implement interactivity in the snippet)
       cell_content?: Snippet<[{ arc: PositionedArc<Metadata>; rect: Rect }]>
     } = $props()
 
   let [width, height] = $state([0, 0])
   const uid = $props.id()
 
-  // Tree semantics (values, colors, ids, pre-order indexing), zoom/hover/legend
-  // state and keyboard plumbing are shared with Sunburst; only the pixel tiling
-  // below is treemap-specific.
-  // annotated because the geometry hooks below close over `chart_state` itself
+  // Tree semantics, zoom/hover/legend state and keyboard plumbing are shared with
+  // Sunburst. Annotated because the geometry hooks below close over `chart_state` itself
   const chart_state: HierarchyChartState<Metadata> = new HierarchyChartState<Metadata>({
     chart: `treemap`,
     uid,
@@ -162,16 +153,14 @@
     on_zoom: (payload) => on_zoom?.(payload),
     visible: (idx) => idx_visible(idx),
     node_center: (idx) => (rects[idx] ? rect_center(rects[idx]) : null),
-    // Place against the settled (target) tiling, not the animated one - placement
-    // is stable during zoom tweens. Same visibility rule as rendering so hidden
-    // cells (zoom root, beyond max_depth) don't repel the legend.
+    // Place against the settled tiling (stable during zoom tweens), with the same
+    // visibility rule as rendering so hidden cells don't repel the legend
     legend_points: () =>
       chart_state.arcs.flatMap((arc, idx) =>
         cell_visible(arc, target_rects[idx]) ? [rect_center(target_rects[idx])] : [],
       ),
-    // Zooming via keyboard unmounts the focused cell - move focus to the new
-    // root's first child (pre-order: node_idx + 1), or the root cell itself for
-    // leaf zooms (rendered full-viewport), so keyboard users stay in the chart
+    // Keyboard zoom unmounts the focused cell: focus the new root's first child
+    // (pre-order node_idx + 1), or the root itself for full-viewport leaf zooms
     focus_after_zoom: () => {
       const { zoom_root } = chart_state
       chart_state.focus_node(
@@ -184,10 +173,8 @@
     },
   })
 
-  // Re-tile the zoom root's subtree to the full plot area (plotly behavior:
-  // squarified aspect ratios stay correct at every zoom level, unlike projecting
-  // one fixed tiling through a window, which would distort cells and scale the
-  // fixed-px header strips). Zoom animation interpolates between tilings.
+  // Re-tile the zoom root's subtree to the full plot area (plotly behavior): projecting one
+  // fixed tiling would distort aspect ratios and scale the fixed-px header strips
   let zoom_idx = $derived(chart_state.zoom_root?.node_idx ?? 0)
   let target_rects = $derived(
     tile_rects(
@@ -198,16 +185,12 @@
     ),
   )
   let header_height = $derived(header_strip(padding_top, padding_outer))
-  // The rects travel with the arcs they were computed from: a zoom can change the arc
-  // set (bucketing measures its threshold against the zoom root), and the two tilings
-  // then have to be matched by id rather than by position.
+  // Rects travel with their arcs: a zoom can change the arc set (bucketing is relative
+  // to the zoom root), so tilings must be matched by id rather than by position
   let tiling = $derived<Tiling>({ rects: target_rects, arcs: chart_state.arcs })
-  // Animate only zoom transitions; resizes, data swaps and padding tweaks snap
-  // instantly (animating a container drag-resize would chase the pointer with a
-  // 400ms lerp on every width change, and morphing between unrelated datasets
-  // is meaningless). Keyed on the zoom root's id, not its node_idx, which shifts
-  // whenever bucketing changes the arc set without the view having moved.
-  // untrack reads the options once at init.
+  // Animate only zoom transitions; resizes, data swaps and padding tweaks snap (a lerp
+  // would chase a drag-resize). Keyed on the zoom root's id, not node_idx, which shifts
+  // whenever bucketing changes the arc set. untrack reads the options once at init.
   let prev_zoom_id = untrack(() => chart_state.zoom_root?.id ?? null)
   let prev_data = untrack(() => data)
   const rects_tween = create_settling_tween<Tiling>(
@@ -232,9 +215,8 @@
           : { duration: 0 },
     },
   )
-  // Bookkeeping lives outside `live`, which the tween skips while the plot is still settling:
-  // a zoom inside that window would otherwise leave prev_* stale and snap the next zoom back.
-  // Created after the tween so it runs after `live` has read the previous values.
+  // Bookkeeping lives outside `live`, which the tween skips while settling (stale prev_*
+  // would snap the next zoom back). Created after the tween so `live` reads old values first.
   $effect.pre(() => {
     ;[prev_zoom_id, prev_data] = [chart_state.zoom_root?.id ?? null, data]
   })
@@ -247,11 +229,9 @@
   let depth_cutoff = $derived(
     max_depth > 0 ? (chart_state.zoom_root?.depth ?? 0) + max_depth : Infinity,
   )
-  // Shared by rendering and legend placement. The zoom root fills the viewport
-  // and is represented by the breadcrumbs, not a cell — except when it's a leaf
-  // (e.g. programmatic zoom_root_id onto a compound), which renders as one full-
-  // viewport cell instead of a blank chart. Nodes outside the zoomed subtree
-  // hold zero rects from tile_rects.
+  // Shared by rendering and legend placement. The zoom root is shown by the breadcrumbs,
+  // not a cell, unless it's a leaf (rendered full-viewport instead of a blank chart).
+  // Nodes outside the zoomed subtree hold zero rects.
   const cell_visible = (arc: PositionedArc<Metadata>, rect: Rect): boolean =>
     arc.depth > 0 &&
     (arc.node_idx !== zoom_idx || arc.is_leaf) &&
@@ -262,9 +242,8 @@
     const [arc, rect] = [chart_state.arcs[idx], rects[idx]]
     return Boolean(arc && rect && cell_visible(arc, rect))
   }
-  // Indices (= keys) of cells to render. A plain number array: arcs/rects/
-  // node_infos/node_dim are all index-aligned, so rendering reads them by idx
-  // instead of rebuilding N wrapper objects per tween frame.
+  // Indices of cells to render: arcs/rects/node_infos are index-aligned, so no N wrapper
+  // objects get rebuilt per tween frame
   let visible_idxs = $derived.by(() => {
     const idxs: number[] = []
     for (let idx = 0; idx < chart_state.arcs.length; idx++) {
@@ -273,8 +252,7 @@
     return idxs
   })
 
-  // Every visible cell is focusable, not just the clickable ones, so arrow keys reach
-  // tooltips and a zoom into plain leaves can't strand focus outside the chart.
+  // Every visible cell is focusable so arrow keys reach tooltips and leaf zooms keep focus
   let roving_idx = $derived(chart_state.roving_idx(visible_idxs[0] ?? null))
 
   // Rect center in container (pad-offset) pixel space, for tooltip + legend placement
@@ -286,8 +264,7 @@
   // Any cell zooms (plotly semantics), not just branches, so clickability is uniform
   let cells_clickable = $derived(Boolean(on_node_click) || zoom_on_click)
 
-  // Branches with visible children only ever label their header strip: a centered
-  // label would paint over the descendant cells that cover the rest of the cell
+  // Branches with visible children label only their header strip (children cover the rest)
   const is_header = (arc: PositionedArc<Metadata>): boolean =>
     !arc.is_leaf && arc.depth < depth_cutoff
   // Header labels render bold (600) and at their own size ceiling
@@ -297,12 +274,9 @@
     safe_font_size(label_max_font_size ?? chart_state.label_font.font_size, 11),
   )
 
-  // Per-node label candidates, richest first. Without a formatter, shrink/clip fit
-  // the richest built-in variant, while hide mode falls back through the compact
-  // variants before dropping the label. Formatter output is font- and layout-
-  // independent, so it resolves once per data/option change. The depth-0 root
-  // never renders a cell, so the formatter is never invoked for it (for array
-  // data it's synthetic and e.g. carries no metadata).
+  // Per-node label candidates, richest first. Without a formatter, shrink/clip fit the
+  // richest variant while hide mode falls back through compact ones. The formatter runs once
+  // per data/option change and never for the (possibly synthetic) depth-0 root.
   let label_lines = $derived(
     chart_state.arcs.map((arc, idx) => {
       if (arc.depth === 0) return []
@@ -312,8 +286,7 @@
       return [normalize_treemap_label_lines(variants[0]?.text)]
     }),
   )
-  // Measured at their maximum size once per font/zoom change rather than per
-  // frame of a zoom tween; placement below is arithmetic on these metrics
+  // Measured at max size once per font/zoom change, not per tween frame
   let label_blocks: TreemapLabelBlock[][] = $derived(
     label_lines.map((candidates, idx) => {
       const header = is_header(chart_state.arcs[idx])
@@ -323,10 +296,8 @@
     }),
   )
 
-  // Label text + placement for a cell; null means hide the label. Branch cells
-  // label their header strip (top-left); leaves (and branches at the depth
-  // cutoff, which render as plain cells) center their label, rotating 90° in
-  // thin-but-tall cells like the icicle shape does.
+  // Label placement for a cell, null = hidden. Branch cells label their header strip;
+  // leaves (and branches at the depth cutoff) center it, rotating 90° in thin tall cells.
   function place_label(idx: number): TreemapLabelPlacement | null {
     const header = is_header(chart_state.arcs[idx])
     for (const block of label_blocks[idx]) {
@@ -344,8 +315,7 @@
     return null
   }
 
-  // hide mode never overflows (unfitting labels return null), so clipPaths are
-  // only rendered/applied for the shrink/clip modes (with or without formatter)
+  // hide mode never overflows, so clipPaths are only needed for shrink/clip
   let clip_labels = $derived(label_fit !== `hide`)
   const label_clip_id = (idx: number) => `treemap-label-clip-${uid}-${idx}`
   const label_clip_rect = (rect: Rect, header: boolean): Rect => {
@@ -358,15 +328,12 @@
       height: Math.max(0, clip_height - 2 * inset),
     }
   }
-  // Defs and visible text share these placements, avoiding duplicate fitting
-  // work on every frame of a zoom tween.
+  // Defs and visible text share these placements to avoid duplicate fitting per frame
   let label_placements = $derived(new Map(visible_idxs.map((idx) => [idx, place_label(idx)])))
 
-  // The chrome floats over the cells, so its icons take their color from whatever is
-  // painted under the top-right corner rather than from the page. Cells are drawn
-  // parents-first, so the last visible one containing the point is the one on top.
-  // Probes the settled tiling, like legend_points: the tweened rects re-ran this ~24x per zoom
-  // and flickered the icons through every cell sweeping the corner.
+  // The chrome floats over the cells, so its icons take the color of the top-most cell
+  // (parents paint first, so the last hit) under the top-right corner. Probes the settled
+  // tiling: tweened rects re-ran this ~24x per zoom and flickered the icons.
   let chrome_color = $derived.by(() => {
     const probe = { x: chart_state.inner_width - 1, y: 1 }
     let label_fill: string | undefined
@@ -381,13 +348,13 @@
       )
         label_fill = chart_state.node_infos[idx]?.label_fill
     }
-    // label_fill already accounts for a pattern's backdrop (transparent in `replace` mode)
-    // and for translucent fills, where inheriting is the only honest answer
+    // label_fill already accounts for pattern backdrops and translucent fills
     return label_fill === `currentColor` ? undefined : label_fill
   })
 </script>
 
 <ChartShell
+  empty={Array.isArray(data) && !data.length}
   chart_class="treemap"
   css_prefix="treemap"
   {chrome_color}
@@ -487,15 +454,13 @@
           />
         {/if}
 
-        <!-- Cell labels: selectable text; data-treemap-node-idx forwards hover/click
-      to the underlying cell via the chart-group delegation in the shell -->
+        <!-- Selectable cell labels; data-treemap-node-idx forwards hover/click to the cell -->
         {#if show_labels && !cell_content}
           <g>
             {#each visible_idxs as idx (idx)}
               {@const lbl = label_placements.get(idx)}
               {#if lbl}
-                <!-- Keep the clip on this untransformed wrapper. Applying it to
-              rotated text rotates the clipping region and crops the wrong area. -->
+                <!-- Clip this untransformed wrapper: clipping rotated text rotates the clip -->
                 {@const { label_fill, label_halo } = chart_state.node_infos[idx]}
                 {@const label_opacity = chart_state.node_dim(idx).label_opacity}
                 {#snippet label_lines(halo: boolean)}
@@ -515,8 +480,7 @@
                 {/snippet}
                 <g clip-path={clip_labels ? `url(#${label_clip_id(idx)})` : undefined}>
                   {#if label_halo}
-                    <!-- Blurred halo in the tile backdrop color so the label stays legible
-                    over hatch/dot strokes; style not attributes since it may be a CSS var -->
+                    <!-- Blurred halo for legibility over patterns (style: may be a CSS var) -->
                     <text
                       class={['cell-label', 'halo', { header: lbl.header }]}
                       aria-hidden="true"
@@ -556,13 +520,9 @@
 </ChartShell>
 
 <style>
-  /* fully :global: the wrapper is ChartShell's element and breadcrumbs and chart svg
-  are HierarchyShell's, so none carry this component's scope - but their theming stays
-  in the chart's variable namespace.
-  plotly-pathbar look: right-pointing chevron segments with a matching left
-  notch on all but the first, slightly overlapped so they read as one bar.
-  Opaque background: the pathbar overlays arbitrarily-colored cells, and a
-  translucent one would be illegible over dark fills */
+  /* fully :global: wrapper, breadcrumbs and svg belong to ChartShell/HierarchyShell.
+  plotly-pathbar look: overlapping chevron segments. Opaque background since a
+  translucent one would be illegible over dark cells */
   :global(.treemap .breadcrumb) {
     background: var(--treemap-btn-bg, light-dark(#e3e6ea, #33383f));
     color: inherit;
@@ -623,14 +583,9 @@
     font-size: var(--treemap-font-size, 11px);
   }
   .cells rect {
-    /* stroke via CSS (not presentation attributes): var() substitution in SVG
-    presentation attributes is not reliably supported across browsers.
-    Dividers matter more here than in the sunburst: sibling gaps show the
-    parent's fill (parents paint under their children), which is identical to
-    the children's inherited color - without a stroke, same-color siblings
-    blend into one shape. Not defaulted to --plot-bg because that is often
-    semi-transparent (near-invisible as a line); light-dark keeps dividers
-    paper-colored in both themes, like plotly */
+    /* stroke via CSS: var() in SVG presentation attributes is unreliable. Without
+    dividers same-color siblings blend (gaps show the parent's identical fill). Not
+    --plot-bg, which is often semi-transparent and near-invisible as a line */
     stroke: var(--treemap-cell-stroke, light-dark(white, #16181d));
     stroke-width: var(--treemap-cell-stroke-width, 1);
     transition: fill-opacity 0.15s ease;
@@ -640,13 +595,11 @@
   }
   .cell-label {
     text-anchor: middle;
-    /* selectable so labels can be copied; clicks/hover still reach the underlying
-    cell via data-treemap-node-idx + delegation on the chart group */
+    /* selectable so labels can be copied; clicks reach the cell via data-treemap-node-idx */
     -webkit-user-select: text;
     user-select: text;
   }
-  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan>, so lines
-  would sit on the alphabetic baseline and crop at the top of the clip strip */
+  /* WebKit doesn't inherit dominant-baseline from <text> to <tspan> */
   .cell-label tspan {
     dominant-baseline: inherit;
   }

@@ -1,5 +1,7 @@
 <script lang="ts">
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
+  import type { ColorScale } from '#lib/plot/core/types.js'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import type { MultiSelectProps } from 'svelte-widgets'
@@ -20,10 +22,12 @@
     ...rest
   }: Omit<
     Extract<MultiSelectProps<D3InterpolateName>, { mode: `single` }>,
-    `options` | `mode`
+    `options` | `mode` | `value`
   > & {
     options?: D3InterpolateName[]
-    value?: D3InterpolateName
+    // The color scale whose scheme is picked: a bare name stays a name, a config keeps its
+    // other fields (type, ranges). A function scheme shows no selection.
+    value?: ColorScale
     color_bar?: ComponentProps<typeof ColorBar>
   } = $props()
 
@@ -41,7 +45,7 @@
   mode="single"
   max_options={options.length}
   {min_select}
-  bind:value
+  bind:value={() => scheme_name(value), (scheme) => (value = with_scheme(value, scheme))}
   {placeholder}
   li_option_style="padding: 3pt 6pt;"
   li_selected_style="width: 100%; background-color: transparent;"
@@ -57,7 +61,7 @@
     {#if type === `selected` || open || previews_built}
       <ColorBar
         title={label}
-        scale={scheme}
+        color_scale={scheme}
         tick_labels={0}
         title_side="left"
         wrapper_style="width: 100%; --cbar-gap: 6px; --cbar-label-text-align: left;"

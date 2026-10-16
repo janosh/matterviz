@@ -14,8 +14,8 @@
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { ComponentProps, Snippet } from 'svelte'
 
-  // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, export pane,
-  // controls-pane toggle, fullscreen button). Must be a direct child of the wrapper whose hover reveals it.
+  // Hover-revealed header row of ChartShell and CartesianFrame (caller buttons, export
+  // pane, controls toggle, fullscreen button), a direct child of the wrapper revealing it
   let {
     dims,
     fullscreen = $bindable(false),
@@ -35,7 +35,7 @@
     wrapper?: HTMLDivElement
     css_prefix: string
     fullscreen_toggle: boolean
-    show_controls: ShowControlsProp<`controls` | `fullscreen`>
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // Tucked into the corner with tighter spacing (ChartShell), buttons taking chrome_color
     corner?: boolean
     chrome_color?: string

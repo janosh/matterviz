@@ -1,3 +1,4 @@
+import { createRawSnippet } from 'svelte'
 import { create_scale } from '#lib/plot/core/scales.js'
 import type { Vec2 } from '#lib/math.js'
 import {
@@ -96,6 +97,21 @@ describe(`normalize_marginals`, () => {
     ],
   ] as const)(`config %j merges over defaults %j`, (prop, defaults, side, expected) => {
     expect(normalize_marginals(prop, defaults)[side]).toMatchObject(expected)
+  })
+
+  // the plot's tooltip={false} silences its strips unless a strip sets its own tooltip
+  const strip_tooltip = createRawSnippet(() => ({ render: () => `<b>strip</b>` }))
+  test.each([
+    [`plot tooltip on`, `kde`, false, undefined],
+    [`plot tooltip off`, `kde`, true, false],
+    [
+      `strip keeps its own tooltip`,
+      { type: `kde`, tooltip: strip_tooltip },
+      true,
+      strip_tooltip,
+    ],
+  ] as const)(`%s`, (_desc, top, tooltip_off, expected) => {
+    expect(normalize_marginals({ top }, {}, tooltip_off).top?.tooltip).toBe(expected)
   })
 })
 

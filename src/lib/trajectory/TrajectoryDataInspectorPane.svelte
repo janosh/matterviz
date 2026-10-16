@@ -168,18 +168,10 @@
   let atom_columns: Column[] = $derived([
     { id: `site`, label: `Site`, format: `d`, color_scale: null, sticky: true },
     { id: `element`, label: `Element`, color_scale: null },
-    ...FRAC_AXES.map((axis) => ({
-      id: `frac_${axis}`,
-      key: `frac_${axis}`,
-      label: `${axis}<sub>frac</sub>`,
-      format: `.4~f`,
-    })),
-    ...VEC3_AXES.map((axis) => ({
-      id: `cart_${axis}`,
-      key: `cart_${axis}`,
-      label: `${axis} (Å)`,
-      format: `.4~f`,
-    })),
+    ...[
+      ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
+      ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
+    ].map(([id, label]) => ({ id, key: id, label, format: `.4~f` })),
     ...site_property_specs.flatMap(([key, is_vec3]) =>
       is_vec3 ? VEC3_AXES.map((axis) => property_column(key, axis)) : [property_column(key)],
     ),

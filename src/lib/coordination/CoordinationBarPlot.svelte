@@ -37,7 +37,7 @@
     mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     on_sites_hover,
     ...rest
@@ -144,9 +144,16 @@
   const count_axis = { label: `Count`, format: `d`, range: [0, null] as [number, null] }
 </script>
 
+{#snippet cn_tooltip(info: BarHandlerProps<PlotMetadata>)}
+  CN: {format_value(info.x, `.0f`)}
+  <br />
+  Sites: {format_value(info.y, `.0f`)}
+{/snippet}
+
 <StructureBarPlot
   {...rest}
-  bind:show_controls
+  tooltip={rest.tooltip ?? cn_tooltip}
+  {show_controls}
   bind:controls_open
   series={bar_series}
   primary_axis={cn_axis}
@@ -158,10 +165,4 @@
   bind:loading
   bind:error_msg
   on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
->
-  {#snippet tooltip(info: BarHandlerProps<PlotMetadata>)}
-    CN: {format_value(info.x, `.0f`)}
-    <br />
-    Sites: {format_value(info.y, `.0f`)}
-  {/snippet}
-</StructureBarPlot>
+/>

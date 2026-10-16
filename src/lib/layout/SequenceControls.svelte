@@ -3,6 +3,7 @@
   import type { ShowControlsState } from '#lib/controls.js'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { shortcut_attrs } from '#lib/shortcuts.js'
   import type { create_sequence_player } from './sequence-player.svelte'
 
   let {
@@ -12,9 +13,7 @@
     playback,
     step_label_positions = [],
     item_name = `step`,
-    previous_title,
     play_title,
-    next_title,
     aria_label,
     aria_valuetext,
     disable_step_while_playing = true,
@@ -27,9 +26,7 @@
     playback: ReturnType<typeof create_sequence_player>
     step_label_positions?: number[]
     item_name?: string
-    previous_title?: string
     play_title?: string
-    next_title?: string
     aria_label?: string
     aria_valuetext?: string
     disable_step_while_playing?: boolean
@@ -58,7 +55,7 @@
       onclick={playback.previous}
       style={playback.shortcut_flash.style(`previous`)}
       disabled={index === 0 || step_locked}
-      title={previous_title ?? `Previous ${item_name}`}
+      {...shortcut_attrs(`previous`, `Previous ${item_name}`)}
       aria-label={`Previous ${item_name}`}
     >
       ⏮
@@ -68,7 +65,7 @@
       onclick={playback.toggle}
       style={playback.shortcut_flash.style(`play`)}
       disabled={count <= 1}
-      title={play_title ?? play_label}
+      {...shortcut_attrs(`play`, play_title ?? play_label)}
       aria-label={play_label}
       class={['play-button', { playing: playback.is_playing }]}
     >
@@ -79,7 +76,7 @@
       onclick={playback.next}
       style={playback.shortcut_flash.style(`next`)}
       disabled={index === count - 1 || step_locked}
-      title={next_title ?? `Next ${item_name}`}
+      {...shortcut_attrs(`next`, `Next ${item_name}`)}
       aria-label={`Next ${item_name}`}
     >
       ⏭
@@ -121,11 +118,6 @@
           on_index_input(event.currentTarget.valueAsNumber)
         }}
         onchange={finish_slider_scrub}
-        onkeydown={(event) => {
-          if (!playback.handle_keydown(event)) return
-          event.preventDefault()
-          event.stopPropagation()
-        }}
         class="step-slider"
         title={`Drag to navigate ${item_name}s`}
         aria-label={aria_label ?? item_name}

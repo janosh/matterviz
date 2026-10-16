@@ -25,8 +25,7 @@
     container-name: table-inset;
     overflow: visible;
     padding: var(--ptable-inset-padding);
-    /* An inset plot sits inside the table, so it should not also paint the tint that makes a
-       standalone plot read as its own panel. */
+    /* An inset plot sits inside the table: no tint marking it as its own panel */
     --plot-bg: var(--ptable-inset-plot-bg, transparent);
     --scatter-fullscreen-bg: var(--ptable-inset-fullscreen-bg, var(--page-bg, Canvas));
     /* Axis titles use this directly and tick labels take 0.8em of it, so one value shrinks
@@ -34,19 +33,16 @@
     --scatter-font-size: var(--ptable-inset-font-size, 12px);
     --scatter-fullscreen-font-size: var(--ptable-inset-fullscreen-font-size, 16px);
   }
-  /* On phone-width tables the inset area is ~200px wide by ~60px tall, so controls, stats
-     and headings spill over the tiles. Drop custom insets into their own full-width row below
-     the table instead (.periodic-table is the inline-size container). The built-in colorbar
-     is compact enough to stay put. 380px catches 360-393px phones (table = 94vw) while the
-     384px tables of a two-column grid in a 50em main column keep their inset. */
+  /* On phone-width tables the inset area is ~200x60px, so custom insets drop into their own
+     full-width row below the table (the compact colorbar stays). 380px catches 360-393px
+     phones (table = 94vw) while 384px tables in a two-column 50em grid keep their inset. */
   @container (max-width: 380px) {
     .table-inset:not(.auto-colorbar-inset) {
       grid-row: 11;
       grid-column: 1 / -1;
       margin-top: 1em;
-      /* The table pans sideways at this width (see PeriodicTable), so a row spanning every
-         track would be wider than the screen: size it to the visible table and stick it to
-         the left edge so it stays put while the tiles scroll underneath. */
+      /* The table pans sideways at this width, so size the row to the visible table and stick
+         it to the left edge while the tiles scroll underneath. */
       position: sticky;
       inset: auto auto auto 0;
       width: 100cqw;

@@ -1,3 +1,9 @@
+<script module lang="ts">
+  import { interpolateInferno } from 'd3-scale-chromatic'
+
+  const INFERNO_GRADIENT = `linear-gradient(90deg, ${Array.from({ length: 256 }, (_, idx) => `${interpolateInferno(idx / 256)} ${(idx / 256) * 100}% ${((idx + 1) / 256) * 100}%`).join(`, `)})`
+</script>
+
 <script lang="ts">
   import { untrack } from 'svelte'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
@@ -5,7 +11,6 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
-  import HotspotLegend from './HotspotLegend.svelte'
   import { Graph } from 'svelte-widgets/icons'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { clamp01, to_error } from '#lib/utils.js'
@@ -246,6 +251,16 @@
   }
 </script>
 
+{#snippet ramp(label: string, lower: number, upper: number, background: string, unit: string)}
+  <span>{label}</span>
+  <div class="ramp" style:background></div>
+  <div class="endpoints">
+    {#each [lower, upper] as value}<span
+        >{format_num(value, `.3~g`)} <small>{unit}</small></span
+      >{/each}
+  </div>
+{/snippet}
+
 <ViewerPane
   {...pane_props}
   closed_icon={Graph}
@@ -441,7 +456,37 @@
       <label style="display: flex; align-items: center; gap: 0.4em; margin-block: 0.5em">
         <input type="checkbox" bind:checked={scale_locked} /> Lock numeric color ranges
       </label>
-      <HotspotLegend {scale} {mean} show_atoms={show_heatmap} {cloud} locked={scale_locked} />
+      <div class="thermal-legend" aria-label="Thermal color legend">
+        <strong
+          >Bin-average {scale.metric === `energy`
+            ? `kinetic energy`
+            : `kinetic temperature`}</strong
+        >
+        {#if scale_locked}<small>Ranges locked</small>{/if}
+        {#if show_heatmap}
+          {@render ramp(`Atoms · Inferno`, 0, scale.atom_max, INFERNO_GRADIENT, scale.unit)}
+        {/if}
+        {#if cloud.visible}
+          {@render ramp(
+            `Cloud · base → hotspot`,
+            scale.cloud_min,
+            scale.cloud_max,
+            `linear-gradient(90deg in srgb-linear, ${cloud.base_color}, ${cloud.hot_color})`,
+            scale.unit,
+          )}
+        {/if}
+        <div>
+          {#if Number.isFinite(mean)}
+            Mean {format_num(mean, `.3~g`)} <small>{scale.unit}</small> · Threshold {format_num(
+              scale.threshold,
+              `.3~g`,
+            )} <small>{scale.unit}</small>
+          {:else}
+            Mean and threshold unavailable
+          {/if}
+        </div>
+        <small>Colors clamp at endpoints. Unavailable bins keep element colors.</small>
+      </div>
       <p>
         Lock preserves color and cloud density ranges across analysis updates. Unlock to change
         the threshold. Changing the display metric resets the lock.
@@ -595,5 +640,20 @@
   p {
     font-size: 0.85em;
     margin: 0.25em 0;
+  }
+  .thermal-legend {
+    display: grid;
+    gap: 0.25em;
+    font-size: 0.8em;
+    line-height: 1.3;
+    .ramp {
+      height: 0.7em;
+      border-radius: 2px;
+    }
+    .endpoints {
+      display: flex;
+      justify-content: space-between;
+      gap: 1em;
+    }
   }
 </style>

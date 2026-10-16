@@ -176,6 +176,7 @@ describe(`ScatterPoint`, () => {
   })
 
   describe(`leader lines`, () => {
+    // oxfmt-ignore
     test.each([
       {
         desc: `displacement exceeds threshold`,
@@ -189,12 +190,7 @@ describe(`ScatterPoint`, () => {
         threshold: 15,
         visible: false,
       },
-      {
-        desc: `threshold very high`,
-        offset: { x: 20, y: 10 },
-        threshold: 100,
-        visible: false,
-      },
+      { desc: `threshold very high`, offset: { x: 20, y: 10 }, threshold: 100, visible: false },
       {
         desc: `rendered line too short after edge subtraction`,
         offset: { x: 16, y: 0 },

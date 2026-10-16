@@ -42,24 +42,11 @@ const default_series_data: LegendItem[] = [
   legend_item(
     `Series 2`,
     1,
-    {
-      symbol_type: `Square`,
-      symbol_color: `blue`,
-      line_dash: `dashed`,
-      line_color: `blue`,
-    },
+    { symbol_type: `Square`, symbol_color: `blue`, line_dash: `dashed`, line_color: `blue` },
     { visible: false },
   ),
-  legend_item(`Series 3`, 2, {
-    symbol_type: `Triangle`,
-    symbol_color: `green`,
-    // No line
-  }),
-  legend_item(`Series 4`, 3, {
-    // No marker
-    line_dash: `Dotted`,
-    line_color: `purple`,
-  }),
+  legend_item(`Series 3`, 2, { symbol_type: `Triangle`, symbol_color: `green` }), // no line
+  legend_item(`Series 4`, 3, { line_dash: `Dotted`, line_color: `purple` }), // no marker
   legend_item(`Series 5 (Varied)`, 4),
 ]
 

@@ -2,7 +2,7 @@ import type { TrajectorySpectroscopyResult } from '#lib/spectral/index.js'
 import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
 import TrajectorySpectrumPlot from '#lib/spectral/TrajectorySpectrumPlot.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { flushSync, mount, tick, unmount, type Component } from 'svelte'
+import { flushSync, mount, tick, unmount, type Component, type ComponentProps } from 'svelte'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { query, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
@@ -41,13 +41,8 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
       ir_prominence: responses ? 1 : 0,
       raman_prominence: responses ? 1 : 0,
       potentially_mixed: false,
-      displacement: [
-        [
-          [1, 0],
-          [0, 1],
-          [0, 0],
-        ],
-      ],
+      // oxfmt-ignore
+      displacement: [[[1, 0], [0, 1], [0, 0]]],
     },
   ],
   frequency_unit: `THz`,
@@ -72,6 +67,12 @@ const render = <Props extends Record<string, unknown>>(
   return target
 }
 
+// the plot at a fixed 240px height, so both panels get room to lay out
+const render_plot = (
+  spectrum: TrajectorySpectroscopyResult,
+  props: Partial<ComponentProps<typeof TrajectorySpectrumPlot>> = {},
+) => render(TrajectorySpectrumPlot, { result: spectrum, style: `height: 240px`, ...props })
+
 const labeled_select = (root: HTMLElement, label: string): HTMLSelectElement => {
   const select = Array.from(root.querySelectorAll(`select`)).find((element) =>
     element.parentElement?.textContent?.includes(label),
@@ -81,11 +82,9 @@ const labeled_select = (root: HTMLElement, label: string): HTMLSelectElement => 
 }
 
 describe(`TrajectorySpectrumPlot`, () => {
+  const peak_markers = `g[data-series-id="detected-peaks"] path.marker`
   it(`renders synchronized IR/VDOS and Raman/VDOS panels`, async () => {
-    const target = render(TrajectorySpectrumPlot, {
-      result: result(),
-      style: `height: 240px`,
-    })
+    const target = render_plot(result())
     await tick()
     const spectrum_plots = query(target, `.trajectory-spectrum-plots`)
     expect(spectrum_plots.style.height).toBe(`240px`)
@@ -126,19 +125,11 @@ describe(`TrajectorySpectrumPlot`, () => {
       normalized_power: [0, 1, 0],
       nyquist: 2,
     }
-    truncated_response.peaks.push({
-      ...truncated_response.peaks[0],
-      frequency: 3,
-    })
-    const target = render(TrajectorySpectrumPlot, {
-      result: truncated_response,
-      style: `height: 240px`,
-    })
+    truncated_response.peaks.push({ ...truncated_response.peaks[0], frequency: 3 })
+    const target = render_plot(truncated_response)
     await tick()
     const ir_plot = target.querySelectorAll(`.scatter`)[0]
-    expect(
-      ir_plot.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
-    ).toHaveLength(1)
+    expect(ir_plot.querySelectorAll(peak_markers)).toHaveLength(1)
   })
 
   it(`crops insignificant high-frequency tails while retaining an explicit range`, async () => {
@@ -158,28 +149,17 @@ describe(`TrajectorySpectrumPlot`, () => {
     long_tail_result.peaks[0] = { ...long_tail_result.peaks[0], frequency: 2000 }
     long_tail_result.peaks.push({ ...long_tail_result.peaks[0], frequency: 70_000 })
 
-    const cropped_target = render(TrajectorySpectrumPlot, {
-      result: long_tail_result,
-      style: `height: 240px`,
-    })
+    const cropped_target = render_plot(long_tail_result)
     await tick()
     const cropped_plot = cropped_target.querySelector(`.scatter`)
     expect(cropped_plot?.querySelector(`.x-axis .axis-label`)?.textContent).toContain(
       `Frequency (cm⁻¹)`,
     )
-    expect(
-      cropped_plot?.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
-    ).toHaveLength(1)
+    expect(cropped_plot?.querySelectorAll(peak_markers)).toHaveLength(1)
 
-    const full_range_target = render(TrajectorySpectrumPlot, {
-      result: long_tail_result,
-      frequency_range: [0, 70_000],
-      style: `height: 240px`,
-    })
+    const full_range = render_plot(long_tail_result, { frequency_range: [0, 70_000] })
     await tick()
-    expect(
-      full_range_target.querySelectorAll(`g[data-series-id="detected-peaks"] path.marker`),
-    ).toHaveLength(2)
+    expect(full_range.querySelectorAll(peak_markers)).toHaveLength(2)
   })
 
   it(`pads a response by its own spectral resolution`, async () => {
@@ -198,11 +178,7 @@ describe(`TrajectorySpectrumPlot`, () => {
     divergent_resolution_result.peaks = [
       { ...divergent_resolution_result.peaks[0], frequency: 2 },
     ]
-
-    const target = render(TrajectorySpectrumPlot, {
-      result: divergent_resolution_result,
-      style: `height: 240px`,
-    })
+    const target = render_plot(divergent_resolution_result)
     await tick()
     const x_tick_values = [...target.querySelectorAll(`.x-axis .tick text`)].map(
       (tick_element) => tick_element.textContent,

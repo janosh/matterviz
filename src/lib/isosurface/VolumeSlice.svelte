@@ -2,13 +2,14 @@
   import { resolve_computed_color } from '#lib/colors/index.js'
   import type { Vec2 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import { create_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { SliceResult } from './slice'
   import {
     contour_segments,
+    DEFAULT_SLICE_SCHEME,
     resolve_contour_thresholds,
     resolve_slice_value_range,
     slice_to_rgba,
@@ -18,7 +19,7 @@
   let {
     slice,
     mode = `both`,
-    color_scale = `interpolateRdBu`,
+    color_scale: color_scale_prop = DEFAULT_SLICE_SCHEME,
     symmetric = `auto`,
     contour_levels = 10,
     color_bar = {},
@@ -34,6 +35,7 @@
     canvas?: HTMLCanvasElement
   } = $props()
 
+  let color_scale = $derived(to_color_scale_config(color_scale_prop, DEFAULT_SLICE_SCHEME))
   let value_range = $derived<Vec2>(
     slice ? resolve_slice_value_range(slice, color_scale, symmetric) : [0, 1],
   )
@@ -141,9 +143,7 @@
     {@const orientation = color_bar.orientation ?? `vertical`}
     <ColorBar
       title="Value"
-      scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
-      range={value_range}
-      scale_type={to_color_scale_config(color_scale).type}
+      color_scale={{ ...color_scale, value_range }}
       tick_labels={5}
       {...color_bar}
       {orientation}

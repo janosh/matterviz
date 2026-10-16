@@ -26,6 +26,14 @@ const frames = (count: number, site_count = 3): TrajectoryFrame[] =>
     make_trajectory_frame(idx * 10, site_count, { energy: -idx }),
   )
 
+// Lets a read and its handler (two promise hops) land, then flushes effects
+const flush_microtasks = async (): Promise<void> => {
+  await Promise.resolve()
+  await Promise.resolve()
+  flushSync()
+}
+const PREPARATION = { bonding_strategy: `electroneg_ratio`, bonding_options: {} } as const
+
 // Async run whose reads resolve by hand, to order races deliberately
 const make_async_run = (frame_list: TrajectoryFrame[]) => {
   const backing = trajectory_from_frames(frame_list)
@@ -49,9 +57,7 @@ const make_async_run = (frame_list: TrajectoryFrame[]) => {
   })
   const resolve_next = async (): Promise<void> => {
     pending.shift()?.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    flushSync()
+    await flush_microtasks()
   }
   return { run, pending, reads, resolve_next }
 }
@@ -147,11 +153,7 @@ describe(`frame loading`, () => {
         })
         return request.promise
       }
-      const initial = {
-        bonding_strategy: `electroneg_ratio`,
-        bonding_options: {},
-        polyhedra: {},
-      } as const
+      const initial = { ...PREPARATION, polyhedra: {} } as const
       const { host, session } = make_session({
         run,
         preparation: initial,
@@ -159,9 +161,7 @@ describe(`frame loading`, () => {
       })
       const settle = async (idx: number) => {
         pending[idx].resolve()
-        await Promise.resolve()
-        await Promise.resolve()
-        flushSync()
+        await flush_microtasks()
       }
       await settle(0)
       const first = session.scene_frame
@@ -581,7 +581,7 @@ describe(`controller and playback`, () => {
       )
       const cache_max_bytes = total_bytes / (fits ? 1 : 2)
       const { host, session } = make_session(
-        { run, preparation: { bonding_strategy: `electroneg_ratio`, bonding_options: {} } },
+        { run, preparation: PREPARATION },
         { cache_max_bytes },
       )
       await vi.advanceTimersByTimeAsync(0)
@@ -626,10 +626,7 @@ describe(`controller and playback`, () => {
       }
       const bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
       const { host, session } = make_session(
-        {
-          run,
-          preparation: { bonding_strategy: `electroneg_ratio`, bonding_options: {} },
-        },
+        { run, preparation: PREPARATION },
         { cache_max_bytes: bytes * 4 },
       )
       const settle = async (idx: number) => {
@@ -671,14 +668,7 @@ describe(`controller and playback`, () => {
       })
       const bytes = display_frame_bytes({ frame: encode_frame(run.preview) })
       const { host, session } = make_session(
-        {
-          run,
-          preparation: {
-            bonding_strategy: `electroneg_ratio`,
-            bonding_options: {},
-            bonds: false,
-          },
-        },
+        { run, preparation: { ...PREPARATION, bonds: false } },
         { cache_max_bytes: bytes * capacity, cache_max_frames: capacity },
       )
       await vi.advanceTimersByTimeAsync(0)
@@ -904,15 +894,12 @@ describe(`resolve_frame`, () => {
       const { session } = make_session({
         run,
         preparation: {
-          bonding_strategy: `electroneg_ratio`,
-          bonding_options: {},
+          ...PREPARATION,
           bonds: false,
           ...(hidden && { channels: { vectors: [] } }),
         },
       })
-      await Promise.resolve()
-      await Promise.resolve()
-      flushSync()
+      await flush_microtasks()
       const displayed = session.current_frame
       expect(session.numeric_frame?.wrapped).toBe(true)
       // Wrapping 1.2 fractional cells and scaling by 10 incurs 4.44e-16 absolute error.

@@ -66,14 +66,12 @@ describe(`normalize_categorical`, () => {
     expect(internal_series[2].y).toEqual([NaN, NaN, 9])
   })
 
+  // oxfmt-ignore
   test.each([
     [undefined, 0.75],
     [0.4, 0.4],
     [0, 0],
-    [
-      [0.2, 0.3, 0.4],
-      [0.4, 0.2],
-    ],
+    [[0.2, 0.3, 0.4], [0.4, 0.2]],
     [[], [0.75, 0.75]],
   ] as const)(`respects category order and width %j`, (bar_width, expected_width) => {
     const series: BarSeries[] = [{ x: [`a`, `b`, `c`], y: [1, 2, 3], bar_width }]

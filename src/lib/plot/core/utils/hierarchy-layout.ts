@@ -1,10 +1,7 @@
-// Hierarchy layout shared by the part-of-whole charts (Sunburst, Treemap), wrapping
-// d3-hierarchy's partition. Single source of truth for the tree semantics (value modes,
-// sorting, 'Other' bucketing, color inheritance, stable ids, pre-order indexing) so the
-// components stay declarative and the layout is independently unit-testable. The partition
-// is computed in normalized coordinates (angle as fraction of full circle in [0, 1], radius
-// in integer ring units where y0 === depth) independent of pixel size and zoom — Sunburst
-// maps these to screen space per frame (zoomable-sunburst trick), Treemap re-tiles them.
+// Hierarchy layout shared by Sunburst and Treemap, wrapping d3-hierarchy's partition: value
+// modes, sorting, 'Other' bucketing, color inheritance, stable ids, pre-order indexing. The
+// partition is in normalized coordinates (angle fraction in [0, 1], y0 === depth) independent
+// of pixel size and zoom: Sunburst maps it to screen space per frame, Treemap re-tiles it.
 
 import { hsl } from 'd3-color'
 import type { HierarchyNode, HierarchyRectangularNode } from 'd3-hierarchy'
@@ -38,21 +35,18 @@ export type SunburstShape = `sunburst` | `icicle`
 export interface SunburstNode<Metadata = Record<string, unknown>> {
   id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
   label?: string
-  // Compact last-resort label (e.g. a bare percentage) tried when the full
-  // label doesn't fit the node; without it the label is hidden entirely.
+  // Compact last-resort label tried when the full label doesn't fit (else it's hidden)
   label_short?: string
   value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
   color?: string // explicit color, inherited by descendants without their own
-  // Hatch/texture over this node's fill (not inherited), e.g. to mark a categorical flag
-  // like preemptible jobs: a shape name (`diagonal`, `dots`, …), a plotly-style shorthand
-  // (`/`, `x`, `.`, …) or full PatternOptions
+  // Hatch/texture over this node's fill (not inherited): a shape name (`diagonal`, `dots`,
+  // …), a plotly-style shorthand (`/`, `x`, `.`, …) or full PatternOptions
   pattern?: FillPattern
   children?: SunburstNode<Metadata>[]
   metadata?: Metadata
 }
 
-// Event payload for hover/click/zoom callbacks: a PositionedArc minus its geometry
-// (screen coords are an implementation detail), plus the resolved parent id
+// Event payload for hover/click/zoom callbacks: a PositionedArc minus geometry, plus parent id
 export interface SunburstNodeHandlerProps<Metadata = Record<string, unknown>> extends Omit<
   PositionedArc<Metadata>,
   `x0` | `x1` | `y0` | `y1` | `subtree_end` | `parent_idx`
@@ -64,8 +58,7 @@ export interface SunburstNodeHandlerProps<Metadata = Record<string, unknown>> ex
 // An arc after layout, in normalized partition coordinates (pixel mapping at render)
 export interface PositionedArc<Metadata = Record<string, unknown>> {
   node_idx: number // pre-order index (root = 0)
-  // Pre-order index of this node's last descendant (= node_idx for leaves). Descendants
-  // occupy the contiguous range [node_idx, subtree_end] -> O(1) ancestor/descendant tests.
+  // Pre-order index of the last descendant: subtrees are contiguous [node_idx, subtree_end]
   subtree_end: number
   parent_idx: number | null
   id: string | number
@@ -79,8 +72,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   label_path: string[] // display labels along the same chain
   fraction: number // value / root total
   parent_fraction: number // value / parent value (1 for root)
-  // Synthetic arc standing for folded siblings (min_fraction/max_children bucketing);
-  // its descendants are theirs, merged by label
+  // Synthetic arc for folded siblings; its descendants are theirs, merged by label
   is_other?: boolean
   other_count?: number // siblings folded into an `is_other` arc (undefined elsewhere)
   pattern?: FillPattern // hatch/texture from SunburstNode.pattern (not inherited)
@@ -91,8 +83,7 @@ export interface PositionedArc<Metadata = Record<string, unknown>> {
   metadata?: Metadata
 }
 
-// Intrinsic arc fields passed to push_arc(); it derives the rest (pre-order indices,
-// breadcrumbs and fractions) from the parent and tree position.
+// Intrinsic arc fields passed to push_arc(), which derives the rest from the parent
 type ArcSeed<Metadata = Record<string, unknown>> = Omit<
   PositionedArc<Metadata>,
   | `node_idx`
@@ -107,37 +98,25 @@ type ArcSeed<Metadata = Record<string, unknown>> = Omit<
 export interface SunburstLayoutOptions {
   value_mode?: SunburstValueMode // default 'leaf-sum'
   sort?: SunburstSort // default 'none' (preserve input order)
-  // Brighten inherited (non-explicit) colors by depth: hsl.brighter(level_lighten * (depth - 1)).
-  // 0 (default) keeps every descendant exactly its depth-1 ancestor's color (plotly-style).
+  // Brighten inherited colors by depth: hsl.brighter(level_lighten * (depth - 1)).
+  // 0 (default) keeps every descendant its depth-1 ancestor's color (plotly-style).
   level_lighten?: number
-  // Aggregate sibling arcs smaller than this fraction of the root total into one
-  // synthetic 'Other' bucket per parent (only when >= 2 qualify). The bucket keeps
-  // the folded siblings' descendants under it, merged by label, so the rings below
-  // stay populated; it takes the pattern its members share. A node's angular
-  // width IS its fraction of the root, so this reads directly as "hide arcs thinner
-  // than X". 0 (default) disables bucketing. It cannot promise survivors, though —
-  // evenly-split children all fail one threshold together; `max_children` can.
+  // Fold sibling arcs below this fraction of the (view) root total into one 'Other' bucket
+  // per parent (only when >= 2 qualify), keeping their descendants merged by label and any
+  // shared pattern. 0 (default) disables. Evenly-split children may all fold together.
   min_fraction?: number
-  // Keep this many children per parent, largest first, bucketing the rest. Unlike
-  // `min_fraction` it guarantees a populated ring however the values are
-  // distributed. 0 (default) is unlimited. Applied with `min_fraction`: a child has
-  // to clear both to be kept. Not a hard cap — the >= 2 rule wins, so a parent with
-  // one child over the limit keeps it under its own name rather than as a bucket of
-  // one (`max_children: 3` shows all four children of a four-child parent).
+  // Keep this many children per parent, largest first, bucketing the rest (0 = unlimited).
+  // A child must clear both this and `min_fraction`. Not a hard cap: the >= 2 rule wins, so
+  // `max_children: 3` shows all four children of a four-child parent.
   max_children?: number
-  // Id of the node the view is currently rooted at, or null at the data root. Only
-  // read to pick what `min_fraction` measures against; the layout itself always covers
-  // the whole tree and zoom is applied downstream.
+  // Id of the current view root (null = data root). Only picks what `min_fraction`
+  // measures against; the layout always covers the whole tree.
   zoom_root_id?: string | number | null
-  // Ids of parents whose children are exempt from bucketing. `max_children` is a rank
-  // cap, not a threshold, so it re-applies identically at every zoom and re-creates the
-  // bucket just drilled into; the same holds for a bucket whose parent is already the
-  // view root. Naming the parent explicitly is what lets those open at all.
+  // Ids of parents exempt from bucketing. Needed since `max_children` re-applies identically
+  // at every zoom, as does any bucket whose parent already is the view root.
   expanded_parents?: ReadonlySet<string | number>
-  // Label for bucketed arcs, default 'Other'. A function is called once per bucket,
-  // so it can name what was folded away ('312 smaller jobs'); its result is display
-  // text only — a callable leaves the bucket's id (and `label_short`) at 'Other', so
-  // ids stay stable across data updates.
+  // Label for bucketed arcs, default 'Other'. A function is called per bucket (e.g. '312
+  // smaller jobs') for display only: id and `label_short` stay 'Other' so ids stay stable.
   other_label?: string | ((bucket: OtherBucketInfo) => string)
 }
 
@@ -159,8 +138,7 @@ export interface SunburstLayoutResult<Metadata = Record<string, unknown>> {
 }
 
 // Compute normalized arc extents, resolved colors and breadcrumbs for a node tree.
-// Never mutates user data: d3-hierarchy wraps inputs in HierarchyNodes and all derived
-// fields (value overrides, ids, colors) are written onto the returned arcs only.
+// Never mutates user data: derived fields are written onto the returned arcs only.
 export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   data: SunburstNode<Metadata> | SunburstNode<Metadata>[],
   opts: SunburstLayoutOptions = {},
@@ -185,24 +163,18 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
   const root_data: SunburstNode<Metadata> = Array.isArray(data) ? { children: data } : data
   const root = hierarchy<SunburstNode<Metadata>>(root_data, (node) => node.children)
 
-  // Coerce non-finite/negative input values to 0 at the source so downstream
-  // consumers (partition angles, treemap tiling, fractions in aria/hover labels)
-  // never see NaN or negative values.
+  // Coerce non-finite/negative input values to 0 so nothing downstream sees NaN
   const clean_value = (val: number | undefined | null): number =>
     typeof val === `number` && Number.isFinite(val) && val >= 0 ? val : 0
 
-  // 'remainder': d3's .sum() adds the node's own value on top of its children's sum,
-  // which is exactly plotly's branchvalues='remainder'. 'leaf-sum' ignores parent values.
-  // 'total': every explicitly set value is authoritative (plotly branchvalues='total');
-  // nodes without one get their children's sum. Children summing to less than their
-  // parent leave a trailing angular gap; more than the parent overflows (plotly errors
-  // here; we warn and the component clamps angles).
+  // 'remainder' is d3's .sum(); 'leaf-sum' ignores parent values; 'total' treats explicit
+  // values as authoritative (else the children's sum). Children under-summing leave a gap;
+  // over-summing warns (plotly errors) and the component clamps angles.
   if (value_mode === `remainder`) root.sum((node) => clean_value(node.value))
   else if (value_mode === `total`) {
     root.eachAfter((node) => {
       const child_sum = node.children?.reduce((sum, child) => sum + (child.value ?? 0), 0) ?? 0
-      // HierarchyNode.value is typed readonly (normally set via .sum()), but manual
-      // assignment is the documented d3 way to provide values without aggregation
+      // HierarchyNode.value is typed readonly, but manual assignment is documented d3 usage
       const own = node.data.value
       ;(node as { value?: number }).value = own != null ? clean_value(own) : child_sum
       // Against the coerced value: a NaN parent renders as 0, collapsing its subtree
@@ -216,23 +188,18 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     })
   } else root.sum((node) => (node.children?.length ? 0 : clean_value(node.value)))
 
-  // Sibling index in the caller's own order, captured before `sort` and bucketing
-  // rewrite `node.children`. An unlabeled node's id falls back to this index, so
-  // reading it off the live array instead would move ids whenever those options
-  // change — silently re-pointing a persisted `zoom_root_id` at a different node.
-  // Only built when something actually reorders; the map is one entry per node.
+  // Sibling index in the caller's order, captured before `sort`/bucketing rewrite
+  // `node.children`: unlabeled ids fall back to it and must not move with those options
+  // (that would re-point a persisted `zoom_root_id`). Only built when something reorders.
   const input_idx = new Map<HierarchyNode<SunburstNode<Metadata>>, number>()
   if (sort !== `none` || min_fraction > 0 || max_children > 0) {
     root.each((node) => node.children?.forEach((kid, idx) => input_idx.set(kid, idx)))
   }
 
   type Node = HierarchyNode<SunburstNode<Metadata>>
-  // The node the view is rooted at, resolved here rather than read off the finished
-  // arcs because bucketing decides what those arcs are - the lookup has to come first.
-  // Mirrors flatten's id rule below; children are still in the caller's order at this
-  // point, which is what makes the ids it derives match the ones flatten will assign.
-  // Only the zoomed subtree re-measures. Bucketing elsewhere must not move, or an
-  // unrelated branch unfolding would deepen the tree and add empty rings to the view.
+  // Resolve the view root before bucketing (which decides what the arcs are), mirroring
+  // flatten's id rule while children are still in caller order. Only the zoomed subtree
+  // re-measures: an unrelated branch unfolding would add empty rings to the view.
   let zoom_node: Node | null = null
   const exempt = new Set<Node>()
   const in_zoom_subtree = new Set<Node>()
@@ -272,12 +239,9 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       ? first
       : undefined
   }
-  // The children of several folded siblings as one child list, merged where they
-  // share a label (a partition every folded user runs on becomes one arc holding
-  // all their jobs). A group of one keeps its data verbatim - id, color, pattern,
-  // metadata - since the node it copies is never emitted itself; a merged group is
-  // synthetic: no metadata, and color/pattern only where the members agree. Every
-  // node carries its summed value so the subtree needs no re-aggregation.
+  // The children of folded siblings as one child list, merged by label. A group of one
+  // keeps its data verbatim; a merged group is synthetic (no metadata, color/pattern only
+  // where members agree). Every node carries its summed value, so no re-aggregation.
   const merge_children = (members: Node[]): SunburstNode<Metadata>[] | undefined => {
     const groups = new Map<string | number, Node[]>()
     let child_idx = 0
@@ -305,39 +269,24 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     })
   }
 
-  // 'Other' bucketing: replace the bucketed children at the end of each sibling
-  // list (after sorting, before partition) with one synthetic bucket node that
-  // holds their merged descendants, so the rings below a bucket stay as populated
-  // as they were under the nodes it stands for. The bucket's own pattern is the one
-  // its members share (a hatch marking a whole subtree survives folding), else none.
-  //
-  // Which children fold is decided once, here, and read back during flatten:
-  // `max_children` ranks siblings against each other, so the cut is not a property
-  // any single child carries.
+  // 'Other' bucketing (after sorting, before partition): the folded children become one
+  // trailing bucket node holding their merged descendants and shared pattern. Decided once
+  // here and read back in flatten, since `max_children` ranks siblings against each other.
   const buckets = new Map<Node, number>() // synthetic bucket node -> siblings folded
   if (min_fraction > 0 || max_children > 0) {
-    // Rewriting `node.children` from inside `each` is safe: d3's traversal is a
-    // generator that reads a node's children only after yielding it, so the
-    // callback runs first and the queue picks up the new array - including the
-    // bucket's merged subtree, which is what buckets it recursively. Each node is
-    // still visited exactly once, and the decision below depends only on that
-    // node's own values, so the visit order among siblings cannot change it.
+    // Rewriting `node.children` inside `each` is safe: d3's generator reads children only
+    // after yielding a node, so the queue picks up the new array (incl. the bucket's merged
+    // subtree, bucketing it recursively) and each node is still visited exactly once.
     root.each((node) => {
       const kids = node.children
       // An explicitly expanded parent keeps every child under its own name
       if (!kids || exempt.has(node)) return
-      // Guarded, not just multiplied: a non-finite `min_fraction` would make every
-      // `value >= threshold` false and collapse the parent's whole child list into
-      // one bucket, silently discarding a `max_children` ranking that still works.
-      // Measured against the total of whatever the view is rooted at, so drilling in
-      // re-measures a parent's children against the smaller total - which is what
-      // dissolves a bucket into the real nodes it stood for.
+      // Measured against the view root's total, so drilling in dissolves a bucket. Guarded
+      // so a non-finite `min_fraction` can't fold every child and drop `max_children` ranking.
       const basis = (in_zoom_subtree.has(node) ? zoom_node?.value : root.value) ?? 0
       const threshold = min_fraction > 0 ? min_fraction * basis : 0
       const eligible = kids.filter((kid) => (kid.value ?? 0) >= threshold)
-      // `min_fraction` measures each child on its own, but `max_children` ranks them
-      // against each other — so only a cap that actually bites pays for the sort.
-      // `toSorted` is stable, so value ties break by input order, reproducibly.
+      // Only a cap that bites pays for the sort; `toSorted` is stable so ties keep input order
       const keep = new Set(
         max_children > 0 && eligible.length > max_children
           ? eligible
@@ -356,8 +305,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         },
         (entry) => entry.children,
       )
-      // Graft the bucket in as `node`'s last child: partition positions by depth and
-      // value, and the merged data already carries every summed value.
+      // Graft the bucket in as `node`'s last child (merged data carries summed values)
       bucket.parent = node
       bucket.each((member) => {
         // Both typed readonly (d3 sets them from its own root) but plain fields
@@ -367,10 +315,8 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         if (in_zoom_subtree.has(node)) in_zoom_subtree.add(member)
       })
       if (sort !== `none`) bucket.sort(by_value)
-      // Synthetic nodes exist only from here on, so the lookup above could not see them: a
-      // caller may have zoomed to or expanded a merged node (`Other/gpu`). Resolve their ids
-      // now (after the sort, which fixes unlabeled kids' index segments) and before `each`
-      // reaches them, so they re-measure and unfold like real nodes.
+      // Resolve synthetic node ids (a caller may zoom to/expand `Other/gpu`) after the sort
+      // fixes index segments and before `each` reaches them, so they behave like real nodes
       const parent_id = node_ids.get(node)
       if (parent_id !== undefined) {
         resolve_ids(
@@ -379,8 +325,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
           typeof other_label === `function` ? OTHER_ID_SEGMENT : other_label,
         )
       }
-      // The children that stay keep the caller's order however they were ranked;
-      // only the folded run moves to the end, as the bucket.
+      // Kept children stay in caller order; only the folded run moves to the end
       node.children = [...kids.filter((kid) => keep.has(kid)), bucket]
       buckets.set(bucket, smalls.length)
     })
@@ -422,8 +367,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
     return { base, color }
   }
 
-  // Construct + append an arc, deriving indices, breadcrumbs and fractions from the
-  // parent
+  // Construct + append an arc, deriving indices, breadcrumbs and fractions from the parent
   const push_arc = (
     parent: PositionedArc<Metadata> | null,
     fields: ArcSeed<Metadata>,
@@ -470,12 +414,9 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       label = callable
         ? other_label({ count: other_count, value, depth, parent_label: parent?.label })
         : other_label
-      // Ids are lookup keys (zoom root, legend muting, the `zoom_root_id` a caller
-      // may persist), so they must hold still while the data moves. A callable
-      // label can encode the count, so only a literal one is allowed into the id.
+      // Ids are lookup keys that must hold still while data moves: only literal labels enter
       segment = callable ? OTHER_ID_SEGMENT : label
-      // A generated name ('312 smaller jobs') rarely fits a thin outer ring, and
-      // without a compact form the label is dropped rather than shortened.
+      // Generated names rarely fit thin rings, hence the compact form
       label_short = callable ? OTHER_ID_SEGMENT : undefined
     }
     const identifier =
@@ -554,9 +495,8 @@ export function sunburst_from_paths<Metadata = Record<string, unknown>>(
   return to_nodes(roots)
 }
 
-// Build a nested node tree from plotly trace arrays (labels/parents/values [+ ids]),
-// the format pymatviz/matbench-discovery sunburst exports use (with branchvalues
-// 'total' -> pair with value_mode 'total'). parents entries of ''/null/undefined mark
+// Build a nested node tree from plotly trace arrays (labels/parents/values [+ ids]); pair
+// branchvalues='total' exports with value_mode 'total'. ''/null/undefined parents mark
 // root-level nodes; parents reference ids when given, else labels.
 export function sunburst_from_labels_parents<Metadata = Record<string, unknown>>(
   labels: readonly string[],
@@ -616,9 +556,8 @@ export function sunburst_from_labels_parents<Metadata = Record<string, unknown>>
     return found
   })
 
-  // O(n) cycle detection: walk each unvisited parent chain once, marking nodes
-  // 'in-progress' on the way up. Hitting an in-progress node = cycle; hitting a
-  // 'done' node = chain already verified acyclic.
+  // O(n) cycle detection: walk each unvisited parent chain once; reaching an in-progress
+  // node means a cycle, a done one means the chain is already verified acyclic
   const state = new Uint8Array(nodes.length) // 0 = unvisited, 1 = in progress, 2 = done
   for (let idx = 0; idx < nodes.length; idx++) {
     if (state[idx] !== 0) continue

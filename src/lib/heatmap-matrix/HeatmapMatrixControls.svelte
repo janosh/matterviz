@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, type ShowControlsProp } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -13,7 +13,7 @@
     ordering = $bindable(),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
-    show_controls = `hover`,
+    show_controls = DEFAULT_CONTROLS_MODE,
     color_scale = $bindable(`interpolateViridis`),
     domain_mode = $bindable(`auto`),
     color_bar = $bindable(null),
@@ -97,7 +97,6 @@
       <select bind:value={domain_mode}>
         <option value="auto">Auto</option>
         <option value="robust">Robust</option>
-        <option value="fixed">Fixed</option>
       </select>
     </label>
     <label>

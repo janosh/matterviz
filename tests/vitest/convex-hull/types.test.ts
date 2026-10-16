@@ -29,6 +29,7 @@ describe(`is_on_hull`, () => {
   const make = (overrides: Partial<PhaseData>) =>
     ({ composition: { A: 1 }, energy: -1, ...overrides }) as PhaseData
 
+  // oxfmt-ignore
   test.each([
     [{ is_stable: true }, true, `explicitly stable`],
     [{ is_stable: true, e_above_hull: 0.5 }, true, `is_stable overrides large e_above_hull`],
@@ -42,11 +43,7 @@ describe(`is_on_hull`, () => {
     [{}, false, `neither is_stable nor e_above_hull set`],
     [{ is_stable: false }, false, `is_stable false, no e_above_hull`],
     [{ exclude_from_hull: true, is_stable: true }, false, `excluded overrides is_stable`],
-    [
-      { exclude_from_hull: true, e_above_hull: 0 },
-      false,
-      `excluded overrides zero e_above_hull`,
-    ],
+    [{ exclude_from_hull: true, e_above_hull: 0 }, false, `excluded overrides zero e_above_hull`],
     [{ exclude_from_hull: false, is_stable: true }, true, `not excluded, stable`],
   ] as [Partial<PhaseData>, boolean, string][])(`%o → %s (%s)`, (overrides, expected) => {
     expect(is_on_hull(make(overrides))).toBe(expected)

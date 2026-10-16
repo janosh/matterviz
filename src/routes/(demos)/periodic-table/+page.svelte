@@ -88,7 +88,6 @@
     heatmap_values={four_fold_data}
     color_scale="interpolateViridis"
     split_layout="quadrant"
-    tooltip
     {on_activate}
   >
     {#snippet inset()}
@@ -98,8 +97,7 @@
         {#each four_fold_ranges as [title, range] (title)}
           <ColorBar
             {title}
-            scale="interpolateViridis"
-            {range}
+            color_scale={{ scheme: `interpolateViridis`, value_range: range }}
             orientation="horizontal"
             bar_style="width: 135px; height: 12px"
             tick_labels={3}
@@ -127,7 +125,6 @@
     heatmap_values={missing_heatmap_values}
     missing={missing_config}
     links="name"
-    tooltip
     style="margin: 1em auto; max-width: 1000px"
   >
     {#snippet inset()}

@@ -1,26 +1,21 @@
 // Bragg-angle instrumental broadening. The convolution itself is domain-neutral and lives in
 // #lib/lineshape; only the Caglioti width model below is specific to degrees of 2θ.
 import { broaden_peaks } from '#lib/lineshape.js'
-import type { Vec2 } from '#lib/math.js'
-import { to_radians } from '#lib/math.js'
+import { to_radians, type Vec2 } from '#lib/math.js'
 import type { XrdPattern } from './index'
 
-// Broadening parameters for simulated XRD pattern.
-// U, V, W are Caglioti parameters.
-// shape_factor (eta) is the Pseudo-Voigt mixing parameter (0 = Gaussian, 1 = Lorentzian).
+// Caglioti U, V, W plus the pseudo-Voigt mixing shape_factor (0 = Gaussian, 1 = Lorentzian)
 export type BroadeningParams = { U: number; V: number; W: number; shape_factor: number }
 
 export const DEFAULT_BROADENING: BroadeningParams = {
   U: 0.04,
   V: -0.02,
   W: 0.02,
-  shape_factor: 0.5, // Mixed Gaussian/Lorentzian
+  shape_factor: 0.5,
 }
 
-// FWHM in degrees (2θ) at the Bragg angle `two_theta` (degrees) from the Caglioti formula
-// FWHM^2 = U·tan^2(theta) + V·tan(theta) + W. Throws on a negative radicand: flooring it at
-// 1e-9 gave a 3.16e-5 deg FWHM, far under the 0.02 deg grid step, dumping a peak's whole
-// area-normalized intensity on one grid point.
+// Caglioti FWHM² = U·tan²θ + V·tanθ + W, in degrees 2θ. Throws on a non-positive radicand:
+// flooring it gave a FWHM far under the grid step, dumping a whole peak on one grid point.
 export function caglioti_fwhm(
   two_theta: number,
   coeff_u: number,
@@ -38,12 +33,12 @@ export function caglioti_fwhm(
   return Math.sqrt(radicand)
 }
 
-// Computes a broadened XRD pattern from discrete peaks, using Caglioti angle-dependent widths.
+// Broaden discrete peaks with Caglioti angle-dependent widths
 export const compute_broadened_pattern = (
   pattern: XrdPattern,
   params: BroadeningParams,
-  range: Vec2, // Angular range [min, max] in degrees
-  step_size: number = 0.02, // Step size in degrees
+  range: Vec2, // [min, max] in degrees
+  step_size: number = 0.02, // degrees
 ): XrdPattern =>
   broaden_peaks(
     pattern,

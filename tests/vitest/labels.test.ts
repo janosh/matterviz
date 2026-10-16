@@ -10,6 +10,7 @@ import {
   format_value,
   format_vec3,
   parse_axis_label,
+  parse_warnings_notice,
   zero_if_negligible,
   superscript_digits,
   symbol_map,
@@ -241,4 +242,14 @@ test.each([
   [0, 0, 0],
 ])(`zero_if_negligible(%s, %s) → %s`, (value, magnitude, expected) => {
   expect(zero_if_negligible(value, magnitude)).toBe(expected)
+})
+
+// The notice spells out the first 5 warnings, so thousands of skipped rows stay readable
+test.each([
+  [[], undefined],
+  [[`a`], `1 parse warning: a`],
+  [[`a`, `b`, `c`, `d`, `e`], `5 parse warnings: a; b; c; d; e`],
+  [[`a`, `b`, `c`, `d`, `e`, `f`, `g`], `7 parse warnings: a; b; c; d; e (and 2 more)`],
+])(`parse_warnings_notice(%j) → %s`, (warnings, expected) => {
+  expect(parse_warnings_notice(warnings)).toBe(expected)
 })

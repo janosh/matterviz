@@ -15,6 +15,7 @@ test(`URL acquisition decompresses once and records source provenance`, async ()
       type: `structure`,
       data: { sites: [] },
       filename,
+      warnings: [],
     }))
 
   const opened = await open_material(`https://example.com/si.cif.gz`)

@@ -31,10 +31,12 @@
     <span>Log color scale <input type="checkbox" bind:checked={log_scale} /></span>
     <ColorScaleSelect bind:value={color_scale} />
     <ColorBar
-      range={[1, Math.max(...heatmap_values)]}
-      scale={color_scale}
+      color_scale={{
+        scheme: color_scale,
+        value_range: [1, Math.max(...heatmap_values)],
+        type: log_scale ? `log` : `linear`,
+      }}
       bind:nice_range
-      scale_type={log_scale ? `log` : `linear`}
       wrapper_style="width: 80%; --cbar-padding: 0.4em 0.8em 0;"
       bar_style="width: 100%;"
     />

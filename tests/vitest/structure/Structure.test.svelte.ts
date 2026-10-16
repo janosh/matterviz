@@ -61,6 +61,7 @@ import {
   set_input,
 } from '../setup'
 import {
+  BAD_ROW_CIF,
   fcc_primitive_matrix,
   IDENTITY_MATRIX3,
   init_moyo_for_tests,
@@ -230,6 +231,38 @@ test(`loads strings, URLs and dropped files; caller-owned structures skip fetchi
   })
   expect(drop_state.structure?.sites).toHaveLength(5)
   expect(fetch_spy.mock.calls.map(([url]) => url)).toEqual([`/loaded.poscar`])
+})
+
+// Parser warnings (host-supplied or from a dropped file) show as one dismissible notice tied
+// to their structure; the next load replaces them
+test(`parse warnings render as a dismissible notice and reset on the next load`, async () => {
+  const state = $state<{ structure?: AnyStructure; parse_warnings?: string[] }>({
+    structure,
+    parse_warnings: [`host warning`],
+  })
+  mount_structure(bind_props({}, state))
+  await tick()
+  expect(doc_query(`.viewer-notices > .parse-warnings`).textContent).toContain(
+    `1 parse warning: host warning`,
+  )
+  // a host swapping in another structure retires the warnings of the one they came with
+  state.structure = structures[1]
+  await tick()
+  expect(document.querySelector(`.parse-warnings`)).toBeNull()
+  const zone = doc_query(`.structure`)
+  zone.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `bad.cif`)))
+  await vi.waitFor(() =>
+    expect(state.parse_warnings).toEqual([
+      expect.stringMatching(/^CIF: skipped 1 atom-site row/),
+    ]),
+  )
+  await tick()
+  expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: CIF: skipped/)
+  doc_query<HTMLButtonElement>(`.parse-warnings button`).click()
+  await tick()
+  expect(document.querySelector(`.parse-warnings`)).toBeNull()
+  zone.dispatchEvent(create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `clean.poscar`)))
+  await vi.waitFor(() => expect(state.parse_warnings).toEqual([]))
 })
 
 test(`drag hover state is bindable, respects allow_file_drop, and custom drop handlers get raw content`, async () => {
@@ -499,11 +532,7 @@ const volumetric_data = [
   make_volume(
     make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
     {
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
+      lattice: IDENTITY_MATRIX3,
       data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
       id: `density`,
       label: `Charge density`,
@@ -1115,7 +1144,7 @@ test.each([
   async (reset, visible_at_reset) => {
     const original_color: AtomColorConfig = {
       mode: `element`,
-      scale: `interpolateViridis`,
+      color_scale: `interpolateViridis`,
       scale_type: `categorical`,
     }
     const state = $state<{
@@ -1143,12 +1172,15 @@ test.each([
     expect(state.isosurface_settings.layers).toHaveLength(1)
     flushSync(() => {
       state.isosurface_settings.layers[0].isovalue = 0.123
-      state.atom_color_config = { ...state.atom_color_config, scale: `interpolateViridis` }
+      state.atom_color_config = {
+        ...state.atom_color_config,
+        color_scale: `interpolateViridis`,
+      }
     })
     flushSync(() =>
       tool_props.on_overlay({ ...overlay, site_properties: [...overlay.site_properties] }),
     )
-    expect(state.atom_color_config.scale).toBe(`interpolateViridis`)
+    expect(state.atom_color_config.color_scale).toBe(`interpolateViridis`)
     flushSync(() => tool_props.on_overlay({ ...overlay, color_property: `magmom` }))
     expect(state.atom_color_config).toMatchObject({ mode: `property`, property_key: `magmom` })
     expect(state.isosurface_settings.layers[0].isovalue).toBe(0.123)
@@ -1167,7 +1199,7 @@ test.each([
       expect(state.atom_color_config).toEqual(visible ? predicted_colors : original_color)
       if (!visible)
         flushSync(() => {
-          original_color.scale = `interpolatePlasma`
+          original_color.color_scale = `interpolatePlasma`
           state.atom_color_config = { ...original_color }
         })
     }
@@ -1744,7 +1776,7 @@ describe(`Structure`, () => {
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
     vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-    const state = { active_pane: null as StructurePane | null }
+    const state = $state({ active_pane: null as StructurePane | null })
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
 
@@ -1757,6 +1789,8 @@ describe(`Structure`, () => {
     expect(state.active_pane).toBe(`info`)
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
     vi.advanceTimersByTime(400)
+    // the open pane's own Escape layer closes it (Structure has no pane binding of its own)
+    expect(doc_query(`.structure-info-pane`).classList).toContain(`viewer-pane-open`)
     await fire(doc_query(`.structure`), keydown(`Escape`))
     expect(state.active_pane).toBeNull()
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
@@ -1886,6 +1920,7 @@ describe(`Structure`, () => {
         measure_mode: `edit-bonds`,
         bond_edit_mode: mode === `add` ? `delete` : `add`,
       })
+      await tick() // the root's key listener attaches in an effect
       await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
       const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
       expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
@@ -2541,7 +2576,10 @@ describe(`Structure empty states`, () => {
   ])(`shows the expected message for %s`, (_description, test_structure, loading, message) => {
     mount_structure({ structure: test_structure as AnyStructure, loading })
     const text = document.body.textContent ?? ``
-    if (message) expect(text).toContain(message)
+    if (message)
+      expect(document.querySelector(`.empty-state.overlay[role="status"]`)?.textContent).toBe(
+        message,
+      )
     else
       for (const empty of [`No structure provided`, `No sites found`])
         expect(text).not.toContain(empty)

@@ -478,7 +478,9 @@
         {reference_structure}
         {series_key}
         {...scene_props}
-        atom_tooltip={session.shows_input_frame ? scene_props.atom_tooltip : undefined}
+        tooltip={session.shows_input_frame || scene_props.tooltip === false
+          ? scene_props.tooltip
+          : undefined}
         atom_color_field={session.shows_input_frame ? scene_props.atom_color_field : undefined}
         volume_color_field={session.shows_input_frame
           ? scene_props.volume_color_field

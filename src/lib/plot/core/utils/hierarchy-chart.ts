@@ -1,15 +1,13 @@
-// Pure helpers shared by the hierarchical part-of-whole charts (Sunburst, Treemap):
-// label strings + measured variants, metric coloring, hover/mute dimming, handler
-// payloads, breadcrumbs, color-bar layout and keyboard navigation.
-// Everything operates on the flat pre-order arc arrays compute_sunburst_layout
-// produces, so each chart keeps only its geometry (polar projection vs tiling).
+// Pure helpers shared by Sunburst and Treemap (labels, coloring, dimming, handler payloads,
+// breadcrumbs, color-bar layout, keyboard nav), all on compute_sunburst_layout's flat
+// pre-order arc arrays, so each chart keeps only its geometry.
 
 import { is_opaque_color, opaque_contrast_color } from '#lib/colors/index.js'
 import { format_value } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
 import { resolve_pattern } from '#lib/plot/core/patterns.js'
-import { create_color_scale, resolve_value_range } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -17,7 +15,7 @@ import {
   measure_text_line,
   resolve_font_spec,
 } from '#lib/plot/core/text-metrics.js'
-import type { ColorScale, LegendItem } from '#lib/plot/core/types.js'
+import type { ColorScale, ColorScaleConfig, LegendItem } from '#lib/plot/core/types.js'
 import type {
   PositionedArc,
   SunburstLabelText,
@@ -38,8 +36,7 @@ interface LabeledNode {
 
 export const node_display_name = (node: LabeledNode): string => node.label ?? `${node.id}`
 
-// What a node's label displays, per the label_text mode (plotly textinfo
-// equivalent); percent is of the root total, parent-percent of the parent node
+// A node's label per label_text mode (plotly textinfo); percent is of the root total
 export function node_label_str(
   node: LabeledNode,
   label_text: SunburstLabelText,
@@ -58,10 +55,8 @@ export function node_label_str(
   return `${name} ${pct}` // label+percent
 }
 
-// Base + optional richer/compact variants for fit-aware rendering: compound
-// modes degrade to the bare label when the full text doesn't fit its node,
-// and nodes with a `label_short` degrade once more to that compact form
-// before the label is hidden entirely.
+// Base + optional richer/compact variants for fit-aware rendering: compound modes degrade
+// to the bare label, then to `label_short` (if any) before the label is hidden.
 export function node_label_variants(
   node: LabeledNode,
   label_text: SunburstLabelText,
@@ -73,11 +68,8 @@ export function node_label_variants(
   return { text: node_display_name(node), extended: text, short }
 }
 
-// `text` if it measures within `max_width` px in `font`, else its longest prefix
-// that does with an ellipsis, keeping at least `min_chars` of the text so a lone
-// initial does not pose as a name. Null when even that is too wide. Widths come
-// from the text-metrics cache, so re-fitting the same arcs per frame costs no
-// measuring.
+// `text` if it fits `max_width` px, else its longest fitting prefix + ellipsis keeping at
+// least `min_chars` (a lone initial shouldn't pose as a name). Null if even that's too wide.
 export function ellipsize_to_width(
   text: string,
   max_width: number,
@@ -100,8 +92,7 @@ export function ellipsize_to_width(
   return `${chars.slice(0, fits).join(``)}…`
 }
 
-// Chart svgs default to 11px labels (--<chart>-font-size); text-metrics' 12px default
-// would otherwise be measured whenever the svg isn't mounted yet.
+// Chart svgs default to 11px labels, not text-metrics' 12px (used before the svg mounts)
 const LABEL_FONT_FALLBACK: Readonly<FontSpec> = { ...DEFAULT_FONT_SPEC, font_size: 11 }
 
 // The font node labels actually render in, for canvas-measured label fitting
@@ -109,26 +100,21 @@ export const resolve_label_font = (svg_element: SVGSVGElement | null): FontSpec 
   resolve_font_spec(svg_element, LABEL_FONT_FALLBACK)
 
 export interface HierarchyNodeInfo {
-  // Fit-aware label fallback chain, richest first: extended -> base label ->
-  // compact label_short. Rendering picks the first variant whose measured
-  // width fits its node; empty when the node has no base label at all.
+  // Fit-aware label chain, richest first (extended -> label -> label_short); rendering
+  // picks the first that fits. Empty when the node has no base label.
   variants: { text: string; width: number }[]
   aria: string
   fill: string // the node's color, also the backdrop of its pattern (label contrast keys off it)
   label_fill: string
   // Hatch/texture tile the node paints with instead of its flat `fill` (undefined: none)
   pattern?: ResolvedPattern
-  // Color of the blurred halo painted behind the label so it stays legible over the
-  // pattern's strokes: the tile backdrop, or the page where the pattern replaces the fill
+  // Blurred halo behind the label over pattern strokes: tile backdrop, or the page
   label_halo?: string
   clickable?: boolean
 }
 
-// Per-node label text, measured widths, fill/label colors, aria string (and
-// optional clickability) — all zoom-independent, so computed once per
-// layout/option change instead of per animation frame (format_value, canvas
-// measureText, contrast picking and color resolution would otherwise run per
-// visible node per frame during zoom tweens)
+// Per-node label variants, widths, colors, aria string and clickability. All
+// zoom-independent, so computed once per layout/option change, not per tween frame.
 export function compute_node_infos<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   opts: {
@@ -141,9 +127,8 @@ export function compute_node_infos<Metadata>(
   },
 ): HierarchyNodeInfo[] {
   const { label_text, value_format, font, color_for, pattern_prefix, clickable } = opts
-  // Black/white label text for opaque fills; unresolved/translucent fills inherit.
-  // Memoized per fill: categorical coloring repeats a handful of fills across thousands
-  // of nodes, and parsing + luminance per node would dominate this pass.
+  // Black/white label text for opaque fills, translucent ones inherit. Memoized per fill:
+  // categorical coloring repeats a few fills across thousands of nodes.
   const contrast_cache = new Map<string, string>()
   const contrast = (fill: string): string => {
     let label_fill = contrast_cache.get(fill)
@@ -165,8 +150,7 @@ export function compute_node_infos<Metadata>(
     )
     return {
       variants,
-      // What a bucket folded away is the one thing its name can't carry, and a
-      // screen reader has no tooltip to fall back on
+      // screen readers have no tooltip to say what a bucket folded away
       aria: `${node_display_name(arc)}: ${arc.value}${
         arc.other_count ? ` (${arc.other_count} grouped)` : ``
       }`,
@@ -183,17 +167,15 @@ export function compute_node_infos<Metadata>(
 
 // === Coloring + dimming ===
 
-// Continuous metric coloring: when color_values is given, nodes are colored by
-// their metric on a d3 colormap (nodes returning null keep their categorical
-// color). The user accessor runs exactly once per node.
+// Continuous metric coloring via color_values (null keeps the categorical color). The
+// accessor runs once per node; color_scale returns with value_range resolved.
 export function compute_metric_colors<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   color_values: ((arc: PositionedArc<Metadata>) => number | null) | undefined,
   color_scale: ColorScale,
-): { range: Vec2; colors: string[]; color_fn: (value: number) => string } | null {
+): { color_scale: ColorScaleConfig & { value_range: Vec2 }; colors: string[] } | null {
   if (!color_values) return null
-  // Collect finite values and their extent together; spreading a large array into
-  // Math.min/max would overflow the call stack.
+  // Track the extent inline: spreading a large array into Math.min/max overflows the stack
   let min_val = Infinity
   let max_val = -Infinity
   const vals = arcs.map((arc) => {
@@ -204,19 +186,19 @@ export function compute_metric_colors<Metadata>(
     return val
   })
   if (min_val > max_val) return null // no finite values
-  const auto_range: Vec2 = [min_val, max_val]
-  const color_fn = create_color_scale(color_scale, auto_range)
+  const { color_fn, color_scale: resolved } = resolve_color_scale(color_scale, [
+    min_val,
+    max_val,
+  ])
   return {
-    range: resolve_value_range(color_scale, auto_range),
+    color_scale: resolved,
     colors: vals.map((val, idx) => (val == null ? arcs[idx].color : color_fn(val))),
-    color_fn,
   }
 }
 
 const MUTED_OPACITY = 0.12
 
-// Legend muting for visible nodes. Hover uses one overlay in each chart, so pointer
-// movement never invalidates the fill and label opacity of every node.
+// Legend muting (hover uses one overlay per chart so it never invalidates every node)
 export function compute_node_dim<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   muted_ids: ReadonlySet<string | number>,
@@ -260,8 +242,7 @@ export function hierarchy_legend_items<Metadata>(
 
 // === Events + navigation ===
 
-// Handler props are the node minus its layout geometry (screen coords are an
-// implementation detail), plus the resolved parent id
+// Handler props: the node minus its layout geometry, plus the resolved parent id
 export function node_handler_props<Metadata>(
   arcs: readonly PositionedArc<Metadata>[],
   arc: PositionedArc<Metadata>,
@@ -276,9 +257,8 @@ export function node_handler_props<Metadata>(
   }
 }
 
-// True while the user has an uncollapsed text selection inside the chart. Labels
-// are selectable text, and the mouseup that ends a selection drag also fires a
-// click — selecting a label must not zoom or fire on_node_click.
+// True while a text selection exists in the chart: the mouseup ending a label selection
+// drag also fires a click, which must not zoom or fire on_node_click
 export function selection_within(wrapper: HTMLElement | undefined): boolean {
   const selection = globalThis.getSelection?.()
   return Boolean(
@@ -307,11 +287,9 @@ export function ancestor_chain<Metadata>(
 // Structural subset shared by every hierarchy chart's pre-order node representation.
 type PreorderNode = Pick<PositionedArc, `node_idx` | `subtree_end` | `parent_idx` | `depth`>
 
-// Arrow-key navigation over the pre-order node array: ArrowLeft/ArrowRight cycle
-// through visible siblings (wrapping), ArrowDown enters the first child, ArrowUp
-// returns to the parent (never the hidden root at depth 0). Visibility is delegated
-// to is_visible (the component supplies screen-space collapse state). Returns the
-// target node_idx, or null when the key isn't an arrow key or no target qualifies.
+// Arrow-key navigation over pre-order nodes: Left/Right cycle visible siblings (wrapping),
+// Down enters the first child, Up returns to the parent (never the depth-0 root). Returns
+// the target node_idx, or null for non-arrow keys or no qualifying target.
 export function arrow_nav_target(
   nodes: readonly PreorderNode[],
   is_visible: (idx: number) => boolean,
@@ -332,9 +310,7 @@ export function arrow_nav_target(
     return parent && parent.depth > 0 && is_visible(parent.node_idx) ? parent.node_idx : null
   }
   if (key !== `ArrowRight` && key !== `ArrowLeft`) return null
-  // Walk siblings via the contiguous pre-order subtree ranges (each sibling starts right
-  // after the previous one's subtree ends) - pre-order already lists siblings in draw
-  // order, so no sorting is needed and no full scan runs per keypress
+  // Walk siblings via contiguous pre-order subtree ranges (no sort, no full scan)
   const last = parent?.subtree_end ?? nodes.length - 1
   const siblings: number[] = []
   for (let idx = (parent?.node_idx ?? 0) + 1; idx <= last; idx = nodes[idx].subtree_end + 1) {
@@ -374,8 +350,7 @@ type ColorBarLayout = {
 const reserve_space = (size: number, available: number): number =>
   size > 0 ? Math.min(size + 2 * COLOR_BAR_GAP, available / 2) : 0
 
-// Vertical bars sit beside the chart and reserve width; horizontal bars sit below and
-// reserve height. Shared by Sunburst and Treemap so both place color bars identically.
+// Vertical bars sit beside the chart and reserve width; horizontal bars sit below
 export function color_bar_layout(opts: {
   color_bar: ColorBarLayoutProps | null
   side: ColorBarSide

@@ -105,6 +105,9 @@ export const build_vscode_settings = (
       // Free-form map: any key, values of one type (string unless the leaf says otherwise)
       config.type = `object`
       config.additionalProperties = schema.additionalProperties ?? { type: `string` }
+    } else if (schema.kind === `color_scale`) {
+      // a scheme name or a { type, scheme, value_range, palette_range } config
+      config.type = [`string`, `object`]
     }
     vscode_config[key_path] = config
   }

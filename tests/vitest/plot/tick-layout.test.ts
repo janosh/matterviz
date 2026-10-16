@@ -215,6 +215,7 @@ describe(`axis-edge overflow`, () => {
 })
 
 describe(`tick density`, () => {
+  // oxfmt-ignore
   test.each([
     [`no labels`, 100, [], 6, 0],
     [`one oversized label`, 20, [120], 6, 1],
@@ -224,13 +225,7 @@ describe(`tick density`, () => {
     [`widest label determines capacity`, 100, [10, 40, 20], 5, 2],
     [`zero-width labels use only gaps`, 20, [0, 0, 0, 0, 0], 10, 3],
     [`zero-width labels without gaps all fit`, 0, [0, 0, 0], 0, 3],
-    [
-      `stays finite near numeric limits`,
-      Number.MAX_VALUE,
-      [Number.MAX_VALUE],
-      Number.MAX_VALUE,
-      1,
-    ],
+    [`stays finite near numeric limits`, Number.MAX_VALUE, [Number.MAX_VALUE], Number.MAX_VALUE, 1],
   ] as const)(`suggest_tick_count: %s`, (_label, axis_pixels, widths, gap, expected) => {
     expect(suggest_tick_count(axis_pixels, widths, gap)).toBe(expected)
   })

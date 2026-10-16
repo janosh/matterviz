@@ -43,7 +43,6 @@ The periodic table supports multiple values per element with different visual la
       tile_props={{ show_name: false, show_number: false }}
       heatmap_values={two_fold_data}
       color_scale="interpolateRdYlBu"
-      tooltip
       {on_activate}
     >
       {#snippet inset()}
@@ -53,8 +52,7 @@ The periodic table supports multiple values per element with different visual la
           {#each [[`Atomic Mass (u)`, atomic_mass_range], [`Density (g/cm³)`, density_range]] as const as [title, range] (title)}
             <ColorBar
               {title}
-              scale="interpolateRdYlBu"
-              {range}
+              color_scale={{ scheme: `interpolateRdYlBu`, value_range: [...range] }}
               orientation="horizontal"
               bar_style="width: 180px; height: 12px"
               tick_labels={3}

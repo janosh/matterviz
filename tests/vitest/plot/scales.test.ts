@@ -7,10 +7,12 @@ import {
   collect_scale_ranges,
   collect_series_extent,
   collect_size_range,
-  create_color_scale,
   color_interpolator,
+  resolve_color_scale,
   resolve_value_range,
+  scheme_name,
   to_color_scale_config,
+  with_scheme,
   create_scale,
   empty_extent,
   generate_arcsinh_ticks,
@@ -584,7 +586,6 @@ describe(`scales`, () => {
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
     type TickOptions = Parameters<typeof generate_ticks>[4]
     type TickCase = [string, Vec2, ScaleType, number | undefined, TickOptions, number[]]
-    // oxfmt-ignore
     // only all-fractional ticks drop an integer format, so explicit mixed arrays keep it
     test.each([
       [[0.2, 0.4], `d`, undefined],
@@ -597,99 +598,30 @@ describe(`scales`, () => {
       expect(tick_label_format(ticks, format)).toBe(expected)
     })
 
+    // oxfmt-ignore
     test.each<TickCase>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
-      [
-        `negative count is a fixed interval`,
-        [0, 100],
-        `linear`,
-        -10,
-        undefined,
-        [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-      ],
+      [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
       // reversed (descending) domains are first-class: an interval must still emit ticks
-      [
-        `interval on a descending domain`,
-        [10, 0],
-        `linear`,
-        -2,
-        undefined,
-        [0, 2, 4, 6, 8, 10],
-      ],
-      [
-        `explicit count wins over default_count`,
-        [0, 100],
-        `linear`,
-        5,
-        { default_count: 2 },
-        [0, 20, 40, 60, 80, 100],
-      ],
-      [
-        `default_count applies without a ticks option`,
-        [0, 100],
-        `linear`,
-        undefined,
-        { default_count: 2 },
-        [0, 50, 100],
-      ],
+      [`interval on a descending domain`, [10, 0], `linear`, -2, undefined, [0, 2, 4, 6, 8, 10]],
+      [`explicit count wins over default_count`, [0, 100], `linear`, 5, { default_count: 2 }, [0, 20, 40, 60, 80, 100]],
+      [`default_count applies without a ticks option`, [0, 100], `linear`, undefined, { default_count: 2 }, [0, 50, 100]],
       // an integer format rounds every label, so generated half steps would read `0, 1, 1, 2, 2`
-      [
-        `integer format keeps distinct integer ticks`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `d` },
-        [0, 1, 2],
-      ],
+      [`integer format keeps distinct integer ticks`, [0, 2], `linear`, 10, { format: `d` }, [0, 1, 2]],
       [`grouped integer format`, [0, 1], `linear`, 10, { format: `,d` }, [0, 1]],
-      [
-        `integer format on a descending domain`,
-        [2, 0],
-        `linear`,
-        10,
-        { format: `d` },
-        [0, 1, 2],
-      ],
+      [`integer format on a descending domain`, [2, 0], `linear`, 10, { format: `d` }, [0, 1, 2]],
       // no integer fits a domain zoomed below one unit: keep the plain (decimal) ticks
-      [
-        `integer format with no integer to label`,
-        [0.2, 0.8],
-        `linear`,
-        6,
-        { format: `d` },
-        [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-      ],
+      [`integer format with no integer to label`, [0.2, 0.8], `linear`, 6, { format: `d` }, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]],
       // zero-precision fixed point prints integers too
       [`.0f is an integer format`, [0, 2], `linear`, 10, { format: `.0f` }, [0, 1, 2]],
       [`grouped .0f is an integer format`, [0, 1], `linear`, 10, { format: `,.0f` }, [0, 1]],
-      [
-        `.0% percent is not an integer format`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `.0%` },
-        fine_steps,
-      ],
+      [`.0% percent is not an integer format`, [0, 2], `linear`, 10, { format: `.0%` }, fine_steps],
       [`decimal format keeps fine steps`, [0, 2], `linear`, 10, { format: `.1f` }, fine_steps],
-      [
-        `time-style %d is not an integer format`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `%d` },
-        fine_steps,
-      ],
+      [`time-style %d is not an integer format`, [0, 2], `linear`, 10, { format: `%d` }, fine_steps],
       [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],
       [`degenerate linear domain`, [0, 0], `linear`, 5, undefined, [0]],
-      [
-        `arcsinh mixed range is symmetric around 0`,
-        [-1000, 1000],
-        `arcsinh`,
-        10,
-        undefined,
-        [-1000, -100, -10, -1, 0, 1, 10, 100, 1000],
-      ],
+      [`arcsinh mixed range is symmetric around 0`, [-1000, 1000], `arcsinh`, 10, undefined, [-1000, -100, -10, -1, 0, 1, 10, 100, 1000]],
     ])(`%s`, (_name, domain, type, ticks, opts, expected) => {
       const range: Vec2 = [0, 500]
       const scale =
@@ -733,13 +665,10 @@ describe(`scales`, () => {
       expect([symmetric(-100), symmetric(0), symmetric(100)]).toEqual([0, 50, 100])
     })
 
+    // oxfmt-ignore
     test.each([
       { threshold: 1, domain: [0, 100] as Vec2, values: [0, 1, 10, 50, 100] },
-      {
-        threshold: 1,
-        domain: [-100, 100] as Vec2,
-        values: [-100, -10, -1, 0, 1, 10, 100],
-      },
+      { threshold: 1, domain: [-100, 100] as Vec2, values: [-100, -10, -1, 0, 1, 10, 100] },
       { threshold: 10, domain: [0, 1000] as Vec2, values: [0, 10, 100, 500, 1000] },
     ])(
       `inverse transform (threshold=$threshold, domain=$domain)`,
@@ -866,15 +795,18 @@ describe(`scales`, () => {
     })
   })
 
-  describe(`create_color_scale with arcsinh`, () => {
+  describe(`resolve_color_scale with arcsinh`, () => {
+    const color_fn = (color_scale: ColorScale, auto_range: Vec2) =>
+      resolve_color_scale(color_scale, auto_range).color_fn
+
     test(`rejects bare interpolator names`, () => {
-      expect(() => create_color_scale(`Viridis` as never, [0, 1])).toThrow(
+      expect(() => color_fn(`Viridis` as never, [0, 1])).toThrow(
         `Unknown D3 color interpolator: Viridis`,
       )
     })
 
     test(`returns one color when domain min equals max`, () => {
-      const scale = create_color_scale(
+      const scale = color_fn(
         { type: `arcsinh`, scheme: `interpolateViridis`, value_range: [50, 50] },
         [0, 100], // auto_color_range is ignored when value_range is provided
       )
@@ -882,69 +814,72 @@ describe(`scales`, () => {
     })
 
     test(`maps extreme values to distinct hex colors and near-zero to the midpoint`, () => {
-      const scale = create_color_scale(
-        { type: { type: `arcsinh`, threshold: 1 } },
-        [-1e12, 1e12],
-      )
+      const scale = color_fn({ type: { type: `arcsinh`, threshold: 1 } }, [-1e12, 1e12])
       const [high, low, tiny, zero] = [1e10, -1e10, 1e-10, 0].map((val) => scale(val))
       for (const color of [high, low, tiny]) expect(color).toMatch(/^#[0-9a-f]{6}$/)
       expect(high).not.toBe(low)
       expect(tiny).toBe(zero) // 1e-10 is indistinguishable from 0 in arcsinh space
       // values around the threshold spread over distinct colors
-      const spread = create_color_scale({ type: { type: `arcsinh`, threshold: 1 } }, [0, 1000])
+      const spread = color_fn({ type: { type: `arcsinh`, threshold: 1 } }, [0, 1000])
       const colors = [0, 1, 10, 100, 1000].map((val) => spread(val))
       expect(new Set(colors).size).toBe(colors.length)
     })
 
     test.each([1e-10, 1e10, 0.001, 1000])(`handles threshold=%s`, (threshold) => {
-      const scale = create_color_scale({ type: { type: `arcsinh`, threshold } }, [-100, 100])
+      const scale = color_fn({ type: { type: `arcsinh`, threshold } }, [-100, 100])
       expect(scale(-100)).not.toBe(scale(100)) // boundaries differ
-    })
-
-    test(`domain getter and D3-style chainable in-place setter`, () => {
-      const scale = create_color_scale({ type: { type: `arcsinh`, threshold: 5 } }, [-50, 150])
-      expect(scale.domain()).toEqual([-50, 150])
-      const color_before = scale(0)
-      expect(scale.domain([0, 100])).toBe(scale)
-      expect(scale.domain()).toEqual([0, 100])
-      expect(scale(0)).not.toBe(color_before)
     })
   })
 
-  describe(`create_color_scale with log`, () => {
-    // all-negative auto-range would otherwise produce an inverted [LOG_EPS, max<0] domain that
-    // makes scaleSequentialLog return undefined for every value
-    test.each([
-      { values: [10, 1000] as Vec2, desc: `all-positive` },
-      { values: [-10, -1] as Vec2, desc: `all-negative` },
-      { values: [-5, 50] as Vec2, desc: `mixed sign` },
-    ])(`clamps log domain to a non-inverted positive range ($desc)`, ({ values }) => {
-      const scale = create_color_scale({ type: `log`, scheme: `interpolateViridis` }, values)
-      const domain = scale.domain()
-      const [d_min, d_max] = [domain[0], domain[domain.length - 1]]
-      expect(d_min).toBeGreaterThan(0)
-      expect(d_min).toBeLessThan(d_max) // never inverted or degenerate
-      // a positive in-range value still maps to a real color string (not undefined)
-      expect(typeof scale(Math.max(values[1], 1))).toBe(`string`)
-    })
+  // all-negative auto-range would otherwise produce an inverted [LOG_EPS, max<0] domain that
+  // makes scaleSequentialLog return undefined for every value
+  test.each([
+    [[10, 1000], `all-positive`],
+    [[-10, -1], `all-negative`],
+    [[-5, 50], `mixed sign`],
+  ] as [Vec2, string][])(`log color scale stays renderable over %j (%s)`, (values) => {
+    const { color_fn } = resolve_color_scale({ type: `log` }, values)
+    for (const val of [0, 1, Math.max(values[1], 1), 1e6])
+      expect(color_fn(val)).toMatch(/^#[0-9a-f]{6}$/)
   })
 })
 
 test.each([`linear`, `log`, `arcsinh`] as const)(
-  `clipped %s color scale matches legend endpoints`,
+  `clipped %s color scale matches legend endpoints, both ways round`,
   (type) => {
     const config = {
       scheme: `interpolateBlues`,
       palette_range: [0.3, 1] as Vec2,
       type,
     } as const
-    const scale = create_color_scale(config, [1, 100])
+    const { color_fn: scale } = resolve_color_scale(config, [1, 100])
     const interpolate = color_interpolator(config)
     expect(scale(1)).toBe(interpolate(0))
     expect(scale(100)).toBe(interpolate(1))
-    expect(() => color_interpolator({ palette_range: [1, 0] })).toThrow(
-      `Invalid palette_range`,
-    )
+    // out-of-range values clamp to the clipped ends instead of extrapolating past them
+    expect([scale(0.5), scale(1e3)]).toEqual([interpolate(0), interpolate(1)])
+    // a descending palette_range runs the scheme backwards
+    const reversed = resolve_color_scale({ ...config, palette_range: [1, 0.3] }, [1, 100])
+    expect([reversed.color_fn(1), reversed.color_fn(100)]).toEqual([
+      interpolate(1),
+      interpolate(0),
+    ])
+    // so does a descending value_range: its first end takes the palette start
+    const descending = resolve_color_scale({ ...config, value_range: [100, 1] }, [0, 1])
+    expect([descending.color_fn(100), descending.color_fn(1)]).toEqual([
+      interpolate(0),
+      interpolate(1),
+    ])
+    expect(descending.color_scale.value_range).toEqual([100, 1])
+    // a degenerate range maps to the palette middle on every scale type
+    const flat = resolve_color_scale({ ...config, value_range: [5, 5] }, [0, 1]).color_fn
+    expect(flat(5)).toBe(interpolate(0.5))
+    for (const palette_range of [
+      [0.5, 0.5],
+      [-0.1, 1],
+      [0, 1.1],
+    ] as Vec2[])
+      expect(() => color_interpolator({ palette_range })).toThrow(`Invalid palette_range`)
   },
 )
 
@@ -954,21 +889,46 @@ test.each<[ColorScale, Vec2]>([
   [{ value_range: [null, 5] }, [1, 5]],
   [{ value_range: [2, null] }, [2, 9]],
   [{ value_range: [null, null] }, [1, 9]],
+  [{ value_range: [-2, 5] }, [-2, 5]],
+  // log scales treat non-positive ends as unset: they have no log image
+  [{ type: `log`, value_range: [0, 5] }, [1, 5]],
+  [{ type: `log`, value_range: [5, -2] }, [5, 9]],
 ])(`resolve_value_range(%j) fills unset ends from the data`, (color_scale, expected) => {
   expect(resolve_value_range(color_scale, [1, 9])).toEqual(expected)
   // a thunk auto range is computed only when an end is unset
   const auto_range = vi.fn((): Vec2 => [1, 9])
   expect(resolve_value_range(color_scale, auto_range)).toEqual(expected)
-  const fully_set = typeof color_scale === `object` && !color_scale.value_range?.includes(null)
+  const fully_set =
+    typeof color_scale === `object` &&
+    color_scale.type !== `log` &&
+    !color_scale.value_range?.includes(null)
   expect(auto_range).toHaveBeenCalledTimes(fully_set ? 0 : 1)
-  // create_color_scale maps the resolved ends to the palette ends
-  const scale = create_color_scale(color_scale, [1, 9])
+  // resolve_color_scale maps the resolved ends to the palette ends
+  const { color_fn, color_scale: resolved } = resolve_color_scale(color_scale, [1, 9])
+  expect(resolved.value_range).toEqual(expected)
   const interpolate = color_interpolator(color_scale)
-  expect([scale(expected[0]), scale(expected[1])]).toEqual([interpolate(0), interpolate(1)])
+  expect([color_fn(expected[0]), color_fn(expected[1])]).toEqual([
+    interpolate(0),
+    interpolate(1),
+  ])
+})
+
+const red_ramp = (fraction: number) => `rgb(${Math.round(fraction * 255)}, 0, 0)`
+test.each<[ColorScale, string | undefined, ColorScale]>([
+  [`interpolateViridis`, `interpolateViridis`, `interpolatePlasma`],
+  [{ type: `log` }, `interpolateViridis`, { type: `log`, scheme: `interpolatePlasma` }],
+  [
+    { scheme: `interpolateBlues`, value_range: [0, 1] },
+    `interpolateBlues`,
+    { scheme: `interpolatePlasma`, value_range: [0, 1] },
+  ],
+  [{ scheme: red_ramp }, undefined, { scheme: `interpolatePlasma` }],
+])(`scheme_name(%j) = %s; with_scheme swaps in Plasma`, (color_scale, name, swapped) => {
+  expect(scheme_name(color_scale)).toBe(name)
+  expect(with_scheme(color_scale, `interpolatePlasma`)).toEqual(swapped)
 })
 
 test(`function schemes and bare names normalize to one config`, () => {
-  const red_ramp = (fraction: number) => `rgb(${Math.round(fraction * 255)}, 0, 0)`
   expect(to_color_scale_config(`interpolateBlues`)).toEqual({ scheme: `interpolateBlues` })
   const interpolate = color_interpolator({ scheme: red_ramp, palette_range: [0.5, 1] })
   expect([interpolate(0), interpolate(1)]).toEqual([`rgb(128, 0, 0)`, `rgb(255, 0, 0)`])

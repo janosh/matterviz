@@ -92,25 +92,16 @@
     }),
   )
 
-  function col_label(key: string): string {
-    const col = columns.get(key)
-    const prefix = col?.type === `numeric` ? `#` : `A`
-    return `${prefix} ${key}`
-  }
+  const col_label = (key: string): string =>
+    `${columns.get(key)?.type === `numeric` ? `#` : `A`} ${key}`
 
   // Available plot types based on columns
   let available_types = $derived.by<{ value: PlotType; label: string }[]>(() => {
     const types: { value: PlotType; label: string }[] = []
     if (numeric_keys.length >= 2) types.push({ value: `scatter`, label: `Scatter` })
-    if (numeric_keys.length >= 3) {
-      types.push({ value: `scatter3d`, label: `Scatter 3D` })
-    }
-    if (string_keys.length >= 1 && numeric_keys.length >= 1) {
-      types.push({ value: `bar`, label: `Bar` })
-    }
-    if (numeric_keys.length >= 1) {
-      types.push({ value: `histogram`, label: `Histogram` })
-    }
+    if (numeric_keys.length >= 3) types.push({ value: `scatter3d`, label: `Scatter 3D` })
+    if (string_keys.length && numeric_keys.length) types.push({ value: `bar`, label: `Bar` })
+    if (numeric_keys.length) types.push({ value: `histogram`, label: `Histogram` })
     types.push({ value: `table`, label: `Table` })
     return types
   })
@@ -125,12 +116,9 @@
   function on_pinch_zoom(event: WheelEvent): void {
     if (!event.ctrlKey) return
     event.preventDefault()
-    const delta = -event.deltaY * 0.01
-    zoom_level = clamp(zoom_level + delta, 0.25, 5)
+    zoom_level = clamp(zoom_level - event.deltaY * 0.01, 0.25, 5)
   }
-  function reset_zoom(): void {
-    zoom_level = 1
-  }
+  const reset_zoom = () => (zoom_level = 1)
 </script>
 
 {#if columns.size > 0}

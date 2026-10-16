@@ -151,17 +151,10 @@ describe(`ConvexHullTooltip`, () => {
       new Map([[entry_id, stats]])
 
     // zero counts are omitted: no `=0`, and no arrows at all when there are no polymorphs
+    // oxfmt-ignore
     test.each([
-      {
-        stats: { total: 5, higher: 2, lower: 1, equal: 2 },
-        shown: [`↑2`, `↓1`, `=2`],
-        hidden: [],
-      },
-      {
-        stats: { total: 3, higher: 2, lower: 1, equal: 0 },
-        shown: [`↑2`, `↓1`],
-        hidden: [`=0`],
-      },
+      { stats: { total: 5, higher: 2, lower: 1, equal: 2 }, shown: [`↑2`, `↓1`, `=2`], hidden: [] },
+      { stats: { total: 3, higher: 2, lower: 1, equal: 0 }, shown: [`↑2`, `↓1`], hidden: [`=0`] },
       { stats: { total: 0, higher: 0, lower: 0, equal: 0 }, shown: [], hidden: [`↑`, `↓`] },
     ])(`renders $stats as $shown`, ({ stats, shown, hidden }) => {
       mount_tooltip({

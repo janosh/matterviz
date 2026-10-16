@@ -4,7 +4,7 @@ import {
   MAX_SPRITE_RUNS,
   MAX_SPRITE_SIDE,
   SPRITE_MIN_MARKERS,
-} from '#lib/plot/core/canvas-markers.js'
+} from '#lib/plot/core/canvas-markers.svelte.js'
 import { prepare_canvas } from '#lib/plot/core/utils.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 

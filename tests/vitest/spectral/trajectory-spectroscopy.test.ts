@@ -12,19 +12,7 @@ import { one_sided_periodogram } from '#lib/fft.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
 import { describe, expect, it } from 'vitest'
-import { IDENTITY_MATRIX3 } from '../test-fixtures'
-
-const signal = (
-  n_samples: number,
-  sample_shape: number[],
-  sample: (sample_idx: number) => number[],
-): TrajectorySignal => ({
-  values: Float64Array.from(
-    Array.from({ length: n_samples }, (_unused, sample_idx) => sample(sample_idx)).flat(),
-  ),
-  sample_shape,
-  steps: Array.from({ length: n_samples }, (_unused, sample_idx) => sample_idx),
-})
+import { IDENTITY_MATRIX3, cubic_matrix, make_signal } from '../test-fixtures'
 
 const position_stream = (
   positions: Float64Array,
@@ -64,23 +52,17 @@ const make_input = (
   }
 }
 
-// A vec3 series oscillating along x at `cycles_per_sample`, the standard IR/Raman probe here
-const x_sinusoid = (cycles_per_sample: number): TrajectorySignal =>
-  signal(128, [3], (sample_idx) => [
-    Math.sin(2 * Math.PI * cycles_per_sample * sample_idx),
-    0,
-    0,
-  ])
+// A vec3 series oscillating along x at `cycles` per sample, the standard IR/Raman probe here
+const x_sinusoid = (cycles: number, n_samples = 128): TrajectorySignal =>
+  make_signal(n_samples, [3], (idx) => [Math.sin(2 * Math.PI * cycles * idx), 0, 0])
 
 // 10 A cubic cell on every frame, so periodic paths have a lattice to unwrap against
 const make_periodic = (input: TrajectorySpectroscopyInput, pbc: Pbc): void => {
   input.positions.pbc = pbc
-  input.positions.lattice_matrices = Array.from({ length: 128 }, () => [
-    [10, 0, 0],
-    [0, 10, 0],
-    [0, 0, 10],
-  ])
+  input.positions.lattice_matrices = Array.from({ length: 128 }, () => cubic_matrix(10))
 }
+// row-major diagonal 3x3 tensor
+const diag3 = (xx: number, yy: number, zz: number) => [xx, 0, 0, 0, yy, 0, 0, 0, zz]
 
 const peak_near = (
   result: ReturnType<typeof calc_trajectory_spectroscopy>,
@@ -93,13 +75,15 @@ const peak_near = (
 const RAW = { preprocessing: `raw` as const, frequency_unit: `1/step` as const }
 const RAW_SPECTRUM = { ...RAW, window: `none` as const, zero_pad_factor: 1 as const }
 
-const tumbling_spectra = (
-  elements: ElementSymbol[],
-  masses: number[],
-  base_positions: number[][],
-  body_tensor: (oscillation: number) => number[],
-  oscillation_amp: number,
-) => {
+type TumblingCase = {
+  elements: ElementSymbol[]
+  masses: number[]
+  base_positions: number[][]
+  body_tensor: (oscillation: number) => number[]
+  amplitude: number
+}
+const tumbling_spectra = (spec: TumblingCase) => {
+  const { elements, masses, base_positions, body_tensor, amplitude } = spec
   const n_frames = 128
   const n_atoms = base_positions.length
   const rotating_positions = new Float64Array(n_frames * n_atoms * 3)
@@ -114,7 +98,7 @@ const tumbling_spectra = (
     const angle = angular_speed * frame_idx
     const cosine = Math.cos(angle)
     const sine = Math.sin(angle)
-    const oscillation = oscillation_amp * Math.sin(2 * Math.PI * 0.125 * frame_idx)
+    const oscillation = amplitude * Math.sin(2 * Math.PI * 0.125 * frame_idx)
     const tensor = body_tensor(oscillation)
     stationary_tensors.set(tensor, frame_idx * 9)
     for (const [atom_idx, [x_coord, y_coord, z_coord]] of base_positions.entries()) {
@@ -255,186 +239,73 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(result.peaks.every(({ raman_activity }) => raman_activity === `unknown`)).toBe(true)
   })
 
+  // oxfmt-ignore
   it.each([
     [`zero dimension`, [0], [0, 1], new Float64Array(), /invalid sample shape \[0\]/],
     [`fractional dimension`, [1.5], [0, 1], new Float64Array(3), /invalid sample shape/],
     [`rank three`, [1, 1, 1], [0, 1], new Float64Array(2), /rank must be at most 2/],
-    [
-      `non-finite first step`,
-      [3],
-      [Number.NEGATIVE_INFINITY, 0],
-      new Float64Array(6),
-      /step 0 is -Infinity, not finite/,
-    ],
-  ])(
-    `rejects malformed public signals: %s`,
-    (_label, sample_shape, steps, values, expected) => {
-      expect(() => validate_trajectory_signal({ sample_shape, steps, values })).toThrow(
-        expected,
-      )
-    },
-  )
+    [`non-finite first step`, [3], [Number.NEGATIVE_INFINITY, 0], new Float64Array(6), /step 0 is -Infinity, not finite/],
+  ])(`rejects malformed public signals: %s`, (_label, sample_shape, steps, values, expected) => {
+    expect(() => validate_trajectory_signal({ sample_shape, steps, values })).toThrow(expected)
+  })
 
+  type Mutate = (input: TrajectorySpectroscopyInput) => unknown
+  // oxfmt-ignore
   it.each([
-    [
-      `short position buffer`,
-      (input: TrajectorySpectroscopyInput) =>
-        (input.positions.positions = input.positions.positions.slice(1)),
-      /positions has .* entries but 128 frames/,
-    ],
-    [
-      `non-finite position`,
-      (input: TrajectorySpectroscopyInput) => (input.positions.positions[1] = Number.NaN),
-      /position value 1 is NaN/,
-    ],
-    [
-      `element count`,
-      (input: TrajectorySpectroscopyInput) => input.positions.elements.pop(),
-      /got 1 element labels for 2 atoms/,
-    ],
-    [
-      `descending steps`,
-      (input: TrajectorySpectroscopyInput) => (input.positions.steps[5] = 3),
-      /position steps must increase strictly/,
-    ],
-    [
-      `infinite mass`,
-      (input: TrajectorySpectroscopyInput) => (input.masses[0] = Number.POSITIVE_INFINITY),
-      /masses must contain one positive value per atom/,
-    ],
-    [
-      `lattice count`,
-      (input: TrajectorySpectroscopyInput) =>
-        (input.positions.lattice_matrices = [IDENTITY_MATRIX3]),
-      /lattice matrices/,
-    ],
-    [
-      `fractional atom count`,
-      (input: TrajectorySpectroscopyInput) => (input.positions.n_atoms = 1.5),
-      /element labels for 1\.5 atoms/,
-    ],
-    [
-      `fractional frame count`,
-      (input: TrajectorySpectroscopyInput) => (input.positions.n_frames = 127.5),
-      /entries but 127\.5 frames/,
-    ],
-    [
-      `malformed PBC`,
-      (input: TrajectorySpectroscopyInput) =>
-        Reflect.set(input.positions, `pbc`, [true, false]),
-      /pbc must contain exactly 3 boolean values/,
-    ],
-    [
-      `wrapped periodic positions without a lattice`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.positions.pbc = [true, false, false]
-        input.positions.coords_unwrapped = false
-      },
-      /wrapped periodic positions require a lattice matrix for the first frame/,
-    ],
-    [
-      `one-percent cadence mismatch at a large step origin`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.positions.steps = input.positions.steps.map((step) => 1e12 + step)
-        input.positions.steps[64] += 0.01
-      },
-      /positions is not uniformly sampled/,
-    ],
-  ])(`rejects malformed position input: %s`, (_label, mutate, expected) => {
+    [`short position buffer`, (input) => (input.positions.positions = input.positions.positions.slice(1)), /positions has .* entries but 128 frames/],
+    [`non-finite position`, (input) => (input.positions.positions[1] = Number.NaN), /position value 1 is NaN/],
+    [`element count`, (input) => input.positions.elements.pop(), /got 1 element labels for 2 atoms/],
+    [`descending steps`, (input) => (input.positions.steps[5] = 3), /position steps must increase strictly/],
+    [`infinite mass`, (input) => (input.masses[0] = Number.POSITIVE_INFINITY), /masses must contain one positive value per atom/],
+    [`lattice count`, (input) => (input.positions.lattice_matrices = [IDENTITY_MATRIX3]), /lattice matrices/],
+    [`fractional atom count`, (input) => (input.positions.n_atoms = 1.5), /element labels for 1\.5 atoms/],
+    [`fractional frame count`, (input) => (input.positions.n_frames = 127.5), /entries but 127\.5 frames/],
+    [`malformed PBC`, (input) => Reflect.set(input.positions, `pbc`, [true, false]), /pbc must contain exactly 3 boolean values/],
+    [`wrapped periodic positions without a lattice`, (input) => {
+      input.positions.pbc = [true, false, false]
+      input.positions.coords_unwrapped = false
+    }, /wrapped periodic positions require a lattice matrix for the first frame/],
+    [`one-percent cadence mismatch at a large step origin`, (input) => {
+      input.positions.steps = input.positions.steps.map((step) => 1e12 + step)
+      input.positions.steps[64] += 0.01
+    }, /positions is not uniformly sampled/],
+  ] as [string, Mutate, RegExp][])(`rejects malformed position input: %s`, (_label, mutate, expected) => {
     const input = make_input()
     mutate(input)
     expect(() => calc_trajectory_spectroscopy(input, RAW)).toThrow(expected)
   })
 
+  const zero_vec3 = () => make_signal(128, [3], () => [0, 0, 0])
+  // oxfmt-ignore
   it.each([
-    [
-      `IR signal kind`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [0, 0, 0]) }
-        Reflect.set(input.infrared_signal, `kind`, `charges`)
-      },
-      {},
-      /IR signal kind 'charges' is not supported/,
-    ],
-    [
-      `Raman signal kind`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.raman_signal = {
-          kind: `polarizability`,
-          series: signal(128, [3, 3], () => Array.from({ length: 9 }, () => 0)),
-        }
-        Reflect.set(input.raman_signal, `kind`, `susceptibility`)
-      },
-      {},
-      /Raman signal kind 'susceptibility' is not supported/,
-    ],
-    [
-      `Raman channel`,
-      () => {},
-      { raman_channel: `polarized` },
-      /Raman channel 'polarized' is not supported/,
-    ],
-    [
-      `body-fixed current IR`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.infrared_signal = { kind: `current`, series: x_sinusoid(0.125) }
-      },
-      { preprocessing: `body_fixed` },
-      /body_fixed current IR requires the time derivative of the rotating frame/,
-    ],
-    [
-      `unmarked polarization IR`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.infrared_signal = {
-          kind: `polarization`,
-          branch_continuous: true,
-          series: signal(128, [3], () => [0, 0, 0]),
-        }
-        Reflect.deleteProperty(input.infrared_signal, `branch_continuous`)
-      },
-      {},
-      /polarization must be explicitly marked branch_continuous/,
-    ],
+    [`IR signal kind`, (input) => {
+      input.infrared_signal = { kind: `dipole`, series: zero_vec3() }
+      Reflect.set(input.infrared_signal, `kind`, `charges`)
+    }, {}, /IR signal kind 'charges' is not supported/],
+    [`Raman signal kind`, (input) => {
+      input.raman_signal = { kind: `polarizability`, series: make_signal(128, [3, 3], () => diag3(0, 0, 0)) }
+      Reflect.set(input.raman_signal, `kind`, `susceptibility`)
+    }, {}, /Raman signal kind 'susceptibility' is not supported/],
+    [`Raman channel`, () => {}, { raman_channel: `polarized` }, /Raman channel 'polarized' is not supported/],
+    [`body-fixed current IR`, (input) => {
+      input.infrared_signal = { kind: `current`, series: x_sinusoid(0.125) }
+    }, { preprocessing: `body_fixed` }, /body_fixed current IR requires the time derivative of the rotating frame/],
+    [`unmarked polarization IR`, (input) => {
+      input.infrared_signal = { kind: `polarization`, branch_continuous: true, series: zero_vec3() }
+      Reflect.deleteProperty(input.infrared_signal, `branch_continuous`)
+    }, {}, /polarization must be explicitly marked branch_continuous/],
     [`unknown window`, () => {}, { window: `blackman` }, /window 'blackman' is not supported/],
-    [
-      `unknown velocity_source`,
-      () => {},
-      { velocity_source: `finite_difference` },
-      /velocity_source/,
-    ],
-    [
-      `stored velocity_source without a velocity signal`,
-      (input: TrajectorySpectroscopyInput) => (input.velocities = null),
-      { velocity_source: `stored` },
-      /velocity_source 'stored' was requested but no velocity signal was supplied/,
-    ],
-    [
-      `blank signal unit`,
-      (input: TrajectorySpectroscopyInput) => {
-        input.infrared_signal = {
-          kind: `dipole`,
-          series: { ...signal(128, [3], () => [0, 0, 0]), unit: ` ` },
-        }
-      },
-      {},
-      /unit must be a non-empty string/,
-    ],
-    [
-      `nonuniform velocity sampling`,
-      (input: TrajectorySpectroscopyInput) => input.velocities?.steps.splice(5, 1, 7),
-      {},
-      /steps must increase strictly|not uniformly sampled/,
-    ],
-    [
-      `periodic total dipole`,
-      (input: TrajectorySpectroscopyInput) => {
-        make_periodic(input, [true, false, false])
-        input.infrared_signal = { kind: `dipole`, series: signal(128, [3], () => [1, 0, 0]) }
-      },
-      { preprocessing: `remove_com` },
-      /total dipole is not a valid periodic IR signal/,
-    ],
-  ])(
+    [`unknown velocity_source`, () => {}, { velocity_source: `finite_difference` }, /velocity_source/],
+    [`stored velocity_source without a velocity signal`, (input) => (input.velocities = null), { velocity_source: `stored` }, /velocity_source 'stored' was requested but no velocity signal was supplied/],
+    [`blank signal unit`, (input) => {
+      input.infrared_signal = { kind: `dipole`, series: { ...zero_vec3(), unit: ` ` } }
+    }, {}, /unit must be a non-empty string/],
+    [`nonuniform velocity sampling`, (input) => input.velocities?.steps.splice(5, 1, 7), {}, /steps must increase strictly|not uniformly sampled/],
+    [`periodic total dipole`, (input) => {
+      make_periodic(input, [true, false, false])
+      input.infrared_signal = { kind: `dipole`, series: make_signal(128, [3], () => [1, 0, 0]) }
+    }, { preprocessing: `remove_com` }, /total dipole is not a valid periodic IR signal/],
+  ] as [string, Mutate, Record<string, string>, RegExp][])(
     `rejects unsupported options and signals: %s`,
     (_label, mutate, raw_options, expected) => {
       const input = make_input()
@@ -457,27 +328,21 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const femtoseconds = calc_trajectory_spectroscopy(make_timed_input(1, `fs`), options)
     const picoseconds = calc_trajectory_spectroscopy(make_timed_input(0.001, `ps`), options)
     expect(femtoseconds.ir?.frequencies).toEqual(picoseconds.ir?.frequencies)
-    const femtosecond_power = femtoseconds.ir?.power ?? []
-    const picosecond_power = picoseconds.ir?.power ?? []
-    const maximum_power = Math.max(...femtosecond_power)
-    const max_time_unit_error = Math.max(
-      ...femtosecond_power.map((value, frequency_idx) =>
-        Math.abs(value - picosecond_power[frequency_idx]),
-      ),
-    )
-    expect(max_time_unit_error).toBeLessThan(10 * Number.EPSILON * maximum_power)
-
+    const reference = femtoseconds.ir?.power ?? []
+    const tolerance = 10 * Number.EPSILON * Math.max(...reference)
     const wavenumbers = calc_trajectory_spectroscopy(make_timed_input(1, `fs`), {
       ...options,
       frequency_unit: `cm^-1`,
     })
-    const converted_power = wavenumbers.ir?.power.map((value) => value * THZ_TO_INVERSE_CM)
-    const max_frequency_unit_error = Math.max(
-      ...(converted_power ?? []).map((value, frequency_idx) =>
-        Math.abs(value - femtosecond_power[frequency_idx]),
-      ),
-    )
-    expect(max_frequency_unit_error).toBeLessThan(10 * Number.EPSILON * maximum_power)
+    // same physical spectrum in ps, and in cm^-1 once the per-unit density is converted back
+    for (const power of [
+      picoseconds.ir?.power ?? [],
+      (wavenumbers.ir?.power ?? []).map((value) => value * THZ_TO_INVERSE_CM),
+    ]) {
+      expect(power).toHaveLength(reference.length)
+      const errors = power.map((value, idx) => Math.abs(value - reference[idx]))
+      expect(Math.max(...errors)).toBeLessThan(tolerance)
+    }
   })
 
   it.each([
@@ -576,7 +441,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
       // constant 1.85 D magnitude, rotating with the molecule: no IR activity at all
       infrared_signal: {
         kind: `dipole`,
-        series: signal(n_frames, [3], (frame_idx) => [
+        series: make_signal(n_frames, [3], (frame_idx) => [
           -1.85 * Math.sin(angle(frame_idx)),
           1.85 * Math.cos(angle(frame_idx)),
           0,
@@ -639,14 +504,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const input = make_input(0.1, 1, 80)
     input.positions.steps = input.positions.steps.map((step) => step * 2)
     if (input.velocities) input.velocities.steps = [...input.positions.steps]
-    input.infrared_signal = {
-      kind: `dipole`,
-      series: signal(160, [3], (sample_idx) => [
-        Math.sin(2 * Math.PI * 0.4 * sample_idx),
-        0,
-        0,
-      ]),
-    }
+    input.infrared_signal = { kind: `dipole`, series: x_sinusoid(0.4, 160) }
     const result = calc_trajectory_spectroscopy(input, RAW_SPECTRUM)
     const peak = peak_near(result, 0.4)
     expect(Math.abs(peak.frequency - 0.4)).toBeLessThan(result.ir?.rayleigh_resolution ?? 0)
@@ -659,55 +517,27 @@ describe(`calc_trajectory_spectroscopy`, () => {
     )
   })
 
+  // channel weights: isotropic 45 (vv, unpolarized); anisotropic 4 (vv), 3 (vh), 7 (unpolarized)
   it.each([
-    {
-      label: `isotropic`,
-      tensor: (value: number) => [value, 0, 0, 0, value, 0, 0, 0, value],
-      expect_zero: `anisotropic` as const,
-      isotropic_factor: 45,
-      anisotropic_vv: 0,
-      anisotropic_vh: 0,
-      anisotropic_unpolarized: 0,
-    },
-    {
-      label: `traceless`,
-      tensor: (value: number) => [value, 0, 0, 0, -value, 0, 0, 0, 0],
-      expect_zero: `isotropic` as const,
-      isotropic_factor: 0,
-      anisotropic_vv: 4,
-      anisotropic_vh: 3,
-      anisotropic_unpolarized: 7,
-    },
-  ])(
-    `gives a $label tensor the Placzek Raman channel coefficients`,
-    ({
-      tensor,
-      expect_zero,
-      isotropic_factor,
-      anisotropic_vv,
-      anisotropic_vh,
-      anisotropic_unpolarized,
-    }) => {
+    [`isotropic`, (value: number) => diag3(value, value, value), `anisotropic`, 45, [0, 0, 0]],
+    [`traceless`, (value: number) => diag3(value, -value, 0), `isotropic`, 0, [4, 3, 7]],
+  ] as const)(
+    `gives a %s tensor the Placzek Raman channel coefficients`,
+    (_label, tensor, expect_zero, iso_factor, [aniso_vv, aniso_vh, aniso_unpolarized]) => {
       const input = make_input()
       input.raman_signal = {
         kind: `polarizability`,
-        series: signal(128, [3, 3], (sample_idx) =>
-          tensor(Math.sin(2 * Math.PI * 0.125 * sample_idx)),
-        ),
+        series: make_signal(128, [3, 3], (idx) => tensor(Math.sin(2 * Math.PI * 0.125 * idx))),
       }
       const raman = calc_trajectory_spectroscopy(input, RAW_SPECTRUM).raman
-      expect(raman).not.toBeNull()
-      if (!raman) return
+      if (!raman) throw new Error(`no Raman spectrum`)
       expect(Math.max(...raman[expect_zero].power)).toBe(0)
-      for (const frequency_idx of raman.isotropic.power.keys()) {
-        const isotropic = raman.isotropic.power[frequency_idx]
-        const anisotropic = raman.anisotropic.power[frequency_idx]
-        expect(raman.vv.power[frequency_idx]).toBe(
-          isotropic_factor * isotropic + anisotropic_vv * anisotropic,
-        )
-        expect(raman.vh.power[frequency_idx]).toBe(anisotropic_vh * anisotropic)
-        expect(raman.unpolarized.power[frequency_idx]).toBe(
-          isotropic_factor * isotropic + anisotropic_unpolarized * anisotropic,
+      for (const [idx, isotropic] of raman.isotropic.power.entries()) {
+        const anisotropic = raman.anisotropic.power[idx]
+        expect(raman.vv.power[idx]).toBe(iso_factor * isotropic + aniso_vv * anisotropic)
+        expect(raman.vh.power[idx]).toBe(aniso_vh * anisotropic)
+        expect(raman.unpolarized.power[idx]).toBe(
+          iso_factor * isotropic + aniso_unpolarized * anisotropic,
         )
       }
     },
@@ -726,10 +556,8 @@ describe(`calc_trajectory_spectroscopy`, () => {
       kind: `polarizability` as const,
       expected_ratio: 1 / 4,
       // both tones share an isotropic tensor, so the anisotropic channel is silent
-      components: (tone_1: number, tone_2: number) => {
-        const value = tone_1 + tone_2
-        return [value, 0, 0, 0, value, 0, 0, 0, value]
-      },
+      components: (tone_1: number, tone_2: number) =>
+        diag3(tone_1 + tone_2, tone_1 + tone_2, tone_1 + tone_2),
       channels: [`isotropic`, `unpolarized`] as const,
     },
     {
@@ -739,17 +567,8 @@ describe(`calc_trajectory_spectroscopy`, () => {
       // ν₁ on the isotropic mean (ᾱ = A₁, weight 45) and ν₂ on a traceless tensor with
       // γ² = ½[(2A₂)² + A₂² + A₂²] = 3A₂² (unpolarized weight 7): the same 1/4 amplitude
       // ratio appears in `unpolarized` as 45A₁² / (21A₂²) = 45/84
-      components: (tone_1: number, tone_2: number) => [
-        tone_1 + tone_2,
-        0,
-        0,
-        0,
-        tone_1 - tone_2,
-        0,
-        0,
-        0,
-        tone_1,
-      ],
+      components: (tone_1: number, tone_2: number) =>
+        diag3(tone_1 + tone_2, tone_1 - tone_2, tone_1),
       channels: [`unpolarized`] as const,
       unpolarized_weights: [45, 21],
     },
@@ -778,7 +597,7 @@ describe(`calc_trajectory_spectroscopy`, () => {
       input.time_step = time_step_fs
       input.time_unit = `fs`
       const is_raman = kind === `polarizability`
-      const series = signal(n_frames, is_raman ? [3, 3] : [3], (sample_idx) => {
+      const series = make_signal(n_frames, is_raman ? [3, 3] : [3], (sample_idx) => {
         const time_fs = sample_idx * time_step_fs
         return components(
           amplitude_1 * Math.cos(2 * Math.PI * frequency_1_thz * 1e-3 * time_fs),
@@ -821,9 +640,9 @@ describe(`calc_trajectory_spectroscopy`, () => {
 
   it(`requires geometry-step correspondence only for body-fixed Raman`, () => {
     const input = make_input()
-    const response = signal(64, [3, 3], (sample_idx) => {
+    const response = make_signal(64, [3, 3], (sample_idx) => {
       const value = Math.sin(2 * Math.PI * 0.125 * sample_idx)
-      return [value, 0, 0, 0, value, 0, 0, 0, value]
+      return diag3(value, value, value)
     })
     response.steps = response.steps.map((step) => step * 2 + 0.5)
     input.raman_signal = { kind: `polarizability`, series: response }
@@ -884,49 +703,30 @@ describe(`calc_trajectory_spectroscopy`, () => {
     expect(unequal.vdos.power[peak_idx]).toBeCloseTo((equal.vdos.power[peak_idx] * 4) / 3, 13)
   })
 
-  it.each([
+  // oxfmt-ignore
+  it.each<TumblingCase & { label: string }>([
     {
       label: `a non-linear molecule`,
-      elements: [`H`, `O`, `H`] satisfies ElementSymbol[],
+      elements: [`H`, `O`, `H`],
       masses: [1, 16, 1],
-      base_positions: [
-        [-1, 0, 0],
-        [0.3, 0.8, 0],
-        [0.4, -0.5, 0.2],
-      ],
-      tensor: (oscillation: number) => [1 + oscillation, 0, 0, 0, 2, 0, 0, 0, 3],
+      base_positions: [[-1, 0, 0], [0.3, 0.8, 0], [0.4, -0.5, 0.2]],
+      body_tensor: (oscillation) => diag3(1 + oscillation, 2, 3),
       amplitude: 0.2,
     },
     {
       label: `a linear molecule`,
-      elements: [`O`, `C`, `O`] satisfies ElementSymbol[],
+      elements: [`O`, `C`, `O`],
       masses: [16, 12, 16],
-      base_positions: [
-        [-1, 0, 0],
-        [0, 0, 0],
-        [1, 0, 0],
-      ],
-      tensor: (oscillation: number) => [2 + oscillation, 0, 0, 0, 1, 0, 0, 0, 1],
+      base_positions: [[-1, 0, 0], [0, 0, 0], [1, 0, 0]],
+      body_tensor: (oscillation) => diag3(2 + oscillation, 1, 1),
       amplitude: 0.1,
     },
-  ])(
-    `removes tumbling from $label in the body-fixed frame`,
-    ({ elements, masses, base_positions, tensor, amplitude }) => {
-      const { rotating, stationary } = tumbling_spectra(
-        elements,
-        masses,
-        base_positions,
-        tensor,
-        amplitude,
-      )
-      const expected = stationary.raman?.unpolarized.power ?? []
-      const actual = rotating.raman?.unpolarized.power ?? []
-      const scale = Math.max(...expected)
-      const max_absolute_error = Math.max(
-        ...expected.map((value, frequency_idx) => Math.abs(actual[frequency_idx] - value)),
-      )
-      expect(max_absolute_error).toBeLessThan(1e-10 * scale)
-      expect(Math.max(...rotating.vdos.power)).toBeLessThan(1e-20)
-    },
-  )
+  ])(`removes tumbling from $label in the body-fixed frame`, (spec) => {
+    const { rotating, stationary } = tumbling_spectra(spec)
+    const expected = stationary.raman?.unpolarized.power ?? []
+    const actual = rotating.raman?.unpolarized.power ?? []
+    const errors = expected.map((value, idx) => Math.abs(actual[idx] - value))
+    expect(Math.max(...errors)).toBeLessThan(1e-10 * Math.max(...expected))
+    expect(Math.max(...rotating.vdos.power)).toBeLessThan(1e-20)
+  })
 })

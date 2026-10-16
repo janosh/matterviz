@@ -25,6 +25,13 @@ const pd_structure = fixture(`mp-2`)
 const bi2zr2o8_structure = fixture(`Bi2Zr2O8-Fm3m`)
 
 const bin_width = ({ r: radius }: RdfPattern) => radius[1] - radius[0]
+// Every unordered pair of the (alphabetically sorted) elements, in calculate_all_pair_rdfs order
+const sorted_pairs = (...elements: string[]): [string, string][] =>
+  elements
+    .toSorted()
+    .flatMap((el_a, idx, sorted) =>
+      sorted.slice(idx).map((el_b): [string, string] => [el_a, el_b]),
+    )
 const max_abs_diff = (left: number[], right: number[]) =>
   Math.max(...left.map((val, idx) => Math.abs(val - right[idx])))
 
@@ -63,16 +70,7 @@ const simple_cubic_shells = (a_len: number, cutoff: number): Map<number, number>
 
 // Rocksalt NaCl in the conventional cell: Na-Cl at a/2 (6), Na-Na at a/√2 (12)
 const ROCKSALT_A = 5.6
-const rocksalt = make_crystal(ROCKSALT_A, [
-  [`Na`, [0, 0, 0]],
-  [`Na`, [0.5, 0.5, 0]],
-  [`Na`, [0.5, 0, 0.5]],
-  [`Na`, [0, 0.5, 0.5]],
-  [`Cl`, [0.5, 0, 0]],
-  [`Cl`, [0, 0.5, 0]],
-  [`Cl`, [0, 0, 0.5]],
-  [`Cl`, [0.5, 0.5, 0.5]],
-])
+const rocksalt = make_rocksalt(ROCKSALT_A)
 
 describe(`calculate_rdf`, () => {
   test(`simple cubic: every shell's height and coordination number are exact`, () => {
@@ -183,23 +181,9 @@ describe(`calculate_rdf`, () => {
     }
     const opts = { cutoff: 4, n_bins: 40 }
     const partials = calculate_all_pair_rdfs(mixed, opts)
-    expect(partials.map((partial) => partial.element_pair)).toEqual([
-      [`Ar`, `Ar`],
-      [`Ar`, `Cl`],
-      [`Ar`, `He`],
-      [`Ar`, `K`],
-      [`Ar`, `Na`],
-      [`Cl`, `Cl`],
-      [`Cl`, `He`],
-      [`Cl`, `K`],
-      [`Cl`, `Na`],
-      [`He`, `He`],
-      [`He`, `K`],
-      [`He`, `Na`],
-      [`K`, `K`],
-      [`K`, `Na`],
-      [`Na`, `Na`],
-    ])
+    expect(partials.map((partial) => partial.element_pair)).toEqual(
+      sorted_pairs(`Na`, `K`, `Ar`, `He`, `Cl`),
+    )
     for (const { element_pair, g_r } of partials) {
       const [center_species, neighbor_species] = element_pair ?? []
       expect(g_r).toEqual(
@@ -289,19 +273,9 @@ describe(`calculate_rdf`, () => {
     expect(() => calculate_rdf(pd_structure, opts)).toThrow(pattern)
   })
 
-  test.each([
-    undefined,
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 0],
-    ],
-    [
-      [NaN, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-  ])(`rejects invalid normalisation cell %s`, (matrix) => {
+  // oxfmt-ignore
+  test.each([undefined, [[1, 0, 0], [0, 1, 0], [0, 0, 0]], [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]]])(
+    `rejects invalid normalisation cell %s`, (matrix) => {
     const structure = {
       sites: pd_structure.sites,
       ...(matrix && { lattice: { matrix } }),
@@ -321,15 +295,7 @@ describe(`calculate_all_pair_rdfs`, () => {
     [`Al`, [0.8, 0.8, 0.8]],
   ])
   test.each<[string, Crystal, [string, string][]]>([
-    [
-      `Lu-Al`,
-      lu_al_structure,
-      [
-        [`Al`, `Al`],
-        [`Al`, `Lu`],
-        [`Lu`, `Lu`],
-      ],
-    ],
+    [`Lu-Al`, lu_al_structure, sorted_pairs(`Lu`, `Al`)],
     [`Pd`, pd_structure, [[`Pd`, `Pd`]]],
     ...(
       [
@@ -352,23 +318,7 @@ describe(`calculate_all_pair_rdfs`, () => {
                 : site.species,
         })),
       },
-      [
-        [`Al`, `Al`],
-        [`Al`, `Cl`],
-        [`Al`, `K`],
-        [`Al`, `Na`],
-        [`Al`, `Si`],
-        [`Cl`, `Cl`],
-        [`Cl`, `K`],
-        [`Cl`, `Na`],
-        [`Cl`, `Si`],
-        [`K`, `K`],
-        [`K`, `Na`],
-        [`K`, `Si`],
-        [`Na`, `Na`],
-        [`Na`, `Si`],
-        [`Si`, `Si`],
-      ],
+      sorted_pairs(`Si`, `Na`, `Cl`, `K`, `Al`),
     ]),
   ])(
     `%s: one pattern per unordered pair, sorted, matching calculate_rdf`,

@@ -5,10 +5,10 @@ import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // One fixture table pins every checked-in sample file; the rest are synthetic edge cases.
 // open.test.ts covers the loading policy (materialise vs index) and run lifecycle.
 import type { ElementSymbol } from '#lib'
-import { structure_to_xyz_str } from '#lib/structure/export.js'
+import { structure_to_json_str, structure_to_xyz_str } from '#lib/structure/export.js'
 import { get_element_counts } from '#lib/structure/density.js'
 import type { Pbc } from '#lib/structure/pbc.js'
-import { parse_xyz } from '#lib/structure/parse.js'
+import { parse_xyz, structure_from_json } from '#lib/structure/parse.js'
 import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
 import { is_loaded_signal, is_signal_descriptor } from '#lib/trajectory/run.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -2023,6 +2023,47 @@ describe(`JSON`, () => {
     expect(frames.every(({ structure }) => `lattice` in structure === periodic)).toBe(true)
   })
 
+  // Trajectory.from_structures of an oxidation-decorated structure: MontyEncoder writes
+  // Species/Element dicts, whose decoration must reach every frame like structure JSON does
+  it(`keeps decorated species in every frame and through structure JSON export`, async () => {
+    const monty = (cls: string, fields: Record<string, unknown>) => ({
+      '@module': `pymatgen.core.periodic_table`,
+      '@class': cls,
+      ...fields,
+    })
+    const run = await open(
+      pymatgen({
+        species: [
+          monty(`Species`, { element: `Fe`, oxidation_state: 3, spin: null }),
+          monty(`Element`, { element: `O` }),
+        ],
+        coords: [
+          [
+            [0, 0, 0],
+            [0.5, 0.5, 0.5],
+          ],
+          [
+            [0.1, 0, 0],
+            [0.5, 0.5, 0.5],
+          ],
+        ],
+      }),
+      `decorated.json`,
+    )
+    const frames = await frames_of(run)
+    const expected = [
+      [{ element: `Fe`, oxidation_state: 3, occu: 1, spin: null }],
+      [{ element: `O`, oxidation_state: 0, occu: 1 }],
+    ]
+    for (const { structure } of frames) {
+      expect(structure.sites.map((site) => site.species)).toEqual(expected)
+    }
+    // parsed frames share species; the run hands each read its own copy
+    expect(frames[0].structure.sites[0].species).not.toBe(frames[1].structure.sites[0].species)
+    const reread = structure_from_json(JSON.parse(structure_to_json_str(frames[1].structure)))
+    expect(reread.sites.map(({ species }) => species[0].oxidation_state)).toEqual([3, 0])
+  })
+
   // Forces go onto the sites; unusable ones are dropped from that frame alone, with a warning
   // naming the frame and the mismatch (same rule and wording as vaspout.h5)
   // oxfmt-ignore
@@ -2128,6 +2169,9 @@ describe(`unsupported format messages`, () => {
 // === HDF5 slice budgets (h5-utils) ===
 
 describe(`HDF5 slice budgets`, () => {
+  // An h5wasm dataset stub: `size` bytes per value, `slice` serving hyperslab reads
+  const fake_dataset = (shape: number[], slice: unknown, size = 8) =>
+    ({ metadata: { size }, shape, slice }) as unknown as H5Dataset
   // oxfmt-ignore
   it.each([
     [`finite`, 12n, 12], [`unsafe`, 2n ** 60n, null], [`overflowing`, 10n ** 400n, null], [`multi-value`, [1, 2], null],
@@ -2143,11 +2187,7 @@ describe(`HDF5 slice budgets`, () => {
   })
 
   it.each([NaN, Infinity, -Infinity])(`rejects Float64 channel value %s`, (invalid) => {
-    const dataset = {
-      metadata: { size: 8 },
-      shape: [3],
-      slice: () => Float64Array.of(-0, 1, invalid),
-    } as unknown as H5Dataset
+    const dataset = fake_dataset([3], () => Float64Array.of(-0, 1, invalid))
     expect(() => read_numeric_buffer(dataset, `/velocity`, [[]])).toThrow(
       `HDF5 dataset /velocity hyperslab must contain finite numbers`,
     )
@@ -2171,7 +2211,7 @@ describe(`HDF5 slice budgets`, () => {
     )
     const slice = vi.fn()
     const shape = [too_many]
-    const dataset = { metadata: { size: 8 }, shape, slice } as unknown as H5Dataset
+    const dataset = fake_dataset(shape, slice)
     expect(() => read_numeric_hyperslab(dataset, `/large`, [[]])).toThrow(
       `above the ${HDF5_MAX_LOGICAL_SLICE_BYTES}-byte application limit`,
     )
@@ -2181,11 +2221,7 @@ describe(`HDF5 slice budgets`, () => {
     )
     expect(slice).not.toHaveBeenCalled()
     // an undecoded 2-byte [n_atoms] masses used to yield 2*n_atoms plausible byte values
-    const undecoded = {
-      metadata: { size: 2 },
-      shape: [4],
-      slice: () => new Uint8Array(8),
-    } as unknown as H5Dataset
+    const undecoded = fake_dataset([4], () => new Uint8Array(8), 2)
     expect(() => read_numeric_hyperslab(undecoded, `/masses`, [[]])).toThrow(
       `HDF5 dataset /masses hyperslab returned 8 values, expected 4`,
     )
@@ -2214,20 +2250,14 @@ describe(`HDF5 slice budgets`, () => {
 
   it(`copies large axis chunks and sampled hyperslabs without spreading into the call stack`, () => {
     const entry_count = 130_000
-    const axis = {
-      metadata: { size: 8 },
-      shape: [entry_count],
-      slice: () => Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
-    } as unknown as H5Dataset
+    const axis = fake_dataset([entry_count], () =>
+      Float64Array.from({ length: entry_count }, (_unused, idx) => idx),
+    )
     const values = read_numeric_1d(axis, `/steps/positions`, entry_count, `HDF5`)
     expect(values).toHaveLength(entry_count)
     expect(values.at(-1)).toBe(entry_count - 1)
 
-    const samples = {
-      metadata: { size: 8 },
-      shape: [3, 2],
-      slice: () => Float64Array.from([1, 2, 3, 4, 5, 6]),
-    } as unknown as H5Dataset
+    const samples = fake_dataset([3, 2], () => Float64Array.from([1, 2, 3, 4, 5, 6]))
     expect(read_numeric_samples(samples, `/direct-copy`, 3, 2)).toEqual(
       Float64Array.from([1, 2, 3, 4, 5, 6]),
     )
@@ -2253,11 +2283,7 @@ describe(`HDF5 slice budgets`, () => {
           (idx % columns) * column_stride,
       )
     })
-    const dataset = {
-      metadata: { size: 8 },
-      shape: [5, sample_size],
-      slice,
-    } as unknown as H5Dataset
+    const dataset = fake_dataset([5, sample_size], slice)
     const values = read_numeric_samples(
       dataset,
       `/large-samples`,
@@ -2291,11 +2317,7 @@ describe(`HDF5 slice budgets`, () => {
         (_unused, value_idx) => start + Math.floor(value_idx / sample_size) * stride,
       )
     })
-    const dataset = {
-      metadata: { size: 8 },
-      shape: [sample_count, sample_size],
-      slice,
-    } as unknown as H5Dataset
+    const dataset = fake_dataset([sample_count, sample_size], slice)
     const values = read_numeric_samples(
       dataset,
       `/observables/dipole`,
@@ -2316,11 +2338,8 @@ describe(`HDF5`, () => {
   const zero_positions = [0, 0, 0, 0, 0, 0]
   const cubic_cell = [10, 0, 0, 0, 10, 0, 0, 0, 10]
   const zero_cell = Array(9).fill(0)
-  const cell_21 = [
-    [21, 0, 0],
-    [0, 10, 0],
-    [0, 0, 10],
-  ]
+  // oxfmt-ignore
+  const cell_21 = [[21, 0, 0], [0, 10, 0], [0, 0, 10]]
   const REPLICA_1 = `/molecules/h2o/replicas/1`
   const open_replica = async (n_frames: number, hdf5_group_path = REPLICA_1) =>
     open(await make_reference_md_h5_buffer([100, 101], n_frames), `reference-md.h5`, {
@@ -2616,46 +2635,27 @@ describe(`HDF5`, () => {
     )
   })
 
-  // Scan tail frames backwards without rereading them; stop at the first nonzero frame.
+  // Scan tail frames backwards without rereading them; stop at the first nonzero frame. Both
+  // fail step validation: x positions per frame, then the step axis
+  // oxfmt-ignore
   it.each([
-    {
-      // writer killed between positions and steps: frame 2 has positions but no step
-      desc: `a written frame ahead of the zero-filled tail`,
-      position_steps: [0, 1, 0, 0],
-      frames: [
-        [1, 1, 1],
-        [2, 2, 2],
-        [3, 3, 3],
-        [0, 0, 0],
-      ],
-      error: /must increase strictly/,
-    },
-    {
-      // an all-zero step axis over real data is corrupt steps, not a torn tail
-      desc: `an all-zero step axis over real positions`,
-      position_steps: [0, 0, 0, 0],
-      frames: [
-        [1, 1, 1],
-        [2, 2, 2],
-        [3, 3, 3],
-        [4, 4, 4],
-      ],
-      error: /must increase strictly/,
-    },
+    // writer killed between positions and steps: frame 2 has positions but no step
+    [`a written frame ahead of the zero-filled tail`, [1, 2, 3, 0], [0, 1, 0, 0]],
+    // an all-zero step axis over real data is corrupt steps, not a torn tail
+    [`an all-zero step axis over real positions`, [1, 2, 3, 4], [0, 0, 0, 0]],
   ])(
-    `reads each tail frame at most once while scanning $desc`,
-    async ({ position_steps, frames, error }) => {
+    `reads each tail frame at most once while scanning %s`,
+    async (_desc, x_positions, position_steps) => {
+      const frames = x_positions.map((x_pos) => [x_pos, x_pos, x_pos])
       const content = await h5_bytes(`torn-scan`, (file) => {
         const data = file.create_group(`data`)
         create_dataset(data, `positions`, frames.flat(), [frames.length, 1, 3])
         create_dataset(data, `atomic_numbers`, [1], [1])
-        create_dataset(file.create_group(`steps`), `positions`, position_steps, [
-          position_steps.length,
-        ])
+        create_dataset(file.create_group(`steps`), `positions`, position_steps, [4])
       })
       const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
       onTestFinished(() => slice_spy.mockRestore())
-      await expect(open(content, `torn-scan.h5`)).rejects.toThrow(error)
+      await expect(open(content, `torn-scan.h5`)).rejects.toThrow(/must increase strictly/)
       const position_reads = slice_spy.mock.calls.filter(
         (_call, idx) => (slice_spy.mock.contexts[idx] as H5Dataset).path === `/data/positions`,
       )

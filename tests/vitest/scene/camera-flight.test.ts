@@ -1,7 +1,6 @@
 import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight.js'
 import {
   camera_flight_frame,
-  create_camera_flight_controller,
   create_camera_flight_sampler,
   orbit_camera_flight,
   validate_camera_flight,
@@ -17,16 +16,8 @@ import {
 } from 'three/webgpu'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { describe, expect, it, vi } from 'vitest'
+import { flight_controller, pose } from './mount'
 
-const pose: CameraPose = {
-  position: [0, 0, 10],
-  target: [0, 0, 0],
-  quaternion: [0, 0, 0, 1],
-  projection: `perspective`,
-  zoom: 1,
-  fov: 50,
-  pan: [0, 0],
-}
 const path = (): CameraFlight => ({
   interpolation: `smooth`,
   keyframes: [
@@ -93,15 +84,11 @@ describe(`movie plans`, () => {
   })
   it(`preserves an explicit irregular source schedule when saving and rendering`, () => {
     const source_frames = [2, 2, 2, 4, 7, 7]
-    const plan = plan_movie(
-      {
-        video: { ...video, fps: 6, duration_s: 1 },
-        frames: { start: 2, end: 8 },
-        source_frames,
-      },
-      10,
-      pose,
-    )
+    const request = {
+      video: { ...video, fps: 6, duration_s: 1 },
+      frames: { start: 2, end: 8 },
+    }
+    const plan = plan_movie({ ...request, source_frames }, 10, pose)
     source_frames[0] = 9
     // oxlint-disable-next-line unicorn/prefer-structured-clone -- a saved plan goes through JSON
     const restored = plan_movie(JSON.parse(JSON.stringify(plan)), 10, pose)
@@ -125,14 +112,13 @@ describe(`movie plans`, () => {
   it.each([`perspective`, `orthographic`] as const)(
     `builds a serializable %s orbit`,
     (projection) => {
-      const plan = plan_movie(
-        {
-          video,
-          camera: { preset: `orbit`, turns: 0.5, elevation_deg: 30, distance_scale: 2 },
-        },
-        3,
-        { ...pose, projection },
-      )
+      const camera = {
+        preset: `orbit`,
+        turns: 0.5,
+        elevation_deg: 30,
+        distance_scale: 2,
+      } as const
+      const plan = plan_movie({ video, camera }, 3, { ...pose, projection })
       validate_camera_flight(plan.camera)
       expect(plan.camera.keyframes[0].zoom).toBe(projection === `orthographic` ? 0.5 : 1)
       for (const frame of plan.camera.keyframes) {
@@ -290,12 +276,7 @@ it.each([`perspective`, `orthographic`] as const)(
     const target = new Vector3(1, 2, 3)
     const active = vi.fn()
     const invalidate = vi.fn()
-    const controller = create_camera_flight_controller(
-      { object: camera, target },
-      () => ({ width: 800, height: 600 }),
-      active,
-      invalidate,
-    )
+    const controller = flight_controller(camera, target, active, invalidate)
     const original = controller.capture()
     const lease = controller.begin()
     expect(() => controller.begin()).toThrow(`already flying`)
@@ -339,12 +320,7 @@ it.each([
   (_name, sampled, held) => {
     const camera = new PerspectiveCamera(50)
     const controls = new OrbitControls(camera)
-    const controller = create_camera_flight_controller(
-      { object: camera, target: controls.target },
-      () => ({ width: 800, height: 600 }),
-      vi.fn(),
-      vi.fn(),
-    )
+    const controller = flight_controller(camera, controls.target)
     const lease = controller.begin()
     lease.apply(sampled)
     lease.commit()

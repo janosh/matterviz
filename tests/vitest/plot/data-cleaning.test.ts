@@ -316,16 +316,12 @@ describe(`clean_series`, () => {
   })
 
   // edges hold the nearest finite value; runs interpolate linearly; nothing finite -> 0
+  // oxfmt-ignore
   it.each([
     { label: `edges`, y: [NaN, 2, 4, 6, NaN], cleaned: [2, 2, 4, 6, 6], count: 2 },
     { label: `interior`, y: [0, NaN, NaN, NaN, 8], cleaned: [0, 2, 4, 6, 8], count: 3 },
     { label: `all missing`, y: [NaN, NaN], cleaned: [0, 0], count: 2 },
-    {
-      label: `opposite extremes`,
-      y: [-1e308, NaN, 1e308],
-      cleaned: [-1e308, 0, 1e308],
-      count: 1,
-    },
+    { label: `opposite extremes`, y: [-1e308, NaN, 1e308], cleaned: [-1e308, 0, 1e308], count: 1 },
     {
       label: `same-sign extremes`,
       y: [1e308, NaN, 1.5e308],

@@ -4,6 +4,7 @@
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { json_source } from '#lib/io/export.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -19,7 +20,7 @@
     highlight_key_of,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
+  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
 
   let {
     entries = [],
@@ -30,6 +31,7 @@
     temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    tooltip,
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
@@ -38,6 +40,7 @@
     temperature?: number
     hover_info?: ChemPotHoverInfo | null
     highlighted_formula?: string | null
+    tooltip?: ChemPotTooltipProp
   } = $props()
   // Plot wrapper element (pointer hit-testing), bound from the ScatterPlot
   let wrapper = $state<HTMLDivElement>()
@@ -60,11 +63,9 @@
     element_padding,
     default_min_limit,
     color_mode,
-    color_scale,
-    reverse_color_scale,
     diagram_data,
     domain_colors,
-    color_range,
+    color_bar,
   } = $derived(chempot)
 
   const plot_elements = $derived((diagram_data?.elements ?? config.elements ?? []).slice(0, 2))
@@ -248,12 +249,12 @@
     style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
   />
 {:else if !diagram_data}
-  <div class="error-state" role="alert" aria-live="polite">
+  <EmptyState>
     <p>Cannot compute chemical potential diagram.</p>
     <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
     <!-- the setting that caused the error stays editable -->
     {@render chempot_controls(null)}
-  </div>
+  </EmptyState>
 {:else}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -289,23 +290,23 @@
       {export_sources}
       controls_extra={chempot_controls}
       user_content={domain_labels}
+      // hover drives the ChemPot tooltip below; the plot's own point tooltip would double it
       on_point_hover={handle_hover}
       on_point_click={handle_click}
+      tooltip={false}
       style="--scatter-width: 100%; --scatter-height: {render_height}px"
     />
     <ChemPotLegend
       {color_mode}
-      {color_scale}
-      {reverse_color_scale}
-      {color_range}
+      {color_bar}
       formulas={Object.keys(draw_domains)}
       style="bottom: 60px; left: 50px"
     />
-    {#if chempot.show_tooltip && hover_info?.view === `2d`}
+    {#if tooltip !== false && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}
         pinned={locked_hover_formula === hover_info.formula}
-        detail_level={chempot.tooltip_detail_level}
+        {tooltip}
         bg_color={domain_colors.get(hover_info.formula)}
         constrain_to={{ width: render_width, height: render_height }}
       />
@@ -331,14 +332,6 @@
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;
     z-index: 11;
-  }
-  .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-color, #666);
   }
   .domain-label {
     font-size: 12px;

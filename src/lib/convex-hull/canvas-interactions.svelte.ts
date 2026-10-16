@@ -3,14 +3,14 @@
 // clipboard copy, keyboard and file drop); create_canvas_interactions adds the canvas-specific
 // mouse handling, sizing and render scheduling behind ConvexHullCanvas.
 import { create_canvas_surface } from '#lib/canvas-surface.svelte.js'
-import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { create_flash, create_pulse_animation } from '#lib/effects.svelte.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { open_material } from '#lib/file-viewer/open.js'
 import { raw_file_drop_zone } from '#lib/io/index.js'
 import { clamp } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
-import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+import { viewer_keys } from '#lib/shortcuts.js'
 import { createAttachmentKey } from 'svelte/attachments'
 import * as draw from './canvas-draw'
 import {
@@ -30,6 +30,7 @@ import type {
   HighlightStyle,
   HoverData3D,
   PhaseData,
+  PhaseEntriesLoadData,
 } from './types'
 
 interface HullSelectionInputs {
@@ -42,7 +43,7 @@ interface HullSelectionInputs {
   allow_file_drop: () => boolean
   on_point_click: () => ((entry: ConvexHullEntry) => void) | undefined
   on_point_hover: () => ((data: HoverData3D | null) => void) | undefined
-  on_file_drop: () => ((entries: PhaseData[]) => void) | undefined
+  on_file_load: () => ((data: PhaseEntriesLoadData) => void) | undefined
   // Categorical classification config (for category line in copied entry text)
   entry_category: () => EntryCategoryConfig | null
   wrapper: () => HTMLElement | undefined
@@ -152,32 +153,26 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     if (version === selection_version) copy_feedback.show({ visible: true, position })
   }
 
-  const handle_keydown = (event: KeyboardEvent) => {
-    // Chords stay the browser's and the host's, Cmd+Enter and Cmd/Ctrl+S/R/B/L/U alike.
-    // Guarded up front like the other viewers, so no branch below can claim one first.
-    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
-    if (event.repeat) return // every hull action is a toggle; holding one would flicker it
-
-    let handled = true
-    if (event.key === `Escape`) {
-      if (modal_open) close_structure_popup()
-      else handled = false
-    } else if (event.key === `Enter`) {
+  // Keys from the focused canvas bubble to the root, or reach it hovered (viewer_keys)
+  const keys = viewer_keys(() => ({
+    ...inputs.actions(),
+    Escape: () => {
+      if (!modal_open) return false
+      close_structure_popup()
+      return true
+    },
+    Enter: () => {
       const entry = hover_data?.entry
       if (entry) select_entry(entry)
-      else if (modal_open) close_structure_popup()
-      else handled = false
-    } else {
-      const action = inputs.actions()[event.key.toLowerCase()]
-      if (action) action()
-      else handled = false
-    }
-    // A canvas-originated keydown bubbles to the wrapper (both listen); swallow it once we
-    // handled it so it runs once, but let keys we ignore through to the host
-    if (handled && event.target !== inputs.wrapper()) event.stopPropagation()
-  }
+      else if (!modal_open) return false
+      else close_structure_popup()
+      return true
+    },
+  }))
 
-  const drop_zone = {
+  // Spread onto the viewer root: file drop plus the keys above
+  const root_attachments = {
+    [createAttachmentKey()]: keys,
     [createAttachmentKey()]: raw_file_drop_zone({
       allow: inputs.allow_file_drop,
       on_drop: async (source) => {
@@ -191,7 +186,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
           }
           const entries = opened.data
           process_hull_entries(entries)
-          inputs.on_file_drop()?.(entries)
+          inputs.on_file_load()?.({ entries, ...opened.provenance })
         } finally {
           opened.dispose()
         }
@@ -237,8 +232,7 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
     select_entry,
     close_structure_popup,
     copy_entry_data,
-    handle_keydown,
-    drop_zone,
+    root_attachments,
   }
 }
 
@@ -261,7 +255,7 @@ interface CanvasInteractionInputs extends Pick<
   highlighted_entries: () => (string | PhaseData)[]
   highlight_style: () => HighlightStyle | undefined
   color_mode: () => `stability` | `energy`
-  color_scale: () => D3InterpolateName
+  color_scale: () => ColorScale
   colors: () => ConvexHullConfig[`colors`] | undefined
   labels: () => { show_labels?: boolean } & Pick<
     draw.LabelOpts,
@@ -270,9 +264,8 @@ interface CanvasInteractionInputs extends Pick<
   // Draws the hull onto the cleared `ctx` (CSS-pixel coordinates); calls
   // draw_points/draw_labels where they belong in its paint order
   render_frame: (ctx: CanvasRenderingContext2D) => void
-  // Everything else `render_frame` reads. It draws inside a rAF, where reads don't register
-  // as dependencies, so anything missing leaves the canvas silently stale. List the derived
-  // values the draw code reads, not their inputs — the derivation keeps the list honest.
+  // Everything else `render_frame` reads: it draws inside a rAF where reads aren't tracked, so
+  // a missing value leaves the canvas silently stale. List deriveds read, not their inputs.
   repaint_deps: () => unknown
 }
 
@@ -425,9 +418,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     { on_tick: () => surface.schedule(false), element: inputs.wrapper },
   )
 
-  // Base canvas: the component's scene; overlay: the pulsing markers. No elements means the
-  // data hasn't loaded (an arity mismatch unmounts the canvas instead), and the corner labels
-  // need the elements, so the scene waits for them.
+  // Base canvas: the scene; overlay: pulsing markers. The scene waits for elements (data
+  // loaded), which the corner labels need.
   const surface = create_canvas_surface({
     canvas: inputs.canvas,
     overlay_canvas: inputs.overlay_canvas,
@@ -480,7 +472,6 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       onmousedown: handle_mouse_down,
       onmousemove: handle_hover,
       onclick: handle_click,
-      onkeydown: selection.handle_keydown,
       ondblclick: handle_double_click,
       onwheel: handle_wheel,
     },

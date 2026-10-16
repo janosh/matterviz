@@ -34,12 +34,14 @@ const make_fcc = (a_len: number): Crystal =>
 
 // The default 200 kV view down [001]. Each test overrides only the option it is probing, so
 // the assertions below never depend on an option a test did not mean to set.
-const cubic_saed = (a_len: number, options: SaedOptions = {}): SaedPatternData =>
-  compute_saed_pattern(make_simple_cubic(a_len), {
+const saed_001 = (crystal: Crystal, options: SaedOptions = {}): SaedPatternData =>
+  compute_saed_pattern(crystal, {
     zone_axis: [0, 0, 1],
     accelerating_voltage: 200,
     ...options,
   })
+const cubic_saed = (a_len: number, options: SaedOptions = {}): SaedPatternData =>
+  saed_001(make_simple_cubic(a_len), options)
 
 const spot_radius = (spot: SaedSpot): number => Math.hypot(...spot.position_2d)
 
@@ -136,10 +138,7 @@ describe(`compute_saed_pattern structure factor`, () => {
   // 210. An intensity-magnitude test would not catch a structure-factor phase-sign bug; this
   // does, because a wrong phase resurrects the forbidden spots.
   test(`FCC [001] shows only all-even or all-odd reflections`, () => {
-    const pattern = compute_saed_pattern(make_fcc(3.615), {
-      zone_axis: [0, 0, 1],
-      accelerating_voltage: 200,
-    })
+    const pattern = saed_001(make_fcc(3.615))
     expect(pattern.spots.length).toBeGreaterThan(10)
     for (const { hkl } of pattern.spots) {
       const parities = hkl.map((index) => Math.abs(index % 2))
@@ -153,18 +152,11 @@ describe(`compute_saed_pattern structure factor`, () => {
     expect(() => find_spot(pattern.spots, [1, 1, 0])).toThrow(/no spot 110/)
     // max_g 0.4 excludes the allowed 200 (g = 2/3.615 = 0.553), leaving only extinct
     // reflections, whose round-off used to render at full brightness under relative scaling
-    const extinct_only = compute_saed_pattern(make_fcc(3.615), {
-      zone_axis: [0, 0, 1],
-      accelerating_voltage: 200,
-      max_g: 0.4,
-    })
-    expect(extinct_only.spots).toEqual([])
+    expect(saed_001(make_fcc(3.615), { max_g: 0.4 }).spots).toEqual([])
   })
 
   test(`FCC and simple cubic differ only by the absences, not the net`, () => {
-    const options = { zone_axis: [0, 0, 1] as Vec3, accelerating_voltage: 200 }
-    const fcc = compute_saed_pattern(make_fcc(3.615), options)
-    const simple = compute_saed_pattern(make_simple_cubic(3.615), options)
+    const [fcc, simple] = [saed_001(make_fcc(3.615)), cubic_saed(3.615)]
     // Every FCC spot must also exist in the simple-cubic net at the same place
     for (const spot of fcc.spots) {
       const match = find_spot(simple.spots, spot.hkl)
@@ -208,11 +200,8 @@ describe(`compute_saed_pattern Ewald geometry`, () => {
     expect(pattern.zone_axis).toEqual([0, 0, 1])
   })
 
-  test.each([
-    [0, `ZOLZ`],
-    [1, `FOLZ`],
-    [2, `HOLZ2`],
-  ])(`laue_zone_label(%i) is %s`, (laue_zone, expected) => {
+  // oxfmt-ignore
+  test.each([[0, `ZOLZ`], [1, `FOLZ`], [2, `HOLZ2`]])(`laue_zone_label(%i) is %s`, (laue_zone, expected) => {
     expect(laue_zone_label(laue_zone)).toBe(expected)
   })
 
@@ -331,13 +320,11 @@ describe(`compute_saed_pattern validation`, () => {
     const zone_axis: Vec3 = [1, 1, 2]
     const pattern = cubic_saed(4, { zone_axis })
     const [basis_u, basis_v] = pattern.in_plane_basis
-    const zone_cart: Vec3 = [zone_axis[0] * 4, zone_axis[1] * 4, zone_axis[2] * 4]
-    const dot = (vec_a: Vec3, vec_b: Vec3) =>
-      vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
-    expect(dot(basis_u, basis_u)).toBeCloseTo(1, 12)
-    expect(dot(basis_v, basis_v)).toBeCloseTo(1, 12)
-    expect(dot(basis_u, basis_v)).toBeCloseTo(0, 12)
-    expect(dot(basis_u, zone_cart)).toBeCloseTo(0, 12)
-    expect(dot(basis_v, zone_cart)).toBeCloseTo(0, 12)
+    const zone_cart = math.scale(zone_axis, 4)
+    expect(math.dot(basis_u, basis_u)).toBeCloseTo(1, 12)
+    expect(math.dot(basis_v, basis_v)).toBeCloseTo(1, 12)
+    expect(math.dot(basis_u, basis_v)).toBeCloseTo(0, 12)
+    expect(math.dot(basis_u, zone_cart)).toBeCloseTo(0, 12)
+    expect(math.dot(basis_v, zone_cart)).toBeCloseTo(0, 12)
   })
 })

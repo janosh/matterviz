@@ -19,10 +19,8 @@ export type HklObj = { hkl: Hkl; multiplicity?: number }
 export type RecipPoint = { hkl: Hkl; g_norm: number }
 export type HklFormat = `compact` | `full` | null
 
-// Render Miller indices in crystallographic notation.
-// `compact` uses the overbar convention for negative indices (1̄ instead of -1) via the
-// combining overline U+0305, which requires font support for combining characters and is
-// applied to each digit so multi-digit indices like 1̄2̄ read correctly.
+// Miller indices in crystallographic notation. `compact` overbars negative indices with the
+// combining overline U+0305 on each digit, so multi-digit indices like 1̄2̄ read correctly.
 export function format_hkl(hkl: Hkl, format: HklFormat): string {
   if (format === `full`) return `(${hkl.join(`, `)})`
   if (format !== `compact`) return ``
@@ -35,13 +33,11 @@ export function format_hkl(hkl: Hkl, format: HklFormat): string {
 }
 
 // `sticks` (default): discrete reflections, drawn as bars and broadened on request.
-// `profile`: a continuous intensity curve (a measured scan or an already broadened pattern),
-// drawn as a line, thinned for display and never broadened again. The parsers in ./parse
-// mark every file they read as a profile.
+// `profile`: a continuous curve (measured scan or broadened pattern), drawn as a line, thinned
+// for display and never broadened again. Every parsed file is a profile.
 export type XrdPatternKind = `sticks` | `profile`
-// How compute_xrd_pattern grouped each peak's hkls into families: `symmetry` by the crystal's
-// point group (options.symmetry_rotations) plus Friedel pairs, `friedel` by Friedel pairs
-// alone because no rotations were supplied.
+// How compute_xrd_pattern grouped hkls into families: by point group plus Friedel pairs
+// (`symmetry`), or Friedel pairs alone when no symmetry_rotations were supplied (`friedel`)
 export type HklFamilyGrouping = `symmetry` | `friedel`
 export type XrdPattern = {
   x: number[]
@@ -52,10 +48,8 @@ export type XrdPattern = {
   family_grouping?: HklFamilyGrouping
 }
 
-// Thin a long measured scan to at most `max_points` for rendering: uniform sampling plus
-// the strongest local maxima (up to 30% of the slots), so peaks that fall between uniform
-// samples survive. Patterns at or under the budget are returned as is. Peaks count when
-// they rise above 5% of the pattern maximum.
+// Thin a long scan to at most `max_points`: uniform samples plus the strongest local maxima
+// above 5% of the max (up to 30% of slots), so peaks between samples survive
 export function decimate_pattern(pattern: XrdPattern, max_points: number): XrdPattern {
   const { x: x_vals, y: y_vals } = pattern
   const num_points = x_vals.length
@@ -99,10 +93,8 @@ export type XrdOptions = {
   accelerating_voltage?: number
   debye_waller_factors?: CompositionType
   scaled?: boolean
-  // 2θ window in degrees, 0 <= min < max <= 180 (anything else throws). Omitted → [0, 90],
-  // [0, 5] for electrons (see compute_xrd_pattern for why it stops short of the Lorentz
-  // singularity); null →
-  // unbounded up to the Bragg maximum 2/λ
+  // 2θ window in degrees, 0 <= min < max <= 180. Omitted → [0, 90] ([0, 5] for electrons, see
+  // compute_xrd_pattern); null → unbounded up to the Bragg maximum 2/λ
   two_theta_range?: Vec2 | null
   // Merge tolerance for peaks in degrees (default = TWO_THETA_TOL)
   peak_merge_tol?: number
@@ -183,10 +175,8 @@ export type XrdPeak = {
 // Warm first (the first is the LatticePlanes default) to stand out against atom colours
 const DIFFRACTION_PLANE_COLORS = [PLOT_COLORS[1], PLOT_COLORS[2], PLOT_COLORS[4]]
 
-// Lattice planes to overlay on a Structure for a diffraction peak or spot, one family per hkl
-// (a peak's hkls are distinct families coinciding in 2θ), one per color to keep the cell
-// readable. Unreduced: (200) draws planes d_200 apart, the spacing that diffracts. Valid only in
-// the input cell the indices refer to.
+// Lattice planes to overlay on a Structure for a peak or spot, one color per hkl family.
+// Unreduced: (200) draws planes d_200 apart, the spacing that diffracts. Input cell only.
 export const diffraction_planes = (hkls: readonly Hkl[]): LatticePlane[] =>
   hkls
     .slice(0, DIFFRACTION_PLANE_COLORS.length)

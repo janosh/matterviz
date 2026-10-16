@@ -77,12 +77,8 @@ describe(`slice rendering helpers`, () => {
 describe(`contour_segments`, () => {
   const canonical = (x0: number, y0: number, x1: number, y1: number): string =>
     x0 < x1 || (x0 === x1 && y0 <= y1) ? `${x0},${y0},${x1},${y1}` : `${x1},${y1},${x0},${y0}`
-  const d3_segments = (
-    values: Float64Array,
-    width: number,
-    height: number,
-    levels: number[],
-  ) =>
+  type Field = [values: Float64Array, width: number, height: number, levels: number[]]
+  const d3_segments = (...[values, width, height, levels]: Field) =>
     contours()
       .size([width, height])
       .thresholds(levels)(values as unknown as number[])
@@ -97,12 +93,7 @@ describe(`contour_segments`, () => {
         ),
       )
       .toSorted()
-  const own_segments = (
-    values: Float64Array,
-    width: number,
-    height: number,
-    levels: number[],
-  ) => {
+  const own_segments = (...[values, width, height, levels]: Field) => {
     const out: string[] = []
     contour_segments(values, width, height, levels, (x0, y0, x1, y1) =>
       out.push(canonical(x0, y0, x1, y1)),

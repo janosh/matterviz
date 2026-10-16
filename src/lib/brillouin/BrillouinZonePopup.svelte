@@ -6,10 +6,8 @@
   import type { Matrix3x3 } from '#lib/math.js'
   import { FloatingPopup } from '#lib/overlays/index.js'
   import { KCoords } from '#lib/tooltip/index.js'
-  import { to_error } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import BrillouinZone from './BrillouinZone.svelte'
-  import { compute_brillouin_zone } from './compute'
   import { BZ_POPUP_DEFAULT_WIDTH } from './types'
   import type { BZPopupPoint, KPathData } from './types'
 
@@ -32,41 +30,25 @@
     height?: number
     bz_props?: Omit<BrillouinZoneOptions, `show_controls` | `fullscreen_toggle`>
   } = $props()
-
-  // First zone only: the popup marks a point, it is not the full BrillouinZone viewer. A
-  // singular reciprocal lattice (parsers only check the entries are finite) has no zone; the
-  // popup then shows the error where the zone would be instead of taking the plot down
-  let bz_data = $derived.by(() => {
-    try {
-      return compute_brillouin_zone(k_lattice)
-    } catch (error) {
-      return to_error(error)
-    }
-  })
 </script>
 
 {#snippet popup_body({ close_button }: { close_button: Snippet })}
   <div class="bz-popup-body">
-    {#if bz_data instanceof Error}
-      <p class="bz-popup-error" style="width: {width}px">
-        {bz_data.message}
-        <span class="bz-popup-close">{@render close_button()}</span>
-      </p>
-    {:else}
-      <BrillouinZone
-        {...bz_props}
-        {bz_data}
-        {k_path}
-        highlighted_k_points={points.map(({ position }) => position)}
-        show_controls={false}
-        fullscreen_toggle={false}
-        allow_file_drop={false}
-        style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
-          ``}"
-      >
-        <div class="bz-popup-close">{@render close_button()}</div>
-      </BrillouinZone>
-    {/if}
+    <!-- the first zone only, unless bz_props asks otherwise; a singular lattice (parsers
+    only check the entries are finite) shows its error where the zone would be -->
+    <BrillouinZone
+      {...bz_props}
+      {k_lattice}
+      {k_path}
+      highlighted_k_points={points.map(({ position }) => position)}
+      show_controls={false}
+      fullscreen_toggle={false}
+      allow_file_drop={false}
+      style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
+        ``}"
+    >
+      <div class="bz-popup-close">{@render close_button()}</div>
+    </BrillouinZone>
     <!-- below the canvas so the coordinates never cover the marked point; unkeyed since a
     discontinuity like K|U lists two points and callers may repeat labels -->
     <div class="bz-popup-stats">
@@ -95,13 +77,6 @@
     strong {
       color: #ff2020;
     }
-  }
-  .bz-popup-error {
-    position: relative;
-    margin: 0;
-    padding: 1.5em 2.5em 1em 1em;
-    color: var(--error-color, #d33);
-    font-size: 0.85em;
   }
   .bz-popup-close {
     position: absolute;

@@ -171,14 +171,10 @@ describe(`ElementTile`, () => {
       },
     )
 
+    // oxfmt-ignore
     test.each([
       [`one value`, [{ value: 42 }], undefined, true],
-      [
-        `multiple colors without values`,
-        [{ color: `red` }, { color: `green` }],
-        undefined,
-        true,
-      ],
+      [`multiple colors without values`, [{ color: `red` }, { color: `green` }], undefined, true],
       [`multiple values`, [{ value: 1 }, { value: 2 }], undefined, false],
       [`explicitly shown`, [{ value: 1 }, { value: 2 }], true, true],
       [`explicitly hidden`, [{ value: 42 }], false, false],

@@ -52,47 +52,25 @@ describe(`PlotAxis`, () => {
   // Codifies the intentionally-normalized tick geometry shared by all plots (tick-mark coords +
   // label offset/anchor/baseline are identical across consumers now). Keyed by child selector;
   // `line` is the tick mark (grid is off by default, so it's the only <line> in the group).
+  // text attrs: x, y, text-anchor, dominant-baseline
   test.each([
-    [
-      `x`,
-      {
-        line: { y1: `0`, y2: `5` },
-        text: { x: `0`, y: `12`, 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
-      },
-    ],
-    [
-      `x2`,
-      {
-        line: { y1: `-5`, y2: `0` },
-        text: { x: `0`, y: `-12`, 'text-anchor': `middle`, 'dominant-baseline': `auto` },
-      },
-    ],
-    [
-      `y`,
-      {
-        line: { x1: `-5`, x2: `0` },
-        text: { x: `-8`, y: `0`, 'text-anchor': `end`, 'dominant-baseline': `central` },
-      },
-    ],
-    [
-      `y2`,
-      {
-        line: { x1: `0`, x2: `5` },
-        text: { x: `8`, y: `0`, 'text-anchor': `start`, 'dominant-baseline': `central` },
-      },
-    ],
-  ] as [Side, Record<string, Record<string, string>>][])(
+    [`x`, { y1: `0`, y2: `5` }, [`0`, `12`, `middle`, `hanging`]],
+    [`x2`, { y1: `-5`, y2: `0` }, [`0`, `-12`, `middle`, `auto`]],
+    [`y`, { x1: `-5`, x2: `0` }, [`-8`, `0`, `end`, `central`]],
+    [`y2`, { x1: `0`, x2: `5` }, [`8`, `0`, `start`, `central`]],
+  ] as [Side, Record<string, string>, string[]][])(
     `%s axis: normalized tick mark + label geometry`,
-    async (side, expected) => {
+    async (side, line_attrs, text_attrs) => {
       const svg = await mount_axis({ side, ticks: [50, 100] })
       const ticks = query(svg, `g.${side}-axis`).querySelectorAll(`g.tick`)
       expect(ticks).toHaveLength(2)
-      for (const [selector, attrs] of Object.entries(expected)) {
-        const element = query(ticks[0], selector)
-        for (const [attr, value] of Object.entries(attrs)) {
-          expect(element.getAttribute(attr)).toBe(value)
-        }
+      const tick_line = query(ticks[0], `line`)
+      for (const [attr, value] of Object.entries(line_attrs)) {
+        expect(tick_line.getAttribute(attr)).toBe(value)
       }
+      const text = query(ticks[0], `text`)
+      const text_keys = [`x`, `y`, `text-anchor`, `dominant-baseline`]
+      expect(text_keys.map((attr) => text.getAttribute(attr))).toEqual(text_attrs)
     },
   )
 
@@ -125,18 +103,11 @@ describe(`PlotAxis`, () => {
   })
 
   test(`inside labels flip anchor/baseline and tick-mark direction`, async () => {
-    const svg = await mount_axis({
-      side: `y`,
-      ticks: [50],
-      axis: { tick_label: { inside: true } },
-    })
-    const tick_group = query(svg, `g.tick`)
-    const text = query(tick_group, `text`)
-    const mark = query(tick_group, `line`)
-    expect(text.getAttribute(`text-anchor`)).toBe(`start`)
-    expect(text.getAttribute(`x`)).toBe(`8`)
-    expect(mark.getAttribute(`x1`)).toBe(`0`)
-    expect(mark.getAttribute(`x2`)).toBe(`5`)
+    const axis = { tick_label: { inside: true } }
+    const svg = await mount_axis({ side: `y`, ticks: [50], axis })
+    const [text, mark] = [query(svg, `g.tick text`), query(svg, `g.tick line`)]
+    expect([text.getAttribute(`text-anchor`), text.getAttribute(`x`)]).toEqual([`start`, `8`])
+    expect([mark.getAttribute(`x1`), mark.getAttribute(`x2`)]).toEqual([`0`, `5`])
   })
 
   // `domain` culls ticks whose pixel pos is off-plot and hides labels for in-plot ticks outside the
@@ -251,8 +222,7 @@ describe(`PlotAxis`, () => {
     })
     const label = query(with_label, `.axis-label.x-label`)
     expect(label.tagName.toLowerCase()).toBe(`text`)
-    expect(label.getAttribute(`x`)).toBe(`100`)
-    expect(label.getAttribute(`y`)).toBe(`50`)
+    expect([label.getAttribute(`x`), label.getAttribute(`y`)]).toEqual([`100`, `50`])
     expect(with_label.querySelector(`foreignObject`)).toBeNull()
 
     const no_coords = await mount_axis({ side: `x`, ticks: [50], axis: { label: `Energy` } })
@@ -384,11 +354,8 @@ describe(`PlotAxis`, () => {
     [`x`, `start`],
     [`x2`, `end`],
   ])(`%s rotated tick label anchors to %s`, async (side, anchor) => {
-    const svg = await mount_axis({
-      side,
-      ticks: [100],
-      axis: { tick_label: { rotation: 45 } },
-    })
+    const axis = { tick_label: { rotation: 45 } }
+    const svg = await mount_axis({ side, ticks: [100], axis })
     const text = query(svg, `g.tick text`)
     expect(text.getAttribute(`text-anchor`)).toBe(anchor)
     expect(text.getAttribute(`transform`)).toContain(`rotate(45`)
@@ -413,9 +380,7 @@ describe(`PlotAxis`, () => {
   ] as const)(`auto-rotated %s labels (inside=%s) trail left`, async (side, inside, sign) => {
     const svg = await mount_measured_axis({
       side,
-      axis: {
-        tick_label: { inside, auto_layout: { strategies: [`rotate`] } },
-      },
+      axis: { tick_label: { inside, auto_layout: { strategies: [`rotate`] } } },
     })
     const text = query(svg, `g.tick:nth-of-type(3) text`)
     const transform = text.getAttribute(`transform`) ?? ``
@@ -448,10 +413,7 @@ describe(`PlotAxis`, () => {
     ])
     expect([...lines].map((line) => line.getAttribute(`dy`))).toEqual(expected_dy)
     expect([...lines].map((line) => line.getAttribute(`x`))).toEqual([`0`, `0`])
-    expect([...lines].map((line) => line.getAttribute(`aria-hidden`))).toEqual([
-      `true`,
-      `true`,
-    ])
+    expect([...lines].every((line) => line.getAttribute(`aria-hidden`) === `true`)).toBe(true)
   })
 
   test(`adaptive thinning hides crowded labels but keeps their full text`, async () => {
@@ -488,10 +450,7 @@ describe(`PlotAxis`, () => {
       ticks: [50],
       label_ticks: { 50: `Formation Energy` },
       axis: {
-        tick_label: {
-          max_lines: 2,
-          auto_layout: { strategies: [`wrap`], max_band: 70 },
-        },
+        tick_label: { max_lines: 2, auto_layout: { strategies: [`wrap`], max_band: 70 } },
       },
     })
     const lines_of = (text: Element) => [...text.querySelectorAll(`tspan`)]
@@ -522,9 +481,7 @@ describe(`PlotAxis`, () => {
       side: `x`,
       ticks: [0, width],
       label_ticks: { 0: `Leading`, [width]: `Trailing` },
-      axis: {
-        tick_label: { auto_layout: { strategies: [`upright`] } },
-      },
+      axis: { tick_label: { auto_layout: { strategies: [`upright`] } } },
     })
     expect(
       [...svg.querySelectorAll(`g.tick text`)].map((text) => text.getAttribute(`text-anchor`)),
@@ -545,9 +502,7 @@ describe(`PlotAxis`, () => {
         label_ticks: Object.fromEntries(
           [40, 120, 200, 280].map((tick_value) => [tick_value, label]),
         ),
-        axis: {
-          tick_label: { rotation: rotation_sign * 45 },
-        },
+        axis: { tick_label: { rotation: rotation_sign * 45 } },
       })
       const text = query(svg, `g.tick text`)
       const transform = text.getAttribute(`transform`) ?? ``

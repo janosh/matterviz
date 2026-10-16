@@ -101,6 +101,7 @@ const drop_zone_widgets = new Set([
   `convex_hull`,
   `fermi_surface`,
   `brillouin_zone`,
+  `phase_diagram`,
   `xrd`,
   `rdf_plot`,
 ])
@@ -271,6 +272,8 @@ describe(`widget config wiring`, () => {
     [`periodic_table`, `color_scale`, { type: `log`, value_range: [1, null] }],
     [`periodic_table`, `color_bar`, null],
     [`heatmap_matrix`, `color_bar`, { orientation: `vertical` }],
+    [`fermi_surface`, `color_bar`, null],
+    [`fermi_surface`, `color_bar`, { title: `Velocity` }],
     [`composition`, `patterns`, { Fe: `/`, O: { shape: `dots`, size: 6 } }],
     [`scatter_plot_3d`, `point_tween`, { duration: 300, delay: 50 }],
     [`structure`, `cutaway`, { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2 }],

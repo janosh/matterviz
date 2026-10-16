@@ -70,7 +70,7 @@
 
 ## Anatomy
 
-`Structure` accepts parsed data through `structure`, or a URL or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+`Structure` accepts parsed data through `structure`, or a URL or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. Across viewers, `on_file_drop(content, filename, meta)` takes over the raw dropped file and `on_file_load` reports what the viewer loaded. Recoverable parser issues (skipped CIF rows, guessed elements, placeholder cells) arrive on structure results of `open_material()` as `warnings` and show as a dismissible notice (bindable `parse_warnings`). It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
 ## Explicit Bond Orders
 

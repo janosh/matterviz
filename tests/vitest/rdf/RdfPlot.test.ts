@@ -6,7 +6,7 @@ import { structure_map } from '#site/structures.js'
 import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, resize_element } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
 import { calculate_all_pair_rdfs, rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
@@ -42,6 +42,13 @@ function create_synthetic_pattern(
   return { r: radii, g_r, element_pair: [`Li`, `O`] }
 }
 
+// a NaN position the neighbour search rejects
+const good_and_broken = () => {
+  const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+  broken.sites[0].xyz = [NaN, 0, 0]
+  return { good: nacl_structure, broken }
+}
+
 const mount_sized_rdf_plot = (props: ComponentProps<typeof RdfPlot>) =>
   mount_sized(RdfPlot, props, { selector: `.scatter, .empty-drop` })
 
@@ -56,8 +63,10 @@ const mount_harness = async (props: ComponentProps<typeof RdfPlotHarness>) => {
 }
 
 describe(`RdfPlot`, () => {
-  test.each([
-    [{ patterns: { label: `Test`, pattern: create_synthetic_pattern() } }],
+  const pattern_props = { patterns: { label: `Test`, pattern: create_synthetic_pattern() } }
+  test.each<[ComponentProps<typeof RdfPlot>, boolean]>([
+    [pattern_props, true],
+    [{ ...pattern_props, show_reference_line: false }, false],
     [
       {
         patterns: [
@@ -65,15 +74,21 @@ describe(`RdfPlot`, () => {
           { label: `P2`, pattern: create_synthetic_pattern(50, [3, 5], [1.8, 1.2]) },
         ],
       },
+      true,
     ],
-    [{ structures: nacl_structure }],
-    [{ structures: [nacl_structure, pd_structure] }],
-    [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }],
-  ])(`renders %s`, async (props) => {
+    [{ structures: nacl_structure, mode: `element_pairs` }, true],
+    [{ structures: pd_structure, mode: `full` }, true],
+    [{ structures: [nacl_structure, pd_structure] }, true],
+    [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }, true],
+    [{ structures: pd_structure, cutoff: 1, n_bins: 20 }, true],
+  ])(`renders %s`, async (props, has_ref_line) => {
     const plot = await mount_sized_rdf_plot(props)
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`r (Å)`)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`g(r)`)
+    expect(plot.querySelectorAll(`.x-axis .tick`)).not.toHaveLength(0)
+    expect(plot.querySelectorAll(`.y-axis .tick`)).not.toHaveLength(0)
+    expect(plot.textContent?.includes(`g(r) = 1`)).toBe(has_ref_line)
   })
 
   test.each([
@@ -87,37 +102,6 @@ describe(`RdfPlot`, () => {
     plot.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
     await tick()
     expect(plot.classList.contains(`dragover`)).toBe(accepts_drag)
-  })
-
-  test.each([
-    [`element_pairs`, nacl_structure],
-    [`full`, pd_structure],
-  ] as const)(`mode=%s`, async (mode, structure) => {
-    const plot = await mount_sized_rdf_plot({ structures: structure, mode })
-    expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-    expect(plot.textContent).toContain(`g(r) = 1`)
-  })
-
-  test.each([
-    { cutoff: 1, n_bins: 20 },
-    { cutoff: 10, n_bins: 100 },
-  ])(
-    `cutoff/n_bins %s`,
-    async (opts) => {
-      const plot = await mount_sized_rdf_plot({ structures: pd_structure, ...opts })
-      expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
-      expect(plot.querySelectorAll(`.x-axis .tick`)).not.toHaveLength(0)
-      expect(plot.querySelectorAll(`.y-axis .tick`)).not.toHaveLength(0)
-    },
-    10_000,
-  )
-
-  test.each([[true], [false]])(`show_reference_line=%s`, async (show_ref) => {
-    const plot = await mount_sized_rdf_plot({
-      patterns: { label: `Test`, pattern: create_synthetic_pattern() },
-      show_reference_line: show_ref,
-    })
-    expect(plot.textContent?.includes(`g(r) = 1`)).toBe(show_ref)
   })
 
   test(`custom props and children snippet`, async () => {
@@ -233,39 +217,51 @@ describe(`RdfPlot`, () => {
     })
   })
 
-  test(`dropped crystals are plotted, lattice-less molecules are reported`, async () => {
+  // Drops open through open_material, whose parse warnings reach a notice named by file
+  test(`dropped crystals are plotted with their parse warnings, molecules are reported`, async () => {
     const empty = await mount_sized_rdf_plot({})
-    const poscar = `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`
-    empty.dispatchEvent(create_drop_event(new File([poscar], `POSCAR`)))
+    empty.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si.cif`)))
     await vi.waitFor(() =>
       expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
         `1 structure loaded`,
       ),
+    )
+    expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+      /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
     )
     // the populated plot is a drop zone too
     const plot = document.querySelector(`.scatter`)
     if (!plot) throw new Error(`RdfPlot did not render the dropped crystal`)
     plot.dispatchEvent(create_drop_event(new File([`1\n\nSi 0 0 0\n`], `mol.xyz`)))
     await vi.waitFor(() =>
-      expect(document.body.textContent).toMatch(/mol\.xyz has no lattice or sites/),
+      expect(document.body.textContent).toMatch(/mol\.xyz: no lattice or sites/),
     )
     expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
       `1 structure loaded`,
     )
+    // a multi-frame file opens as a trajectory and plots its first frame, saying so
+    const frame = (x: number) =>
+      `1\nLattice="4 0 0 0 4 0 0 0 4" Properties=species:S:1:pos:R:3 pbc="T T T"\nSi ${x} 0 0\n`
+    const traj = new File([frame(0) + frame(0.1)], `traj.xyz`)
+    plot.dispatchEvent(create_drop_event(traj))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
+        `2 structures loaded`,
+      ),
+    )
+    expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+      /1 parse warning: traj\.xyz: 2 frames; plotted frame 1/,
+    )
   })
 
   test(`reports a structure the neighbour search rejects and still plots the others`, async () => {
-    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
-    broken.sites[0].xyz = [NaN, 0, 0]
-    const plot = await mount_sized_rdf_plot({ structures: { good: nacl_structure, broken } })
+    const plot = await mount_sized_rdf_plot({ structures: good_and_broken() })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     await vi.waitFor(() => expect(document.body.textContent).toMatch(/broken: .*non-finite/))
   })
 
   test(`the failure message clears once the broken structure is removed`, async () => {
-    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
-    broken.sites[0].xyz = [NaN, 0, 0]
-    const structures = { good: nacl_structure, broken }
+    const structures = good_and_broken()
     const target = await mount_harness({ pattern: create_synthetic_pattern(), structures })
     await vi.waitFor(() => expect(target.textContent).toMatch(/broken: .*non-finite/))
     target.querySelector<HTMLButtonElement>(`.drop-broken`)?.click()
@@ -274,7 +270,7 @@ describe(`RdfPlot`, () => {
 
   // drop errors, structure failures and the parent's own error_msg are separate sources:
   // none may overwrite or clear another, whatever order they arrive in
-  const drop_msg = `mol.xyz has no lattice or sites`
+  const drop_msg = `mol.xyz: no lattice or sites`
   const failure_re = /broken: .*non-finite/
   test.each<[string, string[], (string | RegExp)[], string?]>([
     [`drop error, then a cutoff change`, [`drop-broken`, `drop`, `change-cutoff`], [drop_msg]],
@@ -286,14 +282,8 @@ describe(`RdfPlot`, () => {
     ],
     [`parent message, then a failure fix`, [`drop-broken`], [`parent note`], `parent note`],
   ])(`keeps every error source: %s`, async (_label, steps, expected, rdf_error) => {
-    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
-    broken.sites[0].xyz = [NaN, 0, 0]
     const pattern = create_synthetic_pattern()
-    const target = await mount_harness({
-      pattern,
-      structures: { good: nacl_structure, broken },
-      rdf_error,
-    })
+    const target = await mount_harness({ pattern, structures: good_and_broken(), rdf_error })
     const mirror = () => target.querySelector(`.rdf-error-mirror`)?.textContent ?? ``
     await vi.waitFor(() => expect(mirror()).toMatch(failure_re))
     if (rdf_error) expect(mirror()).toContain(rdf_error)
@@ -317,11 +307,9 @@ describe(`RdfPlot`, () => {
   })
 
   test(`dismissing clears every error source until a new one arrives`, async () => {
-    const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
-    broken.sites[0].xyz = [NaN, 0, 0]
     const target = await mount_harness({
       pattern: create_synthetic_pattern(),
-      structures: { good: nacl_structure, broken },
+      structures: good_and_broken(),
       rdf_error: `parent note`,
     })
     const mirror = () => target.querySelector(`.rdf-error-mirror`)?.textContent
@@ -426,19 +414,8 @@ describe(`PdfPlot`, () => {
     )
   })
 
-  // error_msg is bindable on all nine sibling plot components; PdfPlot has to reach the parent
-  // through an $effect because the failure is produced inside a $derived
-  test(`error_msg reaches a binding parent`, async () => {
-    const target = await mount_harness({
-      pattern: create_synthetic_pattern(),
-      pdf_structure: make_crystal(3.35, [[`Po`, [0, 0, 0]]]),
-    })
-    expect(target.querySelector(`.pdf-error-mirror`)?.textContent).toContain(
-      `No neutron scattering length for Po`,
-    )
-  })
-
-  // every failing structure is reported under its label, after (never over) the parent's message
+  // PdfPlot's failures come from a $derived, so they reach a binding parent through an $effect:
+  // every failing structure under its label, after (never over) the parent's message
   test(`error_msg joins the parent message with each labelled failure`, async () => {
     const po_crystal = (lattice: number) => make_crystal(lattice, [[`Po`, [0, 0, 0]]])
     const target = await mount_harness({

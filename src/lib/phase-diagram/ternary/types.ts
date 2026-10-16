@@ -3,7 +3,7 @@
 // at each T tiles the Gibbs triangle into tie-triangles and only changes at discrete transition
 // temperatures, so a diagram is sampled isothermal sections plus the exact (bisected) list of
 // those transitions.
-import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
 import { DEFAULT_HULL_COLORS } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -124,7 +124,10 @@ export interface TernaryDisplay {
   show_stable_labels: boolean
   show_unstable_labels: boolean
   show_grid: boolean
-  color_scale: D3InterpolateName
+  // Unstable points (unset value_range ends fit their hull distances), the stability map
+  // (fits [0, max_e_above_hull]) and formation-energy faces (scheme only: faces always span
+  // their own formation energies)
+  color_scale: ColorScale
   show_upcoming: boolean // ring phases that change at the next transition on heating
   show_map: boolean
   show_events: boolean
@@ -188,3 +191,7 @@ export type SectionHover =
     }
 // Hovering a phase at a temperature (stability map rows, prism rods)
 export type PhaseTemperatureHover = { phase: number; temperature: number; position: Vec2 }
+// What IsobaricTernaryPhaseDiagram's tooltip describes: a section point or a phase at a T
+export type TernaryPhaseHover =
+  | { kind: `section`; data: SectionHover }
+  | { kind: `phase_t`; data: PhaseTemperatureHover }

@@ -3,6 +3,7 @@
 // Svelte Tween per point. Reading `current` is reactive, so anything drawn from it (instance
 // buffers, the hover halo) follows the animation.
 
+import { motion_duration } from '#lib/effects.svelte.js'
 import { cubicOut } from 'svelte/easing'
 import type { TweenOptions } from 'svelte/motion'
 import { Color, SRGBColorSpace } from 'three/webgpu'
@@ -34,9 +35,7 @@ export function pack_instances(
     const offset = idx * INSTANCE_STRIDE
     packed.set(position, offset)
     packed[offset + 3] = radius
-    packed[offset + 4] = rgb.r
-    packed[offset + 5] = rgb.g
-    packed[offset + 6] = rgb.b
+    packed.set([rgb.r, rgb.g, rgb.b], offset + 4)
   })
   return packed
 }
@@ -83,14 +82,13 @@ export function create_instance_tween(): InstanceTweenClock {
       const same_keys = same_items(next_keys, keys)
       if (same_keys && same_items(next_target, target)) return
       delay = options.delay ?? DEFAULTS.delay
-      duration = options.duration ?? DEFAULTS.duration
+      duration = motion_duration(options.duration ?? DEFAULTS.duration)
       easing = options.easing ?? DEFAULTS.easing
       if (duration <= 0) from = next_target.slice()
       else if (same_keys) from = current.slice() // the common re-encoding case: no lookups
       else {
         from = next_target.slice()
-        const prev_idx = new Map<string, number>()
-        keys.forEach((key, idx) => prev_idx.set(key, idx))
+        const prev_idx = new Map(keys.map((key, idx) => [key, idx]))
         next_keys.forEach((key, idx) => {
           const prev = prev_idx.get(key)
           if (prev === undefined) return

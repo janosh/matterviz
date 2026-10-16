@@ -40,20 +40,18 @@ const mount_button = (wrapper?: HTMLElement) => {
 describe(`FullscreenButton`, () => {
   test(`without a wrapper the flag is the state and every flip is reported`, async () => {
     const { state, on_change, button } = mount_button()
+    const view_box = () => button.querySelector(`svg`)?.getAttribute(`viewBox`)
     expect(button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(button.title).toBe(`Enter fullscreen`)
-    expect(button.querySelector(`svg`)?.getAttribute(`viewBox`)).toBe(
-      `2.885417 2.885417 18.229166 18.229166`,
-    )
+    expect(button.title).toBe(`Enter fullscreen (F)`)
+    expect(button.getAttribute(`aria-keyshortcuts`)).toBe(`F`)
+    expect(view_box()).toBe(`2.885417 2.885417 18.229166 18.229166`)
     button.click()
     flushSync()
     await tick()
     expect(state.fullscreen).toBe(true)
     expect(button.getAttribute(`aria-pressed`)).toBe(`true`)
-    expect(button.title).toBe(`Exit fullscreen`)
-    expect(button.querySelector(`svg`)?.getAttribute(`viewBox`)).toBe(
-      `1.583333 1.583333 20.833334 20.833334`,
-    )
+    expect(button.title).toBe(`Exit fullscreen (F)`)
+    expect(view_box()).toBe(`1.583333 1.583333 20.833334 20.833334`)
     button.click()
     flushSync()
     await tick()
@@ -103,26 +101,22 @@ describe(`FullscreenButton`, () => {
     `%s keeps an active fullscreen controller when chrome hides, then removes it on exit`,
     async (kind) => {
       const state = $state({ fullscreen: false, show_controls: true, fullscreen_toggle: true })
+      const on_mount = (component: ReturnType<typeof mount>) => void mounted.push(component)
+      const sankey_data = {
+        nodes: [{ label: `A` }, { label: `B` }],
+        links: [{ source: 0, target: 1, value: 1 }],
+      }
+      const series = [{ x: [0, 1], y: [0, 1] }]
       const plot =
         kind === `cartesian`
-          ? await mount_sized(
-              ScatterPlot,
-              bind_props({ series: [{ x: [0, 1], y: [0, 1] }] }, state),
-              { selector: `.scatter`, on_mount: (component) => mounted.push(component) },
-            )
-          : await mount_sized(
-              Sankey,
-              bind_props(
-                {
-                  data: {
-                    nodes: [{ label: `A` }, { label: `B` }],
-                    links: [{ source: 0, target: 1, value: 1 }],
-                  },
-                },
-                state,
-              ),
-              { selector: `.sankey`, on_mount: (component) => mounted.push(component) },
-            )
+          ? await mount_sized(ScatterPlot, bind_props({ series }, state), {
+              selector: `.scatter`,
+              on_mount,
+            })
+          : await mount_sized(Sankey, bind_props({ data: sankey_data }, state), {
+              selector: `.sankey`,
+              on_mount,
+            })
       const button = () => plot.querySelector<HTMLButtonElement>(`.fullscreen-btn`)
       for (const key of [`show_controls`, `fullscreen_toggle`] as const) {
         state[key] = true

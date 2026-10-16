@@ -3,6 +3,7 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import { parse_num_token } from '#lib/utils.js'
 import {
   cell_frame,
@@ -70,7 +71,7 @@ export const parse_pdb = (content: string): AnyStructure => {
     end_idx !== -1 &&
     all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``)
   if (has_further_entry) {
-    console.warn(`PDB contains multiple END-terminated entries; parsed the first`)
+    parse_warn(`PDB contains multiple END-terminated entries; parsed the first`)
   }
 
   let cell_params: readonly number[] | null = null
@@ -101,7 +102,7 @@ export const parse_pdb = (content: string): AnyStructure => {
       // promote the first partner into the central slot, bonding the wrong pair
       const central = num_field(line, 6, 11)
       if (!Number.isFinite(central)) {
-        console.warn(`PDB CONECT record has no central atom serial: '${line}'`)
+        parse_warn(`PDB CONECT record has no central atom serial: '${line}'`)
         continue
       }
       const partners = [11, 16, 21, 26]
@@ -128,7 +129,7 @@ export const parse_pdb = (content: string): AnyStructure => {
 
   if (model_lines.length === 0) throw new Error(`No ATOM or HETATM records found in PDB file`)
   if (model_count > 1) {
-    console.warn(
+    parse_warn(
       `PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`,
     )
   }
@@ -141,7 +142,7 @@ export const parse_pdb = (content: string): AnyStructure => {
     (line) => line.slice(12, 16),
   )
   if (atom_lines.length < model_lines.length) {
-    console.warn(
+    parse_warn(
       `PDB: skipped ${model_lines.length - atom_lines.length} atom(s) with alternate location indicators`,
     )
   }

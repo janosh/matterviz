@@ -2,9 +2,27 @@ import { FPS_STEP } from '#lib/constants.js'
 import { clamp } from '#lib/math.js'
 import { create_shortcut_flash } from '#lib/effects.svelte.js'
 import { untrack } from 'svelte'
+import { is_editable_event_target } from 'svelte-widgets/utils'
 
 // Shared playback/navigation for ordered collections. Getter inputs preserve reactivity
 // without taking ownership of bindable component state or domain callbacks.
+
+// Whether a keydown reaching a sequence viewer (Trajectory, NebViewer) from inside it or via its
+// window forward is the viewer's to handle. Form fields keep their keys, except the
+// SequenceControls slider, whose keys play the sequence; Enter/Escape in its step input commit by
+// leaving the field. Space presses a focused button or toggles a <summary>, so playback must
+// not swallow it there.
+export function is_sequence_key_target(event: KeyboardEvent): boolean {
+  const target = event.target instanceof HTMLElement ? event.target : null
+  if (!target) return true
+  if (!target.classList.contains(`step-slider`) && is_editable_event_target(target)) {
+    if (target.classList.contains(`step-input`) && [`Escape`, `Enter`].includes(event.key)) {
+      target.blur()
+    }
+    return false
+  }
+  return !(event.key === ` ` && target.closest(`button, summary, [role="button"]`))
+}
 
 type SequencePlayerInputs = {
   count: () => number

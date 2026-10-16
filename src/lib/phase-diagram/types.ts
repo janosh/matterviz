@@ -124,7 +124,7 @@ export interface PhaseHoverInfo {
   special_point?: SpecialPoint // Populated when hovering near a special point
 }
 
-// Tooltip configuration for prefix/suffix content
-// Note: prefix/suffix are rendered via {@html} - ensure values are trusted
-export type PhaseDiagramTooltipConfig = TooltipConfig<PhaseHoverInfo>
-export type PhaseDiagramTooltipProp = TooltipProp<PhaseHoverInfo, [PhaseHoverInfo]>
+export type PhaseDiagramTooltipProp = TooltipProp<
+  PhaseHoverInfo,
+  TooltipConfig<PhaseHoverInfo>
+>

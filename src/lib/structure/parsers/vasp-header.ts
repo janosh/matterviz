@@ -13,6 +13,7 @@ import {
   strip_potcar_suffix,
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import { parse_leading_num, to_error } from '#lib/utils.js'
 
 // A VASP 4 header has no symbol line (species come from the POTCAR), so outside strict mode
@@ -79,15 +80,16 @@ export const text_cursor = (text: string, start = 0): VaspLineCursor => {
 
 // === Header parsing ===
 
-interface VaspHeaderOptions {
+type VaspHeaderOptions = {
   format: string
   // lenient reads an unknown mode as Direct, as VASP does (only C/K mean Cartesian); skip
   // leaves the mode line unconsumed.
   coord_mode?: `strict` | `lenient` | `skip`
-  // XDATCAR needs real species metadata instead of VASP 4 fallbacks.
-  strict_species?: boolean
   // 0-based comment-line index for errors in repeated XDATCAR headers.
   line_offset?: number
+  // XDATCAR needs real species metadata instead of VASP 4 fallbacks; every other header
+  // reports its placeholder species through parse_warn
+  strict_species?: boolean
 }
 
 interface VaspHeader {
@@ -119,7 +121,7 @@ export function parse_vasp_header(
   cursor: VaspLineCursor,
   options: VaspHeaderOptions,
 ): VaspHeaderResult {
-  const { format, coord_mode = `strict`, strict_species = false, line_offset = 0 } = options
+  const { format, coord_mode = `strict`, line_offset = 0, strict_species = false } = options
   try {
     require_line(cursor.peek(), `${format}: file ends before the comment line`)
     cursor.advance() // the comment line carries no data
@@ -217,7 +219,7 @@ export function parse_vasp_header(
       elements = counts.map(
         (_count, idx) => VASP4_PLACEHOLDER_ELEMENTS[idx % VASP4_PLACEHOLDER_ELEMENTS.length],
       )
-      console.warn(
+      parse_warn(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
     } else {

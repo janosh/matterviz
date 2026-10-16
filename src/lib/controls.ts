@@ -6,6 +6,11 @@ import { is_plain_object } from '#lib/utils.js'
 
 export type ControlsVisibility = `always` | `hover` | `never`
 
+// Every chart and viewer reveals its controls on hover unless told otherwise. Only the
+// sequence viewers (Trajectory, NebViewer) pin theirs to `always`: their bar holds the
+// play/step/scrub controls that navigate the content, not optional chrome.
+export const DEFAULT_CONTROLS_MODE: ControlsVisibility = `hover`
+
 export type ShowControlsConfig<ControlName extends string = string> = {
   mode?: ControlsVisibility
   hidden?: readonly ControlName[]
@@ -23,17 +28,11 @@ export type ShowControlsState = ReturnType<typeof normalize_show_controls>
 
 export function normalize_show_controls(
   prop: ShowControlsProp | undefined,
-  default_mode: ControlsVisibility = `hover`,
+  default_mode: ControlsVisibility = DEFAULT_CONTROLS_MODE,
 ) {
   const config = typeof prop === `object` && prop ? prop : undefined
-  const mode =
-    typeof prop === `boolean`
-      ? prop
-        ? `always`
-        : `never`
-      : typeof prop === `string`
-        ? prop
-        : (config?.mode ?? default_mode)
+  let mode = typeof prop === `string` ? prop : (config?.mode ?? default_mode)
+  if (typeof prop === `boolean`) mode = prop ? `always` : `never`
   // Plain Set: never mutated, and every caller already wraps this in a $derived
   const hidden = new Set(config?.hidden)
   return {

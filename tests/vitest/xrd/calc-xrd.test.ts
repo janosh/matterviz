@@ -7,8 +7,8 @@ import type { Crystal } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { apply_symmetry_operations } from '#lib/symmetry/wyckoff.js'
 import {
-  add_xrd_pattern,
   compute_xrd_pattern,
+  structure_xrd_pattern,
   electron_wavelength,
   enumerate_reciprocal_points,
   structure_factors_squared,
@@ -186,19 +186,12 @@ test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, async () =>
     symmetry_rotations: await xrd_symmetry_rotations(zno),
   })
   // pymatgen's (h, k, i, l) with i dropped: [2θ, hkl, multiplicity]
+  // oxfmt-ignore
   const expected: [number, number[], number][] = [
-    [31.7932, [1, 0, 0], 6],
-    [34.4481, [0, 0, 2], 2],
-    [36.2819, [1, 0, 1], 12],
-    [47.5774, [1, 0, 2], 12],
-    [56.6422, [2, -1, 0], 6],
-    [62.9098, [1, 0, 3], 12],
-    [66.433, [2, 0, 0], 6],
-    [68.0063, [2, -1, 2], 12],
-    [69.1464, [2, 0, 1], 12],
-    [72.6291, [0, 0, 4], 2],
-    [77.0289, [2, 0, 2], 12],
-    [81.4594, [1, 0, 4], 12],
+    [31.7932, [1, 0, 0], 6], [34.4481, [0, 0, 2], 2], [36.2819, [1, 0, 1], 12],
+    [47.5774, [1, 0, 2], 12], [56.6422, [2, -1, 0], 6], [62.9098, [1, 0, 3], 12],
+    [66.433, [2, 0, 0], 6], [68.0063, [2, -1, 2], 12], [69.1464, [2, 0, 1], 12],
+    [72.6291, [0, 0, 4], 2], [77.0289, [2, 0, 2], 12], [81.4594, [1, 0, 4], 12],
     [89.6987, [2, 0, 3], 12],
   ]
   expect(pattern.x).toHaveLength(expected.length)
@@ -232,33 +225,13 @@ const from_spacegroup = (
 // really 101 ×6 + 10-1 ×6 (P3₂21 has no mirror taking l to -l at fixed h, k), corundum
 // {102} ×12 is 102 ×6 + 10-2 ×6 and pyrite {210} ×24 is 210 ×12 + 201 ×12 (Pa-3 lacks the
 // 4-fold axes). Reference families come from spglib rotations (see the fixture).
-test.each([
-  [
-    `quartz`,
-    () =>
-      from_spacegroup(154, hexagonal_lattice(4.913, 5.405), [
-        [`Si`, [0.4697, 0, 0]],
-        [`O`, [0.4135, 0.2669, 0.1191]],
-      ]),
-  ],
-  [
-    `corundum`,
-    () =>
-      from_spacegroup(167, hexagonal_lattice(4.759, 12.99), [
-        [`Al`, [0, 0, 0.35216]],
-        [`O`, [0.30624, 0, 0.25]],
-      ]),
-  ],
-  [
-    `pyrite`,
-    () =>
-      from_spacegroup(205, 5.417, [
-        [`Fe`, [0, 0, 0]],
-        [`S`, [0.385, 0.385, 0.385]],
-      ]),
-  ],
-])(`%s hkl families follow the point group, not index permutations`, async (name, build) => {
-  const structure = build()
+// oxfmt-ignore
+test.each<[string, number, number | Matrix3x3, [ElementSymbol, Vec3][]]>([
+  [`quartz`, 154, hexagonal_lattice(4.913, 5.405), [[`Si`, [0.4697, 0, 0]], [`O`, [0.4135, 0.2669, 0.1191]]]],
+  [`corundum`, 167, hexagonal_lattice(4.759, 12.99), [[`Al`, [0, 0, 0.35216]], [`O`, [0.30624, 0, 0.25]]]],
+  [`pyrite`, 205, 5.417, [[`Fe`, [0, 0, 0]], [`S`, [0.385, 0.385, 0.385]]]],
+])(`%s hkl families follow the point group, not index permutations`, async (name, spg_num, lattice, asym_unit) => {
+  const structure = from_spacegroup(spg_num, lattice, asym_unit)
   const options: XrdOptions = { wavelength: `CuKa`, two_theta_range: [0, 90] }
   const pattern = compute_xrd_pattern(structure, {
     ...options,
@@ -303,19 +276,12 @@ describe(`compute_xrd_pattern edge cases`, () => {
       // 90° default. Si, not the default H: hydrogen's form factor floors to 0 by
       // s = 1.4 A^-1, which zeroes the artifact for MoKa before the Lorentz factor applies
       // and would leave that row testing nothing.
-      const structure = make_simple_cubic_structure(wavelength, `Si`)
-
-      const pattern = compute_xrd_pattern(structure, {
+      const pattern = compute_xrd_pattern(make_simple_cubic_structure(wavelength, `Si`), {
         wavelength: anode,
-        scaled: true,
         two_theta_range: null,
       })
-
       expect(pattern.x.length).toBeGreaterThan(0)
-      for (let idx = 0; idx < pattern.x.length; idx++) {
-        expect(Number.isFinite(pattern.x[idx])).toBe(true)
-        expect(Number.isFinite(pattern.y[idx])).toBe(true)
-      }
+      expect([...pattern.x, ...pattern.y].every(Number.isFinite)).toBe(true)
       expect(pattern.x.every((angle) => angle < 180 - 1e-6)).toBe(true)
       // (100) survives AND anchors the 0..100 scale. Asserting the max is 100 on its own
       // would prove nothing: `scaled` normalizes to 100 whichever peak wins, artifact included
@@ -331,8 +297,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
     // still reports a huge intensity that takes the normalization maximum — perturbing a by
     // one part in 1e9 puts a peak at 179.995° with every real peak scaled to ~0.04. The 90°
     // default is what actually keeps that class out. With a = λ the (100) peak sits at 60°.
-    const structure = make_simple_cubic_structure(1.54184)
-    const pattern = compute_xrd_pattern(structure)
+    const pattern = compute_xrd_pattern(make_simple_cubic_structure(1.54184))
     expect(pattern.x).toHaveLength(1)
     expect(pattern.x[0]).toBeCloseTo(60, 6)
     expect(pattern.y[0]).toBe(100)
@@ -389,12 +354,9 @@ describe(`compute_xrd_pattern edge cases`, () => {
   })
 
   test(`scaled_intensity_tol filters peaks as configured`, () => {
-    const structure = make_simple_cubic_structure(3)
-    const base_opts = { wavelength: `CuKa` as const, two_theta_range: [0, 90] as Vec2 }
-
     // 101 is above any scaled intensity, 0 keeps everything
     const with_tol = (scaled_intensity_tol: number) =>
-      compute_xrd_pattern(structure, { ...base_opts, scaled: true, scaled_intensity_tol }).x
+      compute_xrd_pattern(make_simple_cubic_structure(3), { scaled_intensity_tol }).x
     expect(with_tol(101)).toHaveLength(0)
     expect(with_tol(0).length).toBeGreaterThan(0)
   })
@@ -528,14 +490,10 @@ describe(`electron_wavelength`, () => {
   // Relativistic de Broglie wavelengths as tabulated in every TEM textbook (Williams & Carter
   // Table 1.1, De Graef Table 2.1), quoted to 4 significant figures. The tolerance below is
   // set by that quoting precision (5e-5 relative for the 0.03701 entry), not by our arithmetic.
+  // oxfmt-ignore
   test.each([
-    [100, 0.03701],
-    [200, 0.02508],
-    [300, 0.01969],
-    [80, 0.04176],
-    [120, 0.03349],
-    [400, 0.01644],
-    [1000, 0.008719],
+    [80, 0.04176], [100, 0.03701], [120, 0.03349], [200, 0.02508], [300, 0.01969],
+    [400, 0.01644], [1000, 0.008719],
   ])(`%i kV gives the tabulated wavelength %f Å`, (voltage_kv, tabulated) => {
     const computed = electron_wavelength(voltage_kv)
     // 1.5e-4 relative covers half a unit in the last quoted digit of every entry above, and
@@ -551,19 +509,6 @@ describe(`electron_wavelength`, () => {
 describe(`radiation types`, () => {
   const cu_wavelength = WAVELENGTHS.CuKa
   const tic = make_rocksalt(4.328, `Ti`, `C`)
-  const probe_structures = [
-    [`rocksalt TiC`, tic],
-    [`rocksalt MnO`, make_rocksalt(4.445, `Mn`, `O`)],
-    [`simple cubic H`, make_simple_cubic_structure(3)],
-  ] as const
-  // scaled_intensity_tol -1 keeps every merged peak, so no pattern can lose a reflection to
-  // intensity filtering and the position arrays of two radiations line up index by index
-  const unfiltered = (max_two_theta: number) => ({
-    wavelength: cu_wavelength,
-    two_theta_range: [0, max_two_theta] as Vec2,
-    scaled: true,
-    scaled_intensity_tol: -1,
-  })
 
   test(`omitting radiation is exactly the X-ray path`, () => {
     const implicit = compute_xrd_pattern(tic, { wavelength: cu_wavelength })
@@ -573,39 +518,32 @@ describe(`radiation types`, () => {
     expect(implicit.x.length).toBeGreaterThan(0)
   })
 
-  // The same structure through the X-ray and neutron paths
-  const xray_and_neutron = (structure: Crystal, two_theta_max: number) => {
-    const shared = unfiltered(two_theta_max)
-    return ([`xray`, `neutron`] as const).map((radiation) =>
-      compute_xrd_pattern(structure, { ...shared, radiation }),
+  // The same structure through the X-ray and neutron paths. scaled_intensity_tol -1 keeps
+  // every merged peak, so the position arrays of both radiations line up index by index.
+  const xray_and_neutron = (structure: Crystal) =>
+    ([`xray`, `neutron`] as const).map((radiation) =>
+      compute_xrd_pattern(structure, {
+        wavelength: cu_wavelength,
+        two_theta_range: [0, 90],
+        scaled_intensity_tol: -1,
+        radiation,
+      }),
     )
-  }
-
-  test.each(probe_structures)(
-    `%s: neutron peak positions match X-ray exactly, intensities do not`,
-    (_label, structure) => {
-      const [xray, neutron] = xray_and_neutron(structure, 120)
-
-      // Bragg geometry is radiation-independent: identical 2θ, identical d, identical hkls
-      expect(neutron.x).toEqual(xray.x)
-      expect(neutron.d_hkls).toEqual(xray.d_hkls)
-      expect(neutron.hkls).toEqual(xray.hkls)
-      expect(neutron.y).not.toEqual(xray.y)
-    },
-  )
 
   // Ti (b_coh = −3.438 fm), Mn (−3.73 fm) and V (−0.3824 fm) scatter neutrons with a 180°
   // phase shift. In a rock-salt MX that flips which reflections are strong: all-even hkl see
   // (b_M + b_X) — a near-cancellation — while all-odd hkl see (b_M − b_X), a reinforcement.
   // X-rays, which only ever see positive electron density, show the opposite ordering.
   test.each([
-    // [label, a_len, cation, anion]
     [`TiC`, 4.328, `Ti`, `C`],
     [`MnO`, 4.445, `Mn`, `O`],
   ] as const)(
-    `%s rock salt: 200 dominates for X-rays but 111 dominates for neutrons`,
+    `%s rock salt: same Bragg geometry, but 200 dominates for X-rays and 111 for neutrons`,
     (_label, a_len, cation, anion) => {
-      const [xray, neutron] = xray_and_neutron(make_rocksalt(a_len, cation, anion), 90)
+      const [xray, neutron] = xray_and_neutron(make_rocksalt(a_len, cation, anion))
+      // Bragg geometry is radiation-independent: identical 2θ, identical d, identical hkls
+      for (const key of [`x`, `d_hkls`, `hkls`] as const)
+        expect(neutron[key]).toEqual(xray[key])
 
       const [xray_111, xray_200] = [intensity_of(xray, `111`), intensity_of(xray, `200`)]
       const neutron_111 = intensity_of(neutron, `111`)
@@ -623,7 +561,7 @@ describe(`radiation types`, () => {
   // b_Ti + b_Al = −3.438 + 3.449 = 0.011 fm, a 99.7% cancellation: the strongest X-ray
   // reflection is essentially extinct for neutrons
   test(`TiAl rock salt: 200 is the strongest X-ray line and neutron-extinct`, () => {
-    const [xray, neutron] = xray_and_neutron(make_rocksalt(4.3, `Ti`, `Al`), 90)
+    const [xray, neutron] = xray_and_neutron(make_rocksalt(4.3, `Ti`, `Al`))
 
     expect(intensity_of(xray, `200`)).toBeCloseTo(100, 6) // strongest X-ray reflection
     // (b_Ti + b_Al)² / (b_Ti − b_Al)² = (0.011/6.887)² = 2.6e-6, so on a 0-100 scale the
@@ -642,10 +580,9 @@ describe(`radiation types`, () => {
         two_theta_range: radiation === `electron` ? [0, 3] : [0, 90],
       })
       expect(pattern.x.length).toBeGreaterThan(0)
-      for (const intensity of pattern.y) {
-        expect(Number.isFinite(intensity)).toBe(true)
-        expect(intensity).toBeGreaterThanOrEqual(0)
-      }
+      expect(
+        pattern.y.every((intensity) => Number.isFinite(intensity) && intensity >= 0),
+      ).toBe(true)
       const mixed = make_crystal(6, [
         { element: `Ti`, abc: [0.13, 0.37, 0.51], occu: 0.3 },
         { element: `O`, abc: [0.71, 0.29, 0.43] },
@@ -670,22 +607,16 @@ describe(`radiation types`, () => {
           ...mixed,
           sites: Array.from({ length: repeats }, () => mixed.sites).flat(),
         }
-        const expected = reflections.map(
-          (point) => structure_factors_squared(structure, radiation, thermal, [point])[0],
-        )
-        const batched = structure_factors_squared(structure, radiation, thermal, reflections)
-        expect([...batched]).toEqual(expected)
+        const f_squared = (points: RecipPoint[]) => [
+          ...structure_factors_squared(structure, radiation, thermal, points),
+        ]
+        const expected = reflections.map((point) => f_squared([point])[0])
+        const batched = f_squared(reflections)
+        expect(batched).toEqual(expected)
         expect(batched[0]).toBe(batched[1])
         expect(batched[2]).toBe(batched[3])
         expect(batched[0]).not.toBe(batched[2])
-        expect([
-          ...structure_factors_squared(
-            structure,
-            radiation,
-            thermal,
-            reflections.toReversed(),
-          ),
-        ]).toEqual(expected.toReversed())
+        expect(f_squared(reflections.toReversed())).toEqual(expected.toReversed())
       }
     },
   )
@@ -703,11 +634,8 @@ describe(`radiation types`, () => {
       { hkl: [0, 0, 0], g_norm: 0 },
       { hkl: [1, 1, 1], g_norm: 1e-12 }, // just off zero, where a literal 1/s² also blows up
     ])
-    for (const f_sq of forward) {
-      expect(Number.isFinite(f_sq)).toBe(true)
-      // Forward scattering adds every atom in phase, so |F(0)|² must be strictly positive
-      expect(f_sq).toBeGreaterThan(0)
-    }
+    // Forward scattering adds every atom in phase, so |F(0)|² must be finite and positive
+    expect(forward.every((f_sq) => Number.isFinite(f_sq) && f_sq > 0)).toBe(true)
   })
 
   test(`neutron pattern of a nucleus with no tabulated b_coh throws with context`, () => {
@@ -720,71 +648,28 @@ describe(`radiation types`, () => {
     expect(compute_xrd_pattern(structure, { wavelength: `CuKa` }).x.length).toBeGreaterThan(0)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `neutron with an X-ray anode key`,
-      { radiation: `neutron`, wavelength: `CuKa` },
-      /CuKa is an X-ray anode wavelength/,
-    ],
-    [
-      `neutron without a wavelength`,
-      { radiation: `neutron` },
-      /Neutron patterns require an explicit options.wavelength/,
-    ],
-    [
-      `electron with an X-ray anode key`,
-      { radiation: `electron`, wavelength: `MoKa` },
-      /MoKa is an X-ray anode wavelength/,
-    ],
-    [
-      `electron with neither voltage nor wavelength`,
-      { radiation: `electron` },
-      /Electron patterns require options.accelerating_voltage/,
-    ],
-    [
-      `electron with both voltage and wavelength`,
-      { radiation: `electron`, wavelength: 0.025, accelerating_voltage: 200 },
-      /not both/,
-    ],
-    [
-      `X-ray with an accelerating voltage`,
-      { radiation: `xray`, accelerating_voltage: 200 },
-      /only meaningful for radiation: 'electron'/,
-    ],
+    [`neutron with an X-ray anode key`, { radiation: `neutron`, wavelength: `CuKa` }, /CuKa is an X-ray anode wavelength/],
+    [`neutron without a wavelength`, { radiation: `neutron` }, /Neutron patterns require an explicit options.wavelength/],
+    [`electron with an X-ray anode key`, { radiation: `electron`, wavelength: `MoKa` }, /MoKa is an X-ray anode wavelength/],
+    [`electron with neither voltage nor wavelength`, { radiation: `electron` }, /Electron patterns require options.accelerating_voltage/],
+    [`electron with both voltage and wavelength`, { radiation: `electron`, wavelength: 0.025, accelerating_voltage: 200 }, /not both/],
+    [`X-ray with an accelerating voltage`, { radiation: `xray`, accelerating_voltage: 200 }, /only meaningful for radiation: 'electron'/],
     [`unknown radiation type`, { radiation: `positron` }, /Unknown radiation type positron/],
     [`unknown X-ray anode key`, { wavelength: `FooBar` }, /Unknown radiation key/i],
     [`empty symmetry_rotations`, { symmetry_rotations: [] }, /symmetry_rotations is empty/],
-    [
-      `non-unimodular symmetry rotation`,
-      {
-        symmetry_rotations: [
-          [
-            [2, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-        ],
-      },
-      /integer rotation parts W \(det ±1\).*with det 2/,
-    ],
+    [`non-unimodular symmetry rotation`, { symmetry_rotations: [[[2, 0, 0], [0, 1, 0], [0, 0, 1]]] }, /integer rotation parts W \(det ±1\).*with det 2/],
   ] as const)(`%s throws`, (_label, options, expected) => {
-    const structure = make_simple_cubic_structure(3)
-    expect(() => compute_xrd_pattern(structure, options as never)).toThrow(expected)
+    expect(() => compute_xrd_pattern(make_simple_cubic_structure(3), options as never)).toThrow(expected)
   })
 
   test(`electron pattern accepts an accelerating voltage and uses that wavelength`, () => {
-    const by_voltage = compute_xrd_pattern(tic, {
-      radiation: `electron`,
-      accelerating_voltage: 200,
-      two_theta_range: [0, 3],
-    })
-    const by_wavelength = compute_xrd_pattern(tic, {
-      radiation: `electron`,
-      wavelength: electron_wavelength(200),
-      two_theta_range: [0, 3],
-    })
-    expect(by_voltage).toEqual(by_wavelength)
+    const electron = (options: XrdOptions) =>
+      compute_xrd_pattern(tic, { radiation: `electron`, two_theta_range: [0, 3], ...options })
+    const by_voltage = electron({ accelerating_voltage: 200 })
     expect(by_voltage.x.length).toBeGreaterThan(0)
+    expect(by_voltage).toEqual(electron({ wavelength: electron_wavelength(200) }))
   })
 
   // Only X-rays are polarized by the scattering event. Reusing (1 + cos²2θ) for the other
@@ -828,35 +713,25 @@ describe(`radiation types`, () => {
   })
 })
 
-describe(`add_xrd_pattern`, () => {
-  const cubic_json = JSON.stringify(make_simple_cubic_structure(3))
+describe(`structure_xrd_pattern`, () => {
   // Bragg angle of the (100) line of the a = 3 Å simple cubic cell: 2θ = 2·asin(λ / 2a)
   const two_theta_100 = (wavelength: number) => (2 * Math.asin(wavelength / 6) * 180) / Math.PI
 
   // null wavelength → compute_xrd_pattern's CuKa default
   test.each([
-    [`JSON string`, cubic_json, null, WAVELENGTHS.CuKa],
-    [`ArrayBuffer`, new TextEncoder().encode(cubic_json).buffer, null, WAVELENGTHS.CuKa],
-    [`JSON string at MoKa`, cubic_json, WAVELENGTHS.MoKa, WAVELENGTHS.MoKa],
-  ])(`computes a pattern from a %s`, async (_label, content, wavelength, expected) => {
-    const entry = await add_xrd_pattern(content, `test.json`, wavelength)
-    expect(entry.label).toBe(`test.json`)
-    expect(entry.pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
+    [null, WAVELENGTHS.CuKa],
+    [WAVELENGTHS.MoKa, WAVELENGTHS.MoKa],
+  ])(`computes a pattern at wavelength %s`, async (wavelength, expected) => {
+    const pattern = await structure_xrd_pattern(make_simple_cubic_structure(3), wavelength)
+    expect(pattern.x[0]).toBeCloseTo(two_theta_100(expected), 6)
     // dropped structures get their point group analyzed: Pm-3m merges all six (100)
-    expect(entry.pattern.family_grouping).toBe(`symmetry`)
-    expect(entry.pattern.hkls?.[0]).toEqual([{ hkl: [1, 0, 0], multiplicity: 6 }])
+    expect(pattern.family_grouping).toBe(`symmetry`)
+    expect(pattern.hkls?.[0]).toEqual([{ hkl: [1, 0, 0], multiplicity: 6 }])
   })
 
-  test.each([
-    [`invalid JSON`, `invalid json`, /./],
-    // strip the lattice
-    [
-      `structure without lattice`,
-      JSON.stringify({ ...make_simple_cubic_structure(3), lattice: undefined }),
-      /must have a lattice/,
-    ],
-  ])(`throws for %s`, async (_label, content, pattern) => {
-    await expect(add_xrd_pattern(content, `test.json`, null)).rejects.toThrow(pattern)
+  test(`throws for a structure without a lattice`, async () => {
+    const { lattice: _lattice, ...molecule } = make_simple_cubic_structure(3)
+    await expect(structure_xrd_pattern(molecule, null)).rejects.toThrow(/must have a lattice/)
   })
 })
 
@@ -914,33 +789,24 @@ describe(`compute_xrd_pattern options`, () => {
     expect(hydride(`D`)).toEqual(hydride(`H`))
   })
 
-  // Both wavelength input forms are accepted, and every parallel array lines up with x
-  test.each([1.54184, `CuKa`] as const)(
-    `wavelength %p yields aligned output arrays`,
-    (wavelength) => {
-      const pattern = compute_xrd_pattern(make_simple_cubic_structure(2), { wavelength })
-      expect(pattern.x.length).toBeGreaterThan(0)
-      expect(pattern.y).toHaveLength(pattern.x.length)
-      expect(pattern.hkls).toHaveLength(pattern.x.length)
-      expect(pattern.d_hkls).toHaveLength(pattern.x.length)
-    },
-  )
-
-  test.each([
-    [0, 30],
-    [10, 60],
-  ] as Vec2[])(
-    `two_theta_range [%i, %i] is respected and x comes out sorted`,
-    (min_angle, max_angle) => {
-      const { x: angles } = compute_xrd_pattern(make_simple_cubic_structure(2), {
-        wavelength: `CuKa`,
-        two_theta_range: [min_angle, max_angle],
-        scaled: false,
-      })
-      expect(angles.every((angle) => angle >= min_angle && angle <= max_angle)).toBe(true)
-      expect(angles).toEqual(angles.toSorted((ang_a, ang_b) => ang_a - ang_b))
-    },
-  )
+  // Both wavelength input forms are accepted, x comes out sorted inside two_theta_range and
+  // every parallel array lines up with it. a = 4 puts (100) at 22.2°, inside both windows.
+  test.each<[XrdOptions[`wavelength`], Vec2]>([
+    [1.54184, [0, 30]],
+    [`CuKa`, [10, 60]],
+  ])(`wavelength %p over two_theta_range %j`, (wavelength, two_theta_range) => {
+    const { x: angles, ...rest } = compute_xrd_pattern(make_simple_cubic_structure(4), {
+      wavelength,
+      two_theta_range,
+    })
+    const [min_angle, max_angle] = two_theta_range
+    expect(angles.length).toBeGreaterThan(0)
+    expect(angles.every((angle) => angle >= min_angle && angle <= max_angle)).toBe(true)
+    expect(angles).toEqual(angles.toSorted((ang_a, ang_b) => ang_a - ang_b))
+    for (const key of [`y`, `hkls`, `d_hkls`] as const) {
+      expect(rest[key]).toHaveLength(angles.length)
+    }
+  })
 
   // 2·sin(θ)/λ turns over at 180°, so [0, 200] would act as a silent 160° cap
   // oxfmt-ignore
@@ -952,23 +818,14 @@ describe(`compute_xrd_pattern options`, () => {
     ).toThrow(/Invalid two_theta_range/)
   })
 
-  test(`scaled false returns raw intensities; scaled true caps max to 100`, () => {
+  test(`scaled false returns raw intensities, which Debye-Waller factors damp`, () => {
     const structure = make_simple_cubic_structure(2)
-    const raw = compute_xrd_pattern(structure, { wavelength: `CuKa`, scaled: false })
-    const scaled = compute_xrd_pattern(structure, { wavelength: `CuKa`, scaled: true })
-    expect(raw.x.length).toBeGreaterThan(0)
-    expect(Math.max(...raw.y)).not.toBeCloseTo(100, 6)
-    expect(Math.max(...scaled.y)).toBeCloseTo(100, 12)
-  })
-
-  test(`Debye-Waller factors damp intensities when not scaled`, () => {
-    const structure = make_simple_cubic_structure(2)
-    const shared = { wavelength: `CuKa`, scaled: false } as const
-    const base = compute_xrd_pattern(structure, shared)
-    const damped = compute_xrd_pattern(structure, {
-      ...shared,
-      debye_waller_factors: { H: 10 },
-    })
-    expect(Math.max(0, ...damped.y)).toBeLessThan(Math.max(0, ...base.y))
+    const max_y = (options: XrdOptions) =>
+      Math.max(0, ...compute_xrd_pattern(structure, { wavelength: `CuKa`, ...options }).y)
+    const raw_max = max_y({ scaled: false })
+    expect(raw_max).toBeGreaterThan(0)
+    expect(raw_max).not.toBeCloseTo(100, 6)
+    expect(max_y({ scaled: true })).toBeCloseTo(100, 12)
+    expect(max_y({ scaled: false, debye_waller_factors: { H: 10 } })).toBeLessThan(raw_max)
   })
 })

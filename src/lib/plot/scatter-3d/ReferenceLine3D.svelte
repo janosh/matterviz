@@ -40,9 +40,7 @@
     if (ref_line.type === `z-axis`) {
       return endpoints_from([ref_line.x, ref_line.y, z_min], [ref_line.x, ref_line.y, z_max])
     }
-    if (ref_line.type === `segment`) {
-      return endpoints_from(ref_line.p1, ref_line.p2)
-    }
+    if (ref_line.type === `segment`) return endpoints_from(ref_line.p1, ref_line.p2)
     const { type } = ref_line as { type: unknown }
     if (type !== `line`) throw new Error(`Unknown 3D ref line type ${JSON.stringify(type)}`)
     // `line`: extend the line through two points to the bounding box. Bounds are sorted so a
@@ -80,9 +78,7 @@
     dashed: Boolean(ref_line.style?.dash),
   })
 
-  // Create Line2 with LineGeometry and a node material for proper variable-width lines.
-  // Unlike the WebGL LineMaterial, Line2NodeMaterial reads the screen size from the viewport
-  // internally, so there's no resolution uniform to keep in sync on resize.
+  // Line2NodeMaterial reads the screen size from the viewport: no resolution uniform to sync
   const line2 = $derived.by((): Line2 | null => {
     if (!endpoints) return null
     const [start, end] = endpoints

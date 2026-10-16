@@ -102,11 +102,9 @@ describe(`compute_sankey_layout`, () => {
     expect(layout.nodes[1].value).toBe(5)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      { nodes: [], links: [] },
-      { width: 0, height: 0 },
-    ],
+    [{ nodes: [], links: [] }, { width: 0, height: 0 }],
     [tri, { width: 0, height: 0 }], // valid data but zero size -> empty
     // all-zero link values would divide by zero in d3-sankey (NaN ribbon paths)
     [
@@ -213,27 +211,12 @@ describe(`compute_sankey_layout`, () => {
     expect(() => compute_sankey_layout(data, dims)).toThrow(/unknown node/)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `2-cycle`,
-      [
-        [0, 1],
-        [1, 0],
-      ],
-      `A -> B -> A`,
-    ],
+    [`2-cycle`, [[0, 1], [1, 0]], `A -> B -> A`],
     [`self loop`, [[0, 0]], `A -> A`],
     // the cycle is buried behind an acyclic prefix and named from its entry node
-    [
-      `3-cycle behind a chain`,
-      [
-        [3, 0],
-        [0, 1],
-        [1, 2],
-        [2, 0],
-      ],
-      `A -> B -> C -> A`,
-    ],
+    [`3-cycle behind a chain`, [[3, 0], [0, 1], [1, 2], [2, 0]], `A -> B -> C -> A`],
   ] as const)(`names the offending nodes of a %s`, (_desc, edges, cycle) => {
     const data: SankeyData = {
       nodes: [`A`, `B`, `C`, `D`].map((label) => ({ label })),

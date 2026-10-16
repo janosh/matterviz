@@ -13,7 +13,7 @@ import {
 import { neutron_scattering_length } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, type SimpleSite } from '../test-fixtures'
+import { make_crystal, make_rocksalt, type SimpleSite } from '../test-fixtures'
 
 // Cubic lattice constant shared by the sc/bcc/fcc reference cells. 3.615 Å is chosen so none of
 // the analytic shell distances land on a 0.01 Å bin edge, where round-off could split one
@@ -40,16 +40,6 @@ const cubic_cell = (element: string, frac_coords: Vec3[], a_len = CUBIC_A): Crys
     a_len,
     frac_coords.map((abc) => [element, abc] as SimpleSite),
   )
-
-// Rock salt: cation on the fcc sublattice, anion displaced by (1/2, 0, 0)
-const rock_salt = (cation: string, anion: string, a_len: number): Crystal =>
-  make_crystal(a_len, [
-    ...FCC_FRAC.map((abc) => [cation, abc] as SimpleSite),
-    ...FCC_FRAC.map(
-      ([face_a, face_b, face_c]) =>
-        [anion, [face_a + 0.5, face_b, face_c] as Vec3] as SimpleSite,
-    ),
-  ])
 
 // Cu3Au (L1_2): Au on the corner, Cu on the three face centres. Deliberately NON-equiatomic —
 // in rock salt rho_a = rho_b = rho_total/2, so passing the centre, neighbour or total density
@@ -245,7 +235,7 @@ describe(`reduced PDF G(r)`, () => {
   ])(
     `partial $center-$neighbor coordination in $cell is $expected_cn`,
     ({ cell, a_len, center, neighbor, r_max, expected_cn }) => {
-      const structure = cell === `NaCl` ? rock_salt(`Na`, `Cl`, a_len) : cu3au(a_len)
+      const structure = cell === `NaCl` ? make_rocksalt(a_len) : cu3au(a_len)
       const pattern = peak_pdf(structure, {
         center_species: center,
         neighbor_species: neighbor,
@@ -338,7 +328,7 @@ describe(`reduced PDF G(r)`, () => {
 
 describe(`total scattering-weighted PDF`, () => {
   const NACL_A = 5.63
-  const nacl = () => rock_salt(`Na`, `Cl`, NACL_A)
+  const nacl = () => make_rocksalt(NACL_A)
 
   test.each([`xray`, `neutron`] as const)(
     `weighting precomputed partials equals the one-shot %s total`,
@@ -387,64 +377,35 @@ describe(`total scattering-weighted PDF`, () => {
     },
   )
 
-  test(`total g(r) equals the analytic weighted sum of the partials`, () => {
-    const total = peak_total_pdf(nacl(), { radiation: `xray` })
-    const mean_b = (11 + 17) / 2
-    const b_of = (element: string) => NACL_B.xray[element]
-    const analytic_weight = (pair: [string, string], with_multiplicity: boolean): number =>
-      ((with_multiplicity && pair[0] !== pair[1] ? 2 : 1) *
-        0.25 *
-        b_of(pair[0]) *
-        b_of(pair[1])) /
-      mean_b ** 2
-
-    const weighted_sum = (with_multiplicity: boolean) =>
-      total.r.map((_, bin_idx) =>
-        total.partials.reduce(
-          (sum, partial) =>
-            sum + analytic_weight(pair_of(partial), with_multiplicity) * partial.g_r[bin_idx],
-          0,
-        ),
-      )
-
-    const expected = weighted_sum(true)
-    const max_abs_err = Math.max(...total.g_r.map((val, idx) => Math.abs(val - expected[idx])))
-    // identical additions in a different order, so only summation round-off separates them
-    expect(max_abs_err).toBeLessThan(1e-10)
-
-    // The un-multiplied version is not a subtle numerical difference: it is short by the whole
-    // Na-Cl contribution, which is the largest single term in this structure.
-    const naive = weighted_sum(false)
-    expect(
-      Math.max(...total.g_r.map((val, idx) => Math.abs(val - naive[idx]))),
-    ).toBeGreaterThan(1)
-  })
-
   test.each([`xray`, `neutron`] as const)(
-    `%s: Σ w_ab·G_ab(r) reproduces the total G(r) bin-wise`,
+    `%s: Σ w_ab·g_ab(r) and Σ w_ab·G_ab(r) reproduce the totals bin-wise`,
     (radiation) => {
       // The partials' reduced_g_r is what PdfPlot draws under show_partials, and it encodes the
       // non-obvious "keep the TOTAL rho_0 even on a partial" convention. This one identity pins
       // it: Σ w_ab·4πr·rho_0·(g_ab − 1) = 4πr·rho_0·(g − Σ w_ab) equals the total only when the
       // density is shared AND the weights sum to 1. Handing back partial.g_r, or a per-species
-      // density, breaks it.
+      // density, breaks it. (The weights themselves are pinned analytically above.)
       const total = peak_total_pdf(nacl(), { radiation })
       expect(total.partials.every((partial) => partial.rho_0 === total.rho_0)).toBe(true)
 
-      const summed = total.r.map((_, bin_idx) =>
-        total.partials.reduce(
-          (sum, partial) =>
-            sum +
-            total.pair_weights[pair_of(partial).join(`-`)] * partial.reduced_g_r[bin_idx],
-          0,
-        ),
-      )
-      const max_abs_err = Math.max(
-        ...total.reduced_g_r.map((val, idx) => Math.abs(val - summed[idx])),
-      )
+      const max_abs_err = (key: `g_r` | `reduced_g_r`) =>
+        Math.max(
+          ...total[key].map((val, bin_idx) =>
+            Math.abs(
+              val -
+                total.partials.reduce(
+                  (sum, partial) =>
+                    sum +
+                    total.pair_weights[pair_of(partial).join(`-`)] * partial[key][bin_idx],
+                  0,
+                ),
+            ),
+          ),
+        )
       // identical products in a different order; G(r) peaks near 1e3 here, so 1e-10 absolute
       // is ~1e-13 relative — tight, and still three orders above f64 round-off
-      expect(max_abs_err).toBeLessThan(1e-10)
+      expect(max_abs_err(`g_r`)).toBeLessThan(1e-10)
+      expect(max_abs_err(`reduced_g_r`)).toBeLessThan(1e-10)
       // not vacuous: G_ab(r) is nowhere near g_ab(r) in magnitude
       const peak_reduced = Math.max(...total.partials[0].reduced_g_r.map(Math.abs))
       expect(peak_reduced).toBeGreaterThan(100)
@@ -474,7 +435,7 @@ describe(`total scattering-weighted PDF`, () => {
   describe(`negative b_coh gives a sign-reversed neutron PDF`, () => {
     const NIH_A = 3.73
     const nih_pdf = (radiation: `xray` | `neutron`) =>
-      peak_total_pdf(rock_salt(`Ni`, `H`, NIH_A), { radiation })
+      peak_total_pdf(make_rocksalt(NIH_A, `Ni`, `H`), { radiation })
     const bin_at = (pattern: PdfPattern, dist: number) =>
       pattern.r.findIndex((radius) => Math.abs(radius - dist) < PEAK_BIN_SIZE / 2)
 

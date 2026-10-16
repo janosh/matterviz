@@ -1,6 +1,7 @@
 <script lang="ts">
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
+  import EmptyState from '#lib/EmptyState.svelte'
   import {
     html_to_svg,
     json_source,
@@ -22,11 +23,12 @@
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
   import { get_scale_type_name } from '#lib/plot/core/types.js'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import type { ColorRamp } from '#lib/plot/core/color-ramp.js'
-  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
+  import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import { virtual_window } from 'svelte-widgets/virtual'
+  import { with_defaults } from '#lib/utils.js'
+  import type { VirtualScroll } from '#lib/table/index.js'
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
@@ -38,12 +40,11 @@
     CellContext,
     CellValue,
     HeatmapDomainMode,
-    HeatmapTooltipProp,
     HeatmapValues,
     MissingCellStyle,
     SymmetricMode,
   } from './index'
-  import { axis_key, cell_value_getter, matrix_to_rows } from './index'
+  import { axis_key, cell_value_getter, matrix_to_rows, VIRTUAL_CELL_THRESHOLD } from './index'
 
   type SelectionMode = `single` | `multi` | `range`
   type AxisOrder =
@@ -63,7 +64,7 @@
     missing = {},
     backdrop = undefined,
     domain_mode = $bindable(`auto`),
-    color_bar = $bindable(null),
+    color_bar = $bindable({}),
     // Interaction props
     active_cell = $bindable(null),
     selected_cells = $bindable([]),
@@ -90,20 +91,19 @@
     x_order,
     y_order,
     search_query = $bindable(``),
-    virtualize = false,
-    overscan = 3,
+    virtual,
     export_formats,
     export_filename = `heatmap`,
     on_export,
     show_row_summaries = $bindable(false),
     show_col_summaries = $bindable(false),
     show_values = $bindable(false),
-    show_controls = false,
+    show_controls,
     controls_open = $bindable(false),
     controls_props = {},
     x_axis = {},
     y_axis = {},
-    tooltip = false,
+    tooltip,
     cell,
     children,
     ...rest
@@ -140,8 +140,7 @@
       on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
       tile_size?: string
       gap?: string
-      // false: show all rows/cols. 'compact': remove all-null rows/cols.
-      // 'gaps': keep grid positions but hide all-null rows/cols (preserves alignment).
+      // 'compact' removes all-null rows/cols, 'gaps' hides them but keeps their grid positions
       hide_empty?: false | `compact` | `gaps`
       show_x_labels?: boolean
       show_y_labels?: boolean
@@ -155,17 +154,16 @@
       y_order?: AxisOrder
       // Case-insensitive substring filter on item keys/labels of both axes
       search_query?: string
-      // Render only the cells inside the scroll viewport. The window comes from the container's
-      // own scroll extent, so this helps exactly as far as the grid overflows it: a matrix that
-      // fits on screen mounts every cell either way, at a few hundred ms per 10k.
-      virtualize?: boolean
-      overscan?: number
+      // Render only cells inside the scroll viewport (both axes): `overscan` extra tracks per
+      // side, at least `min_window` (also rendered before measuring). Unset turns it on past
+      // VIRTUAL_CELL_THRESHOLD visible cells, false renders every cell.
+      virtual?: VirtualScroll
       // Mean of each visible row/column in an extra track
       show_row_summaries?: boolean
       show_col_summaries?: boolean
       // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
       show_values?: boolean | string
-      // Controls pane (opt-in, renders HeatmapMatrixControls inside the shell)
+      // Controls pane (HeatmapMatrixControls inside the shell)
       show_controls?: ShowControlsProp<`controls`>
       controls_open?: boolean
       controls_props?: Pick<
@@ -175,7 +173,7 @@
       // Axis config (label used as axis title)
       x_axis?: AxisConfig
       y_axis?: AxisConfig
-      tooltip?: HeatmapTooltipProp
+      tooltip?: TooltipProp<CellContext>
       cell?: Snippet<[CellContext]>
       children?: Snippet
     } = $props()
@@ -206,8 +204,7 @@
     return indices.toSorted((idx_a, idx_b) => cmp(items[idx_a], items[idx_b]))
   }
   let sorted = $derived({ x: sort_order(x_items, x_order), y: sort_order(y_items, y_order) })
-  // item index -> rendered position (grid track under `gaps`, side of the symmetric diagonal);
-  // filtering keeps relative order, so ranks over all items compare like visible positions
+  // item index -> rendered rank (grid track under `gaps`, side of the symmetric diagonal)
   const to_ranks = (order: number[]): number[] => {
     const ranks = Array<number>(order.length)
     for (const [rank, idx] of order.entries()) ranks[idx] = rank
@@ -221,9 +218,8 @@
     item.label.toLowerCase().includes(search_query_norm)
 
   let { vis_x, vis_y } = $derived.by(() => {
-    // Which columns and rows have at least one non-null visible value (all of them unless
-    // hide_empty). Early-exit: skip cells whose row+col are already known non-empty, stop once
-    // all are resolved (dense matrices touch ~n+m cells, not n*m)
+    // Columns/rows with a non-null visible value (all unless hide_empty). Skips cells whose
+    // row and col are known non-empty and stops once all resolve (~n+m cells when dense)
     const col_has_data = Array<boolean>(x_items.length).fill(!hide_empty)
     const row_has_data = Array<boolean>(y_items.length).fill(!hide_empty)
     let unknown_cols = hide_empty ? x_items.length : 0
@@ -251,12 +247,12 @@
   })
 
   // === Color domain ===
-  let color_scale_config = $derived(to_color_scale_config(color_scale))
-  let use_log = $derived(get_scale_type_name(color_scale_config.type) === `log`)
-  // One pass over the visible numeric values: min, max, smallest positive (the log floor when
-  // the domain reaches <= 0; a Number.MIN_VALUE floor gave log_min ~ -744 and squashed every
-  // color to the top). Only robust domains collect values for quantiles. Only filtered-in
-  // rows/columns count, so filtering rescales the colors.
+  let use_log = $derived(
+    get_scale_type_name(to_color_scale_config(color_scale).type) === `log`,
+  )
+  // One pass over visible numeric values: min, max, smallest positive (log floor; a
+  // Number.MIN_VALUE floor squashed all colors to the top). Robust domains also collect values
+  // for quantiles (positive ones on log scales). Filtering rescales the colors.
   let value_stats = $derived.by(() => {
     const numeric: number[] = []
     const collect = domain_mode === `robust`
@@ -268,7 +264,7 @@
         if (is_hidden_cell(x_idx, y_idx)) continue
         const value = get_value(x_idx, y_idx)
         if (typeof value !== `number` || !Number.isFinite(value)) continue
-        if (collect) numeric.push(value)
+        if (collect && (!use_log || value > 0)) numeric.push(value)
         if (value < min) min = value
         if (value > max) max = value
         if (value > 0 && value < pos) pos = value
@@ -281,8 +277,7 @@
       min_pos: pos === Infinity ? null : pos,
     }
   })
-  // Lazy: only evaluated while domain_mode === 'robust' reads it. quantile_unordered partially
-  // sorts in place, so it gets a copy.
+  // Lazy (only read in robust mode); quantile_unordered sorts in place, so it gets a copy
   let robust_domain = $derived.by((): Vec2 => {
     if (value_stats.numeric.length === 0) return [0, 1]
     const scratch = [...value_stats.numeric]
@@ -292,32 +287,14 @@
   let data_domain = $derived<Vec2>(
     domain_mode === `robust` ? robust_domain : [value_stats.min, value_stats.max],
   )
-  // Resolve unspecified bounds lazily; explicit ranges need no data-domain scan.
-  let [cs_min, cs_max] = $derived(resolve_value_range(color_scale, () => data_domain))
-  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
-  // The shared ramp clamps a non-positive log floor at LOG_EPS; lift it to the smallest
-  // positive value instead so the colors still spread over the data. A degenerate domain
-  // maps everything to the midpoint color; a log domain entirely <= 0 maps nothing (null).
-  let ramp = $derived.by((): ColorRamp | null => {
-    const [lower, upper] = [Math.min(cs_min, cs_max), Math.max(cs_min, cs_max)]
-    let floor = lower
-    if (use_log && lower !== upper) {
-      if (upper <= 0) return null
-      if (lower <= 0) floor = value_stats.min_pos ?? upper
-    }
-    if (floor === upper) {
-      const mid_color = resolve_color_ramp(color_bar_scale, [0, 1]).color_fn(0.5)
-      return { color_fn: () => mid_color, domain: [lower, upper] }
-    }
-    return resolve_color_ramp(color_bar_scale, [floor, upper], color_scale_config.type)
-  })
-  // Color bar span in the caller's bound order: the cell ramp's domain, so a lifted log floor
-  // shows on the bar too instead of the raw cs_min <= 0 flooring it at LOG_EPS
-  let color_bar_range = $derived.by((): Vec2 => {
-    if (!ramp) return [cs_min, cs_max]
-    const [lower, upper] = ramp.domain
-    return cs_min <= cs_max ? [lower, upper] : [upper, lower]
-  })
+  // Unset value_range ends fit the data domain (lazily), non-positive log floor lifted to the
+  // smallest positive value. The color bar spans the same resolved range.
+  let ramp = $derived(
+    resolve_color_scale(color_scale, (): Vec2 => {
+      const [lower, upper] = data_domain
+      return use_log && lower <= 0 ? [value_stats.min_pos ?? upper, upper] : [lower, upper]
+    }),
+  )
   let color_bar_side = $derived(color_bar?.orientation === `vertical` ? `right` : `bottom`)
   // fill for cells with no mappable value (default transparent)
   let missing_fill = $derived(missing.color ?? `transparent`)
@@ -328,10 +305,9 @@
   function value_to_color(val: CellValue): string | null {
     if (cell_is_missing(val)) return missing_fill || null
     if (typeof val !== `number`) return val
-    return ramp ? ramp.color_fn(val) : missing_fill || null
+    return ramp.color_fn(val)
   }
-  // Resolve only rendered or inspected cells. Svelte tracks each call's data/scale
-  // dependencies, so virtualized matrices never allocate colors for offscreen cells.
+  // Resolved per rendered or inspected cell, so offscreen virtualized cells cost nothing
   const background_at = (x_idx: number, y_idx: number): string | null =>
     is_hidden_cell(x_idx, y_idx)
       ? null
@@ -339,11 +315,9 @@
         value_to_color(get_value(x_idx, y_idx)))
 
   let matrix_el: HTMLDivElement | undefined = $state()
-  // Cell fills may be translucent (color overrides, missing-cell fills), so contrast needs to
-  // know what is painted behind them
+  // Cell fills may be translucent (overrides, missing fills), so contrast needs the backdrop
   const page_backdrop = resolve_backdrop(() => matrix_el, { override: () => backdrop })
-  // Contrast color per cell, resolved on demand: every cell needs one only when cells carry
-  // content (a cell snippet or show_values), otherwise just the selected cells' outlines do.
+  // Contrast color per cell, resolved on demand
   const contrast_for_bg = contrast_color_memo({ backdrop: () => page_backdrop.current })
 
   const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
@@ -356,8 +330,7 @@
   })
 
   // === Grid layout ===
-  // In symmetric mode, labels can either stay on outer edges ('edge') or move toward the
-  // missing triangle and hug the diagonal ('diagonal')
+  // In symmetric mode, labels stay on outer edges ('edge') or hug the diagonal ('diagonal')
   let diagonal_labels = $derived(Boolean(symmetric) && symmetric_label_position === `diagonal`)
   const staggered = (count: number) =>
     stagger_axis_labels === true || (stagger_axis_labels === `auto` && count >= 24)
@@ -407,9 +380,14 @@
       : 1
 
   // === Virtual window ===
-  // Zero is a legitimate size (a gap of `0px` is common), so only blank, negative or non-px
-  // input falls back. Treating 0 as invalid inflated the stride to 12px and made the virtual
-  // window cover a fraction of the cells actually on screen.
+  let virtual_config = $derived(
+    with_defaults(virtual ?? row_count * col_count > VIRTUAL_CELL_THRESHOLD, {
+      overscan: 3,
+      min_window: 0,
+    }),
+  )
+  // Zero is a legitimate size (`0px` gaps are common), so only blank, negative or non-px input
+  // falls back (treating 0 as invalid made the window cover a fraction of on-screen cells)
   const parse_px = (size: string): number => {
     const parsed = Number(/^(?<num>[\d.]+)(?:px)?$/.exec(size.trim())?.groups?.num)
     return Number.isFinite(parsed) ? parsed : 12
@@ -423,17 +401,16 @@
   // where the first cell track starts, past the label track
   let grid_offset_left = $state(0)
   let grid_offset_top = $state(0)
-  // The window is computed in grid-track space. Under `gaps` every item keeps a track, so
-  // items are selected by their rank; otherwise track position == position in `visible`.
+  // Windowed in grid-track space: by rank under `gaps`, else by position in `visible`
   const window_axis = (axis: Axis, scroll: number, viewport: number, count: number) => {
     const [visible, rank] = axis === `x` ? [vis_x, ranks.x] : [vis_y, ranks.y]
-    if (!virtualize) return visible
+    if (!virtual_config) return visible
     const { start, end } = virtual_window({
       scroll,
       viewport,
       item_size: stride_px,
       count,
-      overscan,
+      ...virtual_config,
     })
     return gaps_mode
       ? visible.filter((item_idx) => rank[item_idx] >= start && rank[item_idx] < end)
@@ -445,8 +422,8 @@
   let render_vis_y = $derived(
     window_axis(`y`, scroll_top - grid_offset_top, viewport_height, row_count),
   )
-  // DOM order: each item key keeps the rank it got when first rendered, so reordering (x_order, or a caller handing
-  // over re-sorted items) moves no nodes; grid lines place them. Plain maps: bookkeeping, not reactive state.
+  // DOM order: each key keeps its rank from when first rendered, so reordering moves no nodes
+  // (grid lines place them). Plain maps: bookkeeping, not reactive state.
   const key_ranks = { x: new Map<string, number>(), y: new Map<string, number>() }
   const in_dom_order = (axis: Axis, idxs: number[], keys: string[]): number[] => {
     const first_seen = key_ranks[axis]
@@ -482,7 +459,7 @@
   onMount(measure_viewport)
   // A container resized but never scrolled would keep windowing against its mount viewport
   $effect(() => {
-    if (!virtualize || !matrix_el || typeof ResizeObserver === `undefined`) return
+    if (!virtual_config || !matrix_el || typeof ResizeObserver === `undefined`) return
     // Size-guarded: remeasuring re-windows the grid, which can add or drop the scrollbar
     const observer = new ResizeObserver(([{ target }]) => {
       const { clientWidth: width, clientHeight: height } = target
@@ -491,11 +468,10 @@
     observer.observe(matrix_el)
     return () => observer.disconnect()
   })
-  // Label tracks size to their content, so filtering moves the grid origin without resizing
-  // the container the observer above watches.
+  // Label tracks size to content: filtering moves the grid origin without a container resize
   $effect(() => {
     void [vis_x, vis_y, stride_px, show_x_labels, show_y_labels]
-    if (virtualize) measure_viewport()
+    if (virtual_config) measure_viewport()
   })
 
   // === Selection, brush, tooltip ===
@@ -540,9 +516,8 @@
     on_select?.(selected_cells)
   }
 
-  // Hover is fully imperative: zero $state writes during mouseover, all DOM updates direct.
-  // Bindable writes (active_cell) are deferred to rAF so a dense matrix doesn't flush a
-  // reactive update per pointer move.
+  // Hover is imperative (no $state writes on mouseover); active_cell is deferred to rAF
+  // so a dense matrix doesn't flush a reactive update per pointer move.
   let tooltip_div: HTMLDivElement | undefined = $state()
   // only used for custom tooltip snippets; the default tooltip writes textContent directly
   let tooltip_cell: CellContext | null = $state(null)
@@ -569,8 +544,7 @@
 
   function show_tooltip(event: MouseEvent, context: CellContext): void {
     if (tooltip === false || !tooltip_div) return
-    // Flip to the opposite side of the cursor near viewport edges; viewport coordinates avoid
-    // forced layout reads on large grids
+    // Flip to the cursor's other side near viewport edges (client coords avoid forced layout)
     const flip = (pos: number, offset: number, size: number, limit: number) =>
       Math.max(0, pos + offset + size > limit ? pos - offset - size : pos + offset)
     const { offsetWidth: width, offsetHeight: height } = tooltip_div
@@ -621,8 +595,7 @@
     })
   }
 
-  // With both handlers set, a click waits out the double-click window so a dblclick doesn't
-  // also fire two single clicks
+  // With both handlers set, a click waits out the dblclick window so dblclicks don't fire it
   const DBLCLICK_DELAY_MS = 250
   let click_timeout: ReturnType<typeof setTimeout> | null = null
   let pending_click_key: string | null = null
@@ -685,10 +658,8 @@
     brush_end = null
   }
   // === Keyboard navigation ===
-  // A cell only has a DOM node while its track is inside the virtual window, so a step across
-  // the edge has to scroll the track in and wait for the re-render before anything can take
-  // focus. Align to the edge the step is travelling towards, so the newly focused cell lands
-  // just inside the viewport rather than jumping it half a screen.
+  // A step past the virtual window scrolls the track in (aligned to the travel edge so cells
+  // land just inside the viewport) and waits for the re-render before focusing.
   async function focus_cell(
     x_idx: number,
     y_idx: number,
@@ -696,7 +667,7 @@
     y_step = 0,
   ): Promise<void> {
     const cell_node = () => matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
-    if (virtualize && matrix_el && !cell_node()) {
+    if (virtual_config && matrix_el && !cell_node()) {
       const edge = (axis: Axis, idx: number, step: number, offset: number, extent: number) =>
         Math.max(
           0,
@@ -716,8 +687,7 @@
   }
 
   const export_state = new FileExportState(() => export_filename)
-  // The visible matrix (in rendered order) as tidy rows for CSV/JSON, and the grid itself
-  // redrawn as SVG for the figure formats
+  // Visible matrix (rendered order) as tidy rows for CSV/JSON; the grid as SVG for figures
   const visible_rows = () =>
     matrix_to_rows(
       vis_x.map((x_idx) => x_items[x_idx]),
@@ -737,8 +707,7 @@
     ArrowUp: [0, -1],
   }
   function handle_keydown(event: KeyboardEvent): void {
-    // `e` downloads a file, so typing must never reach it. Chords stay the browser's:
-    // guarded up front, or Cmd+Arrow would move a cell instead of scrolling the page.
+    // `e` downloads a file, so typing mustn't reach it; chords (Cmd+Arrow) stay the browser's
     if (is_editable_event_target(event.target) || is_modifier_chord(event)) return
     if (event.key.toLowerCase() === `e` && !event.repeat) {
       const format = (Object.keys(export_sources) as (keyof ExportSources)[]).find(
@@ -800,8 +769,8 @@
   )
   // An interactive matrix is a grid widget (one tab stop, arrow keys); otherwise a static table
   let cell_role = $derived(has_interaction_handlers ? `gridcell` : `cell`)
-  // Roving tab stop: one cell (the last focused, else the first rendered) has tabindex 0, the
-  // rest -1. Set imperatively so moving focus touches two cells instead of re-rendering all.
+  // Roving tab stop (last focused, else first rendered cell), set imperatively so moving focus
+  // touches two cells instead of re-rendering all
   let tab_cell: HTMLElement | null = null
   const handle_focusin = ({ target }: FocusEvent): void => {
     const cell_el = target instanceof Element && target.closest(`[data-x][data-y]`)
@@ -810,8 +779,7 @@
     cell_el.setAttribute(`tabindex`, `0`)
     tab_cell = cell_el
   }
-  // Re-pick once virtualization unmounts the tab stop; re-assert it since re-enabling resets
-  // every cell to -1
+  // Re-pick once virtualization unmounts the tab stop; re-assert after re-enabling resets it
   $effect(() => {
     void [render_vis_x, render_vis_y]
     if (!has_interaction_handlers || !matrix_el) return
@@ -822,8 +790,7 @@
     tab_cell = cell_el
   })
 
-  // Reset index-based interaction state when the axis keys change. Element-wise compare beats
-  // JSON.stringify-ing every key on each x_items/y_items update.
+  // Reset index-based interaction state when the axis keys change
   const keys_equal = (keys_a: string[], keys_b: string[]): boolean =>
     keys_a.length === keys_b.length && keys_a.every((key, idx) => key === keys_b[idx])
   let prev_axis_keys: { x: string[]; y: string[] } | null = null
@@ -886,6 +853,7 @@
       }}
     />
   {/if}
+  {#if !x_items.length || !y_items.length}<EmptyState />{/if}
   <div
     {...rest}
     bind:this={matrix_el}
@@ -908,7 +876,7 @@
     oncontextmenu={handle_contextmenu}
     onkeydown={handle_keydown}
     onfocusin={has_interaction_handlers ? handle_focusin : undefined}
-    onscroll={virtualize ? sync_scroll : undefined}
+    onscroll={virtual_config ? sync_scroll : undefined}
   >
     {#snippet axis_label(axis: Axis, idx: number)}
       {@const { label } = (axis === `x` ? x_items : y_items)[idx]}
@@ -1014,9 +982,7 @@
       title="Value"
       tick_labels={5}
       tick_format=".3~f"
-      range={color_bar_range}
-      scale_type={color_scale_config.type}
-      scale={color_bar_scale}
+      color_scale={ramp.color_scale}
       wrapper_style={color_bar_side === `right`
         ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
         : `--cbar-width: 180px;`}

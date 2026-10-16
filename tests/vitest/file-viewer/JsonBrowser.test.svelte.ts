@@ -34,10 +34,7 @@ const drag_event = (
   payload = ``,
   position = [5, 50],
 ): DragEvent => {
-  const event = new DragEvent(type, {
-    bubbles: true,
-    cancelable: true,
-  })
+  const event = new DragEvent(type, { bubbles: true, cancelable: true })
   Object.defineProperties(event, {
     clientX: { value: position[0] },
     clientY: { value: position[1] },
@@ -335,10 +332,7 @@ test.each([`unmount`, `replace`])(
   async (change) => {
     vi.useFakeTimers()
     const props = $state({ value: { first: table_rows(1, 3) } })
-    const component = mount(JsonBrowser, {
-      target: document.body,
-      props,
-    })
+    const component = mount(JsonBrowser, { target: document.body, props })
     flushSync()
     doc_query(`[data-path="first"]`).click()
     if (change === `replace`) props.value = { first: table_rows(9, 3) }
@@ -373,3 +367,19 @@ test.each([
     pointer(divider, `pointerup`, max_client_x)
   },
 )
+
+// A structure panel's JSON conversion warnings reach the Structure viewer's notice
+test(`a structure panel shows its conversion warnings`, async () => {
+  const site = { species: [{ element: `Si`, occu: 1 }], xyz: [1, 0, 1], properties: {} }
+  // oxfmt-ignore
+  const matrix = [[4, 0, 0], [4, 0, 0], [0, 0, 4]]
+  mount_browser({ value: { structure: { lattice: { matrix }, sites: [site] } } })
+  await click_first_chip()
+  await vi.waitFor(() => expect(mount_viewer).toHaveBeenCalledOnce())
+  const [, type, , options] = vi.mocked(mount_viewer).mock.calls[0]
+  expect(type).toBe(`structure`)
+  expect(options.parse_warnings).toEqual([expect.stringMatching(/^Singular JSON lattice/)])
+  await vi.waitFor(() =>
+    expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: Singular/),
+  )
+})

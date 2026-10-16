@@ -267,13 +267,7 @@
           <span>Color scale</span>
           <ColorScaleSelect
             {...ISO_COLORMAP_SELECT_PROPS}
-            bind:value={
-              () =>
-                typeof color_scale_config.scheme === `string`
-                  ? color_scale_config.scheme
-                  : undefined,
-              (scheme) => (color_scale = { ...color_scale_config, scheme })
-            }
+            bind:value={color_scale}
             aria-label="Fermi surface color scale"
           />
         </label>

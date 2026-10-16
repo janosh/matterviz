@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
   import type {
@@ -57,7 +57,7 @@
   import {
     collect_scale_ranges,
     create_axis_scales,
-    create_color_scale,
+    resolve_color_scale,
     to_color_scale_config,
     create_size_scale,
     log_floor_scale,
@@ -134,7 +134,7 @@
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -162,7 +162,7 @@
       show_legend?: boolean
       bar?: BarStyle
       line?: LineStyle
-      tooltip?: Snippet<[BarHandlerProps<Metadata>]>
+      tooltip?: TooltipProp<BarHandlerProps<Metadata>>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<
@@ -266,9 +266,8 @@
 
   // Horizontal bars take their value axis from the x axis they were assigned
   const HORIZONTAL_VALUE_AXIS = { x: `y`, x2: `y2` } as const
-  // Assign visible series without an explicit value axis by unit/group. The value axis is
-  // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
-  // legend toggles can reassign axes without mutating input series.
+  // Assign visible series without an explicit value axis (y/y2 vertical, x/x2 horizontal)
+  // by unit/group, as a copy so legend toggles reassign axes without mutating input
   const axis_assigned_series = $derived.by<BarSeries<Metadata>[]>(() => {
     const assignment_inputs = series.map((srs) => ({
       ...srs,
@@ -346,9 +345,8 @@
     resolve_legend_visibility(show_legend, legend, series.length),
   )
 
-  // Pixel scale for a value axis. On a log axis 0 (the bar baseline) has no finite pixel, so
-  // values are clamped to the axis minimum: bars grow from the plot edge instead of vanishing
-  // with NaN geometry, and sub-range bars collapse to the 1px floor at the edge.
+  // Value-axis pixel scale. Log axes clamp to the axis minimum so bars grow from the plot
+  // edge instead of vanishing with NaN geometry.
   const value_scale_for = (
     axis: `x` | `x2` | `y` | `y2`,
     scales: typeof frame.scales = frame.scales,
@@ -404,10 +402,8 @@
     }),
   )
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
-  // against the decoration-independent base plot so outside padding cannot feed back into
-  // the crowding decision. Bars contribute their grouped/stacked screen rectangles and
-  // line series contribute sampled polylines.
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top) against the base plot, so
+  // outside padding can't feed back. Bars give their rects, lines sampled polylines.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
       // Base-box pixel scales (not unit ones) keep compute_bar_rect's 1px floors
@@ -450,6 +446,7 @@
     normalize_marginals(
       marginals,
       vertical ? { top: { type: `cdf` } } : { right: { type: `cdf` } },
+      tooltip === false,
     ),
   )
   const marginal_series = $derived<MarginalSeriesInput[]>(
@@ -475,7 +472,9 @@
       { color: color_scale_type, size: size_scale_type },
     ),
   )
-  let color_scale_fn = $derived(create_color_scale(color_scale, scale_ranges.color_range))
+  let color_scale_fn = $derived(
+    resolve_color_scale(color_scale, scale_ranges.color_range).color_fn,
+  )
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
 
   let effective_cat_ticks = $derived(
@@ -638,6 +637,7 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series_in.some((srs) => srs.y.length)}
   {frame}
   {export_sources}
   plot_class="bar-plot"
@@ -990,7 +990,7 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && tooltip_anchor}
+    {#if hover_info && tooltip_anchor && tooltip !== false}
       <!-- avoid_cursor off: the anchor is the bar's drawn end, not the pointer -->
       <PlotTooltip
         x={tooltip_anchor[0]}

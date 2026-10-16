@@ -1,28 +1,27 @@
-import { type CameraPose, create_camera_flight_controller } from '#lib/scene/camera-flight.js'
+import type { CameraPose } from '#lib/scene/camera-flight.js'
 import type { FlightTimeline } from '#lib/scene/camera-flight-session.js'
 import { create_camera_flight_session } from '#lib/scene/camera-flight-session.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { expect, it, vi } from 'vitest'
+import { flight_controller } from './mount'
 
-function setup() {
+// `blocked_idx`: preparing that MD frame hangs until `pending` resolves, ignoring cancellation
+function setup(blocked_idx?: number) {
   const camera = new PerspectiveCamera(50)
   camera.position.set(0, 0, 10)
   const active = vi.fn()
-  const controller = create_camera_flight_controller(
-    { object: camera, target: new Vector3() },
-    () => ({ width: 800, height: 600 }),
-    active,
-    vi.fn(),
-  )
+  const controller = flight_controller(camera, new Vector3(), active)
   const original = controller.capture()
   // Target on the view axis, so OrbitControls holds it and commits keep it as is
   const moved: CameraPose = { ...original, position: [5, 0, 10], target: [5, 0, 0] }
   let playing = true
+  const pending = Promise.withResolvers<undefined>()
   const timeline: FlightTimeline = {
     start: 0,
     end: 10,
     current: 7,
     prepare: vi.fn(async (idx, signal) => {
+      if (idx === blocked_idx) await pending.promise
       signal.throwIfAborted()
       timeline.current = idx
     }),
@@ -51,6 +50,7 @@ function setup() {
     on_change,
     session,
     camera_source,
+    pending,
     playing: () => playing,
   }
 }
@@ -73,13 +73,7 @@ it(`keeps inspected views editable and restores the original camera, MD frame an
 })
 
 it(`lets the latest scrub win even if an older frame resolver ignores cancellation`, async () => {
-  const { controller, moved, timeline, session } = setup()
-  const pending = Promise.withResolvers<undefined>()
-  timeline.prepare = vi.fn(async (idx, signal) => {
-    if (idx === 1) await pending.promise
-    signal.throwIfAborted()
-    timeline.current = idx
-  })
+  const { controller, moved, timeline, session, pending } = setup(1)
   const stale = session.run(`seek`, ({ show }) => show({ ...moved, zoom: 9 }, 1))
   await vi.waitFor(() =>
     expect(timeline.prepare).toHaveBeenCalledWith(1, expect.any(AbortSignal)),
@@ -127,13 +121,7 @@ it.each([false, true])(
 )
 
 it(`pause releases the camera at its current view and return cancels pending frame work`, async () => {
-  const { controller, moved, original, timeline, session, active } = setup()
-  const pending = Promise.withResolvers<undefined>()
-  timeline.prepare = vi.fn(async (idx, signal) => {
-    if (idx === 4) await pending.promise
-    signal.throwIfAborted()
-    timeline.current = idx
-  })
+  const { controller, moved, original, timeline, session, active, pending } = setup(4)
   const playback = session.run(`play`, async ({ show }) => {
     await show(moved, 3)
     await show({ ...moved, zoom: 2 }, 4)

@@ -224,7 +224,7 @@ describe(`display modes`, () => {
     props.structure_props.atom_color_config = {
       mode: `property`,
       property_key: `force`,
-      scale: `interpolateViridis`,
+      color_scale: `interpolateViridis`,
       scale_type: `continuous`,
     }
     await vi.waitFor(() => expect(prepared?.frame.vector_keys).toEqual([`force`]))
@@ -277,7 +277,7 @@ describe(`display modes`, () => {
         mode: `custom`,
         color_fn: (site: Site) =>
           Array.isArray(site.properties.velocity) ? site.properties.velocity[0] : 0,
-        scale: `interpolateViridis`,
+        color_scale: `interpolateViridis`,
         scale_type: `continuous`,
       },
     }
@@ -336,7 +336,7 @@ describe(`display modes`, () => {
     if (_kind === `constant-value` || _kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
-      ).toBe(`Automatic: Structure-only (V: next, Shift+V: previous)`)
+      ).toBe(`Automatic: Structure-only (V / Shift+V)`)
   })
 
   test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
@@ -440,7 +440,7 @@ describe(`display modes`, () => {
       frame_count: 3,
       frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
-    expect(view_mode_button.title).toBe(`Plot-only (V: next, Shift+V: previous)`)
+    expect(view_mode_button.title).toBe(`Plot-only (V / Shift+V)`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
     expect(target.querySelector(`.histogram`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()
@@ -1116,6 +1116,18 @@ describe(`plot`, () => {
 })
 
 describe(`banners`, () => {
+  // One failure as a rejected promise and as a synchronous throw
+  const failing = (message: string) =>
+    [
+      [`rejected`, () => Promise.reject(new Error(message))],
+      [
+        `thrown`,
+        () => {
+          throw new Error(message)
+        },
+      ],
+    ] as const
+
   test(`parse warnings render as a dismissible banner`, async () => {
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ warnings: [`odd header`, `missing cell`] }) }),
@@ -1137,15 +1149,7 @@ describe(`banners`, () => {
     expect(find_parse_banner(fresh_viewer)).toBeUndefined()
   })
 
-  test.each([
-    [`rejected`, () => Promise.reject(new Error(`disk on fire`))],
-    [
-      `thrown`,
-      () => {
-        throw new Error(`disk on fire`)
-      },
-    ],
-  ])(
+  test.each(failing(`disk on fire`))(
     `a %s frame read shows an error banner until the step changes`,
     async (_kind, request) => {
       vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -1174,15 +1178,7 @@ describe(`banners`, () => {
     },
   )
 
-  test.each([
-    [`rejected`, () => Promise.reject(new Error(`no full pass`))],
-    [
-      `thrown`,
-      () => {
-        throw new Error(`no full pass`)
-      },
-    ],
-  ])(
+  test.each(failing(`no full pass`))(
     `a %s trail collection is logged and the viewer keeps rendering`,
     async (_kind, collect) => {
       // Trails are optional: a synchronous throw used to escape the effect instead of being
@@ -1311,6 +1307,12 @@ describe(`panes`, () => {
     const target = mount_trajectory(props)
     await tick()
     expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+    // Trajectory forwards its keys to playback, so the nav buttons name their shortcuts
+    const nav_keys = [`Previous step`, `Pause`, `Next step`].map((label) =>
+      doc_query(`[aria-label="${label}"]`).getAttribute(`aria-keyshortcuts`),
+    )
+    expect(nav_keys).toEqual([`ArrowLeft`, `Space`, `ArrowRight`])
+    expect(doc_query(`.shortcuts-btn`).getAttribute(`aria-keyshortcuts`)).toBe(`?`)
     expect(target.querySelector(`.x-quantity-select`)).not.toBeNull()
 
     props.active_pane = `spectroscopy`
@@ -1383,6 +1385,16 @@ describe(`events`, () => {
     vi.advanceTimersByTime(150)
     await tick()
     expect(view_button.style.boxShadow).toBe(``)
+    // hovered without focus too, like `?` and `f`; only the hovered viewer reacts
+    viewer.blur()
+    sibling.dispatchEvent(new PointerEvent(`pointerleave`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
+    window.dispatchEvent(keydown(`v`, { cancelable: true }))
+    await tick()
+    expect([props.display_mode, sibling_props.display_mode]).toEqual([
+      `structure`,
+      `structure+plot`,
+    ])
   })
 
   test.each([
@@ -1395,8 +1407,7 @@ describe(`events`, () => {
     { name: `textarea`, tag: `textarea` },
     { name: `select`, tag: `select` },
     { name: `editable text`, tag: `div` },
-    { name: `hover without focus`, hover_only: true },
-  ])(`view shortcut ignores $name`, async ({ init, tag, hover_only }) => {
+  ])(`view shortcut ignores $name`, async ({ init, tag }) => {
     const changed = vi.fn()
     const props = $state(default_props({ on_display_mode_change: changed }))
     const viewer = query(mount_trajectory(props), `.trajectory`)
@@ -1405,11 +1416,9 @@ describe(`events`, () => {
       if (tag === `div`) target.contentEditable = `true`
       viewer.append(target)
     }
-    if (hover_only) viewer.dispatchEvent(new PointerEvent(`pointerenter`))
-    else target.focus()
+    target.focus()
     const event = keydown(`v`, { cancelable: true, ...init })
-    if (hover_only) window.dispatchEvent(event)
-    else target.dispatchEvent(event)
+    target.dispatchEvent(event)
     await tick()
     expect(props.display_mode).toBe(`structure+plot`)
     expect(changed).not.toHaveBeenCalled()

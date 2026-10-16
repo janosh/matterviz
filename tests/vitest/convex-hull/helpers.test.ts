@@ -7,6 +7,9 @@ import {
 import type { ConvexHullEntry, PhaseData } from '#lib/convex-hull/types.js'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
+import * as d3_sc from 'd3-scale-chromatic'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
@@ -37,6 +40,70 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(helpers.get_point_color_for_entry({}, `energy`, undefined, scale)).toBe(`#666`)
   })
 
+  // A bare name keeps the colors of the pre-ColorScaleConfig API (pinned); a config's
+  // value_range replaces the [min, max(max, 0.1)] auto range
+  test.each<[ColorScale, (string | undefined)[]]>([
+    [`interpolateViridis`, [`#440154`, `#471063`, `#453882`, `#2eb37c`, `#fde725`, `#fde725`]],
+    [
+      { scheme: `interpolateViridis`, value_range: [0, 1] },
+      [0, 0.013, 0.05, 0.2, 0.31, 0.5].map(d3_sc.interpolateViridis),
+    ],
+  ])(`get_energy_color_scale maps hull distances through %j`, (color_scale, colors) => {
+    const entries = [0, 0.013, 0.05, 0.2, 0.31].map((e_above_hull) => ({ e_above_hull }))
+    const scale = helpers.get_energy_color_scale(`energy`, color_scale, entries)
+    expect([0, 0.013, 0.05, 0.2, 0.31, 0.5].map((val) => scale?.(val))).toEqual(colors)
+  })
+
+  // The energy color bar draws resolve_color_scale over hull_distance_range, so the points
+  // must take exactly its colors (a flat [0.3, 0.3] range once put them at the palette start)
+  test.each([[[0.3, 0.3]], [[0, 0.05]], [[0.2, 0.5]]])(
+    `points match the energy bar over %j`,
+    (dists) => {
+      const entries = dists.map((e_above_hull) => ({ e_above_hull }))
+      const bar = resolve_color_scale(
+        `interpolateViridis`,
+        helpers.hull_distance_range(entries),
+      )
+      const points = helpers.get_energy_color_scale(`energy`, `interpolateViridis`, entries)
+      for (const val of [...dists, 0.1]) expect(points?.(val)).toBe(bar.color_fn(val))
+    },
+  )
+
+  // Faces share the points' color_scale, whose value_range spans hull distances (>= 0): faces
+  // (formation energies <= 0) take only its scheme, and their color bar draws the same colors
+  test.each<ColorScale>([`interpolateViridis`, { value_range: [0, 0.5] }])(
+    `formation-energy faces and their color bar share one range for %j`,
+    (color_scale) => {
+      const e_forms = [-1, -0.5, -0.2, 0]
+      const faces = e_forms.map((e_form, facet_idx) => ({ e_form, facet_idx }))
+      const face_color = draw.face_color_resolver(faces as draw.HullFace[], {
+        mode: `formation_energy`,
+        uniform_color: `#123456`,
+        color_scale,
+        element_colors: {},
+        elements: [],
+      })
+      const face_colors = faces.map((face) => face_color(face as draw.HullFace))
+      expect(face_colors).toEqual([`#440154`, `#21918c`, `#7ad151`, `#fde725`])
+      const bar = draw.face_color_scale(color_scale, e_forms)
+      expect(bar.color_scale.value_range).toEqual([-1, 0])
+      expect(e_forms.map(bar.color_fn)).toEqual(face_colors)
+      // a near-flat hull still spans 0.1 eV/atom instead of a zero-width range
+      expect(
+        draw.face_color_scale(color_scale, [-0.3, -0.29]).color_scale.value_range,
+      ).toEqual([-0.3, -0.3 + 0.1])
+    },
+  )
+
+  test(`hull_face_e_forms averages each drawn face, 4 per tetrahedron`, () => {
+    const vertex = (e_form_per_atom: number) => ({ e_form_per_atom }) as ConvexHullEntry
+    const triangle = [vertex(-0.3), vertex(0), vertex(-0.6)]
+    const tetrahedron = [vertex(-0.4), vertex(0), vertex(-0.8), vertex(-1.2)]
+    expect(draw.hull_face_e_forms([triangle, tetrahedron])).toEqual(
+      [-0.3, -2 / 3, -0.8, -1.6 / 3, -0.4].map((value) => expect.closeTo(value, 12)),
+    )
+  })
+
   test(`stability mode colours and explicit is_stable=false overriding zero distance`, () => {
     const colors = { stable: `#111`, unstable: `#222` }
     const point_color = (entry: { is_stable?: boolean; e_above_hull?: number }) =>
@@ -60,21 +127,15 @@ describe(`helpers: energy color scale + point color`, () => {
       { e_above_hull: 0.2 },
       {},
     ]
-    // unknown distance ≠ stable
-    expect(entries.map((entry) => helpers.entry_within_hull_dist(entry, 0.1))).toEqual([
-      true,
-      true,
-      false,
-      false,
-    ])
+    const within = entries.map((entry) => helpers.entry_within_hull_dist(entry, 0.1))
+    expect(within).toEqual([true, true, false, false]) // unknown distance ≠ stable
   })
 
   test(`hull_distance_range floors the max at 0.1 and skips non-finite values`, () => {
     const entry = (e_above_hull?: number) => ({ composition: {}, energy: 0, e_above_hull })
     expect(helpers.hull_distance_range([])).toEqual([0, 0.1])
-    expect(helpers.hull_distance_range([entry(0.02), entry(NaN), entry(0.05)])).toEqual([
-      0.02, 0.1,
-    ])
+    const mixed = [entry(0.02), entry(NaN), entry(0.05)]
+    expect(helpers.hull_distance_range(mixed)).toEqual([0.02, 0.1])
     expect(helpers.hull_distance_range([entry(0.3), entry(0.5)])).toEqual([0.3, 0.5])
   })
 })
@@ -106,32 +167,21 @@ describe(`canvas-draw: markers and hit testing`, () => {
     } as unknown as HTMLCanvasElement
     const entry = { x: 100, y: 100, z: 0, is_stable: false } as ConvexHullEntry
     const point = { entry, projected: { x: 100, y: 100, depth: 0 } }
-    const hit = (client_x: number, scale = 1) =>
+    const hit = (client_x: number, scale = 1, points = [point]) =>
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: client_x, clientY: 110 } as MouseEvent,
-        draw.build_hull_pick_index([point], scale),
+        draw.build_hull_pick_index(points, scale),
       )
     expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
     expect(hit(119)).toBeNull() // strict radius boundary
     expect(hit(120)).toBeNull() // 10 px away
     expect(hit(120, 2)).toBe(entry) // radius scales with the container: 4 * 2 + 5 = 13 > 10
-    expect(
-      draw.find_hull_entry_at_mouse(
-        undefined,
-        {} as MouseEvent,
-        draw.build_hull_pick_index([point], 1),
-      ),
-    ).toBeNull()
+    const index = draw.build_hull_pick_index([point], 1)
+    expect(draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, index)).toBeNull()
     // points are painted in array order, so the last one at the cursor is the one on top
     const behind = { ...point, entry: { ...entry, entry_id: `behind` } }
-    expect(
-      draw.find_hull_entry_at_mouse(
-        canvas,
-        { clientX: 110, clientY: 110 } as MouseEvent,
-        draw.build_hull_pick_index([behind, point], 1),
-      ),
-    ).toBe(entry)
+    expect(hit(110, 1, [behind, point])).toBe(entry)
   })
 
   // `both` is size + colour, as in the 2D ScatterPlot path. ring_growth: how far past
@@ -179,32 +229,19 @@ describe(`canvas-draw: markers and hit testing`, () => {
 
   test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {
     const fillText = vi.fn()
-    const ctx = {
-      save: vi.fn(),
-      restore: vi.fn(),
-      fillText,
-    } as unknown as CanvasRenderingContext2D
+    const ctx = { save: vi.fn(), restore: vi.fn(), fillText }
     const project = vi.fn((coord_x: number, coord_y: number, coord_z: number) => ({
       x: coord_x,
       y: coord_y,
       depth: coord_z,
     }))
-    draw.draw_corner_labels(
-      ctx,
-      [
-        [1, 0],
-        [0, 1, 1],
-      ],
-      [0, 0, 0],
-      {
-        project,
-        elements: [`H`, `He`],
-        text_color: `black`,
-        font_size: 16,
-        offset: 0.1,
-      },
-    )
-
+    const elements: ElementSymbol[] = [`H`, `He`]
+    const opts = { project, elements, text_color: `black`, font_size: 16, offset: 0.1 }
+    const corners = [
+      [1, 0],
+      [0, 1, 1],
+    ]
+    draw.draw_corner_labels(ctx as never, corners, [0, 0, 0], opts)
     expect(project).toHaveBeenNthCalledWith(1, 1.1, 0, 0)
     const direction_scale = 0.1 / Math.sqrt(2)
     expect(project).toHaveBeenNthCalledWith(2, 0, 1 + direction_scale, 1 + direction_scale)
@@ -216,11 +253,8 @@ describe(`canvas-draw: markers and hit testing`, () => {
 describe(`helpers: thresholds and tooltips`, () => {
   test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
     expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
-    const val = helpers.calc_max_hull_dist_in_data([
-      { e_above_hull: 0 } as PhaseData,
-      { e_above_hull: 0.2 } as PhaseData,
-    ])
-    expect(val).toBeCloseTo(0.201, 10)
+    const dists = [{ e_above_hull: 0 }, { e_above_hull: 0.2 }] as PhaseData[]
+    expect(helpers.calc_max_hull_dist_in_data(dists)).toBeCloseTo(0.201, 10)
   })
 
   test(`auto_threshold_reset re-derives on source change unless the user moved the slider`, () => {
@@ -640,14 +674,8 @@ describe(`helpers: temperature interpolation`, () => {
         is_stable: false,
       })
       const [filtered] = helpers.filter_entries_at_temperature([entry], 600)
-      for (const key of [
-        `correction`,
-        `e_form_per_atom`,
-        `e_above_hull`,
-        `is_stable`,
-      ] as const) {
-        expect(filtered[key], key).toBeUndefined()
-      }
+      const hull_keys = [`correction`, `e_form_per_atom`, `e_above_hull`, `is_stable`] as const
+      for (const key of hull_keys) expect(filtered[key], key).toBeUndefined()
       // keeping the correction would make this -9.6 + (-2.5 / 5) = -10.1
       expect(get_energy_per_atom(filtered)).toBeCloseTo(-9.6, 12)
     })
@@ -793,27 +821,19 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
     } as const
     const entry = (electronic_class?: string) =>
       ({ composition: { Si: 1 }, energy: -1, electronic_class }) as PhaseData
+    const category = (ent: PhaseData) => helpers.get_entry_category(ent, electronic)
     // Case-insensitive canonical match + alias normalization + data dict fallback
-    expect(helpers.get_entry_category(entry(`Metal`), electronic)).toBe(`metal`)
-    expect(helpers.get_entry_category(entry(`semi-conductor`), electronic)).toBe(
-      `semiconductor`,
-    )
-    expect(helpers.get_entry_category(entry(`half-metal`), electronic)).toBeNull()
-    expect(
-      helpers.get_entry_category(
-        { ...entry(), data: { electronic_class: `insulator` } },
-        electronic,
-      ),
-    ).toBe(`insulator`)
+    expect(category(entry(`Metal`))).toBe(`metal`)
+    expect(category(entry(`semi-conductor`))).toBe(`semiconductor`)
+    expect(category(entry(`half-metal`))).toBeNull()
+    expect(category({ ...entry(), data: { electronic_class: `insulator` } })).toBe(`insulator`)
     // Marker assignment + filtering use the same config
     const entries = [entry(`metal`), entry(`insulator`), entry()]
     expect(
       helpers.apply_category_markers(entries, electronic).map((ent) => ent.marker),
     ).toEqual([`circle`, `square`, undefined])
-    expect(helpers.visible_entries(entries, true, true, electronic, [`metal`])).toEqual([
-      entries[1],
-      entries[2],
-    ])
+    const visible = helpers.visible_entries(entries, true, true, electronic, [`metal`])
+    expect(visible).toEqual([entries[1], entries[2]])
   })
 
   test(`build_entry_tooltip_text includes magnetic ordering when present`, () => {

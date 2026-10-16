@@ -291,15 +291,9 @@ describe(`compute_fill_segments`, () => {
     },
   )
 
+  // oxfmt-ignore
   it.each<[Vec2 | undefined, Vec2[]]>([
-    [
-      undefined,
-      [
-        [0, 0.5],
-        [1.5, 2.5],
-        [3.5, 4],
-      ],
-    ],
+    [undefined, [[0, 0.5], [1.5, 2.5], [3.5, 4]]],
     [[1, 3], [[1.5, 2.5]]],
   ])(`splits where-condition intervals within range %j`, (x_range, expected) => {
     // lower rises above upper only in the middle, so the fill is split

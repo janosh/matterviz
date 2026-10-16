@@ -65,9 +65,12 @@ describe(`HeatmapMatrixControls`, () => {
       elements_to_axis(symbols ?? [`H`, `Li`, `Be`, `Co`, `Ni`, `Cu`], ordering),
     )
     mount(HeatmapDemo, { target: document.body })
-    // open both panes: their settings mount on first open
-    await vi.waitFor(() => expect(document.querySelectorAll(toggle_sel)).toHaveLength(2))
-    for (const toggle of document.querySelectorAll<HTMLElement>(toggle_sel)) await fire(toggle)
+    // open both demos' panes (their settings mount on first open); every other heatmap on
+    // the page has its own hover toggle too
+    const demo_toggles = `.heatmap-controls-anchor ${toggle_sel}`
+    await vi.waitFor(() => expect(document.querySelectorAll(demo_toggles)).toHaveLength(2))
+    for (const toggle of document.querySelectorAll<HTMLElement>(demo_toggles))
+      await fire(toggle)
     const orderings = await vi.waitFor(() => {
       const selects = [
         ...document.querySelectorAll<HTMLSelectElement>(`.heatmap-controls select`),
@@ -122,9 +125,13 @@ describe(`HeatmapMatrixControls`, () => {
       expect(matrices[0].querySelector(selector)).not.toBeNull()
       expect(matrices[1].querySelector(selector)).toBeNull()
     }
+    // the color bar shows by default; its toggle hides only this heatmap's
+    const color_bars = () =>
+      [...matrices].map((matrix) => Boolean(matrix.querySelector(`.colorbar`)))
+    expect(color_bars()).toEqual([true, true])
     query<HTMLInputElement>(setting(1, `Color bar`), `input`).click()
     await tick()
-    expect(matrices[1].querySelector(`.colorbar`)).not.toBeNull()
+    expect(color_bars()).toEqual([true, false])
     for (const pane_idx of [1, 0]) {
       const unchanged = labels(1 - pane_idx)
       const search = query<HTMLInputElement>(setting(pane_idx, `Search`), `input`)
@@ -213,11 +220,7 @@ describe(`HeatmapMatrixControls`, () => {
     if (!normalize_select || !domain_select) throw new Error(`normalize/domain select missing`)
     expect([...normalize_select.options].map((opt) => opt.value)).toEqual([`linear`, `log`])
     expect(normalize_select.value).toBe(`log`)
-    expect([...domain_select.options].map((opt) => opt.value)).toEqual([
-      `auto`,
-      `robust`,
-      `fixed`,
-    ])
+    expect([...domain_select.options].map((opt) => opt.value)).toEqual([`auto`, `robust`])
     expect(domain_select.value).toBe(`robust`)
   })
 

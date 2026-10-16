@@ -265,17 +265,14 @@ describe(`parse_phase_diagram_svg`, () => {
     expect(() => parse_phase_diagram_svg(svg)).toThrow(/Malformed SVG path data/)
   })
 
+  // oxfmt-ignore
   it.each([
     {
       label: `phase-boundary line missing coordinates`,
       svg: simple_svg(`<line class="phase-boundary" x1="300" y1="500"/>`),
       reason: /missing numeric x1\/y1\/x2\/y2/,
     },
-    {
-      label: `no boundaries`,
-      svg: simple_svg(``),
-      reason: /No phase boundaries found/,
-    },
+    { label: `no boundaries`, svg: simple_svg(``), reason: /No phase boundaries found/ },
     {
       label: `too few x ticks`,
       svg: simple_svg(SIMPLE_BOUNDARIES).replaceAll(`tick-text-x`, `other`),

@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type {
@@ -27,9 +29,8 @@
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { on } from 'svelte/events'
 
-  // Public CSS knobs every Cartesian chart exposes, mapped onto the frame's own
-  // variables so the shell can be styled per chart (`--histogram-bg`, `--barplot-bg`, …)
-  // without duplicating this stylesheet per chart.
+  // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
+  // mapped onto the frame's own variables so this stylesheet isn't duplicated per chart
   const css_var_defaults = (prefix: string): Record<string, string> => ({
     ...chart_css_defaults(prefix),
     'svg-width': `100%`,
@@ -78,6 +79,8 @@
     // Announced to screen readers via a polite live region. Charts whose marks aren't
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
+    // No data to plot: the axes stay, overlaid with the shared empty-state message
+    empty?: boolean
     header_controls?: Snippet<[Dims]>
     // Data formats this chart can export, on top of the SVG/PNG of its frame
     export_sources?: ExportSources
@@ -103,7 +106,7 @@
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    show_controls = `hover`,
+    show_controls,
     wrapper = $bindable(),
     require_size = true,
     marginals,
@@ -115,7 +118,8 @@
     on_mouse_click,
     idle_cursor = `crosshair`,
     on_key_down,
-    live_message,
+    live_message = ``,
+    empty = false,
     header_controls,
     export_sources = {},
     export_formats,
@@ -226,10 +230,7 @@
       onfocusout={() => pan_zoom.set_focused(false)}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
-      onkeydown={(event) => {
-        if (on_key_down?.(event)) return
-        pan_zoom.on_key_down(event)
-      }}
+      onkeydown={(event) => on_key_down?.(event) || pan_zoom.on_key_down(event)}
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
@@ -274,7 +275,6 @@
         mode={pan_zoom.drag_mode}
       />
 
-      <!-- Marginal distribution strips -->
       <PlotMarginals
         {marginals}
         series={marginal_series}
@@ -289,27 +289,16 @@
     </svg>
 
     {@render overlays?.()}
+    {#if empty}<EmptyState overlay />{/if}
   {/if}
 
   <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->
-  {#if live_message}
-    <span class="sr-only" aria-live="polite">{live_message}</span>
-  {/if}
+  <LiveMessage message={live_message} />
 
-  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
   {@render children?.(content_ctx)}
 </div>
 
 <style>
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
   .plot-frame {
     position: relative;
     width: var(--plot-frame-width);

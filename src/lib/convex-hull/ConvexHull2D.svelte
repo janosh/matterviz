@@ -8,6 +8,7 @@
     UserContentProps,
   } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { marker_d3_name, point_radius } from './canvas-draw'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
   import {
@@ -278,8 +279,7 @@
   bind:fullscreen
   role="application"
   tabindex={-1}
-  onkeydown={selection.handle_keydown}
-  {...selection.drop_zone}
+  {...selection.root_attachments}
   aria-label="Binary convex hull visualization"
   series={scatter_series}
   bind:display
@@ -299,12 +299,12 @@
     ...y_axis,
   }}
   legend={null}
-  color_scale={{ scheme: color_scale, value_range: hull_distance_range(plot_entries) }}
+  color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries)).color_scale}
   color_bar={{
     title: `E<sub>above hull</sub> (eV/atom)`,
     bar_style: `width: 220px; height: 16px;`,
   }}
-  {tooltip}
+  tooltip={custom_tooltip === false ? false : tooltip}
   {user_content}
   selected_point={selected_scatter_point}
   on_point_click={handle_point_click}

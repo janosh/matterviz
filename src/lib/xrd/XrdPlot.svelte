@@ -13,6 +13,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { untrack } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -20,7 +21,9 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
-  import { add_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
+  import { structure_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+  import { is_xrd_data_file, parse_xrd_file } from './parse'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
@@ -30,6 +33,7 @@
   // Measured scans can run to 10⁵ points; the stick/profile views stay responsive at this
   // budget while the peak-preserving thinning keeps every significant maximum
   const MAX_RENDERED_POINTS = 1000
+  type PeakMeta = { label?: string; hkls?: Hkl[]; d?: number }
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     const { x: x_vals, y: y_vals } = (obj ?? {}) as { x?: unknown; y?: unknown }
@@ -45,7 +49,7 @@
     orientation = `vertical`,
     wavelength = null,
     radiation = $bindable(`xray`),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     x_axis = {},
     y_axis = {},
@@ -60,8 +64,11 @@
     selected_peak = $bindable(null),
     on_bar_hover,
     on_bar_click,
+    tooltip,
     ...rest
   }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
+    // the snippet receives the profile point (broadened) or the peak's bar (sticks)
+    tooltip?: TooltipProp<ScatterHandlerProps | BarHandlerProps<PeakMeta>>
     patterns:
       | XrdPattern
       | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
@@ -75,11 +82,7 @@
     // electron both require an explicit `wavelength` (no anode default exists for them).
     radiation?: RadiationType
     allow_file_drop?: boolean
-    on_file_drop?: (
-      content: string | ArrayBuffer,
-      filename: string,
-      metadata: file_io.FileLoadMeta,
-    ) => Promise<void> | void
+    on_file_drop?: file_io.FileLoadCallback
     loading?: boolean
     // Empty-state text while `loading`
     loading_message?: string
@@ -295,20 +298,25 @@
     })
   })
 
-  // Dropped files: measured patterns are parsed, structure files get a computed pattern
-  const drop_zone = file_io.file_drop_zone({
+  // The latest drop's recoverable parse warnings, one dismissible notice
+  let parse_warning_msg = $state<string>()
+  // Dropped measured patterns are parsed here; structure files get a computed pattern
+  const add_dropped = (label: string, pattern: XrdPattern) => {
+    dropped_entries = [{ label, pattern }, ...dropped_entries]
+  }
+  const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
-    // a throwing add_xrd_pattern is reported through on_error by the drop handler itself
-    on_drop: async (content, filename, metadata) => {
-      if (on_file_drop) return on_file_drop(content, filename, metadata)
-      const entry = await add_xrd_pattern(content, filename, wavelength, radiation)
-      dropped_entries = [entry, ...dropped_entries]
+    on_file_drop: () => on_file_drop,
+    intercept: async (content, filename) => {
+      if (!is_xrd_data_file(filename)) return false
+      add_dropped(filename, await parse_xrd_file(content, filename))
+      return true
     },
+    on_structure: async (structure, filename) =>
+      add_dropped(filename, await structure_xrd_pattern(structure, wavelength, radiation)),
     on_error: (msg) => (error_msg = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) error_msg = undefined
-    },
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
   })
 
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
@@ -340,10 +348,7 @@
   })
   const broadening_settings = track_settings(
     () => ({ ...broadening_params, broadening_enabled }),
-    {
-      ...DEFAULT_BROADENING,
-      broadening_enabled: false,
-    },
+    { ...DEFAULT_BROADENING, broadening_enabled: false },
   )
 </script>
 
@@ -440,10 +445,11 @@
       {:else if broadening_error}
         <StatusMessage message={broadening_error} type="error" />
       {/if}
+      <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
     </ViewerNotices>
     {#if broadening_enabled}
       <!-- Broadened Profile View -->
-      {#snippet tooltip(info: ScatterHandlerProps)}
+      {#snippet profile_tooltip(info: ScatterHandlerProps)}
         {@render readout(
           info.label ?? ``,
           is_horizontal ? info.y : info.x,
@@ -456,16 +462,16 @@
         series={scatter_series}
         x_axis={plot_x_axis}
         y_axis={plot_y_axis}
-        {tooltip}
+        tooltip={tooltip ?? profile_tooltip}
         {@attach drop_zone}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        bind:show_controls
+        {show_controls}
         bind:controls_open
       />
     {:else}
       <!-- Discrete Stick View -->
-      {#snippet tooltip(info: BarHandlerProps<{ label?: string; hkls?: Hkl[]; d?: number }>)}
+      {#snippet peak_tooltip(info: BarHandlerProps<PeakMeta>)}
         {@const d_spacing = info.metadata?.d}
         {@const hkl_text = join_hkls(info.metadata?.hkls)}
         {@render readout(info.metadata?.label ?? ``, info.x, info.y)}
@@ -479,7 +485,7 @@
         bind:orientation
         x_axis={plot_x_axis}
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
-        {tooltip}
+        tooltip={tooltip ?? peak_tooltip}
         on_bar_hover={(data) => {
           hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
           on_bar_hover?.(data)
@@ -494,7 +500,7 @@
         {@attach drop_zone}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        bind:show_controls
+        {show_controls}
         bind:controls_open
       />
     {/if}

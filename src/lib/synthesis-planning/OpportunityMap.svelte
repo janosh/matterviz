@@ -16,9 +16,9 @@
     routes: SynthesisRoute[]
     conditions: SynthesisConditions
     selected_route_id?: string
-    onconditionschange: (conditions: SynthesisConditions, route_id?: string) => void
+    on_conditions_change: (conditions: SynthesisConditions, route_id?: string) => void
   }
-  let { entries, target, routes, conditions, selected_route_id, onconditionschange }: Props =
+  let { entries, target, routes, conditions, selected_route_id, on_conditions_change }: Props =
     $props()
   let gas = $state<GasSpecies>(`O2`)
   let metric = $state(`selectivity`)
@@ -114,23 +114,31 @@
     metric === `preferred`
       ? best_route(cell)
       : cell.routes.find(({ id: identifier }) => identifier === active_route_id)
+  // Shortlist index; -1 for no route or one outside the shortlist (stale sweep)
+  const route_idx = (route?: { id: string }): number =>
+    routes.findIndex(({ id: identifier }) => identifier === route?.id)
   const cell_color = (cell: OpportunityCell): string | undefined => {
     if (metric === `stability`)
       return `hsl(215, 65%, ${92 - 55 * Math.min(1, cell.e_above_hull / 0.3)}%)`
     const route = shown_route(cell)
     if (!route) return `#aaa`
-    if (metric === `preferred`)
-      return route_color(routes.findIndex(({ id: identifier }) => identifier === route.id))
+    if (metric === `preferred`) return route_color(route_idx(route))
     const margin = route.selectivity_margin
     return `hsl(${margin < 0 ? 150 : 8}, 55%, ${90 - 40 * Math.min(1, Math.abs(margin) / 0.3)}%)`
   }
   const cell_label = (cell: OpportunityCell): string => {
     const route = shown_route(cell)
-    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} ${format_num(cell.pressure, `.2g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull${route ? `; route ${routes.findIndex(({ id: identifier }) => identifier === route.id) + 1}: driving force ${format_num(route.driving_force * 1000, `.1f`)}, selectivity ${format_num(route.selectivity_margin * 1000, `.1f`)} meV/atom` : `; no downhill shortlisted route`}`
+    const idx = route_idx(route)
+    const route_text = !route
+      ? `no downhill shortlisted route`
+      : idx < 0
+        ? `best route outside the shortlist`
+        : `route ${idx + 1}: driving force ${format_num(route.driving_force * 1000, `.1f`)}, selectivity ${format_num(route.selectivity_margin * 1000, `.1f`)} meV/atom`
+    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} ${format_num(cell.pressure, `.2g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull; ${route_text}`
   }
   function apply_cell(cell: OpportunityCell) {
     if (!scan_gas) return
-    onconditionschange(
+    on_conditions_change(
       {
         ...conditions,
         temperature: cell.temperature,
@@ -227,20 +235,20 @@
           {#each cells.slice(row_idx * 9, (row_idx + 1) * 9) as cell}
             {#snippet cell_tooltip()}
               {@const route = shown_route(cell)}
+              {@const idx = route_idx(route)}
               {@render tooltip_row(`Temperature`, cell.temperature, `K`, `.0f`)}
               {@render tooltip_row(scan_gas, cell.pressure, `bar`, `.2g`)}
               {@render tooltip_row(`Target above hull`, cell.e_above_hull * 1000, `meV/atom`)}
-              {#if route}
-                <div>
-                  Route {routes.findIndex(({ id: identifier }) => identifier === route.id) + 1}
-                </div>
+              {#if route && idx >= 0}
+                <div>Route {idx + 1}</div>
                 {@render tooltip_row(`Driving force`, route.driving_force * 1000, `meV/atom`)}
                 {@render tooltip_row(
                   `Selectivity`,
                   route.selectivity_margin * 1000,
                   `meV/atom`,
                 )}
-              {:else}No downhill shortlisted route{/if}
+              {:else if route}Best route outside the shortlist{:else}No downhill shortlisted
+                route{/if}
             {/snippet}
             <button
               type="button"
@@ -255,13 +263,7 @@
                   ) - Math.log10(cell.pressure),
                 ) < 1e-9}
               onclick={() => apply_cell(cell)}
-              >{metric === `preferred`
-                ? best_route(cell)
-                  ? routes.findIndex(
-                      ({ id: identifier }) => identifier === best_route(cell)?.id,
-                    ) + 1
-                  : `–`
-                : ``}</button
+              >{metric === `preferred` ? route_idx(best_route(cell)) + 1 || `–` : ``}</button
             >
           {/each}
         {/each}

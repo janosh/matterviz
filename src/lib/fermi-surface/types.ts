@@ -159,9 +159,10 @@ export interface FermiHoverData {
   n_symmetry_ops?: number // size of the lattice point group used for tiling (48 cubic, 24 hexagonal, …)
 }
 
-// Tooltip config for prefix/suffix content
-export type FermiTooltipConfig = TooltipConfig<FermiHoverData>
-export type FermiTooltipProp = TooltipProp<FermiHoverData, [{ hover_data: FermiHoverData }]>
+export type FermiTooltipProp = TooltipProp<
+  { hover_data: FermiHoverData },
+  TooltipConfig<FermiHoverData>
+>
 
 // Type guard: checks if parsed result is FermiSurfaceData (has pre-computed isosurfaces)
 export const is_fermi_surface_data = (

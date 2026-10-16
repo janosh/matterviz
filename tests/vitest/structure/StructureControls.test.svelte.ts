@@ -646,11 +646,11 @@ const mount_persisted_controls = async (
 describe(`StructureControls reactive props`, () => {
   test.each<AtomColorConfig>([
     DEFAULT_ATOM_COLOR_CONFIG,
-    { mode: `coordination`, scale: `interpolateTurbo`, scale_type: `categorical` },
+    { mode: `coordination`, color_scale: `interpolateTurbo`, scale_type: `categorical` },
     {
       mode: `property`,
       property_key: `velocity`,
-      scale: `interpolateTurbo`,
+      color_scale: `interpolateTurbo`,
       scale_type: `categorical`,
     },
   ])(
@@ -794,7 +794,7 @@ describe(`StructureControls reactive props`, () => {
 
     const atom_color_config = {
       mode: `wyckoff`,
-      scale: `interpolateTurbo`,
+      color_scale: `interpolateTurbo`,
       scale_type: `continuous`,
     } as const
     const shared = create_structure_view_state({
@@ -833,7 +833,7 @@ describe(`StructureControls reactive props`, () => {
       next_atom_color_config(
         {
           mode: `element`,
-          scale: DEFAULTS.structure.atom_color_scale,
+          color_scale: DEFAULTS.structure.atom_color_scale,
           scale_type: DEFAULTS.structure.atom_color_scale_type,
         },
         DEFAULTS.structure.atom_color_mode,
@@ -865,9 +865,9 @@ describe(`StructureControls reactive props`, () => {
     if (!turbo) throw new Error(`Turbo color scale option not found`)
     turbo.click()
     await tick()
-    expect(state.atom_color_config.scale).toBe(`interpolateTurbo`)
+    expect(state.atom_color_config.color_scale).toBe(`interpolateTurbo`)
     await reset_row(`atom_color_scale`)
-    expect(state.atom_color_config.scale).toBe(DEFAULTS.structure.atom_color_scale)
+    expect(state.atom_color_config.color_scale).toBe(DEFAULTS.structure.atom_color_scale)
     await reset_row(`atom_color_mode`)
     expect(state.atom_color_config).toMatchObject({
       mode: DEFAULTS.structure.atom_color_mode,
@@ -955,7 +955,7 @@ describe(`StructureControls reactive props`, () => {
       atom_color_config: {
         mode: `property`,
         property_key: `charge`,
-        scale: DEFAULTS.structure.atom_color_scale,
+        color_scale: DEFAULTS.structure.atom_color_scale,
         scale_type: `continuous`,
       },
     })

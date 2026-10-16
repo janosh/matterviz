@@ -93,9 +93,7 @@
     return geom
   }
 
-  // Geometries are derived so they rebuild with the config/ranges; dispose_on_change releases
-  // the previous ones on every rebuild and on unmount. The wireframe only exists when shown and
-  // gets its own disposer so toggling it doesn't release the still-rendered surface geometry.
+  // Separate disposers so toggling the wireframe doesn't release the rendered surface geometry
   let geometry = $derived(create_geometry())
   let wireframe_geometry = $derived(
     config.wireframe && geometry ? new THREE.WireframeGeometry(geometry) : null,

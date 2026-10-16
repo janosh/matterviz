@@ -1,7 +1,6 @@
 import {
   classify_payload,
   decode_text_chunks,
-  decompress_data,
   decompress_file,
   decompress_trajectory_file,
   detect_compression_format,
@@ -39,21 +38,19 @@ describe(`detect_compression_format`, () => {
   })
 })
 
-describe(`decompress_data`, () => {
+// one compression layer, named by the file extension
+const inflate = async (data: BlobPart, filename: string) =>
+  (await classify_payload(new Blob([data]), [filename])).content
+
+describe(`classify_payload decompression`, () => {
   test(`throws when DecompressionStream is not supported`, async () => {
     const orig_decompression_stream = globalThis.DecompressionStream
     // @ts-expect-error - intentionally deleting for test
     delete globalThis.DecompressionStream
-    await expect(decompress_data(new ArrayBuffer(0), `gzip`)).rejects.toThrow(
+    await expect(inflate(``, `data.gz`)).rejects.toThrow(
       `Failed to decompress gzip file: ReferenceError: DecompressionStream is not defined`,
     )
     globalThis.DecompressionStream = orig_decompression_stream
-  })
-
-  test.each([`bz2`, `xz`] as const)(`rejects %s (no browser decoder)`, async (format) => {
-    await expect(decompress_data(new ArrayBuffer(0), format)).rejects.toThrow(
-      `${format.toUpperCase()} decompression is not supported in the browser; extract the ${format.toUpperCase()} file first`,
-    )
   })
 
   test.each([`valid`, `unsupported compression`, `oversized metadata`] as const)(
@@ -74,7 +71,7 @@ describe(`decompress_data`, () => {
           view.setUint32(offset + 24, MAX_INFLATED_BYTES + 1, true)
         break
       }
-      expect(await decompress_data(zip.buffer, `zip`)).toBe(`data_a`)
+      expect(await inflate(zip, `a.zip`)).toBe(`data_a`)
     },
   )
 
@@ -85,7 +82,7 @@ describe(`decompress_data`, () => {
       `ZIP archive must contain exactly one file, found 2: a.cif, b.cif`,
     ],
   ])(`rejects ambiguous ZIP archives %o`, async (entries, message) => {
-    await expect(decompress_data(zipSync(entries).buffer, `zip`)).rejects.toThrow(message)
+    await expect(inflate(zipSync(entries), `a.zip`)).rejects.toThrow(message)
   })
 })
 

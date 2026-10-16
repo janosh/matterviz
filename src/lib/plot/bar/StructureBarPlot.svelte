@@ -5,7 +5,6 @@
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { drag_over_handlers } from '#lib/io/index.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type {
     AxisConfig,
@@ -14,9 +13,10 @@
     Orientation,
   } from '#lib/plot/core/types.js'
   import { on_change } from '#lib/plot/core/interactions.js'
-  import { create_structure_drop_handler } from '#lib/plot/core/structure-input.js'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { Snippet } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import BarPlot from './BarPlot.svelte'
 
   let {
@@ -36,7 +36,7 @@
     loading = $bindable(false),
     loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     on_bar_change,
     ...rest
@@ -56,8 +56,8 @@
     // Rendered after the series identity: every STRING-valued metadata field of the hovered
     // bar is emitted as a `value —` prefix, in insertion order, so both callers stop repeating
     // the same {#if element}/{#if structure_label} pair. Numeric metadata (bin_width) is left
-    // to the caller.
-    tooltip?: Snippet<[BarHandlerProps<Record<string, unknown>>]>
+    // to the caller. false hides the tooltip.
+    tooltip?: TooltipProp<BarHandlerProps<Record<string, unknown>>>
     // Structures parsed out of dropped files, prepended as they arrive. Callers bind this and
     // fold it into their own series maths.
     dropped_entries?: StructureEntry[]
@@ -77,32 +77,32 @@
   const is_horizontal = $derived(orientation === `horizontal`)
   let display = $derived({ x_zero_line: is_horizontal, y_zero_line: !is_horizontal })
 
-  const handle_file_drop = create_structure_drop_handler({
+  // The latest drop's recoverable parse warnings, one dismissible notice
+  let parse_warning_msg = $state<string>()
+  const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
-    on_entry: (entry) => (dropped_entries = [entry, ...dropped_entries]),
-    on_error: (msg) => (error_msg = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) [error_msg, dragover] = [undefined, false]
+    on_structure: (structure, label) => {
+      if (!structure.sites.length) throw new Error(`no sites, nothing to plot`)
+      dropped_entries = [{ label, structure }, ...dropped_entries]
     },
+    on_error: (msg) => (error_msg = msg),
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
+    on_dragover: (over) => (dragover = over),
   })
   const report_bar_change = on_change(
     (bar: Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]) =>
       bar && `${bar.series_idx}:${bar.bar_idx}`,
     (bar) => on_bar_change?.(bar),
   )
-  const drag_handlers = drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })
 </script>
 
 {#snippet labelled_tooltip(info: BarHandlerProps<Record<string, unknown>>)}
   {#each Object.values(info.metadata ?? {}) as value, idx (idx)}
     {#if typeof value === `string`}{value} —{/if}
   {/each}
-  {@render tooltip?.(info)}
+  {#if tooltip}{@render tooltip(info)}{/if}
 {/snippet}
 
 <!-- one positioned root: the error floats over the plot instead of taking a grid cell
@@ -115,13 +115,12 @@
         : allow_file_drop
           ? `Drag and drop structure files here to compute ${subject}`
           : `No ${empty_subject} to display`}
-      ondrop={handle_file_drop}
-      {...drag_handlers}
+      {@attach drop_zone}
     />
   {:else}
     <BarPlot
       {...rest}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {series}
       bind:orientation
@@ -137,19 +136,19 @@
         label_shift: { x: 2, ...(is_horizontal ? x_axis : y_axis).label_shift },
       }}
       bind:display
-      tooltip={labelled_tooltip}
+      tooltip={tooltip === false ? false : labelled_tooltip}
       on_bar_hover={on_bar_change
         ? (bar) => {
             rest.on_bar_hover?.(bar)
             report_bar_change(bar)
           }
         : rest.on_bar_hover}
-      ondrop={handle_file_drop}
-      {...drag_handlers}
+      {@attach drop_zone}
       class={[rest.class, dragover && `dragover`]}
     />
   {/if}
   <ViewerNotices>
     <StatusMessage bind:message={error_msg} type="error" dismissible />
+    <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
   </ViewerNotices>
 </div>

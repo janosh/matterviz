@@ -22,6 +22,7 @@ import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
+import { cubic_matrix } from '../test-fixtures'
 
 // Arrows from it along a, b, c run outside the cell, also for negative vector components (last
 // cell), where the fixed [-1, -1, -1] origin it replaced sat inside
@@ -38,16 +39,9 @@ test.each([
 
 // A slab's long vacuum axis must not make its arrow fatter than the in-plane ones
 test(`cell_vector_arrow_sizes are absolute and set by the shortest vector`, () => {
-  const slab: Matrix3x3 = [
-    [3.5, 0, 0],
-    [0, 3.5, 0],
-    [0, 0, 40],
-  ]
-  const cube: Matrix3x3 = [
-    [3.5, 0, 0],
-    [0, 3.5, 0],
-    [0, 0, 3.5],
-  ]
+  // oxfmt-ignore
+  const slab: Matrix3x3 = [[3.5, 0, 0], [0, 3.5, 0], [0, 0, 40]]
+  const cube = cubic_matrix(3.5)
   const sizes = cell_vector_arrow_sizes(slab, 0.5)
   expect(sizes).toEqual(cell_vector_arrow_sizes(cube, 0.5))
   expect(sizes.shaft_radius).toBeCloseTo(0.0175, 12) // 0.5 * 3.5 Å * 0.01
@@ -55,6 +49,19 @@ test(`cell_vector_arrow_sizes are absolute and set by the shortest vector`, () =
 })
 
 const RADIAL_MATRIX_COMPONENTS = [0, 2, 8, 9, 10] as const
+// Unit-length bond along +x between two sites
+const unit_bond = (
+  site_idx_1 = 0,
+  site_idx_2 = 1,
+  extra: Partial<BondPair> = {},
+): BondPair => ({
+  pos_1: [0, 0, 0],
+  pos_2: [1, 0, 0],
+  site_idx_1,
+  site_idx_2,
+  bond_length: 1,
+  ...extra,
+})
 
 test.each([
   [0, [1, 1, 0]],
@@ -64,18 +71,7 @@ test.each([
 ] as const)(
   `reads atom %i's neighbors without expanding packed bonds`,
   (site_idx, expected) => {
-    const bonds: BondPair[] = [
-      [0, 1],
-      [1, 0],
-      [0, 0],
-      [1, 2],
-    ].map(([first, second]) => ({
-      site_idx_1: first,
-      site_idx_2: second,
-      pos_1: [0, 0, 0],
-      pos_2: [1, 0, 0],
-      bond_length: 1,
-    }))
+    const bonds = [unit_bond(0, 1), unit_bond(1, 0), unit_bond(0, 0), unit_bond(1, 2)]
     const packed = new BondFrame({ sites: [] }, pack_bonds(bonds))
     const materialize = vi.spyOn(packed, `materialize`)
     expect(bond_neighbors(bonds, site_idx)).toEqual(expected)
@@ -260,14 +256,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
   ] satisfies { order?: BondOrder; expected_count: number; expected_radius: number }[])(
     `packs $order bond order as $expected_count cylinder matrices`,
     ({ order, expected_count, expected_radius }) => {
-      const bond: BondPair = {
-        pos_1: [0, 0, 0],
-        pos_2: [1, 0, 0],
-        site_idx_1: 0,
-        site_idx_2: 1,
-        bond_length: 1,
-        ...(order === undefined ? {} : { bond_order: order }),
-      }
+      const bond = unit_bond(0, 1, order === undefined ? {} : { bond_order: order })
       const matrix_buffer = new Float32Array(3 * 16).fill(Number.NaN)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
@@ -331,14 +320,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
   )
 
   test(`fails before writing when the instance buffer is undersized`, () => {
-    const bond: BondPair = {
-      pos_1: [0, 0, 0],
-      pos_2: [1, 0, 0],
-      site_idx_1: 0,
-      site_idx_2: 1,
-      bond_length: 1,
-      bond_order: 3,
-    }
+    const bond = unit_bond(0, 1, { bond_order: 3 })
     expect(() =>
       new BondMesh(undefined, undefined, 2).update(prepare_bond_placements([bond])),
     ).toThrow(`Bond capacity 2 cannot hold 3 instances`)

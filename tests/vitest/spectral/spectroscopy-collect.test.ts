@@ -152,17 +152,12 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     for (const frame of frames) delete frame.structure.sites[0].properties.mass
   }
   const keep_frames = () => {}
+  // oxfmt-ignore
   it.each([
     [`run-level masses win over site masses`, { atom_masses: [2.5] }, keep_frames, {}, 2.5],
     [`site masses serve when the run carries none`, {}, keep_frames, {}, 1.5],
     [`standard masses fill in when nothing is recorded`, {}, drop_site_masses, {}, 1.008],
-    [
-      `standard masses override recorded ones on request`,
-      {},
-      keep_frames,
-      { mass_source: `standard` },
-      1.008,
-    ],
+    [`standard masses override recorded ones on request`, {}, keep_frames, { mass_source: `standard` }, 1.008],
   ] as const)(`%s`, async (_label, extras, mutate, options, expected_mass) => {
     const input = await collect_trajectory_spectroscopy_input(
       make_run(extras, mutate),
@@ -172,27 +167,14 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     expect(input.metadata?.mass_source).toBe(expected_mass === 1.008 ? `standard` : `recorded`)
   })
 
+  const infinite_mass = (frames: TrajectoryFrame[]) => {
+    frames[0].structure.sites[0].properties.mass = Number.POSITIVE_INFINITY
+  }
+  // oxfmt-ignore
   it.each([
-    [
-      `invalid recorded masses`,
-      (frames: TrajectoryFrame[]) => {
-        frames[0].structure.sites[0].properties.mass = Number.POSITIVE_INFINITY
-      },
-      { mass_source: `auto` },
-      /Recorded mass of atom 1 must be finite and > 0/,
-    ],
-    [
-      `requested recorded masses the run lacks`,
-      drop_site_masses,
-      { mass_source: `recorded` },
-      /Recorded masses were requested, but the trajectory carries none/,
-    ],
-    [
-      `an unknown response key by name`,
-      keep_frames,
-      { infrared_key: `current` },
-      /metadata signal "current"/,
-    ],
+    [`invalid recorded masses`, infinite_mass, { mass_source: `auto` }, /Recorded mass of atom 1 must be finite and > 0/],
+    [`requested recorded masses the run lacks`, drop_site_masses, { mass_source: `recorded` }, /Recorded masses were requested, but the trajectory carries none/],
+    [`an unknown response key by name`, keep_frames, { infrared_key: `current` }, /metadata signal "current"/],
   ] as const)(`rejects %s`, async (_label, mutate, options, error) => {
     await expect(
       collect_trajectory_spectroscopy_input(make_run({}, mutate), options),
@@ -308,21 +290,16 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   ] as const)(
     `with frame_stride 2 and preprocessing %s, velocities follow the kept steps and the dipole keeps steps %j`,
     async (preprocessing, dipole_steps) => {
-      const input = await collect_trajectory_spectroscopy_input(native_cadence_run(), {
-        frame_stride: 2,
-        raman_key: null,
-        preprocessing,
-      })
+      const options = { frame_stride: 2, raman_key: null, preprocessing }
+      const input = await collect_trajectory_spectroscopy_input(native_cadence_run(), options)
       const window_run = native_cadence_run()
       vi.spyOn(window_run, `read_frame`).mockImplementation(() => {
         throw new Error(`Excluded geometry must not be loaded to get its recorded step`)
       })
       const window = await collect_trajectory_spectroscopy_input(window_run, {
+        ...options,
         start_frame: 1,
         end_frame: 6,
-        frame_stride: 2,
-        raman_key: null,
-        preprocessing,
       })
       expect(window.positions.steps).toEqual([1, 3, 5])
       expect(window.velocities?.steps).toEqual([1, 3, 5])
@@ -352,19 +329,15 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
   it(`names a signal the stride leaves without samples on the kept steps`, async () => {
     // a dipole sampled only on the skipped (odd) steps would become an empty spectrum
     const run = native_cadence_run([1, 3, 5, 7])
+    const strided = { frame_stride: 2, raman_key: null } as const
     await expect(
-      collect_trajectory_spectroscopy_input(run, {
-        frame_stride: 2,
-        raman_key: null,
-        preprocessing: `body_fixed`,
-      }),
+      collect_trajectory_spectroscopy_input(run, { ...strided, preprocessing: `body_fixed` }),
     ).rejects.toThrow(
       `Signal 'dipole' has no samples on the strided position steps (frame_stride=2); use stride 1`,
     )
     // the same dipole is fine when nothing matches its steps to positions
     const input = await collect_trajectory_spectroscopy_input(run, {
-      frame_stride: 2,
-      raman_key: null,
+      ...strided,
       preprocessing: `remove_com`,
     })
     expect(input.infrared_signal?.series.steps).toEqual([1, 3, 5, 7])
@@ -380,15 +353,12 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         },
       },
     })
-    await expect(
-      collect_trajectory_spectroscopy_input(run, {
-        infrared_key: `polarization`,
-        infrared_kind: `polarization`,
-      }),
-    ).rejects.toThrow(/must be explicitly marked branch_continuous/)
+    const options = { infrared_key: `polarization`, infrared_kind: `polarization` } as const
+    await expect(collect_trajectory_spectroscopy_input(run, options)).rejects.toThrow(
+      /must be explicitly marked branch_continuous/,
+    )
     const input = await collect_trajectory_spectroscopy_input(run, {
-      infrared_key: `polarization`,
-      infrared_kind: `polarization`,
+      ...options,
       polarization_branch_continuous: true,
     })
     expect(input.infrared_signal).toMatchObject({
@@ -442,29 +412,19 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     }
   })
 
+  const all_signals = {
+    vector_keys: [],
+    signal_keys: [`velocity`, `dipole`, `polarizability`],
+  }
+  // oxfmt-ignore
   it.each([
     // a lazy [n_atoms, 3] velocity the parser marked frame_aligned (one sample per frame on
     // the geometry steps) streams strided beside positions; on its own axis it is a
     // native-cadence read, even with as many samples as frames: the steps decide, not the
     // count (the vector_keys read of a shifted axis throws in the parser)
-    [
-      `on the geometry steps`,
-      {},
-      { vector_keys: [`velocity`], signal_keys: [`dipole`, `polarizability`] },
-      [0, 1, 2, 3],
-    ],
-    [
-      `on its own step axis`,
-      { velocity_steps: [0, 2] },
-      { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
-      [0, 2],
-    ],
-    [
-      `with one sample per frame on shifted steps`,
-      { velocity_steps: [1, 2, 3, 4] },
-      { vector_keys: [], signal_keys: [`velocity`, `dipole`, `polarizability`] },
-      [1, 2, 3, 4],
-    ],
+    [`on the geometry steps`, {}, { vector_keys: [`velocity`], signal_keys: [`dipole`, `polarizability`] }, [0, 1, 2, 3]],
+    [`on its own step axis`, { velocity_steps: [0, 2] }, all_signals, [0, 2]],
+    [`with one sample per frame on shifted steps`, { velocity_steps: [1, 2, 3, 4] }, all_signals, [1, 2, 3, 4]],
   ])(
     `routes an HDF5 velocity descriptor %s through the matching collect channel`,
     async (_label, fixture, channels, velocity_steps) => {
@@ -513,15 +473,12 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     }
   })
 
+  // oxfmt-ignore
   it.each([
     // Streamed signals arrive on their native step axis like run-level ones. A stride must
     // drop the skipped velocity steps (rigid-motion removal finds orphan samples otherwise)
     // but only body-frame rotation needs the response signals on the kept steps too
-    [
-      `remove_com`,
-      [0, 2, 4],
-      [1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4, 3, 0, 0, 0, 4, 0, 0, 0, 5],
-    ],
+    [`remove_com`, [0, 2, 4], [1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4, 3, 0, 0, 0, 4, 0, 0, 0, 5]],
     [`body_fixed`, [0, 2], [1, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 0, 3, 0, 0, 0, 4]],
   ] as const)(
     `sub-samples HDF5-streamed velocities to the strided position steps and responses only under %s`,

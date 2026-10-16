@@ -70,9 +70,18 @@ test(`the error page links back to the site root`, () => {
   expect(doc_query(`a[href="/"]`).textContent).toBe(`landing page`)
 })
 
-// a throwing parse of a half-typed composition used to take the whole demo down
+// a throwing parse of a half-typed composition used to take the whole demo down; the grid
+// needs one heading id per chart mode, and percentages belong on their own card
 test.each([`{Fe: 2`, `Xy`])(`invalid composition %j keeps the charts up`, (text) => {
-  mount(CompositionDemo, { target: document.body, props: { show_interactive: true } })
+  const props = { show_grid: true, show_interactive: true }
+  mount(CompositionDemo, { target: document.body, props })
+  const ids = [...document.querySelectorAll(`h2`)].map((heading) => heading.id)
+  expect(ids).toEqual([`as-pie-chart`, `as-bubble-chart`, `as-bar-chart`])
+  const card_text = (name: string) =>
+    find_el(`.composition-card`, (card) => card.querySelector(`h3`)?.textContent === name)
+      ?.textContent
+  expect(card_text(`Percentages`)).toContain(`%`)
+  expect(card_text(`Pie Chart`)).not.toContain(`%`)
   const input = doc_query<HTMLInputElement>(`input`)
   const chart_count = document.querySelectorAll(`.composition-card svg`).length
   expect(chart_count).toBeGreaterThan(0)
@@ -85,18 +94,6 @@ test.each([`{Fe: 2`, `Xy`])(`invalid composition %j keeps the charts up`, (text)
   flushSync()
   expect(document.querySelector(`[role="alert"]`)).toBeNull()
   expect(input.getAttribute(`aria-invalid`)).toBe(`false`)
-})
-
-test(`composition demo: one heading id per chart mode, percentages on their card`, () => {
-  const props = { show_grid: true, show_interactive: true }
-  mount(CompositionDemo, { target: document.body, props })
-  const ids = [...document.querySelectorAll(`h2`)].map((heading) => heading.id)
-  expect(ids).toEqual([`as-pie-chart`, `as-bubble-chart`, `as-bar-chart`])
-  const card_text = (name: string) =>
-    find_el(`.composition-card`, (card) => card.querySelector(`h3`)?.textContent === name)
-      ?.textContent
-  expect(card_text(`Percentages`)).toContain(`%`)
-  expect(card_text(`Pie Chart`)).not.toContain(`%`)
 })
 
 // A slow earlier load (the mount default, or a TDB fetch) resolving after a newer pick must
@@ -269,9 +266,6 @@ test(`the host-tool demo offers no predicted trajectory for a molecule`, () => {
   const callbacks = { set_overlay_visible: vi.fn(), start_run: vi.fn() }
   const props = { prediction: null, overlay_visible: false, structure, ...callbacks }
   mount(DemoHostTool, { target: document.body, props: props as never })
-  const button = find_el<HTMLButtonElement>(
-    `button`,
-    (btn) => btn.textContent === `Show predicted trajectory`,
-  )
-  expect(button?.disabled).toBe(true)
+  const is_show = (btn: HTMLButtonElement) => btn.textContent === `Show predicted trajectory`
+  expect(find_el(`button`, is_show)?.disabled).toBe(true)
 })

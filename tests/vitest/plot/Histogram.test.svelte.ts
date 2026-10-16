@@ -95,12 +95,8 @@ const histogram_bins = (
   } = {},
 ) => {
   const counted = compute_histogram_counts(entries, { ...histogram_cfg, ...overrides })
-  return compute_histogram_bins(
-    counted,
-    overrides.normalize ?? `count`,
-    histogram_cfg.series_color,
-    counted,
-  )
+  const normalize = overrides.normalize ?? `count`
+  return compute_histogram_bins(counted, normalize, histogram_cfg.series_color, counted)
 }
 // count range of a set of series binned over histogram_cfg's domains
 const count_range = (
@@ -119,11 +115,9 @@ describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
   // exactly one mark holds the group's tab stop so Tab skips past the chart in one press
   test(`marks are reachable by Tab exactly once`, async () => {
-    const tabindexes = roving_tabindexes(
-      await mount_histogram({
-        series: [{ values: [1, 2, 2, 3, 3, 3, 4, 5, 6, 7], label: `H` }],
-      }),
-    )
+    const values = [1, 2, 2, 3, 3, 3, 4, 5, 6, 7]
+    const plot = await mount_histogram({ series: [{ values, label: `H` }] })
+    const tabindexes = roving_tabindexes(plot)
     expect(tabindexes.length).toBeGreaterThan(1)
     expect(tabindexes).toEqual(one_tab_stop(tabindexes.length))
   })
@@ -175,16 +169,12 @@ describe(`Histogram`, () => {
       expect(ticks.length).toBeGreaterThan(0)
       expect(Math.min(...ticks)).toBeGreaterThan(0)
     }
-    for (const invalid_range of [
-      [0, null],
-      [null, -5],
-    ] as const) {
+    // oxfmt-ignore
+    for (const invalid_range of [[0, null], [null, -5]] as const) {
       expect(await log_ticks([...invalid_range])).toEqual(valid_ticks[0])
     }
-    for (const range of [
-      [100.123, null],
-      [null, 0.0123],
-    ] as const) {
+    // oxfmt-ignore
+    for (const range of [[100.123, null], [null, 0.0123]] as const) {
       const [lower, upper] = count_range(log_series, `log`, [...range])
       expect(lower).toBeGreaterThan(0)
       expect(lower).toBeLessThan(upper)
@@ -248,17 +238,11 @@ describe(`Histogram`, () => {
     [`lone series uses bar.color`, [{ values: [1, 2] }], `#123456`, true],
     [`several series use the palette`, [{ values: [1, 2] }, { values: [2, 3], visible: false }], plot_color(0), false],
   ])(`bar fill: %s`, async (_desc, series, expected_fill, picker_shown) => {
-    await mount_histogram({
-      series,
-      bins: 2,
-      bar: { color: `#123456` },
-      show_controls: true,
-      controls_open: true,
-    })
+    const open = { show_controls: true, controls_open: true }
+    await mount_histogram({ series, bins: 2, bar: { color: `#123456` }, ...open })
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    expect(new Set([...bars].map((bar) => bar.getAttribute(`fill`)))).toEqual(
-      new Set([expected_fill]),
-    )
+    const fills = new Set([...bars].map((bar) => bar.getAttribute(`fill`)))
+    expect(fills).toEqual(new Set([expected_fill]))
     const picker = document.querySelector(`input[aria-label="Fill color hex"]`)
     expect(Boolean(picker)).toBe(picker_shown)
   })
@@ -266,12 +250,8 @@ describe(`Histogram`, () => {
   test(`probability bar heights survive a rect zoom`, async () => {
     const on_bar_hover = vi.fn()
     const values = Array.from({ length: 1000 }, (_, idx) => idx)
-    await mount_histogram({
-      series: [{ values }],
-      normalize: `probability`,
-      bins: 10,
-      on_bar_hover,
-    })
+    const props = { normalize: `probability`, bins: 10, on_bar_hover }
+    await mount_histogram({ series: [{ values }], ...props })
     const svg = plot_svg()
     const { left, top } = svg.getBoundingClientRect()
     const at = (px_x: number, px_y: number) => ({
@@ -320,11 +300,8 @@ describe(`Histogram`, () => {
     expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     const scale_type_sections = document.querySelectorAll(`[data-testid="scale-type-section"]`)
     expect(scale_type_sections).toHaveLength(1)
-    expect(
-      [...scale_type_sections[0].querySelectorAll(`label > span:first-child`)].map(
-        (label) => label.textContent,
-      ),
-    ).toEqual([`X`, `X2`, `Y`])
+    const scale_labels = scale_type_sections[0].querySelectorAll(`label > span:first-child`)
+    expect([...scale_labels].map((label) => label.textContent)).toEqual([`X`, `X2`, `Y`])
     const x_ticks = get_tick_numbers(`x`)
     expect(x_ticks.length).toBeGreaterThan(0)
     expect(Math.max(...x_ticks)).toBeLessThan(100)
@@ -334,10 +311,8 @@ describe(`Histogram`, () => {
   test(`legend writes hidden IDs while preserving input samples and colors`, async () => {
     const first_series = { values: [1, 1, 2, 3, 5], label: `A`, color: `red` }
     const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }
-    const state = {
-      series: [first_series, second_series],
-      hidden_series: [] as (string | number)[],
-    }
+    const hidden_series: (string | number)[] = []
+    const state = { series: [first_series, second_series], hidden_series }
     await mount_histogram(bind_props({ bins: 4, mode: `overlay`, show_legend: true }, state))
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
@@ -357,12 +332,8 @@ describe(`Histogram`, () => {
   // baseline sits ABOVE the bar's value pixel, so bars hang from it at unchanged heights
   test(`bars mirror rather than shift or vanish on reversed x and y ranges`, async () => {
     const bars_for = async (x_range: Vec2, y_range: Vec2) => {
-      await mount_histogram({
-        series: [{ values: [1, 3, 5, 7, 9] }],
-        bins: 5,
-        x_axis: { range: x_range },
-        y_axis: { range: y_range },
-      })
+      const axes = { x_axis: { range: x_range }, y_axis: { range: y_range } }
+      await mount_histogram({ series: [{ values: [1, 3, 5, 7, 9] }], bins: 5, ...axes })
       const boxes = bar_boxes()
       expect(boxes).toHaveLength(5)
       return boxes
@@ -396,35 +367,21 @@ describe(`Histogram`, () => {
     const [legend_x, legend_y] = [left, top].map((px) => Number(px.replace(`px`, ``)))
     const bars = bar_boxes()
     expect(bars).toHaveLength(bins)
-    const overlapping = bars.filter(
-      (bar) =>
-        legend_x < bar.right &&
-        legend_x + 120 > bar.left &&
-        legend_y < bar.bottom &&
-        legend_y + 60 > bar.top,
-    )
-    expect(overlapping).toEqual([])
+    type Box = (typeof bars)[number]
+    const overlap_x = (bar: Box) => legend_x < bar.right && legend_x + 120 > bar.left
+    const overlap_y = (bar: Box) => legend_y < bar.bottom && legend_y + 60 > bar.top
+    expect(bars.filter((bar) => overlap_x(bar) && overlap_y(bar))).toEqual([])
   })
 
   test(`single mode selects exactly one series by its original index, including duplicate and empty labels`, async () => {
     const state = $state({ selected_series_idx: 0 })
-    await mount_histogram(
-      bind_props(
-        {
-          series: [
-            series_of([1], { label: `Hidden`, visible: false }),
-            ...[`Repeated`, `Repeated`, ``, undefined].map((label) =>
-              series_of([1], { label }),
-            ),
-          ],
-          mode: `single`,
-          show_controls: true,
-          controls_open: true,
-          show_legend: true,
-        },
-        state,
-      ),
-    )
+    const labels = [`Repeated`, `Repeated`, ``, undefined]
+    const series = [
+      series_of([1], { label: `Hidden`, visible: false }),
+      ...labels.map((label) => series_of([1], { label })),
+    ]
+    const panes = { show_controls: true, controls_open: true, show_legend: true }
+    await mount_histogram(bind_props({ series, mode: `single`, ...panes }, state))
 
     const { control, set_value } = form_controls()
     const series_select = control(`Series`)
@@ -439,9 +396,8 @@ describe(`Histogram`, () => {
       await set_value(`Series`, String(series_idx))
       expect(state.selected_series_idx).toBe(series_idx)
       const groups = [...document.querySelectorAll(`g.histogram-series`)]
-      expect(groups.map((group) => group.getAttribute(`data-series-idx`))).toEqual([
-        String(series_idx),
-      ])
+      const shown = groups.map((group) => group.getAttribute(`data-series-idx`))
+      expect(shown).toEqual([String(series_idx)])
     }
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     for (const series_idx of [1, 2, 3, 4]) {
@@ -449,17 +405,14 @@ describe(`Histogram`, () => {
       await tick()
     }
     expect(series_select.disabled).toBe(true)
-    expect(series_select.options[series_select.selectedIndex].textContent).toBe(
-      `No visible series`,
-    )
+    const { options, selectedIndex } = series_select
+    expect(options[selectedIndex].textContent).toBe(`No visible series`)
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(0)
     legend_items[3].click()
     await tick()
     expect(series_select.disabled).toBe(false)
     expect(series_select.value).toBe(`3`)
-    expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
-      `3`,
-    )
+    expect(doc_query(`g.histogram-series`).getAttribute(`data-series-idx`)).toBe(`3`)
   })
 
   test.each([`y`, `y2`] as const)(
@@ -474,16 +427,9 @@ describe(`Histogram`, () => {
         },
       })
       const state = { bar: { color: `#112233` }, normalize: `count` as const }
-      await mount_histogram(
-        bind_props(
-          {
-            series: [series_of(values, { label: `Only`, y_axis })],
-            show_controls: true,
-            controls_open: true,
-          },
-          state,
-        ),
-      )
+      const series = [series_of(values, { label: `Only`, y_axis })]
+      const props = { series, show_controls: true, controls_open: true }
+      await mount_histogram(bind_props(props, state))
       const initial_reads = sample_reads
       const fill_input = doc_query<HTMLInputElement>(`input[aria-label="Fill color hex"]`)
       set_input(fill_input, `#wrong`)
@@ -499,11 +445,8 @@ describe(`Histogram`, () => {
         ?.querySelector<HTMLInputElement>(`input[type="number"]`)
       if (!stroke_opacity) throw new Error(`Missing stroke opacity input`)
       set_input(stroke_opacity, `0.25`)
-      expect(state.bar).toEqual({
-        color: `#abcdef`,
-        stroke_color: `#fedcba`,
-        stroke_opacity: 0.25,
-      })
+      const bar = { color: `#abcdef`, stroke_color: `#fedcba`, stroke_opacity: 0.25 }
+      expect(state.bar).toEqual(bar)
       // the controls pane's normalize select writes back into a bound normalize prop
       const { control, set_value } = form_controls()
       expect(control(`Normalize`).value).toBe(`count`)
@@ -528,9 +471,8 @@ describe(`Histogram`, () => {
     const on_bar_hover = vi.fn()
     const on_bar_click = vi.fn()
     // 5 bins over [0, 10]: [0,2) holds fractional weight 2.5 of 5
-    let series = $state([
-      series_of([0, 1, 5, 9], { label: `A`, weights: [1.25, 1.25, 1.5, 1] }),
-    ])
+    const weights = [1.25, 1.25, 1.5, 1]
+    let series = $state([series_of([0, 1, 5, 9], { label: `A`, weights })])
     await mount_histogram({
       get series() {
         return series
@@ -546,36 +488,19 @@ describe(`Histogram`, () => {
     first_bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     // Same payload as the tooltip snippet (HistogramHandlerProps) plus the DOM event, matching BarPlot
-    expect(on_bar_hover).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        value: 1,
-        count: 2.5,
-        property: `A`,
-        label: `A`,
-        series_idx: 0,
-        active_x_axis: `x`,
-        event: expect.any(MouseEvent),
-      }),
-    )
+    const event = expect.any(MouseEvent)
+    const hit = { value: 1, count: 2.5, property: `A`, series_idx: 0, event }
+    const hover_hit = { ...hit, label: `A`, active_x_axis: `x` }
+    expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining(hover_hit))
     const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    expect(tooltip_text).toContain(`Count: 2.5`)
-    expect(tooltip_text).toContain(`Probability: 0.5`)
-    expect(tooltip_text).toContain(`A`)
+    for (const text of [`Count: 2.5`, `Probability: 0.5`, `A`])
+      expect(tooltip_text).toContain(text)
     // Enter/Space activate the bar like a click, other keys are ignored
-    for (const key of [`Enter`, ` `, `a`]) {
+    for (const key of [`Enter`, ` `, `a`])
       first_bar.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-    }
     first_bar.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     expect(on_bar_click).toHaveBeenCalledTimes(3)
-    expect(on_bar_click).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        value: 1,
-        count: 2.5,
-        property: `A`,
-        series_idx: 0,
-        event: expect.any(MouseEvent),
-      }),
-    )
+    expect(on_bar_click).toHaveBeenLastCalledWith(expect.objectContaining(hit))
     first_bar.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
@@ -630,22 +555,17 @@ describe(`Histogram`, () => {
   // weighted bars must get a weighted marginal, else its CDF contradicts the bars beside it
   test(`marginals receive the series weights`, async () => {
     const compute = vi.spyOn(marginal_utils, `compute_marginal_curve`)
-    await mount_histogram({
-      series: [series_of([1, 9], { weights: [9, 1] })],
-      marginals: true,
-    })
+    const series = [series_of([1, 9], { weights: [9, 1] })]
+    await mount_histogram({ series, marginals: true })
     expect(compute.mock.calls.map((call) => call[1])).toContainEqual([9, 1])
   })
 
   // The arithmetic mean of [1, 10] is 5.5, which a log axis draws ~74% across the bar
   test(`log x axis centers the bin at its scale-space midpoint`, async () => {
     const on_bar_hover = vi.fn()
-    await mount_histogram({
-      series: [series_of([2, 5, 20, 200])],
-      bins: 3,
-      x_axis: { scale_type: `log`, range: [1, 1000] },
-      on_bar_hover,
-    })
+    const x_axis = { scale_type: `log`, range: [1, 1000] }
+    const series = [series_of([2, 5, 20, 200])]
+    await mount_histogram({ series, bins: 3, x_axis, on_bar_hover })
     doc_query(`g.histogram-series path[role="button"]`).dispatchEvent(mouse(`mousemove`))
     await tick()
     const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
@@ -710,11 +630,8 @@ describe(`Histogram`, () => {
   })
 
   test(`bin_values: uniform edges in bin space, inclusive upper bound, out-of-domain dropped`, () => {
-    const { edges, counts } = bin_values(
-      [0, 0.5, 1, 2.5, 4, 5, 7.99, 8, 10, 10.0001, -1, NaN],
-      [0, 10],
-      5,
-    )
+    const samples = [0, 0.5, 1, 2.5, 4, 5, 7.99, 8, 10, 10.0001, -1, NaN]
+    const { edges, counts } = bin_values(samples, [0, 10], 5)
     expect(Array.from(edges)).toEqual([0, 2, 4, 6, 8, 10])
     // 10 lands in the last bin (numpy convention); 10.0001, -1 and NaN are dropped
     expect(Array.from(counts)).toEqual([3, 1, 2, 1, 2])
@@ -757,12 +674,8 @@ describe(`Histogram`, () => {
   })
 
   test(`bin_values: log and arcsinh bins are uniform in transformed space`, () => {
-    const { edges, counts } = bin_values(
-      [1, 9.99, 10, 99, 100, 999, 1000, 5000],
-      [1, 1000],
-      3,
-      `log`,
-    )
+    const samples = [1, 9.99, 10, 99, 100, 999, 1000, 5000]
+    const { edges, counts } = bin_values(samples, [1, 1000], 3, `log`)
     for (const [idx, expected] of [1, 10, 100, 1000].entries()) {
       expect(Math.abs(edges[idx] - expected)).toBeLessThan(1e-12 * expected)
     }
@@ -781,12 +694,10 @@ describe(`Histogram`, () => {
     // sample would be dropped): treat it as one bin holding the in-domain samples
     const lower = 1e10
     const upper = lower * (1 + 4 * Number.EPSILON)
-    expect(
-      bin_values([lower, (lower + upper) / 2, upper, 2e10], [lower, upper], 3, `log`),
-    ).toEqual({
-      edges: Float64Array.of(lower, upper),
-      counts: Uint32Array.of(3),
-    })
+    const ulp_samples = [lower, (lower + upper) / 2, upper, 2e10]
+    const collapsed = bin_values(ulp_samples, [lower, upper], 3, `log`)
+    expect(collapsed.edges).toEqual(Float64Array.of(lower, upper))
+    expect(collapsed.counts).toEqual(Uint32Array.of(3))
     // a zero/negative log lower bound is clamped to LOG_EPS instead of producing NaN edges
     const clamped = bin_values([0.5, 1], [0, 1], 2, `log`)
     expect(clamped.edges[0]).toBe(1e-9)
@@ -828,11 +739,8 @@ describe(`Histogram`, () => {
     const values = [1, 2, 3, 10, 30, 50, 70, 90, 100, 400, 900, 1000]
     const { edges, counts } = bin_values(values, [1, 1000], 3, `log`)
     const raw = normalize_counts(edges, counts, `count`)
-    expect(raw.map(({ count, value }) => [count, value])).toEqual([
-      [3, 3],
-      [5, 5],
-      [4, 4],
-    ])
+    // oxfmt-ignore
+    expect(raw.map(({ count, value }) => [count, value])).toEqual([[3, 3], [5, 5], [4, 4]])
     const probability = normalize_counts(edges, counts, `probability`)
     expect(probability.map(({ value }) => value)).toEqual([3 / 12, 5 / 12, 4 / 12])
     const density = normalize_counts(edges, counts, `density`)
@@ -855,11 +763,9 @@ describe(`Histogram`, () => {
       { series_data: series_of([1], { id: `explicit` }), series_idx: 3 },
     ])
     expect(result.map(({ label }) => label)).toEqual([`alpha`, `Series 2`, `Series 4`])
-    expect(result.map(({ max_value, min_value }) => [max_value, min_value])).toEqual([
-      [3, 1],
-      [1, 1],
-      [1, 1],
-    ])
+    const extents = result.map(({ max_value, min_value }) => [max_value, min_value])
+    // oxfmt-ignore
+    expect(extents).toEqual([[3, 1], [1, 1], [1, 1]])
     expect(result[0].color).toBe(`steelblue`)
     expect(result[0].bins.map(({ count }) => count)).toEqual([3, 0, 0, 0, 1])
     expect(result[2]).toMatchObject({ id: `explicit`, series_idx: 3 })
@@ -890,24 +796,17 @@ describe(`Histogram`, () => {
     expect(log_lo).toBeCloseTo(1 / 1.1, 10)
     expect(log_hi).toBeGreaterThanOrEqual(4)
     expect(count_range([series_of([1, 1, 9])], `log`, [0.5, null])[0]).toBe(0.5)
-    expect(
-      count_range(
-        [series_of([1, 1]), series_of([150, 150, 150, 150], { x_axis: `x2` })],
-        `linear`,
-      )[1],
-    ).toBeGreaterThanOrEqual(4)
+    const with_x2 = [series_of([1, 1]), series_of([150, 150, 150, 150], { x_axis: `x2` })]
+    expect(count_range(with_x2, `linear`)[1]).toBeGreaterThanOrEqual(4)
     // one bin per sample stays finite and fast
     const n_samples = 130_000
     const series_data = series_of(Array.from({ length: n_samples }, (_, idx) => idx))
-    const [hist] = histogram_bins([{ series_data, series_idx: 0 }], {
-      x_domain: [0, n_samples],
-      bins: n_samples,
-    })
+    const per_sample = { x_domain: [0, n_samples] as Vec2, bins: n_samples }
+    const [hist] = histogram_bins([{ series_data, series_idx: 0 }], per_sample)
     expect(hist.bins.map(({ count }) => count)).toEqual(Array(n_samples).fill(1))
     const y_limit: [null, null] = [null, null]
-    expect(
-      compute_count_range([hist], { scale_type: `linear`, y_limit, range_padding: 0 }),
-    ).toEqual([0, 1])
+    const range_opts = { scale_type: `linear`, y_limit, range_padding: 0 } as const
+    expect(compute_count_range([hist], range_opts)).toEqual([0, 1])
   })
 })
 

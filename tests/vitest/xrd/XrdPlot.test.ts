@@ -15,7 +15,7 @@ import {
   resize_element,
   set_input,
 } from '../setup'
-import { gzip_bytes } from '../test-fixtures'
+import { BAD_ROW_CIF, gzip_bytes, init_moyo_for_tests } from '../test-fixtures'
 import XrdPlotHarness from './XrdPlotHarness.svelte'
 import { trigger_intersection } from '../environment'
 
@@ -66,19 +66,13 @@ const axis_text = (target: HTMLElement, axis: `x` | `y`): string =>
   target.querySelector(`.${axis}-axis .axis-label`)?.textContent ?? ``
 
 const empty: XrdPattern = { x: [], y: [], hkls: [], d_hkls: [] }
-const both_empty = { A: { pattern: empty }, B: { pattern: empty } }
 const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
 const all_hkl_labels = [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`]
 
 test(`XRD demos defer calculation, reuse cached patterns and display calculation errors`, async () => {
   const compute = vi.spyOn(xrd, `compute_xrd_pattern`).mockReturnValue(pattern)
-  const symmetry_rotations: Matrix3x3[] = [
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-  ]
+  // oxfmt-ignore
+  const symmetry_rotations: Matrix3x3[] = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]
   const analyze = vi.spyOn(xrd, `xrd_symmetry_rotations`).mockResolvedValue(symmetry_rotations)
   const saed = vi.spyOn(xrd, `compute_saed_pattern`).mockImplementation(() => {
     throw new Error(`SAED unavailable`)
@@ -138,13 +132,8 @@ describe(`XrdPlot`, () => {
   test.each([
     [`basic`, { patterns: pattern }],
     [`empty`, { patterns: { x: [], y: [] } }],
-    [
-      `mixed empty and valid patterns`,
-      {
-        patterns: { Empty: { pattern: empty }, Valid: { pattern, color: `blue` } },
-      },
-    ],
-    [`all empty patterns`, { patterns: both_empty }],
+    [`mixed empty and valid`, { patterns: { Empty: { pattern: empty }, Valid: { pattern } } }],
+    [`all empty patterns`, { patterns: { A: { pattern: empty }, B: { pattern: empty } } }],
   ] as [string, XrdProps][])(`renders %s without Infinity/NaN in DOM`, async (desc, props) => {
     const target = await mount_xrd(props)
     const text = target.textContent ?? ``
@@ -181,6 +170,10 @@ describe(`XrdPlot`, () => {
   })
 
   // `swapped` marks the horizontal layout, where the 2θ and intensity axes trade places
+  const custom_labels = {
+    x_axis: { label: `Custom 2θ` },
+    y_axis: { label: `Custom Intensity` },
+  }
   test.each([
     [
       `compact`,
@@ -194,25 +187,11 @@ describe(`XrdPlot`, () => {
       [`(1, 1, 0) @ 20°`, `(1, 1, 1) @ 30°`, `(2, 0, 0) @ 40°`],
       false,
     ],
-    [`vertical`, { orientation: `vertical` }, all_hkl_labels, false],
-    [`horizontal`, { orientation: `horizontal` }, all_hkl_labels, true],
+    // x_axis/y_axis name the 2θ/intensity axes, so custom labels follow them across the swap
+    [`vertical custom`, { orientation: `vertical`, ...custom_labels }, all_hkl_labels, false],
     [
-      `vertical custom labels`,
-      {
-        orientation: `vertical`,
-        x_axis: { label: `Custom 2θ Label` },
-        y_axis: { label: `Custom Intensity Label` },
-      },
-      all_hkl_labels,
-      false,
-    ],
-    [
-      `horizontal custom labels`,
-      {
-        orientation: `horizontal`,
-        x_axis: { label: angle_label },
-        y_axis: { label: intensity_label },
-      },
+      `horizontal custom`,
+      { orientation: `horizontal`, ...custom_labels },
       all_hkl_labels,
       true,
     ],
@@ -282,57 +261,35 @@ describe(`XrdPlot`, () => {
     expect(axis_text(target, `y`)).toContain(angle_label)
   })
 
-  // [desc, pattern, axis, tick text that must appear, tick text that must not]
+  // [desc, 2θ values, x-axis tick text that must appear, tick text that must not]
   test.each([
     // starts at 0, ends at 40-49
-    [
-      `angle range from 0 to max when data starts below 10°`,
-      { x: [5, 20, 42.7], y: [100, 200, 150] },
-      `x`,
-      [`0`, /4[0-9]/],
-      [],
-    ],
+    [`at 0 for data from below 10°`, [5, 20, 42.7], [`0`, /4[0-9]/], []],
     // starts at floor(44)=44, ends at ceil(48)=48, and shows no lower values
-    [
-      `angle range starts at data min when data starts above 10°`,
-      { x: [44, 45, 48], y: [10, 100, 20] },
-      `x`,
-      [`44`, `48`],
-      [`0`, `10`, `20`, `30`],
-    ],
-  ] as [string, XrdPattern, `x` | `y`, (string | RegExp)[], string[]][])(
-    `axis ranges: %s`,
-    async (_desc, test_pattern, axis, expects, not_expects) => {
-      const target = await mount_xrd({ patterns: test_pattern })
-      const text = target.querySelector(`.${axis}-axis`)?.textContent ?? ``
-      for (const expected of expects) {
-        if (typeof expected === `string`) expect(text).toContain(expected)
-        else expect(text).toMatch(expected)
-      }
+    [`at the data min above 10°`, [44, 45, 48], [`44`, `48`], [`0`, `10`, `20`, `30`]],
+  ] as [string, number[], (string | RegExp)[], string[]][])(
+    `angle axis starts %s`,
+    async (_desc, angles, expects, not_expects) => {
+      const target = await mount_xrd({ patterns: { x: angles, y: [100, 200, 150] } })
+      const text = target.querySelector(`.x-axis`)?.textContent ?? ``
+      for (const expected of expects) expect(text).toMatch(expected)
       for (const not_val of not_expects) expect(text).not.toContain(not_val)
     },
   )
 
   test(`peak label overlap filtering keeps only highest intensity`, async () => {
-    // Pattern with multiple peaks very close together - only highest should be labeled
-    const overlapping_pattern: XrdPattern = {
-      x: [10, 45.8, 45.81, 45.82, 45.83, 45.84, 60],
-      y: [10, 80, 85, 100, 90, 75, 20], // 45.82 has highest intensity
-      hkls: [],
-      d_hkls: [],
-    }
-
     const target = await mount_xrd({
-      patterns: overlapping_pattern,
-      annotate_peaks: 5, // Request 5 annotations
+      patterns: {
+        x: [10, 45.8, 45.81, 45.82, 45.83, 45.84, 60],
+        y: [10, 80, 85, 100, 90, 75, 20],
+      },
+      annotate_peaks: 5,
       show_angles: true,
       hkl_format: null,
     })
-
     const label_texts = Array.from(target.querySelectorAll(`.bar-label`))
       .map((element) => element.textContent?.trim())
       .filter(Boolean)
-
     // The 5 most intense peaks are all in the 45.8x cluster, so overlap filtering leaves a
     // single label: the tallest one (45.82°). The 10° and 60° peaks are outside the top 5.
     expect(label_texts).toEqual([`45.82°`])
@@ -626,6 +583,26 @@ describe(`XrdPlot`, () => {
       )
     },
   )
+
+  // Structure files open through open_material (worker parse) and show its warnings; measured
+  // data files still parse here
+  test(`dropped structure and data files plot, with the structure's parse warnings`, async () => {
+    await init_moyo_for_tests() // symmetry-merged reflections of the dropped structure
+    const target = await mount_xrd({ patterns: [] })
+    query(target, `.xrd-empty-state`).dispatchEvent(
+      create_drop_event([
+        new File([BAD_ROW_CIF], `si.cif`),
+        new File([`10 100\n20 50`], `scan.xy`),
+      ]),
+    )
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+        /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
+      ),
+    )
+    expect(document.body.textContent).toContain(`si.cif`)
+    expect(document.body.textContent).toContain(`scan.xy`)
+  })
 
   test(`an empty dropped file is reported, not forwarded`, async () => {
     const on_file_drop = vi.fn()

@@ -8,20 +8,27 @@
   import type { ShowControlsProp } from '#lib/controls.js'
   import StatGrid from 'svelte-widgets/StatGrid.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import EmptyState from '#lib/EmptyState.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { as_text, file_drop_zone } from '#lib/io/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { display_idx, format_num } from '#lib/labels.js'
-  import { FullscreenButton } from '#lib/layout/index.js'
+  import { display_idx, format_num, parse_warnings_notice } from '#lib/labels.js'
+  import { FullscreenButton, ShortcutsHelp } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
+  import {
+    create_sequence_player,
+    is_sequence_key_target,
+  } from '#lib/layout/sequence-player.svelte.js'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import { clamp } from '#lib/math.js'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
+  import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
   import { to_error } from '#lib/utils.js'
+  import { viewer_keydown } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {
@@ -135,18 +142,16 @@
   const n_images = $derived(active?.path.images.length ?? 0)
   const image_idx = $derived(clamp(active_image_idx, 0, Math.max(n_images - 1, 0)))
   const current_image = $derived(active?.path.images[image_idx])
-  // A file's own image label leads unless it just restates this image's 0- or 1-based index
-  // (`image 0`); a different number (a sub-path's `image 3`) is real information. The 1-based
-  // position always follows.
-  const own_label = $derived.by(() => {
-    const label_num = Number(
-      /^image (?<num>\d+)$/i.exec(current_image?.label ?? ``)?.groups?.num,
+  // A file's own image label leads the 1-based position unless it just restates this image's
+  // 0- or 1-based index (`image 0`); a different number (a sub-path's `image 3`) is real info
+  const image_caption = $derived.by(() => {
+    const { label = `` } = current_image ?? {}
+    const position = `image ${display_idx(image_idx)} of ${n_images}`
+    const restated = [image_idx, display_idx(image_idx)].some(
+      (num) => label.toLowerCase() === `image ${num}`,
     )
-    return [image_idx, display_idx(image_idx)].includes(label_num) ? `` : current_image?.label
+    return label && !restated ? `${label}: ${position}` : position
   })
-  const image_caption = $derived(
-    `${own_label ? `${own_label}: ` : ``}image ${display_idx(image_idx)} of ${n_images}`,
-  )
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
   const playback = create_sequence_player({
@@ -159,23 +164,33 @@
     should_auto_play: () => auto_play && Boolean(active),
   })
 
+  // Playback keys work while the viewer is focused or hovered, as in Trajectory, not only
+  // while its slider has focus
+  const keys = viewer_keydown(
+    (event) => is_sequence_key_target(event) && playback.handle_keydown(event),
+  )
+
   // Keep the public binding aligned with the clamped image shown after changing paths. With
   // no path yet there is nothing to clamp against, so a bound index waits for its paths.
   $effect(() => {
     if (n_images > 0 && active_image_idx !== image_idx) active_image_idx = image_idx
   })
 
+  // The latest drop's recoverable parse warnings, one dismissible notice
+  let parse_warning_msg = $state<string>()
   // Loose structure files only form a path TOGETHER, so a drop is parsed as one batch
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_batch: (dropped) => {
-      error_msg = undefined
+      ;[error_msg, parse_warning_msg] = [undefined, undefined]
       const files = dropped.map(({ content, filename }) => ({
         content: as_text(content),
         filename,
       }))
       try {
-        const parsed = parse_dropped_paths(files)
+        const { value: parsed, warnings } = collect_parse_warnings(() =>
+          parse_dropped_paths(files),
+        )
         // Profile before accepting, so an unplottable path is refused with its reason
         for (const path of Object.values(parsed)) path_profile(path, profile_options)
         for (const [key, path] of Object.entries(parsed)) {
@@ -183,6 +198,7 @@
           active_path_key = key
         }
         active_image_idx = 0
+        parse_warning_msg = parse_warnings_notice(warnings)
       } catch (exc) {
         const names = files.map(({ filename }) => filename).join(`, `)
         error_msg = `${names}: ${to_error(exc).message}`
@@ -241,16 +257,23 @@
   })
 </script>
 
-<div {...rest} bind:this={wrapper} class={[`neb-viewer`, rest.class]} {@attach drop_zone}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+  role="application"
+  aria-label="Reaction path viewer"
+  tabindex="0"
+  {...rest}
+  bind:this={wrapper}
+  class={[`neb-viewer`, rest.class]}
+  {@attach drop_zone}
+  {@attach keys}
+>
   {#if !active || !profile}
-    <div class="empty">
-      <StatusMessage
-        message={allow_file_drop
-          ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
-          : `No reaction path to display`}
-        style="border: none"
-      />
-    </div>
+    <EmptyState
+      message={allow_file_drop
+        ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
+        : `No reaction path to display`}
+    />
   {:else}
     <SequenceControlBar
       class="neb-controls"
@@ -291,6 +314,7 @@
         </span>
       {/if}
 
+      <ShortcutsHelp scopes={[`viewer`, `sequence`]} {wrapper} />
       {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
@@ -299,7 +323,6 @@
           bg_css_var="--neb-bg-fullscreen"
           on_change={on_fullscreen_change}
           class="fullscreen-button"
-          style="margin-inline-start: auto"
         />
       {/if}
       {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
@@ -360,6 +383,9 @@
   {#if profile_failures.length > 0}
     <StatusMessage message={profile_failures.join(`; `)} type="error" />
   {/if}
+  <ViewerNotices>
+    <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
+  </ViewerNotices>
   <ViewerError bind:message={error_msg} dismissible />
 </div>
 
@@ -372,6 +398,10 @@
     container-type: inline-size;
     --sequence-controls-wrap: wrap;
     --sequence-slider-min-width: 80pt;
+  }
+  /* push the chrome buttons (shortcuts, fullscreen, export) to the bar's end */
+  .neb-viewer :global(.neb-controls > .shortcuts-btn) {
+    margin-inline-start: auto;
   }
   .neb-viewer:fullscreen {
     width: 100vw;
@@ -395,12 +425,6 @@
   .neb-viewer.dragover {
     outline: 2px dashed var(--accent-color, #4e79a7);
     outline-offset: 4px;
-  }
-  .empty {
-    outline: 2px dashed var(--border-color, #ccc);
-    border-radius: var(--border-radius, 3pt);
-    text-align: center;
-    padding: 2em 1em;
   }
   .path-control {
     display: flex;

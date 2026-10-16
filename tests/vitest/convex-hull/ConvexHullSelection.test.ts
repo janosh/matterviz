@@ -228,22 +228,38 @@ describe(`convex hull replacement state`, () => {
     expect(warn).toHaveBeenCalledWith(`ConvexHull: duplicate entry_id "dup"`)
   })
 
+  // The face color bar draws what the faces use: color_scale over the faces' formation
+  // energies in formation_energy mode (it used to keep the uniform mode's alpha ramp)
+  test.each([
+    [`formation_energy`, true],
+    [`uniform`, false],
+  ] as const)(`%s face mode color bar uses color_scale: %s`, async (mode, uses_scale) => {
+    const entries = [
+      ...[`Li`, `Fe`, `O`].map((element) => make_phase({ [element]: 1 })),
+      make_phase({ Li: 2, O: 1 }, -1.2),
+      make_phase({ Fe: 1, O: 1 }, -0.9),
+      make_phase({ Li: 1, Fe: 1, O: 2 }, -1.5),
+    ]
+    const target = await mount_hull({
+      entries,
+      color_mode: `stability`,
+      show_hull_faces: true,
+      hull_face_color_mode: mode,
+      color_scale: `interpolateReds`,
+    })
+    const bars = [...target.querySelectorAll<HTMLElement>(`.colorbar`)]
+    const face_bar = bars.find((bar) => bar.textContent?.includes(`Formation energy`))
+    const gradient = face_bar?.querySelector<HTMLElement>(`[style*="linear-gradient"]`)
+    const style = gradient?.getAttribute(`style`) ?? ``
+    expect(style).toContain(`linear-gradient`)
+    for (const end of [0, 1]) expect(style.includes(interpolateReds(end))).toBe(uses_scale)
+  })
+
   // One export pane for every dimensionality: the 2D plot as SVG/PNG, 3D/4D as a PNG
   // redrawn at export resolution; entries as CSV (element amounts as columns) and JSON
-  test.each([
-    [
-      [`Li`, `O`],
-      [`PNG`, `SVG`, `CSV`, `JSON`],
-    ],
-    [
-      [`Li`, `Fe`, `O`],
-      [`PNG`, `CSV`, `JSON`],
-    ],
-    [
-      [`Li`, `Fe`, `P`, `O`],
-      [`PNG`, `CSV`, `JSON`],
-    ],
-  ])(`%j hull exports %j`, async (elements, offered) => {
+  test.each([`Li O`, `Li Fe O`, `Li Fe P O`])(`%s hull export pane`, async (chem_sys) => {
+    const elements = chem_sys.split(` `)
+    const offered = [`PNG`, ...(elements.length === 2 ? [`SVG`] : []), `CSV`, `JSON`]
     const entries = [
       ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
       make_phase({ [elements[0]]: 2, [elements.at(-1) ?? ``]: 1 }, -2, { entry_id: `mix` }),
@@ -253,13 +269,9 @@ describe(`convex hull replacement state`, () => {
     const result = await export_via_pane(on_export, `CSV`, target)
     expect(result.offered).toEqual(offered)
     const [header, ...rows] = String(result.data).split(`\n`)
-    expect(header).toBe(
-      [
-        `entry_id,formula`,
-        ...elements.toSorted(),
-        `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`,
-      ].join(`,`),
-    )
+    const energy_cols = `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`
+    const element_cols = elements.toSorted().join(`,`)
+    expect(header).toBe(`entry_id,formula,${element_cols},${energy_cols}`)
     expect(rows.map((row) => row.split(`,`)[0]).toSorted()).toEqual(
       [...elements, `mix`].toSorted(),
     )
@@ -581,6 +593,8 @@ describe(`convex hull replacement state`, () => {
         create_drop_event(new File([json], `hull.json`)),
       )
       await vi.waitFor(() => expect(test_text(`stable-count`)).toBe(`${dropped.length}`))
+      // on_file_load reports the entries with their source
+      expect(test_text(`loaded-file`)).toBe(`hull.json < hull.json`)
     },
   )
 
@@ -624,6 +638,20 @@ describe(`convex hull replacement state`, () => {
       expect(document.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
     },
   )
+
+  // tooltip=false hides the 3D hover tooltip (2D defers to ScatterPlot's tooltip prop)
+  test.each([undefined, false] as const)(`3d hover tooltip=%s`, async (tooltip) => {
+    const entries = [`Li`, `O`, `Na`].map((element) => make_phase({ [element]: 1 }))
+    const target = await mount_hull({ entries, tooltip })
+    target
+      .querySelector(`canvas`)
+      ?.dispatchEvent(
+        new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+      )
+    flushSync()
+    expect(target.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
+    expect(document.querySelector(`.tooltip-content`) !== null).toBe(tooltip === undefined)
+  })
 
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
   // to animate one ring. The rings now live on a transparent canvas stacked over the hull.
@@ -673,21 +701,24 @@ describe(`convex hull replacement state`, () => {
 
   // Enter selects the hovered entry, but the chord belongs to the browser (Cmd+Enter is
   // open-in-new-tab). The chord guard has to run before the Enter branch, not after it.
+  // Like every viewer's keys, the hull's also reach it hovered without focus (window keydown)
   test.each([
-    [`Enter selects the hovered entry`, {}, `old-compound`],
-    [`Cmd+Enter is left to the browser`, { metaKey: true }, `none`],
-    [`Ctrl+Enter is left to the browser`, { ctrlKey: true }, `none`],
-  ])(`%s`, async (_name, modifiers, expected) => {
+    [`Enter selects the hovered entry`, {}, `old-compound`, false],
+    [`Enter without focus selects it too`, {}, `old-compound`, true],
+    [`Cmd+Enter is left to the browser`, { metaKey: true }, `none`, false],
+    [`Ctrl+Enter is left to the browser`, { ctrlKey: true }, `none`, true],
+  ])(`%s`, async (_name, modifiers, expected, hover_only) => {
     await mount_harness({ dim: `3d` })
     const canvas = doc_query<HTMLCanvasElement>(`canvas`)
     canvas.dispatchEvent(
       new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
     )
+    doc_query(`.convex-hull-3d`).dispatchEvent(new PointerEvent(`pointerenter`))
     flushSync()
 
-    canvas.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers }),
-    )
+    const event = new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers })
+    if (hover_only) globalThis.dispatchEvent(event)
+    else canvas.dispatchEvent(event)
     await tick()
     expect(selected_text()).toBe(expected)
   })

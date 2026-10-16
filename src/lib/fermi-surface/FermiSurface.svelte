@@ -20,11 +20,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
-  import {
-    create_color_scale,
-    resolve_value_range,
-    to_color_scale_config,
-  } from '#lib/plot/core/scales.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -43,7 +39,8 @@
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { viewer_keys } from '#lib/shortcuts.js'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BandGridData,
     FermiErrorData,
@@ -51,18 +48,10 @@
     FermiHoverData,
     FermiSurfaceData,
     FermiSurfaceSettings,
-    FermiTooltipConfig,
+    FermiTooltipProp,
     SpinChannel,
   } from './types'
   import { is_fermi_surface_data } from './types'
-
-  type FermiSurfaceControlName = `filename` | `fullscreen` | `controls` | `export-pane`
-
-  type FermiFullscreenData = {
-    fermi_data?: FermiSurfaceData
-    bz_data?: BrillouinZoneData
-    fullscreen?: boolean
-  }
 
   let {
     fermi_data = $bindable(),
@@ -109,7 +98,7 @@
     loading = $bindable(false),
     error_msg = $bindable(),
     children,
-    tooltip_config,
+    tooltip,
     on_file_drop,
     on_file_load,
     on_error,
@@ -141,7 +130,7 @@
       custom_property_label?: string
       selected_bands?: number[]
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
-      show_controls?: ShowControlsProp<FermiSurfaceControlName>
+      show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
       fullscreen?: boolean
       width?: number
       height?: number
@@ -158,8 +147,12 @@
       on_file_drop?: FileLoadCallback
       on_file_load?: (data: FermiFileLoadData) => void
       on_error?: (data: FermiErrorData) => void
-      on_fullscreen_change?: (data: FermiFullscreenData) => void
-      tooltip_config?: Snippet<[{ hover_data: FermiHoverData }]> | FermiTooltipConfig
+      on_fullscreen_change?: (data: {
+        fermi_data?: FermiSurfaceData
+        bz_data?: BrillouinZoneData
+        fullscreen: boolean
+      }) => void
+      tooltip?: FermiTooltipProp
       on_point_hover?: (data: FermiHoverData | null) => void
     } & HTMLAttributes<HTMLDivElement> = $props()
 
@@ -173,33 +166,53 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
+  const attempt = <T>(prefix: string, compute: () => T): { value?: T; error?: string } => {
+    try {
+      return { value: compute() }
+    } catch (err) {
+      return { error: `${prefix}: ${to_error(err).message}` }
+    }
+  }
   // Normalise the data props once at the boundary: pymatviz's `fermi_data`/`band_data` traits
   // can only travel as JSON (plain vertex/face rows, nested energies), while everything below
   // consumes typed arrays. Typed input passes through by identity. A malformed payload is
   // reported through error_msg/on_error instead of throwing mid-render. Separate deriveds, so
   // committing an extracted fermi_data does not re-normalise a JSON band_data into a new grid
   // (which re-ran the extraction every frame).
-  const try_normalize = <T>(normalize: () => T): { value?: T; error?: string } => {
-    try {
-      return { value: normalize() }
-    } catch (err) {
-      return { error: `Invalid Fermi surface data: ${to_error(err).message}` }
-    }
-  }
+  const invalid = `Invalid Fermi surface data`
   const surface_result = $derived(
-    try_normalize(() => fermi_data && normalize_fermi_surface(fermi_data)),
+    attempt(invalid, () => fermi_data && normalize_fermi_surface(fermi_data)),
   )
   const grid_result = $derived(
-    try_normalize(() => band_data && normalize_band_grid(band_data)),
+    attempt(invalid, () => band_data && normalize_band_grid(band_data)),
   )
   const surface_data = $derived(surface_result.value)
   const grid_data = $derived(grid_result.value)
+
+  // BZ of whichever reciprocal lattice is available (priority order)
+  const k_lattice = $derived(
+    surface_data?.k_lattice ??
+      grid_data?.k_lattice ??
+      (structure?.lattice?.matrix
+        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+        : null),
+  )
+  const bz_result = $derived(
+    attempt(`BZ computation failed`, () => k_lattice && compute_brillouin_zone(k_lattice, 1)),
+  )
+  $effect(() => {
+    bz_data = bz_result.value ?? undefined
+  })
+
   // The notice this effect raised is cleared once a later payload normalises, so a host that
   // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
-  // supplied by the caller are left alone.
+  // supplied by the caller are left alone. Only a structure's (user input) zone is reported.
   let reported_normalize_error: string | undefined
   $effect(() => {
-    const error = surface_result.error ?? grid_result.error
+    const error =
+      surface_result.error ??
+      grid_result.error ??
+      (structure?.lattice?.matrix ? bz_result.error : undefined)
     if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
       error_msg = undefined
     }
@@ -341,53 +354,19 @@
         )
       : [0, 1],
   )
-  const value_range = $derived(resolve_value_range(color_scale, fitted_value_range))
-
-  // BZ of whichever reciprocal lattice is available (priority order)
-  const k_lattice = $derived(
-    surface_data?.k_lattice ??
-      grid_data?.k_lattice ??
-      (structure?.lattice?.matrix
-        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-        : null),
+  // Shared by the surface and its ColorBar so both draw the same colors
+  const resolved_color_scale = $derived(
+    resolve_color_scale(color_scale, fitted_value_range).color_scale,
   )
-  $effect(() => {
-    if (!k_lattice) {
-      bz_data = undefined
-      return
-    }
-    try {
-      bz_data = compute_brillouin_zone(k_lattice, 1)
-    } catch (err) {
-      const msg = to_error(err).message
-      console.warn(`BZ computation failed:`, msg)
-      bz_data = undefined
-      // Only report error for structure-derived lattice (user-provided data)
-      if (structure?.lattice?.matrix) {
-        const err_msg = `BZ computation failed: ${msg}`
-        error_msg = err_msg
-        untrack(() => on_error?.({ error_msg: err_msg }))
-      }
-    }
-  })
 
   // Auto-enable BZ tiling when irreducible data is detected
   $effect(() => {
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  function handle_keydown(event: KeyboardEvent) {
-    if (event.defaultPrevented || event.isComposing) return
-    if (is_editable_event_target(event.target)) return
-    // Only handle shortcuts when component is focused/hovered or contains focus
-    if (!wrapper?.contains(document.activeElement) && !hovered) return
-
-    // `f` is owned by FullscreenButton, which arbitrates it between nested viewers
-    if (event.key === `Escape`) controls_open = false
-  }
+  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
+  const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
 </script>
-
-<svelte:window onkeydown={handle_keydown} />
 
 <div
   role="region"
@@ -400,6 +379,7 @@
   {...rest}
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
   {@attach drop_zone}
+  {@attach keys}
 >
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
@@ -417,6 +397,7 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
+      shortcut_scopes={[`viewer`, `camera`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ fermi_data: surface_data, bz_data, fullscreen: value })}
     >
@@ -468,7 +449,7 @@
           fermi_data={surface_data}
           {bz_data}
           {color_property}
-          color_scale={{ ...to_color_scale_config(color_scale), value_range }}
+          color_scale={resolved_color_scale}
           property_name={active_property}
           property_label={custom_property_label}
           {slice_plane}
@@ -499,9 +480,7 @@
       {#if color_bar && color_property === `property` && active_property !== undefined}
         <ColorBar
           title={property_label(active_property, custom_property_label)}
-          scale={{ fn: create_color_scale(color_scale, value_range), domain: value_range }}
-          scale_type={to_color_scale_config(color_scale).type}
-          range={value_range}
+          color_scale={resolved_color_scale}
           snap_ticks={false}
           tick_labels={3}
           orientation="horizontal"
@@ -514,7 +493,7 @@
 
       <!-- Hover tooltip; a k-path point reads like a Brillouin zone hover, in its tint -->
       {@const hovered = hover_data ?? kpath_hover_data}
-      {#if hovered}
+      {#if hovered && tooltip !== false}
         <PlotTooltip
           {...hovered.screen_position}
           offset={{ x: 12, y: -12 }}
@@ -523,7 +502,7 @@
           style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
           {#if hover_data}
-            <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
+            <FermiSurfaceTooltip {hover_data} {tooltip} />
           {:else if kpath_hover_data}
             <BrillouinZoneTooltip hover_data={kpath_hover_data} />
           {/if}

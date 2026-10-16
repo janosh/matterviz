@@ -27,7 +27,7 @@ import {
 import { generate_lattice_points } from '#lib/structure/supercell.js'
 import { structures } from '#site/structures.js'
 import { assert, describe, expect, test, vi } from 'vitest'
-import { make_crystal } from '../test-fixtures'
+import { cubic_matrix, make_crystal } from '../test-fixtures'
 import {
   create_numeric_md_frame,
   encode_frame,
@@ -102,11 +102,7 @@ describe(`numeric composition`, () => {
   const frame = create_numeric_md_frame(
     Float64Array.of(0, 0, 0, 1, 1, 1),
     Uint8Array.of(14, 32),
-    [
-      [20, 0, 0],
-      [0, 20, 0],
-      [0, 0, 20],
-    ],
+    cubic_matrix(20),
     [false, false, false],
     0,
     {},
@@ -115,10 +111,7 @@ describe(`numeric composition`, () => {
 
   test(`element counts and density exclude periodic images without materializing sites`, () => {
     const structure = materialize_frame(frame).structure
-    structure.sites.push({
-      ...structure.sites[0],
-      provenance: { image_of: 0 },
-    })
+    structure.sites.push({ ...structure.sites[0], provenance: { image_of: 0 } })
     expect(struct_utils.get_element_counts(structure)).toEqual({ Si: 1, Ge: 1 })
 
     const view = new FrameView()
@@ -199,14 +192,9 @@ describe(`get_center_of_mass`, () => {
 
   // [element, occupancy, xyz] per site
   const create_simple_structure = (sites: [ElementSymbol, number, Vec3][]): AnyStructure => ({
-    sites: sites.map(([element, occu, xyz], idx) => ({
-      species: [{ element, occu, oxidation_state: 0 }],
-      abc: xyz,
-      xyz,
-      label: `${element}${idx + 1}`,
-      properties: {},
-    })),
-    charge: 0,
+    sites: sites.map(([element, occu, xyz], idx) =>
+      create_site(element, xyz, xyz, `${element}${idx + 1}`, {}, occu),
+    ),
   })
 
   // oxfmt-ignore
@@ -228,30 +216,11 @@ describe(`get_center_of_mass`, () => {
 
 // Content AABB framing (camera-fit.ts) — look-at center + padded sphere extent for zoom.
 describe(`structure_fit_frame`, () => {
-  const site = (element: ElementSymbol, xyz: Vec3): Site => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
-    abc: [0, 0, 0],
-    xyz,
-    label: element,
-    properties: {},
-  })
+  const site = (element: ElementSymbol, xyz: Vec3): Site =>
+    create_site(element, [0, 0, 0], xyz, element)
   const cubic = (value_a: number, sites: Site[]): AnyStructure => ({
+    ...make_crystal(value_a, []),
     sites,
-    lattice: {
-      matrix: [
-        [value_a, 0, 0],
-        [0, value_a, 0],
-        [0, 0, value_a],
-      ],
-      a: value_a,
-      b: value_a,
-      c: value_a,
-      alpha: 90,
-      beta: 90,
-      gamma: 90,
-      volume: value_a ** 3,
-      pbc: [true, true, true],
-    },
   })
   const extent = (...args: Parameters<typeof structure_fit_frame>) =>
     structure_fit_frame(...args).extent
@@ -293,63 +262,23 @@ describe(`structure_fit_frame`, () => {
     )
   })
 
+  const h_origin = { sites: [site(`H`, [0, 0, 0])] }
+  const h_mg_site = {
+    ...site(`H`, [0, 0, 0]),
+    species: ([`H`, `Mg`] as const).map((element) => ({
+      element,
+      occu: 0.5,
+      oxidation_state: 0,
+    })),
+  }
+  // oxfmt-ignore
   test.each([
-    [
-      `atom centers only`,
-      { sites: [site(`Mg`, [-2, 0, 0]), site(`Mg`, [2, 0, 0])] },
-      { atom_radius_scale: 0 },
-      4 * DEFAULT_FIT_PADDING,
-    ],
-    [
-      `same_size unit radius`,
-      { sites: [site(`H`, [0, 0, 0])] },
-      { same_size_atoms: true, atom_radius_scale: 2 },
-      4 * DEFAULT_FIT_PADDING,
-    ],
-    [
-      `site override`,
-      { sites: [site(`H`, [0, 0, 0])] },
-      { site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1 },
-      10 * DEFAULT_FIT_PADDING,
-    ],
-    [
-      `same_size ignores site override`,
-      { sites: [site(`H`, [0, 0, 0])] },
-      {
-        same_size_atoms: true,
-        site_radius_overrides: new Map([[0, 5]]),
-        atom_radius_scale: 1,
-      },
-      2 * DEFAULT_FIT_PADDING,
-    ],
-    [
-      `unequal radii at opposite off-origin corners`,
-      { sites: [site(`H`, [-100, 200, -300]), site(`Mg`, [100, 600, 300])] },
-      {
-        atom_radius_scale: 1,
-        site_radius_overrides: new Map([
-          [0, 1],
-          [1, 3],
-        ]),
-      },
-      2 * (Math.hypot(101, 201, 301) + 1) * DEFAULT_FIT_PADDING,
-    ],
-    [
-      `occupancy-weighted disordered site`,
-      {
-        sites: [
-          {
-            ...site(`H`, [0, 0, 0]),
-            species: [
-              { element: `H`, occu: 0.5, oxidation_state: 0 },
-              { element: `Mg`, occu: 0.5, oxidation_state: 0 },
-            ],
-          },
-        ],
-      },
-      { atom_radius_scale: 1, element_radius_overrides: { H: 1, Mg: 3 } },
-      4 * DEFAULT_FIT_PADDING,
-    ],
+    [`atom centers only`, { sites: [site(`Mg`, [-2, 0, 0]), site(`Mg`, [2, 0, 0])] }, { atom_radius_scale: 0 }, 4 * DEFAULT_FIT_PADDING],
+    [`same_size unit radius`, h_origin, { same_size_atoms: true, atom_radius_scale: 2 }, 4 * DEFAULT_FIT_PADDING],
+    [`site override`, h_origin, { site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1 }, 10 * DEFAULT_FIT_PADDING],
+    [`same_size ignores site override`, h_origin, { same_size_atoms: true, site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1 }, 2 * DEFAULT_FIT_PADDING],
+    [`unequal radii at opposite off-origin corners`, { sites: [site(`H`, [-100, 200, -300]), site(`Mg`, [100, 600, 300])] }, { atom_radius_scale: 1, site_radius_overrides: new Map([[0, 1], [1, 3]]) }, 2 * (Math.hypot(101, 201, 301) + 1) * DEFAULT_FIT_PADDING],
+    [`occupancy-weighted disordered site`, { sites: [h_mg_site] }, { atom_radius_scale: 1, element_radius_overrides: { H: 1, Mg: 3 } }, 4 * DEFAULT_FIT_PADDING],
   ] satisfies [string, AnyStructure, StructureFitOpts, number][])(
     `%s`,
     (_label, structure, opts, expected) => {
@@ -443,20 +372,13 @@ describe(`camera helpers`, () => {
 })
 
 describe(`is_vector_key`, () => {
-  // a key is a vector key when it IS a known prefix or starts with `<prefix>_`
+  // a key is a vector key when it IS a known prefix or starts with `<prefix>_` (`forceful`
+  // is a prefix without the underscore separator)
+  // oxfmt-ignore
   test.each([
-    [`force`, true],
-    [`magmoms`, true],
-    [`velocity`, true],
-    [`force_DFT`, true],
-    [`dipole_charge`, true],
-    [`dipole_spin`, true],
-    [`spins_down`, true],
-    [`force_`, true],
-    [`charge`, false],
-    [`forceful`, false], // prefix without the underscore separator
-    [`my_force`, false],
-    [``, false],
+    [`force`, true], [`magmoms`, true], [`velocity`, true], [`force_DFT`, true],
+    [`dipole_charge`, true], [`dipole_spin`, true], [`spins_down`, true], [`force_`, true],
+    [`charge`, false], [`forceful`, false], [`my_force`, false], [``, false],
   ])(`is_vector_key(%s) = %s`, (key, expected) => {
     expect(is_vector_key(key)).toBe(expected)
   })
@@ -487,109 +409,48 @@ describe(`try_parse_vec3`, () => {
 
 describe(`get_structure_vector_keys`, () => {
   const make_structure = (sites_props: Record<string, unknown>[]): AnyStructure => ({
-    sites: sites_props.map((properties, idx) => ({
-      species: [{ element: `Fe` as const, occu: 1, oxidation_state: 0 }],
-      abc: [0, 0, 0] as Vec3,
-      xyz: [idx, 0, 0] as Vec3,
-      label: `Fe${idx + 1}`,
-      properties,
-    })),
-    charge: 0,
+    sites: sites_props.map((properties, idx) =>
+      create_site(`Fe`, [0, 0, 0], [idx, 0, 0], `Fe${idx + 1}`, properties),
+    ),
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      desc: `unique keys across sites in priority order`,
-      sites: [{ magmom: [0, 0, 1], force: [1, 0, 0] }, { force: [0, 1, 0] }],
-      expected: [`force`, `magmom`],
-    },
-    {
-      desc: `empty for structure without vectors`,
-      sites: [{ charge: 1 }, {}],
-      expected: [],
-    },
-    {
-      desc: `deduplicates across sites`,
-      sites: [
-        { force_DFT: [1, 0, 0], force_MLFF: [0.9, 0, 0] },
-        { force_DFT: [0, 1, 0], force_MLFF: [0, 0.9, 0] },
-        { force_DFT: [0, 0, 1] },
-      ],
-      expected: [`force_DFT`, `force_MLFF`],
-    },
-    {
-      desc: `union across heterogeneous sites`,
-      sites: [
-        { force: [1, 0, 0] },
-        { magmom: [0, 0, 1] },
-        { spin_DFT: 0.5, force_MLFF: [0, 1, 0] },
-      ],
-      expected: [`force`, `force_MLFF`, `magmom`, `spin_DFT`],
-    },
-    {
-      desc: `skips sites with all-invalid vector values`,
-      sites: [{ force: [NaN, 0, 0], magmom: `bad` }, { force: [1, 0, 0] }],
-      expected: [`force`],
-    },
-    {
-      desc: `prefixed keys alphabetically within prefix group`,
-      sites: [{ force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0], magmom: [0, 0, 1] }],
-      expected: [`force_DFT`, `force_MLFF`, `magmom`],
-    },
-    {
-      desc: `bare before prefixed of same type`,
-      sites: [{ force_DFT: [1, 0, 0], force: [0, 1, 0] }],
-      expected: [`force`, `force_DFT`],
-    },
-    {
-      desc: `singular < prefixed < plural`,
-      sites: [{ force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] }],
-      expected: [`force`, `force_DFT`, `forces`],
-    },
-    {
-      // A LAMMPS dump with vx/vy/vz + fx/fy/fz + q gets two arrow layers; charge is not one
-      desc: `velocity is a layer, ranked after force/magmom/spin`,
-      sites: [{ velocity: [1, 0, 0], force: [0, 1, 0], charge: -0.5, spin: [0, 0, 1] }],
-      expected: [`force`, `spin`, `velocity`],
-    },
+    { desc: `unique keys across sites in priority order`, sites: [{ magmom: [0, 0, 1], force: [1, 0, 0] }, { force: [0, 1, 0] }], expected: [`force`, `magmom`] },
+    { desc: `empty for structure without vectors`, sites: [{ charge: 1 }, {}], expected: [] },
+    { desc: `deduplicates across sites`, sites: [{ force_DFT: [1, 0, 0], force_MLFF: [0.9, 0, 0] }, { force_DFT: [0, 1, 0], force_MLFF: [0, 0.9, 0] }, { force_DFT: [0, 0, 1] }], expected: [`force_DFT`, `force_MLFF`] },
+    { desc: `union across heterogeneous sites`, sites: [{ force: [1, 0, 0] }, { magmom: [0, 0, 1] }, { spin_DFT: 0.5, force_MLFF: [0, 1, 0] }], expected: [`force`, `force_MLFF`, `magmom`, `spin_DFT`] },
+    { desc: `skips sites with all-invalid vector values`, sites: [{ force: [NaN, 0, 0], magmom: `bad` }, { force: [1, 0, 0] }], expected: [`force`] },
+    { desc: `prefixed keys alphabetically within prefix group`, sites: [{ force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0], magmom: [0, 0, 1] }], expected: [`force_DFT`, `force_MLFF`, `magmom`] },
+    { desc: `bare before prefixed of same type`, sites: [{ force_DFT: [1, 0, 0], force: [0, 1, 0] }], expected: [`force`, `force_DFT`] },
+    { desc: `singular < prefixed < plural`, sites: [{ force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] }], expected: [`force`, `force_DFT`, `forces`] },
+    // A LAMMPS dump with vx/vy/vz + fx/fy/fz + q gets two arrow layers; charge is not one
+    { desc: `velocity is a layer, ranked after force/magmom/spin`, sites: [{ velocity: [1, 0, 0], force: [0, 1, 0], charge: -0.5, spin: [0, 0, 1] }], expected: [`force`, `spin`, `velocity`] },
   ])(`$desc`, ({ sites, expected }) => {
     expect(get_structure_vector_keys(make_structure(sites))).toEqual(expected)
   })
 })
 
 describe(`default_vector_configs`, () => {
+  const config = (color: string | null, scale: number | null = null) => ({
+    visible: true,
+    color,
+    scale,
+  })
+  // oxfmt-ignore
   test.each([
-    {
-      desc: `single key gets null color (semantic coloring)`,
-      keys: [`force`],
-      expected: { force: { visible: true, color: null, scale: null } },
-    },
-    {
-      desc: `velocities use a smaller display scale`,
-      keys: [`velocity`],
-      expected: { velocity: { visible: true, color: null, scale: 0.05 } },
-    },
-    {
-      desc: `multiple keys get distinct palette colors`,
-      keys: [`force_DFT`, `force_MLFF`, `magmom`],
-      expected: {
-        force_DFT: { visible: true, color: VECTOR_PALETTE[0], scale: null },
-        force_MLFF: { visible: true, color: VECTOR_PALETTE[1], scale: null },
-        magmom: { visible: true, color: VECTOR_PALETTE[2], scale: null },
-      },
-    },
-    {
-      desc: `empty keys array returns empty object`,
-      keys: [] as string[],
-      expected: {},
-    },
+    { desc: `single key gets null color (semantic coloring)`, keys: [`force`], expected: { force: config(null) } },
+    { desc: `velocities use a smaller display scale`, keys: [`velocity`], expected: { velocity: config(null, 0.05) } },
+    { desc: `multiple keys get distinct palette colors`, keys: [`force_DFT`, `force_MLFF`, `magmom`], expected: { force_DFT: config(VECTOR_PALETTE[0]), force_MLFF: config(VECTOR_PALETTE[1]), magmom: config(VECTOR_PALETTE[2]) } },
+    { desc: `empty keys array returns empty object`, keys: [] as string[], expected: {} },
   ])(`$desc`, ({ keys, expected }) => {
     expect(default_vector_configs(keys)).toEqual(expected)
   })
 
   test(`palette wraps around for more keys than palette entries`, () => {
-    const keys = Array.from({ length: 8 }, (_, idx) => `force_${idx}`)
-    const configs = default_vector_configs(keys)
+    const configs = default_vector_configs(
+      Array.from({ length: 8 }, (_, idx) => `force_${idx}`),
+    )
     expect(configs.force_6.color).toBe(VECTOR_PALETTE[6 % VECTOR_PALETTE.length])
     expect(configs.force_7.color).toBe(VECTOR_PALETTE[7 % VECTOR_PALETTE.length])
   })
@@ -636,12 +497,8 @@ describe(`characteristic_atom_spacing`, () => {
   // neighbour 2.88 Å, so a correct spacing estimate lands near that whatever the box is.
   const gold_cluster = (box: number, centre: Vec3, radius = 5) => {
     const a_lat = 4.07
-    const basis: Vec3[] = [
-      [0, 0, 0],
-      [0.5, 0.5, 0],
-      [0.5, 0, 0.5],
-      [0, 0.5, 0.5],
-    ]
+    // oxfmt-ignore
+    const basis: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
     const sites: [string, Vec3][] = []
     const reach = Math.ceil(radius / a_lat) + 1
     const extent = 2 * reach + 1
@@ -701,14 +558,8 @@ describe(`characteristic_atom_spacing`, () => {
             sites.push([`Al`, [row_idx / 5, col_idx / 5, layer / height]])
         }
       }
-      const slab = make_crystal(
-        [
-          [20, 0, 0],
-          [0, 20, 0],
-          [0, 0, height],
-        ],
-        sites,
-      )
+      // oxfmt-ignore
+      const slab = make_crystal([[20, 0, 0], [0, 20, 0], [0, 0, height]], sites)
       slab.lattice.pbc = [true, true, periodic]
       const spacing = characteristic_atom_spacing(slab)
       const expected = Math.cbrt((20 * 20 * depth) / sites.length)
@@ -727,12 +578,8 @@ describe(`characteristic_atom_spacing`, () => {
     `falls back to xyz when a site's fractional coords are %s`,
     (_name, abc, periodic) => {
       const cube = 25.8
-      const good = make_crystal(cube, [
-        [`Au`, [0.45, 0.45, 0.45]],
-        [`Au`, [0.55, 0.45, 0.45]],
-        [`Au`, [0.45, 0.55, 0.45]],
-        [`Au`, [0.45, 0.45, 0.55]],
-      ])
+      // oxfmt-ignore
+      const good = make_crystal(cube, [[`Au`, [0.45, 0.45, 0.45]], [`Au`, [0.55, 0.45, 0.45]], [`Au`, [0.45, 0.55, 0.45]], [`Au`, [0.45, 0.45, 0.55]]])
       good.lattice.pbc = [periodic, periodic, periodic]
       const expected = characteristic_atom_spacing(good)
       const damaged = {
@@ -766,10 +613,7 @@ describe(`characteristic_atom_spacing`, () => {
 
   test(`ignores PBC image sites, so toggling them cannot resize arrows`, () => {
     const structure = structures[0]
-    const image_site = {
-      ...structure.sites[0],
-      provenance: { image_of: 0 },
-    }
+    const image_site = { ...structure.sites[0], provenance: { image_of: 0 } }
     expect(
       characteristic_atom_spacing({ ...structure, sites: [...structure.sites, image_site] }),
     ).toBe(characteristic_atom_spacing(structure))

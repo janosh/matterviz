@@ -96,25 +96,15 @@ describe(`attach_pan_gesture`, () => {
   // jsdom lacks PointerEvent; a MouseEvent carrying the pointer fields is what the handlers read
   const pointer = (
     type: string,
-    init: { x: number; y: number; id?: number; button?: number; touch?: boolean } & Partial<
-      Pick<MouseEventInit, `shiftKey` | `ctrlKey` | `metaKey`>
-    >,
-  ) => {
-    const event = new MouseEvent(type, {
-      clientX: init.x,
-      clientY: init.y,
-      button: init.button ?? 0,
-      shiftKey: init.shiftKey,
-      ctrlKey: init.ctrlKey,
-      metaKey: init.metaKey,
-      bubbles: true,
-    })
-    Object.assign(event, {
-      pointerId: init.id ?? 1,
-      pointerType: init.touch ? `touch` : `mouse`,
-    })
-    return event
-  }
+    { x, y, ...init }: { x: number; y: number } & MouseEventInit,
+    pointer_fields = { pointerId: 1, pointerType: `mouse` },
+  ) =>
+    Object.assign(
+      new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, ...init }),
+      pointer_fields,
+    )
+  const touch = (type: string, x: number, y: number, id: number) =>
+    pointer(type, { x, y }, { pointerId: id, pointerType: `touch` })
 
   test.each([
     [`shift+left`, { button: 0, shiftKey: true }],
@@ -146,27 +136,27 @@ describe(`attach_pan_gesture`, () => {
 
   test(`two-finger touch pans by half of each finger's motion; one finger does nothing`, () => {
     const { element, controls } = setup()
-    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, id: 1, touch: true }))
-    window.dispatchEvent(pointer(`pointermove`, { x: 20, y: 0, id: 1, touch: true }))
+    element.dispatchEvent(touch(`pointerdown`, 0, 0, 1))
+    window.dispatchEvent(touch(`pointermove`, 20, 0, 1))
     expect(read_pan_offset(controls.object)).toEqual([0, 0])
     expect(controls.events).toEqual([])
-    element.dispatchEvent(pointer(`pointerdown`, { x: 100, y: 100, id: 2, touch: true }))
-    window.dispatchEvent(pointer(`pointermove`, { x: 40, y: 10, id: 1, touch: true }))
-    window.dispatchEvent(pointer(`pointermove`, { x: 120, y: 110, id: 2, touch: true }))
+    element.dispatchEvent(touch(`pointerdown`, 100, 100, 2))
+    window.dispatchEvent(touch(`pointermove`, 40, 10, 1))
+    window.dispatchEvent(touch(`pointermove`, 120, 110, 2))
     expect(read_pan_offset(controls.object)).toEqual([20, 10])
-    window.dispatchEvent(pointer(`pointerup`, { x: 120, y: 110, id: 2, touch: true }))
+    window.dispatchEvent(touch(`pointerup`, 120, 110, 2))
     expect(controls.events).toEqual([`start`, `change`, `change`, `end`])
     // remaining finger alone no longer pans
-    window.dispatchEvent(pointer(`pointermove`, { x: 80, y: 50, id: 1, touch: true }))
+    window.dispatchEvent(touch(`pointermove`, 80, 50, 1))
     expect(read_pan_offset(controls.object)).toEqual([20, 10])
   })
 
   test(`a first finger lifted before a second lands does not count toward two fingers`, () => {
     const { element, controls } = setup()
-    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, id: 1, touch: true }))
-    window.dispatchEvent(pointer(`pointerup`, { x: 0, y: 0, id: 1, touch: true }))
-    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, id: 2, touch: true }))
-    window.dispatchEvent(pointer(`pointermove`, { x: 30, y: 30, id: 2, touch: true }))
+    element.dispatchEvent(touch(`pointerdown`, 0, 0, 1))
+    window.dispatchEvent(touch(`pointerup`, 0, 0, 1))
+    element.dispatchEvent(touch(`pointerdown`, 0, 0, 2))
+    window.dispatchEvent(touch(`pointermove`, 30, 30, 2))
     expect(read_pan_offset(controls.object)).toEqual([0, 0])
     expect(controls.events).toEqual([])
   })

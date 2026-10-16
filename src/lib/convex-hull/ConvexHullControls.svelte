@@ -1,10 +1,10 @@
 <script lang="ts">
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
+  import type { ColorScale } from '#lib/plot/core/types.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { marker_path_data } from './canvas-draw'
@@ -69,7 +69,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     // Display controls
     color_mode?: `stability` | `energy`
-    color_scale?: D3InterpolateName
+    color_scale?: ColorScale
     show_stable?: boolean
     show_unstable?: boolean
     // Categorical classification rendered as filter toggles (null disables the row)

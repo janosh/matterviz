@@ -10,6 +10,7 @@
   import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
   import { display_idx, ELEM_SYMBOLS, format_num } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { AnyStructure } from '#lib/structure/index.js'
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import { atomic_radii, site_base_radius } from '#lib/structure/index.js'
@@ -516,8 +517,10 @@
     {:else if atom_color_config.scale_type === `continuous` && property_colors}
       <div title={legend_title} {@attach tooltip({ placement: `top` })}>
         <ColorBar
-          scale={atom_color_config.scale}
-          range={[property_colors.min_value ?? 0, property_colors.max_value ?? 0]}
+          color_scale={resolve_color_scale(atom_color_config.color_scale, [
+            property_colors.min_value ?? 0,
+            property_colors.max_value ?? 0,
+          ]).color_scale}
           tick_labels={Array.from(
             new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
           )}

@@ -16,11 +16,11 @@
 
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
-  // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
-  // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
-  // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
-  // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
-  // …) so every chart is themed the same way.
+  import EmptyState from '#lib/EmptyState.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
+  // Outer shell of the non-Cartesian charts: the measured wrapper div, fullscreen mode and the
+  // hover-revealed header row. Exposes the same public CSS knobs as CartesianFrame
+  // (`--<prefix>-width`, `--<prefix>-bg`, …) so every chart is themed the same way.
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
@@ -37,7 +37,7 @@
     height = $bindable(0),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    show_controls = `hover`,
+    show_controls,
     chrome_color,
     controls_toggle_props,
     header_controls,
@@ -46,6 +46,8 @@
     export_filename = css_prefix,
     on_export,
     controls,
+    empty = false,
+    live_message = ``,
     body,
     children,
     ...rest
@@ -64,10 +66,8 @@
       fullscreen?: boolean
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-      // Color for the chrome icons, from whatever the chart paints under the top-right
-      // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
-      // rest props after their own, so a `style` they set would be clobbered by any caller
-      // that passes one - which every sized mount does.
+      // Color for the chrome icons, from what the chart paints under the top-right corner. A
+      // prop, not a CSS var in `style`: a caller's rest `style` would clobber that.
       chrome_color?: string
       controls_toggle_props?: PaneToggleProps
       header_controls?: Snippet<[Dims]>
@@ -75,6 +75,11 @@
       export_sources?: ExportSources
       // The controls pane receives layout props and visibility; this row owns mode and style.
       controls?: Snippet<[PaneToggleProps, boolean]>
+      // No data to plot: the body stays, overlaid with the shared empty-state message
+      empty?: boolean
+      // Announced to screen readers via a polite live region, e.g. where a keyboard cursor
+      // over marks with no focusable element of their own landed
+      live_message?: string
       // Chart content, rendered once the container is measured
       body: Snippet
       children?: Snippet<[Dims]>
@@ -121,7 +126,9 @@
     />
     {@render body()}
     {@render children?.(dims)}
+    {#if empty}<EmptyState overlay />{/if}
   {/if}
+  <LiveMessage message={live_message} />
 </div>
 
 <style>

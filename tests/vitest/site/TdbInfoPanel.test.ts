@@ -98,12 +98,9 @@ describe(`TdbInfoPanel`, () => {
     for (const part of [`3 / 2`, `1×1-SL`, `2×2-SL`]) expect(panel_text()).toContain(part)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      [`$ Database: COST 507 thermochemical database for light metal alloys`],
-      true,
-      `COST 507`,
-    ],
+    [[`$ Database: COST 507 thermochemical database for light metal alloys`], true, `COST 507`],
     [[`$ Simple comment without reference keywords`], false, `Ref:`],
   ])(`reference display: comments=%j → shown=%s`, (comments, should_show, text) => {
     mount_panel({}, { comments })

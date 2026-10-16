@@ -1,6 +1,5 @@
-// SVG-to-DiagramInput converter
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
-// for immediate rendering by IsobaricBinaryPhaseDiagram
+// for rendering by IsobaricBinaryPhaseDiagram
 
 import { array_extent, point_in_polygon, type Vec2, type Vec4 } from '#lib/math.js'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
@@ -97,9 +96,8 @@ function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
   ]
 }
 
-// Build a linear scale from tick data points, its domain spanning the plot area's pixel span
-// [px_a, px_b] (either order). Fewer than two ticks means an unsupported SVG (e.g. an MPDS
-// export), so say so instead of failing on the missing tick.
+// Linear scale from ticks, its domain spanning the plot area's pixel span [px_a, px_b] (either
+// order). Fewer than two ticks means an unsupported SVG (e.g. an MPDS export).
 function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): LinearScale {
   if (ticks.length < 2) {
     throw new Error(
@@ -136,10 +134,9 @@ const bbox_of = (verts: Vec2[]): Vec4 => {
   return [min_x, min_y, max_x, max_y]
 }
 
-// Pixel bbox of the plot area. Ticks sit at round values inside the axis limits, so their span
-// alone would crop everything between the outermost tick and the axes edge. Matplotlib's axes
-// background patch gives the exact area; otherwise the smallest filled shape enclosing every
-// tick and boundary (a page background encloses them too, but is larger), else their span.
+// Pixel bbox of the plot area (the tick span alone crops past the outermost ticks):
+// matplotlib's axes patch, else the smallest filled shape enclosing all ticks and boundaries,
+// else their span.
 function plot_area_px(
   doc: Document,
   [x_ticks, y_ticks]: [Tick[], Tick[]],
@@ -226,10 +223,9 @@ function to_boundary(
 
 // === Label Extraction ===
 
-// Phase region labels (text containing "+", which axis labels lack) with pixel positions.
-// Matplotlib stores the LaTeX text in XML comments of text_N groups and may split a label
-// into a following continuation group ("+ La$_3$Ni$_2$O$_7$"); the simple format uses
-// <text class="label-main"> positioned by transform or x/y attributes.
+// Phase region labels (text containing "+", unlike axis labels) with pixel positions.
+// Matplotlib keeps LaTeX in text_N group comments, maybe continued in later groups ("+ ...");
+// the simple format uses <text class="label-main"> positioned by transform or x/y.
 function extract_labels(doc: Document, format: SvgFormat): Label[] {
   if (format === `matplotlib`) {
     return query_map(doc, `[id^="text_"]`, (group) => {
@@ -270,8 +266,7 @@ function extract_labels(doc: Document, format: SvgFormat): Label[] {
 
 // === Region Fill Extraction ===
 
-// Fills that are page/axes backgrounds rather than phase regions (matplotlib's
-// figure and axes patches are white)
+// Page/axes background fills, not phase regions (matplotlib's figure/axes patches are white)
 const BACKGROUND_FILLS = new Set([`#fff`, `#ffffff`, `white`, `rgb(255,255,255)`])
 
 // Fill colour of an element from style="fill: ..." or the fill attribute; null if unset/none
@@ -297,9 +292,8 @@ function segments_to_rings(segments: Vec4[]): Vec2[][] {
   return rings
 }
 
-// Closed pixel-space outline of a rect/polygon/path element, or of a <use> instance of one
-// shifted by its x/y offset (matplotlib's fill_between puts the polygon in <defs> and fills
-// the <use>), as the rings SVG would fill. Other transforms are not applied.
+// Closed pixel-space rings of a rect/polygon/path, or a <use> of one shifted by its x/y
+// (matplotlib's fill_between fills a <use> of a <defs> polygon). Transforms aren't applied.
 function shape_rings(element: Element): Vec2[][] | null {
   const tag = element.tagName.toLowerCase()
   if (tag === `use`) {
@@ -417,8 +411,7 @@ function infer_regions(
   const verticals = boundaries.filter((boundary) => boundary.orientation === `vertical`)
   const horizontals = boundaries.filter((boundary) => boundary.orientation === `horizontal`)
 
-  // Unique x and y coordinates of domain edges and boundaries (x1 === x2 for verticals, y1 ===
-  // y2 for horizontals); ones closer than 1 px are the same grid line drawn with pixel jitter
+  // Unique x/y coords of domain edges and boundaries, merging ones within 1 px (pixel jitter)
   const [x_tol, y_tol] = [x_scale.px_tol, y_scale.px_tol]
   const x_coords = collect_unique_sorted(
     [...x_scale.domain, ...verticals.map(({ x1 }) => x1)],
@@ -429,7 +422,6 @@ function infer_regions(
     y_tol,
   )
 
-  // Build cell grid: cells[col][row]
   const n_cols = x_coords.length - 1
   const n_rows = y_coords.length - 1
   const cell_ids = Array.from({ length: n_cols }, () => Array(n_rows).fill(-1))
@@ -461,7 +453,6 @@ function infer_regions(
       v_walls[col][row] = true
   }
 
-  // Flood-fill to assign region IDs
   let next_region_id = 0
   for (let col = 0; col < n_cols; col++) {
     for (let row = 0; row < n_rows; row++) {
@@ -490,8 +481,7 @@ function infer_regions(
         .toLowerCase()
         .replaceAll(/[^a-z0-9]+/g, `_`)
         .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
-    // Ids key rendered regions, but fields may share a label (a miscibility gap) or slug alike
-    // (`A + B`, `A+B`): suffix repeats as a_b, a_b_2
+    // Fields may share a label (miscibility gap) or slug (`A + B`, `A+B`): suffix a_b, a_b_2
     const n_seen = (slug_counts.get(base_slug) ?? 0) + 1
     slug_counts.set(base_slug, n_seen)
     const slug = n_seen === 1 ? base_slug : `${base_slug}_${n_seen}`
@@ -537,12 +527,10 @@ function flood_fill(
   region_id: number,
 ): void {
   const stack: Vec2[] = [[start_col, start_row]]
-
   for (let item = stack.pop(); item; item = stack.pop()) {
     const [col, row] = item
     if (col < 0 || col >= n_cols || row < 0 || row >= n_rows) continue
     if (cell_ids[col][row] !== -1) continue
-
     cell_ids[col][row] = region_id
     // Neighbours with no wall between them (left, right, bottom, top)
     if (col > 0 && !v_walls[col][row]) stack.push([col - 1, row])
@@ -552,15 +540,11 @@ function flood_fill(
   }
 }
 
-// Trace the outer outline of the cells belonging to region_id as a rectilinear polygon
-// in grid-vertex coordinates [col_idx, row_idx], counter-clockwise in data space (x right,
-// temperature up) with collinear vertices removed. Boundary edges are emitted with the
-// region interior on their left and chained into a loop; at a pinch vertex (two region
-// cells touching only diagonally) the right-hand turn keeps the traversal on one loop.
-// Any remaining edges after the outer loop closes belong to holes and are dropped. Flood-filled
-// cells always yield a closed loop; should the chain still break (an unclosed outline or a
-// turn with nowhere to go) the region falls back to the bounding box of its cells with a
-// warning, so one pathological region cannot fail the whole import. Exported for tests.
+// Outer outline of region_id's cells as rectilinear polygon in grid-vertex coords [col, row],
+// counter-clockwise in data space, collinear vertices removed. Boundary edges (interior on the
+// left) are chained into a loop, preferring right-hand turns at pinch vertices; leftover hole
+// edges are dropped. Should the chain break, warn and fall back to the cells' bounding box so
+// one pathological region cannot fail the whole import. Exported for tests.
 export function trace_region_outline(
   cell_ids: number[][],
   region_id: number,
@@ -647,7 +631,6 @@ export function trace_region_outline(
 function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]> {
   const curves: Record<string, DiagramPoint[]> = {}
   const counts = { vertical: 0, horizontal: 0 }
-
   for (const bnd of boundaries) {
     const is_vert = bnd.orientation === `vertical`
     const name = `${bnd.orientation}_${counts[bnd.orientation]++}`
@@ -656,7 +639,6 @@ function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]>
       [round(is_vert ? bnd.x1 : bnd.x2), round(is_vert ? bnd.y2 : bnd.y1)],
     ]
   }
-
   return curves
 }
 
@@ -696,8 +678,7 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
 
 // === Utility Functions ===
 
-// Leading numeric prefix like parseFloat (`2px` -> 2, `600 K` -> 600, else NaN):
-// Number() alone rejects unit-suffixed/annotated values that real SVG exports contain
+// Leading numeric prefix like parseFloat (`2px` -> 2, `600 K` -> 600, else NaN)
 function leading_number(text: string | null | undefined): number {
   const match = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(text?.trim() ?? ``)
   return match ? Number(match[0]) : NaN
@@ -755,11 +736,9 @@ function find_comment_text(group: Element): string | null {
 const NUMBER_REGEX = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g
 const PATH_TOKEN_REGEX = new RegExp(`[MmLlHhVvCcSsQqTtAaZz]|${NUMBER_REGEX.source}`, `g`)
 
-// Parse SVG path data into absolute line segments [x1,y1,x2,y2]
-// Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
-// Curves (C/S/Q/T/A) are approximated as straight lines from start to endpoint
-// After M/m, implicit coordinates are treated as L/l per SVG spec
-// Throws on malformed data (unknown characters, missing coordinates) with a `d` snippet
+// Parse SVG path data (all commands, absolute and relative) into absolute line segments
+// [x1,y1,x2,y2], curves approximated by straight lines to their endpoint. Throws on malformed
+// data (unknown characters, missing coordinates) with a `d` snippet.
 function parse_path_segments(path_str: string): Vec4[] {
   const snippet = path_str.length > 80 ? `${path_str.slice(0, 80)}…` : path_str
   const malformed = (reason: string) =>
@@ -780,8 +759,7 @@ function parse_path_segments(path_str: string): Vec4[] {
     cursor_y = coord_y_2
   }
 
-  // Numbers to skip before the endpoint x,y for each lineto-like command (curves are
-  // approximated by the straight line to their endpoint)
+  // Numbers to skip before the endpoint x,y for each lineto-like command
   const endpoint_skip: Record<string, number> = { L: 0, C: 4, S: 2, Q: 2, T: 0, A: 5 }
   const is_command = (token: string | undefined) =>
     token !== undefined && /^[A-Za-z]$/.test(token)
@@ -830,8 +808,7 @@ function parse_path_segments(path_str: string): Vec4[] {
   return segments
 }
 
-// Parse translate(x, y) or translate(x) from a transform attribute
-// Single-arg translate uses implicit y=0 per SVG spec
+// Parse translate(x, y) or translate(x) (implicit y=0 per SVG spec) from a transform attribute
 function parse_translate(element: Element | null): Vec2 | null {
   const match = /translate\(\s*(?<x>[\d.eE+-]+)(?:\s*[,\s]\s*(?<y>[\d.eE+-]+))?\s*\)/.exec(
     element?.getAttribute(`transform`) ?? ``,
@@ -847,9 +824,7 @@ function collect_unique_sorted(values: number[], tol: number): number[] {
   const sorted = values.toSorted((val_a, val_b) => val_a - val_b)
   const unique: number[] = [sorted[0]]
   for (let idx = 1; idx < sorted.length; idx++) {
-    if (Math.abs(sorted[idx] - unique[unique.length - 1]) > tol) {
-      unique.push(sorted[idx])
-    }
+    if (Math.abs(sorted[idx] - unique[unique.length - 1]) > tol) unique.push(sorted[idx])
   }
   return unique
 }

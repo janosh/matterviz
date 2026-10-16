@@ -219,9 +219,8 @@ export function resolve_axis_title_layout(
   }
 }
 
-// Left y-title x: auto-padding reserves [outer | title | gap | ticks] from the plot edge
-// inward. The title is *centered* on label_x, so that center sits in the middle of the
-// title band (not on the gap/title boundary, which jammed glyphs into the gap).
+// Left y-title x: centered in the title band of [outer | title | gap | ticks] (not on the
+// gap/title boundary, which jammed glyphs into the gap)
 export function y_axis_label_x(
   axis: AxisConfig,
   pad_l: number,
@@ -274,10 +273,8 @@ export const filter_padding = (
   ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, val]) => val !== undefined)),
 })
 
-// Measure an element's full visual footprint, including descendants that overflow its
-// offset box. Colorbar tick labels are position:absolute outside the bar, so
-// offsetWidth/offsetHeight underestimate the space they actually occupy — which lets
-// auto-placement put the colorbar where its labels overlap the axes.
+// An element's full visual footprint incl. overflowing descendants (e.g. absolutely
+// positioned colorbar tick labels, which offsetWidth/Height miss)
 type Size = { width: number; height: number }
 type ElementFootprint = Size & { offset_x: number; offset_y: number }
 
@@ -303,10 +300,8 @@ function measure_full_footprint(element: HTMLElement): ElementFootprint {
   }
 }
 
-// Full footprint once the element is laid out, else `fallback` (offset dims read 0
-// before first render). NOT interchangeable with decorations' measured_footprint:
-// that returns the offset box, which underestimates elements with overflowing
-// absolutely-positioned descendants like colorbar tick labels.
+// Full footprint once laid out, else `fallback`. NOT interchangeable with decorations'
+// measured_footprint, which returns the offset box (missing overflowing descendants).
 export const full_footprint_or = (
   element: HTMLElement | null | undefined,
   fallback: Size,
@@ -391,9 +386,8 @@ export const calc_auto_padding = ({
         )
   const y_title_layout = resolve_axis_title_layout(y_axis)
   const y2_title_layout = resolve_axis_title_layout(y2_axis)
-  // Padding for a vertical-axis side (y/y2): reserve outside tick offsets, the widest tick,
-  // title gap, rotated title width, and outer air. Titles can render from interactive options
-  // without a literal label, and still need their band when an axis intentionally has no ticks.
+  // Padding for a y/y2 side: outside tick offsets, widest tick, title gap, rotated title
+  // width and outer air. Titles need their band even when an axis has no ticks.
   const side_pad = (
     axis: MeasuredAxis,
     title_layout: AxisTitleLayout,
@@ -465,9 +459,8 @@ export const calc_auto_padding = ({
       ? horizontal_tick_layout(x2_axis, available_width, `x2`).band
       : 0
     const tick_reach = has_outside_ticks ? tick_band + 8 + Math.max(0, -tick_shift) : 0
-    // PlotAxis treats the x2 title shift as its distance from the baseline. Rotated or
-    // wrapped ticks push the title farther out by the excess tick band.
-    // Extra wrapped lines stack outward from that first line, so they count in full.
+    // Rotated/wrapped ticks push the x2 title out by the excess tick band; extra wrapped
+    // title lines stack outward in full
     const title_reach = has_title
       ? Math.max(0, x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET) +
         Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
@@ -477,9 +470,8 @@ export const calc_auto_padding = ({
     return Math.max(controls_floor, default_padding.t, tick_reach, title_reach)
   }
 
-  // Bottom depends on the angle the x labels will render at, since a rotated label projects
-  // its own width downward. Reserving exactly what the title placement will use is what
-  // keeps the surplus from becoming dead space.
+  // Bottom depends on the x label angle (rotated labels project their width downward);
+  // reserving exactly what the title placement uses avoids dead space
   const bottom_pad = (available_width: number): number => {
     const inside = x_axis.tick_label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
@@ -491,9 +483,8 @@ export const calc_auto_padding = ({
       ? horizontal_tick_layout(x_axis, available_width, `x`).band
       : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick_label?.shift?.y ?? 0)
-    // The title's first line sits one gap past the labels and is centered there, so half a
-    // line reaches further still; wrapped lines stack below it in full (PlotAxis places it
-    // via AXIS_TITLE_OFFSET).
+    // The title's first line is centered one gap past the labels (half a line further);
+    // wrapped lines stack below it in full
     const below_baseline =
       title_height > 0
         ? band + LABEL_GAP_DEFAULT + title_height - title_layout.line_height / 2
@@ -507,9 +498,8 @@ export const calc_auto_padding = ({
   let pad_t = padding.t ?? top_pad(plot_width)
   let pad_b = padding.b ?? bottom_pad(plot_width)
 
-  // One deterministic refinement makes y density use the top/bottom bands selected above,
-  // then gives x/x2 the resulting horizontal span. Keeping this bounded avoids reactive
-  // fixed-point oscillation while matching the final rendered plot on both dimensions.
+  // One bounded refinement (avoiding reactive oscillation): y density uses the top/bottom
+  // bands selected above, then x/x2 get the resulting horizontal span
   if (height != null) {
     const refined_plot_height = Math.max(0, height - pad_t - pad_b)
     ;[pad_l, pad_r] = vertical_pads(refined_plot_height)
@@ -558,9 +548,8 @@ interface ElementPlacementConfig {
   plot_bounds: Rect
   // Fallback size of the element to place (used before `element` first renders)
   element_size: Size
-  // Element to place. When provided and laid out, its full visual footprint
-  // (including descendants that overflow the box, e.g. colorbar tick labels) is
-  // measured and overrides element_size — keeping placement overlap-free everywhere.
+  // Element to place; once laid out, its full footprint (incl. overflowing descendants)
+  // overrides element_size
   element?: HTMLElement | null
   // Minimum distance from plot edges to avoid axis label overlap (default: 12)
   axis_clearance?: number
@@ -742,9 +731,8 @@ export function compute_element_placement(
       // No points means no nearest-point bonus.
       const min_distance = min_distance_sq === Infinity ? 0 : Math.sqrt(min_distance_sq)
 
-      // Corner proximity scores from the measured footprint, not its center. Math.hypot
-      // directly rather than euclidean_dist, whose vector form allocates two array literals,
-      // a mapped difference array, and a spread on each of its four calls per candidate.
+      // Corner proximity from the measured footprint, not its center. Math.hypot avoids
+      // euclidean_dist's per-call array allocations.
       const min_corner_dist = Math.min(
         Math.hypot(rect_left - plot_left, rect_top - plot_top), // top-left
         Math.hypot(rect_right - plot_right, rect_top - plot_top), // top-right

@@ -3,7 +3,6 @@
   import {
     bind_renderer,
     create_scene_camera,
-    HOVER_THROTTLE_MS,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -121,60 +120,34 @@
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
-  // Throttle state for pointer move events
-  let last_hover_time = 0
-  let last_hover_mesh: `bz` | `ibz` | null = null
-
-  // Track IBZ hover state - IBZ takes priority over BZ
+  // The IBZ wedge sits inside the zone, and its hover wins over the zone's
   let ibz_hovered = false
   $effect(() => {
-    if (!show_ibz) {
-      ibz_hovered = false
-      // Clear hover tooltip if it was showing IBZ data
-      if (hover_data?.is_ibz) hover_data = null
-    }
+    if (show_ibz) return
+    ibz_hovered = false
+    if (hover_data?.is_ibz) hover_data = null
   })
 
-  function create_hover_data(event: ThreltePointerEvent, is_ibz: boolean): BZHoverData | null {
-    if (!bz_data) return null
-
-    const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
-    const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
-
-    const { clientX, clientY } = event.nativeEvent
-    const ibz_vol = ibz_data?.volume ?? null
-    // Round to nearest integer since symmetry multiplicity is the point group order
-    const symmetry_multiplicity =
-      ibz_vol != null && ibz_vol > 0 ? Math.round(bz_data.volume / ibz_vol) : null
-
-    return {
+  function handle_hover({ point, nativeEvent }: ThreltePointerEvent, is_ibz: boolean): void {
+    if (is_ibz) ibz_hovered = true
+    else if (ibz_hovered) return
+    if (!bz_data) return
+    const position_cartesian: Vec3 = [point.x, point.y, point.z]
+    const ibz_volume = ibz_data?.volume ?? null
+    hover_data = {
       position_cartesian,
-      position_fractional,
-      screen_position: { x: clientX, y: clientY },
+      position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+      screen_position: { x: nativeEvent.clientX, y: nativeEvent.clientY },
       is_ibz,
       bz_order: bz_data.order,
       bz_volume: bz_data.volume,
-      ibz_volume: ibz_vol,
-      symmetry_multiplicity,
+      ibz_volume,
+      // the point group order
+      symmetry_multiplicity:
+        ibz_volume !== null && ibz_volume > 0 ? Math.round(bz_data.volume / ibz_volume) : null,
     }
   }
 
-  // Throttled hover handler - IBZ takes priority over BZ
-  function handle_hover(event: ThreltePointerEvent, is_ibz: boolean): void {
-    if (is_ibz) ibz_hovered = true
-    else if (ibz_hovered) return // BZ defers to IBZ
-
-    const mesh = is_ibz ? `ibz` : `bz`
-    const now = performance.now()
-    // Bypass throttle when switching meshes for responsive transitions
-    if (last_hover_mesh === mesh && now - last_hover_time < HOVER_THROTTLE_MS) return
-
-    last_hover_time = now
-    last_hover_mesh = mesh
-    hover_data = create_hover_data(event, is_ibz)
-  }
-
-  // Leave handler - IBZ clears state, BZ only clears if IBZ not hovered
   function handle_leave(is_ibz: boolean): void {
     if (is_ibz) ibz_hovered = false
     if (is_ibz || !ibz_hovered) hover_data = null
@@ -186,6 +159,7 @@
   position={computed_camera_position}
   fov={controls.fov}
   zoom={scene_camera.zoom}
+  reset_zoom={scene_camera.reset_to_fit}
   orbit_props={scene_camera.orbit_props}
   gizmo={controls.gizmo}
 />

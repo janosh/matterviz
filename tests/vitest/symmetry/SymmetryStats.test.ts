@@ -48,7 +48,7 @@ describe(`SymmetryStats`, () => {
       mount_stats({ sym_data })
 
       const container = doc_query(`.symmetry-stats`)
-      const no_data_div = container.querySelector(`.no-data`)
+      const no_data_div = container.querySelector(`.empty-state[role="status"]`)
 
       expect(no_data_div).toBeInstanceOf(HTMLElement)
       expect(no_data_div?.textContent).toContain(`No symmetry data available`)
@@ -240,24 +240,26 @@ describe(`SymmetryStats`, () => {
   describe(`Tooltips`, () => {
     test.each([
       {
-        show_tooltips: true,
+        tooltip: undefined,
         symprec_title: /Symmetry precision/,
         algo_title: /Moyo/,
         space_group_title: /^International Tables Space group/,
       },
-      { show_tooltips: false, symprec_title: /^$/, algo_title: /^$/, space_group_title: /^$/ },
-    ])(
-      `show_tooltips=$show_tooltips`,
-      ({ show_tooltips, symprec_title, algo_title, space_group_title }) => {
-        mount_stats({ sym_data: create_mock_sym_data(), show_tooltips })
-        expect(doc_query(`.controls label:has(input[type="number"]) span`).title).toMatch(
-          symprec_title,
-        )
-        expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
-        const space_group_tile = doc_query(`.stats-grid > div`) // first tile
-        expect(space_group_tile.textContent).toContain(`Space Group`)
-        expect(space_group_tile.title).toMatch(space_group_title)
+      {
+        tooltip: false as const,
+        symprec_title: /^$/,
+        algo_title: /^$/,
+        space_group_title: /^$/,
       },
-    )
+    ])(`tooltip=$tooltip`, ({ tooltip, symprec_title, algo_title, space_group_title }) => {
+      mount_stats({ sym_data: create_mock_sym_data(), tooltip })
+      expect(doc_query(`.controls label:has(input[type="number"]) span`).title).toMatch(
+        symprec_title,
+      )
+      expect(doc_query(`.controls label:has(select) span`).title).toMatch(algo_title)
+      const space_group_tile = doc_query(`.stats-grid > div`) // first tile
+      expect(space_group_tile.textContent).toContain(`Space Group`)
+      expect(space_group_tile.title).toMatch(space_group_title)
+    })
   })
 })

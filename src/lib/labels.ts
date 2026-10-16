@@ -329,6 +329,18 @@ export const from_display_idx = (value: number): number => value - 1
 export const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? `` : `s`}`
 
+// One notice for a file's recoverable parse warnings (the first few spelled out, so a file
+// with thousands of skipped rows stays readable), or undefined when there are none
+export const parse_warnings_notice = (
+  warnings: readonly string[],
+  max_shown = 5,
+): string | undefined => {
+  if (warnings.length === 0) return undefined
+  const more = warnings.length - max_shown
+  const shown = warnings.slice(0, max_shown).join(`; `)
+  return `${plural(warnings.length, `parse warning`)}: ${shown}${more > 0 ? ` (and ${more} more)` : ``}`
+}
+
 // Replace common fractional values with unicode glyphs (e.g. 1/2 → ½). The integer part is
 // dropped: callers format fractional coordinates and stoichiometric remainders.
 export function format_fractional(value: number): string {

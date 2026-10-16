@@ -1,12 +1,12 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
 import { add_alpha, plot_color } from '#lib/colors/index.js'
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import { get_formula_label_segments } from '#lib/composition/format.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
-import { array_min, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
+import { array_extent, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
+import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
 import {
   centered_rect,
   pad_rect,
@@ -14,6 +14,7 @@ import {
   rects_overlap,
 } from '#lib/plot/core/layout.js'
 import type { Rect } from '#lib/plot/core/layout.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import type { SpatialIndex } from '#lib/plot/core/spatial-index.js'
 import { build_spatial_index, query_topmost } from '#lib/plot/core/spatial-index.js'
 import { DEFAULTS } from '#lib/settings.js'
@@ -24,7 +25,6 @@ import { TETRAHEDRON_VERTICES, TRIANGLE_VERTICES } from './barycentric-coords'
 import {
   entry_is_stable,
   get_composition_label_entries,
-  get_energy_color_scale,
   get_entry_label,
   same_entry,
 } from './helpers'
@@ -58,8 +58,7 @@ export function marker_d3_name(marker: MarkerSymbol): D3SymbolName | undefined {
   return name in symbol_map ? (name as D3SymbolName) : undefined
 }
 
-// SVG path data for a marker symbol of given radius, or null for unknown marker names.
-// Uses d3-shape for consistent rendering with ScatterPlot.
+// d3-shape SVG path for a marker of given radius (as in ScatterPlot), null for unknown names
 export function marker_path_data(radius: number, marker: MarkerSymbol): string | null {
   const d3_name = marker_d3_name(marker)
   const symbol_type = d3_name && symbol_map[d3_name]
@@ -70,9 +69,8 @@ export function marker_path_data(radius: number, marker: MarkerSymbol): string |
     : null
 }
 
-// Outlines are position-independent (callers translate the context), so shape and size key
-// them. Rotating a hull wants two per point per frame, a shadow and a marker, off a handful
-// of distinct sizes — building those fresh was pure allocation.
+// Position-independent outlines cached by shape and size (rotation redraws two per point per
+// frame off a handful of distinct sizes)
 const marker_path_cache = new Map<string, Path2D>()
 const MAX_MARKER_PATH_CACHE = 512
 
@@ -102,13 +100,11 @@ export type HullPointOpts = {
   highlight_style: Required<HighlightStyle>
 }
 
-// Points whose rings animate. same_entry, not raw entry_id comparison: undefined ===
-// undefined would mark EVERY id-less point as selected.
+// Points whose rings animate (same_entry: comparing raw entry_ids marks id-less points)
 const is_pulsing = (entry: ConvexHullEntry, opts: HullPointOpts): boolean =>
   same_entry(opts.selected_entry, entry) || opts.is_highlighted(entry)
 
-// A circle at `projected` in `color`, filled and/or stroked at the given alphas (an unset
-// stroke alpha keeps the color's own)
+// A circle at `projected`, filled and/or stroked at the given alphas (unset keeps color's own)
 function draw_ring(
   ctx: CanvasRenderingContext2D,
   { x, y }: Projected,
@@ -216,9 +212,8 @@ export function draw_hull_points(
   }
 }
 
-// Just the selected/highlighted points, onto the canvas stacked over the hull. Rebuilding
-// faces, points and labels at pulse rate costs milliseconds a frame; this costs a handful of
-// markers. Each marker is redrawn over its own ring so it still reads as sitting inside it.
+// Just the selected/highlighted points on the overlay canvas (a full repaint at pulse rate
+// costs ms per frame). Each marker is redrawn over its own ring.
 export function draw_pulse_overlay(
   ctx: CanvasRenderingContext2D,
   sorted_points: HullPoint[],
@@ -358,8 +353,7 @@ export function draw_corner_labels(
     )
     const label = elements[corner_idx]
     let { x: label_x, y: label_y } = project(coord_x, coord_y, coord_z)
-    // Narrow canvases (phones) put the simplex corners at the very edge, which would cut
-    // the symbols in half; pull them back inside instead.
+    // Narrow canvases put corners at the edge, which would cut symbols in half: pull them in
     if (width && height) {
       const half_w = ctx.measureText(label).width / 2
       label_x = clamp(label_x, half_w, width - half_w)
@@ -400,8 +394,7 @@ export type LabelOpts = {
   show_stable_labels: boolean
   show_unstable_labels: boolean
   max_hull_dist_show_labels: number
-  // Paint only these entries' labels. Placement still runs over all `entries` so the
-  // painted subset lands exactly where a full pass would put it (overlay repaints).
+  // Paint only these labels; placement still runs over all `entries` (overlay repaints)
   paint_only?: (entry: ConvexHullEntry) => boolean
 }
 
@@ -433,8 +426,8 @@ function measure_segments(ctx: CanvasRenderingContext2D, segments: FormulaLabelS
   }, 0)
 }
 
-// Formula labels next to their points, trying 8 placements around each point and skipping
-// labels that would overlap an earlier one or leave the canvas
+// Formula labels at the first of 8 placements around each point that neither overlaps an
+// earlier label nor leaves the canvas
 export function draw_hull_labels(
   ctx: CanvasRenderingContext2D,
   entries: ConvexHullEntry[],
@@ -493,9 +486,8 @@ export function draw_hull_labels(
 
 // === Hull faces ===
 
-// A drawable hull face: its vertex entries (3 for a triangle), projected screen points and
-// mean formation energy. 4D tetrahedra contribute their 4 triangular faces with a shared
-// `facet_idx` so they get one categorical colour.
+// A drawable hull face: vertex entries, projected points and mean formation energy. A 4D
+// tetrahedron's 4 faces share `facet_idx`, so they get one categorical colour.
 export type HullFace = {
   vertices: readonly ConvexHullEntry[]
   projected: Projected[]
@@ -504,41 +496,35 @@ export type HullFace = {
   facet_idx: number
 }
 
-// Drawable faces of the lower hull, back to front: each triangle facet is one face, each
-// tetrahedron facet contributes the 4 triangles that drop one of its vertices
+// Drawable faces of the lower hull, back to front
 export function build_hull_faces(
   facet_entries: readonly (readonly ConvexHullEntry[])[],
   project: ProjectPoint,
 ): HullFace[] {
-  const faces: HullFace[] = []
-  const add_face = (
-    vertices: readonly ConvexHullEntry[],
-    projected: Projected[],
-    facet_idx: number,
-  ) =>
-    faces.push({
-      vertices,
-      projected,
-      facet_idx,
-      e_form: mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0)),
-      depth: mean(projected.map((point) => point.depth)),
+  return face_vertex_sets(facet_entries)
+    .map(({ vertices, facet_idx }) => {
+      const projected = vertices.map((vertex) => project(vertex.x, vertex.y, vertex.z))
+      const depth = mean(projected.map((point) => point.depth))
+      return { vertices, projected, facet_idx, e_form: face_e_form(vertices), depth }
     })
-  for (const [facet_idx, facet] of facet_entries.entries()) {
-    const projected = facet.map((vertex) => project(vertex.x, vertex.y, vertex.z))
-    if (facet.length === 3) add_face(facet, projected, facet_idx)
-    else {
-      for (const skip of facet.keys()) {
-        add_face(facet.toSpliced(skip, 1), projected.toSpliced(skip, 1), facet_idx)
-      }
-    }
-  }
-  return faces.toSorted((left, right) => left.depth - right.depth)
+    .toSorted((left, right) => left.depth - right.depth)
 }
+
+// Vertex sets of the drawn faces: each triangle facet, or the 4 triangles of a tetrahedron
+const face_vertex_sets = (facet_entries: readonly (readonly ConvexHullEntry[])[]) =>
+  facet_entries.flatMap((facet, facet_idx) =>
+    (facet.length === 3
+      ? [facet]
+      : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1))
+    ).map((vertices) => ({ vertices, facet_idx })),
+  )
+const face_e_form = (vertices: readonly ConvexHullEntry[]): number =>
+  mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0))
 
 type FaceColorOpts = {
   mode: HullFaceColorMode
   uniform_color: string
-  color_scale: D3InterpolateName
+  color_scale: ColorScale
   element_colors: Record<string, string>
   elements: ElementSymbol[]
 }
@@ -557,6 +543,19 @@ function dominant_element(
   return elements[totals.indexOf(Math.max(...totals))]
 }
 
+// formation_energy face colors (and color bar): the points' scheme over the faces' E_form, at
+// least 0.1 eV/atom wide. Not the points' value_range, which spans hull distances (>= 0).
+export function face_color_scale(color_scale: ColorScale, e_forms: readonly number[]) {
+  const { value_range: _hull_dist_range, ...config } = to_color_scale_config(color_scale)
+  const [lower, upper] = array_extent(e_forms)
+  return resolve_color_scale(config, [lower, Math.max(upper, lower + 0.1)])
+}
+
+// Mean formation energies of the faces build_hull_faces draws for these facets
+export const hull_face_e_forms = (
+  facet_entries: readonly (readonly ConvexHullEntry[])[],
+): number[] => face_vertex_sets(facet_entries).map(({ vertices }) => face_e_form(vertices))
+
 // Colour resolver for one frame's faces per hull_face_color_mode
 export function face_color_resolver(
   faces: HullFace[],
@@ -564,13 +563,11 @@ export function face_color_resolver(
 ): (face: HullFace) => string {
   const { mode, uniform_color, color_scale, element_colors, elements } = opts
   if (mode === `formation_energy`) {
-    const min_e_form = array_min(faces.map((face) => face.e_form))
-    const scale = get_energy_color_scale(
-      `energy`,
+    const { color_fn } = face_color_scale(
       color_scale,
-      faces.map((face) => ({ e_above_hull: face.e_form - min_e_form })), // 0-based
+      faces.map((face) => face.e_form),
     )
-    return (face) => scale?.(face.e_form - min_e_form) ?? uniform_color
+    return (face) => color_fn(face.e_form)
   }
   if (mode === `dominant_element`) {
     return (face) => element_colors[dominant_element(face.vertices, elements)] ?? `#888888`
@@ -604,8 +601,7 @@ export type HullFaceOpts = FaceColorOpts & {
   stroke_alpha: (fill_alpha: number) => number
 }
 
-// Lower-hull faces, back to front. Uniform mode fades faces with their formation energy;
-// the other colour modes use the fixed opacity.
+// Lower-hull faces, back to front: uniform mode fades them with E_form, others use fixed alpha
 export function draw_hull_faces(
   ctx: CanvasRenderingContext2D,
   faces: HullFace[],
@@ -680,8 +676,8 @@ export type HullCamera = { zoom: number; center_x: number; center_y: number }
 type TernaryCamera = HullCamera & { elevation: number; azimuth: number } // degrees
 type QuaternaryCamera = HullCamera & { rotation_x: number; rotation_y: number } // radians
 
-// Formation energy span of the plotted entries: the ternary view scales E_form into its depth
-// axis with `z_scale` about `center`; uniform-mode faces fade towards `min` in both
+// E_form span of plotted entries: ternary depth axis scales it by `z_scale` about `center`,
+// uniform-mode faces fade towards `min`
 export type EnergyRange = { min: number; max: number; center: number; z_scale: number }
 
 export function energy_range_of(entries: readonly ConvexHullEntry[]): EnergyRange {
@@ -703,10 +699,9 @@ type HullView = {
   scale: number // canvas container scale factor
 }
 
-// What differs between the ternary (triangle prism with an energy axis) and quaternary
-// (tetrahedron) hull canvases; ConvexHullCanvas.svelte is everything they share. Method
-// syntax on purpose: its bivariant parameters let a strategy over a concrete camera type sit
-// in a HullCanvasStrategy<HullCamera> record without the component knowing the angles.
+// What differs between ternary (prism with energy axis) and quaternary (tetrahedron) hull
+// canvases. Method syntax on purpose: bivariant parameters let a concrete-camera strategy sit
+// in a HullCanvasStrategy<HullCamera> record.
 export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   corners: readonly (readonly number[])[]
   camera_default: Camera // initial view, restored by reset_camera
@@ -734,8 +729,8 @@ export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   }
 }
 
-// Formation energy axis on whichever triangle vertex currently projects leftmost (changes
-// with rotation): ticks plus a rotated "E_form (eV/atom)" label with "form" as subscript
+// E_form axis on the triangle vertex currently projecting leftmost: ticks plus a rotated
+// "E_form (eV/atom)" label
 function draw_energy_axis(
   ctx: CanvasRenderingContext2D,
   { project, energy_range, text_color, font_size, scale }: HullView,
@@ -791,10 +786,8 @@ const MIN_ELEV_FOR_ENERGY_AXIS = 5 // degrees — below this the axis ticks coll
 const TRIANGLE_CENTROID = simplex_centroid(TRIANGLE_VERTICES)
 const TETRAHEDRON_CENTROID = simplex_centroid(TETRAHEDRON_VERTICES)
 
-// Center the camera on the triangle's visual center for its elevation. The centroid (rotation
-// center) sits at 1/3 height while the bbox center is at 1/2 height — a difference of
-// sqrt(3)/12 in data units, scaled by cos(elevation) so the offset only applies in
-// near-top-down views.
+// Center the camera on the triangle's visual center: the bbox center sits sqrt(3)/12 above the
+// centroid (rotation center), scaled by cos(elevation) so it only applies near top-down.
 function center_ternary_camera(camera: TernaryCamera, view_scale: number): void {
   camera.center_x = 0
   camera.center_y = (Math.sqrt(3) / 12) * view_scale * Math.cos(to_radians(camera.elevation))
@@ -839,8 +832,7 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
       coord_y_1 * sin_el + delta_z * cos_el,
     ]
   },
-  // Dashed triangle prism: base triangle at E_form = 0, bottom triangle at the most negative
-  // formation energy, and vertical edges connecting corresponding corners
+  // Dashed prism: triangles at E_form = 0 and at the lowest E_form, joined at the corners
   outline_edges({ min: e_form_min }) {
     const edges: [Vec3, Vec3][] = []
     for (const [idx, [vector_x, vector_y]] of TRIANGLE_VERTICES.entries()) {
@@ -913,9 +905,8 @@ const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
     rotation_y: quaternary_defaults.camera_rotation_y,
     zoom: quaternary_defaults.camera_zoom,
     center_x: 0,
-    // At the default rotation the projected tetrahedron's bbox center sits ~0.06 data units
-    // below its centroid (~25 px at the 500 px demo height): shift up to center it, which also
-    // keeps the bottom corner and its label clear of the colorbar and the canvas edge
+    // At the default rotation the bbox center sits ~0.06 data units below the centroid: shift
+    // up to center it, keeping the bottom corner label clear of the colorbar and canvas edge
     center_y: -25,
   },
   wheel_clamp: [1.0, 15],

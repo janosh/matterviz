@@ -2,6 +2,7 @@
 // Cartesian coordinates without a unit cell and an authoritative bond block.
 import type { BondOrder, Molecule, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   element_from_candidates,
   is_num_token,
@@ -21,7 +22,7 @@ const MOL_BOND_ORDERS: Record<number, BondOrder> = { 1: 1, 2: 2, 3: 3, 4: `aroma
 const mol_bond_order = (code: number, context: string): BondOrder => {
   const order = MOL_BOND_ORDERS[code]
   if (order !== undefined) return order
-  console.warn(`${context}: query bond type ${code} has no definite order, treating as single`)
+  parse_warn(`${context}: query bond type ${code} has no definite order, treating as single`)
   return 1
 }
 
@@ -167,7 +168,7 @@ export const parse_mol = (content: string): Molecule => {
     const trailing = all_lines.slice(terminators[terminators.length - 1] + 1)
     const n_records = terminators.length + Number(trailing.some((line) => line.trim() !== ``))
     if (n_records > 1) {
-      console.warn(
+      parse_warn(
         `SDF contains ${n_records} records; parsed the first and skipped ${n_records - 1}`,
       )
     }
@@ -181,7 +182,7 @@ export const parse_mol = (content: string): Molecule => {
       throw new Error(
         `MOL file too short: expected a 3-line header plus a counts line, got ${lines.length} lines`,
       )
-    console.warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
+    parse_warn(`MOL counts line has no V2000/V3000 marker, assuming V2000 on line 4`)
     counts_idx = 3
   }
 

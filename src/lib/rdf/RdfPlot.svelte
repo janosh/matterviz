@@ -5,13 +5,12 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
-  import { as_text, file_drop_zone } from '#lib/io/index.js'
   import { plural } from '#lib/labels.js'
   import { array_max } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
-  import { parse_structure_file } from '#lib/structure/parse.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
   import { to_error } from '#lib/utils.js'
@@ -44,7 +43,7 @@
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     on_bin_hover,
     on_sites_hover,
@@ -75,24 +74,19 @@
   } & Omit<ScatterPlotOptions, `children`> = $props()
 
   let drop_error = $state<string>()
-  const drop_zone = file_drop_zone({
+  // The latest drop's recoverable parse warnings, one dismissible notice
+  let parse_warning_msg = $state<string>()
+  const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
-    on_drop: (content, filename, metadata) => {
-      if (on_file_drop) return on_file_drop(content, filename, metadata)
-      try {
-        const structure = parse_structure_file(as_text(content), filename)
-        // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected
-        if (is_crystal(structure)) drag_dropped = [...drag_dropped, structure]
-        else drop_error = `${filename} has no lattice or sites; cannot compute an RDF`
-      } catch (exc) {
-        drop_error = `Failed to process structure: ${to_error(exc).message}`
-      }
+    on_file_drop: () => on_file_drop,
+    on_structure: (structure) => {
+      // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected
+      if (!is_crystal(structure)) throw new Error(`no lattice or sites; cannot compute an RDF`)
+      drag_dropped = [...drag_dropped, structure]
     },
     on_error: (msg) => (drop_error = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) drop_error = undefined
-    },
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
   })
 
   // Computed entries keep the structure they came from, for the atoms behind a hover. A
@@ -223,7 +217,7 @@
   {:else}
     <ScatterPlot
       {...rest}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {series}
       {ref_lines}
@@ -238,11 +232,8 @@
     </ScatterPlot>
   {/if}
   <ViewerNotices>
-    <StatusMessage
-      bind:message={() => error_msg, (msg) => !msg && error_report.dismiss()}
-      type="error"
-      dismissible
-    />
+    <StatusMessage bind:message={error_report.message} type="error" dismissible />
+    <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
   </ViewerNotices>
 </div>
 

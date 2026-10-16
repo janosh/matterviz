@@ -30,7 +30,7 @@
   // changing a dropdown updates that section's structure(s) and histogram together.
   const coord_coloring: AtomColorConfig = {
     mode: `coordination`,
-    scale: `interpolateViridis`,
+    color_scale: `interpolateViridis`,
     scale_type: `continuous`,
   }
   let single_color_config = $state({ ...coord_coloring })

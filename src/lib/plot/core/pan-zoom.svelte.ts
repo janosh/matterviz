@@ -1,7 +1,6 @@
-// Shared pan/zoom/touch/drag-rect interaction controller for the 2D plot components
-// (created by cartesian-frame). Owns the interaction state machine; axis policy (which
-// ranges a rect zoom writes, reset semantics) stays with the caller via the
-// on_rect_zoom/on_reset/set_range callbacks.
+// Shared pan/zoom/touch/drag-rect interaction controller of the 2D plots (cartesian-frame).
+// Owns the interaction state machine; axis policy (which ranges a rect zoom writes, reset
+// semantics) stays with the caller via the on_rect_zoom/on_reset/set_range callbacks.
 
 import type { Point2D, Vec2 } from '#lib/math.js'
 import {
@@ -41,9 +40,8 @@ interface PanZoomOptions {
   svg: () => SVGElement | null
   // Only fired when the drag rect exceeds 5px in both dimensions
   on_rect_zoom: (start: Point2D, current: Point2D) => void
-  // Alt+drag instead of plain drag. Absent means the chart cannot enumerate its marks
-  // (bars, bins, boxes), and Alt+drag falls back to zooming rather than dropping the
-  // gesture on the floor.
+  // Alt+drag instead of plain drag. Absent means the chart cannot enumerate its marks (bars,
+  // bins, boxes), and Alt+drag falls back to zooming rather than dropping the gesture.
   on_rect_select?: (start: Point2D, current: Point2D) => void
   on_reset: () => void
   // Optional live hook while rect-dragging (ScatterPlot updates its tooltip)
@@ -100,16 +98,13 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   const on_window_mouse_up = () => {
     if (drag_state) {
+      const { start, current, mode } = drag_state
       // Ignore minuscule drag rects (e.g. accidental clicks)
-      const delta_x = Math.abs(drag_state.start.x - drag_state.current.x)
-      const delta_y = Math.abs(drag_state.start.y - drag_state.current.y)
-      if (delta_x > 5 && delta_y > 5) {
+      if (Math.abs(start.x - current.x) > 5 && Math.abs(start.y - current.y) > 5) {
         suppress_click = true
         const finish =
-          drag_state.mode === `select` && opts.on_rect_select
-            ? opts.on_rect_select
-            : opts.on_rect_zoom
-        finish(drag_state.start, drag_state.current)
+          mode === `select` && opts.on_rect_select ? opts.on_rect_select : opts.on_rect_zoom
+        finish(start, current)
         setTimeout(() => (suppress_click = false), 0)
       }
     }
@@ -118,12 +113,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   // Transform the whole batch before writing: a rejected log range must leave every
   // axis unchanged
-  const pan_axes = (
-    init: AxisRanges,
-    dx_px: number,
-    dy_px: number,
-    axes: readonly Axis[] = opts.axes(),
-  ) => {
+  const pan_axes = (init: AxisRanges, dx_px: number, dy_px: number, axes = opts.axes()) => {
     const dims = opts.plot_bounds()
     const ranges = axes.map((axis) => {
       const horizontal = axis === `x` || axis === `x2`
@@ -158,9 +148,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   // Pan drag handler (drag direction inverted on x for natural pan feel)
   const on_pan_move = (evt: MouseEvent) => {
-    // A mouseup delivered outside the window (or swallowed by a native dialog) never reaches
-    // on_pan_end, which would leave the plot panning on bare mouse moves and, because
-    // consumers gate animation and hover on is_panning, permanently frozen and untooltipped.
+    // A mouseup outside the window (or eaten by a native dialog) never reaches on_pan_end,
+    // leaving the plot panning on bare mouse moves (and frozen: consumers gate on is_panning)
     if (!(evt.buttons & 1)) return on_pan_end()
     if (!pan_drag_state) return
     const sensitivity = opts.pan()?.drag_sensitivity ?? 1
@@ -243,20 +232,12 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }))
     // Every contact must start in the data rectangle; touching an axis or label
     // must not arm a gesture that later moves into the plot.
-    const starts_outside_plot = start_touches.some(
-      (touch) =>
-        !point_in_rect(
-          { x: touch.x - svg_bounds.left, y: touch.y - svg_bounds.top },
-          plot_bounds,
-        ),
-    )
-    if (starts_outside_plot) return
+    const in_plot = (touch: Point2D) =>
+      point_in_rect({ x: touch.x - svg_bounds.left, y: touch.y - svg_bounds.top }, plot_bounds)
+    if (!start_touches.every(in_plot)) return
 
     evt.preventDefault()
-    touch_state = {
-      start_touches,
-      ...snapshot_ranges(opts.ranges()),
-    }
+    touch_state = { start_touches, ...snapshot_ranges(opts.ranges()) }
   }
 
   const on_touch_move = (evt: TouchEvent) => {
@@ -295,9 +276,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     touch_state = null
   }
 
-  // SVG keydown: Escape cancels an in-flight rect drag, Enter/Space resets the view.
-  // Target check keeps focusable plot children (bars, points) from triggering a reset
-  // when their own Enter/Space activation bubbles up.
+  // SVG keydown: Escape cancels a rect drag, Enter/Space resets the view. The target check
+  // keeps bubbling activation of focusable children (bars, points) from resetting.
   const on_key_down = (evt: KeyboardEvent) => {
     if (evt.target !== evt.currentTarget) return
     if (evt.key === `Escape` && drag_state) cancel_rect_drag()
@@ -346,15 +326,13 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       if (evt.key === `Shift`) shift_held = false
     },
     // Tabbing away eats the keyup, latching shift_held on: the wheel would then silently pan
-    // the data and swallow page scroll, and the cursor would promise a pan that mousedown
-    // (which reads the live evt.shiftKey) does not deliver.
+    // the data and swallow page scroll, and the cursor promise a pan mousedown won't deliver.
     on_window_blur: () => {
       shift_held = false
     },
     reset_view: opts.on_reset,
-    // Tear down any window listeners + cursor override if the component unmounts
-    // mid-drag (mouseup/panend would otherwise never fire, leaking listeners and a
-    // stuck cursor). Safe during SSR teardown, where window/document don't exist.
+    // Tear down window listeners + cursor override when unmounting mid-drag (mouseup/panend
+    // would never fire). Safe during SSR teardown, where window/document don't exist.
     destroy: () => {
       remove_drag_listeners(
         [on_window_mouse_move, on_pan_move],

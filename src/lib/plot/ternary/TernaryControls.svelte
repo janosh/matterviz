@@ -12,7 +12,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     grid_step = $bindable(GRID_DEFAULTS.grid_step),
     show_grid = $bindable(GRID_DEFAULTS.show_grid),
@@ -48,9 +48,7 @@
   <SettingsSection
     title="Grid"
     changed_keys={grid_settings.changed_keys}
-    on_reset={() => {
-      ;({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)
-    }}
+    on_reset={() => ({ grid_step, show_grid, show_ticks } = GRID_DEFAULTS)}
     layout="grid"
   >
     <NumberRangeInput min={0.05} max={0.5} step={0.05} bind:value={grid_step}

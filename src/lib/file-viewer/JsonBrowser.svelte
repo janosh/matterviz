@@ -20,6 +20,7 @@
     structure_from_json,
   } from '#lib/structure/parse.js'
   import { to_error } from '#lib/utils.js'
+  import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
@@ -55,6 +56,7 @@
   }
 
   type SplitDirection = `horizontal` | `vertical`
+  type DropZone = `top` | `bottom` | `left` | `right` | `center`
 
   // raw: panels are replaced, never mutated, and a deep proxy over large JSON values would
   // slow every viewer that reads them
@@ -95,7 +97,7 @@
   let sidebar_px = $state(320)
 
   // === Drag-and-drop from tree ===
-  let drop_zone = $state<`top` | `bottom` | `left` | `right` | `center` | null>(null)
+  let drop_zone = $state<DropZone | null>(null)
   let drop_target_panel_idx = $state<number>(-1)
   let canvas_element: HTMLElement | undefined = $state()
   const backdrop = resolve_backdrop(() => canvas_element, {
@@ -286,32 +288,23 @@
   function add_panel_with_split(
     spec: PanelSpec,
     target_idx: number,
-    zone: `top` | `bottom` | `left` | `right`,
+    zone: Exclude<DropZone, `center`>,
   ): void {
     layout_direction = zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
     const insert_idx = zone === `top` || zone === `left` ? target_idx : target_idx + 1
-    const new_panels = [...panels]
-    const new_sizes = [...panel_sizes]
-    // Split the target panel's size in half: new panel gets half, target keeps half
-    const target_size = new_sizes[target_idx] ?? 1
-    new_sizes[target_idx] = target_size / 2
-    new_panels.splice(insert_idx, 0, make_panel(spec))
-    new_sizes.splice(insert_idx, 0, target_size / 2)
-    panels = new_panels
-    panel_sizes = new_sizes
+    // the new panel takes half the target panel's size
+    const half_size = (panel_sizes[target_idx] ?? 1) / 2
+    panels = panels.toSpliced(insert_idx, 0, make_panel(spec))
+    panel_sizes = panel_sizes.with(target_idx, half_size).toSpliced(insert_idx, 0, half_size)
   }
 
   function close_panel(idx: number): void {
-    const new_panels = [...panels]
-    const new_sizes = [...panel_sizes]
-    // Give the closed panel's size to its neighbor
-    const closed_size = new_sizes[idx] ?? 0
+    // the closed panel's size goes to its neighbor
     const neighbor_idx = idx > 0 ? idx - 1 : idx + 1
-    if (neighbor_idx < new_sizes.length) new_sizes[neighbor_idx] += closed_size
-    new_panels.splice(idx, 1)
-    new_sizes.splice(idx, 1)
-    panels = new_panels
-    panel_sizes = new_sizes
+    const sizes = [...panel_sizes]
+    if (neighbor_idx < sizes.length) sizes[neighbor_idx] += sizes[idx] ?? 0
+    panels = panels.toSpliced(idx, 1)
+    panel_sizes = sizes.toSpliced(idx, 1)
     if (panels.length < 2) layout_direction = `vertical`
   }
 
@@ -337,13 +330,17 @@
 
   // Raw JSON values need promoting to the typed inputs the viewers expect (structures get
   // lattices/coordinates normalised, volumetric grids become typed arrays); the shared
-  // mount_viewer table then does the same dispatch as the webview entry point
+  // mount_viewer table then does the same dispatch as the webview entry point. A structure's
+  // conversion warnings go to the Structure viewer's notice (BrillouinZone has none, so its
+  // structure's go to the console).
   function json_to_viewer_input(
     detected_type: RenderableType,
     val: unknown,
-  ): { type: ViewerMountType; data: unknown } {
-    if (detected_type === `structure`)
-      return { type: `structure`, data: prepare_structure(val) }
+  ): { type: ViewerMountType; data: unknown; parse_warnings?: string[] } {
+    if (detected_type === `structure`) {
+      const { value: data, warnings } = collect_parse_warnings(() => prepare_structure(val))
+      return { type: `structure`, data, parse_warnings: warnings }
+    }
     if (detected_type === `volumetric`)
       return { type: `isosurface`, data: volume_json_to_isosurface_input(val) }
     if (detected_type === `brillouin_zone`) {
@@ -374,8 +371,12 @@
     let app: ReturnType<typeof mount> | null = null
     let error_el: HTMLElement | null = null
     try {
-      const { type, data } = json_to_viewer_input(panel.detected_type, panel.val)
-      app = mount_viewer(target, type, data, { defaults: merged_defaults, on_close })
+      const { type, data, parse_warnings } = json_to_viewer_input(
+        panel.detected_type,
+        panel.val,
+      )
+      const options = { defaults: merged_defaults, on_close, parse_warnings }
+      app = mount_viewer(target, type, data, options)
     } catch (error) {
       console.error(`JsonBrowser: mount failed for ${panel.detected_type}:`, error)
       // A blank panel would look like an empty dataset; say what went wrong instead
@@ -398,10 +399,7 @@
 
   // === Drop zone detection ===
 
-  function get_drop_zone(
-    event: DragEvent,
-    rect: DOMRect,
-  ): `top` | `bottom` | `left` | `right` | `center` {
+  function get_drop_zone(event: DragEvent, rect: DOMRect): DropZone {
     const rel_x = (event.clientX - rect.left) / rect.width
     const rel_y = (event.clientY - rect.top) / rect.height
     const edge_threshold = 0.25

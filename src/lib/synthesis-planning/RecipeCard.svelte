@@ -15,12 +15,12 @@
   let {
     route,
     target_mass_g = $bindable(1),
-    onassumptionschange,
+    on_assumptions_change,
     ...rest
   }: {
     route: SynthesisRoute
     target_mass_g?: number
-    onassumptionschange: (
+    on_assumptions_change: (
       step: `final` | `intermediate`,
       assumptions: RecipeAssumptions,
     ) => void
@@ -153,7 +153,7 @@
               value={step.recipe.assumptions[field]}
               placeholder="Undecided"
               oninput={(event) =>
-                onassumptionschange(
+                on_assumptions_change(
                   step_idx === 0 && route.intermediate_step ? `intermediate` : `final`,
                   { ...step.recipe.assumptions, [field]: event.currentTarget.value },
                 )}

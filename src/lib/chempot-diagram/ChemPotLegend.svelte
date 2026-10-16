@@ -2,38 +2,32 @@
   // Colour legend shared by ChemPotDiagram2D and ChemPotDiagram3D: a colour bar for the
   // continuous modes, one swatch per element count for arity mode, nothing for `none`.
   // The caller positions it (absolute) through `style`.
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import { ColorBar } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ChemPotColorRange } from './color'
-  import { ARITY_COLORS, arity_legend_labels, get_chempot_interpolator } from './color'
-  import type { ChemPotColorMode } from './types'
+  import { ARITY_COLORS, arity_legend_labels } from './color'
+  import type { ChemPotColorMode, ChemPotDiagramConfig } from './types'
 
   let {
     color_mode,
-    color_scale,
-    reverse_color_scale,
-    color_range,
+    color_bar,
     formulas,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     color_mode: ChemPotColorMode
-    color_scale: D3InterpolateName
-    reverse_color_scale: boolean
-    color_range: ChemPotColorRange | null
+    // the active numeric mode's ColorBar props (title, color scale, the user's), null hides it
+    color_bar: ChemPotDiagramConfig[`color_bar`]
     formulas: string[] // drawn domains; their element counts set the arity rows
   } = $props()
 </script>
 
-{#if color_range}
+<!-- color_bar is null in the categorical modes, so a hidden bar never falls through to arity -->
+{#if color_bar}
   <div {...rest} class={[`chempot-legend`, rest.class]}>
     <ColorBar
-      title={color_range.label}
-      range={[color_range.min, color_range.max]}
-      scale={{ interpolator: get_chempot_interpolator(color_scale, reverse_color_scale) }}
       wrapper_style="width: 200px"
       bar_style="height: 12px"
       title_style="margin-bottom: 4px"
+      {...color_bar}
     />
   </div>
 {:else if color_mode === `arity`}

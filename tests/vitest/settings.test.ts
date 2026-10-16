@@ -49,34 +49,44 @@ describe(`Settings`, () => {
   )
 
   // The one admissibility rule behind the persisted viewer state and the VS Code settings reader
+  const { structure: struct_cfg, trajectory: traj_cfg } = SETTINGS_CONFIG
+  const scale_cfg = struct_cfg.atom_color_scale
   test.each([
-    [`enum member`, SETTINGS_CONFIG.structure.show_bonds, `never`, true],
-    [`off-enum string`, SETTINGS_CONFIG.structure.show_bonds, `sometimes`, false],
-    [`number in range`, SETTINGS_CONFIG.structure.atom_radius, 1.5, true],
-    [`number above maximum`, SETTINGS_CONFIG.structure.atom_radius, 99, false],
-    [`non-finite number`, SETTINGS_CONFIG.structure.atom_radius, NaN, false],
-    [`off-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.25, false],
-    [`on-grid multipleOf`, SETTINGS_CONFIG.trajectory.fps, 7.3, true],
-    [`Vec3 of numbers`, SETTINGS_CONFIG.structure.rotation, [0, 1, 2], true],
-    [`Vec3 with a string`, SETTINGS_CONFIG.structure.rotation, [0, `bad`, 0], false],
-    [`too-short tuple`, SETTINGS_CONFIG.structure.rotation, [0, 1], false],
-    [`items out of bounds`, SETTINGS_CONFIG.trajectory.fps_range, [-5, 1000], false],
-    [`element list`, SETTINGS_CONFIG.structure.polyhedra_excluded_elements, [`Li`, `O`], true],
+    [`enum member`, struct_cfg.show_bonds, `never`, true],
+    [`off-enum string`, struct_cfg.show_bonds, `sometimes`, false],
+    [`number in range`, struct_cfg.atom_radius, 1.5, true],
+    [`number above maximum`, struct_cfg.atom_radius, 99, false],
+    [`non-finite number`, struct_cfg.atom_radius, NaN, false],
+    [`off-grid multipleOf`, traj_cfg.fps, 7.25, false],
+    [`on-grid multipleOf`, traj_cfg.fps, 7.3, true],
+    [`Vec3 of numbers`, struct_cfg.rotation, [0, 1, 2], true],
+    [`Vec3 with a string`, struct_cfg.rotation, [0, `bad`, 0], false],
+    [`too-short tuple`, struct_cfg.rotation, [0, 1], false],
+    [`items out of bounds`, traj_cfg.fps_range, [-5, 1000], false],
+    [`element list`, struct_cfg.polyhedra_excluded_elements, [`Li`, `O`], true],
+    [`element list with a number`, struct_cfg.polyhedra_excluded_elements, [8], false],
+    [`free-form map`, struct_cfg.vector_configs, { force: { visible: true } }, true],
+    [`array for a map`, struct_cfg.vector_configs, [], false],
+    [`boolean`, struct_cfg.show_atoms, false, true],
+    [`string for a boolean`, struct_cfg.show_atoms, `yes`, false],
+    // color scales: a scheme name or a ColorScaleConfig object, not just the default's string
+    [`color scale name`, scale_cfg, `interpolatePlasma`, true],
+    [`unknown scheme`, scale_cfg, `interpolateNope`, false],
     [
-      `element list with a number`,
-      SETTINGS_CONFIG.structure.polyhedra_excluded_elements,
-      [8],
-      false,
-    ],
-    [
-      `free-form map`,
-      SETTINGS_CONFIG.structure.vector_configs,
-      { force: { visible: true } },
+      `color scale config`,
+      scale_cfg,
+      {
+        type: { type: `arcsinh`, threshold: 2 },
+        scheme: `interpolateMagma`,
+        value_range: [null, 2],
+        palette_range: [1, 0],
+      },
       true,
     ],
-    [`array for a map`, SETTINGS_CONFIG.structure.vector_configs, [], false],
-    [`boolean`, SETTINGS_CONFIG.structure.show_atoms, false, true],
-    [`string for a boolean`, SETTINGS_CONFIG.structure.show_atoms, `yes`, false],
+    [`function scheme`, scale_cfg, { scheme: (frac: number) => `rgb(${frac}, 0, 0)` }, true],
+    [`config with an unknown key`, scale_cfg, { foo: 1 }, false],
+    [`config with a bad value_range`, scale_cfg, { value_range: [0, `1`] }, false],
+    [`degenerate palette_range`, scale_cfg, { palette_range: [0.5, 0.5] }, false],
   ] as const)(`is_valid_setting_value: %s`, (_label, setting, value, valid) => {
     expect(is_valid_setting_value(value, setting)).toBe(valid)
   })
@@ -609,7 +619,7 @@ describe(`Structure viewer state serialization`, () => {
         show_image_atoms: false,
         atom_color_config: {
           mode: `coordination`,
-          scale: `interpolatePlasma`,
+          color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },
           scale_type: `continuous`,
         },
         supercell_scaling: `2x3x1`,
@@ -631,7 +641,8 @@ describe(`Structure viewer state serialization`, () => {
             cell_edge_opacity: 0.8,
             show_image_atoms: false,
             atom_color_mode: `coordination`,
-            atom_color_scale: `interpolatePlasma`,
+            // a config object survives the round trip instead of falling back to the default
+            atom_color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },
           },
         },
         viewer: {

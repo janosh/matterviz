@@ -18,8 +18,7 @@
   import { format_num } from '#lib/labels.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
-  // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
-  // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
+  // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types.js'
@@ -32,7 +31,7 @@
   }
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -61,7 +60,7 @@
   } = $props()
 
   const set_display = (key: `projection_opacity` | `projection_scale`) => (val?: number) => {
-    // Guard against cleared/invalid input - preserve existing value
+    // Cleared/invalid input keeps the existing value
     if (val != null && Number.isFinite(val)) display = { ...display, [key]: val }
   }
   type AxisEntry = {
@@ -127,12 +126,8 @@
   toggle_title="3D plot"
   pane_class="compact-settings"
   {toggle_props}
-  pane_props={{
-    title: `3D plot settings`,
-    ...pane_props,
-  }}
+  pane_props={{ title: `3D plot settings`, ...pane_props }}
 >
-  <!-- Camera Controls -->
   <SettingsSection
     title="Camera"
     changed_keys={camera_settings.changed_keys}
@@ -150,7 +145,6 @@
     >
   </SettingsSection>
 
-  <!-- Display Controls -->
   <SettingsSection
     title="Display"
     changed_keys={display_settings.changed_keys}
@@ -208,7 +202,6 @@
       >
     {/each}
   </SettingsSection>
-  <!-- Axes (merged X/Y/Z) -->
   <SettingsSection
     title="Axes"
     changed_keys={axes_settings.changed_keys}
@@ -248,7 +241,6 @@
     {/each}
   </SettingsSection>
 
-  <!-- User-provided children -->
   {@render children?.()}
 </ControlPane>
 

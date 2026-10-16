@@ -357,7 +357,7 @@
             <ConvexHull
               entries={entries_map.get(path) ?? entries}
               controls={{ title }}
-              on_file_drop={(dropped) => entries_map.set(path, dropped)}
+              on_file_load={(loaded) => entries_map.set(path, loaded.entries)}
             />
           {:catch error}
             <p role="alert">Failed to load {title}: {String(error)}</p>

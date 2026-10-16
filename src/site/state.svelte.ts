@@ -52,9 +52,9 @@ if (routes.length === 0) console.error(`No routes found`)
 export type NavGroup = { label: string; href: string; prefixes: string[] }
 
 // Top-level nav dropdowns in display order. A route belongs to the first group whose prefix
-// matches it exactly or as a parent path; children keep prefix order, then path order. The
-// href is the dropdown key: where it is itself a page (/structure, /plot) the group label
-// links there and that page leaves the list, otherwise the label is a plain heading.
+// matches it exactly or as a parent path; children keep prefix order, then path order. Where
+// the href is itself a page (/structure, /plot) the group label links there, else it's a
+// plain heading.
 // oxfmt-ignore
 export const NAV_GROUPS: NavGroup[] = [
   { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },
@@ -135,4 +135,36 @@ export const latest_load = () => {
     },
     cancel: (): void => void latest_id++,
   }
+}
+
+// Demo pages whose main components their last route segment doesn't name (PascalCased)
+export const PAGE_COMPONENTS: Record<string, string[]> = {
+  '/bohr-atoms': [`BohrAtom`],
+  '/convex-hull/chempot-diagram': [`ChemPotDiagram`],
+  '/convex-hull/synthesis-planning': [`SynthesisPlanner`],
+  '/neb': [`NebViewer`, `NebPlot`],
+  '/phase-diagram': [`IsobaricBinaryPhaseDiagram`],
+  '/phase-diagram/ternary': [`IsobaricTernaryPhaseDiagram`],
+  '/plot/binned-scatter': [`BinnedScatterPlot`],
+  '/plot/color-scales': [`ColorScaleSelect`],
+  '/plot/eos': [`EosPlot`],
+  '/plot/scatter-plot-3d': [`ScatterPlot3D`],
+  '/plot/ternary': [`TernaryPlot`],
+  '/reciprocal/ir-raman': [`IrRamanSpectrum`],
+  '/structure/bond-angles': [`BondAnglePlot`],
+  '/structure/coordination': [`CoordinationBarPlot`],
+  '/structure/rdf': [`RdfPlot`],
+  '/structure/slab': [`SlabBuilder`],
+  '/structure/symmetry': [`SymmetryStats`, `WyckoffTable`],
+  '/structure/xrd': [`XrdPlot`, `SaedPattern`],
+}
+
+// Components a demo page's generated prop tables (src/site/PropsTable.svelte) document, from
+// its route id: the PAGE_COMPONENTS entry, else the PascalCased last segment
+export const page_components = (route_id: string): string[] => {
+  const parts = route_id.split(`/`).filter((part) => !part.startsWith(`(`)) // drop (group) segments
+  const pascal = (parts.at(-1) ?? ``).replaceAll(/(?:^|-)\w/g, (match) =>
+    match.slice(-1).toUpperCase(),
+  )
+  return PAGE_COMPONENTS[parts.join(`/`)] ?? [pascal]
 }

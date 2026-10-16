@@ -780,8 +780,8 @@ describe(`TrajectoryExportPane property export`, () => {
         await vi.waitFor(() =>
           expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
         )
-        expect(document.querySelector(`.error-message`)?.textContent ?? ``).toBe(
-          error_message ? `⚠️ ${error_message}` : ``,
+        expect(document.querySelector(`.error-message`)?.textContent?.trim() ?? ``).toBe(
+          error_message,
         )
         resolve_frame.mockImplementation(async (idx) => frames[idx])
         await click(`Download WebM`)

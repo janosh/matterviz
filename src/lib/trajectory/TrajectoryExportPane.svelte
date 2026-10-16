@@ -15,6 +15,7 @@
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { clamp } from '#lib/math.js'
   import {
     poscar_export_unavailable_reason,
@@ -92,7 +93,7 @@
     progress: number
     controller: AbortController
   } | null>(null)
-  let export_error = $state<string | null>(null)
+  let export_error = $state<string>()
   let flight_running = $state(false)
   let camera_flight = $state.raw<CameraFlight>()
   let run_signal: AbortSignal
@@ -179,7 +180,7 @@
     task: (signal: AbortSignal) => Promise<Result>,
   ): Promise<Result | null> {
     if (running || flight_running) return null
-    export_error = null
+    export_error = undefined
     const controller = new AbortController()
     running = { label, progress: 0, controller }
     try {
@@ -420,9 +421,7 @@
       />
     </div>
   {/if}
-  {#if export_error}
-    <div class="error-message">⚠️ {export_error}</div>
-  {/if}
+  <StatusMessage message={export_error} type="error" class="error-message" />
 
   <h4>Export Video · AV1</h4>
 
@@ -441,7 +440,11 @@
   {/if}
 
   {#if !video_formats.some(({ supported }) => supported)}
-    <div class="warning">This browser does not support AV1 video recording.</div>
+    <StatusMessage
+      message="This browser does not support AV1 video recording."
+      type="warning"
+      class="warning"
+    />
   {:else}
     <SettingsSection
       title="Video Settings"
@@ -503,7 +506,7 @@
     </div>
 
     {#if run && !canvas}
-      <div class="warning">Waiting for canvas...</div>
+      <StatusMessage message="Waiting for canvas..." type="warning" />
     {/if}
   {/if}
 </ExportPane>
@@ -540,22 +543,6 @@
 {/if}
 
 <style>
-  .warning,
-  .error-message {
-    padding: 1ex;
-    border-radius: var(--traj-border-radius, var(--border-radius, 3pt));
-    font-size: 0.9em;
-  }
-  .warning {
-    background: var(--warning-bg, rgba(255, 165, 0, 0.1));
-    border: 1px solid var(--warning-color, orange);
-  }
-  .error-message {
-    background: var(--error-bg, rgba(255, 0, 0, 0.1));
-    border: 1px solid var(--error-color, rgba(255, 0, 0, 0.5));
-    color: var(--error-color, #ff6b6b);
-    margin-bottom: 1ex;
-  }
   .export-buttons {
     display: flex;
     flex-wrap: wrap;

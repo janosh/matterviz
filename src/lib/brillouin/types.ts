@@ -1,6 +1,6 @@
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
 import type { DefaultSettings } from '#lib/settings.js'
-import type { TooltipProp } from '#lib/tooltip/index.js'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 // Viewer settings BrillouinZone forwards to BrillouinZoneControls (bound) and
 // BrillouinZoneScene (read-only); defaults live in DEFAULTS.brillouin
@@ -31,8 +31,10 @@ export type BZHoverData = {
   symmetry_multiplicity: number | null // BZ volume / IBZ volume (e.g., 48 for cubic)
 }
 
-// Tooltip prop can be a snippet for full customization or config for prefix/suffix
-export type BZTooltipProp = TooltipProp<BZHoverData, [{ hover_data: BZHoverData }]>
+export type BZTooltipProp = TooltipProp<
+  { hover_data: BZHoverData },
+  TooltipConfig<BZHoverData>
+>
 
 type BZMeshData = {
   vertices: Vec3[]

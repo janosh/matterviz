@@ -69,8 +69,11 @@
     return null
   })
   const shown_bands = $derived(clicked_band === null ? selected_bands : [clicked_band])
-  // Bands' spin control writes this; the hidden channel gets no crossings or sheets either
+  // Bands' spin control writes this; a hidden channel gets no crossings or sheets either
   let band_spin_mode = $derived<BandsSpinMode>(bands_props.band_spin_mode ?? `overlay`)
+  const only_spin = $derived(
+    band_spin_mode === `up_only` ? `up` : band_spin_mode === `down_only` ? `down` : null,
+  )
   let surface = $state.raw<FermiSurfaceData>()
   let wrapper = $state<HTMLDivElement>()
   let crossings_svg = $state<SVGSVGElement>()
@@ -123,12 +126,10 @@
   const crossings_at = (energy: number, level: `fermi` | `reference`) => {
     const k_points = link.k_path?.points
     if (!k_points) return []
-    const hidden_spin =
-      band_spin_mode === `up_only` ? `down` : band_spin_mode === `down_only` ? `up` : null
     const include = (band_idx: number, spin: `up` | `down`) =>
       grid_bands.has(band_idx) &&
       (shown_bands?.includes(band_idx) ?? true) &&
-      spin !== hidden_spin
+      (only_spin ?? spin) === spin
     return band_crossings(band_struct, energy, k_points, x_positions, include).map(
       (crossing) => ({ ...crossing, energy, level }),
     )
@@ -162,7 +163,7 @@
   )
 </script>
 
-<div {...rest} bind:this={wrapper} class={[`fermi-surface-bands`, rest.class]}>
+<div {...rest} bind:this={wrapper} class={[`fermi-surface-bands mv-panels`, rest.class]}>
   <!-- caller props first: the link's handlers chain the caller's instead of being replaced -->
   <FermiSurface
     {...fermi_props}
@@ -170,13 +171,7 @@
     fullscreen_toggle={false}
     bind:fermi_data={surface}
     bind:color_property
-    selected_spins={band_data.n_spins !== 2
-      ? undefined
-      : band_spin_mode === `up_only`
-        ? [`up`]
-        : band_spin_mode === `down_only`
-          ? [`down`]
-          : undefined}
+    selected_spins={band_data.n_spins === 2 && only_spin ? [only_spin] : undefined}
     wigner_seitz
     previewing={hovered_energy !== null}
     bind:mu={() => shown_mu, (value) => (mu = value)}
@@ -271,14 +266,5 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
     gap: var(--fermi-bands-gap, 1em);
-    &:fullscreen {
-      padding: 1em;
-      grid-auto-rows: minmax(0, 1fr);
-      background: var(--fullscreen-bg, var(--page-bg, Canvas));
-      > :global(*) {
-        height: 100%;
-        min-height: 0;
-      }
-    }
   }
 </style>

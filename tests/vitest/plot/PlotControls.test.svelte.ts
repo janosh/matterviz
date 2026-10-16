@@ -79,9 +79,7 @@ describe(`PlotControls`, () => {
     ])(
       `renders $expected range inputs with y2 range=$secondary_range`,
       ({ secondary_range, expected }) => {
-        mount_controls({
-          auto_ranges: { x: [0, 100], y: [0, 50], y2: secondary_range },
-        })
+        mount_controls({ auto_ranges: { x: [0, 100], y: [0, 50], y2: secondary_range } })
         expect(document.querySelectorAll(`input.range-input`)).toHaveLength(expected)
       },
     )

@@ -2,6 +2,7 @@
 import { canvas_to_png_blob, dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
 import { export_scene_as } from '#lib/scene/index.js'
 import { escape_html as xml_escape } from '#lib/utils.js'
 import * as THREE from 'three/webgpu'
@@ -26,8 +27,7 @@ export function get_view_settings(opts: {
   camera_projection: string
   auto_rotate: number
   color_mode: string
-  color_scale: string
-  reverse_color_scale: boolean
+  color_scale: ColorScale
   camera_position?: XYZ | null
   camera_target?: XYZ | null
   // an orthographic camera frames by zoom, not distance, so a snapshot without it is ambiguous

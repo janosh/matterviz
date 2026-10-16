@@ -32,7 +32,7 @@ import { finite_vec3_from_values, is_finite_vec3_like } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { count_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
@@ -88,7 +88,11 @@ function parse_image(raw: unknown, context: string): NebImage {
   }
 }
 
-function parse_path_body(raw: unknown, context: string, energy_unit?: string): ReactionPath {
+function parse_path_body(
+  raw: unknown,
+  context: string,
+  energy_unit: string | undefined,
+): ReactionPath {
   const body = Array.isArray(raw) ? { images: raw } : raw
   if (!is_plain_object(body) || !Array.isArray(body.images)) {
     throw new Error(`${context} must be an image array or an object with an "images" array`)
@@ -160,7 +164,7 @@ const xyz_comment_energy = (comment: string, context: string): number => {
 // the trajectory XYZ parser, which is the single source of truth for the format.
 export function parse_xyz_reaction_path(content: string, filename = `path.xyz`): ReactionPath {
   const images: NebImage[] = []
-  const collector = create_warning_collector()
+  const collector = create_warning_collector(parse_warn)
   const lines = new TextLines(content)
   for (const frame of iter_xyz_frames(lines)) {
     const image_idx = images.length
@@ -224,7 +228,7 @@ const structure_energy = (structure: AnyStructure, filename: string): number =>
 
 // Assemble whatever was dropped into named reaction paths. Reaction-path JSON and
 // multi-frame XYZ each contribute their own path(s); loose structure files are collected
-// into one path in drop order.
+// into one path in drop order. Recoverable parser issues go to parse_warn.
 export function parse_dropped_paths(files: DroppedFile[]): Record<string, ReactionPath> {
   if (files.length === 0) throw new Error(`parse_dropped_paths got no files`)
   const paths: Record<string, ReactionPath> = {}
@@ -240,8 +244,8 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
 
   for (const { content, filename } of files) {
     if (is_reaction_path_json(content)) {
-      for (const [key, path] of Object.entries(parse_reaction_path_json(content, filename)))
-        add_path(key, path, filename)
+      const json_paths = parse_reaction_path_json(content, filename)
+      for (const [key, path] of Object.entries(json_paths)) add_path(key, path, filename)
       continue
     }
     if (is_xyz(filename) && count_xyz_frames(content) > 1) {

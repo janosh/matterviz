@@ -1,4 +1,5 @@
 import {
+  canvas_overlay_png_blob,
   canvas_to_png_blob,
   dpi_to_scale,
   export_canvas_as_png,
@@ -593,62 +594,47 @@ describe(`svg_to_png_blob`, () => {
     mock_image(`load`)
   })
 
-  // one row per svg_viewbox() rejection branch: length !== 4, non-finite, width/height <= 0
-  test.each<[string | undefined, string]>([
-    [undefined, `missing dimensions`],
-    [`0 0`, `too few values`],
-    [`0 0 foo 100`, `NaN width`],
-    [`0 0 0 100`, `zero width`],
-    [`0 0 100 -50`, `negative height`],
-  ])(`rejects for invalid viewBox %s (%s)`, async (viewbox, _reason) => {
-    await expect(svg_to_png_blob(make_svg(viewbox))).rejects.toThrow(
-      `Invalid SVG dimensions for PNG export`,
-    )
+  // one row per svg_viewbox() rejection branch (length !== 4, non-finite, width/height <= 0)
+  // and per invalid DPI
+  test.each<[string | undefined, number, string]>([
+    [undefined, 72, `Invalid SVG dimensions for PNG export`],
+    [`0 0`, 72, `Invalid SVG dimensions for PNG export`],
+    [`0 0 foo 100`, 72, `Invalid SVG dimensions for PNG export`],
+    [`0 0 0 100`, 72, `Invalid SVG dimensions for PNG export`],
+    [`0 0 100 -50`, 72, `Invalid SVG dimensions for PNG export`],
+    [`0 0 100 100`, 0, `Invalid PNG DPI`],
+    [`0 0 100 100`, NaN, `Invalid PNG DPI`],
+  ])(`rejects viewBox %s at %s DPI`, async (viewbox, dpi, message) => {
+    await expect(svg_to_png_blob(make_svg(viewbox), dpi)).rejects.toThrow(message)
   })
 
-  test.each([
-    [0, `zero DPI`],
-    [NaN, `NaN DPI`],
-  ])(`rejects for invalid DPI %s (%s)`, async (dpi: number) => {
-    await expect(svg_to_png_blob(make_svg(`0 0 100 100`), dpi)).rejects.toThrow(
-      `Invalid PNG DPI`,
-    )
-  })
-
-  test.each([
-    { viewBox: `0,0,100,100`, dpi: 72, size: 100, label: `comma-separated viewBox` },
-    { viewBox: `0 0 100 100`, dpi: 144, size: 200, label: `2x multiplier` },
-    { viewBox: `0 0 100 100`, dpi: 1440, size: 1000, label: `capped at 10x` },
-    // 10 viewBox units at the 1 DPI floor would round to 0 without the >=1px clamp
-    { viewBox: `0 0 10 10`, dpi: 1, size: 1, label: `clamped to >=1px` },
-  ])(`viewBox $viewBox at $dpi DPI → $size px ($label)`, async ({ viewBox, dpi, size }) => {
-    expect(await svg_to_png_blob(make_svg(viewBox), dpi)).toBeInstanceOf(Blob)
-    expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual([size, size])
-  })
-
-  test.each([
-    { source_viewbox: undefined, stroke: 0, size: [200, 100], viewbox: `0 0 100 50` },
-    { source_viewbox: undefined, stroke: 4, size: [208, 108], viewbox: `-2 -2 104 54` },
-    { source_viewbox: `0 0 100 50`, stroke: 0, size: [200, 100], viewbox: `0 0 100 50` },
-    { source_viewbox: `0 0 100 50`, stroke: 4, size: [208, 108], viewbox: `-2 -2 104 54` },
+  // CSS sizes (100x50px) override the width/height attributes (80x40): export follows the
+  // rendered viewport when there is no viewBox, and pads by half the widest stroke. 1 DPI
+  // rounds 10 viewBox units to 0 without the >=1px clamp; 1440 DPI is capped at 10x.
+  test.each<[string | undefined, number, number, [number, number], string]>([
+    [`0,0,100,100`, 72, 0, [100, 100], `0 0 100 100`],
+    [`0 0 100 100`, 1440, 0, [1000, 1000], `0 0 100 100`],
+    [`0 0 10 10`, 1, 0, [1, 1], `0 0 10 10`],
+    [undefined, 144, 0, [200, 100], `0 0 100 50`],
+    [undefined, 144, 4, [208, 108], `-2 -2 104 54`],
+    [`0 0 100 50`, 144, 0, [200, 100], `0 0 100 50`],
+    [`0 0 100 50`, 144, 4, [208, 108], `-2 -2 104 54`],
   ])(
-    `serializes viewBox $source_viewbox with stroke $stroke as an image blob`,
-    async ({ source_viewbox, stroke, size, viewbox }) => {
+    `rasterizes viewBox %s at %s DPI with stroke %s to %j px`,
+    async (source_viewbox, dpi, stroke, size, viewbox) => {
       const svg = make_svg(source_viewbox)
-      // CSS overrides the attributes; export must follow the rendered viewport.
       svg.setAttribute(`width`, `80`)
       svg.setAttribute(`height`, `40`)
       svg.style.width = `100px`
       svg.style.height = `50px`
       if (stroke) {
         const rect = document.createElementNS(`http://www.w3.org/2000/svg`, `rect`)
-        Object.entries({ stroke: `red`, 'stroke-width': stroke }).forEach(([key, val]) =>
-          rect.setAttribute(key, String(val)),
-        )
+        rect.setAttribute(`stroke`, `red`)
+        rect.setAttribute(`stroke-width`, String(stroke))
         svg.append(rect)
       }
       document.body.append(svg)
-      await svg_to_png_blob(svg, 144)
+      expect(await svg_to_png_blob(svg, dpi)).toBeInstanceOf(Blob)
       expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual(size)
       const svg_blob = object_url.create.mock.calls[0][0] as Blob
       expect(svg_blob.type).toBe(`image/svg+xml;charset=utf-8`)
@@ -705,6 +691,61 @@ describe(`svg_to_png_blob`, () => {
       expect(mock_canvas_element.toBlob).not.toHaveBeenCalled()
     }
   })
+})
+
+// 3D charts lay HTML legends/color bars over a GPU canvas; the PNG redraws them on the frame
+test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas frame`, async () => {
+  const canvas = Object.assign(make_mock_canvas(), {
+    clientWidth: 800,
+    clientHeight: 600,
+    getBoundingClientRect: () => new DOMRect(0, 0, 800, 600),
+  })
+  const legend = document.createElement(`div`)
+  legend.innerHTML = `<svg><circle r="3" fill="red"></circle></svg>`
+  document.body.append(legend)
+  onTestFinished(() => legend.remove())
+  const frame = { close: vi.fn() }
+  vi.stubGlobal(
+    `createImageBitmap`,
+    vi.fn(async () => frame),
+  )
+  const object_url = mock_object_url()
+  const images = mock_image(`load`)
+  const offscreen = mock_offscreen_canvas()
+
+  expect(await canvas_overlay_png_blob(canvas, [legend], 72)).toBeInstanceOf(Blob)
+  const { drawImage } = offscreen.getContext.mock.results[0].value as {
+    drawImage: ReturnType<typeof vi.fn>
+  }
+  expect(drawImage.mock.calls).toEqual([
+    [frame, 0, 0, 800, 600],
+    [images[0], 0, 0, 800, 600],
+  ])
+  expect(frame.close).toHaveBeenCalledOnce()
+  const overlay_svg = parse_svg(await (object_url.create.mock.calls[0][0] as Blob).text())
+  expect(overlay_svg.querySelector(`circle`)?.getAttribute(`fill`)).toBe(`red`)
+})
+
+// Without overlays the canvas frame passes through as is; overlays on a canvas that has not
+// been laid out have no geometry to sit on and are refused
+test.each([
+  [`no overlays`, 0, 800, null],
+  [`an unlaid-out canvas`, 1, 0, `has not been laid out (zero size)`],
+])(`canvas_overlay_png_blob with %s`, async (_label, n_overlays, size, error) => {
+  const frame_blob = new Blob([`frame`], { type: `image/png` })
+  const canvas = Object.assign(
+    make_mock_canvas((callback) => callback(frame_blob)),
+    {
+      getBoundingClientRect: () => new DOMRect(0, 0, size, size),
+    },
+  )
+  const bitmap_spy = vi.fn()
+  vi.stubGlobal(`createImageBitmap`, bitmap_spy)
+  const overlays = Array.from({ length: n_overlays }, () => document.createElement(`div`))
+  const result = canvas_overlay_png_blob(canvas, overlays, 72)
+  if (error) await expect(result).rejects.toThrow(error)
+  else expect(await result).toBe(frame_blob)
+  expect(bitmap_spy).not.toHaveBeenCalled()
 })
 
 describe(`export_canvas_as_png`, () => {

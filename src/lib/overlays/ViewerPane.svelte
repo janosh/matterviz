@@ -50,11 +50,8 @@
         [`left`, `right`, `width`, `offsetWidth`, innerWidth],
         [`top`, `bottom`, `height`, `offsetHeight`, innerHeight],
       ] as const) {
-        const shift = viewport_shift(
-          rect[start],
-          Math.max(rect[end], tab?.[end] ?? rect[end]),
-          viewport,
-        )
+        const visual_end = Math.max(rect[end], tab?.[end] ?? rect[end])
+        const shift = viewport_shift(rect[start], visual_end, viewport)
         const scale =
           parent_rect && parent instanceof HTMLElement && parent[offset]
             ? parent_rect[dimension] / parent[offset]
@@ -104,9 +101,8 @@
           ?.getBoundingClientRect().right ?? pane_rect.right
       const container_rect = container.getBoundingClientRect()
       // Phone widths also cap the pane to the viewer so the whole pane is on screen whenever
-      // the viewer is; desktop keeps the stylesheet's viewport cap. Measured in JS rather than
-      // with 100cqh: a viewer whose height comes from min-height (Trajectory in portrait)
-      // reports 100cqh as 0px, which collapsed the pane entirely.
+      // the viewer is. Measured in JS, not 100cqh: a viewer whose height comes from min-height
+      // (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane entirely.
       if (globalThis.innerWidth <= 640) {
         const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
         const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
@@ -117,10 +113,8 @@
         pane_element.style.removeProperty(`--pane-viewport-clamp`)
       const min_left = container_rect.left + container_gap_px
       const max_right = container_rect.right - container_gap_px
-      const shift_px = Math.min(
-        Math.max(min_left - pane_rect.left, 0),
-        max_right - visual_right,
-      )
+      const shift_left = Math.max(min_left - pane_rect.left, 0)
+      const shift_px = Math.min(shift_left, max_right - visual_right)
       if (Math.abs(shift_px) < 0.5) return
 
       const scale_x =
@@ -170,11 +164,9 @@
 </DraggablePane>
 
 <style>
-  /* These panes scroll with the page (position: absolute), so DraggablePane's own viewport
-     clamp (fixed panes only) never applies. A pane taller than the screen can then only be
-     read by scrolling the page while touches inside it scroll the pane content instead, so
-     cap it to the viewport. Phone-width screens get a tighter inline cap from the effect
-     above; fixed panes override this var inline as well. */
+  /* These panes scroll with the page (position: absolute), so DraggablePane's viewport clamp
+     (fixed panes only) never applies and a pane taller than the screen would be unreadable on
+     touch: cap it here. Phones get a tighter inline cap from the effect above. */
   :global(.draggable-pane.viewer-pane-open) {
     --pane-viewport-clamp: calc(100dvh - 4em);
   }

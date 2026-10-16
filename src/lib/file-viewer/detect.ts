@@ -55,33 +55,35 @@ const has_array = (data: Record<string, unknown>, key: string, len?: number): bo
   return Array.isArray(val) && (len === undefined || val.length === len)
 }
 
+// A shape check that only plain objects can pass (arrays, primitives and null fail it)
+const record_guard =
+  (check: (data: Record<string, unknown>) => boolean) =>
+  (obj: unknown): boolean => {
+    const data = as_record(obj)
+    return data !== null && check(data)
+  }
+
 // FermiSurfaceData: pre-computed Matterviz meshes or IFermi's band-keyed mesh object
-function is_fermi_surface(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
-  if (data[`@class`] === `FermiSurface`) return Boolean(as_record(data.isosurfaces))
-  return (
-    has_array(data, `isosurfaces`) &&
-    has_array(data, `k_lattice`, 3) &&
-    typeof data.fermi_energy === `number` &&
-    (data.reciprocal_cell === `wigner_seitz` || data.reciprocal_cell === `parallelepiped`) &&
-    Boolean(as_record(data.metadata))
-  )
-}
+const is_fermi_surface = record_guard((data) =>
+  data[`@class`] === `FermiSurface`
+    ? Boolean(as_record(data.isosurfaces))
+    : has_array(data, `isosurfaces`) &&
+      has_array(data, `k_lattice`, 3) &&
+      typeof data.fermi_energy === `number` &&
+      (data.reciprocal_cell === `wigner_seitz` || data.reciprocal_cell === `parallelepiped`) &&
+      Boolean(as_record(data.metadata)),
+)
 
 // BandGridData: raw band energies on a k-grid (needs marching cubes extraction)
-function is_band_grid(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
-  return (
+const is_band_grid = record_guard(
+  (data) =>
     has_array(data, `energies`) &&
     has_array(data, `k_grid`, 3) &&
     has_array(data, `k_lattice`, 3) &&
     typeof data.fermi_energy === `number` &&
     typeof data.n_bands === `number` &&
-    typeof data.n_spins === `number`
-  )
-}
+    typeof data.n_spins === `number`,
+)
 
 // ConvexHull entries: array of objects with `composition` (object) + energy field
 // Accepts `energy`, `e_form_per_atom`, or `energy_per_atom` as the energy key
@@ -104,9 +106,7 @@ function is_convex_hull_entries(obj: unknown): boolean {
 // with lattice info and a nonempty string `id` (make_volume rejects anything else, so
 // id-less JSON detected here threw on open instead of falling back to the JSON browser).
 // volume_from_json turns either encoding into typed-array storage.
-function is_volumetric(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
+const is_volumetric = record_guard((data) => {
   let has_grid = false
   if (has_array(data, `grid`)) {
     const first_slice = (data.grid as unknown[])[0]
@@ -123,28 +123,26 @@ function is_volumetric(obj: unknown): boolean {
     has_array(data, `origin`, 3) &&
     typeof data.periodic === `boolean`
   )
-}
+})
 
 // PhaseDiagramData: binary phase diagram with components, regions, boundaries
-function is_phase_diagram(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
+const is_phase_diagram = record_guard((data) => {
   if (!has_array(data, `components`, 2)) return false
   const [comp_a, comp_b] = data.components as unknown[]
-  if (typeof comp_a !== `string` || typeof comp_b !== `string`) return false
   return (
+    typeof comp_a === `string` &&
+    typeof comp_b === `string` &&
     has_array(data, `regions`) &&
     has_array(data, `boundaries`) &&
     has_array(data, `temperature_range`, 2)
   )
-}
+})
 
 // BandStructure: normalized format (qpoints, branches, bands, nb_bands), pymatgen electronic
 // format (kpoints, branches, bands with spin keys, labels_dict) or pymatgen phonon format
 // (qpoints, bands array, labels_dict, reciprocal lattice), which never serialises branches
-function is_band_structure(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data || !as_record(data.labels_dict)) return false
+const is_band_structure = record_guard((data) => {
+  if (!as_record(data.labels_dict)) return false
   if (
     has_array(data, `qpoints`) &&
     has_array(data, `bands`) &&
@@ -165,14 +163,12 @@ function is_band_structure(obj: unknown): boolean {
     Boolean(as_record(data.bands)) &&
     typeof data.efermi === `number`
   )
-}
+})
 
 // DOS: pymatgen CompleteDos format or normalized DosData
 // CompleteDos: has energies, densities, efermi, and @class containing "Dos"
 // DosData: has type ("phonon"|"electronic"), frequencies/energies, densities
-function is_dos(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
+const is_dos = record_guard((data) => {
   const has_spectra = has_array(data, `energies`) || has_array(data, `frequencies`)
   const complete_dos =
     typeof data[`@class`] === `string` &&
@@ -181,18 +177,15 @@ function is_dos(obj: unknown): boolean {
   const dos_data =
     (data.type === `phonon` || data.type === `electronic`) && has_array(data, `densities`)
   return has_spectra && (complete_dos || dos_data)
-}
+})
 
 // BandsAndDos: object containing both band_structure and dos data at the same level.
 // Must be a focused wrapper (few keys), not a large object that happens to have both.
-function is_bands_and_dos(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
+const is_bands_and_dos = record_guard((data) => {
   const keys = Object.keys(data).filter((key) => !key.startsWith(`@`) && !key.startsWith(`_`))
   // Wrapper format: { band_structure: {...}, dos: {...} } with few extra keys
-  const has_bands = as_record(data.band_structure) && is_band_structure(data.band_structure)
-  const has_dos_key = as_record(data.dos) && is_dos(data.dos)
-  if (has_bands && has_dos_key && keys.length <= 5) return true
+  if (is_band_structure(data.band_structure) && is_dos(data.dos) && keys.length <= 5)
+    return true
   // Combined-fields format: single object with both band structure and DOS fields mixed in
   const has_bands_fields = has_array(data, `branches`) && as_record(data.labels_dict)
   const has_dos_fields =
@@ -200,51 +193,36 @@ function is_bands_and_dos(obj: unknown): boolean {
     data.densities !== undefined &&
     (data.atom_dos !== undefined || data.spd_dos !== undefined)
   return Boolean(has_bands_fields && has_dos_fields)
-}
+})
 
-// BrillouinZone: reciprocal lattice data with optional k-path info
-// Matches objects with a lattice that has reciprocal vectors (k_lattice or reciprocal_lattice)
-// and optionally k-path points/labels for overlaying on the zone
-function is_brillouin_zone(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
-  // Must have reciprocal lattice vectors (3x3 matrix)
-  const has_k_lattice =
-    has_array(data, `k_lattice`, 3) || has_array(data, `reciprocal_lattice`, 3)
-  if (!has_k_lattice) return false
-  // Must have k-path or explicit BZ data to distinguish from Fermi surface data
-  // (Fermi surface also has k_lattice but additionally has isosurfaces)
-  if (has_array(data, `isosurfaces`)) return false // that's a Fermi surface, not a plain BZ
-  // Accept if it has k_path labels/points, or a structure with lattice
-  return (
-    has_array(data, `k_path`) ||
-    has_array(data, `k_points`) ||
-    Boolean(as_record(data.k_labels)) ||
-    Boolean(as_record(data.labels_dict)) ||
-    data.bz_order !== undefined
-  )
-}
+// BrillouinZone: reciprocal lattice vectors (k_lattice or reciprocal_lattice) plus k-path or
+// explicit BZ data. Fermi surface data also has k_lattice but additionally isosurfaces.
+const is_brillouin_zone = record_guard(
+  (data) =>
+    (has_array(data, `k_lattice`, 3) || has_array(data, `reciprocal_lattice`, 3)) &&
+    !has_array(data, `isosurfaces`) &&
+    (has_array(data, `k_path`) ||
+      has_array(data, `k_points`) ||
+      Boolean(as_record(data.k_labels)) ||
+      Boolean(as_record(data.labels_dict)) ||
+      data.bz_order !== undefined),
+)
 
-// XRD pattern: x + y arrays of equal length (2-theta angles vs intensities)
-// with optional hkls (Miller indices) and d_hkls (d-spacings)
-function is_xrd_pattern(obj: unknown): boolean {
-  const data = as_record(obj)
-  if (!data) return false
+// XRD pattern: numeric x + y arrays of equal length (2-theta angles vs intensities). Told apart
+// from generic scatter data by hkls (Miller indices), d_hkls (d-spacings), an Xrd @class or a
+// wavelength.
+const is_xrd_pattern = record_guard((data) => {
   if (!has_array(data, `x`) || !has_array(data, `y`)) return false
-  const x_arr = data.x as unknown[]
-  const y_arr = data.y as unknown[]
+  const [x_arr, y_arr] = [data.x, data.y] as unknown[][]
   if (x_arr.length !== y_arr.length || x_arr.length === 0) return false
-  // Must have numeric x/y values
   if (typeof x_arr[0] !== `number` || typeof y_arr[0] !== `number`) return false
-  // Distinguish from generic scatter data: XRD patterns typically have hkls or d_hkls,
-  // or have @class containing "Xrd"
   return (
     has_array(data, `hkls`) ||
     has_array(data, `d_hkls`) ||
     (typeof data[`@class`] === `string` && data[`@class`].includes(`Xrd`)) ||
     typeof data.wavelength === `number`
   )
-}
+})
 
 // Tabular data: array of objects with consistent keys (row-based table format)
 // or object with parallel arrays (column-based format)

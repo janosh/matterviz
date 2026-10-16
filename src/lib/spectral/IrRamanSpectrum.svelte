@@ -1,7 +1,7 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { track_settings } from '#lib/controls.js'
-  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -56,11 +56,11 @@
     selected_mode_idx = $bindable(null),
     on_mode_select,
     display = $bindable({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true }),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     resolved_padding = $bindable(), // to align the plot with a band plot beside it
     ...rest
-  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
+  }: Omit<ScatterPlotOptions, `controls_extra`> & {
     spectrum: VibrationalSpectrum
     kind?: SpectrumKind
     units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
@@ -210,8 +210,21 @@
     message="No Raman data: polarizability derivatives must be supplied as raman_tensors or raman_activities"
   />
 {:else if has_signal}
+  {#snippet spectrum_tooltip({ x_formatted, y_formatted }: ScatterHandlerProps)}
+    {@const [frequency_text, intensity_text] = is_horizontal
+      ? [y_formatted, x_formatted]
+      : [x_formatted, y_formatted]}
+    <TooltipValue
+      label="Frequency"
+      value={frequency_text}
+      unit={frequency_unit_label(unit)}
+    /><br />
+    <TooltipValue label={intensity_label} value={intensity_text} />
+  {/snippet}
+
   <ScatterPlot
     {...rest}
+    tooltip={rest.tooltip ?? spectrum_tooltip}
     series={series_data}
     x_axis={{ ...(is_horizontal ? intensity_axis : frequency_axis), ...x_axis }}
     y_axis={{ ...(is_horizontal ? frequency_axis : intensity_axis), ...y_axis }}
@@ -230,21 +243,9 @@
       rest.on_point_hover?.(event)
     }}
     range_padding={rest.range_padding ?? 0}
-    bind:show_controls
+    {show_controls}
     bind:controls_open
   >
-    {#snippet tooltip({ x_formatted, y_formatted })}
-      {@const [frequency_text, intensity_text] = is_horizontal
-        ? [y_formatted, x_formatted]
-        : [x_formatted, y_formatted]}
-      <TooltipValue
-        label="Frequency"
-        value={frequency_text}
-        unit={frequency_unit_label(unit)}
-      /><br />
-      <TooltipValue label={intensity_label} value={intensity_text} />
-    {/snippet}
-
     {#snippet controls_extra()}
       <SettingsSection
         title="Spectrum"

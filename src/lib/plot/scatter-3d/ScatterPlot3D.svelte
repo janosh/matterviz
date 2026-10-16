@@ -8,6 +8,7 @@
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { resolve_axis_range } from '#lib/plot/core/interactions.js'
+  import { format_num } from '#lib/labels.js'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -26,8 +27,7 @@
   import {
     auto_scale_range,
     collect_series_extent,
-    create_color_scale,
-    resolve_value_range,
+    resolve_color_scale,
     to_color_scale_config,
   } from '#lib/plot/core/scales.js'
   import {
@@ -39,7 +39,10 @@
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import { canvas_sources } from '#lib/io/export.js'
+  import ShortcutsHelp from '#lib/layout/ShortcutsHelp.svelte'
+  import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
+  import { canvas_overlay_png_blob } from '#lib/io/export.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { get_3d_auto_ranges, sample_surface } from './scene-coords'
 
@@ -61,7 +64,6 @@
     color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
     size_scale = SCALE_DEFAULTS.size_3d,
-    // Legend
     legend = {},
     show_legend,
     // Camera settings
@@ -75,26 +77,20 @@
     rotate_speed = 1,
     zoom_speed = 2,
     pan_speed = 2,
-    // Lighting
     ambient_light = 0.6,
     directional_light = 0.8,
-    // Rendering quality
     sphere_segments = 16,
     point_tween,
-    // Gizmo
     gizmo = true,
     // Controls
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
-    // State
     hovered = $bindable(false),
     tooltip_point = $bindable(null),
-    // Callbacks
     on_point_click,
     on_point_hover,
-    // Fullscreen
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     // Binding refs
@@ -148,8 +144,7 @@
 
   let [width, height] = $state([0, 0])
 
-  // Track mounted state to avoid SSR/hydration mismatch with Canvas
-  let mounted = $state(false)
+  let mounted = $state(false) // avoids SSR/hydration mismatch with Canvas
   onMount(() => (mounted = true))
 
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
@@ -192,9 +187,8 @@
   // Finite colour extent across all series; [0, 1] when no series carries colour values
   const color_extent = $derived(collect_series_extent(series, `color_values`))
   const auto_color_range = $derived(auto_scale_range(color_extent, color_scale_type))
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+  const resolved_color_scale = $derived(resolve_color_scale(color_scale, auto_color_range))
 
-  // Legend data
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
@@ -210,15 +204,39 @@
     return { ...opts, offset: { bottom: 70, ...opts.offset } }
   })
 
+  // Keys reach the scene's marker cursor only while the plot root itself has focus, so typing
+  // in the controls pane or legend never walks the points
+  let scene_ref = $state<ReturnType<typeof ScatterPlot3DScene<Metadata>>>()
+  let live_message = $state(``)
+  function handle_key_down(event: KeyboardEvent): void {
+    if (event.target !== event.currentTarget) return
+    const point = scene_ref?.handle_key(event)
+    if (point === undefined) return
+    event.preventDefault()
+    live_message = point ? point_label(point) : ``
+  }
+  const point_label = ({ x, y, z, series_idx, point_idx }: InternalPoint3D<Metadata>) => {
+    const axes = [resolved_x_axis, resolved_y_axis, resolved_z_axis]
+    const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
+    const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
+    return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+  }
+
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
     tooltip_point = data?.point ?? null
     on_point_hover?.(data)
   }
 
-  // PNG re-renders the scene at export resolution; CSV lists the visible points
+  // PNG re-renders the scene at export resolution with the HTML color bar and legend drawn
+  // on top; CSV lists the visible points
   const export_sources = {
-    ...canvas_sources(() => wrapper?.querySelector(`canvas`)),
+    png: (png_dpi: number) =>
+      canvas_overlay_png_blob(
+        wrapper?.querySelector(`canvas`),
+        [...(wrapper?.querySelectorAll<HTMLElement>(`[data-export-overlay]`) ?? [])],
+        png_dpi,
+      ),
     csv: csv_source(() =>
       series_to_csv_rows(
         series.flatMap((srs, idx) =>
@@ -242,7 +260,13 @@
   }
 </script>
 
+{#snippet chrome_buttons(dims: { height: number; width: number; fullscreen: boolean })}
+  <ShortcutsHelp scopes={[`viewer`, `camera`]} {wrapper} />
+  {@render header_controls?.(dims)}
+{/snippet}
+
 <ChartShell
+  empty={!series_in.some((srs) => srs.x.length) && !surfaces.length}
   chart_class="scatter-3d"
   css_prefix="scatter3d"
   css_var_fallbacks={{ 'min-height': `400px`, 'border-radius': `var(--border-radius, 3pt)` }}
@@ -253,10 +277,19 @@
   {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
-  {header_controls}
+  header_controls={chrome_buttons}
   {export_sources}
   {children}
+  {live_message}
+  role="application"
+  aria-label="3D scatter plot of {resolved_x_axis.label}, {resolved_y_axis.label} and {resolved_z_axis.label}"
+  tabindex={0}
   {...rest}
+  onkeydown={(event) => {
+    rest.onkeydown?.(event)
+    handle_key_down(event)
+  }}
+  {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}
 >
   {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls
@@ -280,6 +313,7 @@
     {#if mounted && webgpu_available()}
       <Canvas createRenderer={create_renderer}>
         <ScatterPlot3DScene
+          bind:this={scene_ref}
           {series}
           {surfaces}
           {ranges}
@@ -290,7 +324,7 @@
           z_axis={resolved_z_axis}
           display={resolved_display}
           {styles}
-          {color_scale_fn}
+          color_scale_fn={resolved_color_scale.color_fn}
           {size_scale}
           {camera_position}
           {camera_projection}
@@ -322,18 +356,14 @@
       </Canvas>
     {/if}
 
-    <!-- Color Bar -->
     {#if has_color_bar && color_bar}
-      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <!-- spread first, so the corner placement and default bar size below append to the
       caller's styles instead of being dropped by it -->
       <ColorBar
         tick_labels={4}
         tick_side="primary"
         {...color_bar}
-        scale={{ fn: color_scale_fn, domain: color_domain }}
-        scale_type={color_scale_type}
-        range={color_domain}
+        color_scale={resolved_color_scale.color_scale}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar.wrapper_style ??
           ``}"
         bar_style="width: 200px; height: 16px; {color_bar.bar_style ?? ``}"

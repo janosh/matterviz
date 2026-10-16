@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -43,8 +43,7 @@
   import {
     accumulate_extent,
     collect_scale_ranges,
-    create_color_scale,
-    resolve_value_range,
+    resolve_color_scale,
     to_color_scale_config,
     create_scale,
     create_size_scale,
@@ -109,6 +108,7 @@
     get_relative_coords,
     is_activation_key,
     range_bounds,
+    step_point_cursor,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
   import {
@@ -119,15 +119,14 @@
   import type { Sides } from '#lib/plot/core/layout.js'
   import { stride_sample } from '#lib/plot/core/layout.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
-  import { type CanvasMarker, draw_markers } from '#lib/plot/core/canvas-markers.js'
-  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
   import {
-    attach_canvas,
-    canvas_painters,
-    prepare_canvas,
-    resolve_line_tween,
-  } from '#lib/plot/core/utils.js'
-  import { color as d3_color } from 'd3-color'
+    CANVAS_MARKER_THRESHOLD,
+    type CanvasMarker,
+    canvas_safe_color,
+    create_marker_canvas,
+  } from '#lib/plot/core/canvas-markers.svelte.js'
+  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
+  import { resolve_line_tween } from '#lib/plot/core/utils.js'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -146,7 +145,6 @@
   // Marker-density thresholds and decoration sampling cap
   const DENSE_MARKER_COUNT = 100
   const OBSTACLE_SAMPLE_LIMIT = 500
-  const CANVAS_MARKER_THRESHOLD = 1000
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
@@ -160,7 +158,7 @@
     // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
     display = $bindable({ ...DEFAULTS.plot.display }),
     styles = $bindable({}),
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -241,7 +239,9 @@
       // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
       // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
-      tooltip?: Snippet<[ScatterHandlerProps<Metadata>]>
+      // false still calls hover handlers but skips all tooltip state and DOM work, e.g. for a
+      // time-series scrubber that updates another pane live
+      tooltip?: TooltipProp<ScatterHandlerProps<Metadata>>
       user_content?: Snippet<[UserContentProps]>
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
@@ -278,13 +278,11 @@
       on_ref_line_hover?: (event: RefLineEvent | null) => void
       selected_series_idx?: number
       wrapper?: HTMLDivElement
-      // Read-only: the padding actually in effect (auto axis bands, caller padding, outside
-      // decorations), so hosts laying out several plots (BandsAndDos) can feed the maximum
-      // back as a shared `padding` and keep their chart areas aligned
+      // Read-only: the padding in effect, so hosts laying out several plots (BandsAndDos)
+      // can feed the maximum back as a shared `padding` to align their chart areas
       resolved_padding?: Required<Sides>
-      // The range each axis currently shows, after pan/zoom. The chart writes every change;
-      // a host writing an axis moves the view without touching the axis config, so linked
-      // panels (BandsAndDos) share one zoom while each keeps its own pins and reset target.
+      // The range each axis shows after pan/zoom. Hosts writing it move the view without
+      // touching axis config, so linked panels share one zoom but keep their own reset target
       view?: Partial<AxisRanges>
       // The host owns property selection, loading, and publishing the resulting data.
       axis_loading?: `x` | `x2` | `y` | `y2` | null
@@ -294,9 +292,8 @@
       // Iso-proportion KDE contours under each series' markers (true for the defaults)
       density_contours?: boolean | DensityContourConfig
       facet_layout?: FacetLayoutContext
-      // `auto` switches from SVG to canvas past CANVAS_MARKER_THRESHOLD visible markers.
-      // Canvas keeps labelled, hovered, and selected points in an SVG overlay, and routes
-      // clicks to the nearest point; point_events other than onclick force SVG markers.
+      // `auto` switches to canvas past CANVAS_MARKER_THRESHOLD visible markers (labelled,
+      // hovered and selected points stay SVG); point_events other than onclick force SVG
       marker_renderer?: `auto` | `svg` | `canvas`
       // Half-width of the T caps on error bars, in px (0 draws bare lines)
       error_bar_cap?: number
@@ -319,10 +316,8 @@
     fallback: `#000`,
   })
 
-  // Assign visible series by unit/axis_group while preserving every explicit y_axis.
-  // Dimensionless series keep the y default. Re-running this derived after a
-  // legend toggle lets the remaining visible group move back to y.
-  // Null/undefined entries pass through untouched; every consumer skips them.
+  // Assign visible series by unit/axis_group, preserving explicit y_axis. Re-running after a
+  // legend toggle lets the remaining group move back to y. Null entries pass through.
   const assigned_series = $derived.by(() => {
     const assignment = assign_axes(series, {
       is_visible: (srs) => Boolean(srs && typeof srs === `object` && srs.visible !== false),
@@ -413,9 +408,7 @@
         const n_points = layer_x.length
         accumulate_extent(x_extent, layer_x, n_points)
         accumulate_extent(y_extent, layer_y, n_points)
-        // Error bars reach past their point, so the axis has to reach with them or the
-        // caps get clipped. Underlays carry no error of their own, hence the identity
-        // check: only the series itself contributes.
+        // Error bars must fit in the axis range or caps get clipped (underlays have none)
         if (layer_x === srs.x) {
           accumulate_error_extent(x_extent, srs.x, srs.x_error, n_points)
           accumulate_error_extent(y_extent, srs.y, srs.y_error, n_points)
@@ -484,9 +477,8 @@
     ref_lines: () => indexed_ref_lines,
     pan: () => pan,
     facet_layout: () => facet_layout,
-    // Alt+drag selects instead of zooming. Hit-tested in screen space (not by inverting
-    // the rect into data space) so the same test works on both axes whatever their scale
-    // types, and so a point's own offset counts - the user selects what they see.
+    // Alt+drag selects instead of zooming. Hit-tested in screen space so it works for any
+    // scale type and a point's own offset counts (the user selects what they see).
     on_rect_select: (start, current) => {
       const [x_lo, x_hi] = range_bounds([start.x, current.x])
       const [y_lo, y_hi] = range_bounds([start.y, current.y])
@@ -531,10 +523,8 @@
     resolved_padding = frame.pad
   })
 
-  // Two-way `view` sync. Value comparison on both legs keeps the pair from ping-ponging:
-  // the frame's write lands as a fresh Vec2 per axis, and a host mirroring it back must
-  // not count as a new zoom. A `view` passed at mount with a range differing from the
-  // current one wins over the first auto-range mirror (an empty `{}` gets mirrored).
+  // Two-way `view` sync, compared by value on both legs so a host mirroring a write back
+  // isn't a new zoom. A differing `view` passed at mount beats the first auto-range mirror.
   let host_view_pending = untrack(() => view) != null
   $effect(() => {
     const current = frame.ranges.current
@@ -609,7 +599,7 @@
   })
 
   const resolved_marginals = $derived(
-    normalize_marginals(marginals, { top: true, right: true }),
+    normalize_marginals(marginals, { top: true, right: true }, tooltip === false),
   )
   // A series' color as a whole (palette fallback) for the marks that summarize it:
   // marginals and density contours
@@ -631,9 +621,8 @@
       : [],
   )
   const color_scale_config = $derived(to_color_scale_config(color_scale))
-  // Finite color and size bounds across all series. NaN/null entries
-  // fall back to the series color/radius per point, so they must not widen either scale.
-  // Reads only the scale types, so scheme/radius changes don't re-scan the values.
+  // Finite color and size bounds across all series (NaN/null use series defaults). Reads only
+  // the scale types, so scheme/radius changes don't re-scan the values.
   const color_scale_type = $derived(color_scale_config.type)
   const size_scale_type = $derived(size_scale.type)
   const scale_ranges = $derived(
@@ -653,7 +642,10 @@
   )
   const auto_color_range = $derived(scale_ranges.color_range)
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
-  let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
+  const resolved_color_scale = $derived(
+    resolve_color_scale(color_scale_config, auto_color_range),
+  )
+  const color_scale_fn = $derived(resolved_color_scale.color_fn)
 
   // === Size legend: solver-placed clear of the data, after the legend and colorbar ===
   // Only for drawn markers, and only when the scale gives 2+ legend values distinct radii
@@ -739,9 +731,8 @@
     })
   })
 
-  // Tally line series/points to budget path-morph tweens (see resolve_line_tween).
-  // Disabling the morph for high-cardinality plots (e.g. phonon bands) keeps them
-  // snappy; Line.svelte short-circuits the Tween when duration <= 0.
+  // Tally line series/points to budget path-morph tweens (see resolve_line_tween) so
+  // high-cardinality plots (e.g. phonon bands) stay snappy
   let line_tween_load = $derived.by(() => {
     if (!show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
@@ -772,12 +763,9 @@
   const is_finite_num = (val: number | null | undefined): val is number =>
     typeof val === `number` && Number.isFinite(val)
 
-  // Marker appearance shared by the canvas and SVG paths so they can't drift. Everything that
-  // is constant across a series (control overrides, defaults, scales, the plot colour) is read
-  // once here; the returned closure only touches the point's own style/colour/size. Reading
-  // those reactive values per point cost more than all the geometry at 100k points. It
-  // builds the CanvasMarker directly (position + opacity included) so the canvas path
-  // allocates one object per point instead of an appearance object spread into a marker.
+  // Marker appearance shared by the canvas and SVG paths so they can't drift. Per-series
+  // constants are read once here (per-point reactive reads cost more than all geometry at
+  // 100k points); the closure builds the CanvasMarker directly, one allocation per point.
   const series_appearance = (series_data: FilteredSeries) => {
     const series_idx = series_data.orig_series_idx
     const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
@@ -840,10 +828,8 @@
     }
   }
 
-  // Per-series data->pixel projection, resolved once per series: `point` places a marker
-  // (with its point_offset), `line` maps raw x/y for connecting lines, where a non-positive
-  // value on a log y axis is held at the domain floor instead of vanishing. Time axes are
-  // linear scales over epoch milliseconds, so x needs no Date wrapping.
+  // Per-series data->pixel projection: `point` places a marker (with point_offset), `line`
+  // maps raw x/y, holding non-positive log-y values at the domain floor instead of vanishing
   const series_projector = (series_data: Pick<DataSeries, `x_axis` | `y_axis`>) => {
     const use_y2 = series_data.y_axis === `y2`
     const x_scale = series_data.x_axis === `x2` ? x2_scale_fn : x_scale_fn
@@ -860,9 +846,7 @@
         x_scale(point.x) + (point.point_offset?.x ?? 0),
         y_scale(point.y) + (point.point_offset?.y ?? 0),
       ],
-      // Error-bar ends, in the same offset frame as the point so the bar stays centred
-      // on the marker the caller moved. Held at the log domain floor rather than
-      // vanishing to NaN when a lower end runs non-positive on a log axis.
+      // Error-bar ends in the point's offset frame, held at the log domain floor (not NaN)
       error_span: (point: InternalPoint<Metadata>, axis: `x` | `y`): Vec2 | null => {
         const error = axis === `x` ? point.x_error : point.y_error
         if (!error || (error[0] === 0 && error[1] === 0)) return null
@@ -880,9 +864,8 @@
       ): Vec2[] => {
         const margin =
           2 * Math.max(line.line_style?.stroke_width ?? 2, styles.line?.width ?? 2)
-        // Dashes measure from the full path's origin; morph tweens also need stable
-        // vertex correspondence, including on pan release. Use the configured policy,
-        // since dragging only temporarily disables animation.
+        // Dashes and morph tweens need stable vertices (incl. on pan release), so use the
+        // configured policy: dragging only temporarily disables animation
         const dashed = [line.line_style?.line_dash, styles.line?.dash].some(
           (dash) => dash && dash !== `none` && dash !== `solid`,
         )
@@ -920,27 +903,12 @@
   ): boolean =>
     point.point_label?.text != null ||
     same_logical_point(point, selected) ||
-    // Rect-selected points get the same treatment as `selected_point`, so they must be
-    // lifted out of the canvas bitmap too - otherwise a selection past the marker
-    // threshold silently paints nothing
+    // Rect-selected points must be lifted out of the canvas bitmap like `selected_point`
     (keys.size > 0 && keys.has(roving_key(point.series_idx, point.point_idx))) ||
     Boolean(point.point_style?.is_highlighted && point.point_style.highlight_effect)
 
-  // Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
-  // keyword. Memoized: a plot authors only a handful of distinct paint strings.
-  const canvas_color_safety = new Map<string, boolean>()
-  const canvas_safe_color = (color: string): boolean => {
-    let safe = canvas_color_safety.get(color)
-    if (safe === undefined) {
-      if (canvas_color_safety.size >= 1024) canvas_color_safety.clear()
-      safe = color === `none` || d3_color(color) !== null
-      canvas_color_safety.set(color, safe)
-    }
-    return safe
-  }
-  // Canvas markers for every plain point, or null when markers must be SVG: canvas not
-  // requested, no points shown, per-point DOM handlers other than clicks needed, or a paint
-  // value canvas can't parse. One pass decides the mode and builds the markers.
+  // Canvas markers for every plain point, or null when markers must be SVG (canvas off, no
+  // points, per-point handlers besides clicks, or unparsable paint). One pass does both.
   const canvas_markers = $derived.by((): CanvasMarker[] | null => {
     const canvas_requested =
       marker_renderer === `canvas` ||
@@ -998,16 +966,11 @@
     })
   })
 
-  let canvas_element = $state<HTMLCanvasElement>()
-  // Also registered as the canvas's export painter, redrawing at the export pixel ratio
-  const paint_markers = (canvas?: HTMLCanvasElement, pixel_ratio?: number) => {
-    const surface = prepare_canvas(canvas, width, height, pixel_ratio)
-    if (surface) draw_markers(surface.ctx, canvas_markers ?? [], surface)
-  }
-  $effect(() => {
-    paint_markers(canvas_element)
-    if (canvas_element) canvas_painters.set(canvas_element, paint_markers)
-  })
+  const marker_canvas = create_marker_canvas(() => ({
+    markers: canvas_markers ?? [],
+    width,
+    height,
+  }))
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type FillSource = `fill_region` | `error_band`
@@ -1169,9 +1132,8 @@
 
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
-  // Panning retargets every marker and line on each pointer frame. Animating that leaves
-  // them trailing the axes while hover hit-testing already uses the live scales, so snap
-  // for the duration of the drag. Declared here because both read pan_zoom.
+  // Snap marks while panning: animating leaves them trailing the axes while hover
+  // hit-testing already uses live scales
   const effective_point_tween = $derived(
     use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
   )
@@ -1291,7 +1253,7 @@
     }
     // Construct handler props synchronously to avoid stale derived reads
     const props = construct_handler_props(closest_point)
-    tooltip_point = hover_config.show_tooltip === false ? null : closest_point
+    tooltip_point = tooltip === false ? null : closest_point
     if (evt && props) on_point_hover?.({ ...props, event: evt, point: closest_point })
   }
 
@@ -1356,12 +1318,8 @@
   // identity per update, so the warm start below compares by value, not reference.
   const label_config_key = $derived(JSON.stringify(actual_label_config))
 
-  // The solver below scans every point and reruns per pan/zoom frame (it reads the scales),
-  // so skip it entirely on plots with no auto-placed labels. Scans `assigned_series` rather
-  // than `filtered_series` on purpose: the latter is refiltered from the ranges, which would
-  // put this scan back on every frame. Counting labels outside the visible range only means
-  // the solver runs and filters them out itself.
-  // series and label entries can both be null: assigned_series passes non-objects through
+  // Skip the per-frame label solver on plots with no auto-placed labels. Scans
+  // `assigned_series`, not range-refiltered `filtered_series`, to stay off the frame loop.
   const is_auto_placed = (label: LabelStyle | null | undefined) =>
     Boolean(label?.auto_placement && label.text)
   let has_auto_placed_labels = $derived(
@@ -1381,9 +1339,8 @@
     return placed ? { ...style, offset: { x: placed.x - cx, y: placed.y - cy } } : style
   }
 
-  // Last solve's label offsets, handed back so each pan/zoom frame polishes the previous
-  // layout instead of re-solving from scratch. A plain Map, not SvelteMap: the effect below
-  // both reads and writes it, and tracking that would re-trigger the effect forever.
+  // Last solve's label offsets, warm-starting each pan/zoom frame. Plain Map: the effect
+  // below reads and writes it, so tracking would re-trigger it forever.
   const label_offsets = new Map<string, Point2D>()
   let previous_label_series: typeof assigned_series | undefined
   let previous_label_config: string | undefined
@@ -1439,7 +1396,7 @@
       color_bar: {
         value: finite_color_value,
         title: color_bar?.title ?? null,
-        scale: color_scale,
+        color_scale,
         tick_format: color_bar?.tick_format ?? null,
       },
     }
@@ -1479,10 +1436,8 @@
     new Set(selected_points.map((sel) => roving_key(sel.series_idx, sel.point_idx))),
   )
 
-  // One path per series, not per point: a dense scatter with errors would otherwise
-  // remount thousands of DOM nodes and undo the canvas marker threshold entirely. That
-  // costs per-point coloring, so bars take the series' own color - which reads better
-  // anyway, since a hairball of individually tinted bars is noise rather than signal.
+  // One path per series, not per point, so dense error bars don't undo the canvas threshold;
+  // bars therefore take the series' color rather than per-point colors
   let error_bar_paths = $derived.by(() =>
     filtered_series.flatMap((series_data, series_pos) => {
       if (series_data.x_error == null && series_data.y_error == null) return []
@@ -1513,11 +1468,8 @@
   )
 
   // === Canvas-mode keyboard cursor ===
-  // Past CANVAS_MARKER_THRESHOLD the points stop being SVG nodes, taking their
-  // tabindex, role and aria-label with them - the chart silently degrades from
-  // navigable to a picture. Arrow keys therefore drive a cursor through the data
-  // itself; the point it lands on becomes the hovered one, which the SVG overlay
-  // draws back on top of the canvas (so it is focusable and shows a tooltip again).
+  // Canvas points have no tabindex/role/aria-label, so arrow keys drive a cursor through the
+  // data; its point becomes hovered and the SVG overlay redraws it (focusable, tooltip).
   // Named by identity, so a pan/zoom or data change never retargets it to another point
   let kbd_cursor = $state<{ series_idx: number; point_idx: number } | null>(null)
 
@@ -1533,9 +1485,8 @@
     return points[index_of_point(points, point_idx)] ?? null
   }
 
-  // Per-series point lists plus the offsets that flatten them into one index space.
-  // Only the offsets are materialised - flattening 100k points on every keystroke
-  // would cost more than the whole canvas render it exists to compensate for.
+  // Per-series point lists plus offsets flattening them into one index space (only the
+  // offsets are materialised: flattening 100k points per keystroke would be too slow)
   let kbd_nav = $derived.by(() => {
     const lists = filtered_series.map((series_data) => series_data.filtered_data)
     const offsets: number[] = []
@@ -1569,9 +1520,8 @@
     return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
   })
 
-  // A data swap or host-hidden series fires no pointer event, so re-resolve the hovered point
-  // on every data change (tracking its new values, or closing once it is gone, which the host
-  // hears as on_point_hover(null))
+  // Data swaps fire no pointer event, so re-resolve the hovered point on every data change
+  // (closing once it is gone, which the host hears as on_point_hover(null))
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
@@ -1584,18 +1534,8 @@
   })
 
   function move_kbd_cursor(event: KeyboardEvent): boolean {
-    const { total } = kbd_nav
-    if (total === 0) return false
-    const forward = event.key === `ArrowRight` || event.key === `ArrowDown`
-    const backward = event.key === `ArrowLeft` || event.key === `ArrowUp`
-    const current = kbd_cursor_at?.nav_idx
-    let next: number
-    if (event.key === `Home`) next = 0
-    else if (event.key === `End`) next = total - 1
-    else if (forward || backward) {
-      const step = forward ? 1 : -1
-      next = current == null ? (forward ? 0 : total - 1) : (current + step + total) % total
-    } else return false
+    const next = step_point_cursor(event.key, kbd_cursor_at?.nav_idx ?? null, kbd_nav.total)
+    if (next === null) return false
     event.preventDefault()
     const point = kbd_point(next)
     kbd_cursor = point && { series_idx: point.series_idx, point_idx: point.point_idx }
@@ -1622,15 +1562,12 @@
     return move_kbd_cursor(event)
   }
 
-  // Reads the cursor's own point, not the hovered one: `tooltip_point` also tracks the
-  // mouse, so announcing that would re-announce every point the pointer swept over once
-  // the cursor had been used at all.
+  // The cursor's own point, not `tooltip_point`, which would announce every point the mouse
+  // sweeps over
   let live_message = $derived(kbd_cursor_at ? point_accessible_label(kbd_cursor_at.point) : ``)
 
-  // One tab stop for the whole point cloud instead of one per point: a 1k-point
-  // scatter would otherwise take 1k presses to tab past. Arrow keys walk the marks.
-  // Only interactive points carry roving keys, so a plain plot needs no roving group. The
-  // hover overlay list only decides which marks exist in canvas mode.
+  // One tab stop for the whole point cloud; arrow keys walk the marks. Only interactive
+  // points carry roving keys. The overlay list decides which marks exist in canvas mode.
   const roving = create_roving_focus({
     container: () => (points_interactive ? frame.svg_element : null),
     items: () => [
@@ -1701,6 +1638,11 @@
 {/snippet}
 
 <CartesianFrame
+  empty={!series_in.some((srs) => srs?.x.length) &&
+    !fill_regions.length &&
+    !ref_lines.length &&
+    !user_content &&
+    !children}
   {frame}
   {export_sources}
   plot_class="scatter"
@@ -1715,7 +1657,7 @@
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
   idle_cursor={plot_click_armed ? `pointer` : `crosshair`}
-  on_mouse_move={hover_config.show_tooltip !== false || on_point_hover || on_plot_click
+  on_mouse_move={tooltip !== false || on_point_hover || on_plot_click
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1872,13 +1814,7 @@
     {#if use_canvas_markers}
       <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
              explicit above-all layers. Pointer events remain on the parent SVG. -->
-      <foreignObject
-        x="0"
-        y="0"
-        {width}
-        {height}
-        pointer-events="none"
-        {@attach attach_canvas(`marker-canvas`, (canvas) => (canvas_element = canvas))}
+      <foreignObject x="0" y="0" {width} {height} pointer-events="none" {@attach marker_canvas}
       ></foreignObject>
     {/if}
 
@@ -1987,7 +1923,7 @@
 
   {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
-    {#if handler_props && hovered && tooltip_point}
+    {#if handler_props && hovered && tooltip_point && tooltip !== false}
       {@const { point_label, series_idx } = tooltip_point}
       {@const tooltip_bg_color = pick_tooltip_bg(
         tooltip_point,
@@ -2035,16 +1971,13 @@
     {/if}
 
     {#if color_bar && show_colorbar}
-      {@const color_domain = resolve_value_range(color_scale, auto_color_range)}
       <ColorBarDecoration
         decoration={colorbar}
         color_bar={{
           show_scale: has_color_scale,
           tick_labels: 4,
           tick_side: `primary`,
-          scale: { fn: color_scale_fn, domain: color_domain },
-          scale_type: color_scale_config.type,
-          range: color_domain,
+          color_scale: resolved_color_scale.color_scale,
           bar_style: `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.horizontal_bar_height}px; ${color_bar.style ?? ``}`,
           ...color_bar,
         }}

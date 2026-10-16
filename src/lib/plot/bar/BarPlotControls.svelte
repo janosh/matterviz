@@ -14,7 +14,7 @@
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     children,
     ...rest
@@ -28,7 +28,7 @@
 </script>
 
 <PlotControls
-  bind:show_controls
+  {show_controls}
   bind:controls_open
   bind:x_axis
   bind:x2_axis

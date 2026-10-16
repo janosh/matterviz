@@ -4,6 +4,7 @@ import type {
   SectionHover,
   TernaryDisplay,
   TernaryPhaseDiagram,
+  TernaryPhaseHover,
 } from '#lib/phase-diagram/index.js'
 import {
   compute_section,
@@ -18,9 +19,16 @@ import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ter
 import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
 import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
-import { type Component, flushSync, mount, unmount } from 'svelte'
+import { type Component, createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, expect_tooltip_paint, set_input } from '../../setup'
+import {
+  bind_props,
+  create_drop_event,
+  doc_query,
+  expect_tooltip_paint,
+  mock_canvas_context,
+  set_input,
+} from '../../setup'
 import { make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -85,11 +93,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     await wait_for_events()
     expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
-    expect(items.map((item) => item.classList[0])).toEqual([
-      `appear`,
-      `tie_line_flip`,
-      `vanish`,
-    ])
+    const kinds = items.map((item) => item.classList[0])
+    expect(kinds).toEqual([`appear`, `tie_line_flip`, `vanish`])
     expect(text(`.phase-event-list li:last-child`)).toContain(`NaLi→Li+Na`)
     expect(items[1].querySelectorAll(`.reaction`)).toHaveLength(2) // two simultaneous flips
     expect([temp_input().value, text(`.stable-count`)]).toEqual([`300`, `6stable`])
@@ -122,7 +127,9 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(state.diagram?.events).toHaveLength(3)
     press(`ArrowRight`)
     expect(state.temperature).toBe(1500) // clamped at the top of the sweep
-    press(`ArrowLeft`)
+    // hovered without focus too, like the other viewers
+    doc_query(`.ternary-phase-diagram`).dispatchEvent(new PointerEvent(`pointerenter`))
+    expect(keydown(document.body, `ArrowLeft`).defaultPrevented).toBe(true)
     expect(state.temperature).toBe(1488) // 1% of the 1200 K span
     press(`ArrowLeft`, true)
     expect(state.temperature).toBeCloseTo(1299, 0) // just below the 1300 K transition
@@ -161,6 +168,21 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect_tooltip_paint(doc_query(`.ternary-tooltip`), null)
   })
 
+  // tooltip=false hides the hover tooltip, a snippet replaces its content
+  const kind_snippet = createRawSnippet((hover: () => TernaryPhaseHover) => ({
+    render: () => `<b>${hover().kind}</b>`,
+  }))
+  test.each([
+    [`false`, false, null],
+    [`snippet`, kind_snippet, `section`],
+  ] as const)(`tooltip %s`, async (_label, tooltip, expected_text) => {
+    mount_diagram({ tooltip })
+    await wait_for_events()
+    move_to([1, 0])
+    const tooltip_text = document.querySelector(`.ternary-tooltip`)?.textContent?.trim()
+    expect(tooltip_text ?? null).toBe(expected_text)
+  })
+
   test(`stability map steps T itself but lets shift+arrows reach the host`, async () => {
     mount_diagram()
     await wait_for_events()
@@ -177,10 +199,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       entries: toy_entries,
       diagram: null,
     })
-    mount_it(
-      IsobaricTernaryPhaseDiagram,
-      bind_props({ options: { elements: toy_elements } }, state),
-    )
+    const options = { elements: toy_elements }
+    mount_it(IsobaricTernaryPhaseDiagram, bind_props({ options }, state))
     await wait_for_events()
     state.entries = [...toy_entries] // same data, new identity: old phase indices are void
     flushSync()
@@ -214,7 +234,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     doc_query(`.ternary-section canvas`)
     unmount_all()
     mount_diagram({ entries: [] })
-    expect(doc_query(`.empty`).textContent).toMatch(/Drop a JSON file/)
+    expect(doc_query(`.empty-state[role="status"]`).textContent).toMatch(/Drop a JSON file/)
   })
 
   test(`a composition click pins it; the pin itself or Escape removes it, as does a new dataset`, () => {
@@ -223,10 +243,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       pinned_composition: Vec2 | null
       selected_phase: number | null
     }>({ entries: toy_entries, pinned_composition: null, selected_phase: null })
-    mount_it(
-      IsobaricTernaryPhaseDiagram,
-      bind_props({ options: { elements: toy_elements } }, state),
-    )
+    const options = { elements: toy_elements }
+    mount_it(IsobaricTernaryPhaseDiagram, bind_props({ options }, state))
     const click_at = (coords_xy: Vec2) => pointer_at(`click`, coords_xy)
     const expect_pin = (expected: Vec2) =>
       expect(state.pinned_composition).toEqual(expected.map((val) => expect.closeTo(val, 12)))
@@ -417,17 +435,9 @@ test(`TernarySectionCanvas: a section change rebuilds entries without mutating t
   const entries_before = structuredClone(model.phases.map((phase) => phase.entry))
   const state = $state({ section: compute_section(model, 300) })
   const hovers: (SectionHover | null)[] = []
-  mount_it(
-    TernarySectionCanvas,
-    bind_props(
-      {
-        model,
-        settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
-        on_hover: (data: SectionHover | null) => hovers.push(data),
-      },
-      state,
-    ),
-  )
+  const settings = { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false }
+  const on_hover = (data: SectionHover | null) => hovers.push(data)
+  mount_it(TernarySectionCanvas, bind_props({ model, settings, on_hover }, state))
   const hover_ab = () => {
     move_to(model.phases[ab_idx].xy)
     return hovers.at(-1)
@@ -459,11 +469,8 @@ describe(`PhaseEventList`, () => {
     li_chip?.click()
     flushSync()
     expect(state.selected_phase).toBe(4)
-    expect(items.map((item) => item.className.includes(`involved`))).toEqual([
-      false,
-      true,
-      true,
-    ])
+    const involved = items.map((item) => item.className.includes(`involved`))
+    expect(involved).toEqual([false, true, true])
     li_chip?.click()
     flushSync()
     expect(state.selected_phase).toBeNull()
@@ -512,12 +519,8 @@ describe(`PhaseStabilityMap`, () => {
     [`stable_ever`, true, 7],
   ] as const)(`filter=%s elements=%s → %i rows`, (map_filter, show_map_elements, n_rows) => {
     const settings = { ...TERNARY_DISPLAY_DEFAULTS, map_filter, show_map_elements }
-    mount_it(PhaseStabilityMap, {
-      diagram: map_diagram,
-      settings,
-      temperature: 500,
-      row_height: 10,
-    })
+    const props = { diagram: map_diagram, settings, temperature: 500, row_height: 10 }
+    mount_it(PhaseStabilityMap, props)
     const canvas = doc_query<HTMLCanvasElement>(`.phase-stability-map canvas`)
     expect([
       canvas.getAttribute(`aria-valuenow`),
@@ -548,6 +551,33 @@ describe(`PhaseStabilityMap`, () => {
     expect(state.temperature).toBeCloseTo(900, 6)
   })
 
+  // The cached row layer is keyed on the colors by identity: a JSON key reads every function
+  // scheme as `{}`, so swapping one never repainted the rows
+  test(`swapping a function color scheme repaints the cached rows`, async () => {
+    const fills = new Set<string>()
+    Object.defineProperty(mock_canvas_context({ setLineDash: vi.fn() }), `fillStyle`, {
+      set: (fill: string) => fills.add(fill),
+    })
+    const props = $state({
+      diagram: map_diagram,
+      settings: {
+        ...TERNARY_DISPLAY_DEFAULTS,
+        color_scale: { scheme: (): string => `#000001` },
+      },
+      row_height: 10,
+    })
+    try {
+      mount_it(PhaseStabilityMap, props)
+      for (const fill of [`#000001`, `#000002`]) {
+        props.settings = { ...props.settings, color_scale: { scheme: () => fill } }
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        expect(fills).toContain(fill)
+      }
+    } finally {
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
+    }
+  })
+
   // Centred on their ticks, the 300 K label ran into `T (K)` and the 1500 K one off the canvas
   test(`temperature tick labels stay between the label gutter and the canvas edge`, async () => {
     const labels: { label: string; x: number }[] = []
@@ -564,16 +594,12 @@ describe(`PhaseStabilityMap`, () => {
           },
         })
       })
+    const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
     try {
-      mount_it(PhaseStabilityMap, {
-        diagram,
-        settings: TERNARY_DISPLAY_DEFAULTS,
-        row_height: 10,
-      })
+      mount_it(PhaseStabilityMap, props)
       await new Promise((resolve) => setTimeout(resolve, 40))
       const ticks = labels.filter(({ label }) => Number(label) >= 300) // not formula subscripts
-      expect(ticks.map(({ label }) => label)).toContain(`300`)
-      expect(ticks.map(({ label }) => label)).toContain(`1500`)
+      expect(ticks.map(({ label }) => label)).toEqual(expect.arrayContaining([`300`, `1500`]))
       for (const { label, x } of ticks) {
         const half = 4 * label.length
         expect([x - half, x + half], label).toSatisfy(
@@ -667,4 +693,51 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
   )
   flushSync()
   expect(state.gas_pressures.O2).toBe(1e-12)
+})
+
+// Dropped entry arrays replace the shown entries and report through on_file_load
+test.each([true, false])(`allow_file_drop=%s gates file drops`, async (allow_file_drop) => {
+  const on_file_load = vi.fn()
+  mount_diagram({ allow_file_drop, on_file_load })
+  const file = new File([JSON.stringify(toy_entries)], `toy.json`)
+  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+  if (allow_file_drop) {
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    const loaded = { entries: toy_entries, filename: `toy.json`, source_filename: `toy.json` }
+    expect(on_file_load).toHaveBeenCalledWith({ ...loaded, file })
+  } else {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(on_file_load).not.toHaveBeenCalled()
+  }
+})
+
+// A host's on_file_drop takes the raw file instead of the entries parse, and a throwing
+// on_file_load is reported as the load's failure, not as unreadable file content
+test.each([
+  [`on_file_drop`, { on_file_drop: vi.fn() }, null],
+  [
+    `a throwing on_file_load`,
+    {
+      on_file_load: () => {
+        throw new Error(`host boom`)
+      },
+    },
+    `Failed to load 1 file — toy.json: host boom`,
+  ],
+])(`dropped entries with %s`, async (_label, props, error) => {
+  mount_diagram(props)
+  const content = JSON.stringify(toy_entries)
+  const file = new File([content], `toy.json`)
+  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+  if (`on_file_drop` in props) {
+    await vi.waitFor(() =>
+      expect(props.on_file_drop).toHaveBeenCalledWith(
+        content,
+        `toy.json`,
+        expect.objectContaining({ file }),
+      ),
+    )
+  }
+  const banner = () => document.querySelector(`.status-message.error`)?.textContent?.trim()
+  await vi.waitFor(() => expect(banner() ?? null).toBe(error))
 })

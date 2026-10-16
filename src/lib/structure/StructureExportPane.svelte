@@ -50,29 +50,6 @@
     () => image_filename ?? exports.create_structure_filename(structure),
   )
 
-  const text_export_formats = [
-    {
-      label: `JSON`,
-      format: `json`,
-      hint: `<a href="https://pymatgen.org" target="_blank">Pymatgen</a> JSON format - Python Materials Genomics structure serialization, widely used in computational materials science`,
-    },
-    {
-      label: `XYZ`,
-      format: `xyz`,
-      hint: `<a href="https://wiki.fysik.dtu.dk/ase" target="_blank">ASE</a> extended XYZ format - human-readable atomic coordinates used by the Atomic Simulation Environment`,
-    },
-    {
-      label: `CIF`,
-      format: `cif`,
-      hint: `Crystallographic Information File - standard format from the <a href="https://iucr.org" target="_blank">IUCr</a> for crystal structure data exchange`,
-    },
-    {
-      label: `POSCAR`,
-      format: `poscar`,
-      hint: `<a href="https://vasp.at" target="_blank">VASP</a> POSCAR format - input geometry file for the Vienna Ab initio Simulation Package`,
-    },
-  ] as const
-
   const model_3d_formats = [
     {
       label: `GLB`,
@@ -95,10 +72,6 @@
     }),
   )
   let has_canvas = $derived(Boolean(image_canvas || wrapper_canvas))
-
-  const fractional_reason = $derived(exports.fractional_export_unavailable_reason(structure))
-  const poscar_reason = $derived(exports.poscar_export_unavailable_reason(structure))
-  const xyz_reason = $derived(exports.xyz_export_unavailable_reason(structure))
 
   let prediction_error = $state(``)
   function prediction_text(): string | null {
@@ -133,30 +106,20 @@
       : []),
     {
       title: `Export as text`,
-      items: text_export_formats.map(({ label, format, hint }) => {
-        const disabled_reason = !structure
-          ? `No structure loaded`
-          : format === `xyz`
-            ? xyz_reason
-            : format === `json`
-              ? undefined
-              : format === `poscar`
-                ? poscar_reason
-                : fractional_reason
-        return {
-          label,
-          hint,
-          disabled: Boolean(disabled_reason),
-          disabled_reason,
-          on_download: ({ filename, save }: FileExportContext) => {
-            if (!structure) return
-            const { to_str, ext, mime } = exports.STRUCT_TEXT_FORMATS[format]
-            return save(to_str(structure), `${filename}.${ext}`, mime)
-          },
-          copy_text: () =>
-            structure ? exports.STRUCT_TEXT_FORMATS[format].to_str(structure) : null,
-        }
-      }),
+      items: Object.values(exports.STRUCT_TEXT_FORMATS).map(
+        ({ label, hint, to_str, ext, mime, unavailable_reason }) => {
+          const disabled_reason = unavailable_reason(structure)
+          return {
+            label,
+            hint,
+            disabled: Boolean(disabled_reason),
+            disabled_reason,
+            on_download: ({ filename, save }: FileExportContext) =>
+              structure && save(to_str(structure), `${filename}.${ext}`, mime),
+            copy_text: () => (structure ? to_str(structure) : null),
+          }
+        },
+      ),
     },
     {
       title: `Export as image`,

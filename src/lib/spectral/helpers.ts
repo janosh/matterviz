@@ -82,28 +82,6 @@ export const branch_path_label = (
     .filter(Boolean)
     .join(` → `) || null
 
-// Scale segment distances to a target x-axis range [x_start, x_end].
-// Used by both band line series and fat band ribbons for consistent x-axis positioning.
-export function scale_segment_distances(
-  segment_distances: number[],
-  x_start: number,
-  x_end: number,
-): number[] {
-  if (segment_distances.length === 0) return []
-
-  const dist_min = segment_distances[0]
-  const dist_range = (segment_distances.at(-1) ?? dist_min) - dist_min
-
-  if (dist_range === 0) {
-    // All points at same distance - place at midpoint
-    return segment_distances.map(() => (x_start + x_end) / 2)
-  }
-
-  return segment_distances.map(
-    (dist) => x_start + ((dist - dist_min) / dist_range) * (x_end - x_start),
-  )
-}
-
 // One normalization divisor (max, sum or integral) over all channels on a grid, e.g. both
 // spins of a DOS so their relative scale survives; 1 when there is nothing to divide by
 // array_max, not Math.max(...densities): DOS grids reach 1e7 points, past the argument limit
@@ -638,8 +616,9 @@ const plotted_branches = (
   })
 }
 
-// Plot x of a q-point on a plotted branch with x-range [x_start, x_end]
-const branch_x = (
+// Plot x of a q-point on a plotted branch with x-range [x_start, x_end]: the band lines'
+// vertices, ribbons and crossings
+export const branch_x = (
   { distance }: types.BaseBandStructure,
   { start_index, end_index }: types.Branch,
   [x_start, x_end]: Vec2,
@@ -676,13 +655,17 @@ const is_per_mode_style = (
   kwargs: types.LineKwargs,
 ): kwargs is { acoustic?: types.BandLineStyle; optical?: types.BandLineStyle } =>
   `acoustic` in kwargs || `optical` in kwargs
-// The caller's style for one band line: per band and spin, per acoustic/optical mode, or shared
-export const band_line_style = (
-  kwargs: types.LineKwargs,
+// One band line: its band, spin channel, mode and structure label
+export type BandLine = [
   band_idx: number,
   spin: `up` | `down`,
   is_acoustic: boolean,
   structure: string,
+]
+// The caller's style for one band line: per band and spin, per acoustic/optical mode, or shared
+export const band_line_style = (
+  kwargs: types.LineKwargs,
+  ...[band_idx, spin, is_acoustic, structure]: BandLine
 ): types.BandLineStyle => {
   if (typeof kwargs === `function`) return kwargs(band_idx, spin, structure)
   return is_per_mode_style(kwargs)

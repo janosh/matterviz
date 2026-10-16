@@ -7,25 +7,30 @@
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+  import EmptyState from '#lib/EmptyState.svelte'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
   import {
     DEFAULT_ELEMENT_TO_GAS,
     GAS_STOICHIOMETRY,
   } from '#lib/convex-hull/gas-thermodynamics.js'
-  import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
+  import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
+  import { file_drop_zone } from '#lib/io/file-drop.js'
+  import { as_text } from '#lib/io/decompress.js'
+  import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { clamp, type Vec2 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { viewer_keydown } from '#lib/shortcuts.js'
   import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
+  import type { TooltipProp } from '#lib/tooltip/index.js'
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
@@ -46,17 +51,12 @@
     Decomposition,
     DiagramProgress,
     FreeEnergyMode,
-    PhaseTemperatureHover,
-    SectionHover,
     TernaryDisplay,
     TernaryPhaseDiagram,
     TernaryPhaseDiagramOptions,
+    TernaryPhaseHover,
   } from './types'
   import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from './types'
-
-  type Hover =
-    | { kind: `section`; data: SectionHover }
-    | { kind: `phase_t`; data: PhaseTemperatureHover }
 
   let {
     entries: entries_prop,
@@ -76,8 +76,11 @@
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     wrapper = $bindable(),
+    allow_file_drop = true,
     on_file_drop,
+    on_file_load,
     title,
+    tooltip,
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -101,8 +104,15 @@
     fullscreen?: boolean
     fullscreen_toggle?: boolean
     wrapper?: HTMLDivElement
-    on_file_drop?: (entries: PhaseData[], filename: string) => void
+    // Dropped JSON arrays of convex-hull entries replace `entries`
+    allow_file_drop?: boolean
+    // Takes each dropped file raw instead of the built-in entries parsing
+    on_file_drop?: FileLoadCallback
+    // Called with each dropped file's entries once they are shown
+    on_file_load?: (data: PhaseEntriesLoadData) => void
     title?: string
+    // false hides the hover tooltip, a snippet replaces its content
+    tooltip?: TooltipProp<TernaryPhaseHover>
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
 
@@ -125,7 +135,7 @@
     fallback: TERNARY_COLORS.pin,
   })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
-  let hover = $state<Hover | null>(null)
+  let hover = $state<TernaryPhaseHover | null>(null)
   let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null
@@ -298,11 +308,16 @@
     playing = !playing
   }
 
-  function handle_keydown(event: KeyboardEvent): void {
+  // Focused or hovered, like the other viewers
+  const keys = viewer_keydown((event) => {
     // Focused controls keep their own keys (space activates a button, arrows move a slider)
-    if ((event.target as Element).closest(`button, input, textarea, select`)) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest(`button, input, textarea, select`)
+    )
+      return false
     // Shift+arrow jumps between transitions; Cmd/Ctrl/Alt chords stay the browser's
-    if (is_modifier_chord(event)) return
+    if (is_modifier_chord(event)) return false
     const dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key]
     if (dir) {
       const target = dir > 0 ? next_event : prev_event
@@ -312,9 +327,9 @@
     // Escape clears the selection, then the pin; with neither the host keeps the key
     else if (event.key === `Escape` && selected_phase !== null) selected_phase = null
     else if (event.key === `Escape` && pinned_composition !== null) pinned_composition = null
-    else return
-    event.preventDefault()
-  }
+    else return false
+    return true
+  })
 
   // === Hover ===
 
@@ -330,25 +345,25 @@
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
   // === File drop ===
 
-  let dragover = $state(false)
   let drop_error = $state<string | null>(null)
-  const handle_drop = create_file_drop_handler({
-    allow: () => true,
+  const drop_zone = file_drop_zone({
+    allow: () => allow_file_drop,
     on_error: (message) => (drop_error = message),
-    on_drop: (content, filename) => {
+    on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      let parsed: unknown
       try {
-        const parsed: unknown = JSON.parse(
-          typeof content === `string` ? content : new TextDecoder().decode(content),
-        )
+        parsed = JSON.parse(as_text(content))
         if (!Array.isArray(parsed))
           throw new Error(`Expected a JSON array of convex-hull entries`)
-        drop_error = null
-        selected_phase = null
-        if (on_file_drop) on_file_drop(parsed as PhaseData[], filename)
-        else dropped_entries = parsed as PhaseData[]
       } catch (error) {
         drop_error = `${filename}: ${to_error(error).message}`
+        return
       }
+      drop_error = null
+      selected_phase = null
+      dropped_entries = parsed as PhaseData[]
+      on_file_load?.({ entries: dropped_entries, filename, ...metadata })
     },
   })
 </script>
@@ -364,16 +379,12 @@
 <div
   {...rest}
   bind:this={wrapper}
-  class={[`ternary-phase-diagram`, rest.class, { fullscreen, dragover }]}
+  class={[`ternary-phase-diagram`, rest.class, { fullscreen }]}
   role="application"
   tabindex="0"
   aria-label="{model?.elements.join(`-`) ?? ``} ternary composition-temperature phase diagram"
-  onkeydown={handle_keydown}
-  ondrop={(event) => {
-    dragover = false
-    void handle_drop(event)
-  }}
-  {...drag_over_handlers({ set_dragover: (over) => (dragover = over) })}
+  {@attach keys}
+  {@attach drop_zone}
 >
   <ViewerChrome
     {controls_config}
@@ -381,6 +392,7 @@
     {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
+    shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
   >
     {#if controls_config.visible(`controls`)}
       <TernaryPhaseDiagramControls
@@ -552,12 +564,12 @@
       {/if}
     </div>
   {:else if entries.length === 0}
-    <div class="empty">
-      Drop a JSON file of convex-hull entries (3 elements) to compute a ternary T–x diagram
-    </div>
+    <EmptyState
+      message="Drop a JSON file of convex-hull entries (3 elements) to compute a ternary T–x diagram"
+    />
   {/if}
 
-  {#if hover && model && section}
+  {#if hover && model && section && tooltip !== false}
     <PlotTooltip
       x={hover.data.position[0]}
       y={hover.data.position[1]}
@@ -569,7 +581,9 @@
         : undefined}
       style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
     >
-      {#if hover.kind === `section` && hover.data.kind === `composition`}
+      {#if typeof tooltip === `function`}
+        {@render tooltip(hover)}
+      {:else if hover.kind === `section` && hover.data.kind === `composition`}
         {@const { barycentric, decomposition } = hover.data}
         <div>
           {#each model.elements as element, idx (element)}
@@ -813,14 +827,6 @@
         text-decoration: underline;
       }
     }
-  }
-  .empty {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    opacity: 0.7;
-    text-align: center;
-    padding: 1em;
   }
   .muted {
     opacity: 0.7;

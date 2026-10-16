@@ -1,8 +1,7 @@
 <script lang="ts">
-  // Compact single-select: an inline trigger showing the selected option (HTML labels like
-  // E<sub>form</sub> allowed, sanitized) that opens a native popover list. Controlled: it
-  // reports picks through `on_select` and shows whatever `selected_key` the caller commits.
-  // Plots use it for interactive axis labels and colorbar property pickers.
+  // Compact controlled single-select (interactive axis labels, colorbar property pickers): an
+  // inline trigger showing the selected option (sanitized HTML like E<sub>form</sub>) opening
+  // a native popover list. Reports picks via `on_select`, shows the caller's `selected_key`.
   import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'

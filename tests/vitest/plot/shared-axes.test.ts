@@ -7,24 +7,10 @@ import {
 import { describe, expect, it } from 'vitest'
 
 describe(`shared range helpers`, () => {
+  // oxfmt-ignore
   it.each([
-    [
-      `unions overlapping and disjoint ranges`,
-      [
-        [-2, 4],
-        [1, 8],
-        [20, 30],
-      ],
-      [-2, 30],
-    ],
-    [
-      `normalizes reversed ranges`,
-      [
-        [5, 1],
-        [-3, -8],
-      ],
-      [-8, 5],
-    ],
+    [`unions overlapping and disjoint ranges`, [[-2, 4], [1, 8], [20, 30]], [-2, 30]],
+    [`normalizes reversed ranges`, [[5, 1], [-3, -8]], [-8, 5]],
     [`ignores missing and invalid ranges`, [undefined, null, [NaN, 4], [2, 6]], [2, 6]],
     [`returns undefined without a finite range`, [], undefined],
   ] as const)(`union_ranges %s`, (_name, ranges, expected) => {

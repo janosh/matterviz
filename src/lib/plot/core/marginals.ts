@@ -1,13 +1,13 @@
-// Shared marginal-distribution model for all 2D plots. Pure and unit-tested: types,
-// shorthand resolution, pad reservation, strip geometry, and the curve math (histogram /
-// kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
-// its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
+// Pure marginal-distribution model for all 2D plots: types, shorthand resolution, pad
+// reservation, strip geometry and curve math, rendered by PlotMarginals.svelte. Plots adapt
+// data to MarginalSeriesInput and fold reserve_marginal_pad into their `pad`.
 
 import { array_max, in_range, partition_point, type Vec2 } from '#lib/math.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import type { PlotScaleFn } from '#lib/plot/core/scales.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
 import type { LineCurve, ScaleType } from '#lib/plot/core/types.js'
+import type { TooltipProp } from '#lib/tooltip/index.js'
 import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { gaussian_kde } from '#lib/plot/box/kde.js'
 import { bin_transform, bin_values, normalize_counts } from '#lib/plot/histogram/histogram.js'
@@ -72,8 +72,8 @@ export interface MarginalConfig {
     ctx: MarginalComputeContext,
   ) => MarginalCurve
   snippet?: Snippet<[MarginalRenderContext]>
-  hover?: boolean // show a hover tooltip over this strip (default true)
-  tooltip?: Snippet<[MarginalHover]> // custom tooltip content (overrides built-in per-kind content)
+  // false: no hover tooltip over this strip; a snippet replaces the built-in per-kind content
+  tooltip?: TooltipProp<MarginalHover>
   class?: ClassValue
   style?: string
 }
@@ -143,9 +143,8 @@ export interface MarginalAxis {
 }
 export type MarginalAxes = Record<MarginalAxisBinding, MarginalAxis>
 
-// Capture the host scale's pixel span and current domain, reading scale_type/format/label
-// off the plot's AxisConfig (DRYs the per-axis object every host plot passes to PlotMarginals; the
-// renderer defaults a missing scale_type to `linear`). `tick_label` maps a position to a label.
+// The host scale's pixel span and domain plus scale_type/format/label from its AxisConfig,
+// as every plot passes to PlotMarginals. `tick_label` maps a position to a label.
 export const marginal_axis = (
   scale: PlotScaleFn,
   range: Vec2,
@@ -196,10 +195,9 @@ export interface MarginalHover {
   axis_title?: string // title of the shared positional axis (e.g. `Error`), if any
 }
 
-// Prepare projection and ordering once per rendered strip. Queries examine only the
-// neighboring positions, preserving original-order ties even on reversed/custom axes.
-// A query may supply a resized context whose positional scale preserves or reverses the
-// cached ordering. Compare in current pixels to retain exact boundary hits and distance ties.
+// Prepare projection and ordering once per strip. Queries examine only neighboring positions,
+// keeping original-order ties on reversed axes, and compare in current pixels (a query may
+// pass a resized context) to keep exact boundary hits and distance ties.
 export function create_marginal_hit_test(
   ctx: MarginalRenderContext,
 ): (
@@ -346,11 +344,9 @@ export function create_marginal_hit_test(
     }
 
     if (kind === `line`) {
-      // Each series fills from `baseline` to its curve. Among the fills that contain the pointer, pick
-      // the one whose curve reaches FURTHEST from the baseline (the outermost fill) — that's the curve
-      // the pointer visually sits within, and it's render-order independent so every series stays
-      // selectable where its fill is on top. For each series take its point nearest the pointer
-      // position (its value at the cursor). A pointer outside every fill is a miss.
+      // Among the fills (baseline to curve) containing the pointer, pick the outermost one,
+      // render-order independent, using each series' point nearest the pointer position.
+      // A pointer outside every fill is a miss.
       let chosen: LineHit | null = null
       let best_extent = -1
       for (const points of lines.values()) {
@@ -408,17 +404,20 @@ const to_config = (
   return input
 }
 
-// Merge a user side-input over the plot's default side-input into a resolved config (or null)
+// Merge a user side-input over the plot's default side-input into a resolved config (or null).
+// tooltip_off: the host plot's tooltip={false}, inherited unless the strip sets its own tooltip
 const resolve_side = (
   user_input: MarginalSideInput | undefined,
   default_input: MarginalSideInput | undefined,
+  tooltip_off: boolean,
 ): ResolvedMarginalConfig | null => {
   const user = to_config(user_input)
   if (user === false) return null // explicit disable wins over any default
   const base = to_config(default_input)
   const base_cfg = base === false ? undefined : base
   if (user === undefined && base_cfg === undefined) return null // side inactive
-  return { ...MARGINAL_DEFAULTS, ...base_cfg, ...user }
+  const inherited = tooltip_off ? { tooltip: false as const } : {}
+  return { ...MARGINAL_DEFAULTS, ...inherited, ...base_cfg, ...user }
 }
 
 // Expand the `marginals` prop into a per-side resolved config, merging with the plot's
@@ -428,29 +427,32 @@ const resolve_side = (
 //   each default side's config (e.g. shared bins)
 // - a per-side map: enable ONLY the sides the user lists (default sides do not auto-activate),
 //   merging the plot's per-side default config under the user's
+// tooltip_off (the plot's tooltip={false}) silences every strip's tooltip that doesn't set its own
 export function normalize_marginals(
   prop: MarginalsProp | undefined,
   default_sides: Partial<Record<MarginalSide, MarginalSideInput>> = {},
+  tooltip_off = false,
 ): ResolvedMarginals {
   const result: ResolvedMarginals = { top: null, bottom: null, left: null, right: null }
   if (prop == null || prop === false) return result
 
   if (prop === true) {
     for (const side of MARGINAL_SIDES)
-      result[side] = resolve_side(undefined, default_sides[side])
+      result[side] = resolve_side(undefined, default_sides[side], tooltip_off)
     return result
   }
   if (typeof prop === `string`) {
     const sides =
       Object.keys(default_sides).length > 0 ? default_sides : { top: true, right: true }
     for (const side of MARGINAL_SIDES) {
-      if (side in sides) result[side] = resolve_side(prop, default_sides[side])
+      if (side in sides) result[side] = resolve_side(prop, default_sides[side], tooltip_off)
     }
     return result
   }
   // Explicit per-side map: only sides the user names become active
   for (const side of MARGINAL_SIDES) {
-    if (prop[side] !== undefined) result[side] = resolve_side(prop[side], default_sides[side])
+    if (prop[side] !== undefined)
+      result[side] = resolve_side(prop[side], default_sides[side], tooltip_off)
   }
   return result
 }
@@ -553,9 +555,8 @@ export function marginal_value_scale(
   return { scale: (val) => baseline + sign * ((val - lower) / span) * thickness, baseline }
 }
 
-// Drop non-finite positions (and matching weights), restrict to the current positional range
-// so every marginal type tracks zoom/pan consistently (histogram already clips via bin domain),
-// and drop non-positive positions on a log axis.
+// Drop non-finite positions (and weights), out-of-range positions (so every marginal type
+// tracks zoom/pan) and non-positive positions on a log axis
 const clean_pairs = (
   positions: ArrayLike<number>,
   weights: ArrayLike<number> | undefined,
@@ -572,9 +573,8 @@ const clean_pairs = (
     if (require_positive && pos <= 0) continue
     if (weights && out_wts) {
       const weight = weights[idx]
-      // skip non-finite and negative weights: a negative makes a weighted CDF non-monotone and
-      // skews histogram normalization. zero is kept (it contributes nothing and the renderer
-      // already drops zero-value bars, so skipping it would only needlessly drop rug/kde positions)
+      // skip non-finite and negative weights (non-monotone CDF, skewed normalization); zero
+      // is kept so rug/kde positions aren't needlessly dropped
       if (!Number.isFinite(weight) || weight < 0) continue
       out_wts.push(weight)
     }
@@ -645,9 +645,8 @@ function compute_kde(
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // The grid spans the current positional range, so on a normal log axis (range[0] > 0) no
-  // clamping is needed. Only repair a degenerate log range whose lower bound is <= 0 (would
-  // otherwise emit grid points at <= 0 -> NaN pixels) by clamping to the smallest positive sample.
+  // Repair a degenerate log range with lower bound <= 0 (NaN pixels) by clamping to the
+  // smallest positive sample
   let clip: [number | null, number | null] | undefined
   if (get_scale_type_name(scale_type) === `log` && positional_range[0] <= 0) {
     const min_pos = smallest_positive(positions)

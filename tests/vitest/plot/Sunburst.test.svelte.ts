@@ -5,7 +5,7 @@ import { PLOT_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
-  click_export,
+  export_via_pane,
   fire,
   flush_render,
   keydown,
@@ -218,10 +218,8 @@ describe(`Sunburst`, () => {
   test(`CSV export lists every node by its label path`, async () => {
     const on_export = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, on_export })
-    expect(await click_export(`CSV`, plot)).toEqual([`PNG`, `SVG`, `CSV`])
-    await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
-    const [format, { data, filename }] = on_export.mock.calls[0]
-    expect([format, filename]).toEqual([`csv`, `sunburst`])
+    const { offered, format, data, filename } = await export_via_pane(on_export, `CSV`, plot)
+    expect([offered, format, filename]).toEqual([[`PNG`, `SVG`, `CSV`], `csv`, `sunburst`])
     expect(String(data).split(`\n`)).toEqual([
       `path,depth,value,fraction`,
       `A,1,10,0.5`,
@@ -596,6 +594,7 @@ describe(`Sunburst zoom navigation`, () => {
   })
 
   // every zoom-out trigger returns a depth-1 zoomed view to the full chart
+  // oxfmt-ignore
   test.each<[string, (plot: HTMLElement) => Promise<void>]>([
     [`center circle click`, (plot) => fire(plot.querySelector(`.center-circle`))],
     [`center label click`, (plot) => fire(plot.querySelector(`.center-label`))],
@@ -606,10 +605,7 @@ describe(`Sunburst zoom navigation`, () => {
         await fire(globalThis, keydown(`Escape`))
       },
     ],
-    [
-      `background double-click`,
-      (plot) => fire(plot.querySelector(`.arcs`), mouse(`dblclick`)),
-    ],
+    [`background double-click`, (plot) => fire(plot.querySelector(`.arcs`), mouse(`dblclick`))],
   ])(`%s zooms a depth-1 view back to the root`, async (trigger, zoom_out) => {
     const on_zoom = vi.fn()
     const plot = await mount_sized_sunburst({ data: tree, zoom_root_id: `A`, on_zoom })

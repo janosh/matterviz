@@ -3,9 +3,9 @@
   import { get_convex_hull_defaults } from '#lib/settings.js'
   import { untrack } from 'svelte'
   import { normalize_show_controls } from '#lib/controls.js'
+  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
   import type { create_canvas_interactions } from './canvas-interactions.svelte'
   import { create_hull_selection } from './canvas-interactions.svelte'
-  import type { D3InterpolateName } from '#lib/colors/index.js'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -81,7 +81,7 @@
     fullscreen_toggle = true,
     enable_info_pane = true,
     allow_file_drop = true,
-    on_file_drop,
+    on_file_load,
     enable_click_selection = true,
     enable_structure_preview = true,
     hull_face_color_mode: hull_face_color_mode_prop,
@@ -186,7 +186,7 @@
     allow_file_drop: () => allow_file_drop,
     on_point_click: () => on_point_click,
     on_point_hover: () => on_point_hover,
-    on_file_drop: () => on_file_drop,
+    on_file_load: () => on_file_load,
     entry_category: () => entry_category,
     wrapper: () => wrapper,
     actions: () => ({
@@ -254,26 +254,16 @@
           },
         }),
     csv: csv_source(() => {
-      const records = entry_records()
       const { elements } = hull_data
+      const values = [`energy_per_atom`, `e_form_per_atom`, `e_above_hull`] as const
       return {
-        header: [
-          `entry_id`,
-          `formula`,
-          ...elements,
-          `energy_per_atom`,
-          `e_form_per_atom`,
-          `e_above_hull`,
-          `is_stable`,
-        ],
-        rows: records.map(({ composition, is_stable, ...rec }) => [
+        header: [`entry_id`, `formula`, ...elements, ...values, `is_stable`],
+        rows: entry_records().map((rec) => [
           rec.entry_id,
           rec.formula,
-          ...elements.map((el) => (composition as Record<string, number>)[el] ?? 0),
-          rec.energy_per_atom,
-          rec.e_form_per_atom,
-          rec.e_above_hull,
-          is_stable == null ? null : String(is_stable),
+          ...elements.map((el) => (rec.composition as Record<string, number>)[el] ?? 0),
+          ...values.map((key) => rec[key]),
+          rec.is_stable == null ? null : String(rec.is_stable),
         ]),
       }
     }),
@@ -286,7 +276,7 @@
     info_pane_open = defaults.info_pane_open
     controls_open = defaults.legend_pane_open
     color_mode = defaults.color_mode
-    color_scale = defaults.color_scale as D3InterpolateName
+    color_scale = defaults.color_scale
     show_stable = defaults.show_stable
     show_unstable = defaults.show_unstable
     hidden_categories = []
@@ -321,6 +311,14 @@
     {wrapper}
     fullscreen_bg_css_var="--hull-bg-fullscreen"
     on_fullscreen_change={context?.recenter_camera}
+    shortcut_scopes={[
+      `viewer`,
+      `convex-hull`,
+      ...(dim === 2
+        ? [`convex-hull-2d` as const]
+        : [`convex-hull-3d` as const, `camera` as const]),
+      ...(dim === 3 ? [`convex-hull-ternary` as const] : []),
+    ]}
     class="convex-hull-toolbar"
     style="--viewer-buttons-gap: 0"
   >
@@ -328,7 +326,9 @@
       <button
         type="button"
         onclick={() => reset_all(context?.reset_camera)}
-        title="Reset view and settings"
+        {...dim === 2
+          ? shortcut_attrs(`hull_reset`)
+          : { title: SHORTCUTS.hull_reset.description }}
       >
         <Icon icon={Reset} />
       </button>
@@ -400,7 +400,7 @@
     {/if}
   </ViewerChrome>
 
-  {#if context && selection.hover_data}
+  {#if context && selection.hover_data && tooltip !== false}
     {@const { entry, position } = selection.hover_data}
     <!-- one above the control buttons so a tooltip near the top-right corner covers them -->
     <PlotTooltip

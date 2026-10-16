@@ -3,8 +3,6 @@ import type BrillouinZone from './BrillouinZone.svelte'
 
 export { default as BrillouinZone } from './BrillouinZone.svelte'
 export { default as BrillouinZoneControls } from './BrillouinZoneControls.svelte'
-export { default as BrillouinZoneExportPane } from './BrillouinZoneExportPane.svelte'
-export { default as BrillouinZoneInfoPane } from './BrillouinZoneInfoPane.svelte'
 export { default as BrillouinZonePopup } from './BrillouinZonePopup.svelte'
 export { default as BrillouinZoneScene } from './BrillouinZoneScene.svelte'
 export { default as BrillouinZoneTooltip } from './BrillouinZoneTooltip.svelte'
@@ -34,5 +32,5 @@ export type BrillouinZoneOptions = Pick<
   | 'show_controls'
   | 'fullscreen_toggle'
   | 'png_dpi'
-  | 'tooltip_config'
+  | 'tooltip'
 >

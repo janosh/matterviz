@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
@@ -58,6 +58,8 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+  import { is_activation_key, step_point_cursor } from '#lib/plot/core/interactions.js'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     collect_size_range,
     create_size_scale,
@@ -128,7 +130,7 @@
     hovered_point?: InternalPoint3D<Metadata> | null
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
-    tooltip?: Snippet<[Scatter3DHandlerEvent<Metadata>]>
+    tooltip?: TooltipProp<Scatter3DHandlerEvent<Metadata>>
     tooltip_portal?: HTMLElement
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
@@ -156,9 +158,7 @@
   // unnamed item's position never collides with another item's numeric id.
   const item_key = ({ id }: { id?: string | number }, idx: number): string =>
     id != null ? `id:${id}` : `idx:${idx}`
-  const half_x = scene_x / 2
-  const half_y = scene_y / 2
-  const half_z = scene_z / 2
+  const [half_x, half_y, half_z] = [scene_x / 2, scene_y / 2, scene_z / 2]
   let fit_zoom = $derived(Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50)
   // Orbit controls - snappy with minimal inertia; the orbit target is the cube center
   const scene_camera = create_scene_camera({
@@ -194,10 +194,8 @@
 
   const { invalidate } = useThrelte()
 
-  // Update backside positions when the camera crosses axis planes. autoInvalidate defaults to
-  // true, which parks the task in the scheduler's `autoInvalidations` for its whole lifetime
-  // and re-renders the on-demand scene every frame, idle or not. Opting out still runs the
-  // task each frame — the main stage is ungated — so crossings are still caught.
+  // Update backside positions when the camera crosses axis planes. autoInvalidate: true would
+  // re-render the on-demand scene every frame; opting out still runs the task each frame.
   useTask(
     () => {
       if (!camera) return
@@ -319,12 +317,8 @@
       const now = performance.now()
       const snap = now < settled_at || instances.length > max_tweened_instances
       const keys = instances.map(({ key }) => key)
-      tween.retarget(
-        keys,
-        pack_instances(instances),
-        now,
-        snap ? { duration: 0 } : point_tween,
-      )
+      const options = snap ? { duration: 0 } : point_tween
+      tween.retarget(keys, pack_instances(instances), now, options)
     })
   })
   // Like the task above, runs every frame without forcing renders: only a moving tween
@@ -381,6 +375,32 @@
         make_event_data(point, native instanceof MouseEvent ? native : undefined),
       )
     },
+  }
+
+  // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
+  // walk point_instances in (series, point) order, Home/End jump, Enter/Space click, Escape
+  // clears. Returns the cursor point, null once cleared, undefined for keys it leaves alone.
+  export function handle_key(
+    event: KeyboardEvent,
+  ): InternalPoint3D<Metadata> | null | undefined {
+    if (event.defaultPrevented || event.isComposing || is_modifier_chord(event))
+      return undefined
+    if (event.key === `Escape`) {
+      if (!hovered_point) return undefined
+      hovered_point = null
+      on_point_hover?.(null)
+      return null
+    }
+    if (hovered_point && is_activation_key(event)) {
+      on_point_click?.(make_event_data(hovered_point))
+      return hovered_point
+    }
+    const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
+    if (next === null) return undefined
+    const { point } = point_instances[next]
+    hovered_point = point
+    on_point_hover?.(make_event_data(point))
+    return point
   }
 
   $effect(() => {
@@ -467,8 +487,7 @@
         }
         const geometry = new LineGeometry()
         geometry.setPositions(input.positions)
-        // Node material for fat lines; it reads screen size from the viewport internally,
-        // so linewidth is in pixels without any resolution uniform to maintain.
+        // Node material reads screen size from the viewport, so linewidth is in pixels
         const material = new THREE.Line2NodeMaterial({
           color: new THREE.Color(input.color).getHex(),
           linewidth: input.width, // Width in pixels
@@ -493,8 +512,7 @@
     })
   })
 
-  // Lines reused across effect runs are only released here (axis geometries are derived and
-  // disposed by dispose_on_change below)
+  // Lines reused across effect runs are only released here
   onDestroy(() => {
     for (const { geometry, material } of series_lines) {
       geometry.dispose()
@@ -648,6 +666,7 @@
   position={camera_position}
   {fov}
   zoom={scene_camera.zoom}
+  reset_zoom={scene_camera.reset_to_fit}
   near={0.1}
   ortho_near={-100}
   far={1000}
@@ -796,30 +815,32 @@
     </T.Mesh>
 
     {@const data = make_event_data(hover_point)}
-    <extras.HTML
-      position={hover_drawn.position}
-      calculatePosition={hover_geometry.tooltip_position}
-      style="translate: -50% -100%; pointer-events: none"
-      portal={tooltip_portal}
-      zIndexRange={[1000, 1000]}
-    >
-      {#if tooltip}
-        {@render tooltip(data)}
-      {:else}
-        <div
-          class="tooltip"
-          style:background={hover_paint?.background}
-          style:color={hover_paint?.color}
-        >
-          {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
-            <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
-          {/each}
-          {#if data.color_value != null}
-            <div>value: {format_num(data.color_value, `.3~g`)}</div>
-          {/if}
-        </div>
-      {/if}
-    </extras.HTML>
+    {#if tooltip !== false}
+      <extras.HTML
+        position={hover_drawn.position}
+        calculatePosition={hover_geometry.tooltip_position}
+        style="translate: -50% -100%; pointer-events: none"
+        portal={tooltip_portal}
+        zIndexRange={[1000, 1000]}
+      >
+        {#if tooltip}
+          {@render tooltip(data)}
+        {:else}
+          <div
+            class="tooltip"
+            style:background={hover_paint?.background}
+            style:color={hover_paint?.color}
+          >
+            {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
+              <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
+            {/each}
+            {#if data.color_value != null}
+              <div>value: {format_num(data.color_value, `.3~g`)}</div>
+            {/if}
+          </div>
+        {/if}
+      </extras.HTML>
+    {/if}
   {/if}
 {/if}
 

@@ -18,8 +18,10 @@ import { deflateSync as deflate_sync, gzipSync as gzip_sync } from 'node:zlib'
 import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, assert, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
+  BAD_ROW_CIF,
+  cif_with_rows,
   IDENTITY_MATRIX3,
   make_crystal,
   read_binary_test_file,
@@ -80,6 +82,86 @@ test.each([
   const promise = parse_file_content(`data_test`, filename)
   if (error) await expect(promise).rejects.toThrow(error)
   else expect(await promise).toMatchObject({ type: `structure`, filename })
+})
+
+const SINGULAR_MATRIX = [
+  [5, 0, 0],
+  [5, 0, 0],
+  [0, 0, 5],
+]
+const SINGULAR_JSON = JSON.stringify({
+  lattice: { matrix: SINGULAR_MATRIX },
+  sites: [{ species: [{ element: `Si`, occu: 1 }], xyz: [0, 0, 0] }],
+})
+
+const pdb_atom = (model: number): string =>
+  `MODEL        ${model}\nATOM      1  O   HOH A   1       ${model}.000   0.000   0.000  1.00  0.00           O\nENDMDL`
+const optimade_json = JSON.stringify({
+  data: {
+    type: `structures`,
+    id: `x`,
+    attributes: {
+      lattice_vectors: SINGULAR_MATRIX,
+      cartesian_site_positions: [[0, 0, 0]],
+      species_at_sites: [`Si`],
+    },
+  },
+})
+// Recoverable parser issues ride on the structure/volumetric result into the mounted viewer,
+// and nothing is logged: the viewer's notice is where they are shown
+// oxfmt-ignore
+test.each([
+  [`a CIF row with bad coordinates`, `bad.cif`, BAD_ROW_CIF, /^CIF: skipped 1 atom-site row: /],
+  [`ambiguous CIF labels`, `amb.cif`, cif_with_rows(`CO1 . 0 0 0`), /ambiguous all-caps atom-site labels.*'CO1' read as Co/],
+  [`a Cartesian POSCAR on a singular lattice`, `POSCAR`, `x\n1.0\n5 0 0\n5 0 0\n0 0 5\nSi\n1\nCartesian\n1 0 1`, /^POSCAR: singular lattice/],
+  [`a CHGCAR with a VASP 4 header and a truncated second block`, `CHGCAR`,
+    `x\n1.0\n4 0 0\n0 4 0\n0 0 4\n1\nDirect\n0 0 0\n\n2 2 2\n1 2 3 4 5 6 7 8\n2 2 2\n1 2\n`,
+    [/^CHGCAR: no element symbols/, /^CHGCAR block 2 .*Keeping the intact first block only/]],
+  [`a MOL query bond`, `q.mol`,
+    `q\n  t\n\n  2  1  0  0  0  0  0  0  0  0999 V2000\n    0.0 0.0 0.0 C   0  0\n    1.5 0.0 0.0 C   0  0\n  1  2  8  0\nM  END\n`,
+    /^MOL bond 1: query bond type 8/],
+  [`a two-molecule MOL2`, `two.mol2`,
+    `@<TRIPOS>MOLECULE\na\n@<TRIPOS>ATOM\n1 C1 0 0 0 C.3\n@<TRIPOS>MOLECULE\nb\n@<TRIPOS>ATOM\n1 C1 1 0 0 C.3\n`,
+    /^MOL2 contains 2 molecules/],
+  [`a two-model PDB`, `two.pdb`, `${pdb_atom(1)}\n${pdb_atom(2)}`, /^PDB contains 2 models/],
+  [`an mmCIF without type_symbol`, `x.mmcif`,
+    `data_x\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.label_atom_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\nATOM 1 C 0 0 0\n`,
+    /^mmCIF _atom_site loop has no type_symbol column/],
+  [`a LAMMPS data file without an Atoms style`, `x.lmp`,
+    `LAMMPS\n\n1 atoms\n1 atom types\n\n0 5 xlo xhi\n0 5 ylo yhi\n0 5 zlo zhi\n\nMasses\n\n1 28.0855\n\nAtoms\n\n1 1 0 0 0\n`,
+    /^LAMMPS data: Atoms section has no style comment/],
+  [`a cube file with a ghost centre`, `x.cube`, `t\nc\n2 0 0 0\n2 1 0 0\n2 0 1 0\n2 0 0 1\n0 0 0 0 0\n6 0 1 1 1\n1 2 3 4 5 6 7 8\n`, /^\.cube atom 1: skipping Z = 0 ghost/],
+  [`an OPTIMADE structure on a singular lattice`, `opt.json`, optimade_json, /^Singular OPTIMADE lattice/],
+  [`a pymatgen JSON on a singular lattice`, `s.json`, SINGULAR_JSON, /^Singular JSON lattice/],
+])(
+  `parse warnings of %s land on the result and the viewer`,
+  async (_label, filename, content, warnings) => {
+    const warn_spy = vi.spyOn(console, `warn`)
+    onTestFinished(() => warn_spy.mockRestore())
+    const result = await parse_file_content(content, filename)
+    assert(
+      result.type === `structure` || result.type === `isosurface`,
+      `expected a structure or volume, got ${result.type}`,
+    )
+    expect(result.warnings).toEqual([warnings].flat().map((re) => expect.stringMatching(re)))
+    expect(warn_spy).not.toHaveBeenCalled()
+    create_display(make_container(), result)
+    expect(last_mount_props().parse_warnings).toBe(result.warnings)
+  },
+)
+
+// A JSON trajectory's frames are read by the structure parser, whose warnings land on the run
+test(`structure warnings of JSON trajectory frames land on the run`, async () => {
+  const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  onTestFinished(() => warn_spy.mockRestore())
+  const frame = JSON.parse(SINGULAR_JSON)
+  const content = JSON.stringify({ frames: [frame, frame] })
+  const result = await parse_file_content(content, `run.json`)
+  assert(result.type === `trajectory`, `expected a trajectory, got ${result.type}`)
+  expect(result.data.warnings).toEqual([
+    expect.stringMatching(/^Singular JSON lattice/),
+    expect.stringMatching(/^Singular JSON lattice/),
+  ])
 })
 
 // A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
@@ -216,17 +298,8 @@ test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, asyn
   const ifermi_surface = {
     '@class': `FermiSurface`,
     isosurfaces: {
-      1: [
-        {
-          vertices: [
-            [0, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-          ],
-          faces: [[0, 1, 2]],
-          band_idx: 1,
-        },
-      ],
+      // oxfmt-ignore
+      1: [{ vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces: [[0, 1, 2]], band_idx: 1 }],
     },
     reciprocal_space: { reciprocal_lattice: IDENTITY_MATRIX3 },
   }
@@ -251,35 +324,17 @@ test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, asyn
 test.each([true, false])(
   `parse_file_content wraps volumetric JSON (periodic=%s) in a structure with a full lattice`,
   async (periodic) => {
-    const matrix = [
-      [4, 0, 0],
-      [0, 5, 0],
-      [0, 0, 6],
-    ]
-    const volumetric = {
-      id: `density`,
-      lattice: matrix,
-      origin: [0, 0, 0],
-      periodic,
-      values: Array.from({ length: 8 }, (_, idx) => idx),
-      dims: [2, 2, 2],
-    }
-    const result = await parse_file_content(JSON.stringify(volumetric), `density.json`)
+    // oxfmt-ignore
+    const matrix = [[4, 0, 0], [0, 5, 0], [0, 0, 6]]
+    const values = Array.from({ length: 8 }, (_, idx) => idx)
+    const volumetric = { id: `density`, lattice: matrix, origin: [0, 0, 0], periodic, values }
+    const json = JSON.stringify({ ...volumetric, dims: [2, 2, 2] })
+    const result = await parse_file_content(json, `density.json`)
+    const pbc = [periodic, periodic, periodic]
+    const lattice = { matrix, a: 4, b: 5, c: 6, volume: 120, pbc }
     expect(result).toMatchObject({
       type: `isosurface`,
-      data: {
-        structure: {
-          sites: [],
-          lattice: {
-            matrix,
-            a: 4,
-            b: 5,
-            c: 6,
-            volume: 120,
-            pbc: [periodic, periodic, periodic],
-          },
-        },
-      },
+      data: { structure: { sites: [], lattice } },
     })
     const { volumes } = result.data as { volumes: { lattice: number[][]; dims: number[] }[] }
     expect(volumes).toHaveLength(1)
@@ -295,11 +350,9 @@ describe(`vaspout.h5 electronic routing`, () => {
     expect(result.type).toBe(`vaspout_electronic`)
     const data = result.data as { dos: unknown; bands: unknown }
     expect(data.dos).toBeNull()
-    expect(data.bands).not.toBeNull()
-
+    expect(data.bands).toMatchObject({ type: `electronic` })
     create_display(make_container(), result)
     expect(last_mount_props().band_structs).toEqual({ '': data.bands })
-    expect(data.bands).toMatchObject({ type: `electronic` })
   })
 
   test(`trajectories carrying a DOS mount the trajectory-with-DOS wrapper`, async () => {
@@ -423,10 +476,7 @@ describe(`create_display trajectory display options`, () => {
     // the settings default, gated by host.fullscreen
     expect(mount_props.fullscreen_toggle).toBe(true)
     // create_display adapts Trajectory's TrajHandlerData callback to (step_idx, total)
-    ;(mount_props.on_step_change as (data: unknown) => void)({
-      step_idx: 7,
-      frame_count: 20,
-    })
+    ;(mount_props.on_step_change as (data: unknown) => void)({ step_idx: 7, frame_count: 20 })
     expect(on_step_change).toHaveBeenCalledWith(7, 20)
   })
 
@@ -510,6 +560,12 @@ describe(`LARGE_FILE markers`, () => {
     })),
     { provenance: { filename: `movie.extxyz`, format: `xyz` } },
   )
+  // The host's answer to request_large_file: the run summary with plot rows still streaming
+  const summary_reply = (request: Record<string, unknown>): Record<string, unknown> => ({
+    command: `large_file_response`,
+    request_id: request.request_id,
+    run_summary: { ...summarize_run(backing), properties: { rows: [], complete: false } },
+  })
 
   // post_request listens on globalThis, not an EventTarget in vitest's node environment
   const with_host = (
@@ -539,7 +595,6 @@ describe(`LARGE_FILE markers`, () => {
   })
 
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
-    const summary = { ...summarize_run(backing), properties: { rows: [], complete: false } }
     const { post_message, message_bus } = with_host((request) =>
       request.command === `request_frame`
         ? {
@@ -547,11 +602,7 @@ describe(`LARGE_FILE markers`, () => {
             request_id: request.request_id,
             frame: materialize_frame_result(backing.read_frame(Number(request.frame_index))),
           }
-        : {
-            command: `large_file_response`,
-            request_id: request.request_id,
-            run_summary: summary,
-          },
+        : summary_reply(request),
     )
     const result = await (await fresh_parse())(marker, `movie.extxyz`)
 
@@ -615,11 +666,7 @@ describe(`LARGE_FILE markers`, () => {
   test.each([`batch`, `completion`, `both`] as const)(
     `finishes host metadata and detaches its listener after %s subscriber failures`,
     async (phase) => {
-      with_host((request) => ({
-        command: `large_file_response`,
-        request_id: request.request_id,
-        run_summary: { ...summarize_run(backing), properties: { rows: [], complete: false } },
-      }))
+      with_host(summary_reply)
       const add_listener = vi.spyOn(globalThis, `addEventListener`)
       const remove_listener = vi.spyOn(globalThis, `removeEventListener`)
       const result = await (await fresh_parse())(marker, `movie.extxyz`)
@@ -676,14 +723,7 @@ describe(`LARGE_FILE markers`, () => {
     with_host((request) =>
       request.command === `request_frame`
         ? { ...frame_reply, request_id: request.request_id }
-        : {
-            command: `large_file_response`,
-            request_id: request.request_id,
-            run_summary: {
-              ...summarize_run(backing),
-              properties: { rows: [], complete: false },
-            },
-          },
+        : summary_reply(request),
     )
     vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
     const result = await (await fresh_parse())(marker, `movie.extxyz`)

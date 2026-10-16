@@ -1,11 +1,9 @@
 <script lang="ts">
+  // Shared controls pane of SunburstControls/TreemapControls; `chart` picks the chart-specific
+  // controls (shape/rotation/radius vs cell paddings) and labels.
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
-
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
-  // Shared controls pane for the hierarchical part-of-whole charts. Exported as
-  // SunburstControls/TreemapControls from the chart barrels; `chart` picks the
-  // chart-specific controls (shape/rotation/radius vs cell paddings) and labels.
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import type {
     SunburstLabelRotation,
@@ -20,7 +18,7 @@
 
   let {
     chart,
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     // shared-option defaults come from the bound chart's own settings (chart is
     // destructured first so later prop defaults can reference it)
@@ -118,8 +116,7 @@
     on_reset={reset_to_defaults}
     layout="grid"
   >
-    <!-- select options come from the settings schema so labels/values have a
-      single source of truth -->
+    <!-- select options come from the settings schema (one source of truth) -->
     {#if chart === `sunburst`}
       <label>
         <span>Shape</span>

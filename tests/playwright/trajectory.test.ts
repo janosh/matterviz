@@ -95,8 +95,8 @@ test.describe(`Trajectory Component`, () => {
     const empty_trajectory = page.locator(`#empty-state`)
 
     await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(`Load Trajectory`)
-    await expect(empty_trajectory.locator(`.empty-state > ul`)).toContainText(
-      `Multi-frame XYZ`,
+    await expect(empty_trajectory.locator(`.empty-state > p`)).toContainText(
+      `multi-frame (ext)XYZ`,
     )
     await expect(empty_trajectory).toHaveAttribute(
       `aria-label`,
@@ -1339,7 +1339,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-structure-only/)
       await expect(display_button).toHaveAttribute(
         `aria-label`,
-        `Automatic: Structure-only (V: next, Shift+V: previous)`,
+        `Automatic: Structure-only (V / Shift+V)`,
       )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)

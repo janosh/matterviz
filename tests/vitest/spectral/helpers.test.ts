@@ -28,7 +28,6 @@ import {
   normalize_dos,
   pretty_sym_point,
   qpoint_x_position,
-  scale_segment_distances,
   shift_to_fermi,
 } from '#lib/spectral/helpers.js'
 import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
@@ -420,16 +419,9 @@ describe(`extract_k_path_points`, () => {
   it(`band_k_path pairs Cartesian points with labels and plotted branches`, () => {
     const band_structure = without_jump([`GAMMA`, null, `U`, `K`, null, `GAMMA`, `X`])
     const points = extract_k_path_points(band_structure, fcc_recip)
-    const branches = [
-      [0, 2],
-      [3, 5],
-      [5, 6],
-    ]
-    expect(band_k_path(band_structure, fcc_recip)).toEqual({
-      points,
-      labels: [`Γ`, null, `U`, `K`, null, `Γ`, `X`],
-      branches,
-    })
+    const labels = [`Γ`, null, `U`, `K`, null, `Γ`, `X`]
+    // oxfmt-ignore
+    expect(band_k_path(band_structure, fcc_recip)).toEqual({ points, labels, branches: [[0, 2], [3, 5], [5, 6]] })
   })
 
   // Steps along a zone face (L→U, H→K) used to alternate faces: pymatgen stores 8 decimals, so
@@ -533,30 +525,18 @@ describe(`normalize_band_structure`, () => {
   const line = (n_points: number) =>
     Array.from({ length: n_points }, (_, idx) => [idx / (n_points - 1), 0, 0])
 
-  it(`passes matterviz input through, filling nb_bands and labels_dict`, () => {
-    const bands = [
-      [0, 1],
-      [2, 3],
-    ]
-    const result = normalize_band_structure({
-      qpoints: [
-        { label: `GAMMA`, frac_coords: [0, 0, 0] },
-        { label: `X`, frac_coords: [0.5, 0, 0] },
-      ],
-      branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
-      bands,
-      distance: [0, 1],
-    })
-    expect(result).toMatchObject({ nb_bands: 2, labels_dict: {}, bands })
-  })
-
-  // a valid one-q-point matterviz input, broken one field at a time
+  // a valid one-q-point matterviz input, broken one field at a time below
   const one_qpt = (overrides: Record<string, unknown>) => ({
     qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
     branches: [],
     bands: [[0]],
     distance: [0],
     ...overrides,
+  })
+  it(`passes matterviz input through, filling nb_bands and labels_dict`, () => {
+    const bands = [[0], [1]]
+    const result = normalize_band_structure(one_qpt({ bands }))
+    expect(result).toMatchObject({ nb_bands: 2, labels_dict: {}, bands })
   })
   // oxfmt-ignore
   it.each([
@@ -593,16 +573,12 @@ describe(`normalize_band_structure`, () => {
   })
 
   it(`transposes the frequencies_cm layout (q-points × branches, in cm^-1)`, () => {
-    const frequencies_cm = [
-      [1, 2],
-      [3, 4],
-    ].map((row) => row.map((val) => val * THZ_TO_INVERSE_CM))
+    const to_cm = (row: number[]) => row.map((val) => val * THZ_TO_INVERSE_CM)
+    const frequencies_cm = [to_cm([1, 2]), to_cm([3, 4])]
     const result = normalize_band_structure(pmg({ qpoints: line(2), frequencies_cm }))
     const rounded = result?.bands.map((band) => band.map((val) => Math.round(val * 1e9) / 1e9))
-    expect(rounded).toEqual([
-      [1, 3],
-      [2, 4],
-    ])
+    // oxfmt-ignore
+    expect(rounded).toEqual([[1, 3], [2, 4]])
   })
 
   it(`labels q-points from Kpoint objects or by matching labels_dict within 1e-4`, () => {
@@ -799,17 +775,9 @@ describe(`normalize_band_structure`, () => {
   })
 
   describe(`electronic (kpoints, spin-keyed bands)`, () => {
+    // oxfmt-ignore
+    const [up, down] = [[[0, 1], [2, 3]], [[0.1, 1.1], [2.1, 3.1]]]
     it(`reads both spin channels and drops a malformed spin-down channel`, () => {
-      const [up, down] = [
-        [
-          [0, 1],
-          [2, 3],
-        ],
-        [
-          [0.1, 1.1],
-          [2.1, 3.1],
-        ],
-      ]
       const with_down = (spin_down: number[][]) =>
         normalize_band_structure({
           ...identity_rec,
@@ -835,14 +803,7 @@ describe(`normalize_band_structure`, () => {
         ...branched,
       }
       expect(normalize_band_structure(by_module)?.qpoints).toHaveLength(2)
-      const by_kpoints = {
-        ...identity_rec,
-        kpoints: line(2),
-        bands: [
-          [0, 1],
-          [2, 3],
-        ],
-      }
+      const by_kpoints = { ...identity_rec, kpoints: line(2), bands: up }
       expect(normalize_band_structure(by_kpoints)?.nb_bands).toBe(2)
     })
   })
@@ -880,10 +841,8 @@ describe(`electronic_band_gap`, () => {
 })
 
 describe(`normalize_dos`, () => {
-  const [up, down] = [
-    [0.5, 1, 0.5],
-    [0.4, 0.9, 0.4],
-  ]
+  const up = [0.5, 1, 0.5]
+  const down = [0.4, 0.9, 0.4]
   it.each([
     [`numeric spin keys`, { '1': up, '-1': down }, down],
     [`Spin.up/Spin.down keys`, { 'Spin.up': up, 'Spin.down': down }, down],
@@ -992,17 +951,6 @@ describe(`shift_to_fermi`, () => {
       expect(inner).toEqual({ ...nested, efermi: 0, energies: [-5, 0, 5] })
     }
   })
-})
-
-it.each([
-  [[0, 1, 2, 3], 10, 20, [10, 10 + 10 / 3, 10 + 20 / 3, 20]],
-  [[5, 5, 5], 10, 20, [15, 15, 15]], // zero-length segment → midpoint
-  [[42], 0, 10, [5]],
-  [[], 0, 10, []],
-])(`scale_segment_distances(%j, %f, %f) → %j`, (distances, x_start, x_end, expected) => {
-  const result = scale_segment_distances(distances, x_start, x_end)
-  expect(result).toHaveLength(expected.length)
-  expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 12))
 })
 
 describe(`generate_ribbon_path`, () => {
@@ -1177,15 +1125,10 @@ describe(`acoustic classification`, () => {
 })
 
 describe(`build_point_metadata`, () => {
+  // oxfmt-ignore
   const band_structure = make_bs([`GAMMA`, null, `X`], {
-    bands: [
-      [0, 5, 10],
-      [3, 6, 9],
-    ],
-    band_widths: [
-      [0.1, 0.2, 0.3],
-      [0.4, 0.5, 0.6],
-    ],
+    bands: [[0, 5, 10], [3, 6, 9]],
+    band_widths: [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
   })
   const build = (overrides: Partial<Parameters<typeof build_point_metadata>[0]> = {}) =>
     build_point_metadata({

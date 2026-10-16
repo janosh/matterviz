@@ -7,7 +7,7 @@ import ElementPage from '#root/src/routes/(element)/[slug]/+page.svelte'
 import { element_data } from '#lib/element/index.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
 import { selected } from '#lib/state.svelte.js'
-import { flushSync, mount, tick, type ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { bind_props, doc_query, expect_plot_controls, mount_sized } from '../setup'
 
@@ -115,6 +115,13 @@ describe(`ElementScatter`, () => {
       [`Atomic Radius`, `pm`],
     ],
     [`default value label`, {}, [`Value`]],
+    // a caller's snippet replaces the element tooltip, false drops it
+    [
+      `a custom snippet`,
+      { tooltip: createRawSnippet(() => ({ render: () => `<b>hi</b>` })) },
+      [/^\s*hi\s*$/],
+    ],
+    [`nothing for tooltip=false`, { tooltip: false }, [/^$/]],
   ])(`tooltip shows %s`, async (_name, props, expected) => {
     mount(ElementScatter, {
       target: document.body,

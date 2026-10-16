@@ -43,11 +43,7 @@ const make_run = (extras: MemoryRunExtras = {}) =>
   )
 const calculate_run = (run: ReturnType<typeof make_run>, options: HotspotRequest = {}) => {
   if (!run.compute_hotspots) throw new Error(`Missing hotspot calculation`)
-  return run.compute_hotspots({
-    velocity_unit: `A/ps`,
-    mass_unit: `amu`,
-    ...options,
-  })
+  return run.compute_hotspots({ velocity_unit: `A/ps`, mass_unit: `amu`, ...options })
 }
 const { control, set_value } = form_controls()
 const map_status = () => document.querySelector(`.hotspot-map-status`)?.textContent
@@ -77,26 +73,13 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   const advanced = doc_query<HTMLDetailsElement>(`.advanced-settings`)
   expect(settings.open).toBe(true)
   expect(advanced.open).toBe(false)
-  for (const label of [
-    `Source`,
-    `Velocity units`,
-    `Masses`,
-    `Mass units`,
-    `Start frame`,
-    `End frame`,
-    `Frame stride`,
-    `Grid resolution`,
-  ])
-    expect(control(label).closest(`details`)).toBe(settings)
-  for (const label of [
-    `Velocity property`,
-    `Motion`,
-    `Grid frame`,
-    `Mobile-atom selection property`,
-    `Dimensions`,
-    `Degrees of freedom`,
-  ])
-    expect(control(label).closest(`details`)).toBe(advanced)
+  // oxfmt-ignore
+  const placement = [
+    [settings, [`Source`, `Velocity units`, `Masses`, `Mass units`, `Start frame`, `End frame`, `Frame stride`, `Grid resolution`]],
+    [advanced, [`Velocity property`, `Motion`, `Grid frame`, `Mobile-atom selection property`, `Dimensions`, `Degrees of freedom`]],
+  ] as const
+  for (const [details, labels] of placement)
+    for (const label of labels) expect(control(label).closest(`details`), label).toBe(details)
   expect_requirements(`Select velocity units.`)
   expect(control(`Mass units`).value).toBe(`amu`)
   expect(document.body.textContent).toContain(`Inferred from recorded masses`)

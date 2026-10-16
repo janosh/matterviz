@@ -1,7 +1,7 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { track_settings } from '#lib/controls.js'
-  import type { ScatterPlotOptions } from '#lib/plot/index.js'
+  import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
   import type { BZPopupPoint } from '#lib/brillouin/index.js'
   import { plot_color } from '#lib/colors/index.js'
@@ -66,16 +66,16 @@
     shade_imaginary_modes = true,
     show_gap_annotation = true,
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     id: identifier,
     'data-testid': data_testid,
     point_hit_padding = 3,
-    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
+    // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     children: user_children,
     ...rest
-  }: Omit<ScatterPlotOptions, `tooltip` | `controls_extra`> & {
+  }: Omit<ScatterPlotOptions, `controls_extra`> & {
     band_structs: Record<string, BaseBandStructure>
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
     // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
@@ -114,20 +114,11 @@
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
   } = $props()
 
-  function get_line_style(
-    color: string,
-    is_acoustic: boolean,
-    band_idx: number,
-    spin: `up` | `down`,
-    structure_label: string,
-  ): Required<BandLineStyle> {
-    const custom = helpers.band_line_style(
-      line_kwargs,
-      band_idx,
-      spin,
-      is_acoustic,
-      structure_label,
-    )
+  // A band line's style: the caller's over the structure colour, emphasised or muted while a
+  // band is highlighted
+  function get_line_style(color: string, ...line: helpers.BandLine): Required<BandLineStyle> {
+    const [band_idx, , is_acoustic] = line
+    const custom = helpers.band_line_style(line_kwargs, ...line)
     const style = {
       stroke: custom.stroke ?? color,
       stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
@@ -255,11 +246,13 @@
         if (!segments_to_plot.has(segment_key)) continue
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1 // exclusive
-        const [x_start, x_end] = internal_x_positions[segment_key]
-        const x_vals = helpers.scale_segment_distances(
-          band_structure.distance.slice(start_idx, end_idx),
-          x_start,
-          x_end,
+        const x_vals = Array.from({ length: end_idx - start_idx }, (_, offset) =>
+          helpers.branch_x(
+            band_structure,
+            branch,
+            internal_x_positions[segment_key],
+            start_idx + offset,
+          ),
         )
 
         for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
@@ -271,13 +264,8 @@
             band_idx,
             gamma_indices,
           )
-          const style_up = get_line_style(
-            color,
-            is_acoustic === true,
-            band_idx,
-            `up`,
-            structure_label,
-          )
+          const style_of = (spin: `up` | `down`) =>
+            get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
           const spin_down_band = band_structure.spin_down_bands?.[band_idx]
           const y_down =
             band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
@@ -288,16 +276,10 @@
           const channels: [number[], `up` | `down`, string, DataSeries[`line_style`]][] = []
           if (effective_spin_mode !== `down_only`) {
             const label_up = y_down ? `${structure_label} (↑)` : structure_label
-            channels.push([y_up, `up`, label_up, style_up])
+            channels.push([y_up, `up`, label_up, style_of(`up`)])
           }
           if (y_down && effective_spin_mode !== `up_only`) {
-            const { stroke, stroke_width } = get_line_style(
-              color,
-              is_acoustic === true,
-              band_idx,
-              `down`,
-              structure_label,
-            )
+            const { stroke, stroke_width } = style_of(`down`)
             const style_down = {
               stroke,
               line_dash: `4,2`,
@@ -585,9 +567,68 @@
 </script>
 
 {#if show_plot}
+  {#snippet bands_tooltip({
+    x: coord_x,
+    y: coord_y,
+    y_formatted,
+    label,
+    metadata,
+  }: ScatterHandlerProps)}
+    {@const segment_key = Object.entries(internal_x_positions).find(
+      ([, [start, end]]) => coord_x >= start && coord_x <= end,
+    )?.[0]}
+    {@const path = segment_key
+      ? helpers.branch_path_label(...all_segments[segment_key][0])
+      : null}
+    {@const {
+      band_idx,
+      spin,
+      is_acoustic,
+      nb_bands,
+      frac_coords,
+      qpoint_label,
+      band_width,
+      slope,
+    } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
+    {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
+    <TooltipValue
+      label={internal_y_axis.label || `Value`}
+      value={y_formatted}
+      unit={internal_y_axis.unit}
+    /><br />
+    {#if path}Path: {path}<br />{/if}
+    {#if typeof band_idx === `number`}
+      Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{nb_bands}{/if}
+      {#if typeof is_acoustic === `boolean`}
+        ({is_acoustic ? `acoustic` : `optical`})
+      {:else if band_type === `electronic` && effective_fermi_level !== undefined}
+        ({coord_y <= effective_fermi_level ? `valence` : `conduction`})
+      {/if}
+      {#if spin === `up` || spin === `down`}
+        {spin === `up` ? `↑` : `↓`}
+      {/if}
+    {/if}
+    {#if typeof qpoint_label === `string` && qpoint_label}
+      <br />At: {helpers.pretty_sym_point(qpoint_label)}
+    {/if}
+    {#if Array.isArray(frac_coords)}
+      <br />{band_type === `electronic` ? `k` : `q`}: [{frac_coords
+        .map((coord: number) => format_num(coord, `.3f`))
+        .join(`, `)}]
+    {/if}
+    {#if typeof band_width === `number` && band_width > 0}
+      <br />Projection: {format_num(band_width, `.3~g`)}
+    {/if}
+    {#if typeof slope === `number` && Number.isFinite(slope)}
+      {@const rel = Math.abs(slope) / max_abs_slope}
+      <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
+    {/if}
+  {/snippet}
+
   <!-- the active (clicked) tick is red like the point it highlights in the BZ popup -->
   <ScatterPlot
     {...rest}
+    tooltip={rest.tooltip ?? bands_tooltip}
     id={identifier}
     data-testid={data_testid}
     series={series_data}
@@ -602,7 +643,7 @@
     hover_config={{ threshold_px: 50, click_threshold_px: 10, ...rest.hover_config }}
     {selected_point}
     style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
-    bind:show_controls
+    {show_controls}
     bind:controls_open
     bind:resolved_padding
     on_point_hover={(event) => {
@@ -612,58 +653,6 @@
     }}
     children={frame_children}
   >
-    {#snippet tooltip({ x: coord_x, y: coord_y, y_formatted, label, metadata })}
-      {@const segment_key = Object.entries(internal_x_positions).find(
-        ([, [start, end]]) => coord_x >= start && coord_x <= end,
-      )?.[0]}
-      {@const path = segment_key
-        ? helpers.branch_path_label(...all_segments[segment_key][0])
-        : null}
-      {@const {
-        band_idx,
-        spin,
-        is_acoustic,
-        nb_bands,
-        frac_coords,
-        qpoint_label,
-        band_width,
-        slope,
-      } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
-      {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
-      <TooltipValue
-        label={internal_y_axis.label || `Value`}
-        value={y_formatted}
-        unit={internal_y_axis.unit}
-      /><br />
-      {#if path}Path: {path}<br />{/if}
-      {#if typeof band_idx === `number`}
-        Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{nb_bands}{/if}
-        {#if typeof is_acoustic === `boolean`}
-          ({is_acoustic ? `acoustic` : `optical`})
-        {:else if band_type === `electronic` && effective_fermi_level !== undefined}
-          ({coord_y <= effective_fermi_level ? `valence` : `conduction`})
-        {/if}
-        {#if spin === `up` || spin === `down`}
-          {spin === `up` ? `↑` : `↓`}
-        {/if}
-      {/if}
-      {#if typeof qpoint_label === `string` && qpoint_label}
-        <br />At: {helpers.pretty_sym_point(qpoint_label)}
-      {/if}
-      {#if Array.isArray(frac_coords)}
-        <br />{band_type === `electronic` ? `k` : `q`}: [{frac_coords
-          .map((coord: number) => format_num(coord, `.3f`))
-          .join(`, `)}]
-      {/if}
-      {#if typeof band_width === `number` && band_width > 0}
-        <br />Projection: {format_num(band_width, `.3~g`)}
-      {/if}
-      {#if typeof slope === `number` && Number.isFinite(slope)}
-        {@const rel = Math.abs(slope) / max_abs_slope}
-        <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
-      {/if}
-    {/snippet}
-
     {#snippet controls_extra()}
       <SettingsSection
         title="Path"

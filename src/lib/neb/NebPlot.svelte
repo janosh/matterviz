@@ -33,7 +33,7 @@
     on_image_change,
     x_axis = {},
     y_axis = {},
-    show_controls = $bindable(true),
+    show_controls,
     controls_open = $bindable(false),
     profiles: given_profiles,
     ...rest
@@ -139,18 +139,14 @@
   }
 
   const profile_settings = track_settings(
-    () => ({
-      coord_mode,
-      energy_reference,
-      show_spline,
-    }),
+    () => ({ coord_mode, energy_reference, show_spline }),
     { coord_mode: `arc_length`, energy_reference: `initial`, show_spline: true },
   )
 </script>
 
 <ScatterPlot
   {...rest}
-  bind:show_controls
+  {show_controls}
   bind:controls_open
   {series}
   x_axis={{ label: x_label, ...x_axis }}
@@ -170,11 +166,8 @@
       title="Profile"
       class="ctrl-line"
       changed_keys={profile_settings.changed_keys}
-      on_reset={() => {
-        coord_mode = `arc_length`
-        energy_reference = `initial`
-        show_spline = true
-      }}
+      on_reset={() =>
+        ({ coord_mode, energy_reference, show_spline } = profile_settings.snapshot())}
       layout="flow"
     >
       <label>

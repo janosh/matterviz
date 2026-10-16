@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
@@ -11,15 +11,26 @@
   import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
-  import { resolve_color_ramp, to_color_bar_scale } from '#lib/plot/core/color-ramp.js'
-  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
+  import {
+    CANVAS_MARKER_THRESHOLD,
+    type CanvasMarker,
+    canvas_safe_color,
+    create_marker_canvas,
+  } from '#lib/plot/core/canvas-markers.svelte.js'
+  import {
+    build_spatial_index,
+    query_nearest,
+    type SpatialIndex,
+  } from '#lib/plot/core/spatial-index.js'
   import {
     closest_data_idx,
     focus_left,
     is_activation_key,
     pointer_pos,
+    step_point_cursor,
   } from '#lib/plot/core/interactions.js'
   import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
@@ -43,6 +54,7 @@
   } from '#lib/plot/ternary/ternary.js'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
   import { to_error } from '#lib/utils.js'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -50,6 +62,8 @@
   // Room for the corner labels beside the bottom corners and above the apex, and for
   // the tick labels written outside each edge
   const DEFAULT_PADDING: Required<Sides> = { t: 30, b: 34, l: 50, r: 50 }
+  // Invisible pick margin around each marker, in px
+  const HIT_PADDING = 4
 
   let {
     series: series_in = [],
@@ -61,14 +75,14 @@
     tick_format = `.0%`,
     color_scale = `interpolateViridis`,
     color_bar = {},
-    padding = DEFAULT_PADDING,
+    padding = DEFAULT_PADDING, // px around the triangle for corner and tick labels
     legend = {},
     show_legend,
     tooltip,
     hovered = $bindable(false),
     on_point_click,
     on_point_hover,
-    show_controls = $bindable(`hover`),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -91,15 +105,21 @@
       show_ticks?: boolean
       tick_format?: string // d3-format spec applied to fractions in [0, 1]
       color_scale?: ColorScale // value_range defaults to the extent of all color_values
+      // ColorBar props for the color_values scale, shown below the triangle; null hides it
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
-      legend?: LegendConfig | null
+      legend?: LegendConfig | null // series legend props; null hides it
       show_legend?: boolean
-      tooltip?: Snippet<[TernaryPointProps<Metadata>]>
+      // Hover tooltip: a snippet of the point replaces the default content, false hides it
+      tooltip?: TooltipProp<TernaryPointProps<Metadata>>
+      // Called when a marker is clicked or activated by keyboard
       on_point_click?: (
         data: TernaryPointProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called when a marker is hovered or focused, with null once it is left
       on_point_hover?: (
-        data: (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+        data:
+          | (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
+          | null,
       ) => void
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet
@@ -111,7 +131,8 @@
   let colorbar_size = $state({ width: 0, height: 0 })
 
   // Hover state is indices only: the payload follows new data and closes once the point is gone
-  let hover_key = $state<{ series_idx: number; point_idx: number } | null>(null)
+  type PointKey = { series_idx: number; point_idx: number }
+  let hover_key = $state<PointKey | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
   // Keyboard focus anchors at the marker, where there is no pointer glyph to dodge
   let hover_at_pointer = $state(false)
@@ -130,9 +151,8 @@
   const series_label = (series_idx: number): string =>
     series[series_idx]?.label ?? `Series ${series_idx + 1}`
 
-  // Every point of every series, validated and placed in the unit triangle. An invalid
-  // triple fails the whole plot with a message in place of the chart rather than
-  // silently dropping data.
+  // Every point of every series, validated and placed in the unit triangle. An invalid triple
+  // fails the whole plot with a message in place of the chart rather than dropping data.
   interface PlacedPoint {
     series_idx: number
     point_idx: number
@@ -194,10 +214,7 @@
     return [min, max]
   })
   let color_bar_visible = $derived(color_bar !== null && color_extent[0] <= color_extent[1])
-  let value_range = $derived(resolve_value_range(color_scale, color_extent))
-  let color_scale_type = $derived(to_color_scale_config(color_scale).type)
-  let color_bar_scale = $derived(to_color_bar_scale(color_scale))
-  let color_ramp = $derived(resolve_color_ramp(color_bar_scale, value_range, color_scale_type))
+  let color_ramp = $derived(resolve_color_scale(color_scale, color_extent))
   const point_color = (point: PlacedPoint): string =>
     point.color_value === null
       ? series_color(point.series_idx)
@@ -205,12 +222,8 @@
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
-  let inner_height = $derived(
-    Math.max(
-      0,
-      height - pad.t - pad.b - (color_bar_visible ? colorbar_size.height + COLOR_BAR_GAP : 0),
-    ),
-  )
+  let colorbar_space = $derived(color_bar_visible ? colorbar_size.height + COLOR_BAR_GAP : 0)
+  let inner_height = $derived(Math.max(0, height - pad.t - pad.b - colorbar_space))
   let layout = $derived(ternary_layout(inner_width, inner_height))
   // Corner pixels in the order of `labels`: right, top, left
   let corners = $derived(TRIANGLE_VERTICES.map((vertex) => layout.to_px(vertex)))
@@ -222,8 +235,9 @@
     const [px_x, px_y] = pixel(point)
     return { x: pad.l + px_x, y: pad.t + px_y }
   }
-  const is_hovered = (point: PlacedPoint): boolean =>
-    hover_key?.series_idx === point.series_idx && hover_key.point_idx === point.point_idx
+  const same_point = (key: PointKey | null, point: PlacedPoint): boolean =>
+    key?.series_idx === point.series_idx && key.point_idx === point.point_idx
+  const is_hovered = (point: PlacedPoint): boolean => same_point(hover_key, point)
 
   // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
@@ -262,23 +276,93 @@
         : (srs.metadata as Metadata | undefined),
     }
   }
-  const hover_info = $derived.by(() => {
-    const point = rendered.find(is_hovered)
-    return point ? point_props(point) : null
-  })
+  const hover_idx = $derived(hover_key ? rendered.findIndex(is_hovered) : -1)
+  const hover_info = $derived(hover_idx < 0 ? null : point_props(rendered[hover_idx]))
   clear_stale_hover(() => hover_key && !hover_info, clear_hover)
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels
       .map((label, idx) => `${label} ${format_value(point.fractions[idx], tick_format)}`)
       .join(`, `)}`
 
-  const point_from_event = (event: Event): PlacedPoint | null =>
-    rendered[closest_data_idx(event, `data-ternary-idx`, svg_element) ?? -1] ?? null
+  // Marker style as drawn, shared by the SVG and canvas paths so they can't drift
+  const marker_style = (point: PlacedPoint) => ({
+    radius: 4,
+    ...point.style,
+    fill: point.style.fill ?? point_color(point),
+  })
+  // Highlight rings animate, so those markers stay SVG nodes in canvas mode
+  const needs_svg = ({ style }: PlacedPoint): boolean =>
+    Boolean(style.is_highlighted && style.highlight_effect)
+  // Past CANVAS_MARKER_THRESHOLD markers paint on one canvas like ScatterPlot's. Null when
+  // markers stay SVG: below the threshold or a paint canvas can't parse (e.g. a CSS variable).
+  // Hover and click resolve the nearest marker through `hits`, not per-point DOM targets.
+  type HitItem = { cx: number; cy: number; idx: number }
+  const canvas_layer = $derived.by(
+    (): { markers: CanvasMarker[]; hits: SpatialIndex<HitItem> } | null => {
+      if (rendered.length <= CANVAS_MARKER_THRESHOLD) return null
+      const markers: CanvasMarker[] = []
+      const items: HitItem[] = []
+      let max_radius = 0
+      for (const [idx, point] of rendered.entries()) {
+        const style = marker_style(point)
+        const stroke = style.stroke ?? `transparent`
+        if (!canvas_safe_color(style.fill) || !canvas_safe_color(stroke)) return null
+        const { x: cx, y: cy } = svg_pixel(point)
+        items.push({ cx, cy, idx })
+        max_radius = Math.max(max_radius, style.radius)
+        if (needs_svg(point)) continue
+        // ScatterPoint's SVG defaults
+        markers.push({
+          cx,
+          cy,
+          radius: style.radius,
+          symbol_type: style.symbol_type,
+          symbol_size: style.symbol_size ?? undefined,
+          fill: style.fill,
+          fill_opacity: style.fill_opacity ?? 1,
+          stroke,
+          stroke_width: style.stroke_width ?? 1,
+          stroke_opacity: style.stroke_opacity ?? 1,
+          opacity: is_dimmed(point.series_idx) ? 0.25 : 1,
+        })
+      }
+      // the same reach as an SVG marker's hit target
+      return { markers, hits: build_spatial_index(items, max_radius + HIT_PADDING) }
+    },
+  )
+  // [index into `rendered`, point] per SVG marker: all, or in canvas mode the highlighted ones
+  // plus the hovered one. Derived apart from the hover so pointer moves don't rescan points.
+  const static_svg_points = $derived(
+    canvas_layer
+      ? [...rendered.entries()].filter(([, point]) => needs_svg(point))
+      : [...rendered.entries()],
+  )
+  const svg_points = $derived(
+    canvas_layer && hover_idx >= 0 && !needs_svg(rendered[hover_idx])
+      ? [...static_svg_points, [hover_idx, rendered[hover_idx]] as [number, PlacedPoint]]
+      : static_svg_points,
+  )
+
+  const marker_canvas = create_marker_canvas(() => ({
+    markers: canvas_layer?.markers ?? [],
+    width,
+    height,
+  }))
+
+  const point_from_event = (event: Event): PlacedPoint | null => {
+    const svg_idx = closest_data_idx(event, `data-ternary-idx`, svg_element)
+    if (svg_idx !== null) return rendered[svg_idx] ?? null
+    const pointer = canvas_layer && pointer_pos(event, svg_element)
+    if (!canvas_layer || !pointer) return null
+    return rendered[query_nearest(canvas_layer.hits, pointer)?.idx ?? -1] ?? null
+  }
 
   // Hover follows the cursor; keyboard focus (no cursor) anchors at the marker. Same
   // point as before only moves the anchor, the callback does not re-fire.
-  function handle_hover(event: MouseEvent | FocusEvent) {
-    const point = point_from_event(event)
+  function handle_hover(
+    event: MouseEvent | FocusEvent | KeyboardEvent,
+    point = point_from_event(event),
+  ) {
     if (!point) return clear_hover()
     hovered = true
     const cursor = pointer_pos(event, svg_element)
@@ -296,21 +380,41 @@
     on_point_hover?.(null)
   }
 
-  function handle_click(event: MouseEvent | KeyboardEvent) {
-    const point = point_from_event(event)
+  function handle_click(event: MouseEvent | KeyboardEvent, point = point_from_event(event)) {
     if (point) on_point_click?.({ ...point_props(point), event })
   }
 
-  const roving = create_roving_focus({
-    container: () => svg_element,
-    items: () => rendered,
-  })
+  const roving = create_roving_focus({ container: () => svg_element, items: () => svg_points })
 
   function handle_keydown(event: KeyboardEvent) {
-    if (roving.handle_keydown(event)) return
-    if (!is_activation_key(event)) return
+    if (roving.handle_keydown(event) || !is_activation_key(event)) return
     event.preventDefault()
     handle_click(event)
+  }
+
+  // Canvas markers have no node to focus, so in canvas mode the svg is one tab stop and the
+  // arrows walk `rendered` like ScatterPlot's cursor: its point becomes the hovered one and is
+  // announced. Apart from hover_key, so the pointer sweeping over markers announces nothing.
+  let kbd_key = $state<PointKey | null>(null)
+  const kbd_idx = $derived(
+    kbd_key ? rendered.findIndex((point) => same_point(kbd_key, point)) : -1,
+  )
+  const live_message = $derived(kbd_idx < 0 ? `` : accessible_label(rendered[kbd_idx]))
+  function handle_canvas_keydown(event: KeyboardEvent) {
+    if (event.target !== svg_element || event.defaultPrevented || is_modifier_chord(event))
+      return
+    if (event.key === `Escape` && kbd_key) {
+      kbd_key = null
+      clear_hover()
+    } else if (kbd_idx >= 0 && is_activation_key(event)) handle_click(event, rendered[kbd_idx])
+    else {
+      const next = step_point_cursor(event.key, kbd_idx < 0 ? null : kbd_idx, rendered.length)
+      if (next === null) return
+      const { series_idx, point_idx } = rendered[next]
+      kbd_key = { series_idx, point_idx }
+      handle_hover(event, rendered[next])
+    }
+    event.preventDefault()
   }
 
   // Legend: one entry per series, toggling hides the series
@@ -339,9 +443,8 @@
   const is_dimmed = (series_idx: number): boolean =>
     legend_hover_idx !== null && legend_hover_idx !== series_idx
 
-  // Text placement per edge (tick labels: below the bottom edge, beside the slanted
-  // edges) and per corner (component labels: right, top, left), spread onto the <text>
-  // elements - dx/dy nudge the corner labels clear of the triangle
+  // <text> placement per edge (tick labels below the bottom edge, beside the slanted ones) and
+  // per corner (component labels: right, top, left); dx/dy nudge them clear of the triangle
   const tick_text_attrs = [
     { 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
     { 'text-anchor': `start`, 'dominant-baseline': `middle` },
@@ -367,6 +470,7 @@
 </script>
 
 <ChartShell
+  empty={!series_in.some((srs) => srs.points.length)}
   chart_class="ternary"
   css_prefix="ternary"
   bind:wrapper
@@ -380,6 +484,7 @@
   {export_sources}
   export_filename={export_filename(`ternary`, labels.join(`-`))}
   {children}
+  {live_message}
   {...rest}
 >
   {#snippet controls(toggle_props, show_controls)}
@@ -398,11 +503,19 @@
 
   {#snippet body()}
     <ViewerError message={placed.error} />
+    <!-- Pointer picking reaches canvas markers here; keys go through the roving points group,
+    or in canvas mode a cursor on the svg itself -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
     <svg
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ?? `Ternary plot of ${labels.join(`, `)}`}
+      tabindex={canvas_layer ? 0 : undefined}
+      onkeydown={canvas_layer ? handle_canvas_keydown : undefined}
+      onmousemove={handle_hover}
       onmouseleave={clear_hover}
+      onclick={handle_click}
+      style:cursor={canvas_layer && on_point_click && hover_info ? `pointer` : undefined}
     >
       <g transform="translate({pad.l}, {pad.t})">
         <polygon class="frame" points={outline} />
@@ -450,37 +563,44 @@
           {/each}
         </g>
 
+        {#if canvas_layer}
+          <!-- Below the SVG overlay markers; pointer events stay on the parent SVG -->
+          <foreignObject
+            x={-pad.l}
+            y={-pad.t}
+            {width}
+            {height}
+            pointer-events="none"
+            {@attach marker_canvas}
+          ></foreignObject>
+        {/if}
+
         <!-- One delegated handler set for every marker: targets resolve via their
-        data-ternary-idx attribute (index into `rendered`) -->
+        data-ternary-idx attribute (index into `rendered`), canvas markers via `hits` -->
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <g
           class="points"
           role="group"
-          onmousemove={handle_hover}
-          onmouseleave={clear_hover}
           onfocusin={(event) => {
             roving.focusin(event)
             handle_hover(event)
           }}
           onfocusout={(event) => focus_left(event, svg_element) && clear_hover()}
-          onclick={handle_click}
           onkeydown={handle_keydown}
         >
-          {#each rendered as point, flat_idx (`${point.series_idx}-${point.point_idx}`)}
+          {#each svg_points as [flat_idx, point] (`${point.series_idx}-${point.point_idx}`)}
             {@const [px_x, px_y] = pixel(point)}
             {@const key = roving_key(point.series_idx, point.point_idx)}
             <ScatterPoint
               x={px_x}
               y={px_y}
               style={{
-                radius: 4,
-                ...point.style,
-                fill: point.style.fill ?? point_color(point),
+                ...marker_style(point),
                 cursor: on_point_click ? `pointer` : undefined,
               }}
               is_hovered={is_hovered(point)}
               is_dimmed={is_dimmed(point.series_idx)}
-              hit_padding={4}
+              hit_padding={HIT_PADDING}
               data-ternary-idx={flat_idx}
               role={on_point_click ? `button` : `img`}
               tabindex={roving.tabindex(key)}
@@ -492,7 +612,7 @@
       </g>
     </svg>
 
-    {#if hover_info}
+    {#if hover_info && tooltip !== false}
       <PlotTooltip
         x={hover_pos.x}
         y={hover_pos.y}
@@ -547,9 +667,7 @@
 
     {#if color_bar_visible && color_bar}
       <ColorBar
-        scale={color_bar_scale}
-        range={value_range}
-        scale_type={color_scale_type}
+        color_scale={color_ramp.color_scale}
         {...color_bar}
         style="position: absolute; bottom: {COLOR_BAR_GAP}px; left: 50%; transform: translateX(-50%); width: var(--ternary-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {color_bar.style ??
           ``}"

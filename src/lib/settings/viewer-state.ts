@@ -71,6 +71,9 @@ const structure_setting_source = (
   source: StructureViewStateSource,
 ): unknown => {
   if (key === `show_image_atoms` || key === `show_trajectory_lines`) return source[key]
+  // atom_color_scale persists AtomColorConfig.color_scale, the other atom_color_* keys the
+  // field named by their suffix (mode, scale_type, property_key)
+  if (key === `atom_color_scale`) return object_value(source.atom_color_config, `color_scale`)
   if (key.startsWith(`atom_color_`))
     return object_value(source.atom_color_config, key.slice(`atom_color_`.length))
   return object_value(source.scene_props, key)

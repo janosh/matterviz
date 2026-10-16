@@ -1,11 +1,12 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D } from '#lib/math.js'
+import { to_color_scale_config } from '#lib/plot/core/scales.js'
+import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { to_error } from '#lib/utils.js'
 import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
@@ -67,11 +68,13 @@ const CHEMPOT_CONTROL_KEYS = [
   `default_min_limit`,
   `color_mode`,
   `color_scale`,
-  `reverse_color_scale`,
 ] as const
 export type ChemPotControlKey = (typeof CHEMPOT_CONTROL_KEYS)[number]
+// The resolved values ChemPotControls reads, color_scale as a full config
 export type ChemPotControlValues = {
-  [Key in ChemPotControlKey]: NonNullable<ChemPotDiagramConfig[Key]>
+  [Key in ChemPotControlKey]: Key extends `color_scale`
+    ? ColorScaleConfig
+    : NonNullable<ChemPotDiagramConfig[Key]>
 }
 
 export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = never>(opts: {
@@ -163,17 +166,29 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   // colours so colour toggles don't re-scan the entries.
   const el_refs = $derived(get_min_entries_and_el_refs(slice.temp_filtered_entries).el_refs)
   const energy_stats = $derived(get_energy_stats_by_formula(slice.temp_filtered_entries))
+  // Field-wise defaults, so a bare scheme name keeps the default reversed palette_range
+  const color_scale = $derived({
+    ...CHEMPOT_DEFAULTS.color_scale,
+    ...to_color_scale_config(resolve(`color_scale`)),
+  })
   const color = $derived(
     get_domain_color_data({
       formulas: opts.formulas(),
       color_mode: resolve(`color_mode`),
-      color_scale: resolve(`color_scale`),
-      reverse_color_scale: resolve(`reverse_color_scale`),
+      color_scale,
       entries: slice.temp_filtered_entries,
       el_refs,
       energy_stats,
     }),
   )
+  // The active numeric mode's title and color scale under the user's ColorBar props; null in
+  // the categorical modes or when config.color_bar is null (hidden)
+  const color_bar = $derived.by(() => {
+    const user_props = opts.config().color_bar
+    return color.color_bar && user_props !== null
+      ? { ...color.color_bar, ...user_props }
+      : null
+  })
 
   const { set, reset } = overrides
   return {
@@ -199,16 +214,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       return resolve(`color_mode`)
     },
     get color_scale() {
-      return resolve(`color_scale`)
-    },
-    get reverse_color_scale() {
-      return resolve(`reverse_color_scale`)
-    },
-    get show_tooltip() {
-      return opts.config().show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip
-    },
-    get tooltip_detail_level() {
-      return opts.config().tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level
+      return color_scale
     },
     get has_temp_data() {
       return slice.has_temp_data
@@ -231,8 +237,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     get domain_colors() {
       return color.colors
     },
-    get color_range() {
-      return color.color_range
+    get color_bar() {
+      return color_bar
     },
   }
 }
@@ -257,7 +263,7 @@ export const domain_formula_text = (formula: string): string =>
 export const highlight_key_of = (hovered?: string, external?: string | null): string | null =>
   hovered ?? (external ? formula_key_from_composition(parse_formula(external)) : null)
 
-// [value, label] pairs for the color-mode and color-scale <select>s in both panes
+// [value, label] pairs for the color-mode <select> in both panes
 export const CHEMPOT_COLOR_MODE_OPTIONS = [
   [`none`, `None`],
   [`energy`, `Energy/atom`],
@@ -265,14 +271,3 @@ export const CHEMPOT_COLOR_MODE_OPTIONS = [
   [`arity`, `Element count`],
   [`entries`, `Entry count`],
 ] as const satisfies readonly (readonly [ChemPotColorMode, string])[]
-
-export const CHEMPOT_COLOR_SCALE_OPTIONS = [
-  [`interpolateViridis`, `Viridis`],
-  [`interpolatePlasma`, `Plasma`],
-  [`interpolateInferno`, `Inferno`],
-  [`interpolateMagma`, `Magma`],
-  [`interpolateCividis`, `Cividis`],
-  [`interpolateTurbo`, `Turbo`],
-  [`interpolateRdYlBu`, `RdYlBu`],
-  [`interpolateSpectral`, `Spectral`],
-] as const satisfies readonly (readonly [D3InterpolateName, string])[]

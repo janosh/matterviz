@@ -1,7 +1,7 @@
-import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { ExportProps } from '#lib/io/export.js'
-import type { TooltipConfig } from '#lib/tooltip/index.js'
+import type { ColorScale } from '#lib/plot/core/types.js'
+import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { EnergySourceMode, HullModel } from './model'
@@ -16,6 +16,7 @@ import type {
   HullAnnotations,
   HullFaceColorMode,
   PhaseData,
+  PhaseEntriesLoadData,
 } from './types'
 import { DEFAULT_HULL_COLORS } from './types'
 
@@ -86,11 +87,10 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
   highlight_style?: HighlightStyle
 }
 
-// ConvexHull-specific tooltip types
-type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
-export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
-  | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
-  | ConvexHullTooltipConfig<AnyDimEntry>
+export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> = TooltipProp<
+  TooltipSnippetProps<AnyDimEntry>,
+  TooltipConfig<AnyDimEntry>
+>
 
 type ConvexHullControlName = `reset` | `info-pane` | `export-pane` | `fullscreen` | `controls`
 
@@ -131,7 +131,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Category values (e.g. ['FM', 'NM']) whose entries are hidden from the plot (bindable)
   hidden_categories?: string[]
   color_mode?: `stability` | `energy`
-  color_scale?: D3InterpolateName
+  color_scale?: ColorScale // energy-mode point colors; unset value_range ends fit the data
   info_pane_open?: boolean
   // Controls (legend) pane open state
   controls_open?: boolean
@@ -142,7 +142,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   show_unstable_labels?: boolean
   // Dropped JSON files (also .json.gz and FilePicker URL drops) are parsed as entries
   allow_file_drop?: boolean
-  on_file_drop?: (entries: PhaseData[]) => void
+  // Called with each dropped file's entries once they are shown
+  on_file_load?: (data: PhaseEntriesLoadData) => void
   // Enable click selection/highlighting of entries (default: true)
   // When false, clicking entries won't set selected_entry
   enable_click_selection?: boolean
@@ -158,7 +159,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // Compositions marked by a linked view (lines between compositions, ringed compositions)
   annotations?: HullAnnotations
   children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
-  // Custom tooltip - can be a snippet (replaces default) or config object (adds prefix/suffix)
+  // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
   tooltip?: ConvexHullTooltipProp<AnyDimEntry>
   // Temperature for temperature-dependent free energy G(T) data
   // When entries have temperatures/free_energies arrays, this selects the active temperature
