@@ -17,6 +17,7 @@
     edge_width,
     onpointermove,
     onpointerleave,
+    pick_rank = 0,
   }: {
     polyhedron: Pick<BrillouinZoneData, `vertices` | `faces` | `edges`>
     color: string
@@ -25,6 +26,7 @@
     edge_width: number // absolute cylinder thickness in 1/Å (see bz_mark_sizes)
     onpointermove?: (event: ThreltePointerEvent) => void
     onpointerleave?: () => void
+    pick_rank?: number // hover priority over other meshes on the pointer ray (see front_hit)
   } = $props()
 
   const geometry = $derived(polyhedron_geometry(polyhedron.vertices, polyhedron.faces))
@@ -33,7 +35,7 @@
 
 <!-- Faces can be absent (all degenerate); the edges still outline the polyhedron -->
 {#if geometry}
-  <T.Mesh {geometry} {onpointermove} {onpointerleave}>
+  <T.Mesh {geometry} {onpointermove} {onpointerleave} userData={{ pick_rank }}>
     <T.MeshStandardMaterial
       {color}
       transparent

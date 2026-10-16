@@ -238,7 +238,7 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   const [inner, outer] = [hit(-1), hit(1)]
   expect(filter([inner, outer])).toStrictEqual([inner])
   // a k-path drawn through the zone wins over a sheet in front of it
-  const path = hit(0.5, { kpath_proxy: true })
+  const path = hit(0.5, { pick_rank: 2 })
   expect(filter([inner, path, outer])).toStrictEqual([path])
   props.clip_enabled = true // keeps z >= 0
   flushSync()

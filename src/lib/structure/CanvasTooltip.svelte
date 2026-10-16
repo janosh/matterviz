@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { HTML } from '@threlte/extras'
+  import { SceneLabel } from '#lib/scene/index.js'
   import { useThrelte } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -59,8 +59,7 @@
   camera.far (common in zoomed-out gallery cards) — painting the tooltip
   behind the canvas. A degenerate range pins z-index at 1000, always above the
   canvas and sibling overlays. -->
-<!-- HTML applies pointerEvents only in CSS-3D mode; its ordinary wrapper also needs this style. -->
-<HTML {portal} {position} style="pointer-events: none" zIndexRange={[1000, 1000]}>
+<SceneLabel {portal} {position} zIndexRange={[1000, 1000]}>
   <div
     bind:this={tip}
     {...rest}
@@ -70,7 +69,7 @@
   >
     {@render children({ position })}
   </div>
-</HTML>
+</SceneLabel>
 
 <style>
   div {

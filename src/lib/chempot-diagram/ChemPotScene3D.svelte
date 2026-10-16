@@ -14,9 +14,10 @@
     bind_renderer,
     build_orbit_props,
     dispose_on_change,
-    front_hit,
+    scene_interactivity,
     line_geometry,
     SceneCamera,
+    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
   import { T } from '@threlte/core'
@@ -121,9 +122,7 @@
   bind_renderer() // lets the PNG export re-render the frame
 
   // The tooltip names the domain in front, not the farthest one the pick ray passes through
-  const { enabled: hover_enabled } = extras.interactivity({
-    filter: (hits) => front_hit(hits),
-  })
+  const { enabled: hover_enabled } = scene_interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
@@ -556,37 +555,20 @@
   {/each}
   {#if display.show_axis_labels}
     {#each grid_item.tick_labels as tick, tick_idx (tick_idx)}
-      <extras.HTML
-        style="pointer-events: none"
-        position={tick.pos}
-        center
-        zIndexRange={[1, 0]}
-      >
+      <SceneLabel position={tick.pos} center zIndexRange={[1, 0]}>
         <span class="tick-label axis-tick-label">{tick.text}</span>
-      </extras.HTML>
+      </SceneLabel>
     {/each}
-    <extras.HTML
-      style="pointer-events: none"
-      position={grid_item.label_pos}
-      center
-      zIndexRange={[1, 0]}
-    >
+    <SceneLabel position={grid_item.label_pos} center zIndexRange={[1, 0]}>
       <span class="axis-label" style:color={grid_item.color}
         >{@html sanitize_html(grid_item.label)}</span
       >
-    </extras.HTML>
+    </SceneLabel>
   {/if}
 {/each}
 
-<!-- Threlte's wrapper div takes `style`, not `pointerEvents` (that prop only applies with
-     `transform`): labels must not swallow the pointer moves that hover the faces under them -->
 {#each domain_labels as domain (domain.formula)}
-  <extras.HTML
-    style="pointer-events: none"
-    position={domain.position}
-    center
-    zIndexRange={[5, 5]}
-  >
+  <SceneLabel position={domain.position} center zIndexRange={[5, 5]}>
     <span
       class="domain-label"
       style:font-size="{(domain.label_font_size * label_scale).toFixed(1)}px"
@@ -595,12 +577,11 @@
         <span class:formula-subscript={segment.subscript}>{segment.text}</span>
       {/each}
     </span>
-  </extras.HTML>
+  </SceneLabel>
 {/each}
 
 <style>
   :is(.axis-label, .tick-label) {
-    pointer-events: none;
     user-select: none;
     white-space: nowrap;
   }
@@ -620,7 +601,6 @@
     color: var(--text-color, #333);
     opacity: 0.7;
     white-space: nowrap;
-    pointer-events: none;
   }
   .formula-subscript {
     font-size: calc(11em / 12);

@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import {
     bind_renderer,
     create_scene_camera,
     resolve_scene_controls,
+    scene_interactivity,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -11,10 +12,9 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
   import { T } from '@threlte/core'
-  import * as extras from '@threlte/extras'
   import {
     bz_fit_extent,
-    cartesian_to_fractional,
+    bz_hover_data,
     default_camera_position,
     k_lattice_inverse,
     bz_mark_sizes,
@@ -71,7 +71,7 @@
       hovered_qpoint_index?: number | null
       highlighted_qpoint_range?: Vec2 | null
       hover_data?: BZHoverData | null
-      on_kpath_hover?: (qpoint_index: number | null) => void
+      on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
@@ -81,7 +81,9 @@
     camera = threlte_camera
   })
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
+  // wins over the zone (their pick_rank), else the front-most
+  const { enabled: hover_enabled } = scene_interactivity()
 
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
@@ -111,7 +113,6 @@
     set_camera_is_moving: (moving) => {
       hover_enabled.set(!moving)
       if (!moving) return
-      ibz_hovered = false
       hover_data = null
       on_kpath_hover?.(null)
     },
@@ -120,37 +121,31 @@
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
-  // The IBZ wedge sits inside the zone, and its hover wins over the zone's
-  let ibz_hovered = false
+  // Threlte drops an unmounted mesh without a pointerleave
   $effect(() => {
-    if (show_ibz) return
-    ibz_hovered = false
-    if (hover_data?.is_ibz) hover_data = null
+    if (!show_ibz && hover_data?.is_ibz) hover_data = null
   })
 
-  function handle_hover({ point, nativeEvent }: ThreltePointerEvent, is_ibz: boolean): void {
-    if (is_ibz) ibz_hovered = true
-    else if (ibz_hovered) return
+  const hover_at = (position_cartesian: Vec3, screen_position: Point2D, is_ibz = false) => {
     if (!bz_data) return
-    const position_cartesian: Vec3 = [point.x, point.y, point.z]
     const ibz_volume = ibz_data?.volume ?? null
-    hover_data = {
-      position_cartesian,
-      position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
-      screen_position: { x: nativeEvent.clientX, y: nativeEvent.clientY },
+    hover_data = bz_hover_data(bz_data, k_lattice_inv, position_cartesian, screen_position, {
       is_ibz,
-      bz_order: bz_data.order,
-      bz_volume: bz_data.volume,
       ibz_volume,
-      // the point group order
-      symmetry_multiplicity:
-        ibz_volume !== null && ibz_volume > 0 ? Math.round(bz_data.volume / ibz_volume) : null,
-    }
+    })
   }
-
-  function handle_leave(is_ibz: boolean): void {
-    if (is_ibz) ibz_hovered = false
-    if (is_ibz || !ibz_hovered) hover_data = null
+  const handle_hover = ({ point, nativeEvent }: ThreltePointerEvent, is_ibz: boolean) =>
+    hover_at(
+      [point.x, point.y, point.z],
+      { x: nativeEvent.clientX, y: nativeEvent.clientY },
+      is_ibz,
+    )
+  // a hovered k-path point gets the zone tooltip at its k-point
+  const handle_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
+    const position = k_path.points[qpoint_idx ?? -1]
+    if (position && screen_position) hover_at(position, screen_position)
+    else hover_data = null
+    on_kpath_hover?.(qpoint_idx, screen_position)
   }
 </script>
 
@@ -175,7 +170,7 @@
       {edge_color}
       edge_width={mark_sizes.edge}
       onpointermove={(event) => handle_hover(event, false)}
-      onpointerleave={() => handle_leave(false)}
+      onpointerleave={() => (hover_data = null)}
     />
 
     <!-- Irreducible BZ wedge, outlined in its own colour -->
@@ -186,7 +181,8 @@
         opacity={ibz_opacity}
         edge_width={mark_sizes.edge * 1.5}
         onpointermove={(event) => handle_hover(event, true)}
-        onpointerleave={() => handle_leave(true)}
+        onpointerleave={() => (hover_data = null)}
+        pick_rank={1}
       />
     {/if}
 
@@ -201,7 +197,7 @@
       {highlighted_k_points}
       {hovered_qpoint_index}
       {highlighted_qpoint_range}
-      {on_kpath_hover}
+      on_kpath_hover={handle_kpath_hover}
       size={bz_size}
       {edge_width}
     />
