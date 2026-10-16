@@ -216,22 +216,27 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
     `selective_dynamics x`,
   )
   expect(header_texts()).toContain(`velocity x`) // no unit: Å/fs from ASE, Å/ps from LAMMPS
+  // Numeric vectors also get their magnitude; a boolean one like selective_dynamics does not
+  expect_headers(`|force| (eV/Å)`, `|velocity|`)
+  expect(header_texts().some((text) => text.includes(`|selective_dynamics|`))).toBe(false)
   const rows = body_rows()
   expect(rows).toHaveLength(2)
-  expect(cell_texts(rows[0]).slice(8, 16)).toEqual([
+  expect(cell_texts(rows[0]).slice(8, 17)).toEqual([
     `0.1`,
     `-0.2`,
     `0.3`,
+    `0.374166`,
     `1.5`,
     `true`,
     `true`,
     `false`,
     `surface`,
   ])
-  expect(cell_texts(rows[1]).slice(8, 16)).toEqual([
+  expect(cell_texts(rows[1]).slice(8, 17)).toEqual([
     `0.4`,
     `0.5`,
     `-0.6`,
+    `0.877496`,
     `n/a`,
     `false`,
     `false`,
@@ -250,26 +255,46 @@ test(`atoms tab virtualizes a large frame`, async () => {
   expect(document.body.textContent).toContain(`Atoms (100)`)
 })
 
-test.each([false, true])(`row navigation requires callbacks=%s`, async (can_navigate) => {
-  const on_step_change = vi.fn()
-  const on_site_select = vi.fn()
-  const run = make_run(5)
-  await mount_pane({
-    run,
-    current_frame: run.preview,
-    on_step_change: can_navigate ? on_step_change : undefined,
-    on_site_select: can_navigate ? on_site_select : undefined,
-  })
-  await open_tab(`frames`)
-  expect(body_rows()[2].getAttribute(`tabindex`)).toBe(can_navigate ? `0` : null)
-  body_rows()[2].click()
-  if (can_navigate) expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)
-  else expect(on_step_change).not.toHaveBeenCalled()
-  await open_atoms()
-  expect(body_rows()[1].getAttribute(`tabindex`)).toBe(can_navigate ? `0` : null)
-  body_rows()[1].click()
-  if (can_navigate) expect(on_site_select).toHaveBeenCalledExactlyOnceWith(1)
-  else expect(on_site_select).not.toHaveBeenCalled()
+test.each([false, true])(
+  `row navigation and atom selection need a host=%s`,
+  async (linked) => {
+    const on_step_change = vi.fn()
+    const run = make_run(5)
+    await mount_pane({
+      run,
+      current_frame: run.preview,
+      on_step_change: linked ? on_step_change : undefined,
+      selected_atoms: linked ? [] : undefined,
+    })
+    await open_tab(`frames`)
+    expect(body_rows()[2].getAttribute(`tabindex`)).toBe(linked ? `0` : null)
+    body_rows()[2].click()
+    if (linked) expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)
+    else expect(on_step_change).not.toHaveBeenCalled()
+    await open_atoms()
+    const selected = () =>
+      body_rows().flatMap((row, row_idx) =>
+        row.classList.contains(`selected`) ? [row_idx] : [],
+      )
+    expect(document.querySelectorAll(`tbody input[type="checkbox"]`)).toHaveLength(
+      linked ? 3 : 0,
+    )
+    // A row click toggles its atom, so several rows select several atoms
+    for (const row_idx of [1, 2, 1]) {
+      body_rows()[row_idx].click()
+      await tick()
+    }
+    expect(selected()).toEqual(linked ? [2] : [])
+  },
+)
+
+test(`docked, the inspector renders in place with its tables, and undocks`, async () => {
+  await mount_pane({ run: make_run(3), pane_open: false, docked: true, dockable: true })
+  const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
+  expect(sidebar.querySelector(`table`)).not.toBeNull()
+  doc_query<HTMLButtonElement>(`button[aria-label="Undock data inspector"]`).click()
+  await tick()
+  expect(document.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
 })
 
 test(`closed pane builds no table`, async () => {

@@ -549,11 +549,17 @@ describe(`controls`, () => {
     )
     atoms_tab?.click()
     await tick()
-    const atom_row = () => doc_query(`.trajectory-data-inspector-pane tbody tr:nth-child(2)`)
-    atom_row().click()
+    const atom_row = (row_idx: number) =>
+      doc_query(`.trajectory-data-inspector-pane tbody tr:nth-child(${row_idx})`)
+    atom_row(2).click()
     await tick()
     expect(structure_props().selected_sites).toEqual([1])
-    atom_row().click()
+    // Rows add to the selection, and a selected row's click removes its atom again
+    atom_row(1).click()
+    await tick()
+    expect(structure_props().selected_sites).toEqual([1, 0])
+    atom_row(2).click()
+    atom_row(1).click()
     await tick()
     expect(structure_props().selected_sites).toEqual([])
 
@@ -1256,7 +1262,7 @@ describe(`panes`, () => {
     expect(last_number.value).toBe(`2`)
     planner.style.left = `123px`
     planner.style.top = `234px`
-    const content = doc_query(`.trajectory > .content-area`)
+    const content = doc_query(`.trajectory > .viewer-row > .content-area`)
     await resize_element(content, 1000, 600)
     trigger_resize_observer(content)
     await tick()

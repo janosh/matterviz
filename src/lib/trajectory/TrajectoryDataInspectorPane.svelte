@@ -21,8 +21,10 @@
     property_rows,
     properties_complete,
     on_step_change,
-    on_site_select,
+    selected_atoms = $bindable(),
     pane_open = $bindable(false),
+    docked = $bindable(false),
+    dockable = false,
     ...pane_options
   }: ViewerPaneOptions & {
     run?: TrajectoryRun
@@ -33,8 +35,14 @@
     // Resolved frame for the atom tab. Lazy runs load frames on demand.
     current_frame?: TrajectoryFrame | null
     on_step_change?: (frame_idx: number) => void
-    on_site_select?: (site_idx: number) => void
+    // Selected atoms of the source frame (0-based). Bound, the atom rows get checkboxes and a
+    // row click toggles its atom; unbound, atom rows are display only.
+    selected_atoms?: number[]
     pane_open?: boolean
+    // Docked, the inspector renders in place (the host gives it a sidebar) instead of as a
+    // floating pane; `dockable` shows the button that switches between the two
+    docked?: boolean
+    dockable?: boolean
   } = $props()
 
   // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, or the
@@ -89,7 +97,12 @@
     const config =
       trajectory_property_config[prop_name] ??
       trajectory_property_config[prop_name.toLowerCase()]
-    const label = axis ? `${prop_name} ${axis}` : (config?.label ?? prop_name)
+    const label =
+      axis === `norm`
+        ? `|${prop_name}|`
+        : axis
+          ? `${prop_name} ${axis}`
+          : (config?.label ?? prop_name)
     const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
     const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
     return {
@@ -157,12 +170,19 @@
 
   // Enumerated from the sites rather than hardcoded: parsers keep growing the set of
   // per-atom entries they retain (forces, magmoms, charges, selective dynamics, …).
-  // Each key maps to whether its values are vec3 (three columns) or scalar (one).
+  // Each key maps to its shape: scalar (one column), vec3 (three), or a numeric vec3 like a
+  // force or velocity, which also gets its magnitude to sort by.
   let site_property_specs = $derived.by(() => {
-    const specs = new Map<string, boolean>()
+    const specs = new Map<string, `scalar` | `vec3` | `numeric_vec3`>()
     for (const site of active_sites) {
       for (const [key, value] of Object.entries(site.properties ?? {})) {
-        if (value != null && !specs.has(key)) specs.set(key, is_vec3_like(value))
+        if (value == null || specs.has(key)) continue
+        const shape = !is_vec3_like(value)
+          ? `scalar`
+          : value.every((entry) => typeof entry === `number`)
+            ? `numeric_vec3`
+            : `vec3`
+        specs.set(key, shape)
       }
     }
     return [...specs]
@@ -175,8 +195,12 @@
       ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
       ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
     ].map(([id, label]) => ({ id, key: id, label, format: `.4~f` })),
-    ...site_property_specs.flatMap(([key, is_vec3]) =>
-      is_vec3 ? VEC3_AXES.map((axis) => property_column(key, axis)) : [property_column(key)],
+    ...site_property_specs.flatMap(([key, shape]) =>
+      shape === `scalar`
+        ? [property_column(key)]
+        : [...VEC3_AXES, ...(shape === `numeric_vec3` ? [`norm`] : [])].map((axis) =>
+            property_column(key, axis),
+          ),
     ),
   ])
 
@@ -195,16 +219,18 @@
         cart_y: xyz[1],
         cart_z: xyz[2],
       }
-      for (const [key, is_vec3] of site_property_specs) {
+      for (const [key, shape] of site_property_specs) {
         const value = properties?.[key]
         if (value == null) continue
-        if (!is_vec3) row[`${PROP_PREFIX}${key}`] = to_cell_value(value)
+        if (shape === `scalar`) row[`${PROP_PREFIX}${key}`] = to_cell_value(value)
         // a site whose value does not match the column's vec3 shape leaves the three
         // cells empty (rendered "n/a") instead of silently misaligning components
         else if (is_vec3_like(value)) {
           VEC3_AXES.forEach((axis, axis_idx) => {
             row[`${PROP_PREFIX}${key}_${axis}`] = value[axis_idx]
           })
+          if (shape === `numeric_vec3`)
+            row[`${PROP_PREFIX}${key}_norm`] = Math.hypot(...value.map(Number))
         }
       }
       return row
@@ -267,6 +293,17 @@
     { id: `unit`, label: `Unit`, color_scale: null },
   ]
 
+  // A row click toggles its atom in the selection; the checkbox does that itself, and its
+  // click must not toggle it back on the way up
+  const toggle_atom = (event: MouseEvent | KeyboardEvent, row: RowData) => {
+    if (event.target instanceof HTMLInputElement || typeof row.site !== `number`) return
+    const atom = from_display_idx(row.site)
+    const current = selected_atoms ?? []
+    selected_atoms = current.includes(atom)
+      ? current.filter((idx) => idx !== atom)
+      : [...current, atom]
+  }
+
   const tab_item = (value: typeof active_tab, name: string, count: number) => {
     const label = `${name} (${format_num(count, `,d`)})`
     return { id: label, value, label }
@@ -277,31 +314,39 @@
     tab_item(`atoms`, `Atoms`, active_sites.length),
   ])
 
-  const table_props = {
+  // Docked, the tables take the sidebar's height instead of the floating pane's cap
+  let table_props = $derived({
     virtual: true,
     show_column_toggle: true,
     show_controls: true,
     show_heatmap: false,
     default_num_format: `.6~g`,
-    scroll_style: `max-height: min(50vh, 26em)`,
+    scroll_style: docked ? `max-height: calc(100vh - 14em)` : `max-height: min(50vh, 26em)`,
     style: `text-align: left; width: 100%`,
-  } as const
+  } as const)
 </script>
 
-<ViewerPane
-  bind:open={pane_open}
-  pane_name="data inspector"
-  class_prefix="trajectory-data-inspector"
-  max_width="min(56em, 92vw)"
-  closed_icon={HeatmapTableIcon}
-  {...pane_options}
->
-  <h4 style="margin: 0 0 4pt">Data Inspector</h4>
-  <!-- ViewerPane keeps its children mounted and merely hides them, so without the
-  pane_open gate a closed pane would still rebuild a 100k-row atom table on every frame -->
+{#snippet header()}
+  <h4 class="inspector-header">
+    Data Inspector
+    {#if dockable}
+      <button
+        type="button"
+        class="icon-btn"
+        title={docked ? `Undock into a floating pane` : `Dock as a sidebar`}
+        aria-label={docked ? `Undock data inspector` : `Dock data inspector`}
+        onclick={() => (docked = !docked)}
+      >
+        {docked ? `⇱` : `⇥`}
+      </button>
+    {/if}
+  </h4>
+{/snippet}
+
+{#snippet inspector_body()}
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
-  {:else if pane_open}
+  {:else}
     <Tabs
       items={tab_items}
       bind:value={active_tab}
@@ -353,7 +398,13 @@
               export_formats={[`csv`, `json`]}
               export_filename={atom_sample ? `frame-atoms-sample` : `frame-atoms`}
               initial_sort={{ column: `site` }}
-              on_row_click={row_click_handler(on_site_select, `site`)}
+              on_row_click={selected_atoms ? toggle_atom : undefined}
+              show_row_select={selected_atoms !== undefined}
+              row_key="site"
+              bind:selected_ids={
+                () => (selected_atoms ?? []).map(display_idx),
+                (ids) => (selected_atoms = ids.map((id) => from_display_idx(Number(id))))
+              }
               {...table_props}
             />
           {/if}
@@ -361,9 +412,46 @@
       {/snippet}
     </Tabs>
   {/if}
-</ViewerPane>
+{/snippet}
+
+{#if docked}
+  <section class="trajectory-data-inspector-sidebar" aria-label="Data inspector">
+    {@render header()}
+    {@render inspector_body()}
+  </section>
+{:else}
+  <ViewerPane
+    bind:open={pane_open}
+    pane_name="data inspector"
+    class_prefix="trajectory-data-inspector"
+    max_width="min(56em, 92vw)"
+    closed_icon={HeatmapTableIcon}
+    {...pane_options}
+  >
+    {@render header()}
+    <!-- ViewerPane keeps its children mounted and merely hides them, so without the
+    pane_open gate a closed pane would still rebuild a 100k-row atom table on every frame -->
+    {#if pane_open}{@render inspector_body()}{/if}
+  </ViewerPane>
+{/if}
 
 <style>
+  .inspector-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 4pt;
+  }
+  .trajectory-data-inspector-sidebar {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 6pt 8pt;
+    background: var(--surface-bg, transparent);
+    border-inline-start: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
+  }
   :global(.inspector-tabs .tabs-list) {
     display: flex;
     gap: 2pt;
