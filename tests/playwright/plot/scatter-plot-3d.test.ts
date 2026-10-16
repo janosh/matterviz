@@ -149,7 +149,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
       position,
     )
     // Camera binding, orbit controls, and instance matrices settle over render frames.
-    let marker_y = 0
+    let marker_x = 0
     await expect
       .poll(async () => {
         const targets = await page.evaluate(() => window.scatter_probe.targets())
@@ -166,15 +166,16 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
         await page.mouse.move(target.x - 2, target.y)
         await page.mouse.move(target.x, target.y)
         const hovered = await page.evaluate(() => window.scatter_probe.hover())
-        marker_y = target.y
+        marker_x = target.x
         return hovered === target.point_idx
       })
       .toBe(true)
-    const tooltip = container.locator(`.tooltip`)
+    const tooltip = container.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible()
-    const tooltip_bounds = await require_bbox(tooltip, `tooltip at camera ${position}`)
-    const gap = marker_y - tooltip_bounds.y - tooltip_bounds.height
-    expect(gap).toBeGreaterThan(7) // 8px clearance plus the projected halo radius
+    const { x, width } = await require_bbox(tooltip, `tooltip at camera ${position}`)
+    // beside the marker, past the projected halo radius plus a 4px gap, on whichever side fits
+    const gap = Math.max(x - marker_x, marker_x - x - width)
+    expect(gap).toBeGreaterThan(3)
     expect(gap).toBeLessThan(32) // small test markers must not leave a large detached gap
     expect(
       await tooltip.evaluate((element) => {
@@ -185,7 +186,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
         )?.tagName
       }),
     ).toBe(`CANVAS`)
-    await expect(tooltip.locator(`..`)).toHaveCSS(`pointer-events`, `none`)
+    await expect(tooltip).toHaveCSS(`pointer-events`, `none`)
   }
 
   // With two samples, normalization places them on opposite ends of this diagonal.

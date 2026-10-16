@@ -13,7 +13,7 @@ import type {
   Surface3DConfig,
 } from '#lib/plot/core/types.js'
 import {
-  hover_marker_geometry,
+  hover_halo_radius,
   normalize_to_scene,
   sample_surface,
   get_3d_auto_ranges,
@@ -21,7 +21,7 @@ import {
 } from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import type { BufferGeometry } from 'three/webgpu'
+import type { BufferGeometry, Object3D } from 'three/webgpu'
 import {
   ClippingGroup,
   EdgesGeometry,
@@ -32,9 +32,6 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  Object3D,
-  OrthographicCamera,
-  PerspectiveCamera,
   SRGBColorSpace,
   Vector3,
 } from 'three/webgpu'
@@ -48,6 +45,7 @@ import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } fro
 import {
   bind_props,
   expect_plot_controls,
+  expect_tooltip_paint,
   export_via_pane,
   mock_fullscreen,
   mount_sized,
@@ -412,17 +410,14 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
 })
 
-// The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
-// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint);
-// tooltip=false drops the hovered point's tooltip (the hover halo stays). Its rows stay
+// The default tooltip is a PlotTooltip painted per tooltip_paint (an opaque marker fill as is,
+// a translucent one flattened); tooltip=false drops it (the hover halo stays). Its rows stay
 // start-aligned on a page that centers text.
-// oxfmt-ignore
-test.each<[string, false | undefined, string[] | null]>([
-  [`#ffffff`, undefined, [`#ffffff`, `black`, `start`]],
-  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`, `start`]],
-  [`var(--marker-fill)`, undefined, [``, ``, `start`]],
-  [`#ffffff`, false, null],
-])(`3D tooltip fill %s, tooltip=%s: %j bg, text and alignment`, (fill, tooltip, expected) => {
+test.each<[string, false | undefined, boolean]>([
+  [`#ffffff`, undefined, true],
+  [`rgba(255, 255, 255, 0.5)`, undefined, true],
+  [`#ffffff`, false, false],
+])(`3D tooltip fill %s, tooltip=%s shown: %s`, (fill, tooltip, shown) => {
   document.body.style.textAlign = `center`
   onTestFinished(() => {
     document.body.style.textAlign = ``
@@ -438,9 +433,11 @@ test.each<[string, false | undefined, string[] | null]>([
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const tip = document.querySelector<HTMLElement>(`.tooltip`)
-  const paint = tip && [tip.style.background, tip.style.color, getComputedStyle(tip).textAlign]
-  expect(paint).toEqual(expected)
+  const tip = document.querySelector<HTMLElement>(`.plot-tooltip`)
+  expect(tip !== null).toBe(shown)
+  if (!tip) return
+  expect_tooltip_paint(tip, fill)
+  expect(getComputedStyle(tip).textAlign).toBe(`start`)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
@@ -487,7 +484,7 @@ test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () =
   expect(on_point_hover).toHaveBeenLastCalledWith(
     expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
   )
-  expect(document.querySelector(`.tooltip`)).not.toBeNull()
+  expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
   expect(press(`Enter`)).toEqual([0, 0])
   expect(on_point_click).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0, x: 1 }))
   expect([`Escape`, `Escape`, `a`].map(press)).toEqual([null, undefined, undefined])
@@ -597,10 +594,10 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
     const half = lerp(start, end, 0.5)
     expect(marker(0)).toEqual(drawn(half))
-    expect(document.querySelector(`.tooltip`)).not.toBeNull()
+    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
     // the hover halo rides on the moving marker the raycast hits, not on its target
     expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
-    expect(halo()?.scale.x).toBe(hover_marker_geometry(half[3]).radius)
+    expect(halo()?.scale.x).toBe(hover_halo_radius(half[3]))
     // shadows switched on mid-flight join the same clock, flattened onto the floor
     state.display = { show_axes: false, projections: { xy: true } }
     flushSync()
@@ -1060,47 +1057,6 @@ describe(`scene coordinates`, () => {
     // spanning the plot's x/y, it has nothing to add until those ranges are known
     expect(sample_surface(surface)).toEqual([])
   })
-
-  test.each([`perspective`, `orthographic`] as const)(
-    `%s tooltip clears the halo by 8 screen pixels at every orbit angle and zoom`,
-    (projection) => {
-      const size = { width: 800, height: 400 }
-      const point = new Object3D()
-      point.position.set(1, 0.5, -0.5)
-      point.updateMatrixWorld()
-      const camera =
-        projection === `perspective`
-          ? new PerspectiveCamera(60, 2, 0.1, 100)
-          : new OrthographicCamera(-10, 10, 5, -5, 0.1, 100)
-      for (const elevation of [0, Math.PI / 4, Math.PI / 2 - 0.001, Math.PI / 2]) {
-        camera.position
-          .copy(point.position)
-          .add(new Vector3(10 * Math.cos(elevation), 10 * Math.sin(elevation), 0))
-        camera.lookAt(point.position)
-        camera.updateMatrixWorld()
-        for (const zoom of [1, 2]) {
-          camera.zoom = zoom
-          camera.updateProjectionMatrix()
-          for (const marker_radius of [0, 0.1, 0.25, 1]) {
-            const geometry = hover_marker_geometry(marker_radius)
-            // 1e-9 CSS pixels is far below visible precision for these matrix projections.
-            const pixels_per_unit =
-              projection === `perspective`
-                ? (size.height * zoom) / (20 * Math.tan(Math.PI / 6))
-                : (size.height * zoom) / 10
-            const [pixel_x, pixel_y] = geometry.tooltip_position(point, camera, size)
-            expect(Math.abs(geometry.radius - marker_radius * 1.15)).toBeLessThanOrEqual(
-              Number.EPSILON,
-            )
-            expect(Math.abs(pixel_x - size.width / 2)).toBeLessThan(1e-9)
-            expect(
-              Math.abs(pixel_y - (size.height / 2 - geometry.radius * pixels_per_unit - 8)),
-            ).toBeLessThan(1e-9)
-          }
-        }
-      }
-    },
-  )
 
   // oxfmt-ignore
   test.each<[[number | null, number | null] | undefined, [number, number]]>([
