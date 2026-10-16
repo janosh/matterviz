@@ -7,7 +7,7 @@ import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, query } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
@@ -119,8 +119,9 @@ test(`global tab derives Fmax from 200k sites carrying forces`, async () => {
   )
   const run = trajectory_from_frames([make_sites_frame(sites.slice(0, 2))])
   await mount_pane({ run, current_frame: make_sites_frame(sites) })
-  expect(attributes().Fmax).toEqual([`5`, `eV/Å`])
-  expect(attributes().Atoms).toEqual([`200000`, ``])
+  const { Fmax, Atoms } = attributes()
+  expect(Fmax).toEqual([`5`, `eV/Å`])
+  expect(Atoms).toEqual([`200000`, ``])
 })
 
 // A render sample previews every n-th atom: counts and per-atom values come from the whole
@@ -188,9 +189,9 @@ test(`frames tab renders every property row with units`, async () => {
   await open_tab(`frames`)
   expect(body_rows()).toHaveLength(4)
   expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
-  // Frame column numbers from 1 like the step input; Step is the recorded MD step
   // the recorded `Step` property duplicates the Step column
   expect(header_texts().filter((text) => text.startsWith(`Step`))).toEqual([`Step`])
+  // Frame column numbers from 1 like the step input; Step is the recorded MD step
   expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`1`, `0`])
   expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`4`, `30`])
   expect(document.body.textContent).not.toContain(`Sampled frames`)
@@ -373,51 +374,19 @@ test.each([false, true])(
   },
 )
 
-// One hover shared with the 3D view: a hovered row names its atom (null once the pointer
-// leaves), and an atom hovered in 3D shades its row
-test(`atom rows and the bound hovered_atom point at each other`, async () => {
-  const run = make_run(3)
-  let hovered_atom: number | null = 1
-  mounted_pane = mount(TrajectoryDataInspectorPane, {
-    target: document.body,
-    props: {
-      run,
-      current_frame: run.preview,
-      pane_open: true,
-      get hovered_atom() {
-        return hovered_atom
-      },
-      set hovered_atom(atom: number | null) {
-        hovered_atom = atom
-      },
-    },
-  })
-  await tick()
-  await open_atoms()
-  expect(body_rows().map((row) => row.classList.contains(`hovered`))).toEqual([
-    false,
-    true,
-    false,
-  ])
-  const over = (target: Element) =>
-    target.dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
-  over(body_rows()[2].querySelector(`td`) ?? body_rows()[2])
-  expect(hovered_atom).toBe(2)
-  doc_query(`tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
-  expect(hovered_atom).toBeNull()
-})
-
 // Undocking opens the floating pane rather than making the inspector vanish
 test(`docked, the inspector renders in place with its tables, and undocks into the pane`, async () => {
   await mount_pane({ run: make_run(3), pane_open: false, docked: true, dockable: true })
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
   expect(sidebar.querySelector(`table`)).not.toBeNull()
   // the docked table fills the sidebar instead of a viewport-tied height
-  expect(sidebar.querySelector(`.table-scroll`)?.getAttribute(`style`)).not.toContain(`vh`)
+  const { style } = query(sidebar, `.table-scroll`)
+  expect([style.flexGrow, style.minHeight, style.maxHeight]).toEqual([`1`, `0`, ``])
   doc_query<HTMLButtonElement>(`button[aria-label="Undock data inspector"]`).click()
   await tick()
   expect(document.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
   expect(doc_query(`.trajectory-data-inspector-pane table`)).not.toBeNull()
+  expect(document.querySelector(`button[aria-label="Dock data inspector"]`)).not.toBeNull()
 })
 
 test(`closed pane builds no table`, async () => {

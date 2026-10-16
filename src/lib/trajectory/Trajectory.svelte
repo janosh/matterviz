@@ -1206,22 +1206,8 @@
   const highlight = (sites: number[]): void => {
     if (!same_values(sites, highlighted_sites)) highlighted_sites = sites
   }
-  // The inspector selects source atoms; a render sample shows only some of them as sites
-  const selected_source_atoms = (): number[] =>
-    site_source_atoms(selected_sites, current_frame)
-  const select_source_atoms = (atoms: number[]): void => {
-    selected_sites = scene_site_indices(atoms, current_frame)
-  }
   // One hover shared by the 3D view and the inspector's atom rows, so either points at the other
   let hovered_site_idx = $state<number | null>(null)
-  const hovered_source_atom = (): number | null =>
-    hovered_site_idx === null
-      ? null
-      : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null)
-  const hover_source_atom = (atom: number | null): void => {
-    hovered_site_idx =
-      atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null)
-  }
   // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
   const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
     hover,
@@ -1756,8 +1742,20 @@
           (open) => set_pane_open(`data-inspector`, open)
         }
         on_step_change={session.commit}
-        bind:selected_atoms={selected_source_atoms, select_source_atoms}
-        bind:hovered_atom={hovered_source_atom, hover_source_atom}
+        bind:selected_atoms={
+          // the inspector names source atoms; a render sample shows only some of them as sites
+          () => site_source_atoms(selected_sites, current_frame),
+          (atoms) => (selected_sites = scene_site_indices(atoms, current_frame))
+        }
+        bind:hovered_atom={
+          () =>
+            hovered_site_idx === null
+              ? null
+              : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null),
+          (atom) =>
+            (hovered_site_idx =
+              atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null))
+        }
         dockable
         bind:docked={() => inspector_docked, (docked) => (data_inspector_docked = docked)}
       />

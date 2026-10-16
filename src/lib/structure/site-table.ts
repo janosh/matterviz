@@ -26,7 +26,7 @@ const SITE_PROPERTY_UNITS: Record<string, string> = {
 // UI or the CSV/JSON export.
 export const PROP_PREFIX = `prop_`
 
-export const is_vec3_like = (value: unknown): value is (number | boolean)[] =>
+const is_vec3_like = (value: unknown): value is (number | boolean)[] =>
   Array.isArray(value) &&
   value.length === 3 &&
   value.every((entry) => typeof entry === `number` || typeof entry === `boolean`)

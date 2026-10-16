@@ -3378,18 +3378,35 @@ describe(`site sidebar`, () => {
     await tick()
   }
 
+  // Below 900 px auto leaves the table undocked behind a reopen button, unless the host hides
+  // that button because it shows the sites itself (Trajectory's data inspector)
   test.each([
-    [`forces, forced on`, with_forces, true, true],
-    [`no site numbers, auto`, structure, `auto`, false],
-    [`no site numbers, forced on`, structure, true, false],
-  ] as const)(`%s shows the sidebar: %s`, async (_label, input, site_sidebar, shown) => {
-    mount_structure({ structure: input, site_sidebar })
-    await tick()
-    expect(sidebar() !== null).toBe(shown)
-    expect(
-      document.querySelector(`.structure-site-layout`)?.classList.contains(`docked`),
-    ).toBe(shown)
-  })
+    [`forces, forced on`, with_forces, true, undefined, true, false],
+    [`forces, auto, narrow`, with_forces, `auto`, undefined, false, true],
+    [
+      `forces, auto, button hidden`,
+      with_forces,
+      `auto`,
+      { hidden: [`site-table`] },
+      false,
+      false,
+    ],
+    [`no site numbers, auto`, structure, `auto`, undefined, false, false],
+    [`no site numbers, forced on`, structure, true, undefined, false, false],
+  ] as const)(
+    `%s: sidebar %s, reopen button %s`,
+    async (_label, input, site_sidebar, show_controls, shown, button) => {
+      mount_structure({ structure: input, site_sidebar, show_controls })
+      await tick()
+      expect(sidebar() !== null).toBe(shown)
+      expect(
+        document
+          .querySelector(`.structure-site-layout`)
+          ?.classList.contains(`docked-sidebar-row`),
+      ).toBe(shown)
+      expect(reopen_button() !== null).toBe(button)
+    },
+  )
 
   // Auto docks from 900 px of viewer plus sidebar. Once undocked the sidebar's last width
   // must not count any more, or the viewer re-docks and flip-flops below the threshold.
@@ -3415,20 +3432,21 @@ describe(`site sidebar`, () => {
     expect(sidebar()).not.toBeNull()
   })
 
-  // Hosts that show sites themselves (Trajectory's data inspector) hide the reopen button,
-  // whether the table was turned off or the viewer is too narrow to dock it
-  test.each([
-    [undefined, true],
-    [{ hidden: [`site-table`] }, false],
-  ] as const)(
-    `show_controls=%j offers the site table button: %s`,
-    async (show_controls, shown) => {
-      mount_structure({ structure: with_forces, site_sidebar: `auto`, show_controls })
-      await tick()
-      expect(sidebar()).toBeNull()
-      expect(reopen_button() !== null).toBe(shown)
-    },
-  )
+  // A content-fit sidebar keeps its width while the row around it resizes; the divider's share
+  // (what its arrow keys step from and announce) must follow the row anyway
+  test(`content-fit divider follows the row's width`, async () => {
+    mount_structure({ structure: with_forces, site_sidebar: true })
+    await tick()
+    const divider = doc_query(`.structure-site-layout > .pane-divider`)
+    await resize(`.structure-site-sidebar`, 300)
+    for (const [row_width, viewer_pct] of [
+      [1000, `70`],
+      [1200, `75`],
+    ] as const) {
+      await resize(`.structure-site-layout`, row_width)
+      expect(divider.getAttribute(`aria-valuenow`), `${row_width} px row`).toBe(viewer_pct)
+    }
+  })
 
   // PBC image atoms repeat the sites they copy: one row per site of the structure
   test(`lists each site once, not its periodic images`, async () => {
@@ -3483,6 +3501,8 @@ describe(`site sidebar`, () => {
     await tick()
     expect(props.hovered_site_idx).toBe(0)
     doc_query(`.structure-site-sidebar tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
+    await tick()
+    expect(props.hovered_site_idx).toBeNull()
     props.hovered_site_idx = 1
     await tick()
     expect(rows().map((row) => row.classList.contains(`hovered`))).toEqual([false, true])

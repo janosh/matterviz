@@ -1015,23 +1015,23 @@
   // under the pointer named itself and stays put
   $effect(() => {
     const target = highlighted_row_id
-    if (target === null || !scroll_el) return
+    const scroller = scroll_el
+    if (target === null || !scroller) return
     untrack(() => {
-      if (!scroll_el || (hovered_row_data && get_row_id(hovered_row_data) === target)) return
+      if (hovered_row_data && get_row_id(hovered_row_data) === target) return
       const row_idx = sorted_data.findIndex((row) => get_row_id(row) === target)
       if (row_idx === -1) return
-      const row_el = tbody_el?.querySelector(`:scope > tr[data-row-idx="${row_idx}"]`)
+      const row_el = own_row_el(row_idx)
       if (!row_el) {
-        if (virtual_config) {
-          scroll_el.scrollTop = row_idx * avg_row_height - scroll_el.clientHeight / 2
-        }
+        if (virtual_config)
+          scroller.scrollTop = row_idx * avg_row_height - scroller.clientHeight / 2
         return
       }
-      const view = scroll_el.getBoundingClientRect()
-      const head = scroll_el.querySelector(`thead`)?.getBoundingClientRect().height ?? 0
+      const view = scroller.getBoundingClientRect()
+      const head = scroller.querySelector(`thead`)?.getBoundingClientRect().height ?? 0
       const { top, bottom } = row_el.getBoundingClientRect()
-      if (top < view.top + head) scroll_el.scrollTop -= view.top + head - top
-      else if (bottom > view.bottom) scroll_el.scrollTop += bottom - view.bottom
+      if (top < view.top + head) scroller.scrollTop -= view.top + head - top
+      else if (bottom > view.bottom) scroller.scrollTop += bottom - view.bottom
     })
   })
 

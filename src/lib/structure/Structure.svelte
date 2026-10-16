@@ -25,10 +25,7 @@
   } from 'svelte-widgets/icons'
   import SiteTable from './SiteTable.svelte'
   import { DOCKED_SCROLL_STYLE, has_site_data } from './site-table'
-  import DockedSidebar, {
-    SIDEBAR_DOCK_MIN_WIDTH,
-    SIDEBAR_RATIO,
-  } from '#lib/layout/DockedSidebar.svelte'
+  import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
@@ -1167,7 +1164,6 @@
   let scene_sites = $derived(session.render_structure?.sites ?? [])
   let sidebar_sites = $derived(scene_sites.filter((site) => !is_image_site(site)))
   let sidebar_width = $state(0)
-  let site_sidebar_ratio = $state<number>(SIDEBAR_RATIO.sites)
   // A host that turns the table off and hides its button (Trajectory) never pays for the scan
   let site_data_available = $derived(
     (site_sidebar !== false || controls_config.visible(`site-table`)) &&
@@ -1184,7 +1180,6 @@
 
 <div
   class="structure-site-layout"
-  class:docked={site_sidebar_shown}
   class:docked-sidebar-row={site_sidebar_shown}
   style={site_sidebar_shown ? outer_style : undefined}
 >
@@ -1346,7 +1341,6 @@
           {#if site_data_available && !site_sidebar_shown && controls_config.visible(`site-table`)}
             <button
               type="button"
-              class="icon-btn"
               title="Show the site table"
               aria-label="Show the site table"
               onclick={() => (site_sidebar = true)}
@@ -1563,7 +1557,6 @@
     <DockedSidebar
       label="site table"
       class="structure-site-sidebar"
-      bind:ratio={site_sidebar_ratio}
       bind:width={sidebar_width}
     >
       {#snippet header()}
@@ -1598,10 +1591,10 @@
 
 <style>
   /* Transparent unless docked: the viewer stays the caller's element, styled and sized as before */
-  .structure-site-layout:not(.docked) {
+  .structure-site-layout:not(.docked-sidebar-row) {
     display: contents;
   }
-  .structure-site-layout.docked {
+  .structure-site-layout.docked-sidebar-row {
     height: var(--struct-height, 500px);
     width: var(--struct-width, 100%);
   }

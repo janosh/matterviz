@@ -9,7 +9,7 @@
   import { vector_reader } from '#lib/structure/vectors.js'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
   import SiteTable from '#lib/structure/SiteTable.svelte'
-  import DockedSidebar, { SIDEBAR_RATIO } from '#lib/layout/DockedSidebar.svelte'
+  import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
   import {
     DATA_TABLE_PROPS,
     DOCKED_SCROLL_STYLE,
@@ -62,7 +62,6 @@
   // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, or the
   // displayed frame's per-atom rows
   let active_tab = $state<`global` | `frames` | `atoms`>(`global`)
-  let sidebar_ratio = $state<number>(SIDEBAR_RATIO.inspector)
 
   let total_frames = $derived(run?.frame_count ?? 0)
 
@@ -139,7 +138,7 @@
       if (!read) continue
       for (let site_idx = 0; site_idx < count; site_idx++) {
         const norm = cached ? cached.values[site_idx] : vec3_norm(read(site_idx) ?? [NaN])
-        if (Number.isFinite(norm) && !(norm <= (max ?? -1))) max = norm
+        if (Number.isFinite(norm) && norm > (max ?? -1)) max = norm
       }
     }
     return max
@@ -229,7 +228,6 @@
     <!-- Undocking opens the floating pane, docking closes it: the inspector never vanishes -->
     <button
       type="button"
-      class="icon-btn"
       title={docked ? `Undock into a floating pane` : `Dock as a sidebar`}
       aria-label={docked ? `Undock data inspector` : `Dock data inspector`}
       onclick={() => {
@@ -313,12 +311,7 @@
 {/snippet}
 
 {#if docked}
-  <DockedSidebar
-    label="data inspector"
-    class="trajectory-data-inspector-sidebar"
-    bind:ratio={sidebar_ratio}
-    {header}
-  >
+  <DockedSidebar label="data inspector" class="trajectory-data-inspector-sidebar" {header}>
     {@render inspector_body()}
   </DockedSidebar>
 {:else}
