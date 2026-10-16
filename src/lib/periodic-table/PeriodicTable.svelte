@@ -1,12 +1,6 @@
 <script lang="ts">
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import {
-    is_color,
-    is_dark_mode,
-    pick_contrast_color,
-    resolve_backdrop,
-    resolve_css_color,
-  } from '#lib/colors/index.js'
+  import { is_color, resolve_backdrop } from '#lib/colors/index.js'
   import type {
     ChemicalElement,
     ElementCategory,
@@ -21,8 +15,11 @@
     is_elem_symbol,
   } from '#lib/element/index.js'
   import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
-  import { array_extent, type Point2D } from '#lib/math.js'
+  import { array_extent } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { beside_rect, clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
@@ -173,11 +170,11 @@
       )
   })
 
-  let tooltip_element = $state<ChemicalElement | null>(null)
-  let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
-  // tooltip hangs below the tile by default; flipped above for the f-block rows when the
-  // table clips its overflow (phone pan mode), where a tooltip below them would be cut off
-  let tooltip_above = $state(false)
+  // The hovered tile's box in table coordinates, and the box that would clip a tooltip there:
+  // the table itself when it pans (phones), so f-block tooltips flip above their tiles
+  let tooltip_hover = $state<{ element: ChemicalElement; tile: Rect; bounds: Rect } | null>(
+    null,
+  )
 
   // Touch has no hover, so the first tap on a tile only selects it (active ring, tooltip,
   // inset) and a second tap follows its link or fires on_activate. Mouse clicks unaffected.
@@ -251,18 +248,12 @@
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
     if (tooltip === false || disabled) return
-    tooltip_element = element
     const target = event.currentTarget
     if (!(target instanceof HTMLElement) || !table_node) return
-    const rect = target.getBoundingClientRect()
-    const container_rect = table_node.getBoundingClientRect()
-    tooltip_above = element.row > 7 && getComputedStyle(table_node).overflowY !== `visible`
-    tooltip_pos = {
-      x: rect.left - container_rect.left + rect.width / 2,
-      y: tooltip_above
-        ? rect.top - container_rect.top - 8
-        : rect.bottom - container_rect.top + 8,
-    }
+    const { left, top, width, height } = target.getBoundingClientRect()
+    const origin = table_node.getBoundingClientRect()
+    const tile = { x: left - origin.left, y: top - origin.top, width, height }
+    tooltip_hover = { element, tile, bounds: clip_bounds(table_node) }
   }
 
   let use_log = $derived(
@@ -339,27 +330,6 @@
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
-  // The tooltip fill is a translucent theme token, so it needs the page behind it.
-  let tooltip_node = $state<HTMLElement | null>(null)
-  const tooltip_fill = resolve_css_color(() => tooltip_node, {
-    css_var: `--plot-tooltip-bg`,
-    // mirrors the light-dark() default in the .tooltip rule below
-    fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
-  })
-  const tooltip_text_color = $derived(
-    pick_contrast_color({ background: tooltip_fill.current, backdrop: page_backdrop.current }),
-  )
-  // CSS keeps wrapped text at the full max-width, so shrink the (content-box) tooltip to
-  // its lines, whose union is the range's bounding rect. Scale undoes ancestor transforms.
-  $effect(() => {
-    void tooltip_element // re-fit for each hovered tile
-    if (!tooltip_node) return
-    tooltip_node.style.width = ``
-    const range = document.createRange()
-    range.selectNodeContents(tooltip_node)
-    const scale = tooltip_node.getBoundingClientRect().width / tooltip_node.offsetWidth
-    tooltip_node.style.width = `${Math.ceil(range.getBoundingClientRect().width / scale)}px`
-  })
 </script>
 
 <div
@@ -410,7 +380,7 @@
       }}
       onmouseleave={() => {
         set_active_element(null)
-        tooltip_element = null
+        tooltip_hover = null
       }}
       onfocus={() => {
         focused_symbol = symbol
@@ -457,15 +427,14 @@
     <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
   {/if}
 
-  {#if tooltip_element && tooltip !== false}
-    {@const element = tooltip_element}
+  {#if tooltip_hover && tooltip !== false}
+    {@const { element, tile, bounds } = tooltip_hover}
     {@const tooltip_value = heat_values[element.number - 1]}
-    <div
-      class={[`tooltip`, tooltip_above && `above`]}
-      style:left="{tooltip_pos.x}px"
-      style:top="{tooltip_pos.y}px"
-      bind:this={tooltip_node}
-      style:--tooltip-auto-color={tooltip_text_color}
+    <!-- inline, so it beats PlotTooltip's start default while still reading the variable -->
+    <PlotTooltip
+      {...beside_rect(tile, `bottom`, 8)}
+      constrain_to={bounds}
+      style="text-align: var(--plot-tooltip-text-align, center)"
     >
       {#if typeof tooltip === `function`}
         {@render tooltip({
@@ -490,7 +459,7 @@
           >
         {/if}
       {/if}
-    </div>
+    </PlotTooltip>
   {/if}
 </div>
 
@@ -532,49 +501,5 @@
     grid-row: 8;
     /* spacer height in tile widths; 0 degenerates the ratio to auto, i.e. no offset */
     aspect-ratio: 1 / var(--ptable-inner-transition-offset, 0.5);
-  }
-  .tooltip {
-    --_bg: var(--plot-tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    position: absolute;
-    transform: translate(-50%, -10%);
-    /* auto width would stop at the table edge right of `left`, wrapping near it */
-    width: max-content;
-    box-sizing: content-box;
-    max-width: var(--tooltip-max-width, 280px);
-    text-wrap: balance;
-    background: var(--_bg);
-    color: var(--plot-tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
-    padding: var(--tooltip-padding, 4px 6px);
-    border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
-    font-size: var(--tooltip-font-size, 14px);
-    text-align: var(--tooltip-text-align, center);
-    line-height: var(--tooltip-line-height, 1.2);
-    z-index: var(--tooltip-z-index, 2);
-    pointer-events: none;
-    box-shadow: var(
-      --tooltip-shadow,
-      0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
-    );
-  }
-  .tooltip::before {
-    content: '';
-    position: absolute;
-    top: -15%;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-bottom: 8px solid var(--_bg);
-    box-sizing: border-box;
-    margin: 0 auto;
-  }
-  .tooltip.above {
-    transform: translate(-50%, -100%);
-  }
-  .tooltip.above::before {
-    top: auto;
-    bottom: -15%;
-    border-bottom: none;
-    border-top: 8px solid var(--_bg);
   }
 </style>

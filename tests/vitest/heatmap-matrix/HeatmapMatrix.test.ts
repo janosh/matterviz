@@ -2,18 +2,19 @@
 
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
-import type { AxisItem, CellContext, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
+import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
 import { VIRTUAL_CELL_THRESHOLD } from '#lib/heatmap-matrix/index.js'
 import { format_num } from '#lib/labels.js'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import type { ComponentProps } from 'svelte'
-import { createRawSnippet, flushSync, mount, tick } from 'svelte'
+import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  expect_tooltip_paint,
   export_via_pane,
   form_controls,
   keydown,
@@ -751,65 +752,47 @@ describe(`milestone feature props`, () => {
     mount_matrix({ tooltip_mode: `both`, values: [[`#000000`, null, `rgba(0, 0, 255, 0.5)`]] })
     await Promise.resolve()
     const [first_cell, missing_cell, translucent_cell] = get_data_cells()
-    const tooltip_el = doc_query(`.tooltip`)
     // the tooltip wears the hovered cell's fill (translucent ones flattened) with contrasting
-    // text; a fill-less cell resets to the neutral chip
-    for (const [cell, bg, color] of [
-      [first_cell, `#000000`, `white`],
-      [missing_cell, ``, ``],
-      [translucent_cell, `rgb(0, 0, 255)`, `white`],
+    // text; a fill-less cell gets the neutral chip
+    for (const [cell, fill] of [
+      [first_cell, `#000000`],
+      [missing_cell, null],
+      [translucent_cell, `rgba(0, 0, 255, 0.5)`],
     ] as const) {
       cell.dispatchEvent(mouse(`mouseover`, { clientX: 10, clientY: 10 }))
-      await Promise.resolve()
-      expect(tooltip_el.classList.contains(`visible`)).toBe(true)
-      expect(tooltip_el.style.getPropertyValue(`--_bg`)).toBe(bg)
-      expect(tooltip_el.style.color).toBe(color)
+      await tick()
+      const tooltip_el = doc_query(`.plot-tooltip`)
+      if (fill) expect_tooltip_paint(tooltip_el, fill)
+      else expect(tooltip_el.textContent?.trim()).toMatch(/ - /)
     }
     first_cell.dispatchEvent(mouse(`mouseout`))
-    await Promise.resolve()
-    expect(tooltip_el.classList.contains(`visible`)).toBe(false)
+    await tick()
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
-  // The edge flip must use the tooltip's size as shown for THIS cell: measured while hidden it
-  // reads 0 (no flip), measured before the new content the previous cell's size. A snippet
-  // tooltip renders on the next flush, so it is flushed before measuring. A raw snippet
-  // renders once, so only the string case re-hovers another cell.
-  const cell_snippet = createRawSnippet((cell: () => CellContext) => ({
-    render: () =>
-      `<span>${cell().x_item.label} - ${cell().y_item.label}: ${cell().value}</span>`,
-  }))
-  test.each([
-    [`string`, undefined],
-    [`snippet`, cell_snippet],
-  ])(
-    `%s tooltip flips at the viewport edge using its size for the hovered cell`,
-    async (label, tooltip) => {
-      vi.stubGlobal(`innerWidth`, 300)
-      vi.stubGlobal(`innerHeight`, 300)
-      onTestFinished(() => void vi.unstubAllGlobals())
-      mount_matrix({ x: [`A`, `Longer label`], y: [`X`], values: [[1, 2]], tooltip })
-      await Promise.resolve()
-      const tooltip_el = doc_query(`.tooltip`)
-      // 10 px per character, like a real layout of the text, and 0 while display: none
-      const shown_size = (size: number) => () =>
-        tooltip_el.classList.contains(`visible`) ? size : 0
-      Object.defineProperty(tooltip_el, `offsetWidth`, {
-        get: () => shown_size((tooltip_el.textContent?.length ?? 0) * 10)(),
-      })
-      Object.defineProperty(tooltip_el, `offsetHeight`, { get: shown_size(20) })
-      const [short_cell, long_cell] = get_data_cells()
-      // "A - X: 1" is 80 px: 250 + 10 + 80 overflows 300, so it flips left of the cursor
-      short_cell.dispatchEvent(mouse(`mouseover`, { clientX: 250, clientY: 10 }))
-      expect(tooltip_el.textContent).toBe(`A - X: 1`)
-      expect(tooltip_el.style.left).toBe(`160px`)
-      expect(tooltip_el.style.top).toBe(`22px`)
-      if (label === `snippet`) return
-      // "Longer label - X: 2" is 190 px: 100 + 10 + 190 fits exactly, 101 would not
-      long_cell.dispatchEvent(mouse(`mouseover`, { clientX: 101, clientY: 10 }))
-      expect(tooltip_el.textContent).toBe(`Longer label - X: 2`)
-      expect(tooltip_el.style.left).toBe(`0px`)
-    },
-  )
+  // The tooltip hangs below the hovered cell (anchored at its center, 4px past its bottom),
+  // flipping above it where the viewport has no room below; it never covers the cell
+  test(`tooltip sits below the hovered cell and flips above at the viewport bottom`, async () => {
+    vi.stubGlobal(`innerWidth`, 300)
+    vi.stubGlobal(`innerHeight`, 300)
+    onTestFinished(() => void vi.unstubAllGlobals())
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(20)
+    mount_matrix({ x: [`A`, `Longer label`], y: [`X`], values: [[1, 2]] })
+    await Promise.resolve()
+    const [top_cell, bottom_cell] = get_data_cells()
+    top_cell.getBoundingClientRect = () => new DOMRect(40, 10, 20, 20)
+    bottom_cell.getBoundingClientRect = () => new DOMRect(40, 270, 20, 20)
+    for (const [cell, text, top] of [
+      [top_cell, `A - X: 1`, `34px`], // 10 + 20 + 4
+      [bottom_cell, `Longer label - X: 2`, `246px`], // 270 - 4 - 20
+    ] as const) {
+      cell.dispatchEvent(mouse(`mouseover`, { clientX: 50, clientY: 20 }))
+      await tick()
+      const tooltip_el = doc_query(`.plot-tooltip`)
+      expect(tooltip_el.textContent?.trim()).toBe(text)
+      expect([tooltip_el.style.left, tooltip_el.style.top]).toEqual([`50px`, top])
+    }
+  })
 
   // tooltip, color bar and controls toggle default on like the charts; false/null opt out
   test.each([
@@ -818,7 +801,14 @@ describe(`milestone feature props`, () => {
   ] as const)(`%o shows tooltip, color bar and controls: %s`, async (props, shown) => {
     mount_matrix({ values: numbered_values, ...props })
     await tick()
-    for (const sel of [`.tooltip`, `.colorbar`, `button.heatmap-matrix-controls-toggle`]) {
+    // the tooltip mounts on hover
+    get_data_cells()[0]?.dispatchEvent(mouse(`mouseover`, { clientX: 10, clientY: 10 }))
+    await tick()
+    for (const sel of [
+      `.plot-tooltip`,
+      `.colorbar`,
+      `button.heatmap-matrix-controls-toggle`,
+    ]) {
       expect(document.querySelector(sel) !== null, sel).toBe(shown)
     }
   })

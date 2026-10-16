@@ -128,3 +128,44 @@ export const place_tooltip = (config: TooltipPlacementConfig): TooltipPlacementC
   get_tooltip_placement_candidates(config).reduce((best, candidate) =>
     candidate.score > best.score ? candidate : best,
   )
+
+export type TooltipSide = `top` | `bottom` | `left` | `right`
+
+// PlotTooltip props placing it beside `rect` (a hovered tile, cell or symbol) rather than at
+// a point: anchored at the rect's center, offset past its half extent on `side` plus `gap`,
+// and kept off the rect, so a flip at the bounds lands on the opposite side, never on it
+export function beside_rect(rect: Rect, side: TooltipSide = `bottom`, gap = 4) {
+  const [half_width, half_height] = [rect.width / 2 + gap, rect.height / 2 + gap]
+  const offset = {
+    top: { x: 0, y: -half_height },
+    bottom: { x: 0, y: half_height },
+    left: { x: -half_width, y: 0 },
+    right: { x: half_width, y: 0 },
+  }[side]
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+    offset,
+    exclusion_rects: [rect],
+    avoid_cursor: false,
+  }
+}
+
+// The box that would cut off an overlay positioned in `host`, in the host's coordinates: the
+// nearest ancestor (or the host itself) that clips its overflow, else the viewport. Pass it
+// as PlotTooltip's constrain_to so a tooltip may leave its plot but not a scroll container.
+export function clip_bounds(host: HTMLElement): Rect {
+  const origin = host.getBoundingClientRect()
+  // the shorthand lists both axes when they differ, so any clipping value counts
+  const clips = (node: HTMLElement) =>
+    /hidden|clip|scroll|auto/.test(getComputedStyle(node).overflow)
+  let clip: HTMLElement | null = host
+  while (clip && !clips(clip)) clip = clip.parentElement
+  const { left, top, width, height } = clip?.getBoundingClientRect() ?? {
+    left: 0,
+    top: 0,
+    width: globalThis.innerWidth,
+    height: globalThis.innerHeight,
+  }
+  return { x: left - origin.left, y: top - origin.top, width, height }
+}

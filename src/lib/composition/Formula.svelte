@@ -4,6 +4,10 @@
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
   import ElementTile from '#lib/element/ElementTile.svelte'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import type { TooltipSide } from '#lib/plot/core/decorations/tooltip.js'
+  import { beside_rect } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     AMOUNT_FORMAT,
@@ -16,7 +20,6 @@
   import { parse_formula_with_oxidation } from './parse'
 
   type FormulaOrdering = `electronegativity` | `alphabetical` | `original` | `hill`
-  type TooltipSide = `top` | `bottom` | `left` | `right`
   let {
     formula,
     color_scheme = `Vesta`,
@@ -33,8 +36,8 @@
     ordering?: FormulaOrdering
     as?: string
     amount_format?: string
-    tooltip_side?: TooltipSide
-    tooltip_offset?: number
+    tooltip_side?: TooltipSide // preferred side; flips to the opposite one at the viewport edge
+    tooltip_offset?: number // gap between the hovered symbol and the tooltip in px
     on_click?: (element: ElementSymbol, event: MouseEvent | KeyboardEvent) => void
   } = $props()
 
@@ -70,11 +73,10 @@
     )
   })
 
-  let hovered_element = $state<ElementSymbol | null>(null)
-  let tooltip_pos = $state({ x: 0, y: 0 })
+  let hovered = $state<{ element: ElementSymbol; rect: Rect } | null>(null)
 
   const hovered_elem_data = $derived(
-    hovered_element ? (element_by_symbol.get(hovered_element) ?? null) : null,
+    hovered ? (element_by_symbol.get(hovered.element) ?? null) : null,
   )
   const element_color = (element: ElementSymbol): string =>
     ELEMENT_COLOR_SCHEMES[color_scheme]?.[element] ?? `#666666`
@@ -108,18 +110,8 @@
     element: ElementSymbol,
     event: MouseEvent & { currentTarget: HTMLElement },
   ) {
-    const { left, width, top, bottom, right, height } =
-      event.currentTarget.getBoundingClientRect()
-    hovered_element = element
-
-    const positions = {
-      top: [left + width / 2, top - tooltip_offset],
-      bottom: [left + width / 2, bottom + tooltip_offset],
-      left: [left - tooltip_offset, top + height / 2],
-      right: [right + tooltip_offset, top + height / 2],
-    }
-    const [coord_x, coord_y] = positions[tooltip_side]
-    tooltip_pos = { x: coord_x, y: coord_y }
+    const { left, top, width, height } = event.currentTarget.getBoundingClientRect()
+    hovered = { element, rect: { x: left, y: top, width, height } }
   }
 </script>
 
@@ -138,7 +130,7 @@
       role="button"
       tabindex="0"
       onmouseenter={(event) => show_tooltip(element, event)}
-      onmouseleave={() => (hovered_element = null)}
+      onmouseleave={() => (hovered = null)}
       onclick={(event) => on_click?.(element, event)}
       onkeydown={(event) => {
         if (event.key === `Enter` || event.key === ` `) {
@@ -169,27 +161,19 @@
   {/each}
 </svelte:element>
 
-{#if hovered_elem_data}
-  {@const { x: coord_x, y: coord_y } = tooltip_pos}
+{#if hovered && hovered_elem_data}
   {@const tile_color = element_color(hovered_elem_data.symbol)}
-  {@const transforms = {
-    top: `translate(-50%, -100%)`,
-    bottom: `translateX(-50%)`,
-    left: `translate(-100%, -50%)`,
-    right: `translateY(-50%)`,
-  }}
-  <div
-    class="tooltip"
-    style="left: {coord_x}px; top: {coord_y}px; transform: {transforms[tooltip_side]}"
-  >
-    <ElementTile
-      element={hovered_elem_data}
-      show_name={false}
-      segments={[{ color: tile_color, value: hovered_elem_data.atomic_mass }]}
-      style="width: var(--formula-tooltip-tile-size, 30px); height: var(--formula-tooltip-tile-size, 30px)"
-    />
-    {hovered_elem_data.name}
-  </div>
+  <PlotTooltip {...beside_rect(hovered.rect, tooltip_side, tooltip_offset)} fixed>
+    <span class="tooltip-content">
+      <ElementTile
+        element={hovered_elem_data}
+        show_name={false}
+        segments={[{ color: tile_color, value: hovered_elem_data.atomic_mass }]}
+        style="width: var(--formula-tooltip-tile-size, 30px); height: var(--formula-tooltip-tile-size, 30px)"
+      />
+      {hovered_elem_data.name}
+    </span>
+  </PlotTooltip>
 {/if}
 
 <style>
@@ -221,24 +205,10 @@
       -0.3px 0.3px 0 #fffc,
       0.3px 0.3px 0 #fffc;
   }
-  .tooltip {
-    position: fixed;
+  .tooltip-content {
     display: flex;
     align-items: center;
     gap: var(--formula-tooltip-gap, 4pt);
-    padding: var(--formula-tooltip-padding, 2pt 3pt);
-    font-size: var(--formula-tooltip-font-size, 0.85em);
-    background: var(
-      --formula-tooltip-bg,
-      light-dark(rgba(255, 255, 255, 0.95), rgba(30, 30, 30, 0.95))
-    );
-    color: var(--formula-tooltip-color, light-dark(#222, #eee));
-    border-radius: var(--formula-tooltip-border-radius, var(--border-radius, 3pt));
-    box-shadow: var(
-      --formula-tooltip-box-shadow,
-      0 4px 12px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
-    );
-    z-index: var(--tooltip-z-index, 2);
   }
   .script-wrapper {
     display: inline-flex;
