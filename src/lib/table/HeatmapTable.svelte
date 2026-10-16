@@ -105,6 +105,7 @@
     show_heatmap = $bindable(true),
     on_row_click,
     on_row_double_click,
+    on_row_hover,
     column_order = $bindable([]),
     column_prefs = $bindable({}),
     export_formats = [],
@@ -155,6 +156,8 @@
       show_heatmap?: boolean
       on_row_click?: (event: MouseEvent | KeyboardEvent, row: Row) => void
       on_row_double_click?: (event: MouseEvent, row: Row) => void
+      // The row under the pointer, or null once it leaves the body; fires on row changes only
+      on_row_hover?: (row: Row | null) => void
       // Column IDs in display order. Bindable so drag reorders persist.
       column_order?: string[]
       // Per-column user tuning (width, color scale, gradient direction, date format,
@@ -970,6 +973,19 @@
       if (row !== null) action(event, sorted_data[row])
     }
 
+  let hovered_row: number | null = null
+  const handle_body_pointerover = (event: PointerEvent & BodyEvent) => {
+    const row = row_under(event)
+    if (row === hovered_row) return
+    hovered_row = row
+    on_row_hover?.(row === null ? null : (sorted_data[row] ?? null))
+  }
+  const handle_body_pointerleave = () => {
+    if (hovered_row === null) return
+    hovered_row = null
+    on_row_hover?.(null)
+  }
+
   function handle_body_pointerdown(event: PointerEvent & BodyEvent) {
     const pos = cell_under(event)
     if (!pos || event.button !== 0 || is_interactive_cell_target(event.target)) return
@@ -1741,6 +1757,8 @@
         bind:this={tbody_el}
         onpointerdown={handle_body_pointerdown}
         onpointermove={extend_cell_drag}
+        onpointerover={on_row_hover ? handle_body_pointerover : undefined}
+        onpointerleave={on_row_hover ? handle_body_pointerleave : undefined}
         onfocusin={handle_body_focusin}
         oncontextmenu={handle_body_contextmenu}
         onkeydown={keyboard_cells || on_row_click

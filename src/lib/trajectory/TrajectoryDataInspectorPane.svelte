@@ -22,6 +22,7 @@
     properties_complete,
     on_step_change,
     selected_atoms = $bindable(),
+    on_atoms_hover,
     pane_open = $bindable(false),
     docked = $bindable(false),
     dockable = false,
@@ -38,6 +39,8 @@
     // Selected atoms of the source frame (0-based). Bound, the atom rows get checkboxes and a
     // row click toggles its atom; unbound, atom rows are display only.
     selected_atoms?: number[]
+    // Source atoms of the atom row under the pointer (0-based), empty once it leaves
+    on_atoms_hover?: (atoms: number[]) => void
     pane_open?: boolean
     // Docked, the inspector renders in place (the host gives it a sidebar) instead of as a
     // floating pane; `dockable` shows the button that switches between the two
@@ -399,6 +402,11 @@
               export_filename={atom_sample ? `frame-atoms-sample` : `frame-atoms`}
               initial_sort={{ column: `site` }}
               on_row_click={selected_atoms ? toggle_atom : undefined}
+              on_row_hover={on_atoms_hover &&
+                ((row: RowData | null) =>
+                  on_atoms_hover(
+                    typeof row?.site === `number` ? [from_display_idx(row.site)] : [],
+                  ))}
               show_row_select={selected_atoms !== undefined}
               row_key="site"
               bind:selected_ids={

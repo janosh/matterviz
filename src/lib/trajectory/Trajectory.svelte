@@ -1734,6 +1734,7 @@
         }
         on_step_change={session.commit}
         bind:selected_atoms={selected_source_atoms, select_source_atoms}
+        on_atoms_hover={(atoms) => highlight(scene_site_indices(atoms, current_frame))}
         dockable
         bind:docked={data_inspector_docked}
       />

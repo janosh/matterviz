@@ -288,6 +288,21 @@ test.each([false, true])(
   },
 )
 
+// Hovering an atom row points at its atom in 3D before any click, and leaving the table clears it
+test(`hovering atom rows reports their atoms, once per row change`, async () => {
+  const on_atoms_hover = vi.fn()
+  const run = make_run(3)
+  await mount_pane({ run, current_frame: run.preview, on_atoms_hover })
+  await open_atoms()
+  const over = (target: Element) =>
+    target.dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
+  over(body_rows()[2].querySelector(`td`) ?? body_rows()[2])
+  over(body_rows()[2])
+  over(body_rows()[0])
+  doc_query(`tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
+  expect(on_atoms_hover.mock.calls).toEqual([[[2]], [[0]], [[]]])
+})
+
 test(`docked, the inspector renders in place with its tables, and undocks`, async () => {
   await mount_pane({ run: make_run(3), pane_open: false, docked: true, dockable: true })
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
