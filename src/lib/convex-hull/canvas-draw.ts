@@ -1,6 +1,6 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
-import { add_alpha, plot_color } from '#lib/colors/index.js'
+import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index.js'
 import { get_formula_label_segments } from '#lib/composition/format.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -178,7 +178,7 @@ function draw_hull_point(
       const ring = size * (1.8 + 0.3 * Math.sin(pulse.time * 4))
       const { opacity } = pulse
       const stroke = { alpha: opacity, width: 2 * scale }
-      draw_ring(ctx, projected, ring, `#66f0ff`, { fill: opacity * 0.6, stroke })
+      draw_ring(ctx, projected, ring, HIGHLIGHT.select, { fill: opacity * 0.6, stroke })
     }
     if (entry_highlighted) {
       draw_highlight_effect(ctx, projected, size, scale, pulse.time, highlight_style)

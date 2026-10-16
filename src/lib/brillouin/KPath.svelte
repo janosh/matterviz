@@ -2,6 +2,7 @@
   // A band structure's k-path in a reciprocal-space scene (Brillouin zone, Fermi surface) with
   // symmetry-point labels, hovered k-point and tinted hovered/highlighted segments. Hovering the
   // path or a label reports the nearer q-point index, so a band plot beside it can mark it.
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import { SceneLabel, type ThreltePointerEvent } from '#lib/scene/index.js'
@@ -164,13 +165,13 @@
   {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
   <T.Mesh position={[position[0], position[1], position[2]]}>
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
-    <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
+    <T.MeshStandardMaterial color={KPATH_COLORS.base} metalness={0.3} roughness={0.7} />
   </T.Mesh>
   <SceneLabel interactive center position={position.map((coord) => coord * 1.1) as Vec3}>
     <span
       role="presentation"
       class="sym-label"
-      style:background={highlighted ? `#ff2020` : `rgba(0, 0, 0, 0.15)`}
+      style:background={highlighted ? HIGHLIGHT.pin : `rgba(0, 0, 0, 0.15)`}
       style:font-weight={highlighted ? `bold` : null}
       style="padding: 0 3px; border-radius: 2px; color: white; text-shadow: 0 0 2px rgba(0, 0, 0, 0.8)"
       onpointerenter={(event) => report_hover(qpoint_idx, event)}
@@ -187,6 +188,10 @@
 {#if hovered_k_point}
   <T.Mesh position={hovered_k_point}>
     <T.SphereGeometry args={[mark_sizes.hovered_point, 16, 16]} />
-    <T.MeshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
+    <T.MeshStandardMaterial
+      color={HIGHLIGHT.pin}
+      emissive={HIGHLIGHT.pin}
+      emissiveIntensity={1.2}
+    />
   </T.Mesh>
 {/if}

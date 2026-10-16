@@ -3,6 +3,7 @@
   // Small floating Brillouin zone that marks one or more symmetry points on the k-path; Bands
   // opens it when a symmetry-point tick label is clicked. Same FloatingPopup shell as the
   // convex hull's StructurePopup.
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Matrix3x3 } from '#lib/math.js'
   import { FloatingPopup } from '#lib/overlays/index.js'
   import { KCoords } from '#lib/tooltip/index.js'
@@ -51,7 +52,7 @@
     </BrillouinZone>
     <!-- below the canvas so the coordinates never cover the marked point; unkeyed since a
     discontinuity like K|U lists two points and callers may repeat labels -->
-    <div class="bz-popup-stats">
+    <div class="bz-popup-stats" style:--pin-color={HIGHLIGHT.pin}>
       {#each points as { label, frac_coords, position }}
         <strong>{label}</strong>
         <div><KCoords cartesian={position} fractional={frac_coords} /></div>
@@ -75,7 +76,7 @@
     font-size: 0.85em;
     border-top: 1px solid var(--popup-border, var(--menu-border));
     strong {
-      color: #ff2020;
+      color: var(--pin-color);
     }
   }
   .bz-popup-close {

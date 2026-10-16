@@ -8,6 +8,7 @@
   import { tooltip } from 'svelte-widgets/attachments'
   import { format_reaction_coeff, reaction_phase_label } from './compute'
   import type { PhaseEventKind, Reaction, TernaryPhaseDiagram } from './types'
+  import { TERNARY_COLORS } from './types'
 
   let {
     diagram,
@@ -71,7 +72,7 @@
       )} K
     </p>
   {/if}
-  <ol>
+  <ol style:--selected-color={TERNARY_COLORS.selected}>
     {#each diagram.events as event, idx (idx)}
       {@const [icon, title] = KINDS[event.kind]}
       <li
@@ -227,7 +228,7 @@
       background: color-mix(in srgb, #ff9800 25%, transparent);
     }
     &.selected {
-      outline: 1px solid #66f0ff;
+      outline: 1px solid var(--selected-color);
     }
   }
 </style>

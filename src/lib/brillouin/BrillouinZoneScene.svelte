@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import {
     bind_renderer,
@@ -208,8 +209,8 @@
       <T.Mesh position={k_point} renderOrder={999}>
         <T.SphereGeometry args={[bz_size * 0.045, 24, 24]} />
         <T.MeshStandardMaterial
-          color="#ff2020"
-          emissive="#ff2020"
+          color={HIGHLIGHT.pin}
+          emissive={HIGHLIGHT.pin}
           emissiveIntensity={1.5}
           transparent
           depthTest={false}
