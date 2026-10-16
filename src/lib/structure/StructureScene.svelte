@@ -2331,7 +2331,7 @@
             <!-- shift selected site labels down to avoid overlapping regular site labels-->
             {@const selection_offset = math.add<Vec3>(site_label_offset, [0, -0.5, 0])}
             {@const pos = math.add(site.xyz, selection_offset)}
-            <extras.HTML center position={pos}>
+            <extras.HTML center position={pos} style="pointer-events: none">
               <span class="selection-label">{loop_idx + 1}</span>
             </extras.HTML>
           {/if}
@@ -2500,7 +2500,7 @@
                   ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
                   : direct}
                 {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-                <extras.HTML center position={mid_pos}>
+                <extras.HTML center position={mid_pos} style="pointer-events: none">
                   <span class="measure-label">
                     {#if differ}
                       PBC: {format_num(pbc, FLOAT_FMT)} Å<br /><small>
@@ -2557,7 +2557,7 @@
               {@const bis_norm = Math.hypot(...bisector) || 1}
               {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
               {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
-              <extras.HTML center position={label_pos}>
+              <extras.HTML center position={label_pos} style="pointer-events: none">
                 <span class="measure-label">{format_num(angle_deg, FLOAT_FMT)}°</span>
               </extras.HTML>
             {/if}
@@ -2588,7 +2588,11 @@
               lattice?.pbc,
             )}
             <!-- label sits on the central bond, the axis the torsion is measured about -->
-            <extras.HTML center position={math.lerp_vec3(draw_2, draw_3, 0.5)}>
+            <extras.HTML
+              center
+              position={math.lerp_vec3(draw_2, draw_3, 0.5)}
+              style="pointer-events: none"
+            >
               <span class="measure-label">{format_num(torsion_deg, FLOAT_FMT)}°</span>
             </extras.HTML>
           {/if}

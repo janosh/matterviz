@@ -185,8 +185,28 @@ describe(`PlotTooltip`, () => {
       children: make_children(`a`.repeat(80)),
     })
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
-    expect(tooltip.style.maxWidth).toBe(`84px`)
+    // the container cap rides a CSS variable, not an inline max-width that would beat the
+    // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
+    expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
+    expect(tooltip.style.maxWidth).toBe(``)
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
+    // never inherits a centered page section
+    expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
+  })
+
+  // a caller's class cannot beat the scoped `nowrap` rule, so wrapping is opt-in by variable
+  test.each([
+    [`chip`, {}, `pre-line`],
+    [`wrapping box`, { constrain_to: { width: 100, height: 300 } }, `pre-line`],
+  ])(`--plot-tooltip-white-space overrides the %s default`, (_label, props, expected) => {
+    const tooltip = mount_tooltip({ ...props, style: `--plot-tooltip-white-space: pre-line` })
+    expect(getComputedStyle(tooltip).whiteSpace).toBe(expected)
+  })
+
+  test(`without a constraining box no cap is set and no inline max-width overrides callers`, () => {
+    const tooltip = mount_tooltip({ children: make_children(`label`) })
+    expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(``)
+    expect(tooltip.style.maxWidth).toBe(``)
   })
 
   // Without a constraining box the signed offset is applied verbatim, absolute or fixed.

@@ -6,7 +6,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { format_value } from '#lib/labels.js'
+  import { format_value, format_value_or_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
@@ -281,7 +281,7 @@
   clear_stale_hover(() => hover_key && !hover_info, clear_hover)
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels
-      .map((label, idx) => `${label} ${format_value(point.fractions[idx], tick_format)}`)
+      .map((label, idx) => `${label} = ${format_value(point.fractions[idx], tick_format)}`)
       .join(`, `)}`
 
   // Marker style as drawn, shared by the SVG and canvas paths so they can't drift
@@ -635,7 +635,7 @@
           {#if hover_info.color_value !== null}
             <br /><TooltipValue
               label={color_bar?.title ?? `value`}
-              value={format_value(hover_info.color_value)}
+              value={format_value_or_num(hover_info.color_value, color_bar?.tick_format)}
             />
           {/if}
         {/if}

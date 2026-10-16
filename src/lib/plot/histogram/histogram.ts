@@ -2,6 +2,7 @@
 // uniform in the x scale's transformed space (linear, log10, arcsinh) and counted in one pass
 // into typed arrays, so a million samples bin in a few milliseconds.
 
+import { zero_if_negligible } from '#lib/labels.js'
 import { clamp, type Vec2 } from '#lib/math.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
 import {
@@ -139,8 +140,11 @@ function bin_geometry(
   const count = Math.max(1, Math.floor(n_bins))
   const scale = count / (pos_hi - pos_lo)
   const edges = new Float64Array(count + 1)
+  // An edge meant to sit on 0 in bin space lands a few ulps off (-4.9 + 7 * 0.7 = -8.9e-16),
+  // which tooltips would print as -8.88e-16, so snap it within a millionth of a bin width
   for (let idx = 1; idx < count; idx++) {
-    edges[idx] = is_linear ? lower + idx / scale : inv(pos_lo + idx / scale)
+    const pos = zero_if_negligible(pos_lo + idx / scale, 1 / scale)
+    edges[idx] = is_linear ? pos : inv(pos)
   }
   edges[0] = lower
   edges[count] = upper

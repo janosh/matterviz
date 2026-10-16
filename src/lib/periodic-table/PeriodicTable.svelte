@@ -20,7 +20,7 @@
     ElementTile,
     is_elem_symbol,
   } from '#lib/element/index.js'
-  import { ELEM_SYMBOLS } from '#lib/labels.js'
+  import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
   import { array_extent, type Point2D } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
@@ -480,7 +480,14 @@
         <small>{element.symbol} • {element.number}</small>
         {#if Array.isArray(tooltip_value)}
           <br />
-          <small>Values: {tooltip_value.join(`, `)}</small>
+          <!-- numbers formatted like the tile labels, colors verbatim -->
+          <small
+            >Values: {tooltip_value
+              .map((val) =>
+                typeof val === `number` ? format_num(val, tile_props?.float_fmt) : val,
+              )
+              .join(`, `)}</small
+          >
         {/if}
       {/if}
     </div>

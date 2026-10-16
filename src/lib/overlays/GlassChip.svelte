@@ -27,5 +27,6 @@
     backdrop-filter: blur(8px);
     color: var(--text-color);
     font-size: var(--glass-chip-font-size, 0.85em);
+    text-align: start; /* not a centered page section's */
   }
 </style>

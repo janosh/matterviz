@@ -1,4 +1,5 @@
 import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
+import GlassChip from '#lib/overlays/GlassChip.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -127,4 +128,15 @@ describe(`FloatingPopup`, () => {
       true,
     )
   })
+})
+
+test(`GlassChip text stays left-aligned inside a centered page section`, () => {
+  document.body.style.textAlign = `center`
+  mount(GlassChip, {
+    target: document.body,
+    props: { children: createRawSnippet(() => ({ render: () => `<span>a = 1</span>` })) },
+  })
+  flushSync()
+  expect(getComputedStyle(doc_query(`.glass-chip`)).textAlign).toBe(`start`)
+  document.body.style.textAlign = ``
 })

@@ -379,7 +379,9 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 </script>
 
 {#if resolved_tiling.unavailable_reason}
-  <HTML zIndexRange={[1000, 1000]}>
+  <!-- a notice, not a control: without this its 20em card swallows hovers and orbit drags
+  (HTML applies pointerEvents only in CSS-3D mode) -->
+  <HTML zIndexRange={[1000, 1000]} style="pointer-events: none">
     <div
       role="status"
       style="background: var(--surface-bg, white); padding: 0.5em; width: 20em"

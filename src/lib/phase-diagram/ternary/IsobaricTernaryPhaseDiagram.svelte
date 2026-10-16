@@ -579,7 +579,7 @@
       bg_color={hover.kind === `section` && hover.data.kind === `phase`
         ? hover.data.color
         : undefined}
-      style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
+      style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000; white-space: normal"
     >
       {#if typeof tooltip === `function`}
         {@render tooltip(hover)}
@@ -589,8 +589,7 @@
           {#each model.elements as element, idx (element)}
             {#if idx > 0}
               ·
-            {/if}{element}
-            {format_num(barycentric[idx] * 100, `.1f`)} <small>%</small>
+            {/if}{element} = {format_num(barycentric[idx] * 100, `.1f`)} <small>%</small>
           {/each}
         </div>
         {#if decomposition}
@@ -833,7 +832,8 @@
     font-size: 0.9em;
   }
   :global(.ternary-tooltip) {
-    max-width: 320px;
+    /* PlotTooltip's inline max-width reads this var, overriding a plain max-width here */
+    --plot-tooltip-max-width: 320px;
     font-size: 0.85em;
     line-height: 1.4;
   }

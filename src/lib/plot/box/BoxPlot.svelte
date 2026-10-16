@@ -4,7 +4,7 @@
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
+  import { parse_axis_label, format_value_or_num, zero_if_negligible } from '#lib/labels.js'
   import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
     AxisConfig,
@@ -1021,6 +1021,8 @@
             [`whisker low`, stat.whisker_low],
             ...(show_mean ? [[`mean`, stat.mean] as const] : []),
           ] as const}
+          <!-- a mean of [0.1, 0.2, -0.3] is 1.85e-17 in floats: read it as 0 -->
+          {@const magnitude = Math.max(...rows.map(([, value]) => Math.abs(value)))}
           {#if hover_info.category_label}
             <div><strong>{hover_info.category_label}</strong></div>
           {/if}
@@ -1028,7 +1030,7 @@
             <div>
               <TooltipValue
                 {label}
-                value={format_value_or_num(value, fmt)}
+                value={format_value_or_num(zero_if_negligible(value, magnitude), fmt)}
                 unit={value_axis.unit ?? parse_axis_label(value_axis.label ?? ``).unit}
               />
             </div>

@@ -88,7 +88,7 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
     // hovering the plane probes a composition, a click without dragging pins it (T unchanged)
     await page.mouse.move(center_x + 40, center_y + 15, { steps: 4 })
-    await expect(page.locator(`.ternary-tooltip`)).toContainText(/Li\s*[\d.]+\s*%/)
+    await expect(page.locator(`.ternary-tooltip`)).toContainText(/Li\s*=\s*[\d.]+\s*%/)
     await page.mouse.click(center_x + 40, center_y + 15)
     expect(Number(await kelvin.inputValue())).toBe(t_before)
     await page.mouse.move(center_x, center_y)

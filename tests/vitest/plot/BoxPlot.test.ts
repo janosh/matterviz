@@ -427,6 +427,19 @@ describe(`BoxPlot`, () => {
     expect(on_box_hover).toHaveBeenLastCalledWith(null)
   })
 
+  // float noise in a computed stat (this mean is 1.85e-17) reads as 0, not -1.85e-17
+  test(`tooltip shows a mean that rounds off to zero as 0`, async () => {
+    const plot = await mount_sized_box_plot({
+      series: [{ y: [0.1, 0.2, -0.3], label: `A` }],
+      show_mean: true,
+    })
+    query(plot, `g.box-series[role="button"]`).dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true }),
+    )
+    await tick()
+    expect(query(plot, `.plot-tooltip`).textContent?.trim()).toMatch(/mean: 0$/)
+  })
+
   // aria-labels are read aloud: the interpolated median 0.15000000000000002 reads as 0.15
   test.each([
     [{}, `box 1: A, median 0.15`],

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { format_value_or_num } from '#lib/labels.js'
+  import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
   import type {
     BarStyle,
     HistogramHandlerProps,
@@ -423,7 +423,9 @@
     const active_y_axis = hist.y_axis ?? `y`
     const bin_x_axis = active_x_axis === `x2` ? final_x2_axis : final_x_axis
     const { fwd, inv } = bin_transform(bin_x_axis.scale_type ?? `linear`)
-    const center = inv((fwd(coord_x_0) + fwd(coord_x_1)) / 2)
+    // snapped like the edges: a bin straddling 0 symmetrically centers on 0, not -4.4e-16
+    const [pos_0, pos_1] = [fwd(coord_x_0), fwd(coord_x_1)]
+    const center = inv(zero_if_negligible((pos_0 + pos_1) / 2, pos_1 - pos_0))
     return {
       value: center,
       count,

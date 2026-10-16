@@ -223,7 +223,7 @@ describe(`build_free_energy_model`, () => {
     const o2_late = { ...oxygen_2, temperatures: [800, 1200], free_energies: [-2.45, -2.45] }
     const li_early = { ...lithium, temperatures: [300, 700], free_energies: [-1.9, -1.9] }
     expect(() => build_free_energy_model([li_early, cobalt, o2_late], elements)).toThrow(
-      /share no temperature range: Li 300–700 K, O 800–1200 K/,
+      /share no temperature range: Li = 300–700 K, O = 800–1200 K/,
     )
   })
 })

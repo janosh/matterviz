@@ -19,9 +19,12 @@ import {
   tile_symmetry_elements,
 } from '#lib/symmetry/symmetry-elements.js'
 import type { SymmetryElement } from '#lib/symmetry/index.js'
+import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { operations_from_number } from '@spglib/moyo-wasm'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { flushSync } from 'svelte'
+import { beforeAll, describe, expect, onTestFinished, test } from 'vitest'
+import { mount_scene } from '../scene/mount'
 import {
   col_major,
   cubic_matrix,
@@ -830,4 +833,20 @@ describe(`tile_symmetry_elements`, () => {
     expect(tiled.map((copy) => copy.point[0])).toEqual([0, 0.5])
     expect(tile_symmetry_elements([centre], [0.5, 1, 1]).elements).toEqual([centre])
   })
+})
+
+// The refusal notice is HTML over the canvas: it must let hovers and drags through to the scene
+test(`SymmetryElements refusal notice passes pointer events through`, () => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    SymmetryElements(anchor, {
+      lattice: cubic_matrix(4),
+      tiling_result: { elements: [], unavailable_reason: `Symmetry overlay refused` },
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const notice = document.querySelector<HTMLElement>(`[role="status"]`)
+  expect(notice?.textContent?.trim()).toBe(`Symmetry overlay refused`)
+  // on the HTML wrapper div threlte puts around it (the card inherits it in a browser)
+  expect(notice?.parentElement?.style.pointerEvents).toBe(`none`)
 })

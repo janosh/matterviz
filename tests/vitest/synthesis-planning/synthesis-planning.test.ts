@@ -512,6 +512,7 @@ describe(`plan_synthesis`, () => {
     expect(text).toContain(`Synthesis plan for BaTiO3`)
     expect(text).toContain(`1. BaCO3 + TiO2 → BaTiO3 + CO2`)
     expect(text).toMatch(/inverse hull \d+ meV\/atom/)
+    expect(text).toMatch(/ΔE = -?\d+ meV\/atom/)
     expect(text).toContain(`Calculated recipe for 1 g`)
     expect(text).toMatch(/Precursor: [\d.]+ g BaCO3/)
     expect(text).toContain(`more routes in the structured result`)

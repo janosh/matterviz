@@ -31,7 +31,14 @@
   import type { VirtualScroll } from '#lib/table/index.js'
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
-  import { type ComponentProps, onDestroy, onMount, type Snippet, tick } from 'svelte'
+  import {
+    type ComponentProps,
+    flushSync,
+    onDestroy,
+    onMount,
+    type Snippet,
+    tick,
+  } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShowControlsProp } from '#lib/controls.js'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
@@ -544,19 +551,13 @@
 
   function show_tooltip(event: MouseEvent, context: CellContext): void {
     if (tooltip === false || !tooltip_div) return
-    // Flip to the cursor's other side near viewport edges (client coords avoid forced layout)
-    const flip = (pos: number, offset: number, size: number, limit: number) =>
-      Math.max(0, pos + offset + size > limit ? pos - offset - size : pos + offset)
-    const { offsetWidth: width, offsetHeight: height } = tooltip_div
-    tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
-    tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
-    tooltip_div.classList.add(`visible`)
     // no paint sets `` (removes the inline values), restoring the neutral CSS defaults
     const paint = tooltip_paint(context.bg_color)
     tooltip_div.style.setProperty(`--_bg`, paint?.background ?? ``)
     tooltip_div.style.color = paint?.color ?? ``
     if (typeof tooltip === `function`) {
       tooltip_cell = context
+      flushSync() // render this cell's snippet now so the size measured below is its own
     } else {
       const { value } = context
       const value_str =
@@ -564,6 +565,15 @@
       const pair = `${context.x_item.label} - ${context.y_item.label}`
       tooltip_div.textContent = value_str ? `${pair}: ${value_str}` : pair
     }
+    // Measure only once shown with this cell's content: a hidden (display: none) tooltip
+    // measures 0 and a stale one the previous cell's size, so edge flips would misfire
+    tooltip_div.classList.add(`visible`)
+    // Flip to the cursor's other side near viewport edges (client coords avoid forced layout)
+    const flip = (pos: number, offset: number, size: number, limit: number) =>
+      Math.max(0, pos + offset + size > limit ? pos - offset - size : pos + offset)
+    const { offsetWidth: width, offsetHeight: height } = tooltip_div
+    tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
+    tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
   }
   const hide_tooltip = () => tooltip_div?.classList.remove(`visible`)
 
