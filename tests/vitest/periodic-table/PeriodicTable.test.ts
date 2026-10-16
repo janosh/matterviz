@@ -109,14 +109,14 @@ describe(`PeriodicTable`, () => {
     expect(state.active_element?.symbol).toBe(expected)
   })
 
-  // also: the root CSS tokens the controls write (e.g. --tooltip-bg) must leave on unmount
+  // also: the root CSS tokens the controls write (e.g. --plot-tooltip-bg) must leave on unmount
   test(`row and section resets restore defaults; root CSS vars clear on unmount`, async () => {
     const category = `noble gas`
     colors.category[category] = `#123456`
     const root_style = document.documentElement.style
     const controls = mount(PeriodicTableControls, { target: document.body })
     flushSync()
-    expect(root_style.getPropertyValue(`--tooltip-bg`)).toBe(`#000000`)
+    expect(root_style.getPropertyValue(`--plot-tooltip-bg`)).toBe(`#000000`)
     expect(document.querySelector(`[aria-label="Reset font sizes to defaults"]`)).toBeNull()
     const click_reset = async (selector: string): Promise<void> => {
       doc_query<HTMLButtonElement>(selector).click()
@@ -153,7 +153,7 @@ describe(`PeriodicTable`, () => {
     await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
     await unmount(controls)
-    for (const prop of [`--tooltip-bg`, `--elem-tile-border-radius`, `--ptable-gap`])
+    for (const prop of [`--plot-tooltip-bg`, `--elem-tile-border-radius`, `--ptable-gap`])
       expect(root_style.getPropertyValue(prop)).toBe(``)
   })
 
@@ -587,7 +587,7 @@ describe(`PeriodicTable`, () => {
 
   // on by default like every other component's tooltip; false opts out
   test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    mount_table({ tooltip, style: `--tooltip-bg: #4fc3f7` })
+    mount_table({ tooltip, style: `--plot-tooltip-bg: #4fc3f7` })
     const hydrogen_tile = doc_query(`.element-tile`)
     hydrogen_tile.dispatchEvent(mouseenter)
     await tick()

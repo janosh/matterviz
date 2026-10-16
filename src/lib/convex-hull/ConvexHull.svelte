@@ -409,7 +409,7 @@
       offset={{ x: 10, y: -10 }}
       bg_color={context.get_point_color(entry)}
       fixed
-      style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+      style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1)"
     >
       <ConvexHullTooltip
         {entry}

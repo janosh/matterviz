@@ -579,7 +579,6 @@
       bg_color={hover.kind === `section` && hover.data.kind === `phase`
         ? hover.data.color
         : undefined}
-      style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
     >
       {#if typeof tooltip === `function`}
         {@render tooltip(hover)}
@@ -830,11 +829,5 @@
   .muted {
     opacity: 0.7;
     font-size: 0.9em;
-  }
-  :global(.ternary-tooltip) {
-    --plot-tooltip-max-width: 320px;
-    --plot-tooltip-white-space: normal; /* wrap within that width */
-    font-size: 0.85em;
-    line-height: 1.4;
   }
 </style>

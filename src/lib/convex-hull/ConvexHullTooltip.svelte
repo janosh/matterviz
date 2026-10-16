@@ -117,10 +117,7 @@
 </TooltipContent>
 
 <style>
-  .tooltip-content {
-    max-width: var(--tooltip-max-width, 200px);
-    text-align: left;
-  }
+  /* rows end in an ellipsis at the chip's max-width rather than wrapping */
   .tooltip-content > div {
     overflow: hidden;
     text-overflow: ellipsis;

@@ -109,28 +109,9 @@
   :global(.chempot-tooltip) {
     /* narrow, so the wrapping lines below fill the box instead of leaving gutters */
     --plot-tooltip-max-width: 14rem;
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
-    color: var(--tooltip-text, var(--text-color, #222));
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --plot-tooltip-padding: 3px 6px;
-    --plot-tooltip-border-radius: 5px;
-    --plot-tooltip-font-size: 11px;
-    line-height: 1.25;
-  }
-  h4 {
-    margin: 0;
-    font-size: 12px;
   }
   small {
     display: block;
-    opacity: 0.75;
-  }
-  p {
-    margin: 1px 0 0;
-  }
-  .key {
-    opacity: 0.7;
   }
   /* each range stays whole and lines break between ranges, packed with the key */
   .ranges {

@@ -16,7 +16,7 @@
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
-  <div style="max-width: var(--bz-tooltip-max-width, 250px)">
+  <div>
     {#if hover_data.is_ibz || hover_data.bz_order > 1}
       <div style="margin-bottom: 4px">
         {#if hover_data.is_ibz}<strong>Irreducible BZ</strong>{/if}

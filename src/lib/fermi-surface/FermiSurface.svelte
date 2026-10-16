@@ -499,7 +499,7 @@
           offset={{ x: 12, y: -12 }}
           bg_color={hover_data ? hover_data.surface_color : KPATH_COLORS.hover}
           fixed
-          style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          style="z-index: var(--z-index-overlay-nav, 100000001)"
         >
           {#if hover_data}
             <FermiSurfaceTooltip {hover_data} {tooltip} />

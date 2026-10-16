@@ -1149,11 +1149,11 @@
     opacity: 0.9;
   }
   .tooltip {
-    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    --_bg: var(--plot-tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     display: none;
     position: fixed;
     background: var(--_bg);
-    color: var(--tooltip-color, light-dark(#222, #eee));
+    color: var(--plot-tooltip-color, light-dark(#222, #eee));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
     font-size: var(--tooltip-font-size, 12px);

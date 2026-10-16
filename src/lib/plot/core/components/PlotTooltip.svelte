@@ -1,6 +1,6 @@
 <script module lang="ts">
   // The neutral chip for marks without a usable fill, also the CSS default below
-  const NEUTRAL_BG = `var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)))`
+  const NEUTRAL_BG = `var(--plot-tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)))`
 </script>
 
 <script lang="ts">
@@ -80,10 +80,10 @@
     })
   })
 
-  // Position flipping alone cannot keep a nowrap chip inside a small plot when the
-  // label path is long — cap width to the constrained box and let the text wrap. Callers
-  // can ask for a narrower box with --plot-tooltip-max-width; the container still caps it.
-  // Both meet in a zero-specificity rule, so a caller's own max-width still wins.
+  // Position flipping alone cannot keep a wide chip inside a small plot, so its width is
+  // capped to the constrained box and the text wraps. Callers can ask for a narrower box with
+  // --plot-tooltip-max-width (16rem by default); the container still caps it. Both meet in a
+  // zero-specificity rule, so a caller's own max-width still wins.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
   // A fill JS can parse is painted outright, with no DOM reads as the tooltip follows the
   // pointer. Anything else (var() fill, or none: the neutral chip) resolves through a probe
@@ -104,7 +104,7 @@
 
 <div
   {...rest}
-  class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
+  class={[`plot-tooltip`, rest.class]}
   style:background-color={paint?.background}
   style:color={paint?.color}
   style:--plot-tooltip-cap={max_width != null ? `${max_width}px` : undefined}
@@ -121,22 +121,43 @@
 <style>
   /* zero specificity: a caller's class may restyle the chip until the probe resolves */
   :where(.plot-tooltip) {
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    color: var(--tooltip-color, light-dark(#222, #eee));
-    max-width: min(var(--plot-tooltip-max-width, 100vw), var(--plot-tooltip-cap, 100vw));
+    background: var(
+      --plot-tooltip-bg,
+      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85))
+    );
+    color: var(--plot-tooltip-color, light-dark(#222, #eee));
+    max-width: min(var(--plot-tooltip-max-width, 16rem), var(--plot-tooltip-cap, 100vw));
+    border: var(
+      --plot-tooltip-border,
+      1px solid color-mix(in srgb, currentColor 18%, transparent)
+    );
+    box-shadow: var(--plot-tooltip-shadow, 0 4px 12px rgba(0, 0, 0, 0.15));
   }
   .plot-tooltip {
     box-sizing: border-box;
-    padding: var(--plot-tooltip-padding, 2px 6px);
-    border-radius: var(--plot-tooltip-border-radius, 4px);
-    font-size: var(--plot-tooltip-font-size, 0.8em);
+    padding: var(--plot-tooltip-padding, 3px 6px);
+    border-radius: var(--plot-tooltip-border-radius, 5px);
+    font-size: var(--plot-tooltip-font-size, 12px);
+    line-height: var(--plot-tooltip-line-height, 1.25);
     /* never inherit a centered page or card layout */
     text-align: start;
-    white-space: var(--plot-tooltip-white-space, nowrap);
-    z-index: var(--plot-tooltip-z-index, 1000);
-  }
-  .plot-tooltip-wrap {
+    /* as wide as the content up to max-width, then wrap: an absolute box would otherwise
+    shrink to the room left of its anchor and wrap early near the right edge */
+    width: max-content;
     white-space: var(--plot-tooltip-white-space, normal);
     overflow-wrap: break-word; /* mid-token only when that token alone exceeds the line */
+    z-index: var(--plot-tooltip-z-index, 1000);
+  }
+  /* Dense defaults for common tooltip markup: page and UA margins would pad a small chip.
+  Zero specificity, so any tooltip snippet's own styles win. */
+  :where(.plot-tooltip) :global(:where(h4)) {
+    margin: 0;
+    font-size: 1.05em;
+  }
+  :where(.plot-tooltip) :global(:where(p)) {
+    margin: 1px 0 0;
+  }
+  :where(.plot-tooltip) :global(:where(small, .key)) {
+    opacity: 0.75;
   }
 </style>
