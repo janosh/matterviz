@@ -314,6 +314,19 @@ test.each([
   }
 })
 
+// A non-finite slice is a config error shown in place of the diagram; the other slices' ranges
+// stay computable (a NaN clamped into the first range used to throw from the second's)
+test(`a non-finite slice value is reported, not thrown`, async () => {
+  const chempot = await chempot_state(quinary_entries, {
+    elements: [`La`, `Ni`, `O`],
+    slice_chempots: { F: Number.NaN, Rb: -1 },
+  })
+  expect(chempot.error).toBe(`slice_chempots.F must be finite, got NaN`)
+  expect(chempot.diagram_data).toBeNull()
+  expect(Object.keys(chempot.slices)).toEqual([`Rb`])
+  expect(Object.keys(chempot.slice_ranges).toSorted()).toEqual([`F`, `Rb`])
+})
+
 test(`a 2D slice sweep keeps the axes of the unsliced projection and labels the slice`, async () => {
   const props = $state<{ entries: PhaseData[]; config: ChemPotDiagramConfig }>({
     entries: load_json<PhaseData[]>(`${import.meta.dirname}/pd_entries_test.json.gz`),

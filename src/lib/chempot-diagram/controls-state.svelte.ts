@@ -182,6 +182,15 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   )
   const padding = $derived(resolve(`element_padding`))
   const min_limit = $derived(resolve(`default_min_limit`))
+  // A non-finite slice value is a config error, shown instead of a diagram (controls stay
+  // editable); the clamping below skips it so every range computation stays finite
+  const slice_error = $derived.by((): string | null => {
+    const [element, value] =
+      Object.entries(resolve(`slice_chempots`)).find(
+        ([, val]) => val !== undefined && !Number.isFinite(val),
+      ) ?? []
+    return element ? `slice_chempots.${element} must be finite, got ${value}` : null
+  })
   // Requested slices clamped in element order, each into the range the ones before it leave
   // feasible, so no combination empties the region (e.g. a value above the element's
   // reference in absolute chempots, or two jointly above a compound of just those elements)
@@ -190,7 +199,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     const clamped: Record<string, number> = {}
     for (const element of slice_elements) {
       const value = requested[element]
-      if (value === undefined || !sys) continue
+      if (value === undefined || !Number.isFinite(value) || !sys) continue
       const [lower, upper] = slice_range(sys, element, padding, min_limit, clamped)
       clamped[element] = clamp(value, lower, upper)
     }
@@ -215,6 +224,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   let last_section: Section = { data: null, error: null }
   const section = $derived.by((): Section => {
     if (!system) return (last_section = { data: null, error: null })
+    if (slice_error) return (last_section = { data: null, error: slice_error })
     if (stale) return last_section
     try {
       const data = section_chempot_system(system, axes.display, slices)

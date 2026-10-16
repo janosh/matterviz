@@ -4,7 +4,7 @@
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { parse_axis_label, format_value_or_num, zero_if_negligible } from '#lib/labels.js'
+  import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
   import { array_max, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
     AxisConfig,
@@ -1013,16 +1013,21 @@
             orientation === `vertical` ? hover_info.y_axis : hover_info.x_axis}
           {@const fmt = value_axis.format}
           {@const stat = hover_info.stats}
+          <!-- the mean is the one summed statistic: within its summation error n·ε·max|x| it
+               is round-off (a mean of [0.1, 0.2, -0.3] is 1.85e-17) and reads as 0; quantiles and
+               whiskers are sample values, shown as they are -->
+          {@const mean_noise =
+            stat.n * Number.EPSILON * Math.max(Math.abs(stat.min), Math.abs(stat.max))}
           {@const rows = [
             [`whisker high`, stat.whisker_high],
             [`q3`, stat.q3],
             [`median`, stat.median],
             [`q1`, stat.q1],
             [`whisker low`, stat.whisker_low],
-            ...(show_mean ? [[`mean`, stat.mean] as const] : []),
+            ...(show_mean
+              ? [[`mean`, Math.abs(stat.mean) <= mean_noise ? 0 : stat.mean] as const]
+              : []),
           ] as const}
-          <!-- a mean of [0.1, 0.2, -0.3] is 1.85e-17 in floats: read it as 0 -->
-          {@const magnitude = Math.max(...rows.map(([, value]) => Math.abs(value)))}
           {#if hover_info.category_label}
             <div><strong>{hover_info.category_label}</strong></div>
           {/if}
@@ -1030,7 +1035,7 @@
             <div>
               <TooltipValue
                 {label}
-                value={format_value_or_num(zero_if_negligible(value, magnitude), fmt)}
+                value={format_value_or_num(value, fmt)}
                 unit={value_axis.unit ?? parse_axis_label(value_axis.label ?? ``).unit}
               />
             </div>

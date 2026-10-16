@@ -428,16 +428,25 @@ describe(`BoxPlot`, () => {
   })
 
   // float noise in a computed stat (this mean is 1.85e-17) reads as 0, not -1.85e-17
-  test(`tooltip shows a mean that rounds off to zero as 0`, async () => {
-    const plot = await mount_sized_box_plot({
-      series: [{ y: [0.1, 0.2, -0.3], label: `A` }],
-      show_mean: true,
-    })
+  // Only the summed mean is snapped, and only within its summation error n·ε·max|x|: a tiny
+  // median (a sample value) or a resolvable tiny mean beside large values stays as computed
+  test.each([
+    { label: `round-off mean`, y: [0.1, 0.2, -0.3], median: /median: 0\.1/, mean: /mean: 0$/ },
+    {
+      label: `tiny median and mean beside large values`,
+      y: [-1e6, 1e-7, 1e6],
+      median: /median: 1e-7/,
+      mean: /mean: 3\.33e-8$/,
+    },
+  ])(`tooltip statistics: $label`, async ({ y, median, mean }) => {
+    const plot = await mount_sized_box_plot({ series: [{ y, label: `A` }], show_mean: true })
     query(plot, `g.box-series[role="button"]`).dispatchEvent(
       new MouseEvent(`mousemove`, { bubbles: true }),
     )
     await tick()
-    expect(query(plot, `.plot-tooltip`).textContent?.trim()).toMatch(/mean: 0$/)
+    const text = query(plot, `.plot-tooltip`).textContent?.trim()
+    expect(text).toMatch(median)
+    expect(text).toMatch(mean)
   })
 
   // aria-labels are read aloud: the interpolated median 0.15000000000000002 reads as 0.15
