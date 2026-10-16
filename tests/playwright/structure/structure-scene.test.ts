@@ -264,9 +264,11 @@ test.describe(`StructureScene Component Tests`, () => {
     }
     // partial occupancies render next to each species
     await expect(elements.locator(`.occupancy`)).toHaveText([`0.645`, `0.345`, `0.01`])
-    // tooltip must respect its max-width (wrap) rather than grow unbounded
+    // tooltip must respect its max-width (wrap) rather than grow unbounded: a 10rem cap is
+    // narrower than the three long species, which fit on one line under the default 16rem
     const { width, max_width, line_count } = await elements.evaluate((element) => {
       const tip = element.closest(`[role="tooltip"]`) as HTMLElement
+      tip.style.setProperty(`--plot-tooltip-max-width`, `10rem`)
       const species = element.querySelector(`.species`) as HTMLElement
       return {
         width: tip.getBoundingClientRect().width,
