@@ -1,12 +1,11 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
-  import { parse_warnings_notice, plural } from '#lib/labels.js'
+  import { plural } from '#lib/labels.js'
   import { array_max } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
@@ -44,7 +43,7 @@
     error_msg = $bindable(),
     children,
     drag_dropped = $bindable([]),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     on_bin_hover,
     on_sites_hover,
@@ -76,22 +75,18 @@
 
   let drop_error = $state<string>()
   // The latest drop's recoverable parse warnings, one dismissible notice
-  let parse_warnings = $state<string[]>([])
-  let parse_warning_msg = $derived(parse_warnings_notice(parse_warnings))
+  let parse_warning_msg = $state<string>()
   const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
-    on_structure: ({ structure, filename, warnings }) => {
+    on_structure: (structure) => {
       // an RDF needs a cell to normalise against, so a lattice-less molecule is rejected
       if (!is_crystal(structure)) throw new Error(`no lattice or sites; cannot compute an RDF`)
       drag_dropped = [...drag_dropped, structure]
-      parse_warnings = [...parse_warnings, ...warnings.map((msg) => `${filename}: ${msg}`)]
     },
     on_error: (msg) => (drop_error = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) [drop_error, parse_warnings] = [undefined, []]
-    },
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
   })
 
   // Computed entries keep the structure they came from, for the atoms behind a hover. A
@@ -222,7 +217,7 @@
   {:else}
     <ScatterPlot
       {...rest}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {series}
       {ref_lines}

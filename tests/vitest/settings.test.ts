@@ -83,6 +83,7 @@ describe(`Settings`, () => {
       },
       true,
     ],
+    [`function scheme`, scale_cfg, { scheme: (frac: number) => `rgb(${frac}, 0, 0)` }, true],
     [`config with an unknown key`, scale_cfg, { foo: 1 }, false],
     [`config with a bad value_range`, scale_cfg, { value_range: [0, `1`] }, false],
     [`degenerate palette_range`, scale_cfg, { palette_range: [0.5, 0.5] }, false],

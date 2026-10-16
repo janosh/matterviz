@@ -6,16 +6,20 @@ import {
   SCENE_CONTROL_DEFAULTS,
 } from '#lib/scene/props.svelte.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { camera_resets } from '#lib/scene/camera-reset.js'
 import { create_fly_to } from '#lib/scene/fly-to.js'
 import SceneCamera from '#lib/scene/SceneCamera.svelte'
 import { read_pan_offset, set_pan_offset } from '#lib/scene/pan.js'
 import { type ComponentProps, flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { mount_scene } from './mount'
 
-// SceneCamera with no position yet, as while a scene measures its bounds
-const mount_camera = (camera_projection: 'orthographic' | 'perspective') => {
+// SceneCamera with no position yet (as while a scene measures its bounds) unless given one
+const mount_camera = (
+  camera_projection: 'orthographic' | 'perspective',
+  extra: Partial<ComponentProps<typeof SceneCamera>> = {},
+) => {
   const props = $state<ComponentProps<typeof SceneCamera>>({
     camera_projection,
     position: undefined,
@@ -27,6 +31,7 @@ const mount_camera = (camera_projection: 'orthographic' | 'perspective') => {
       max_zoom: undefined,
     }),
     orbit_controls: undefined, // bound back by SceneCamera
+    ...extra,
   })
   const scene = mount_scene((anchor) => SceneCamera(anchor, props))
   onTestFinished(scene.unmount_scene)
@@ -46,6 +51,53 @@ test.each([`orthographic`, `perspective`] as const)(
       expect(camera_store.current).toBe(camera)
       expect(read_pan_offset(camera)).toEqual([30, 15])
     }
+  },
+)
+
+// The `r` key's reset (reset_scene_cameras): back to the props' framing, without pan
+test.each([`orthographic`, `perspective`] as const)(
+  `%s camera reset restores position, target and zoom and drops the pan`,
+  async (camera_projection) => {
+    const reset_zoom = vi.fn()
+    const {
+      props,
+      canvas,
+      camera: camera_store,
+      unmount_scene,
+    } = mount_camera(camera_projection, {
+      position: [3, 4, 5],
+      zoom: 7,
+      reset_zoom,
+      // OrbitControls clamps the zoom on update: unset bounds would make it NaN
+      orbit_props: build_orbit_props({
+        ...SCENE_CONTROL_DEFAULTS,
+        camera_projection,
+        target: [0, 0, 0],
+        min_zoom: 1,
+        max_zoom: 50,
+      }),
+    })
+    const controls = props.orbit_controls
+    const reset = camera_resets.get(canvas)
+    if (!controls || !reset) throw new Error(`SceneCamera registered no reset`)
+    const camera = camera_store.current
+    if (!(camera instanceof OrthographicCamera || camera instanceof PerspectiveCamera))
+      throw new Error(`SceneCamera made no zoomable camera`)
+    camera.position.set(9, 9, 9)
+    controls.target.set(1, 1, 1)
+    camera.zoom = 99
+    set_pan_offset(camera, [30, 15], 400, 300)
+    reset()
+    expect(reset_zoom).toHaveBeenCalledOnce()
+    // OrbitControls.update() round-trips the offset through spherical coords: ~1e-15 off
+    for (const [axis, value] of [3, 4, 5].entries())
+      expect(camera.position.getComponent(axis)).toBeCloseTo(value, 12)
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+    // only an orthographic camera zooms; a perspective one dollies
+    expect(camera.zoom).toBe(camera_projection === `orthographic` ? 7 : 99)
+    expect(read_pan_offset(camera)).toEqual([0, 0])
+    await unmount_scene()
+    expect(camera_resets.has(canvas)).toBe(false)
   },
 )
 

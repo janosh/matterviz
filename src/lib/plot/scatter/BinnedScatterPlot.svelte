@@ -55,7 +55,6 @@
   } from '#lib/plot/scatter/adaptive-density.js'
   import {
     collect_size_range,
-    create_color_scale,
     resolve_color_scale,
     create_size_scale,
   } from '#lib/plot/core/scales.js'
@@ -359,20 +358,21 @@
   ])
   const color_scales = $derived(
     density_grids.map((_, idx) =>
-      create_color_scale(
+      resolve_color_scale(
         (per_series_density ? series[idx].density_color_scale : undefined) ??
           density_settings.color_scale,
         auto_color_range,
       ),
     ),
   )
-  const bin_color = (bin: DensityBin): string => color_scales[bin.series_idx ?? 0](bin.count)
+  const bin_color = (bin: DensityBin): string =>
+    color_scales[bin.series_idx ?? 0].color_fn(bin.count)
   const color_bar_props = $derived.by((): ColorBarDecorationProps | null => {
     if (!color_bar || per_series_density) return null
     return {
       ...color_bar,
       // the bar spans the shared scale's domain: an explicit value_range, else the count range
-      color_scale: resolve_color_scale(density_settings.color_scale, auto_color_range),
+      color_scale: color_scales[0].color_scale,
       title: `${color_bar.title ?? `Density`} (${density_result.visible_count.toLocaleString()} points)`,
       tick_format: color_bar.tick_format ?? `.2~s`,
       tick_labels: color_bar.tick_labels ?? 4,
@@ -540,7 +540,7 @@
         const count = density_grids[series_idx].counts[bin_idx]
         const cache = style_cache[series_idx]
         let fill = cache.get(count)
-        if (!fill) cache.set(count, (fill = color_scales[series_idx](count)))
+        if (!fill) cache.set(count, (fill = color_scales[series_idx].color_fn(count)))
         ctx.fillStyle = fill
         ctx.globalAlpha = per_series_density
           ? 1

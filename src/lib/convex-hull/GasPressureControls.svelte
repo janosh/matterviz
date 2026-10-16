@@ -103,7 +103,7 @@
           10<sup>{LOG_P_MIN}</sup>–10<sup>{LOG_P_MAX}</sup>
         {/snippet}
       </VerticalSlider>
-      <LiveMessage>{gas} chemical potential: {format_chemical_potential(mean, 2)}</LiveMessage>
+      <LiveMessage message="{gas} chemical potential: {format_chemical_potential(mean, 2)}" />
     {/each}
   </div>
 {/if}

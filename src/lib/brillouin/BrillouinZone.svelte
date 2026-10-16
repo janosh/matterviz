@@ -251,17 +251,12 @@
     }
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp
+  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
   const keys = viewer_keys(() => ({
     i: () => {
       info_pane_open = !info_pane_open
     },
     r: () => reset_scene_cameras(wrapper),
-    Escape: () => {
-      if (info_pane_open) info_pane_open = false
-      else if (controls_open) controls_open = false
-      else return false
-    },
   }))
 </script>
 

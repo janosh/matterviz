@@ -107,7 +107,7 @@
     'aria-label': aria_label_override,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    show_controls = `hover`,
+    show_controls,
     wrapper = $bindable(),
     require_size = true,
     marginals,
@@ -119,7 +119,7 @@
     on_mouse_click,
     idle_cursor = `crosshair`,
     on_key_down,
-    live_message,
+    live_message = ``,
     empty = false,
     header_controls,
     export_sources = {},
@@ -294,11 +294,11 @@
     </svg>
 
     {@render overlays?.()}
-    {#if empty}<EmptyState overlay role="status" />{/if}
+    {#if empty}<EmptyState overlay />{/if}
   {/if}
 
   <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->
-  {#if live_message}<LiveMessage>{live_message}</LiveMessage>{/if}
+  <LiveMessage message={live_message} />
 
   <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
   {@render children?.(content_ctx)}

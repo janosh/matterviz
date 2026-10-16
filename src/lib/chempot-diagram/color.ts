@@ -1,7 +1,7 @@
 import { extract_formula_elements } from '#lib/composition/parse.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { array_extent, type Vec2 } from '#lib/math.js'
-import { create_color_scale, resolve_color_scale } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { group } from 'd3-array'
 import {
@@ -34,7 +34,7 @@ const COLOR_MODE_LABELS: Record<Exclude<ChemPotColorMode, `none` | `arity`>, str
 
 // ColorBar props of the active numeric mode: its title and the color scale with value_range
 // resolved against the drawn domains' values
-export interface ChemPotColorBar {
+interface ChemPotColorBar {
   title: string
   color_scale: ColorScaleConfig & { value_range: Vec2 }
 }
@@ -93,11 +93,10 @@ export function get_domain_color_data(opts: {
   }
   const [min_val, max_raw] = array_extent(values)
   const max_val = Math.max(max_raw, min_val + 1e-6) // a flat range still needs a domain
-  const color_scale = resolve_color_scale(opts.color_scale, [min_val, max_val])
-  const scale = create_color_scale(color_scale, color_scale.value_range)
+  const { color_fn, color_scale } = resolve_color_scale(opts.color_scale, [min_val, max_val])
   for (const formula of formulas) {
     const value = value_by_formula.get(formula)
-    colors.set(formula, value === undefined ? `#999` : scale(value))
+    colors.set(formula, value === undefined ? `#999` : color_fn(value))
   }
   return { colors, color_bar: { title: COLOR_MODE_LABELS[color_mode], color_scale } }
 }

@@ -9,10 +9,11 @@
   import { SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
+  import { scheme_name, to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { ColorScaleConfig } from '#lib/plot/core/types.js'
   import { clamp01 } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { auto_color_config, iso_color_scale, ISO_COLORMAP_SELECT_PROPS } from './coloring'
+  import { auto_color_config, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
   import { compare_volume_grids, UNIT_CELL_RANGE } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
@@ -182,7 +183,8 @@
   // range to auto-fit (renderer fits it to the values sampled on the surface).
   // Typing into an auto range seeds the other bound from the color volume's
   // full data range as a starting point.
-  const layer_color_scale = (layer: IsosurfaceLayer) => iso_color_scale(layer.color_scale)
+  const layer_color_scale = (layer: IsosurfaceLayer) =>
+    to_color_scale_config(layer.color_scale ?? {})
   const update_color_scale = (layer_idx: number, updates: ColorScaleConfig) => {
     const layer = settings.layers[layer_idx]
     if (layer) {
@@ -528,11 +530,12 @@
             </select>
           </label>
           {#if color_vol}
-            {@const { scheme, value_range: explicit_range } = layer_color_scale(layer)}
+            {@const color_scale = layer_color_scale(layer)}
+            {@const explicit_range = color_scale.value_range}
             {@const auto_scheme = auto_color_config(color_vol.data_range).scheme}
             <ColorScaleSelect
               {...ISO_COLORMAP_SELECT_PROPS}
-              value={typeof scheme === `string` ? scheme : undefined}
+              value={color_scale}
               on_add={({ option }) => update_color_scale(layer_idx, { scheme: option })}
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
@@ -543,7 +546,7 @@
               <span aria-hidden="true">&ndash;</span>
               {@render range_bound_input(layer_idx, 1, explicit_range)}
             </div>
-            {#if explicit_range || scheme !== auto_scheme}
+            {#if explicit_range || scheme_name(color_scale) !== auto_scheme}
               {@const reset_color_label = `Reset colormap + range to auto-fit`}
               <button
                 type="button"

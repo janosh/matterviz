@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
@@ -58,7 +57,7 @@
   import {
     collect_scale_ranges,
     create_axis_scales,
-    create_color_scale,
+    resolve_color_scale,
     to_color_scale_config,
     create_size_scale,
     log_floor_scale,
@@ -135,7 +134,7 @@
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -477,7 +476,9 @@
       { color: color_scale_type, size: size_scale_type },
     ),
   )
-  let color_scale_fn = $derived(create_color_scale(color_scale, scale_ranges.color_range))
+  let color_scale_fn = $derived(
+    resolve_color_scale(color_scale, scale_ranges.color_range).color_fn,
+  )
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
 
   let effective_cat_ticks = $derived(

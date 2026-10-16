@@ -263,9 +263,9 @@ describe(`values and colors`, () => {
     }
   })
 
-  // A descending value_range flips the legend's direction but must not flip which
-  // value gets which color: cells and the ColorBar read the same ramp.
-  test(`descending value_range keeps value-to-color mapping consistent with the legend`, () => {
+  // value_range[0] takes the palette start whichever way the range runs, as in every other
+  // colored component; cells and the ColorBar read the same mapping
+  test(`descending value_range runs the palette high-to-low in cells and legend`, () => {
     mount_matrix({
       x: [`A`, `B`],
       y: [`X`],
@@ -273,21 +273,19 @@ describe(`values and colors`, () => {
       color_bar: {},
       color_scale: { scheme: red_scale, value_range: [10, 0] },
     })
-    const cells = get_data_cells()
-    expect(cells[0].style.backgroundColor).toBe(`rgb(0, 0, 0)`)
-    expect(cells[1].style.backgroundColor).toBe(`rgb(255, 0, 0)`)
+    expect(get_data_cells().map(red_of)).toEqual([255, 0])
     const gradient = doc_query(`.colorbar .bar`).getAttribute(`style`) ?? ``
     const stops = gradient.match(/rgb\(\d+, 0, 0\)/g) ?? []
-    expect(stops[0]).toBe(`rgb(255, 0, 0)`) // value 10 sits at the left end
-    expect(stops.at(-1)).toBe(`rgb(0, 0, 0)`)
+    expect(stops[0]).toBe(`rgb(0, 0, 0)`) // value 10 sits at the left end
+    expect(stops.at(-1)).toBe(`rgb(255, 0, 0)`)
   })
 
   // a non-positive log floor is lifted to the smallest positive value so the data still spans
   // the ramp; a degenerate domain paints every mappable cell the midpoint color (also when
-  // the lifted log floor lands on the max); a log domain entirely <= 0 maps nothing
+  // the lifted log floor lands on the max); non-positive log value_range ends fit the data.
+  // Log midpoints land on 127.5 +- 1 ulp, so they may round to byte 127 or 128.
   test.each<[string, ColorScaleConfig, number[], (number | string)[]]>([
     [`custom color scale`, { scheme: () => `rgb(255, 0, 0)` }, [0.5], [`rgb(255, 0, 0)`]],
-    // A ±1 tolerance around the midpoint 127.5 permits byte values 127 or 128.
     [
       `non-positive data lifts the log floor`,
       { type: `log` },
@@ -305,8 +303,13 @@ describe(`values and colors`, () => {
     [`zero-width range`, { value_range: [2, 2] }, [1, 2, 3], [128, 128, 128]],
     // a null end keeps the data bound
     [`one fixed end`, { value_range: [null, 4] }, [0, 2, 4, 8], [0, 128, 255, 255]],
-    [`log floor lifted onto the max`, { type: `log`, value_range: [-1, 5] }, [5, 0], [128, 0]],
-    [`log range entirely <= 0`, { type: `log`, value_range: [-5, 0] }, [1], [0]],
+    [
+      `log floor lifted onto the max`,
+      { type: `log`, value_range: [-1, 5] },
+      [5, 0],
+      [expect.toBeOneOf([127, 128]), 0],
+    ],
+    [`log range entirely <= 0`, { type: `log`, value_range: [-5, 0] }, [1, 100], [0, 255]],
     // palette_range clips the scheme: the data spans its upper half
     [`palette_range`, { palette_range: [0.5, 1] }, [0, 1], [128, 255]],
   ])(`%s`, (_name, color_scale, row, expected_reds) => {
@@ -654,7 +657,12 @@ describe(`milestone feature props`, () => {
     await tick()
     const { control, set_value } = form_controls()
     const reds = () => get_data_cells().map(red_of)
-    expect([control(`Normalize`).value, ...reds()]).toEqual([`log`, 0, 128, 255])
+    expect([control(`Normalize`).value, ...reds()]).toEqual([
+      `log`,
+      0,
+      expect.toBeOneOf([127, 128]),
+      255,
+    ])
     await set_value(`Normalize`, `linear`)
     expect(reds()).toEqual([0, 23, 255])
     expect(state.color_scale).toEqual({ scheme: red_scale, type: `linear` })

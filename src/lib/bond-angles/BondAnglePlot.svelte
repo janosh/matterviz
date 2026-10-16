@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { format_num } from '#lib/labels.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
@@ -34,7 +33,7 @@
     mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     on_sites_hover,
     ...rest
@@ -132,7 +131,7 @@
 <StructureBarPlot
   {...rest}
   tooltip={rest.tooltip ?? angle_tooltip}
-  bind:show_controls
+  {show_controls}
   bind:controls_open
   series={bar_series}
   primary_axis={angle_axis}

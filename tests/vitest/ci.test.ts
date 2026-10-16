@@ -140,14 +140,11 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
     ]
     writeFileSync(join(scratch, `jobs-${id}.json`), JSON.stringify({ jobs: jobs_json }))
   }
-  // logs each call's endpoint, then answers with jq over the matching file (runs narrowed
-  // by an ?event= query like the API does)
+  // logs each call's endpoint, then answers with jq over the matching file
   const gh_stub = `gh() {
     echo "$1 $2 $3" >> "${scratch}/calls"
     if [[ "$2" == */jobs?per_page=100 ]]; then id="\${2%/jobs?per_page=100}"; jq -r "$4" "${scratch}/jobs-\${id##*/}.json"; return; fi
-    event_filter=.
-    if [[ "$2" =~ event=([a-z_]+) ]]; then event_filter=".workflow_runs |= map(select(.event == \\"\${BASH_REMATCH[1]}\\"))"; fi
-    jq "$event_filter" "${scratch}/runs.json" | jq -r "$4"
+    jq -r "$4" "${scratch}/runs.json"
   }`
   const output_file = join(scratch, `output`)
   writeFileSync(output_file, ``)

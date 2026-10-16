@@ -11,7 +11,7 @@ import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
 import { parse_lammps_trajectory } from '#lib/trajectory/parse/lammps.js'
-import type { WarnFn } from '#lib/trajectory/parse/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   capitalize_symbol,
   cart_to_frac_with_fallback,
@@ -90,7 +90,7 @@ const infer_atom_style = (rows: string[][], num_atom_types: number): string => {
   )
 }
 
-export const parse_lammps_data = (content: string, warn: WarnFn = console.warn): Crystal => {
+export const parse_lammps_data = (content: string): Crystal => {
   // Line 1 of a data file is always a comment, even if it doesn't start with '#'
   const lines = content.split(/\r?\n/).slice(1)
 
@@ -178,10 +178,7 @@ export const parse_lammps_data = (content: string, warn: WarnFn = console.warn):
     ]
     box_origin = [xlo, ylo, zlo]
   }
-  const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, {
-    context: `LAMMPS box`,
-    warn,
-  })
+  const cart_to_frac = cart_to_frac_with_fallback(lattice_matrix, { context: `LAMMPS box` })
 
   // Masses map atom types to elements; without them types fall back to atomic number
   const element_by_type = new Map<number, ElementSymbol>()
@@ -193,7 +190,7 @@ export const parse_lammps_data = (content: string, warn: WarnFn = console.warn):
     const from_comment = coerce_elem_symbol(capitalize_symbol(comment_of(row).split(/\s+/)[0]))
     const element = from_comment ?? element_for_mass(mass)
     if (element) element_by_type.set(atom_type, element)
-    else warn(`LAMMPS data: mass ${mass} of atom type ${atom_type} matches no element`)
+    else parse_warn(`LAMMPS data: mass ${mass} of atom type ${atom_type} matches no element`)
   }
 
   const num_atom_types = header_value(`atom types`)
@@ -209,7 +206,7 @@ export const parse_lammps_data = (content: string, warn: WarnFn = console.warn):
     declared_style ||
     infer_atom_style(atom_rows, Number.isFinite(num_atom_types) ? num_atom_types : Infinity)
   if (!declared_style) {
-    warn(
+    parse_warn(
       `LAMMPS data: Atoms section has no style comment, assuming '${style}' from its ${
         atom_rows[0].length
       } columns`,
@@ -236,7 +233,7 @@ export const parse_lammps_data = (content: string, warn: WarnFn = console.warn):
       )
     const element = element_by_type.get(atom_type) ?? element_from_lammps_type(atom_type)
     if (!element_by_type.has(atom_type)) {
-      warn(
+      parse_warn(
         `LAMMPS data: no mass for atom type ${atom_type}, falling back to element '${element}' by atomic number`,
       )
       element_by_type.set(atom_type, element)
@@ -276,20 +273,17 @@ export const parse_lammps_data = (content: string, warn: WarnFn = console.warn):
     raw_bonds.push({ atom_id_1: Number(tokens[2]), atom_id_2: Number(tokens[3]), order: 1 })
   }
   if (raw_bonds.length > 0) {
-    warn(
+    parse_warn(
       `LAMMPS data: bond types are force-field types, not bond orders, so all ${raw_bonds.length} bonds are recorded as single`,
     )
   }
-  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`, warn)
+  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `LAMMPS Bonds`)
 
   return { ...parsed_result(sites, bonds), lattice: make_lattice(lattice_matrix) }
 }
 
 // First frame of a LAMMPS text dump as a structure.
-export const parse_lammps_dump = (
-  content: string,
-  warn: WarnFn = console.warn,
-): AnyStructure => {
+export const parse_lammps_dump = (content: string): AnyStructure => {
   // Character offsets of the first two frame headers, so only the first frame's text is
   // handed to the trajectory reader (which splits it into lines itself). Stops after the
   // second hit: a long dump has thousands of headers and only two matter here. A frame that
@@ -308,7 +302,7 @@ export const parse_lammps_dump = (
       `LAMMPS dump has no 'ITEM: TIMESTEP' section (binary dumps must be converted to text first)`,
     )
   if (frame_starts.length > 1) {
-    warn(
+    parse_warn(
       `LAMMPS dump contains more than one frame; parsed the first as a structure — open it as a trajectory to see the rest`,
     )
   }
@@ -317,7 +311,7 @@ export const parse_lammps_dump = (
   // warnings too. It has already translated absolute dump coordinates from the LAMMPS box
   // origin into MatterViz's zero-origin lattice, and a dump frame always carries its box.
   const frame_text = content.slice(frame_starts[0], frame_starts[1])
-  const structure = parse_lammps_trajectory(frame_text, warn).frames[0]?.structure
+  const structure = parse_lammps_trajectory(frame_text, parse_warn).frames[0]?.structure
   if (!structure || structure.sites.length === 0)
     throw new Error(`LAMMPS dump frame contains no atoms`)
   return structure

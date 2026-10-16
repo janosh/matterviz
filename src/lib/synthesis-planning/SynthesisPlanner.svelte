@@ -629,10 +629,7 @@
       {/if}
     </div>
   {:else if !planning && !error}
-    <EmptyState
-      role="status"
-      message="Provide thermodynamic entries and a target to plan a synthesis."
-    />
+    <EmptyState message="Provide thermodynamic entries and a target to plan a synthesis." />
   {/if}
 </div>
 

@@ -2,6 +2,7 @@
 // path, keeping dense scatter plots efficient.
 
 import { type D3SymbolName, symbol_map } from '#lib/labels.js'
+import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
 import { clamp01 } from '#lib/utils.js'
 import { color as d3_color } from 'd3-color'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
@@ -283,4 +284,23 @@ export function draw_markers(
   }
   flush()
   ctx.restore()
+}
+
+// A chart's marker canvas: the attachment that puts it in a foreignObject (keeping SVG paint
+// order for export) plus an effect painting `layer()` on it, also registered as its export
+// painter so exports redraw at the export pixel ratio. Creates an $effect: call during init.
+export function create_marker_canvas(
+  layer: () => { markers: readonly CanvasMarker[]; width: number; height: number },
+) {
+  let canvas = $state<HTMLCanvasElement>()
+  const paint = (target?: HTMLCanvasElement, pixel_ratio?: number) => {
+    const { markers, width, height } = layer()
+    const surface = prepare_canvas(target, width, height, pixel_ratio)
+    if (surface) draw_markers(surface.ctx, markers, surface)
+  }
+  $effect(() => {
+    paint(canvas)
+    if (canvas) canvas_painters.set(canvas, paint)
+  })
+  return attach_canvas(`marker-canvas`, (node) => (canvas = node))
 }

@@ -351,7 +351,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)"
+          "description": "Color scale for property-based atom coloring: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.structure.atom_color_scale_type": {
           "type": "string",
@@ -554,7 +554,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 color scale for magnitude coloring mode"
+          "description": "Color scale for vector magnitude coloring: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.structure.vector_normalize": {
           "type": "boolean",
@@ -776,7 +776,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)"
+          "description": "Color scale for the Fermi surface: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.fermi.representation": {
           "type": "string",
@@ -1619,7 +1619,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 2D convex hull energy mode"
+          "description": "Color scale for 2D convex hull energy mode: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.convex_hull.binary.show_stable": {
           "type": "boolean",
@@ -1692,7 +1692,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 3D convex hull energy mode"
+          "description": "Color scale for 3D convex hull energy mode: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.convex_hull.ternary.show_stable": {
           "type": "boolean",
@@ -1807,7 +1807,7 @@
             "object"
           ],
           "default": "interpolateViridis",
-          "description": "D3 interpolate color scale for 4D convex hull energy mode"
+          "description": "Color scale for 4D convex hull energy mode: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config"
         },
         "matterviz.convex_hull.quaternary.show_stable": {
           "type": "boolean",

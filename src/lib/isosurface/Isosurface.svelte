@@ -8,19 +8,14 @@
   // colormap LUT.
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
-  import { resolve_value_range } from '#lib/plot/core/scales.js'
+  import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import { BackSide, type BufferGeometry, DoubleSide, FrontSide } from 'three/webgpu'
-  import {
-    compute_scalar_range,
-    iso_color_scale,
-    is_signed_range,
-    set_vertex_colors,
-  } from './coloring'
+  import { compute_scalar_range, is_signed_range, set_vertex_colors } from './coloring'
   import { compute_geometries_async } from './async-geometry.svelte'
   import type { GeometryResult, GeometryVolumeJob } from './geometry'
   import { compute_isosurface_geometries } from './geometry'
@@ -498,7 +493,7 @@
         entry.scalars = sample_entry_scalars(entry, color_vol)
         entry.scalars_volume_id = color_vol_id
       }
-      const { value_range } = iso_color_scale(layer.color_scale)
+      const { value_range } = to_color_scale_config(layer.color_scale ?? {})
       if (value_range?.[0] == null || value_range[1] == null) {
         const scalars = auto_scalars.get(entry.layer_idx) ?? []
         scalars.push(entry.scalars)
@@ -530,7 +525,7 @@
       const layer = layers[entry.layer_idx]
       if (!layer || !entry.scalars) continue
       const scalars = entry.scalars
-      const color_scale = iso_color_scale(layer.color_scale)
+      const color_scale = layer.color_scale ?? {}
       time_stage(`apply_colormap`, () =>
         set_vertex_colors(entry.geometry, scalars, {
           color_scale,

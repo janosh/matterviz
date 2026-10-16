@@ -2,15 +2,11 @@
   // The control rows ChemPotDiagram2D and ChemPotDiagram3D both offer: formal/absolute
   // potentials, labels, axis padding and floor, region colouring. `children` renders extra
   // checkboxes next to the built-in ones (the 3D overlay toggles).
-  import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
+  import { ColorScaleSelect } from '#lib/plot/index.js'
   import type { Snippet } from 'svelte'
   import type { ChemPotControlKey, ChemPotControlValues } from './controls-state.svelte'
-  import {
-    CHEMPOT_COLOR_MODE_OPTIONS,
-    CHEMPOT_COLOR_SCALE_OPTIONS,
-  } from './controls-state.svelte'
-  import type { ChemPotColorMode } from './types'
+  import { CHEMPOT_COLOR_MODE_OPTIONS } from './controls-state.svelte'
+  import type { ChemPotColorMode, ChemPotDiagramConfig } from './types'
 
   let {
     values,
@@ -18,7 +14,10 @@
     children,
   }: {
     values: ChemPotControlValues
-    set: <Key extends ChemPotControlKey>(key: Key, value: ChemPotControlValues[Key]) => void
+    set: <Key extends ChemPotControlKey>(
+      key: Key,
+      value: NonNullable<ChemPotDiagramConfig[Key]>,
+    ) => void
     children?: Snippet
   } = $props()
 
@@ -28,8 +27,7 @@
     if (Number.isFinite(value)) set(key, value)
   }
   // Reversal is a descending palette_range
-  const color_scale = $derived(to_color_scale_config(values.color_scale))
-  const [palette_start, palette_end] = $derived(color_scale.palette_range ?? [0, 1])
+  const [palette_start, palette_end] = $derived(values.color_scale.palette_range ?? [0, 1])
 </script>
 
 <div class="chempot-checks">
@@ -86,18 +84,10 @@
   <div class="pane-row">
     <label style="flex: 1; min-width: 0">
       <span>Color scale:</span>
-      <select
-        value={typeof color_scale.scheme === `string` ? color_scale.scheme : ``}
-        onchange={(event) =>
-          set(`color_scale`, {
-            ...color_scale,
-            scheme: event.currentTarget.value as D3InterpolateName,
-          })}
-      >
-        {#each CHEMPOT_COLOR_SCALE_OPTIONS as [value, label] (value)}
-          <option {value}>{label}</option>
-        {/each}
-      </select>
+      <ColorScaleSelect
+        bind:value={() => values.color_scale, (color_scale) => set(`color_scale`, color_scale)}
+        style="min-width: 0; flex: 1"
+      />
     </label>
     <label>
       <span>Reverse:</span>
@@ -105,7 +95,10 @@
         type="checkbox"
         checked={palette_start > palette_end}
         onchange={() =>
-          set(`color_scale`, { ...color_scale, palette_range: [palette_end, palette_start] })}
+          set(`color_scale`, {
+            ...values.color_scale,
+            palette_range: [palette_end, palette_start],
+          })}
       />
     </label>
   </div>

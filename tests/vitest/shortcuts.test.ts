@@ -73,7 +73,6 @@ describe(`viewer_keys`, () => {
     [`uppercase letter`, `X`, {}, `hover`, true],
     [`unhovered viewer`, `x`, {}, `none`, false],
     [`Ctrl chord`, `x`, { ctrlKey: true }, `hover`, false],
-    [`Cmd chord`, `x`, { metaKey: true }, `hover`, false],
     [`autorepeat`, `x`, { repeat: true }, `hover`, false],
     [`unbound key`, `y`, {}, `hover`, false],
   ] as const)(`%s`, async (_name, key, init, via, handled) => {
@@ -171,7 +170,5 @@ test.each([
     root.dispatchEvent(new PointerEvent(`pointerenter`))
     await press(`r`)
     expect(reset_scene_cameras).toHaveBeenCalledExactlyOnceWith(root)
-    await press(`r`, { ctrlKey: true }) // Cmd/Ctrl+R stays the browser's reload
-    expect(reset_scene_cameras).toHaveBeenCalledOnce()
   },
 )

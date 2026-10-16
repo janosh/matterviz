@@ -302,11 +302,12 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(fills).toEqual(ids.map((identifier) => `url(#${identifier})`))
   })
 
-  // the SVG drop routes through the shared file-drop handler rather than a FileReader, so
+  // the SVG drop routes through the shared file-drop zone rather than a FileReader, so
   // it inherits folder expansion and the drop queue. Pin that dropped content still reaches
   // the parser, and that an unrelated file is ignored rather than reported.
   test(`dropped SVG reaches the parser, other files are ignored`, async () => {
-    const wrapper = await mount_diagram()
+    const on_file_load = vi.fn()
+    const wrapper = await mount_diagram({ on_file_load })
     const drop = async (file: File, target = wrapper) => {
       target.dispatchEvent(create_drop_event(file))
       await tick()
@@ -316,11 +317,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
         type: `image/svg+xml`,
       })
 
-    // allow_file_drop=false ignores the drop and leaves the browser's dragover default alone
+    // allow_file_drop=false ignores the drop and never shows the drop highlight
     const disabled = await mount_diagram({ allow_file_drop: false })
-    const dragover = new DragEvent(`dragover`, { bubbles: true, cancelable: true })
-    disabled.dispatchEvent(dragover)
-    expect(dragover.defaultPrevented).toBe(false)
+    disabled.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
+    expect(disabled.classList.contains(`dragover`)).toBe(false)
     await drop(empty_svg(), disabled)
     await tick()
     expect(disabled.querySelector(`.error`)).toBeNull()
@@ -338,6 +338,25 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     )
     // the previously rendered diagram is kept behind the banner
     expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+    expect(on_file_load).not.toHaveBeenCalled()
+  })
+
+  // on_file_drop takes the raw file instead of the SVG parse, like every viewer's
+  test(`on_file_drop intercepts dropped files before parsing`, async () => {
+    const on_file_drop = vi.fn()
+    const on_file_load = vi.fn()
+    const wrapper = await mount_diagram({ on_file_drop, on_file_load })
+    const file = new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`)
+    wrapper.dispatchEvent(create_drop_event(file))
+    await vi.waitFor(() =>
+      expect(on_file_drop).toHaveBeenCalledWith(
+        `<svg xmlns="http://www.w3.org/2000/svg"></svg>`,
+        `pd.svg`,
+        expect.objectContaining({ file }),
+      ),
+    )
+    expect(on_file_load).not.toHaveBeenCalled()
+    expect(wrapper.querySelector(`.error`)).toBeNull()
   })
 
   const bad_input: DiagramInput = {

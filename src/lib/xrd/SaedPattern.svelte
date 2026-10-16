@@ -192,7 +192,6 @@
   {#if pattern.spots.length === 0}
     <EmptyState
       overlay
-      role="status"
       message="No reflections satisfy the excitation condition down {zone_text}."
     />
   {/if}

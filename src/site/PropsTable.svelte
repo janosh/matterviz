@@ -3,27 +3,23 @@
   // `$props()` declarations by src/scripts/prop-docs.ts and loaded when first opened
   import { page } from '$app/state'
   import { page_components } from '#site/state.svelte.js'
-  import prop_docs from 'virtual:prop-docs'
 
-  const names = $derived(
-    page_components(page.route.id ?? ``).filter((name) => name in prop_docs),
-  )
   let open: Record<string, boolean> = $state({})
 </script>
 
-{#each names as name (name)}
+{#each page_components(page.route.id ?? ``) as name (name)}
   <details bind:open={open[name]}>
     <summary>Props of <code>{name}</code></summary>
     {#if open[name]}
-      {#await prop_docs[name]()}
+      {#await import(`virtual:prop-docs`)}
         <p>Loading props...</p>
-      {:then { default: props }}
+      {:then { default: docs }}
         <table>
           <thead>
             <tr><th>Prop</th><th>Type</th><th>Default</th><th>Description</th></tr>
           </thead>
           <tbody>
-            {#each props as { name: prop, type, default: fallback, description, bindable, required } (prop)}
+            {#each docs[name] as { name: prop, type, default: fallback, description, bindable, required } (prop)}
               <tr>
                 <td>
                   <code>{prop}</code>

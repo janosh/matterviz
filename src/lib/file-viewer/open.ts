@@ -108,12 +108,13 @@ export const acquire_material = async (
   return { data: classified.content, filename: classified.filename, ...metadata }
 }
 
-// A source's fetched/decompressed bytes or text plus its identity, for readers of their own
-// (a host's raw-file intercept, XRD data files)
-export const acquire_raw_file = async (
+// Hand a source's fetched/decompressed bytes or text plus its identity to a reader of its own
+// (a host's raw-file intercept `on_file_drop`, a plot's drop handler) instead of parsing it
+export const deliver_raw_file = async (
   source: MaterialSource,
+  on_file: FileLoadCallback,
   signal?: AbortSignal,
-): Promise<{ content: string | ArrayBuffer; filename: string; metadata: FileLoadMeta }> => {
+): Promise<void> => {
   const { data, filename, source_filename, source_url, file } = await acquire_material(
     source,
     signal,
@@ -121,21 +122,12 @@ export const acquire_raw_file = async (
   const content = data instanceof Blob ? await data.arrayBuffer() : data
   if ((typeof content === `string` ? content.length : content.byteLength) === 0)
     throw new Error(`file is empty`)
-  return {
-    content,
-    filename,
-    metadata: { source_filename: source_filename ?? filename, source_url, file },
-  }
-}
-
-// Hand a source to a host's raw-file intercept (`on_file_drop`) instead of parsing it
-export const deliver_raw_file = async (
-  source: MaterialSource,
-  on_file_drop: FileLoadCallback,
-  signal?: AbortSignal,
-): Promise<void> => {
-  const { content, filename, metadata } = await acquire_raw_file(source, signal)
-  if (!signal?.aborted) await on_file_drop(content, filename, metadata)
+  if (signal?.aborted) return
+  await on_file(content, filename, {
+    source_filename: source_filename ?? filename,
+    source_url,
+    file,
+  })
 }
 
 export async function open_material(

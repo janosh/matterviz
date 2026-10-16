@@ -3,18 +3,16 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { format_num, format_tick_values } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
-  import { color_ramp_scale, sample_color_ramp } from '#lib/plot/core/color-ramp.js'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'
   import {
-    create_color_scale,
+    color_ramp_scale,
     generate_arcsinh_ticks,
     generate_log_ticks,
     integer_ticks,
     is_integer_format,
-    resolve_value_range,
+    resolve_color_scale,
     tick_label_format,
-    to_color_scale_config,
   } from '#lib/plot/core/scales.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import {
@@ -120,10 +118,9 @@
     title_side || (outside_tick_side ? opposite_side[outside_tick_side] : `left`),
   )
   const n_ticks = $derived(Array.isArray(tick_labels) ? tick_labels.length : tick_labels)
-  const config = $derived(to_color_scale_config(color_scale))
+  const { color_fn, color_scale: config } = $derived(resolve_color_scale(color_scale, [0, 1]))
   const scale_type = $derived(config.type ?? `linear`)
-  const range = $derived(resolve_value_range(config, [0, 1]))
-  const color_fn = $derived(create_color_scale(config, range))
+  const range = $derived(config.value_range)
   const type_name = $derived(get_scale_type_name(scale_type))
 
   // Maps tick values to their position along the bar in percent. Generated ticks snap by
@@ -160,10 +157,15 @@
     nice_range = snap_ticks && !Array.isArray(tick_labels) ? [...tick_domain] : range
   })
 
-  // Sample the displayed domain without changing the caller's data-to-color mapping.
-  const gradient_stops = $derived(
-    sample_color_ramp({ color_fn, domain: tick_domain }, scale_type, steps).join(`, `),
-  )
+  // Colors at stops evenly spaced in scale space over the displayed domain, without changing
+  // the caller's data-to-color mapping
+  const gradient_stops = $derived.by(() => {
+    const n_steps = Math.max(2, Math.floor(steps))
+    const position = color_ramp_scale(scale_type, tick_domain, [0, 1])
+    return d3_range(n_steps)
+      .map((idx) => color_fn(position.invert(idx / (n_steps - 1))))
+      .join(`, `)
+  })
   // Colors the scale can't resolve (CSS variables, unparsable strings) inherit the text color
   const inside_tick_color = (value: number): string => {
     try {

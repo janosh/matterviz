@@ -5,8 +5,8 @@ import { get_formula_label_segments } from '#lib/composition/format.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
-import { array_extent, clamp, mean, to_radians, type Vec2, type Vec3 } from '#lib/math.js'
-import { create_color_scale } from '#lib/plot/core/scales.js'
+import { array_extent, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
+import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
 import {
   centered_rect,
   pad_rect,
@@ -552,11 +552,13 @@ function dominant_element(
   return elements[totals.indexOf(Math.max(...totals))]
 }
 
-// formation_energy face mode spans the faces' formation energies, at least 0.1 eV/atom wide
-// (unset value_range ends of color_scale fit this); the face color bar reads the same range
-export function face_e_form_range(e_forms: readonly number[]): Vec2 {
+// formation_energy face colors (and the face color bar): the points' scheme over the faces'
+// formation energies, at least 0.1 eV/atom wide. The points' value_range never applies: it
+// spans hull distances (>= 0), which would collapse every face (<= 0) to one end color.
+export function face_color_scale(color_scale: ColorScale, e_forms: readonly number[]) {
+  const { value_range: _hull_dist_range, ...config } = to_color_scale_config(color_scale)
   const [lower, upper] = array_extent(e_forms)
-  return [lower, Math.max(upper, lower + 0.1)]
+  return resolve_color_scale(config, [lower, Math.max(upper, lower + 0.1)])
 }
 
 // Mean formation energies of the faces build_hull_faces draws for these facets
@@ -571,11 +573,11 @@ export function face_color_resolver(
 ): (face: HullFace) => string {
   const { mode, uniform_color, color_scale, element_colors, elements } = opts
   if (mode === `formation_energy`) {
-    const scale = create_color_scale(
+    const { color_fn } = face_color_scale(
       color_scale,
-      face_e_form_range(faces.map((face) => face.e_form)),
+      faces.map((face) => face.e_form),
     )
-    return (face) => scale(face.e_form)
+    return (face) => color_fn(face.e_form)
   }
   if (mode === `dominant_element`) {
     return (face) => element_colors[dominant_element(face.vertices, elements)] ?? `#888888`

@@ -26,7 +26,7 @@
     selected_series_idx = $bindable(0),
     // Declared explicitly (rather than left to ...rest) so the host can bind them and
     // observe the pane being shown/opened, matching BarPlotControls
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     children,
     ...rest
@@ -121,7 +121,7 @@
   bind:y_axis
   bind:y2_axis
   bind:display
-  bind:show_controls
+  {show_controls}
   bind:controls_open
   display_extra_values={{
     show_points: styles.show_points,

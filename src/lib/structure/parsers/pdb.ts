@@ -3,7 +3,7 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
-import type { WarnFn } from '#lib/trajectory/parse/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import { parse_num_token } from '#lib/utils.js'
 import {
   cell_frame,
@@ -56,7 +56,7 @@ const pdb_element = (line: string, atom_idx: number): ElementSymbol => {
   return element_from_candidates([line.slice(76, 78).trim(), ...from_name], atom_idx)
 }
 
-export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStructure => {
+export const parse_pdb = (content: string): AnyStructure => {
   const all_lines = content.split(/\r?\n/)
   // `END` terminates a PDB entry, and files are concatenated (VMD multi-frame output,
   // docking ensembles, `cat a.pdb b.pdb`). Only the first entry is parsed, as parse_mol
@@ -71,7 +71,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
     end_idx !== -1 &&
     all_lines.slice(end_idx + 1).some((line) => line.slice(0, 6).trim() !== ``)
   if (has_further_entry) {
-    warn(`PDB contains multiple END-terminated entries; parsed the first`)
+    parse_warn(`PDB contains multiple END-terminated entries; parsed the first`)
   }
 
   let cell_params: readonly number[] | null = null
@@ -86,7 +86,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
       const params = read_cryst1_params(line)
       if (params === null)
         throw new Error(`PDB CRYST1 record has invalid cell parameters: '${line.trim()}'`)
-      cell_params = drop_placeholder_cell(params, `PDB`, `CRYST1 cell`, warn)
+      cell_params = drop_placeholder_cell(params, `PDB`, `CRYST1 cell`)
       continue
     }
 
@@ -102,7 +102,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
       // promote the first partner into the central slot, bonding the wrong pair
       const central = num_field(line, 6, 11)
       if (!Number.isFinite(central)) {
-        warn(`PDB CONECT record has no central atom serial: '${line}'`)
+        parse_warn(`PDB CONECT record has no central atom serial: '${line}'`)
         continue
       }
       const partners = [11, 16, 21, 26]
@@ -129,7 +129,9 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
 
   if (model_lines.length === 0) throw new Error(`No ATOM or HETATM records found in PDB file`)
   if (model_count > 1) {
-    warn(`PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`)
+    parse_warn(
+      `PDB contains ${model_count} models; parsed the first and skipped ${model_count - 1}`,
+    )
   }
   // altLoc is column 17; a residue is chain + resSeq + iCode (columns 22-27). resName
   // stays out of the key: microheterogeneity lists different residues per conformer.
@@ -140,7 +142,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
     (line) => line.slice(12, 16),
   )
   if (atom_lines.length < model_lines.length) {
-    warn(
+    parse_warn(
       `PDB: skipped ${model_lines.length - atom_lines.length} atom(s) with alternate location indicators`,
     )
   }
@@ -148,7 +150,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
 
   // Cartesian coordinates stay authoritative and are NOT wrapped into the cell:
   // wrapping would tear molecules apart across periodic boundaries
-  const { lattice_matrix, to_frac } = cell_frame(cell_params, `PDB CRYST1 cell`, warn)
+  const { lattice_matrix, to_frac } = cell_frame(cell_params, `PDB CRYST1 cell`)
 
   const sites: Site[] = []
   const site_idx_by_serial = new Map<number, number>()
@@ -178,7 +180,7 @@ export const parse_pdb = (content: string, warn: WarnFn = console.warn): AnyStru
     record_atom_id(site_idx_by_serial, atom_serials[atom_idx], sites.length - 1)
   }
 
-  const bonds = resolve_bonds(raw_bonds, site_idx_by_serial, `PDB CONECT`, warn)
+  const bonds = resolve_bonds(raw_bonds, site_idx_by_serial, `PDB CONECT`)
 
   return parsed_result(sites, bonds, lattice_matrix)
 }

@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
-  import type { ShowControlsProp } from '#lib/controls.js'
+  import { DEFAULT_CONTROLS_MODE, type ShowControlsProp } from '#lib/controls.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'

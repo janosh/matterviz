@@ -11,7 +11,7 @@ import { element_by_symbol } from '#lib/element/data.js'
 import { format_fractional, format_num } from '#lib/labels.js'
 import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
-import { create_color_scale } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type {
   ConvexHullConfig,
@@ -46,7 +46,7 @@ const finite_hull_dists = (entries: readonly StabilityEntry[]): number[] =>
   entries.map((entry) => entry.e_above_hull).filter(is_finite)
 
 // [min, max] energy above hull across entries, for ColorBar ranges (max floored at 0.1)
-export const hull_distance_range = (entries: PhaseData[]): [number, number] => {
+export const hull_distance_range = (entries: readonly StabilityEntry[]): [number, number] => {
   const dists = finite_hull_dists(entries)
   if (dists.length === 0) return [0, 0.1]
   const [min_dist, max_dist] = array_extent(dists)
@@ -136,11 +136,8 @@ export function get_energy_color_scale(
   color_scale: ColorScale, // unset value_range ends fit the entries' hull distances
   plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
-  const dists = color_mode === `energy` ? finite_hull_dists(plot_entries) : []
-  if (dists.length === 0) return null
-  const [lower, max_dist] = array_extent(dists)
-  const upper = Math.max(max_dist, 0.1, lower + 1e-6)
-  return create_color_scale(color_scale, [lower, upper])
+  if (color_mode !== `energy` || finite_hull_dists(plot_entries).length === 0) return null
+  return resolve_color_scale(color_scale, hull_distance_range(plot_entries)).color_fn
 }
 
 // Point color resolver (shared)

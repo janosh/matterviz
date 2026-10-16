@@ -139,8 +139,12 @@ type NormalizeSettings<Definition> = {
 const define_settings = <Definition extends SettingsDefinition>(definition: Definition) =>
   definition as unknown as NormalizeSettings<Definition>
 const typed_setting = <Value>(definition: SettingType<Value>): SettingType<Value> => definition
-const color_scale_setting = (description: string) =>
-  typed_setting<ColorScale>({ value: `interpolateViridis`, description, kind: `color_scale` })
+const color_scale_setting = (target: string) =>
+  typed_setting<ColorScale>({
+    value: `interpolateViridis`,
+    description: `Color scale for ${target}: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config`,
+    kind: `color_scale`,
+  })
 
 // Settings shared by the sunburst + treemap sections below so the two charts'
 // options can't drift; `node` names the chart's visual unit (arc/cell) and
@@ -228,7 +232,7 @@ const convex_hull_settings = (
       description: `Color mode for ${hull} points`,
       enum: { stability: `Stability`, energy: `Energy` },
     },
-    color_scale: color_scale_setting(`D3 interpolate color scale for ${hull} energy mode`),
+    color_scale: color_scale_setting(`${hull} energy mode`),
     show_stable: { value: true, description: `Show stable phases in ${hull}` },
     show_unstable: { value: true, description: `Show unstable phases in ${hull}` },
     show_stable_labels: {
@@ -434,9 +438,7 @@ export const SETTINGS_CONFIG = define_settings({
         property: `Site Property`,
       } as Readonly<Record<AtomColorMode, string>>,
     },
-    atom_color_scale: color_scale_setting(
-      `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
-    ),
+    atom_color_scale: color_scale_setting(`property-based atom coloring`),
     atom_color_scale_type: {
       value: `continuous`,
       description: `Color scale type for property-based coloring`,
@@ -592,7 +594,7 @@ export const SETTINGS_CONFIG = define_settings({
         uniform: `uniform`,
       },
     }),
-    vector_color_scale: color_scale_setting(`D3 color scale for magnitude coloring mode`),
+    vector_color_scale: color_scale_setting(`vector magnitude coloring`),
     vector_normalize: {
       value: false,
       description: `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
@@ -730,9 +732,7 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Quantity mapped onto the Fermi surface color scale`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
-    color_scale: color_scale_setting(
-      `D3 color scale for the Fermi surface (e.g. interpolateViridis, interpolatePlasma)`,
-    ),
+    color_scale: color_scale_setting(`the Fermi surface`),
     representation: {
       value: `solid`,
       description: `How to render the Fermi surface`,

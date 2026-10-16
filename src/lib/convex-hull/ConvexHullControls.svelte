@@ -4,7 +4,6 @@
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -365,10 +364,7 @@
           style="cursor: pointer">Color scale</span
         >
         <ColorScaleSelect
-          bind:value={
-            () => scheme_name(color_scale),
-            (scheme) => (color_scale = with_scheme(color_scale, scheme))
-          }
+          bind:value={color_scale}
           placeholder="Select color scale"
           {@attach tooltip({ content: `Set interpolator for energy colors` })}
         />

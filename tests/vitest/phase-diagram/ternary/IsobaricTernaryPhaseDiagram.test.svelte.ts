@@ -26,6 +26,7 @@ import {
   create_drop_event,
   doc_query,
   expect_tooltip_paint,
+  mock_canvas_context,
   set_input,
 } from '../../setup'
 import { make_phase } from '../../test-fixtures'
@@ -129,7 +130,9 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(state.diagram?.events).toHaveLength(3)
     press(`ArrowRight`)
     expect(state.temperature).toBe(1500) // clamped at the top of the sweep
-    press(`ArrowLeft`)
+    // hovered without focus too, like the other viewers
+    doc_query(`.ternary-phase-diagram`).dispatchEvent(new PointerEvent(`pointerenter`))
+    expect(keydown(document.body, `ArrowLeft`).defaultPrevented).toBe(true)
     expect(state.temperature).toBe(1488) // 1% of the 1200 K span
     press(`ArrowLeft`, true)
     expect(state.temperature).toBeCloseTo(1299, 0) // just below the 1300 K transition
@@ -574,6 +577,33 @@ describe(`PhaseStabilityMap`, () => {
     expect(state.temperature).toBeCloseTo(900, 6)
   })
 
+  // The cached row layer is keyed on the colors by identity: a JSON key reads every function
+  // scheme as `{}`, so swapping one never repainted the rows
+  test(`swapping a function color scheme repaints the cached rows`, async () => {
+    const fills = new Set<string>()
+    Object.defineProperty(mock_canvas_context({ setLineDash: vi.fn() }), `fillStyle`, {
+      set: (fill: string) => fills.add(fill),
+    })
+    const props = $state({
+      diagram: map_diagram,
+      settings: {
+        ...TERNARY_DISPLAY_DEFAULTS,
+        color_scale: { scheme: (): string => `#000001` },
+      },
+      row_height: 10,
+    })
+    try {
+      mount_it(PhaseStabilityMap, props)
+      for (const fill of [`#000001`, `#000002`]) {
+        props.settings = { ...props.settings, color_scale: { scheme: () => fill } }
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        expect(fills).toContain(fill)
+      }
+    } finally {
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
+    }
+  })
+
   // Centred on their ticks, the 300 K label ran into `T (K)` and the 1500 K one off the canvas
   test(`temperature tick labels stay between the label gutter and the canvas edge`, async () => {
     const labels: { label: string; x: number }[] = []
@@ -717,3 +747,37 @@ test.each([true, false])(
     }
   },
 )
+
+// A host's on_file_drop takes the raw file instead of the entries parse, and a throwing
+// on_file_load is reported as the load's failure, not as unreadable file content
+test.each([
+  [`on_file_drop`, { on_file_drop: vi.fn() }, null],
+  [
+    `a throwing on_file_load`,
+    {
+      on_file_load: () => {
+        throw new Error(`host boom`)
+      },
+    },
+    `Failed to load 1 file — toy.json: host boom`,
+  ],
+])(`dropped entries with %s`, async (_label, props, error) => {
+  mount_diagram(props)
+  const content = JSON.stringify(toy_entries)
+  const file = new File([content], `toy.json`)
+  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+  if (`on_file_drop` in props) {
+    await vi.waitFor(() =>
+      expect(props.on_file_drop).toHaveBeenCalledWith(
+        content,
+        `toy.json`,
+        expect.objectContaining({ file }),
+      ),
+    )
+  }
+  await vi.waitFor(() =>
+    expect(document.querySelector(`.status-message.error`)?.textContent?.trim() ?? null).toBe(
+      error,
+    ),
+  )
+})

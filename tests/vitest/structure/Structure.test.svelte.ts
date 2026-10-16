@@ -233,15 +233,22 @@ test(`loads strings, URLs and dropped files; caller-owned structures skip fetchi
   expect(fetch_spy.mock.calls.map(([url]) => url)).toEqual([`/loaded.poscar`])
 })
 
-// Parser warnings (host-supplied or from a dropped file) show as one dismissible notice; the
-// next load replaces them
+// Parser warnings (host-supplied or from a dropped file) show as one dismissible notice tied
+// to their structure; the next load replaces them
 test(`parse warnings render as a dismissible notice and reset on the next load`, async () => {
-  const state = $state<{ parse_warnings?: string[] }>({ parse_warnings: [`host warning`] })
-  mount_structure(bind_props({ structure }, state))
+  const state = $state<{ structure?: AnyStructure; parse_warnings?: string[] }>({
+    structure,
+    parse_warnings: [`host warning`],
+  })
+  mount_structure(bind_props({}, state))
   await tick()
   expect(doc_query(`.viewer-notices > .parse-warnings`).textContent).toContain(
     `1 parse warning: host warning`,
   )
+  // a host swapping in another structure retires the warnings of the one they came with
+  state.structure = structures[1]
+  await tick()
+  expect(document.querySelector(`.parse-warnings`)).toBeNull()
   const zone = doc_query(`.structure`)
   zone.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `bad.cif`)))
   await vi.waitFor(() =>
@@ -1773,7 +1780,7 @@ describe(`Structure`, () => {
 
   test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
     vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-    const state = { active_pane: null as StructurePane | null }
+    const state = $state({ active_pane: null as StructurePane | null })
     mount_structure(bind_props({ structure, enable_info_pane: true }, state))
     await tick()
 
@@ -1786,6 +1793,8 @@ describe(`Structure`, () => {
     expect(state.active_pane).toBe(`info`)
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
     vi.advanceTimersByTime(400)
+    // the open pane's own Escape layer closes it (Structure has no pane binding of its own)
+    expect(doc_query(`.structure-info-pane`).classList).toContain(`viewer-pane-open`)
     await fire(doc_query(`.structure`), keydown(`Escape`))
     expect(state.active_pane).toBeNull()
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
@@ -1915,6 +1924,7 @@ describe(`Structure`, () => {
         measure_mode: `edit-bonds`,
         bond_edit_mode: mode === `add` ? `delete` : `add`,
       })
+      await tick() // the root's key listener attaches in an effect
       await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
       const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
       expect(selected.textContent?.trim().toLowerCase()).toBe(mode)

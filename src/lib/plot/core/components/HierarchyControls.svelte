@@ -20,7 +20,7 @@
 
   let {
     chart,
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     // shared-option defaults come from the bound chart's own settings (chart is
     // destructured first so later prop defaults can reference it)

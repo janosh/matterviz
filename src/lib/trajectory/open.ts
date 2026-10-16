@@ -25,7 +25,7 @@ import { parse_lammps_trajectory } from './parse/lammps'
 import { parse_vasp_outcar } from './parse/outcar'
 import { parse_pymatgen_trajectory } from './parse/pymatgen'
 import type { ParsedTrajectory, WarningCollector } from './parse/shared'
-import { create_warning_collector } from './parse/shared'
+import { collect_parse_warnings, create_warning_collector } from './parse/shared'
 import { parse_vasp_xdatcar } from './parse/vasp'
 import { parse_vasprun_xml } from './parse/vasprun'
 import { parse_xyz_trajectory } from './parse/xyz'
@@ -103,7 +103,18 @@ const json_frames = (entries: unknown[]): TrajectoryFrame[] =>
     }
   })
 
-const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTrajectory => {
+// Structure parsers report through parse_warn: route a successful parse's warnings onto the
+// run (a failed one's describe no run)
+const with_run_warnings = <Value>(collector: WarningCollector, parse: () => Value): Value => {
+  const { value, warnings } = collect_parse_warnings(parse)
+  for (const message of warnings) collector.warn(message)
+  return value
+}
+
+const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTrajectory =>
+  with_run_warnings(collector, () => parse_json_frames(value, collector))
+
+const parse_json_frames = (value: unknown, collector: WarningCollector): ParsedTrajectory => {
   if (Array.isArray(value)) return { format: `json`, frames: json_frames(value), metadata: {} }
   if (!is_plain_object(value)) throw new Error(`Invalid data format`)
   // `lattice` is null (not absent) for a pymatgen molecule trajectory
@@ -182,10 +193,8 @@ const parse_text = (
   const data = whole()
   if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
     let structure: AnyStructure | undefined
-    // Kept apart until the read succeeds: a failed sniff's warnings describe no run
-    const xyz_collector = create_warning_collector(() => {})
     try {
-      structure = parse_xyz(data, xyz_collector.warn)
+      structure = with_run_warnings(collector, () => parse_xyz(data))
     } catch (error) {
       // A declared XYZ format is authoritative; an unrecognized name can still hold JSON.
       if (xyz_hint)
@@ -194,7 +203,6 @@ const parse_text = (
         })
     }
     if (structure) {
-      for (const message of xyz_collector.warnings) collector.warn(message)
       return parsed({
         format: `xyz`,
         frames: [{ structure, step: 0, metadata: {} }],

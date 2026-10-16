@@ -517,10 +517,8 @@ export const create_display = (
     // Single-viewer results share the dispatch table with JsonBrowser panels
     app = mount_viewer(container, result.type, result.data, {
       defaults,
+      parse_warnings: result.warnings,
       ...(result.type === `structure` && { prediction: result.prediction }),
-      ...((result.type === `structure` || result.type === `isosurface`) && {
-        parse_warnings: result.warnings,
-      }),
     })
     const detail =
       result.type === `convex_hull`

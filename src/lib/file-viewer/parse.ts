@@ -39,7 +39,7 @@ import {
   open_trajectory,
   VaspoutElectronicOnlyError,
 } from '#lib/trajectory/parse/index.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
 import { type LargeFileMarker, parse_large_file_marker } from './host-transfer'
 import type { ViewType } from './types'
 import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE } from './types'
@@ -58,18 +58,20 @@ const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
 // Discriminated on `type`, so consumers narrow with `result.type === '...'` instead of
 // casting `data`. The one place the shape is only known dynamically (detect_view_type on
 // parsed JSON) casts once, below, rather than pushing that cast onto every reader.
-type Result<Type extends ViewType, Data> = { type: Type; data: Data; filename: string }
+// `warnings`: the parser's recoverable issues (skipped rows, guessed elements, placeholder
+// cells, truncated grids), shown by the viewer as one dismissible notice
+type Result<Type extends ViewType, Data> = {
+  type: Type
+  data: Data
+  filename: string
+  warnings?: string[]
+}
 
 export type ParseResult =
   | Result<`trajectory`, TrajectoryRun>
-  // `warnings`: the parser's recoverable issues (skipped rows, guessed elements, placeholder
-  // cells, truncated grids), shown by the viewer as dismissible notices
-  | (Result<`structure`, AnyStructure> & {
-      prediction?: StructureToolPrediction
-      warnings: string[]
-    })
+  | (Result<`structure`, AnyStructure> & { prediction?: StructureToolPrediction })
   | Result<`fermi_surface`, BandGridData | FermiSurfaceData>
-  | (Result<`isosurface`, VolumetricFileData> & { warnings: string[] })
+  | Result<`isosurface`, VolumetricFileData>
   | Result<`convex_hull`, PhaseData[]>
   | Result<`phase_diagram`, PhaseDiagramData>
   | Result<`json_browser`, unknown>
@@ -131,13 +133,11 @@ const trajectory_result = async (
 }
 
 // Parse a volumetric file (null when not one), collecting its warnings onto the result
-const volumetric_result = (
-  content: string,
-  filename: string,
-): Extract<ParseResult, { type: `isosurface` }> | null => {
-  const collector = create_warning_collector(() => {})
-  const data = parse_volumetric_file(content, filename, collector.warn)
-  return data && { type: `isosurface`, data, filename, warnings: collector.warnings }
+const volumetric_result = (content: string, filename: string): ParseResult | null => {
+  const { value: data, warnings } = collect_parse_warnings(() =>
+    parse_volumetric_file(content, filename),
+  )
+  return data && { type: `isosurface`, data, filename, warnings }
 }
 
 // Parse a structure file, collecting its warnings onto the result (not the console: the
@@ -147,10 +147,10 @@ const structure_result = (
   filename: string,
   structure_id: string,
 ): Extract<ParseResult, { type: `structure` }> => {
-  const collector = create_warning_collector(() => {})
-  const structure = parse_structure_file(content, filename, collector.warn)
-  const data = { ...structure, id: structure_id }
-  return { type: `structure`, data, filename, warnings: collector.warnings }
+  const { value, warnings } = collect_parse_warnings(() =>
+    parse_structure_file(content, filename),
+  )
+  return { type: `structure`, data: { ...value, id: structure_id }, filename, warnings }
 }
 
 // Route file content to the parser for its format and wrap the result with its view type
@@ -187,7 +187,6 @@ export const parse_file_content = async (
         type: `isosurface`,
         data: await parse_vaspwave_charge(buffer, filename),
         filename,
-        warnings: [],
       }
     }
     if (
@@ -237,7 +236,7 @@ export const parse_file_content = async (
       parsed_json.schema.startsWith(`matterviz-prediction-`)
     ) {
       const prediction = prediction_from_json(parsed_json)
-      return { type: `structure`, data: prediction.input, prediction, filename, warnings: [] }
+      return { type: `structure`, data: prediction.input, prediction, filename }
     }
     const detected = detect_view_type(parsed_json)
     if (detected === `structure`) {
@@ -254,7 +253,6 @@ export const parse_file_content = async (
         type: `isosurface`,
         data: volume_json_to_isosurface_input(parsed_json),
         filename,
-        warnings: [],
       }
     }
     if (detected === `fermi_surface` || detected === `band_grid`) {

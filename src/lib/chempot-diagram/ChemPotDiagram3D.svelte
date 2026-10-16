@@ -3,11 +3,7 @@
   import { Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import type { FormulaLabelSegment } from '#lib/composition/format.js'
-  import {
-    DEFAULT_CONTROLS_MODE,
-    normalize_show_controls,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
+  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '#lib/convex-hull/types.js'
   import EmptyState from '#lib/EmptyState.svelte'
@@ -99,7 +95,7 @@
 
   let {
     entries = [],
-    show_controls = DEFAULT_CONTROLS_MODE,
+    show_controls,
     config = {},
     width = 800,
     height = 600,
@@ -1323,7 +1319,7 @@
         style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
       />
     {:else}
-      <EmptyState role="alert" aria-live="polite">
+      <EmptyState>
         <p>Cannot compute chemical potential diagram.</p>
         <p>{diagram_error ?? `Need at least 2 elements with elemental reference entries.`}</p>
       </EmptyState>
@@ -1374,7 +1370,6 @@
     <ChemPotLegend
       {color_mode}
       {color_bar}
-      color_bar_props={config.color_bar}
       formulas={render_domains.map((domain) => domain.formula)}
       style="bottom: 16px; left: 1em"
     />

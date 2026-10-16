@@ -12,7 +12,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     grid_step = $bindable(GRID_DEFAULTS.grid_step),
     show_grid = $bindable(GRID_DEFAULTS.show_grid),

@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
@@ -12,16 +11,15 @@
   import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
   import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
-  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
-  import { resolve_value_range } from '#lib/plot/core/scales.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
   import {
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
     canvas_safe_color,
-    draw_markers,
-  } from '#lib/plot/core/canvas-markers.js'
+    create_marker_canvas,
+  } from '#lib/plot/core/canvas-markers.svelte.js'
   import {
     build_spatial_index,
     query_nearest,
@@ -32,15 +30,11 @@
     focus_left,
     is_activation_key,
     pointer_pos,
+    step_point_cursor,
   } from '#lib/plot/core/interactions.js'
   import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
-  import {
-    attach_canvas,
-    canvas_painters,
-    observe_size,
-    prepare_canvas,
-  } from '#lib/plot/core/utils.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
   import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export.js'
   import { svg_sources } from '#lib/io/export.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
@@ -60,6 +54,7 @@
   } from '#lib/plot/ternary/ternary.js'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
   import { to_error } from '#lib/utils.js'
+  import { is_modifier_chord } from 'svelte-widgets/utils'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -87,7 +82,7 @@
     hovered = $bindable(false),
     on_point_click,
     on_point_hover,
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -122,7 +117,9 @@
       ) => void
       // Called when a marker is hovered or focused, with null once it is left
       on_point_hover?: (
-        data: (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
+        data:
+          | (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
+          | null,
       ) => void
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet
@@ -134,7 +131,8 @@
   let colorbar_size = $state({ width: 0, height: 0 })
 
   // Hover state is indices only: the payload follows new data and closes once the point is gone
-  let hover_key = $state<{ series_idx: number; point_idx: number } | null>(null)
+  type PointKey = { series_idx: number; point_idx: number }
+  let hover_key = $state<PointKey | null>(null)
   let hover_pos = $state({ x: 0, y: 0 })
   // Keyboard focus anchors at the marker, where there is no pointer glyph to dodge
   let hover_at_pointer = $state(false)
@@ -217,8 +215,7 @@
     return [min, max]
   })
   let color_bar_visible = $derived(color_bar !== null && color_extent[0] <= color_extent[1])
-  let value_range = $derived(resolve_value_range(color_scale, color_extent))
-  let color_ramp = $derived(resolve_color_ramp(color_scale, value_range))
+  let color_ramp = $derived(resolve_color_scale(color_scale, color_extent))
   const point_color = (point: PlacedPoint): string =>
     point.color_value === null
       ? series_color(point.series_idx)
@@ -243,8 +240,9 @@
     const [px_x, px_y] = pixel(point)
     return { x: pad.l + px_x, y: pad.t + px_y }
   }
-  const is_hovered = (point: PlacedPoint): boolean =>
-    hover_key?.series_idx === point.series_idx && hover_key.point_idx === point.point_idx
+  const same_point = (key: PointKey | null, point: PlacedPoint): boolean =>
+    key?.series_idx === point.series_idx && key.point_idx === point.point_idx
+  const is_hovered = (point: PlacedPoint): boolean => same_point(hover_key, point)
 
   // Lines connect each visible series directly from its ordered point group.
   let line_paths = $derived(
@@ -352,16 +350,11 @@
       : static_svg_points,
   )
 
-  let canvas_element = $state<HTMLCanvasElement>()
-  // Also registered as the canvas's export painter, redrawing at the export pixel ratio
-  const paint_markers = (canvas?: HTMLCanvasElement, pixel_ratio?: number) => {
-    const surface = prepare_canvas(canvas, width, height, pixel_ratio)
-    if (surface) draw_markers(surface.ctx, canvas_layer?.markers ?? [], surface)
-  }
-  $effect(() => {
-    paint_markers(canvas_element)
-    if (canvas_element) canvas_painters.set(canvas_element, paint_markers)
-  })
+  const marker_canvas = create_marker_canvas(() => ({
+    markers: canvas_layer?.markers ?? [],
+    width,
+    height,
+  }))
 
   const point_from_event = (event: Event): PlacedPoint | null => {
     const svg_idx = closest_data_idx(event, `data-ternary-idx`, svg_element)
@@ -373,8 +366,10 @@
 
   // Hover follows the cursor; keyboard focus (no cursor) anchors at the marker. Same
   // point as before only moves the anchor, the callback does not re-fire.
-  function handle_hover(event: MouseEvent | FocusEvent) {
-    const point = point_from_event(event)
+  function handle_hover(
+    event: MouseEvent | FocusEvent | KeyboardEvent,
+    point = point_from_event(event),
+  ) {
     if (!point) return clear_hover()
     hovered = true
     const cursor = pointer_pos(event, svg_element)
@@ -392,8 +387,7 @@
     on_point_hover?.(null)
   }
 
-  function handle_click(event: MouseEvent | KeyboardEvent) {
-    const point = point_from_event(event)
+  function handle_click(event: MouseEvent | KeyboardEvent, point = point_from_event(event)) {
     if (point) on_point_click?.({ ...point_props(point), event })
   }
 
@@ -407,6 +401,32 @@
     if (!is_activation_key(event)) return
     event.preventDefault()
     handle_click(event)
+  }
+
+  // Canvas markers have no node to focus, so in canvas mode the svg is one tab stop and the
+  // arrows walk `rendered` like ScatterPlot's cursor: its point becomes the hovered one (drawn
+  // back as SVG, with its tooltip) and is announced. Apart from hover_key, so the pointer
+  // sweeping over markers announces nothing.
+  let kbd_key = $state<PointKey | null>(null)
+  const kbd_idx = $derived(
+    kbd_key ? rendered.findIndex((point) => same_point(kbd_key, point)) : -1,
+  )
+  const live_message = $derived(kbd_idx < 0 ? `` : accessible_label(rendered[kbd_idx]))
+  function handle_canvas_keydown(event: KeyboardEvent) {
+    if (event.target !== svg_element || event.defaultPrevented || is_modifier_chord(event))
+      return
+    if (event.key === `Escape` && kbd_key) {
+      kbd_key = null
+      clear_hover()
+    } else if (kbd_idx >= 0 && is_activation_key(event)) handle_click(event, rendered[kbd_idx])
+    else {
+      const next = step_point_cursor(event.key, kbd_idx < 0 ? null : kbd_idx, rendered.length)
+      if (next === null) return
+      const { series_idx, point_idx } = rendered[next]
+      kbd_key = { series_idx, point_idx }
+      handle_hover(event, rendered[next])
+    }
+    event.preventDefault()
   }
 
   // Legend: one entry per series, toggling hides the series
@@ -477,6 +497,7 @@
   {export_sources}
   export_filename={export_filename(`ternary`, labels.join(`-`))}
   {children}
+  {live_message}
   {...rest}
 >
   {#snippet controls(toggle_props, show_controls)}
@@ -495,12 +516,15 @@
 
   {#snippet body()}
     <ViewerError message={placed.error} />
-    <!-- Pointer picking reaches canvas markers here; keys go through the roving points group -->
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <!-- Pointer picking reaches canvas markers here; keys go through the roving points group,
+    or in canvas mode a cursor on the svg itself -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
     <svg
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ?? `Ternary plot of ${labels.join(`, `)}`}
+      tabindex={canvas_layer ? 0 : undefined}
+      onkeydown={canvas_layer ? handle_canvas_keydown : undefined}
       onmousemove={handle_hover}
       onmouseleave={clear_hover}
       onclick={handle_click}
@@ -560,7 +584,7 @@
             {width}
             {height}
             pointer-events="none"
-            {@attach attach_canvas(`marker-canvas`, (canvas) => (canvas_element = canvas))}
+            {@attach marker_canvas}
           ></foreignObject>
         {/if}
 
@@ -656,7 +680,7 @@
 
     {#if color_bar_visible && color_bar}
       <ColorBar
-        color_scale={color_ramp.bar_scale}
+        color_scale={color_ramp.color_scale}
         {...color_bar}
         style="position: absolute; bottom: {COLOR_BAR_GAP}px; left: 50%; transform: translateX(-50%); width: var(--ternary-colorbar-width, 40%); min-width: 120px; pointer-events: auto; {color_bar.style ??
           ``}"

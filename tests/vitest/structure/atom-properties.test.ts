@@ -84,15 +84,12 @@ describe(`Color Scales`, () => {
     )
   })
 
-  // A ColorScaleConfig's value_range and palette_range reach the atom colors: set ends replace
-  // the data extent (values past them clamp), a descending palette_range reverses the ramp
-  test.each<[ColorScale, number[]]>([
-    [{ scheme: `interpolateViridis`, value_range: [0, 10] }, [0.1, 0.2, 0.5, 1]],
-    [{ scheme: `interpolateViridis`, value_range: [null, 2] }, [0, 1, 1, 1]],
-    [{ scheme: `interpolateViridis`, palette_range: [1, 0] }, [1, 8 / 9, 5 / 9, 0]],
-  ])(`apply_color_scale honors %j`, (color_scale, fractions) => {
+  // color_scale reaches the atom colors: value_range[0] takes the palette start, so a
+  // descending range runs it high-to-low (as in every colored component)
+  test(`apply_color_scale honors a descending value_range`, () => {
     const interp = get_d3_interpolator(`interpolateViridis`)
-    const expected = fractions.map((frac) => rgb(interp(frac)).formatHex())
+    const expected = [1, 8 / 9, 5 / 9, 0].map((frac) => rgb(interp(frac)).formatHex())
+    const color_scale: ColorScale = { value_range: [10, 1] }
     expect(atom_properties.apply_color_scale([1, 2, 5, 10], color_scale).colors).toEqual(
       expected,
     )
@@ -419,6 +416,8 @@ describe(`Custom`, () => {
 })
 
 describe(`normalize_atom_color_config`, () => {
+  const red_ramp = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
+  const { DEFAULT_ATOM_COLOR_CONFIG } = atom_properties
   // Models a payload that arrived as JSON (for example, saved settings), not a deep clone:
   // structuredClone throws on a color_fn where serialization silently drops it, and coping
   // with that loss is exactly what these cases check.
@@ -490,6 +489,12 @@ describe(`normalize_atom_color_config`, () => {
       },
     ],
     [{ mode: `property` }, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
+    // the shared ColorScale guard: function schemes pass, unknown scheme names don't
+    [
+      { mode: `element`, color_scale: { scheme: red_ramp } },
+      { mode: `element`, color_scale: { scheme: red_ramp }, scale_type: `continuous` },
+    ],
+    [{ mode: `element`, color_scale: { scheme: `Viridis` } }, DEFAULT_ATOM_COLOR_CONFIG],
     [as_serialized({ mode: `custom` }), atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
     [{}, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
   ])(`normalizes partial or unsupported payload %#`, (input, expected) => {

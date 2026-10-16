@@ -90,26 +90,6 @@ const typed_grid = (nested: number[][][]): BandGridData => {
   }
 }
 
-test.each([
-  [false, false],
-  [true, false],
-  [false, true],
-])(`pane Escape respects canceled=%s composing=%s`, async (canceled, is_composing) => {
-  const state = $state({ controls_open: true })
-  mounted.push(mount(FermiSurface, { target: document.body, props: state }))
-  await tick()
-  doc_query(`.fermi-surface`).dispatchEvent(new PointerEvent(`pointerenter`))
-  const event = new KeyboardEvent(`keydown`, {
-    key: `Escape`,
-    isComposing: is_composing,
-    cancelable: true,
-  })
-  if (canceled) event.preventDefault()
-  globalThis.dispatchEvent(event)
-  await tick()
-  expect(state.controls_open).toBe(canceled || is_composing)
-})
-
 test(`custom drops receive raw content while loading remains visible`, async () => {
   const pending = Promise.withResolvers<undefined>()
   const on_file_drop = vi.fn(() => pending.promise)

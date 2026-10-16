@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { BarPlotOptions } from '#lib/plot/index.js'
   // Shell shared by the bar plots that histogram one-or-many structures (#lib/bond-angles,
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
@@ -7,7 +6,6 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'
-  import { parse_warnings_notice } from '#lib/labels.js'
   import type {
     AxisConfig,
     BarHandlerProps,
@@ -38,7 +36,7 @@
     loading = $bindable(false),
     loading_message = `Reading dropped file…`,
     error_msg = $bindable(),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     on_bar_change,
     ...rest
@@ -80,21 +78,17 @@
   let display = $derived({ x_zero_line: is_horizontal, y_zero_line: !is_horizontal })
 
   // The latest drop's recoverable parse warnings, one dismissible notice
-  let parse_warnings = $state<string[]>([])
-  let parse_warning_msg = $derived(parse_warnings_notice(parse_warnings))
+  let parse_warning_msg = $state<string>()
   const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
     on_file_drop: () => on_file_drop,
-    on_structure: ({ structure, filename, warnings }) => {
+    on_structure: (structure, label) => {
       if (!structure.sites.length) throw new Error(`no sites, nothing to plot`)
-      dropped_entries = [{ label: filename, structure }, ...dropped_entries]
-      parse_warnings = [...parse_warnings, ...warnings.map((msg) => `${filename}: ${msg}`)]
+      dropped_entries = [{ label, structure }, ...dropped_entries]
     },
     on_error: (msg) => (error_msg = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) [error_msg, parse_warnings] = [undefined, []]
-    },
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
     on_dragover: (over) => (dragover = over),
   })
   const report_bar_change = on_change(
@@ -126,7 +120,7 @@
   {:else}
     <BarPlot
       {...rest}
-      bind:show_controls
+      {show_controls}
       bind:controls_open
       {series}
       bind:orientation

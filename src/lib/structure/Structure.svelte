@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SHORTCUTS, shortcut_attrs } from '#lib/shortcuts.js'
+  import { SHORTCUTS, shortcut_attrs, viewer_keydown } from '#lib/shortcuts.js'
   import { merge_site_properties, site_count } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
@@ -22,7 +22,6 @@
     Reset,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent } from '#lib/utils.js'
   import { parse_warnings_notice } from '#lib/labels.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import { webgpu_available } from '#lib/scene/index.js'
@@ -70,10 +69,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
-  import {
-    forward_window_keydown,
-    tooltip as attach_tooltip,
-  } from 'svelte-widgets/attachments'
+  import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -324,8 +320,7 @@
     set_dragover: (over) => (dragover = over),
     commit: (opened) => {
       toast_store.clear() // a previous load's notice doesn't describe this one
-      parse_warnings =
-        opened.type === `structure` || opened.type === `isosurface` ? opened.warnings : []
+      parse_warnings = opened.warnings ?? []
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
@@ -762,8 +757,16 @@
   // === symmetry ===
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
+  // The structure parse_warnings came with: a host swapping in another one (or an edit)
+  // retires the notice instead of leaving it to describe the wrong structure
+  let warned_structure = $derived.by(() => {
+    void parse_warnings
+    return untrack(() => structure)
+  })
   // Writable so the notice can be dismissed
-  let parse_warning_msg = $derived(parse_warnings_notice(parse_warnings))
+  let parse_warning_msg = $derived(
+    warned_structure === structure ? parse_warnings_notice(parse_warnings) : undefined,
+  )
   let last_symmetry_structure: AnyStructure | null = null
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
@@ -1038,23 +1041,19 @@
 
   // === keyboard ===
   const shortcut_flash = create_shortcut_flash()
-  // Returns true when the key was handled so the caller can suppress the browser default
+  // Returns true when the key was handled so viewer_keydown suppresses the browser default
   function handle_keydown(event: KeyboardEvent): boolean {
-    if (active_tool_view?.content || event.isComposing) return false
-    // Bound on the root and on the window: a click leaves the viewer focused *and*
-    // hovered, so both would run and a toggle would cancel itself out. The root fires
-    // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented || is_editable_event_target(event.target)) return false
+    if (active_tool_view?.content || is_editable_event_target(event.target)) return false
     const editing_bonds = measure_mode === `edit-bonds`
     const editing_atoms = measure_mode === `edit-atoms`
-    // Escape unwinds fields, selection, panes, then edit mode, without shortcut flashes.
+    // Escape unwinds fields, selection, then edit mode, without shortcut flashes. Open panes
+    // claim it first (DraggablePane's Escape layer).
     if (event.key === `Escape`) {
       if (editing_atoms && session.add_atom_mode) session.add_atom_mode = false
       else if (editing_atoms && session.change_element_mode)
         session.change_element_mode = false
       else if ((editing_bonds || editing_atoms) && selected_sites.length > 0)
         session.clear_selection()
-      else if (active_pane !== null) active_pane = null
       else if (editing_bonds || editing_atoms) measure_mode = `distance`
       else return false
       return true
@@ -1129,10 +1128,10 @@
     return false
   }
   // Hover (window) path: destructive edit keys require focus, not just a hovering pointer
-  const handle_hover_keydown = (event: KeyboardEvent): boolean =>
-    measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
-      ? false
-      : handle_keydown(event)
+  const keys = viewer_keydown(
+    handle_keydown,
+    (event) => !measure_mode.startsWith(`edit-`) && handle_keydown(event),
+  )
 
   // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
   let background_override = $derived(
@@ -1166,24 +1165,21 @@
       focused = false
     }
   }}
-  onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class={[`structure`, rest.class]}
   {@attach drop_zone}
-  {@attach forward_window_keydown({ handle: handle_hover_keydown })}
+  {@attach keys}
 >
   {@render children?.({ structure, fullscreen })}
   {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
   <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
   <ViewerNotices>
-    {#if parse_warning_msg}
-      <StatusMessage
-        bind:message={parse_warning_msg}
-        type="warning"
-        dismissible
-        class="parse-warnings"
-      />
-    {/if}
+    <StatusMessage
+      bind:message={parse_warning_msg}
+      type="warning"
+      dismissible
+      class="parse-warnings"
+    />
     {#if scene_shown && analyze_symmetry && symmetry_error}
       <StatusMessage
         bind:message={symmetry_error}
@@ -1496,7 +1492,6 @@
       <!-- the loading overlay stands in for the empty state; its label would overlap this one -->
       <EmptyState
         overlay
-        role="status"
         message={structure ? `No sites found in structure` : `No structure provided`}
       />
     {/if}

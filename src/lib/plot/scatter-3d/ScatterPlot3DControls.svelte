@@ -32,7 +32,7 @@
   }
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     x_axis = $bindable({}),
     y_axis = $bindable({}),

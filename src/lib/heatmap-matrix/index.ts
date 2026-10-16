@@ -1,6 +1,5 @@
 import type { ChemicalElement, ElementSymbol } from '#lib/element/index.js'
 import { element_data } from '#lib/element/index.js'
-import type { TooltipProp } from '#lib/tooltip/index.js'
 
 // === Types ===
 
@@ -82,8 +81,6 @@ export type HeatmapDomainMode = `auto` | `robust`
 // Visible cells past which HeatmapMatrix windows its grid unless `virtual` says otherwise
 export const VIRTUAL_CELL_THRESHOLD = 2500
 export type SymmetricMode = false | `lower` | `upper`
-
-export type HeatmapTooltipProp = TooltipProp<CellContext>
 
 // All built-in string ordering keys
 export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrderingKey[]

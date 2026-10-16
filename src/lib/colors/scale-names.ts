@@ -18,8 +18,6 @@ const d3_interpolators = Object.fromEntries(
 export const is_d3_interpolate_name = (name: string): name is D3InterpolateName =>
   Object.hasOwn(d3_interpolators, name)
 
-const is_range_end = (end: unknown): boolean =>
-  end === null || (typeof end === `number` && Number.isFinite(end))
 const is_pair = (
   value: unknown,
   is_item: (item: unknown) => boolean,
@@ -37,8 +35,8 @@ const is_scale_type = (type: unknown): boolean =>
     (type.threshold === undefined ||
       (typeof type.threshold === `number` && type.threshold > 0)))
 
-// A ColorScale given as data (saved settings, VS Code settings.json): a scheme name or a
-// { type, scheme, value_range, palette_range } config whose scheme is a name, not a function
+// A valid ColorScale (saved settings, VS Code settings.json, untyped props): a scheme name or
+// a { type, scheme, value_range, palette_range } config whose scheme is a name or a function
 export function is_color_scale(value: unknown): value is ColorScale {
   if (typeof value === `string`) return is_d3_interpolate_name(value)
   if (!is_plain_object(value)) return false
@@ -46,8 +44,11 @@ export function is_color_scale(value: unknown): value is ColorScale {
   return (
     Object.keys(unknown_keys).length === 0 &&
     (type === undefined || is_scale_type(type)) &&
-    (scheme === undefined || (typeof scheme === `string` && is_d3_interpolate_name(scheme))) &&
-    (value_range === undefined || is_pair(value_range, is_range_end)) &&
+    (scheme === undefined ||
+      typeof scheme === `function` ||
+      (typeof scheme === `string` && is_d3_interpolate_name(scheme))) &&
+    (value_range === undefined ||
+      is_pair(value_range, (end) => end === null || Number.isFinite(end))) &&
     (palette_range === undefined || is_palette_range(palette_range))
   )
 }

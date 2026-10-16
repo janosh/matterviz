@@ -35,7 +35,7 @@
     wrapper?: HTMLDivElement
     css_prefix: string
     fullscreen_toggle: boolean
-    show_controls: ShowControlsProp<`controls` | `fullscreen`>
+    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     // Tucked into the corner with tighter spacing (ChartShell), buttons taking chrome_color
     corner?: boolean
     chrome_color?: string

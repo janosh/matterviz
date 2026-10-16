@@ -16,12 +16,15 @@
   import type { GasSpecies, PhaseData, PhaseEntriesLoadData } from '#lib/convex-hull/types.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { create_file_drop_handler, drag_over_handlers } from '#lib/io/file-drop.js'
+  import { file_drop_zone } from '#lib/io/file-drop.js'
+  import { as_text } from '#lib/io/decompress.js'
+  import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { clamp, type Vec2 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { viewer_keydown } from '#lib/shortcuts.js'
   import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
@@ -74,6 +77,7 @@
     fullscreen_toggle = true,
     wrapper = $bindable(),
     allow_file_drop = true,
+    on_file_drop,
     on_file_load,
     title,
     tooltip,
@@ -102,6 +106,8 @@
     wrapper?: HTMLDivElement
     // Dropped JSON arrays of convex-hull entries replace `entries`
     allow_file_drop?: boolean
+    // Takes each dropped file raw instead of the built-in entries parsing
+    on_file_drop?: FileLoadCallback
     // Called with each dropped file's entries once they are shown
     on_file_load?: (data: PhaseEntriesLoadData) => void
     title?: string
@@ -302,11 +308,16 @@
     playing = !playing
   }
 
-  function handle_keydown(event: KeyboardEvent): void {
+  // Focused or hovered, like the other viewers
+  const keys = viewer_keydown((event) => {
     // Focused controls keep their own keys (space activates a button, arrows move a slider)
-    if ((event.target as Element).closest(`button, input, textarea, select`)) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest(`button, input, textarea, select`)
+    )
+      return false
     // Shift+arrow jumps between transitions; Cmd/Ctrl/Alt chords stay the browser's
-    if (is_modifier_chord(event)) return
+    if (is_modifier_chord(event)) return false
     const dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key]
     if (dir) {
       const target = dir > 0 ? next_event : prev_event
@@ -316,9 +327,9 @@
     // Escape clears the selection, then the pin; with neither the host keeps the key
     else if (event.key === `Escape` && selected_phase !== null) selected_phase = null
     else if (event.key === `Escape` && pinned_composition !== null) pinned_composition = null
-    else return
-    event.preventDefault()
-  }
+    else return false
+    return true
+  })
 
   // === Hover ===
 
@@ -334,25 +345,25 @@
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
   // === File drop ===
 
-  let dragover = $state(false)
   let drop_error = $state<string | null>(null)
-  const handle_drop = create_file_drop_handler({
+  const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_error: (message) => (drop_error = message),
     on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      let parsed: unknown
       try {
-        const parsed: unknown = JSON.parse(
-          typeof content === `string` ? content : new TextDecoder().decode(content),
-        )
+        parsed = JSON.parse(as_text(content))
         if (!Array.isArray(parsed))
           throw new Error(`Expected a JSON array of convex-hull entries`)
-        drop_error = null
-        selected_phase = null
-        dropped_entries = parsed as PhaseData[]
-        on_file_load?.({ entries: dropped_entries, filename, ...metadata })
       } catch (error) {
         drop_error = `${filename}: ${to_error(error).message}`
+        return
       }
+      drop_error = null
+      selected_phase = null
+      dropped_entries = parsed as PhaseData[]
+      on_file_load?.({ entries: dropped_entries, filename, ...metadata })
     },
   })
 </script>
@@ -368,19 +379,12 @@
 <div
   {...rest}
   bind:this={wrapper}
-  class={[`ternary-phase-diagram`, rest.class, { fullscreen, dragover }]}
+  class={[`ternary-phase-diagram`, rest.class, { fullscreen }]}
   role="application"
   tabindex="0"
   aria-label="{model?.elements.join(`-`) ?? ``} ternary composition-temperature phase diagram"
-  onkeydown={handle_keydown}
-  ondrop={(event) => {
-    dragover = false
-    void handle_drop(event)
-  }}
-  {...drag_over_handlers({
-    allow: () => allow_file_drop,
-    set_dragover: (over) => (dragover = over),
-  })}
+  {@attach keys}
+  {@attach drop_zone}
 >
   <ViewerChrome
     {controls_config}
@@ -561,7 +565,6 @@
     </div>
   {:else if entries.length === 0}
     <EmptyState
-      role="status"
       message="Drop a JSON file of convex-hull entries (3 elements) to compute a ternary T–x diagram"
     />
   {/if}

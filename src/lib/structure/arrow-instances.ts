@@ -1,6 +1,5 @@
 import { display_idx } from '#lib/labels.js'
-import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
-import { resolve_value_range } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import * as math from '#lib/math.js'
@@ -105,11 +104,10 @@ export function build_vector_layers(
   if (geometry.layers.length === 0) return []
   const is_single = geometry.layers.length === 1
   const { max_magnitude } = geometry
-  const magnitude_range = resolve_value_range(vector_color_scale, [
+  const magnitude_color = resolve_color_scale(vector_color_scale, [
     0,
     max_magnitude > 1e-10 ? max_magnitude : 1,
-  ])
-  const magnitude_color = resolve_color_ramp(vector_color_scale, magnitude_range).color_fn
+  ]).color_fn
   return geometry.layers.map(({ key, site_indices, placements }, layer_idx) => {
     const configured_color = vector_configs[key]?.color
     const layer_color = configured_color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]

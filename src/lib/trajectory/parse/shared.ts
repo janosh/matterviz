@@ -50,6 +50,28 @@ export const create_warning_collector = (log: WarnFn = log_to_console): WarningC
   }
 }
 
+// Synchronous parsers report recoverable issues (skipped rows, guessed elements, placeholder
+// cells) through parse_warn instead of threading a warn argument through every signature.
+// It logs to the console unless collect_parse_warnings has installed a collector. Lazy
+// trajectory readers, which warn after their run has opened, keep an explicit WarnFn.
+let active_warn: WarnFn = log_to_console
+export const parse_warn: WarnFn = (message, error) => active_warn(message, error)
+
+// Run a synchronous parse with its parse_warn calls collected onto the result rather than
+// logged. A nested collection also forwards each warning to the enclosing one.
+export const collect_parse_warnings = <Value>(
+  parse: () => Value,
+): { value: Value; warnings: string[] } => {
+  const outer = active_warn
+  const collector = create_warning_collector(outer === log_to_console ? () => {} : outer)
+  active_warn = collector.warn
+  try {
+    return { value: parse(), warnings: collector.warnings }
+  } finally {
+    active_warn = outer
+  }
+}
+
 // Run-level facts a file records, in the shape TrajectoryRun carries them
 interface ParsedRunFacts {
   // Short format tag for provenance: 'xyz' | 'lammps' | 'xdatcar' | 'ase' | 'pymatgen-json' | …

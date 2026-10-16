@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
@@ -110,7 +109,7 @@
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     on_series_toggle = () => {},
     controls_toggle_props,

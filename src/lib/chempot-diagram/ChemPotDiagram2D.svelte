@@ -249,7 +249,7 @@
     style="width: 100%; justify-content: center; min-height: 200px; margin: 0; --spinner-size: 1.2em"
   />
 {:else if !diagram_data}
-  <EmptyState role="alert" aria-live="polite">
+  <EmptyState>
     <p>Cannot compute chemical potential diagram.</p>
     <p>{chempot.error ?? `Need at least 2 elements with elemental reference entries.`}</p>
     <!-- the setting that caused the error stays editable -->
@@ -299,7 +299,6 @@
     <ChemPotLegend
       {color_mode}
       {color_bar}
-      color_bar_props={config.color_bar}
       formulas={Object.keys(draw_domains)}
       style="bottom: 60px; left: 50px"
     />

@@ -520,7 +520,7 @@
           color_scale={resolve_color_scale(atom_color_config.color_scale, [
             property_colors.min_value ?? 0,
             property_colors.max_value ?? 0,
-          ])}
+          ]).color_scale}
           tick_labels={Array.from(
             new Set([property_colors.min_value ?? 0, property_colors.max_value ?? 0]),
           )}

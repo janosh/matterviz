@@ -3,7 +3,7 @@
 // IDE hovers miss those comments; the demo pages show them instead (src/site/PropsTable.svelte).
 // One TypeScript program over all component scripts resolves props a component inherits through
 // imported or intersected types (BasePlotProps, Omit<...>, HTMLAttributes) to their declarations.
-// Served by prop_docs_plugin as virtual modules, so nothing is written to disk.
+// Served by prop_docs_plugin as a virtual module, so nothing is written to disk.
 import { globSync, readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import ts from 'typescript'
@@ -254,38 +254,17 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
 
 const VIRTUAL_ID = `virtual:prop-docs`
 
-// `virtual:prop-docs` default-exports { [component]: () => import(`virtual:prop-docs/<component>`) }
-// so each page loads only its own components' docs. The extraction (one TS program, a few
-// seconds) runs on the first per-component load and reruns after src/lib changes.
-export const prop_docs_plugin = (): Plugin => {
-  const lib_dir = `${repo_root}/src/lib/`
-  const component_files = globSync(`**/*.svelte`, { cwd: lib_dir })
-    .map((path) => `${lib_dir}${path}`)
-    .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
-  const file_by_name = new Map(
-    component_files.map((file) => [basename(file, `.svelte`), file]),
-  )
-  let docs: Record<string, PropDoc[]> | null = null
-  return {
-    name: `prop-docs`,
-    resolveId: (id) => (id.startsWith(VIRTUAL_ID) ? `\0${id}` : null),
-    load(id) {
-      if (id === `\0${VIRTUAL_ID}`) {
-        const loaders = [...file_by_name.keys()].map(
-          (name) => `${JSON.stringify(name)}: () => import('${VIRTUAL_ID}/${name}')`,
-        )
-        return `export default {${loaders.join(`,`)}}`
-      }
-      if (!id.startsWith(`\0${VIRTUAL_ID}/`)) return null
-      const name = id.slice(`\0${VIRTUAL_ID}/`.length)
-      const file = file_by_name.get(name)
-      if (!file) return this.error(`No src/lib component named ${name} calls $props()`)
-      this.addWatchFile(file)
-      docs ??= extract_prop_docs(component_files)
-      return `export default ${JSON.stringify(docs[name])}`
-    },
-    watchChange(id) {
-      if (id.startsWith(lib_dir)) docs = null
-    },
-  }
-}
+// `virtual:prop-docs` default-exports every src/lib component's PropDoc[] keyed by name. Pages
+// import it lazily, so the extraction (one TS program, a few seconds) only runs on first use.
+export const prop_docs_plugin = (): Plugin => ({
+  name: `prop-docs`,
+  resolveId: (id) => (id === VIRTUAL_ID ? `\0${id}` : null),
+  load(id) {
+    if (id !== `\0${VIRTUAL_ID}`) return null
+    const lib_dir = `${repo_root}/src/lib/`
+    const files = globSync(`**/*.svelte`, { cwd: lib_dir })
+      .map((path) => `${lib_dir}${path}`)
+      .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
+    return `export default ${JSON.stringify(extract_prop_docs(files))}`
+  },
+})

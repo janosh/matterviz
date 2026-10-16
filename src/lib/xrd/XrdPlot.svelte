@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls.js'
   import type {
     ScatterPlotOptions,
     BarPlotOptions,
@@ -15,14 +15,13 @@
   import { untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import * as file_io from '../io'
-  import { format_value, parse_warnings_notice } from '#lib/labels.js'
+  import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { to_error } from '#lib/utils.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
-  import { acquire_raw_file, deliver_raw_file } from '#lib/file-viewer/open.js'
-  import { open_dropped_structure } from '#lib/plot/core/structure-input.js'
+  import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
   import { structure_xrd_pattern } from '#lib/xrd/calc-xrd.js'
   import { is_xrd_data_file, parse_xrd_file } from './parse'
   import type { RadiationType } from '#lib/scattering/index.js'
@@ -50,7 +49,7 @@
     orientation = `vertical`,
     wavelength = null,
     radiation = $bindable(`xray`),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     x_axis = {},
     y_axis = {},
@@ -300,33 +299,24 @@
   })
 
   // The latest drop's recoverable parse warnings, one dismissible notice
-  let parse_warnings = $state<string[]>([])
-  let parse_warning_msg = $derived(parse_warnings_notice(parse_warnings))
-  // Dropped files: measured patterns are parsed here, structure files open through
-  // open_material (worker parse) and get a computed pattern. A throw is reported with the drop.
-  const drop_zone = file_io.raw_file_drop_zone({
+  let parse_warning_msg = $state<string>()
+  // Dropped measured patterns are parsed here; structure files get a computed pattern
+  const add_dropped = (label: string, pattern: XrdPattern) => {
+    dropped_entries = [{ label, pattern }, ...dropped_entries]
+  }
+  const drop_zone = structure_drop_zone({
     allow: () => allow_file_drop,
-    on_drop: async (source) => {
-      if (on_file_drop) return deliver_raw_file(source, on_file_drop)
-      const { content, filename, metadata } = await acquire_raw_file(source)
-      if (is_xrd_data_file(filename)) {
-        const pattern = await parse_xrd_file(content, filename)
-        dropped_entries = [{ label: filename, pattern }, ...dropped_entries]
-        return
-      }
-      const dropped = await open_dropped_structure({ data: content, filename, ...metadata })
-      const pattern = await structure_xrd_pattern(dropped.structure, wavelength, radiation)
-      dropped_entries = [{ label: filename, pattern }, ...dropped_entries]
-      parse_warnings = [
-        ...parse_warnings,
-        ...dropped.warnings.map((msg) => `${filename}: ${msg}`),
-      ]
+    on_file_drop: () => on_file_drop,
+    intercept: async (content, filename) => {
+      if (!is_xrd_data_file(filename)) return false
+      add_dropped(filename, await parse_xrd_file(content, filename))
+      return true
     },
+    on_structure: async (structure, filename) =>
+      add_dropped(filename, await structure_xrd_pattern(structure, wavelength, radiation)),
     on_error: (msg) => (error_msg = msg),
-    set_loading: (val) => {
-      loading = val
-      if (val) [error_msg, parse_warnings] = [undefined, []]
-    },
+    on_warning: (msg) => (parse_warning_msg = msg),
+    set_loading: (val) => (loading = val),
   })
 
   const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
@@ -479,7 +469,7 @@
         {@attach drop_zone}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        bind:show_controls
+        {show_controls}
         bind:controls_open
       />
     {:else}
@@ -513,7 +503,7 @@
         {@attach drop_zone}
         style={`overflow: visible; ${rest.style ?? ``}`}
         controls_extra={broadening_controls_snippet}
-        bind:show_controls
+        {show_controls}
         bind:controls_open
       />
     {/if}

@@ -26,7 +26,7 @@
   } from '#lib/plot/core/types.js'
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     children,
     display_children,

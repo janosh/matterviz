@@ -4,33 +4,30 @@
   // The caller positions it (absolute) through `style`.
   import { ColorBar } from '#lib/plot/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ChemPotColorBar } from './color'
   import { ARITY_COLORS, arity_legend_labels } from './color'
   import type { ChemPotColorMode, ChemPotDiagramConfig } from './types'
 
   let {
     color_mode,
     color_bar,
-    color_bar_props = {},
     formulas,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     color_mode: ChemPotColorMode
-    color_bar: ChemPotColorBar | null // the active numeric mode's title and color scale
-    color_bar_props?: ChemPotDiagramConfig[`color_bar`] // user ColorBar props, null hides it
+    // the active numeric mode's ColorBar props (title, color scale, the user's), null hides it
+    color_bar: ChemPotDiagramConfig[`color_bar`]
     formulas: string[] // drawn domains; their element counts set the arity rows
   } = $props()
 </script>
 
 <!-- color_bar is null in the categorical modes, so a hidden bar never falls through to arity -->
-{#if color_bar && color_bar_props}
+{#if color_bar}
   <div {...rest} class={[`chempot-legend`, rest.class]}>
     <ColorBar
-      {...color_bar}
       wrapper_style="width: 200px"
       bar_style="height: 12px"
       title_style="margin-bottom: 4px"
-      {...color_bar_props}
+      {...color_bar}
     />
   </div>
 {:else if color_mode === `arity`}

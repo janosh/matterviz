@@ -15,7 +15,6 @@
 </script>
 
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import LiveMessage from '#lib/layout/LiveMessage.svelte'
@@ -40,7 +39,7 @@
     height = $bindable(0),
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
-    show_controls = DEFAULT_CONTROLS_MODE,
+    show_controls,
     chrome_color,
     controls_toggle_props,
     header_controls,
@@ -50,7 +49,7 @@
     on_export,
     controls,
     empty = false,
-    live_message,
+    live_message = ``,
     body,
     children,
     ...rest
@@ -131,9 +130,9 @@
     />
     {@render body()}
     {@render children?.(dims)}
-    {#if empty}<EmptyState overlay role="status" />{/if}
+    {#if empty}<EmptyState overlay />{/if}
   {/if}
-  {#if live_message}<LiveMessage>{live_message}</LiveMessage>{/if}
+  <LiveMessage message={live_message} />
 </div>
 
 <style>

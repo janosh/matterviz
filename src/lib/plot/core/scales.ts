@@ -623,15 +623,22 @@ export const get_tick_label = (
 // Log domain for colour ramps, shared by every colour-scale builder so they agree on the
 // floor: non-positive bounds fall back to LOG_EPS (a domain entirely <= 0 collapses to one
 // colour instead of going NaN), positive bounds are kept however small (diffusivities, rates
-// sit far below LOG_EPS) and in the caller's order (a descending range runs
-// high-to-low). Equal bounds widen by 10% so the scale isn't degenerate.
-export const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
+// sit far below LOG_EPS) and in the caller's order (a descending range runs high-to-low).
+// Equal bounds widen 10% each way so the value sits mid-ramp, as on linear/arcsinh scales.
+const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   const safe_lo = lower > 0 ? lower : math.LOG_EPS
   const safe_hi = upper > 0 ? upper : math.LOG_EPS
   return validate_log_range(
-    safe_lo === safe_hi ? [safe_lo, safe_lo * 1.1] : [safe_lo, safe_hi],
+    safe_lo === safe_hi ? [safe_lo / 1.1, safe_lo * 1.1] : [safe_lo, safe_hi],
   )
 }
+
+// Scale positioning colors and ticks along a color ramp (ColorBar, table and isosurface
+// colors). Unlike create_scale's axis floor, log uses log_color_domain.
+export const color_ramp_scale = (scale_type: ScaleType, domain: Vec2, output: Vec2) =>
+  get_scale_type_name(scale_type) === `log`
+    ? scaleLog().domain(log_color_domain(domain)).range(output)
+    : create_scale(scale_type, domain, output)
 
 // Bare scheme names expand to a config so every component reads one shape. default_scheme
 // fills an unset scheme for components whose palette default isn't viridis (diverging slices).
@@ -644,21 +651,28 @@ export const to_color_scale_config = (
 }
 
 // Set value_range ends win; null or unset ends fall back to the data-derived auto_range,
-// which a thunk computes only when an end needs it (skipping the data scan otherwise)
+// which a thunk computes only when an end needs it (skipping the data scan otherwise). Log
+// scales treat a non-positive end as unset: it has no log image, and flooring it at LOG_EPS
+// would squash every color into the ramp's top, so the auto end (smallest positive) stands in.
 export const resolve_value_range = (
   color_scale: ColorScale,
   auto_range: Vec2 | (() => Vec2),
 ): Vec2 => {
-  const [lower, upper] = to_color_scale_config(color_scale).value_range ?? [null, null]
+  const { type, value_range = [null, null] } = to_color_scale_config(color_scale)
+  const is_log = get_scale_type_name(type) === `log`
+  const [lower, upper] = value_range.map((end) =>
+    is_log && end != null && end <= 0 ? null : end,
+  )
   if (lower != null && upper != null) return [lower, upper]
   const [auto_lower, auto_upper] = typeof auto_range === `function` ? auto_range() : auto_range
   return [lower ?? auto_lower, upper ?? auto_upper]
 }
 
-// Scheme picker (ColorScaleSelect) binding: the name it shows (undefined for a function
-// scheme) and the color scale with a picked scheme swapped in, a bare name staying a name
+// Scheme picker (ColorScaleSelect) binding: the name it shows (the default for an unset
+// scheme, undefined for a function) and the color scale with a picked scheme swapped in, a
+// bare name staying a name
 export const scheme_name = (color_scale: ColorScale): D3InterpolateName | undefined => {
-  const { scheme } = to_color_scale_config(color_scale)
+  const { scheme = SCALE_DEFAULTS.scheme } = to_color_scale_config(color_scale)
   return typeof scheme === `string` ? scheme : undefined
 }
 export const with_scheme = (
@@ -668,16 +682,6 @@ export const with_scheme = (
   typeof color_scale === `string` && scheme
     ? scheme
     : { ...to_color_scale_config(color_scale), scheme }
-
-// The config with both value_range ends resolved: a ColorBar given it draws exactly the colors
-// create_color_scale(color_scale, auto_range) maps
-export const resolve_color_scale = (
-  color_scale: ColorScale,
-  auto_range: Vec2 | (() => Vec2),
-): ColorScaleConfig & { value_range: Vec2 } => ({
-  ...to_color_scale_config(color_scale),
-  value_range: resolve_value_range(color_scale, auto_range),
-})
 
 // t in [0, 1] -> color over the palette_range slice of the scheme (a descending slice runs
 // the palette backwards). Shared by density cells, legend ramps and color bars so clipped
@@ -692,54 +696,32 @@ export function color_interpolator(color_scale: ColorScale) {
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }
 
-// Data value -> color. Values outside value_range take the end colors (clamped), so a
-// clipped or cyclic palette never extrapolates past its ends.
-export function create_color_scale(color_scale: ColorScale, auto_range: Vec2) {
-  const { type: scale_type } = to_color_scale_config(color_scale)
-  const value_range = resolve_value_range(color_scale, auto_range)
-  const interpolator = color_interpolator(color_scale)
-  const type_name = get_scale_type_name(scale_type)
+// Data value -> color, plus the config with both value_range ends resolved (see
+// resolve_value_range) that a ColorBar draws as exactly these colors. value_range[0] takes
+// the palette start whichever way the range runs (palette_range [1, 0] reverses the palette).
+// Values outside value_range take the end colors, so a clipped or cyclic palette never
+// extrapolates past its ends.
+export function resolve_color_scale(
+  color_scale: ColorScale,
+  auto_range: Vec2 | (() => Vec2),
+): {
+  color_fn: (value: number) => string
+  color_scale: ColorScaleConfig & { value_range: Vec2 }
+} {
+  const config = to_color_scale_config(color_scale)
+  const value_range = resolve_value_range(config, auto_range)
+  const interpolate = color_interpolator(config)
+  const type_name = get_scale_type_name(config.type)
+  let color_fn: (value: number) => string
   if (type_name === `log`) {
-    return scaleSequentialLog(interpolator).domain(log_color_domain(value_range)).clamp(true)
-  }
-  if (type_name === `arcsinh`) {
-    const threshold = get_arcsinh_threshold(scale_type)
-    return create_arcsinh_color_scale(interpolator, value_range, threshold)
-  }
-  return scaleSequential(interpolator).domain(value_range).clamp(true)
-}
-
-// D3-compatible arcsinh colour scale whose domain getter/setter keeps one stable instance
-function create_arcsinh_color_scale(
-  interpolator: (fraction: number) => string,
-  initial_domain: Vec2,
-  threshold: number,
-) {
-  let current_domain = initial_domain
-
-  type ArcsinhColorScale = ((value: number) => string) & {
-    domain: {
-      (): Vec2
-      (new_domain: Vec2): ArcsinhColorScale
-    }
-  }
-
-  const scale = ((value: number): string => {
-    const [d_min, d_max] = current_domain
-    const t_min = Math.asinh(d_min / threshold)
-    const t_max = Math.asinh(d_max / threshold)
-    const t_val = Math.asinh(value / threshold)
-    const normalized = t_max === t_min ? 0.5 : (t_val - t_min) / (t_max - t_min)
-    return interpolator(clamp01(normalized))
-  }) as ArcsinhColorScale
-
-  scale.domain = function (new_domain?: Vec2) {
-    if (new_domain === undefined) return current_domain
-    current_domain = new_domain
-    return scale
-  } as ArcsinhColorScale[`domain`]
-
-  return scale
+    color_fn = scaleSequentialLog(interpolate)
+      .domain(log_color_domain(value_range))
+      .clamp(true)
+  } else if (type_name === `arcsinh`) {
+    const position = scale_arcsinh(get_arcsinh_threshold(config.type)).domain(value_range)
+    color_fn = (value) => interpolate(clamp01(position(value)))
+  } else color_fn = scaleSequential(interpolate).domain(value_range).clamp(true)
+  return { color_fn, color_scale: { ...config, value_range } }
 }
 
 export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {

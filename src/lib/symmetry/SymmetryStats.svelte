@@ -220,7 +220,7 @@
       </details>
     {/if}
   {:else}
-    <EmptyState role="status" message="No symmetry data available" />
+    <EmptyState message="No symmetry data available" />
   {/if}
 </div>
 

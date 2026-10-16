@@ -9,6 +9,7 @@ import {
   click_export,
   create_drop_event,
   doc_query,
+  keydown,
   mock_fullscreen,
   mock_parse_worker,
 } from '../setup'
@@ -425,20 +426,18 @@ test(`hovering the zone and pressing f fullscreens it`, async () => {
   expect(props.fullscreen).toBe(true)
 })
 
-test.each(
-  [`i`, `Escape`].flatMap((key) => [
-    [key, false, false],
-    [key, true, false],
-    [key, false, true],
-  ]),
-)(
-  `pane shortcut %s respects canceled=%s composing=%s`,
-  async (key, canceled, is_composing) => {
+test.each([
+  [false, false],
+  [true, false],
+  [false, true],
+])(
+  `i toggles the info pane unless canceled=%s or composing=%s`,
+  async (canceled, is_composing) => {
     const state = $state({ info_pane_open: true })
     mounted_component = mount(BrillouinZone, { target: document.body, props: state })
     await tick()
     const event = new KeyboardEvent(`keydown`, {
-      key,
+      key: `i`,
       isComposing: is_composing,
       cancelable: true,
       bubbles: true,
@@ -449,6 +448,17 @@ test.each(
     expect(state.info_pane_open).toBe(canceled || is_composing)
   },
 )
+
+// No viewer binding: the mounted pane's own Escape layer claims the key first
+test(`Escape closes the open info pane`, async () => {
+  const state = $state({ bz_data: external, info_pane_open: true })
+  mounted_component = mount(BrillouinZone, { target: document.body, props: state })
+  await tick()
+  doc_query(`.bz-info-pane`)
+  doc_query(`.brillouin-zone`).dispatchEvent(keydown(`Escape`, { cancelable: true }))
+  await tick()
+  expect(state.info_pane_open).toBe(false)
+})
 
 test(`export pane saves the zone geometry as JSON named by its order`, async () => {
   const save = vi.fn()

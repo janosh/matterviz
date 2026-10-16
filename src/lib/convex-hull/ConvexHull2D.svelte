@@ -279,8 +279,7 @@
   bind:fullscreen
   role="application"
   tabindex={-1}
-  onkeydown={selection.handle_keydown}
-  {...selection.drop_zone}
+  {...selection.root_attachments}
   aria-label="Binary convex hull visualization"
   series={scatter_series}
   bind:display
@@ -300,7 +299,7 @@
     ...y_axis,
   }}
   legend={null}
-  color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries))}
+  color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries)).color_scale}
   color_bar={{
     title: `E<sub>above hull</sub> (eV/atom)`,
     bar_style: `width: 220px; height: 16px;`,

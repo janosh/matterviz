@@ -124,8 +124,9 @@ export interface TernaryDisplay {
   show_stable_labels: boolean
   show_unstable_labels: boolean
   show_grid: boolean
-  // Unstable points/faces (value_range fits their hull distances) and the stability map
-  // (value_range fits [0, max_e_above_hull])
+  // Unstable points (unset value_range ends fit their hull distances), the stability map
+  // (fits [0, max_e_above_hull]) and formation-energy faces (scheme only: faces always span
+  // their own formation energies)
   color_scale: ColorScale
   show_upcoming: boolean // ring phases that change at the next transition on heating
   show_map: boolean

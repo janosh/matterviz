@@ -4,15 +4,20 @@ import { is_image_site } from './site'
 import { is_full_occupancy, single_element_occupancy } from './partial-occupancy'
 import { InstanceColors } from './instance-colors'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
-import { ray_sphere_candidates } from '#lib/scene/picking.js'
-import type { Material, Intersection, Raycaster } from 'three/webgpu'
+import {
+  candidate,
+  candidate_hits,
+  candidate_indices,
+  local_ray,
+  ray_sphere_candidates,
+  scratch_matrix,
+} from '#lib/scene/picking.js'
+import type { Material, Matrix4, Raycaster, Intersection } from 'three/webgpu'
 import {
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
-  Matrix4,
   Mesh,
-  Ray,
   Sphere,
   SphereGeometry,
   Vector3,
@@ -72,13 +77,8 @@ export function update_ordered_atom_positions<
   return atoms.slice()
 }
 
-// Scratch is shared across synchronous raycasts, like Three’s native mesh picking.
+// More raycast scratch, next to picking.ts's
 const hit_sphere = new Sphere(new Vector3(), 0.5)
-const local_ray = new Ray()
-const scratch_matrix = new Matrix4()
-const candidate = new Mesh()
-const candidate_hits: Intersection[] = []
-const candidate_indices: number[] = []
 const hit_point = new Vector3()
 // xyz then uniform radius per atom
 const PACKED_ATOM = { stride: 4, position_at: 0, scale_at: 3 }

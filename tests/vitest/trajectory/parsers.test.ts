@@ -2058,6 +2058,7 @@ describe(`JSON`, () => {
     for (const { structure } of frames) {
       expect(structure.sites.map((site) => site.species)).toEqual(expected)
     }
+    // parsed frames share species; the run hands each read its own copy
     expect(frames[0].structure.sites[0].species).not.toBe(frames[1].structure.sites[0].species)
     const reread = structure_from_json(JSON.parse(structure_to_json_str(frames[1].structure)))
     expect(reread.sites.map(({ species }) => species[0].oxidation_state)).toEqual([3, 0])

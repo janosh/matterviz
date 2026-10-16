@@ -555,16 +555,14 @@ describe(`IsosurfaceControls multi-volume`, () => {
       reset_visible: false,
     },
     {
-      desc: `editing a bound of a scheme-less color_scale writes the default colormap`,
+      desc: `editing a bound of a scheme-less color_scale keeps the default colormap`,
       layer: { color_volume_id: `1`, color_scale: { type: `log` } },
       act: () =>
         change_value(
           doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
           `2.5`,
         ),
-      expected: {
-        color_scale: { scheme: `interpolateViridis`, type: `log`, value_range: [2.5, 8] },
-      },
+      expected: { color_scale: { type: `log`, value_range: [2.5, 8] } },
       reset_visible: true,
     },
     {

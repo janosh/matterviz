@@ -10,7 +10,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    show_controls = $bindable(true),
+    show_controls = true,
     controls_open = $bindable(false),
     orientation = $bindable(DEFAULTS.sankey.orientation),
     node_width = $bindable(DEFAULTS.sankey.node_width),

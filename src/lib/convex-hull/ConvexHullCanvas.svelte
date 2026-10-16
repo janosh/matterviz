@@ -21,7 +21,7 @@
     draw_overlay_rings,
     draw_overlay_segments,
     energy_range_of,
-    face_e_form_range,
+    face_color_scale,
     hull_face_e_forms,
     HULL_CANVAS_STRATEGIES,
     simplex_centroid,
@@ -241,7 +241,7 @@
   const face_e_forms = $derived(hull_face_e_forms(hull_facets))
   const e_form_color_scale = $derived<ColorScaleConfig>(
     hull_face_color_mode === `formation_energy`
-      ? resolve_color_scale(color_scale, face_e_form_range(face_e_forms))
+      ? face_color_scale(color_scale, face_e_forms).color_scale
       : {
           scheme: (frac) => add_alpha(hull_face_color, (1 - frac) * hull_face_opacity),
           value_range: [plot_entries.length > 0 ? energy_range.min : -1, 0],
@@ -267,8 +267,7 @@
   bind:this={wrapper}
   role="application"
   tabindex="-1"
-  onkeydown={selection.handle_keydown}
-  {...selection.drop_zone}
+  {...selection.root_attachments}
   aria-label="{dim === 3 ? `Ternary` : `Quaternary`} convex hull visualization"
 >
   {@render children?.({
@@ -289,7 +288,8 @@
   {#if color_mode === `energy` && plot_entries.length > 0}
     <ColorBar
       title="Energy above hull (eV/atom)"
-      color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries))}
+      color_scale={resolve_color_scale(color_scale, hull_distance_range(plot_entries))
+        .color_scale}
       wrapper_style="position: absolute; bottom: 1em; left: 1em; width: min(200px, 50cqw - 2.5em);"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"

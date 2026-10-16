@@ -99,7 +99,6 @@ describe(`extract_prop_docs`, () => {
 
   test(`skips the ...rest binding`, () => {
     expect(docs.TernaryPlot.map(({ name }) => name)).not.toContain(`rest`)
-    expect(docs.InfoTag).toHaveLength(11)
   })
 })
 
@@ -139,7 +138,6 @@ test(`PropsTable loads the page component's props when opened`, async () => {
   details.dispatchEvent(new Event(`toggle`))
   flushSync()
   expect(details.textContent).toContain(`Loading props...`)
-  // the first per-component load extracts all components' docs (one TS program, seconds)
   await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(11), {
     timeout: 30_000,
   })

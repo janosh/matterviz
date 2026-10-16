@@ -39,7 +39,6 @@
     zone_axis_direction,
   } from '#lib/scene/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
@@ -1251,11 +1250,7 @@
           <label {...setting_row(`atom_color_scale`)}>
             <span>Color scale</span>
             <ColorScaleSelect
-              bind:value={
-                () => scheme_name(atom_color_config.color_scale),
-                (scheme) =>
-                  set_atom_color_scale(with_scheme(atom_color_config.color_scale, scheme))
-              }
+              bind:value={() => atom_color_config.color_scale, set_atom_color_scale}
               color_bar={{ tick_labels: 0, wrapper_style: `width: 100%;` }}
               style="min-width: 0; border: none"
               aria-label="Color scale"
@@ -1340,11 +1335,8 @@
                 <span>Color scale</span>
                 <ColorScaleSelect
                   bind:value={
-                    () => scheme_name(vector_color_scale),
-                    (scheme) =>
-                      update_scene({
-                        vector_color_scale: with_scheme(vector_color_scale, scheme),
-                      })
+                    () => vector_color_scale,
+                    (scale) => update_scene({ vector_color_scale: scale })
                   }
                   style="min-width: 0; border: none"
                 />

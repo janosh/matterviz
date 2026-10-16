@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { plot_color } from '#lib/colors/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -10,7 +9,6 @@
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { resolve_axis_range } from '#lib/plot/core/interactions.js'
   import { format_num } from '#lib/labels.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -29,7 +27,6 @@
   import {
     auto_scale_range,
     collect_series_extent,
-    create_color_scale,
     resolve_color_scale,
     to_color_scale_config,
   } from '#lib/plot/core/scales.js'
@@ -90,7 +87,7 @@
     // Gizmo
     gizmo = true,
     // Controls
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -198,7 +195,7 @@
   // Finite colour extent across all series; [0, 1] when no series carries colour values
   const color_extent = $derived(collect_series_extent(series, `color_values`))
   const auto_color_range = $derived(auto_scale_range(color_extent, color_scale_type))
-  let color_scale_fn = $derived(create_color_scale(color_scale, auto_color_range))
+  const resolved_color_scale = $derived(resolve_color_scale(color_scale, auto_color_range))
 
   // Legend data
   let legend_data = $derived(
@@ -221,7 +218,7 @@
   let scene_ref = $state<ReturnType<typeof ScatterPlot3DScene<Metadata>>>()
   let live_message = $state(``)
   function handle_key_down(event: KeyboardEvent): void {
-    if (event.target !== event.currentTarget || is_modifier_chord(event)) return
+    if (event.target !== event.currentTarget) return
     const point = scene_ref?.handle_key(event)
     if (point === undefined) return
     event.preventDefault()
@@ -336,7 +333,7 @@
           z_axis={resolved_z_axis}
           display={resolved_display}
           {styles}
-          {color_scale_fn}
+          color_scale_fn={resolved_color_scale.color_fn}
           {size_scale}
           {camera_position}
           {camera_projection}
@@ -376,7 +373,7 @@
         tick_labels={4}
         tick_side="primary"
         {...color_bar}
-        color_scale={resolve_color_scale(color_scale, auto_color_range)}
+        color_scale={resolved_color_scale.color_scale}
         wrapper_style="position: absolute; bottom: 2em; left: 2em; {color_bar.wrapper_style ??
           ``}"
         bar_style="width: 200px; height: 16px; {color_bar.bar_style ?? ``}"

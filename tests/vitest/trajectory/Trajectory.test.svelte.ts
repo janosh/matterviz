@@ -1389,6 +1389,16 @@ describe(`events`, () => {
     vi.advanceTimersByTime(150)
     await tick()
     expect(view_button.style.boxShadow).toBe(``)
+    // hovered without focus too, like `?` and `f`; only the hovered viewer reacts
+    viewer.blur()
+    sibling.dispatchEvent(new PointerEvent(`pointerleave`))
+    viewer.dispatchEvent(new PointerEvent(`pointerenter`))
+    window.dispatchEvent(keydown(`v`, { cancelable: true }))
+    await tick()
+    expect([props.display_mode, sibling_props.display_mode]).toEqual([
+      `structure`,
+      `structure+plot`,
+    ])
   })
 
   test.each([
@@ -1401,8 +1411,7 @@ describe(`events`, () => {
     { name: `textarea`, tag: `textarea` },
     { name: `select`, tag: `select` },
     { name: `editable text`, tag: `div` },
-    { name: `hover without focus`, hover_only: true },
-  ])(`view shortcut ignores $name`, async ({ init, tag, hover_only }) => {
+  ])(`view shortcut ignores $name`, async ({ init, tag }) => {
     const changed = vi.fn()
     const props = $state(default_props({ on_display_mode_change: changed }))
     const viewer = query(mount_trajectory(props), `.trajectory`)
@@ -1411,11 +1420,9 @@ describe(`events`, () => {
       if (tag === `div`) target.contentEditable = `true`
       viewer.append(target)
     }
-    if (hover_only) viewer.dispatchEvent(new PointerEvent(`pointerenter`))
-    else target.focus()
+    target.focus()
     const event = keydown(`v`, { cancelable: true, ...init })
-    if (hover_only) window.dispatchEvent(event)
-    else target.dispatchEvent(event)
+    target.dispatchEvent(event)
     await tick()
     expect(props.display_mode).toBe(`structure+plot`)
     expect(changed).not.toHaveBeenCalled()

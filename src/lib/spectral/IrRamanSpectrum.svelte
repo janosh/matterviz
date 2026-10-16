@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
@@ -56,7 +56,7 @@
     selected_mode_idx = $bindable(null),
     on_mode_select,
     display = $bindable({ x_grid: true, y_grid: true, x_zero_line: false, y_zero_line: true }),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     resolved_padding = $bindable(), // to align the plot with a band plot beside it
     ...rest
@@ -243,7 +243,7 @@
       rest.on_point_hover?.(event)
     }}
     range_padding={rest.range_padding ?? 0}
-    bind:show_controls
+    {show_controls}
     bind:controls_open
   >
     {#snippet controls_extra()}

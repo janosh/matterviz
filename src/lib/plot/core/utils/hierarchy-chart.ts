@@ -9,7 +9,7 @@ import { format_value } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import type { ResolvedPattern } from '#lib/plot/core/patterns.js'
 import { resolve_pattern } from '#lib/plot/core/patterns.js'
-import { create_color_scale, resolve_color_scale } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -205,8 +205,10 @@ export function compute_metric_colors<Metadata>(
     return val
   })
   if (min_val > max_val) return null // no finite values
-  const resolved = resolve_color_scale(color_scale, [min_val, max_val])
-  const color_fn = create_color_scale(resolved, resolved.value_range)
+  const { color_fn, color_scale: resolved } = resolve_color_scale(color_scale, [
+    min_val,
+    max_val,
+  ])
   return {
     color_scale: resolved,
     colors: vals.map((val, idx) => (val == null ? arcs[idx].color : color_fn(val))),

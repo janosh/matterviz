@@ -4,7 +4,6 @@
   import type { Vec2 } from '#lib/math.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
-  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import { DEFAULT_N_SAMPLES } from './compute'
@@ -319,10 +318,7 @@
     <div class="setting color-scale-row">
       <span class="control-label">Colour scale</span>
       <ColorScaleSelect
-        bind:value={
-          () => scheme_name(display.color_scale),
-          (scheme) => set_display({ color_scale: with_scheme(display.color_scale, scheme) })
-        }
+        bind:value={() => display.color_scale, (color_scale) => set_display({ color_scale })}
         placeholder="Select color scale"
       />
     </div>

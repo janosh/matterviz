@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { DEFAULT_CONTROLS_MODE, track_settings } from '#lib/controls.js'
+  import { track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
   import type { BZPopupPoint } from '#lib/brillouin/index.js'
@@ -66,7 +66,7 @@
     shade_imaginary_modes = true,
     show_gap_annotation = true,
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     id: identifier,
     'data-testid': data_testid,
@@ -661,7 +661,7 @@
     hover_config={{ threshold_px: 50, click_threshold_px: 10, ...rest.hover_config }}
     {selected_point}
     style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
-    bind:show_controls
+    {show_controls}
     bind:controls_open
     bind:resolved_padding
     on_point_hover={(event) => {

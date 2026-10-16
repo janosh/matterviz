@@ -871,7 +871,8 @@ describe(`PeriodicTable`, () => {
           color_scale: { scheme: red_scale, type: `log`, value_range: [0, 100] },
         },
       })
-      expect(tile_bg_reds(3)).toEqual([0, 128, 255])
+      // the log midpoint lands 1 ulp below 0.5, on the 127.5 byte rounding boundary
+      expect(tile_bg_reds(3)).toEqual([0, expect.toBeOneOf([127, 128]), 255])
       expect(tick_extent()).toEqual([1, 100])
     })
 

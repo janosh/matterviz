@@ -45,12 +45,13 @@ export function ray_sphere_candidates(
   return out
 }
 
-const local_ray = new Ray()
-const inverse_world = new Matrix4()
-const instance_matrix = new Matrix4()
-const candidate = new Mesh()
-const candidate_hits: Intersection[] = []
-const candidate_indices: number[] = []
+// Scratch shared by the instanced pickers (also atom-instances), safe because raycasts run
+// synchronously, like Three's native mesh picking
+export const local_ray = new Ray()
+export const scratch_matrix = new Matrix4()
+export const candidate = new Mesh()
+export const candidate_hits: Intersection[] = []
+export const candidate_indices: number[] = []
 // makeScale(r).setPosition(p) instance matrices: column-major scale at 0, translation at 12
 const SCALED_TRANSLATION = { stride: 16, position_at: 12, scale_at: 0 }
 
@@ -64,7 +65,7 @@ export class SphereInstances extends InstancedMesh {
     if (this.boundingSphere === null) this.computeBoundingSphere()
     const sphere = this.geometry.boundingSphere
     if (!sphere || !this.boundingSphere) return
-    local_ray.copy(raycaster.ray).applyMatrix4(inverse_world.copy(this.matrixWorld).invert())
+    local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(this.matrixWorld).invert())
     if (!local_ray.intersectsSphere(this.boundingSphere)) return
     const { array } = this.instanceMatrix
     ray_sphere_candidates(
@@ -78,8 +79,8 @@ export class SphereInstances extends InstancedMesh {
     candidate.geometry = this.geometry
     candidate.material = this.material
     for (const idx of candidate_indices) {
-      this.getMatrixAt(idx, instance_matrix)
-      candidate.matrixWorld.multiplyMatrices(this.matrixWorld, instance_matrix)
+      this.getMatrixAt(idx, scratch_matrix)
+      candidate.matrixWorld.multiplyMatrices(this.matrixWorld, scratch_matrix)
       candidate.raycast(raycaster, candidate_hits)
       for (const hit of candidate_hits) {
         hit.instanceId = idx

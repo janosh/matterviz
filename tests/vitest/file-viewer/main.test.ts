@@ -84,6 +84,16 @@ test.each([
   else expect(await promise).toMatchObject({ type: `structure`, filename })
 })
 
+const SINGULAR_MATRIX = [
+  [5, 0, 0],
+  [5, 0, 0],
+  [0, 0, 5],
+]
+const SINGULAR_JSON = JSON.stringify({
+  lattice: { matrix: SINGULAR_MATRIX },
+  sites: [{ species: [{ element: `Si`, occu: 1 }], xyz: [0, 0, 0] }],
+})
+
 // Recoverable parser issues ride on the structure/volumetric result into the mounted viewer,
 // and nothing is logged: the viewer's notice is where they are shown
 test.each([
@@ -111,6 +121,64 @@ test.each([
     `x\n1.0\n4 0 0\n0 4 0\n0 0 4\n1\nDirect\n0 0 0\n\n2 2 2\n1 2 3 4 5 6 7 8\n2 2 2\n1 2\n`,
     [/^CHGCAR: no element symbols/, /^CHGCAR block 2 .*Keeping the intact first block only/],
   ],
+  [
+    `a MOL query bond`,
+    `q.mol`,
+    `q\n  t\n\n  2  1  0  0  0  0  0  0  0  0999 V2000\n    0.0 0.0 0.0 C   0  0\n    1.5 0.0 0.0 C   0  0\n  1  2  8  0\nM  END\n`,
+    /^MOL bond 1: query bond type 8/,
+  ],
+  [
+    `a two-molecule MOL2`,
+    `two.mol2`,
+    `@<TRIPOS>MOLECULE\na\n@<TRIPOS>ATOM\n1 C1 0 0 0 C.3\n@<TRIPOS>MOLECULE\nb\n@<TRIPOS>ATOM\n1 C1 1 0 0 C.3\n`,
+    /^MOL2 contains 2 molecules/,
+  ],
+  [
+    `a two-model PDB`,
+    `two.pdb`,
+    [1, 2]
+      .map(
+        (model) =>
+          `MODEL        ${model}\nATOM      1  O   HOH A   1       ${model}.000   0.000   0.000  1.00  0.00           O\nENDMDL`,
+      )
+      .join(`\n`),
+    /^PDB contains 2 models/,
+  ],
+  [
+    `an mmCIF without type_symbol`,
+    `x.mmcif`,
+    `data_x\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.label_atom_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\nATOM 1 C 0 0 0\n`,
+    /^mmCIF _atom_site loop has no type_symbol column/,
+  ],
+  [
+    `a LAMMPS data file without an Atoms style`,
+    `x.lmp`,
+    `LAMMPS\n\n1 atoms\n1 atom types\n\n0 5 xlo xhi\n0 5 ylo yhi\n0 5 zlo zhi\n\nMasses\n\n1 28.0855\n\nAtoms\n\n1 1 0 0 0\n`,
+    /^LAMMPS data: Atoms section has no style comment/,
+  ],
+  [
+    `a cube file with a ghost centre`,
+    `x.cube`,
+    `t\nc\n2 0 0 0\n2 1 0 0\n2 0 1 0\n2 0 0 1\n0 0 0 0 0\n6 0 1 1 1\n1 2 3 4 5 6 7 8\n`,
+    /^\.cube atom 1: skipping Z = 0 ghost/,
+  ],
+  [
+    `an OPTIMADE structure on a singular lattice`,
+    `opt.json`,
+    JSON.stringify({
+      data: {
+        type: `structures`,
+        id: `x`,
+        attributes: {
+          lattice_vectors: SINGULAR_MATRIX,
+          cartesian_site_positions: [[0, 0, 0]],
+          species_at_sites: [`Si`],
+        },
+      },
+    }),
+    /^Singular OPTIMADE lattice/,
+  ],
+  [`a pymatgen JSON on a singular lattice`, `s.json`, SINGULAR_JSON, /^Singular JSON lattice/],
 ])(
   `parse warnings of %s land on the result and the viewer`,
   async (_label, filename, content, warnings) => {
@@ -127,6 +195,20 @@ test.each([
     expect(last_mount_props().parse_warnings).toBe(result.warnings)
   },
 )
+
+// A JSON trajectory's frames are read by the structure parser, whose warnings land on the run
+test(`structure warnings of JSON trajectory frames land on the run`, async () => {
+  const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  onTestFinished(() => warn_spy.mockRestore())
+  const frame = JSON.parse(SINGULAR_JSON)
+  const content = JSON.stringify({ frames: [frame, frame] })
+  const result = await parse_file_content(content, `run.json`)
+  assert(result.type === `trajectory`, `expected a trajectory, got ${result.type}`)
+  expect(result.data.warnings).toEqual([
+    expect.stringMatching(/^Singular JSON lattice/),
+    expect.stringMatching(/^Singular JSON lattice/),
+  ])
+})
 
 // A VASP volumetric name over POSCAR content (POSCAR_from_CHGCAR) still opens the structure
 test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(

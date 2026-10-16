@@ -114,7 +114,7 @@ export const create_structure = (
   const cart_to_frac = lattice_matrix
     ? cart_to_frac_with_fallback(lattice_matrix, {
         context: `lattice ${JSON.stringify(lattice_matrix)}`,
-        warn: warn ?? console.warn,
+        warn,
       }).convert
     : null
 

@@ -26,9 +26,9 @@
   import { clamp } from '#lib/math.js'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
-  import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
-  import { handle_and_prevent, to_error } from '#lib/utils.js'
-  import { forward_window_keydown } from 'svelte-widgets/attachments'
+  import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+  import { to_error } from '#lib/utils.js'
+  import { viewer_keydown } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
   import type {
@@ -167,10 +167,10 @@
   })
 
   // Playback keys work while the viewer is focused or hovered, as in Trajectory, not only
-  // while its slider has focus. The root runs first and prevents the default, which turns
-  // the window forward's pass into a no-op.
-  const onkeydown = (event: KeyboardEvent): boolean =>
-    !event.defaultPrevented && is_sequence_key_target(event) && playback.handle_keydown(event)
+  // while its slider has focus
+  const keys = viewer_keydown(
+    (event) => is_sequence_key_target(event) && playback.handle_keydown(event),
+  )
 
   // Keep the public binding aligned with the clamped image shown after changing paths. With
   // no path yet there is nothing to clamp against, so a bound index waits for its paths.
@@ -190,8 +190,9 @@
         filename,
       }))
       try {
-        const collector = create_warning_collector(() => {})
-        const parsed = parse_dropped_paths(files, collector.warn)
+        const { value: parsed, warnings } = collect_parse_warnings(() =>
+          parse_dropped_paths(files),
+        )
         // Profile before accepting, so an unplottable path is refused with its reason
         for (const path of Object.values(parsed)) path_profile(path, profile_options)
         for (const [key, path] of Object.entries(parsed)) {
@@ -199,7 +200,7 @@
           active_path_key = key
         }
         active_image_idx = 0
-        parse_warning_msg = parse_warnings_notice(collector.warnings)
+        parse_warning_msg = parse_warnings_notice(warnings)
       } catch (exc) {
         const names = files.map(({ filename }) => filename).join(`, `)
         error_msg = `${names}: ${to_error(exc).message}`
@@ -263,16 +264,14 @@
   role="application"
   aria-label="Reaction path viewer"
   tabindex="0"
-  onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   bind:this={wrapper}
   class={[`neb-viewer`, rest.class]}
   {@attach drop_zone}
-  {@attach forward_window_keydown({ handle: onkeydown })}
+  {@attach keys}
 >
   {#if !active || !profile}
     <EmptyState
-      role="status"
       message={allow_file_drop
         ? `Drop a matterviz-reaction-path JSON or a multi-frame extended-XYZ file here`
         : `No reaction path to display`}
@@ -309,7 +308,6 @@
         aria_label="NEB image"
         aria_valuetext={image_caption}
         disable_step_while_playing={false}
-        keyboard_hints
       />
       {#if controls_config.visible(`energy`)}
         <span class="image-status">

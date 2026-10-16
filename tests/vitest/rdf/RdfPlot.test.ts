@@ -255,6 +255,19 @@ describe(`RdfPlot`, () => {
     expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
       `1 structure loaded`,
     )
+    // a multi-frame file opens as a trajectory and plots its first frame, saying so
+    const frame = (x: number) =>
+      `1\nLattice="4 0 0 0 4 0 0 0 4" Properties=species:S:1:pos:R:3 pbc="T T T"\nSi ${x} 0 0\n`
+    const traj = new File([frame(0) + frame(0.1)], `traj.xyz`)
+    plot.dispatchEvent(create_drop_event(traj))
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.dropped-info`)?.textContent).toContain(
+        `2 structures loaded`,
+      ),
+    )
+    expect(document.querySelector(`.status-message.warning`)?.textContent).toMatch(
+      /1 parse warning: traj\.xyz: 2 frames; plotted frame 1/,
+    )
   })
 
   test(`reports a structure the neighbour search rejects and still plots the others`, async () => {

@@ -65,12 +65,7 @@
 
 <div>
   {#if n_display < 2}
-    <div
-      class="chempot-error"
-      role="alert"
-      aria-live="polite"
-      style="width: {width}px; height: {height}px"
-    >
+    <div class="chempot-error" role="status" style="width: {width}px; height: {height}px">
       <h3>Unsupported Chemical System</h3>
       <p>
         Chemical potential diagrams require at least 2 elements. Found {plural(

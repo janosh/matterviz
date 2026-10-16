@@ -1,5 +1,5 @@
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
-import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.js'
+import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.svelte.js'
 import { make_rng } from '../numeric-helpers'
 import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
@@ -222,6 +222,29 @@ describe(`TernaryPlot`, () => {
     await fire(svg, mouse(`mousemove`, { clientX: 1, clientY: 1 }))
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     expect(markers(plot)).toHaveLength(0)
+
+    // no marker node to tab to: the svg is the one tab stop and the arrows walk the points
+    expect(svg.getAttribute(`tabindex`)).toBe(`0`)
+    const announced = () => query(plot, `[aria-live="polite"]`).textContent
+    expect(announced()).toBe(``) // ChartShell mounts the region before its first message
+    for (const [key, point_idx] of [
+      [`ArrowRight`, 0],
+      [`ArrowLeft`, n_points - 1],
+      [`Home`, 0],
+      [`ArrowDown`, 1],
+    ] as const) {
+      const event = keydown(key, { cancelable: true })
+      await fire(svg, event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(on_point_hover).toHaveBeenLastCalledWith(expect.objectContaining({ point_idx }))
+      expect(announced()).toMatch(/^Series 1: /)
+      expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
+    }
+    await fire(svg, keydown(`Enter`))
+    expect(on_point_click).toHaveBeenLastCalledWith(expect.objectContaining({ point_idx: 1 }))
+    await fire(svg, keydown(`Escape`))
+    expect([announced(), markers(plot).length]).toEqual([``, 0])
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
   test(`keyboard focus anchors the tooltip at the marker, in svg pixels, until focus leaves the chart`, async () => {
@@ -375,8 +398,9 @@ describe(`TernaryPlot`, () => {
   })
 
   // type spaces the colors and value_range ends override the data extent, on markers and bar
+  // (the log midpoint lands 1 ulp below 0.5, on the 127.5 byte rounding boundary)
   test.each<[ColorScaleConfig, number[], number[]]>([
-    [{ type: `log` }, [0, 128, 255], [1, 100]],
+    [{ type: `log` }, [0, expect.toBeOneOf([127, 128]), 255], [1, 100]],
     [{ value_range: [0, 200] }, [1, 13, 128], [0, 200]],
     [{ type: `log`, value_range: [null, 1000] }, [0, 85, 170], [1, 1000]],
   ])(`color_scale %j`, async (config, expected_reds, bar_range) => {

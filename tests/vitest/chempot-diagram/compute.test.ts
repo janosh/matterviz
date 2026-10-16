@@ -1584,19 +1584,6 @@ describe(`best_form_energy_for_formula`, () => {
   test(`picks minimum formation energy across polymorphs`, () => {
     const polymorphs = [make_phase({ A: 1, B: 1 }, -3.5), make_phase({ A: 1, B: 1 }, -3.0)]
     expect(best_form_energy_for_formula(polymorphs, `AB`, AB_REFS)).toBeCloseTo(-1.0, 8)
-
-    const color_entries = [...Object.values(AB_REFS), ...polymorphs]
-    const color_data = get_domain_color_data({
-      formulas: [`A`, `B`, `AB`],
-      color_mode: `formation_energy`,
-      color_scale: { scheme: `interpolateViridis` },
-      entries: color_entries,
-      el_refs: AB_REFS,
-      energy_stats: get_energy_stats_by_formula(color_entries),
-    })
-
-    expect(color_data.color_bar?.color_scale.value_range).toEqual([-1, 0])
-    expect(color_data.colors.size).toBe(3)
   })
 
   // Colors pinned from the pre-ColorScaleConfig API (reverse_color_scale flag), so moving

@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
@@ -44,7 +43,6 @@
   import {
     accumulate_extent,
     collect_scale_ranges,
-    create_color_scale,
     resolve_color_scale,
     to_color_scale_config,
     create_scale,
@@ -125,15 +123,10 @@
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
     canvas_safe_color,
-    draw_markers,
-  } from '#lib/plot/core/canvas-markers.js'
+    create_marker_canvas,
+  } from '#lib/plot/core/canvas-markers.svelte.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
-  import {
-    attach_canvas,
-    canvas_painters,
-    prepare_canvas,
-    resolve_line_tween,
-  } from '#lib/plot/core/utils.js'
+  import { resolve_line_tween } from '#lib/plot/core/utils.js'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -165,7 +158,7 @@
     // Clone so the controls' checkbox writes never mutate the shared DEFAULTS
     display = $bindable({ ...DEFAULTS.plot.display }),
     styles = $bindable({}),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
@@ -660,7 +653,10 @@
   )
   const auto_color_range = $derived(scale_ranges.color_range)
   let size_scale_fn = $derived(create_size_scale(size_scale, scale_ranges.size_range))
-  let color_scale_fn = $derived(create_color_scale(color_scale_config, auto_color_range))
+  const resolved_color_scale = $derived(
+    resolve_color_scale(color_scale_config, auto_color_range),
+  )
+  const color_scale_fn = $derived(resolved_color_scale.color_fn)
 
   // === Size legend: solver-placed clear of the data, after the legend and colorbar ===
   // Only for drawn markers, and only when the scale gives 2+ legend values distinct radii
@@ -993,16 +989,11 @@
     })
   })
 
-  let canvas_element = $state<HTMLCanvasElement>()
-  // Also registered as the canvas's export painter, redrawing at the export pixel ratio
-  const paint_markers = (canvas?: HTMLCanvasElement, pixel_ratio?: number) => {
-    const surface = prepare_canvas(canvas, width, height, pixel_ratio)
-    if (surface) draw_markers(surface.ctx, canvas_markers ?? [], surface)
-  }
-  $effect(() => {
-    paint_markers(canvas_element)
-    if (canvas_element) canvas_painters.set(canvas_element, paint_markers)
-  })
+  const marker_canvas = create_marker_canvas(() => ({
+    markers: canvas_markers ?? [],
+    width,
+    height,
+  }))
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type FillSource = `fill_region` | `error_band`
@@ -1862,13 +1853,7 @@
     {#if use_canvas_markers}
       <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
              explicit above-all layers. Pointer events remain on the parent SVG. -->
-      <foreignObject
-        x="0"
-        y="0"
-        {width}
-        {height}
-        pointer-events="none"
-        {@attach attach_canvas(`marker-canvas`, (canvas) => (canvas_element = canvas))}
+      <foreignObject x="0" y="0" {width} {height} pointer-events="none" {@attach marker_canvas}
       ></foreignObject>
     {/if}
 
@@ -2031,7 +2016,7 @@
           show_scale: has_color_scale,
           tick_labels: 4,
           tick_side: `primary`,
-          color_scale: resolve_color_scale(color_scale_config, auto_color_range),
+          color_scale: resolved_color_scale.color_scale,
           bar_style: `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.horizontal_bar_height}px; ${color_bar.style ?? ``}`,
           ...color_bar,
         }}

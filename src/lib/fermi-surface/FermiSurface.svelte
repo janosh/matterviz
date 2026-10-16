@@ -339,7 +339,9 @@
       : [0, 1],
   )
   // Shared by the surface and its ColorBar so both draw the same colors
-  const resolved_color_scale = $derived(resolve_color_scale(color_scale, fitted_value_range))
+  const resolved_color_scale = $derived(
+    resolve_color_scale(color_scale, fitted_value_range).color_scale,
+  )
 
   // BZ of whichever reciprocal lattice is available (priority order)
   const k_lattice = $derived(
@@ -374,14 +376,8 @@
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp
-  const keys = viewer_keys(() => ({
-    r: () => reset_scene_cameras(wrapper),
-    Escape: () => {
-      if (!controls_open) return false
-      controls_open = false
-    },
-  }))
+  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
+  const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
 </script>
 
 <div

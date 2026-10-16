@@ -167,14 +167,15 @@ describe(`ScatterPlot`, () => {
       svg.dispatchEvent(keydown(key))
       await tick()
     }
-    const announced = (plot: HTMLElement) =>
-      plot.querySelector(`[aria-live="polite"]`)?.textContent ?? ``
+    const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
     test(`End and arrows step and wrap, Escape clears the announcement`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [dense],
         marker_renderer: `canvas`,
       })
+      // the live region is mounted before its first message, or that message goes unheard
+      expect(announced(plot)).toBe(``)
       const svg = plot_svg(plot)
       for (const [key, expected] of [
         [`End`, `point 40`],

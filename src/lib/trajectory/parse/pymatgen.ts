@@ -166,8 +166,9 @@ export function parse_pymatgen_trajectory(
       site_properties_for(idx, forces),
       warn,
     )
+    // Frames share each site's species: runs clone sites whenever they hand a frame out
     for (const [site_idx, site] of frame.structure.sites.entries()) {
-      site.species = site_species[site_idx].map((species) => ({ ...species }))
+      site.species = site_species[site_idx]
     }
     return frame
   })

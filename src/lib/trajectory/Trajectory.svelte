@@ -33,7 +33,7 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { handle_and_prevent, html_to_text, to_error } from '#lib/utils.js'
+  import { html_to_text, to_error } from '#lib/utils.js'
   import {
     display_idx,
     from_display_idx,
@@ -48,7 +48,7 @@
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
   import { FullscreenButton, SettingsSection, ShortcutsHelp } from '#lib/layout/index.js'
-  import { SHORTCUTS, shortcut_title } from '#lib/shortcuts.js'
+  import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
@@ -87,7 +87,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import { getAbortSignal, tick as flush_updates, untrack } from 'svelte'
-  import { forward_window_keydown, tooltip } from 'svelte-widgets/attachments'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type {
@@ -1157,30 +1157,20 @@
   }
 
   // === keyboard ===
-  // Returns true if the key was handled, so the caller can suppress the browser default
-  function onkeydown(event: KeyboardEvent): boolean {
-    // Bound on the root and on the window: a click leaves the viewer focused *and*
-    // hovered, so both would run and a toggle would cancel itself out. The root fires
-    // first and prevents the default, which makes the window pass a no-op.
-    if (event.defaultPrevented || event.isComposing || !is_sequence_key_target(event))
-      return false
+  const keys = viewer_keydown((event) => {
+    if (!is_sequence_key_target(event)) return false
     if (player.handle_keydown(event)) return true
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
     if (event.metaKey || event.ctrlKey) return false
-    if (
-      key === `v` &&
-      !event.altKey &&
-      !event.repeat &&
-      has_plot_properties &&
-      wrapper?.contains(wrapper.ownerDocument.activeElement)
-    ) {
+    if (key === `v` && !event.altKey && !event.repeat && has_plot_properties) {
       const index = DISPLAY_MODES.findIndex(({ mode }) => mode === display_mode)
       const next =
         (index + (event.shiftKey ? -1 : 1) + DISPLAY_MODES.length) % DISPLAY_MODES.length
       select_display_mode(DISPLAY_MODES[next].mode)
       shortcut_flash.show(`view`)
       // A mode change may unmount the focused plot/structure; keep subsequent shortcuts here.
-      wrapper.focus({ preventScroll: true })
+      if (wrapper?.contains(wrapper.ownerDocument.activeElement))
+        wrapper.focus({ preventScroll: true })
       return true
     }
     // `f` is owned by FullscreenButton; panes dismiss themselves via ViewerPane. Escape
@@ -1192,7 +1182,7 @@
     else if (analysis_menu_open) analysis_menu_open = false
     else return false
     return true
-  }
+  })
 
   // === linked views: analyses point at atoms of the displayed frame ===
   // Inspector rows select atoms like a 3D click; hovering an analysis curve, bar or structure
@@ -1307,7 +1297,6 @@
   tabindex="0"
   onpointerenter={() => (hovered = true)}
   onpointerleave={() => (hovered = false)}
-  onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class={[`trajectory`, actual_layout, rest.class]}
   class:spectroscopy-mode={spectroscopy_open}
@@ -1320,7 +1309,7 @@
     },
     on_error: (message) => report_error(message),
   })}
-  {@attach forward_window_keydown({ handle: onkeydown })}
+  {@attach keys}
 >
   {#if hdf5_selection && hdf5_picker_open}
     <EmptyState
@@ -1483,7 +1472,6 @@
           playback={player}
           {step_label_positions}
           item_name="step"
-          keyboard_hints
           on_index_input={session.scrub}
         >
           {#snippet slider_overlay()}

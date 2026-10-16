@@ -716,21 +716,24 @@ describe(`convex hull replacement state`, () => {
 
   // Enter selects the hovered entry, but the chord belongs to the browser (Cmd+Enter is
   // open-in-new-tab). The chord guard has to run before the Enter branch, not after it.
+  // Like every viewer's keys, the hull's also reach it hovered without focus (window keydown)
   test.each([
-    [`Enter selects the hovered entry`, {}, `old-compound`],
-    [`Cmd+Enter is left to the browser`, { metaKey: true }, `none`],
-    [`Ctrl+Enter is left to the browser`, { ctrlKey: true }, `none`],
-  ])(`%s`, async (_name, modifiers, expected) => {
+    [`Enter selects the hovered entry`, {}, `old-compound`, false],
+    [`Enter without focus selects it too`, {}, `old-compound`, true],
+    [`Cmd+Enter is left to the browser`, { metaKey: true }, `none`, false],
+    [`Ctrl+Enter is left to the browser`, { ctrlKey: true }, `none`, true],
+  ])(`%s`, async (_name, modifiers, expected, hover_only) => {
     await mount_harness({ dim: `3d` })
     const canvas = doc_query<HTMLCanvasElement>(`canvas`)
     canvas.dispatchEvent(
       new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
     )
+    doc_query(`.convex-hull-3d`).dispatchEvent(new PointerEvent(`pointerenter`))
     flushSync()
 
-    canvas.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers }),
-    )
+    const event = new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true, ...modifiers })
+    if (hover_only) globalThis.dispatchEvent(event)
+    else canvas.dispatchEvent(event)
     await tick()
     expect(selected_text()).toBe(expected)
   })

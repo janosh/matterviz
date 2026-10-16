@@ -3,11 +3,10 @@ import { try_parse_vec3, vector_reader } from './vectors'
 // Utility functions for computing atom properties and applying color scales
 
 import type { ColorScaleType } from '#lib/colors/index.js'
-import { COLOR_SCALE_TYPES, is_d3_interpolate_name } from '#lib/colors/index.js'
+import { COLOR_SCALE_TYPES, is_color_scale } from '#lib/colors/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { array_extent, sorted_numbers } from '#lib/math.js'
-import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
-import { color_interpolator, resolve_value_range } from '#lib/plot/core/scales.js'
+import { color_interpolator, resolve_color_scale } from '#lib/plot/core/scales.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { AtomColorMode } from '#lib/settings.js'
 import { ATOM_COLOR_MODE_OPTIONS, DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
@@ -17,7 +16,6 @@ import { get_orig_site_idx } from '#lib/structure/site.js'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/calc-cna.js'
 import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
 import type { WyckoffPos } from '#lib/symmetry/wyckoff.js'
-import { is_plain_object } from '#lib/utils.js'
 import { rgb } from 'd3-color'
 
 type SimpleAtomColorMode = Exclude<AtomColorMode, `property` | `custom`>
@@ -96,10 +94,14 @@ export function apply_color_scale(
   // max === min guard (NaN !== NaN) and painting every atom at t = NaN. Non-finite values and
   // an all-NaN or empty extent fall back to the scale midpoint. Unset value_range ends fit
   // the values.
-  const [min, max] = resolve_value_range(color_scale, () => array_extent(vals))
+  const {
+    color_fn,
+    color_scale: {
+      value_range: [min, max],
+    },
+  } = resolve_color_scale(color_scale, () => array_extent(vals))
   const constant_scale = !Number.isFinite(min) || !Number.isFinite(max) || max === min
   if (constant_scale) return { colors: vals.map(() => midpoint) }
-  const { color_fn } = resolve_color_ramp(color_scale, [min, max])
   const color_for = (val: number) =>
     Number.isFinite(val) ? rgb(color_fn(val)).formatHex() : midpoint
   // Coordination numbers occupy a short integer range. Evaluate its exact colors once,
@@ -280,9 +282,6 @@ const is_atom_color_mode = (value: unknown): value is AtomColorMode =>
   typeof value === `string` && ATOM_COLOR_MODE_OPTIONS.some((mode) => mode === value)
 const is_color_scale_type = (value: unknown): value is ColorScaleType =>
   typeof value === `string` && COLOR_SCALE_TYPES.some((scale_type) => scale_type === value)
-// A scheme name or a ColorScaleConfig object (its fields are read where colors are mapped)
-const is_color_scale = (value: unknown): value is ColorScale =>
-  (typeof value === `string` && is_d3_interpolate_name(value)) || is_plain_object(value)
 const is_atom_color_fn = (value: unknown): value is AtomColorFn => typeof value === `function`
 const default_scale_type = (mode: AtomColorMode, property_key?: unknown): ColorScaleType =>
   mode === `wyckoff` ||

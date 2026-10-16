@@ -8,7 +8,7 @@
     $props()
 </script>
 
-<EmptyState role={error ? `alert` : `status`} {...rest}>
+<EmptyState role={error ? `alert` : undefined} {...rest}>
   {#if error}
     <h3>Invalid convex hull data</h3>
     <p>{error}</p>

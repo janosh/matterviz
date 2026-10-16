@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import type { BasePlotProps } from '#lib/plot/index.js'
   import { TreemapControls } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
@@ -84,7 +83,7 @@
     on_node_click,
     on_node_hover,
     on_zoom,
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,

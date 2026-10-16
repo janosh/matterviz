@@ -3,7 +3,6 @@
   import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import {
     format_shortcut_keys,
-    SHORTCUT_SCOPES_ATTR,
     SHORTCUTS,
     shortcut_attrs,
     type ShortcutScope,
@@ -26,6 +25,8 @@
     wrapper?: HTMLElement // the viewer root
   } = $props()
 
+  // Marks a viewer root with its space-separated shortcut scopes
+  const SHORTCUT_SCOPES_ATTR = `data-mv-shortcuts`
   let open = $state(false)
   let button = $state<HTMLButtonElement>()
   let listed_scopes = $state<ShortcutScope[]>([])

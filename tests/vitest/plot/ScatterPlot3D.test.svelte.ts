@@ -480,6 +480,14 @@ test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () =
     flushSync()
     return point && [point.series_idx, point.point_idx]
   }
+  // chords, composing and already-handled keys are left alone
+  const handled = new KeyboardEvent(`keydown`, { key: `ArrowRight`, cancelable: true })
+  handled.preventDefault()
+  for (const init of [{ ctrlKey: true }, { altKey: true }, { isComposing: true }])
+    expect(
+      handle_key(new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })),
+    ).toBeUndefined()
+  expect(handle_key(handled)).toBeUndefined()
   expect([`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)).toEqual([
     [1, 0],
     [0, 0],

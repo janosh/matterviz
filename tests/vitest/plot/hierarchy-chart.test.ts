@@ -1,5 +1,5 @@
 import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metrics.js'
-import { create_color_scale } from '#lib/plot/core/scales.js'
+import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import {
   ancestor_chain,
   arrow_nav_target,
@@ -105,9 +105,9 @@ describe(`hierarchy chart helpers`, () => {
       })
       expect(fixed?.color_scale.value_range).toEqual(expected)
       // top of viridis at the upper bound
-      expect(fixed && create_color_scale(fixed.color_scale, [0, 1])(expected[1])).toBe(
-        `#fde725`,
-      )
+      expect(
+        fixed && resolve_color_scale(fixed.color_scale, [0, 1]).color_fn(expected[1]),
+      ).toBe(`#fde725`)
     }
     const partial = compute_metric_colors(
       arcs,

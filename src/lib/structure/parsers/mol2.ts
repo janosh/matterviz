@@ -3,7 +3,7 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { AnyStructure, BondOrder, Site } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
-import type { WarnFn } from '#lib/trajectory/parse/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   cell_frame,
   drop_placeholder_cell,
@@ -80,13 +80,13 @@ const mol2_element = (
   return element_from_candidates(candidates, atom_idx)
 }
 
-export const parse_mol2 = (content: string, warn: WarnFn = console.warn): AnyStructure => {
+export const parse_mol2 = (content: string): AnyStructure => {
   // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
   const molecule_headers = [...content.matchAll(/^[ \t]*@<TRIPOS>MOLECULE/gim)]
   const first_record =
     molecule_headers.length > 1 ? content.slice(0, molecule_headers[1].index) : content
   if (molecule_headers.length > 1) {
-    warn(
+    parse_warn(
       `MOL2 contains ${molecule_headers.length} molecules; parsed the first and skipped ${
         molecule_headers.length - 1
       }`,
@@ -105,9 +105,8 @@ export const parse_mol2 = (content: string, warn: WarnFn = console.warn): AnyStr
   // Cartesian coordinates stay authoritative and are not wrapped into the cell so
   // molecules are not torn apart across periodic boundaries
   const { lattice_matrix, to_frac } = cell_frame(
-    drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`, warn),
+    drop_placeholder_cell(crysin, `MOL2`, `CRYSIN cell`),
     `MOL2 CRYSIN cell`,
-    warn,
   )
 
   const sites: Site[] = []
@@ -134,7 +133,9 @@ export const parse_mol2 = (content: string, warn: WarnFn = console.warn): AnyStr
     if (bond_type === `nc`) continue
     const order = MOL2_BOND_ORDERS[bond_type]
     if (order === undefined) {
-      warn(`MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`)
+      parse_warn(
+        `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
+      )
     }
     raw_bonds.push({
       atom_id_1: Number(tokens[1]),
@@ -142,7 +143,7 @@ export const parse_mol2 = (content: string, warn: WarnFn = console.warn): AnyStr
       order: order ?? 1,
     })
   }
-  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`, warn)
+  const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`)
 
   return parsed_result(sites, bonds, lattice_matrix)
 }

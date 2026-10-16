@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { DEFAULT_CONTROLS_MODE } from '#lib/controls.js'
   import { plot_color } from '#lib/colors/index.js'
   import { format_value } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
@@ -38,7 +37,7 @@
     mode = $bindable(`grouped`),
     loading = $bindable(false),
     error_msg = $bindable(),
-    show_controls = $bindable(DEFAULT_CONTROLS_MODE),
+    show_controls,
     controls_open = $bindable(false),
     on_sites_hover,
     ...rest
@@ -154,7 +153,7 @@
 <StructureBarPlot
   {...rest}
   tooltip={rest.tooltip ?? cn_tooltip}
-  bind:show_controls
+  {show_controls}
   bind:controls_open
   series={bar_series}
   primary_axis={cn_axis}

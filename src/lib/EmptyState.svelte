@@ -4,10 +4,11 @@
 
   // `children` takes precedence over the plain-text `message` (`` renders a bare container).
   // `overlay` lays it over a still-rendered parent (empty plot axes, a blank canvas) without
-  // blocking that parent's pointer events.
+  // blocking that parent's pointer events. A polite status region unless `role` says otherwise.
   let {
     message = `No data to display`,
     overlay = false,
+    role = `status`,
     children,
     ...rest
   }: {
@@ -17,7 +18,7 @@
   } & HTMLAttributes<HTMLDivElement> = $props()
 </script>
 
-<div {...rest} class={[`empty-state`, rest.class, { overlay }]}>
+<div {...rest} {role} class={[`empty-state`, rest.class, { overlay }]}>
   {#if children}
     {@render children()}
   {:else if message}

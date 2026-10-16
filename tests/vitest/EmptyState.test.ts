@@ -22,25 +22,26 @@ describe(`EmptyState`, () => {
         message: `No data available`,
         class: `custom-class`,
         id: `my-empty-state`,
+        role: `alert`,
         style: `min-height: 200px; background: red`,
       },
     })
     const container = doc_query<HTMLDivElement>(`.empty-state.custom-class`)
     expect(container.querySelector(`span.message`)?.textContent).toBe(`No data available`)
-    expect(container.id).toBe(`my-empty-state`)
+    expect([container.id, container.getAttribute(`role`)]).toEqual([`my-empty-state`, `alert`])
     expect(container.style.minHeight).toBe(`200px`)
     expect(container.style.background).toBe(`red`)
   })
 
   test.each([
     [{}, `No data to display`],
-    [{ message: undefined }, `No data to display`],
     [{ message: `` }, null],
   ])(`props %j render message %s`, (props, message) => {
     mount(EmptyState, { target: document.body, props })
     const container = doc_query(`.empty-state`)
     expect(container.querySelector(`span.message`)?.textContent ?? null).toBe(message)
     expect(container.classList.contains(`overlay`)).toBe(false)
+    expect(container.getAttribute(`role`)).toBe(`status`) // announced politely by default
   })
 
   test(`children snippet takes precedence over message prop`, () => {

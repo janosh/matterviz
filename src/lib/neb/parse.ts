@@ -32,7 +32,7 @@ import { finite_vec3_from_values, is_finite_vec3_like } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { count_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
-import { create_warning_collector, type WarnFn } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
@@ -63,18 +63,14 @@ function parse_forces(val: unknown, context: string): Vec3[] | undefined {
   })
 }
 
-function parse_image(raw: unknown, context: string, warn: WarnFn): NebImage {
+function parse_image(raw: unknown, context: string): NebImage {
   if (!is_plain_object(raw)) {
     throw new Error(`${context} must be an object with "energy" and "structure"`)
   }
   if (!is_plain_object(raw.structure)) {
     throw new Error(`${context} is missing a "structure" object`)
   }
-  const structure = parse_structure_file(
-    JSON.stringify(raw.structure),
-    `${context}.json`,
-    warn,
-  )
+  const structure = parse_structure_file(JSON.stringify(raw.structure), `${context}.json`)
   const forces = parse_forces(raw.forces, context)
   if (forces && forces.length !== structure.sites.length) {
     throw new Error(
@@ -96,7 +92,6 @@ function parse_path_body(
   raw: unknown,
   context: string,
   energy_unit: string | undefined,
-  warn: WarnFn,
 ): ReactionPath {
   const body = Array.isArray(raw) ? { images: raw } : raw
   if (!is_plain_object(body) || !Array.isArray(body.images)) {
@@ -104,7 +99,7 @@ function parse_path_body(
   }
   const path: ReactionPath = {
     images: body.images.map((image, image_idx) =>
-      parse_image(image, `${context} image ${display_idx(image_idx)}`, warn),
+      parse_image(image, `${context} image ${display_idx(image_idx)}`),
     ),
     ...(typeof body.label === `string` ? { label: body.label } : {}),
     energy_unit: typeof body.energy_unit === `string` ? body.energy_unit : energy_unit,
@@ -118,7 +113,6 @@ function parse_path_body(
 export function parse_reaction_path_json(
   content: string,
   filename = `reaction path`,
-  warn: WarnFn = console.warn,
 ): Record<string, ReactionPath> {
   let raw: unknown
   try {
@@ -142,14 +136,14 @@ export function parse_reaction_path_json(
     return Object.fromEntries(
       entries.map(([key, body]) => [
         key,
-        parse_path_body(body, `${filename}:${key}`, energy_unit, warn),
+        parse_path_body(body, `${filename}:${key}`, energy_unit),
       ]),
     )
   }
   if (raw.images === undefined) {
     throw new Error(`${filename} has neither an "images" array nor a "paths" record`)
   }
-  const path = parse_path_body(raw, filename, energy_unit, warn)
+  const path = parse_path_body(raw, filename, energy_unit)
   return { [path.label ?? filename]: path }
 }
 
@@ -168,13 +162,9 @@ const xyz_comment_energy = (comment: string, context: string): number => {
 // Read a multi-frame extended-XYZ file as one reaction path, one image per frame. Frame
 // walking, `Properties=` column layout, lattice, pbc and comment metadata all come from
 // the trajectory XYZ parser, which is the single source of truth for the format.
-export function parse_xyz_reaction_path(
-  content: string,
-  filename = `path.xyz`,
-  warn: WarnFn = console.warn,
-): ReactionPath {
+export function parse_xyz_reaction_path(content: string, filename = `path.xyz`): ReactionPath {
   const images: NebImage[] = []
-  const collector = create_warning_collector(warn)
+  const collector = create_warning_collector(parse_warn)
   const lines = new TextLines(content)
   for (const frame of iter_xyz_frames(lines)) {
     const image_idx = images.length
@@ -238,11 +228,8 @@ const structure_energy = (structure: AnyStructure, filename: string): number =>
 
 // Assemble whatever was dropped into named reaction paths. Reaction-path JSON and
 // multi-frame XYZ each contribute their own path(s); loose structure files are collected
-// into one path in drop order. Recoverable parser issues go to `warn`.
-export function parse_dropped_paths(
-  files: DroppedFile[],
-  warn: WarnFn = console.warn,
-): Record<string, ReactionPath> {
+// into one path in drop order. Recoverable parser issues go to parse_warn.
+export function parse_dropped_paths(files: DroppedFile[]): Record<string, ReactionPath> {
   if (files.length === 0) throw new Error(`parse_dropped_paths got no files`)
   const paths: Record<string, ReactionPath> = {}
   const loose: NebImage[] = []
@@ -257,15 +244,15 @@ export function parse_dropped_paths(
 
   for (const { content, filename } of files) {
     if (is_reaction_path_json(content)) {
-      const json_paths = parse_reaction_path_json(content, filename, warn)
+      const json_paths = parse_reaction_path_json(content, filename)
       for (const [key, path] of Object.entries(json_paths)) add_path(key, path, filename)
       continue
     }
     if (is_xyz(filename) && count_xyz_frames(content) > 1) {
-      add_path(filename, parse_xyz_reaction_path(content, filename, warn), filename)
+      add_path(filename, parse_xyz_reaction_path(content, filename), filename)
       continue
     }
-    const structure = parse_structure_file(content, filename, warn)
+    const structure = parse_structure_file(content, filename)
     loose.push({
       structure,
       // content is trimmed like parse_xyz_reaction_path does it, else a leading blank

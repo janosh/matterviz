@@ -9,7 +9,7 @@ import { is_editable_event_target } from 'svelte-widgets/utils'
 
 // Whether a keydown reaching a sequence viewer (Trajectory, NebViewer) from inside it or via its
 // window forward is the viewer's to handle. Form fields keep their keys, except the
-// SequenceControls slider, which forwards its own; Enter/Escape in its step input commit by
+// SequenceControls slider, whose keys play the sequence; Enter/Escape in its step input commit by
 // leaving the field. Space presses a focused button or toggles a <summary>, so playback must
 // not swallow it there.
 export function is_sequence_key_target(event: KeyboardEvent): boolean {

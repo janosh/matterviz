@@ -13,7 +13,7 @@ import {
   strip_potcar_suffix,
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
-import type { WarnFn } from '#lib/trajectory/parse/shared.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import { parse_leading_num, to_error } from '#lib/utils.js'
 
 // A VASP 4 header has no symbol line (species come from the POTCAR), so outside strict mode
@@ -87,10 +87,10 @@ type VaspHeaderOptions = {
   coord_mode?: `strict` | `lenient` | `skip`
   // 0-based comment-line index for errors in repeated XDATCAR headers.
   line_offset?: number
-} &
   // XDATCAR needs real species metadata instead of VASP 4 fallbacks; every other header
-  // reports its placeholder species through `warn`
-  ({ strict_species: true } | { strict_species?: false; warn: WarnFn })
+  // reports its placeholder species through parse_warn
+  strict_species?: boolean
+}
 
 interface VaspHeader {
   // Resolved per-axis Cartesian factors.
@@ -121,8 +121,7 @@ export function parse_vasp_header(
   cursor: VaspLineCursor,
   options: VaspHeaderOptions,
 ): VaspHeaderResult {
-  const { format, coord_mode = `strict`, line_offset = 0 } = options
-  const strict_species = options.strict_species === true
+  const { format, coord_mode = `strict`, line_offset = 0, strict_species = false } = options
   try {
     require_line(cursor.peek(), `${format}: file ends before the comment line`)
     cursor.advance() // the comment line carries no data
@@ -214,13 +213,13 @@ export function parse_vasp_header(
 
     let elements: ElementSymbol[]
     if (raw_symbols.length === 0) {
-      if (options.strict_species) {
+      if (strict_species) {
         return fail(`${format}: element symbols are missing (VASP 4 header)`)
       }
       elements = counts.map(
         (_count, idx) => VASP4_PLACEHOLDER_ELEMENTS[idx % VASP4_PLACEHOLDER_ELEMENTS.length],
       )
-      options.warn(
+      parse_warn(
         `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
       )
     } else {

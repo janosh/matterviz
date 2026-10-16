@@ -741,6 +741,28 @@ test(`canvas_overlay_png_blob draws the overlays' SVG redraw over the canvas fra
   expect(overlay_svg.querySelector(`circle`)?.getAttribute(`fill`)).toBe(`red`)
 })
 
+// Without overlays the canvas frame passes through as is; overlays on a canvas that has not
+// been laid out have no geometry to sit on and are refused
+test.each([
+  [`no overlays`, 0, 800, null],
+  [`an unlaid-out canvas`, 1, 0, `has not been laid out (zero size)`],
+])(`canvas_overlay_png_blob with %s`, async (_label, n_overlays, size, error) => {
+  const frame_blob = new Blob([`frame`], { type: `image/png` })
+  const canvas = Object.assign(
+    make_mock_canvas((callback) => callback(frame_blob)),
+    {
+      getBoundingClientRect: () => new DOMRect(0, 0, size, size),
+    },
+  )
+  const bitmap_spy = vi.fn()
+  vi.stubGlobal(`createImageBitmap`, bitmap_spy)
+  const overlays = Array.from({ length: n_overlays }, () => document.createElement(`div`))
+  const result = canvas_overlay_png_blob(canvas, overlays, 72)
+  if (error) await expect(result).rejects.toThrow(error)
+  else expect(await result).toBe(frame_blob)
+  expect(bitmap_spy).not.toHaveBeenCalled()
+})
+
 describe(`export_canvas_as_png`, () => {
   test.each([
     [`structure.png`, `structure-150dpi.png`], // suffix injected before extension

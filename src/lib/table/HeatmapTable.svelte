@@ -18,9 +18,13 @@
   import { format_num } from '#lib/labels.js'
   import { array_max, clamp } from '#lib/math.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
-  import { to_color_scale_config } from '#lib/plot/core/scales.js'
-  import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
-  import { clamp01, html_to_text } from '#lib/utils.js'
+  import { scheme_name, to_color_scale_config, with_scheme } from '#lib/plot/core/scales.js'
+  import {
+    type ColorScale,
+    get_scale_type_name,
+    SCALE_DEFAULTS,
+  } from '#lib/plot/core/types.js'
+  import { clamp01, html_to_text, with_defaults } from '#lib/utils.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type {
@@ -127,7 +131,7 @@
     backdrop = undefined,
     show_row_numbers = false,
     allow_better_toggle = false,
-    show_controls = $bindable({ mode: DEFAULT_CONTROLS_MODE, hidden: [`controls`] }),
+    show_controls = { mode: DEFAULT_CONTROLS_MODE, hidden: [`controls`] },
     controls_open = $bindable(false),
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
@@ -294,14 +298,6 @@
         : { direction: `asc` as const, ...initial_sort }
       : null,
   )
-  // Feature props come as `true` (enable with defaults), an object (override them) or off
-  function with_defaults<Defaults extends object, Config extends object>(
-    option: boolean | Config | undefined,
-    defaults: Defaults,
-  ): (Defaults & Config) | null {
-    if (!option) return null
-    return { ...defaults, ...(typeof option === `object` ? option : {}) } as Defaults & Config
-  }
   let pagination_config = $derived(with_defaults(pagination, { page_size: 25 }))
   // Writable: the page-size selector overrides it until the parent changes pagination
   let page_size = $derived(pagination_config?.page_size ?? 25)
@@ -373,15 +369,11 @@
   const color_scale_of = (col: Column<Row>): ColorScale | null | undefined => {
     const pref = prefs_of(col.id).color_scale
     if (pref === undefined) return col.color_scale
-    return pref && col.color_scale
-      ? { ...to_color_scale_config(col.color_scale), scheme: pref }
-      : pref
+    return pref && col.color_scale ? with_scheme(col.color_scale, pref) : pref
   }
   // Scheme name shown in a column's select (function schemes fall back to the default)
-  const scheme_name = (color_scale: ColorScale | null | undefined): D3InterpolateName => {
-    const scheme = color_scale ? to_color_scale_config(color_scale).scheme : undefined
-    return typeof scheme === `string` ? scheme : `interpolateViridis`
-  }
+  const shown_scheme = (color_scale: ColorScale | null | undefined): D3InterpolateName =>
+    (color_scale && scheme_name(color_scale)) || SCALE_DEFAULTS.scheme
 
   // === Column identity and order ===
   let columns_by_id = $derived(new Map(columns.map((col) => [col.id, col])))
@@ -1606,10 +1598,10 @@
               <div class="col-color-row">
                 <span class="col-color-label">{@html render_html(col.label)}</span>
                 <select
-                  value={scheme_name(color_scale_of(col))}
+                  value={shown_scheme(color_scale_of(col))}
                   onchange={(event) => {
                     const val = event.currentTarget.value as D3InterpolateName
-                    const is_default = val === scheme_name(col.color_scale)
+                    const is_default = val === shown_scheme(col.color_scale)
                     set_pref(col_id, `color_scale`, is_default ? undefined : val)
                   }}
                 >

@@ -1,4 +1,5 @@
 import { forward_window_keydown } from 'svelte-widgets/attachments'
+import { on } from 'svelte/events'
 import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
 
 // One registry of the keyboard shortcuts viewers handle. The `?` overlay (ShortcutsHelp) lists
@@ -116,30 +117,38 @@ export const shortcuts_for = (scopes: Iterable<ShortcutScope>): Shortcut[] => {
   )
 }
 
-// Marks a viewer root with its space-separated shortcut scopes; set by ShortcutsHelp
-export const SHORTCUT_SCOPES_ATTR = `data-mv-shortcuts`
+type KeydownHandler = (event: KeyboardEvent) => boolean
 
-// Plain-key shortcuts of one viewer, run from keydowns inside it (focus) and from the page's
-// while the pointer is over it (forward_window_keydown), so only the hovered or focused viewer
-// reacts. A handled key is prevented, which also keeps an enclosing viewer from acting on it.
-// Chords stay the browser's (Cmd/Ctrl+R reloads), typing and autorepeat are ignored. Keys are
-// matched lowercased for letters and by `event.key` otherwise (`Escape`, `?`). An action
-// returning false had nothing to do, which leaves the key to the host.
-export const viewer_keys =
-  (bindings: () => Partial<Record<string, () => unknown>>) => (node: HTMLElement) => {
-    const handle = (event: KeyboardEvent): boolean => {
-      if (event.defaultPrevented || event.isComposing || event.repeat) return false
-      if (is_modifier_chord(event) || is_editable_event_target(event.target)) return false
-      const action = bindings()[event.key.length === 1 ? event.key.toLowerCase() : event.key]
-      return action !== undefined && action() !== false
-    }
-    const on_keydown = (event: KeyboardEvent) => {
-      if (handle(event)) event.preventDefault()
-    }
-    node.addEventListener(`keydown`, on_keydown)
-    const detach = forward_window_keydown({ handle })(node)
+// Keydowns of one viewer: from inside it (focus) and the page's while the pointer is over it
+// (forward_window_keydown), so only the hovered or focused viewer reacts. `handle` returns
+// true when it handled the key, which prevents the default (page scroll, find, ...) and keeps
+// an enclosing viewer from acting on it. A click leaves a viewer focused *and* hovered: the
+// root runs first, so the window pass then sees a prevented key and skips. `hover_handle`
+// narrows what the pointer alone may trigger. Prevented and composing keys never arrive.
+export const viewer_keydown =
+  (handle: KeydownHandler, hover_handle: KeydownHandler = handle) =>
+  (node: HTMLElement) => {
+    // `on`, not addEventListener: descendants' delegated onkeydown handlers run first, so
+    // one that handles (prevents) or stops a key keeps it from the viewer
+    const off = on(node, `keydown`, (event) => {
+      if (!event.defaultPrevented && !event.isComposing && handle(event))
+        event.preventDefault()
+    })
+    const detach = forward_window_keydown({ handle: hover_handle })(node)
     return () => {
-      node.removeEventListener(`keydown`, on_keydown)
+      off()
       detach?.()
     }
   }
+
+// Plain-key shortcuts of one viewer (see viewer_keydown). Chords stay the browser's (Cmd/Ctrl+R
+// reloads), typing and autorepeat are ignored. Keys are matched lowercased for letters and by
+// `event.key` otherwise (`Escape`, `?`). An action returning false had nothing to do, which
+// leaves the key to the host.
+export const viewer_keys = (bindings: () => Partial<Record<string, () => unknown>>) =>
+  viewer_keydown((event) => {
+    if (event.repeat || is_modifier_chord(event) || is_editable_event_target(event.target))
+      return false
+    const action = bindings()[event.key.length === 1 ? event.key.toLowerCase() : event.key]
+    return action !== undefined && action() !== false
+  })

@@ -4,10 +4,9 @@
   // Click/drag sets the temperature; clicking a formula selects the phase. Everything but the
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
   import { add_alpha } from '#lib/colors/index.js'
-  import { resolve_color_ramp } from '#lib/plot/core/color-ramp.js'
-  import { resolve_value_range } from '#lib/plot/core/scales.js'
+  import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { get_formula_label_segments } from '#lib/composition/format.js'
-  import { clamp, type Vec2 } from '#lib/math.js'
+  import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -95,11 +94,10 @@
   const t_of = (pixel_x: number) =>
     t_min + ((pixel_x - label_width) / plot_width) * (t_max - t_min)
   const row_top = (row: number) => top_pad + row * row_height
-  const color_of = $derived.by(() => {
-    const auto_range: Vec2 = [0, Math.max(settings.max_e_above_hull, 1e-9)]
-    const range = resolve_value_range(settings.color_scale, auto_range)
-    return resolve_color_ramp(settings.color_scale, range).color_fn
-  })
+  const color_of = $derived(
+    resolve_color_scale(settings.color_scale, [0, Math.max(settings.max_e_above_hull, 1e-9)])
+      .color_fn,
+  )
 
   // === Drawing ===
 
@@ -200,24 +198,28 @@
     canvas: HTMLCanvasElement
     key: string
     diagram: TernaryPhaseDiagram
+    color_of: (value: number) => string
   } | null = null
   function static_image(width: number, height: number, text_color: string): HTMLCanvasElement {
     const dpr = globalThis.devicePixelRatio || 1
-    // Rows (filter/sort) plus every paint input; the diagram itself is compared by identity
+    // Rows (filter/sort) plus every paint input; the diagram and the colors (whose scheme may
+    // be a function, invisible to a string key) are compared by identity
     const key = [
       width,
       height,
       dpr,
       text_color,
-      JSON.stringify(settings.color_scale),
-      settings.max_e_above_hull,
       settings.show_event_lines,
       row_height,
       overflowing,
       label_width,
       rows.join(`,`),
     ].join(`|`)
-    if (static_layer?.key === key && static_layer.diagram === diagram)
+    if (
+      static_layer?.key === key &&
+      static_layer.diagram === diagram &&
+      static_layer.color_of === color_of
+    )
       return static_layer.canvas
     const layer = static_layer?.canvas ?? document.createElement(`canvas`)
     layer.width = Math.round(width * dpr)
@@ -227,7 +229,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       draw_static(ctx, text_color)
     }
-    static_layer = { canvas: layer, key, diagram }
+    static_layer = { canvas: layer, key, diagram, color_of }
     return layer
   }
 

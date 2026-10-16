@@ -5,7 +5,8 @@
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { create_file_drop_handler } from '#lib/io/file-drop.js'
+  import { file_drop_zone } from '#lib/io/file-drop.js'
+  import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -13,9 +14,8 @@
   import { array_extent, compute_bounding_box_2d, polygon_centroid } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
   import { unique_id } from '#lib/plot/core/utils.js'
-  import { handle_and_prevent, to_error } from '#lib/utils.js'
-  import { forward_window_keydown } from 'svelte-widgets/attachments'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+  import { to_error } from '#lib/utils.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -78,6 +78,8 @@
     diagram_input = $bindable<DiagramInput | null>(null),
     editor_open = $bindable(false),
     allow_file_drop = true,
+    on_file_drop,
+    on_file_load,
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     tooltip,
@@ -112,6 +114,10 @@
       editor_open?: boolean
       // Dropped phase-diagram SVGs replace the diagram (through diagram_input)
       allow_file_drop?: boolean
+      // Takes each dropped file raw instead of the built-in SVG parsing
+      on_file_drop?: FileLoadCallback
+      // Called with each dropped SVG's diagram input once it is shown
+      on_file_load?: (data: FileLoadData & { diagram_input: DiagramInput }) => void
       // Axis configuration
       x_axis?: AxisConfig
       y_axis?: AxisConfig
@@ -170,13 +176,16 @@
   // Handle SVG file drop directly on the component. The shared handler reads the file,
   // expands dropped folders and serializes overlapping drops; only the SVG filter and the
   // parse are specific to this diagram.
-  const handle_svg_drop = create_file_drop_handler({
+  const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
-    on_drop: (content, filename, { file }) => {
-      if (!filename.endsWith(`.svg`) && file?.type !== `image/svg+xml`) return
+    on_drop: (content, filename, metadata) => {
+      if (on_file_drop) return on_file_drop(content, filename, metadata)
+      if (!filename.endsWith(`.svg`) && metadata.file?.type !== `image/svg+xml`) return
       if (typeof content !== `string`) return
+      const parsed = parse_phase_diagram_svg(content)
       drop_error = null
-      diagram_input = parse_phase_diagram_svg(content)
+      diagram_input = parsed
+      on_file_load?.({ diagram_input: parsed, filename, ...metadata })
     },
     // covers reading, decompressing and the parse above, since on_drop is awaited inside
     // the handler's per-file try — hence the generic wording
@@ -408,24 +417,16 @@
     clear_hover()
   }
 
-  // Plain letters like every other viewer, scoped to this one rather than the whole
-  // document, which is what forced a chord here before. Bound twice: on the root for keys
-  // from a focused descendant (clicking a region focuses the SVG, and the window forwarder
-  // ignores those), and on the window for the hover-without-focus case. The root fires
-  // first and prevents the default, so the forwarder's pass is a no-op.
-  function handle_keydown(event: KeyboardEvent): boolean {
-    if (event.defaultPrevented) return false
-    if (is_editable_event_target(event.target) || is_modifier_chord(event)) return false
-    if (event.key === `e` && !event.repeat) {
+  // `e` toggles the export pane, Escape releases a locked hover
+  const keys = viewer_keys(() => ({
+    e: () => {
       export_pane_open = !export_pane_open
-      return true
-    }
-    if (event.key === `Escape` && locked_hover_info) {
+    },
+    Escape: () => {
+      if (!locked_hover_info) return false
       locked_hover_info = null
-      return true
-    }
-    return false
-  }
+    },
+  }))
 
   function handle_svg_keydown(event: KeyboardEvent) {
     if (event.key === `Enter` || event.key === ` `) {
@@ -470,22 +471,20 @@
   {...rest}
   class={[`binary-phase-diagram`, rest.class, { fullscreen }]}
   bind:this={wrapper}
-  onkeydown={handle_and_prevent(handle_keydown)}
-  {@attach forward_window_keydown({ handle: handle_keydown })}
+  {@attach keys}
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
   aria-label={source_data === undefined
     ? `Missing phase diagram data. Provide diagram data through the data prop.`
     : `${component_a}-${component_b} binary phase diagram`}
-  ondrop={handle_svg_drop}
-  ondragover={(event) => allow_file_drop && event.preventDefault()}
+  {@attach drop_zone}
 >
   <ViewerNotices>
     {#if input_error}<StatusMessage message={input_error} type="error" />{/if}
   </ViewerNotices>
   {#if source_data === undefined}
-    <EmptyState role="status">
+    <EmptyState>
       <h3>Missing phase diagram data</h3>
       <p>Provide diagram data through the <code>data</code> prop.</p>
     </EmptyState>
