@@ -23,10 +23,44 @@
     bg_color?: string // the hovered domain's fill
   } = $props()
 
-  const fmt = (value: number): string => format_num(value, `.4~g`)
+  const MAX_NEIGHBORS = 6
+  // vertex round-off (|x| ~ 1e-15 eV) would print as 3.55e-15 instead of 0
+  const fmt = (value: number): string => format_num(Math.abs(value) < 1e-9 ? 0 : value, `.3~g`)
   const detail_level = $derived(
     (typeof tooltip === `object` && tooltip.detail_level) || `detailed`,
   )
+  // One line: phase kind, entry count and energy (a single value when min = max)
+  const summary = $derived.by(() => {
+    if (hover_info.view === `2d`) return ``
+    const { is_elemental, is_draw_formula, matching_entry_count: count } = hover_info
+    const { min_energy_per_atom: e_min, max_energy_per_atom: e_max } = hover_info
+    const energy =
+      e_min === null || e_max === null
+        ? ``
+        : `${e_min === e_max ? fmt(e_min) : `${fmt(e_min)} to ${fmt(e_max)}`} eV/atom`
+    return [
+      is_elemental ? `Element` : `Compound`,
+      is_draw_formula && `overlay`,
+      count > 0 && `${count} ${count === 1 ? `entry` : `entries`}`,
+      energy,
+    ]
+      .filter(Boolean)
+      .join(` · `)
+  })
+  // Bounds the domain is clipped against, grouped per side (lower first)
+  const bounds = $derived.by((): [string, string[]][] => {
+    if (hover_info.view === `2d`) return []
+    const { touches_limits } = hover_info
+    return (
+      [
+        [`Lower`, `lower`],
+        [`Upper`, `upper`],
+      ] as const
+    ).flatMap(([label, side]) => {
+      const elements = touches_limits.filter((bound) => bound.side === side)
+      return elements.length > 0 ? [[label, elements.map(({ element }) => element)]] : []
+    })
+  })
 </script>
 
 <PlotTooltip
@@ -45,80 +79,67 @@
         {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
       {/each}
     </h4>
-    {#if pinned}
-      <p>Pinned · Press Esc to unlock</p>
-    {/if}
-    {#if hover_info.view === `2d`}
-      <p>2D domain · Points: {hover_info.n_points}</p>
-    {:else}
-      <p>
-        {hover_info.is_elemental ? `Elemental phase` : `Compound phase`}
-        {#if hover_info.is_draw_formula}<span> · Overlay target</span>{/if}
-      </p>
-      <p>
-        Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
-        {hover_info.n_points}
-      </p>
-      <p>
-        Entries: {hover_info.matching_entry_count}
-        {#if hover_info.min_energy_per_atom !== null && hover_info.max_energy_per_atom !== null}
-          · E/atom: {fmt(hover_info.min_energy_per_atom)} to {fmt(
-            hover_info.max_energy_per_atom,
-          )}
-          <small>eV</small>
-        {/if}
-      </p>
-    {/if}
+    {#if pinned}<small>Pinned · Esc to unlock</small>{/if}
+    {#if summary}<p>{summary}</p>{/if}
     {#if detail_level === `detailed`}
-      <h5>Axis ranges</h5>
-      {#each hover_info.axis_ranges as axis_range (axis_range.element)}
+      <!-- running text, not a two-column grid: lines fill the width and wrap early -->
+      <p class="ranges">
+        <span class="key">μ (eV)</span>
+        {#each hover_info.axis_ranges as { element, min_val, max_val } (element)}
+          <span>{element} = [{fmt(min_val)}, {fmt(max_val)}]</span>
+        {/each}
+      </p>
+      {#if hover_info.view === `3d` && hover_info.neighbors.length > 0}
         <p>
-          {axis_range.element}: {fmt(axis_range.min_val)} to {fmt(axis_range.max_val)}
-          <small>eV</small>
+          <span class="key">Next to</span>
+          {hover_info.neighbors.slice(0, MAX_NEIGHBORS).map(domain_formula_text).join(`, `)}
+          {#if hover_info.neighbors.length > MAX_NEIGHBORS}
+            +{hover_info.neighbors.length - MAX_NEIGHBORS} more
+          {/if}
         </p>
-      {/each}
-      {#if hover_info.view === `3d`}
-        <p>
-          Centroid: ({hover_info.ann_loc.map((val) => format_num(val, `.3~g`)).join(`, `)})
-          <small>eV</small>
-        </p>
-        {#if hover_info.neighbors.length > 0}
-          <h5>Neighbors ({hover_info.neighbors.length})</h5>
-          <p>{hover_info.neighbors.map(domain_formula_text).join(`, `)}</p>
-        {/if}
-        {#if hover_info.touches_limits.length > 0}
-          <h5>Touches bounds</h5>
-          <p>{hover_info.touches_limits.join(`, `)}</p>
-        {/if}
       {/if}
+      {#each bounds as [side, elements] (side)}
+        <p><span class="key">{side} bound</span> {elements.join(`, `)}</p>
+      {/each}
     {/if}
   {/if}
 </PlotTooltip>
 
 <style>
   :global(.chempot-tooltip) {
-    max-width: min(32rem, 92vw);
+    /* narrow, so the wrapping lines below fill the box instead of leaving gutters */
+    --plot-tooltip-max-width: 14rem;
     background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
     color: var(--tooltip-text, var(--text-color, #222));
     border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-    --plot-tooltip-padding: 6px 8px;
-    --plot-tooltip-border-radius: 6px;
-    --plot-tooltip-font-size: 12px;
-    line-height: 1.3;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --plot-tooltip-padding: 3px 6px;
+    --plot-tooltip-border-radius: 5px;
+    --plot-tooltip-font-size: 11px;
+    line-height: 1.25;
   }
   h4 {
-    margin: 0 0 3px;
-    font-size: 13px;
-  }
-  h5 {
-    margin: 5px 0 0;
+    margin: 0;
     font-size: 12px;
-    font-weight: 600;
+  }
+  small {
+    display: block;
+    opacity: 0.75;
   }
   p {
-    margin: 1px 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    margin: 1px 0 0;
+  }
+  .key {
+    opacity: 0.7;
+  }
+  /* each range stays whole and lines break between ranges, packed with the key */
+  .ranges {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.5em;
+    span {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
   }
 </style>

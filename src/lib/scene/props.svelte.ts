@@ -27,6 +27,7 @@ export type ThreltePointerEvent = {
   point: Vector3
   // Absent for non-mesh hits (points, lines)
   face?: HitFace | null
+  faceIndex?: number | null // the hit triangle of a non-indexed mesh
   instanceId?: number // the hit instance of an InstancedMesh
   nativeEvent: PointerEvent
   stopPropagation: () => void

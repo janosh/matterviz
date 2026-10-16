@@ -1,4 +1,9 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
+import {
+  compute_chempot_system,
+  section_measure_curves,
+} from '#lib/chempot-diagram/compute.js'
+import { create_chempot_state } from '#lib/chempot-diagram/controls-state.svelte.js'
 import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
@@ -12,13 +17,14 @@ import {
   plot_svg,
   resize_element,
 } from '../setup'
+import { load_json } from '../test-fixtures'
 
 // Every compute request is held until the test resolves it, so "while recomputing" states are
 // observable; requests record their config and abort signal
 type Call = { config: ChemPotDiagramConfig; signal?: AbortSignal; resolve: () => void }
 const calls = vi.hoisted(() => ({ list: [] as Call[] }))
 vi.mock(`#lib/chempot-diagram/async-compute.svelte.js`, async () => {
-  const { compute_chempot_diagram } = await import(`#lib/chempot-diagram/compute.js`)
+  const compute_module = await import(`#lib/chempot-diagram/compute.js`)
   const compute = (
     entries: PhaseData[],
     config: ChemPotDiagramConfig,
@@ -26,7 +32,7 @@ vi.mock(`#lib/chempot-diagram/async-compute.svelte.js`, async () => {
   ) => {
     const gate = Promise.withResolvers<undefined>()
     calls.list.push({ config, signal, resolve: () => gate.resolve(undefined) })
-    return gate.promise.then(() => compute_chempot_diagram(entries, config))
+    return gate.promise.then(() => compute_module.compute_chempot_system(entries, config))
   }
   return { compute_chempot_async: Object.assign(compute, { release: () => undefined }) }
 })
@@ -154,7 +160,7 @@ test.each([
     expect(document.querySelectorAll(`.plot-tooltip`)).toHaveLength(shown ? 1 : 0)
     const tooltip_el = document.querySelector(`.chempot-tooltip`)
     expect(tooltip_el !== null).toBe(shown)
-    expect(tooltip_el?.textContent?.includes(`Axis ranges`) ?? false).toBe(ranges)
+    expect(tooltip_el?.querySelector(`.ranges`) != null).toBe(ranges)
   },
 )
 
@@ -171,18 +177,16 @@ test(`an error state keeps the controls, so the setting that caused it can be un
   expect(labels.some((label) => label.textContent?.includes(`Min limit`))).toBe(true)
 })
 
-test(`projections from a larger system draw closed straight outlines, switching recomputes with the new axes`, async () => {
-  const props = $state({
-    entries: [
-      { composition: { Li: 1 }, energy: -1.9 },
-      { composition: { Co: 1 }, energy: -7.1 },
-      { composition: { O: 1 }, energy: -4.9 },
-      { composition: { Li: 2, O: 1 }, energy: -14.3 },
-      { composition: { Co: 1, O: 1 }, energy: -14.9 },
-      { composition: { Li: 1, Co: 1, O: 2 }, energy: -29 },
-    ],
-    config: { elements: [`Li`, `O`] },
-  })
+test(`the previous diagram stays drawn while the worker computes new axes; projections then re-section on the main thread with closed straight outlines`, async () => {
+  const co_li_o = [
+    { composition: { Li: 1 }, energy: -1.9 },
+    { composition: { O: 1 }, energy: -4.9 },
+    { composition: { Li: 2, O: 1 }, energy: -14.3 },
+    { composition: { Co: 1 }, energy: -7.1 },
+    { composition: { Co: 1, O: 1 }, energy: -14.9 },
+    { composition: { Li: 1, Co: 1, O: 2 }, energy: -29 },
+  ]
+  const props = $state({ entries: co_li_o.slice(0, 3), config: { elements: [`Li`, `O`] } })
   await mount_2d(props)
   await resolve_latest()
   await size_plot()
@@ -192,24 +196,161 @@ test(`projections from a larger system draw closed straight outlines, switching 
       (path) => path.getAttribute(`d`) ?? ``,
     )
   const li_o_paths = line_paths()
-  // domains are polygons here: each closed (ends where it starts), with no spline (C) segments
-  const polygons = li_o_paths
+  expect(li_o_paths.length).toBeGreaterThan(0)
+  // the Li-O system has no Co axis: sectioning it on Co-O would throw
+  Object.assign(props, { entries: co_li_o, config: { elements: [`Co`, `O`] } })
+  flushSync()
+  await tick()
+  expect(calls.list).toHaveLength(2)
+  expect(document.querySelector(`.empty-state`)).toBeNull()
+  expect(line_paths()).toEqual(li_o_paths)
+  await resolve_latest()
+  const co_o_paths = line_paths()
+  expect(co_o_paths).not.toEqual(li_o_paths)
+  // projected domains are polygons: each closed (ends where it starts), no spline (C) segments
+  const polygons = co_o_paths
     .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
     .filter((coords) => coords.length > 4)
   expect(polygons.length).toBeGreaterThan(0)
   for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
-  for (const path of li_o_paths) expect(path).not.toContain(`C`)
-  props.config = { elements: [`Co`, `O`] }
+  for (const path of co_o_paths) expect(path).not.toContain(`C`)
+  props.config = { elements: [`Li`, `O`] }
   flushSync()
   await tick()
+  // the full Co-Li-O system is computed once: another projection is a main-thread section
   expect(calls.list.map(({ config }) => config.elements)).toEqual([
     [`Li`, `O`],
-    [`Co`, `O`],
+    [`Co`, `Li`, `O`],
   ])
-  // the previous projection stays drawn until its replacement arrives
-  expect(line_paths()).toEqual(li_o_paths)
+  const projected_li_o = line_paths()
+  expect(projected_li_o).not.toEqual(co_o_paths)
+  expect(projected_li_o).not.toEqual(li_o_paths)
+})
+
+const quinary_entries = load_json<PhaseData[]>(
+  `${import.meta.dirname}/../../../src/site/convex-hull/quinaries/F-La-Ni-O-Rb.json.gz`,
+)
+const ytos_entries = load_json<PhaseData[]>(`${import.meta.dirname}/ytos_entries.json.gz`)
+// create_chempot_state outside a component, its worker result delivered
+const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig) => {
+  const states: ReturnType<typeof create_chempot_state>[] = []
+  onTestFinished(
+    $effect.root(() => {
+      states.push(
+        create_chempot_state({
+          entries: () => entries,
+          config: () => config,
+          temperature: { get: () => undefined, set: () => undefined },
+          min_elements: 3,
+          formulas: () => [],
+          label: `test`,
+        }),
+      )
+    }),
+  )
+  flushSync()
   await resolve_latest()
-  expect(line_paths()).not.toEqual(li_o_paths)
+  return states[0]
+}
+
+test(`chempot state keeps only non-display axis slices and reuses a slice's curves while its own value moves`, async () => {
+  const display = [`La`, `Ni`, `O`]
+  const config = $state<ChemPotDiagramConfig>({
+    elements: display,
+    slice_chempots: { F: -1.5, La: -1, Xe: -1 },
+  })
+  const chempot = await chempot_state(quinary_entries, config)
+  const system = compute_chempot_system(quinary_entries, { elements: display })
+  const expected_curves = () =>
+    section_measure_curves(system, display, chempot.slices, `F`, chempot.slice_ranges.F)
+  // the displayed La and the absent Xe are not slices; Rb is still shadow-projected
+  expect(chempot.slices).toEqual({ F: -1.5 })
+  expect(chempot.slice_curves).toEqual({ F: null })
+  chempot.set_slice(`Rb`, -1)
+  flushSync()
+  const first_curves = chempot.slice_curves.F
+  expect(first_curves).toEqual(expected_curves())
+  chempot.set_slice(`F`, -1)
+  flushSync()
+  expect(chempot.slice_curves.F).toBe(first_curves) // its own value: reused
+  chempot.set_slice(`Rb`, -2)
+  flushSync()
+  expect(chempot.slice_curves.F).not.toEqual(first_curves) // another slice: recomputed
+  expect(chempot.slice_curves.F).toEqual(expected_curves())
+  // fewer display axes than min_elements: no diagram, but no error either
+  config.elements = [`La`, `Ni`]
+  flushSync()
+  expect(chempot.error).toBeNull()
+  expect(chempot.diagram_data).toBeNull()
+  expect(calls.list).toHaveLength(1) // every view above sectioned one worker result
+})
+
+// Requested slices are clamped, in element order, into the range left feasible by the slices
+// before them: a slice above an element's reference, or a pair jointly above a compound's
+// (F = 0 leaves Rb at most E(FRb)-bound), would otherwise empty the region
+test.each([
+  {
+    label: `absolute chempots put S below -3 eV`,
+    entries: ytos_entries,
+    config: { elements: [`O`, `Ti`, `Y`], formal_chempots: false, slice_chempots: { S: -3 } },
+  },
+  {
+    label: `F and Rb both at 0`,
+    entries: quinary_entries,
+    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 0, Rb: 0 } },
+  },
+  {
+    label: `out-of-limits values`,
+    entries: quinary_entries,
+    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 5, Rb: -99 } },
+  },
+])(`chempot state clamps infeasible slices: $label`, async ({ entries, config }) => {
+  const chempot = await chempot_state(entries, config)
+  expect(chempot.error).toBeNull()
+  expect(chempot.diagram_data?.shadow_elements).toEqual([])
+  for (const [element, value] of Object.entries(config.slice_chempots)) {
+    const [lower, upper] = chempot.slice_ranges[element]
+    expect(chempot.slices[element]).toBe(Math.min(Math.max(value, lower), upper))
+  }
+})
+
+test(`a 2D slice sweep keeps the axes of the unsliced projection and labels the slice`, async () => {
+  const props = $state<{ entries: PhaseData[]; config: ChemPotDiagramConfig }>({
+    entries: load_json<PhaseData[]>(`${import.meta.dirname}/pd_entries_test.json.gz`),
+    config: { elements: [`Li`, `O`], slice_chempots: { Fe: -1 } },
+  })
+  await mount_2d(props)
+  await resolve_latest()
+  await size_plot()
+  const ticks = () =>
+    [...document.querySelectorAll(`.chempot-diagram-2d g.tick`)].map(
+      (tick_el) => `${tick_el.getAttribute(`transform`)} ${tick_el.textContent}`,
+    )
+  const paths = () =>
+    [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map((path) =>
+      path.getAttribute(`d`),
+    )
+  // pixel x of the leftmost and y of the lowest drawn vertex: the padded floor of each axis
+  const floor_px = () => {
+    const coords = paths().flatMap((path) => path?.match(/-?[\d.]+/g)?.map(Number) ?? [])
+    const [xs, ys] = [0, 1].map((parity) => coords.filter((_, idx) => idx % 2 === parity))
+    return [Math.min(...xs), Math.max(...ys)]
+  }
+  const [first_ticks, first_paths, first_floor] = [ticks(), paths(), floor_px()]
+  expect(first_ticks.length).toBeGreaterThan(4)
+  expect(doc_query(`.slice-label`).textContent).toMatch(/ΔμFe\s*=\s*−1 eV/)
+  props.config = { elements: [`Li`, `O`], slice_chempots: { Fe: -3 } }
+  flushSync()
+  await tick()
+  expect(paths()).not.toEqual(first_paths)
+  // axes and the padded floor follow the unsliced projection: they hold still
+  expect(ticks()).toEqual(first_ticks)
+  expect(floor_px()).toEqual(first_floor)
+  expect(doc_query(`.slice-label`).textContent).toMatch(/ΔμFe\s*=\s*−3 eV/)
+  props.config = { elements: [`Li`, `O`] } // back to the shadow projection: no label
+  flushSync()
+  await tick()
+  expect(document.querySelector(`.slice-label`)).toBeNull()
 })
 
 // config.color_bar styles the continuous-mode legend (spread over the defaults), null hides it

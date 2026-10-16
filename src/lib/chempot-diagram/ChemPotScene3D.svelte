@@ -24,18 +24,23 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
-  import { BufferGeometry, DoubleSide, Float32BufferAttribute } from 'three/webgpu'
+  import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
+  import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
+  import {
+    BufferGeometry,
+    DoubleSide,
+    Float32BufferAttribute,
+    Line2NodeMaterial,
+  } from 'three/webgpu'
   import { swizzle_to_render, type VisibleDomainLabel } from './compute'
   import type { ChemPotHoverInfo3D } from './types'
 
   type OverlayGeometry = { geometry: BufferGeometry; color: string }
   type BacksideIndices = [0 | 1, 0 | 1, 0 | 1]
   type RenderDomain = { formula: string; points_3d: number[][] }
-  type HoverMesh = { formula: string; geometry: BufferGeometry; info: ChemPotHoverInfo3D }
+  type HoverMesh = { formula: string; info: ChemPotHoverInfo3D }
   type DomainLabel = VisibleDomainLabel & { segments: FormulaLabelSegment[] }
   const axis_indices = [0, 1, 2] as const
-  // Same red as ConvexHull's default highlight_style, so a linked hull and diagram match
-  const highlight_color = `#ff4444`
 
   let {
     render_domains,
@@ -58,12 +63,12 @@
     hull_opacity,
     edge_geometry,
     hover_meshes,
+    face_owners,
     on_domain_hover,
     on_domain_press,
     on_domain_leave,
     on_camera_start,
-    highlighted_formula,
-    highlight_edges,
+    highlight,
     formula_meshes,
     formula_edges,
     domain_labels,
@@ -91,15 +96,22 @@
     hull_geometry: BufferGeometry | null
     hull_opacity: number
     edge_geometry: BufferGeometry
+    // hoverable domains, and the owning domain of each hull triangle (by face index)
     hover_meshes: HoverMesh[]
+    face_owners: string[]
     on_domain_hover: (mesh: HoverMesh, event: ThreltePointerEvent) => void
     on_domain_press: (mesh: HoverMesh, event: ThreltePointerEvent) => void
     on_domain_leave: (mesh: HoverMesh) => void
     // fires when OrbitControls starts a gesture (drag or wheel zoom)
     on_camera_start: () => void
-    // Domain drawn highlighted (its pick hull filled, its outline in highlight_edges)
-    highlighted_formula: string | null
-    highlight_edges: BufferGeometry | null
+    // The highlighted domain: its visible hull faces (null when it owns none), outline, colours
+    highlight: {
+      formula: string
+      fill: BufferGeometry | null
+      edges: BufferGeometry
+      fill_color: string
+      edge_color: string
+    } | null
     formula_meshes: OverlayGeometry[]
     formula_edges: OverlayGeometry[]
     domain_labels: DomainLabel[]
@@ -388,6 +400,49 @@
       on_start_extra: on_camera_start,
     }),
   )
+
+  // The drawn hull is the pick target: the face under the pointer names its domain, so a hover
+  // always reports exactly the face shown (front_hit already keeps only the nearest face)
+  const meshes_by_formula = $derived(new Map(hover_meshes.map((mesh) => [mesh.formula, mesh])))
+  const face_mesh = ({ faceIndex }: ThreltePointerEvent): HoverMesh | undefined =>
+    faceIndex == null ? undefined : meshes_by_formula.get(face_owners[faceIndex])
+  let hovered_mesh: HoverMesh | undefined
+  function hull_move(event: unknown): void {
+    const mesh = face_mesh(pointer_of(event))
+    if (hovered_mesh && hovered_mesh !== mesh) on_domain_leave(hovered_mesh)
+    hovered_mesh = mesh
+    if (mesh) on_domain_hover(mesh, pointer_of(event))
+  }
+  function hull_leave(): void {
+    if (hovered_mesh) on_domain_leave(hovered_mesh)
+    hovered_mesh = undefined
+  }
+
+  // Highlight and overlay outlines at a fixed screen width: GPU APIs ignore `linewidth` on basic
+  // lines. Opaque, so the round caps overlapping at shared corners stay invisible. The source
+  // geometries belong to the caller; only the line copies made here are disposed. Overlays and
+  // the highlight are built apart, so hovering doesn't rebuild every overlay outline.
+  const fat_lines = (geometry: BufferGeometry, color: string): LineSegments2 => {
+    const positions = Float32Array.from(geometry.getAttribute(`position`).array)
+    return new LineSegments2(
+      new LineSegmentsGeometry().setPositions(positions),
+      new Line2NodeMaterial({ color, linewidth: 2.5 }),
+    )
+  }
+  const dispose_lines = (lines: LineSegments2[]) => () => {
+    for (const line of lines) {
+      line.geometry.dispose()
+      line.material.dispose()
+    }
+  }
+  const overlay_lines = $derived(
+    formula_edges.map(({ geometry, color }) => fat_lines(geometry, color)),
+  )
+  const highlight_lines = $derived(
+    highlight ? [fat_lines(highlight.edges, highlight.edge_color)] : [],
+  )
+  $effect(() => dispose_lines(overlay_lines))
+  $effect(() => dispose_lines(highlight_lines))
 </script>
 
 <!-- Orthographic (pymatgen's projection style) by default; the near plane clips in front of the
@@ -408,7 +463,16 @@
 
 {#if hull_geometry}
   {#key hull_geometry}
-    <T.Mesh geometry={hull_geometry}>
+    <T.Mesh
+      geometry={hull_geometry}
+      onpointerenter={hull_move}
+      onpointermove={hull_move}
+      onpointerdown={(event: unknown) => {
+        const mesh = face_mesh(pointer_of(event))
+        if (mesh) on_domain_press(mesh, pointer_of(event))
+      }}
+      onpointerleave={hull_leave}
+    >
       <T.MeshBasicMaterial
         vertexColors
         transparent
@@ -426,30 +490,22 @@
   <T.LineBasicMaterial color={0x333333} linewidth={1} />
 </T.LineSegments>
 
-<!-- Pick meshes for per-phase hover tooltip, invisible except for the highlighted domain -->
-{#each hover_meshes as hover_mesh (hover_mesh.formula)}
-  <T.Mesh
-    geometry={hover_mesh.geometry}
-    onpointerenter={(event: unknown) => on_domain_hover(hover_mesh, pointer_of(event))}
-    onpointermove={(event: unknown) => on_domain_hover(hover_mesh, pointer_of(event))}
-    onpointerdown={(event: unknown) => on_domain_press(hover_mesh, pointer_of(event))}
-    onpointerleave={() => on_domain_leave(hover_mesh)}
-  >
+{#if highlight?.fill}
+  <!-- in front of the hull (no polygon offset), its colour at a stronger opacity -->
+  <T.Mesh geometry={highlight.fill} renderOrder={1}>
     <T.MeshBasicMaterial
-      color={highlight_color}
+      color={highlight.fill_color}
       transparent
-      opacity={hover_mesh.formula === highlighted_formula ? 0.35 : 0}
+      opacity={0.75}
       side={DoubleSide}
       depthWrite={false}
     />
   </T.Mesh>
-{/each}
-
-{#if highlight_edges}
-  <T.LineSegments geometry={highlight_edges}>
-    <T.LineBasicMaterial color={highlight_color} />
-  </T.LineSegments>
 {/if}
+
+{#each [...overlay_lines, ...highlight_lines] as line (line.id)}
+  <T is={line} />
+{/each}
 
 {#each formula_meshes as { geometry, color }, mesh_idx (mesh_idx)}
   <T.Mesh {geometry}>
@@ -461,12 +517,6 @@
       depthWrite={false}
     />
   </T.Mesh>
-{/each}
-
-{#each formula_edges as { geometry, color }, edge_idx (edge_idx)}
-  <T.LineSegments {geometry}>
-    <T.LineBasicMaterial {color} linewidth={2} />
-  </T.LineSegments>
 {/each}
 
 {#each projection_planes as plane (plane.key)}
@@ -506,11 +556,21 @@
   {/each}
   {#if display.show_axis_labels}
     {#each grid_item.tick_labels as tick, tick_idx (tick_idx)}
-      <extras.HTML position={tick.pos} center zIndexRange={[1, 0]}>
+      <extras.HTML
+        style="pointer-events: none"
+        position={tick.pos}
+        center
+        zIndexRange={[1, 0]}
+      >
         <span class="tick-label axis-tick-label">{tick.text}</span>
       </extras.HTML>
     {/each}
-    <extras.HTML position={grid_item.label_pos} center zIndexRange={[1, 0]}>
+    <extras.HTML
+      style="pointer-events: none"
+      position={grid_item.label_pos}
+      center
+      zIndexRange={[1, 0]}
+    >
       <span class="axis-label" style:color={grid_item.color}
         >{@html sanitize_html(grid_item.label)}</span
       >
@@ -518,8 +578,15 @@
   {/if}
 {/each}
 
+<!-- Threlte's wrapper div takes `style`, not `pointerEvents` (that prop only applies with
+     `transform`): labels must not swallow the pointer moves that hover the faces under them -->
 {#each domain_labels as domain (domain.formula)}
-  <extras.HTML position={domain.position} center zIndexRange={[5, 5]}>
+  <extras.HTML
+    style="pointer-events: none"
+    position={domain.position}
+    center
+    zIndexRange={[5, 5]}
+  >
     <span
       class="domain-label"
       style:font-size="{(domain.label_font_size * label_scale).toFixed(1)}px"

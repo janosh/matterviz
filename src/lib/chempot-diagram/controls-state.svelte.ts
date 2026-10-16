@@ -4,7 +4,8 @@ import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { Point2D } from '#lib/math.js'
+import { clamp } from '#lib/math.js'
+import type { Point2D, Vec2 } from '#lib/math.js'
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { to_error } from '#lib/utils.js'
@@ -12,9 +13,14 @@ import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
 import { get_domain_color_data } from './color'
 import {
+  chempot_axes,
+  entry_elements,
   formula_key_from_composition,
   get_energy_stats_by_formula,
   get_min_entries_and_el_refs,
+  section_chempot_system,
+  section_measure_curves,
+  slice_range,
 } from './compute'
 import { get_temp_filter_payload } from './temperature'
 import {
@@ -22,6 +28,7 @@ import {
   type ChemPotColorMode,
   type ChemPotDiagramConfig,
   type ChemPotDiagramData,
+  type ChemPotSystem,
 } from './types'
 
 // Per-key user overrides with `override ?? config ?? default` resolution; `reset()`
@@ -68,6 +75,7 @@ const CHEMPOT_CONTROL_KEYS = [
   `default_min_limit`,
   `color_mode`,
   `color_scale`,
+  `slice_chempots`,
 ] as const
 export type ChemPotControlKey = (typeof CHEMPOT_CONTROL_KEYS)[number]
 // The resolved values ChemPotControls reads, color_scale as a full config
@@ -80,12 +88,11 @@ export type ChemPotControlValues = {
 export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = never>(opts: {
   entries: () => PhaseData[]
   config: () => ChemPotDiagramConfig
-  // The bound temperature; snapped into the data's range once the slice is known
+  // The bound temperature; snapped into the data's range once the payload is known
   temperature: { get: () => number | undefined; set: (value: number | undefined) => void }
   // Fewer entries than this skip the computation; a result with fewer axes is dropped
   min_elements: number
-  // Axes the computation projects onto (3D projection picker); undefined leaves it to the
-  // config and the data
+  // Display axes (3D projection picker); undefined leaves them to the config and the data
   elements?: () => string[] | undefined
   // Domains currently drawn: they set the colour-scale range and the arity legend rows
   formulas: () => string[]
@@ -103,7 +110,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   // Primitives, so a fresh config object doesn't re-slice the entries (and re-run the worker)
   const interpolate_temperature = $derived(opts.config().interpolate_temperature)
   const max_interpolation_gap = $derived(opts.config().max_interpolation_gap)
-  const slice = $derived(
+  const temp_payload = $derived(
     get_temp_filter_payload(opts.entries(), opts.temperature.get(), {
       interpolate_temperature,
       max_interpolation_gap,
@@ -112,48 +119,55 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   $effect(() => {
     const next = get_valid_temperature(
       opts.temperature.get(),
-      slice.available_temperatures,
+      temp_payload.available_temperatures,
       interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature,
     )
     if (next !== opts.temperature.get()) opts.temperature.set(next)
   })
 
-  // Only what compute_chempot_diagram reads, so display toggles (labels, padding, overlays)
-  // never re-run the worker; the previous diagram stays on screen while a replacement computes
+  const axes = $derived(
+    chempot_axes(
+      entry_elements(temp_payload.temp_filtered_entries),
+      opts.elements?.() ?? opts.config().elements,
+    ),
+  )
+  // Only what compute_chempot_system reads, so display toggles (labels, padding, overlays),
+  // projection axes and slices never re-run the worker; the previous diagram stays on screen
+  // while a replacement computes
   const compute_config = $derived<ChemPotDiagramConfig>({
     formal_chempots: resolve(`formal_chempots`),
     default_min_limit: resolve(`default_min_limit`),
     limits: opts.config().limits,
-    elements: opts.elements?.() ?? opts.config().elements,
+    elements: axes.compute,
   })
   // A recreated but equal config must not recompute
   const compute_key = $derived(JSON.stringify(compute_config))
-  let diagram_data = $state.raw<ChemPotDiagramData | null>(null)
+  let system = $state.raw<ChemPotSystem | null>(null)
   let computing = $state(false)
-  let error = $state<string | null>(null)
+  let worker_error = $state<string | null>(null)
   $effect(() => {
-    const entries = slice.temp_filtered_entries
+    const entries = temp_payload.temp_filtered_entries
     void compute_key
     const config = untrack(() => compute_config)
     if (entries.length < opts.min_elements) {
-      diagram_data = null
+      system = null
       computing = false
-      error = null
+      worker_error = null
       return
     }
     const signal = getAbortSignal()
     computing = true
     compute_chempot_async(entries, config, { signal })
-      .then((data) => {
+      .then((result) => {
         if (signal.aborted) return
-        diagram_data = data.elements.length >= opts.min_elements ? data : null
-        error = null
+        system = result
+        worker_error = null
       })
       .catch((err: unknown) => {
         if (signal.aborted) return
         console.error(`${opts.label}:`, err)
-        diagram_data = null
-        error = to_error(err).message
+        system = null
+        worker_error = to_error(err).message
       })
       .finally(() => {
         if (!signal.aborted) computing = false
@@ -161,11 +175,101 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
   $effect(() => () => compute_chempot_async.release())
 
+  // Axes beyond the display ones, each sliced at a fixed mu or else shadow-projected. Slices
+  // of axes now displayed (or gone from the data) are kept but inactive.
+  const slice_elements = $derived(
+    system?.elements.filter((element) => !axes.display.includes(element)) ?? [],
+  )
+  const padding = $derived(resolve(`element_padding`))
+  const min_limit = $derived(resolve(`default_min_limit`))
+  // Requested slices clamped in element order, each into the range the ones before it leave
+  // feasible, so no combination empties the region (e.g. a value above the element's
+  // reference in absolute chempots, or two jointly above a compound of just those elements)
+  const slices = $derived.by((): Record<string, number> => {
+    const [sys, requested] = [system, resolve(`slice_chempots`)]
+    const clamped: Record<string, number> = {}
+    for (const element of slice_elements) {
+      const value = requested[element]
+      if (value === undefined || !sys) continue
+      const [lower, upper] = slice_range(sys, element, padding, min_limit, clamped)
+      clamped[element] = clamp(value, lower, upper)
+    }
+    return clamped
+  })
+  // Each slider's range given all other slices
+  const slice_ranges = $derived.by((): Record<string, Vec2> => {
+    const sys = system
+    if (!sys) return {}
+    return Object.fromEntries(
+      slice_elements.map((element) => [
+        element,
+        slice_range(sys, element, padding, min_limit, slices),
+      ]),
+    )
+  })
+  // Sectioning is a vertex enumeration on the display axes, cheap enough to follow a slider.
+  // A system computed on other axes is stale (the worker is still on its replacement): the
+  // last section stays on screen meanwhile.
+  const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))
+  type Section = { data: ChemPotDiagramData | null; error: string | null }
+  let last_section: Section = { data: null, error: null }
+  const section = $derived.by((): Section => {
+    if (!system) return (last_section = { data: null, error: null })
+    if (stale) return last_section
+    try {
+      const data = section_chempot_system(system, axes.display, slices)
+      const enough = data.elements.length >= opts.min_elements
+      return (last_section = { data: enough ? data : null, error: null })
+    } catch (err) {
+      return (last_section = { data: null, error: to_error(err).message })
+    }
+  })
+  // Unsliced shadow projection while slicing: it bounds every section, so views frame on it.
+  // Keyed on a boolean, so a slider sweep doesn't rebuild it.
+  const slicing = $derived(Object.keys(slices).length > 0)
+  const frame_data = $derived(
+    system && slicing && !stale ? section_chempot_system(system, axes.display) : null,
+  )
+  // Each slice's measure curves ignore its own value, so dragging its slider reuses them. One
+  // entry per element: dragging another slider replaces it. Skipped if the section fails,
+  // where the curves (sections of a subset of the slices) could fail too.
+  const curve_cache = new Map<
+    string,
+    { system: ChemPotSystem; key: string; curves: Map<string, Vec2[]> | null }
+  >()
+  const slice_curves = $derived.by((): Record<string, Map<string, Vec2[]> | null> => {
+    if (!system || stale || section.error) return {}
+    const sys = system
+    return Object.fromEntries(
+      Object.keys(slices).map((element) => {
+        const range = slice_ranges[element]
+        // JSON drops the undefined value: the key holds only the other slices
+        const key = JSON.stringify([{ ...slices, [element]: undefined }, range, axes.display])
+        let cached = curve_cache.get(element)
+        if (cached?.system !== sys || cached.key !== key) {
+          const curves = section_measure_curves(sys, axes.display, slices, element, range)
+          cached = { system: sys, key, curves }
+          curve_cache.set(element, cached)
+        }
+        return [element, cached.curves]
+      }),
+    )
+  })
+  // undefined switches the element back to shadow projection
+  const set_slice = (element: string, value: number | undefined): void => {
+    const { [element]: _dropped, ...rest } = resolve(`slice_chempots`)
+    overrides.set(`slice_chempots`, value === undefined ? rest : { ...rest, [element]: value })
+  }
+
   // Raw (non-renormalized) elemental references for true formation energies; the
   // formal-chempot pipeline renormalizes its own refs to zero. Memoized apart from the
   // colours so colour toggles don't re-scan the entries.
-  const el_refs = $derived(get_min_entries_and_el_refs(slice.temp_filtered_entries).el_refs)
-  const energy_stats = $derived(get_energy_stats_by_formula(slice.temp_filtered_entries))
+  const el_refs = $derived(
+    get_min_entries_and_el_refs(temp_payload.temp_filtered_entries).el_refs,
+  )
+  const energy_stats = $derived(
+    get_energy_stats_by_formula(temp_payload.temp_filtered_entries),
+  )
   // Field-wise defaults, so a bare scheme name keeps the default reversed palette_range
   const color_scale = $derived({
     ...CHEMPOT_DEFAULTS.color_scale,
@@ -176,7 +280,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       formulas: opts.formulas(),
       color_mode: resolve(`color_mode`),
       color_scale,
-      entries: slice.temp_filtered_entries,
+      entries: temp_payload.temp_filtered_entries,
       el_refs,
       energy_stats,
     }),
@@ -216,21 +320,40 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     get color_scale() {
       return color_scale
     },
+    get slice_chempots() {
+      return resolve(`slice_chempots`)
+    },
     get has_temp_data() {
-      return slice.has_temp_data
+      return temp_payload.has_temp_data
     },
     get available_temperatures() {
-      return slice.available_temperatures
+      return temp_payload.available_temperatures
     },
     get diagram_data() {
-      return diagram_data
+      return section.data
     },
     get computing() {
       return computing
     },
     get error() {
-      return error
+      return worker_error ?? section.error
     },
+    get slice_elements() {
+      return slice_elements
+    },
+    get slices() {
+      return slices
+    },
+    get slice_ranges() {
+      return slice_ranges
+    },
+    get slice_curves() {
+      return slice_curves
+    },
+    get frame_data() {
+      return frame_data
+    },
+    set_slice,
     get energy_stats() {
       return energy_stats
     },

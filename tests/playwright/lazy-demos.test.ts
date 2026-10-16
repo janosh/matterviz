@@ -71,14 +71,31 @@ test(`chemical potential examples load their individual compressed datasets`, as
   page,
 }) => {
   await page.goto(`/convex-hull/chempot-diagram`)
-  for (const demo_id of [`ternary`, `li_fe_o`, `quaternary`, `ytos_ti_s_y`, `ytos_ti_y_o`]) {
+  const demo_ids = [
+    `ternary`,
+    `li_fe_o`,
+    `quaternary`,
+    `ytos_ti_s_y`,
+    `ytos_ti_y_o`,
+    `ytos_slice`,
+  ]
+  for (const demo_id of demo_ids) {
     const section = page.locator(`[data-demo-id="${demo_id}"]`)
     await section.scrollIntoViewIfNeeded()
     await expect(section.locator(`canvas`).first()).toBeVisible()
     if (demo_id === `quaternary`) {
       await expect(section.locator(`.projection-grid .chempot-diagram-3d`)).toHaveCount(4)
     }
+    if (demo_id === `ytos_slice`) {
+      await expect(section.locator(`.slice-label`)).toHaveText(/ΔμS\s*=\s*−3 eV/)
+    }
   }
+  // the 2D slice draws SVG, not a canvas
+  const slice_2d = page.locator(`[data-demo-id="li_fe_o_slice"]`)
+  await slice_2d.scrollIntoViewIfNeeded()
+  await expect(slice_2d.locator(`.slice-label`)).toHaveText(/ΔμFe\s*=\s*−1 eV/)
+  // horizontal sections have zero-height boxes, which Playwright reports as hidden
+  await expect(slice_2d.locator(`g[data-series-id] > path[stroke]`)).not.toHaveCount(0)
 })
 
 test(`element pages use local photos and keep the miniature table within a phone viewport`, async ({

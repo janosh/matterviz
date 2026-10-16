@@ -1,6 +1,6 @@
 <script lang="ts">
   import { viewer_keys } from '#lib/shortcuts.js'
-  import { Filter } from 'svelte-widgets/icons'
+  import { ContentCut, Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import type { FormulaLabelSegment } from '#lib/composition/format.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
@@ -39,6 +39,7 @@
   import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
+  import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
@@ -65,6 +66,7 @@
     get_touches_limits,
     get_visible_domain_labels,
     pad_domains,
+    padded_floors,
     scale_to_font_range,
     strip_closing_faces,
     swizzle_to_render,
@@ -91,6 +93,9 @@
 
   const edge_key = (key_a: string, key_b: string): string =>
     key_a < key_b ? `${key_a}|${key_b}` : `${key_b}|${key_a}`
+  // rounded, so a vertex reached from different hyperplane triples (~1e-12 apart) keys once
+  const point_key = (point: ArrayLike<number>): string =>
+    Array.from(point, (val) => val.toFixed(4)).join(`,`)
 
   let {
     entries = [],
@@ -105,7 +110,9 @@
     tooltip,
   }: {
     entries: PhaseData[]
-    show_controls?: ShowControlsProp<`controls` | `fullscreen` | `export` | `formulas`>
+    show_controls?: ShowControlsProp<
+      `controls` | `fullscreen` | `export` | `formulas` | `slice`
+    >
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
@@ -116,8 +123,18 @@
   } = $props()
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
-  let controls_open = $state(false)
-  let export_pane_open = $state(false)
+  // At most one pane open at a time
+  let open_pane = $state<`controls` | `export` | `formulas` | `slice` | null>(null)
+  const pane_open = (pane: NonNullable<typeof open_pane>) => ({
+    get: () => open_pane === pane,
+    set: (open: boolean) => {
+      if (open) open_pane = pane
+      else if (open_pane === pane) open_pane = null
+    },
+  })
+  const [controls_pane, export_pane, formulas_pane, slice_pane] = (
+    [`controls`, `export`, `formulas`, `slice`] as const
+  ).map(pane_open)
   const controls_config = $derived(normalize_show_controls(show_controls))
 
   const chempot = create_chempot_state({
@@ -168,28 +185,6 @@
     return deduped
   }
 
-  let formula_picker_open = $state(false)
-
-  // Only one pane open at a time. Separate effects so each reacts to its own pane opening: a
-  // single $derived ternary would silently block opening a "lower" pane over a "higher" one.
-  $effect(() => {
-    if (export_pane_open) {
-      formula_picker_open = false
-      controls_open = false
-    }
-  })
-  $effect(() => {
-    if (formula_picker_open) {
-      export_pane_open = false
-      controls_open = false
-    }
-  })
-  $effect(() => {
-    if (controls_open) {
-      export_pane_open = false
-      formula_picker_open = false
-    }
-  })
   let container_width = $state(0)
   let container_height = $state(0)
   const base_aspect_ratio = $derived(height > 0 && width > 0 ? height / width : 1)
@@ -242,11 +237,8 @@
     return override_projection ?? config_projection_elements ?? all_entry_elements.slice(0, 3)
   })
   const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
-  const is_projection_mode = $derived(
-    plot_elements.length > 0 &&
-      plot_elements.length < all_entry_elements.length &&
-      plot_elements.every((element) => all_entry_elements.includes(element)),
-  )
+  // Domains are projected polyhedra (not facets of one polytope) while an axis is shadowed
+  const is_projection_mode = $derived((diagram_data?.shadow_elements.length ?? 0) > 0)
   const projection_presets = $derived.by(() => {
     const presets: string[][] = []
     const seen = new Set<string>()
@@ -325,6 +317,12 @@
     return geom
   }
 
+  // While slicing, the unsliced shadow projection bounds every section: axes, camera and the
+  // padded floor follow it, so a sweep moves the domains but not the view or the floor faces
+  const frame_floors = $derived(
+    chempot.frame_data &&
+      padded_floors(chempot.frame_data.domains, [0, 1, 2], element_padding, default_min_limit),
+  )
   const render_domains = $derived.by((): RenderDomain[] => {
     if (!diagram_data || plot_elements.length < 2) return []
 
@@ -333,6 +331,7 @@
       diagram_data.elements.map((_, idx) => idx),
       element_padding,
       default_min_limit,
+      frame_floors,
     )
     const result: RenderDomain[] = []
     for (const [formula, padded] of Object.entries(padded_domains)) {
@@ -356,18 +355,33 @@
   })
   const domain_points = $derived(render_domains.flatMap((domain) => domain.points_3d))
 
-  // Formula overlays are cut out of the base hull/edges and drawn in their own colour
+  // Formula overlays are cut out of the base edges and drawn in their own colour (their hull
+  // faces wear it too, see colored_hull_geometry)
   const overlay_formulas = $derived(new Set(formulas_to_draw))
   const base_domains = $derived(
     render_domains.filter((domain) => !overlay_formulas.has(domain.formula)),
   )
 
+  // Points the axes and camera frame (see frame_floors)
+  const frame_points = $derived.by(() => {
+    const frame = chempot.frame_data
+    if (!frame) return domain_points
+    const padded = pad_domains(
+      frame.domains,
+      [0, 1, 2],
+      element_padding,
+      default_min_limit,
+      frame_floors,
+    )
+    return Object.values(padded).flat()
+  })
+
   // Stretch short axes (up to 4x) for anisotropic systems. Rendered order: X=data[1],
   // Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
-    if (domain_points.length === 0) return [1, 1, 1]
+    if (frame_points.length === 0) return [1, 1, 1]
     const spans = [1, 2, 0].map((axis) => {
-      const [lower, upper] = array_extent(domain_points.map((point) => point[axis]))
+      const [lower, upper] = array_extent(frame_points.map((point) => point[axis]))
       return Math.max(upper - lower, 1e-6)
     })
     const max_span = Math.max(...spans)
@@ -380,9 +394,9 @@
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    if (domain_points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
+    if (frame_points.length === 0) return { data_center: [0, 0, 0] as Vec3, data_extent: 10 }
     // Center and max distance from it, in rendered coordinates (swizzled + axis scaling)
-    const rendered = domain_points.map(to_render_xyz)
+    const rendered = frame_points.map(to_render_xyz)
     const center = vertex_mean(rendered)
     let max_dist = 0
     for (const [x_val, y_val, z_val] of rendered) {
@@ -426,8 +440,6 @@
       if (hull_edges) return hull_edges
     }
 
-    // round so a shared edge from different hyperplane triples (~1e-12 apart) is drawn once
-    const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
     const seen = new Set<string>()
     const positions: number[] = []
     for (const domain of base_domains) {
@@ -455,7 +467,7 @@
   // One seamless opaque hull over ALL domain vertices writes depth, hiding back-side wireframe
   // edges without gaps between domains
   const occlusion_hull_geometry = $derived(
-    render_hull_geometry(base_domains.flatMap((domain) => domain.points_3d)),
+    render_hull_geometry(render_domains.flatMap((domain) => domain.points_3d)),
   )
 
   // Non-indexed hull geometry with the artificial closing faces removed
@@ -486,13 +498,15 @@
     hull_base_geometry
       ? assign_faces_to_domains(
           hull_base_geometry.getAttribute(`position`).array,
-          to_render_domains(base_domains),
+          to_render_domains(render_domains),
         )
       : [],
   )
 
   // Faces no domain claims
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
+  // Highlight colour without domain colours (color_mode none): ConvexHull's highlight red
+  const HIGHLIGHT_FALLBACK_COLOR = `#ff4444`
 
   // Clone of hull_base_geometry with per-domain vertex colors
   const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
@@ -503,13 +517,17 @@
     const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
 
-    const rgb_cache = new Map<string, Vec3>()
-    for (const [formula, hex] of domain_colors) {
-      rgb_cache.set(formula, new THREE.Color(hex).toArray() as Vec3)
+    const rgb_cache = new Map<string, Vec3 | undefined>()
+    const rgb_of = (formula: string): Vec3 | undefined => {
+      if (!rgb_cache.has(formula)) {
+        const hex = drawn_color(formula)
+        rgb_cache.set(formula, hex ? (new THREE.Color(hex).toArray() as Vec3) : undefined)
+      }
+      return rgb_cache.get(formula)
     }
 
     for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
-      const rgb = rgb_cache.get(mapping[face_idx])
+      const rgb = rgb_of(mapping[face_idx])
       const [red, green, blue] = rgb ?? HULL_FALLBACK_RGB
       const base = face_idx * 3
       for (let vert_idx = 0; vert_idx < 3; vert_idx++) {
@@ -583,7 +601,7 @@
   const controls_auto_ranges = $derived(
     get_3d_auto_ranges(
       [],
-      domain_points.map(([coord_z, coord_x, coord_y]) => ({
+      frame_points.map(([coord_z, coord_x, coord_y]) => ({
         x: coord_x,
         y: coord_y,
         z: coord_z,
@@ -638,6 +656,9 @@
   )
   const overlay_color = (formula: string): string =>
     formula_colors[formulas_to_draw.indexOf(formula) % formula_colors.length]
+  // The colour a domain is drawn in: its overlay colour, else its domain colour
+  const drawn_color = (formula: string): string | undefined =>
+    overlay_formulas.has(formula) ? overlay_color(formula) : domain_colors.get(formula)
 
   // Formula overlay edges (crease edges, per formula)
   const domain_edge_geometry = (domain: RenderDomain): THREE.BufferGeometry =>
@@ -651,7 +672,7 @@
 
   // Formula overlay meshes (convex hull surface, per formula)
   const overlay_mesh_geometries = memo_overlay_geometry((domain) =>
-    render_hull_geometry(domain.points_3d),
+    domain_hull_geometry(domain.points_3d),
   )
   const formula_mesh_data = $derived(
     overlay_mesh_geometries(draw_formula_meshes ? overlay_domains : []),
@@ -676,20 +697,14 @@
     return result
   }
 
-  function create_hover_geometry(
-    points_3d: number[][],
-  ): { geometry: THREE.BufferGeometry; n_vertices: number } | null {
+  // Convex hull of a domain's points; ConvexGeometry needs 4+ points, so 3 make a triangle
+  function domain_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
     const unique_points = dedup_3d(points_3d)
-    if (unique_points.length < 3) return null
-    // ConvexGeometry needs 4+ points, so 3 make a triangle directly
-    if (unique_points.length === 3) {
-      const geom = position_geometry(unique_points.flatMap(to_render_xyz))
-      geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
-      geom.computeVertexNormals()
-      return { geometry: geom, n_vertices: 3 }
-    }
-    const geometry = render_hull_geometry(unique_points)
-    return geometry && { geometry, n_vertices: unique_points.length }
+    if (unique_points.length !== 3) return render_hull_geometry(unique_points)
+    const geom = position_geometry(unique_points.flatMap(to_render_xyz))
+    geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
+    geom.computeVertexNormals()
+    return geom
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
@@ -721,30 +736,30 @@
     )
   })
 
-  // Pick hulls depend only on geometry; hover info is rebuilt separately below so overlay or
-  // colour toggles never re-run ConvexGeometry
-  const hover_geometries = $derived.by(() => {
-    const result: {
-      domain: RenderDomain
-      geometry: THREE.BufferGeometry
-      n_vertices: number
-    }[] = []
-    for (const domain of render_domains) {
-      const hover_geometry = create_hover_geometry(domain.points_3d)
-      if (hover_geometry) result.push({ domain, ...hover_geometry })
+  // Hull triangles per owning domain: exactly the surface each domain is drawn on
+  const owned_faces = $derived.by((): Map<string, number[]> => {
+    const owned = new Map<string, number[]>()
+    const positions = hull_base_geometry?.getAttribute(`position`).array ?? []
+    for (const [face_idx, owner] of face_domain_map.entries()) {
+      if (!owner) continue
+      const faces = owned.get(owner) ?? []
+      for (let idx = face_idx * 9; idx < face_idx * 9 + 9; idx++) faces.push(positions[idx])
+      owned.set(owner, faces)
     }
-    return result
+    return owned
   })
-
+  // Hover info per domain the hull shows a face of: the scene picks the drawn hull itself, so a
+  // domain buried inside the envelope (projection mode) is never reported
   const hover_mesh_data = $derived.by((): HoverMesh[] => {
     if (!diagram_data) return []
     const { lims } = diagram_data
-    return hover_geometries.map(({ domain, geometry, n_vertices }) => {
+    const drawn = render_domains.filter(({ formula }) => owned_faces.has(formula))
+    return drawn.map((domain) => {
       const { formula, points_3d } = domain
       const info: ChemPotHoverInfo3D = {
         formula,
         view: `3d`,
-        n_vertices,
+        n_vertices: dedup_3d(points_3d).length,
         n_edges: domain.edges.length,
         n_points: points_3d.length,
         ann_loc: domain.ann_loc,
@@ -756,23 +771,57 @@
         min_energy_per_atom: null,
         max_energy_per_atom: null,
         ...entry_energy_stats_by_formula.get(formula),
-        neighbors: domain_neighbors.get(formula) ?? [],
+        // buried domains share vertices but cannot be hovered, so they are no neighbours here
+        neighbors: (domain_neighbors.get(formula) ?? []).filter((other) =>
+          owned_faces.has(other),
+        ),
       }
-      return { formula, geometry, info }
+      return { formula, info }
     })
   })
 
   const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
-  const highlight_edge_geometry = $derived.by(() => {
+  // The highlighted domain as drawn: the hull faces it owns, i.e. exactly the face shown in its
+  // colour, outlined along their boundary (edges used by one owned triangle). A domain owning
+  // no hull face (inside the envelope, or cut out as an overlay) gets its own crease edges.
+  // Fill and outline take the domain's colour, the outline darker, so the face lights up
+  // rather than turning a foreign colour.
+  const highlight = $derived.by(() => {
     const domain = render_domains.find(({ formula }) => formula === highlight_key)
-    return domain ? domain_edge_geometry(domain) : null
+    if (!domain) return null
+    const owned = owned_faces.get(domain.formula) ?? []
+    const edge_counts = new Map<string, { count: number; coords: number[] }>()
+    for (let offset = 0; offset < owned.length; offset += 9) {
+      for (const [start, end] of [
+        [0, 3],
+        [3, 6],
+        [6, 0],
+      ]) {
+        const [pt_a, pt_b] = [start, end].map((at) =>
+          owned.slice(offset + at, offset + at + 3),
+        )
+        const key = edge_key(point_key(pt_a), point_key(pt_b))
+        const entry = edge_counts.get(key)
+        if (entry) entry.count++
+        else edge_counts.set(key, { count: 1, coords: [...pt_a, ...pt_b] })
+      }
+    }
+    const boundary = [...edge_counts.values()]
+      .filter(({ count }) => count === 1)
+      .flatMap(({ coords }) => coords)
+    const color = drawn_color(domain.formula) ?? HIGHLIGHT_FALLBACK_COLOR
+    return {
+      formula: domain.formula,
+      fill: owned.length > 0 ? position_geometry(owned) : null,
+      edges: boundary.length > 0 ? position_geometry(boundary) : domain_edge_geometry(domain),
+      fill_color: color,
+      edge_color: `#${new THREE.Color(color).multiplyScalar(0.6).getHexString()}`,
+    }
   })
 
   dispose_on_change(() => [edge_geometry])
-  dispose_on_change(() => [highlight_edge_geometry])
+  dispose_on_change(() => [highlight?.fill, highlight?.edges])
   dispose_on_change(() => [occlusion_hull_geometry])
-  // formula_edge_data/formula_mesh_data geometries are owned by their per-formula caches
-  dispose_on_change(() => hover_geometries.map((data) => data.geometry))
 
   let label_occlusion_frame: number | null = null
   let tick_labels_occluded = false
@@ -1149,7 +1198,7 @@
     {#if controls_config.visible(`export`)}
       <ExportPane
         filename={export_basename}
-        bind:export_pane_open
+        bind:export_pane_open={export_pane.get, export_pane.set}
         sources={export_sources}
         sections={export_sections}
         pane_props={{ class: `chempot-export-pane` }}
@@ -1161,7 +1210,7 @@
     {/if}
     {#if controls_config.visible(`formulas`)}
       <ViewerPane
-        bind:open={formula_picker_open}
+        bind:open={formulas_pane.get, formulas_pane.set}
         pane_name="formula overlays"
         class_prefix="chempot-formula"
         closed_icon={Filter}
@@ -1205,9 +1254,31 @@
       </ViewerPane>
     {/if}
 
+    {#if controls_config.visible(`slice`) && chempot.slice_elements.length > 0}
+      <ViewerPane
+        bind:open={slice_pane.get, slice_pane.set}
+        pane_name="chemical potential slices"
+        class_prefix="chempot-slice"
+        closed_icon={ContentCut}
+      >
+        <h4>Slices</h4>
+        <ChemPotSlices
+          elements={chempot.slice_elements}
+          slices={chempot.slices}
+          ranges={chempot.slice_ranges}
+          curves={chempot.slice_curves}
+          set_slice={chempot.set_slice}
+          measure_label="Area (eV²)"
+          {formal_chempots}
+          colors={drawn_color}
+          formulas={formulas_to_draw}
+        />
+      </ViewerPane>
+    {/if}
+
     <ScatterPlot3DControls
       show_controls={controls_config.visible(`controls`)}
-      bind:controls_open
+      bind:controls_open={controls_pane.get, controls_pane.set}
       bind:x_axis
       bind:y_axis
       bind:z_axis
@@ -1325,12 +1396,12 @@
           {hull_opacity}
           {edge_geometry}
           hover_meshes={hover_mesh_data}
+          face_owners={face_domain_map}
           on_domain_hover={handle_phase_hover}
           on_domain_press={toggle_phase_lock}
           on_domain_leave={handle_phase_leave}
           on_camera_start={handle_camera_start}
-          highlighted_formula={highlight_key}
-          highlight_edges={highlight_edge_geometry}
+          {highlight}
           formula_meshes={formula_mesh_data}
           formula_edges={formula_edge_data}
           domain_labels={scene_domain_labels}
@@ -1344,15 +1415,14 @@
       formulas={render_domains.map((domain) => domain.formula)}
       style="bottom: 16px; left: 1em"
     />
+    {@render slice_label(chempot.slices, formal_chempots)}
   {/if}
   {#if tooltip !== false && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
       pinned={locked_hover_formula === hover_info.formula}
       {tooltip}
-      bg_color={overlay_formulas.has(hover_info.formula)
-        ? overlay_color(hover_info.formula)
-        : domain_colors.get(hover_info.formula)}
+      bg_color={drawn_color(hover_info.formula)}
       constrain_to={{ width: container_width, height: container_height }}
     />
   {/if}

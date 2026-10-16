@@ -29,7 +29,14 @@ import {
   subtract,
 } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
-import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
+import type {
+  ChemPotBound,
+  ChemPotDiagramConfig,
+  ChemPotDiagramData,
+  ChemPotSliceValues,
+  ChemPotSystem,
+} from './types'
+import { CHEMPOT_DEFAULTS } from './types'
 
 // === Entry Helpers ===
 
@@ -346,21 +353,19 @@ export function chebyshev_centre(
 // halfspace becomes the dual point a_i / -(a_i·c + b_i), and each dual hull facet is a primal
 // vertex. Vertices go to every entry whose hyperplane is active there, handling degenerate
 // vertices where more than `dim` planes meet (e.g. an element plane on the mu = 0 border).
+// `formulas` names the domain of each hyperplane row.
 function compute_domains(
   hyperplanes: number[][],
   lims: Vec2[],
-  hyperplane_entries: PhaseData[],
+  formulas: string[],
 ): Record<string, number[][]> {
   const dim = lims.length
   const n_entries = hyperplanes.length
   const all_hs = [...hyperplanes, ...build_border_hyperplanes(lims)]
   const tol = 1e-6
 
-  const entry_formulas = hyperplane_entries.map((entry) =>
-    formula_key_from_composition(entry.composition),
-  )
   const domains: Record<string, number[][]> = {}
-  for (const formula of entry_formulas) domains[formula] ??= []
+  for (const formula of formulas) domains[formula] ??= []
   if (n_entries === 0) return domains
 
   // Strictly interior unless the region is empty (E_form below the lower limit, inverted lims)
@@ -387,7 +392,7 @@ function compute_domains(
     seen_vertices.add(key)
     for (let hs_idx = 0; hs_idx < n_entries; hs_idx++) {
       if (Math.abs(halfspace_value(all_hs[hs_idx], vertex, dim)) <= tol) {
-        domains[entry_formulas[hs_idx]].push(vertex)
+        domains[formulas[hs_idx]].push(vertex)
       }
     }
   }
@@ -400,15 +405,14 @@ function compute_domains(
 const at_min_limit = (val: number, default_min_limit: number): boolean =>
   Math.abs(val - default_min_limit) <= 1e-8 + 1e-5 * Math.abs(default_min_limit)
 
-// Move coordinates at default_min_limit (the artificial floor) on the given axes to that axis'
-// lowest real coordinate minus `padding`, for cleaner visual bounds.
-export function pad_domains(
+// Per given axis, its lowest real coordinate (not at the artificial default_min_limit floor)
+// minus `padding`: where pad_domains moves the floor
+export function padded_floors(
   domains: Record<string, number[][]>,
   elem_indices: number[],
   padding: number,
   default_min_limit: number,
-): Record<string, number[][]> {
-  if (!(padding > 0)) return domains
+): number[] {
   // Single pass: track min per axis, skipping default_min_limit values
   const mins = elem_indices.map(() => Infinity)
   for (const pts of Object.values(domains)) {
@@ -419,9 +423,23 @@ export function pad_domains(
       }
     }
   }
-  const new_lims = mins.map(
+  return mins.map(
     (min_val) => (Number.isFinite(min_val) ? min_val : default_min_limit) - padding,
   )
+}
+
+// Move coordinates at default_min_limit (the artificial floor) on the given axes to `floors`
+// (default: padded_floors of these domains), for cleaner visual bounds. Sections pass the
+// floors of the unsliced projection, so their floor faces hold still during a sweep.
+export function pad_domains(
+  domains: Record<string, number[][]>,
+  elem_indices: number[],
+  padding: number,
+  default_min_limit: number,
+  floors: number[] | null = null,
+): Record<string, number[][]> {
+  if (!(padding > 0)) return domains
+  const new_lims = floors ?? padded_floors(domains, elem_indices, padding, default_min_limit)
   return Object.fromEntries(
     Object.entries(domains).map(([formula, pts]) => [
       formula,
@@ -453,16 +471,16 @@ export function get_touches_limits(
   points: number[][],
   lims: Vec2[],
   elements: string[],
-): string[] {
-  const touches_limits: string[] = []
+): ChemPotBound[] {
+  const touches_limits: ChemPotBound[] = []
   for (let axis_idx = 0; axis_idx < Math.min(elements.length, lims.length); axis_idx++) {
     const [axis_min, axis_max] = lims[axis_idx]
     const tol = 1e-4 * (axis_max - axis_min) || EPS
     const axis_name = elements[axis_idx]
     const touches = (bound: number) =>
       points.some((point) => Math.abs(point[axis_idx] - bound) < tol)
-    if (touches(axis_min)) touches_limits.push(`${axis_name} lower bound`)
-    if (touches(axis_max)) touches_limits.push(`${axis_name} upper bound`)
+    if (touches(axis_min)) touches_limits.push({ element: axis_name, side: `lower` })
+    if (touches(axis_max)) touches_limits.push({ element: axis_name, side: `upper` })
   }
   return touches_limits
 }
@@ -937,52 +955,263 @@ export function build_chempot_hyperplanes(
   return { min_entries, el_refs, ...build_hyperplanes(min_entries, el_refs, elements) }
 }
 
-// Chemical potential diagram (stability domains per formula). When config.elements is a strict
-// subset of the data's elements, compute in full N-D and project vertices to the display axes
-// (pymatgen's multinary behavior); otherwise compute in the given subsystem.
-export function compute_chempot_diagram(
+// Display axes (config.elements, else the data's chemical system) and the axes the domains are
+// computed on: every data element when the display axes are a subset of them (any extra axes
+// are then sliced or shadow-projected by section_chempot_system), else the display axes
+// themselves (a subsystem, possibly naming elements absent from the data).
+export function chempot_axes(
+  data_elements: string[],
+  config_elements: string[] | undefined,
+): { display: string[]; compute: string[] } {
+  const display = config_elements?.length ? [...config_elements] : data_elements
+  const is_subset = display.every((element) => data_elements.includes(element))
+  return { display, compute: is_subset ? data_elements : display }
+}
+
+// The full halfspace system and its domains on the compute axes: the expensive part of a
+// diagram, run once (in the worker) and then sliced/projected per view on the main thread
+export function compute_chempot_system(
   entries: PhaseData[],
   config: ChemPotDiagramConfig = {},
-): ChemPotDiagramData {
+): ChemPotSystem {
   const {
     formal_chempots = CHEMPOT_DEFAULTS.formal_chempots,
     default_min_limit = CHEMPOT_DEFAULTS.default_min_limit,
     limits,
   } = config
-
-  const all_data_elements = entry_elements(entries)
-
-  // Display elements: user-specified order (controls axis mapping), or auto-detect
-  const display_elements = config.elements?.length ? [...config.elements] : all_data_elements
-
-  const is_projection =
-    display_elements.length < all_data_elements.length &&
-    display_elements.every((element) => all_data_elements.includes(element))
-
-  const compute_elements = is_projection ? all_data_elements : display_elements
-  const dim = compute_elements.length
-  if (dim < 2) throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
-
+  const { compute: elements } = chempot_axes(entry_elements(entries), config.elements)
+  if (elements.length < 2) {
+    throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${elements.length}`)
+  }
   const { hyperplanes, hyperplane_entries } = build_chempot_hyperplanes(
     entries,
-    compute_elements,
+    elements,
     formal_chempots,
   )
-  const compute_lims: Vec2[] = compute_elements.map(
-    (element) => limits?.[element] ?? [default_min_limit, 0],
+  const formulas = hyperplane_entries.map((entry) =>
+    formula_key_from_composition(entry.composition),
   )
-  const nd_domains = compute_domains(hyperplanes, compute_lims, hyperplane_entries)
+  const lims = elements.map((element): Vec2 => limits?.[element] ?? [default_min_limit, 0])
+  const domains = compute_domains(hyperplanes, lims, formulas)
+  return { elements, lims, hyperplanes, formulas, domains }
+}
 
-  // Project N-D vertices to display axes (identity in subsystem mode)
-  const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
+// Chemical potential diagram (stability domains per formula) on the display axes. Data
+// elements beyond config.elements are fixed at config.slice_chempots where given (exact
+// cross-sections) and shadow-projected otherwise (pymatgen's multinary behavior).
+export const compute_chempot_diagram = (
+  entries: PhaseData[],
+  config: ChemPotDiagramConfig = {},
+): ChemPotDiagramData =>
+  section_chempot_system(
+    compute_chempot_system(entries, config),
+    chempot_axes(entry_elements(entries), config.elements).display,
+    config.slice_chempots,
+  )
+
+// === Sections ===
+
+// Domains of `system` with the axes in `slices` fixed at their (defined) values: each fixed
+// mu_k = c is substituted into every hyperplane and the vertices re-enumerated on the remaining
+// axes, so the result holds exact cross-section vertices for any number of slices. A
+// hyperplane left with no free coefficient (the sliced element's own reference) is a constant
+// constraint: dropped when satisfied, an empty region otherwise.
+function slice_system(
+  system: ChemPotSystem,
+  slices: ChemPotSliceValues,
+): { elements: string[]; lims: Vec2[]; domains: Record<string, number[][]> } {
+  const fixed = new Map<number, number>()
+  for (const [element, value] of Object.entries(slices)) {
+    if (value === undefined) continue
+    const axis = system.elements.indexOf(element)
+    if (axis === -1) {
+      throw new Error(`Cannot slice ${element}: not an axis of ${system.elements.join(`-`)}`)
+    }
+    const [lower, upper] = system.lims[axis]
+    if (!(value >= lower && value <= upper)) {
+      throw new Error(
+        `Slice mu_${element} = ${value} eV lies outside its limits [${lower}, ${upper}]`,
+      )
+    }
+    fixed.set(axis, value)
+  }
+  if (fixed.size === 0) return system
+  const free_axes = system.elements.flatMap((_, axis) => (fixed.has(axis) ? [] : [axis]))
+  const n_axes = system.elements.length
+  const hyperplanes: number[][] = []
+  const formulas: string[] = []
+  for (const [row_idx, row] of system.hyperplanes.entries()) {
+    let offset = row[n_axes]
+    for (const [axis, value] of fixed) offset += row[axis] * value
+    const normal = free_axes.map((axis) => row[axis])
+    if (normal.some((coeff) => Math.abs(coeff) > EPS)) {
+      hyperplanes.push([...normal, offset])
+      formulas.push(system.formulas[row_idx])
+    } else if (offset > 1e-9) {
+      throw new Error(
+        `Slice ${JSON.stringify(slices)} puts ${system.formulas[row_idx]} ` +
+          `${offset} eV above its reference: empty region`,
+      )
+    }
+  }
+  const lims = free_axes.map((axis) => system.lims[axis])
+  return {
+    elements: free_axes.map((axis) => system.elements[axis]),
+    lims,
+    domains: compute_domains(hyperplanes, lims, formulas),
+  }
+}
+
+// Diagram on the `display` axes: slice the axes named in `slices`, then shadow-project any
+// remaining non-display axis by dropping its column
+export function section_chempot_system(
+  system: ChemPotSystem,
+  display: string[],
+  slices: ChemPotSliceValues = {},
+): ChemPotDiagramData {
+  const missing = display.filter((element) => !system.elements.includes(element))
+  if (missing.length > 0) {
+    throw new Error(`Display axes ${missing.join(`, `)} not in ${system.elements.join(`-`)}`)
+  }
+  const displayed_slice = display.find((element) => slices[element] !== undefined)
+  if (displayed_slice) throw new Error(`Cannot slice display axis ${displayed_slice}`)
+  const sliced = slice_system(system, slices)
+  const columns = display.map((element) => sliced.elements.indexOf(element))
+  const project = (point: number[]) => columns.map((col) => point[col])
   return {
     domains: Object.fromEntries(
-      Object.entries(nd_domains).map(([formula, pts]) => [
+      Object.entries(sliced.domains).map(([formula, points]) => [
         formula,
-        pts.map((point) => col_indices.map((idx) => point[idx])),
+        points.map(project),
       ]),
     ),
-    elements: display_elements,
-    lims: col_indices.map((col_idx) => compute_lims[col_idx]),
+    elements: display,
+    lims: columns.map((col) => sliced.lims[col]),
+    shadow_elements: sliced.elements.filter((element) => !display.includes(element)),
   }
+}
+
+// mu range of `element` worth slicing at, given the other `slices`: its extent over the domain
+// vertices of the region they leave (convex, so exactly the feasible interval), ignoring the
+// artificial default_min_limit floor and padding the low end like the plotted axes
+export function slice_range(
+  system: ChemPotSystem,
+  element: string,
+  padding: number,
+  default_min_limit: number,
+  slices: ChemPotSliceValues = {},
+): Vec2 {
+  const sliced = slice_system(system, { ...slices, [element]: undefined })
+  const axis = sliced.elements.indexOf(element)
+  if (axis === -1) throw new Error(`${element} is not an axis of ${sliced.elements.join(`-`)}`)
+  const values = Object.values(sliced.domains).flatMap((points) =>
+    points.map((point) => point[axis]),
+  )
+  const [lower, upper] = sliced.lims[axis]
+  const real = values.filter((val) => !at_min_limit(val, default_min_limit))
+  if (real.length === 0) return [lower, upper]
+  return [Math.max(lower, array_min(real) - padding), Math.min(upper, array_max(values))]
+}
+
+// Points where segments between `points` cross mu_axis = value, with the axis dropped: a
+// superset of the section's vertices whose convex hull is the section. Only called between
+// vertex heights, so no point lies on the plane.
+function section_points(points: number[][], axis: number, value: number): number[][] {
+  const below = points.filter((point) => point[axis] < value)
+  const above = points.filter((point) => point[axis] > value)
+  const cuts: number[][] = []
+  for (const low of below) {
+    for (const high of above) {
+      const frac = (value - low[axis]) / (high[axis] - low[axis])
+      const cut = low.map((val, idx) => val + frac * (high[idx] - val))
+      cut.splice(axis, 1)
+      cuts.push(cut)
+    }
+  }
+  return cuts
+}
+
+// Length (2 coords) or area (3 coords, coplanar) of the convex hull of `points`
+export function section_measure(points: number[][]): number {
+  if (points.length < 2) return 0
+  const origin = points[0]
+  const farthest = (from: number[]) =>
+    points.reduce((best, point) =>
+      euclidean_dist(point, from) > euclidean_dist(best, from) ? point : best,
+    )
+  if (origin.length === 2) {
+    // the farthest point from any point is a diameter endpoint on a line
+    const end = farthest(origin)
+    return euclidean_dist(end, farthest(end))
+  }
+  const axis_u = subtract(farthest(origin), origin) as Vec3
+  // the plane normal from the point farthest off the line through origin along axis_u; zero
+  // for collinear points, whose projection onto the fallback basis then has zero area
+  let [normal, normal_len]: [Vec3, number] = [[0, 0, 0], 0]
+  for (const point of points) {
+    const cross = cross_3d(axis_u, subtract(point, origin))
+    const len = Math.hypot(...cross)
+    if (len > normal_len) [normal, normal_len] = [cross, len]
+  }
+  const [basis_u, basis_v] = compute_in_plane_basis(normalize_vec(normal))
+  const hull = convex_hull_2d(
+    points.map((point): Vec2 => [dot(basis_u, point), dot(basis_v, point)]),
+  )
+  let twice_area = 0
+  for (const [idx, [x_1, y_1]] of hull.entries()) {
+    const [x_2, y_2] = hull[(idx + 1) % hull.length]
+    twice_area += x_1 * y_2 - x_2 * y_1
+  }
+  return Math.abs(twice_area) / 2
+}
+
+// Each domain's cross-section measure (length on 2 display axes, area on 3) as mu_element
+// sweeps `range`, every other slice held fixed, as plot-ready [mu, measure] polylines with
+// `per_interval` segments between consecutive vertex heights. Exact: between those heights a
+// convex polytope's section measure is a polynomial of degree <= 2, pinned down by three
+// interior samples; its values at the interval ends are one-sided limits, so the jumps where
+// a face lies in a mu_element = const plane show as vertical steps (two points at one mu).
+// Null when any axis besides `element` is neither displayed nor sliced: sections are then
+// undefined (shadow projection).
+export function section_measure_curves(
+  system: ChemPotSystem,
+  display: string[],
+  slices: ChemPotSliceValues,
+  element: string,
+  range: Vec2,
+  per_interval: number = 8,
+): Map<string, Vec2[]> | null {
+  if (display.includes(element)) throw new Error(`Cannot sweep display axis ${element}`)
+  const sliced = slice_system(system, { ...slices, [element]: undefined })
+  const axis = sliced.elements.indexOf(element)
+  if (axis === -1) throw new Error(`${element} is not an axis of ${sliced.elements.join(`-`)}`)
+  if (sliced.elements.some((other) => other !== element && !display.includes(other)))
+    return null
+  const [lower, upper] = range
+  const merge_tol = 1e-9 * (1 + upper - lower)
+  const curves = new Map<string, Vec2[]>()
+  for (const [formula, points] of Object.entries(sliced.domains)) {
+    const heights = [lower, upper, ...points.map((point) => point[axis])]
+      .filter((val) => val >= lower && val <= upper)
+      .toSorted((left, right) => left - right)
+      .filter((val, idx, sorted) => idx === 0 || val - sorted[idx - 1] > merge_tol)
+    const curve: Vec2[] = []
+    for (let idx = 1; idx < heights.length; idx++) {
+      const [start, span] = [heights[idx - 1], heights[idx] - heights[idx - 1]]
+      const [quarter, half, three_quarter] = [0.25, 0.5, 0.75].map((frac) =>
+        section_measure(section_points(points, axis, start + frac * span)),
+      )
+      for (let step = 0; step <= per_interval; step++) {
+        const frac = step / per_interval
+        // Lagrange basis on nodes 1/4, 1/2, 3/4; clamped since round-off can dip below 0
+        const measure =
+          8 * (frac - 0.5) * (frac - 0.75) * quarter -
+          16 * (frac - 0.25) * (frac - 0.75) * half +
+          8 * (frac - 0.25) * (frac - 0.5) * three_quarter
+        curve.push([start + frac * span, Math.max(0, measure)])
+      }
+    }
+    if (curve.some(([, measure]) => measure > 0)) curves.set(formula, curve)
+  }
+  return curves
 }

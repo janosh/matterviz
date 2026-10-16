@@ -1,5 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import ChemPotTooltip from '#lib/chempot-diagram/ChemPotTooltip.svelte'
 import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
@@ -10,9 +11,10 @@ import { ARITY_COLORS } from '#lib/chempot-diagram/color.js'
 import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
+import * as THREE from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, query, set_input } from '../setup'
+import { bind_props, doc_query, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -151,21 +153,23 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
     return { builds: convex_builds.count - before, formula_meshes, formula_edges }
   }
 
+  // the occlusion hull spans every domain, overlays included, so only the overlay's own hull
+  // is built
   const first = toggle(`Fe2O3`)
-  expect(first.builds).toBe(2)
+  expect(first.builds).toBe(1)
   expect(first.formula_meshes).toHaveLength(1)
   const second = toggle(`Li2O`)
-  expect(second.builds).toBe(2)
+  expect(second.builds).toBe(1)
   expect(second.formula_meshes).toHaveLength(2)
   // the cached Fe2O3 hull is reused, not rebuilt
   expect(second.formula_meshes[0].geometry).toBe(first.formula_meshes[0].geometry)
   expect(second.formula_edges[0].geometry).toBe(first.formula_edges[0].geometry)
   const third = toggle(`LiFeO2`)
-  expect(third.builds).toBe(2)
+  expect(third.builds).toBe(1)
   expect(third.formula_meshes).toHaveLength(3)
   // colours follow the draw order, not the cache: three overlays, three distinct colours
   expect(new Set(third.formula_meshes.map(({ color }) => color)).size).toBe(3)
-  // un-drawing disposes that overlay's geometry and rebuilds only the occlusion hull
+  // un-drawing disposes that overlay's geometry and builds nothing
   const fe2o3_geometry = first.formula_meshes[0].geometry
   // Disposal must run after the flush: reading the scene's live `formula_meshes` derived
   // here would re-enter it (and throw) if the eviction still disposed inside it
@@ -176,7 +180,7 @@ test(`toggling a formula overlay builds only that domain's hull`, async () => {
       meshes_at_dispose.push(scene().formula_meshes.map(({ geometry }) => geometry))
     })
   const removed = toggle(`Fe2O3`)
-  expect(removed.builds).toBe(1)
+  expect(removed.builds).toBe(0)
   expect(removed.formula_meshes).toHaveLength(2)
   expect(dispose).toHaveBeenCalledOnce()
   expect(meshes_at_dispose).toEqual([removed.formula_meshes.map(({ geometry }) => geometry)])
@@ -335,31 +339,88 @@ test(`hull faces are labelled by their owning domain, which the Surface quick-se
   expect(scene().formula_meshes).toHaveLength(selected)
 })
 
+type Geometry = { getAttribute(name: string): { array: ArrayLike<number>; count: number } }
 type HighlightScene = {
   hover_meshes: { formula: string; info: ChemPotHoverInfo }[]
   on_domain_hover: (mesh: unknown, event: unknown) => void
   on_domain_leave: (mesh: unknown) => void
-  highlighted_formula: string | null
-  highlight_edges: { getAttribute(name: string): { count: number } } | null
+  hull_geometry: Geometry | null
+  highlight: {
+    formula: string
+    fill: Geometry | null
+    edges: Geometry
+    fill_color: string
+    edge_color: string
+  } | null
 }
 const pointer_event = { nativeEvent: new PointerEvent(`pointermove`), stopPropagation() {} }
+const highlighted = (scene: HighlightScene) => scene.highlight?.formula ?? null
 
-// Matched by reduced formula, outlined by that domain's edges (two vertices each); a phase
-// without a domain here highlights nothing
+// Matched by reduced formula; a phase without a domain here highlights nothing. The fill is
+// exactly the hull triangles drawn in the domain's colour (the whole visible face), in that
+// colour, outlined along their boundary in a darker shade of it.
+// a continuous colour mode gives each domain its own colour (arity colours repeat). The YTOS
+// Ti-Y-O projection case matters: there a face's boundary differs from the domain's crease edges.
 test.each([
-  [`Fe4O6`, `Fe2O3`, true],
-  [`NaCl`, `ClNa`, false],
-])(`highlighted_formula %s highlights domain %s`, async (input, key, has_domain) => {
+  [`Fe4O6`, `Fe2O3`, entries, { default_min_limit: -25 }],
+  [`NaCl`, null, entries, { default_min_limit: -25 }],
+  [`Y2O3`, `O3Y2`, ytos_entries, { elements: [`Ti`, `Y`, `O`] }],
+])(`highlighted_formula %s highlights domain %s`, async (input, key, data, config) => {
   const scene = await mount_diagram<HighlightScene>({
-    entries,
-    config: { default_min_limit: -25 },
+    entries: data,
+    config: { ...config, color_mode: `energy` },
     highlighted_formula: input,
   })
-  expect(scene().highlighted_formula).toBe(key)
-  const info = scene().hover_meshes.find(({ formula }) => formula === key)?.info
-  const n_edges = info?.view === `3d` ? info.n_edges : 0
-  expect(n_edges > 0).toBe(has_domain)
-  expect(scene().highlight_edges?.getAttribute(`position`).count ?? 0).toBe(2 * n_edges)
+  const { highlight, hull_geometry } = scene()
+  expect(highlight?.formula ?? null).toBe(key)
+  if (!highlight || !hull_geometry) return
+  const triangles = (geometry: Geometry) => {
+    const { array } = geometry.getAttribute(`position`)
+    return Array.from({ length: array.length / 9 }, (_, idx) =>
+      Array.from(array).slice(idx * 9, idx * 9 + 9),
+    )
+  }
+  const rgb = new THREE.Color(highlight.fill_color).toArray()
+  const hull_colors = hull_geometry.getAttribute(`color`).array
+  const hull_tris = triangles(hull_geometry)
+  const same_rgb = (tri_idx: number) =>
+    [0, 1, 2].every((ch) => Math.abs(hull_colors[tri_idx * 9 + ch] - rgb[ch]) < 1e-6)
+  const owned = hull_tris.filter((_, tri_idx) => same_rgb(tri_idx))
+  if (!highlight.fill) throw new Error(`${key} owns no hull face`)
+  const fill = triangles(highlight.fill)
+  expect(fill.length).toBeGreaterThan(0)
+  expect(fill).toEqual(owned)
+  // darker shade of the same hue: every channel scaled by one factor < 1
+  const edge_rgb = new THREE.Color(highlight.edge_color).toArray()
+  for (const ch of [0, 1, 2]) expect(edge_rgb[ch]).toBeCloseTo(0.6 * rgb[ch], 2)
+  // the outline is the boundary: each of its edges belongs to exactly one fill triangle
+  const key_of = (pt_a: number[], pt_b: number[]) =>
+    [pt_a, pt_b]
+      .map((pt) => pt.map((val) => val.toFixed(4)).join(`,`))
+      .toSorted()
+      .join(`|`)
+  const fill_edge_counts = new Map<string, number>()
+  for (const tri of fill) {
+    for (const [start, end] of [
+      [0, 3],
+      [3, 6],
+      [6, 0],
+    ]) {
+      const edge = key_of(tri.slice(start, start + 3), tri.slice(end, end + 3))
+      fill_edge_counts.set(edge, (fill_edge_counts.get(edge) ?? 0) + 1)
+    }
+  }
+  const { array: edge_array } = highlight.edges.getAttribute(`position`)
+  const edge_points = Array.from(edge_array)
+  const n_boundary = [...fill_edge_counts.values()].filter((count) => count === 1).length
+  expect(edge_points.length / 6).toBe(n_boundary)
+  for (let offset = 0; offset < edge_points.length; offset += 6) {
+    const edge = key_of(
+      edge_points.slice(offset, offset + 3),
+      edge_points.slice(offset + 3, offset + 6),
+    )
+    expect(fill_edge_counts.get(edge)).toBe(1)
+  }
 })
 
 // A drawn overlay is cut out of the base hull and wears its overlay colour, so its tooltip must
@@ -376,7 +437,155 @@ test(`domain tooltips match their drawn colour`, async () => {
     return query(document.body, `.chempot-tooltip`).style.backgroundColor
   }
   expect(tip_bg(`Fe2O3`)).toBe(scene().formula_meshes[0].color)
+  // the hovered face lights up in that same colour, never a foreign highlight red
+  expect(scene().highlight?.fill_color).toBe(scene().formula_meshes[0].color)
   expect(ARITY_COLORS).toContain(tip_bg(`Li2O`))
+  expect(ARITY_COLORS).toContain(scene().highlight?.fill_color)
+})
+
+// Hover picks what is drawn: the scene raycasts the drawn hull and reads the face's owner, so
+// the hoverable domains are exactly the face owners. In a projection a domain buried inside the
+// envelope (TiSO5 in the S-less Ti-Y-O view) owns no face and is never reported. An overlay on
+// the surface owns its faces, drawn in its overlay colour, so hovering it reports it.
+test(`hover targets are exactly the drawn hull faces' owners`, async () => {
+  type FaceScene = HighlightScene & { face_owners: string[] }
+  const buried = `O5STi`
+  const scene = await mount_diagram<FaceScene>({
+    entries: ytos_entries,
+    config: { elements: [`Ti`, `Y`, `O`] },
+  })
+  const hoverable = scene().hover_meshes.map(({ formula }) => formula)
+  expect(hoverable.length).toBeGreaterThan(5)
+  expect(new Set(hoverable)).toEqual(new Set(scene().face_owners))
+  expect(hoverable).not.toContain(buried)
+  // neighbours only list domains one can hover
+  for (const { info } of scene().hover_meshes) {
+    if (info.view !== `3d`) continue
+    for (const neighbor of info.neighbors) expect(hoverable).toContain(neighbor)
+  }
+
+  if (mounted) void unmount(mounted)
+  threlte_stub.reset()
+  const overlay = `O3Y2`
+  const with_overlay = await mount_diagram<
+    FaceScene & { formula_meshes: { color: string }[] }
+  >({
+    entries: ytos_entries,
+    config: { elements: [`Ti`, `Y`, `O`], formulas_to_draw: [overlay] },
+  })
+  const { face_owners, hull_geometry, formula_meshes } = with_overlay()
+  expect(face_owners).toContain(overlay)
+  const face_idx = face_owners.indexOf(overlay)
+  const colors = hull_geometry?.getAttribute(`color`).array ?? []
+  const overlay_rgb = new THREE.Color(formula_meshes[0].color).toArray()
+  for (const ch of [0, 1, 2]) expect(colors[face_idx * 9 + ch]).toBeCloseTo(overlay_rgb[ch], 6)
+})
+
+test(`tooltip energies print round-off as 0, not scientific notation`, () => {
+  const hover_info: ChemPotHoverInfo = {
+    formula: `Li2O`,
+    view: `2d`,
+    n_points: 2,
+    axis_ranges: [
+      { element: `Li`, min_val: -2.88, max_val: 3.55e-15 },
+      { element: `O`, min_val: -6.18, max_val: -0.416 },
+    ],
+  }
+  mounted = mount(ChemPotTooltip, {
+    target: document.body,
+    props: { hover_info, pinned: false, constrain_to: { width: 400, height: 400 } },
+  })
+  const text = query(document.body, `.chempot-tooltip .ranges`).textContent ?? ``
+  expect(text).toContain(`Li = [−2.88, 0]`)
+  expect(text).toContain(`O = [−6.18, −0.416]`)
+  expect(text).not.toMatch(/e-\d/)
+})
+
+// The default tooltip body, line by line: summary (single energy when min = max), ranges with
+// `=`, neighbours capped at 6, bounds grouped per side with lower first; narrowed via the
+// PlotTooltip width variable rather than a max-width PlotTooltip would override
+test.each([
+  {
+    energies: [-4.98, -4.81],
+    count: 6,
+    summary: `Compound · 6 entries · −4.98 to −4.81 eV/atom`,
+  },
+  { energies: [-10.9, -10.9], count: 1, summary: `Compound · 1 entry · −10.9 eV/atom` },
+])(
+  `3D tooltip summary $summary, ranges, neighbours and bounds`,
+  ({ energies, count, summary }) => {
+    const [min_energy_per_atom, max_energy_per_atom] = energies
+    const hover_info: ChemPotHoverInfo = {
+      formula: `Li2O`,
+      view: `3d`,
+      n_points: 4,
+      n_vertices: 4,
+      n_edges: 4,
+      ann_loc: [0, 0, 0],
+      axis_ranges: [{ element: `Li`, min_val: -2.88, max_val: 0 }],
+      touches_limits: [
+        { element: `O`, side: `upper` },
+        { element: `Li`, side: `lower` },
+        { element: `Li`, side: `upper` },
+      ],
+      is_elemental: false,
+      is_draw_formula: false,
+      matching_entry_count: count,
+      min_energy_per_atom,
+      max_energy_per_atom,
+      neighbors: [`Li`, `O`, `LiO`, `LiO2`, `Li2O2`, `FeLiO2`, `Fe2O3`, `Fe`],
+    }
+    mounted = mount(ChemPotTooltip, {
+      target: document.body,
+      props: { hover_info, pinned: false, constrain_to: { width: 400, height: 400 } },
+    })
+    const tooltip = query(document.body, `.chempot-tooltip`)
+    const lines = [...tooltip.querySelectorAll(`p`)].map((line) =>
+      (line.textContent ?? ``).replaceAll(/\s+/g, ` `).trim(),
+    )
+    expect(lines).toEqual([
+      summary,
+      `μ (eV) Li = [−2.88, 0]`,
+      `Next to Li, O, LiO, LiO2, Li2O2, LiFeO2 +2 more`, // electronegativity order
+      `Lower bound Li`,
+      `Upper bound O, Li`,
+    ])
+    expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`384px`)
+  },
+)
+
+// Compact by default: no geometry debug counts, neighbours capped, bounds grouped per side,
+// and left-aligned even inside a centered page section
+test(`the domain tooltip stays compact and left-aligned`, async () => {
+  document.body.style.textAlign = `center`
+  // the YTOS Ti-Y-O projection of the bug report: Y2O3 has 10 neighbours
+  const scene = await mount_diagram<HighlightScene>({
+    entries: ytos_entries,
+    config: { elements: [`Ti`, `Y`, `O`] },
+  })
+  const by_neighbors = scene().hover_meshes.toSorted((mesh_1, mesh_2) => {
+    const count = ({ info }: { info: ChemPotHoverInfo }) =>
+      info.view === `3d` ? info.neighbors.length : 0
+    return count(mesh_2) - count(mesh_1)
+  })
+  const [crowded] = by_neighbors
+  if (crowded.info.view !== `3d`) throw new Error(`expected 3D hover info`)
+  scene().on_domain_hover(crowded, pointer_event)
+  flushSync()
+  const tooltip = query(document.body, `.chempot-tooltip`)
+  const text = tooltip.textContent ?? ``
+  expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
+  for (const debug of [`Vertices`, `Edges`, `Centroid`, `Points`])
+    expect(text).not.toContain(debug)
+  const { neighbors, touches_limits } = crowded.info
+  expect(neighbors.length).toBeGreaterThan(6)
+  expect(text).toContain(`+${neighbors.length - 6} more`)
+  const bound_rows = [...tooltip.querySelectorAll(`.key`)].filter((key) =>
+    key.textContent?.endsWith(`bound`),
+  )
+  const sides = new Set(touches_limits.map(({ side }) => side))
+  expect(bound_rows).toHaveLength(sides.size)
+  document.body.style.textAlign = ``
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
@@ -400,7 +609,7 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
   const panes = [...document.querySelectorAll(`.chempot-diagram-3d`)]
   const tooltip_panes = () =>
     panes.map((pane) => pane.querySelectorAll(`.chempot-tooltip`).length)
-  const highlights = () => scenes().map((scene) => scene.highlighted_formula)
+  const highlights = () => scenes().map(highlighted)
 
   const [first, second] = scenes()
   const hovered = second.hover_meshes.find(({ formula }) => formula.length > 2)
@@ -422,4 +631,73 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
   expect(bound.hover_info).toBeNull()
   expect(tooltip_panes()).toEqual([0, 0, 0, 0])
   expect(highlights()).toEqual(Array(4).fill(null))
+})
+
+test(`slicing a quaternary at fixed mu re-sections on the main thread and plots section areas`, async () => {
+  type SliceScene = {
+    render_domains: { formula: string; points_3d: number[][] }[]
+    data_center: Vec3
+    data_extent: number
+    render_axis_scale: Vec3
+  }
+  const framing = () => {
+    const { data_center, data_extent, render_axis_scale } = scene()
+    return { data_center, data_extent, render_axis_scale }
+  }
+  const scene = await mount_diagram<SliceScene>({
+    entries: ytos_entries,
+    config: { elements: [`O`, `Ti`, `Y`] },
+  })
+  const projected = scene().render_domains.map(({ formula }) => formula)
+  // per-axis lowest drawn coordinate: the floor the artificial min limit is padded up to
+  const floors = () =>
+    [0, 1, 2].map((axis) =>
+      Math.min(
+        ...scene().render_domains.flatMap(({ points_3d }) => points_3d.map((pt) => pt[axis])),
+      ),
+    )
+  const projected_floors = floors()
+  // projected quaternary domains are polyhedra, so S's own facet and every S-free phase show
+  expect(projected).toContain(`S`)
+  const open_panes = () =>
+    [...document.querySelectorAll(`.draggable-pane.pane-open`)].map((pane) =>
+      [...pane.classList].find((name) => name.startsWith(`chempot-`)),
+    )
+  doc_query<HTMLButtonElement>(`.chempot-controls-toggle`).click()
+  flushSync()
+  expect(open_panes()).toEqual([`chempot-controls-pane`])
+  doc_query<HTMLButtonElement>(`.chempot-slice-toggle`).click()
+  flushSync()
+  // one pane at a time: opening the slice pane closed the controls pane
+  expect(open_panes()).toEqual([`chempot-slice-pane`])
+  const slice_box = [
+    ...document.querySelectorAll<HTMLInputElement>(`.chempot-slice input`),
+  ].find((input) => input.type === `checkbox`)
+  if (!slice_box) throw new Error(`no slice checkbox`)
+  slice_box.click()
+  flushSync()
+  // toggling on slices at the S-rich end (Δmu_S = 0): S's own facet drops out
+  expect(doc_query(`.slice-label`).textContent).toMatch(/Δμ\s*S\s*= 0 eV/)
+  const at_rich = scene().render_domains.map(({ formula }) => formula)
+  expect(at_rich).not.toContain(`S`)
+  const rich_framing = framing()
+  const range = doc_query<HTMLInputElement>(`.chempot-slice input[type="range"]`)
+  set_input(range, `-3`)
+  flushSync()
+  // re-sectioned synchronously: no worker round trip, no stale overlay
+  expect(document.querySelector(`.scene.stale`)).toBeNull()
+  expect(doc_query(`.slice-label`).textContent).toMatch(/= −3 eV/) // format_num prints a Unicode minus
+  const sliced = scene().render_domains
+  expect(sliced.map(({ formula }) => formula)).not.toEqual(at_rich)
+  // axes, camera and floor faces follow the slice-independent projection, so a sweep holds
+  // the view (and the floor) still
+  expect(framing()).toEqual(rich_framing)
+  expect(floors()).toEqual(projected_floors)
+  // exact sections are planar polygons in 3D
+  for (const { points_3d } of sliced) expect(points_3d.length).toBeGreaterThanOrEqual(3)
+  expect(document.querySelector(`.chempot-slice .scatter`)).not.toBeNull()
+  slice_box.click()
+  flushSync()
+  expect(document.querySelector(`.slice-label`)).toBeNull()
+  expect(scene().render_domains.map(({ formula }) => formula)).toEqual(projected)
 })
