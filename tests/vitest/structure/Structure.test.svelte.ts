@@ -24,7 +24,7 @@ import type {
 } from '#lib/structure/index.js'
 import { get_element_counts } from '#lib/structure/density.js'
 import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
-import type { Pbc } from '#lib/structure/pbc.js'
+import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type {
@@ -3371,6 +3371,12 @@ describe(`site sidebar`, () => {
   const sidebar = () => document.querySelector(`.structure-site-sidebar`)
   const reopen_button = () =>
     document.querySelector<HTMLButtonElement>(`button[aria-label="Show the site table"]`)
+  const resize = async (selector: string, width: number) => {
+    const element = doc_query(selector)
+    await resize_element(element, width, 500)
+    trigger_resize_observer(element)
+    await tick()
+  }
 
   test.each([
     [`forces, forced on`, with_forces, true, true],
@@ -3385,12 +3391,74 @@ describe(`site sidebar`, () => {
     ).toBe(shown)
   })
 
+  // Auto docks from 900 px of viewer plus sidebar. Once undocked the sidebar's last width
+  // must not count any more, or the viewer re-docks and flip-flops below the threshold.
+  test(`auto docks by the width it would share and stays undocked below it`, async () => {
+    mount_structure({ structure: with_forces, site_sidebar: `auto` })
+    await tick()
+    // the test environment lays every element out 800 px wide
+    expect(sidebar()).toBeNull()
+    await resize(`.structure`, 900)
+    expect(sidebar()).not.toBeNull()
+    // docked: the viewer and the sidebar split 900 px
+    await resize(`.structure-site-sidebar`, 288)
+    await resize(`.structure`, 612)
+    expect(sidebar()).not.toBeNull()
+    // the container narrows to 848 px: undock, and the viewer takes all of it
+    await resize(`.structure`, 560)
+    expect(sidebar()).toBeNull()
+    for (const width of [848, 899]) {
+      await resize(`.structure`, width)
+      expect(sidebar(), `${width} px`).toBeNull()
+    }
+    await resize(`.structure`, 900)
+    expect(sidebar()).not.toBeNull()
+  })
+
+  // Hosts that show sites themselves (Trajectory's data inspector) hide the reopen button,
+  // whether the table was turned off or the viewer is too narrow to dock it
+  test.each([
+    [undefined, true],
+    [{ hidden: [`site-table`] }, false],
+  ] as const)(
+    `show_controls=%j offers the site table button: %s`,
+    async (show_controls, shown) => {
+      mount_structure({ structure: with_forces, site_sidebar: `auto`, show_controls })
+      await tick()
+      expect(sidebar()).toBeNull()
+      expect(reopen_button() !== null).toBe(shown)
+    },
+  )
+
+  // PBC image atoms repeat the sites they copy: one row per site of the structure
+  test(`lists each site once, not its periodic images`, async () => {
+    const corner_atom = {
+      lattice: structure.lattice,
+      sites: [
+        {
+          ...structure.sites[0],
+          abc: [0, 0, 0] as Vec3,
+          xyz: [0, 0, 0] as Vec3,
+          properties: { force: [0.1, 0, 0] as Vec3 },
+        },
+      ],
+    }
+    // the corner atom has 7 images, so the filter is what keeps the table at one row
+    expect(get_pbc_image_sites(corner_atom).sites).toHaveLength(8)
+    mount_structure({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
+    await tick()
+    expect(
+      document.querySelectorAll(`.structure-site-sidebar tbody tr[data-row-idx]`),
+    ).toHaveLength(1)
+    expect(sidebar()?.textContent).toContain(`Sites (1)`)
+  })
+
   test(`closes from its header, reopens from the controls, and links rows to sites`, async () => {
     const props = $state<ComponentProps<typeof Structure>>({
       structure: with_forces,
       site_sidebar: true,
       selected_sites: [],
-      highlighted_sites: [],
+      hovered_site_idx: null,
     })
     mounted.push(mount(Structure, { target: document.body, props }))
     await tick()
@@ -3398,12 +3466,30 @@ describe(`site sidebar`, () => {
       ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
     ]
     expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
+    // as wide as its content until the divider moves, which then hands the width to the ratio
+    const layout = doc_query(`.structure-site-layout`)
+    expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
+    expect(layout.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
+    doc_query(`.structure-site-layout > .pane-divider`).dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }),
+    )
+    await tick()
+    expect(sidebar()?.classList.contains(`fit-content`)).toBe(false)
     rows()[1].click()
     await tick()
     expect(props.selected_sites).toEqual([1])
+    // a hovered row is the 3D hover, and an atom hovered in 3D shades its row
     rows()[0].dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
     await tick()
-    expect(props.highlighted_sites).toEqual([0])
+    expect(props.hovered_site_idx).toBe(0)
+    doc_query(`.structure-site-sidebar tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
+    props.hovered_site_idx = 1
+    await tick()
+    expect(rows().map((row) => row.classList.contains(`hovered`))).toEqual([false, true])
+    // an image atom (appended after the real sites) shades the row of the site it copies
+    props.hovered_site_idx = with_forces.sites.length
+    await tick()
+    expect(rows().filter((row) => row.classList.contains(`hovered`))).toHaveLength(1)
     document
       .querySelector<HTMLButtonElement>(`button[aria-label="Close the site table"]`)
       ?.click()

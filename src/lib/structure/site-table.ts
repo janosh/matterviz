@@ -2,6 +2,7 @@
 // magmoms, charges, velocities, selective dynamics, …), shared by the trajectory data inspector
 // and the structure viewer's site sidebar.
 import { display_idx, trajectory_property_config } from '#lib/labels.js'
+import type { TrajPropertyConfig } from '#lib/labels.js'
 import type { CellVal, Column, RowData } from '#lib/table/index.js'
 import type { Site } from './index'
 
@@ -29,6 +30,28 @@ export const is_vec3_like = (value: unknown): value is (number | boolean)[] =>
   Array.isArray(value) &&
   value.length === 3 &&
   value.every((entry) => typeof entry === `number` || typeof entry === `boolean`)
+
+export const vec3_norm = (vec: readonly (number | boolean)[]): number =>
+  Math.hypot(Number(vec[0]), Number(vec[1]), Number(vec[2]))
+
+// Label and unit of a property from the config that labels the plot axes
+export const property_config = (key: string): TrajPropertyConfig | undefined =>
+  trajectory_property_config[key] ?? trajectory_property_config[key.toLowerCase()]
+
+// Shared by the site table and the trajectory inspector's other tables: virtualized plain
+// tables (no heatmap) with column toggles, numbers to 6 significant digits
+export const DATA_TABLE_PROPS = {
+  virtual: true,
+  show_column_toggle: true,
+  show_controls: true,
+  show_heatmap: false,
+  default_num_format: `.6~g`,
+  style: `text-align: left; width: 100%`,
+} as const
+
+// A docked sidebar is a flex column: its table scrolls within the height under the header
+// rather than a viewport-tied cap
+export const DOCKED_SCROLL_STYLE = `flex: 1; min-height: 0`
 
 // Scalars pass through; tensors and nested objects are stringified so the cell shows the real
 // value rather than [object Object]
@@ -73,9 +96,7 @@ export const has_site_data = (sites: readonly Site[] | undefined): boolean =>
 // Column for one property, label and unit from the config that labels plot axes, else
 // SITE_PROPERTY_UNITS. `axis` splits a vec3 into one column per axis, `norm` is its magnitude.
 export const property_column = (prop_name: string, axis?: string): Column => {
-  const config =
-    trajectory_property_config[prop_name] ??
-    trajectory_property_config[prop_name.toLowerCase()]
+  const config = property_config(prop_name)
   const label =
     axis === `norm`
       ? `|${prop_name}|`
@@ -132,8 +153,7 @@ export const site_rows = (
         VEC3_AXES.forEach((axis, axis_idx) => {
           row[`${PROP_PREFIX}${key}_${axis}`] = value[axis_idx]
         })
-        if (shape === `numeric_vec3`)
-          row[`${PROP_PREFIX}${key}_norm`] = Math.hypot(...value.map(Number))
+        if (shape === `numeric_vec3`) row[`${PROP_PREFIX}${key}_norm`] = vec3_norm(value)
       }
     }
     return row

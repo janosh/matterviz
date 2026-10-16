@@ -440,9 +440,9 @@ export const trajectory_property_config: Record<string, TrajPropertyConfig> = {
   density: { label: `Density`, unit: `g/cm³` },
 
   // Lattice parameters
-  a: { label: `A`, unit: `Å` },
-  b: { label: `B`, unit: `Å` },
-  c: { label: `C`, unit: `Å` },
+  a: { label: `a`, unit: `Å` },
+  b: { label: `b`, unit: `Å` },
+  c: { label: `c`, unit: `Å` },
   alpha: { label: `α`, unit: `°` },
   beta: { label: `β`, unit: `°` },
   gamma: { label: `γ`, unit: `°` },

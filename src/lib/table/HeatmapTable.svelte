@@ -106,6 +106,7 @@
     on_row_click,
     on_row_double_click,
     on_row_hover,
+    highlighted_row_id = null,
     column_order = $bindable([]),
     column_prefs = $bindable({}),
     export_formats = [],
@@ -126,6 +127,7 @@
     selected_ids = $bindable([]),
     visible_rows = $bindable([]),
     hidden_columns = $bindable([]),
+    default_hidden_columns = [],
     scroll_style,
     root_style,
     heatmap_opacity = $bindable(1),
@@ -158,6 +160,9 @@
       on_row_double_click?: (event: MouseEvent, row: Row) => void
       // The row under the pointer, or null once it leaves the body; fires on row changes only
       on_row_hover?: (row: Row | null) => void
+      // A row a linked view points at (an atom hovered in 3D), shaded like the hovered row and
+      // scrolled into view. Needs row_key.
+      highlighted_row_id?: RowId | null
       // Column IDs in display order. Bindable so drag reorders persist.
       column_order?: string[]
       // Per-column user tuning (width, color scale, gradient direction, date format,
@@ -195,6 +200,9 @@
       visible_rows?: Row[]
       // Column IDs hidden through the column toggle. Bindable for persistence.
       hidden_columns?: string[]
+      // Togglable columns hidden by default: Reset hides them again, and their being hidden is
+      // no change to reset. Start hidden_columns with them to hide them on mount.
+      default_hidden_columns?: readonly string[]
       scroll_style?: string
       // Inline styles for the root container (merged with rest.style)
       root_style?: string
@@ -966,25 +974,66 @@
     tbody_el?.querySelector<HTMLElement>(`:scope > tr[data-row-idx="${row}"]`)
   const own_cell_el = (row: number, col: number) =>
     own_row_el(row)?.querySelector<HTMLElement>(`:scope > td[data-col-idx="${col}"]`)
-  // Spacer and empty rows carry no index, so row actions skip them
+  // Spacer and empty rows carry no index, so row actions skip them. So do clicks on a
+  // control in a cell: a row-select checkbox toggles its row itself, and a toggling row
+  // action would undo it.
   const row_handler =
     (action: (event: MouseEvent, row: Row) => void) => (event: MouseEvent & BodyEvent) => {
       const row = row_under(event)
-      if (row !== null) action(event, sorted_data[row])
+      if (row !== null && !is_interactive_cell_target(event.target))
+        action(event, sorted_data[row])
     }
 
+  // The row under the pointer, re-reported when the rows under a still pointer change (an
+  // index into sorted_data) and cleared on unmount, so a linked highlight never goes stale
   let hovered_row: number | null = null
+  let hovered_row_data: Row | null = null
+  const report_hover = (row: number | null) => {
+    hovered_row = row
+    const row_data = row === null ? null : (sorted_data[row] ?? null)
+    if (row_data === hovered_row_data) return
+    hovered_row_data = row_data
+    on_row_hover?.(row_data)
+  }
   const handle_body_pointerover = (event: PointerEvent & BodyEvent) => {
     const row = row_under(event)
-    if (row === hovered_row) return
-    hovered_row = row
-    on_row_hover?.(row === null ? null : (sorted_data[row] ?? null))
+    if (row !== hovered_row) report_hover(row)
   }
   const handle_body_pointerleave = () => {
-    if (hovered_row === null) return
-    hovered_row = null
-    on_row_hover?.(null)
+    if (hovered_row !== null) report_hover(null)
   }
+  $effect(() => {
+    void sorted_data
+    untrack(() => {
+      if (hovered_row !== null) report_hover(hovered_row)
+    })
+  })
+  $effect(() => () => {
+    if (hovered_row_data !== null) on_row_hover?.(null)
+  })
+  // Scrolls only the table's own scroller (never the page) to a row named from outside; a row
+  // under the pointer named itself and stays put
+  $effect(() => {
+    const target = highlighted_row_id
+    if (target === null || !scroll_el) return
+    untrack(() => {
+      if (!scroll_el || (hovered_row_data && get_row_id(hovered_row_data) === target)) return
+      const row_idx = sorted_data.findIndex((row) => get_row_id(row) === target)
+      if (row_idx === -1) return
+      const row_el = tbody_el?.querySelector(`:scope > tr[data-row-idx="${row_idx}"]`)
+      if (!row_el) {
+        if (virtual_config) {
+          scroll_el.scrollTop = row_idx * avg_row_height - scroll_el.clientHeight / 2
+        }
+        return
+      }
+      const view = scroll_el.getBoundingClientRect()
+      const head = scroll_el.querySelector(`thead`)?.getBoundingClientRect().height ?? 0
+      const { top, bottom } = row_el.getBoundingClientRect()
+      if (top < view.top + head) scroll_el.scrollTop -= view.top + head - top
+      else if (bottom > view.bottom) scroll_el.scrollTop += bottom - view.bottom
+    })
+  })
 
   function handle_body_pointerdown(event: PointerEvent & BodyEvent) {
     const pos = cell_under(event)
@@ -1109,7 +1158,8 @@
   async function handle_body_keydown(event: KeyboardEvent & BodyEvent) {
     const pos = cell_under(event)
     if (keyboard_cells && pos && handle_cell_keydown(event, pos)) return
-    const abs_idx = on_row_click ? row_under(event) : null
+    const abs_idx =
+      on_row_click && !is_interactive_cell_target(event.target) ? row_under(event) : null
     if (abs_idx === null) return
     if (is_activation_key(event)) {
       event.preventDefault()
@@ -1205,9 +1255,9 @@
     return identifier
   }
   $effect(() => {
-    if (!show_row_select && row_key === undefined) return
+    if (!show_row_select && highlighted_row_id === null && row_key === undefined) return
     if (row_key === undefined)
-      throw new Error(`row_key is required when show_row_select is enabled`)
+      throw new Error(`row_key is required with show_row_select or highlighted_row_id`)
     const ids = new Set<RowId>()
     for (const row of data) {
       const identifier = get_row_id(row)
@@ -1220,7 +1270,13 @@
   // Shared by the animated and static row loops
   const row_attrs = (row: Row & RowData, abs_idx: number) => ({
     style: row.style,
-    class: [row.class, { selected: show_row_select && is_row_selected(row) }],
+    class: [
+      row.class,
+      {
+        selected: show_row_select && is_row_selected(row),
+        hovered: highlighted_row_id !== null && get_row_id(row) === highlighted_row_id,
+      },
+    ],
     'data-row-idx': abs_idx,
     tabindex: on_row_click ? 0 : undefined,
   })
@@ -1290,10 +1346,11 @@
     const others = hidden_columns.filter((identifier) => identifier !== col_id)
     hidden_columns = visible ? others : [...others, col_id]
   }
+  let default_hidden = $derived(new Set(default_hidden_columns))
   let toggle_columns = $derived(
     ordered_columns.map((col) => ({
       ...col,
-      default_visible: col.visible !== false,
+      default_visible: col.visible !== false && !default_hidden.has(col.id),
       // Caller-hidden columns cannot be shown through `hidden_columns`
       disabled: col.disabled || col.visible === false,
       visible: col.visible !== false && !hidden_columns.includes(col.id),
@@ -2214,11 +2271,11 @@
     );
   }
   tbody tr {
-    &:hover {
+    &:is(:hover, .hovered) {
       filter: var(--heatmap-row-hover-filter, none);
     }
     /* Tint cells because their opaque backgrounds hide a row-level wash. */
-    &:hover td {
+    &:is(:hover, .hovered) td {
       background-image: linear-gradient(
         var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16)),
         var(--heatmap-row-hover-bg, rgba(128, 128, 128, 0.16))

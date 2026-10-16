@@ -1,6 +1,11 @@
 <script lang="ts">
   import { SHORTCUTS, shortcut_attrs, viewer_keydown } from '#lib/shortcuts.js'
-  import { merge_site_properties, site_count } from './site'
+  import {
+    get_image_source_idx,
+    is_image_site,
+    merge_site_properties,
+    site_count,
+  } from './site'
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index.js'
@@ -9,17 +14,21 @@
   import type { ElementSymbol } from '#lib/element/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
-  import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import {
     HeatmapTable as HeatmapTableIcon,
     BrillouinZone,
+    Close,
     Grid2x2,
     HeatmapMatrix,
     Reset,
     TwoColumns,
   } from 'svelte-widgets/icons'
   import SiteTable from './SiteTable.svelte'
-  import { has_site_data } from './site-table'
+  import { DOCKED_SCROLL_STYLE, has_site_data } from './site-table'
+  import DockedSidebar, {
+    SIDEBAR_DOCK_MIN_WIDTH,
+    SIDEBAR_RATIO,
+  } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
@@ -123,6 +132,7 @@
     | `info-pane`
     | `export-pane`
     | `controls`
+    | `site-table`
   type EventHandler = (data: StructureHandlerData) => void
   type StructureLayoutMode = `single` | `multi` | `slice` | `split`
 
@@ -1152,20 +1162,30 @@
       : undefined,
   )
   // === site sidebar ===
-  let sidebar_sites = $derived(session.render_structure?.sites ?? [])
+  // The structure's own sites: image atoms drawn at cell faces repeat them. get_pbc_image_sites
+  // appends images after the sites it copies, so a row's index stays its scene index.
+  let scene_sites = $derived(session.render_structure?.sites ?? [])
+  let sidebar_sites = $derived(scene_sites.filter((site) => !is_image_site(site)))
   let sidebar_width = $state(0)
-  let site_sidebar_ratio = $state(0.68)
-  // Measured with the sidebar included, so docking it cannot shrink the viewer below the bar
-  let site_data_available = $derived(has_site_data(sidebar_sites))
+  let site_sidebar_ratio = $state<number>(SIDEBAR_RATIO.sites)
+  // A host that turns the table off and hides its button (Trajectory) never pays for the scan
+  let site_data_available = $derived(
+    (site_sidebar !== false || controls_config.visible(`site-table`)) &&
+      has_site_data(sidebar_sites),
+  )
+  // Measured with the sidebar included (0 once it unmounts), so docking it cannot shrink the
+  // viewer below the bar
   let site_sidebar_shown = $derived(
     site_data_available &&
-      (site_sidebar === true || (site_sidebar === `auto` && width + sidebar_width >= 760)),
+      (site_sidebar === true ||
+        (site_sidebar === `auto` && width + sidebar_width >= SIDEBAR_DOCK_MIN_WIDTH)),
   )
 </script>
 
 <div
   class="structure-site-layout"
   class:docked={site_sidebar_shown}
+  class:docked-sidebar-row={site_sidebar_shown}
   style={site_sidebar_shown ? outer_style : undefined}
 >
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1323,7 +1343,7 @@
             <StructureEditToolbar {session} shortcut_style={shortcut_flash.style} />
           {/if}
 
-          {#if site_data_available && !site_sidebar_shown}
+          {#if site_data_available && !site_sidebar_shown && controls_config.visible(`site-table`)}
             <button
               type="button"
               class="icon-btn"
@@ -1540,70 +1560,84 @@
     <ViewerError bind:message={error_msg} dismissible />
   </div>
   {#if site_sidebar_shown}
-    <PaneDivider
-      orientation="horizontal"
+    <DockedSidebar
+      label="site table"
+      class="structure-site-sidebar"
       bind:ratio={site_sidebar_ratio}
-      min_px={320}
-      second_min_px={260}
-      aria-label="Resize the site table"
-    />
-    <aside class="structure-site-sidebar" aria-label="Sites" bind:clientWidth={sidebar_width}>
-      <h4>
+      bind:width={sidebar_width}
+    >
+      {#snippet header()}
         Sites ({sidebar_sites.length})
         <button
           type="button"
-          class="icon-btn close-btn"
+          class="close-btn"
           aria-label="Close the site table"
           title="Close the site table"
           onclick={() => (site_sidebar = false)}
         >
-          ×
+          <Icon icon={Close} />
         </button>
-      </h4>
+      {/snippet}
       <SiteTable
         sites={sidebar_sites}
         bind:selected_atoms={selected_sites}
-        on_atoms_hover={(atoms) => (highlighted_sites = atoms)}
+        bind:hovered_atom={
+          // an image atom hovered in 3D points at the row of the site it copies
+          () =>
+            hovered_site_idx === null
+              ? null
+              : get_image_source_idx(scene_sites[hovered_site_idx], hovered_site_idx),
+          (atom) => (hovered_site_idx = atom)
+        }
         export_filename="structure-sites"
-        virtual
-        show_column_toggle
-        show_controls
-        show_heatmap={false}
-        default_num_format=".6~g"
-        scroll_style="max-height: calc(100% - 3em)"
-        style="text-align: left; width: 100%"
+        scroll_style={DOCKED_SCROLL_STYLE}
       />
-    </aside>
+    </DockedSidebar>
   {/if}
 </div>
 
 <style>
   /* Transparent unless docked: the viewer stays the caller's element, styled and sized as before */
-  .structure-site-layout {
+  .structure-site-layout:not(.docked) {
     display: contents;
-    &.docked {
-      display: grid;
-      position: relative;
-      grid-template-columns: minmax(0, var(--split-pane-size, 68%)) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr);
-      height: var(--struct-height, 500px);
-      width: var(--struct-width, 100%);
+  }
+  .structure-site-layout.docked {
+    height: var(--struct-height, 500px);
+    width: var(--struct-width, 100%);
+  }
+  /* The site table's toolbar (up to six 22px buttons, 142px) shares the header row, left of
+     the close button; the gap keeps the title clear of it when the sidebar fits its content.
+     An open search box outgrows that, so the toolbar takes its own row meanwhile. */
+  :global(.structure-site-sidebar > h4) {
+    column-gap: 148px;
+  }
+  :global(.structure-site-sidebar > .table-container > .control-buttons) {
+    position: absolute;
+    bottom: calc(100% + 4pt);
+    inset-inline-end: 26px;
+    margin: 0;
+    &:has(.search-input) {
+      position: static;
     }
   }
-  .structure-site-sidebar {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    padding: 6pt 8pt;
-    background: var(--surface-bg, transparent);
-    border-inline-start: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
-    h4 {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin: 0 0 4pt;
+  /* A circle, never taller than wide, shaded only on hover */
+  .close-btn {
+    display: grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    line-height: 1;
+    cursor: pointer;
+    --icon-size: 16px;
+    &:hover {
+      background: color-mix(in srgb, currentColor 12%, transparent);
     }
   }
   .structure {
