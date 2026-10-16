@@ -287,7 +287,6 @@ describe(`package.json exports`, () => {
       expect(Object.keys(structure_export).toSorted()).toEqual(
         [
           `create_structure_filename`,
-          `export_structure_as`,
           `fractional_export_unavailable_reason`,
           `poscar_export_unavailable_reason`,
           `STRUCT_TEXT_FORMATS`,

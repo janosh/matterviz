@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BrillouinBandsDos } from '#lib/spectral/index.js'
+  import { BandsAndDos } from '#lib/spectral/index.js'
   import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
   import type { Crystal } from '#lib/structure/index.js'
 
@@ -91,10 +91,10 @@
   }
 </script>
 
-<h1 id="brillouinbandsdos-component-test-page">BrillouinBandsDos Component Test Page</h1>
+<h1 id="bands-and-dos-bz-test-page">BandsAndDos with Brillouin Zone Test Page</h1>
 
 <h2 id="default">Default (Shared Y-axis)</h2>
-<BrillouinBandsDos
+<BandsAndDos
   structure={mock_structure}
   band_structs={{ '': mock_band_structure }}
   doses={{ '': mock_dos }}
@@ -102,7 +102,7 @@
 />
 
 <h2 id="bands-custom-styling">Custom Bands Styling</h2>
-<BrillouinBandsDos
+<BandsAndDos
   structure={mock_structure}
   band_structs={{ '': mock_band_structure }}
   doses={{ '': mock_dos }}
@@ -111,7 +111,7 @@
 />
 
 <h2 id="independent-axes">Independent Y-axes (Mismatched Ranges)</h2>
-<BrillouinBandsDos
+<BandsAndDos
   structure={mock_structure}
   band_structs={{ '': mock_band_structure }}
   doses={{ '': high_freq_dos }}
@@ -119,7 +119,7 @@
 />
 
 <h2 id="with-bz-controls">With Brillouin Zone Controls</h2>
-<BrillouinBandsDos
+<BandsAndDos
   structure={mock_structure}
   band_structs={{ '': mock_band_structure }}
   doses={{ '': mock_dos }}
@@ -128,7 +128,7 @@
 />
 
 <h2 id="multiple-structures">Multiple Band Structures and DOS</h2>
-<BrillouinBandsDos
+<BandsAndDos
   structure={mock_structure}
   band_structs={{
     DFT: mock_band_structure,
@@ -152,7 +152,7 @@
   >
     Custom Overlay
   </div>
-</BrillouinBandsDos>
+</BandsAndDos>
 
 <style>
   h1 {
@@ -162,7 +162,7 @@
     margin-top: 2rem;
     margin-bottom: 1rem;
   }
-  :global(.bands-dos-brillouin[data-testid]) {
+  :global(.bands-and-dos[data-testid]) {
     min-height: 600px;
   }
 </style>

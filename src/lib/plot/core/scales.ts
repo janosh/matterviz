@@ -68,10 +68,8 @@ export const is_integer_format = (format: string | null | undefined): boolean =>
   !format.includes(`%`) &&
   (format.endsWith(`d`) || format.endsWith(`.0f`))
 
-// Tick positions an integer format can label: each tick rounded to the integer its label
-// reads, without repeats or values outside the domain (input order kept). A domain no
-// integer fits (zoomed below one unit) keeps the plain ticks, which tick_label_format then
-// labels as decimals instead of leaving the axis empty.
+// Ticks rounded to the integers their labels read, deduped and in-domain (input order kept).
+// A domain no integer fits keeps the plain ticks, which tick_label_format labels as decimals.
 export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] => {
   const ints = [...new Set(ticks.map(Math.round))].filter((tick) =>
     math.in_range(tick, domain),
@@ -79,9 +77,8 @@ export const integer_ticks = (ticks: readonly number[], domain: Vec2): number[] 
   return ints.length > 0 ? ints : [...ticks]
 }
 
-// Format for tick labels: an integer format can't label the all-fractional ticks
-// integer_ticks falls back to (0.2, 0.4 would all read `0`), so those get the default
-// decimal labels. Ticks with any integer among them (incl. explicit arrays) keep the format.
+// Tick label format: all-fractional ticks (integer_ticks' fallback) get default decimal
+// labels since an integer format would read `0` for all; others keep the format
 export const tick_label_format = (
   ticks: readonly number[],
   format: string | undefined,
@@ -91,8 +88,7 @@ export const tick_label_format = (
     : format
 
 // --- Arcsinh Scale Implementation ---
-// The arcsinh scale provides smooth transition between linear (near zero) and
-// logarithmic (for large |x|) behavior. Unlike log, it handles negative values.
+// Linear near zero, logarithmic for large |x|, and unlike log handles negatives.
 // Formula: y = asinh(x / threshold) = ln(x/c + sqrt((x/c)² + 1))
 
 export interface ArcsinhScale {
@@ -182,9 +178,8 @@ export function generate_arcsinh_ticks(
       .toReversed()
   }
 
-  // Mixed range: symmetric ticks around zero (includes_zero is always here). Split the budget
-  // across both sides (zero is shared/free) so e.g. count=4 yields ~5 ticks (0, ±a, ±b) rather
-  // than collapsing to 3 — matching how linear/log colorbars render a similar count.
+  // Mixed range: symmetric ticks around zero, budget split across both sides so count=4
+  // yields ~5 ticks (0, ±a, ±b) like linear/log colorbars rather than collapsing to 3
   const half_count = Math.floor(count / 2)
   // Positive ticks up to `bound`; the negative side mirrors them
   const side = (bound: number) =>
@@ -208,9 +203,8 @@ function generate_positive_arcsinh_ticks(
     return dedupe_sort(ticks.filter(in_range))
   }
 
-  // Large range: the threshold plus powers of 10 (and 2x/5x multiples), never the raw domain
-  // endpoints, which render as unrounded labels (e.g. 1325.8239811994677). Powers start at the
-  // threshold: below it arcsinh is near-linear, so e.g. ±1 at threshold=10 would pile onto 0.
+  // Large range: threshold plus powers of 10 (and 2x/5x), never raw (unrounded) domain ends.
+  // Powers start at the threshold, below which arcsinh is near-linear and ticks pile onto 0.
   const min_power = Math.floor(Math.log10(Math.max(min, threshold)))
   const powers = range(min_power, Math.ceil(Math.log10(max)) + 1).map((power) => 10 ** power)
   const ticks = [threshold, ...powers].filter(in_range)
@@ -283,9 +277,7 @@ export function generate_ticks(
   options: { default_count?: number; format?: string } = {},
 ): number[] {
   const { default_count = 8, format } = options
-  // Descending domains (e.g. [10, 0]) are a supported axis mode and every branch below wants
-  // ascending bounds (a raw max_val < min_val collapses interval counts to zero ticks). Tick
-  // order is irrelevant to rendering, so ascending output is fine.
+  // Descending domains are supported; branches below need ascending bounds (else zero ticks)
   const [min_val, max_val] = range_bounds(domain)
   const positive_count =
     typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : undefined
@@ -418,17 +410,15 @@ export function collect_series_extent(
   return extent
 }
 
-// Auto [min, max] of a colour/size extent, [0, 1] when no finite value was seen. On log
-// scales the smallest positive value stands in for a non-positive min: it has no log image,
-// and flooring it at LOG_EPS instead would squash every positive value into the ramp's top.
+// Auto [min, max] of a colour/size extent, [0, 1] if empty. Log scales use the smallest
+// positive value for a non-positive min (LOG_EPS would squash values into the ramp's top).
 export const auto_scale_range = (
   { min = 0, max = 1, min_positive }: RunningExtent,
   scale_type?: ScaleType,
 ): Vec2 => [get_scale_type_name(scale_type) === `log` ? (min_positive ?? min) : min, max]
 
-// Finite colour and size extents without concatenating series. NaN/null entries
-// fall back to the series colour/radius per point, so they must not widen either scale.
-// Ranges follow auto_scale_range for the given colour/size scale types.
+// Finite colour and size extents without concatenating series. NaN/null entries use the
+// series colour/radius, so they must not widen either scale.
 export function collect_scale_ranges(
   series: readonly ScaleValueSeries[],
   scale_types: { color?: ScaleType; size?: ScaleType } = {},
@@ -451,9 +441,8 @@ export const collect_size_range = (
   scale_type?: ScaleType,
 ): Vec2 => auto_scale_range(collect_series_extent(series, `size_values`), scale_type)
 
-// Pixel scale that holds values below a log axis's domain floor at the floor: 0 and negatives
-// (bar baselines, whisker lows, line vertices) have no finite log pixel, so they land on the
-// plot edge instead of producing NaN geometry. Non-log scales are returned unchanged.
+// Pixel scale holding values below a log axis's domain floor at the floor (bar baselines,
+// whisker lows) instead of NaN geometry. Non-log scales are returned unchanged.
 export const log_floor_scale = (
   scale: (val: number) => number,
   scale_type: ScaleType | undefined,
@@ -464,9 +453,8 @@ export const log_floor_scale = (
   return (val) => scale(Math.max(val, floor))
 }
 
-// Preserve positive bounds and direction. Replace a non-positive lower bound below the
-// positive upper bound, using LOG_EPS only when no smaller recovery value is needed.
-// `widen` expands collapsed domains for automatic ranges, but stays 1 for exact views.
+// Preserve positive bounds and direction, replacing a non-positive lower bound (LOG_EPS
+// only as last resort). `widen` expands collapsed auto domains, stays 1 for exact views.
 export const positive_log_domain = (lower: number, upper: number, widen = 1.1): Vec2 => {
   const descending = lower > upper
   const [low, high] = descending ? [upper, lower] : [lower, upper]
@@ -564,10 +552,9 @@ export function nice_range_from_extent(
   return type_name === `log` ? validate_log_range(result) : result
 }
 
-// d3's fine log ticks step through every mantissa 1-9 whatever the count (17 ticks on
-// [0.0184, 0.993] for 6 requested). Keep the set closest to the count among all ticks and the
-// 1-2-5 or 1 mantissas (ties keep the denser, a thinned set needs two ticks), then every n-th
-// tick of it if that still overshoots by more than one ([2..8] -> [2, 4, 6, 8] for 5).
+// d3's fine log ticks step through every mantissa 1-9 whatever the count. Keep the set
+// (all, 1-2-5 or 1 mantissas) closest to the count (ties keep the denser), then every n-th
+// tick if that still overshoots by more than one ([2..8] -> [2, 4, 6, 8] for 5).
 const thin_log_ticks = (ticks: number[], count: number): number[] => {
   const mantissa = (tick: number): number => tick / 10 ** Math.floor(Math.log10(tick) + 1e-9)
   const has_mantissa = (digits: number[]) => (tick: number) =>
@@ -585,9 +572,8 @@ const thin_log_ticks = (ticks: number[], count: number): number[] => {
   return best.filter((_, idx) => idx % stride === 0)
 }
 
-// Logarithmic ticks: powers of 10 inside the domain; 1-2-5 mantissas when the domain spans
-// under three decades and the caller asked for more than 5 ticks; d3's mantissa ticks (thinned
-// toward the count) for sub-decade domains (e.g. after zooming) where fewer than two powers fit.
+// Log ticks: powers of 10; 1-2-5 mantissas under three decades when > 5 ticks are asked;
+// d3's mantissa ticks (thinned toward the count) where fewer than two powers fit.
 export function generate_log_ticks(min: number, max: number, count?: number): number[] {
   ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
@@ -620,11 +606,9 @@ export const get_tick_label = (
 ): string | null =>
   is_tick_label_map(ticks_option) ? (ticks_option[tick_value] ?? null) : null
 
-// Log domain for colour ramps, shared by every colour-scale builder so they agree on the
-// floor: non-positive bounds fall back to LOG_EPS (a domain entirely <= 0 collapses to one
-// colour instead of going NaN), positive bounds are kept however small (diffusivities, rates
-// sit far below LOG_EPS) and in the caller's order (a descending range runs high-to-low).
-// Equal bounds widen 10% each way so the value sits mid-ramp, as on linear/arcsinh scales.
+// Log domain shared by every colour-scale builder: non-positive bounds fall back to LOG_EPS
+// (no NaN), positive bounds are kept however small and in the caller's order. Equal bounds
+// widen 10% each way so the value sits mid-ramp, as on linear/arcsinh scales.
 const log_color_domain = ([lower, upper]: Vec2): Vec2 => {
   const safe_lo = lower > 0 ? lower : math.LOG_EPS
   const safe_hi = upper > 0 ? upper : math.LOG_EPS
@@ -650,10 +634,8 @@ export const to_color_scale_config = (
   return config.scheme || !default_scheme ? config : { ...config, scheme: default_scheme }
 }
 
-// Set value_range ends win; null or unset ends fall back to the data-derived auto_range,
-// which a thunk computes only when an end needs it (skipping the data scan otherwise). Log
-// scales treat a non-positive end as unset: it has no log image, and flooring it at LOG_EPS
-// would squash every color into the ramp's top, so the auto end (smallest positive) stands in.
+// Set value_range ends win; unset ends fall back to the lazily computed auto_range. Log
+// scales treat a non-positive end as unset (LOG_EPS would squash colors into the ramp's top).
 export const resolve_value_range = (
   color_scale: ColorScale,
   auto_range: Vec2 | (() => Vec2),
@@ -668,9 +650,8 @@ export const resolve_value_range = (
   return [lower ?? auto_lower, upper ?? auto_upper]
 }
 
-// Scheme picker (ColorScaleSelect) binding: the name it shows (the default for an unset
-// scheme, undefined for a function) and the color scale with a picked scheme swapped in, a
-// bare name staying a name
+// ColorScaleSelect binding: the shown scheme name (undefined for a function) and the color
+// scale with a picked scheme swapped in, a bare name staying a name
 export const scheme_name = (color_scale: ColorScale): D3InterpolateName | undefined => {
   const { scheme = SCALE_DEFAULTS.scheme } = to_color_scale_config(color_scale)
   return typeof scheme === `string` ? scheme : undefined
@@ -683,9 +664,8 @@ export const with_scheme = (
     ? scheme
     : { ...to_color_scale_config(color_scale), scheme }
 
-// t in [0, 1] -> color over the palette_range slice of the scheme (a descending slice runs
-// the palette backwards). Shared by density cells, legend ramps and color bars so clipped
-// palettes stay identical.
+// t in [0, 1] -> color over the palette_range slice of the scheme (descending runs backwards).
+// Shared by density cells, legend ramps and color bars so clipped palettes stay identical.
 export function color_interpolator(color_scale: ColorScale) {
   const { scheme = SCALE_DEFAULTS.scheme, palette_range = [0, 1] } =
     to_color_scale_config(color_scale)
@@ -696,11 +676,9 @@ export function color_interpolator(color_scale: ColorScale) {
   return (fraction: number): string => interpolate(start + fraction * (end - start))
 }
 
-// Data value -> color, plus the config with both value_range ends resolved (see
-// resolve_value_range) that a ColorBar draws as exactly these colors. value_range[0] takes
-// the palette start whichever way the range runs (palette_range [1, 0] reverses the palette).
-// Values outside value_range take the end colors, so a clipped or cyclic palette never
-// extrapolates past its ends.
+// Data value -> color, plus the config with value_range resolved for ColorBar to draw.
+// value_range[0] takes the palette start whichever way the range runs; values outside it
+// take the end colors, so clipped or cyclic palettes never extrapolate.
 export function resolve_color_scale(
   color_scale: ColorScale,
   auto_range: Vec2 | (() => Vec2),

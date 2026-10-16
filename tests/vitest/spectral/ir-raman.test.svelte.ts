@@ -51,6 +51,8 @@ const nacl_data = parse_phonon_modes(nacl_yaml)
 const nacl_born_data = parse_born(nacl_born)
 const nacl_masses = nacl_data.atoms.map((atom) => atom.mass)
 const nacl_q = () => nacl_data.qpoints[0]
+const nacl_spec = (opts = {}, qpoint = nacl_q()) =>
+  compute_ir_raman_spectrum(qpoint, nacl_masses, nacl_born_data, opts)
 const co2_raman_tensors = co2_raman_json.raman_tensors
 
 // Nested array literals are always exploded one row per line by the formatter, so build
@@ -183,16 +185,14 @@ describe(`IR intensities against closed-form results`, () => {
   // Building a spectrum means pairing a phonopy YAML with a BORN and maybe a Raman file,
   // routinely from different sources, so every shape mismatch has to name what disagreed
   // rather than silently truncate to the shorter array.
-  const spec = (opts = {}, qpoint = nacl_q()) =>
-    compute_ir_raman_spectrum(qpoint, nacl_masses, nacl_born_data, opts)
   const charges = nacl_born_data.born_charges
   // oxfmt-ignore
   it.each([
     [`fewer Born charge tensors than atoms`, () => compute_ir_raman_spectrum(nacl_q(), nacl_masses, { ...nacl_born_data, born_charges: charges.slice(0, 1) }), /1 Born charge tensors for 2 atoms/],
-    [`missing eigenvectors`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.map((mode) => ({ ...mode, eigenvector: null })) }), /mode 1 has no eigenvector/],
-    [`fewer modes than 3N`, () => spec({}, { ...nacl_q(), modes: nacl_q().modes.slice(0, 5) }), /5 modes for 2 atoms, expected 3N = 6/],
-    [`one Raman tensor for six modes`, () => spec({ raman_tensors: [mat3([1, 0, 0], [0, 1, 0], [0, 0, 1])] }), /1 Raman tensors for 6 modes/],
-    [`one Raman activity for six modes`, () => spec({ raman_activities: [1] }), /1 Raman activities for 6 modes/],
+    [`missing eigenvectors`, () => nacl_spec({}, { ...nacl_q(), modes: nacl_q().modes.map((mode) => ({ ...mode, eigenvector: null })) }), /mode 1 has no eigenvector/],
+    [`fewer modes than 3N`, () => nacl_spec({}, { ...nacl_q(), modes: nacl_q().modes.slice(0, 5) }), /5 modes for 2 atoms, expected 3N = 6/],
+    [`one Raman tensor for six modes`, () => nacl_spec({ raman_tensors: [mat3([1, 0, 0], [0, 1, 0], [0, 0, 1])] }), /1 Raman tensors for 6 modes/],
+    [`one Raman activity for six modes`, () => nacl_spec({ raman_activities: [1] }), /1 Raman activities for 6 modes/],
     [`a mass array shorter than the eigenvector`, () => ir_intensity(nacl_optical_eigvec, [M_NA], charges), /length mismatch/],
     [`a non-physical mass`, () => ir_intensity(nacl_optical_eigvec, [0, M_CL], charges), /atom 1 has invalid mass 0/],
   ])(`rejects %s`, (_name, run, pattern) => expect(run).toThrow(pattern))
@@ -308,11 +308,7 @@ describe(`spectrum_sticks`, () => {
     const modes = nacl_q().modes.map((mode, idx) =>
       idx === 3 ? { ...mode, frequency: -3 } : mode,
     )
-    const spectrum = compute_ir_raman_spectrum(
-      { ...nacl_q(), modes },
-      nacl_masses,
-      nacl_born_data,
-    )
+    const spectrum = nacl_spec({}, { ...nacl_q(), modes })
     expect(spectrum.modes[3].is_imaginary).toBe(true)
     expect(spectrum_sticks(spectrum).x).toHaveLength(2)
     expect(spectrum_sticks(spectrum, `ir`, { include_imaginary: true }).x).toHaveLength(3)
@@ -512,13 +508,10 @@ it.each([
   [`cm^-1`, 4000, 9],
   [`meV`, 495.9, 1],
 ] as const)(`a 4000 cm^-1 stick survives the IR path in %s`, (unit, expected, precision) => {
-  const thz = 4000 / convert_frequencies([1], `cm^-1`)[0]
-  expect(convert_frequencies([thz], unit)[0]).toBeCloseTo(expected, precision)
-  const mode = { ...co2_spectrum.modes[8], frequency: thz }
-  expect(spectrum_sticks({ ...co2_spectrum, modes: [mode] }, `ir`, { unit }).x[0]).toBeCloseTo(
-    expected,
-    precision,
-  )
+  const frequency = 4000 / convert_frequencies([1], `cm^-1`)[0] // in THz
+  const modes = [{ ...co2_spectrum.modes[8], frequency }]
+  const [stick] = spectrum_sticks({ ...co2_spectrum, modes }, `ir`, { unit }).x
+  expect(stick).toBeCloseTo(expected, precision)
 })
 
 // Its only caller inverts the result as 1 - A, so a silent no-op here would render a
@@ -756,6 +749,7 @@ describe(`IrRamanSpectrum component`, () => {
       props: { spectrum: co2_spectrum, ...props },
     })
 
+  const no_grid = { x_grid: false, y_grid: false }
   // One stick per active optical mode: NaCl's triply degenerate TO mode, CO2's 2 bends + nu3
   // (the 3 acoustic modes are excluded and the gerade modes carry exactly zero intensity, so
   // they draw no stick), and only nu1 is Raman active.
@@ -764,12 +758,7 @@ describe(`IrRamanSpectrum component`, () => {
     [`CO2 IR`, { fwhm: 25 }, 3],
     [`CO2 Raman`, { fwhm: 25, kind: `raman` } as const, 1],
   ])(`renders %s with one stick per active mode`, async (_name, props, n_sticks) => {
-    render({
-      ...props,
-      legend: {},
-      show_legend: true,
-      display: { x_grid: false, y_grid: false },
-    })
+    render({ ...props, legend: {}, show_legend: true, display: no_grid })
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(n_sticks)
@@ -893,17 +882,10 @@ describe(`IrRamanSpectrum component`, () => {
   )
 
   const silent_modes = co2_spectrum.modes.map((mode) => ({ ...mode, ir_intensity: 0 }))
+  // oxfmt-ignore
   it.each([
-    [
-      `Raman without polarizability data`,
-      { spectrum: nacl_spectrum, kind: `raman` } as const,
-      /polarizability derivatives must be supplied/,
-    ],
-    [
-      `every mode silent`,
-      { spectrum: { ...co2_spectrum, modes: silent_modes } },
-      /No IR-active modes/,
-    ],
+    [`Raman without polarizability data`, { spectrum: nacl_spectrum, kind: `raman` } as const, /polarizability derivatives must be supplied/],
+    [`every mode silent`, { spectrum: { ...co2_spectrum, modes: silent_modes } }, /No IR-active modes/],
   ])(`shows an empty state for %s`, (_name, props, message) => {
     render(props)
     expect(document.querySelector(`.scatter`)).toBeNull()

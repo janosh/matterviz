@@ -1,8 +1,6 @@
 <script lang="ts" generics="T, SnippetArg = T">
-  // Wrapper component that handles the common tooltip pattern:
-  // - If tooltip is a snippet function, render it exclusively (replaces default content)
-  // - If tooltip is a config object, render prefix/suffix around the default content
-  // - Otherwise, render just the default content (callers skip the whole tooltip on false)
+  // A snippet `tooltip` replaces the default content, a config object adds prefix/suffix
+  // around it, otherwise just the default renders (callers skip the whole tooltip on false)
   import { sanitize_html } from '#lib/sanitize.js'
   import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
   import type { Snippet } from 'svelte'
@@ -20,12 +18,10 @@
   } = $props()
 
   const config = $derived(typeof tooltip === `object` ? tooltip : null)
-  const prefix = $derived(
-    typeof config?.prefix === `function` ? config.prefix(data) : config?.prefix,
-  )
-  const suffix = $derived(
-    typeof config?.suffix === `function` ? config.suffix(data) : config?.suffix,
-  )
+  const resolve = (part: TooltipConfig<T>[`prefix`]) =>
+    typeof part === `function` ? part(data) : part
+  const prefix = $derived(resolve(config?.prefix))
+  const suffix = $derived(resolve(config?.suffix))
 </script>
 
 {#if typeof tooltip === `function`}

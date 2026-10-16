@@ -104,25 +104,15 @@ describe(`is_color function`, () => {
     expect(is_color(input)).toBe(expected)
   })
 
+  // concrete: renders with some opacity, opaque: with full opacity
+  // oxfmt-ignore
   test.each([
-    [`#4fc3f7`, true],
-    [`rgb(79 195 247)`, true],
-    [`rgb(79 195 247 / 50%)`, true],
-    [`var(--accent)`, false],
-    [`currentcolor`, false],
-    [`transparent`, false],
-  ])(`is_concrete_color(%s) is %s`, (color, expected) => {
-    expect(is_concrete_color(color)).toBe(expected)
-  })
-  test.each([
-    [`#4fc3f7`, true],
-    [`rgb(79 195 247)`, true],
-    [`rgb(79 195 247 / 50%)`, false],
-    [`rgba(79, 195, 247, 0.5)`, false],
-    [`transparent`, false],
-    [`var(--accent)`, false],
-  ])(`is_opaque_color(%s) is %s`, (color, expected) => {
-    expect(is_opaque_color(color)).toBe(expected)
+    [`#4fc3f7`, true, true], [`rgb(79 195 247)`, true, true],
+    [`rgb(79 195 247 / 50%)`, true, false], [`rgba(79, 195, 247, 0.5)`, true, false],
+    [`var(--accent)`, false, false], [`currentcolor`, false, false], [`transparent`, false, false],
+  ])(`%s: is_concrete_color=%s, is_opaque_color=%s`, (color, concrete, opaque) => {
+    expect(is_concrete_color(color)).toBe(concrete)
+    expect(is_opaque_color(color)).toBe(opaque)
   })
 })
 
@@ -145,15 +135,10 @@ test.each([
   expect(css_color_to_hex(input, `#abcdef`)).toBe(expected)
 })
 
+// oxfmt-ignore
 test.each([
-  [`#000000`, 0],
-  [`#ffffff`, 1],
-  [`#ff0000`, 0.299],
-  [`#00ff00`, 0.587],
-  [`#0000ff`, 0.114],
-  [`#808080`, 0.502],
-  [`#ff8000`, 0.594],
-  [`red`, 0.299],
+  [`#000000`, 0], [`#ffffff`, 1], [`#ff0000`, 0.299], [`#00ff00`, 0.587],
+  [`#0000ff`, 0.114], [`#808080`, 0.502], [`#ff8000`, 0.594], [`red`, 0.299],
 ])(`perceived_brightness(%s) = %s`, (color, expected_brightness) => {
   expect(perceived_brightness(color)).toBeCloseTo(expected_brightness, 3)
 })

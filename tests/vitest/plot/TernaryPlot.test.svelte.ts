@@ -19,26 +19,16 @@ import {
   translate_of,
 } from '../setup'
 
+// [2, 2, 6] are raw counts
+// oxfmt-ignore
 const series: TernarySeries[] = [
-  {
-    label: `Oxides`,
-    color: `#e15759`,
-    points: [
-      [1, 0, 0],
-      [0.2, 0.3, 0.5],
-      [2, 2, 6], // raw counts
-    ],
-  },
-  {
-    label: `Path`,
-    color: `#4e79a7`,
-    markers: `line+points`,
-    points: [
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-  },
+  { label: `Oxides`, color: `#e15759`, points: [[1, 0, 0], [0.2, 0.3, 0.5], [2, 2, 6]] },
+  { label: `Path`, color: `#4e79a7`, markers: `line+points`, points: [[0, 1, 0], [0, 0, 1]] },
 ]
+// the three pure corners
+type Triple = [number, number, number]
+// oxfmt-ignore
+const corners: Triple[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 
 const mount_ternary = (
   props: Partial<ComponentProps<typeof TernaryPlot>>,
@@ -48,6 +38,13 @@ const mount_ternary = (
 const markers = (plot: HTMLElement) => [
   ...plot.querySelectorAll<SVGGElement>(`.points [data-ternary-idx]`),
 ]
+// [min, max] of the color bar's numeric tick labels
+const bar_extent = (plot: HTMLElement) => {
+  const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
+    Number(label.textContent),
+  )
+  return [Math.min(...ticks), Math.max(...ticks)]
+}
 
 describe(`TernaryPlot`, () => {
   test(`renders one marker per point, corner labels and a line for line series`, async () => {
@@ -56,15 +53,11 @@ describe(`TernaryPlot`, () => {
     const corner_labels = [...plot.querySelectorAll(`.corner-labels text`)]
     expect(corner_labels.map((text) => text.textContent)).toEqual([`Fe`, `Ni`, `Cr`])
     // each label is nudged clear of its corner: right beside, apex above, left beside
-    expect(
-      corner_labels.map((text) =>
-        [`dx`, `dy`, `text-anchor`].map((attr) => text.getAttribute(attr)),
-      ),
-    ).toEqual([
-      [`8`, null, `start`],
-      [null, `-10`, `middle`],
-      [`-8`, null, `end`],
-    ])
+    const nudge = corner_labels.map((text) =>
+      [`dx`, `dy`, `text-anchor`].map((attr) => text.getAttribute(attr)),
+    )
+    // oxfmt-ignore
+    expect(nudge).toEqual([[`8`, null, `start`], [null, `-10`, `middle`], [`-8`, null, `end`]])
     expect(plot.querySelectorAll(`.lines path`)).toHaveLength(1)
     expect(plot.querySelector(`.lines path`)?.getAttribute(`stroke`)).toBe(`#4e79a7`)
     expect(plot.querySelector(`svg[role="application"]`)?.getAttribute(`aria-label`)).toBe(
@@ -98,9 +91,7 @@ describe(`TernaryPlot`, () => {
   ])(`%j draws %d grid lines and %d tick labels`, async (props, n_lines, n_ticks) => {
     const plot = await mount_ternary({ series, ...props })
     expect(plot.querySelectorAll(`.grid line`)).toHaveLength(n_lines)
-    const tick_labels = [...plot.querySelectorAll(`.ticks text`)].map(
-      (text) => text.textContent,
-    )
+    const tick_labels = [...plot.querySelectorAll(`.ticks text`)].map((txt) => txt.textContent)
     expect(tick_labels).toHaveLength(n_ticks)
     // ticks of the first component read along the base, ascending
     if (props.grid_step === 0.25 && n_ticks) {
@@ -118,17 +109,9 @@ describe(`TernaryPlot`, () => {
   })
 
   test(`an invalid triple renders an error naming the point instead of a chart`, async () => {
-    const plot = await mount_ternary({
-      series: [
-        {
-          label: `Bad`,
-          points: [
-            [1, 0, 0],
-            [0, -1, 2],
-          ],
-        },
-      ],
-    })
+    // oxfmt-ignore
+    const bad: TernarySeries = { label: `Bad`, points: [[1, 0, 0], [0, -1, 2]] }
+    const plot = await mount_ternary({ series: [bad] })
     const message = plot.querySelector(`.viewer-error [role="alert"]`)?.textContent
     expect(message).toContain(`Bad point 2 has a negative amount`)
     expect(markers(plot)).toHaveLength(0)
@@ -166,11 +149,8 @@ describe(`TernaryPlot`, () => {
     // a different marker swaps the payload
     await hover(markers(plot)[3], 200, 50)
     expect(on_point_hover).toHaveBeenCalledTimes(2)
-    expect(on_point_hover.mock.calls[1][0] as TernaryPointProps).toMatchObject({
-      series_idx: 1,
-      point_idx: 0,
-      series_label: `Path`,
-    })
+    const path_hover = { series_idx: 1, point_idx: 0, series_label: `Path` }
+    expect(on_point_hover.mock.calls[1][0] as TernaryPointProps).toMatchObject(path_hover)
     // the tooltip closes when its point is gone, and the hover ends right away
     bound.series = [oxides]
     await tick()
@@ -190,10 +170,7 @@ describe(`TernaryPlot`, () => {
     mock_canvas_context({ arc: vi.fn((cx: number, cy: number) => arcs.push([cx, cy])) })
     const n_points = CANVAS_MARKER_THRESHOLD + 1
     const rng = make_rng(0)
-    const points = Array.from(
-      { length: n_points },
-      () => [rng(), rng(), rng()] as [number, number, number],
-    )
+    const points = Array.from({ length: n_points }, () => [rng(), rng(), rng()] as Triple)
     const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
     const plot = await mount_ternary({
       series: [{ points, point_style: { fill } }],
@@ -274,9 +251,8 @@ describe(`TernaryPlot`, () => {
     first.focus()
     await tick()
     expect(getComputedStyle(first).outlineStyle).toBe(`none`)
-    const marker_style = getComputedStyle(query(first, `.marker`))
-    expect(marker_style.strokeWidth).toBe(`1.5px`)
-    expect(marker_style.vectorEffect).toBe(`non-scaling-stroke`)
+    const { strokeWidth, vectorEffect } = getComputedStyle(query(first, `.marker`))
+    expect([strokeWidth, vectorEffect]).toEqual([`1.5px`, `non-scaling-stroke`])
     first.dispatchEvent(mouse(`click`))
     const canceled_event = keydown(key, { cancelable: true })
     canceled_event.preventDefault()
@@ -285,11 +261,8 @@ describe(`TernaryPlot`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
     await fire(first, keydown(key))
     expect(on_point_click).toHaveBeenCalledTimes(2)
-    expect(on_point_click.mock.calls[0][0] as TernaryPointProps).toMatchObject({
-      series_idx: 0,
-      point_idx: 0,
-      fractions: [1, 0, 0],
-    })
+    const first_click = { series_idx: 0, point_idx: 0, fractions: [1, 0, 0] }
+    expect(on_point_click.mock.calls[0][0] as TernaryPointProps).toMatchObject(first_click)
   })
 
   test(`markers share one tab stop and expose fractions as their accessible name`, async () => {
@@ -366,14 +339,8 @@ describe(`TernaryPlot`, () => {
   test(`color_values paint markers through the color scale and show a color bar`, async () => {
     const plot = await mount_ternary({
       series: [
-        {
-          points: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-          color_values: [0, 5, null, 1000], // a value without a point must not widen the range
-        },
+        // a value without a point must not widen the range
+        { points: corners, color_values: [0, 5, null, 1000] },
         { points: [[1, 1, 1]], color_values: [-1000], visible: false },
       ],
       // a t in [0, 1] scheme over the auto [0, 5] value range
@@ -382,8 +349,8 @@ describe(`TernaryPlot`, () => {
       },
       color_bar: { title: `E (eV)` },
     })
-    const fills = markers(plot).map((marker) =>
-      marker.querySelector(`.marker`)?.getAttribute(`fill`),
+    const fills = markers(plot).map((node) =>
+      node.querySelector(`.marker`)?.getAttribute(`fill`),
     )
     expect(fills[0]).toContain(`rgb(0, 0, 255)`)
     expect(fills[1]).toContain(`rgb(255, 0, 0)`)
@@ -391,10 +358,7 @@ describe(`TernaryPlot`, () => {
     const colorbar = plot.querySelector(`.colorbar`)?.textContent
     expect(colorbar).toContain(`E (eV)`)
     expect(colorbar).toContain(`5`) // spans the min/max of the non-null color values
-    const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
-      Number(label.textContent),
-    )
-    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual([0, 5])
+    expect(bar_extent(plot)).toEqual([0, 5])
   })
 
   // type spaces the colors and value_range ends override the data extent, on markers and bar
@@ -406,16 +370,7 @@ describe(`TernaryPlot`, () => {
   ])(`color_scale %j`, async (config, expected_reds, bar_range) => {
     const red_ramp = (frac: number) => `rgb(${Math.round(frac * 255)}, 0, 0)`
     const plot = await mount_ternary({
-      series: [
-        {
-          points: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
-          color_values: [1, 10, 100],
-        },
-      ],
+      series: [{ points: corners, color_values: [1, 10, 100] }],
       color_scale: { ...config, scheme: red_ramp },
       color_bar: { tick_format: `d` },
     })
@@ -426,10 +381,7 @@ describe(`TernaryPlot`, () => {
       ),
     )
     expect(reds).toEqual(expected_reds)
-    const ticks = [...plot.querySelectorAll(`.colorbar .tick-label`)].map((label) =>
-      Number(label.textContent),
-    )
-    expect([Math.min(...ticks), Math.max(...ticks)]).toEqual(bar_range)
+    expect(bar_extent(plot)).toEqual(bar_range)
   })
 
   test.each<Partial<ComponentProps<typeof TernaryPlot>>>([

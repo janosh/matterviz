@@ -26,12 +26,12 @@
                   {#if required}<small>required</small>{/if}
                   {#if bindable}<small>bindable</small>{/if}
                 </td>
-                <td>
-                  {#if type}<code>{type}</code>{/if}
-                </td>
-                <td>
-                  {#if fallback}<code>{fallback}</code>{/if}
-                </td>
+                <td
+                  >{#if type}<code>{type}</code>{/if}</td
+                >
+                <td
+                  >{#if fallback}<code>{fallback}</code>{/if}</td
+                >
                 <td>{description ?? ``}</td>
               </tr>
             {/each}

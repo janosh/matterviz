@@ -79,10 +79,9 @@
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
-  // Domain geometry in data coords. Boundary edges are kept as point pairs so edge/hover
-  // geometry can swizzle them with whatever axis stretch is current. Which domains are drawn
-  // as formula overlays is tracked separately (overlay_formulas) so toggling an overlay never
-  // rebuilds the outlines or hover hulls.
+  // Domain geometry in data coords, edges as point pairs so they swizzle with the current axis
+  // stretch. Overlays are tracked separately (overlay_formulas) so toggling one never rebuilds
+  // the outlines or hover hulls.
   type RenderDomain = SceneProps[`render_domains`][number] & {
     edges: [number[], number[]][]
     ann_loc: number[]
@@ -171,10 +170,8 @@
 
   let formula_picker_open = $state(false)
 
-  // Mutual exclusion: only one pane open at a time.
-  // Separate effects so each reacts to its own pane opening independently —
-  // a single $derived ternary would create priority ordering where opening
-  // a "lower" pane while a "higher" one is open fails silently.
+  // Only one pane open at a time. Separate effects so each reacts to its own pane opening: a
+  // single $derived ternary would silently block opening a "lower" pane over a "higher" one.
   $effect(() => {
     if (export_pane_open) {
       formula_picker_open = false
@@ -226,8 +223,7 @@
   const to_vec3 = (point: number[]): THREE.Vector3 =>
     new THREE.Vector3(...to_render_xyz(point))
 
-  // The chemical system comes from every entry, not the temperature slice: a slice can be
-  // empty or miss an element, and the projection axes must stay selectable either way
+  // Chemical system from every entry, not the temperature slice (which can miss elements)
   const all_entry_elements = $derived(entry_elements(entries))
   const has_multinary_system = $derived(all_entry_elements.length > 3)
   let projection_elements_override = $state<string[] | null>(null)
@@ -278,9 +274,8 @@
     return available_formulas.filter((formula) => formula.toLowerCase().includes(query))
   })
 
-  // Outline (boundary edges) and label anchor per domain. Planar domains (every domain of a
-  // true ternary lies on its entry's hyperplane) take the PCA-projected 2D hull; projections
-  // of quaternary+ systems yield polyhedra, whose crease edges come from a 3D hull instead.
+  // Outline (boundary edges) and label anchor per domain: planar domains (true ternaries) take
+  // the PCA-projected 2D hull, quaternary+ polyhedra the crease edges of a 3D hull.
   function get_domain_outline(points_3d: number[][]) {
     const { simplex_indices, ann_loc, is_planar } =
       get_3d_domain_simplexes_and_ann_loc(points_3d)
@@ -291,8 +286,7 @@
     return { edges: is_planar ? planar_edges : hull_crease_edges(points_3d), ann_loc }
   }
 
-  // Crease edges (dihedral angle > 1°) of the 3D convex hull of `points`; null for a
-  // degenerate hull (ConvexGeometry throws)
+  // Crease edges (dihedral > 1°) of the 3D convex hull of `points`; null for a degenerate hull
   function crease_geometry(points: THREE.Vector3[]): THREE.EdgesGeometry | null {
     try {
       const hull = new ConvexGeometry(points)
@@ -368,8 +362,8 @@
     render_domains.filter((domain) => !overlay_formulas.has(domain.formula)),
   )
 
-  // Stretch short axes (up to 4x) to improve screen-space utilization for highly anisotropic
-  // systems. Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
+  // Stretch short axes (up to 4x) for anisotropic systems. Rendered order: X=data[1],
+  // Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): Vec3 => {
     if (domain_points.length === 0) return [1, 1, 1]
     const spans = [1, 2, 0].map((axis) => {
@@ -406,8 +400,7 @@
   const default_orthographic_zoom = $derived(
     Math.min(render_width, render_height) / (data_extent * 1.6),
   )
-  // A user gesture pins the view; the defaults above would otherwise re-apply through the
-  // camera props whenever a temperature/padding/formal toggle moves the data center
+  // A user gesture pins the view, else the defaults above re-apply when the data center moves
   let camera_position_override = $state<Vec3 | null>(null)
   let camera_target_override = $state<Vec3 | null>(null)
   let orthographic_zoom_override = $state<number | null>(null)
@@ -423,8 +416,7 @@
   let last_data_center: Vec3 | null = null
   let last_default_zoom: number | null = null
 
-  // Build globally deduplicated edge geometry for domain boundaries using
-  // 3D convex hull crease edges (not 2D projected hull).
+  // Globally deduplicated domain boundary edges (3D hull crease edges in projection mode)
   const edge_geometry = $derived.by(() => {
     if (is_projection_mode) {
       const unique_points = dedup_3d(base_domains.flatMap((domain) => domain.points_3d))
@@ -434,8 +426,7 @@
       if (hull_edges) return hull_edges
     }
 
-    // round so a shared edge whose endpoints came from different hyperplane triples
-    // (equal to ~1e-12, not bit-identical) is still drawn once
+    // round so a shared edge from different hyperplane triples (~1e-12 apart) is drawn once
     const point_key = (point: number[]) => point.map((val) => val.toFixed(4)).join(`,`)
     const seen = new Set<string>()
     const positions: number[] = []
@@ -450,8 +441,7 @@
     return position_geometry(positions)
   })
 
-  // Coplanar-merged convex hull of the points in render coords; null for fewer than four
-  // distinct points or a degenerate hull (ConvexGeometry throws)
+  // Coplanar-merged convex hull in render coords; null for < 4 points or a degenerate hull
   function render_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
     const unique_points = dedup_3d(points_3d)
     if (unique_points.length < 4) return null
@@ -462,9 +452,8 @@
     }
   }
 
-  // Build a single opaque convex hull mesh from ALL domain vertices for depth
-  // occlusion. This seamless surface writes to the depth buffer, hiding wireframe
-  // edges on the back side. Using all vertices together avoids gaps between domains.
+  // One seamless opaque hull over ALL domain vertices writes depth, hiding back-side wireframe
+  // edges without gaps between domains
   const occlusion_hull_geometry = $derived(
     render_hull_geometry(base_domains.flatMap((domain) => domain.points_3d)),
   )
@@ -502,11 +491,10 @@
       : [],
   )
 
-  // Faces no domain claims. Hoisted because a THREE.Color per recompute is pure waste.
+  // Faces no domain claims
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
 
-  // Reactive color fill: creates a cloned geometry with vertex colors applied.
-  // Only runs when color_mode or domain_colors change — no mutation of hull_base_geometry.
+  // Clone of hull_base_geometry with per-domain vertex colors
   const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     const mapping = face_domain_map
     if (!hull_base_geometry || mapping.length === 0) return hull_base_geometry
@@ -515,11 +503,9 @@
     const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
 
-    // Cache parsed RGB per formula to avoid redundant THREE.Color allocations
     const rgb_cache = new Map<string, Vec3>()
     for (const [formula, hex] of domain_colors) {
-      const clr = new THREE.Color(hex)
-      rgb_cache.set(formula, [clr.r, clr.g, clr.b])
+      rgb_cache.set(formula, new THREE.Color(hex).toArray() as Vec3)
     }
 
     for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
@@ -579,10 +565,8 @@
     colored_hull_geometry !== hull_base_geometry ? [colored_hull_geometry] : [],
   )
 
-  // Domains on the outer surface of the full envelope (all domains, overlays included), used by
-  // the "Surface" overlay quick-select. On demand: costs a convex hull plus a plane test per
-  // domain and face, and only a button click reads it. Raycasting instead is broken — FrontSide
-  // culling means rays fired from inside the hull hit nothing and every domain scores 0.
+  // Domains on the outer surface of the full envelope, for the "Surface" overlay quick-select
+  // (on demand: costs a hull). Raycasting fails here: FrontSide culling hides it from inside.
   function get_surface_formulas(): string[] {
     const envelope = render_hull_geometry(domain_points)
     const faces = envelope && strip_closing_faces(envelope.getAttribute(`position`).array)
@@ -607,14 +591,10 @@
     ),
   )
 
-  // Overlay geometry is per domain and depends only on that domain's points and the axis
-  // stretch, so it is cached per formula and kept while the formula stays an overlay:
-  // toggling one overlay builds one hull instead of every overlay's (k + 1 ConvexGeometry
-  // builds per toggle with k overlays, now 2 — the other is the base occlusion hull).
-  // Geometries evicted from the cache (formula un-drawn, domain or stretch changed) are
-  // queued in `evicted_geometries` and disposed by the effect after the mesh/edge data
-  // deriveds: the scene meshes may still reference them during the flush that evicts them.
-  // The teardown effect disposes whatever is left on unmount.
+  // Overlay geometry is cached per formula (it depends only on its points and the stretch), so
+  // toggling one overlay builds one hull, not all. Evicted geometries are queued and disposed
+  // by the effect after the mesh/edge deriveds, since the scene may still reference them
+  // during the evicting flush; the teardown effect disposes the rest on unmount.
   const evicted_geometries: THREE.BufferGeometry[] = []
   type OverlayGeometry = { geometry: THREE.BufferGeometry; color: string }
   function memo_overlay_geometry(
@@ -676,8 +656,7 @@
   const formula_mesh_data = $derived(
     overlay_mesh_geometries(draw_formula_meshes ? overlay_domains : []),
   )
-  // Runs after the deriveds above settle (and the scene has the new lists), so no mesh
-  // still points at a geometry when it is disposed
+  // Runs after the deriveds above settle, so no mesh still points at a disposed geometry
   const dispose_evicted = () => {
     for (const geometry of evicted_geometries.splice(0)) geometry.dispose()
   }
@@ -687,8 +666,7 @@
     return dispose_evicted
   })
 
-  // Post-process ConvexGeometry (always non-indexed) to merge coplanar triangles, eliminating
-  // internal diagonal edges across flat faces of the convex hull.
+  // Merge coplanar ConvexGeometry triangles, removing diagonal edges across flat hull faces
   function merge_coplanar_geometry(geom: ConvexGeometry): THREE.BufferGeometry {
     const pos = geom.getAttribute(`position`)
     const result = position_geometry(merge_coplanar_triangles(pos.array as Float32Array))
@@ -703,8 +681,7 @@
   ): { geometry: THREE.BufferGeometry; n_vertices: number } | null {
     const unique_points = dedup_3d(points_3d)
     if (unique_points.length < 3) return null
-    // For exactly 3 unique points (planar/degenerate domain), create a triangle
-    // geometry directly since ConvexGeometry requires 4+ points for a 3D hull
+    // ConvexGeometry needs 4+ points, so 3 make a triangle directly
     if (unique_points.length === 3) {
       const geom = position_geometry(unique_points.flatMap(to_render_xyz))
       geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
@@ -744,8 +721,8 @@
     )
   })
 
-  // Pick hulls depend only on the geometry; the hover info attached to them is rebuilt
-  // separately below so overlay/colour toggles never re-run ConvexGeometry
+  // Pick hulls depend only on geometry; hover info is rebuilt separately below so overlay or
+  // colour toggles never re-run ConvexGeometry
   const hover_geometries = $derived.by(() => {
     const result: {
       domain: RenderDomain
@@ -845,22 +822,19 @@
     })
   }
 
-  // OrbitControls dispatches `change` only once the camera has moved past its own epsilon, so
-  // any change arriving mid-gesture is real movement — measured: a bare click emits start/end
-  // with no change at all. Auto-rotation drives `change` with no `start`, and must not pin.
+  // OrbitControls fires `change` only past its own epsilon, so a mid-gesture change is real
+  // movement (a bare click emits only start/end). Auto-rotation's `change` has no `start`.
   let gesture_active = false
   const on_gesture_edge = (event: { type: string }): void => {
     gesture_active = event.type === `start`
-    // Prime the framing baseline on first interaction so the next geometry change can
-    // preserve zoom/center immediately (not only from the second change).
+    // Prime the framing baseline so the next geometry change already preserves zoom/center
     if (gesture_active) last_data_center ??= [...data_center]
     else gesture_had_input = false
   }
 
-  // With auto-rotation on, `change` fires every frame, so a bare click's `start` would be
-  // enough to pin the framing for good. Intent has to come from the input itself. Capture
-  // phase on the wrapper, because OrbitControls dispatches start/change/end synchronously
-  // inside the wheel event and a listener on the canvas would land after all three.
+  // With auto-rotation, `change` fires every frame, so intent must come from the input itself.
+  // Capture phase on the wrapper: OrbitControls dispatches start/change/end synchronously
+  // inside the wheel event, so a canvas listener would land after all three.
   let gesture_had_input = false
   // a wheel always counts; a pointer only with a button held, since hovering is not a gesture
   const mark_input = (event: Event): void => {
@@ -878,8 +852,7 @@
     const controls = orbit_controls_ref
     if (!controls) return
     const controls_camera = controls.object
-    // Written straight to the camera rather than left to the props: the defaults are known
-    // synchronously, and controls.update() below would otherwise run against the stale pose.
+    // Written straight to the camera, else controls.update() below runs on the stale pose
     controls_camera.position.set(...default_camera_position)
     controls.target.set(...default_camera_target)
     if (controls_camera instanceof THREE.OrthographicCamera) {
@@ -890,11 +863,10 @@
     controls.update()
   }
 
-  // Preserve user framing across temperature-driven geometry changes:
-  // shift camera/target with domain center and keep orthographic zoom relative to extent.
+  // Preserve user framing across geometry changes: shift camera/target with the domain center
+  // and keep orthographic zoom relative to extent
   $effect(() => {
-    // Reading the overrides re-runs this on every OrbitControls `change` (per frame while
-    // dragging or auto-rotating); with the framing baselines unchanged there is nothing to do.
+    // Re-runs on every OrbitControls `change`; nothing to do while the baselines are unchanged
     const baseline_center = last_data_center
     const same_center =
       baseline_center !== null &&
@@ -918,8 +890,7 @@
     if (rescaled_zoom !== orthographic_zoom_override)
       orthographic_zoom_override = rescaled_zoom
     last_data_center = [...data_center]
-    // A zero fit means the container has no size yet; keep the last real one as the baseline
-    // so the pinned zoom resumes from it rather than losing a rescale step.
+    // A zero fit means the container has no size yet; keep the last real one as baseline
     if (default_orthographic_zoom > 0) last_default_zoom = default_orthographic_zoom
   })
 
@@ -927,8 +898,8 @@
     const controls = orbit_controls_ref
     if (!controls) return
     const on_controls_change = (): void => {
-      // Once pinned keep tracking; before that only a live gesture may pin. Reading allocates
-      // two arrays, and auto-rotation fires this every frame, so stay out of that path.
+      // Once pinned keep tracking; before that only a live gesture may pin (reading allocates,
+      // and auto-rotation fires this every frame)
       if (camera_position_override || (gesture_active && gesture_had_input)) {
         const { object: cam, target } = controls
         camera_position_override = [cam.position.x, cam.position.y, cam.position.z]

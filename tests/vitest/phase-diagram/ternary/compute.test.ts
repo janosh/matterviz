@@ -85,13 +85,10 @@ describe(`prepare_diagram`, () => {
     expect(prepare_diagram(toy_entries).elements).toEqual([`K`, `Na`, `Li`]) // electronegativity
   })
 
+  // oxfmt-ignore
   test.each([
     [[make_phase({ Li: 1, Na: 1 }, -0.5)], undefined, /exactly 3 elements, got 2/],
-    [
-      [make_phase({ Li: 1, Na: 1, K: 1, Rb: 1 }, -0.5)],
-      undefined,
-      /exactly 3 elements, got 4/,
-    ],
+    [[make_phase({ Li: 1, Na: 1, K: 1, Rb: 1 }, -0.5)], undefined, /exactly 3 elements, got 4/],
     [[...toy_entries, make_phase({ Rb: 1 }, 0)], toy_elements, /outside the Li-Na-K system/],
     [[{ composition: {}, energy: 0 }], toy_elements, /no recognizable elements/],
     [

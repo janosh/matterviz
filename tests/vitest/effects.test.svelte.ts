@@ -7,7 +7,7 @@ import {
   pulsing_highlight_opacity,
 } from '#lib/effects.svelte.js'
 import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
-import { flushSync, mount, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const requested_frames = new Map<number, FrameRequestCallback>()
@@ -38,6 +38,13 @@ afterEach(() => {
   requested_frames.clear()
 })
 
+const mount_pulse = (props: ComponentProps<typeof PulseAnimationHarness>) => {
+  install_animation_frame_mock()
+  return mount(PulseAnimationHarness, { target: document.body, props })
+}
+const pulse_time = () =>
+  Number(document.querySelector<HTMLElement>(`[data-testid="pulse"]`)?.dataset.time)
+
 describe(`create_pulse_animation`, () => {
   test.each([
     [0, 0.2],
@@ -48,25 +55,17 @@ describe(`create_pulse_animation`, () => {
   })
 
   test(`resets time and stops after on_tick deactivates synchronously`, () => {
-    install_animation_frame_mock()
     const state = $state({ active: true })
-
-    const component = mount(PulseAnimationHarness, {
-      target: document.body,
-      props: {
-        active: () => state.active,
-        on_tick: () => {
-          state.active = false
-          flushSync()
-        },
+    const component = mount_pulse({
+      active: () => state.active,
+      on_tick: () => {
+        state.active = false
+        flushSync()
       },
     })
     flushSync()
-
     run_frame(1)
-
-    const pulse = document.querySelector<HTMLElement>(`[data-testid="pulse"]`)
-    expect(pulse?.dataset.time).toBe(`0`)
+    expect(pulse_time()).toBe(0)
     expect(requested_frames.size).toBe(0)
     void unmount(component)
   })
@@ -76,12 +75,8 @@ describe(`create_pulse_animation`, () => {
   // their wrapper after mount, and an observer that never reports (happy-dom, or a real
   // browser in the moment before its first callback) must not stall the pulse.
   test(`animates until an observer reports off screen, then follows it`, async () => {
-    install_animation_frame_mock()
     const state = $state<{ node: HTMLElement | null }>({ node: null })
-    const component = mount(PulseAnimationHarness, {
-      target: document.body,
-      props: { active: () => true, element: () => state.node },
-    })
+    const component = mount_pulse({ active: () => true, element: () => state.node })
     flushSync()
     expect(requested_frames.size).toBe(1) // no element yet, so nothing to gate on
 
@@ -92,8 +87,6 @@ describe(`create_pulse_animation`, () => {
     expect(requested_frames.size).toBe(1)
 
     // Advance the phase so the pause below has something to preserve
-    const pulse_time = () =>
-      Number(document.querySelector<HTMLElement>(`[data-testid="pulse"]`)?.dataset.time)
     run_frame([...requested_frames.keys()][0])
     flushSync()
     const paused_at = pulse_time()
@@ -117,12 +110,8 @@ describe(`create_pulse_animation`, () => {
   // off screen straight away. The observer's own initial report arrives a microtask after
   // observe(), so it must not overwrite a verdict that has already landed.
   test(`stays paused when the first verdict is off screen`, async () => {
-    install_animation_frame_mock()
     const target = document.createElement(`div`)
-    const component = mount(PulseAnimationHarness, {
-      target: document.body,
-      props: { active: () => true, element: () => target },
-    })
+    const component = mount_pulse({ active: () => true, element: () => target })
     flushSync()
 
     trigger_intersection(target, false)
@@ -146,13 +135,9 @@ describe(`reduced motion`, () => {
   })
 
   test(`holds a pulse at rest while reduce motion is on, resumes when it turns off`, () => {
-    install_animation_frame_mock()
     const prefs = $state({ reduced: true })
     stub_reduced_motion(() => prefs.reduced)
-    const component = mount(PulseAnimationHarness, {
-      target: document.body,
-      props: { active: () => true },
-    })
+    const component = mount_pulse({ active: () => true })
     flushSync()
     expect(requested_frames.size).toBe(0)
     flushSync(() => (prefs.reduced = false))

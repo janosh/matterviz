@@ -128,9 +128,8 @@ export function get_phase_color(name: string, format: `rgba` | `hex` = `rgba`): 
   return add_alpha(hex, key === `two_phase` || key === `default` ? 0.5 : 0.6)
 }
 
-// Get gradient colors for multi-phase regions (2+ phases separated by '+')
-// Returns array of evenly-spaced gradient stops (offset in [0, 1], hex color), or null
-// for single-phase regions
+// Evenly spaced gradient stops (offset in [0, 1], hex color) for multi-phase region names
+// ('+'-separated), null for single-phase regions
 export function get_multi_phase_gradient(
   name: string,
 ): { offset: number; color: string }[] | null {
@@ -317,9 +316,8 @@ function pick_bracketing_intersection_pair(
 // single-phase field. Widening steps cover narrow terminal solid solutions.
 const NEIGHBOR_PROBE_OFFSETS = [1e-4, 1e-3, 5e-3]
 
-// Order the two phases as [left, right] along the tie line. A region name lists them in
-// arbitrary order ("alpha + L" may have L on the left), so probe the field just past each end
-// and match by name; when neither neighbour matches, the name order stands.
+// Order the two phases [left, right] along the tie line by probing the field past each end
+// (names list them in arbitrary order); the name order stands when neither neighbour matches
 function order_phases_along_tie_line(
   region: PhaseRegion,
   all_regions: readonly PhaseRegion[],
@@ -348,10 +346,9 @@ function order_phases_along_tie_line(
   return phases
 }
 
-// Lever rule along the isothermal tie line — the only direction it is defined in (along a
-// vertical cut the coexisting phases change composition with T, so no ratio of temperatures is
-// a phase fraction). Null unless the region is exactly two-phase and the scan brackets the
-// point. `all_regions` assigns the phases to tie-line ends by geometry, not by name order.
+// Lever rule along the isothermal tie line (the only direction it is defined in). Null unless
+// the region is exactly two-phase and the scan brackets the point. `all_regions` assigns the
+// phases to tie-line ends by geometry, not by name order.
 export function calculate_lever_rule(
   region: PhaseRegion,
   composition: number,
@@ -461,9 +458,8 @@ export function get_phase_stability_range(
   return { t_min, t_max }
 }
 
-// Compute the x-axis domain for a binary phase diagram.
-// Uses explicit range if fully specified, otherwise derives from data extent
-// and auto-extends to 0/1 when edge regions contain pure components.
+// x-axis domain of a binary phase diagram: the explicit range if fully specified, else the
+// data extent, extended to 0/1 when edge regions contain pure components
 export function compute_x_domain(
   x_range: [number | null, number | null] | undefined,
   data: PhaseDiagramData | null,

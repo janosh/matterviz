@@ -34,9 +34,8 @@
     children?: Snippet
   } = $props()
   const controls_config = $derived(normalize_show_controls(show_controls))
-  // Children mount on first open and stay mounted, so closed panes cost nothing up front while
-  // reopening keeps their state. Mount-time snapshots (reset baselines) belong in the owner's
-  // script. `ever_opened` is plain memory the derived latches into.
+  // Children mount on first open and stay mounted: closed panes cost nothing, reopening keeps
+  // state. Mount-time snapshots (reset baselines) belong in the owner's script.
   let ever_opened = false
   const children_mounted = $derived((ever_opened ||= controls_open))
 </script>

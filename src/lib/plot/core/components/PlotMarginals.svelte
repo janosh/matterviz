@@ -1,8 +1,6 @@
 <script lang="ts">
-  // Renders marginal-distribution strips on any side of a 2D plot. Used by every 2D plot:
-  // each passes its resolved `marginals`, a generic `series` adapter, the shared positional
-  // scales/ranges, and the inflated `pad`. This must be a direct child of the host <svg>
-  // (outside the plot clip group); each strip self-clips. See core/marginals.ts for the math.
+  // Marginal-distribution strips on any side of a 2D plot. Must be a direct child of the host
+  // <svg> (outside the plot clip group); each strip self-clips. Math in core/marginals.ts.
   import type { Vec2 } from '#lib/math.js'
   import type { Rect, Sides } from '#lib/plot/core/layout.js'
   import type {
@@ -82,16 +80,13 @@
   const is_hoverable = (config: ResolvedMarginalConfig) =>
     config.tooltip !== false && !config.snippet
 
-  // PlotMarginals renders inside the <svg>, which can't host an HTML tooltip. Portal the tooltip
-  // div to be a sibling of the <svg> (in the positioned plot wrapper) so it positions in wrapper px
-  // and stacks above HTML overlays (legend, colorbar) — like each host plot's own PlotTooltip.
+  // An <svg> can't host an HTML tooltip, so portal it next to the <svg> (in wrapper px,
+  // above the legend/colorbar), like each host plot's own PlotTooltip
   const portal_to_wrapper = (node: HTMLElement) =>
     portal(node.closest(`svg`)?.parentElement)(node)
 
-  // Precompute tooltip content off the hot pointer path (recomputes only when `hovered` changes).
-  // `head_label`/`head_value` form the position row (bin range for bars, else a single position);
-  // `value` is the count/density/CDF row (null for rug, which has no value). A per-side
-  // `config.tooltip` snippet overrides this default content.
+  // Tooltip content, recomputed only when `hovered` changes: `head_label`/`head_value` form the
+  // position row, `value` the count/density/CDF row (null for rug). `config.tooltip` overrides.
   const tip = $derived.by(() => {
     if (!hovered) return null
     const { kind, config, color, format, pos, pos0, pos1, pos_label } = hovered
@@ -197,9 +192,8 @@
             ? { x: pos_min, y: val_min, width: pos_len, height: val_len }
             : { x: val_min, y: pos_min, width: val_len, height: pos_len }
         })
-        // all four must be finite: a custom reduce/data bin with a non-finite edge/value would
-        // otherwise emit width/height="Infinity" (invalid SVG). mirrors create_marginal_hit_test's
-        // bar filter
+        // all four must be finite or custom bins emit width="Infinity" (invalid SVG); mirrors
+        // create_marginal_hit_test's bar filter
         .filter((bar) => [bar.x, bar.y, bar.width, bar.height].every(isFinite))
       return base
     }
@@ -251,11 +245,9 @@
     return base
   }
 
-  // Build the strip's value-axis (spine + a few value ticks + title), mirroring a regular axis:
-  // tick labels sit just OUTSIDE the spine (away from the strip's data) and the title sits beyond
-  // them. x-strips (top/bottom) read as a y-axis (vertical spine at the strip's left edge, labels
-  // to the left, rotated title); y-strips read as an x-axis (horizontal spine at the strip's bottom
-  // edge — which coincides with the host plot's x-axis baseline — labels below, title below them).
+  // The strip's value axis (spine, ticks, title) mirroring a regular axis, with labels outside
+  // the spine and the title beyond: x-strips read as a y-axis (spine on the left edge, rotated
+  // title), y-strips as an x-axis (spine on the bottom edge, on the host's x baseline).
   const build_value_axis = (
     is_x: boolean,
     rect: Rect,
@@ -267,9 +259,8 @@
     const title = default_marginal_label(config)
     const [vector_0, vector_1] = [val_scale(domain[0]), val_scale(domain[1])] // spine ends in px
     const gap = 6 // spine -> tick label
-    // value px + label per tick, minus non-finite and the baseline tick (v0, plot-facing edge):
-    // it's only `gap` px from the host plot's adjacent axis tick, so they'd overlap (e.g. a CDF
-    // `0%` over the plot's top y-tick). The spine still spans full range — zero edge implied.
+    // value px + label per tick, minus non-finite ones and the baseline tick, which would
+    // overlap the host plot's adjacent axis tick only `gap` px away
     const tick_px = d3_ticks(domain[0], domain[1], 3)
       .map((value) => ({ vpx: val_scale(value), text: format_value(value, fmt) }))
       .filter(({ vpx }) => isFinite(vpx) && Math.abs(vpx - vector_0) > 1)
@@ -428,9 +419,8 @@
       )
       if (rect.width <= 0 || rect.height <= 0) return []
 
-      // Shared per-side value scale so per-series curves are directly comparable. Auto-scale adds
-      // 5% headroom above the peak so the tallest curve's line stroke isn't clipped at the strip's
-      // far edge (the clip rect sits exactly at value=max). A pinned value_range is honored as-is.
+      // Shared per-side value scale so curves compare directly. Auto-scale adds 5% headroom so
+      // the peak's stroke isn't clipped at the strip edge; a pinned value_range is honored.
       const { scale: val_scale, baseline } = marginal_value_scale(side, rect, domain)
 
       const ctx: MarginalRenderContext = {
@@ -471,9 +461,8 @@
           curves:
             geometry?.curves ??
             (config.snippet ? [] : curves.map((curve) => build_curve_render(curve, ctx))),
-          // Value axis only when there's something to scale: a pinned value_range, or positive
-          // non-rug content (max > 0). This skips rug (no value), empty curves (degenerate [0,0]
-          // domain), and snippets (which draw their own).
+          // Value axis only with a pinned value_range or positive non-rug content (skips rug,
+          // empty curves and snippets, which draw their own)
           value_axis:
             config.value_axis && !config.snippet && (config.value_range != null || max > 0)
               ? build_value_axis(is_x, rect, val_scale, domain, config)

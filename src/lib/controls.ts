@@ -31,14 +31,8 @@ export function normalize_show_controls(
   default_mode: ControlsVisibility = DEFAULT_CONTROLS_MODE,
 ) {
   const config = typeof prop === `object` && prop ? prop : undefined
-  const mode =
-    typeof prop === `boolean`
-      ? prop
-        ? `always`
-        : `never`
-      : typeof prop === `string`
-        ? prop
-        : (config?.mode ?? default_mode)
+  let mode = typeof prop === `string` ? prop : (config?.mode ?? default_mode)
+  if (typeof prop === `boolean`) mode = prop ? `always` : `never`
   // Plain Set: never mutated, and every caller already wraps this in a $derived
   const hidden = new Set(config?.hidden)
   return {

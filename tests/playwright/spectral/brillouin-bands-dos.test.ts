@@ -36,7 +36,7 @@ async function get_default_desktop_plots(page: Page) {
 
 // Never run two of these at once: concurrent workers loading the same heavy 3D page race.
 // A lock (unlike serial mode) still runs the remaining tests after one fails.
-test.describe(`BrillouinBandsDos Component Tests`, { lock: `brillouin-3d` }, () => {
+test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () => {
   // Cold compilation and 3D initialization can take over a minute in development.
   test.setTimeout(120_000)
 

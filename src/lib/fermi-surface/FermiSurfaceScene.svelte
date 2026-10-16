@@ -123,20 +123,13 @@
   // Characteristic scene size, used for clipping and camera positioning
   const scene_size = $derived(k_space_size(fermi_data?.k_lattice))
 
-  // Plane equation: dot(normal, point) + constant >= 0 means point is visible
+  // Keeps points with normal·point + constant ≥ 0: those past the position along the axis,
+  // or before it when flipped
   const clip_plane = $derived.by(() => {
     if (!clip_enabled) return null
-
-    const axis_idx = { x: 0, y: 1, z: 2 }[clip_axis]
-    const normal_arr: Vec3 = [0, 0, 0]
-    normal_arr[axis_idx] = clip_flip ? -1 : 1
-
-    const scaled_position = clip_position * scene_size
-    // constant = -position for normal case (keep points >= position)
-    // constant = +position for flipped case (keep points <= position)
-    const constant = clip_flip ? scaled_position : -scaled_position
-
-    return new Plane(new Vector3(...normal_arr), constant)
+    const sign = clip_flip ? -1 : 1
+    const normal = new Vector3().setComponent({ x: 0, y: 1, z: 2 }[clip_axis], sign)
+    return new Plane(normal, -sign * clip_position * scene_size)
   })
 
   // Apply the clipping plane to every object in the scene. WebGPURenderer has no global
@@ -169,24 +162,20 @@
     ) ?? [],
   )
 
-  // Mean vertex distance from origin: inner sheets (small radius) render first so outer
-  // transparent shells blend over them
-  function compute_surface_radius(surface: FermiIsosurface): number {
-    const { positions } = surface
-    if (positions.length === 0) return 0
+  // Mean vertex distance from Γ: inner sheets render first so outer transparent shells blend
+  // over them
+  function mean_radius({ positions }: FermiIsosurface): number {
     let sum = 0
     for (let idx = 0; idx < positions.length; idx += 3) {
       sum += Math.hypot(positions[idx], positions[idx + 1], positions[idx + 2])
     }
-    return sum / (positions.length / 3)
+    return positions.length ? (3 * sum) / positions.length : 0
   }
-
-  // Render order per surface (inner = lower = first). Plain Map: rebuilt wholesale by the
-  // derived, never mutated, so nothing reads it reactively.
+  // Render order per surface (inner = lower = first)
   let surface_render_orders = $derived(
     new Map(
       visible_surfaces
-        .map((surface) => ({ surface, radius: compute_surface_radius(surface) }))
+        .map((surface) => ({ surface, radius: mean_radius(surface) }))
         .toSorted((surf_a, surf_b) => surf_a.radius - surf_b.radius)
         .map(({ surface }, idx) => [surface, idx]),
     ),
@@ -207,8 +196,8 @@
     ),
   )
 
-  const get_surface_color = (surface: FermiIsosurface): string =>
-    sheet_color(surface.band_index, surface.spin, color_property)
+  const get_surface_color = ({ band_index, spin }: FermiIsosurface): string =>
+    sheet_color(band_index, spin, color_property)
 
   // One BufferGeometry per visible surface object, built once and kept for as long as the
   // surface stays visible: the positions/normals/index buffers are shared with the surface, so
@@ -252,26 +241,17 @@
     threlte.invalidate()
   })
 
-  // Tiling draws up to 48 copies (cubic), so it is auto-disabled above this triangle count
-  const MAX_TRIANGLES_FOR_TILING = 50_000
+  // Tiling draws up to 48 copies (cubic), so it is auto-disabled above 50k triangles
   let total_triangles = $derived(
     visible_surfaces.reduce((sum, surface) => sum + surface.indices.length / 3, 0),
   )
-  let effective_tile_bz = $derived(tile_bz && total_triangles < MAX_TRIANGLES_FOR_TILING)
-
-  // Warn user when tiling is auto-disabled
+  let effective_tile_bz = $derived(tile_bz && total_triangles < 50_000)
+  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices)) // BZ centroid
   $effect(() => {
-    if (tile_bz && !effective_tile_bz && total_triangles > 0) {
-      console.warn(
-        `Fermi surface has ${total_triangles} triangles, auto-disabled BZ tiling for performance`,
-      )
+    if (tile_bz && !effective_tile_bz) {
+      console.warn(`Fermi surface has ${total_triangles} triangles, BZ tiling auto-disabled`)
     }
   })
-
-  // BZ centroid as rotation center
-  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
-
-  const computed_camera_position = $derived(default_camera_position(scene_size))
 
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
@@ -473,7 +453,7 @@
 
 <SceneCamera
   {camera_projection}
-  position={computed_camera_position}
+  position={default_camera_position(scene_size)}
   fov={controls.fov}
   zoom={scene_camera.zoom}
   reset_zoom={scene_camera.reset_to_fit}

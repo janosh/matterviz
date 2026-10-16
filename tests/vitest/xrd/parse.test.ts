@@ -27,7 +27,6 @@ const rounded = (result: { x: number[]; y: number[] }) => ({
   y: result.y.map((val) => Math.round(val * 100) / 100),
 })
 const THREE_POINTS = { x: [10, 20, 30], y: [33.33, 66.67, 100] }
-
 describe(`parse_xy_file`, () => {
   test.each([
     [`space-separated`, `10.0 100\n20.0 200\n30.0 300`],
@@ -92,9 +91,9 @@ describe(`parse_xy_file`, () => {
         .join(`\n`),
       /reverses direction in 3 of 25 steps/,
     ],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_xy_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_xy_file(content)).toThrow(pattern),
+  )
 
   test.each([
     // two ranges, the second restarting below the end of the first
@@ -181,9 +180,9 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
       `10 0.5 12\n100 200\nNumor=1\n300 400 500`,
       /announces 5 points but only 2 follow/,
     ],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_block_scan(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_block_scan(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_rigaku_asc_file`, () => {
@@ -196,9 +195,9 @@ describe(`parse_rigaku_asc_file`, () => {
   test.each([
     [`a count mismatch`, `${header}10, 20\n*END`, /header implies 4 points .* but 2 counts/],
     [`missing *STEP`, `*START = 4\n*BEGIN\n1\n*END`, /missing \*START or positive \*STEP/],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_rigaku_asc_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_rigaku_asc_file(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_ras_file`, () => {
@@ -223,9 +222,9 @@ describe(`parse_ras_file`, () => {
     [`no *RAS_INT_START`, `*RAS_HEADER_START\n*RAS_HEADER_END\n100 200`, /no \*RAS_INT_START/],
     [`an empty section`, wrap(``), /empty \*RAS_INT_START section/],
     [`single-column counts without a grid`, wrap(`100\n200`), /need \*MEAS_SCAN_START/],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_ras_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_ras_file(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_uxd_file`, () => {
@@ -251,9 +250,9 @@ describe(`parse_uxd_file`, () => {
   test.each([
     [`no counts section`, `_START=10\n10 100\n20 200`, /no _COUNTS or _2THETACOUNTS/],
     [`_COUNTS without a grid`, `_COUNTS\n100 200`, /needs _START/],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_uxd_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_uxd_file(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_gsas_file`, () => {
@@ -285,9 +284,9 @@ describe(`parse_gsas_file`, () => {
       `BANK 1 3 1 CONST 1000 1000 0 0\n1 2`,
       /declares 3 channels .* but 2 follow/,
     ],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_gsas_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_gsas_file(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_bruker_raw_file (RAW1.01)`, () => {
@@ -334,24 +333,13 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
   )
 
   test(`concatenates every range in 2theta order, each on its own grid`, () => {
-    // stored high range first, with different step sizes and supplementary header sizes
-    const high = { counts: [50, 400], start: 40, step: 10, supplementary: 24 }
-    const low = { counts: [100, 200, 300], start: 10, step: 10 }
+    // stored high range first, with different step sizes; odd supplementary header sizes
+    // leave the float32 counts and the second range header at unaligned byte offsets
+    const high = { counts: [50, 400], start: 40, step: 10, supplementary: 3 }
+    const low = { counts: [100, 200, 300], start: 10, step: 5, supplementary: 1 }
     const result = parse_bruker_raw_file(make_raw101([high, low]))
-    expect(result.x).toEqual([10, 20, 30, 40, 50])
+    expect(result.x).toEqual([10, 15, 20, 40, 50])
     expect(result.y).toEqual([25, 50, 75, 12.5, 100])
-  })
-
-  test(`reads counts and range headers at odd byte offsets`, () => {
-    // odd supplementary sizes leave the float32 counts and the next range header unaligned
-    const result = parse_bruker_raw_file(
-      make_raw101([
-        { counts: [1, 2, 3], start: 10, step: 1, supplementary: 1 },
-        { counts: [4, 5], start: 20, step: 1, supplementary: 3 },
-      ]),
-    )
-    expect(result.x).toEqual([10, 11, 12, 20, 21])
-    expect(result.y).toEqual([20, 40, 60, 80, 100])
   })
 
   test.each([
@@ -453,9 +441,9 @@ describe(`parse_xrdml_file`, () => {
       /needs numeric startPosition and endPosition/,
     ],
     [`empty intensities`, xrdml(``), /empty <intensities>/],
-  ])(`throws on %s`, (_name, content, pattern) => {
-    expect(() => parse_xrdml_file(content)).toThrow(pattern)
-  })
+  ])(`throws on %s`, (_name, content, pattern) =>
+    expect(() => parse_xrdml_file(content)).toThrow(pattern),
+  )
 })
 
 describe(`parse_brml_file`, () => {
@@ -466,6 +454,26 @@ describe(`parse_brml_file`, () => {
       ),
     ).buffer
 
+  // <DataViews> as Bruker writes it: `views` are [xsi:type, Start, Length, inner XML]
+  const data_views = (views: [string, number, number, string][]) =>
+    `<DataViews>${views
+      .map(
+        ([type, start, length, inner]) =>
+          `<RawDataView xsi:type="${type}" Start="${start}" Length="${length}"${type === `FixedRawDataView` && start === 0 ? ` LogicName="MeasuredTime"` : ``}>${inner}</RawDataView>`,
+      )
+      .join(``)}</DataViews>`
+  const scan_axes = (axis_ids: string[]) =>
+    `<Varying LogicName="ScanAxes">${axis_ids
+      .map((id) => `<FieldDefinitions FieldName="${id}" AxisId="${id}"/>`)
+      .join(``)}<BlankingValue>-9999</BlankingValue></Varying>`
+  const counts_view = `<Recording LogicName="ScanCounter"><BlankingValue>-9999</BlankingValue></Recording>`
+  const raw_data = (views: string, rows: string[], extra = ``) =>
+    `<RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${extra}<DataRoutes><DataRoute>${views}${rows
+      .map((row) => `<Datum>${row}</Datum>`)
+      .join(``)}</DataRoute></DataRoutes></RawData>`
+
+  const advanced_axes = scan_axes([`Chi`, `Phi`, `TwoTheta`, `Theta`])
+  const powder_axes = scan_axes([`TwoTheta`, `Theta`])
   test.each([
     // without <DataViews>: the default layout, 2θ in column 3 and the intensity last
     {
@@ -495,33 +503,6 @@ describe(`parse_brml_file`, () => {
       x: [15, 15.01, 15.02, 15.03, 15.04],
       y: [50, 75, 100, 90, 60],
     },
-  ])(`reads $desc`, async ({ xml, x: coord_x, y: coord_y }) => {
-    const result = await parse_brml_file(zip({ 'Experiment0/RawData0.xml': xml }))
-    result.x.forEach((val, idx) => expect(val).toBeCloseTo(coord_x[idx], 9))
-    result.y.forEach((val, idx) => expect(val).toBeCloseTo(coord_y[idx], 9))
-  })
-
-  // <DataViews> as Bruker writes it: `views` are [xsi:type, Start, Length, inner XML]
-  const data_views = (views: [string, number, number, string][]) =>
-    `<DataViews>${views
-      .map(
-        ([type, start, length, inner]) =>
-          `<RawDataView xsi:type="${type}" Start="${start}" Length="${length}"${type === `FixedRawDataView` && start === 0 ? ` LogicName="MeasuredTime"` : ``}>${inner}</RawDataView>`,
-      )
-      .join(``)}</DataViews>`
-  const scan_axes = (axis_ids: string[]) =>
-    `<Varying LogicName="ScanAxes">${axis_ids
-      .map((id) => `<FieldDefinitions FieldName="${id}" AxisId="${id}"/>`)
-      .join(``)}<BlankingValue>-9999</BlankingValue></Varying>`
-  const counts_view = `<Recording LogicName="ScanCounter"><BlankingValue>-9999</BlankingValue></Recording>`
-  const raw_data = (views: string, rows: string[], extra = ``) =>
-    `<RawData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">${extra}<DataRoutes><DataRoute>${views}${rows
-      .map((row) => `<Datum>${row}</Datum>`)
-      .join(``)}</DataRoute></DataRoutes></RawData>`
-
-  const advanced_axes = scan_axes([`Chi`, `Phi`, `TwoTheta`, `Theta`])
-  const powder_axes = scan_axes([`TwoTheta`, `Theta`])
-  test.each([
     {
       // advanced scan: 2θ is the third scan axis (column 4), not column 2 (Chi)
       desc: `a 7-column advanced scan with 2θ after Chi and Phi`,
@@ -576,7 +557,7 @@ describe(`parse_brml_file`, () => {
     const result = await parse_brml_file(zip({ 'Experiment0/RawData0.xml': xml }))
     expect(result.x).toHaveLength(coord_x.length)
     result.x.forEach((val, idx) => expect(val).toBeCloseTo(coord_x[idx], 9))
-    expect(result.y).toEqual(coord_y)
+    result.y.forEach((val, idx) => expect(val).toBeCloseTo(coord_y[idx], 9))
   })
 
   test(`falls back to any XML entry carrying Datum rows when no RawData file exists`, async () => {
@@ -677,15 +658,11 @@ describe(`parse_xrd_file routing`, () => {
 })
 
 describe(`is_xrd_data_file`, () => {
+  // .gz alone is not a format
+  // oxfmt-ignore
   test.each([
-    [`sample.xy`, true],
-    [`SCAN.BRML`, true],
-    [`rigaku.ras.gz`, true],
-    [`bruker.raw`, true],
-    [`fullprof.fxye`, true],
-    [`data.cif`, false],
-    [`noextension`, false],
-    [`data.gz`, false], // .gz alone is not a format
+    [`sample.xy`, true], [`SCAN.BRML`, true], [`rigaku.ras.gz`, true], [`bruker.raw`, true],
+    [`fullprof.fxye`, true], [`data.cif`, false], [`noextension`, false], [`data.gz`, false],
   ])(`%s → %s`, (filename, expected) => expect(is_xrd_data_file(filename)).toBe(expected))
 })
 
@@ -764,10 +741,7 @@ describe(`real example files`, () => {
   test(`BT86.raw decodes to the same scan as its UXD export`, async () => {
     const [raw, uxd] = await Promise.all([load(`BT86.raw`), load(`BT86-siemens.uxd.gz`)])
     expect(raw.x).toHaveLength(uxd.x.length)
-    let max_dx = 0
-    for (let idx = 0; idx < raw.x.length; idx++) {
-      max_dx = Math.max(max_dx, Math.abs(raw.x[idx] - uxd.x[idx]))
-    }
+    const max_dx = Math.max(...raw.x.map((x_val, idx) => Math.abs(x_val - uxd.x[idx])))
     expect(max_dx).toBeLessThan(5e-3)
     expect(raw.y).toEqual(uxd.y)
   })

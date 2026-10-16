@@ -1,5 +1,4 @@
-// HKL plane slicing for volumetric data: samples a 3D grid along an arbitrary
-// crystallographic plane defined by Miller indices, using trilinear interpolation.
+// Plane slicing for volumetric data: trilinear samples along an hkl or Cartesian plane
 import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { lower_corner, safe_mod, upper_corner } from './grid'
@@ -14,7 +13,7 @@ const DEFAULT_MAX_PIXELS = 1024 * 1024
 export const volume_center = (volume: VolumetricData): Vec3 =>
   math.add(volume.origin, math.create_frac_to_cart(volume.lattice)([0.5, 0.5, 0.5]))
 
-// Resolve a Cartesian slice point, defaulting to the volume center or origin.
+// Cartesian slice point, defaulting to the volume center, else the origin
 export const resolve_slice_cartesian_point = (
   point: Vec3 | undefined,
   volume?: VolumetricData,
@@ -75,10 +74,9 @@ const upsample_axis = (
   return out
 }
 
-// Trilinear interpolation kinks wherever a slice crosses a grid plane, so coarse grids draw
-// visibly polygonal isolines. Refine each axis with interpolating cubic B-splines until it has
-// about `min_axis_points` samples (within `max_points` total), so a slice crosses many small
-// cells of a smooth field instead. Grid samples and the data range are preserved.
+// Trilinear interpolation kinks at grid planes, so coarse grids draw polygonal isolines.
+// Refine each axis with cubic B-splines to about `min_axis_points` samples (within
+// `max_points` total), preserving grid samples and the data range.
 export function upsample_volume(
   volume: VolumetricData,
   { min_axis_points = 64, max_points = 4_000_000 } = {},
@@ -129,8 +127,7 @@ export interface SliceResult {
   polygon: Vec2[] // exact convex cell/plane intersection in local (u, v)
 }
 
-// Maps unit-cube corners to the absolute Cartesian corners of the cell
-// block spanning `bounds` (fractional, per axis)
+// Maps unit-cube corners to the Cartesian corners of the cell block spanning `bounds`
 const bounded_cell_corner = (volume: VolumetricData, bounds: DisplayRange) => {
   const frac_to_cart = math.create_frac_to_cart(volume.lattice)
   return (unit: Vec3): Vec3 =>
@@ -199,10 +196,9 @@ const cell_exit = (idx: number, start: number, step: number, floor_value: number
   return Math.max(exit, idx + 1)
 }
 
-// Trilinear samples at grid coordinates start + idx * step (idx < count), written to
-// out[offset + idx] for every pixel of every slider frame. Between grid-plane crossings a run
-// stays in one cell, where the blend of its 8 corners is a cubic in idx: each cell costs one
-// gather and each pixel one Horner step. Matches trilinear_interpolate up to rounding.
+// Trilinear samples at grid coordinates start + idx * step (idx < count) into out[offset +
+// idx]. Within one cell the 8-corner blend is a cubic in idx, so each cell costs one gather and
+// each pixel one Horner step. Matches trilinear_interpolate up to rounding.
 function sample_grid_run(
   { periodic, values, dims }: VolumetricData,
   [start_x, start_y, start_z]: Vec3,
@@ -290,16 +286,15 @@ const resolve_resolution = (
   max_grid_dim: number,
   max_pixels: number,
 ): Vec2 => {
+  const at_least_2 = (count: number): number => Math.max(2, Math.round(count))
   let counts: Vec2
   if (Array.isArray(resolution)) {
-    counts = [Math.max(2, Math.round(resolution[0])), Math.max(2, Math.round(resolution[1]))]
+    counts = [at_least_2(resolution[0]), at_least_2(resolution[1])]
   } else {
-    const longest_count = Math.max(2, Math.round(resolution ?? max_grid_dim))
+    const n_longest = at_least_2(resolution ?? max_grid_dim)
     const longest_span = Math.max(u_span, v_span, PLANE_TOLERANCE)
-    counts = [
-      Math.max(2, Math.round((longest_count * u_span) / longest_span)),
-      Math.max(2, Math.round((longest_count * v_span) / longest_span)),
-    ]
+    const scaled = (span: number): number => at_least_2((n_longest * span) / longest_span)
+    counts = [scaled(u_span), scaled(v_span)]
   }
   const pixel_budget = Number.isFinite(max_pixels)
     ? Math.max(4, Math.floor(max_pixels))
@@ -365,7 +360,7 @@ export function sample_plane_slice(
   const v_range: Vec2 = [min[1], max[1]]
   if (u_span <= PLANE_TOLERANCE || v_span <= PLANE_TOLERANCE) return null
 
-  // Sampling resolution: caller-specified or default to max grid dimension
+  // Caller's resolution, else the largest grid dimension
   const [width, height] = resolve_resolution(
     options.resolution,
     u_span,
@@ -373,11 +368,9 @@ export function sample_plane_slice(
     Math.max(...volume.dims),
     options.max_pixels ?? DEFAULT_MAX_PIXELS,
   )
-  const data = new Float64Array(width * height)
-  data.fill(Number.NaN)
+  const data = new Float64Array(width * height).fill(Number.NaN)
   const mask = new Uint8Array(width * height)
-  let data_min = Infinity
-  let data_max = -Infinity
+  let [data_min, data_max] = [Infinity, -Infinity]
   const u_step = u_span / (width - 1)
   const v_step = v_span / (height - 1)
   const edges = polygon_edges(polygon)

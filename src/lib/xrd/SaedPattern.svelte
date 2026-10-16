@@ -1,19 +1,13 @@
 <script lang="ts">
-  // Renders a zone-axis electron diffraction pattern as spots on a plane.
-  //
-  // This does NOT use ScatterPlot: a diffraction pattern is only meaningful when the two
-  // reciprocal-space axes are drawn at the same scale, and ScatterPlot has no fixed-aspect or
-  // equal-axis-scaling option (AxisConfig exposes range but nothing that couples the two
-  // axes). Rather than ship a pattern that shears with the container, the geometry is laid out
-  // here from one shared px-per-(1/Å) factor.
+  // Zone-axis electron diffraction spots. Not built on ScatterPlot, which cannot couple its two
+  // axis scales: the pattern needs one shared px-per-(1/Å) factor to not shear.
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { HklFormat, SaedPatternData, SaedSpot } from './index'
-  import { format_hkl } from './index'
+  import { format_hkl, type HklFormat, type SaedPatternData, type SaedSpot } from './index'
   import { laue_zone_label, saed_pattern_radius } from './saed'
 
   let {

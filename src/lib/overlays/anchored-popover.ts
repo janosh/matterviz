@@ -5,12 +5,11 @@ import type { TransitionConfig } from 'svelte/transition'
 const silent_closers = new WeakMap<Element, () => void>()
 
 // Shows a dropdown as a native auto popover floated beside its trigger: the top layer escapes
-// overflow clipping and stacking contexts, and the browser owns light dismiss and keeping one
-// auto popover open at a time. The trigger becomes the popover's invoker (`popovertarget`), so
-// pressing it toggles instead of light-dismissing and reopening. `on_close` reports every
-// close so the caller's `open` state follows, from the synchronous `beforetoggle`: the async
-// `toggle` comes a frame late, which paints a closed `display: flex` menu in normal flow.
-// Unmounting closes it silently. Pair it with `out:close_before_removal` (see there).
+// overflow clipping and stacking contexts, and the browser owns light dismiss. The trigger is
+// the invoker (`popovertarget`), so pressing it toggles rather than dismissing and reopening.
+// `on_close` reports every close from the synchronous `beforetoggle` (the async `toggle` comes
+// a frame late, painting a closed menu in normal flow). Unmounting closes it silently. Pair it
+// with `out:close_before_removal`.
 export const anchored_popover =
   ({
     anchor,
@@ -28,10 +27,9 @@ export const anchored_popover =
     const handle_toggle = (event: ToggleEvent) => {
       if (event.newState === `closed`) on_close()
     }
-    // Escape belongs to the open popover (as the innermost svelte-widgets Escape layer):
-    // swallowed before a host viewer's own Escape handling (unwinding panes, edit modes) acts
-    // on it. Focus goes back to the trigger before hiding: the browser's own restore fires
-    // focusin mid-hide, where a tooltip's showPopover throws.
+    // Escape belongs to the open popover (innermost svelte-widgets Escape layer), before a
+    // host viewer's own Escape handling. Focus returns to the trigger before hiding: the
+    // browser's own restore fires focusin mid-hide, where a tooltip's showPopover throws.
     const release_escape = register_escape_layer((event) => {
       if (!node.matches(`:popover-open`)) return false
       event.preventDefault()
@@ -41,10 +39,9 @@ export const anchored_popover =
       return true
     })
     node.popover = `auto`
-    // The top layer lifts the popover out of its ancestors' boxes, but not out of their inherited
-    // styles: a host that makes its overlay click-through (axis labels in a foreignObject, hover-
-    // only toolbars) would pass `pointer-events: none` on to the menu. `inset` and `margin`
-    // undo the UA [popover] box, which would center the menu over `float`'s top/left.
+    // The top layer doesn't escape inherited styles: a click-through host overlay would pass
+    // `pointer-events: none` on to the menu. `inset` and `margin` undo the UA [popover] box,
+    // which would center the menu over `float`'s top/left.
     Object.assign(node.style, { pointerEvents: `auto`, inset: `auto`, margin: `0` })
     anchor.popoverTargetElement = node
     // `show`: the click that just opened it (its native step runs after the caller's handler)
@@ -74,12 +71,10 @@ export const anchored_popover =
     }
   }
 
-// Outro for an anchored popover's element, which hides it before Svelte removes it. Svelte
-// detaches a closing block's DOM before running its attachments' teardown, and Chromium left
-// stale hover state when an open top-layer element was removed under the pointer: after
-// picking a menu option, the host viewer no longer matched :hover (its hover-only chrome
-// stayed hidden) until the pointer left it. An outro runs before the removal, and with no
-// duration the removal still happens synchronously.
+// Outro hiding an anchored popover before Svelte removes it. Svelte detaches DOM before
+// attachment teardown, and Chromium left stale :hover on the host viewer (hiding its
+// hover-only chrome) when an open top-layer element was removed under the pointer. An outro
+// runs before the removal, and with no duration the removal still happens synchronously.
 export const close_before_removal = (node: Element): TransitionConfig => {
   silent_closers.get(node)?.()
   return {}

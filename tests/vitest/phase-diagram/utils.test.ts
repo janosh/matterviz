@@ -398,14 +398,11 @@ describe(`convert_temp`, () => {
   )
 })
 
+// oxfmt-ignore
 test.each([
   [`rectangle`, rect(0, 400, 1, 800), { t_min: 400, t_max: 800 }],
   [`single vertex`, pts(0.5, 600), { t_min: 600, t_max: 600 }],
-  [
-    `irregular polygon`,
-    pts(0.2, 400, 0.8, 450, 0.7, 650, 0.3, 600),
-    { t_min: 400, t_max: 650 },
-  ],
+  [`irregular polygon`, pts(0.2, 400, 0.8, 450, 0.7, 650, 0.3, 600), { t_min: 400, t_max: 650 }],
   [`no vertices`, [], null],
 ] as [string, Vec2[], { t_min: number; t_max: number } | null][])(
   `get_phase_stability_range: %s → %o`,
@@ -436,6 +433,7 @@ describe(`compute_x_domain`, () => {
   // section: data far from both boundaries; non-matching: region names aren't components
   const section = make_data([make_region(`Al`, 0.3, 0.5), make_region(`Cu`, 0.5, 0.7)])
   const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
+  // oxfmt-ignore
   test.each([
     [`explicit range returned as-is`, [0.2, 0.8], null, [0.2, 0.8]],
     [`no range + no data defaults to [0, 1]`, undefined, null, [0, 1]],
@@ -443,18 +441,8 @@ describe(`compute_x_domain`, () => {
     [`null range auto-extends both edges`, [null, null], edge_data, [0, 1]],
     [`explicit lo preserved, hi auto-extends`, [0.1, null], edge_data, [0.1, 1]],
     [`lo auto-extends, explicit hi preserved`, [null, 0.9], edge_data, [0, 0.9]],
-    [
-      `no auto-extend far from the boundaries (section diagram)`,
-      undefined,
-      section,
-      [0.3, 0.7],
-    ],
-    [
-      `data extent when region names don't match components`,
-      undefined,
-      non_matching,
-      [0.1, 0.9],
-    ],
+    [`no auto-extend far from the boundaries (section diagram)`, undefined, section, [0.3, 0.7]],
+    [`data extent when region names don't match components`, undefined, non_matching, [0.1, 0.9]],
   ] as [string, Parameters<typeof compute_x_domain>[0], PhaseDiagramData | null, Vec2][])(
     `%s`,
     (_desc, range, data, expected) => {

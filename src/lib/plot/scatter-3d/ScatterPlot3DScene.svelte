@@ -158,9 +158,7 @@
   // unnamed item's position never collides with another item's numeric id.
   const item_key = ({ id }: { id?: string | number }, idx: number): string =>
     id != null ? `id:${id}` : `idx:${idx}`
-  const half_x = scene_x / 2
-  const half_y = scene_y / 2
-  const half_z = scene_z / 2
+  const [half_x, half_y, half_z] = [scene_x / 2, scene_y / 2, scene_z / 2]
   let fit_zoom = $derived(Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50)
   // Orbit controls - snappy with minimal inertia; the orbit target is the cube center
   const scene_camera = create_scene_camera({
@@ -196,10 +194,8 @@
 
   const { invalidate } = useThrelte()
 
-  // Update backside positions when the camera crosses axis planes. autoInvalidate defaults to
-  // true, which parks the task in the scheduler's `autoInvalidations` for its whole lifetime
-  // and re-renders the on-demand scene every frame, idle or not. Opting out still runs the
-  // task each frame — the main stage is ungated — so crossings are still caught.
+  // Update backside positions when the camera crosses axis planes. autoInvalidate: true would
+  // re-render the on-demand scene every frame; opting out still runs the task each frame.
   useTask(
     () => {
       if (!camera) return
@@ -321,12 +317,8 @@
       const now = performance.now()
       const snap = now < settled_at || instances.length > max_tweened_instances
       const keys = instances.map(({ key }) => key)
-      tween.retarget(
-        keys,
-        pack_instances(instances),
-        now,
-        snap ? { duration: 0 } : point_tween,
-      )
+      const options = snap ? { duration: 0 } : point_tween
+      tween.retarget(keys, pack_instances(instances), now, options)
     })
   })
   // Like the task above, runs every frame without forcing renders: only a moving tween
@@ -385,11 +377,9 @@
     },
   }
 
-  // Keyboard cursor over the markers, driven from the plot root (one tab stop) like the 2D
-  // ScatterPlot: arrows walk point_instances in (series, point) order, Home/End jump,
-  // Enter/Space click the hovered marker and Escape clears it. Returns the point the cursor is
-  // on, null once cleared, undefined for keys it leaves alone (also handled, composing or
-  // modified ones: chords stay the browser's).
+  // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
+  // walk point_instances in (series, point) order, Home/End jump, Enter/Space click, Escape
+  // clears. Returns the cursor point, null once cleared, undefined for keys it leaves alone.
   export function handle_key(
     event: KeyboardEvent,
   ): InternalPoint3D<Metadata> | null | undefined {
@@ -497,8 +487,7 @@
         }
         const geometry = new LineGeometry()
         geometry.setPositions(input.positions)
-        // Node material for fat lines; it reads screen size from the viewport internally,
-        // so linewidth is in pixels without any resolution uniform to maintain.
+        // Node material reads screen size from the viewport, so linewidth is in pixels
         const material = new THREE.Line2NodeMaterial({
           color: new THREE.Color(input.color).getHex(),
           linewidth: input.width, // Width in pixels
@@ -523,8 +512,7 @@
     })
   })
 
-  // Lines reused across effect runs are only released here (axis geometries are derived and
-  // disposed by dispose_on_change below)
+  // Lines reused across effect runs are only released here
   onDestroy(() => {
     for (const { geometry, material } of series_lines) {
       geometry.dispose()

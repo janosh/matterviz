@@ -87,17 +87,13 @@ describe(`PhaseDiagramTooltip`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
     // edge melting/congruent points name the pure component; other types get a generic badge
     { type: `melting_point`, x: 0, badge: `Melting Point`, desc: `Al melts at 933 K` },
     { type: `congruent`, x: 1, badge: `Melting Point`, desc: `Cu melts at 933 K` },
     { type: `congruent`, x: 0.5, badge: `Congruent`, desc: `Congruent phase change at 933 K` },
-    {
-      type: `eutectic`,
-      x: 0.3,
-      badge: `Eutectic`,
-      desc: `Liquid → two solid phases at 933 K`,
-    },
+    { type: `eutectic`, x: 0.3, badge: `Eutectic`, desc: `Liquid → two solid phases at 933 K` },
     { type: `melting_point`, x: 0.5, badge: `Melting point`, desc: null },
     { type: `custom`, x: 0.5, badge: `Custom`, desc: null },
   ] as const)(

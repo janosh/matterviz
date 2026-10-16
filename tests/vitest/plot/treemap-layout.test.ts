@@ -287,14 +287,10 @@ describe(`place_treemap_label`, () => {
     expect(place_treemap_label({ ...base, rect: cell, margin: 4 })).toBeNull()
   })
 
+  // oxfmt-ignore
   test.each([
     // 'label' at 10px = 30px wide; a 20px-wide cell gives ratio 2/3
-    {
-      name: `shrink scales to the exact fit ratio`,
-      fit: `shrink`,
-      width: 20,
-      font_px: 20 / 3,
-    },
+    { name: `shrink scales to the exact fit ratio`, fit: `shrink`, width: 20, font_px: 20 / 3 },
     { name: `shrink clamps at min_font_size`, fit: `shrink`, width: 3, font_px: 6 },
     { name: `clip keeps the max size on overflow`, fit: `clip`, width: 3, font_px: 10 },
   ] as const)(`$name`, ({ fit, width, font_px }) => {

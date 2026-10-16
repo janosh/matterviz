@@ -1,6 +1,5 @@
-// Headless row logic for HeatmapTable: one numeric reading of a cell, sort comparison,
-// search/filter predicates and date-time parsing/formatting. No DOM, so it's unit-testable
-// and the component only wires these to events and markup.
+// Headless (DOM-free, unit-testable) row logic for HeatmapTable: numeric cell reading,
+// sorting, search/filter predicates and date-time parsing/formatting.
 import {
   HTML_ENTITY_SRC,
   HTML_TAG_SRC,
@@ -53,9 +52,8 @@ export const cell_text = (val: CellVal): string => {
   return html_to_text(String(val)).trim()
 }
 
-// undefined without a data-sort-value, null for a blank one: data-sort-value="" carries no
-// sort key (Number('') is 0, which would sort and color the cell as zero and pull the column's
-// mean toward it)
+// undefined without a data-sort-value, null for a blank one (Number('') is 0, which would
+// sort and color the cell as zero)
 const get_data_sort_value = (val: string): string | null | undefined => {
   const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
   return captured?.trim() === `` ? null : captured
@@ -67,10 +65,8 @@ const parse_numeric_string = (val: string): number | null => {
   return Number(normalize_unicode_minus(numeric_str))
 }
 
-// The one numeric reading of a cell: an explicit data-sort-value wins, then the visible
-// text with markup stripped and uncertainty notation ("1.23 ± 0.05", "1.23(5)") trimmed.
-// Sorting, coloring, filtering and the summary row all go through this, so a cell can't
-// sort as 10 while coloring as if it held no number.
+// The one numeric reading of a cell, shared by sorting, coloring, filters and summaries: an
+// explicit data-sort-value wins, then the visible text minus uncertainty ("1.23 ± 0.05").
 export function parse_numeric_val(val: CellVal): number | null {
   if (typeof val === `number`) return Number.isFinite(val) ? val : null
   if (typeof val !== `string`) return null
@@ -81,12 +77,8 @@ export function parse_numeric_val(val: CellVal): number | null {
   return num !== null && Number.isFinite(num) ? num : null
 }
 
-// Sorting reads the same rendered text search, filters and export do, so a cell cannot sort
-// by one string while showing another. Handing back the raw value instead meant `<b>Mango</b>`
-// sorted under `<` (tag name, not content), and a boolean or object cell reached compare_rows
-// as a non-string it could only answer "the other one first" to in BOTH directions - not a
-// total order, so the same rows came out differently depending on the order they went in.
-// null marks a missing sort key: an invalid value or a blank data-sort-value.
+// Sorts on the same rendered text search/filters/export use: raw values sorted `<b>Mango</b>`
+// under `<`, and booleans/objects broke the total order. null marks a missing sort key.
 const get_sort_val = (val: CellVal): string | number | null => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
@@ -177,10 +169,8 @@ export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean
 export const CATEGORY_LIMIT = 40
 type FilterPanel = { kind: `numeric` | `category` | `text`; options: string[] }
 
-// Options and control type for one column's filter panel. Distinct values come from the
-// unfiltered rows, so a column's own filter never removes the options you'd use to widen it.
-// The cap applies only to auto-detection: an explicit `category` column must list them all
-// or its checklist renders empty.
+// Options and control type for one column's filter panel, from unfiltered rows so a filter
+// never hides the options to widen it. Explicit `category` columns are uncapped.
 export function column_filter_panel(
   col: Omit<Column, `cell`>,
   rows: RowData[],
@@ -291,9 +281,8 @@ export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): num
   return normalize_timestamp(Number(get_data_sort_value(val) ?? html_to_text(val).trim()))
 }
 
-// A column's date/time kind from its config, else from a sample of its values: a single
-// value carrying a time of day makes it a datetime column; bare dates only settle it if
-// nothing richer turns up in the sample.
+// A column's date/time kind from its config, else a sample: any value with a time of day
+// makes it `datetime`, bare dates only `date`.
 export function infer_datetime_kind(
   col: Omit<Column, `cell`>,
   sample: CellVal[],

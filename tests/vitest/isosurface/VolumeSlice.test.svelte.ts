@@ -5,36 +5,39 @@ import * as slice_module from '#lib/isosurface/slice.js'
 import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
 import type { SliceResult } from '#lib/isosurface/slice.js'
 import type { VolumeSliceMode } from '#lib/isosurface/slice-rendering.js'
+import type { Vec2 } from '#lib/math.js'
 import { rgb } from 'd3-color'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { doc_query } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 
-const make_slice = (): SliceResult => {
-  const width = 4
-  const height = 4
-  return {
-    data: Float64Array.from({ length: width * height }, (_, data_idx) => data_idx),
-    mask: new Uint8Array(width * height).fill(1),
-    width,
-    height,
-    min: 0,
-    max: width * height - 1,
-    point: [0, 0, 0],
-    normal: [0, 0, 1],
-    u_axis: [1, 0, 0],
-    v_axis: [0, 1, 0],
-    u_range: [-2, 2],
-    v_range: [-1, 1],
-    polygon: [
-      [-2, -1],
-      [2, -1],
-      [2, 1],
-      [-2, 1],
-    ],
-  }
-}
+// width x height ramp (0, 1, 2, ...) over the rectangle u_range x v_range, clipped to its corners
+const make_slice = (
+  width = 4,
+  height = 4,
+  [u_min, u_max]: Vec2 = [-2, 2],
+  [v_min, v_max]: Vec2 = [-1, 1],
+): SliceResult => ({
+  data: Float64Array.from({ length: width * height }, (_, data_idx) => data_idx),
+  mask: new Uint8Array(width * height).fill(1),
+  width,
+  height,
+  min: 0,
+  max: width * height - 1,
+  point: [0, 0, 0],
+  normal: [0, 0, 1],
+  u_axis: [1, 0, 0],
+  v_axis: [0, 1, 0],
+  u_range: [u_min, u_max],
+  v_range: [v_min, v_max],
+  polygon: [
+    [u_min, v_min],
+    [u_max, v_min],
+    [u_max, v_max],
+    [u_min, v_max],
+  ],
+})
 
 const style_with_color = (color: string): CSSStyleDeclaration => {
   const style = document.createElement(`div`).style
@@ -42,37 +45,45 @@ const style_with_color = (color: string): CSSStyleDeclaration => {
   return style
 }
 
-const mock_context = () => ({
-  beginPath: vi.fn(),
-  clearRect: vi.fn(),
-  clip: vi.fn(),
-  closePath: vi.fn(),
-  createImageData: vi.fn(
-    (width: number, height: number) =>
-      ({ data: new Uint8ClampedArray(width * height * 4) }) as ImageData,
-  ),
-  lineTo: vi.fn(),
-  moveTo: vi.fn(),
-  putImageData: vi.fn(),
-  restore: vi.fn(),
-  save: vi.fn(),
-  stroke: vi.fn(),
-  lineJoin: `round`,
-  lineWidth: 1,
-  strokeStyle: ``,
-})
-
-async function mount_volume_slice(props: Partial<ComponentProps<typeof VolumeSlice>> = {}) {
-  const context = mock_context()
+// Route every canvas getContext call to one recording 2D context
+const mock_canvas = () => {
+  const context = {
+    beginPath: vi.fn(),
+    clearRect: vi.fn(),
+    clip: vi.fn(),
+    closePath: vi.fn(),
+    createImageData: vi.fn(
+      (width: number, height: number) =>
+        ({ data: new Uint8ClampedArray(width * height * 4) }) as ImageData,
+    ),
+    lineTo: vi.fn(),
+    moveTo: vi.fn(),
+    putImageData: vi.fn(),
+    restore: vi.fn(),
+    save: vi.fn(),
+    stroke: vi.fn(),
+    lineJoin: `round`,
+    lineWidth: 1,
+    strokeStyle: ``,
+  }
   vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
     context as unknown as CanvasRenderingContext2D,
   )
-  mount(VolumeSlice, {
-    target: document.body,
-    props: { slice: make_slice(), color_bar: null, ...props },
+  return context
+}
+
+async function mount_volume_slice(
+  overrides: Partial<ComponentProps<typeof VolumeSlice>> = {},
+) {
+  const context = mock_canvas()
+  const props = $state<ComponentProps<typeof VolumeSlice>>({
+    slice: make_slice(),
+    color_bar: null,
+    ...overrides,
   })
+  mount(VolumeSlice, { target: document.body, props })
   await tick()
-  return { canvas: document.querySelector(`canvas`), context }
+  return { canvas: document.querySelector(`canvas`), context, props }
 }
 
 afterEach(() => {
@@ -127,29 +138,12 @@ describe(`VolumeSlice`, () => {
   })
 
   test(`co-registers flipped contours with filled pixel rows`, async () => {
-    const slice = make_slice()
-    Object.assign(slice, {
-      data: new Float64Array([0, 0, 1, 1]),
-      mask: new Uint8Array(4).fill(1),
-      width: 2,
-      height: 2,
-      min: 0,
-      max: 1,
-      u_range: [0, 1],
-      v_range: [0, 1],
-      polygon: [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ],
-    })
+    const data = new Float64Array([0, 0, 1, 1])
     const { context } = await mount_volume_slice({
-      slice,
+      slice: { ...make_slice(2, 2, [0, 1], [0, 1]), data, max: 1 },
       mode: `both`,
       contour_levels: [0.5],
     })
-
     // d3-contour locates this horizontal boundary at sampled y=1. Reflecting
     // that pixel-center coordinate through a 2-row canvas keeps it at y=1.
     expect(context.lineTo).toHaveBeenCalledWith(1.5, 1)
@@ -167,40 +161,34 @@ describe(`VolumeSlice`, () => {
       color_scale: { value_range: [0, 1] },
       contour_levels: [-10],
     })
-
     expect(context.moveTo).toHaveBeenCalledTimes(1)
     expect(context.lineTo).toHaveBeenCalledTimes(3)
   })
 
   // Canvas takes a colour value, so `currentColor` has to be sampled in JS and the slice
   // repainted on a theme flip -- the cascade cannot restyle pixels already drawn.
+  const theme_colors = {
+    light: `rgb(0, 0, 0)`,
+    white: `rgb(20, 20, 20)`,
+    dark: `rgb(255, 255, 255)`,
+    black: `rgb(230, 230, 230)`,
+  }
   test.each([
-    [`light`, `white`, `rgb(0, 0, 0)`, `rgb(20, 20, 20)`],
-    [`dark`, `black`, `rgb(255, 255, 255)`, `rgb(230, 230, 230)`],
+    [`light`, `white`],
+    [`dark`, `black`],
   ] as const)(
     `resamples currentColor contours after a %s to %s theme switch`,
-    async (initial_theme, next_theme, initial_color, next_color) => {
-      const theme_colors = {
-        light: `rgb(0, 0, 0)`,
-        white: `rgb(20, 20, 20)`,
-        dark: `rgb(255, 255, 255)`,
-        black: `rgb(230, 230, 230)`,
-      }
+    async (initial_theme, next_theme) => {
       vi.spyOn(globalThis, `getComputedStyle`).mockImplementation(() => {
-        const color =
-          theme_colors[document.documentElement.dataset.theme as keyof typeof theme_colors]
-        return style_with_color(color)
+        const theme = document.documentElement.dataset.theme as keyof typeof theme_colors
+        return style_with_color(theme_colors[theme])
       })
       document.documentElement.dataset.theme = initial_theme
-      const { context } = await mount_volume_slice({
-        mode: `contours`,
-        contour_levels: [4],
-      })
-      expect(context.strokeStyle).toBe(initial_color)
-
+      const { context } = await mount_volume_slice({ mode: `contours`, contour_levels: [4] })
+      expect(context.strokeStyle).toBe(theme_colors[initial_theme])
       document.documentElement.dataset.theme = next_theme
       await tick() // watch_dark_mode reports via MutationObserver, so not synchronously
-      expect(context.strokeStyle).toBe(next_color)
+      expect(context.strokeStyle).toBe(theme_colors[next_theme])
     },
   )
 
@@ -221,29 +209,16 @@ describe(`VolumeSlice`, () => {
     expect(context.strokeStyle).toBe(`rgb(0, 0, 0)`)
     const wrapper = canvas?.closest<HTMLElement>(`.volume-slice`)
     if (!wrapper) throw new Error(`volume slice wrapper not rendered`)
-
     wrapper.style.setProperty(`--volume-slice-contour-color`, `rgb(12, 34, 56)`)
     await tick()
-
     expect(context.strokeStyle).toBe(`rgb(12, 34, 56)`)
   })
 
   test(`clears stale pixels when the slice is removed`, async () => {
-    const context = mock_context()
-    vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
-      context as unknown as CanvasRenderingContext2D,
-    )
-    const props = $state<{ color_bar: null; slice: SliceResult | null }>({
-      color_bar: null,
-      slice: make_slice(),
-    })
-    mount(VolumeSlice, { target: document.body, props })
-    await tick()
+    const { context, props } = await mount_volume_slice()
     context.clearRect.mockClear()
-
     props.slice = null
     await tick()
-
     expect(context.clearRect).toHaveBeenCalledWith(0, 0, 4, 4)
   })
 
@@ -269,9 +244,7 @@ describe(`VolumeSlice`, () => {
 })
 
 test(`VolumeSliceView re-samples for plane changes only`, async () => {
-  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
-    mock_context() as unknown as CanvasRenderingContext2D,
-  )
+  mock_canvas()
   const sample = vi.spyOn(slice_module, `sample_plane_slice`)
   const volume = make_volume(
     make_grid(6, 6, 6, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),
@@ -305,9 +278,7 @@ test(`VolumeSliceView keeps full resolution during rapid plane changes`, async (
     toFake: [`performance`, `setTimeout`, `clearTimeout`, `requestAnimationFrame`],
   })
   onTestFinished(() => void vi.useRealTimers())
-  vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(
-    mock_context() as unknown as CanvasRenderingContext2D,
-  )
+  mock_canvas()
   const sample = vi.spyOn(slice_module, `sample_plane_slice`)
   const volume = make_volume(
     make_grid(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x + idx_y + idx_z),

@@ -104,6 +104,20 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   }
 }
 
+type ParseOptions = NonNullable<Parameters<typeof parse_in_worker>[3]>
+// Parse through `worker`; content and filename matter only where a test inspects the request
+const parse_with = (
+  worker: WorkerLike,
+  options: ParseOptions = {},
+  content: Parameters<typeof parse_in_worker>[0] = `text`,
+  filename = `movie.xyz`,
+) => parse_in_worker(content, filename, false, { worker_factory: () => worker, ...options })
+const open_run = async (worker: WorkerLike): Promise<TrajectoryRun> => {
+  const result = await parse_with(worker)
+  if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
+  return result.data
+}
+
 const preparation = {
   bonding_strategy: `electroneg_ratio` as const,
   bonding_options: {},
@@ -447,18 +461,16 @@ describe(`parse_in_worker`, () => {
 
   it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {
     const worker = make_fake_worker()
-    await expect(
-      parse_in_worker(`data_si`, `si.cif`, false, {
-        worker_factory: () => worker,
-        load_options: { index_above_bytes: 4096 },
-      }),
-    ).resolves.toEqual(structure_result)
+    const load_options = { index_above_bytes: 4096, atom_type_mapping: { 1: `H` as const } }
+    await expect(parse_with(worker, { load_options }, `data_si`, `si.cif`)).resolves.toEqual(
+      structure_result,
+    )
     // host loading settings ride along so the worker's open_trajectory honours them
     expect(worker.posted[0].request).toMatchObject({
       content: `data_si`,
       filename: `si.cif`,
       is_base64: false,
-      load_options: { index_above_bytes: 4096 },
+      load_options,
     })
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
@@ -488,31 +500,22 @@ describe(`parse_in_worker`, () => {
     ],
   ])(`rejects when worker %s fails`, async (_label, make_worker) => {
     await expect(
-      parse_in_worker(`data`, `si.cif`, false, {
-        worker_factory: make_worker,
-        load_options: { index_above_bytes: 4096 },
-      }),
+      parse_in_worker(`data`, `si.cif`, false, { worker_factory: make_worker }),
     ).rejects.toThrow(/blocked|404|deserialize/)
   })
 
   it(`aborting terminates the worker`, async () => {
     const worker = make_fake_worker(() => null)
     const controller = new AbortController()
-    const parsing = parse_in_worker(`data`, `si.cif`, false, {
-      worker_factory: () => worker,
-      signal: controller.signal,
-    })
+    const parsing = parse_with(worker, { signal: controller.signal })
     controller.abort()
     await expect(parsing).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
+
   it(`returns a live worker-backed run and terminates its worker on dispose`, async () => {
     const worker = make_fake_worker(trajectory_response)
-    const result = await parse_in_worker(`1\nframe\nH 1 2 3\n`, `movie.xyz`, false, {
-      worker_factory: () => worker,
-    })
-    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
-    const run = result.data
+    const run = await open_run(worker)
     expect(run.frame_count).toBe(1)
     expect(await materialize_frame_result(run.read_frame(0))).toEqual(frame)
     expect(worker.terminate).not.toHaveBeenCalled()
@@ -533,47 +536,23 @@ describe(`parse_in_worker`, () => {
         }
         return response
       })
-      await expect(
-        parse_in_worker(`text`, `movie.xyz`, false, { worker_factory: () => worker }),
-      ).rejects.toThrow(failure === `missing port` ? /missing its run port/ : /rows/)
+      await expect(parse_with(worker)).rejects.toThrow(
+        failure === `missing port` ? /missing its run port/ : /rows/,
+      )
       expect(worker.terminate).toHaveBeenCalledOnce()
     },
   )
 
-  it(`clones retained ArrayBuffer sources and mapping options`, async () => {
-    const source = new Uint8Array([1, 2, 3, 4]).buffer
-    const worker = make_fake_worker(trajectory_response)
-    const mapping = { 1: `H` as const }
-    const result = await parse_in_worker(source, `large.h5`, false, {
-      worker_factory: () => worker,
-      load_options: { atom_type_mapping: mapping },
-    })
-    if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
-    const run = result.data
-    expect(source.byteLength).toBe(4)
-    expect(worker.posted[0].request).toMatchObject({
-      filename: `large.h5`,
-      load_options: { atom_type_mapping: { 1: `H` } },
-    })
-    expect(worker.posted[0].transfer).toHaveLength(0)
-    run.dispose()
-  })
-
   // Ownership alone decides whether bytes may be detached, independently of file size.
   it.each([
+    [`clones by default`, 4, undefined, 0],
     [`transfers a small payload the caller gave up`, 1024, true, 1],
     [`clones when the caller keeps ownership`, 60 * 1024 * 1024, false, 0],
     [`transfers an oversized payload the caller gave up`, 60 * 1024 * 1024, true, 1],
   ])(`%s`, async (_label, size, owns_content, expected_transfers) => {
-    const worker = make_fake_worker((request) => ({
-      id: request.id,
-      result: { type: `structure`, data: { sites: [] }, filename: `x.bin`, warnings: [] },
-    }))
+    const worker = make_fake_worker()
     const content = new ArrayBuffer(size)
-    await parse_in_worker(content, `x.bin`, false, {
-      worker_factory: () => worker,
-      owns_content,
-    })
+    await parse_with(worker, { owns_content }, content, `x.bin`)
     expect(worker.posted[0].transfer).toHaveLength(expected_transfers)
     // a cloned buffer stays readable here; a transferred one is detached
     expect(content.byteLength).toBe(expected_transfers === 0 ? size : 0)
@@ -583,11 +562,7 @@ describe(`parse_in_worker`, () => {
     `a late worker %s disposes the opened trajectory`,
     async (event_type) => {
       const worker = make_fake_worker(trajectory_response)
-      const result = await parse_in_worker(`text`, `movie.xyz`, false, {
-        worker_factory: () => worker,
-      })
-      if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
-      const run = result.data
+      const run = await open_run(worker)
       worker.emit(event_type, new Event(event_type))
       await expect(Promise.resolve(run.read_frame(0))).rejects.toThrow(/disposed/)
       expect(worker.terminate).toHaveBeenCalledOnce()
@@ -600,11 +575,7 @@ describe(`parse_in_worker`, () => {
       error: `ambiguous`,
       hdf5_group_paths: [`/a`, `/b`],
     }))
-    await expect(
-      parse_in_worker(`text`, `multi.h5`, false, {
-        worker_factory: () => worker,
-      }),
-    ).rejects.toMatchObject({
+    await expect(parse_with(worker)).rejects.toMatchObject({
       name: `Hdf5GroupSelectionRequiredError`,
       groups: [`/a`, `/b`],
       message: `ambiguous`,
@@ -629,10 +600,7 @@ describe(`parse_in_worker`, () => {
         )
         return trajectory_response(request)
       })
-      const pending = parse_in_worker(`text`, `run.xyz`, false, {
-        on_progress: progress,
-        worker_factory: () => worker,
-      })
+      const pending = parse_with(worker, { on_progress: progress })
       if (throws) await expect(pending).rejects.toBe(failure)
       else {
         const result = await pending

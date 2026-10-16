@@ -1,6 +1,5 @@
-// Core computational logic for chemical potential diagrams.
-// Ports pymatgen's ChemicalPotentialDiagram algorithm to TypeScript.
-// Reference: pymatgen/analysis/chempot_diagram.py
+// Chemical potential diagrams: TypeScript port of pymatgen's ChemicalPotentialDiagram
+// (pymatgen/analysis/chempot_diagram.py)
 
 import { count_atoms_in_composition, get_reduced_formula } from '#lib/composition/reduce.js'
 import {
@@ -98,9 +97,8 @@ export function entry_elements(entries: PhaseData[]): string[] {
 
 // === Core Algorithm ===
 
-// Group entries by reduced formula, keep only the minimum-energy entry per composition.
-// Also extract elemental reference entries. Like the convex hull, exclude_from_hull entries
-// neither build the diagram nor serve as elemental references.
+// Minimum-energy entry per reduced formula, plus elemental references. As in the convex hull,
+// exclude_from_hull entries are neither.
 export function get_min_entries_and_el_refs(entries: PhaseData[]): {
   min_entries: PhaseData[]
   el_refs: Record<string, PhaseData>
@@ -152,8 +150,7 @@ export interface FormulaEnergyStats {
   max_energy_per_atom: number | null
 }
 
-// Aggregate per-formula entry count and min/max energy per atom (used for
-// region coloring and hover tooltips in the 2D/3D diagram components).
+// Per-formula entry count and min/max energy per atom (region coloring and tooltips)
 export function get_energy_stats_by_formula(
   entries: PhaseData[],
 ): Map<string, FormulaEnergyStats> {
@@ -189,18 +186,11 @@ export const renormalize_entries = (
     if (e_form === null || !Number.isFinite(e_form)) return entry
     const atoms = count_atoms_in_composition(entry.composition)
     // e_form already includes the MP correction, so drop it or get_energy_per_atom re-applies
-    return {
-      ...entry,
-      energy: e_form * atoms,
-      energy_per_atom: e_form,
-      correction: undefined,
-    }
+    return { ...entry, energy: e_form * atoms, energy_per_atom: e_form, correction: undefined }
   })
 
-// Build hyperplane representation for minimum entries.
-// Each row is [x_1, ..., x_n, -E_per_atom].
-// Filters to entries with negative formation energy plus all elemental refs.
-// When every entry carries `is_stable`/`e_above_hull`, those flags replace pymatgen's
+// Hyperplane rows [x_1, ..., x_n, -E_per_atom] for elemental refs and entries with negative
+// E_form. When every entry carries `is_stable`/`e_above_hull`, those replace pymatgen's
 // `E_form < -tol` rule. PRECONDITION: the flags must belong to THIS chemsys — stale ones from
 // a larger chemsys silently delete a locally stable phase's whole domain.
 export function build_hyperplanes(
@@ -270,20 +260,13 @@ function halfspace_value(halfspace: number[], point: number[], dim: number): num
 // unit border normals, right-hand sides eV-scale chemical potentials)
 const LP_TOL = 1e-10
 
-// Chebyshev centre of the chemical potential region {mu : a_i·mu + b_i <= 0} (entry rows and
-// the box borders from `lims`): the centre of the largest inscribed ball, i.e. the (mu, r)
-// maximising r subject to a_i·mu + |a_i|·r + b_i <= 0 for every row. Every entry row has
-// |a_i| = 1 only for pure elements, so unlike a diagonal-shift heuristic this is correct for
-// arbitrary per-element limit widths. Solved exactly by a small dense simplex in
-// y = mu - lo >= 0 (dim + 1 structural variables, one slack per row; Bland's rule so it cannot
-// cycle). Entry normals are composition fractions (>= 0), so a_i·mu is smallest at the box's
-// lower corner: lo is feasible whenever the region is non-empty, which makes the slack basis
-// feasible from the start (no phase 1) and a negative slack at lo a proof that the region is
-// empty (`radius` -Infinity). Exported for tests.
-//
-// Invariant (not re-checked here): every entry row has non-negative normals. The only
-// producer is build_hyperplanes over entries that build_chempot_hyperplanes has already
-// screened for positive composition amounts, so a negative fraction cannot reach this point.
+// Chebyshev centre of the region {mu : a_i·mu + b_i <= 0} (entry rows plus `lims` borders):
+// the (mu, r) maximising r subject to a_i·mu + |a_i|·r + b_i <= 0, correct for arbitrary
+// per-element limit widths unlike a diagonal-shift heuristic. Solved by a dense simplex in
+// y = mu - lo >= 0 (Bland's rule, cannot cycle). Entry normals are composition fractions
+// (>= 0, screened by build_chempot_hyperplanes), so lo is feasible whenever the region is
+// non-empty: the slack basis is feasible from the start (no phase 1), and a negative slack at
+// lo proves the region empty (`radius` -Infinity). Exported for tests.
 export function chebyshev_centre(
   entry_hs: number[][],
   lims: Vec2[],
@@ -312,8 +295,7 @@ export function chebyshev_centre(
   })
   if (tableau.some((line) => line[rhs_col] < -LP_TOL)) return { centre: [], radius: -Infinity }
   const basis = all_hs.map((_, row) => slack_col + row)
-  // Reduced costs of the maximised objective r (entries are -c_j): a negative entry marks an
-  // improving column
+  // Reduced costs of the maximised objective r (-c_j): negative marks an improving column
   const objective: number[] = Array(rhs_col + 1).fill(0)
   objective[r_col] = -1
 
@@ -331,8 +313,7 @@ export function chebyshev_centre(
   }
 
   // Bland's rule: lowest-index improving column enters, lowest-index basic variable among the
-  // minimum-ratio rows leaves. The minimum is found first so the tie window is measured from
-  // the true minimum, not from whichever candidate happened to be scanned earlier.
+  // minimum-ratio rows leaves (tie window measured from the true minimum)
   while (true) {
     const enter = objective.findIndex((val, col) => col < rhs_col && val < -LP_TOL)
     if (enter === -1) break
@@ -340,8 +321,7 @@ export function chebyshev_centre(
       line[enter] > LP_TOL ? line[rhs_col] / line[enter] : Infinity,
     )
     const min_ratio = array_min(ratios)
-    // Unreachable in practice: r is bounded by the upper borders (each axis contributes a row
-    // with +1 in the r column), so every improving column has a positive pivot candidate
+    // Unreachable in practice: the upper borders bound r, so a positive pivot always exists
     if (min_ratio === Infinity) break
     let leave = -1
     for (let row = 0; row < n_rows; row++) {
@@ -361,14 +341,11 @@ export function chebyshev_centre(
   return { centre, radius }
 }
 
-// Compute chemical potential domains as the vertices of the halfspace intersection
-// {mu : a_i·mu + b_i <= 0}, replacing scipy's HalfspaceIntersection via the polar dual:
-// translating the origin to an interior point makes every offset negative, so each
-// halfspace becomes the dual point a_i / -(a_i·c + b_i) and every facet of the dual convex
-// hull is a vertex of the primal region (normal / -offset, translated back). Vertices are
-// then assigned to every entry whose hyperplane is active there, which also handles
-// degenerate vertices where more than `dim` planes meet (e.g. an element hyperplane
-// coinciding with the mu = 0 border in formal mode).
+// Chemical potential domains: vertices of the halfspace intersection {mu : a_i·mu + b_i <= 0},
+// via the polar dual (replacing scipy's HalfspaceIntersection): about an interior point c each
+// halfspace becomes the dual point a_i / -(a_i·c + b_i), and each dual hull facet is a primal
+// vertex. Vertices go to every entry whose hyperplane is active there, handling degenerate
+// vertices where more than `dim` planes meet (e.g. an element plane on the mu = 0 border).
 function compute_domains(
   hyperplanes: number[][],
   lims: Vec2[],
@@ -386,8 +363,7 @@ function compute_domains(
   for (const formula of entry_formulas) domains[formula] ??= []
   if (n_entries === 0) return domains
 
-  // The Chebyshev centre is strictly interior unless the region has no interior (an entry with
-  // formation energy below the lower limit, or inverted limits)
+  // Strictly interior unless the region is empty (E_form below the lower limit, inverted lims)
   const { centre, radius } = chebyshev_centre(hyperplanes, lims)
   if (!(radius > LP_TOL)) {
     throw new Error(
@@ -395,8 +371,7 @@ function compute_domains(
     )
   }
   const slacks = all_hs.map((halfspace) => -halfspace_value(halfspace, centre, dim))
-  // Scale dual points so the nearest halfspace maps to unit distance (keeps quickhull's
-  // absolute tolerance meaningful regardless of the eV scale of the limits)
+  // Nearest halfspace maps to unit distance so quickhull's absolute tolerance is scale-free
   const scale = array_min(slacks)
   const dual_points = all_hs.map((halfspace, idx) =>
     halfspace.slice(0, dim).map((coeff) => (coeff * scale) / slacks[idx]),
@@ -425,9 +400,8 @@ function compute_domains(
 const at_min_limit = (val: number, default_min_limit: number): boolean =>
   Math.abs(val - default_min_limit) <= 1e-8 + 1e-5 * Math.abs(default_min_limit)
 
-// Domains with every coordinate at default_min_limit (the artificial floor) on the given axes
-// moved to that axis' lowest real coordinate minus `padding`, for cleaner visual bounds.
-// Without padding the domains come back unchanged.
+// Move coordinates at default_min_limit (the artificial floor) on the given axes to that axis'
+// lowest real coordinate minus `padding`, for cleaner visual bounds.
 export function pad_domains(
   domains: Record<string, number[][]>,
   elem_indices: number[],
@@ -473,9 +447,8 @@ export function build_axis_ranges(
   })
 }
 
-// Which axis bounds a domain is clipped against, as human-readable labels. Tolerance is a
-// fraction of each axis' own window, not an absolute eV: on a window a few meV wide an
-// absolute tolerance reports every domain as clipped on every bound.
+// Axis bounds a domain is clipped against, as labels. Tolerance is relative to each axis'
+// window: on a window a few meV wide an absolute eV tolerance flags every bound.
 export function get_touches_limits(
   points: number[][],
   lims: Vec2[],
@@ -518,8 +491,7 @@ const orthogonal_unit_vec = (basis: number[][], n_cols: number): number[] | null
   return best
 }
 
-// Simple PCA: center data, compute covariance, eigendecompose, project to the top 2 components.
-// Used in 3D for finding domain polygon orientation for label placement.
+// Simple PCA onto the top 2 components, used to orient 3D domain polygons for labels
 export function simple_pca(data: number[][]): {
   scores: number[][]
   eigenvectors: number[][]
@@ -529,7 +501,6 @@ export function simple_pca(data: number[][]): {
   const n_cols = data[0]?.length ?? 0
   if (n_rows === 0 || n_cols === 0) return { scores: [], eigenvectors: [], means: [] }
 
-  // Center the data
   const means = Array(n_cols).fill(0)
   for (const row of data) {
     for (let col = 0; col < n_cols; col++) means[col] += row[col]
@@ -538,7 +509,6 @@ export function simple_pca(data: number[][]): {
 
   const centered = data.map((row) => row.map((val, col) => val - means[col]))
 
-  // Covariance matrix
   const cov: number[][] = Array.from({ length: n_cols }, () => Array(n_cols).fill(0))
   for (const row of centered) {
     for (let idx = 0; idx < n_cols; idx++) {
@@ -555,10 +525,9 @@ export function simple_pca(data: number[][]): {
     }
   }
 
-  // Power iteration for the top 2 eigenvectors (sufficient on small matrices). Rank
-  // thresholds are relative to the total variance: covariance entries are lengths squared, so an
-  // absolute epsilon calls a good axis rank-deficient once coordinates shrink (a domain 1e-6
-  // wide has a second eigenvalue near 1e-13).
+  // Power iteration for the top 2 eigenvectors. Rank thresholds are relative to the total
+  // variance: an absolute epsilon calls a good axis rank-deficient once coordinates shrink (a
+  // domain 1e-6 wide has a second eigenvalue near 1e-13).
   const eigenvectors: number[][] = []
   const work_cov = cov.map((row) => [...row])
   const mat_vec = (vec: number[]): number[] => dot(work_cov, vec)
@@ -566,10 +535,8 @@ export function simple_pca(data: number[][]): {
   const rank_eps = EPS * (cov_scale || 1)
 
   for (let comp = 0; comp < 2; comp++) {
-    // Initial guess: the (deflated) covariance row with the largest norm. A fixed basis
-    // vector can sit in the null space (elemental domains have zero variance along their
-    // own axis), where power iteration stalls on the first step and returns a spurious
-    // zero-eigenvalue direction ahead of the real principal axes.
+    // Seed with the largest (deflated) covariance row: a fixed basis vector may be in the null
+    // space (elemental domains have zero variance on their own axis) and stall on step one.
     const row_norms = work_cov.map((row) => Math.hypot(...row))
     const seed_idx = row_norms.indexOf(array_max(row_norms))
     let vec: number[] =
@@ -579,31 +546,24 @@ export function simple_pca(data: number[][]): {
 
     for (let iter = 0; iter < 100; iter++) {
       const new_vec = mat_vec(vec)
-      // Re-orthogonalize against components already found: with close eigenvalues (near-square
-      // domains) 100 iterations don't converge, deflation is inexact and the next component
-      // drifts out of orthogonality (v1·v2 up to 1e-3), breaking the is_planar check.
+      // Re-orthogonalize: with close eigenvalues (near-square domains) deflation is inexact,
+      // so v1·v2 drifts up to 1e-3, breaking the is_planar check.
       project_out(new_vec, eigenvectors)
 
-      // Normalize
       const norm = Math.hypot(...new_vec)
       if (norm < rank_eps) {
-        // Rank-deficient input (collinear/coincident points): `vec` is still the raw seed and
-        // not orthogonal to what was already found, which would give a non-orthonormal basis
-        // and wrongly fail the `is_planar` reconstruction check. Any orthogonal unit vec does.
+        // Rank-deficient (collinear/coincident points): the raw seed isn't orthogonal to the
+        // found components, so take any orthogonal unit vector to keep the basis orthonormal
         vec = orthogonal_unit_vec(eigenvectors, n_cols) ?? vec
         break
       }
       const prev = vec
       vec = new_vec.map((val) => val / norm)
-      // Early exit when eigenvector has converged
       if (prev.every((val, idx) => Math.abs(val - vec[idx]) < EPS)) break
     }
 
-    // Rayleigh quotient for deflation
-    const eigenvalue = dot(vec, mat_vec(vec))
-
+    const eigenvalue = dot(vec, mat_vec(vec)) // Rayleigh quotient
     eigenvectors.push(vec)
-
     // Deflate: remove this component from the covariance matrix
     for (let idx = 0; idx < n_cols; idx++) {
       for (let jdx = 0; jdx < n_cols; jdx++) {
@@ -612,7 +572,6 @@ export function simple_pca(data: number[][]): {
     }
   }
 
-  // Project data onto eigenvectors
   const scores = centered.map((row) =>
     eigenvectors.map((eigenvector) =>
       row.reduce((sum, val, idx) => sum + val * eigenvector[idx], 0),
@@ -680,8 +639,7 @@ interface DomainPlane {
 // or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
 export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPlane | null {
   const diag = bbox_diagonal(points)
-  // dedup far below rel_tol — coarser merging is the collinearity check's job, and an absolute
-  // tolerance merges a whole domain once coordinates shrink
+  // dedup far below rel_tol (coarser merging is the collinearity check's job)
   const { unique } = dedup_points(points, 1e-9 * diag || EPS)
   if (unique.length < 3 || unique[0].length !== 3) return null
   const { scores, eigenvectors, means, max_residual } = pca_plane(unique)
@@ -716,10 +674,9 @@ const buffer_faces = (positions: ArrayLike<number>): Vec3[][] =>
     ),
   )
 
-// Drop the artificial faces that close a chemical potential diagram at the lower axis limits: a
-// closing face's outward normal points entirely into the negative octant, a real domain boundary
-// always has one component toward 0 eV. Survivors come back as a flat non-indexed position array
-// re-merged into clean fans, or null when nothing survives.
+// Drop the artificial faces closing the diagram at the lower axis limits (outward normal fully
+// in the negative octant; real boundaries point toward 0 eV on some axis). Survivors come back
+// re-merged as a flat non-indexed position array, or null when nothing survives.
 export function strip_closing_faces(positions: ArrayLike<number>): Float32Array | null {
   const faces = buffer_faces(positions)
   const hull_centroid = vertex_mean(faces.flat())
@@ -737,11 +694,9 @@ export function strip_closing_faces(positions: ArrayLike<number>): Float32Array 
   return merge_coplanar_triangles(Float32Array.from(kept))
 }
 
-// Assign each triangle of a non-indexed face buffer (9 numbers per face) to the domain owning it.
-// Every hull face lies on exactly one entry's hyperplane, so the face centroid's distance to each
-// domain's plane decides it (nearest-centroid, replaced here, is a Voronoi partition mislabelling
-// elongated and adjacent domains: 73/120 faces correct against 120/120). Coplanar domains are
-// told apart by their outlines; nearest centroid is the last resort for domains with no plane.
+// Assign each triangle of a non-indexed face buffer to its domain by the face centroid's
+// distance to each domain's plane (nearest-centroid alone mislabels elongated domains: 73/120
+// vs 120/120). Outlines split coplanar domains; nearest centroid is the last resort.
 export function assign_faces_to_domains(
   face_positions: ArrayLike<number>,
   domains: { formula: string; points: number[][] }[],
@@ -772,18 +727,14 @@ export function assign_faces_to_domains(
   })
 }
 
-// Outline of a 3D domain: boundary edges (as index pairs into points_3d) and the label
-// anchor. Vertices are deduplicated, projected onto their two principal axes and hulled in
-// 2D, so only the outer polygon comes back, never interior diagonals. `is_planar` reports
-// whether that projection was lossless (max out-of-plane residual below 1e-6 of the bounding
-// box diagonal): every domain of a true ternary lies on its entry's hyperplane, but
-// projections of quaternary+ systems produce polyhedra whose edges need a 3D hull instead.
+// Outline of a 3D domain (boundary edges as index pairs into points_3d) and its label anchor,
+// from a 2D hull of the PCA-projected unique vertices. `is_planar` reports whether that was
+// lossless: quaternary+ projections are polyhedra whose edges need a 3D hull instead.
 export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   simplex_indices: number[][]
   ann_loc: number[]
   is_planar: boolean
 } {
-  // Deduplicate vertices to avoid cluttered interior edges
   const { unique, orig_indices } = dedup_points(points_3d)
 
   if (unique.length < 3) {
@@ -799,17 +750,14 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   }
 
   const { scores, unproject, max_residual } = pca_plane(unique)
-  // Out-of-plane residual of the 2-component reconstruction, relative to the domain size
   const is_planar = max_residual <= 1e-6 * bbox_diagonal(unique)
 
-  // 2D convex hull of PCA-projected unique points → only boundary edges
   const pts_2d: Vec2[] = scores.map((row) => [row[0], row[1]])
   const hull = convex_hull_2d(pts_2d)
   const [centroid_x, centroid_y] = polygon_centroid(hull)
   const ann_loc = unproject(centroid_x, centroid_y)
 
-  // Map hull vertices back to original point indices using nearest projected
-  // vertex instead of stringified coordinates to avoid precision aliasing.
+  // Map hull vertices back by nearest projected point (string keys alias under round-off)
   const nearest_orig_idx = (target: Vec2): number => {
     let [nearest_idx, min_sq_dist] = [0, Infinity]
     for (const [idx, [pt_x, pt_y]] of pts_2d.entries()) {
@@ -830,8 +778,7 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
 
 // === Label Sizing ===
 
-// Bounding box diagonal of a set of N-D points (Euclidean distance between
-// the min and max corners). Returns 0 for fewer than 2 points.
+// Bounding box diagonal of N-D points (0 for fewer than 2)
 export function bbox_diagonal(points: number[][]): number {
   if (points.length < 2) return 0
   const sq_spans = points[0].map((_, col) => {
@@ -841,9 +788,7 @@ export function bbox_diagonal(points: number[][]): number {
   return Math.sqrt(sq_spans.reduce((sum, sq_span) => sum + sq_span, 0))
 }
 
-// Map an array of raw size values to font sizes via linear interpolation.
-// Returns a new array of font sizes in [min_font, max_font].
-// If all sizes are equal, returns the midpoint for all.
+// Linearly map sizes to fonts in [min_font, max_font] (all midpoint when sizes are equal)
 export function scale_to_font_range(
   sizes: number[],
   min_font: number,
@@ -924,8 +869,7 @@ export function get_visible_domain_labels(
 
 // === Ternary Combinations ===
 
-// Generate all C(n,3) ternary element combinations from a sorted element list.
-// Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
+// All C(n,3) alphabetically sorted ternary element combinations
 export const get_ternary_combinations = (elements: string[]): string[][] =>
   combinations([...elements].toSorted(), 3)
 
@@ -949,10 +893,8 @@ function entry_fingerprint(entry: PhaseData): string {
 
 // === Main Pipeline ===
 
-// Entries restricted to `elements` (every positive-amount element must be in the set),
-// reduced to the minimum-energy entry per formula, optionally renormalized to formal
-// chemical potentials, and turned into hyperplane rows. Shared by compute_chempot_diagram
-// and tests that inspect the intermediate hull input.
+// Entries restricted to `elements`, reduced to the min-energy entry per formula, optionally
+// renormalized to formal chemical potentials, and turned into hyperplane rows
 export function build_chempot_hyperplanes(
   entries: PhaseData[],
   elements: string[],
@@ -964,10 +906,8 @@ export function build_chempot_hyperplanes(
   hyperplane_entries: PhaseData[]
 } {
   const element_set = new Set(elements)
-  // Zero amounts mean "absent" throughout this module (formula keys, references, the element
-  // scan). A negative or NaN amount would turn into a negative hyperplane normal and break the
-  // lower-corner feasibility argument of chebyshev_centre, so reject it here where the entry
-  // is still known by name.
+  // Zero amounts mean "absent". Negative/NaN amounts would give negative hyperplane normals,
+  // breaking chebyshev_centre's lower-corner feasibility, so reject them here by name.
   const in_subsystem = (entry: PhaseData): boolean =>
     Object.entries(entry.composition).every(([element, amount]) => {
       if (!(amount >= 0)) {
@@ -997,14 +937,9 @@ export function build_chempot_hyperplanes(
   return { min_entries, el_refs, ...build_hyperplanes(min_entries, el_refs, elements) }
 }
 
-// Compute the chemical potential diagram (stability domains per formula) from entries.
-//
-// Supports two modes based on config.elements vs data dimensionality:
-// - **Subsystem mode**: config.elements matches data element count → filter entries
-//   to subsystem, compute in reduced dimensionality (fast for ternary from ternary data)
-// - **Projection mode**: config.elements has fewer elements than data → compute in
-//   full N-D, then project domain vertices to selected display axes (column extraction).
-//   This matches pymatgen's ChemicalPotentialDiagram behavior for multinary systems.
+// Chemical potential diagram (stability domains per formula). When config.elements is a strict
+// subset of the data's elements, compute in full N-D and project vertices to the display axes
+// (pymatgen's multinary behavior); otherwise compute in the given subsystem.
 export function compute_chempot_diagram(
   entries: PhaseData[],
   config: ChemPotDiagramConfig = {},
@@ -1020,13 +955,10 @@ export function compute_chempot_diagram(
   // Display elements: user-specified order (controls axis mapping), or auto-detect
   const display_elements = config.elements?.length ? [...config.elements] : all_data_elements
 
-  // Projection mode: display fewer axes than the data has elements
-  // In this mode, compute in full N-D and project afterward
   const is_projection =
     display_elements.length < all_data_elements.length &&
     display_elements.every((element) => all_data_elements.includes(element))
 
-  // Computation elements: full element set for projection, display set for subsystem
   const compute_elements = is_projection ? all_data_elements : display_elements
   const dim = compute_elements.length
   if (dim < 2) throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
@@ -1041,8 +973,7 @@ export function compute_chempot_diagram(
   )
   const nd_domains = compute_domains(hyperplanes, compute_lims, hyperplane_entries)
 
-  // Project domain vertices from N-D to display axes (column extraction; the identity in
-  // subsystem mode, where compute_elements is display_elements)
+  // Project N-D vertices to display axes (identity in subsystem mode)
   const col_indices = display_elements.map((element) => compute_elements.indexOf(element))
   return {
     domains: Object.fromEntries(

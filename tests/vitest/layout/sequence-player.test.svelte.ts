@@ -5,14 +5,6 @@ import { flushSync, mount, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query, set_input } from '../setup'
 
-type Host = {
-  count: number
-  index: number
-  fps: number
-  auto_play: boolean
-  fps_range: readonly [number, number]
-}
-
 const flashed_controls = (player: Player) =>
   ([`play`, `previous`, `next`, `step`, `fps`] as const).filter((control) =>
     player.shortcut_flash.style(control).includes(`transition: none`),
@@ -22,18 +14,14 @@ const flashed_controls = (player: Player) =>
 const stub_animation_frames = () => {
   const callbacks: FrameRequestCallback[] = []
   let next_id = 1
-  const request_raf = vi
-    .spyOn(globalThis, `requestAnimationFrame`)
-    .mockImplementation((callback_fn) => {
-      callbacks.push(callback_fn)
-      return next_id++
-    })
+  vi.spyOn(globalThis, `requestAnimationFrame`).mockImplementation((callback_fn) => {
+    callbacks.push(callback_fn)
+    return next_id++
+  })
   const cancel_raf = vi.spyOn(globalThis, `cancelAnimationFrame`).mockImplementation(() => {})
   const performance_now = vi.spyOn(performance, `now`).mockReturnValue(0)
   onTestFinished(() => {
-    request_raf.mockRestore()
-    cancel_raf.mockRestore()
-    performance_now.mockRestore()
+    vi.restoreAllMocks()
   })
   const run_frame = (timestamp: number) => {
     const callback = callbacks.shift()
@@ -44,15 +32,17 @@ const stub_animation_frames = () => {
   return { callbacks, cancel_raf, performance_now, run_frame }
 }
 
+const host_defaults = {
+  count: 5,
+  index: 0,
+  fps: 10,
+  auto_play: false,
+  fps_range: [0, 300] as readonly [number, number],
+}
+type Host = typeof host_defaults
+
 function make_player(overrides: Partial<Host> = {}) {
-  const host = $state<Host>({
-    count: 5,
-    index: 0,
-    fps: 10,
-    auto_play: false,
-    fps_range: [0, 300],
-    ...overrides,
-  })
+  const host = $state<Host>({ ...host_defaults, ...overrides })
   const events: string[] = []
   const set_index = vi.fn((index: number) => {
     host.index = index
@@ -244,54 +234,52 @@ describe(`create_sequence_player`, () => {
   })
 
   test.each([
-    [{ key: ` ` }, { index: 2, fps: 10, playing: true }, true, `play`],
-    [{ key: ` `, repeat: true }, { index: 2, fps: 10, playing: false }, true, undefined],
-    [{ key: `ArrowRight` }, { index: 3, fps: 10, playing: false }, true, `next`],
-    [{ key: `ArrowLeft` }, { index: 1, fps: 10, playing: false }, true, `previous`],
-    [{ key: `ArrowLeft`, metaKey: true }, { index: 0, fps: 10, playing: false }, true, `step`],
-    [
-      { key: `ArrowRight`, ctrlKey: true },
-      { index: 9, fps: 10, playing: false },
-      true,
-      `step`,
-    ],
-    [{ key: `Home` }, { index: 0, fps: 10, playing: false }, true, `step`],
-    [{ key: `End` }, { index: 9, fps: 10, playing: false }, true, `step`],
-    [{ key: `j` }, { index: 0, fps: 10, playing: false }, true, `step`],
-    [{ key: `L` }, { index: 9, fps: 10, playing: false }, true, `step`],
-    [{ key: `PageUp` }, { index: 0, fps: 10, playing: false }, true, `step`],
-    [{ key: `PageDown` }, { index: 9, fps: 10, playing: false }, true, `step`],
-    [{ key: `+` }, { index: 2, fps: 10.1, playing: false }, true, `fps`],
-    [{ key: `=` }, { index: 2, fps: 10.1, playing: false }, true, `fps`],
-    [{ key: `-` }, { index: 2, fps: 9.9, playing: false }, true, `fps`],
-    [{ key: `5` }, { index: 4, fps: 10, playing: false }, true, `step`],
-    [{ key: `0` }, { index: 0, fps: 10, playing: false }, true, `step`],
-    [{ key: `9` }, { index: 8, fps: 10, playing: false }, true, `step`],
-    [{ key: `q` }, { index: 2, fps: 10, playing: false }, false, undefined],
-    [{ key: `f`, ctrlKey: true }, { index: 2, fps: 10, playing: false }, false, undefined],
-    [{ key: `j`, metaKey: true }, { index: 2, fps: 10, playing: false }, false, undefined],
-  ])(`handle_keydown(%j) -> %j, handled=%s`, (init, expected, handled, control) => {
-    stub_animation_frames()
-    const { host, player } = make_player({ count: 10, index: 2 })
-    // Child controls and IME composition own these keys before the player can act.
-    for (const is_composing of [true, false]) {
-      const ignored = new KeyboardEvent(`keydown`, {
-        ...init,
-        isComposing: is_composing,
-        cancelable: true,
-      })
-      if (!is_composing) ignored.preventDefault()
-      expect(player.handle_keydown(ignored)).toBe(false)
-      expect([host.index, host.fps, player.is_playing]).toEqual([2, 10, false])
-      expect(flashed_controls(player)).toEqual([])
-    }
-    expect(player.handle_keydown(new KeyboardEvent(`keydown`, init))).toBe(handled)
-    flushSync()
-    expect(host.index).toBe(expected.index)
-    expect(host.fps).toBeCloseTo(expected.fps, 10)
-    expect(player.is_playing).toBe(expected.playing)
-    expect(flashed_controls(player)).toEqual(control ? [control] : [])
-  })
+    [{ key: ` ` }, 2, 10, true, true, `play`],
+    [{ key: ` `, repeat: true }, 2, 10, false, true, undefined],
+    [{ key: `ArrowRight` }, 3, 10, false, true, `next`],
+    [{ key: `ArrowLeft` }, 1, 10, false, true, `previous`],
+    [{ key: `ArrowLeft`, metaKey: true }, 0, 10, false, true, `step`],
+    [{ key: `ArrowRight`, ctrlKey: true }, 9, 10, false, true, `step`],
+    [{ key: `Home` }, 0, 10, false, true, `step`],
+    [{ key: `End` }, 9, 10, false, true, `step`],
+    [{ key: `j` }, 0, 10, false, true, `step`],
+    [{ key: `L` }, 9, 10, false, true, `step`],
+    [{ key: `PageUp` }, 0, 10, false, true, `step`],
+    [{ key: `PageDown` }, 9, 10, false, true, `step`],
+    [{ key: `+` }, 2, 10.1, false, true, `fps`],
+    [{ key: `=` }, 2, 10.1, false, true, `fps`],
+    [{ key: `-` }, 2, 9.9, false, true, `fps`],
+    [{ key: `5` }, 4, 10, false, true, `step`],
+    [{ key: `0` }, 0, 10, false, true, `step`],
+    [{ key: `9` }, 8, 10, false, true, `step`],
+    [{ key: `q` }, 2, 10, false, false, undefined],
+    [{ key: `f`, ctrlKey: true }, 2, 10, false, false, undefined],
+    [{ key: `j`, metaKey: true }, 2, 10, false, false, undefined],
+  ])(
+    `handle_keydown(%j) -> index %s, fps %s, playing=%s, handled=%s`,
+    (init, index, fps, playing, handled, control) => {
+      stub_animation_frames()
+      const { host, player } = make_player({ count: 10, index: 2 })
+      // Child controls and IME composition own these keys before the player can act.
+      for (const is_composing of [true, false]) {
+        const ignored = new KeyboardEvent(`keydown`, {
+          ...init,
+          isComposing: is_composing,
+          cancelable: true,
+        })
+        if (!is_composing) ignored.preventDefault()
+        expect(player.handle_keydown(ignored)).toBe(false)
+        expect([host.index, host.fps, player.is_playing]).toEqual([2, 10, false])
+        expect(flashed_controls(player)).toEqual([])
+      }
+      expect(player.handle_keydown(new KeyboardEvent(`keydown`, init))).toBe(handled)
+      flushSync()
+      expect(host.index).toBe(index)
+      expect(host.fps).toBeCloseTo(fps, 10)
+      expect(player.is_playing).toBe(playing)
+      expect(flashed_controls(player)).toEqual(control ? [control] : [])
+    },
+  )
 
   test.each([
     [{ index: 0 }, `ArrowLeft`],

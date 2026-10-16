@@ -51,8 +51,7 @@ interface BandsDosSyncInputs {
 
 // Everything a bands panel and a DOS panel need to share one frequency / energy axis: the
 // data range both span, the Fermi level, a y_axis config per panel, the two panels' live views
-// linked on y, and the vertical padding that keeps their y scales pixel-aligned (BandsAndDos,
-// BrillouinBandsDos).
+// linked on y, and the vertical padding that keeps their y scales pixel-aligned (BandsAndDos).
 export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   const shared = () => inputs.shared_axis?.() ?? true
   const doses = () => inputs.doses?.() ?? {}

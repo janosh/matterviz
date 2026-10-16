@@ -8,7 +8,12 @@ import {
   generate_mtl_content,
 } from '#lib/scene/export.js'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
-import type { MeshPhongMaterial } from 'three/webgpu'
+import type {
+  Material,
+  MeshPhongMaterial,
+  MeshStandardMaterialParameters,
+  Object3D,
+} from 'three/webgpu'
 import {
   BufferGeometry,
   Color,
@@ -48,6 +53,13 @@ vi.mock(`three/examples/jsm/exporters/GLTFExporter.js`, () => ({
 
 // export_scene_as hands the exporters a converted clone, so assert on structure, not identity
 const exported_scene = (spy: ReturnType<typeof vi.fn>): Scene => spy.mock.calls[0][0]
+const collect_meshes = (root: Object3D): Mesh[] => {
+  const meshes: Mesh[] = []
+  root.traverse((obj) => {
+    if (obj instanceof Mesh) meshes.push(obj)
+  })
+  return meshes
+}
 
 describe(`export_scene_as`, () => {
   let downloads: { blob: Blob; filename: string }[] = []
@@ -94,18 +106,21 @@ describe(`export_scene_as`, () => {
     expect(downloads).toHaveLength(0)
   })
 
+  const blob_types = { stl: `application/octet-stream`, glb: `model/gltf-binary` }
   it.each([
-    [`DataView`, () => new DataView(new ArrayBuffer(84))],
-    [`ArrayBuffer`, () => new ArrayBuffer(84)],
-  ] as const)(`stl: binary export (%s return) downloads test.stl`, async (_label, make) => {
-    stl_spy.mockImplementation(make)
-    await export_scene_as(scene, `stl`, `test`)
-    expect(stl_spy).toHaveBeenCalledOnce()
-    expect(stl_spy.mock.calls[0][1]).toEqual({ binary: true })
-    expect(exported_scene(stl_spy).children[0].name).toBe(`sphere`)
-    expect(downloads).toEqual([{ blob: expect.any(Blob), filename: `test.stl` }])
-    expect(downloads[0].blob.type).toBe(`application/octet-stream`)
-    expect(downloads[0].blob.size).toBe(84)
+    [`stl`, `DataView`, () => new DataView(new ArrayBuffer(84)), 84],
+    [`stl`, `ArrayBuffer`, () => new ArrayBuffer(84), 84],
+    [`glb`, `ArrayBuffer`, async () => new ArrayBuffer(12), 12],
+  ] as const)(`%s export of a %s downloads one file`, async (format, _label, make, size) => {
+    const spy = format === `stl` ? stl_spy : gltf_spy
+    spy.mockImplementation(make)
+    await export_scene_as(scene, format, `test`)
+    expect(spy).toHaveBeenCalledOnce()
+    expect(spy.mock.calls[0][1]).toEqual({ binary: true })
+    expect(exported_scene(spy).children[0].name).toBe(`sphere`)
+    expect(downloads).toEqual([{ blob: expect.any(Blob), filename: `test.${format}` }])
+    expect(downloads[0].blob.type).toBe(blob_types[format])
+    expect(downloads[0].blob.size).toBe(size)
   })
 
   it(`obj: writes a mtllib-referenced OBJ, then the MTL with the scene's material colors`, async () => {
@@ -124,15 +139,6 @@ describe(`export_scene_as`, () => {
     expect(mtl_text).toContain(`newmtl red_sphere`)
     expect(mtl_text).toContain(`Kd 1.000000 0.000000 0.000000`)
     expect(downloads.every((item) => item.blob.type === `text/plain`)).toBe(true)
-  })
-
-  it(`glb: binary glTF download`, async () => {
-    await export_scene_as(scene, `glb`, `test`)
-    expect(gltf_spy).toHaveBeenCalledOnce()
-    expect(gltf_spy.mock.calls[0][1]).toEqual({ binary: true })
-    expect(downloads).toEqual([{ blob: expect.any(Blob), filename: `test.glb` }])
-    expect(downloads[0].blob.type).toBe(`model/gltf-binary`)
-    expect(downloads[0].blob.size).toBe(12)
   })
 
   it.each([
@@ -158,14 +164,8 @@ describe(`export_scene_as`, () => {
     atoms.setColorAt(1, new Color(0, 0, 1))
     instanced_scene.add(atoms)
     await export_scene_as(instanced_scene, `glb`, `atoms`)
-    const exported = exported_scene(gltf_spy)
-    const instanced: string[] = []
-    const plain_meshes: Mesh[] = []
-    exported.traverse((obj) => {
-      if (obj instanceof InstancedMesh) instanced.push(obj.name)
-      else if (obj instanceof Mesh) plain_meshes.push(obj)
-    })
-    expect(instanced).toEqual([])
+    const plain_meshes = collect_meshes(exported_scene(gltf_spy))
+    expect(plain_meshes.filter((mesh) => mesh instanceof InstancedMesh)).toEqual([])
     expect(plain_meshes).toHaveLength(2)
     // one geometry clone shared by all instances (not one per atom), per-instance materials
     // only because the instance colours differ
@@ -199,11 +199,7 @@ describe(`export_scene_as`, () => {
       if (instance_colors)
         for (let idx = 0; idx < 3; idx++) spheres.setColorAt(idx, new Color(1, 1, 1))
       instanced_scene.add(spheres)
-      const converted = convert_instanced_meshes_to_regular(instanced_scene)
-      const meshes: Mesh[] = []
-      converted.traverse((obj) => {
-        if (obj instanceof Mesh) meshes.push(obj)
-      })
+      const meshes = collect_meshes(convert_instanced_meshes_to_regular(instanced_scene))
       expect(meshes).toHaveLength(3)
       expect(new Set(meshes.map((mesh) => mesh.material)).size).toBe(1)
       expect(new Set(meshes.map((mesh) => mesh.geometry)).size).toBe(1)
@@ -270,16 +266,10 @@ describe(`3D Export Color Preservation`, () => {
         } else for (let idx = 0; idx < 3; idx++) bonds.setColorAt(idx, new Color(0, 1, 0))
         scene.add(bonds)
 
-        const colors = converted_group_colors(scene, `bonds`)
-        expect(colors).toHaveLength(3)
-        for (const [idx, expected] of [
-          [0.5, 0, 0.5],
-          [0.5, 0.3, 0.5],
-          [0, 0.5, 0.5],
-        ].entries()) {
-          for (const channel of [0, 1, 2])
-            expect(colors[idx][channel]).toBeCloseTo(expected[channel], 5)
-        }
+        const expected = [0.5, 0, 0.5, 0.5, 0.3, 0.5, 0, 0.5, 0.5]
+        expect(converted_group_colors(scene, `bonds`).flat()).toEqual(
+          expected.map((channel) => expect.closeTo(channel, 5)),
+        )
       },
     )
 
@@ -289,24 +279,18 @@ describe(`3D Export Color Preservation`, () => {
     test(`cleans cloned geometry without mutating the live scene`, () => {
       const scene = new Scene()
       const geometry = new BufferGeometry()
-      const attrs = [
-        `instanceColorStart`,
-        `instanceColorEnd`,
-        `customColor`,
-        `position`,
-        `color`,
-      ]
-      for (const attr of attrs) {
-        geometry.setAttribute(attr, new Float32BufferAttribute([1, 0, 0], 3))
-      }
+      const standard = [`position`, `color`]
+      const names = [`instanceColorStart`, `instanceColorEnd`, `customColor`, ...standard]
+      for (const name of names)
+        geometry.setAttribute(name, new Float32BufferAttribute([1, 0, 0], 3))
       scene.add(new Mesh(geometry, new MeshStandardMaterial()))
 
       const converted = convert_instanced_meshes_to_regular(scene)
       const converted_mesh = converted.children[0]
       if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
       expect(converted_mesh.geometry).not.toBe(geometry)
-      const kept = attrs.filter((attr) => converted_mesh.geometry.hasAttribute(attr))
-      expect(kept).toEqual([`position`, `color`])
+      const kept = names.filter((name) => converted_mesh.geometry.hasAttribute(name))
+      expect(kept).toEqual(standard)
       expect(geometry.hasAttribute(`instanceColorStart`)).toBe(true)
     })
   })
@@ -318,31 +302,27 @@ describe(`3D Export Color Preservation`, () => {
       expect(mtl).not.toContain(`newmtl`)
     })
 
+    const mtl_for = (...materials: Material[]): string =>
+      generate_mtl_content(
+        new Scene().add(...materials.map((mat) => new Mesh(new SphereGeometry(1), mat))),
+      )
+    const named = (name: string, params: MeshStandardMaterialParameters) =>
+      Object.assign(new MeshStandardMaterial(params), { name })
+
     // Kd is written in sRGB, so the endpoints pass through but mid-tones do not: 0.5 working
     // (linear) is 0.735361 sRGB. Emitting the linear value instead reads back ~2x too dark.
     // Ka is 20% of the diffuse in LINEAR light, then encoded — scaling the encoded value
-    // instead would decode to ~4% and leave the ambient term far too dark.
-    const rgb_cases = [
+    // instead would decode to ~4% and leave the ambient term far too dark. Ka is string-only
+    // (MTLLoader ignores it); Kd must also round-trip through MTLLoader, which reads sRGB.
+    test.each([
       [`red`, [1, 0, 0], `1.000000 0.000000 0.000000`, `0.484535 0.000000 0.000000`],
       [`green`, [0, 1, 0], `0.000000 1.000000 0.000000`, `0.000000 0.484535 0.000000`],
       [`blue`, [0, 0, 1], `0.000000 0.000000 1.000000`, `0.000000 0.000000 0.484535`],
       [`purple`, [0.5, 0, 0.5], `0.735361 0.000000 0.735361`, `0.349196 0.000000 0.349196`],
-    ] as const
-
-    const mtl_for_color = (rgb: number[], name = `test`): string => {
-      const scene = new Scene()
-      const mat = new MeshStandardMaterial({ color: new Color(...rgb) })
-      mat.name = name
-      scene.add(new Mesh(new SphereGeometry(1), mat))
-      return generate_mtl_content(scene)
-    }
-
-    // Ka is string-only (MTLLoader ignores it). Kd must also round-trip through MTLLoader,
-    // which treats it as sRGB — writing linear values reads back ~2x too dark.
-    test.each(rgb_cases)(
+    ] as const)(
       `%s Kd/Ka strings and MTLLoader round-trip`,
       (_name, rgb, diffuse_color, ambient_color) => {
-        const mtl = mtl_for_color([...rgb])
+        const mtl = mtl_for(named(`test`, { color: new Color().fromArray(rgb) }))
         expect(mtl).toContain(`Kd ${diffuse_color}`)
         expect(mtl).toContain(`Ka ${ambient_color}`)
         const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
@@ -354,19 +334,12 @@ describe(`3D Export Color Preservation`, () => {
     )
 
     test(`material properties and deduplication`, () => {
-      const scene = new Scene()
-      const geom = new SphereGeometry(1)
-
-      const mat1 = new MeshStandardMaterial({ color: new Color(1, 0, 0), opacity: 0.5 })
-      mat1.name = `shared`
-      scene.add(new Mesh(geom, mat1))
-      const mat2 = new MeshStandardMaterial({ color: new Color(0, 1, 0) })
-      mat2.name = `shared`
-      scene.add(new Mesh(geom, mat2))
-
+      const mtl = mtl_for(
+        named(`shared`, { color: new Color(1, 0, 0), opacity: 0.5 }),
+        named(`shared`, { color: new Color(0, 1, 0) }),
+      )
       // the first material of a name wins and is written as one complete block: sRGB diffuse
       // and ambient, fixed specular term and exponent, its opacity as d, highlight shading
-      const mtl = generate_mtl_content(scene)
       expect(mtl.match(/newmtl /g)).toHaveLength(1)
       expect(mtl).toContain(
         [
@@ -387,9 +360,7 @@ describe(`3D Export Color Preservation`, () => {
       [`unnamed MeshStandardMaterial`, () => new MeshStandardMaterial()],
       [`ShaderMaterial`, () => new ShaderMaterial({ vertexShader: ``, fragmentShader: `` })],
     ])(`default name and white color for %s`, (_label, make_material) => {
-      const scene = new Scene()
-      scene.add(new Mesh(new SphereGeometry(1), make_material()))
-      const mtl = generate_mtl_content(scene)
+      const mtl = mtl_for(make_material())
       expect(mtl).toContain(`newmtl default_material`)
       // white default takes the same linear-then-encode path as a real color
       expect(mtl).toContain(`Kd 1.000000 1.000000 1.000000`)

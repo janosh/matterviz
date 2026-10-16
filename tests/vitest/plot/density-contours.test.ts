@@ -111,17 +111,12 @@ describe(`density_grid`, () => {
 })
 
 describe(`density_level_fractions`, () => {
+  // oxfmt-ignore
   test.each([
     [1, [0.5]],
     [4, [0.2, 0.4, 0.6, 0.8]],
-    [
-      [0.9, 0.5],
-      [0.5, 0.9],
-    ],
-    [
-      [0.5, 0.25, 0.5],
-      [0.25, 0.5],
-    ],
+    [[0.9, 0.5], [0.5, 0.9]],
+    [[0.5, 0.25, 0.5], [0.25, 0.5]],
   ])(`levels %o -> %o`, (levels, expected) => {
     const fractions = density_level_fractions(levels)
     expect(fractions).toHaveLength(expected.length)

@@ -5,10 +5,9 @@ import type { Vec2 } from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { is_plain_object } from '#lib/utils.js'
 
-// Extract color scheme interpolate function names from d3-scale-chromatic
-// Color scale names are always the prefixed d3 export name (`interpolateViridis`), which
-// is what get_d3_interpolator, the settings defaults and every dropdown value use. Bare
-// names are a display concern only -- strip the prefix at render time.
+// Color scale names are always the prefixed d3 export name (`interpolateViridis`), as used
+// by get_d3_interpolator, the settings defaults and every dropdown value. Bare names are
+// display only.
 export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 const d3_interpolators = Object.fromEntries(
   Object.entries(d3_sc).filter(

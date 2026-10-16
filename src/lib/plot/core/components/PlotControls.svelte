@@ -6,9 +6,7 @@
 
 <script lang="ts">
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
-  // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
-  // to trigger $bindable reactivity propagation to parent components.
-  // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
+  // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
   import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -234,12 +232,8 @@
     labels={INITIAL_SETTINGS_LABELS}
     on_reset={() => {
       const reference = display_settings.snapshot()
-      display = {
-        ...display,
-        ...Object.fromEntries(
-          Object.keys(display_values()).map((key) => [key, reference[key]]),
-        ),
-      }
+      const keys = Object.keys(display_values())
+      display = { ...display, ...Object.fromEntries(keys.map((key) => [key, reference[key]])) }
       on_display_extra_reset?.(reference)
     }}
     layout="flow"
@@ -286,9 +280,8 @@
     class="ctrl-line axis-fields"
     changed_keys={scale_type_settings.changed_keys}
     on_reset={() => {
-      for (const axis of all_axes) {
+      for (const axis of all_axes)
         if (!is_time_axis(axis)) update_axis(axis, { scale_type: `linear` })
-      }
     }}
     data-testid="scale-type-section"
     layout="flow"
@@ -357,12 +350,8 @@
             aria-label="Value to align on both axes"
             onchange={(evt) => {
               const val = parseFloat(evt.currentTarget.value)
-              update_axis(`y2`, {
-                sync: {
-                  mode: `align`,
-                  align_value: Number.isFinite(val) ? val : 0,
-                },
-              })
+              const align_value = Number.isFinite(val) ? val : 0
+              update_axis(`y2`, { sync: { mode: `align`, align_value } })
             }}
           />
         </label>

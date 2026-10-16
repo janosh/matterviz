@@ -67,10 +67,8 @@
     categories?: Record<string, string>
     // Keep property selection available when the plot has no values to color.
     show_scale?: boolean
-    // The color mapping the bar draws, the same config the colored component takes: scheme,
-    // palette_range, type (spacing of colors and ticks) and value_range (the span the bar
-    // covers, [0, 1] where unset). value_range[0] sits at the bar's start, so a descending
-    // range runs the bar high-to-low.
+    // The color mapping the bar draws (same config the colored component takes). value_range
+    // ([0, 1] where unset) starts at the bar's start, so a descending range runs high-to-low.
     color_scale?: ColorScale
     // Defaults to the side opposite the ticks (left of a vertical bar with inside ticks)
     title_side?: `left` | `right` | `top` | `bottom`
@@ -177,9 +175,8 @@
       return `inherit`
     }
   }
-  // Rendered bar length and font, so generated tick labels can be thinned once a narrow
-  // host squeezes the bar below the width its labels need. Width stays 0 until measured
-  // (and in environments without layout), which leaves the tick list untouched.
+  // Rendered bar length and font for thinning tick labels on narrow hosts (0 until measured,
+  // leaving the tick list untouched)
   let bar_px = $state(0)
   let tick_font = $state(DEFAULT_FONT_SPEC)
   let tick_spacing = $state(8) // label padding plus a 4px gap

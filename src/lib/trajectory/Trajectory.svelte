@@ -189,7 +189,6 @@
     loading_options = {},
     allow_file_drop = DEFAULTS.trajectory.allow_file_drop,
     spinner_props = {},
-    error_snippet,
     on_file_load,
     on_error,
     structure_series_key = trajectory,
@@ -221,7 +220,6 @@
     extra_controls,
     active_pane = $bindable(null),
     on_step_change,
-    on_frame_rendered,
     on_play,
     on_pause,
     on_end,
@@ -241,7 +239,6 @@
     >
     allow_file_drop?: boolean
     spinner_props?: ComponentProps<typeof Spinner>
-    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
     on_file_load?: EventHandler
     on_error?: EventHandler
     // Stable identity when a host regenerates frames within the same displayed structure
@@ -293,8 +290,6 @@
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     on_step_change?: EventHandler
-    // Emitted after the complete scene is submitted, independently of requested navigation.
-    on_frame_rendered?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
     on_end?: EventHandler
@@ -508,7 +503,6 @@
       structure_props.children ||
       structure_props.on_camera_move ||
       structure_props.on_camera_reset ||
-      on_frame_rendered ||
       on_step_change ||
       on_play ||
       on_pause ||
@@ -1384,7 +1378,7 @@
       />
     </div>
   {:else if error_msg}
-    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} {error_snippet} />
+    <TrajectoryError {error_msg} on_dismiss={() => (error_msg = null)} />
   {:else if trajectory}
     {#if hdf5_selection}
       <button
@@ -1814,14 +1808,7 @@
             : 1}
           structure={session.current_structure}
           render_token={session.scene_frame}
-          on_rendered={(snapshot) => {
-            if (session.mark_rendered(snapshot) && session.scene_frame)
-              on_frame_rendered?.({
-                step_idx: session.scene_frame.idx,
-                frame_count: session.frame_count,
-                frame: session.scene_frame.frame,
-              })
-          }}
+          on_rendered={session.mark_rendered}
           {structure_series_key}
           bind:display_mode={structure_display_mode}
           trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
@@ -1967,21 +1954,11 @@
         />
       {/if}
       <p>
-        Drop a trajectory file here (.xyz, .extxyz, .json, .json.gz, XDATCAR, OUTCAR,
-        vasprun.xml, .traj, .h5) or provide trajectory data via props
+        Drop a trajectory file here or provide trajectory data via props. Supported:
+        multi-frame (ext)XYZ, ASE .traj, pymatgen or structure-array JSON, VASP XDATCAR, OUTCAR
+        and vasprun.xml, LAMMPS dumps (.lammpstrj) and HDF5 (.h5, .hdf5), each optionally
+        gzipped.
       </p>
-      <strong style="display: block; margin-block: 1em 1ex">Supported formats:</strong>
-      <ul>
-        <li>Multi-frame XYZ trajectory files (.xyz, .extxyz)</li>
-        <li>ASE trajectory files (.traj)</li>
-        <li>Pymatgen trajectory JSON</li>
-        <li>Array of structures with metadata</li>
-        <li>VASP XDATCAR, OUTCAR and vasprun.xml files</li>
-        <li>LAMMPS dump files (.lammpstrj)</li>
-        <li>HDF5 trajectory files (.h5, .hdf5)</li>
-        <li>Compressed files (.gz)</li>
-      </ul>
-      <p>💡 Force vectors will be automatically displayed when present in trajectory data</p>
     </EmptyState>
   {/if}
 </div>
@@ -2182,10 +2159,8 @@
     padding: 2rem;
     border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
-    :where(p, ul) {
+    :where(p) {
       color: var(--text-color-muted);
-    }
-    :where(ul, li, strong) {
       max-width: var(--trajectory-empty-state-max-width, 500px);
       margin-inline: auto;
     }

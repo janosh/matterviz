@@ -413,31 +413,18 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
 })
 
 // The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
-// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint)
-test.each([
-  [`#ffffff`, `#ffffff`, `black`],
-  [`rgba(255, 255, 255, 0.5)`, `rgb(255, 255, 255)`, `black`],
-  [`var(--marker-fill)`, ``, ``],
-])(`3D tooltip fill %s: %j bg, %j text`, (fill, bg, text) => {
+// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint);
+// tooltip=false drops the hovered point's tooltip (the hover halo stays)
+// oxfmt-ignore
+test.each<[string, false | undefined, string[] | null]>([
+  [`#ffffff`, undefined, [`#ffffff`, `black`]],
+  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`]],
+  [`var(--marker-fill)`, undefined, [``, ``]],
+  [`#ffffff`, false, null],
+])(`3D tooltip fill %s, tooltip=%s: %j bg and text`, (fill, tooltip, expected) => {
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
       series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
-      hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      gizmo: false,
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  const { style } = query(document.body, `.tooltip`)
-  expect([style.background, style.color]).toEqual([bg, text])
-})
-
-// tooltip=false drops the hovered point's tooltip (the hover halo stays)
-test.each([undefined, false] as const)(`3D tooltip=%s`, (tooltip) => {
-  const { unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      series: [{ x: [1], y: [1], z: [1] }],
       hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
       gizmo: false,
@@ -446,7 +433,8 @@ test.each([undefined, false] as const)(`3D tooltip=%s`, (tooltip) => {
   )
   onTestFinished(unmount_scene)
   flushSync()
-  expect(document.querySelector(`.tooltip`) !== null).toBe(tooltip === undefined)
+  const tip = document.querySelector<HTMLElement>(`.tooltip`)
+  expect(tip && [tip.style.background, tip.style.color]).toEqual(expected)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
@@ -481,20 +469,15 @@ test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () =
     return point && [point.series_idx, point.point_idx]
   }
   // chords, composing and already-handled keys are left alone
-  const handled = new KeyboardEvent(`keydown`, { key: `ArrowRight`, cancelable: true })
+  const arrow_right = (init: KeyboardEventInit) =>
+    new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
+  const handled = arrow_right({ cancelable: true })
   handled.preventDefault()
-  for (const init of [{ ctrlKey: true }, { altKey: true }, { isComposing: true }])
-    expect(
-      handle_key(new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })),
-    ).toBeUndefined()
-  expect(handle_key(handled)).toBeUndefined()
-  expect([`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)).toEqual([
-    [1, 0],
-    [0, 0],
-    [0, 1],
-    [1, 0],
-    [0, 0],
-  ])
+  const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(arrow_right)
+  for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
+  const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
+  // oxfmt-ignore
+  expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
   expect(on_point_hover).toHaveBeenLastCalledWith(
     expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
   )
@@ -760,11 +743,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
       ...props,
     })
     const root = query(container, `.scatter-3d`)
-    expect([
-      root.getAttribute(`role`),
-      root.getAttribute(`aria-label`),
-      root.tabIndex,
-    ]).toEqual([`application`, label, 0])
+    const attrs = [`role`, `aria-label`].map((attr) => root.getAttribute(attr))
+    expect([...attrs, root.tabIndex]).toEqual([`application`, label, 0])
     // a caller's own key handler still runs next to the marker cursor
     root.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
     expect(onkeydown).toHaveBeenCalledOnce()
@@ -842,9 +822,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       return first_item
     }
     // unbound: the component owns visibility and greys out the legend entry
-    const on_toggle = vi.fn()
-    const on_double_click = vi.fn()
-    const on_group_toggle = vi.fn()
+    const [on_toggle, on_double_click, on_group_toggle] = [vi.fn(), vi.fn(), vi.fn()]
     await mount_plot({
       series: multi_series.map((srs) => ({ ...srs, legend_group: `Group` })),
       legend: { on_toggle, on_double_click, on_group_toggle },
@@ -872,16 +850,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     // Bound: the toggle writes hidden IDs (plain state here, so
     // the DOM can't re-render from it - that path is covered above)
     const state = { series: multi_series, hidden_series: [] as (string | number)[] }
-    await mount_plot(
-      bind_props(
-        {
-          legend: {
-            on_toggle: () => expect(state.hidden_series).toEqual([0]),
-          },
-        },
-        state,
-      ),
-    )
+    const on_bound_toggle = () => expect(state.hidden_series).toEqual([0])
+    await mount_plot(bind_props({ legend: { on_toggle: on_bound_toggle } }, state))
     click_first_item()
     expect(state.series).toBe(multi_series)
     expect(state.hidden_series).toEqual([0])
@@ -1002,10 +972,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
         projection_opacity: 0.3,
         projection_scale: 0.5,
       })
-      expect(
-        container.querySelector(`button[title="Reset projections to defaults"]`),
-      ).toBeNull()
-      expect(container.querySelector(`button[title="Reset display to defaults"]`)).toBeNull()
+      for (const title of [`Reset projections to defaults`, `Reset display to defaults`])
+        expect(container.querySelector(`button[title="${title}"]`)).toBeNull()
       expect(controls_state.x_axis).toEqual({ label: `X`, range: [2, null] })
       // Manual edits preserve an automatic opposite bound, exact small values, and clearing.
       for (const [value, expected] of [
@@ -1048,10 +1016,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
     await expect_plot_controls(container, controls_state, `scatter-3d`)
 
     await unmount(mounted_component)
-    mounted_component = mount(ScatterPlot3DControls, {
-      target: container,
-      props: { show_controls: false },
-    })
+    const props = { show_controls: false }
+    mounted_component = mount(ScatterPlot3DControls, { target: container, props })
     await tick()
     expect(container.querySelector(`.draggable-pane`)).toBeNull()
   })
@@ -1071,20 +1037,11 @@ describe(`scene coordinates`, () => {
     expect(points).toHaveLength(count + 2)
     // a legend-hidden series draws nothing, so it must not widen the axes either
     const hidden = { x: [1e9], y: [1e9], z: [1e9], visible: false }
-    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual({
-      x: [0, 220_000],
-      y: [-220_000, 20_000],
-      z: [0, 450_000],
-    })
-    const degenerate = [
-      { x: -0, y: NaN, z: Infinity },
-      { x: 0, y: 2, z: NaN },
-    ]
-    expect(get_3d_auto_ranges([], degenerate)).toEqual({
-      x: [-1, 1],
-      y: [1.8, 2.2],
-      z: [0, 1],
-    })
+    const expected = { x: [0, 220_000], y: [-220_000, 20_000], z: [0, 450_000] }
+    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual(expected)
+    // oxfmt-ignore
+    const degen = [{ x: -0, y: NaN, z: Infinity }, { x: 0, y: 2, z: NaN }]
+    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [0, 1] })
   })
 
   test(`surface bounds sample the drawn vertex grid`, () => {

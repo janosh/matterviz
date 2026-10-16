@@ -121,8 +121,18 @@ const boot = (content: string, filename?: string) => {
   return initialize_matterviz?.()
 }
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
-const host_error = (text: unknown) => ({ command: `error`, text })
+// The webview's last message reported this error text to the host
+const expect_reported = (text: unknown): void =>
+  expect(post_message).toHaveBeenLastCalledWith({ command: `error`, text })
 const last_mounted_props = () => mount.mock.lastCall?.[1].props
+// The latest parse read `version`, with exactly these load_options when given
+const expect_parsed = (version: string, load_options?: Record<string, unknown>): void =>
+  expect(parse_in_worker).toHaveBeenLastCalledWith(
+    version,
+    `${version}.json`,
+    false,
+    load_options ? expect.objectContaining({ load_options }) : expect.anything(),
+  )
 
 // A host -> webview postMessage as the listener in main.ts sees it
 const host_message = (data: Record<string, unknown>): boolean =>
@@ -210,9 +220,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
   set_file_data(`LARGE_FILE:/tmp/structure.cif:536870912`, `structure.cif`)
   expect(await initialize_matterviz?.()).toBeNull()
   expect(parse_file_content).toHaveBeenCalledTimes(7)
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(expect.stringContaining(`only supported for indexed trajectories`)),
-  )
+  expect_reported(expect.stringContaining(`only supported for indexed trajectories`))
 
   const initialization_parse = Promise.withResolvers<ParseResult>()
   parse_file_content.mockReturnValueOnce(initialization_parse.promise)
@@ -233,12 +241,7 @@ test(`serializes reloads and guards cleanup, markers, and initialization`, async
 test(`the atom_type_mapping setting reaches the parser and an empty or null map is omitted`, async () => {
   parse_file_content.mockResolvedValueOnce(result(`dump`))
   await boot(`dump`)
-  expect(parse_in_worker).toHaveBeenLastCalledWith(
-    `dump`,
-    `dump.json`,
-    false,
-    expect.objectContaining({ load_options: { index_above_bytes: 4096 } }),
-  )
+  expect_parsed(`dump`, { index_above_bytes: 4096 })
 
   const mapping = { 1: `Si`, 2: `O` }
   const cases: [unknown, Record<string, unknown>][] = [
@@ -252,12 +255,7 @@ test(`the atom_type_mapping setting reaches the parser and an empty or null map 
     await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(idx + 2))
     update_file(`dump`)
     await vi.waitFor(() => expect(parse_in_worker).toHaveBeenCalledTimes(idx + 2))
-    expect(parse_in_worker).toHaveBeenLastCalledWith(
-      `dump`,
-      `dump.json`,
-      false,
-      expect.objectContaining({ load_options }),
-    )
+    expect_parsed(`dump`, load_options)
   }
 })
 
@@ -349,9 +347,7 @@ test(`settingsChanged remount keeps the trajectory run alive and never leaks it`
   })
   post_settings(`light`, changed_defaults)
   await vi.waitFor(() => expect(run_c.dispose).toHaveBeenCalledTimes(1))
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(expect.stringContaining(`mount failed`)),
-  )
+  expect_reported(expect.stringContaining(`mount failed`))
 })
 
 // A failed bootstrap display (the parse threw, the error display is on screen) must be
@@ -360,9 +356,7 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
   parse_file_content.mockRejectedValueOnce(new Error(`needs a bigger index threshold`))
   expect(await boot(`retry`)).toBeNull()
   expect(document.body.textContent).toContain(`needs a bigger index threshold`)
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(`Error rendering retry.json: needs a bigger index threshold`),
-  )
+  expect_reported(`Error rendering retry.json: needs a bigger index threshold`)
   expect(mount).not.toHaveBeenCalled()
 
   // Neither a theme-only push nor unchanged defaults can affect a parse, so neither retries
@@ -377,21 +371,14 @@ test(`settingsChanged re-attempts a failed initial display from the bootstrap pa
   post_settings(`dark`, { trajectory: { index_above_bytes: 8192 } })
   await vi.waitFor(() => expect(parse_file_content).toHaveBeenCalledTimes(2))
   await vi.waitFor(() => expect(document.body.textContent).toContain(`still broken`))
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(`Error rendering retry.json: still broken`),
-  )
+  expect_reported(`Error rendering retry.json: still broken`)
   expect(mount).not.toHaveBeenCalled()
 
   // The changed defaults reach the parser and the mounted component; theme applies as usual
   parse_file_content.mockResolvedValueOnce(result(`retry`))
   post_settings(`light`, { trajectory: { index_above_bytes: 16_384 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
-  expect(parse_in_worker).toHaveBeenLastCalledWith(
-    `retry`,
-    `retry.json`,
-    false,
-    expect.objectContaining({ load_options: { index_above_bytes: 16_384 } }),
-  )
+  expect_parsed(`retry`, { index_above_bytes: 16_384 })
   expect(last_mounted_props()).toMatchObject({
     value: `retry`,
     defaults: expect.objectContaining({
@@ -419,18 +406,11 @@ test(`settingsChanged retries the latest host file and never a superseded or del
   parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
   update_file(`reloaded`)
   await vi.waitFor(() => expect(document.body.textContent).toContain(`reload broken`))
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(`Error rendering reloaded.json: reload broken`),
-  )
+  expect_reported(`Error rendering reloaded.json: reload broken`)
   parse_file_content.mockResolvedValueOnce(result(`reloaded`))
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(1))
-  expect(parse_in_worker).toHaveBeenLastCalledWith(
-    `reloaded`,
-    `reloaded.json`,
-    false,
-    expect.anything(),
-  )
+  expect_parsed(`reloaded`)
 
   // A reload arriving while a retry parse is pending aborts it without an error report and is
   // what the next settings change remounts
@@ -475,11 +455,7 @@ test(`settingsChanged after a failed reload re-parses the new file instead of re
 
   parse_file_content.mockRejectedValueOnce(new Error(`reload broken`))
   update_file(`new`)
-  await vi.waitFor(() =>
-    expect(post_message).toHaveBeenLastCalledWith(
-      host_error(`Error rendering new.json: reload broken`),
-    ),
-  )
+  await vi.waitFor(() => expect_reported(`Error rendering new.json: reload broken`))
   // the old display stays up rather than being replaced by the error display
   expect(unmount).not.toHaveBeenCalled()
   expect(document.body.textContent).not.toContain(`reload broken`)
@@ -487,7 +463,7 @@ test(`settingsChanged after a failed reload re-parses the new file instead of re
   parse_file_content.mockResolvedValueOnce(result(`new`))
   post_settings(`light`, { structure: { atom_radius: 0.3 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
-  expect(parse_in_worker).toHaveBeenLastCalledWith(`new`, `new.json`, false, expect.anything())
+  expect_parsed(`new`)
   expect(last_mounted_props()?.value).toBe(`new`)
   expect(unmount).toHaveBeenCalledTimes(1)
 })
@@ -512,12 +488,7 @@ test(`settingsChanged after a superseded remount and a failed reload re-parses t
   parse_file_content.mockResolvedValueOnce(result(`reloaded`))
   post_settings(`light`, { structure: { atom_radius: 0.5 } })
   await vi.waitFor(() => expect(mount).toHaveBeenCalledTimes(2))
-  expect(parse_in_worker).toHaveBeenLastCalledWith(
-    `reloaded`,
-    `reloaded.json`,
-    false,
-    expect.anything(),
-  )
+  expect_parsed(`reloaded`)
   expect(last_mounted_props()?.value).toBe(`reloaded`)
 })
 
@@ -554,9 +525,7 @@ test(`settingsChanged during the bootstrap parse waits for it instead of racing 
 // the webview listening, so the host's next reload reaches it
 test(`a bootstrap that fails before displaying still accepts host reloads`, async () => {
   expect(await boot(``, ``)).toBeNull()
-  expect(post_message).toHaveBeenLastCalledWith(
-    host_error(expect.stringContaining(`No data provided`)),
-  )
+  expect_reported(expect.stringContaining(`No data provided`))
 
   parse_file_content.mockResolvedValueOnce(result(`late`))
   update_file(`late`)

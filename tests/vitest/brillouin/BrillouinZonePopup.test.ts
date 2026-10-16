@@ -65,8 +65,7 @@ test(`a singular reciprocal lattice shows the error where the zone would be`, ()
     props: { k_lattice: singular, points, on_close },
   })
   flushSync()
-  expect(document.querySelector(`.bz-popup .brillouin-zone`)).toBeNull()
-  expect(doc_query(`.bz-popup-error`).textContent).toMatch(/singular|lattice/i)
+  expect(doc_query(`.bz-popup .viewer-error`).textContent).toMatch(/singular/)
   // the point list and close button still work
   expect(doc_query(`.bz-popup-stats`).querySelectorAll(`strong`)).toHaveLength(3)
   doc_query<HTMLButtonElement>(`.bz-popup-close .close-btn`).click()

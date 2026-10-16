@@ -205,9 +205,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     [`rgba(18, 52, 86, 0.5)`, `rgb(18, 52, 86)`],
   ])(`explicit region color %s backs the tooltip as %j`, async (color, expected) => {
     const [liquid, ...rest] = eutectic.regions
-    const wrapper = await mount_diagram({
-      data: { ...eutectic, regions: [{ ...liquid, color }, ...rest] },
-    })
+    const data = { ...eutectic, regions: [{ ...liquid, color }, ...rest] }
+    const wrapper = await mount_diagram({ data })
     await hover_at(wrapper, 0.5, 750)
     const { style } = doc_query(`.tooltip-container`)
     expect([style.backgroundColor, style.color]).toEqual([expected, `white`])
@@ -302,6 +301,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(fills).toEqual(ids.map((identifier) => `url(#${identifier})`))
   })
 
+  const empty_svg_text = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`
+  const empty_svg = () => new File([empty_svg_text], `pd.svg`, { type: `image/svg+xml` })
   // the SVG drop routes through the shared file-drop zone rather than a FileReader, so
   // it inherits folder expansion and the drop queue. Pin that dropped content still reaches
   // the parser, and that an unrelated file is ignored rather than reported.
@@ -312,10 +313,6 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       target.dispatchEvent(create_drop_event(file))
       await tick()
     }
-    const empty_svg = () =>
-      new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
-        type: `image/svg+xml`,
-      })
 
     // allow_file_drop=false ignores the drop and never shows the drop highlight
     const disabled = await mount_diagram({ allow_file_drop: false })
@@ -346,15 +343,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const on_file_drop = vi.fn()
     const on_file_load = vi.fn()
     const wrapper = await mount_diagram({ on_file_drop, on_file_load })
-    const file = new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`)
+    const file = empty_svg()
     wrapper.dispatchEvent(create_drop_event(file))
-    await vi.waitFor(() =>
-      expect(on_file_drop).toHaveBeenCalledWith(
-        `<svg xmlns="http://www.w3.org/2000/svg"></svg>`,
-        `pd.svg`,
-        expect.objectContaining({ file }),
-      ),
-    )
+    const dropped = [empty_svg_text, `pd.svg`, expect.objectContaining({ file })]
+    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledWith(...dropped))
     expect(on_file_load).not.toHaveBeenCalled()
     expect(wrapper.querySelector(`.error`)).toBeNull()
   })
@@ -386,6 +378,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 })
 
 describe(`format_hover_info_text`, () => {
+  const region = { id: `two_phase`, name: `α + β`, vertices: [] }
   test.each([
     { composition: 0.35, unit: `at%`, expected: `Composition: 35 at% Cu (65 at% Al)` },
     { composition: 0.25, unit: `mol%`, expected: `Composition: 25 mol% Cu (75 mol% Al)` },
@@ -393,12 +386,9 @@ describe(`format_hover_info_text`, () => {
     { composition: 0, unit: `at%`, expected: `Composition: 0 at% Cu (100 at% Al)` },
     { composition: 0.333, unit: `at%`, expected: `Composition: 33.3 at% Cu (66.7 at% Al)` },
   ] as const)(`composition $composition as $unit`, ({ composition, unit, expected }) => {
-    const text = format_hover_info_text(create_hover_info({ composition }), {
-      comp_unit: unit,
-      component_a: `Al`,
-      component_b: `Cu`,
-    })
-    expect(text).toContain(expected)
+    const opts = { comp_unit: unit, component_a: `Al`, component_b: `Cu` }
+    const info = create_hover_info({ composition })
+    expect(format_hover_info_text(info, opts)).toContain(expected)
   })
 
   test.each([
@@ -420,26 +410,20 @@ describe(`format_hover_info_text`, () => {
     { unit: `at%`, expected: [`  α: 60.0% (at 20 at%)`, `  β: 40.0% (at 80 at%)`] },
     { unit: `fraction`, expected: [`  α: 60.0% (at 0.2)`, `  β: 40.0% (at 0.8)`] },
   ] as const)(`lever rule in $unit`, ({ unit, expected }) => {
-    const info = create_hover_info({
-      region: { id: `two_phase`, name: `α + β`, vertices: [] },
-      lever_rule,
-    })
+    const info = create_hover_info({ region, lever_rule })
     const lines = format_hover_info_text(info, { comp_unit: unit }).split(`\n`)
     expect(lines).toContain(`Lever Rule:`)
     for (const line of expected) expect(lines).toContain(line)
   })
 
   test(`line structure: header order, blank line before lever rule, none for single phase`, () => {
-    const info = create_hover_info({
-      region: { id: `two_phase`, name: `α + β`, vertices: [] },
-      composition: 0.5,
-      temperature: 1000,
-      lever_rule,
-    })
+    const info = create_hover_info({ region, composition: 0.5, temperature: 1000, lever_rule })
     const lines = format_hover_info_text(info).split(`\n`)
-    expect(lines[0]).toBe(`Phase: α + β`)
-    expect(lines[1]).toBe(`Temperature: 1000 K`)
-    expect(lines[2]).toBe(`Composition: 50 at% B (50 at% A)`) // default component names
+    expect(lines.slice(0, 3)).toEqual([
+      `Phase: α + β`,
+      `Temperature: 1000 K`,
+      `Composition: 50 at% B (50 at% A)`, // default component names
+    ])
     const lever_idx = lines.indexOf(`Lever Rule:`)
     expect(lever_idx).toBeGreaterThan(2)
     expect(lines[lever_idx - 1]).toBe(``)

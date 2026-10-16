@@ -676,8 +676,8 @@ export interface StyleOverrides {
 }
 
 export type AxisKey = `x` | `x2` | `y` | `y2`
+// Grouped configuration for plot axes and display settings
 export interface PlotConfig {
-  // Grouped configuration for plot axes and display settings
   x_axis?: AxisConfig
   x2_axis?: AxisConfig
   y_axis?: AxisConfig

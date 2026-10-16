@@ -254,26 +254,16 @@
           },
         }),
     csv: csv_source(() => {
-      const records = entry_records()
       const { elements } = hull_data
+      const values = [`energy_per_atom`, `e_form_per_atom`, `e_above_hull`] as const
       return {
-        header: [
-          `entry_id`,
-          `formula`,
-          ...elements,
-          `energy_per_atom`,
-          `e_form_per_atom`,
-          `e_above_hull`,
-          `is_stable`,
-        ],
-        rows: records.map(({ composition, is_stable, ...rec }) => [
+        header: [`entry_id`, `formula`, ...elements, ...values, `is_stable`],
+        rows: entry_records().map((rec) => [
           rec.entry_id,
           rec.formula,
-          ...elements.map((el) => (composition as Record<string, number>)[el] ?? 0),
-          rec.energy_per_atom,
-          rec.e_form_per_atom,
-          rec.e_above_hull,
-          is_stable == null ? null : String(is_stable),
+          ...elements.map((el) => (rec.composition as Record<string, number>)[el] ?? 0),
+          ...values.map((key) => rec[key]),
+          rec.is_stable == null ? null : String(rec.is_stable),
         ]),
       }
     }),

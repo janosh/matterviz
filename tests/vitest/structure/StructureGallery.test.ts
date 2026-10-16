@@ -489,11 +489,7 @@ describe(`StructureGallery`, () => {
   ] as const)(
     `height=%s with %i items remains finite and independent`,
     (height, item_count, gallery_width, card_width) => {
-      mount_gallery({
-        items: many_items.slice(0, item_count),
-        layout: `horizontal`,
-        height,
-      })
+      mount_gallery({ items: many_items.slice(0, item_count), layout: `horizontal`, height })
 
       expect(style_of(`.structure-gallery`)).toContain(
         `inline-size: min(100%, ${gallery_width}px)`,
@@ -638,10 +634,7 @@ describe(`StructureGallery`, () => {
   })
 
   test(`renders the part after an underscore as a subscript`, () => {
-    const subscripted = prop_items.map((item) => ({
-      ...item,
-      properties: { E_hull: 0.25 },
-    }))
+    const subscripted = prop_items.map((item) => ({ ...item, properties: { E_hull: 0.25 } }))
     mount_gallery({ items: subscripted, layout: `horizontal` })
 
     const key = doc_query(`.card-properties dt`)

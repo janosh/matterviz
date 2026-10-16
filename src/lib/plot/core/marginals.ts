@@ -1,7 +1,6 @@
-// Shared marginal-distribution model for all 2D plots. Pure and unit-tested: types,
-// shorthand resolution, pad reservation, strip geometry, and the curve math (histogram /
-// kde / cdf / rug). The PlotMarginals.svelte renderer consumes these; each plot only adapts
-// its data to MarginalSeriesInput and folds reserve_marginal_pad into its `pad`.
+// Pure marginal-distribution model for all 2D plots: types, shorthand resolution, pad
+// reservation, strip geometry and curve math, rendered by PlotMarginals.svelte. Plots adapt
+// data to MarginalSeriesInput and fold reserve_marginal_pad into their `pad`.
 
 import { array_max, in_range, partition_point, type Vec2 } from '#lib/math.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
@@ -144,9 +143,8 @@ export interface MarginalAxis {
 }
 export type MarginalAxes = Record<MarginalAxisBinding, MarginalAxis>
 
-// Capture the host scale's pixel span and current domain, reading scale_type/format/label
-// off the plot's AxisConfig (DRYs the per-axis object every host plot passes to PlotMarginals; the
-// renderer defaults a missing scale_type to `linear`). `tick_label` maps a position to a label.
+// The host scale's pixel span and domain plus scale_type/format/label from its AxisConfig,
+// as every plot passes to PlotMarginals. `tick_label` maps a position to a label.
 export const marginal_axis = (
   scale: PlotScaleFn,
   range: Vec2,
@@ -197,10 +195,9 @@ export interface MarginalHover {
   axis_title?: string // title of the shared positional axis (e.g. `Error`), if any
 }
 
-// Prepare projection and ordering once per rendered strip. Queries examine only the
-// neighboring positions, preserving original-order ties even on reversed/custom axes.
-// A query may supply a resized context whose positional scale preserves or reverses the
-// cached ordering. Compare in current pixels to retain exact boundary hits and distance ties.
+// Prepare projection and ordering once per strip. Queries examine only neighboring positions,
+// keeping original-order ties on reversed axes, and compare in current pixels (a query may
+// pass a resized context) to keep exact boundary hits and distance ties.
 export function create_marginal_hit_test(
   ctx: MarginalRenderContext,
 ): (
@@ -347,11 +344,9 @@ export function create_marginal_hit_test(
     }
 
     if (kind === `line`) {
-      // Each series fills from `baseline` to its curve. Among the fills that contain the pointer, pick
-      // the one whose curve reaches FURTHEST from the baseline (the outermost fill) — that's the curve
-      // the pointer visually sits within, and it's render-order independent so every series stays
-      // selectable where its fill is on top. For each series take its point nearest the pointer
-      // position (its value at the cursor). A pointer outside every fill is a miss.
+      // Among the fills (baseline to curve) containing the pointer, pick the outermost one,
+      // render-order independent, using each series' point nearest the pointer position.
+      // A pointer outside every fill is a miss.
       let chosen: LineHit | null = null
       let best_extent = -1
       for (const points of lines.values()) {
@@ -560,9 +555,8 @@ export function marginal_value_scale(
   return { scale: (val) => baseline + sign * ((val - lower) / span) * thickness, baseline }
 }
 
-// Drop non-finite positions (and matching weights), restrict to the current positional range
-// so every marginal type tracks zoom/pan consistently (histogram already clips via bin domain),
-// and drop non-positive positions on a log axis.
+// Drop non-finite positions (and weights), out-of-range positions (so every marginal type
+// tracks zoom/pan) and non-positive positions on a log axis
 const clean_pairs = (
   positions: ArrayLike<number>,
   weights: ArrayLike<number> | undefined,
@@ -579,9 +573,8 @@ const clean_pairs = (
     if (require_positive && pos <= 0) continue
     if (weights && out_wts) {
       const weight = weights[idx]
-      // skip non-finite and negative weights: a negative makes a weighted CDF non-monotone and
-      // skews histogram normalization. zero is kept (it contributes nothing and the renderer
-      // already drops zero-value bars, so skipping it would only needlessly drop rug/kde positions)
+      // skip non-finite and negative weights (non-monotone CDF, skewed normalization); zero
+      // is kept so rug/kde positions aren't needlessly dropped
       if (!Number.isFinite(weight) || weight < 0) continue
       out_wts.push(weight)
     }
@@ -652,9 +645,8 @@ function compute_kde(
   positional_range: Vec2,
   scale_type: ScaleType,
 ): MarginalCurve {
-  // The grid spans the current positional range, so on a normal log axis (range[0] > 0) no
-  // clamping is needed. Only repair a degenerate log range whose lower bound is <= 0 (would
-  // otherwise emit grid points at <= 0 -> NaN pixels) by clamping to the smallest positive sample.
+  // Repair a degenerate log range with lower bound <= 0 (NaN pixels) by clamping to the
+  // smallest positive sample
   let clip: [number | null, number | null] | undefined
   if (get_scale_type_name(scale_type) === `log` && positional_range[0] <= 0) {
     const min_pos = smallest_positive(positions)

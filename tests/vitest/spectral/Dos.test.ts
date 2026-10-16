@@ -66,6 +66,9 @@ const pymatgen_complete_dos: PymatgenCompleteDos = {
   },
 }
 
+const mount_plot = (props: Partial<ComponentProps<typeof Dos>>) =>
+  mount_sized(Dos, props, { selector: `.scatter` })
+
 describe(`Dos component`, () => {
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
@@ -110,14 +113,8 @@ describe(`Dos component`, () => {
 
   // Domain wrappers share the charts' default (DEFAULT_CONTROLS_MODE): controls on hover
   it(`reveals its controls on hover by default`, async () => {
-    const plot = await mount_sized(
-      Dos,
-      { doses: { '': phonon_dos } },
-      { selector: `.scatter` },
-    )
-    expect(plot.querySelector(`.header-controls`)?.classList.contains(`hover-visible`)).toBe(
-      true,
-    )
+    const plot = await mount_plot({ doses: { '': phonon_dos } })
+    expect(plot.querySelector(`.header-controls.hover-visible`)).not.toBeNull()
   })
 
   // `cm-1`/`cm⁻¹` are the spellings found in the wild; they must map to cm^-1 at the prop
@@ -162,20 +159,16 @@ describe(`Dos component`, () => {
     `draws a THz reference line and shows a THz sigma in %s`,
     async (units) => {
       const to_unit = (value: number) => convert_frequencies([value], units)[0]
-      const plot = await mount_sized(
-        Dos,
-        {
-          doses: { '': phonon_dos },
-          units,
-          reference_frequency: 5,
-          sigma: 0.5,
-          sigma_range: [0, 2],
-          x_axis: { range: [0, to_unit(10)] },
-          show_controls: true,
-          controls_open: true,
-        },
-        { selector: `.scatter` },
-      )
+      const plot = await mount_plot({
+        doses: { '': phonon_dos },
+        units,
+        reference_frequency: 5,
+        sigma: 0.5,
+        sigma_range: [0, 2],
+        x_axis: { range: [0, to_unit(10)] },
+        show_controls: true,
+        controls_open: true,
+      })
       const line = plot.querySelector(`line[stroke*="--dos-reference-line-color"]`)
       const { x: clip_x, width: clip_width } = clip_rect(plot)
       expect((Number(line?.getAttribute(`x1`)) - clip_x) / clip_width).toBeCloseTo(0.5, 2)
@@ -192,16 +185,12 @@ describe(`Dos component`, () => {
     [`true shows one`, false, true, true],
     [`false hides two`, true, false, false],
   ] as const)(`legend visibility: %s`, async (_desc, multi, show_legend, expected) => {
-    const plot = await mount_sized(
-      Dos,
-      {
-        doses: multi ? { A: phonon_dos, B: phonon_dos } : { "": phonon_dos },
-        show_legend,
-        show_controls: false,
-        display: { x_grid: false, y_grid: false },
-      },
-      { selector: `.scatter` },
-    )
+    const plot = await mount_plot({
+      doses: multi ? { A: phonon_dos, B: phonon_dos } : { "": phonon_dos },
+      show_legend,
+      show_controls: false,
+      display: { x_grid: false, y_grid: false },
+    })
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
     for (const axis_tick of plot.querySelectorAll(`.tick`)) {
       expect(axis_tick.querySelectorAll(`line`)).toHaveLength(1)
@@ -220,11 +209,9 @@ describe(`Dos component`, () => {
       (freq) =>
         peak * Math.exp(-(((freq + 0.8) / 0.15) ** 2)) + Math.exp(-(((freq - 8) / 4) ** 2)),
     )
-    const plot = await mount_sized(
-      Dos,
-      { doses: { '': { type: `phonon`, frequencies, densities } } },
-      { selector: `.scatter` },
-    )
+    const plot = await mount_plot({
+      doses: { '': { type: `phonon`, frequencies, densities } },
+    })
     // relative position of the 0 THz tick: 1/21 of the way along [-1, 20], 0 if clamped
     const zero_tick = [...plot.querySelectorAll(`.x-axis .tick`)].find(
       (element) => element.textContent?.trim() === `0`,
@@ -242,7 +229,7 @@ describe(`Dos component`, () => {
       frequencies: phonon_dos.frequencies.map((freq) => freq * 0.93),
       densities: phonon_dos.densities.map((density) => density * 0.87),
     }
-    const plot = await mount_sized(Dos, { doses: { '': doses } }, { selector: `.scatter` })
+    const plot = await mount_plot({ doses: { '': doses } })
     const ticks = (axis: string) =>
       [...plot.querySelectorAll(`.${axis}-axis .tick text`)].map(
         (element) => element.textContent,
@@ -298,7 +285,7 @@ describe(`Dos component`, () => {
     [`cm^-1`, { doses: { '': phonon_in(`cm^-1`, [0, 100, 200]) }, units: `cm^-1` }, [0, 1]],
   ] as const)(`density axis spans the drawn densities: %s`, async (_desc, props, expected) => {
     const state: { view?: { y?: Vec2 } } = { view: undefined }
-    await mount_sized(Dos, bind_props({ ...props }, state), { selector: `.scatter` })
+    await mount_plot(bind_props({ ...props }, state))
     expect(state.view?.y).toEqual(expected.map((val) => expect.closeTo(val, 12)))
   })
 
@@ -366,63 +353,23 @@ describe(`extract_pdos`, () => {
 describe(`format_dos_tooltip`, () => {
   // The series label titles the tooltip only when several DOS are plotted; the axis that
   // carries frequency/energy is listed first whichever orientation it is on
+  // rows: format_dos_tooltip args [x_formatted, y_formatted, label, is_horizontal, is_phonon,
+  // x_axis_label, y_axis_label, num_series], expected title, expected [label, value, unit] lines
+  type Args = [string, string, string | null, boolean, boolean, string, string, number]
+  // oxfmt-ignore
   it.each([
-    {
-      opts: {
-        x_formatted: `5.00`,
-        y_formatted: `0.50`,
-        label: `DOS 1`,
-        is_horizontal: false,
-        is_phonon: true,
-        x_axis_label: `Frequency (THz)`,
-        y_axis_label: `Density`,
-        num_series: 2,
-      },
-      title: `DOS 1`,
-      lines: [
-        { label: `Density`, value: `0.50`, unit: undefined },
-        { label: `Frequency`, value: `5.00`, unit: `THz` },
-      ],
-    },
-    {
-      opts: {
-        x_formatted: `0.50`,
-        y_formatted: `-2.00`,
-        label: null,
-        is_horizontal: true,
-        is_phonon: false,
-        x_axis_label: `Density (states/(eV atom))`,
-        y_axis_label: `Energy (eV)`,
-        num_series: 1,
-      },
-      title: undefined,
-      lines: [
-        { label: `Energy`, value: `-2.00`, unit: `eV` },
-        { label: `Density`, value: `0.50`, unit: `states/(eV atom)` },
-      ],
-    },
+    [[`5.00`, `0.50`, `DOS 1`, false, true, `Frequency (THz)`, `Density`, 2], `DOS 1`, [[`Density`, `0.50`], [`Frequency`, `5.00`, `THz`]]],
+    [[`0.50`, `-2.00`, null, true, false, `Density (states/(eV atom))`, `Energy (eV)`, 1], undefined, [[`Energy`, `-2.00`, `eV`], [`Density`, `0.50`, `states/(eV atom)`]]],
     // bare axis labels fall back to the quantity name and the display unit
-    {
-      opts: {
-        x_formatted: `1`,
-        y_formatted: `2`,
-        label: `only`,
-        is_horizontal: false,
-        is_phonon: true,
-        x_axis_label: ``,
-        y_axis_label: ``,
-        num_series: 1,
-      },
-      title: undefined,
-      lines: [
-        { label: `Density`, value: `2`, unit: undefined },
-        { label: `Frequency`, value: `1`, unit: `cm^-1` },
-      ],
-    },
-  ])(`$opts.label / horizontal=$opts.is_horizontal`, ({ opts, title, lines }) => {
-    const result = format_dos_tooltip({ units: `cm^-1`, ...opts })
+    [[`1`, `2`, `only`, false, true, ``, ``, 1], undefined, [[`Density`, `2`], [`Frequency`, `1`, `cm^-1`]]],
+  ] as [Args, string | undefined, [string, string, string?][]][])(`%j`, (args, title, lines) => {
+    const [x_formatted, y_formatted, label, is_horizontal, is_phonon, ...rest] = args
+    const [x_axis_label, y_axis_label, num_series] = rest
+    const result = format_dos_tooltip({
+      units: `cm^-1`, x_formatted, y_formatted, label, is_horizontal, is_phonon, x_axis_label, y_axis_label, num_series,
+    })
     expect(result.title).toBe(title)
-    expect(result.lines).toEqual(lines)
+    expect(result.lines).toEqual(lines.map(([line_label, value, unit]) => ({ label: line_label, value, unit })))
   })
 })
 

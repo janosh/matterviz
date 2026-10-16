@@ -53,15 +53,6 @@ describe(`create_volume_sampler`, () => {
     },
   )
 
-  test(`accounts for volume origin offset`, () => {
-    const origin: Vec3 = [3, -2, 5]
-    const sample = create_volume_sampler(linear_volume(11, cubic, false, origin))
-    // Absolute Cartesian = origin + frac·lattice; frac (0.5, 0.5, 0.5) → 3.5
-    expect(sample([3 + 5, -2 + 5, 5 + 5])).toBeCloseTo(3.5, 10)
-    // Sampling at the raw fractional position (ignoring origin) gives a different value
-    expect(sample([5, 5, 5])).not.toBeCloseTo(3.5, 3)
-  })
-
   test(`wraps periodically outside the cell and stays continuous across the boundary`, () => {
     const linear = create_volume_sampler(linear_volume(10, cubic, true))
     const inside = linear([2.5, 5, 7.5])
@@ -82,25 +73,12 @@ describe(`create_volume_sampler`, () => {
     // whose addition to 1 rounds up to 2 and non-finite coordinates.
     const volume = linear_volume(10, cubic_matrix(1), true)
     const sample = create_volume_sampler(volume)
-    for (const coord of [
-      -Infinity,
-      -100.25,
-      -1,
-      -Number.EPSILON,
-      -Number.MIN_VALUE,
-      -0,
-      0,
-      Number.MIN_VALUE,
-      Number.EPSILON,
-      0.123,
-      1 - Number.EPSILON / 2,
-      1,
-      1 + Number.EPSILON,
-      2,
-      100.25,
-      Infinity,
-      NaN,
-    ]) {
+    // oxfmt-ignore
+    const coords = [
+      -Infinity, -100.25, -1, -Number.EPSILON, -Number.MIN_VALUE, -0, 0, Number.MIN_VALUE,
+      Number.EPSILON, 0.123, 1 - Number.EPSILON / 2, 1, 1 + Number.EPSILON, 2, 100.25, Infinity, NaN,
+    ]
+    for (const coord of coords) {
       const wrapped = ((coord % 1) + 1) % 1
       expect(sample([coord, coord, coord])).toBe(
         trilinear_interpolate(volume, wrapped, wrapped, wrapped, true),
@@ -108,14 +86,14 @@ describe(`create_volume_sampler`, () => {
     }
   })
 
+  // x clamps to 1 or 0; y=z=0.5 contribute 1 + 2 = 3
   test.each([
-    { position: [15, 5, 5] as Vec3, expected: 4 }, // x→1; y=z=0.5 → 1+2
-    { position: [-3, 5, 5] as Vec3, expected: 3 }, // x→0; y=z=0.5 → 1+2
-  ])(`clamp policy samples nearest edge at $position`, ({ position, expected }) => {
+    [[15, 5, 5], 4],
+    [[-3, 5, 5], 3],
+  ] as [Vec3, number][])(`clamp policy samples nearest edge at %j`, (position, expected) => {
     const sample = create_volume_sampler(linear_volume(11, cubic, false), {
       out_of_bounds: `clamp`,
     })
-    // x clamps to 0 or 1; y=z=0.5 contribute 1 + 2 = 3
     expect(sample(position)).toBeCloseTo(expected, 10)
   })
 
@@ -163,23 +141,17 @@ describe(`sample_volume_at_positions`, () => {
   })
 
   test.each([
-    {
-      label: `empty dims`,
-      vol: () => make_volume([], { lattice: cubic, periodic: false }),
-      positions: [1, 2, 3, 4, 5, 6],
-      expected: [0, 0],
+    [`empty dims`, [], [1, 2, 3, 4, 5, 6], [0, 0]],
+    [`singleton cell`, [[[42]]], [0, 0, 0, 5, 5, 5], [42, 42]],
+  ] as [string, number[][][], number[], number[]][])(
+    `handles %s grids`,
+    (_label, grid, positions, expected) => {
+      const vol = make_volume(grid, { lattice: cubic, periodic: false })
+      expect([...sample_volume_at_positions(vol, new Float32Array(positions))]).toEqual(
+        expected,
+      )
     },
-    {
-      label: `singleton cell`,
-      vol: () => make_volume([[[42]]], { lattice: cubic, periodic: false }),
-      positions: [0, 0, 0, 5, 5, 5],
-      expected: [42, 42],
-    },
-  ])(`handles $label grids`, ({ vol, positions, expected }) => {
-    expect([...sample_volume_at_positions(vol(), new Float32Array(positions))]).toEqual(
-      expected,
-    )
-  })
+  )
 })
 
 // Every read of a $state volume runs a proxy trap, so reads must not scale with sample count
@@ -198,46 +170,21 @@ test(`samplers read the volume a fixed number of times, not once per sample`, ()
 })
 
 describe(`create_volume_sampler reads the current volume fields`, () => {
-  // Pin lattice, origin, and periodic so a future cache keyed on volume identity
-  // that misses one of them fails a test
+  // Pin lattice, origin, and periodic so a future cache keyed on volume identity that misses
+  // one of them fails a test. Every point starts at frac (0.5, 0.5, 0.5), i.e. 3.5.
   test.each([
-    [
-      `lattice`,
-      () => linear_volume(11, cubic, false),
-      [5, 5, 5],
-      3.5, // frac (0.5, 0.5, 0.5)
-      (vol: VolumetricData): void => {
-        vol.lattice = cubic_matrix(20)
-      },
-      1.75, // frac (0.25, 0.25, 0.25)
-    ],
-    [
-      `origin`,
-      () => linear_volume(11, cubic, false),
-      [5, 5, 5],
-      3.5,
-      (vol: VolumetricData): void => {
-        vol.origin = [5, 5, 5]
-      },
-      0, // cart [5,5,5] - origin [5,5,5] -> frac (0, 0, 0)
-    ],
-    [
-      `periodic`,
-      () => linear_volume(10, cubic, true),
-      [15, 5, 5],
-      3.5, // frac (1.5, .5, .5) wraps to (.5, .5, .5) -> index (5, 5, 5)
-      (vol: VolumetricData): void => {
-        vol.periodic = false
-      },
-      3.6, // clamped frac (1, .5, .5) -> index (9, 4.5, 4.5)
-    ],
-  ] as const)(
+    // a doubled cell halves the fractions: frac (0.25, 0.25, 0.25)
+    [`lattice`, false, [5, 5, 5], { lattice: cubic_matrix(20) }, 1.75],
+    // an anisotropic origin also pins its axis order: Cartesian [5, 5, 5] → frac (0.2, 0.7, 0)
+    [`origin`, false, [5, 5, 5], { origin: [3, -2, 5] }, 1.6],
+    // frac (1.5, .5, .5) wraps to (.5, .5, .5); once finite it clamps to index (9, 4.5, 4.5)
+    [`periodic`, true, [15, 5, 5], { periodic: false }, 3.6],
+  ] as [string, boolean, Vec3, Partial<VolumetricData>, number][])(
     `follows a %s change on the same volume object`,
-    (_field, make, position, before, mutate, after) => {
-      const vol = make()
-      const point = position as [number, number, number]
-      expect(create_volume_sampler(vol)(point)).toBeCloseTo(before, 10)
-      mutate(vol)
+    (_field, periodic, point, patch, after) => {
+      const vol = linear_volume(periodic ? 10 : 11, cubic, periodic)
+      expect(create_volume_sampler(vol)(point)).toBeCloseTo(3.5, 10)
+      Object.assign(vol, patch)
       expect(create_volume_sampler(vol)(point)).toBeCloseTo(after, 10)
     },
   )
@@ -259,28 +206,12 @@ describe(`compare_volume_grids`, () => {
   })
 
   test.each([
-    {
-      label: `dimensions`,
-      make_b: () => linear_volume(12, cubic, false),
-      reason_match: /grid dimensions differ/,
-    },
-    {
-      label: `origin`,
-      make_b: () => linear_volume(11, cubic, false, [0.5, 0, 0]),
-      reason_match: /origins differ/,
-    },
-    {
-      label: `voxel vectors`,
-      make_b: () => linear_volume(11, [[12, 0, 0], cubic[1], cubic[2]], false),
-      reason_match: /voxel vectors differ/,
-    },
-    {
-      label: `boundary modes`,
-      make_b: () => linear_volume(11, cubic, true),
-      reason_match: /boundary modes differ/,
-    },
-  ])(`rejects mismatched $label with diagnostic`, ({ make_b, reason_match }) => {
-    expect(compare_volume_grids(base(), make_b())).toMatch(reason_match)
+    [`grid dimensions`, linear_volume(12, cubic, false)],
+    [`origins`, linear_volume(11, cubic, false, [0.5, 0, 0])],
+    [`voxel vectors`, linear_volume(11, [[12, 0, 0], cubic[1], cubic[2]], false)],
+    [`boundary modes`, linear_volume(11, cubic, true)],
+  ])(`rejects mismatched %s with diagnostic`, (label, other) => {
+    expect(compare_volume_grids(base(), other)).toMatch(`${label} differ`)
   })
 
   test(`origin and voxel tolerances use per-voxel distance`, () => {
@@ -326,13 +257,15 @@ describe(`resolve_volume_display_range`, () => {
 describe(`extract_volume_range`, () => {
   // Periodic 10-point grid: value at grid index ix (iy=iz=0) is ix/10
   const periodic_vol = () => linear_volume(10, cubic, true)
+  // fractional window [min, max] along x over the full y and z extent
+  const x_window = (min: number, max: number): DisplayRange => [
+    [min, max],
+    [0, 1],
+    [0, 1],
+  ]
 
   test(`integer range reproduces tiled values on aligned sample points`, () => {
-    const extracted = extract_volume_range(periodic_vol(), [
-      [0, 2],
-      [0, 1],
-      [0, 1],
-    ])
+    const extracted = extract_volume_range(periodic_vol(), x_window(0, 2))
     // width 2 at density 10 → 21 inclusive points at exactly the grid positions
     expect(extracted.dims).toEqual([21, 11, 11])
     // Sample 13 sits at fx = 1.3 → wraps to grid index 3 → exact value 0.3
@@ -345,27 +278,24 @@ describe(`extract_volume_range`, () => {
 
   test(`self-sampling an integer-supercell surface recovers its isovalue`, () => {
     const n_pts = 8
-    const grid = make_grid(n_pts, n_pts, n_pts, (idx_x, idx_y, idx_z) => {
-      const phase = (2 * Math.PI) / n_pts
-      return (
+    const phase = (2 * Math.PI) / n_pts
+    const grid = make_grid(
+      n_pts,
+      n_pts,
+      n_pts,
+      (idx_x, idx_y, idx_z) =>
         Math.sin(idx_x * phase) +
         0.35 * Math.cos(idx_y * phase) +
-        0.2 * Math.sin(idx_z * phase)
-      )
-    })
+        0.2 * Math.sin(idx_z * phase),
+    )
     const volume = make_volume(grid, { lattice: cubic, periodic: true })
-    const extracted = extract_volume_range(volume, [
-      [0, 2],
-      [0, 1],
-      [0, 1],
-    ])
+    const extracted = extract_volume_range(volume, x_window(0, 2))
     const isovalue = 0.15
     const { positions } = marching_cubes(extracted, isovalue, extracted.lattice, {
       periodic: false,
       normals: false,
     })
     const sample = create_volume_sampler(volume)
-
     expect(positions.length).toBeGreaterThan(0)
     for (let idx = 0; idx < positions.length; idx += 3) {
       const vertex: Vec3 = [positions[idx], positions[idx + 1], positions[idx + 2]]
@@ -376,11 +306,7 @@ describe(`extract_volume_range`, () => {
 
   test(`fractional bounds clip exactly at the requested coordinates`, () => {
     const vol = { ...periodic_vol(), origin: [3, -2, 5] as Vec3 }
-    const extracted = extract_volume_range(vol, [
-      [-0.15, 2.15],
-      [0, 1],
-      [0, 1],
-    ])
+    const extracted = extract_volume_range(vol, x_window(-0.15, 2.15))
     expect(extracted.dims[0]).toBe(24) // round(2.3 * 10) + 1
     // First plane sits at fx = -0.15 → wraps to 0.85, last at fx = 2.15 → wraps to 0.15
     expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0.85, 10)
@@ -420,10 +346,9 @@ describe(`extract_volume_range`, () => {
     expect(extracted.lattice[0][0]).toBeCloseTo(10)
     expect(extracted.lattice[1][1]).toBeCloseTo(5)
     expect(grid_value(extracted, 0, 0, 0)).toBeCloseTo(0, 10)
-    const [size_x, size_y] = extracted.dims
     expect(extracted.dims).toEqual([11, 6, 11])
     // Endpoint values match the source field at the crop bounds
-    expect(grid_value(extracted, size_x - 1, 0, 0)).toBeCloseTo(1, 10)
-    expect(grid_value(extracted, 0, size_y - 1, 0)).toBeCloseTo(1, 10) // 2 * 0.5
+    expect(grid_value(extracted, 10, 0, 0)).toBeCloseTo(1, 10)
+    expect(grid_value(extracted, 0, 5, 0)).toBeCloseTo(1, 10) // 2 * 0.5
   })
 })

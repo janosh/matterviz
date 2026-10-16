@@ -151,9 +151,8 @@
   const series_label = (series_idx: number): string =>
     series[series_idx]?.label ?? `Series ${series_idx + 1}`
 
-  // Every point of every series, validated and placed in the unit triangle. An invalid
-  // triple fails the whole plot with a message in place of the chart rather than
-  // silently dropping data.
+  // Every point of every series, validated and placed in the unit triangle. An invalid triple
+  // fails the whole plot with a message in place of the chart rather than dropping data.
   interface PlacedPoint {
     series_idx: number
     point_idx: number
@@ -223,12 +222,8 @@
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
-  let inner_height = $derived(
-    Math.max(
-      0,
-      height - pad.t - pad.b - (color_bar_visible ? colorbar_size.height + COLOR_BAR_GAP : 0),
-    ),
-  )
+  let colorbar_space = $derived(color_bar_visible ? colorbar_size.height + COLOR_BAR_GAP : 0)
+  let inner_height = $derived(Math.max(0, height - pad.t - pad.b - colorbar_space))
   let layout = $derived(ternary_layout(inner_width, inner_height))
   // Corner pixels in the order of `labels`: right, top, left
   let corners = $derived(TRIANGLE_VERTICES.map((vertex) => layout.to_px(vertex)))
@@ -298,10 +293,9 @@
   // Highlight rings animate, so those markers stay SVG nodes in canvas mode
   const needs_svg = ({ style }: PlacedPoint): boolean =>
     Boolean(style.is_highlighted && style.highlight_effect)
-  // Past CANVAS_MARKER_THRESHOLD markers paint on one canvas like ScatterPlot's, else every
-  // point mounts an SVG component. Null when markers stay SVG: below the threshold or a
-  // paint canvas can't parse (e.g. a CSS variable). Hover and click resolve the nearest
-  // marker through `hits` instead of per-point DOM targets.
+  // Past CANVAS_MARKER_THRESHOLD markers paint on one canvas like ScatterPlot's. Null when
+  // markers stay SVG: below the threshold or a paint canvas can't parse (e.g. a CSS variable).
+  // Hover and click resolve the nearest marker through `hits`, not per-point DOM targets.
   type HitItem = { cx: number; cy: number; idx: number }
   const canvas_layer = $derived.by(
     (): { markers: CanvasMarker[]; hits: SpatialIndex<HitItem> } | null => {
@@ -336,9 +330,8 @@
       return { markers, hits: build_spatial_index(items, max_radius + HIT_PADDING) }
     },
   )
-  // [index into `rendered`, point] for every marker drawn as SVG: all of them, or in canvas
-  // mode the highlighted ones plus the hovered one on top of its canvas marker. Derived apart
-  // from the hover so a pointer move doesn't rescan every point.
+  // [index into `rendered`, point] per SVG marker: all, or in canvas mode the highlighted ones
+  // plus the hovered one. Derived apart from the hover so pointer moves don't rescan points.
   const static_svg_points = $derived(
     canvas_layer
       ? [...rendered.entries()].filter(([, point]) => needs_svg(point))
@@ -391,22 +384,17 @@
     if (point) on_point_click?.({ ...point_props(point), event })
   }
 
-  const roving = create_roving_focus({
-    container: () => svg_element,
-    items: () => svg_points,
-  })
+  const roving = create_roving_focus({ container: () => svg_element, items: () => svg_points })
 
   function handle_keydown(event: KeyboardEvent) {
-    if (roving.handle_keydown(event)) return
-    if (!is_activation_key(event)) return
+    if (roving.handle_keydown(event) || !is_activation_key(event)) return
     event.preventDefault()
     handle_click(event)
   }
 
   // Canvas markers have no node to focus, so in canvas mode the svg is one tab stop and the
-  // arrows walk `rendered` like ScatterPlot's cursor: its point becomes the hovered one (drawn
-  // back as SVG, with its tooltip) and is announced. Apart from hover_key, so the pointer
-  // sweeping over markers announces nothing.
+  // arrows walk `rendered` like ScatterPlot's cursor: its point becomes the hovered one and is
+  // announced. Apart from hover_key, so the pointer sweeping over markers announces nothing.
   let kbd_key = $state<PointKey | null>(null)
   const kbd_idx = $derived(
     kbd_key ? rendered.findIndex((point) => same_point(kbd_key, point)) : -1,
@@ -455,9 +443,8 @@
   const is_dimmed = (series_idx: number): boolean =>
     legend_hover_idx !== null && legend_hover_idx !== series_idx
 
-  // Text placement per edge (tick labels: below the bottom edge, beside the slanted
-  // edges) and per corner (component labels: right, top, left), spread onto the <text>
-  // elements - dx/dy nudge the corner labels clear of the triangle
+  // <text> placement per edge (tick labels below the bottom edge, beside the slanted ones) and
+  // per corner (component labels: right, top, left); dx/dy nudge them clear of the triangle
   const tick_text_attrs = [
     { 'text-anchor': `middle`, 'dominant-baseline': `hanging` },
     { 'text-anchor': `start`, 'dominant-baseline': `middle` },

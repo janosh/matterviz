@@ -1,7 +1,7 @@
 import PropertyFilter from '#lib/layout/PropertyFilter.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, set_input } from '../setup'
+import { bind_props, doc_query, keydown, set_input } from '../setup'
 
 describe(`PropertyFilter`, () => {
   const inputs = () => document.querySelectorAll<HTMLInputElement>(`input[type="number"]`)
@@ -47,25 +47,13 @@ describe(`PropertyFilter`, () => {
 
   test(`clear button and Escape reset both bounds and fire on_clear before on_change, a cleared input unsets its bound`, () => {
     const calls: string[] = []
-    const state = $state<{ min_value?: number; max_value?: number }>({
-      min_value: 10,
-      max_value: 100,
-    })
-    mount(PropertyFilter, {
-      target: document.body,
-      props: bind_props(
-        {
-          label: `Test`,
-          on_clear: () => {
-            calls.push(`clear`)
-          },
-          on_change: (min: number | undefined, max: number | undefined) => {
-            calls.push(`change:${min}:${max}`)
-          },
-        },
-        state,
-      ),
-    })
+    type Bounds = { min_value?: number; max_value?: number }
+    const state = $state<Bounds>({ min_value: 10, max_value: 100 })
+    const on_clear = () => void calls.push(`clear`)
+    const on_change = (min?: number, max?: number) => void calls.push(`change:${min}:${max}`)
+    // bind_props accessors keep min/max two-way bound, so no spread through mount_filter
+    const props = bind_props({ label: `Test`, on_clear, on_change }, state)
+    mount(PropertyFilter, { target: document.body, props })
     flushSync()
     const clear_btn = doc_query<HTMLButtonElement>(`.clear-btn`)
     expect(clear_btn.getAttribute(`aria-label`)).toBe(`Clear filter`)
@@ -77,13 +65,13 @@ describe(`PropertyFilter`, () => {
 
     state.min_value = 10
     flushSync()
-    inputs()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    inputs()[0].dispatchEvent(keydown(`Escape`))
     flushSync()
     // Escape clears exactly like the button: on_clear, then on_change with both bounds unset
     expect(calls.slice(2)).toEqual([`clear`, `change:undefined:undefined`])
     expect(state.min_value).toBeUndefined()
     // Escape with nothing set is a no-op
-    inputs()[0].dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    inputs()[0].dispatchEvent(keydown(`Escape`))
     flushSync()
     expect(calls).toHaveLength(4)
 
@@ -103,7 +91,7 @@ describe(`PropertyFilter`, () => {
     mount_filter({ min_value: 5, max_value: 10, on_change })
     const [min_input] = inputs()
     min_input.focus()
-    min_input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    min_input.dispatchEvent(keydown(`Enter`))
     expect(document.activeElement).not.toBe(min_input)
     min_input.dispatchEvent(new Event(`blur`, { bubbles: true }))
     flushSync()

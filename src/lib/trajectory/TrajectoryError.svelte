@@ -1,33 +1,17 @@
 <script lang="ts">
-  import { sanitize_html } from '#lib/sanitize.js'
-  import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
     error_msg,
     on_dismiss,
-    error_snippet,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
-    error_msg: string
-    on_dismiss: () => void
-    // Custom error snippet for advanced error handling
-    error_snippet?: Snippet<[{ error_msg: string; on_dismiss: () => void }]>
-  } = $props()
+  }: HTMLAttributes<HTMLDivElement> & { error_msg: string; on_dismiss: () => void } = $props()
 </script>
 
 <div {...rest}>
-  {#if error_snippet}
-    {@render error_snippet({ error_msg, on_dismiss })}
-  {:else if error_msg.startsWith(`<`)}
-    <!-- Render HTML error messages (sanitized) -->
-    {@html sanitize_html(error_msg)}
-    <button onclick={on_dismiss}>Dismiss</button>
-  {:else}
-    <h3>Error</h3>
-    <p>{error_msg}</p>
-    <button onclick={on_dismiss}>Dismiss</button>
-  {/if}
+  <h3>Error</h3>
+  <p>{error_msg}</p>
+  <button onclick={on_dismiss}>Dismiss</button>
 </div>
 
 <style>

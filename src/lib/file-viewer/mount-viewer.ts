@@ -15,6 +15,7 @@ import Bands from '#lib/spectral/Bands.svelte'
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
 import { normalize_band_structure, normalize_dos } from '#lib/spectral/helpers.js'
+import type { BaseBandStructure, DosData } from '#lib/spectral/types.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { StructureToolPrediction } from '#lib/structure/prediction.js'
 import Structure from '#lib/structure/Structure.svelte'
@@ -38,6 +39,23 @@ export interface MountViewerOptions {
 
 // Every embedded viewer fills its host; its fullscreen toggle follows host.fullscreen
 export const VIEWER_COMMON_PROPS = { style: `height: 100%; border-radius: 0` } as const
+
+// Bands, DOS or both side by side, whichever is given; a lone plot also gets `padding`
+export function mount_spectral(
+  target: HTMLElement,
+  { bands, dos }: { bands: BaseBandStructure | null; dos: DosData | null },
+  props: { style: string; class?: string },
+  padding?: { b: number },
+): ReturnType<typeof mount> {
+  if (bands && dos) {
+    const both = { band_structs: { '': bands }, doses: { '': dos }, ...props }
+    return mount(BandsAndDos, { target, props: both })
+  }
+  const single = { ...props, ...(padding && { padding }) }
+  if (bands) return mount(Bands, { target, props: { band_structs: { '': bands }, ...single } })
+  if (dos) return mount(Dos, { target, props: { doses: { '': dos }, ...single } })
+  throw new Error(`No bands or DOS to plot`)
+}
 
 // Mount the viewer for `type` into `target` and return the component handle. Throws on a
 // type this table does not know so a new RenderableType cannot silently render nothing.
@@ -102,15 +120,7 @@ export function mount_viewer(
     const dos = type === `band_structure` ? null : normalize_dos(record.dos ?? data)
     if (type !== `dos` && !bands) throw new Error(`Invalid band structure data`)
     if (type !== `band_structure` && !dos) throw new Error(`Invalid DOS data`)
-    const props = { ...common_props, padding: { b: 60 } }
-    if (bands && dos)
-      return mount(BandsAndDos, {
-        target,
-        props: { band_structs: { '': bands }, doses: { '': dos }, ...common_props },
-      })
-    if (bands)
-      return mount(Bands, { target, props: { band_structs: { '': bands }, ...props } })
-    if (dos) return mount(Dos, { target, props: { doses: { '': dos }, ...props } })
+    return mount_spectral(target, { bands, dos }, common_props, { b: 60 })
   }
   if (type === `brillouin_zone`) {
     const record = data as Record<string, unknown>

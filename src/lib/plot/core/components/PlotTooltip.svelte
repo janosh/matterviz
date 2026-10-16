@@ -34,9 +34,8 @@
     // Flip/clamp inside this box (defaults to the viewport when `fixed`); omit for raw placement
     constrain_to?: { width: number; height: number }
     exclusion_rects?: readonly Rect[] // decorations (legend, colorbar) to keep clear of
-    // Keep the pointer glyph clear too, widening a narrower `offset.x` to its width
-    // (keeping the sign). On by default because most tooltips track the cursor; pass
-    // false when `x`/`y` snap to a mark instead, so no glyph sits on the anchor.
+    // Keep the pointer glyph clear too, widening a narrower `offset.x` to its width (keeping
+    // the sign). Pass false when `x`/`y` snap to a mark, so no glyph sits on the anchor.
     avoid_cursor?: boolean
     fallback_size?: { width: number; height: number } // size estimate before first measure
     wrapper?: HTMLDivElement // bindable reference for measuring tooltip size
@@ -66,11 +65,9 @@
       width: measured_width || fallback_size?.width || 0,
       height: measured_height || fallback_size?.height || 0,
     }
-    // The glyph is just another rect to keep clear of — except that a gap narrower
-    // than its width leaves the right-hand candidates overlapping it from the start,
-    // so the scoring has nothing to tell them apart by. Widen to its width, keeping
-    // the sign that picks the preferred side; the left side is clear at any gap but
-    // matches so a flip keeps its distance.
+    // The glyph is another rect to keep clear of, but a gap narrower than its width leaves the
+    // right-hand candidates overlapping it from the start, so widen to its width (keeping the
+    // sign that picks the preferred side; the left side matches so a flip keeps its distance).
     const gap = Math.max(Math.abs(offset.x), DEFAULT_CURSOR_SIZE.width)
     return place_tooltip({
       anchor: { x: coord_x, y: coord_y },
@@ -87,9 +84,8 @@
   // label path is long — cap width to the constrained box and let the text wrap.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
   // A fill JS can parse is painted outright, with no DOM reads as the tooltip follows the
-  // pointer. Anything else (a var() fill, or no fill: the neutral --tooltip-bg chip) resolves
-  // through a probe once per fill and theme change. Watching from the parent skips the
-  // style:left/top writes on the tooltip itself.
+  // pointer. Anything else (var() fill, or none: the neutral chip) resolves through a probe
+  // once per fill and theme change, watched from the parent to skip the style:left/top writes.
   const js_paint = $derived(tooltip_paint(bg_color))
   const dom_fill = $derived(js_paint ? null : (bg_color ?? NEUTRAL_BG))
   let dom_paint = $state<TooltipPaint | null>(null)

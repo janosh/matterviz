@@ -304,9 +304,8 @@
     ),
   )
 
-  // Slots position boxes/violins along the category axis. Series sharing a `category` occupy
-  // one slot (split/grouped violins); any other series gets its own slot, labeled by its
-  // `label` or index. Override tick labels via x_axis.ticks (a Record).
+  // Slots along the category axis: series sharing a `category` share one (split/grouped
+  // violins), others get their own, labeled by `label` or index
   let { slot_list, slot_of } = $derived.by(() => {
     const labels: string[] = []
     const category_slots = new Map<string, number>()
@@ -363,9 +362,8 @@
       .filter((key) => get_scale_type_name(plot_axes[key].scale_type) === `log`)
       .join(` `),
   )
-  // KDEs read the authored series_in so legend toggles don't recompute them (hidden series
-  // are skipped when drawing). On a log axis the density is estimated in log10 space, so a
-  // numeric bandwidth is in decades; a non-positive clip bound leaves that side open.
+  // KDEs read series_in so legend toggles don't recompute them. On log axes density is
+  // estimated in log10 space (bandwidth in decades); non-positive clip bounds stay open.
   const to_log = (bound: number | null) =>
     bound !== null && bound > 0 ? Math.log10(bound) : null
   let violin_kdes = $derived.by(() => {
@@ -451,15 +449,13 @@
   let has_secondary = $derived(
     secondary_boxes.some(({ stats }) => Number.isFinite(stats.median)),
   )
-  // The secondary value axis renders transposed by orientation: x2 (top) when horizontal, y2
-  // (right) when vertical. Derive once so axis rendering, ticks, range writes, point picking, and
-  // marginal placement all stay provably in sync.
+  // Secondary value axis: x2 (top) when horizontal, y2 (right) when vertical. Derived once
+  // so rendering, ticks, range writes, picking and marginals stay in sync.
   let show_x2 = $derived(has_secondary && orientation === `horizontal`)
   let show_y2 = $derived(has_secondary && vertical)
 
-  // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range. On a
-  // log axis non-positive stats (a whisker_low of exactly 0, negative outliers) are dropped:
-  // nicing them would pin the floor at LOG_EPS and stretch the axis across a dozen decades.
+  // Value-axis points for auto-range. Log axes drop non-positive stats, which would pin the
+  // floor at LOG_EPS and stretch the axis across a dozen decades.
   const range_values = (boxes: Box[], log_axis: boolean): number[] =>
     boxes.flatMap(({ series: srs, idx, stats }) => {
       const { outliers } = stats
@@ -571,10 +567,8 @@
       }
     }),
   )
-  // Value scale for a box (vertical -> y/y2, horizontal -> x/x2), made log-safe: on a
-  // log value axis, stats at values <= 0 (whisker_low is often exactly 0; negative
-  // outliers) have no finite pixel. Clamp to the range floor so whiskers/boxes/labels end
-  // at the plot edge (like BarPlot's bars) instead of NaN coords or a far-off LOG_EPS pixel.
+  // Log-safe value scale for a box (vertical -> y/y2, horizontal -> x/x2): stats <= 0 clamp
+  // to the range floor so whiskers/boxes end at the plot edge instead of NaN coords
   const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) => {
     const axis_key = val_axis_key(srs)
     return log_floor_scale(
@@ -646,9 +640,8 @@
     }
   }
 
-  // Accepts a FocusEvent too: keyboard focus is the keyboard's hover, with no pointer (so
-  // the whisker-tip anchor). The cursor anchor makes the tooltip follow the mouse: boxes and
-  // violins are wide, and a fixed anchor lands far from the pointer.
+  // FocusEvents anchor at the whisker tip; pointer events follow the mouse since boxes and
+  // violins are wide and a fixed anchor lands far from the pointer
   const handle_box_hover = (box_item: Box) => (event: MouseEvent | FocusEvent) => {
     hovered = true
     const pointer = pointer_pos(event, frame.svg_element)
@@ -672,8 +665,7 @@
     )
 
   // === Export ===
-  // A box is a five-number summary, not an (x, y) pair, so CSV gets its own columns
-  // rather than being forced through the shared long format.
+  // Five-number summaries get their own CSV columns rather than the shared long format.
   // whisker_low/high are what the chart draws; min/max are the raw extremes
   type StatCol = Exclude<keyof Box[`stats`], `outliers`>
   const cols = [

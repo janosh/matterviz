@@ -52,9 +52,9 @@ if (routes.length === 0) console.error(`No routes found`)
 export type NavGroup = { label: string; href: string; prefixes: string[] }
 
 // Top-level nav dropdowns in display order. A route belongs to the first group whose prefix
-// matches it exactly or as a parent path; children keep prefix order, then path order. The
-// href is the dropdown key: where it is itself a page (/structure, /plot) the group label
-// links there and that page leaves the list, otherwise the label is a plain heading.
+// matches it exactly or as a parent path; children keep prefix order, then path order. Where
+// the href is itself a page (/structure, /plot) the group label links there, else it's a
+// plain heading.
 // oxfmt-ignore
 export const NAV_GROUPS: NavGroup[] = [
   { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },

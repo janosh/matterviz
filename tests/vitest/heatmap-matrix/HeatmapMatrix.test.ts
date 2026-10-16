@@ -60,6 +60,7 @@ const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
 const get_x_labels = () => query_all(`.x-label`)
 const get_y_labels = () => query_all(`.y-label`)
+const label_text = (label: HTMLElement) => label.textContent?.trim()
 // rendered [column, row] grid line of a cell: its column's --c<x_idx> on the grid, its row wrapper's --r
 const cell_track = (cell: HTMLElement): [number, number] => [
   Number(doc_query(`.grid`).style.getPropertyValue(`--c${cell.dataset.x}`)),
@@ -79,22 +80,14 @@ describe(`HeatmapMatrix rendering`, () => {
     expect(cells).toHaveLength(9)
     // happy-dom drops nested CSS rules; Playwright checks the rendered colors and animations.
     expect(heatmap_source).toMatch(/\.cell\s*\{[^{}]*transition:\s*none;/)
-    // axis labels
-    const x_labels = get_x_labels()
-    const y_labels = get_y_labels()
-    expect(x_labels).toHaveLength(3)
-    expect(y_labels).toHaveLength(3)
-    expect(x_labels[0].textContent?.trim()).toBe(`A`)
-    expect(y_labels[2].textContent?.trim()).toBe(`Z`)
+    expect(get_x_labels().map(label_text)).toEqual([`A`, `B`, `C`])
+    expect(get_y_labels().map(label_text)).toEqual([`X`, `Y`, `Z`])
     // corner spacer present when both axes have labels
     expect(document.querySelectorAll(`.corner`)).toHaveLength(1)
     // data attributes on first and last cell
-    const first = cells[0]
-    const last = cells[cells.length - 1]
-    expect(first.dataset.x).toBe(`0`)
-    expect(first.dataset.y).toBe(`0`)
-    expect(last.dataset.x).toBe(`2`)
-    expect(last.dataset.y).toBe(`2`)
+    const { x: first_x, y: first_y } = cells[0].dataset
+    const { x: last_x, y: last_y } = cells[8].dataset
+    expect([first_x, first_y, last_x, last_y]).toEqual([`0`, `0`, `2`, `2`])
     const container = doc_query(`.grid`)
     expect(container.style.getPropertyValue(`--n-cols`)).toBe(`3`)
     expect(container.style.getPropertyValue(`--n-rows`)).toBe(`3`)
@@ -102,35 +95,26 @@ describe(`HeatmapMatrix rendering`, () => {
     expect(container.style.gap).toBe(`2px`)
   })
 
-  test.each([
-    { show_x_labels: false, show_y_labels: true, x_count: 0, y_count: 3 },
-    { show_x_labels: true, show_y_labels: false, x_count: 3, y_count: 0 },
-  ])(
-    `show_x=$show_x_labels show_y=$show_y_labels`,
-    ({ show_x_labels, show_y_labels, x_count, y_count }) => {
-      mount_matrix({ show_x_labels, show_y_labels })
-      expect(get_x_labels()).toHaveLength(x_count)
-      expect(get_y_labels()).toHaveLength(y_count)
-      // corner spacer only when both axes shown
-      expect(document.querySelectorAll(`.corner`)).toHaveLength(0)
-    },
-  )
+  test.each([false, true])(`show_x_labels=%s with the other axis hidden`, (show_x_labels) => {
+    mount_matrix({ show_x_labels, show_y_labels: !show_x_labels })
+    expect(get_x_labels()).toHaveLength(show_x_labels ? 3 : 0)
+    expect(get_y_labels()).toHaveLength(show_x_labels ? 0 : 3)
+    // corner spacer only when both axes shown
+    expect(document.querySelectorAll(`.corner`)).toHaveLength(0)
+  })
 })
 
 describe(`axis replacement`, () => {
   test(`clears index-based interaction state when axis keys change`, async () => {
     mount(HeatmapMatrixReplacementHarness, { target: document.body })
     await tick()
-
-    expect(doc_query(`[data-testid="selected-count"]`).textContent).toBe(`1`)
-
-    doc_query<HTMLButtonElement>(`[data-testid="replace-axis"]`).click()
+    const test_text = (id: string) => doc_query(`[data-testid="${id}"]`).textContent
+    expect(test_text(`selected-count`)).toBe(`1`)
+    doc_query(`[data-testid="replace-axis"]`).click()
     flushSync()
     await tick()
-
-    expect(doc_query(`[data-testid="selected-count"]`).textContent).toBe(`0`)
-    expect(doc_query(`[data-testid="active-cell"]`).textContent).toBe(`none`)
-    expect(doc_query(`[data-testid="pinned-cell"]`).textContent).toBe(`none`)
+    const ids = [`selected-count`, `active-cell`, `pinned-cell`]
+    expect(ids.map(test_text)).toEqual([`0`, `none`, `none`])
   })
 })
 
@@ -150,9 +134,7 @@ describe(`symmetric mode`, () => {
       if (mode === `lower`) expect(col, message).toBeLessThanOrEqual(row)
       else expect(col, message).toBeGreaterThanOrEqual(row)
     }
-    for (const cell of empty_cells) {
-      expect(cell.dataset.x).toBeUndefined()
-    }
+    for (const cell of empty_cells) expect(cell.dataset.x).toBeUndefined()
   })
 })
 
@@ -253,9 +235,7 @@ describe(`values and colors`, () => {
       },
     })
     for (const mode of [`auto`, `robust`, `auto`, `robust`] as const) {
-      flushSync(() => {
-        domain.current = mode
-      })
+      flushSync(() => (domain.current = mode))
       const reds = get_data_cells().map(red_of)
       expect([0, 1, 2, 25, 49, 50].map((idx) => reds[idx])).toEqual(
         mode === `robust` ? [0, 0, 5, 128, 255, 255] : [0, 5, 10, 128, 250, 255],
@@ -328,9 +308,7 @@ describe(`values and colors`, () => {
 
   test(`empty values array gives transparent cells`, () => {
     mount_matrix({ values: [] })
-    for (const cell of get_data_cells()) {
-      expect(cell.style.backgroundColor).toBe(`transparent`)
-    }
+    for (const cell of get_data_cells()) expect(cell.style.backgroundColor).toBe(`transparent`)
   })
 })
 
@@ -485,13 +463,7 @@ describe(`click and dblclick handlers`, () => {
 })
 
 test.each([
-  {
-    desc: `4x2 asymmetric`,
-    x: [`A`, `B`, `C`, `D`],
-    y: [`X`, `Y`],
-    symmetric: false,
-    data: 8,
-  },
+  { desc: `4x2`, x: [`A`, `B`, `C`, `D`], y: [`X`, `Y`], symmetric: false, data: 8 },
   { desc: `1x1 symmetric`, x: [`A`], y: [`A`], symmetric: `lower`, data: 1 },
 ] as const)(
   `$desc renders $data data cells and no empty cells`,
@@ -596,14 +568,9 @@ describe(`axis label placement`, () => {
 
 describe(`milestone feature props`, () => {
   test(`search_query filters visible labels`, () => {
-    mount_matrix({
-      x: [`Al`, `Fe`, `Ni`],
-      y: [`Al`, `Fe`, `Ni`],
-      search_query: `fe`,
-    })
-    expect(get_x_labels()).toHaveLength(1)
-    expect(get_y_labels()).toHaveLength(1)
-    expect(get_x_labels()[0].textContent?.trim()).toBe(`Fe`)
+    mount_matrix({ x: [`Al`, `Fe`, `Ni`], y: [`Al`, `Fe`, `Ni`], search_query: `fe` })
+    expect(get_x_labels().map(label_text)).toEqual([`Fe`])
+    expect(get_y_labels().map(label_text)).toEqual([`Fe`])
   })
 
   // The ramp spans only the values still on screen, so filtering rescales the colors
@@ -628,24 +595,16 @@ describe(`milestone feature props`, () => {
   // Normalize select writes color_scale.type, keeping its scheme.
   test(`controls pane writes color scale type and color bar props back`, async () => {
     // store-backed, so the matrix re-renders on its own writes
-    const scale = fromStore(writable<ColorScale>({ scheme: red_scale, type: `log` }))
-    const bar = fromStore(
-      writable<Partial<ComponentProps<typeof ColorBar>> | null>({ title: `Kept` }),
-    )
-    const state = {
-      get color_scale() {
-        return scale.current
-      },
-      set color_scale(value) {
-        scale.current = value
-      },
-      get color_bar() {
-        return bar.current
-      },
-      set color_bar(value) {
-        bar.current = value
-      },
+    const boxed = (initial: unknown): PropertyDescriptor => {
+      const box = fromStore(writable(initial))
+      return { get: () => box.current, set: (val) => (box.current = val), enumerable: true }
     }
+    type BarProps = Partial<ComponentProps<typeof ColorBar>> | null
+    type State = { color_scale: ColorScale; color_bar: BarProps }
+    const state = Object.defineProperties({} as State, {
+      color_scale: boxed({ scheme: red_scale, type: `log` }),
+      color_bar: boxed({ title: `Kept` }),
+    })
     const props = {
       x_items,
       y_items: make_items([`X`]),
@@ -657,12 +616,8 @@ describe(`milestone feature props`, () => {
     await tick()
     const { control, set_value } = form_controls()
     const reds = () => get_data_cells().map(red_of)
-    expect([control(`Normalize`).value, ...reds()]).toEqual([
-      `log`,
-      0,
-      expect.toBeOneOf([127, 128]),
-      255,
-    ])
+    const normalize = control(`Normalize`).value
+    expect([normalize, ...reds()]).toEqual([`log`, 0, expect.toBeOneOf([127, 128]), 255])
     await set_value(`Normalize`, `linear`)
     expect(reds()).toEqual([0, 23, 255])
     expect(state.color_scale).toEqual({ scheme: red_scale, type: `linear` })
@@ -772,12 +727,7 @@ describe(`milestone feature props`, () => {
   })
 
   test(`selected outline color token contrasts with dark cell backgrounds`, () => {
-    mount_matrix({
-      x: [`A`],
-      y: [`X`],
-      selection_mode: `single`,
-      values: [[`#000000`]],
-    })
+    mount_matrix({ x: [`A`], y: [`X`], selection_mode: `single`, values: [[`#000000`]] })
     const first_cell = get_data_cells()[0]
     // only selected cells carry the token (contrast is resolved on demand)
     expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(``)
@@ -801,10 +751,7 @@ describe(`milestone feature props`, () => {
   })
 
   test(`tooltip_mode=both hides hover tooltip when no pinned cell`, async () => {
-    mount_matrix({
-      tooltip_mode: `both`,
-      values: [[`#000000`, null, `rgba(0, 0, 255, 0.5)`]],
-    })
+    mount_matrix({ tooltip_mode: `both`, values: [[`#000000`, null, `rgba(0, 0, 255, 0.5)`]] })
     await Promise.resolve()
     const [first_cell, missing_cell, translucent_cell] = get_data_cells()
     const tooltip_el = doc_query(`.tooltip`)
@@ -866,12 +813,8 @@ describe(`show_values`, () => {
     [`custom format`, [Math.PI], `.1f`],
     [`null produces no span`, [null, 1], true],
   ] as const)(`%s`, (_description, row, show_values) => {
-    mount_matrix({
-      x: [`A`, `B`].slice(0, row.length),
-      y: [`X`],
-      values: [[...row]],
-      show_values,
-    })
+    const x_labels = [`A`, `B`].slice(0, row.length)
+    mount_matrix({ x: x_labels, y: [`X`], values: [[...row]], show_values })
     expect(query_all(`.cell-value`).map((span) => span.textContent)).toEqual(
       row
         .filter((value) => value !== null)
@@ -1084,12 +1027,8 @@ test.each([
     vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(
       DOMRect.fromRect({ width: 8, height: 12 }),
     )
-    mount_matrix({
-      values: numbered_values,
-      show_controls: `hover`,
-      show_values: true,
-      on_export,
-    })
+    const props = { show_controls: `hover`, show_values: true, on_export } as const
+    mount_matrix({ values: numbered_values, ...props })
     await tick()
     const result = await export_via_pane(on_export, format.toUpperCase())
     expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])

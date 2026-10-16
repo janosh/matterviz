@@ -13,12 +13,19 @@ import {
 } from '#lib/trajectory/frame.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import * as math from '#lib/math.js'
-import { get_pbc_image_sites } from '#lib/structure/pbc.js'
+import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { test_molecules } from '#site/molecules.js'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
-import { make_crystal, make_molecule, make_rocksalt, make_struct } from '../test-fixtures'
+import {
+  cubic_matrix,
+  make_crystal,
+  make_molecule,
+  make_rocksalt,
+  make_struct,
+} from '../test-fixtures'
+import type { SimpleSite } from '../test-fixtures'
 
 const make_random_structure = (n_atoms: number, seed = 7): Crystal => {
   const elements = [`C`, `H`, `N`, `O`, `S`, `Fe`, `Na`, `Cl`]
@@ -45,6 +52,17 @@ const sort_bonds = (bonds: BondPair[]): BondPair[] =>
   bonds.toSorted(
     (left, right) => left.site_idx_1 - right.site_idx_1 || left.site_idx_2 - right.site_idx_2,
   )
+
+// Step-0 numeric MD frame without metadata or vector columns
+const md_frame = (
+  positions: Float64Array,
+  numbers: Uint8Array,
+  lattice?: math.Matrix3x3,
+  pbc?: Pbc,
+) => create_numeric_md_frame(positions, numbers, lattice, pbc, 0, {}, [])
+const NO_PBC: Pbc = [false, false, false]
+const xyz_array = (structure: AnyStructure) =>
+  Float64Array.from(structure.sites.flatMap(({ xyz }) => xyz))
 
 // number of bonds touching each site
 const bonds_per_site = (bonds: BondPair[], n_sites: number): number[] => {
@@ -374,23 +392,21 @@ describe(`Explicit Bond Metadata`, () => {
     }
   })
 
-  test(`parses and renders explicit crystal bonds with cell shifts`, () => {
+  // Matching site indices with opposite shifts stay two distinct bonds, and explicit_only
+  // draws each to its image: the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the
+  // 9 A in-cell distance)
+  test(`parses explicit crystal bonds with cell shifts and draws them to their images`, () => {
     const structure = make_crystal(10, [
       [`C`, [0.95, 0.5, 0.5]],
       [`O`, [0.05, 0.5, 0.5]],
     ])
-    structure.properties = {
-      bonds: [
-        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
-        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
-      ],
-    }
-
-    const explicit_bonds = bonding.get_explicit_bond_metadata(structure)
-    expect(explicit_bonds).toEqual([
+    const declared: StructureBond[] = [
       { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
       { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
-    ])
+    ]
+    structure.properties = { bonds: declared }
+
+    expect(bonding.get_explicit_bond_metadata(structure)).toEqual(declared)
     expect(bonding.get_bond_key(0, 1, [1, 0, 0])).toBe(`0-1@1,0,0`)
     // swapped endpoints negate the shift, a zero shift keys like an in-cell bond and a periodic
     // self-bond keys under its canonical shift (first nonzero component positive)
@@ -398,13 +414,20 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonding.get_bond_key(1, 0, [0, 0, 0])).toBe(`0-1`)
     expect(bonding.get_bond_key(2, 2, [0, -1, 1])).toBe(`2-2@0,1,-1`)
 
-    const bond = bonding.structure_bond_to_bond_pair(structure, explicit_bonds[0])
-
-    expect(bond.pos_1).toEqual([9.5, 5, 5])
-    expect(bond.pos_2).toEqual([10.5, 5, 5])
-    expect(bond.bond_length).toBeCloseTo(1)
-    expect(bond.bond_order).toBe(2)
-    expect(bond.cell_shift).toEqual([1, 0, 0])
+    const drawn = bonding
+      .explicit_only(structure)
+      .map(({ pos_1, pos_2, bond_length, bond_order, cell_shift }) => [
+        pos_1,
+        pos_2,
+        Number(bond_length.toFixed(9)),
+        bond_order,
+        cell_shift,
+      ])
+    // oxfmt-ignore
+    expect(drawn).toEqual([
+      [[9.5, 5, 5], [10.5, 5, 5], 1, 2, [1, 0, 0]],
+      [[9.5, 5, 5], [-9.5, 5, 5], 19, 3, [-1, 0, 0]],
+    ])
   })
 
   // With image atoms shown, the perceived bond ends on the O image
@@ -481,35 +504,6 @@ describe(`explicit_only strategy`, () => {
       )
     }
   })
-
-  test(`respects cell_shift on periodic structures`, () => {
-    const structure = make_crystal(10, [
-      [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.05, 0.5, 0.5]],
-    ])
-    structure.properties = {
-      bonds: [
-        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
-        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
-      ],
-    }
-
-    const bonds = bonding.explicit_only(structure)
-    const by_key = new Map(
-      bonds.map((bond) => [
-        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-        bond,
-      ]),
-    )
-    // matching site indices with opposite shifts must stay two distinct bonds
-    expect([...by_key.keys()].toSorted()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
-    // the +1 image of O sits at x=10.5, 1 A from C at x=9.5 (not the 9 A in-cell distance)
-    expect(by_key.get(`0-1@1,0,0`)?.pos_2).toEqual([10.5, 5, 5])
-    expect(by_key.get(`0-1@1,0,0`)?.bond_length).toBeCloseTo(1)
-    expect(by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
-    expect(by_key.get(`0-1@-1,0,0`)?.pos_2).toEqual([-9.5, 5, 5])
-    expect(by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
-  })
 })
 
 describe(`Molecular Bonding Analysis`, () => {
@@ -556,33 +550,22 @@ const wrap_frac = (val: number) => val - Math.floor(val)
 // sites of one element at the given fractional coordinates
 const sites_at = (element: ElementSymbol, abcs: Vec3[]) =>
   abcs.map((abc) => ({ element, abc }))
-const fcc_offsets: Vec3[] = [
-  [0, 0, 0],
-  [0.5, 0.5, 0],
-  [0.5, 0, 0.5],
-  [0, 0.5, 0.5],
-]
+// oxfmt-ignore
+const fcc_offsets: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
 // fcc lattice sites for `element`, once per basis vector
 const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
   fcc_offsets.flatMap((off) =>
     basis.map((vec) => ({
       element,
-      abc: [
-        wrap_frac(off[0] + vec[0]),
-        wrap_frac(off[1] + vec[1]),
-        wrap_frac(off[2] + vec[2]),
-      ] as Vec3,
+      abc: off.map((coord, axis) => wrap_frac(coord + vec[axis])) as Vec3,
     })),
   )
-const diamond_basis: Vec3[] = [
-  [0, 0, 0],
-  [0.25, 0.25, 0.25],
-]
-const bcc = (element: ElementSymbol) =>
-  sites_at(element, [
-    [0, 0, 0],
-    [0.5, 0.5, 0.5],
-  ])
+// oxfmt-ignore
+const diamond_basis: Vec3[] = [[0, 0, 0], [0.25, 0.25, 0.25]]
+// oxfmt-ignore
+const bcc = (element: ElementSymbol) => sites_at(element, [[0, 0, 0], [0.5, 0.5, 0.5]])
+// oxfmt-ignore
+const hcp = (element: ElementSymbol) => sites_at(element, [[1 / 3, 2 / 3, 0.25], [2 / 3, 1 / 3, 0.75]])
 // Expand Wyckoff representatives through the 8 operations of Pnma (No. 62), deduping
 // the special positions (4a, 4c) that fewer ops map to distinct sites
 const pnma = (element: ElementSymbol, [coord_x, coord_y, coord_z]: Vec3) => {
@@ -616,12 +599,8 @@ const hexagonal = (value_a: number, value_c: number): Vec3[] => [
 ]
 
 // [label, lattice, sites, expected coordination number per element]
-const cn_benchmark: [
-  string,
-  number | Vec3[],
-  ReturnType<typeof fcc>,
-  Record<string, number>,
-][] = [
+// oxfmt-ignore
+const cn_benchmark: [string, number | Vec3[], SimpleSite[], Record<string, number>][] = [
   [`diamond C`, 3.567, fcc(`C`, diamond_basis), { C: 4 }],
   [`Si diamond`, 5.431, fcc(`Si`, diamond_basis), { Si: 4 }],
   [`fcc Cu`, 3.615, fcc(`Cu`), { Cu: 12 }],
@@ -633,115 +612,39 @@ const cn_benchmark: [
   // 5.32 A contact by 9%, the 12-coordinate metallic radius (2.65) fits it
   [`bcc Fe`, 2.866, bcc(`Fe`), { Fe: 8 }],
   [`bcc Cs`, 6.141, bcc(`Cs`), { Cs: 8 }],
-  [
-    // MgCu2-type Laves phase: Lu on the diamond sublattice (8a), Al on the 16d
-    // tetrahedra. Al has 6 Al at 2.74 A and 6 Lu at 3.21 A; Lu has 12 Al and 4 Lu at 3.35 A.
-    // Covalent radii called the Al-Al contact stretched and dropped it (Al CN 6), and Lu-Lu
-    // fell to a same-species penalty; the metallic radii (1.43 / 1.74) recover both shells
-    `LuAl2 Laves`,
-    7.742,
-    [
-      ...fcc(`Lu`, diamond_basis),
-      ...fcc(`Al`, [
-        [0.625, 0.625, 0.625],
-        [0.375, 0.875, 0.125],
-        [0.875, 0.125, 0.375],
-        [0.125, 0.375, 0.875],
-      ]),
-    ],
-    { Al: 12, Lu: 16 },
-  ],
-  [
-    // Cuprite: linear O-Cu-O (Cu-O 1.85 A) with a Cu-Cu contact at 3.02 A, 1.18x the
-    // covalent-radii sum but 1.18x the metallic sum too. Both Cu carry an anion, so the
-    // Cu-Cu contact is a stretched cation-cation pair and must not be drawn
-    `Cu2O cuprite`,
-    4.27,
-    [
-      { element: `O`, abc: [0, 0, 0] as Vec3 },
-      { element: `O`, abc: [0.5, 0.5, 0.5] as Vec3 },
-      { element: `Cu`, abc: [0.25, 0.25, 0.25] as Vec3 },
-      { element: `Cu`, abc: [0.75, 0.75, 0.25] as Vec3 },
-      { element: `Cu`, abc: [0.75, 0.25, 0.75] as Vec3 },
-      { element: `Cu`, abc: [0.25, 0.75, 0.75] as Vec3 },
-    ],
-    { Cu: 2, O: 4 },
-  ],
-  [
-    // Olivine LiFePO4 (Pnma). P sits 2.64-2.68 A from Li and 2.83-2.86 A from Fe - well
-    // inside 2x the covalent radii - so a metal-only cation test bonded P to its cation
-    // neighbors (P CN 7). Both ends of Li-P / Fe-P carry anions: the tight stretch rule
-    // rejects them and leaves the PO4 tetrahedra and FeO6 octahedra. Li is unchecked: as a
-    // spectator it gets no boundary images (see find_image_atoms), so corner Li stay at CN 3
-    `LiFePO4 olivine`,
-    [
-      [10.329, 0, 0],
-      [0, 6.0065, 0],
-      [0, 0, 4.6908],
-    ] as Vec3[],
-    [
-      ...pnma(`Li`, [0, 0, 0]),
-      ...pnma(`Fe`, [0.28222, 0.25, 0.97472]),
-      ...pnma(`P`, [0.09486, 0.25, 0.4182]),
-      ...pnma(`O`, [0.09678, 0.25, 0.74279]),
-      ...pnma(`O`, [0.4571, 0.25, 0.20602]),
-      ...pnma(`O`, [0.16558, 0.04646, 0.28478]),
-    ],
-    { Fe: 6, P: 4 },
-  ],
+  // MgCu2-type Laves phase: Lu on the diamond sublattice (8a), Al on the 16d
+  // tetrahedra. Al has 6 Al at 2.74 A and 6 Lu at 3.21 A; Lu has 12 Al and 4 Lu at 3.35 A.
+  // Covalent radii called the Al-Al contact stretched and dropped it (Al CN 6), and Lu-Lu
+  // fell to a same-species penalty; the metallic radii (1.43 / 1.74) recover both shells
+  [`LuAl2 Laves`, 7.742, [...fcc(`Lu`, diamond_basis), ...fcc(`Al`, [[0.625, 0.625, 0.625], [0.375, 0.875, 0.125], [0.875, 0.125, 0.375], [0.125, 0.375, 0.875]])], { Al: 12, Lu: 16 }],
+  // Cuprite: linear O-Cu-O (Cu-O 1.85 A) with a Cu-Cu contact at 3.02 A, 1.18x the
+  // covalent-radii sum but 1.18x the metallic sum too. Both Cu carry an anion, so the
+  // Cu-Cu contact is a stretched cation-cation pair and must not be drawn
+  [`Cu2O cuprite`, 4.27, [...sites_at(`O`, [[0, 0, 0], [0.5, 0.5, 0.5]]), ...sites_at(`Cu`, [[0.25, 0.25, 0.25], [0.75, 0.75, 0.25], [0.75, 0.25, 0.75], [0.25, 0.75, 0.75]])], { Cu: 2, O: 4 }],
+  // Olivine LiFePO4 (Pnma). P sits 2.64-2.68 A from Li and 2.83-2.86 A from Fe - well
+  // inside 2x the covalent radii - so a metal-only cation test bonded P to its cation
+  // neighbors (P CN 7). Both ends of Li-P / Fe-P carry anions: the tight stretch rule
+  // rejects them and leaves the PO4 tetrahedra and FeO6 octahedra. Li is unchecked: as a
+  // spectator it gets no boundary images (see find_image_atoms), so corner Li stay at CN 3
+  [`LiFePO4 olivine`, [[10.329, 0, 0], [0, 6.0065, 0], [0, 0, 4.6908]], [
+    ...pnma(`Li`, [0, 0, 0]), ...pnma(`Fe`, [0.28222, 0.25, 0.97472]), ...pnma(`P`, [0.09486, 0.25, 0.4182]),
+    ...pnma(`O`, [0.09678, 0.25, 0.74279]), ...pnma(`O`, [0.4571, 0.25, 0.20602]), ...pnma(`O`, [0.16558, 0.04646, 0.28478]),
+  ], { Fe: 6, P: 4 }],
   [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
   [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
   [`ZnS zincblende`, 5.41, [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])], { Zn: 4, S: 4 }],
-  [
-    `CaF2 fluorite`,
-    5.463,
-    [...fcc(`Ca`), ...fcc(`F`, [[0.25, 0.25, 0.25]]), ...fcc(`F`, [[0.75, 0.75, 0.75]])],
-    { Ca: 8, F: 4 },
-  ],
-  [
-    // Pa-3 (No. 205) with S on 8c (x,x,x): S2 dimers at 2.16 A, next S...S at 3.08 A. An
-    // fcc-translated (x,x,x)+(1-x,1-x,1-x) stand-in puts non-bonded S...S at 2.41 A.
-    `pyrite FeS2`,
-    5.416,
-    [
-      ...fcc(`Fe`),
-      ...sites_at(`S`, [
-        [0.385, 0.385, 0.385],
-        [0.615, 0.615, 0.615],
-        [0.885, 0.115, 0.615],
-        [0.115, 0.615, 0.885],
-        [0.615, 0.885, 0.115],
-        [0.115, 0.885, 0.385],
-        [0.885, 0.385, 0.115],
-        [0.385, 0.115, 0.885],
-      ]),
-    ],
-    { Fe: 6, S: 4 },
-  ],
-  [
-    `CsCl`,
-    4.119,
-    [
-      { element: `Cs`, abc: [0, 0, 0] as Vec3 },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] as Vec3 },
-    ],
-    { Cs: 8, Cl: 8 },
-  ],
-  [
-    `SrTiO3 perovskite`,
-    3.905,
-    [
-      { element: `Sr`, abc: [0.5, 0.5, 0.5] as Vec3 },
-      { element: `Ti`, abc: [0, 0, 0] as Vec3 },
-      { element: `O`, abc: [0.5, 0, 0] as Vec3 },
-      { element: `O`, abc: [0, 0.5, 0] as Vec3 },
-      { element: `O`, abc: [0, 0, 0.5] as Vec3 },
-      // O is left unchecked: Sr is a spectator A-site cation, so find_image_atoms
-      // deliberately generates no Sr images and the base O atoms see 1 Sr instead of 4.
-      // Sr 12 / Ti 6 are the point here - they only hold if Sr-Ti does NOT bond.
-    ],
-    { Sr: 12, Ti: 6 },
-  ],
+  [`CaF2 fluorite`, 5.463, [...fcc(`Ca`), ...fcc(`F`, [[0.25, 0.25, 0.25]]), ...fcc(`F`, [[0.75, 0.75, 0.75]])], { Ca: 8, F: 4 }],
+  // Pa-3 (No. 205) with S on 8c (x,x,x): S2 dimers at 2.16 A, next S...S at 3.08 A. An
+  // fcc-translated (x,x,x)+(1-x,1-x,1-x) stand-in puts non-bonded S...S at 2.41 A.
+  [`pyrite FeS2`, 5.416, [...fcc(`Fe`), ...sites_at(`S`, [
+    [0.385, 0.385, 0.385], [0.615, 0.615, 0.615], [0.885, 0.115, 0.615], [0.115, 0.615, 0.885],
+    [0.615, 0.885, 0.115], [0.115, 0.885, 0.385], [0.885, 0.385, 0.115], [0.385, 0.115, 0.885],
+  ])], { Fe: 6, S: 4 }],
+  [`CsCl`, 4.119, [[`Cs`, [0, 0, 0]], [`Cl`, [0.5, 0.5, 0.5]]], { Cs: 8, Cl: 8 }],
+  // O is left unchecked: Sr is a spectator A-site cation, so find_image_atoms deliberately
+  // generates no Sr images and the base O atoms see 1 Sr instead of 4. Sr 12 / Ti 6 are the
+  // point here - they only hold if Sr-Ti does NOT bond.
+  [`SrTiO3 perovskite`, 3.905, [[`Sr`, [0.5, 0.5, 0.5]], [`Ti`, [0, 0, 0]], ...sites_at(`O`, [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]])], { Sr: 12, Ti: 6 }],
   // TiC and Ti2O are the pair that pins cation_cation_penalty's anion-shell gate. Both are
   // Ti plus a nonmetal, and in both the Ti-Ti contact is SHORTER than Ti-nonmetal once
   // normalized by covalent radii (0.956 vs 0.915, and 0.919 vs 0.923), so no
@@ -750,53 +653,15 @@ const cn_benchmark: [
   // Ti2O's Ti has only 3 O and the hcp Ti framework at 2.95 A IS the structure. Applying
   // the penalty unconditionally took Ti2O from CN 15 to 3 and erased that framework.
   [`TiC rocksalt`, 4.33, [...fcc(`Ti`), ...fcc(`C`, [[0.5, 0, 0]])], { Ti: 6, C: 6 }],
-  [
-    `Ti2O suboxide`,
-    hexagonal(2.9587, 4.7852),
-    [
-      { element: `Ti`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
-      { element: `Ti`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
-      { element: `O`, abc: [0, 0, 0] as Vec3 },
-    ],
-    { Ti: 15, O: 6 },
-  ], // 12 Ti + 3 O around each Ti
-  [
-    `hcp Ti`,
-    hexagonal(2.9587, 4.7852),
-    [
-      { element: `Ti`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
-      { element: `Ti`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
-    ],
-    { Ti: 12 },
-  ], // control: no anion-former, so the gate is inert either way
-  [
-    `graphite C`,
-    [
-      [2.464, 0, 0],
-      [-1.232, 2.13389, 0],
-      [0, 0, 6.711],
-    ] as Vec3[],
-    [
-      { element: `C`, abc: [0, 0, 0.25] as Vec3 },
-      { element: `C`, abc: [0, 0, 0.75] as Vec3 },
-      { element: `C`, abc: [1 / 3, 2 / 3, 0.25] as Vec3 },
-      { element: `C`, abc: [2 / 3, 1 / 3, 0.75] as Vec3 },
-    ],
-    { C: 3 },
-  ],
-  [
-    `rutile TiO2`,
-    tetragonal(4.594, 2.959),
-    [
-      { element: `Ti`, abc: [0, 0, 0] },
-      { element: `Ti`, abc: [0.5, 0.5, 0.5] },
-      { element: `O`, abc: [0.3053, 0.3053, 0] },
-      { element: `O`, abc: [0.6947, 0.6947, 0] },
-      { element: `O`, abc: [0.8053, 0.1947, 0.5] },
-      { element: `O`, abc: [0.1947, 0.8053, 0.5] },
-    ],
-    { Ti: 6, O: 3 },
-  ],
+  // 12 Ti + 3 O around each Ti
+  [`Ti2O suboxide`, hexagonal(2.9587, 4.7852), [...hcp(`Ti`), [`O`, [0, 0, 0]]], { Ti: 15, O: 6 }],
+  // control: no anion-former, so the gate is inert either way
+  [`hcp Ti`, hexagonal(2.9587, 4.7852), hcp(`Ti`), { Ti: 12 }],
+  [`graphite C`, [[2.464, 0, 0], [-1.232, 2.13389, 0], [0, 0, 6.711]], sites_at(`C`, [[0, 0, 0.25], [0, 0, 0.75], [1 / 3, 2 / 3, 0.25], [2 / 3, 1 / 3, 0.75]]), { C: 3 }],
+  [`rutile TiO2`, tetragonal(4.594, 2.959), [
+    ...sites_at(`Ti`, [[0, 0, 0], [0.5, 0.5, 0.5]]),
+    ...sites_at(`O`, [[0.3053, 0.3053, 0], [0.6947, 0.6947, 0], [0.8053, 0.1947, 0.5], [0.1947, 0.8053, 0.5]]),
+  ], { Ti: 6, O: 3 }],
 ]
 
 describe(`coordination number benchmark`, () => {
@@ -998,15 +863,7 @@ describe(`compute_bonds memo`, () => {
           { element: `Si`, xyz: [displacement, displacement, displacement] },
           { element: `Si`, xyz: Array(3).fill(separation - displacement) as Vec3 },
         ])
-        const frame = create_numeric_md_frame(
-          Float64Array.from(source.sites.flatMap(({ xyz }) => xyz)),
-          Uint8Array.of(14, 14),
-          undefined,
-          [false, false, false],
-          0,
-          {},
-          [],
-        )
+        const frame = md_frame(xyz_array(source), Uint8Array.of(14, 14), undefined, NO_PBC)
         const structure = numeric ? new FrameView().update(frame).structure : source
         const actual = search.compute_columns(structure)
         const expected = pack_bonds(bonding.electroneg_ratio(structure))
@@ -1042,17 +899,10 @@ describe(`compute_bonds memo`, () => {
       }
     },
   )
+  // oxfmt-ignore
   test.each([
-    [
-      [40, 0, 0],
-      [0, 40, 0],
-      [0, 0, 40],
-    ],
-    [
-      [40, 0, 0],
-      [8, 40, 0],
-      [3, 4, 40],
-    ],
+    [[40, 0, 0], [0, 40, 0], [0, 0, 40]],
+    [[40, 0, 0], [8, 40, 0], [3, 4, 40]],
   ])(`keeps finite bonds exact across wrapping in cell %j`, (...matrix) => {
     const search = new bonding.BondSearch()
     const source = make_crystal(40, [
@@ -1150,15 +1000,8 @@ describe(`compute_bonds memo`, () => {
           { site_idx_1: 0, site_idx_2: 0, order: 1, cell_shift: [1, 0, 0] },
         ],
       }
-      const frame = create_numeric_md_frame(
-        Float64Array.from(source.sites.flatMap(({ xyz }) => xyz)),
-        Uint8Array.of(14, 8, 14, 26),
-        source.lattice.matrix,
-        source.lattice.pbc,
-        0,
-        {},
-        [],
-      )
+      const { matrix, pbc } = source.lattice
+      const frame = md_frame(xyz_array(source), Uint8Array.of(14, 8, 14, 26), matrix, pbc)
       frame.scalar_columns = { orig_unit_cell_idx: Float64Array.of(0, 1, 0, 3) }
       frame.structure.properties = source.properties
       const structure = numeric ? new FrameView().update(frame).structure : source
@@ -1187,11 +1030,7 @@ describe(`compute_bonds memo`, () => {
         const frame = create_numeric_md_frame(
           Float64Array.of(0.1 + step / 100, 0, 0, 1.8, 0, 0, 3.9, 0, 0, 0.1, 2, 0, 2, 2, 0),
           Uint8Array.of(14, 8, 14, 26, 6),
-          [
-            [30, 0, 0],
-            [0, 30, 0],
-            [0, 0, 30],
-          ],
+          cubic_matrix(30),
           [true, true, true],
           step,
           {},
@@ -1217,15 +1056,7 @@ describe(`compute_bonds memo`, () => {
         expect(materialize).not.toHaveBeenCalled()
         expect(get).not.toHaveBeenCalled()
       }
-      const invalid = create_numeric_md_frame(
-        Float64Array.of(0, 0, 0),
-        Uint8Array.of(0),
-        undefined,
-        undefined,
-        0,
-        {},
-        [],
-      )
+      const invalid = md_frame(Float64Array.of(0, 0, 0), Uint8Array.of(0))
       expect(() => search.compute_columns(view.update(invalid).structure)).toThrow(
         `Invalid atomic number 0 at site 1`,
       )
@@ -1245,14 +1076,11 @@ describe(`compute_bonds memo`, () => {
     const sigmas = [0.01, 0.01, 0.01, 0.01, 0.3, 0.3, 0.3, 0.01, 0.01, 0.01, 0.01]
     const skinned = sigmas.map((sigma) => {
       const frame = wrap_frame_coordinates(
-        create_numeric_md_frame(
+        md_frame(
           Float64Array.from(sites, (coord) => coord + sigma * gauss()),
           new Uint8Array(sites.length / 3).fill(29),
           copper.lattice.matrix,
           [true, true, true],
-          0,
-          {},
-          [],
         ),
       )
       const structure = numeric
@@ -1516,20 +1344,11 @@ describe(`neighbor_query`, () => {
     return found
   }
   // Skewed triclinic cell (angles far from 90°) with sites deliberately outside [0, 1)
-  const triclinic: Crystal = make_crystal(
-    [
-      [4.1, 0, 0],
-      [1.9, 3.6, 0],
-      [-1.2, 1.4, 3.9],
-    ],
-    [
-      { element: `Na`, abc: [0.02, 0.1, 0.95] },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
-      { element: `Na`, abc: [1.3, -0.4, 0.25] }, // unwrapped
-      { element: `O`, abc: [0.8, 0.9, 0.1] },
-      { element: `Cl`, abc: [0.25, 0.75, 0.6] },
-    ],
-  )
+  // oxfmt-ignore
+  const triclinic: Crystal = make_crystal([[4.1, 0, 0], [1.9, 3.6, 0], [-1.2, 1.4, 3.9]], [
+    [`Na`, [0.02, 0.1, 0.95]], [`Cl`, [0.5, 0.5, 0.5]], [`Na`, [1.3, -0.4, 0.25]], // unwrapped
+    [`O`, [0.8, 0.9, 0.1]], [`Cl`, [0.25, 0.75, 0.6]],
+  ])
   // Several consecutive sites share each bin; reordering revisits bins after crossing
   // their edges. Clusters near opposite faces also populate repeated periodic-image bins.
   const clustered = make_crystal(
@@ -1544,6 +1363,7 @@ describe(`neighbor_query`, () => {
     })),
   )
 
+  // oxfmt-ignore
   test.each([
     [`triclinic, full pbc`, triclinic, [true, true, true], 5.5],
     [`triclinic, slab (pbc z off)`, triclinic, [true, true, false], 5.5],
@@ -1551,37 +1371,17 @@ describe(`neighbor_query`, () => {
     [`triclinic, no pbc`, triclinic, [false, false, false], 6.0],
     [`clustered, full pbc`, clustered, [true, true, true], 2.1],
     [`clustered, no pbc`, clustered, [false, false, false], 2.1],
-    [
-      `image-dominated small cell`,
-      make_crystal(3, [{ element: `Si`, abc: [0.2, 0.3, 0.4] }]),
-      [true, true, true],
-      7.5,
-    ],
-    [
-      `reversed clusters, full pbc`,
-      { ...clustered, sites: clustered.sites.toReversed() },
-      [true, true, true],
-      2.1,
-    ],
-    [
-      `interleaved clusters, full pbc`,
-      {
-        ...clustered,
-        sites: clustered.sites.map((_, idx) => clustered.sites[(idx * 7) % 24]),
-      },
-      [true, true, true],
-      2.1,
-    ],
+    [`image-dominated small cell`, make_crystal(3, [[`Si`, [0.2, 0.3, 0.4]]]), [true, true, true], 7.5],
+    [`reversed clusters, full pbc`, { ...clustered, sites: clustered.sites.toReversed() }, [true, true, true], 2.1],
+    [`interleaved clusters, full pbc`, { ...clustered, sites: clustered.sites.map((_, idx) => clustered.sites[(idx * 7) % 24]) }, [true, true, true], 2.1],
   ] as const)(`matches brute force over ±3 images: %s`, (_label, structure, pbc, cutoff) => {
     const list = bonding.neighbor_query(structure, { cutoff, pbc })
-    const frame = create_numeric_md_frame(
-      Float64Array.from(structure.sites.flatMap(({ xyz }) => xyz)),
+    // pbc off keeps source positions; the query supplies its own PBC
+    const frame = md_frame(
+      xyz_array(structure),
       new Uint8Array(structure.sites.length).fill(14),
       structure.lattice.matrix,
-      [false, false, false], // Keep source positions; the query supplies its own PBC.
-      0,
-      {},
-      [],
+      NO_PBC,
     )
     const numeric = new FrameView().update(frame).structure
     const columns = numeric_sites.get(numeric)

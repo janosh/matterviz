@@ -30,11 +30,7 @@ export function normalize_to_scene(
   return range === 0 ? 0 : ((value - min_val) / range - 0.5) * scene_size
 }
 
-// Create a function to convert user data coordinates to Three.js coordinates
-// Note: In Three.js, Y is vertical. We map:
-// - user X → Three.js X (horizontal)
-// - user Y → Three.js Z (depth/horizontal)
-// - user Z → Three.js Y (vertical)
+// User data coords to Three.js ones, where Y is vertical: user X → X, Y → Z (depth), Z → Y
 export function create_to_threejs(
   ranges: Record<`x` | `y` | `z`, Vec2>,
 ): (user_x: number, user_y: number, user_z: number) => Point3D {
@@ -125,9 +121,8 @@ export const sample_surface = (
   surface: Surface3DConfig,
   plot_ranges: { x: Vec2; y: Vec2 } | null = null,
 ): Point3D[] =>
-  (surface_vertices(surface, plot_ranges)?.points ?? []).filter(
-    (point) =>
-      Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
+  (surface_vertices(surface, plot_ranges)?.points ?? []).filter((point) =>
+    [point.x, point.y, point.z].every(Number.isFinite),
   )
 
 // World-space planes bounding the scene box (Three.js axes, user z vertical), for a

@@ -6,7 +6,7 @@ This example uses bands and DOS from different materials.
 
 ```svelte example
 <script lang="ts">
-  import { BrillouinBandsDos } from 'matterviz'
+  import { BandsAndDos } from 'matterviz'
   import { electronic_bands } from '#site/electronic/bands/index.js'
   import { dos_spin_polarization } from '#site/electronic/dos/index.js'
   import { normalize_dos } from 'matterviz'
@@ -16,7 +16,7 @@ This example uses bands and DOS from different materials.
   import { structure_map } from '#site/structures.js'
 </script>
 
-<BrillouinBandsDos
+<BandsAndDos
   band_structs={{ '': electronic_bands.cao_2605 }}
   doses={{ '': total_dos }}
   structure={structure_map.get('mp-1')}
@@ -33,7 +33,7 @@ Phonon band structure with acoustic/optical mode styling:
 
 ```svelte example
 <script lang="ts">
-  import { BrillouinBandsDos } from 'matterviz'
+  import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
 
   const bands_props = {
@@ -44,7 +44,7 @@ Phonon band structure with acoustic/optical mode styling:
   }
 </script>
 
-<BrillouinBandsDos
+<BandsAndDos
   band_structs={{ '': phonon_bands['mp-2758-Sr4Se4-pbe'] }}
   doses={{ '': phonon_dos['mp-2758-Sr4Se4-pbe'] }}
   structure={phonon_data['mp-2758-Sr4Se4-pbe']?.primitive}
@@ -66,11 +66,11 @@ Phonon band structure with acoustic/optical mode styling:
 
 ```svelte example
 <script lang="ts">
-  import { BrillouinBandsDos } from 'matterviz'
+  import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
 </script>
 
-<BrillouinBandsDos
+<BandsAndDos
   band_structs={{
     'DFT (PBE)': phonon_bands['mp-2667-Cs1Au1-pbe'],
     CHGNet: phonon_bands['mp-2667-Cs1Au1-chgnet-v0.3.0'],
@@ -92,11 +92,11 @@ Customize the Brillouin zone appearance (colors, opacity, edges) via `bz_props`.
 
 ```svelte example
 <script lang="ts">
-  import { BrillouinBandsDos } from 'matterviz'
+  import { BandsAndDos } from 'matterviz'
   import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
 </script>
 
-<BrillouinBandsDos
+<BandsAndDos
   band_structs={{
     'DFT (PBE)': phonon_bands['mp-2758-Sr4Se4-pbe'],
     M3GNet: phonon_bands['mp-2758-Sr4Se4-m3gnet'],

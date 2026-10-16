@@ -2,10 +2,9 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  // Shared markup for the hierarchical part-of-whole charts (Sunburst, Treemap), rendered
-  // inside a ChartShell: breadcrumb trail, the svg with its delegated pointer/keyboard
-  // handling, tooltip, legend and color bar. Each chart renders its geometry into the
-  // `marks` snippet; all shared state lives on the HierarchyChartState it passes in.
+  // Shared markup of Sunburst and Treemap inside a ChartShell: breadcrumbs, the svg with its
+  // delegated pointer/keyboard handling, tooltip, legend and color bar. Each chart renders its
+  // geometry into `marks`; all shared state lives on the HierarchyChartState it passes in.
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -104,9 +103,8 @@
     <PatternDefs patterns={chart_state.node_infos.map((info) => info.pattern)} />
     {@render extra_defs?.()}
   </defs>
-  <!-- Hover/click delegation sits on the chart group (not the node group) so
-  labels - which carry the same data-<chart>-node-idx and are selectable text -
-  forward interactions to their node instead of swallowing them -->
+  <!-- Delegation sits on the chart group (not the node group) so labels, which carry the same
+  data-<chart>-node-idx, forward interactions to their node instead of swallowing them -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <g
     transform={chart_transform}
@@ -136,8 +134,7 @@
     {#if tooltip}
       {@render tooltip(info)}
     {:else}
-      <!-- A bucket's own label can only say what fits inside a thin outer ring, so
-      the count of what it folded away belongs here, where there is room for it. -->
+      <!-- A bucket's label can't fit what it folded away, so that count goes here -->
       <strong>{info.label_path.join(` › `)}</strong>: <TooltipValue
         value={format_value(info.value, chart_state.value_format)}
       />

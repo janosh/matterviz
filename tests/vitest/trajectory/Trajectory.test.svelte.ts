@@ -1116,6 +1116,18 @@ describe(`plot`, () => {
 })
 
 describe(`banners`, () => {
+  // One failure as a rejected promise and as a synchronous throw
+  const failing = (message: string) =>
+    [
+      [`rejected`, () => Promise.reject(new Error(message))],
+      [
+        `thrown`,
+        () => {
+          throw new Error(message)
+        },
+      ],
+    ] as const
+
   test(`parse warnings render as a dismissible banner`, async () => {
     const target = mount_trajectory(
       default_props({ trajectory: make_run({ warnings: [`odd header`, `missing cell`] }) }),
@@ -1137,15 +1149,7 @@ describe(`banners`, () => {
     expect(find_parse_banner(fresh_viewer)).toBeUndefined()
   })
 
-  test.each([
-    [`rejected`, () => Promise.reject(new Error(`disk on fire`))],
-    [
-      `thrown`,
-      () => {
-        throw new Error(`disk on fire`)
-      },
-    ],
-  ])(
+  test.each(failing(`disk on fire`))(
     `a %s frame read shows an error banner until the step changes`,
     async (_kind, request) => {
       vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -1174,15 +1178,7 @@ describe(`banners`, () => {
     },
   )
 
-  test.each([
-    [`rejected`, () => Promise.reject(new Error(`no full pass`))],
-    [
-      `thrown`,
-      () => {
-        throw new Error(`no full pass`)
-      },
-    ],
-  ])(
+  test.each(failing(`no full pass`))(
     `a %s trail collection is logged and the viewer keeps rendering`,
     async (_kind, collect) => {
       // Trails are optional: a synchronous throw used to escape the effect instead of being

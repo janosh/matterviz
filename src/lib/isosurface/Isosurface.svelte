@@ -1,11 +1,8 @@
 <script lang="ts">
-  // Threlte component that renders isosurface meshes from one or more volumetric
-  // datasets using marching cubes. Each layer picks a geometry-source volume and
-  // optionally a different color-source volume whose scalar field is sampled at
-  // surface vertices and mapped through a colormap (e.g. density colored by ESP).
-  // Geometry is cached per layer so colormap/color-range changes never rerun
-  // marching cubes, and sampled scalars are cached so they only remap through the
-  // colormap LUT.
+  // Marching-cubes isosurface meshes for one or more volumes. Each layer picks a geometry
+  // volume and optionally a color volume sampled at the vertices through a colormap (e.g.
+  // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
+  // only remap through the LUT and never rerun marching cubes.
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from '../utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
@@ -39,11 +36,9 @@
   }: {
     volumes?: VolumetricData[]
     settings?: IsosurfaceSettings
-    // Supercell tiling applied to geometry volumes (color sampling always uses
-    // the original volume with periodic wrapping for full fidelity)
+    // Supercell tiling of geometry volumes (color sampling wraps the original volume)
     tiling?: Vec3
-    // Reports geometry worker construction and runtime failures. Uses the host's
-    // set_isosurface_error_handler when no component handler is supplied.
+    // Geometry worker failures; defaults to the host's set_isosurface_error_handler
     on_error?: IsosurfaceErrorHandler
   } = $props()
 
@@ -51,9 +46,8 @@
   const context_on_error = get_isosurface_error_handler()
   const report_error = (message: string): void => (on_error ?? context_on_error)?.(message)
 
-  // Geometry and colour updates mutate three objects in place (setAttribute, needsUpdate),
-  // which bypasses the <T> props Threlte watches, so under the hosts' on-demand render mode
-  // nothing would repaint until the next orbit without an explicit invalidate
+  // In-place geometry/colour updates bypass the <T> props Threlte watches, so on-demand
+  // rendering needs an explicit invalidate to repaint
   const threlte = useThrelte()
 
   type ResolvedLayer = IsosurfaceLayer & { volume: VolumetricData }
@@ -70,18 +64,13 @@
   let vol_id_counter = 0
   const vol_ids = new WeakMap<VolumetricData, number>()
   const vol_id = (vol: VolumetricData): number => {
-    let identifier = vol_ids.get(vol)
-    if (identifier === undefined) {
-      identifier = ++vol_id_counter
-      vol_ids.set(vol, identifier)
-    }
+    const identifier = vol_ids.get(vol) ?? ++vol_id_counter
+    vol_ids.set(vol, identifier)
     return identifier
   }
 
-  // Finite extraction range for this volume. Periodic volumes always use one
-  // so integer tiling and fractional VESTA-style bounds share exact endpoint
-  // semantics; finite volumes only use an explicitly requested crop (the
-  // resolver clamps negative halo and only applies it to periodic volumes).
+  // Finite extraction range: always for periodic volumes (tiling and fractional bounds share
+  // endpoint semantics), only an explicit crop for finite ones
   const effective_range = (vol: VolumetricData): DisplayRange | null =>
     resolve_volume_display_range(vol, {
       display_range: settings.display_range,
@@ -90,18 +79,15 @@
     })
 
   // === Prepared geometry grids ===
-  // The finite marching-cubes grid of a volume (range extraction or budget downsampling),
-  // cached per volume object so isovalue changes reuse it. The range fully determines it:
-  // it encodes tiling and halo for periodic volumes and is null/explicit-crop for finite
-  // ones (which ignore tiling and halo entirely).
+  // A volume's finite marching-cubes grid, cached so isovalue changes reuse it. The range
+  // fully determines it (it encodes tiling and halo, which finite volumes ignore).
   type PreparedGrid = {
     key: string
     grid: ScalarGrid3D<Float64Array>
     lattice: Matrix3x3
     origin: Vec3
   }
-  // Keyed by volume object so removed/replaced volumes release their prepared
-  // grids to GC automatically and index shifts never serve stale grids
+  // Keyed by volume object so removed/replaced volumes release their grids to GC
   const prepared_cache = new WeakMap<VolumetricData, PreparedGrid>()
 
   const range_key = (vol: VolumetricData): string =>
@@ -185,17 +171,9 @@
   const lobe_color = (layer: ResolvedLayer, sign: 1 | -1): string =>
     layer.show_negative && sign * layer.isovalue < 0 ? layer.negative_color : layer.color
 
-  // range_key covers halo + tiling (encoded in the range for periodic volumes;
-  // irrelevant for finite ones), so the geometry identity needs no other inputs
-  const geometry_key = (layer: ResolvedLayer, sign: 1 | -1): string => {
-    const vol = layer.volume
-    return JSON.stringify([
-      layer.volume_id,
-      vol_id(vol),
-      sign * layer.isovalue,
-      range_key(vol),
-    ])
-  }
+  // range_key covers halo + tiling, so the geometry identity needs no other inputs
+  const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
+    JSON.stringify([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
@@ -221,9 +199,8 @@
         estimated_prepared_points(surface.volume) >= 200_000,
     )
 
-  // One job per volume. A volume whose prepared grid is still valid is posted as that finite
-  // grid with no range, which prepare_geometry_grid passes through untouched, so only new or
-  // invalidated volumes are re-extracted/downsampled.
+  // One job per volume. A still-valid prepared grid is posted as that finite grid with no
+  // range, so only new or invalidated volumes are re-extracted.
   const geometry_jobs = (pending: PendingSurface[]): GeometryVolumeJob[] =>
     [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => {
       const prepared = current_prepared(vol)
@@ -350,13 +327,11 @@
       for (const geometry of geometries.values()) geometry.dispose()
       return
     }
-    // Render outer shells first so per-entry back/front passes interleave
-    // roughly back-to-front. Isovalues from different volumes aren't directly
-    // comparable, so rank by isovalue as a fraction of each volume's abs_max.
-    const shell_fraction = (entry: MeshEntry): number => {
-      const layer = layers[entry.layer_idx]
-      const abs_max = layer.volume.data_range.abs_max
-      return layer.isovalue / Math.max(abs_max, 1e-30)
+    // Render outer shells first so back/front passes interleave roughly back-to-front,
+    // ranked by isovalue as a fraction of each volume's abs_max (comparable across volumes)
+    const shell_fraction = ({ layer_idx }: MeshEntry): number => {
+      const { isovalue, volume } = layers[layer_idx]
+      return isovalue / Math.max(volume.data_range.abs_max, 1e-30)
     }
     const entries = plans
       .flatMap((plan): MeshEntry[] => {
@@ -385,8 +360,7 @@
     for (const entry of active_entries) {
       if (!kept.has(entry.geometry)) entry.geometry.dispose()
     }
-    // Sync vertex-color flags: reused geometries keep their color attribute;
-    // new entries get colored by the color effect after this rebuild
+    // Reused geometries keep their color attribute; the color effect colors new ones
     colored_keys.clear()
     for (const entry of entries) {
       if (entry.geometry.getAttribute(`color`)) colored_keys.add(entry.key)
@@ -408,10 +382,8 @@
     threlte.invalidate()
   }
 
-  // Geometry-relevant inputs as a string: $derived strings only notify
-  // dependents when the value changes, so the rebuild effect below skips
-  // color-only updates (colors, opacity, colormap, range are excluded here)
-  // without any manual last-signature bookkeeping.
+  // Geometry-relevant inputs as a string: a $derived string only notifies on change, so the
+  // rebuild effect skips color-only updates (colors, opacity, colormap)
   let geo_sig = $derived(
     resolved_layers
       .map((layer) => {
@@ -421,10 +393,9 @@
       .join(`|`),
   )
 
-  // At most one rebuild per frame and one in flight. A slider drag retargets the geometry
-  // on every input event; the frame callback reads the freshest layers, so each painted
-  // frame shows the latest isovalue. A request landing while a (worker) rebuild runs queues
-  // one rerun for when it lands, instead of aborting work that also prepares the grid.
+  // At most one rebuild per frame and one in flight: the frame callback reads the freshest
+  // layers, and a request during a (worker) rebuild queues one rerun instead of aborting
+  // work that also prepares the grid.
   function request_rebuild(): void {
     if (raf_id) return
     raf_id = requestAnimationFrame(() => {
@@ -459,8 +430,7 @@
 
   // === Cross-volume vertex coloring ===
 
-  // Vertices and volumes share the structure coordinate frame. The bulk kernel caches
-  // each volume's inverse lattice and avoids per-vertex closures or position arrays.
+  // Vertices and volumes share the structure coordinate frame
   const sample_entry_scalars = (entry: MeshEntry, color_vol: VolumetricData): Float32Array =>
     time_stage(`sample_scalars`, () => {
       const positions = entry.geometry.getAttribute(`position`).array as Float32Array
@@ -501,10 +471,9 @@
       }
     }
 
-    // Default value_range per layer: fit to the scalars actually present on that
-    // layer's surfaces (both lobes) — whole-volume ranges are dominated by
-    // extremes near nuclei that the surface never touches. Signed source fields
-    // keep a symmetric range so diverging colormaps stay centered on zero.
+    // Default value_range per layer: fit the scalars on its surfaces (both lobes), since
+    // whole-volume ranges are dominated by extremes near nuclei. Signed sources stay
+    // symmetric so diverging colormaps center on zero.
     const auto_ranges = new Map<number, [number, number]>()
     for (const [layer_idx, layer_scalars] of auto_scalars) {
       const layer = layers[layer_idx]
@@ -544,10 +513,8 @@
     threlte.invalidate()
   }
 
-  // Color-relevant layer props as a string, including the color-source volume
-  // identity (so replacing a color volume in place resamples) but excluding
-  // geometry fields like isovalue and opacity, so e.g. isovalue slider drags
-  // don't remap colors on every tick.
+  // Color-relevant layer props incl. the color volume's identity (replacing it resamples) but
+  // no geometry fields, so isovalue drags don't remap colors every tick
   let color_sig = $derived(
     resolved_layers
       .map((layer) => {

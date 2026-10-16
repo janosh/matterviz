@@ -103,16 +103,27 @@ describe(`create_file_drop_handler`, () => {
     ])
   })
 
-  test(`URL failure with files present still processes files and reports both`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
-    vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
-    vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `b.cube` })
-    await run({}, [new File([`y`], `b.cube.gz`)])
-    expect(on_drop).toHaveBeenCalledWith(`data`, `b.cube`, source_meta(`b.cube.gz`))
-    expect(on_error).toHaveBeenCalledWith(
+  // a lone URL's report names no label (the message says "from URL"); next to files it is one
+  // item of the batch report
+  test.each([
+    [[], `Failed to load from URL: 404`],
+    [
+      [new File([`y`], `b.cube.gz`)],
       `Failed to load 1 file — URL https://example.com/f.cif: 404`,
-    )
-  })
+    ],
+  ])(
+    `a failed URL drop with %j still loads the files and reports %s`,
+    async (files, error) => {
+      vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+      vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
+      vi.mocked(decompress_file).mockResolvedValue({ content: `data`, filename: `b.cube` })
+      await run({}, files)
+      expect(vi.mocked(on_drop).mock.calls).toEqual(
+        files.length ? [[`data`, `b.cube`, source_meta(`b.cube.gz`)]] : [],
+      )
+      expect(on_error).toHaveBeenCalledExactlyOnceWith(error)
+    },
+  )
 
   // DataTransfer.files reports a dropped folder as one zero-byte File named after it, so
   // the handler goes through the entry API instead. Expansion itself is svelte-widgets'
@@ -133,22 +144,6 @@ describe(`create_file_drop_handler`, () => {
     expect(on_drop).toHaveBeenCalledWith(`data`, `a.cif`, source_meta(`a.cif`))
   })
 
-  test(`reports URL error when URL drop fails and no files present`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
-    vi.mocked(load_from_url).mockRejectedValue(new Error(`fetch failed`))
-    await run()
-    expect(on_error).toHaveBeenCalledWith(`Failed to load from URL: fetch failed`)
-    expect(on_drop).not.toHaveBeenCalled()
-  })
-
-  test(`reports empty decompressed content as a failure instead of silently skipping`, async () => {
-    vi.mocked(decompress_file).mockResolvedValue({ content: ``, filename: `f.txt` })
-    await run({}, [new File([``], `f.txt`)])
-    expect(decompress_file).toHaveBeenCalled()
-    expect(on_drop).not.toHaveBeenCalled()
-    expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: file is empty`)
-  })
-
   test.each([
     {
       rejection: new Error(`corrupt gzip`),
@@ -157,12 +152,15 @@ describe(`create_file_drop_handler`, () => {
     },
     { rejection: `string error`, expected: `string error`, desc: `decompress string` },
     { rejection: new Error(`parse failed`), expected: `parse failed`, desc: `on_drop` },
+    // empty decompressed content is a failure, not a silent skip
+    { rejection: null, expected: `file is empty`, desc: `empty file` },
   ])(`formats on_error from a $desc rejection and clears loading`, async (row) => {
     const { rejection, expected, desc } = row
     const throwing_drop = vi.fn().mockRejectedValue(rejection)
-    if (desc === `on_drop`)
-      vi.mocked(decompress_file).mockResolvedValue({ content: `x`, filename: `f.txt` })
-    else vi.mocked(decompress_file).mockRejectedValue(rejection)
+    if (desc === `on_drop` || desc === `empty file`) {
+      const content = desc === `on_drop` ? `x` : ``
+      vi.mocked(decompress_file).mockResolvedValue({ content, filename: `f.txt` })
+    } else vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
     expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: ${expected}`)
     expect(throwing_drop).toHaveBeenCalledTimes(desc === `on_drop` ? 1 : 0)

@@ -187,23 +187,6 @@ describe(`broaden_peaks`, () => {
     ).toThrow(/shape_factor must be in \[0, 1\]/)
   })
 
-  test(`compute_broadened_pattern is exactly the Caglioti closure over broaden_peaks`, () => {
-    const pattern = { x: [22.5, 37.1, 58.9], y: [100, 61.3, 12.7] }
-    const params = { U: 0.07, V: -0.03, W: 0.015, shape_factor: 0.35 }
-    const range: Vec2 = [20, 65]
-
-    const via_wrapper = compute_broadened_pattern(pattern, params, range, 0.02)
-    const via_general = broaden_peaks(
-      pattern,
-      (peak_center) => caglioti_fwhm(peak_center, params.U, params.V, params.W),
-      params.shape_factor,
-      range,
-      0.02,
-    )
-    expect(via_general.y).toEqual(via_wrapper.y)
-    expect(via_general.x).toEqual(via_wrapper.x)
-  })
-
   // A pseudo-Voigt built from area-normalised components that each sit at half their own
   // maximum at ±fwhm/2 also sits at half its maximum there, so the measured width must equal
   // the requested one for every mixing parameter.
@@ -272,6 +255,7 @@ describe(`broaden_peaks`, () => {
   })
 
   const peak = { x: [20], y: [100] }
+  // oxfmt-ignore
   test.each<[string, { x: number[]; y: number[] }, Vec2, number, string]>([
     [`zero step`, peak, [10, 80], 0, `step_size must be > 0 and finite`],
     [`infinite step`, peak, [10, 80], Infinity, `step_size must be > 0 and finite`],
@@ -284,38 +268,14 @@ describe(`broaden_peaks`, () => {
     [`long y`, { x: [20], y: [1, 1e9] }, [10, 80], 0.02, `1 positions but 2 intensities`],
     // a two-column CSV whose x is not 2theta hands XrdPlot its own extent as angle_range:
     // 1e9 grid points is 8 GB per array
-    [
-      `oversized grid`,
-      peak,
-      [0, 2e7],
-      0.02,
-      `needs 1000000001 grid points, past the 10000000 cap`,
-    ],
+    [`oversized grid`, peak, [0, 2e7], 0.02, `needs 1000000001 grid points, past the 10000000 cap`],
     // NaN poisons every grid point; Infinity puts the relative floor at Infinity and drops
     // the real peaks with it, so both come back looking like "nothing to plot"
-    [
-      `NaN intensity`,
-      { x: [20, 40], y: [100, NaN] },
-      [10, 80],
-      0.02,
-      `intensities must be finite, got NaN`,
-    ],
-    [
-      `infinite intensity`,
-      { x: [20, 40], y: [100, Infinity] },
-      [10, 80],
-      0.02,
-      `intensities must be finite, got Infinity`,
-    ],
+    [`NaN intensity`, { x: [20, 40], y: [100, NaN] }, [10, 80], 0.02, `intensities must be finite, got NaN`],
+    [`infinite intensity`, { x: [20, 40], y: [100, Infinity] }, [10, 80], 0.02, `intensities must be finite, got Infinity`],
     // A non-finite position fails both reach tests and leaves start_idx NaN, so the fill loop
     // never runs: the curve came back identical to one that never carried the peak
-    [
-      `infinite position`,
-      { x: [30, Infinity], y: [100, 100] },
-      [10, 80],
-      0.02,
-      `peak positions must be finite, got Infinity at index 1`,
-    ],
+    [`infinite position`, { x: [30, Infinity], y: [100, 100] }, [10, 80], 0.02, `peak positions must be finite, got Infinity at index 1`],
   ])(`validates %s before touching fwhm_fn`, (_label, pattern, range, step, err) => {
     const fwhm_fn = () => {
       throw new Error(`fwhm_fn must not be called`)

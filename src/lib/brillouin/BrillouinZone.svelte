@@ -11,7 +11,12 @@
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import { format_num } from '#lib/labels.js'
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
+  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+  import type { MoyoDataset } from '@spglib/moyo-wasm'
+  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { create_renderer, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -22,16 +27,16 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
+  import ExportPane from '#lib/io/ExportPane.svelte'
+  import { canvas_sources, json_source } from '#lib/io/export.js'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
-  import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
-  import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
 
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { clamp, reciprocal_lattice } from '#lib/math.js'
   import { to_error } from '#lib/utils.js'
-  import { viewer_keys } from '#lib/shortcuts.js'
+  import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BrillouinZoneData,
@@ -41,6 +46,7 @@
     IrreducibleBZData,
     KPathData,
   } from './types'
+  import { ordinal_label } from './types'
 
   type BrillouinControlName =
     | `filename`
@@ -60,8 +66,9 @@
   let {
     structure = $bindable(),
     bz_order = $bindable(DEFAULTS.brillouin.bz_order),
-    // Pre-computed zone; wins over the one derived from `structure`
+    // Pre-computed zone; wins over the one derived from `k_lattice` or `structure`
     bz_data,
+    k_lattice,
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     surface_color = $bindable(DEFAULTS.brillouin.surface_color),
@@ -108,6 +115,8 @@
   }: Partial<BrillouinZoneSettings> & {
     structure?: Crystal
     bz_data?: BrillouinZoneData
+    // reciprocal lattice (rows b_i, 2π included) to derive the zone from instead of `structure`
+    k_lattice?: Matrix3x3
     controls_open?: boolean
     info_pane_open?: boolean
     ibz_data?: IrreducibleBZData | null
@@ -189,10 +198,11 @@
   // pymatviz's `BrillouinZoneWidget(structure=..., bz_data=...)`) wins and is never written
   // back; without one the derived zone renders and follows structure/bz_order changes.
   const derived_bz = $derived.by((): { zone?: BrillouinZoneData; error?: string } => {
-    if (!structure?.lattice) return {}
+    const real = structure?.lattice?.matrix
     try {
-      const k_lattice = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-      return { zone: compute_brillouin_zone(k_lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
+      const lattice = k_lattice ?? (real && reciprocal_lattice(real, { two_pi: true }))
+      if (!lattice) return {}
+      return { zone: compute_brillouin_zone(lattice, clamp(bz_order, 1, 3) as 1 | 2 | 3) }
     } catch (err) {
       return { error: `BZ computation failed: ${to_error(err).message}` }
     }
@@ -214,41 +224,110 @@
     }
   })
 
-  // Compute IBZ when show_ibz is enabled and structure changes. The IBZ is an optional
-  // overlay, so its failures (symmetry analysis rejecting, a degenerate wedge) are reported
-  // through on_error and a dismissible notice while the zone itself keeps rendering — they
-  // never go into the fatal `error_msg`, which blanks the whole viewer.
-  let ibz_error = $state<string | undefined>()
+  // One symmetry analysis serves the IBZ wedge and the info pane's space group, run while
+  // either is shown; a result for a replaced structure never lands, and the previous one's
+  // wedge and space group do not linger while it runs
+  const needs_symmetry = $derived(
+    show_ibz || (info_pane_open && controls_config.visible(`info-pane`)),
+  )
+  let symmetry = $state<{ data?: MoyoDataset; error?: unknown }>({})
   $effect(() => {
-    if (!show_ibz || !zone || !structure?.lattice) {
-      ibz_data = null
-      ibz_error = undefined
-      return
-    }
-
+    symmetry = {}
+    if (!needs_symmetry || !structure?.lattice) return
     let stale = false
-    const captured_bz = zone
-    // The previous structure's wedge (and its multiplicity) must not linger over the new zone
-    // while the symmetry analysis runs
-    ibz_data = null
-
-    analyze_structure_symmetry(structure, {})
-      .then((sym_data) => {
-        if (stale) return
-        const point_group_ops = point_group_rotations(sym_data.operations)
-        ibz_data = compute_irreducible_bz(captured_bz, point_group_ops)
-        ibz_error = undefined
-      })
-      .catch((err) => {
-        if (stale) return
-        ibz_data = null
-        ibz_error = `IBZ computation failed: ${to_error(err).message}`
-        on_error?.({ error_msg: ibz_error, structure, bz_order })
-      })
-
+    analyze_structure_symmetry(structure, {}).then(
+      (data) => {
+        if (!stale) symmetry = { data }
+      },
+      (error: unknown) => {
+        if (!stale) symmetry = { error }
+      },
+    )
     return () => {
       stale = true
     }
+  })
+  // The IBZ is an optional overlay, so its failures (symmetry analysis rejecting, a degenerate
+  // wedge) are a dismissible notice and on_error while the zone keeps rendering, never the
+  // fatal `error_msg` that blanks the whole viewer
+  const ibz_result = $derived.by((): { data: IrreducibleBZData | null; error?: string } => {
+    const failed = (err: unknown) => ({
+      data: null,
+      error: `IBZ computation failed: ${to_error(err).message}`,
+    })
+    if (!show_ibz || !zone) return { data: null }
+    if (`error` in symmetry) return failed(symmetry.error)
+    if (!symmetry.data) return { data: null }
+    try {
+      return {
+        data: compute_irreducible_bz(zone, point_group_rotations(symmetry.data.operations)),
+      }
+    } catch (err) {
+      return failed(err)
+    }
+  })
+  let ibz_error = $state<string | undefined>()
+  $effect(() => {
+    const { data, error } = ibz_result
+    ibz_data = data
+    ibz_error = error
+    if (error) untrack(() => on_error?.({ error_msg: error, structure, bz_order }))
+  })
+
+  // A zone without a structure (caller-supplied `bz_data` only) shows the zone and reciprocal
+  // lattice rows; the space group and real lattice need the structure
+  const info_cards = $derived.by((): InfoPaneCard[] => {
+    if (!zone) return []
+    const fmt = (values: number[], spec: string) =>
+      values.map((val) => format_num(val, spec)).join(`, `)
+    const zone_rows: InfoPaneRow[] = [
+      { label: `Order`, value: ordinal_label(zone.order), key: `bz-order` },
+      { label: `Volume`, value: `${format_num(zone.volume, `.3f`)} Å⁻³`, key: `bz-volume` },
+      {
+        label: `Vertices / Faces`,
+        value: `${zone.vertices.length} / ${zone.faces.length}`,
+        key: `bz-vertices`,
+      },
+    ]
+    const cards: InfoPaneCard[] = [{ title: `Brillouin Zone`, rows: zone_rows }]
+    const lattice = structure?.lattice
+    if (lattice) {
+      const { number, hm_symbol } = symmetry.data ?? {}
+      const value = `${number ?? ``} ${hm_symbol ? `(${hm_symbol})` : ``}`.trim()
+      zone_rows.push({ label: `Space Group`, value, key: `space-group` })
+      const { a, b, c, alpha, beta, gamma } = lattice
+      cards.push({
+        title: `Real Lattice`,
+        rows: [
+          { label: `a, b, c`, value: `${fmt([a, b, c], `.3~f`)} Å`, key: `real-lattice-abc` },
+          {
+            label: `α, β, γ`,
+            value: `${fmt([alpha, beta, gamma], `.2~f`)}°`,
+            key: `real-lattice-angles`,
+          },
+        ],
+      })
+    }
+    cards.push({
+      title: `Reciprocal Lattice (Å⁻¹)`,
+      rows: zone.k_lattice.map((vec, idx) => ({
+        label: [`b₁`, `b₂`, `b₃`][idx],
+        value: `(${fmt(vec, `.3~f`)})`,
+        key: `reciprocal-b${idx + 1}`,
+      })),
+    })
+    return cards
+  })
+
+  // PNG re-renders the scene at the export DPI; JSON holds the zone and its reciprocal lattice
+  const export_sources = $derived({
+    ...canvas_sources(() => wrapper?.querySelector(`canvas`)),
+    ...(zone && {
+      json: json_source(() => {
+        const { order, volume, vertices, faces, edges, k_lattice: recip } = zone
+        return { order, volume, vertices, faces, edges, reciprocal_lattice: recip }
+      }),
+    }),
   })
 
   // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
@@ -296,17 +375,28 @@
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, bz_data: zone, bz_order, fullscreen: value })}
     >
-      {#if controls_config.visible(`info-pane`)}
-        <BrillouinZoneInfoPane {structure} bz_data={zone} bind:pane_open={info_pane_open} />
+      {#if zone && controls_config.visible(`info-pane`)}
+        <ViewerPane
+          bind:open={info_pane_open}
+          pane_name="Brillouin zone info"
+          class_prefix="bz-info"
+          closed_icon={info_pane_icon}
+          toggle_props={shortcut_attrs(`info_pane`)}
+        >
+          <InfoPaneCards cards={info_cards} empty_label="Brillouin zone info" />
+        </ViewerPane>
       {/if}
 
       {#if controls_config.visible(`export-pane`)}
-        <BrillouinZoneExportPane
+        <ExportPane
+          filename="{current_filename || `brillouin-zone`}-bz-order-{zone?.order ?? 1}"
           bind:export_pane_open
-          bz_data={zone}
-          {wrapper}
           bind:png_dpi
-          filename={current_filename || `brillouin-zone`}
+          sources={export_sources}
+          toggle_props={{
+            class: `bz-export-toggle`,
+            title: export_pane_open ? `` : `Export Brillouin zone`,
+          }}
         />
       {/if}
 

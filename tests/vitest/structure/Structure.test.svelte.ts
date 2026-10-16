@@ -532,11 +532,7 @@ const volumetric_data = [
   make_volume(
     make_grid(2, 2, 2, (x_idx, y_idx, z_idx) => 4 * x_idx + 2 * y_idx + z_idx),
     {
-      lattice: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
+      lattice: IDENTITY_MATRIX3,
       data_range: { min: 0, max: 7, abs_max: 7, mean: 3.5 },
       id: `density`,
       label: `Charge density`,

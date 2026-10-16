@@ -6,27 +6,12 @@ import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/util
 // the entries of every viewer under the pointer, and buttons with a shortcut take their
 // aria-keyshortcuts and title hint from here, so the list and the hints cannot drift apart.
 
-export type ShortcutScope =
-  | `viewer` // every viewer with a ShortcutsHelp button
-  | `camera` // 3D viewers
-  | `sequence` // Trajectory and NebViewer playback
-  | `trajectory`
-  | `structure`
-  | `structure-edit` // Structure while editing atoms or bonds
-  | `brillouin`
-  | `chempot-3d`
-  | `convex-hull`
-  | `convex-hull-2d`
-  | `convex-hull-3d` // ternary and quaternary
-  | `convex-hull-ternary`
-  | `binary-phase-diagram`
-  | `ternary-phase-diagram`
-
 export type Shortcut = {
   keys: string // aria-keyshortcuts value: space-separated alternatives of `+`-joined chords
   label?: string // shown instead of the formatted keys (a key range like 0-9)
   description: string
-  scopes: readonly ShortcutScope[]
+  // viewer: every viewer with a ShortcutsHelp button, camera: 3D viewers, sequence: playback
+  scopes: readonly string[]
 }
 
 // oxfmt-ignore
@@ -70,6 +55,7 @@ export const SHORTCUTS = {
 } as const satisfies Record<string, Shortcut>
 
 export type ShortcutId = keyof typeof SHORTCUTS
+export type ShortcutScope = (typeof SHORTCUTS)[ShortcutId]['scopes'][number]
 
 const KEY_LABELS: Record<string, string> = {
   ArrowLeft: `←`,
@@ -87,14 +73,7 @@ export const format_shortcut_keys = ({ keys, label }: Shortcut): string =>
   label ??
   keys
     .split(` `)
-    .map((chord) =>
-      chord.length === 1
-        ? chord
-        : chord
-            .split(`+`)
-            .map((key) => KEY_LABELS[key] ?? key)
-            .join(`+`),
-    )
+    .map((chord) => chord.replaceAll(/\w{2,}/g, (key) => KEY_LABELS[key] ?? key))
     .join(` / `)
 
 // `Reset camera (R)`: a button's title naming its shortcut
@@ -111,7 +90,7 @@ export const shortcut_attrs = (id: ShortcutId, label?: string) => ({
 
 // Registry entries of the given scopes, in registry order
 export const shortcuts_for = (scopes: Iterable<ShortcutScope>): Shortcut[] => {
-  const wanted = new Set(scopes)
+  const wanted = new Set<string>(scopes)
   return Object.values(SHORTCUTS).filter((shortcut: Shortcut) =>
     shortcut.scopes.some((scope) => wanted.has(scope)),
   )
@@ -119,12 +98,10 @@ export const shortcuts_for = (scopes: Iterable<ShortcutScope>): Shortcut[] => {
 
 type KeydownHandler = (event: KeyboardEvent) => boolean
 
-// Keydowns of one viewer: from inside it (focus) and the page's while the pointer is over it
-// (forward_window_keydown), so only the hovered or focused viewer reacts. `handle` returns
-// true when it handled the key, which prevents the default (page scroll, find, ...) and keeps
-// an enclosing viewer from acting on it. A click leaves a viewer focused *and* hovered: the
-// root runs first, so the window pass then sees a prevented key and skips. `hover_handle`
-// narrows what the pointer alone may trigger. Prevented and composing keys never arrive.
+// Keydowns of one viewer, from focus inside it or the page's while the pointer is over it, so
+// only that viewer reacts. `handle` returning true prevents the default and keeps an enclosing
+// viewer from acting on the key (the root runs before the window pass, which then skips the
+// prevented key). `hover_handle` narrows what the pointer alone may trigger.
 export const viewer_keydown =
   (handle: KeydownHandler, hover_handle: KeydownHandler = handle) =>
   (node: HTMLElement) => {

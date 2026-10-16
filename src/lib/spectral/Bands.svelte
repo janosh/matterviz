@@ -71,7 +71,7 @@
     id: identifier,
     'data-testid': data_testid,
     point_hit_padding = 3,
-    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
+    // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     children: user_children,
     ...rest
@@ -114,20 +114,11 @@
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
   } = $props()
 
-  function get_line_style(
-    color: string,
-    is_acoustic: boolean,
-    band_idx: number,
-    spin: `up` | `down`,
-    structure_label: string,
-  ): Required<BandLineStyle> {
-    const custom = helpers.band_line_style(
-      line_kwargs,
-      band_idx,
-      spin,
-      is_acoustic,
-      structure_label,
-    )
+  // A band line's style: the caller's over the structure colour, emphasised or muted while a
+  // band is highlighted
+  function get_line_style(color: string, ...line: helpers.BandLine): Required<BandLineStyle> {
+    const [band_idx, , is_acoustic] = line
+    const custom = helpers.band_line_style(line_kwargs, ...line)
     const style = {
       stroke: custom.stroke ?? color,
       stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
@@ -255,11 +246,13 @@
         if (!segments_to_plot.has(segment_key)) continue
         const start_idx = branch.start_index
         const end_idx = branch.end_index + 1 // exclusive
-        const [x_start, x_end] = internal_x_positions[segment_key]
-        const x_vals = helpers.scale_segment_distances(
-          band_structure.distance.slice(start_idx, end_idx),
-          x_start,
-          x_end,
+        const x_vals = Array.from({ length: end_idx - start_idx }, (_, offset) =>
+          helpers.branch_x(
+            band_structure,
+            branch,
+            internal_x_positions[segment_key],
+            start_idx + offset,
+          ),
         )
 
         for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
@@ -271,13 +264,8 @@
             band_idx,
             gamma_indices,
           )
-          const style_up = get_line_style(
-            color,
-            is_acoustic === true,
-            band_idx,
-            `up`,
-            structure_label,
-          )
+          const style_of = (spin: `up` | `down`) =>
+            get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
           const spin_down_band = band_structure.spin_down_bands?.[band_idx]
           const y_down =
             band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
@@ -288,16 +276,10 @@
           const channels: [number[], `up` | `down`, string, DataSeries[`line_style`]][] = []
           if (effective_spin_mode !== `down_only`) {
             const label_up = y_down ? `${structure_label} (↑)` : structure_label
-            channels.push([y_up, `up`, label_up, style_up])
+            channels.push([y_up, `up`, label_up, style_of(`up`)])
           }
           if (y_down && effective_spin_mode !== `up_only`) {
-            const { stroke, stroke_width } = get_line_style(
-              color,
-              is_acoustic === true,
-              band_idx,
-              `down`,
-              structure_label,
-            )
+            const { stroke, stroke_width } = style_of(`down`)
             const style_down = {
               stroke,
               line_dash: `4,2`,

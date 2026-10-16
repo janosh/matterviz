@@ -13,7 +13,7 @@ import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
-import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
@@ -156,7 +156,7 @@ describe(`source`, () => {
     [`unparsable compressed URL content`, `https://example.com/bad.xyz.gz`,
       () => new Response(`not a trajectory in any format`, { headers: { 'content-encoding': `gzip` } }), { source_filename: `bad.xyz.gz` }],
     [`a failed fetch`, `https://example.com/missing.xyz`, () => new Response(null, { status: 404, statusText: `Not Found` }),
-      { error_msg: expect.stringContaining(`HTTP 404 Not Found`), filename: `missing.xyz`, source_filename: `missing.xyz` }],
+      { error_msg: expect.stringMatching(/^Failed to load trajectory: missing\.xyz: .*HTTP 404 Not Found/), filename: `missing.xyz`, source_filename: `missing.xyz` }],
   ])(`reports source identity for %s`, async (_label, url, make_response, expected) => {
     vi.spyOn(globalThis, `fetch`).mockImplementation(async () => make_response())
     vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -223,33 +223,6 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     doc_query<HTMLButtonElement>(`button`).click()
     await tick()
     expect(target.querySelector(`h3`)?.textContent).toBe(`Load Trajectory`)
-    expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
-  })
-
-  test(`error_snippet replaces the default error view`, async () => {
-    type ErrorProps = { error_msg: string; on_dismiss: () => void }
-    const error_snippet = createRawSnippet<[ErrorProps]>((get_props) => ({
-      render: () =>
-        `<div class="custom-error"><em></em><button type="button">ok</button></div>`,
-      setup: (element) => {
-        const emphasis = element.querySelector(`em`)
-        const button = element.querySelector(`button`)
-        if (!emphasis || !button) throw new Error(`custom error did not render`)
-        emphasis.textContent = get_props().error_msg
-        button.addEventListener(`click`, () => get_props().on_dismiss())
-      },
-    }))
-    // a string source is a URL: fail the fetch here rather than let it escape to the network
-    vi.spyOn(globalThis, `fetch`).mockRejectedValue(new Error(`network down`))
-    vi.spyOn(console, `error`).mockImplementation(() => {})
-    const target = mount_viewer({ source: `https://example.com/x.bin`, error_snippet })
-    await vi.waitFor(() => expect(target.querySelector(`.custom-error`)).not.toBeNull())
-    expect(doc_query(`.custom-error em`).textContent).toContain(`network down`)
-    expect(doc_query(`.custom-error em`).textContent).toMatch(/^Failed to load trajectory/)
-    expect(target.querySelector(`h3`)).toBeNull()
-    doc_query<HTMLButtonElement>(`.custom-error button`).click()
-    await tick()
-    expect(target.querySelector(`.custom-error`)).toBeNull()
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
   })
 

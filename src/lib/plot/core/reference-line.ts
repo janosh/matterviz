@@ -112,29 +112,19 @@ function clip_to_rect(
 ): Vec4 | null {
   const delta_x = p2x - p1x
   const delta_y = p2y - p1y
-
-  // p values represent the direction, q values the signed distance to boundary
-  // Boundaries: left (x_min), right (x_max), bottom (y_min), top (y_max)
+  // p: direction, q: signed distance to the left, right, bottom and top boundaries
   const p_vals = [-delta_x, delta_x, -delta_y, delta_y]
   const q_vals = [p1x - x_min, x_max - p1x, p1y - y_min, y_max - p1y]
-
   let [t_enter, t_leave] = [t_min, t_max]
-
   for (let idx = 0; idx < 4; idx++) {
+    const t_val = q_vals[idx] / p_vals[idx]
+    // Parallel to this boundary: outside it means no intersection
     if (p_vals[idx] === 0) {
-      // Line parallel to boundary
-      if (q_vals[idx] < 0) return null // Outside and parallel - no intersection
-    } else {
-      const t_val = q_vals[idx] / p_vals[idx]
-      // Entering boundary
-      if (p_vals[idx] < 0) t_enter = Math.max(t_enter, t_val)
-      // Leaving boundary
-      else t_leave = Math.min(t_leave, t_val)
-    }
+      if (q_vals[idx] < 0) return null
+    } else if (p_vals[idx] < 0) t_enter = Math.max(t_enter, t_val) // entering
+    else t_leave = Math.min(t_leave, t_val) // leaving
   }
-
   if (t_enter > t_leave) return null
-
   return [
     p1x + t_enter * delta_x,
     p1y + t_enter * delta_y,
@@ -280,16 +270,12 @@ export function calculate_annotation_position(
       // (normal_y > 0), or if 'below' and it points up (normal_y <= 0)
       sign = (side === `above`) === normal_y > 0 ? -1 : 1
     } else {
-      // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
-      // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
-      // perpendicular. Horizontal lines (normal_x == 0) fall back to right = up (-y), left = down (+y).
+      // left/right offset in screen space (right -> +x), regardless of endpoint order
+      // (vertical ref lines are stored bottom->top, which flips the perpendicular). Horizontal
+      // lines (normal_x == 0) fall back to right = up (-y), left = down (+y).
       const want_right = side === `right`
-      sign =
-        Math.abs(normal_x) > 1e-9
-          ? (want_right ? 1 : -1) * Math.sign(normal_x)
-          : want_right
-            ? -1
-            : 1
+      if (Math.abs(normal_x) > 1e-9) sign = (want_right ? 1 : -1) * Math.sign(normal_x)
+      else sign = want_right ? -1 : 1
     }
     perp_x = sign * normal_x * gap
     perp_y = sign * normal_y * gap
@@ -412,11 +398,7 @@ const annotation_candidate = (
   position: ReferenceAnnotationPosition,
   side: ReferenceAnnotationSide,
 ): ReferenceAnnotationCandidate => {
-  const anchor = calculate_annotation_position(...endpoints, {
-    ...annotation,
-    position,
-    side,
-  })
+  const anchor = calculate_annotation_position(...endpoints, { ...annotation, position, side })
   const unrotated_rect = reference_annotation_text_rect(anchor, metrics)
   return {
     position,

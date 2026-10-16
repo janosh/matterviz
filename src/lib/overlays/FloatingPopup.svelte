@@ -49,9 +49,7 @@ a pan behind it must not make it vanish under the cursor -->
     dismiss_on: `release`,
     callback: () => on_close?.(),
   })}
-  {@attach draggable({
-    handle_selector: `.drag-handle`,
-  })}
+  {@attach draggable({ handle_selector: `.drag-handle` })}
   {...rest}
   class={[`floating-popup`, place, rest.class]}
   role="dialog"

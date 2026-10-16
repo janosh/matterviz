@@ -45,7 +45,7 @@ const blob_input = (volume = blob_volume()): GeometryInput => ({
 
 describe(`compute_isosurface_geometries`, () => {
   test(`extracts a display window and one mesh per isovalue in the scene frame`, () => {
-    const volume = { ...blob_volume(), origin: [1, 2, 3] as [number, number, number] }
+    const volume = { ...blob_volume(), origin: [1, 2, 3] as Vec3 }
     const [result] = compute_isosurface_geometries(blob_input(volume)).volumes
     expect(result.token).toBe(7)
     // 2x1x1 window at source density, endpoint inclusive
@@ -62,11 +62,7 @@ describe(`compute_isosurface_geometries`, () => {
       expect(Math.max(...surface.indices)).toBeLessThan(surface.positions.length / 3)
       // Sampling vertices directly in the structure frame recovers each isovalue.
       for (let vert = 0; vert < surface.positions.length; vert += 3 * 37) {
-        const position: [number, number, number] = [
-          surface.positions[vert],
-          surface.positions[vert + 1],
-          surface.positions[vert + 2],
-        ]
+        const position = [...surface.positions.subarray(vert, vert + 3)] as Vec3
         expect(sample(position)).toBeCloseTo(isovalue, 4)
       }
     }
@@ -158,7 +154,7 @@ beforeAll(async () => {
 afterEach(stub.reset)
 
 test(`compute_geometries_async posts a cloneable payload and returns the worker result`, async () => {
-  const volume = { ...blob_volume(), origin: [1, 2, 3] as [number, number, number] }
+  const volume = { ...blob_volume(), origin: [1, 2, 3] as Vec3 }
   const result = await compute_geometries_async(blob_input(volume))
   expect(stub.posted).toHaveLength(1)
   const payload = stub.posted[0].message.input.volumes[0]

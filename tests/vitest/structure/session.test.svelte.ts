@@ -168,8 +168,8 @@ describe(`display pipeline`, () => {
   // follow those indices. Only the session's own supercell and image-atom provenance are followed.
   it(`ignores foreign unit_cell_idx on the input structure`, () => {
     const base = make_crystal(4, [
-      { element: `Na`, abc: [0, 0, 0] },
-      { element: `Cl`, abc: [0.5, 0.5, 0.5] },
+      [`Na`, [0, 0, 0]],
+      [`Cl`, [0.5, 0.5, 0.5]],
     ])
     const foreign = make_supercell(base, [2, 1, 1])
     expect(foreign.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 1, 0, 1])
@@ -240,15 +240,14 @@ describe(`symmetry-aware display`, () => {
     await init_moyo_for_tests()
     const structure = prim_fcc_cu()
     const sym_data = await analyze_structure_symmetry(structure)
-    const wyckoff_config: AtomColorConfig = {
-      ...DEFAULT_ATOM_COLOR_CONFIG,
-      mode: `wyckoff`,
-      scale_type: `categorical`,
-    }
     const { host, session } = make_session({
       structure,
       sym_data,
-      atom_color_config: wyckoff_config,
+      atom_color_config: {
+        ...DEFAULT_ATOM_COLOR_CONFIG,
+        mode: `wyckoff`,
+        scale_type: `categorical`,
+      },
     })
     expect(session.shows_input_frame).toBe(true)
     expect(session.wyckoff_rows).toEqual([
@@ -287,39 +286,42 @@ describe(`symmetry-aware display`, () => {
     expect(session.property_colors).toBeNull()
   })
 
-  it(`bakes a cell type switched to while editing atoms, so edits hit the picked site`, async () => {
-    await init_moyo_for_tests()
-    const structure = prim_fcc_cu()
-    const sym_data = await analyze_structure_symmetry(structure)
-    const { host, session } = make_session({ structure, measure_mode: `edit-atoms` })
-    host.cell_type = `conventional`
-    flushSync()
-    // no symmetry data yet, so the original cell still shows: the pick stays, nothing is baked
-    expect([host.cell_type, session.history.undo_stack.length]).toEqual([`conventional`, 0])
-    host.selected_sites = [0]
-    host.sym_data = sym_data
-    flushSync()
-    // the 4-atom conventional cell became the raw structure, one undo away from the input
-    const { length: n_undo } = session.history.undo_stack
-    expect([host.cell_type, host.structure?.sites.length, n_undo]).toEqual([`original`, 4, 1])
-    expect(host.selected_sites).toEqual([]) // picked on the previous cell
-    host.selected_sites = [3]
-    flushSync()
-    expect(session.delete_selected()).toBe(true)
-    flushSync()
-    expect(host.structure?.sites).toHaveLength(3)
-  })
-
-  it(`bakes a cell type switch when symmetry data is already present`, async () => {
-    await init_moyo_for_tests()
-    const structure = prim_fcc_cu()
-    const sym_data = await analyze_structure_symmetry(structure)
-    const { host, session } = make_session({ structure, sym_data, measure_mode: `edit-atoms` })
-    host.cell_type = `conventional`
-    flushSync()
-    const { length: n_undo } = session.history.undo_stack
-    expect([host.cell_type, host.structure?.sites.length, n_undo]).toEqual([`original`, 4, 1])
-  })
+  it.each([false, true])(
+    `bakes a cell type switched to while editing atoms (symmetry ready: %s)`,
+    async (ready) => {
+      await init_moyo_for_tests()
+      const structure = prim_fcc_cu()
+      const sym_data = await analyze_structure_symmetry(structure)
+      const { host, session } = make_session({
+        structure,
+        measure_mode: `edit-atoms`,
+        sym_data: ready ? sym_data : null,
+      })
+      const cell_state = () => [
+        host.cell_type,
+        host.structure?.sites.length,
+        session.history.undo_stack.length,
+      ]
+      host.cell_type = `conventional`
+      flushSync()
+      if (!ready) {
+        // no symmetry data yet, so the original cell still shows: the pick stays, no bake
+        expect(cell_state()).toEqual([`conventional`, 1, 0])
+        host.selected_sites = [0]
+        host.sym_data = sym_data
+        flushSync()
+      }
+      // the 4-atom conventional cell became the raw structure, one undo away from the input
+      expect(cell_state()).toEqual([`original`, 4, 1])
+      expect(host.selected_sites).toEqual([]) // picked on the previous cell
+      // so edits hit the picked site of the baked cell
+      host.selected_sites = [3]
+      flushSync()
+      expect(session.delete_selected()).toBe(true)
+      flushSync()
+      expect(host.structure?.sites).toHaveLength(3)
+    },
+  )
 
   // An input already in the requested cell bakes to itself: no undo entry, the pick stays
   it(`skips the bake when the cell type leaves the cell unchanged`, async () => {
@@ -601,18 +603,8 @@ describe(`edit-atoms`, () => {
   // xyz while leaving abc alone. A drag fires move_sites on every pointer move, so the notice
   // is shown once per loaded structure (not once per edit) and again after an external load
   it(`edits a singular-lattice crystal with a single notice instead of throwing`, () => {
-    const make_singular = () =>
-      make_crystal(
-        [
-          [5, 0, 0],
-          [0, 5, 0],
-          [0, 0, 0],
-        ],
-        [
-          [`Na`, [0.1, 0.2, 0]],
-          [`Cl`, [0.6, 0.7, 0]],
-        ],
-      )
+    // oxfmt-ignore
+    const make_singular = () => make_crystal([[5, 0, 0], [0, 5, 0], [0, 0, 0]], [[`Na`, [0.1, 0.2, 0]], [`Cl`, [0.6, 0.7, 0]]])
     const { host, session, notices } = make_session({
       measure_mode: `edit-atoms`,
       structure: make_singular(),

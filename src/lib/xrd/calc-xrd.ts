@@ -48,15 +48,12 @@ export const WAVELENGTHS = {
 
 export type RadiationKey = keyof typeof WAVELENGTHS
 
-// Type guard to safely check if a string is a valid RadiationKey
 const is_radiation_key = (key: string): key is RadiationKey => key in WAVELENGTHS
 
-// Only consumer is electron_wavelength below, so it stays local. CODATA 2018, matching the
-// vintage the frozen Mott-Bethe prefactor in #lib/scattering was evaluated at.
-const ELECTRON_REST_MASS_KG = 9.1093837015e-31 // kg
+// CODATA 2018, the vintage the frozen Mott-Bethe prefactor in #lib/scattering was evaluated at
+const ELECTRON_REST_MASS_KG = 9.1093837015e-31
 
-// Shared guard for the numeric options of every entry point here. Names the option and echoes
-// the offending value, so NaN from a bad parse is distinguishable from a negative literal.
+// Echoes the offending value so NaN from a bad parse is distinguishable from a negative literal
 export function require_positive(name: string, value: number, unit = ``): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`Invalid ${name}: ${value}. Must be a finite positive number${unit}.`)
@@ -64,24 +61,20 @@ export function require_positive(name: string, value: number, unit = ``): number
   return value
 }
 
-// Relativistic de Broglie wavelength of an electron accelerated through `voltage_kv` kilovolts:
-//   λ = h / sqrt(2·m0·e·V·(1 + e·V/(2·m0·c²)))
-// The (1 + eV/2m0c²) term matters enormously in a TEM: at 200 kV it shortens λ by 9%, from
-// 0.0274 Å non-relativistically to 0.0251 Å. Returns Angstrom.
+// Relativistic electron wavelength in Å at `voltage_kv`: λ = h / sqrt(2·m0·e·V·(1 + eV/2m0c²)).
+// The relativistic term shortens λ by 9% at 200 kV (0.0274 → 0.0251 Å).
 export function electron_wavelength(voltage_kv: number): number {
   require_positive(`accelerating voltage`, voltage_kv, ` of kV`)
-  const voltage_volts = voltage_kv * 1000
   const rest_energy_joule = ELECTRON_REST_MASS_KG * SPEED_OF_LIGHT_M_S ** 2
-  const kinetic_joule = ELEMENTARY_CHARGE_C * voltage_volts
+  const kinetic_joule = ELEMENTARY_CHARGE_C * (voltage_kv * 1000)
   const momentum = Math.sqrt(
     2 * ELECTRON_REST_MASS_KG * kinetic_joule * (1 + kinetic_joule / (2 * rest_energy_joule)),
   )
-  // h/p is in metres; 1 m = 1e10 Angstrom
-  return (PLANCK_J_S / momentum) * 1e10
+  return (PLANCK_J_S / momentum) * 1e10 // m → Å
 }
 
-// Resolve the wavelength in Angstrom for a given radiation type, rejecting nonsensical
-// combinations rather than quietly diffracting neutrons with a Cu anode wavelength.
+// Wavelength in Å for a radiation type, rejecting nonsensical combinations (e.g. neutrons
+// with a Cu anode wavelength)
 export function resolve_wavelength(
   radiation: RadiationType,
   wavelength: number | RadiationKey | undefined,
@@ -147,10 +140,9 @@ export function resolve_wavelength(
 const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
 
-// Miller indices transform under a direct-space rotation W (fractional basis, x' = W·x + w)
-// as h' = W⁻ᵀ·h. W is unimodular, so W⁻ᵀ is an integer matrix too. Returned flat (9 row-major
-// entries per distinct W⁻ᵀ) for the hot loop in get_unique_families; supercell operations
-// repeat every W once per lattice translation, hence the dedupe.
+// Miller indices transform under a direct-space rotation W (x' = W·x + w) as h' = W⁻ᵀ·h, an
+// integer matrix since W is unimodular. Flat (9 row-major entries per distinct W⁻ᵀ) for the hot
+// loop in get_unique_families; deduped as supercells repeat each W per lattice translation.
 function reciprocal_rotations(rotations: readonly math.Matrix3x3[]): number[] {
   if (rotations.length === 0) {
     throw new Error(
@@ -184,15 +176,12 @@ function reciprocal_rotations(rotations: readonly math.Matrix3x3[]): number[] {
 const compare_hkl = (hkl_1: Hkl, hkl_2: Hkl): number =>
   hkl_1[0] - hkl_2[0] || hkl_1[1] - hkl_2[1] || hkl_1[2] - hkl_2[2]
 
-// The identity alone: point group 1, so families reduce to Friedel pairs
+// Point group 1: families reduce to Friedel pairs
 const IDENTITY_ROTATION = [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
-// Group one peak's Miller indices into families of symmetry-equivalent reflections: hkl and
-// hkl' are one family when hkl' = ±W⁻ᵀ·hkl for a rotation W of the crystal's point group.
-// The ± folds in Friedel pairs (hkl, h̄k̄l̄), which coincide in a powder pattern. Grouping never
-// touches intensities: every reflection's intensity is computed and summed individually.
-// Family key = lexicographically smallest image, representative = lexicographically largest
-// member, families sorted by representative.
+// Group one peak's hkls into families: hkl ~ hkl' when hkl' = ±W⁻ᵀ·hkl for a point-group
+// rotation W (± folds in Friedel pairs). Never touches intensities. Family key = smallest image,
+// representative = largest member (lexicographic), families sorted by representative.
 function get_unique_families(hkls: Hkl[], recip_rotations: readonly number[]): HklObj[] {
   const families = new Map<string, { hkl: Hkl; multiplicity: number }>()
   for (const hkl of hkls) {
@@ -229,9 +218,8 @@ function get_unique_families(hkls: Hkl[], recip_rotations: readonly number[]): H
   return [...families.values()].toSorted((fam_1, fam_2) => compare_hkl(fam_1.hkl, fam_2.hkl))
 }
 
-// SAED restriction: only reflections whose Laue index n = h·u + k·v + l·w satisfies
-// |n| <= max_laue can sit close enough to the Ewald sphere to be excited. Tested inside the
-// triple loop, it rejects the bulk of the sphere before any reciprocal vector is formed.
+// SAED: only |h·u + k·v + l·w| <= max_laue can be excited; tested in the triple loop, it
+// rejects the bulk of the sphere before any reciprocal vector is formed
 type LaueBound = { zone_axis: math.Vec3; max_laue: number }
 
 export function enumerate_reciprocal_points(
@@ -242,18 +230,17 @@ export function enumerate_reciprocal_points(
   laue_bound?: LaueBound,
 ): RecipPoint[] {
   const [[b1_x, b1_y, b1_z], [b2_x, b2_y, b2_z], [b3_x, b3_y, b3_z]] = recip_rows
-  // Exact index bound: |h_i| = |g·a_i| ≤ R·|a_i| (since a_i·b_j = δ_ij). Bounds from
-  // reciprocal-row norms (R/|b_i| + 2) undercount for skewed cells, dropping reflections.
+  // Exact bound |h_i| = |g·a_i| ≤ R·|a_i|; R/|b_i| + 2 undercounts for skewed cells
   const [h_max, k_max, l_max] = direct_rows.map(
     (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
   )
-  // Cap the point count, not max(h,k,l): an index cap lets electron wavelengths through
-  // (rocksalt TiC over [0, 90]° gives h_max 246 but 6.1e7 points, ~8.5 GB)
+  // Cap the point count, not max(h,k,l): rocksalt TiC at 200 kV over [0, 90]° has h_max 246
+  // but 6.1e7 points (~8.5 GB)
   const estimated_points =
     (4 / 3) * Math.PI * max_radius ** 3 * Math.abs(math.det_3x3(direct_rows))
   const MAX_POINTS = 2e6
-  // The loops sweep the enclosing BOX, whose ratio to the sphere is |a||b||c| / V, so an
-  // oblique cell can pass the sphere cap while iterating orders of magnitude more
+  // The loops sweep the enclosing box (|a||b||c| / V times the sphere), so oblique cells need
+  // their own cap
   const box_points = (2 * h_max + 1) * (2 * k_max + 1) * (2 * l_max + 1)
   const MAX_BOX_POINTS = 10 * MAX_POINTS
   if (estimated_points > MAX_POINTS || box_points > MAX_BOX_POINTS) {
@@ -276,8 +263,7 @@ export function enumerate_reciprocal_points(
         if (h_idx === 0 && k_idx === 0 && l_idx === 0) continue
         const laue = h_idx * zone_u + k_idx * zone_v + l_idx * zone_w
         if (laue_bound && Math.abs(laue) > max_laue) continue
-        // Scalars, not a Vec3: materialising g allocated four arrays per candidate point
-        // (11.6 MB for a 55k-point sphere) that no consumer ever read back.
+        // Scalars, not a Vec3: allocating g per candidate cost 11.6 MB for a 55k-point sphere
         const g_x = h_idx * b1_x + k_idx * b2_x + l_idx * b3_x
         const g_y = h_idx * b1_y + k_idx * b2_y + l_idx * b3_y
         const g_z = h_idx * b1_z + k_idx * b2_z + l_idx * b3_z
@@ -287,8 +273,7 @@ export function enumerate_reciprocal_points(
       }
     }
   }
-  // Sort by (g_norm asc, -h, -k, -l) to mimic pymatgen ordering. All terms are finite, so a
-  // zero difference means equality and `||` falls through exactly like an explicit tie check.
+  // (g_norm asc, -h, -k, -l) to mimic pymatgen ordering
   points.sort(
     (point_1, point) =>
       point_1.g_norm - point.g_norm ||
@@ -299,9 +284,8 @@ export function enumerate_reciprocal_points(
   return points
 }
 
-// Absolute significance floor for |F(g)|²: 1e-16 of (Σ_j |f_j(0)|·occu_j)², the largest |F|²
-// any reflection can reach. Far above the sum's ~n·eps cancellation error, so a reflection
-// under it (a systematic absence, say) carries no physically meaningful intensity.
+// Significance floor for |F|²: 1e-16 of its upper bound (Σ_j |f_j(0)|·occu_j)², far above the
+// sum's ~n·eps cancellation error, so anything below it (e.g. a systematic absence) is noise
 export function structure_factor_noise_floor(
   structure: Crystal,
   radiation: RadiationType,
@@ -315,13 +299,9 @@ export function structure_factor_noise_floor(
   return 1e-16 * forward_sum ** 2
 }
 
-// |F(hkl)|² for every supplied reflection, where
-//   F(hkl) = Σⱼ fⱼ(s)·occuⱼ·exp(2πi·hkl·rⱼ)·exp(−Bⱼ·s²),  s = |g|/2.
-// Shared by the powder pattern and the SAED spot calculation so both see identical
-// occupancies, Debye-Waller damping and scattering amplitudes.
-//
-// Units of |F|² differ per radiation — electrons² (X-ray), fm² (neutron), Å² (electron) —
-// which never matters because every consumer rescales intensities to a maximum of 100.
+// |F(hkl)|² per reflection, F = Σⱼ fⱼ(s)·occuⱼ·exp(2πi·hkl·rⱼ)·exp(−Bⱼ·s²), s = |g|/2.
+// Shared by powder and SAED. Units differ per radiation (electrons², fm², Å²), which every
+// consumer cancels by rescaling to a maximum of 100.
 export function structure_factors_squared(
   structure: Crystal,
   radiation: RadiationType,
@@ -331,22 +311,17 @@ export function structure_factors_squared(
   const is_neutron = radiation === `neutron`
   const is_electron = radiation === `electron`
 
-  // Scattering factors and Debye-Waller damping depend only on the element, so the sum is
-  // F = Σ_e f_e(s)·dw_e(s)·S_e with S_e = Σ_{j∈e} occu_j·exp(2πi·hkl·r_j) the per-element
-  // geometric sum. Species are therefore grouped by element: one (f, dw) evaluation per
-  // element per reflection and an inner loop that is a bare complex multiply-accumulate.
+  // f and Debye-Waller depend only on the element, so F = Σ_e f_e·dw_e·S_e with S_e the
+  // per-element geometric sum: one (f, dw) evaluation per element per reflection
   type ElementCoeffs = {
-    a: Float64Array
-    b: Float64Array
-    z: number
-    dw: number
-    // s² past which the X-ray Gaussian fit turns back up toward Z instead of decaying
-    // (see gaussian_turning_point in #lib/scattering)
+    a_coeffs: Float64Array
+    b_coeffs: Float64Array
+    atomic_number: number
+    debye_waller: number
+    // s² past which the X-ray Gaussian fit turns back up toward Z (gaussian_turning_point)
     s_sq_max: number
-    // Bound coherent neutron scattering length in fm (s-independent)
-    b_coh: number
-    // site-species of this element: fractional coords and occupancies
-    coords: math.Vec3[]
+    b_coh: number // bound coherent neutron scattering length in fm
+    coords: math.Vec3[] // fractional coords and occupancies of this element's site-species
     occus: number[]
   }
   const by_element = new Map<string, ElementCoeffs>()
@@ -354,9 +329,8 @@ export function structure_factors_squared(
     for (const { element: element_symbol, occu } of site.species) {
       let coeffs = by_element.get(element_symbol)
       if (coeffs === undefined) {
-        // only X-rays read Z: neutrons scatter off the nucleus and the Mott-Bethe electron
-        // form cancels it analytically
-        const coord_z = is_neutron || is_electron ? 0 : form_factor_z(element_symbol)
+        // only X-rays read Z: the Mott-Bethe electron form cancels it analytically
+        const atomic_number = is_neutron || is_electron ? 0 : form_factor_z(element_symbol)
         const fit = is_neutron ? [] : gaussian_params(element_symbol)
         let b_coh = 0
         if (is_neutron) {
@@ -372,10 +346,10 @@ export function structure_factors_squared(
           }
         }
         coeffs = {
-          a: Float64Array.from(fit, (row) => row[0]),
-          b: Float64Array.from(fit, (row) => row[1]),
-          z: coord_z,
-          dw: debye_waller_factors[element_symbol] ?? 0,
+          a_coeffs: Float64Array.from(fit, (row) => row[0]),
+          b_coeffs: Float64Array.from(fit, (row) => row[1]),
+          atomic_number,
+          debye_waller: debye_waller_factors[element_symbol] ?? 0,
           s_sq_max: is_neutron ? Infinity : gaussian_turning_point(element_symbol),
           b_coh,
           coords: [],
@@ -389,7 +363,7 @@ export function structure_factors_squared(
   }
   const elements = [...by_element.values()]
   const n_elements = elements.length
-  // species laid out element by element: element e owns [elem_start[e], elem_start[e + 1])
+  // element e owns species [elem_start[e], elem_start[e + 1])
   const elem_start = new Int32Array(n_elements + 1)
   for (let elem = 0; elem < n_elements; elem++) {
     elem_start[elem + 1] = elem_start[elem] + elements[elem].coords.length
@@ -398,14 +372,12 @@ export function structure_factors_squared(
   const coords = elements.flatMap((coeffs) => coeffs.coords)
   const occus = elements.flatMap((coeffs) => coeffs.occus)
 
-  // exp(−0·s²) is exactly 1 for every finite s, so with no Debye-Waller factors supplied the
-  // per-element Math.exp is skipped entirely
-  const has_debye_waller = elements.some((coeffs) => coeffs.dw !== 0)
+  // exp(−0·s²) is exactly 1, so skip the per-element Math.exp without Debye-Waller factors
+  const has_debye_waller = elements.some((coeffs) => coeffs.debye_waller !== 0)
 
-  // exp(2πi·hkl·r) = exp(2πi·h·x)·exp(2πi·k·y)·exp(2πi·l·z): tabulate the three factors per
-  // species over the index range the reflections span, so the inner loop below does three
-  // complex multiplies instead of a cos and a sin. Halves the time of a 444-site pattern.
-  // The occupancy rides on the h-axis table, so the inner loop carries no weights at all.
+  // exp(2πi·hkl·r) factorizes per axis: tabulating the three factors per species turns the
+  // inner loop's cos + sin into complex multiplies (2x faster for 444 sites). Occupancy rides
+  // on the h table.
   let [h_max, k_max, l_max] = [0, 0, 0]
   for (const { hkl } of reflections) {
     if (!hkl.every(Number.isInteger)) {
@@ -436,10 +408,8 @@ export function structure_factors_squared(
   const { cos_table: cos_l, sin_table: sin_l } = phase_table(2, l_max)
 
   const intensities = new Float64Array(reflections.length)
-  // All supported scattering factors and isotropic thermal damping are real, so Friedel
-  // mates have conjugate amplitudes and identical |F|². Reuse only equal reciprocal norms:
-  // this public kernel can also receive custom reflections with independently supplied g.
-  // Below 64 site-species, looking up a mate costs more than the short geometric sum.
+  // Real f and isotropic damping give Friedel mates identical |F|². Reuse only on equal g_norm
+  // (callers may pass custom reflections); below 64 species the lookup costs more than the sum.
   const friedel_intensities =
     n_species >= 64 ? new Map<string, { g_norm: number; intensity: number }>() : undefined
 
@@ -455,7 +425,6 @@ export function structure_factors_squared(
         continue
       }
     }
-    // Each reflection reads a contiguous species slice from all six phase tables.
     const h_offset = (hkl[0] + h_max) * n_species
     const k_offset = (hkl[1] + k_max) * n_species
     const l_offset = (hkl[2] + l_max) * n_species
@@ -464,37 +433,27 @@ export function structure_factors_squared(
     let f_real = 0
     let f_imag = 0
     for (let elem = 0; elem < n_elements; elem++) {
-      const {
-        a: a_arr,
-        b: b_arr,
-        z: atomic_number,
-        dw: debye_waller,
-        s_sq_max,
-        b_coh,
-      } = elements[elem]
-      // Atomic scattering factor. X-rays see f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²)
-      // (pymatgen fitted params); the Mott–Bethe electron form cancels that s² analytically
-      // (see #lib/scattering), so both share one sum_terms. Neutrons see the constant b_coh.
+      const { a_coeffs, b_coeffs, atomic_number, debye_waller, s_sq_max, b_coh } =
+        elements[elem]
+      // X-rays: f = Z − XRAY_GAUSSIAN_PREFACTOR·s²·Σ aᵢ·exp(−bᵢ·s²); Mott–Bethe electrons cancel
+      // the s², sharing sum_terms; neutrons see the constant b_coh
       let factor = b_coh
       if (!is_neutron) {
-        // The X-ray fit is only valid below its turning point; past it the expression climbs
-        // back to +Z instead of decaying to 0 (see xray_form_factor in #lib/scattering). Hold it
-        // flat there and floor at 0. The Mott-Bethe electron form has no such issue - the s²
-        // cancels, leaving a monotone Gaussian sum.
+        // Past its turning point the X-ray fit climbs back to +Z, so hold s² there and floor
+        // f at 0. The electron form is a monotone Gaussian sum and needs neither.
         const s_sq = is_electron ? s_sq_point : Math.min(s_sq_point, s_sq_max)
         let sum_terms = 0
-        for (let term = 0; term < a_arr.length; term++) {
-          sum_terms += a_arr[term] * Math.exp(-b_arr[term] * s_sq)
+        for (let term = 0; term < a_coeffs.length; term++) {
+          sum_terms += a_coeffs[term] * Math.exp(-b_coeffs[term] * s_sq)
         }
         factor = is_electron
           ? ELECTRON_FORM_FACTOR_CONST * sum_terms
           : Math.max(0, atomic_number - XRAY_GAUSSIAN_PREFACTOR * s_sq * sum_terms)
       }
-      // Thermal damping is geometric, not electronic: it applies to every radiation
+      // Thermal damping is geometric, so it applies to every radiation
       if (has_debye_waller) factor *= Math.exp(-debye_waller * s_sq_point)
 
-      // S_e = Σ occu·exp(2πi·hkl·r) over this element's species, phase factor assembled from
-      // the per-axis tables (occupancy already folded into the h table)
+      // S_e = Σ occu·exp(2πi·hkl·r) over this element's species
       let sum_real = 0
       let sum_imag = 0
       for (let idx = elem_start[elem]; idx < elem_start[elem + 1]; idx++) {
@@ -523,8 +482,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     options.wavelength,
     options.accelerating_voltage,
   )
-  // Without the crystal's rotations, families fall back to point group 1 (Friedel pairs
-  // only) and the result says so in family_grouping
+  // Without rotations, families fall back to Friedel pairs (recorded in family_grouping)
   const { symmetry_rotations } = options
   const recip_rotations = symmetry_rotations
     ? reciprocal_rotations(symmetry_rotations)
@@ -532,20 +490,14 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   const recip_rows = math.reciprocal_lattice(structure.lattice.matrix)
 
-  // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda.
-  // Upper default is 90°, matching pymatgen's XRDCalculator: the powder Lorentz factor
-  // 1/(sin²θ·|cosθ|) diverges as 2θ → 180°. The exact singularity is skipped below, but a
-  // reflection landing just short of it still reports a huge intensity that becomes the
-  // normalization maximum and pushes every real peak under scaled_intensity_tol — a cubic
-  // cell with a = 1.000000001·λ puts one at 179.995° and scales its true 60° reflection to
-  // 0.04. Only this default keeps that class out; pass an explicit range to go past 90°.
-  // Electrons need their own default: at 200 kV λ = 0.0251 Å, 90° is 6.1e7 reflections for
-  // rocksalt TiC, while a TEM pattern lives at a few degrees (TiC [200] sits at 0.68°).
+  // Bragg bound |g| = 2 sin(θ) / λ. Default 90° like pymatgen: the Lorentz factor diverges as
+  // 2θ → 180°, so a reflection just short of it (a = 1.000000001·λ puts one at 179.995°) takes
+  // the normalization max and scales real peaks to ~0.04. Electrons default to [0, 5]: at
+  // 200 kV, 90° is 6.1e7 reflections for TiC whose [200] sits at 0.68°.
   const default_range: Vec2 = radiation === `electron` ? [0, 5] : [0, 90]
   const two_theta_range: Vec2 | null =
     options.two_theta_range === null ? null : (options.two_theta_range ?? default_range)
-  // 2·sin(2θ/2)/λ peaks at 180° and falls again past it, so [0, 200] would silently act as
-  // a 160° cap. Physical scattering angles live in [0, 180].
+  // |g| peaks at 180° and falls past it, so [0, 200] would silently act as a 160° cap
   if (two_theta_range !== null) {
     const [min_angle, max_angle] = two_theta_range
     if (!(min_angle >= 0 && max_angle > min_angle && max_angle <= 180)) {
@@ -573,11 +525,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     recip_points,
   )
 
-  // Accumulate peaks by merging two_thetas within tolerance. Reflections arrive sorted by
-  // |g|, so 2θ is non-decreasing and a reflection can only ever merge into the LAST peak:
-  // consecutive peak keys are ≥ merge_tol apart, so anything within tolerance of an earlier
-  // peak would be even closer to the last one. Scanning every peak was O(reflections × peaks)
-  // and took 50 ms of a 275 ms pattern for a 444-site cell.
+  // Merge 2θs within tolerance. Reflections arrive sorted by |g|, so 2θ is non-decreasing and
+  // a reflection can only merge into the last peak (scanning all peaks cost 50 of 275 ms).
   const peaks: { two_theta: number; intensity: number; hkls: Hkl[]; d_hkl: number }[] = []
   const merge_tol = options.peak_merge_tol ?? TWO_THETA_TOL
   let max_f_squared = 0
@@ -587,34 +536,24 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     const { hkl, g_norm } = recip_points[point_idx]
     if (g_norm === 0) continue
 
-    const asin_arg = (wavelength * g_norm) / 2
-    // asin domain can exceed 1 by FP error — clamp to avoid NaN
-    const clamped_asin_arg = math.clamp(asin_arg, -1, 1)
-    // Exact back-reflection is unobservable and its Lorentz denominator is genuinely 0, so
-    // the clamp below would invent a ~2e12 intensity that then takes the normalization max
-    // and drops every real reflection. Only a range reaching 180 enumerates it.
+    // clamp: FP error can push the asin argument past 1
+    const clamped_asin_arg = math.clamp((wavelength * g_norm) / 2, -1, 1)
+    // Exact back-reflection is unobservable with a zero Lorentz denominator: keeping it would
+    // invent a huge intensity that takes the normalization max
     if (clamped_asin_arg >= 1) continue
     if (f_squared[point_idx] > max_f_squared) max_f_squared = f_squared[point_idx]
     const theta = Math.asin(clamped_asin_arg)
 
     const sin_theta = Math.sin(theta)
-    const cos_theta = Math.cos(theta)
-    // No clamp needed: theta = 0 is excluded by the g_norm check and theta = 90 by the
-    // back-reflection skip, and the largest asin argument below 1 still leaves a
-    // denominator of 1.5e-8, so this cannot reach zero.
-    const denom = sin_theta * sin_theta * Math.abs(cos_theta)
-    // Only X-rays pick up a polarization factor: the incident beam is partially polarized by
-    // the scattering event itself, giving Lp = (1 + cos²2θ)/(sin²θ·|cosθ|). Nuclear neutron
-    // scattering is isotropic and electron scattering off the Coulomb potential has no
-    // equivalent term, so both use the bare powder Lorentz factor 1/(sin²θ·|cosθ|). Silently
-    // reusing the X-ray form would over-weight low and high angles for neutrons.
+    // Never zero: θ = 0 and 90° are skipped above, leaving a denominator of at least 1.5e-8
+    const denom = sin_theta * sin_theta * Math.abs(Math.cos(theta))
+    // Only X-rays get the polarization term (1 + cos²2θ): nuclear neutron and Coulomb electron
+    // scattering use the bare powder Lorentz factor 1/(sin²θ·|cosθ|)
     const polarization = radiation === `xray` ? 1 + Math.cos(2 * theta) ** 2 : 1
-    const lorentz = polarization / denom
-    const intensity_hkl = f_squared[point_idx] * lorentz
+    const intensity_hkl = f_squared[point_idx] * (polarization / denom)
     const two_theta = math.to_degrees(2 * theta)
 
-    // hkls stay 3-index (h, k, l) even for hexagonal systems where pymatgen presents
-    // Miller–Bravais (h, k, i, l), matching consumers
+    // hkls stay 3-index even for hexagonal cells where pymatgen uses Miller–Bravais (hkil)
     const last = peaks.at(-1)
     if (last && Math.abs(last.two_theta - two_theta) < merge_tol) {
       last.intensity += intensity_hkl
@@ -622,22 +561,16 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     } else peaks.push({ two_theta, intensity: intensity_hkl, hkls: [hkl], d_hkl: 1 / g_norm })
   }
 
-  if (peaks.length === 0) return { x: [], y: [] }
-  // Tolerance filter and scaling are both relative, so a window in which every reflection is
-  // extinct normalizes cancellation error to 100% (fcc Al over [20, 33]° at Cu Kα emitted a
-  // forbidden (100) at y = 100 from a raw |F|² of 2.1e-27)
-  if (max_f_squared < structure_factor_noise_floor(structure, radiation))
+  // Filter and scaling are relative, so an all-extinct window would normalize cancellation
+  // error to 100 (fcc Al over [20, 33]° at Cu Kα emitted a forbidden (100) from |F|² = 2e-27)
+  if (peaks.length === 0 || max_f_squared < structure_factor_noise_floor(structure, radiation))
     return { x: [], y: [] }
 
-  // Scale intensities so that the max intensity is 100, and filter by scaled tol
   const max_intensity = math.array_max(peaks.map((peak) => peak.intensity))
-
   const x_values: number[] = []
   const y_values: number[] = []
   const hkls_out: HklObj[][] = []
   const d_out: number[] = []
-
-  // Already in ascending 2θ: peaks were appended in |g| order
   for (const peak of peaks) {
     if ((peak.intensity / max_intensity) * 100 <= scaled_tol) continue
     x_values.push(peak.two_theta)
@@ -646,10 +579,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     d_out.push(peak.d_hkl)
   }
 
-  // Final scaling if requested. Divide by the true maximum, not max(1, ...): raw |F|² is
-  // in electrons² for X-rays but fm² for neutrons and Å² for electrons, so a small b_coh
-  // or a suppressed form factor puts every peak under 1 and a floor of 1 silently
-  // under-scales the whole pattern (Mo Kα on a 2 Å H cell topped out at 43.6, not 100).
+  // Divide by the true max, not max(1, ...): with fm² or Å² units every peak can sit under 1
+  // (Mo Kα on a 2 Å H cell topped out at 43.6, not 100)
   if (options.scaled ?? true) {
     const max_y = math.array_max(y_values)
     if (max_y > 0)
@@ -661,13 +592,11 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out, family_grouping }
 }
 
-// symprec in Å for xrd_symmetry_rotations. Tight on purpose: a looser tolerance can accept
-// near-symmetries that map reflections of different intensity onto each other, while one
-// too tight only splits a family into smaller ones.
+// symprec in Å. Tight on purpose: a loose one can merge reflections of different intensity,
+// a too tight one only splits families.
 const XRD_SYMPREC = 1e-5
 
-// The structure's point-group rotations for options.symmetry_rotations of compute_xrd_pattern
-// (async because moyo-wasm initializes asynchronously)
+// Point-group rotations for options.symmetry_rotations (async: moyo-wasm init)
 export async function xrd_symmetry_rotations(structure: Crystal): Promise<math.Matrix3x3[]> {
   const { operations } = await analyze_structure_symmetry(structure, { symprec: XRD_SYMPREC })
   return point_group_rotations(operations)

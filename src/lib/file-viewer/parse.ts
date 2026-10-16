@@ -141,16 +141,16 @@ const volumetric_result = (content: string, filename: string): ParseResult | nul
 }
 
 // Parse a structure file, collecting its warnings onto the result (not the console: the
-// viewer shows them)
+// viewer shows them). Its id is the filename without extension.
 const structure_result = (
   content: string,
   filename: string,
-  structure_id: string,
 ): Extract<ParseResult, { type: `structure` }> => {
   const { value, warnings } = collect_parse_warnings(() =>
     parse_structure_file(content, filename),
   )
-  return { type: `structure`, data: { ...value, id: structure_id }, filename, warnings }
+  const id = filename.replace(/\.[^/.]+$/, ``)
+  return { type: `structure`, data: { ...value, id }, filename, warnings }
 }
 
 // Route file content to the parser for its format and wrap the result with its view type
@@ -217,7 +217,6 @@ export const parse_file_content = async (
     if (is_cube) throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
 
-  const structure_id = filename.replace(/\.[^/.]+$/, ``)
   // JSON files: render typed JSON before filename heuristics. Otherwise names like
   // convex-hull.json can be mistaken for trajectory keywords such as nve.
   const is_json = /\.json$/i.test(filename)
@@ -243,7 +242,7 @@ export const parse_file_content = async (
       // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.); a shape that
       // looks like a structure but fails the detailed parse still gets the JSON browser
       try {
-        return structure_result(content, filename, structure_id)
+        return structure_result(content, filename)
       } catch {
         return { type: `json_browser`, data: parsed_json, filename }
       }
@@ -289,18 +288,14 @@ export const parse_file_content = async (
   // volumetric; the structure parser would read its header and drop the grid. Only a sniff:
   // content that merely resembles a grid header and fails to parse is left to the parsers
   // below, while VASP-named and .cube files surface their parse errors above.
-  const volumetric = (() => {
-    try {
-      return volumetric_result(content, filename)
-    } catch {
-      return null
-    }
-  })()
-  if (volumetric) return volumetric
+  try {
+    const volumetric = volumetric_result(content, filename)
+    if (volumetric) return volumetric
+  } catch {}
 
   // CIF, POSCAR, XYZ, ...: parse_structure_file throws descriptive reasons on failure but can
   // still return zero atoms (a CIF with cell params but no _atom_site records)
-  const result = structure_result(content, filename, structure_id)
+  const result = structure_result(content, filename)
   if (!result.data.sites?.length) throw new Error(`No atoms found in ${filename}`)
   return result
 }

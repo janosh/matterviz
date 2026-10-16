@@ -33,32 +33,21 @@ describe(`EmptyState`, () => {
     expect(container.style.background).toBe(`red`)
   })
 
+  const children = createRawSnippet(() => ({
+    render: () => `<p class="custom-content">Custom snippet content</p>`,
+  }))
+  // children take precedence over the message prop, and `` leaves a bare container
   test.each([
-    [{}, `No data to display`],
-    [{ message: `` }, null],
-  ])(`props %j render message %s`, (props, message) => {
+    [{}, `No data to display`, null],
+    [{ message: `` }, null, null],
+    [{ message: `This should not render`, children }, null, `Custom snippet content`],
+  ])(`props %j render message %s`, (props, message, custom) => {
     mount(EmptyState, { target: document.body, props })
     const container = doc_query(`.empty-state`)
     expect(container.querySelector(`span.message`)?.textContent ?? null).toBe(message)
+    expect(container.querySelector(`.custom-content`)?.textContent ?? null).toBe(custom)
     expect(container.classList.contains(`overlay`)).toBe(false)
     expect(container.getAttribute(`role`)).toBe(`status`) // announced politely by default
-  })
-
-  test(`children snippet takes precedence over message prop`, () => {
-    mount(EmptyState, {
-      target: document.body,
-      props: {
-        message: `This should not render`,
-        children: createRawSnippet(() => ({
-          render: () => `<p class="custom-content">Custom snippet content</p>`,
-        })),
-      },
-    })
-    const container = doc_query(`.empty-state`)
-    expect(container.querySelector(`.custom-content`)?.textContent).toBe(
-      `Custom snippet content`,
-    )
-    expect(container.querySelector(`span.message`)).toBeNull()
   })
 })
 
@@ -66,6 +55,8 @@ describe(`charts overlay the shared empty state exactly while they have no data`
   const xy = { x: [1, 2], y: [3, 4] }
   const hierarchy = [{ id: `a`, value: 1 }]
   const none = { series: [] }
+  const nodes = [{ id: `a` }, { id: `b` }]
+  const links = [{ source: `a`, target: `b`, value: 1 }]
   type Props = Record<string, unknown>
   // Each chart demands its own data props; the table feeds them all one loose shape
   test.each<[string, unknown, Props, Props]>([
@@ -76,17 +67,7 @@ describe(`charts overlay the shared empty state exactly while they have no data`
     [`.histogram`, Histogram, none, { series: [{ values: [1, 2] }] }],
     [`.bar-plot`, BarPlot, none, { series: [xy] }],
     [`.box-plot`, BoxPlot, none, { series: [{ y: [1, 2, 3] }] }],
-    [
-      `.sankey`,
-      Sankey,
-      { data: { nodes: [], links: [] } },
-      {
-        data: {
-          nodes: [{ id: `a` }, { id: `b` }],
-          links: [{ source: `a`, target: `b`, value: 1 }],
-        },
-      },
-    ],
+    [`.sankey`, Sankey, { data: { nodes: [], links: [] } }, { data: { nodes, links } }],
     [`.sunburst`, Sunburst, { data: [] }, { data: hierarchy }],
     [`.treemap`, Treemap, { data: [] }, { data: hierarchy }],
     [`.ternary`, TernaryPlot, none, { series: [{ points: [[0.2, 0.3, 0.5]] }] }],
@@ -109,12 +90,9 @@ describe(`charts overlay the shared empty state exactly while they have no data`
     [[], [], `No data to display`],
     [[{ label: `a` }], [[1]], null],
   ])(`HeatmapMatrix with items %j`, (items, values, expected) => {
-    mount(HeatmapMatrix, {
-      target: document.body,
-      props: { x_items: items, y_items: items, values },
-    })
-    expect(
-      document.querySelector(`.heatmap .empty-state[role="status"]`)?.textContent ?? null,
-    ).toBe(expected)
+    const props = { x_items: items, y_items: items, values }
+    mount(HeatmapMatrix, { target: document.body, props })
+    const empty_state = document.querySelector(`.heatmap .empty-state[role="status"]`)
+    expect(empty_state?.textContent ?? null).toBe(expected)
   })
 })

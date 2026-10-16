@@ -1,23 +1,19 @@
 import InfoTag from '#lib/layout/InfoTag.svelte'
-import { flushSync, mount } from 'svelte'
+import { type ComponentProps, flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, mock_clipboard_write } from '../setup'
 
 describe(`InfoTag`, () => {
   const get_tag = (): HTMLSpanElement => doc_query(`.info-tag`)
+  const mount_tag = (props: ComponentProps<typeof InfoTag>): HTMLSpanElement => {
+    mount(InfoTag, { target: document.body, props })
+    return get_tag()
+  }
 
   test(`renders HTML labels and sanitized hover details while retaining click actions`, async () => {
     const onclick = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: {
-        label: `E<sub>hull</sub>:`,
-        value: 42,
-        title: `<b>Energy</b><script>bad()</script>`,
-        onclick,
-      },
-    })
-    const tag = get_tag()
+    const title = `<b>Energy</b><script>bad()</script>`
+    const tag = mount_tag({ label: `E<sub>hull</sub>:`, value: 42, title, onclick })
     expect(tag.getAttribute(`role`)).toBe(`button`)
     expect(tag.querySelector(`sub`)?.textContent).toBe(`hull`)
     expect(doc_query(`em`).textContent).toBe(`42`)
@@ -43,11 +39,7 @@ describe(`InfoTag`, () => {
     [`disabled`, { disabled: true }, [`default`, `md`]],
   ] as const)(`%s`, (_name, props, classes) => {
     const onclick = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: 1, onclick, ...props },
-    })
-    const tag = get_tag()
+    const tag = mount_tag({ label: `Test`, value: 1, onclick, ...props })
     const disabled = `disabled` in props
     for (const cls of classes) expect(tag.classList.contains(cls)).toBe(true)
     expect(tag.classList.contains(`disabled`)).toBe(disabled)
@@ -72,8 +64,7 @@ describe(`InfoTag`, () => {
     `value=$value, copy_value=$copy_value copies $copied`,
     ({ value, copy_value, copied }) => {
       const write_text_spy = mock_clipboard_write()
-      mount(InfoTag, { target: document.body, props: { label: `ID:`, value, copy_value } })
-      const tag = get_tag()
+      const tag = mount_tag({ label: `ID:`, value, copy_value })
       expect(doc_query(`em`).textContent).toBe(value === undefined ? `` : String(value))
       expect(tag.getAttribute(`role`)).toBe(copied ? `button` : null)
       expect(tag.getAttribute(`tabindex`)).toBe(copied ? `0` : null)
@@ -85,8 +76,7 @@ describe(`InfoTag`, () => {
 
   test(`shows checkmark after copying and removes after 1s`, async () => {
     vi.useFakeTimers()
-    mount(InfoTag, { target: document.body, props: { label: `ID:`, value: `abc123` } })
-    get_tag().click()
+    mount_tag({ label: `ID:`, value: `abc123` }).click()
     await Promise.resolve()
     await Promise.resolve()
     flushSync()
@@ -100,12 +90,9 @@ describe(`InfoTag`, () => {
   test(`custom onclick overrides copy`, () => {
     const write_text_spy = mock_clipboard_write()
     const onclick = vi.fn()
-    mount(InfoTag, {
-      target: document.body,
-      props: { label: `Test`, value: undefined, copy_value: `id`, onclick },
-    })
-    expect(get_tag().getAttribute(`role`)).toBe(`button`)
-    get_tag().click()
+    const tag = mount_tag({ label: `Test`, value: undefined, copy_value: `id`, onclick })
+    expect(tag.getAttribute(`role`)).toBe(`button`)
+    tag.click()
     flushSync()
     expect(onclick).toHaveBeenCalledOnce()
     expect(write_text_spy).not.toHaveBeenCalled()
@@ -121,17 +108,8 @@ describe(`InfoTag`, () => {
     ({ removable, disabled, callback, expected }) => {
       const onclick = vi.fn()
       const on_remove = vi.fn()
-      mount(InfoTag, {
-        target: document.body,
-        props: {
-          label: `Test`,
-          value: 1,
-          removable,
-          disabled,
-          onclick,
-          on_remove: callback ? on_remove : undefined,
-        },
-      })
+      const props = { label: `Test`, value: 1, removable, disabled, onclick }
+      mount_tag({ ...props, on_remove: callback ? on_remove : undefined })
       const remove = document.querySelector<HTMLButtonElement>(`[aria-label="Remove"]`)
       expect(Boolean(remove)).toBe(expected)
       if (!remove) return

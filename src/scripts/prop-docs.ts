@@ -41,14 +41,6 @@ const comment_lines = (text: string, ranges: readonly ts.CommentRange[]): string
     .map(({ pos, end }) => text.slice(pos + 2, end).trim())
     .filter((line) => line && !LINT_PRAGMA_RE.test(line))
 
-// The members a prop node sits among (interface or type literal members, $props() bindings)
-const siblings = ({ parent }: ts.Node): readonly ts.Node[] =>
-  ts.isInterfaceDeclaration(parent) || ts.isTypeLiteralNode(parent)
-    ? parent.members
-    : ts.isObjectBindingPattern(parent)
-      ? parent.elements
-      : []
-
 // `//` lines directly above a node (the block touching it, no blank line in between) and a
 // `//` comment trailing it on the same line, after an optional separator
 const comment_parts = (node: ts.Node): { above: string[]; trailing: string[] } => {
@@ -68,20 +60,12 @@ const comment_parts = (node: ts.Node): { above: string[]; trailing: string[] } =
   }
 }
 
-const has_comment = (node: ts.Node): boolean =>
-  Object.values(comment_parts(node)).some((lines) => lines.length > 0)
-
-// A node's description from comment_parts. Leading lines that head a group of props rather
-// than describe this one are skipped: a lone line of at most three unpunctuated words
-// (`// Controls`, `// Axis configuration`), or a comment above the first of several members
-// none of the others comment on, which describes them all (PlotConfig's `// Grouped
-// configuration for plot axes and display settings` over x_axis, y_axis, ...).
+// A node's description from comment_parts, minus a lone leading line of at most three
+// unpunctuated words, which heads a group of props rather than describing this one
+// (`// Controls`, `// Axis configuration`)
 const node_comment = (node: ts.Node): string | undefined => {
   const { above, trailing } = comment_parts(node)
-  const [first, ...others] = siblings(node)
-  const heads_group =
-    (above.length === 1 && /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0])) ||
-    (first === node && trailing.length === 0 && others.length > 0 && !others.some(has_comment))
+  const heads_group = above.length === 1 && /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0])
   const lines = [...(heads_group ? [] : above), ...trailing]
   return lines.length ? lines.join(` `) : undefined
 }
@@ -95,22 +79,21 @@ const is_call_to = (node: ts.Node | undefined, name: string): node is ts.CallExp
   ts.isIdentifier(node.expression) &&
   node.expression.text === name
 
-const find_props_declaration = (source: ts.SourceFile): ts.VariableDeclaration | undefined => {
-  let found: ts.VariableDeclaration | undefined
+// The `$props()` declaration and its type (annotation or `$props<T>()` argument)
+const find_props = (source: ts.SourceFile) => {
+  let found: { declaration: ts.VariableDeclaration; type_node?: ts.TypeNode } | undefined
   const visit = (node: ts.Node): void => {
     if (found) return
-    if (ts.isVariableDeclaration(node) && is_call_to(node.initializer, `$props`)) found = node
+    if (ts.isVariableDeclaration(node) && is_call_to(node.initializer, `$props`))
+      found = {
+        declaration: node,
+        type_node: node.type ?? node.initializer.typeArguments?.[0],
+      }
     else ts.forEachChild(node, visit)
   }
   visit(source)
   return found
 }
-
-const props_type_node = (declaration: ts.VariableDeclaration): ts.TypeNode | undefined =>
-  declaration.type ??
-  (is_call_to(declaration.initializer, `$props`)
-    ? declaration.initializer.typeArguments?.[0]
-    : undefined)
 
 // TS for a component: its <script> blocks (module first, so the props annotation can use its
 // types) plus a default export typed like the component, so `ComponentProps<typeof X>` in other
@@ -135,8 +118,7 @@ const component_ts = (svelte_source: string): string => {
       lines.push(`type ${param.name.text} = ${target?.getText() ?? `unknown`}`)
     }
   }
-  const declaration = find_props_declaration(parse(body))
-  const props_type = (declaration && props_type_node(declaration)?.getText()) ?? `{}`
+  const props_type = find_props(parse(body))?.type_node?.getText() ?? `{}`
   const type_params = generics ? `<${generics}>` : ``
   lines.push(
     `declare function __component${type_params}(this: void, internals: unknown, props: ${props_type}): {}`,
@@ -151,9 +133,8 @@ const find_prop = (checker: ts.TypeChecker, type: ts.Type, name: string) =>
     : checker.getPropertyOfType(type, name)
 
 const component_props = (source: ts.SourceFile, checker: ts.TypeChecker): PropDoc[] => {
-  const declaration = find_props_declaration(source)
+  const { declaration, type_node } = find_props(source) ?? {}
   if (!declaration || !ts.isObjectBindingPattern(declaration.name)) return []
-  const type_node = props_type_node(declaration)
   const props_type = type_node && checker.getTypeFromTypeNode(type_node)
   return declaration.name.elements
     .filter((element) => !element.dotDotDotToken)

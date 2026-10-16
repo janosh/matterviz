@@ -5,7 +5,7 @@ import type { OpportunityRequest } from '#lib/synthesis-planning/opportunity-map
 import { compute_opportunity_map_async } from '#lib/synthesis-planning/opportunity-map-async.svelte.js'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisConditions } from '#lib/synthesis-planning/types.js'
-import { mount, tick, unmount } from 'svelte'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import {
   doc_query,
@@ -17,6 +17,14 @@ import {
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)
+const mount_map = (props: ComponentProps<typeof OpportunityMap>): void => {
+  const component = mount(OpportunityMap, { target: document.body, props })
+  onTestFinished(() => {
+    compute_opportunity_map_async.cancel()
+    return unmount(component)
+  })
+}
+const n_cells = () => document.querySelectorAll(`.map-grid button`).length
 
 test(`applies cells, preserves the sweep on condition updates, recomputes other pressures, and rejects invalid extents`, async () => {
   const stub = install_stub_worker<{ id: number; input: OpportunityRequest }>(({ input }) =>
@@ -28,57 +36,31 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
     partial_pressures: { O2: 0.21 },
   }
   let conditions = $state(initial)
-  const plan = plan_synthesis({
-    entries,
-    target: `BaTiO3`,
-    conditions: initial,
-    max_routes: 2,
-  })
-  const on_conditions_change = vi.fn((next: SynthesisConditions) => {
-    conditions = next
-  })
-  const component = mount(OpportunityMap, {
-    target: document.body,
-    props: {
-      entries: [...entries, { ...entries[0], entry_id: `invalid`, e_form_per_atom: NaN }],
-      target: plan.target.id,
-      routes: plan.routes,
-      selected_route_id: `not-shortlisted`,
-      get conditions() {
-        return conditions
-      },
-      on_conditions_change,
+  const plan_opts = { entries, target: `BaTiO3`, conditions: initial, max_routes: 2 }
+  const plan = plan_synthesis(plan_opts)
+  const on_conditions_change = vi.fn((next: SynthesisConditions) => (conditions = next))
+  mount_map({
+    entries: [...entries, { ...entries[0], entry_id: `invalid`, e_form_per_atom: NaN }],
+    target: plan.target.id,
+    routes: plan.routes,
+    selected_route_id: `not-shortlisted`,
+    get conditions() {
+      return conditions
     },
+    on_conditions_change,
   })
-  onTestFinished(() => {
-    compute_opportunity_map_async.cancel()
-    return unmount(component)
-  })
-  await vi.waitFor(() =>
-    expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(81),
-  )
+  await vi.waitFor(() => expect(n_cells()).toBe(81))
   const first = doc_query<HTMLButtonElement>(`.map-grid button`)
   first.focus()
   await tick()
   const tooltip = doc_query(`.plot-tooltip`)
   // the tooltip wears the focused cell's fill with contrasting text
   expect_tooltip_paint(tooltip, first.style.background)
-  for (const label of [
-    `Temperature: 300 K`,
-    `O2:`,
-    `Target above hull:`,
-    `Route 1`,
-    `Driving force:`,
-    `Selectivity:`,
-  ])
+  const labels = [`Temperature: 300 K`, `O2:`, `Target above hull:`, `Route 1`]
+  for (const label of [...labels, `Driving force:`, `Selectivity:`])
     expect(tooltip.textContent).toContain(label)
-  expect([...tooltip.querySelectorAll(`small`)].map((node) => node.textContent)).toEqual([
-    `K`,
-    `bar`,
-    `meV/atom`,
-    `meV/atom`,
-    `meV/atom`,
-  ])
+  const units = [...tooltip.querySelectorAll(`small`)].map((node) => node.textContent)
+  expect(units).toEqual([`K`, `bar`, `meV/atom`, `meV/atom`, `meV/atom`])
   first.blur()
   expect_module_worker(stub.instances, `src/lib/synthesis-planning/opportunity-map-worker.ts`)
   expect(stub.posted[0].message.input.entries.at(-1)?.e_form_per_atom).toBeNaN()
@@ -96,9 +78,7 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   expect(stub.posted).toHaveLength(1)
   conditions = { ...initial, temperature: 300, partial_pressures: { O2: 1e-8, CO2: 0.01 } }
   await vi.waitFor(() => expect(stub.posted).toHaveLength(2))
-  await vi.waitFor(() =>
-    expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(81),
-  )
+  await vi.waitFor(() => expect(n_cells()).toBe(81))
   const color = document.querySelectorAll<HTMLSelectElement>(`select`)[1]
   color.selectedIndex = 1
   color.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -138,21 +118,9 @@ test(`preferred-route colours wrap past 4 routes and leave unknown routes neutra
     ],
   }))
   install_stub_worker(() => cells)
-  const component = mount(OpportunityMap, {
-    target: document.body,
-    props: {
-      entries,
-      target: plan.target.id,
-      routes,
-      conditions,
-      on_conditions_change: vi.fn(),
-    },
-  })
-  onTestFinished(() => {
-    compute_opportunity_map_async.cancel()
-    return unmount(component)
-  })
-  await vi.waitFor(() => expect(document.querySelectorAll(`.map-grid button`)).toHaveLength(6))
+  const on_conditions_change = vi.fn()
+  mount_map({ entries, target: plan.target.id, routes, conditions, on_conditions_change })
+  await vi.waitFor(() => expect(n_cells()).toBe(6))
   const color = document.querySelectorAll<HTMLSelectElement>(`select`)[1]
   color.value = `preferred`
   color.dispatchEvent(new Event(`change`, { bubbles: true }))

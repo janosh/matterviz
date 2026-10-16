@@ -39,20 +39,12 @@ vi.mock(`#lib/worker-client.svelte.js`, async (import_original) => {
 const SIZE = 10
 // Gaussian blob centred in the cell (positive field) and a signed variant with a negative
 // blob in the opposite corner so the -isovalue lobe has somewhere to live
-const blob = (
-  idx_x: number,
-  idx_y: number,
-  idx_z: number,
-  center_x: number,
-  center_y: number,
-  center_z: number,
-) =>
-  Math.exp(-((idx_x - center_x) ** 2 + (idx_y - center_y) ** 2 + (idx_z - center_z) ** 2) / 4)
-const blob_volume = (label: string, field: (...idx: [number, number, number]) => number) =>
+const blob = (center: number, ...idx: number[]) =>
+  Math.exp(-idx.reduce((sum, coord) => sum + (coord - center) ** 2, 0) / 4)
+const blob_volume = (label: string, field: (...idx: number[]) => number) =>
   make_volume(make_grid(SIZE, SIZE, SIZE, field), { label })
-const positive_volume = () => blob_volume(`density`, (...idx) => blob(...idx, 5, 5, 5))
-const signed_volume = () =>
-  blob_volume(`spin`, (...idx) => blob(...idx, 3, 3, 3) - blob(...idx, 7, 7, 7))
+const positive_volume = () => blob_volume(`density`, (...idx) => blob(5, ...idx))
+const signed_volume = () => blob_volume(`spin`, (...idx) => blob(3, ...idx) - blob(7, ...idx))
 // ≥ 200k grid points routes geometry through the worker
 const big_n = 59
 const big_volume = (): VolumetricData => ({
@@ -106,6 +98,17 @@ const meshes = () => threlte_stub.nodes.filter((node) => node.tag === `Mesh`)
 const materials = () => threlte_stub.nodes.filter((node) => node.tag.endsWith(`Material`))
 const geometry_of = (node: { props: Record<string, unknown> }) =>
   node.props.geometry as BufferGeometry
+// Large grids then route through the mocked worker client: only `typeof Worker` is consulted,
+// so the stub never runs. Each job stays pending until the test resolves it.
+const hold_worker_jobs = () => {
+  vi.stubGlobal(`Worker`, vi.fn())
+  const pending: { resolve: (value: unknown) => void; signal: AbortSignal }[] = []
+  compute_geometries_async.mockImplementation(
+    (_input: unknown, { signal }: { signal: AbortSignal }) =>
+      new Promise((resolve) => pending.push({ resolve, signal })),
+  )
+  return pending
+}
 
 beforeEach(() => {
   vi.useFakeTimers({
@@ -118,6 +121,7 @@ afterEach(() => {
   teardown = undefined
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  compute_geometries_async.mockReset()
 })
 
 describe(`Isosurface`, () => {
@@ -134,10 +138,7 @@ describe(`Isosurface`, () => {
     expect(geometry.getAttribute(`position`).count).toBeGreaterThan(0)
     expect(geometry.getAttribute(`normal`).count).toBe(geometry.getAttribute(`position`).count)
     expect(geometry.getAttribute(`color`)).toBeUndefined()
-    expect(materials().map((node) => node.tag)).toEqual([
-      `MeshStandardMaterial`,
-      `MeshStandardMaterial`,
-    ])
+    expect(materials().map((node) => node.tag)).toEqual(Array(2).fill(`MeshStandardMaterial`))
     expect(materials()[0].props).toMatchObject({
       color: `#3b82f6`,
       opacity: 0.6,
@@ -274,14 +275,7 @@ describe(`Isosurface`, () => {
   // preparing; now one job runs at a time, the latest request reruns once it lands, and only a
   // job for a volume that left the scene is aborted
   test(`worker rebuilds run one at a time and rerun with the latest isovalue`, async () => {
-    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
-    const pending: { resolve: (value: unknown) => void; signal: AbortSignal }[] = []
-    compute_geometries_async
-      .mockReset()
-      .mockImplementation(
-        (_input: unknown, { signal }: { signal: AbortSignal }) =>
-          new Promise((resolve) => pending.push({ resolve, signal })),
-      )
+    const pending = hold_worker_jobs()
     const props = mount_isosurface({ volumes: [big_volume()] })
     await settle()
     for (const isovalue of [0.4, 0.5]) {
@@ -300,32 +294,25 @@ describe(`Isosurface`, () => {
     props.volumes = [big_volume()]
     flushSync()
     expect(pending[1].signal.aborted).toBe(true)
-    compute_geometries_async.mockReset()
   })
 
   // The rerun queued behind an in-flight worker rebuild used to fire after unmount, starting
   // a worker job (and writing state) for a destroyed component
   test(`a rerun queued behind a worker rebuild is dropped on unmount`, async () => {
-    vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
-    const pending: ((value: unknown) => void)[] = []
-    compute_geometries_async
-      .mockReset()
-      .mockImplementation(() => new Promise((resolve) => pending.push(resolve)))
+    const pending = hold_worker_jobs()
     const props = mount_isosurface({ volumes: [big_volume()] })
     await settle()
     props.settings.layers[0].isovalue = 0.4
     await settle() // queues the rerun behind the in-flight job
     teardown?.()
     teardown = undefined
-    pending[0]({ volumes: [] })
+    pending[0].resolve({ volumes: [] })
     await settle()
     expect(compute_geometries_async).toHaveBeenCalledOnce()
-    compute_geometries_async.mockReset()
   })
 
   test(`large grids stay on the main thread where workers are disabled`, async () => {
-    vi.stubGlobal(`Worker`, vi.fn())
-    compute_geometries_async.mockClear()
+    hold_worker_jobs()
     worker_gate.workers_disabled = true
     try {
       mount_isosurface({ volumes: [big_volume()] })
@@ -337,12 +324,7 @@ describe(`Isosurface`, () => {
   })
 
   test(`color source volume drives vertex colors and a white base color`, async () => {
-    const colored = layer(0.3, {
-      color: `#112233`,
-      opacity: 1,
-      volume_id: `0`,
-      color_volume_id: `1`,
-    })
+    const colored = layer(0.3, { color: `#112233`, opacity: 1, color_volume_id: `1` })
     const props = mount_isosurface({
       volumes: [
         { ...positive_volume(), id: `unrelated`, origin: [3, 0, 0] },
@@ -435,10 +417,10 @@ describe(`Isosurface`, () => {
   ])(
     `worker failure after construction reports through %s`,
     async (_label, with_prop, with_context) => {
-      vi.stubGlobal(`Worker`, vi.fn()) // only `typeof Worker` is consulted; the stub never runs
-      compute_geometries_async
-        .mockClear()
-        .mockRejectedValueOnce(new Error(`Failed to fetch dynamically imported module`))
+      hold_worker_jobs()
+      compute_geometries_async.mockRejectedValueOnce(
+        new Error(`Failed to fetch dynamically imported module`),
+      )
       const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
       const prop_handler = vi.fn()
       const context_handler = vi.fn()

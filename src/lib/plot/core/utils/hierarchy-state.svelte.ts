@@ -1,9 +1,6 @@
-// Reactive shell state shared by the hierarchical part-of-whole charts
-// (Sunburst, Treemap): hierarchy ingestion, zoom/breadcrumb navigation, hover +
-// tooltip state, legend muting, metric coloring, color-bar layout and keyboard
-// plumbing. Everything here is geometry-agnostic — each chart keeps its own
-// projection/tiling and hands it back through the `visible`, `node_center` and
-// `legend_points` hooks. HierarchyShell.svelte renders the markup around it.
+// Geometry-agnostic reactive state shared by Sunburst and Treemap (ingestion, zoom,
+// hover/tooltip, legend muting, coloring, color-bar layout, keyboard). Each chart supplies
+// its projection via the `visible`, `node_center` and `legend_points` hooks.
 
 import { svg_sources, type ExportSources } from '#lib/io/export.js'
 import { is_modifier_chord } from 'svelte-widgets/utils'
@@ -61,8 +58,7 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // Aggregate sibling nodes below this fraction of the total into one 'Other'
   // node per parent (only when >= 2 qualify); 0 disables
   min_fraction?: number
-  // Children kept per parent, largest first; 0 (default) is unlimited. Unlike
-  // `min_fraction` it guarantees a populated ring at any depth. Not a hard cap: a
+  // Children kept per parent, largest first; 0 (default) is unlimited. Not a hard cap: a
   // parent one child over the limit keeps it rather than bucket a single sibling
   max_children?: number
   other_label?: string | ((bucket: OtherBucketInfo) => string)
@@ -92,17 +88,14 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
 }
 
-// Every reactive input arrives as a thunk (rather than a value) so the chart can
-// forward one of its `$props()` per line and each derived below only tracks what
-// it actually reads.
+// Reactive inputs arrive as thunks so each derived below only tracks what it reads
 interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   // Picks the `data-<chart>-node-idx` attribute and CSS variable namespace.
   readonly chart: `sunburst` | `treemap`
   // Unique per instance so multiple charts on one page don't collide on pattern SVG ids
   readonly uid: string
   readonly default_padding: Required<Sides>
-  // Elements whose double-click must not reset the zoom because they run their
-  // own click action, as a selector passed to Element.closest
+  // Selector of elements whose double-click must not reset the zoom (own click action)
   readonly dblclick_ignore?: string
 
   readonly data: () => SunburstNode<Metadata> | SunburstNode<Metadata>[]
@@ -123,8 +116,7 @@ interface HierarchyChartOptions<Metadata extends Record<string, unknown>> {
   readonly legend: () => LegendConfig | null
   readonly show_legend: () => boolean | undefined
   readonly zoom_on_click: () => boolean
-  // Only charts that gate focusability on clickability pass this (Sunburst);
-  // its presence is what puts `clickable` on the computed node infos
+  // Passed by charts that gate role=button on clickability; adds `clickable` to node infos
   readonly clickable?: (arc: PositionedArc<Metadata>) => boolean
 
   readonly zoom_root_id: () => string | number | null
@@ -150,8 +142,7 @@ export class HierarchyChartState<
   readonly #opts: HierarchyChartOptions<Metadata>
   readonly chart: `sunburst` | `treemap`
   readonly node_attr: string
-  // Depth-1 category ids muted via legend toggle (dimmed, not removed - keeps
-  // the layout stable). Ids of nodes absent from the current data are inert.
+  // Depth-1 category ids muted via legend toggle (dimmed, not removed: stable layout)
   readonly muted_ids = new SvelteSet<string | number>()
 
   svg_element: SVGSVGElement | null = $state(null)
@@ -159,27 +150,22 @@ export class HierarchyChartState<
   hovered_idx: number | null = $state(null)
   hover_info: NodeProps<Metadata> | null = $state(null)
   hover_pos: Point = $state({ x: 0, y: 0 })
-  // Parents whose bucket the user opened. Read by the layout, which then leaves that
-  // parent's children unbucketed; cleared on a reset so the chart returns to its
-  // configured thresholds rather than staying permanently unfolded.
+  // Parents whose bucket the user opened (children stay unbucketed); cleared on reset
   expanded_parents = new SvelteSet<string | number>()
-  // Whether `hover_pos` is a live cursor or a node center (keyboard focus). Only the
-  // former has a pointer glyph for the tooltip to keep clear of.
+  // Whether `hover_pos` is a live cursor (vs a keyboard-focused node center)
   hover_at_pointer = $state(false)
   focused_idx: number | null = $state(null)
   colorbar_size: { width: number; height: number } = $state({ width: 0, height: 0 })
   // Bumped once webfonts resolve so labels measured against fallback fonts re-fit
   #font_metrics_revision = $state(0)
 
-  // Must be constructed during component init: the layout-change effect below
-  // needs an owner.
+  // Must be constructed during component init: the effects below need an owner
   constructor(opts: HierarchyChartOptions<Metadata>) {
     this.#opts = opts
     this.chart = opts.chart
     this.node_attr = `data-${opts.chart}-node-idx`
-    // Data changed: clear the index-based hover/focus state, which would otherwise
-    // leave a stale tooltip and highlight whatever unrelated node now occupies the
-    // old index. untrack: writing hover state must not re-trigger this effect.
+    // Data changed: clear index-based hover/focus state, which would now point at an
+    // unrelated node. untrack: writing hover state must not re-trigger this effect.
     $effect(() => {
       void this.arcs
       untrack(() => {
@@ -202,13 +188,12 @@ export class HierarchyChartState<
     })
   }
 
-  // `$derived.by` throughout: `#opts` is only assigned in the constructor, so a
-  // bare `$derived(...)` expression referencing it reads as a use-before-init
+  // `$derived.by` throughout: `#opts` is assigned in the constructor, so a bare
+  // `$derived(...)` referencing it reads as use-before-init
   layout = $derived.by(() => {
     const opts = this.#opts.layout_options()
-    // zoom_root_id reaches (and is read by) the layout only while bucketing measures against
-    // the view root; else a zoom would rebuild the layout (re-measuring every label) for an
-    // identical result
+    // zoom_root_id is read only while bucketing measures against the view root; else a
+    // zoom would rebuild the layout (re-measuring every label) for an identical result
     const bucketing = opts.min_fraction > 0 || opts.max_children > 0
     return compute_sunburst_layout(this.#opts.data(), {
       ...opts,
@@ -225,8 +210,6 @@ export class HierarchyChartState<
   breadcrumb_arcs = $derived(ancestor_chain(this.arcs, this.zoom_root))
 
   pad = $derived.by(() => filter_padding(this.#opts.padding(), this.#opts.default_padding))
-  // Vertical color bars sit beside the chart and reserve width; horizontal ones
-  // sit below and reserve height, so neither ever overlaps the geometry.
   cbar = $derived.by(() =>
     color_bar_layout({
       color_bar: this.color_bar,
@@ -261,8 +244,7 @@ export class HierarchyChartState<
       clickable: this.#opts.clickable,
     })
   })
-  // Legend: one item per depth-1 category, toggling mutes (dims) rather than
-  // removes. Nodes are labelled in place, so a legend stays opt-in here.
+  // Nodes are labelled in place, so the per-category legend stays opt-in here
   depth1_arcs = $derived(this.arcs.filter((arc) => arc.depth === 1))
   legend_visible = $derived.by(() =>
     resolve_legend_visibility(
@@ -309,15 +291,11 @@ export class HierarchyChartState<
     // null for a FocusEvent (keyboard), where the node center stands in below
     const pointer = pointer_pos(event, this.svg_element)
     this.hover_at_pointer = Boolean(pointer)
-    // Keyboard focus has no pointer of its own; even on the node the mouse last hovered,
-    // keeping the old cursor position would anchor the tooltip wherever the mouse happened
-    // to leave it, so it falls back to the node's center
+    // Keyboard focus anchors to the node center, not wherever the mouse last left off
     this.hover_pos = pointer ?? this.#opts.node_center(idx) ?? this.hover_pos
-    // Same node as before: only the cursor anchor moves - skip rebuilding the
-    // handler payload and re-firing on_node_hover on every mousemove
-    // within a node. Requires hover_info: legend item hover sets hovered_idx
-    // alone (for dimming), and skipping then would leave the node's own tooltip
-    // permanently suppressed.
+    // Same node: only the anchor moves, so skip rebuilding the payload and re-firing
+    // on_node_hover. Requires hover_info: legend hover sets hovered_idx alone (dimming),
+    // and skipping then would suppress the node's own tooltip.
     if (idx === this.hovered_idx && this.hover_info) return
     this.#opts.set_hovered(true)
     this.hovered_idx = idx
@@ -346,8 +324,7 @@ export class HierarchyChartState<
     // Returning to the data root drops every manual expansion with it
     if (!root) this.expanded_parents.clear()
     this.#opts.set_zoom_root_id(root?.id ?? null)
-    // The clicked node collapses into the hole / expands to fill the viewport -
-    // drop the now-stale hover/tooltip
+    // The clicked node collapses/expands: drop the stale hover/tooltip
     this.set_hover(null)
     this.#opts.on_zoom({ root: root && this.#node_props(root) })
   }
@@ -365,17 +342,12 @@ export class HierarchyChartState<
     const arc = this.arcs[idx]
     this.#opts.on_node_click({ ...this.#node_props(arc), event })
     if (!this.#opts.zoom_on_click()) return
-    // A bucket stands for nodes it does not itself contain, so zooming into it shows
-    // one meaningless cell (Treemap) or nothing at all (Sunburst, which refuses to
-    // zoom leaves). Zoom to its parent instead: with the threshold measured against the
-    // view root, that re-measures its siblings and dissolves the bucket into the real
-    // nodes it stood for - clicking 'Other' shows you what is inside it.
+    // Zooming into a bucket would show one meaningless cell (or nothing in Sunburst), so
+    // zoom to its parent instead, dissolving the bucket into the nodes it stood for.
     if (arc.is_other) {
       const parent = arc.parent_idx == null ? null : (this.arcs[arc.parent_idx] ?? null)
-      // Exempt the parent as well as zooming to it. Re-measuring against the new view
-      // root dissolves a `min_fraction` bucket, but `max_children` is a rank cap that
-      // re-applies identically at any zoom, and a parent that is already the view root
-      // does not move at all - in both cases the click would otherwise do nothing.
+      // Also exempt the parent: `max_children` re-applies identically at any zoom and a
+      // parent that already is the view root doesn't move, so the click would do nothing.
       // After zoom_to, whose reset to a root-level parent clears every expansion
       this.zoom_to(parent)
       if (parent) this.expanded_parents.add(parent.id)
@@ -387,8 +359,7 @@ export class HierarchyChartState<
     else this.zoom_to(arc)
   }
 
-  // Double-clicking empty chart background resets the zoom to the root (double-
-  // clicking a node or label is click-to-zoom/text-selection territory, not a reset)
+  // Double-clicking empty background (not a node or label) resets the zoom to the root
   handle_dblclick = (event: MouseEvent): void => {
     if (this.#node_idx_from_event(event) != null || selection_within(this.wrapper)) return
     const ignore = this.#opts.dblclick_ignore
@@ -403,10 +374,7 @@ export class HierarchyChartState<
       ?.focus()
   }
 
-  // Arrow-key navigation: left/right cycle through visible siblings (wrapping),
-  // down enters the first child, up returns to the parent. The pre-order walk
-  // lives in hierarchy-chart.ts (arrow_nav_target); this supplies the event's
-  // node and the chart's current screen-space visibility.
+  // Arrow-key navigation (see arrow_nav_target) plus Enter/Space activation
   handle_keydown = (event: KeyboardEvent): void => {
     if (is_modifier_chord(event)) return // Cmd/Ctrl+Arrow scrolls the page
     const current_idx = this.#node_idx_from_event(event)
@@ -423,15 +391,13 @@ export class HierarchyChartState<
     event.preventDefault()
     const previous_root = this.#opts.zoom_root_id()
     this.handle_click(event)
-    // Zooming via keyboard unmounts the focused node - hand focus to whatever
-    // the chart nominates so keyboard users stay inside it
+    // Keyboard zoom unmounts the focused node: hand focus to the chart's nominee
     if (this.#opts.zoom_root_id() !== previous_root) {
       void tick().then(() => this.#opts.focus_after_zoom())
     }
   }
 
-  // Escape zooms out one level, then exits fullscreen at the root, but only
-  // while the user is interacting with this chart.
+  // Escape zooms out one level, then exits fullscreen, while interacting with this chart
   handle_escape = (event: KeyboardEvent): void => {
     if (event.key !== `Escape`) return
     const within =
@@ -445,8 +411,8 @@ export class HierarchyChartState<
     event.preventDefault()
   }
 
-  // Roving tabindex: the last-focused node while still rendered, else `first_visible`. Without
-  // it, tabbing a large chart would visit every arc/cell.
+  // Roving tabindex (last-focused node while rendered, else `first_visible`) so tabbing
+  // doesn't visit every arc/cell
   roving_idx = (first_visible: number | null): number | null =>
     this.focused_idx != null && this.#opts.visible(this.focused_idx)
       ? this.focused_idx

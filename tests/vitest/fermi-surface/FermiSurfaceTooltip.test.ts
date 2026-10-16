@@ -115,34 +115,17 @@ describe(`FermiSurfaceTooltip`, () => {
     },
   )
 
-  describe(`custom tooltip config`, () => {
-    test.each([
-      { key: `prefix`, value: `<em>Header</em>`, expected: `<em>Header</em>` },
-      { key: `suffix`, value: `<strong>Footer</strong>`, expected: `<strong>Footer</strong>` },
-      {
-        key: `prefix`,
-        value: (data: FermiHoverData) => `Band: ${data.band_index}`,
-        expected: `Band: 5`,
-      },
-      {
-        key: `suffix`,
-        value: (data: FermiHoverData) => `Spin: ${data.spin}`,
-        expected: `Spin: up`,
-      },
-    ])(`renders $key from $value`, ({ key, value, expected }) => {
-      const hover_data = mock_hover_data({ band_index: 5, spin: `up` })
-      mount_tooltip({ hover_data, tooltip: { [key]: value } })
-      expect(doc_query(`.tooltip-${key}`).innerHTML).toBe(expected)
+  // TooltipContent's prefix/suffix contract is covered with ConvexHullTooltip; this checks the
+  // wiring: functions get the hover data, prefix before the content and suffix after
+  test(`custom prefix and suffix wrap the content`, () => {
+    const prefix = (data: FermiHoverData) => `<em>Spin: ${data.spin}</em>`
+    mount_tooltip({
+      hover_data: mock_hover_data({ spin: `up` }),
+      tooltip: { prefix, suffix: `END` },
     })
-
-    test(`prefix appears before content, suffix after`, () => {
-      mount_tooltip({ tooltip: { prefix: `PREFIX`, suffix: `SUFFIX` } })
-      const text = document.body.textContent ?? ``
-      const prefix_idx = text.indexOf(`PREFIX`)
-      const suffix_idx = text.indexOf(`SUFFIX`)
-      const band_idx = text.indexOf(`Band`)
-      expect(prefix_idx).toBeLessThan(band_idx)
-      expect(suffix_idx).toBeGreaterThan(band_idx)
-    })
+    expect(doc_query(`.tooltip-prefix`).innerHTML).toBe(`<em>Spin: up</em>`)
+    const text = document.body.textContent ?? ``
+    expect(text.indexOf(`Spin: up`)).toBeLessThan(text.indexOf(`Band`))
+    expect(text.indexOf(`END`)).toBeGreaterThan(text.indexOf(`Band`))
   })
 })

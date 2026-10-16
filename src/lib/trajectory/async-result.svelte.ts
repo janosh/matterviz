@@ -32,24 +32,12 @@ export function create_request_owner() {
 // the input they were lifted into (VACF velocities, spectroscopy signals), never off the stream.
 export const plain_position_stream = ({
   positions,
-  n_frames,
-  n_atoms,
-  coords_unwrapped,
-  frame_stride,
-  elements,
-  lattice_matrices,
-  pbc,
-  steps,
+  vectors: _vectors,
+  signals: _signals,
+  ...plain
 }: TrajectoryPositionStream): TrajectoryPositionStream => ({
+  ...$state.snapshot(plain),
   positions,
-  n_frames,
-  n_atoms,
-  coords_unwrapped,
-  frame_stride,
-  elements: $state.snapshot(elements),
-  lattice_matrices: $state.snapshot(lattice_matrices),
-  pbc: $state.snapshot(pbc),
-  steps: $state.snapshot(steps),
 })
 
 interface AsyncResultBinding<Input, Options, Result> {

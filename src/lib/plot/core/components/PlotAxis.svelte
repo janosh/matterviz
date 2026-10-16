@@ -88,9 +88,7 @@
     // Re-resolve once web fonts land; the shared invalidation bumps the metrics revision the
     // tick-layout memo is keyed on. Fonts that never resolve keep the fallback measurements.
     void invalidate_text_metrics_after_fonts_ready().then(resolve_rendered_font, () => {})
-    return () => {
-      mounted = false
-    }
+    return () => (mounted = false)
   })
   // Resolved through the same helper calc_auto_padding uses (which also formats the labels), so
   // the band reserved for these labels always matches the angle they actually render at.
@@ -123,10 +121,9 @@
 
   // Same wrap width AxisLabel gets below, so both resolve the same line count
   const title_wrap_width = $derived(is_x ? Math.max(plot_w, AXIS_TITLE_WRAP_WIDTH) : undefined)
-  // Outside x-axis titles move past the rendered tick-label band. AxisLabel also centers its
-  // block on the title point, which calc_auto_padding reserves for the first line only, so a
-  // wrapped title is pushed outward by the extra lines and its first line stays where a single
-  // line sits instead of climbing into the tick labels.
+  // Outside x-axis titles move past the rendered tick-label band. AxisLabel centers its block
+  // on the title point, which calc_auto_padding reserves for the first line only, so a wrapped
+  // title is pushed outward by the extra lines instead of climbing into the tick labels.
   const title_shift = $derived.by(() => {
     if (!is_x) return 0
     const band_shift = inside ? 0 : Math.max(0, tick_layout.band - TICK_LABEL_HEIGHT)
@@ -164,9 +161,8 @@
     (is_x ? pos >= pad.l && pos <= width - pad.r : pos >= pad.t && pos <= height - pad.b)
   const first_rendered_label_idx = $derived(
     tick_layout.visible_tick_indices.find((idx) => {
-      const tick = ticks[idx]
       const pos = tick_positions[idx]
-      return Number.isFinite(pos) && in_plot(pos) && in_domain(tick)
+      return Number.isFinite(pos) && in_plot(pos) && in_domain(ticks[idx])
     }),
   )
 </script>

@@ -1,7 +1,6 @@
 <script lang="ts" generics="Card extends InfoPaneCard">
-  // Filterable label/value cards for info panes (trajectory, convex hull, Brillouin zone,
-  // structure sites). Long lists page through `page_size` cards at a time; hosts can decorate
-  // cards via `card_attrs`.
+  // Filterable label/value cards for info panes. Long lists page through `page_size` cards at
+  // a time; hosts can decorate cards via `card_attrs`.
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'

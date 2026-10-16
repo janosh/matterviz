@@ -2,24 +2,20 @@
 import SceneLights from '#lib/scene/SceneLights.svelte'
 import { DEFAULTS } from '#lib/settings.js'
 import { mount, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
 vi.mock(`@threlte/core`, async () => ({
   T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
 }))
 
-let teardown: (() => void) | undefined
-afterEach(() => {
-  teardown?.()
-  teardown = undefined
-  threlte_stub.reset()
-})
-
 type LightNode = { tag: string; intensity?: number; position?: number[] }
 const mount_lights = (props: Record<string, unknown> = {}): LightNode[] => {
   const component = mount(SceneLights, { target: document.body, props })
-  teardown = () => void unmount(component)
+  onTestFinished(() => {
+    void unmount(component)
+    threlte_stub.reset()
+  })
   return threlte_stub.nodes.map(({ tag, props: node_props }) => ({ tag, ...node_props }))
 }
 

@@ -179,10 +179,9 @@
   // table clips its overflow (phone pan mode), where a tooltip below them would be cut off
   let tooltip_above = $state(false)
 
-  // Touch has no hover, so a tap must serve as both "look" and "go": the first tap on a tile
-  // only selects it (active ring, tooltip, inset), a second tap on the same tile follows its
-  // link or fires on_activate. Mouse clicks are unaffected: hover already made the tile active
-  // before the click lands. Plain (non-state) flag: it's consumed by the click of the same tap.
+  // Touch has no hover, so the first tap on a tile only selects it (active ring, tooltip,
+  // inset) and a second tap follows its link or fires on_activate. Mouse clicks unaffected.
+  // Plain (non-state) flag: it's consumed by the click of the same tap.
   let tap_is_preview = false
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
     tap_is_preview =
@@ -273,9 +272,8 @@
   // cannot enter the domain or labels. Log scales also exclude non-positive values.
   const to_heat_num = (value: number | string | false | null | undefined): number | null => {
     const num = typeof value === `string` && value.trim() ? Number(value) : value
-    return typeof num === `number` && Number.isFinite(num) && (!use_log || num > 0)
-      ? num
-      : null
+    if (typeof num !== `number` || !Number.isFinite(num) || (use_log && num <= 0)) return null
+    return num
   }
 
   let heat_nums = $derived(
@@ -349,10 +347,7 @@
     fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
   })
   const tooltip_text_color = $derived(
-    pick_contrast_color({
-      background: tooltip_fill.current,
-      backdrop: page_backdrop.current,
-    }),
+    pick_contrast_color({ background: tooltip_fill.current, backdrop: page_backdrop.current }),
   )
   // CSS keeps wrapped text at the full max-width, so shrink the (content-box) tooltip to
   // its lines, whose union is the range's bounding rect. Scale undoes ancestor transforms.
@@ -462,7 +457,6 @@
     <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
   {/if}
 
-  <!-- Tooltip -->
   {#if tooltip_element && tooltip !== false}
     {@const element = tooltip_element}
     {@const tooltip_value = heat_values[element.number - 1]}
@@ -502,11 +496,9 @@
     position: relative;
     gap: var(--ptable-gap, 0.3cqw);
   }
-  /* Phones: a table squeezed to ~370px has 20px tiles, too small to read or tap. Below this
-     width the tiles keep a finger-sized floor and the table pans sideways instead. The query
-     resolves against the nearest ancestor container (the docs site's <main>); with none the
-     rule never applies and the table keeps fitting its box. An inline
-     `--ptable-min-tile-size: 0` on the table opts a decorative mini-table out. */
+  /* Phones: a ~370px table has 20px tiles, too small to read or tap, so below this width tiles
+     keep a finger-sized floor and the table pans sideways. The query resolves against the
+     nearest ancestor container (none: never applies). `--ptable-min-tile-size: 0` opts out. */
   @container (max-width: 600px) {
     .periodic-table {
       --ptable-min-tile-size: 2rem;
@@ -531,8 +523,7 @@
   }
   div.spacer {
     grid-row: 8;
-    /* the variable is the spacer height in tile widths; 0 degenerates the ratio to auto, i.e.
-       no offset */
+    /* spacer height in tile widths; 0 degenerates the ratio to auto, i.e. no offset */
     aspect-ratio: 1 / var(--ptable-inner-transition-offset, 0.5);
   }
   .tooltip {

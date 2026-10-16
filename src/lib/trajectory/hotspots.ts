@@ -338,6 +338,8 @@ async function reduce_hotspots(
         velocity_key: options.velocity_key ?? `velocity`,
         mass_source: options.mass_source ?? `recorded`,
       }
+  const atom_error = (problem: string, frame_idx: number, atom_idx: number) =>
+    new Error(`${problem} at frame ${display_idx(frame_idx)}, atom ${display_idx(atom_idx)}`)
   const read = async (frame_idx: number, start = 0, with_channels = true) => {
     signal?.throwIfAborted()
     const batch = await read_atoms(
@@ -351,8 +353,7 @@ async function reduce_hotspots(
       signal,
     )
     signal?.throwIfAborted()
-    const fail = (problem: string) =>
-      new Error(`${problem} at frame ${display_idx(frame_idx)}, atom ${display_idx(start)}`)
+    const fail = (problem: string) => atom_error(problem, frame_idx, start)
     if (
       !Number.isInteger(batch.total_atoms) ||
       batch.total_atoms < 1 ||
@@ -521,25 +522,19 @@ async function reduce_hotspots(
         if (options.energy_key) {
           const energy = batch.energies?.[atom_idx]
           if (energy === undefined || !Number.isFinite(energy) || energy < 0)
-            throw new Error(
-              `Invalid kinetic energy at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
-            )
+            throw atom_error(`Invalid kinetic energy`, frame_idx, batch.start + atom_idx)
           scratch[base + 5] += energy * (energy_factor ?? 1)
         } else {
           const mass = batch.masses?.[atom_idx]
           if (mass === undefined || !Number.isFinite(mass) || mass <= 0 || !batch.velocities)
-            throw new Error(
-              `Missing mass/velocity at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
-            )
+            throw atom_error(`Missing mass/velocity`, frame_idx, batch.start + atom_idx)
           const old_mass = scratch[base + 1]
           const total_mass = old_mass + mass
           scratch[base + 1] = total_mass
           for (let axis = 0; axis < dimensions; axis++) {
             const velocity = batch.velocities[offset + axis]
             if (!Number.isFinite(velocity))
-              throw new Error(
-                `Invalid velocity at frame ${display_idx(frame_idx)}, atom ${display_idx(batch.start + atom_idx)}`,
-              )
+              throw atom_error(`Invalid velocity`, frame_idx, batch.start + atom_idx)
             if (motion === `device`) {
               scratch[base + 5] += mass * velocity ** 2
               continue

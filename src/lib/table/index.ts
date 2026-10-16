@@ -94,9 +94,8 @@ export type RowId = string | number
 // Statistics a summary row can show. Each names a field of ColumnStats.
 export type SummaryStat = `mean` | `median` | `min` | `max` | `count`
 
-// Per-column user tuning, keyed by column ID. Bindable as one `column_prefs` prop so a
-// host can persist everything the user adjusted (widths, color choices, filters) in a
-// single blob, and so future per-column settings don't each need their own prop.
+// Per-column user tuning, keyed by column ID, bound as one `column_prefs` prop so hosts can
+// persist all of it (widths, color choices, filters) as a single blob.
 export type ColumnPrefs = {
   width?: number
   better?: `higher` | `lower`
@@ -139,11 +138,9 @@ export type Pagination =
       on_page_size_change?: (page_size: number) => void
     }
 
-// Scroll virtualization config shared by HeatmapTable (rows) and HeatmapMatrix (rows and
-// columns): true to enable, an object for tuning, false to render everything.
-// overscan: extra rows/tracks rendered past each viewport edge for smooth scrolling.
-// min_window: minimum number of rows/tracks kept in the DOM (also the fallback render
-// count when the scroll container size is unknown, e.g. during SSR).
+// Scroll virtualization for HeatmapTable (rows) and HeatmapMatrix (rows and columns).
+// overscan: extra rows/tracks rendered past each viewport edge. min_window: minimum rows/
+// tracks kept in the DOM, also the render count when the container size is unknown (SSR).
 export type VirtualScroll = boolean | { overscan?: number; min_window?: number }
 
 // Search configuration (boolean to enable, object for full control).
@@ -157,10 +154,8 @@ export type Search =
 export type CellColor = { bg: string | null; text: string | null }
 export const NULL_CELL_COLOR: CellColor = { bg: null, text: null }
 
-// Numeric summary of one column. The color-scale domain, the summary row, best-cell
-// highlighting and data bars all reduce the same values, so the O(rows) scan runs once
-// per column here instead of once per feature. `best` is null unless the column declares
-// which direction is better.
+// Numeric summary of one column, scanned once and shared by color domain, summary row,
+// best-cell highlighting and data bars. `best` is null unless `better` is given.
 export type ColumnStats = {
   values: number[]
   min: number
@@ -176,12 +171,10 @@ export type ColumnStats = {
 export function compute_column_stats(
   values: (number | null | undefined)[],
   better?: `higher` | `lower`,
-  // Quantiles cost up to six quickselect passes per column and only two features use
-  // them (quantile normalization, a median summary), so they're opt-in.
+  // Quantiles (up to six quickselect passes) only serve quantile normalization and medians
   with_quantiles = true,
 ): ColumnStats | null {
-  // Collect and reduce in one pass: a `.filter()` here would allocate a second full-length
-  // array per column, on top of the one the caller already built.
+  // Collect and reduce in one pass rather than allocating another array with `.filter()`
   const nums: number[] = []
   let sum = 0
   let lowest = Infinity
@@ -194,15 +187,13 @@ export function compute_column_stats(
     if (val > highest) highest = val
   }
   if (nums.length === 0) return null
-  // A running mean only when the plain sum overflowed past ~1.8e308, so a column of huge
-  // values still reports a real mean rather than Infinity.
+  // Running mean only when the plain sum overflowed (~1.8e308), so huge values stay finite
   let mean = sum / nums.length
   if (!Number.isFinite(mean)) {
     mean = 0
     for (const [idx, val] of nums.entries()) mean += (val - mean) / (idx + 1)
   }
-  // quantile_unordered partially sorts in place, so hand it a copy we own. Successive
-  // calls on the same scratch array stay correct (quickselect works on any ordering).
+  // quantile_unordered partially sorts in place, so give it a copy (reusable across calls)
   const scratch = with_quantiles ? [...nums] : []
   return {
     values: nums,
@@ -236,10 +227,8 @@ export function resolve_color_domain(
   return [stats.min, stats.max]
 }
 
-// Build a memoized value→color mapper for one column. The O(column-length)
-// work (numeric min/max) and d3 scale construction happen ONCE here;
-// the returned function is O(1) per cell. HeatmapTable derives one mapper per
-// colored column instead of rescanning the full column for every cell render.
+// Value→color mapper for one column: the column scan and d3 scale are built once here, so
+// the returned function is O(1) per cell.
 export function make_cell_color_scale(
   all_values: CellVal[], // all values in the column
   better: `higher` | `lower` | undefined, // sort direction
@@ -283,9 +272,7 @@ export function make_cell_color_scale(
   // Fills are opaque here (HeatmapTable composites translucent ones itself), so no backdrop
   const text_by_bg = contrast_color_memo()
   return (val) => {
-    // Skip null/undefined and non-finite values. Infinity must be excluded here too:
-    // compute_column_stats drops it from the domain, so coloring it would paint a cell
-    // the scale never accounted for.
+    // Non-finite values are excluded from the domain by compute_column_stats, so not colored
     if (val == null || !Number.isFinite(val)) return NULL_CELL_COLOR
     // Negatives remain invalid on a log scale
     if (is_log && val < 0) return NULL_CELL_COLOR

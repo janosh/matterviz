@@ -23,6 +23,8 @@ const grid_at = (result: VolumetricFileData | null, vol_idx = 0) => {
   return (idx_x: number, idx_y: number, idx_z: number) =>
     grid_value(result.volumes[vol_idx], idx_x, idx_y, idx_z)
 }
+const elements_of = (result: VolumetricFileData) =>
+  result.structure.sites.map((site) => site.species[0].element)
 
 // === Helper to build minimal CHGCAR content ===
 function make_chgcar({
@@ -135,7 +137,7 @@ describe(`parse_chgcar`, () => {
   // An unknown symbol used to be drawn as He (the index-1 fallback): a wrong, plausible cell
   test(`strips potential suffixes and rejects a symbol naming no element`, () => {
     const result = parse_chgcar(make_chgcar({ elements: `Fe_pv O/abc123`, counts: `1 1` }))
-    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`Fe`, `O`])
+    expect(elements_of(result)).toEqual([`Fe`, `O`])
     expect(() => parse_chgcar(make_chgcar({ elements: `Fe_pv Xx`, counts: `1 1` }))).toThrow(
       `Invalid element symbol in CHGCAR: Xx`,
     )
@@ -150,10 +152,7 @@ describe(`parse_chgcar`, () => {
         data: `1.0D+00 2.0D+00 3.0D+00\n  4.0D+00 5.0D+00\n  6.0D+00 7.0D+00 8.0D+00`,
       }),
     )
-    expect(result.structure.sites.map(({ species }) => species[0].element)).toEqual([
-      `Si`,
-      `Si`,
-    ])
+    expect(elements_of(result)).toEqual([`Si`, `Si`])
     expect(result.structure.sites[1].abc).toEqual([0.5, 0.5, 0.5])
     expect(result.structure.lattice.a).toBeCloseTo(5.43, 2)
     expect(result.volumes).toHaveLength(1)
@@ -166,11 +165,8 @@ describe(`parse_chgcar`, () => {
     })
     expect(result.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
     expect(result.volumes[0].values).toHaveLength(8)
-    // values divided by cell volume
+    // values divided by cell volume (per-voxel order is pinned by the x-fastest test below)
     const cell_volume = result.structure.lattice.volume
-    const position = grid_at(result)
-    expect(position(0, 0, 0)).toBeCloseTo(1.0 / cell_volume, 5)
-    expect(position(1, 1, 1)).toBeCloseTo(8.0 / cell_volume, 5)
     const scaled = (value: number) => expect.closeTo(value / cell_volume, 5)
     expect(result.volumes[0].data_range).toEqual({
       min: scaled(1),
@@ -195,6 +191,8 @@ describe(`parse_chgcar`, () => {
   // parse_chgcar used to ignore: three per-axis Cartesian factors, and a negative single
   // factor that is a TARGET CELL VOLUME rather than a multiplier
   const unit_cube = [`1.0  0.0  0.0`, `0.0  1.0  0.0`, `0.0  0.0  1.0`]
+  // rows read as lattice vectors, not columns: a transposed matrix gives a = 2.795
+  const hexagonal = [`2.5  0.0  0.0`, `1.25  2.1651  0.0`, `0.0  0.0  6.66`]
   test.each([
     [`three per-axis factors`, `2 1 3`, unit_cube, [2, 1, 3], 6],
     [`negative factor = target volume`, `-27.0`, unit_cube, [3, 3, 3], 27],
@@ -202,13 +200,20 @@ describe(`parse_chgcar`, () => {
     [`Fortran exponent factor`, `5.0D-01`, [`6 0 0`, `0 6 0`, `0 0 6`], [3, 3, 3], 27],
     // a trailing comment is ignored, as parseFloat did
     [`commented factor`, `2.0 ! scale`, unit_cube, [2, 2, 2], 8],
+    [
+      `unit factor`,
+      `1.0`,
+      hexagonal,
+      [2.5, Math.hypot(1.25, 2.1651), 6.66],
+      2.5 * 2.1651 * 6.66,
+    ],
   ])(`applies %s to the lattice`, (_label, scale, lattice, abc, volume) => {
     const result = parse_chgcar(
       make_chgcar({ scale, lattice, elements: `Si`, counts: `1`, positions: [`0.0 0.0 0.0`] }),
     )
-    const lat = result?.structure.lattice
-    expect([lat?.a, lat?.b, lat?.c]).toEqual(abc)
-    expect(lat?.volume).toBeCloseTo(volume, 10)
+    const { a: len_a, b: len_b, c: len_c, volume: cell_volume } = result.structure.lattice
+    expect([len_a, len_b, len_c]).toEqual(abc.map((len) => expect.closeTo(len, 12)))
+    expect(cell_volume).toBeCloseTo(volume, 10)
   })
 
   test(`scales Cartesian coordinates per axis`, () => {
@@ -251,12 +256,7 @@ describe(`parse_chgcar`, () => {
         positions: [`0 0 0`, `0.25 0.25 0.25`, `0.5 0.5 0.5`, `0.75 0.75 0.75`],
       }),
     )
-    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([
-      `Na`,
-      `Cl`,
-      `K`,
-      `Br`,
-    ])
+    expect(elements_of(result)).toEqual([`Na`, `Cl`, `K`, `Br`])
   })
 
   // `S...` lines are Selective dynamics by VASP's first-letter rule, so the bogus modes here
@@ -287,9 +287,7 @@ describe(`parse_chgcar`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const positions = [`0 0 0`, `0.5 0.5 0.5`, `0.25 0.25 0.25`]
     const vasp4 = make_chgcar({ counts: `2 1`, positions }).replace(`   Si\n`, ``)
-    const result = parse_chgcar(vasp4)
-    const elements = result.structure.sites.map((site) => site.species[0].element)
-    expect(elements).toEqual([`H`, `H`, `He`])
+    expect(elements_of(parse_chgcar(vasp4))).toEqual([`H`, `H`, `He`])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`VASP 4`))
   })
 
@@ -359,25 +357,6 @@ describe(`parse_chgcar`, () => {
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0][0]).toMatch(
       /CHGCAR block 2 \(2×2×2\): expected 8 values, got 2 — file truncated\? Keeping the intact first block only/,
-    )
-  })
-
-  test(`non-orthogonal lattice produces correct lattice params`, () => {
-    const result = parse_chgcar(
-      make_chgcar({
-        lattice: [
-          `2.5000  0.0000  0.0000`,
-          `1.2500  2.1651  0.0000`,
-          `0.0000  0.0000  6.6600`,
-        ],
-        elements: `B`,
-        counts: `1`,
-        positions: [`0.0  0.0  0.0`],
-      }),
-    )
-    const lat = result?.structure.lattice
-    expect([lat?.a, lat?.b, lat?.c, lat?.gamma]).toEqual(
-      [2.5, 2.5, 6.66, 60].map((param) => expect.closeTo(param, 2)),
     )
   })
 })
@@ -502,24 +481,10 @@ describe(`parse_cube`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     // oxfmt-ignore
     const result = parse_cube(make_cube({ n_atoms: 2, atoms: [[0, 0, 0, 0, 0], [6, 0, 1, 1, 1]] }))
-    expect(result?.structure.sites.map((site) => site.species[0].element)).toEqual([`C`])
+    expect(elements_of(result)).toEqual([`C`])
     expect(warn).toHaveBeenCalledWith(`.cube atom 1: skipping Z = 0 ghost/BSSE centre`)
     const clean = parse_cube(make_cube({ n_atoms: 1, atoms: [[6, 0, 1, 1, 1]] }))
     expect(result?.volumes).toEqual(clean?.volumes)
-  })
-
-  test(`handles Angstrom units (negative grid dims)`, () => {
-    const result = parse_cube(
-      make_cube({
-        n_atoms: 1,
-        grid_n: [-3, -3, -3],
-        voxels: cubic_voxels(1),
-        atoms: [[6, 0, 0, 0, 0]],
-        data: Array(27).fill(`1.0`).join(`  `),
-      }),
-    )
-    // Negative dims = Angstrom, no conversion: lattice = 3 * 1.0 = 3.0 A
-    expect(result?.structure.lattice?.a).toBeCloseTo(3.0, 3)
   })
 
   test(`handles orbital header (negative n_atoms)`, () => {
@@ -585,7 +550,7 @@ describe(`parse_cube`, () => {
         ],
       }),
     )
-    expect(result.structure.sites.map((site) => site.species[0].element)).toEqual([`C`, `O`])
+    expect(elements_of(result)).toEqual([`C`, `O`])
     // atoms are numbered from 1
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\.cube atom 2: malformed line /))
   })
@@ -594,25 +559,22 @@ describe(`parse_cube`, () => {
 describe(`parse_cube geometry`, () => {
   const bohr = BOHR_TO_ANGSTROM
 
+  // a positive N gives Bohr voxels, a negative N Angstrom ones (no unit conversion)
   test.each([
     { origin: [0, 0, 0] as Vec3, n_pts: 5, extent_pts: 5, label: `periodic: N voxels` },
     { origin: [-2, -2, -2] as Vec3, n_pts: 5, extent_pts: 4, label: `finite: N-1 voxels` },
+    { origin: [0, 0, 0] as Vec3, n_pts: -5, extent_pts: 5, label: `Angstrom: N voxels` },
   ])(`$label span the data box`, ({ origin, n_pts, extent_pts }) => {
-    const voxel = 0.8 // Bohr
-    const result = parse_cube(
-      make_cube({
-        origin,
-        grid_n: [n_pts, n_pts, n_pts],
-        voxels: cubic_voxels(voxel),
-        n_atoms: 1,
-        atoms: [[6, 0, 0, 0, 0]],
-        data: Array(n_pts ** 3)
-          .fill(`1.0`)
-          .join(`  `),
-      }),
-    )
-    expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(extent_pts * voxel * bohr, 12)
-    expect(result?.volumes[0].lattice[2][2]).toBeCloseTo(extent_pts * voxel * bohr, 12)
+    const voxel = 0.8
+    const data = `1.0  `.repeat(Math.abs(n_pts) ** 3)
+    const grid_n: Vec3 = [n_pts, n_pts, n_pts]
+    const voxels = cubic_voxels(voxel)
+    const atoms = [[6, 0, 0, 0, 0]]
+    const result = parse_cube(make_cube({ origin, grid_n, voxels, n_atoms: 1, atoms, data }))
+    const extent = extent_pts * voxel * (n_pts > 0 ? bohr : 1)
+    expect(result.structure.lattice.a).toBeCloseTo(extent, 12)
+    expect(result.volumes[0].lattice[0][0]).toBeCloseTo(extent, 12)
+    expect(result.volumes[0].lattice[2][2]).toBeCloseTo(extent, 12)
   })
 
   test(`finite grid geometry: sampling at an atom position returns the field there`, () => {
@@ -622,17 +584,20 @@ describe(`parse_cube geometry`, () => {
     const n_pts = 6
     const voxel = 0.5
     const origin: Vec3 = [-1.25, -1.25, -1.25]
-    const values: string[] = []
-    for (let idx_x = 0; idx_x < n_pts; idx_x++) {
-      for (let idx_y = 0; idx_y < n_pts; idx_y++) {
-        for (let idx_z = 0; idx_z < n_pts; idx_z++) {
-          const [coord_x, coord_y, coord_z] = [idx_x, idx_y, idx_z].map(
-            (idx, axis) => origin[axis] + idx * voxel,
-          )
-          values.push((coord_x + 2 * coord_y + 3 * coord_z).toFixed(6))
-        }
-      }
-    }
+    const field = (coord_x: number, coord_y: number, coord_z: number) =>
+      coord_x + 2 * coord_y + 3 * coord_z
+    // z-fastest, like the .cube data block
+    const values = Array.from({ length: n_pts ** 3 }, (_, idx) => {
+      const grid_idx = [
+        Math.floor(idx / n_pts ** 2),
+        Math.floor(idx / n_pts) % n_pts,
+        idx % n_pts,
+      ]
+      const [coord_x, coord_y, coord_z] = grid_idx.map(
+        (val, axis) => origin[axis] + val * voxel,
+      )
+      return field(coord_x, coord_y, coord_z).toFixed(6)
+    })
     const atoms = [
       [6, 0, 0.75, -0.25, 1.25], // on grid points
       [1, 0, -1.25, -1.25, -1.25], // first corner
@@ -649,7 +614,6 @@ describe(`parse_cube geometry`, () => {
         data: values.join(`  `),
       }),
     )
-    if (!result) throw new Error(`parse failed`)
     const [volume] = result.volumes
     expect(volume.periodic).toBe(false)
     const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
@@ -658,7 +622,7 @@ describe(`parse_cube geometry`, () => {
       expect(site.xyz.map((val) => val / bohr)).toEqual(
         [coord_x, coord_y, coord_z].map((val, axis) => expect.closeTo(val - origin[axis], 10)),
       )
-      expect(sample(site.xyz)).toBeCloseTo(coord_x + 2 * coord_y + 3 * coord_z, 6)
+      expect(sample(site.xyz)).toBeCloseTo(field(coord_x, coord_y, coord_z), 6)
     }
   })
 })
@@ -749,10 +713,9 @@ describe(`site fixtures`, () => {
     // (voxel written with 6 decimals in Bohr, hence ~1e-5 A slack)
     expect(volume.lattice[0][0]).toBeCloseTo(9.8, 4)
     expect(volume.origin).toEqual([0, 0, 0])
-    for (const site of parsed.structure.sites) {
-      for (const frac of site.abc) expect(frac).toBeGreaterThanOrEqual(0)
-      for (const frac of site.abc) expect(frac).toBeLessThanOrEqual(1)
-    }
+    const fracs = parsed.structure.sites.flatMap((site) => site.abc)
+    expect(Math.min(...fracs)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...fracs)).toBeLessThanOrEqual(1)
   })
 })
 
@@ -873,15 +836,18 @@ describe(`parse_volumetric_file`, () => {
 
   // A VASP name needs a VASP grid in the content: POSCAR_from_CHGCAR is a structure, and
   // callers fall back to structure parsing on null. A real but broken CHGCAR still throws.
+  // POSCAR shares CHGCAR's header; only a blank line then grid-dimension integers marks a
+  // CHGCAR, so integer coordinates (`0 0 0`) alone must not be mistaken for one.
+  const poscar = (...coords: string[]) =>
+    `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\nDirect\n${coords.join(`\n`)}`
   test.each([
     [`random text`, `random.txt`, `random text`],
     [`unknown`, `unknown`, `a\nb\nc`],
     [`a VASP name over a cube`, `CHGCAR`, minimal_cube],
-    [
-      `a VASP name over a POSCAR`,
-      `POSCAR_from_CHGCAR`,
-      `Si\n1.0\n5 0 0\n0 5 0\n0 0 5\nSi\n1\nDirect\n0 0 0\n`,
-    ],
+    [`a VASP name over a POSCAR`, `POSCAR_from_CHGCAR`, `${poscar(`0 0 0`, `1 1 1`)}\n`],
+    [`a fractional-coord POSCAR`, `unknown.dat`, poscar(`  0.0  0.0  0.0`, `  0.5  0.5  0.5`)],
+    [`an integer-coord POSCAR`, `unknown.dat`, poscar(`0 0 0`, `1 1 1`)],
+    [`a POSCAR with a trailing blank line`, `unknown.dat`, poscar(`0 0 0`, `1 1 1`, ``)],
   ])(`returns null for %s (%s)`, (_label, filename, content) => {
     expect(parse_volumetric_file(content, filename)).toBeNull()
   })
@@ -891,18 +857,5 @@ describe(`parse_volumetric_file`, () => {
     expect(() => parse_volumetric_file(truncated, `CHGCAR`)).toThrow(
       /Failed to parse VASP volumetric \(CHGCAR-like\) file 'CHGCAR'.*truncated/,
     )
-  })
-
-  // === Plain POSCAR not misidentified as CHGCAR ===
-
-  // POSCAR has the same header as CHGCAR; only a blank line followed by the grid-dimension
-  // integers marks a CHGCAR, so integer coordinates (`0 0 0`) alone must not be mistaken for it
-  test.each([
-    [`fractional coordinates`, [`  0.0  0.0  0.0`, `  0.5  0.5  0.5`]],
-    [`integer coordinates`, [`0 0 0`, `1 1 1`]],
-    [`a trailing blank line`, [`0 0 0`, `1 1 1`, ``]],
-  ])(`does not misidentify a plain POSCAR with %s as CHGCAR`, (_label, coords) => {
-    const poscar = `Si2\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n2\nDirect\n${coords.join(`\n`)}`
-    expect(parse_volumetric_file(poscar, `unknown.dat`)).toBeNull()
   })
 })

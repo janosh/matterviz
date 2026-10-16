@@ -22,8 +22,7 @@ export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 
-// color values have to be in hex format since that's the only format
-// <input type="color"> supports
+// Hex since that's the only format <input type="color"> supports
 // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/color#value
 export const DEFAULT_CATEGORY_COLORS: Record<string, string> = {
   'diatomic nonmetal': `#ff8c00`, // darkorange
@@ -67,9 +66,8 @@ export const ELEMENT_COLOR_SCHEMES = {
 } as const satisfies Record<ColorSchemeName, Record<string, string>>
 export const default_element_colors = ELEMENT_COLOR_SCHEMES.Vesta
 
-// Detect if a value is a CSS color string. d3-color parses hex, rgb()/rgba(),
-// hsl()/hsla(), and named colors case-insensitively, rejecting arbitrary words like
-// `pending`. It doesn't parse var()/color()/currentcolor, so match those explicitly.
+// Detect CSS color strings. d3-color parses hex, rgb(), hsl() and named colors (rejecting
+// words like `pending`) but not var()/color()/currentcolor, so match those explicitly.
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   const trimmed = val.trim()
@@ -103,12 +101,8 @@ const to_rgb = (color: string): RGBColor | undefined => {
   // discarding channels from explicit rgba(..., 0).
   if (![parsed.r, parsed.g, parsed.b].every(Number.isFinite))
     return parsed.opacity === 0 ? rgb(0, 0, 0, 0) : undefined
-  return rgb(
-    clamp(parsed.r, 0, 255),
-    clamp(parsed.g, 0, 255),
-    clamp(parsed.b, 0, 255),
-    clamp01(parsed.opacity),
-  )
+  const [red, green, blue] = [parsed.r, parsed.g, parsed.b].map((val) => clamp(val, 0, 255))
+  return rgb(red, green, blue, clamp01(parsed.opacity))
 }
 let color_canvas_context: CanvasRenderingContext2D | null | undefined
 // Canvas-parsed colors by string (FIFO-bounded): each parse is a pixel write + readback
@@ -155,9 +149,8 @@ export const is_concrete_color = (val: unknown): val is string =>
 export const is_opaque_color = (val: unknown): val is string =>
   typeof val === `string` && to_rendered_rgb(val.trim())?.opacity === 1
 
-// The single series palette shared by every plot (d3 schemeTableau10): core plots
-// (ScatterPlot, BarPlot, Histogram, BoxPlot, Sunburst, Sankey, …) and domain plots
-// (RDF, XRD, bands, DOS, trajectory panes, …) all cycle through it by series index
+// The single series palette (d3 schemeTableau10) every core and domain plot (ScatterPlot,
+// BarPlot, Sankey, RDF, XRD, bands, DOS, …) cycles through by series index
 export const PLOT_COLORS = [
   `#4e79a7`, // blue
   `#f28e2c`, // orange
@@ -219,10 +212,9 @@ const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
 export const composite_colors = (foreground: string, backdrop: string): string =>
   composite_rgb(parse_rgb(foreground), parse_rgb(backdrop)).formatRgb()
 
-// Explicit description of what gets painted where, so text contrast can be computed
-// from data instead of inferred by inspecting rendered DOM. `background` is the color
-// painted on the element itself; `backdrop` is the opaque color behind it and is only
-// consulted (and only required) when `background` is translucent.
+// What gets painted where, so text contrast is computed from data instead of inferred from
+// rendered DOM. `background` is painted on the element itself; `backdrop` is the opaque color
+// behind it, only consulted (and only required) when `background` is translucent.
 export interface Paint {
   background: string
   backdrop?: string
@@ -273,10 +265,9 @@ export interface TooltipPaint {
   background: string
   color: string
 }
-// The one rule for painting a tooltip in its hovered mark's color: an opaque fill as is, a
-// translucent one flattened to its opaque hue (so content behind never shows through), each
-// with black/white text by WCAG contrast. Null for fills JS cannot resolve (var(),
-// currentcolor, transparent, none): the neutral --tooltip-bg/--canvas-tooltip-bg theme chip.
+// Paint a tooltip in its hovered mark's color: an opaque fill as is, a translucent one
+// flattened to its opaque hue, each with black/white text by WCAG contrast. Null for fills JS
+// cannot resolve (var(), currentcolor, transparent, none): the neutral theme chip.
 export const tooltip_paint = (fill: unknown): TooltipPaint | null => {
   if (typeof fill !== `string`) return null
   const parsed = to_rendered_rgb(fill.trim())
@@ -286,20 +277,15 @@ export const tooltip_paint = (fill: unknown): TooltipPaint | null => {
   return { background, color: contrast_on(opaque, DEFAULT_CONTRAST_CHOICES) }
 }
 
-// Distinct backgrounds a memo holds at once. A continuous colour scale yields a new string
-// per distinct value, so a long-lived grid fed changing data would otherwise grow the cache
-// without bound; past this many the oldest entry goes (FIFO), so a working set just over the
-// limit still mostly hits instead of recomputing every cell after a wholesale clear.
+// Distinct backgrounds a memo holds at once (a continuous scale yields a string per value).
+// Past this the oldest goes (FIFO), so a working set just over the limit still mostly hits.
 export const CONTRAST_MEMO_LIMIT = 10_000
 
-// pick_contrast_color memoized by background string, for grids that paint far fewer
-// distinct fills than cells. `alpha` is applied to every background before compositing;
-// the cache is dropped whenever `backdrop` or `alpha` change. Returns null for backgrounds
-// JS cannot resolve (CSS vars, currentcolor, null). `pick` swaps the picker (custom
-// choices, or a spy to observe cache misses). A plain Map on purpose: entries are written
-// during render, which a SvelteMap would reject, and nothing reacts to the cache filling;
-// the reactive reads (`backdrop()`, `alpha()`) happen on every call so callers' effects
-// still track them.
+// pick_contrast_color memoized by background string, for grids with far fewer distinct fills
+// than cells. `alpha` applies to every background before compositing; the cache drops when
+// `backdrop` or `alpha` change. Null for backgrounds JS cannot resolve (CSS vars,
+// currentcolor, null). `pick` swaps the picker (custom choices, or a spy). A plain Map:
+// entries are written during render, which a SvelteMap would reject.
 export const contrast_color_memo = (
   opts: {
     backdrop?: () => string | undefined
@@ -338,8 +324,7 @@ export const contrast_color_memo = (
 }
 
 // Whether `element` renders in the dark scheme: its computed color-scheme, which every
-// light-dark() token around it resolves against (the root's data-theme/inline scheme on the
-// site, a widget element's own scheme in a notebook). `normal`/`light dark` mean nothing was
+// light-dark() token around it resolves against. `normal`/`light dark` mean nothing was
 // declared, so the OS preference decides.
 export function is_dark_mode(
   element: Element | undefined = globalThis.document?.documentElement,

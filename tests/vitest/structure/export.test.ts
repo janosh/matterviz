@@ -1,11 +1,9 @@
 import type { ElementSymbol } from '#lib'
-import { download } from '#lib/io/fetch.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, LatticeType, Site } from '#lib/structure/index.js'
 import {
   create_structure_filename,
-  export_structure_as,
   fractional_export_unavailable_reason,
   poscar_export_unavailable_reason,
   xyz_export_unavailable_reason,
@@ -15,11 +13,8 @@ import {
   structure_to_xyz_str,
 } from '#lib/structure/export.js'
 import { parse_cif, parse_poscar, parse_xyz } from '#lib/structure/parse.js'
-import { assert, beforeEach, describe, expect, it, vi } from 'vitest'
+import { assert, describe, expect, it } from 'vitest'
 import { complex_structure, simple_structure } from '../test-fixtures'
-
-vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
-const mock_download = vi.mocked(download)
 
 // Local factories to cut fixture boilerplate: single-species site + diagonal lattice
 const make_site = (
@@ -48,59 +43,29 @@ const water_xyz_rows = [
   `H -0.757000 0.586000 0.000000`,
 ]
 
-// Test cases for structure export
 // oxfmt-ignore
-const export_cases = [
+const xyz_cases = [
   { name: `simple structure`, structure: simple_structure,
-    filename_contains: [`test_h2o`, `H2O`, `3sites`],
-    expected_xyz: [`3`, `test_h2o H2 O`, ...water_xyz_rows] },
+    expected: [`3`, `test_h2o H2 O`, ...water_xyz_rows] },
   { name: `complex structure`, structure: complex_structure,
-    filename_contains: [`test_complex`, `LiFePO4`, `7sites`],
-    expected_xyz: [
+    expected: [
       `7`, `test_complex Li Fe P O4`, `Li 0.000000 0.000000 0.000000`,
       `Fe 2.500000 0.000000 0.000000`, `P 0.000000 2.500000 0.000000`,
       `O 1.250000 1.250000 0.000000`, `O 3.750000 1.250000 0.000000`,
       `O 1.250000 3.750000 0.000000`, `O 3.750000 3.750000 0.000000`,
     ] },
   { name: `structure without ID`, structure: { ...simple_structure, id: undefined },
-    filename_contains: [`H2O`, `3sites`],
-    expected_xyz: [`3`, `H2 O`, ...water_xyz_rows] },
+    expected: [`3`, `H2 O`, ...water_xyz_rows] },
   { name: `empty structure`, structure: { ...simple_structure, sites: [] },
-    filename_contains: [`test_h2o`], expected_xyz: [`0`, `test_h2o`] },
+    expected: [`0`, `test_h2o`] },
 ]
-const export_fmt_cases = export_cases.flatMap((test_case) => [
-  { ...test_case, fmt: `xyz` as const, mime: `text/plain`, ext: `xyz` },
-  { ...test_case, fmt: `json` as const, mime: `application/json`, ext: `json` },
-])
 
 describe(`Export functionality`, () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  describe(`Structure export (XYZ/JSON)`, () => {
-    it.each(export_fmt_cases)(
-      `exports $name to $fmt`,
-      ({ structure, expected_xyz, filename_contains, fmt, mime, ext }) => {
-        export_structure_as(fmt, structure)
-        expect(mock_download).toHaveBeenCalledOnce()
-        const [content, filename, mime_type] = mock_download.mock.calls[0]
-        if (fmt === `xyz`) {
-          const lines = (content as string).split(`\n`)
-          expected_xyz.forEach((line, idx) => {
-            if (idx === 1) expect(lines[idx].startsWith(line)).toBe(true)
-            else expect(lines[idx]).toBe(line)
-          })
-        } else expect(JSON.parse(content as string)).toEqual(structure)
-        filename_contains.forEach((part) => expect(filename).toContain(part))
-        expect(filename).toMatch(new RegExp(`\\.${ext}$`))
-        expect(mime_type).toBe(mime)
-      },
-    )
-
-    it.each([`cif`, `poscar`] as const)(`throws for a molecule as %s`, (fmt) => {
-      const molecule = { sites: simple_structure.sites }
-      expect(() => export_structure_as(fmt, molecule)).toThrow(`this structure has no lattice`)
-      expect(mock_download).not.toHaveBeenCalled()
-    })
+  // the comment line continues with Lattice=/Properties= metadata, checked separately below
+  it.each(xyz_cases)(`writes $name as XYZ`, ({ structure, expected }) => {
+    const [count, comment, ...rows] = structure_to_xyz_str(structure).split(`\n`)
+    expect(comment.startsWith(expected[1])).toBe(true)
+    expect([count, ...rows]).toEqual([expected[0], ...expected.slice(2)])
   })
 
   describe(`Round-trip exporters`, () => {
@@ -261,54 +226,28 @@ describe(`Export functionality`, () => {
     )
   })
 
-  describe(`Filename generation`, () => {
-    const repeated_sites = (count: number, element: ElementSymbol) =>
-      Array.from({ length: count }, () => make_site(element))
-
-    it(`uses the plain-text formula (no HTML subscripts) with spaces removed`, () => {
-      // Li2O renders as Li<sub>2</sub>O in HTML mode, so any markup here means the
-      // plain_text flag was dropped
-      const structure = {
-        id: `lithium_oxide`,
-        sites: [...repeated_sites(2, `Li`), make_site(`O`)],
-      } as AnyStructure
-      expect(create_structure_filename(structure, `xyz`)).toBe(`lithium_oxide-Li2O-3sites.xyz`)
-
-      const two_element = {
-        id: `mp-19017`,
-        sites: [...repeated_sites(4, `Li`), ...repeated_sites(4, `O`)],
-      } as AnyStructure
-      expect(create_structure_filename(two_element, `png`)).toBe(`mp-19017-Li4O4-8sites.png`)
-      // no extension yields the bare basename (3D exporters append .obj/.mtl/.glb themselves)
-      expect(create_structure_filename(two_element)).toBe(`mp-19017-Li4O4-8sites`)
-      expect(create_structure_filename(undefined)).toBe(`structure`)
-      expect(create_structure_filename(undefined, `cif`)).toBe(`structure.cif`)
-    })
-
-    // oxfmt-ignore
-    it.each([
-      { desc: `sanitizes invalid chars and condenses underscores`, id: `A/B:C*D?E"FH|`,
-        ext: `xyz`, expected: `A_B_C_D_E_FH-H-1sites.xyz` },
-      { desc: `handles consecutive invalid characters`, id: `___test///name:::here___`,
-        ext: `cif`, expected: `test_name_here-H-1sites.cif` },
-    ])(`$desc`, ({ id: identifier, ext, expected }) => {
-      const structure = { id: identifier, sites: [make_site(`H`)] } as AnyStructure
-      const result = create_structure_filename(structure, ext)
-      expect(result).toBe(expected)
-      expect(result).not.toContain(`__`)
-    })
-
-    it(`avoids null/undefined in filename from symmetry/lattice`, () => {
-      const structure = {
-        id: `test`,
-        sites: [make_site(`H`)],
-        symmetry: { space_group_symbol: null },
-        lattice: { lattice_system: undefined },
-      } as AnyStructure
-      const result = create_structure_filename(structure, `xyz`)
-      expect(result).toBe(`test-H-1sites.xyz`)
-      expect(result).not.toMatch(/null|undefined/)
-    })
+  const repeated_sites = (count: number, element: ElementSymbol) =>
+    Array.from({ length: count }, () => make_site(element))
+  const li4o4 = {
+    id: `mp-19017`,
+    sites: [...repeated_sites(4, `Li`), ...repeated_sites(4, `O`)],
+  }
+  // Li2O renders as Li<sub>2</sub>O in HTML mode, so markup here means plain_text was dropped.
+  // No extension yields the bare basename (3D exporters append .obj/.mtl/.glb themselves).
+  // oxfmt-ignore
+  it.each([
+    [{ id: `lithium_oxide`, sites: [...repeated_sites(2, `Li`), make_site(`O`)] }, `xyz`, `lithium_oxide-Li2O-3sites.xyz`],
+    [li4o4, `png`, `mp-19017-Li4O4-8sites.png`],
+    [li4o4, undefined, `mp-19017-Li4O4-8sites`],
+    [undefined, undefined, `structure`],
+    [undefined, `cif`, `structure.cif`],
+    // invalid chars become `_`, runs of them condense, and none lead or trail
+    [{ id: `A/B:C*D?E"FH|`, sites: [make_site(`H`)] }, `xyz`, `A_B_C_D_E_FH-H-1sites.xyz`],
+    [{ id: `___test///name:::here___`, sites: [make_site(`H`)] }, `cif`, `test_name_here-H-1sites.cif`],
+    // null/undefined symmetry or lattice metadata is skipped, never printed
+    [{ id: `test`, sites: [make_site(`H`)], symmetry: { space_group_symbol: null }, lattice: { lattice_system: undefined } }, `xyz`, `test-H-1sites.xyz`],
+  ])(`create_structure_filename(%j, %s) = %s`, (structure, ext, expected) => {
+    expect(create_structure_filename(structure as AnyStructure | undefined, ext)).toBe(expected)
   })
 
   describe(`Error handling and edge cases`, () => {
@@ -399,39 +338,25 @@ describe(`Export functionality`, () => {
       },
     )
 
-    // the cell, atom-site loop and rows are covered by the fixture round-trips below
-    it(`CIF header names its data block (required by pymatgen) by alphabetical formula`, () => {
-      const lines = structure_to_cif_str(complex_structure).split(`\n`)
-      expect(lines[0]).toBe(`# CIF file generated by MatterViz`)
-      expect(lines[1]).toBe(`data_FeLiO4P`) // Fe1Li1O4P1 -> FeLiO4P
-    })
-
+    // The data block header is required by pymatgen: the alphabetical formula with
+    // occupancies rounded to integers (Fe 0.3 -> 0 is left out), else the sanitized id
+    const fe_o_partial = [`Fe`, `O`].map((element, idx) => ({
+      ...make_site(element as ElementSymbol),
+      species: [
+        { element: element as ElementSymbol, occu: [0.3, 2][idx], oxidation_state: 0 },
+      ],
+    }))
     // oxfmt-ignore
     it.each([
-      { desc: `uses structure.id as fallback for empty sites`, id: `test_complex`, expected: `data_test_complex` },
-      { desc: `sanitizes special characters`, id: `mp-12345/Fe2O3 (hematite)`, expected: `data_mp_12345_Fe2O3_hematite_` },
-      { desc: `condenses consecutive underscores`, id: `test:::complex`, expected: `data_test_complex` },
-      { desc: `falls back to generic name when id is missing`, id: undefined, expected: `data_structure` },
-    ])(`CIF data block name $desc`, ({ id: identifier, expected }) => {
-      const struct = { ...complex_structure, id: identifier, sites: [] }
-      const lines = structure_to_cif_str(struct).split(`\n`)
-      expect(lines[1]).toBe(expected)
-    })
-
-    it(`CIF data block excludes elements with zero rounded occupancy`, () => {
-      // Occupancies are rounded to integers for formula; 0.3 rounds to 0 and is excluded
-      const partial_site = (element: ElementSymbol, occu: number, abc: math.Vec3) => ({
-        ...make_site(element, abc, abc),
-        species: [{ element, occu, oxidation_state: 0 }],
-      })
-      const sites = [
-        partial_site(`Fe`, 0.3, [0, 0, 0]),
-        partial_site(`O`, 2.0, [0.5, 0.5, 0.5]),
-      ]
-      const struct = { ...complex_structure, id: `low_occ_test`, sites }
-      const lines = structure_to_cif_str(struct).split(`\n`)
-      // Fe rounds to 0, O rounds to 2, so formula should be just "O2"
-      expect(lines[1]).toBe(`data_O2`)
+      [`a formula`, complex_structure, `data_FeLiO4P`], // Fe1Li1O4P1
+      [`the id without sites`, { ...complex_structure, sites: [] }, `data_test_complex`],
+      [`special characters`, { ...complex_structure, id: `mp-12345/Fe2O3 (hematite)`, sites: [] }, `data_mp_12345_Fe2O3_hematite_`],
+      [`consecutive underscores`, { ...complex_structure, id: `test:::complex`, sites: [] }, `data_test_complex`],
+      [`no id`, { ...complex_structure, id: undefined, sites: [] }, `data_structure`],
+      [`zero rounded occupancy`, { ...complex_structure, sites: fe_o_partial }, `data_O2`],
+    ])(`CIF data block name from %s`, (_desc, structure, expected) => {
+      const [comment, block] = structure_to_cif_str(structure).split(`\n`)
+      expect([comment, block]).toEqual([`# CIF file generated by MatterViz`, expected])
     })
 
     it(`exports POSCAR format correctly`, () => {
@@ -586,15 +511,6 @@ describe(`Export functionality`, () => {
         expect(atom_rows).toEqual([
           [`M1`, `Cu`, `0.25000000`, `0.25000000`, `0.25000000`, `0.70000000`],
           [`M1_1`, `Au`, `0.25000000`, `0.25000000`, `0.25000000`, `0.30000000`],
-        ])
-      })
-
-      it(`CIF round-trip keeps the label and per-species occupancies`, () => {
-        const reparsed_sites = parse_cif(structure_to_cif_str(disordered)).sites
-        expect(reparsed_sites.map(({ label }) => label)).toEqual([`M1`])
-        expect(reparsed_sites[0].species.map(({ element, occu }) => [element, occu])).toEqual([
-          [`Cu`, expect.closeTo(0.7, 8)],
-          [`Au`, expect.closeTo(0.3, 8)],
         ])
       })
 

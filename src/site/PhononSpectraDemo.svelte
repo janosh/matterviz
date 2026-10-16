@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FileInfo } from '#lib'
-  import BrillouinBandsDos from '#lib/spectral/BrillouinBandsDos.svelte'
+  import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import {
     phonon_bands,
@@ -49,7 +49,7 @@
     style="margin-block: 1em"
   />
   {#if structure}
-    <BrillouinBandsDos
+    <BandsAndDos
       {structure}
       {band_structs}
       {doses}

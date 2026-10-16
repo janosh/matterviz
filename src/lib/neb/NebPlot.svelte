@@ -139,11 +139,7 @@
   }
 
   const profile_settings = track_settings(
-    () => ({
-      coord_mode,
-      energy_reference,
-      show_spline,
-    }),
+    () => ({ coord_mode, energy_reference, show_spline }),
     { coord_mode: `arc_length`, energy_reference: `initial`, show_spline: true },
   )
 </script>
@@ -170,11 +166,8 @@
       title="Profile"
       class="ctrl-line"
       changed_keys={profile_settings.changed_keys}
-      on_reset={() => {
-        coord_mode = `arc_length`
-        energy_reference = `initial`
-        show_spline = true
-      }}
+      on_reset={() =>
+        ({ coord_mode, energy_reference, show_spline } = profile_settings.snapshot())}
       layout="flow"
     >
       <label>

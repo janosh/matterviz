@@ -2,10 +2,8 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>, PointData extends Record<string, unknown> = Record<string, unknown>"
 >
-  // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to individual
-  // canvas markers once the visible count is small enough, with spatial-index picking,
-  // solver-placed colorbar/annotation and optional point labels. Axes, ranges, padding,
-  // pan/zoom, marginals and the title come from the shared Cartesian frame.
+  // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
+  // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
   import { host } from '#lib/host.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
@@ -208,10 +206,8 @@
     measure_text: point_labels.measure_text,
   })
 
-  // Only scan the data for extents when an axis range bound is left to auto. Explicit
-  // bounds are merged in per bound so a facet grid receives the pinned range as this panel's
-  // intrinsic range (never the [0, 1] no-scan sentinel) and the facet padding pass measures
-  // the ticks that actually render.
+  // Only scan the data when a range bound is auto. Explicit bounds merge per bound so facet
+  // grids get the pinned range (not the [0, 1] no-scan sentinel) and measure the real ticks.
   const needs_data_range = (range: AxisConfig[`range`]): boolean =>
     range?.[0] == null || range?.[1] == null
   const pin_range = (axis: AxisConfig, fallback: Vec2): Vec2 => [
@@ -233,9 +229,8 @@
 
   const frame = create_cartesian_frame({
     controls_row: () => fullscreen_toggle && host.fullscreen, // no settings pane, only the fullscreen button
-    // No default tick format: format_tick_values skips its duplicate-avoidance escalation
-    // whenever a formatter is supplied, so a fixed default would repeat labels on narrow
-    // ranges (e.g. after a density bin_click zoom). Callers can still pass one in.
+    // No default tick format: a supplied formatter skips format_tick_values' duplicate
+    // avoidance, so a fixed default would repeat labels on narrow ranges
     axes: () => ({ x: x_axis, x2: empty_axis, y: y_axis, y2: empty_axis }),
     auto_ranges: () => ({ ...auto_ranges, x2: unit_range, y2: unit_range }),
     has_x2: () => false,
@@ -271,10 +266,8 @@
     height: frame.chart_height,
   })
 
-  // Density bins depend only on the decoration-independent base padding (plus the fixed
-  // marginal strips, so bins stay `bin_px` wide): their occupied cells are the obstacle field
-  // the decoration solver routes around, so deriving them from the solved pad would feed
-  // each reservation back into the next solve.
+  // Density bins use the decoration-independent base padding (plus fixed marginal strips):
+  // they are the solver's obstacle field, so the solved pad would feed back into the solve
   const density_bin_count = (total: number, start: number, end: number): number =>
     Math.max(8, Math.ceil(Math.max(1, total - start - end) / density_settings.bin_px))
   const density_bins = $derived.by(() => {
@@ -600,8 +593,7 @@
     ctx.globalAlpha = 1
   }
 
-  // Density bins are continuous geometry and clip to the plot area. Point centers are
-  // range-filtered before drawing, so leave their complete marker glyphs visible at the edges.
+  // Density bins clip to the plot area; range-filtered points keep whole glyphs at the edges.
   // Registered per canvas as its export painter, so exports redraw at the export pixel ratio
   const paint = (
     node: HTMLCanvasElement | undefined,

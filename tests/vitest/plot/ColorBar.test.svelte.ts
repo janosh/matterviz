@@ -251,6 +251,7 @@ describe(`ColorBar tick labels`, () => {
 
   const day = (month: number, date: number, hours = 0, minutes = 0, seconds = 0) =>
     new Date(2024, month, date, hours, minutes, seconds).getTime()
+  // oxfmt-ignore
   test.each<[Record<string, unknown>, string[]]>([
     [
       { range: [day(0, 1), day(11, 31)], tick_format: `%Y-%m-%d`, tick_labels: 3 },
@@ -260,10 +261,7 @@ describe(`ColorBar tick labels`, () => {
       { range: [0, 10], tick_format: `.1r`, tick_labels: 6, snap_ticks: true },
       [`0`, `2`, `4`, `6`, `8`, `10`],
     ],
-    [
-      { range: [0, 1], tick_format: `.0%`, tick_labels: 5 },
-      [`0%`, `25%`, `50%`, `75%`, `100%`],
-    ],
+    [{ range: [0, 1], tick_format: `.0%`, tick_labels: 5 }, [`0%`, `25%`, `50%`, `75%`, `100%`]],
     // explicit scientific formats share format_num's compact exponents with the axes
     [{ range: [1e5, 1e6], tick_format: `.0e`, tick_labels: [1e5, 1e6] }, [`1e5`, `1e6`]],
     [{ range: [0.1234, 5.6789], tick_labels: 3 }, [`0.123`, `2.9`, `5.68`]],

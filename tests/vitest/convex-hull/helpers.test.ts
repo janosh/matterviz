@@ -127,21 +127,15 @@ describe(`helpers: energy color scale + point color`, () => {
       { e_above_hull: 0.2 },
       {},
     ]
-    // unknown distance ≠ stable
-    expect(entries.map((entry) => helpers.entry_within_hull_dist(entry, 0.1))).toEqual([
-      true,
-      true,
-      false,
-      false,
-    ])
+    const within = entries.map((entry) => helpers.entry_within_hull_dist(entry, 0.1))
+    expect(within).toEqual([true, true, false, false]) // unknown distance ≠ stable
   })
 
   test(`hull_distance_range floors the max at 0.1 and skips non-finite values`, () => {
     const entry = (e_above_hull?: number) => ({ composition: {}, energy: 0, e_above_hull })
     expect(helpers.hull_distance_range([])).toEqual([0, 0.1])
-    expect(helpers.hull_distance_range([entry(0.02), entry(NaN), entry(0.05)])).toEqual([
-      0.02, 0.1,
-    ])
+    const mixed = [entry(0.02), entry(NaN), entry(0.05)]
+    expect(helpers.hull_distance_range(mixed)).toEqual([0.02, 0.1])
     expect(helpers.hull_distance_range([entry(0.3), entry(0.5)])).toEqual([0.3, 0.5])
   })
 })
@@ -173,32 +167,21 @@ describe(`canvas-draw: markers and hit testing`, () => {
     } as unknown as HTMLCanvasElement
     const entry = { x: 100, y: 100, z: 0, is_stable: false } as ConvexHullEntry
     const point = { entry, projected: { x: 100, y: 100, depth: 0 } }
-    const hit = (client_x: number, scale = 1) =>
+    const hit = (client_x: number, scale = 1, points = [point]) =>
       draw.find_hull_entry_at_mouse(
         canvas,
         { clientX: client_x, clientY: 110 } as MouseEvent,
-        draw.build_hull_pick_index([point], scale),
+        draw.build_hull_pick_index(points, scale),
       )
     expect(hit(118)).toBe(entry) // 8 px away < 4 + 5
     expect(hit(119)).toBeNull() // strict radius boundary
     expect(hit(120)).toBeNull() // 10 px away
     expect(hit(120, 2)).toBe(entry) // radius scales with the container: 4 * 2 + 5 = 13 > 10
-    expect(
-      draw.find_hull_entry_at_mouse(
-        undefined,
-        {} as MouseEvent,
-        draw.build_hull_pick_index([point], 1),
-      ),
-    ).toBeNull()
+    const index = draw.build_hull_pick_index([point], 1)
+    expect(draw.find_hull_entry_at_mouse(undefined, {} as MouseEvent, index)).toBeNull()
     // points are painted in array order, so the last one at the cursor is the one on top
     const behind = { ...point, entry: { ...entry, entry_id: `behind` } }
-    expect(
-      draw.find_hull_entry_at_mouse(
-        canvas,
-        { clientX: 110, clientY: 110 } as MouseEvent,
-        draw.build_hull_pick_index([behind, point], 1),
-      ),
-    ).toBe(entry)
+    expect(hit(110, 1, [behind, point])).toBe(entry)
   })
 
   // `both` is size + colour, as in the 2D ScatterPlot path. ring_growth: how far past
@@ -246,32 +229,19 @@ describe(`canvas-draw: markers and hit testing`, () => {
 
   test(`draw_corner_labels offsets 2D and 3D corners away from their centroid`, () => {
     const fillText = vi.fn()
-    const ctx = {
-      save: vi.fn(),
-      restore: vi.fn(),
-      fillText,
-    } as unknown as CanvasRenderingContext2D
+    const ctx = { save: vi.fn(), restore: vi.fn(), fillText }
     const project = vi.fn((coord_x: number, coord_y: number, coord_z: number) => ({
       x: coord_x,
       y: coord_y,
       depth: coord_z,
     }))
-    draw.draw_corner_labels(
-      ctx,
-      [
-        [1, 0],
-        [0, 1, 1],
-      ],
-      [0, 0, 0],
-      {
-        project,
-        elements: [`H`, `He`],
-        text_color: `black`,
-        font_size: 16,
-        offset: 0.1,
-      },
-    )
-
+    const elements: ElementSymbol[] = [`H`, `He`]
+    const opts = { project, elements, text_color: `black`, font_size: 16, offset: 0.1 }
+    const corners = [
+      [1, 0],
+      [0, 1, 1],
+    ]
+    draw.draw_corner_labels(ctx as never, corners, [0, 0, 0], opts)
     expect(project).toHaveBeenNthCalledWith(1, 1.1, 0, 0)
     const direction_scale = 0.1 / Math.sqrt(2)
     expect(project).toHaveBeenNthCalledWith(2, 0, 1 + direction_scale, 1 + direction_scale)
@@ -283,11 +253,8 @@ describe(`canvas-draw: markers and hit testing`, () => {
 describe(`helpers: thresholds and tooltips`, () => {
   test(`calc_max_hull_dist_in_data returns robust default and range`, () => {
     expect(helpers.calc_max_hull_dist_in_data([])).toBeCloseTo(0.5)
-    const val = helpers.calc_max_hull_dist_in_data([
-      { e_above_hull: 0 } as PhaseData,
-      { e_above_hull: 0.2 } as PhaseData,
-    ])
-    expect(val).toBeCloseTo(0.201, 10)
+    const dists = [{ e_above_hull: 0 }, { e_above_hull: 0.2 }] as PhaseData[]
+    expect(helpers.calc_max_hull_dist_in_data(dists)).toBeCloseTo(0.201, 10)
   })
 
   test(`auto_threshold_reset re-derives on source change unless the user moved the slider`, () => {
@@ -707,14 +674,8 @@ describe(`helpers: temperature interpolation`, () => {
         is_stable: false,
       })
       const [filtered] = helpers.filter_entries_at_temperature([entry], 600)
-      for (const key of [
-        `correction`,
-        `e_form_per_atom`,
-        `e_above_hull`,
-        `is_stable`,
-      ] as const) {
-        expect(filtered[key], key).toBeUndefined()
-      }
+      const hull_keys = [`correction`, `e_form_per_atom`, `e_above_hull`, `is_stable`] as const
+      for (const key of hull_keys) expect(filtered[key], key).toBeUndefined()
       // keeping the correction would make this -9.6 + (-2.5 / 5) = -10.1
       expect(get_energy_per_atom(filtered)).toBeCloseTo(-9.6, 12)
     })
@@ -860,27 +821,19 @@ describe(`helpers: entry categories (magnetic preset)`, () => {
     } as const
     const entry = (electronic_class?: string) =>
       ({ composition: { Si: 1 }, energy: -1, electronic_class }) as PhaseData
+    const category = (ent: PhaseData) => helpers.get_entry_category(ent, electronic)
     // Case-insensitive canonical match + alias normalization + data dict fallback
-    expect(helpers.get_entry_category(entry(`Metal`), electronic)).toBe(`metal`)
-    expect(helpers.get_entry_category(entry(`semi-conductor`), electronic)).toBe(
-      `semiconductor`,
-    )
-    expect(helpers.get_entry_category(entry(`half-metal`), electronic)).toBeNull()
-    expect(
-      helpers.get_entry_category(
-        { ...entry(), data: { electronic_class: `insulator` } },
-        electronic,
-      ),
-    ).toBe(`insulator`)
+    expect(category(entry(`Metal`))).toBe(`metal`)
+    expect(category(entry(`semi-conductor`))).toBe(`semiconductor`)
+    expect(category(entry(`half-metal`))).toBeNull()
+    expect(category({ ...entry(), data: { electronic_class: `insulator` } })).toBe(`insulator`)
     // Marker assignment + filtering use the same config
     const entries = [entry(`metal`), entry(`insulator`), entry()]
     expect(
       helpers.apply_category_markers(entries, electronic).map((ent) => ent.marker),
     ).toEqual([`circle`, `square`, undefined])
-    expect(helpers.visible_entries(entries, true, true, electronic, [`metal`])).toEqual([
-      entries[1],
-      entries[2],
-    ])
+    const visible = helpers.visible_entries(entries, true, true, electronic, [`metal`])
+    expect(visible).toEqual([entries[1], entries[2]])
   })
 
   test(`build_entry_tooltip_text includes magnetic ordering when present`, () => {

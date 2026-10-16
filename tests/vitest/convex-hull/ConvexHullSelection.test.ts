@@ -257,20 +257,9 @@ describe(`convex hull replacement state`, () => {
 
   // One export pane for every dimensionality: the 2D plot as SVG/PNG, 3D/4D as a PNG
   // redrawn at export resolution; entries as CSV (element amounts as columns) and JSON
-  test.each([
-    [
-      [`Li`, `O`],
-      [`PNG`, `SVG`, `CSV`, `JSON`],
-    ],
-    [
-      [`Li`, `Fe`, `O`],
-      [`PNG`, `CSV`, `JSON`],
-    ],
-    [
-      [`Li`, `Fe`, `P`, `O`],
-      [`PNG`, `CSV`, `JSON`],
-    ],
-  ])(`%j hull exports %j`, async (elements, offered) => {
+  test.each([`Li O`, `Li Fe O`, `Li Fe P O`])(`%s hull export pane`, async (chem_sys) => {
+    const elements = chem_sys.split(` `)
+    const offered = [`PNG`, ...(elements.length === 2 ? [`SVG`] : []), `CSV`, `JSON`]
     const entries = [
       ...elements.map((el) => make_phase({ [el]: 1 }, 0, { entry_id: el })),
       make_phase({ [elements[0]]: 2, [elements.at(-1) ?? ``]: 1 }, -2, { entry_id: `mix` }),
@@ -280,13 +269,9 @@ describe(`convex hull replacement state`, () => {
     const result = await export_via_pane(on_export, `CSV`, target)
     expect(result.offered).toEqual(offered)
     const [header, ...rows] = String(result.data).split(`\n`)
-    expect(header).toBe(
-      [
-        `entry_id,formula`,
-        ...elements.toSorted(),
-        `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`,
-      ].join(`,`),
-    )
+    const energy_cols = `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`
+    const element_cols = elements.toSorted().join(`,`)
+    expect(header).toBe(`entry_id,formula,${element_cols},${energy_cols}`)
     expect(rows.map((row) => row.split(`,`)[0]).toSorted()).toEqual(
       [...elements, `mix`].toSorted(),
     )

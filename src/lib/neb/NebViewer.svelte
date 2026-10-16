@@ -142,18 +142,16 @@
   const n_images = $derived(active?.path.images.length ?? 0)
   const image_idx = $derived(clamp(active_image_idx, 0, Math.max(n_images - 1, 0)))
   const current_image = $derived(active?.path.images[image_idx])
-  // A file's own image label leads unless it just restates this image's 0- or 1-based index
-  // (`image 0`); a different number (a sub-path's `image 3`) is real information. The 1-based
-  // position always follows.
-  const own_label = $derived.by(() => {
-    const label_num = Number(
-      /^image (?<num>\d+)$/i.exec(current_image?.label ?? ``)?.groups?.num,
+  // A file's own image label leads the 1-based position unless it just restates this image's
+  // 0- or 1-based index (`image 0`); a different number (a sub-path's `image 3`) is real info
+  const image_caption = $derived.by(() => {
+    const { label = `` } = current_image ?? {}
+    const position = `image ${display_idx(image_idx)} of ${n_images}`
+    const restated = [image_idx, display_idx(image_idx)].some(
+      (num) => label.toLowerCase() === `image ${num}`,
     )
-    return [image_idx, display_idx(image_idx)].includes(label_num) ? `` : current_image?.label
+    return label && !restated ? `${label}: ${position}` : position
   })
-  const image_caption = $derived(
-    `${own_label ? `${own_label}: ` : ``}image ${display_idx(image_idx)} of ${n_images}`,
-  )
   const energy_unit = $derived(active ? path_energy_unit(active.path) : `eV`)
 
   const playback = create_sequence_player({

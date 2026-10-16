@@ -201,11 +201,7 @@
     {/if}
   {/if}
   <ViewerNotices>
-    <StatusMessage
-      bind:message={() => error_msg, (msg) => !msg && error_report.dismiss()}
-      type="error"
-      dismissible
-    />
+    <StatusMessage bind:message={error_report.message} type="error" dismissible />
   </ViewerNotices>
 </div>
 

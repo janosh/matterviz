@@ -93,11 +93,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     await wait_for_events()
     expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
-    expect(items.map((item) => item.classList[0])).toEqual([
-      `appear`,
-      `tie_line_flip`,
-      `vanish`,
-    ])
+    const kinds = items.map((item) => item.classList[0])
+    expect(kinds).toEqual([`appear`, `tie_line_flip`, `vanish`])
     expect(text(`.phase-event-list li:last-child`)).toContain(`NaLi→Li+Na`)
     expect(items[1].querySelectorAll(`.reaction`)).toHaveLength(2) // two simultaneous flips
     expect([temp_input().value, text(`.stable-count`)]).toEqual([`300`, `6stable`])
@@ -172,22 +169,18 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
   })
 
   // tooltip=false hides the hover tooltip, a snippet replaces its content
+  const kind_snippet = createRawSnippet((hover: () => TernaryPhaseHover) => ({
+    render: () => `<b>${hover().kind}</b>`,
+  }))
   test.each([
     [`false`, false, null],
-    [
-      `snippet`,
-      createRawSnippet((hover: () => TernaryPhaseHover) => ({
-        render: () => `<b>${hover().kind}</b>`,
-      })),
-      `section`,
-    ],
+    [`snippet`, kind_snippet, `section`],
   ] as const)(`tooltip %s`, async (_label, tooltip, expected_text) => {
     mount_diagram({ tooltip })
     await wait_for_events()
     move_to([1, 0])
-    expect(document.querySelector(`.ternary-tooltip`)?.textContent?.trim() ?? null).toBe(
-      expected_text,
-    )
+    const tooltip_text = document.querySelector(`.ternary-tooltip`)?.textContent?.trim()
+    expect(tooltip_text ?? null).toBe(expected_text)
   })
 
   test(`stability map steps T itself but lets shift+arrows reach the host`, async () => {
@@ -206,10 +199,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       entries: toy_entries,
       diagram: null,
     })
-    mount_it(
-      IsobaricTernaryPhaseDiagram,
-      bind_props({ options: { elements: toy_elements } }, state),
-    )
+    const options = { elements: toy_elements }
+    mount_it(IsobaricTernaryPhaseDiagram, bind_props({ options }, state))
     await wait_for_events()
     state.entries = [...toy_entries] // same data, new identity: old phase indices are void
     flushSync()
@@ -252,10 +243,8 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       pinned_composition: Vec2 | null
       selected_phase: number | null
     }>({ entries: toy_entries, pinned_composition: null, selected_phase: null })
-    mount_it(
-      IsobaricTernaryPhaseDiagram,
-      bind_props({ options: { elements: toy_elements } }, state),
-    )
+    const options = { elements: toy_elements }
+    mount_it(IsobaricTernaryPhaseDiagram, bind_props({ options }, state))
     const click_at = (coords_xy: Vec2) => pointer_at(`click`, coords_xy)
     const expect_pin = (expected: Vec2) =>
       expect(state.pinned_composition).toEqual(expected.map((val) => expect.closeTo(val, 12)))
@@ -446,17 +435,9 @@ test(`TernarySectionCanvas: a section change rebuilds entries without mutating t
   const entries_before = structuredClone(model.phases.map((phase) => phase.entry))
   const state = $state({ section: compute_section(model, 300) })
   const hovers: (SectionHover | null)[] = []
-  mount_it(
-    TernarySectionCanvas,
-    bind_props(
-      {
-        model,
-        settings: { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false },
-        on_hover: (data: SectionHover | null) => hovers.push(data),
-      },
-      state,
-    ),
-  )
+  const settings = { ...TERNARY_DISPLAY_DEFAULTS, show_unstable: false }
+  const on_hover = (data: SectionHover | null) => hovers.push(data)
+  mount_it(TernarySectionCanvas, bind_props({ model, settings, on_hover }, state))
   const hover_ab = () => {
     move_to(model.phases[ab_idx].xy)
     return hovers.at(-1)
@@ -488,11 +469,8 @@ describe(`PhaseEventList`, () => {
     li_chip?.click()
     flushSync()
     expect(state.selected_phase).toBe(4)
-    expect(items.map((item) => item.className.includes(`involved`))).toEqual([
-      false,
-      true,
-      true,
-    ])
+    const involved = items.map((item) => item.className.includes(`involved`))
+    expect(involved).toEqual([false, true, true])
     li_chip?.click()
     flushSync()
     expect(state.selected_phase).toBeNull()
@@ -541,12 +519,8 @@ describe(`PhaseStabilityMap`, () => {
     [`stable_ever`, true, 7],
   ] as const)(`filter=%s elements=%s → %i rows`, (map_filter, show_map_elements, n_rows) => {
     const settings = { ...TERNARY_DISPLAY_DEFAULTS, map_filter, show_map_elements }
-    mount_it(PhaseStabilityMap, {
-      diagram: map_diagram,
-      settings,
-      temperature: 500,
-      row_height: 10,
-    })
+    const props = { diagram: map_diagram, settings, temperature: 500, row_height: 10 }
+    mount_it(PhaseStabilityMap, props)
     const canvas = doc_query<HTMLCanvasElement>(`.phase-stability-map canvas`)
     expect([
       canvas.getAttribute(`aria-valuenow`),
@@ -620,16 +594,12 @@ describe(`PhaseStabilityMap`, () => {
           },
         })
       })
+    const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
     try {
-      mount_it(PhaseStabilityMap, {
-        diagram,
-        settings: TERNARY_DISPLAY_DEFAULTS,
-        row_height: 10,
-      })
+      mount_it(PhaseStabilityMap, props)
       await new Promise((resolve) => setTimeout(resolve, 40))
       const ticks = labels.filter(({ label }) => Number(label) >= 300) // not formula subscripts
-      expect(ticks.map(({ label }) => label)).toContain(`300`)
-      expect(ticks.map(({ label }) => label)).toContain(`1500`)
+      expect(ticks.map(({ label }) => label)).toEqual(expect.arrayContaining([`300`, `1500`]))
       for (const { label, x } of ticks) {
         const half = 4 * label.length
         expect([x - half, x + half], label).toSatisfy(
@@ -726,27 +696,20 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
 })
 
 // Dropped entry arrays replace the shown entries and report through on_file_load
-test.each([true, false])(
-  `allow_file_drop=%s gates dropped entry files`,
-  async (allow_file_drop) => {
-    const on_file_load = vi.fn()
-    mount_diagram({ allow_file_drop, on_file_load })
-    const file = new File([JSON.stringify(toy_entries)], `toy.json`)
-    doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
-    if (allow_file_drop) {
-      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-      expect(on_file_load).toHaveBeenCalledWith({
-        entries: toy_entries,
-        filename: `toy.json`,
-        source_filename: `toy.json`,
-        file,
-      })
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      expect(on_file_load).not.toHaveBeenCalled()
-    }
-  },
-)
+test.each([true, false])(`allow_file_drop=%s gates file drops`, async (allow_file_drop) => {
+  const on_file_load = vi.fn()
+  mount_diagram({ allow_file_drop, on_file_load })
+  const file = new File([JSON.stringify(toy_entries)], `toy.json`)
+  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+  if (allow_file_drop) {
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    const loaded = { entries: toy_entries, filename: `toy.json`, source_filename: `toy.json` }
+    expect(on_file_load).toHaveBeenCalledWith({ ...loaded, file })
+  } else {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(on_file_load).not.toHaveBeenCalled()
+  }
+})
 
 // A host's on_file_drop takes the raw file instead of the entries parse, and a throwing
 // on_file_load is reported as the load's failure, not as unreadable file content
@@ -775,9 +738,6 @@ test.each([
       ),
     )
   }
-  await vi.waitFor(() =>
-    expect(document.querySelector(`.status-message.error`)?.textContent?.trim() ?? null).toBe(
-      error,
-    ),
-  )
+  const banner = () => document.querySelector(`.status-message.error`)?.textContent?.trim()
+  await vi.waitFor(() => expect(banner() ?? null).toBe(error))
 })

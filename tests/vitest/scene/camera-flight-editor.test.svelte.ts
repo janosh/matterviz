@@ -1,16 +1,7 @@
 import { create_camera_flight_editor } from '#lib/scene/camera-flight-editor.svelte.js'
-import { orbit_camera_flight, type CameraPose } from '#lib/scene/camera-flight.js'
+import { orbit_camera_flight } from '#lib/scene/camera-flight.js'
 import { describe, expect, it } from 'vitest'
-
-const pose: CameraPose = {
-  position: [0, 0, 10],
-  target: [0, 0, 0],
-  quaternion: [0, 0, 0, 1],
-  projection: `perspective`,
-  zoom: 1,
-  fov: 50,
-  pan: [0, 0],
-}
+import { pose } from './mount'
 
 const populated_editor = () => {
   const editor = create_camera_flight_editor()
@@ -18,8 +9,9 @@ const populated_editor = () => {
     editor.add({ ...pose, position: [0, 0, distance] }, `image-${distance}`)
   return editor
 }
-const times = (editor: ReturnType<typeof create_camera_flight_editor>) =>
-  editor.draft.views.map((view) => view.time)
+type Editor = ReturnType<typeof create_camera_flight_editor>
+const times = (editor: Editor) => editor.draft.views.map((view) => view.time)
+const thumbnails = (editor: Editor) => editor.draft.views.map((view) => view.thumbnail)
 
 describe(`camera flight editing`, () => {
   it(`keeps thumbnail and view pairs through insertion, reordering, updating and undo`, () => {
@@ -30,20 +22,15 @@ describe(`camera flight editing`, () => {
     expect(times(editor)).toEqual([0, 4, 8, 12])
     expect(editor.selected).toBe(1)
     editor.move(1, 3)
-    expect(editor.draft.views.map((view) => view.thumbnail)).toEqual([
-      `image-10`,
-      `image-20`,
-      `image-30`,
-      `inserted`,
-    ])
+    expect(thumbnails(editor)).toEqual([`image-10`, `image-20`, `image-30`, `inserted`])
     expect(editor.draft.views.map((view) => view.position[2])).toEqual([10, 20, 30, 15])
     expect(editor.selected).toBe(3)
     editor.update(3, { ...pose, zoom: 2 }, `updated`)
     expect(editor.flight.keyframes[3]).toEqual({ ...pose, zoom: 2, time: 12 })
     editor.undo()
-    expect(editor.draft.views[3].thumbnail).toBe(`inserted`)
+    expect(thumbnails(editor)[3]).toBe(`inserted`)
     editor.redo()
-    expect(editor.draft.views[3].thumbnail).toBe(`updated`)
+    expect(thumbnails(editor)[3]).toBe(`updated`)
     editor.undo()
     editor.remove(3)
     expect(times(editor)).toEqual([0, 6, 12])
@@ -107,7 +94,7 @@ describe(`camera flight editing`, () => {
     flight.keyframes[0].position[0] = 999
     images[0] = `changed`
     expect(editor.flight.keyframes[0].position).toEqual(pose.position)
-    expect(editor.draft.views[0].thumbnail).toBe(`orbit-0`)
+    expect(thumbnails(editor)[0]).toBe(`orbit-0`)
     editor.set_duration(Number.MAX_VALUE)
     expect(times(editor).every(Number.isFinite)).toBe(true)
     expect(times(editor).at(-1)).toBe(Number.MAX_VALUE)

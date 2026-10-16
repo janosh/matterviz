@@ -1,9 +1,6 @@
-// Fill-between utility functions for ScatterPlot fill regions
-// Each fill edge is traced through its boundary's own points with the same curve the series line
-// uses (a series edge inherits the series' `line_style.curve`, default monotoneX), so an unclipped
-// fill edge coincides with the line it borders. When an edge is clipped (x_range / partial
-// overlap), inserted endpoints are evaluated on a monotone-cubic approximation: sub-pixel for
-// monotoneX/linear/step, but natural/basis/catmullRom edges can deviate more at the clip points.
+// Fill-between utilities for ScatterPlot fill regions. Each edge is traced with its series'
+// curve so unclipped edges coincide with their lines. Clipped endpoints use a monotone-cubic
+// approximation: sub-pixel for monotoneX/linear/step, coarser for natural/basis/catmullRom.
 
 import { partition_point, sorted_numbers, type Vec2 } from '#lib/math.js'
 import type { CurveFactory } from 'd3-shape'
@@ -65,9 +62,8 @@ export function resolve_series_ref(
   return null
 }
 
-// Axes a region draws against and whether a series it is bound to is hidden. A series
-// boundary carries its series' axes (a band around a y2 series belongs on y2), so an explicit
-// region axis that disagrees with one is a caller error rather than a silent choice.
+// Axes a region draws against and whether a bound series is hidden. Series boundaries carry
+// their series' axes, so a disagreeing explicit region axis is a caller error.
 export function resolve_fill_binding(region: FillRegion, series: readonly DataSeries[]) {
   const bound = [region.upper, region.lower].flatMap((boundary) =>
     typeof boundary === `object` && boundary.type === `series`
@@ -95,13 +91,10 @@ export function resolve_fill_binding(region: FillRegion, series: readonly DataSe
 }
 
 // === Monotone-cubic interpolation matching d3's curveMonotoneX ===
-// Used to evaluate a boundary's y on its own curve (for endpoint clipping and where-condition
-// detection) so interpolated points lie exactly on the rendered line.
+// Evaluates a boundary's y on its own curve so interpolated points lie on the rendered line
 
-// Mirrors d3-shape's own sign helper (returns 1 for 0, unlike Math.sign) so
-// monotone_tangents reproduces curveMonotoneX exactly. Do NOT change to return 0
-// for 0: that would diverge from the rendered curve. It's harmless either way here
-// since slope_0/slope_1 === 0 forces the Math.min term below to 0 regardless.
+// Mirrors d3-shape's sign helper (1 for 0, unlike Math.sign) so monotone_tangents
+// reproduces curveMonotoneX exactly; do not change it to return 0
 const sign = (val: number): number => (val < 0 ? -1 : 1)
 
 // Per-knot tangents reproducing d3 curveMonotoneX (slope3 interior, slope2 endpoints)
@@ -533,9 +526,8 @@ const CURVE_MAP: Record<FillCurveType, CurveFactory> = {
 const get_curve = (curve_type: FillCurveType): CurveFactory =>
   lookup_curve(`fill`, CURVE_MAP, curve_type)
 
-// Resolve a public LineCurve (a series' `line_style.curve`) to its d3 CurveFactory. Single source
-// of truth shared by Line.svelte and PlotMarginals.svelte (composes the LineCurve -> FillCurveType
-// -> CurveFactory maps); null/undefined mean curveMonotoneX, unknown names throw.
+// Resolve a public LineCurve to its d3 CurveFactory (shared by Line and PlotMarginals);
+// null/undefined mean curveMonotoneX, unknown names throw
 export const line_curve_factory = (curve: LineCurve | null | undefined): CurveFactory =>
   get_curve(line_curve_to_fill(curve))
 
@@ -545,9 +537,8 @@ const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
     .y((point) => point.y)
     .curve(get_curve(curve_type))(points as Pt[]) ?? ``
 
-// Generate the closed SVG path for a fill segment (pixel coordinates). The upper edge is traced
-// forward and the lower edge backward, each through its own points with its own curve via the same
-// line generator the series uses, so an unclipped edge matches the corresponding series line.
+// Closed SVG path for a fill segment (px): upper edge forward, lower edge backward, each with
+// its own curve via the series' line generator
 export function generate_fill_path(
   upper: readonly Pt[],
   lower: readonly Pt[],

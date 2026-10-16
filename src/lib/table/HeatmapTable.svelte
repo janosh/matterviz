@@ -441,11 +441,9 @@
       prefs_of(col.id).datetime_format ?? col.datetime_format ?? datetime_kind(col)
     return options.includes(selected) ? selected : options[0]
   }
-  // Ticks once a minute while any column shows relative times, so "Xm ago" cells don't go
-  // stale (format granularity is minutes).
+  // Ticks once a minute while any column shows relative times so "Xm ago" cells stay fresh.
   let relative_now_ms = $state(Date.now())
-  // A boolean, so the effect restarts its timer only when relative mode turns on or off
-  // rather than on every column view rebuild (each resize step, data refresh)
+  // A boolean, so the timer restarts only when relative mode toggles, not per view rebuild
   let shows_relative = $derived.by(() => cols.some((view) => view.dt_mode === `relative`))
   $effect(() => {
     if (!shows_relative) return
@@ -458,10 +456,8 @@
     return timestamp === null ? null : format_datetime(timestamp, mode, relative_now_ms)
   }
 
-  // Right-align all-numeric columns, excluding dates and custom-rendered cells. Every row
-  // counts rather than a sample, else a column that turns to text near the end is
-  // right-aligned and offered a range filter. `every` bails on the first non-numeric value,
-  // so text columns cost one cell, not a full pass.
+  // Right-align all-numeric columns (not dates or custom cells). Checks every row, not a
+  // sample, since a column may turn to text near the end; `every` bails early on text.
   let numeric_columns = $derived.by(() => {
     const col_ids = new Set<string>()
     for (const col of columns) {
@@ -480,11 +476,9 @@
   })
 
   // === Filtering ===
-  // Per-column filters, paired with the row key they test. Taken over every column, not just
-  // visible ones: hiding a column shouldn't silently change which rows show. Cached against a
-  // content key because column_prefs also holds widths and color choices: without this,
-  // dragging a resize handle would hand filtered_data a fresh array on every pointermove,
-  // re-filtering every row and wiping the user's cell selection.
+  // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
+  // by content since column_prefs also holds widths: else each resize pointermove would
+  // re-filter every row and wipe the cell selection.
   let filter_cache = { key: ``, filters: [] as { key: string; filter: ColumnFilter }[] }
   let active_filters = $derived.by(() => {
     const filters = columns
@@ -505,9 +499,8 @@
     return () => clearTimeout(timer)
   })
 
-  // Retain the values read to discard empty rows; normalize text only when a query reaches it.
-  // Objects/Dates stay live, and row values and search keys directly invalidate this index.
-  // Without search.keys only column data is searched, not row style/class or other fields.
+  // Lowercased text is filled lazily once a query reaches it. Without search.keys only
+  // column data is searched, not row style/class or other fields.
   let search_index = $derived.by(() => {
     const keys = search_config?.keys ?? columns.map(cell_key)
     return data.flatMap((row) =>
@@ -610,10 +603,8 @@
   }
 
   // === Pagination and row virtualisation ===
-  // Writable: resets to page 1 when the row count, search query or sort changes, and is
-  // clamped below so a shrinking page count can't strand the user on an empty page. Deliberately
-  // not keyed on sorted_data itself: a same-length refresh of live data (dashboard polling, an
-  // edited cell) must not bounce the user back to page 1.
+  // Writable; resets to 1 when row count, query or sort change (clamped below). Not keyed on
+  // sorted_data: a same-length live-data refresh must not bounce the user to page 1.
   let row_count = $derived(sorted_data.length)
   let current_page = $derived.by(() => {
     void [row_count, debounced_query, sort, multi_sort]
@@ -645,17 +636,15 @@
       : { start: 0, end: sorted_data.length },
   )
 
-  // Scroll events are hot: only read offsets there. Client dimensions can force layout and
-  // belong to mount/ResizeObserver paths instead.
+  // Scroll events only read offsets; clientHeight can force layout, so only measure on request
   const sync_viewport = (measure_size = false) => {
     if (!scroll_el || !virtual_config) return
     scroll_top = scroll_el.scrollTop
     if (measure_size) viewport_height = scroll_el.clientHeight
   }
 
-  // Measure one rendered sample, then unsubscribe from row-count changes. Re-measuring after
-  // every append can force layout and make heterogeneous rows jump under a fixed scrollTop;
-  // re-measure only when the viewport width or density actually changes.
+  // Measured once, then only on width or density change: re-measuring on every append forces
+  // layout and makes heterogeneous rows jump under a fixed scrollTop.
   const measure_row_height = (): boolean => {
     if (!scroll_el) return false
     const rows = scroll_el.querySelectorAll<HTMLTableRowElement>(
@@ -695,9 +684,8 @@
     observer.observe(scroll_el)
     return () => observer.disconnect()
   })
-  // Narrowing the rows produces a new result set, which starts at its top. Without this a
-  // scroll_top left over from the unfiltered rows lands the user past the end of the matches.
-  // Seeded, not left empty, so the first run isn't mistaken for a filter change.
+  // A new query or filter scrolls to the top, else an old scroll_top lands past the matches.
+  // Seeded so the first run isn't mistaken for a filter change.
   let prev_narrowing: unknown[] = untrack(() => [debounced_query, active_filters])
   $effect(() => {
     const narrowing = [debounced_query, active_filters]
@@ -721,12 +709,9 @@
   let spacer_bottom = $derived((sorted_data.length - virtual_range.end) * avg_row_height)
 
   // === Column statistics and colors ===
-  // One numeric pass per visible column, shared by the color scales, the summary row,
-  // best-cell highlighting and data bars. Quantiles are skipped unless requested.
-  // Preference changes don't affect these statistics; best-cell direction is resolved below.
+  // One numeric pass per visible column, shared by color scales, summary row, best-cell
+  // highlighting and data bars, carrying its resolved color domain. Quantiles only on request.
   let needs_median = $derived(summary_stats.includes(`median`))
-  // Each column's stats carry the color domain they resolve to, since every consumer
-  // (color scale, data bar) needs both together.
   let column_stats = $derived.by(() => {
     const stats = new Map<string, ColumnStats & { domain: [number, number] }>()
     const groups = new Map<string, [number, number]>()
@@ -792,10 +777,8 @@
   })
 
   // === Column view model ===
-  // Everything the header, body and summary cells need per column, resolved once per column
-  // rather than once per rendered cell: a 60x30 virtual window re-renders 1800 cells per scroll.
-  // Keep unchanged column views and color functions stable: editing one preference must
-  // not invalidate every cell in the other visible columns.
+  // Per-column cell inputs, resolved once per column rather than per cell (a 60x30 window is
+  // 1800 cells). Views stay stable so editing one pref doesn't invalidate other columns.
   function create_column_view(col: Column<Row>) {
     const identifier = col.id
     const width = $derived(prefs_of(identifier).width)
@@ -939,9 +922,8 @@
     selection.clear()
   })
 
-  // The cell that actually carries the tab stop. active_cell can point off the rendered page
-  // or past a hidden column; without clamping, every cell would be tabindex=-1 and the table
-  // would drop out of the tab order entirely.
+  // active_cell clamped to rendered cells, else an off-page anchor would leave every cell at
+  // tabindex=-1 and drop the table out of the tab order.
   let tab_stop = $derived.by(() => {
     if (display_rows.length === 0 || visible_columns.length === 0) return { row: -1, col: -1 }
     const first_row = display_range.start
@@ -954,12 +936,9 @@
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
     target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
 
-  // Body events are handled once on <tbody> rather than through four closures per rendered
-  // cell. Every data cell and row carries its absolute index. Only this table's own rows and
-  // cells count: a HeatmapTable nested in a cell snippet carries the same attributes, and its
-  // coordinates must not be resolved against the outer rows. The <tbody> comes from
-  // event.currentTarget because bind:this only resolves in a deferred effect, and a keydown
-  // dispatched right after mount must already find its row.
+  // Body events are delegated to <tbody>; cells and rows carry their absolute index. Only
+  // this table's own rows/cells count (a nested HeatmapTable has the same attributes). tbody
+  // comes from currentTarget since bind:this resolves late, after a keydown right at mount.
   type BodyEvent = Event & { currentTarget: HTMLTableSectionElement }
   const cell_under = ({ target, currentTarget: tbody }: BodyEvent): CellPos | null => {
     let cell_el =
@@ -1109,10 +1088,8 @@
     copy_selected_cells()
   }
 
-  // Cell navigation first (a consumed arrow must not also walk the row), then the row keys:
-  // Enter/Space activate a clickable row, Up/Down walk to the neighbouring one. Stepping by
-  // absolute index rather than DOM sibling because under virtualization the row next to the
-  // last rendered one is a spacer, which would strand the keyboard user at the window edge.
+  // Cell navigation first, then row keys: Enter/Space activate, Up/Down step by absolute
+  // index (not DOM sibling: under virtualization the next sibling may be a spacer).
   async function handle_body_keydown(event: KeyboardEvent & BodyEvent) {
     const pos = cell_under(event)
     if (keyboard_cells && pos && handle_cell_keydown(event, pos)) return
@@ -1818,9 +1795,8 @@
               {#if view.bar}
                 {@const fraction = bar_fraction(num, view)}
                 {#if fraction !== null}
-                  <!-- sits behind the cell text, so the number stays readable. With `both`,
-                     the fill already paints the cell in color.bg, so a bar of that same
-                     color would be invisible; contrast against the text instead. -->
+                  <!-- behind the cell text. With `both` the cell is already color.bg, so the
+                     bar uses the text color to stay visible. -->
                   <span
                     class="data-bar"
                     aria-hidden="true"
@@ -1872,10 +1848,8 @@
       </tbody>
       {#if summary_stats.length > 0}
         <tfoot>
-          <!-- One row per requested statistic, computed from column_stats and therefore
-               already reflecting the active search and column filters. The stat name goes in
-               a leading cell when there is one, so a numeric first column doesn't lose its
-               own value to the label. -->
+          <!-- One row per stat over searched/filtered rows. The stat name goes in a leading
+               cell when there is one, so a numeric first column keeps its value. -->
           {#each summary_stats as stat (stat)}
             <tr class="summary-row">
               {#if show_row_select}

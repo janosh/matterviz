@@ -1,6 +1,5 @@
-// Layout helpers for Sankey diagrams, wrapping d3-sankey.
-// Single source of truth for node/link positioning math so the component stays
-// declarative and the layout is independently unit-testable.
+// Layout helpers for Sankey diagrams wrapping d3-sankey: all node/link positioning math, so
+// the component stays declarative and the layout is independently unit-testable.
 
 import {
   sankey as d3_sankey,
@@ -211,14 +210,10 @@ export interface SankeyBucketOptions {
   other_label?: string // label of the synthetic node, default 'Other'
 }
 
-// Fold a node's small outgoing links into one link to a synthetic 'Other' node, the
-// Sankey analogue of the hierarchy charts' `min_fraction`/`max_children`.
-//
-// Only links whose target is *terminal* (has no outgoing links of its own) are ever
-// folded. Merging a target that carries flow onward would silently delete that flow
-// downstream, turning a readability aid into a wrong diagram; terminal targets have
-// nothing downstream to lose, and a long tail of small terminal categories is the shape
-// that actually needs this. Nodes left with no links are dropped.
+// Fold a node's small outgoing links into one link to a synthetic 'Other' node, the Sankey
+// analogue of the hierarchy charts' `min_fraction`/`max_children`. Only links to *terminal*
+// targets (no outgoing links) are folded: merging a target that carries flow onward would
+// silently delete that flow downstream. Nodes left with no links are dropped.
 export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   data: SankeyData<Metadata>,
   { min_fraction = 0, max_links = 0, other_label = `Other` }: SankeyBucketOptions,
@@ -253,11 +248,9 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
     // A link with a non-terminal target is never a candidate, but still counts toward
     // the outflow it is measured against and toward the `max_links` budget it occupies
     const threshold = min_fraction > 0 ? min_fraction * outflow : 0
-    // A Set, not a list: `max_links` below tests membership once per sibling, which on a
-    // wide fan is the difference between linear and quadratic
-    const small = new Set(
-      link_idxs.filter((idx) => foldable(idx) && value_of(idx) < threshold),
-    )
+    // A Set: `max_links` below tests membership once per sibling (linear, not quadratic)
+    const is_small = (idx: number) => foldable(idx) && value_of(idx) < threshold
+    const small = new Set(link_idxs.filter(is_small))
     if (max_links > 0 && link_idxs.length - small.size > max_links) {
       // Rank the survivors and demote the smallest until the cap is met; `toSorted` is
       // stable, so value ties break by input order, reproducibly
@@ -342,10 +335,8 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     iterations = DEFAULTS.sankey.iterations,
   } = opts
 
-  // Every value has to be a non-negative number before d3 sees it. One NaN or undefined makes
-  // the whole layout NaN (`d="M24,NaN..."`, `stroke-width="NaN"`), and one negative value gives
-  // an invalid negative stroke-width and quietly subtracts from its source node's total, so the
-  // node box understates its own outflow. Throwing matches the unknown-node-ref error.
+  // Every value must be a non-negative number before d3 sees it: one NaN makes the whole
+  // layout NaN, a negative one gives an invalid stroke-width and silently shrinks its source.
   for (const link of data.links) {
     if (!Number.isFinite(link.value) || link.value < 0) {
       throw new Error(
@@ -383,10 +374,9 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     value: link.value,
   }))
 
-  // Drop nodes with no incoming or outgoing links. d3-sankey gives such orphans
-  // value 0 (zero height) and still stacks them with node_padding each, so extra
-  // labels pile up and overflow past the plot edge. They are never referenced by a
-  // link, so removing them can't break link resolution (node_idx stays stable).
+  // Drop nodes with no links. d3-sankey gives such orphans zero height but still stacks them
+  // with node_padding each, so labels pile up past the plot edge. No link references them, so
+  // removing them can't break link resolution (node_idx stays stable).
   const linked_node_idxs = new Set<number>()
   for (const link of link_copies) {
     linked_node_idxs.add(link.source)

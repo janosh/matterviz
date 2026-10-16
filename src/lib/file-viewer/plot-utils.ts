@@ -26,22 +26,13 @@ export function extract_columns(data: unknown): Map<string, ColumnInfo> {
     typeof data[0] === `object` &&
     data[0] !== null
   ) {
-    // Row-based: [{ a: 1, b: 'x' }, ...]
-    const sample = data.slice(0, 100)
-    const all_keys = new Set<string>()
-    for (const row of sample) {
-      if (row && typeof row === `object`) {
-        for (const key of Object.keys(row as Record<string, unknown>)) all_keys.add(key)
-      }
-    }
+    // Row-based: [{ a: 1, b: 'x' }, ...], keys taken from the first 100 rows
+    const rows = data.map((row) => (row && typeof row === `object` ? row : {}))
+    const all_keys = new Set(rows.slice(0, 100).flatMap((row) => Object.keys(row)))
     for (const key of all_keys) {
       columns.set(
         key,
-        classify_column(
-          data.map((row) =>
-            row && typeof row === `object` ? (row as Record<string, unknown>)[key] : undefined,
-          ),
-        ),
+        classify_column(rows.map((row) => (row as Record<string, unknown>)[key])),
       )
     }
   } else if (data && typeof data === `object` && !Array.isArray(data)) {
@@ -137,8 +128,8 @@ export function suggest_mapping(columns: Map<string, ColumnInfo>): {
 const to_numbers = (values: unknown[]): number[] =>
   values.map((val) => (typeof val === `number` && isFinite(val) ? val : NaN))
 
-// Convert an arbitrary cell value to a display label, JSON-encoding objects so
-// they don't stringify to the useless "[object Object]".
+// A JSON cell value as a display label, JSON-encoding objects so they don't stringify to the
+// useless "[object Object]"
 const to_label = (val: unknown): string => {
   if (val == null) return ``
   if (

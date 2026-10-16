@@ -266,9 +266,8 @@
 
   // Horizontal bars take their value axis from the x axis they were assigned
   const HORIZONTAL_VALUE_AXIS = { x: `y`, x2: `y2` } as const
-  // Assign visible series without an explicit value axis by unit/group. The value axis is
-  // y/y2 for vertical bars and x/x2 for horizontal bars. Keep this as an effective copy so
-  // legend toggles can reassign axes without mutating input series.
+  // Assign visible series without an explicit value axis (y/y2 vertical, x/x2 horizontal)
+  // by unit/group, as a copy so legend toggles reassign axes without mutating input
   const axis_assigned_series = $derived.by<BarSeries<Metadata>[]>(() => {
     const assignment_inputs = series.map((srs) => ({
       ...srs,
@@ -346,9 +345,8 @@
     resolve_legend_visibility(show_legend, legend, series.length),
   )
 
-  // Pixel scale for a value axis. On a log axis 0 (the bar baseline) has no finite pixel, so
-  // values are clamped to the axis minimum: bars grow from the plot edge instead of vanishing
-  // with NaN geometry, and sub-range bars collapse to the 1px floor at the edge.
+  // Value-axis pixel scale. Log axes clamp to the axis minimum so bars grow from the plot
+  // edge instead of vanishing with NaN geometry.
   const value_scale_for = (
     axis: `x` | `x2` | `y` | `y2`,
     scales: typeof frame.scales = frame.scales,
@@ -404,10 +402,8 @@
     }),
   )
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Geometry is computed
-  // against the decoration-independent base plot so outside padding cannot feed back into
-  // the crowding decision. Bars contribute their grouped/stacked screen rectangles and
-  // line series contribute sampled polylines.
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top) against the base plot, so
+  // outside padding can't feed back. Bars give their rects, lines sampled polylines.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, visible_series.length > 0, ({ base_w, base_h }) => {
       // Base-box pixel scales (not unit ones) keep compute_bar_rect's 1px floors

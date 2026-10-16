@@ -1,7 +1,5 @@
-// Tick-label layout: decides how an axis's labels are drawn (upright, wrapped, rotated,
-// thinned, staggered or ellipsized) from their measured pixel geometry. Shared by
-// calc_auto_padding (to reserve the label band) and PlotAxis (to render the winning layout).
-// Pure geometry lives at the top; text measurement goes through the text-metrics cache.
+// Tick-label layout: picks upright/wrapped/rotated/thinned/staggered/ellipsized labels from
+// measured geometry, for calc_auto_padding (label band) and PlotAxis (rendering).
 
 import { format_tick_values } from '#lib/labels.js'
 import { array_max, array_min, clamp } from '#lib/math.js'
@@ -151,9 +149,8 @@ const block_width = ({ line_widths }: TickLabelDimensions): number => {
   return width
 }
 
-// Union of all text lines as one block, rotated around the label origin. Summing the per-axis
-// extremes of each local edge is exact for the block AABB even when line widths differ.
-// Hot path: every candidate layout builds one of these per label, so it stays allocation-free.
+// AABB of all text lines as one block rotated around the label origin (exact even when line
+// widths differ). Hot path, so it stays allocation-free.
 export const tick_label_aabb = ({
   position,
   side,
@@ -224,10 +221,8 @@ const best_anchor = (
 ): { anchor: TickLabelAnchor; aabb: TickAabb } => {
   let anchor = default_tick_label_anchor(side, rotation)
   let aabb = tick_label_aabb({ position, side, anchor, rotation, dimensions })
-  // An anchor can only trade overflow along the axis when the text runs along it: upright on
-  // x/x2, rotated on y/y2. A rotated x label trails away from the plot only with its default
-  // anchor (flipping it sends the text up through the bars); an upright y anchor points at
-  // the spine and never changes the vertical extent.
+  // An anchor can only trade overflow along the axis when the text runs along it (upright
+  // on x/x2, rotated on y/y2); a flipped rotated x anchor would send text up through the bars
   const rotated = normalized_rotation(rotation) !== 0
   if (is_horizontal_side(side) === rotated) return { anchor, aabb }
   let least_overflow = axis_edge_overflow(aabb, side, axis_extent, edge_gap).total
@@ -260,9 +255,8 @@ const intervals_collide = (
 ): boolean =>
   first[1] + gap > second[0] + second_offset && second[1] + second_offset + gap > first[0]
 
-// Every label on an axis shares one rotation, so tilted labels sit on parallel baselines and
-// their axis-aligned boxes overlap long before the text does. Compare oriented bounds after the
-// AABB broad phase so labels separated along either text axis do not force extra rotation.
+// Tilted labels' AABBs overlap long before the text does, so compare oriented bounds after
+// the AABB broad phase to avoid forcing extra rotation
 const labels_collide = (
   first: TickLabelGeometry,
   second: TickLabelGeometry,
@@ -669,11 +663,9 @@ const select_candidate = (
 
 // === Label wrapping ===
 
-// Split on semantic boundaries without changing the displayed text. Whitespace, separators,
-// and lower-to-upper camel-case transitions are useful wrap points; ordinary words stay intact.
-// Camel case splits after two lowercase letters, or after one when the capital itself starts a
-// word (`xAxis`). A bare one-letter rule would tear unit strings apart, since the `V` of `10 eV`
-// looks exactly like the `A` of `xAxis` until you check whether lowercase follows it.
+// Split on whitespace, separators and camel-case transitions without changing the text.
+// Camel case splits after two lowercase letters, or after one when the capital starts a word
+// (`xAxis`), so unit strings like `10 eV` stay intact.
 const TICK_WRAP_BOUNDARY =
   /(?<=[\p{L}\p{N}][_‐–—-])(?=[\p{L}\p{N}])|(?<=[^_‐–—-] )|(?<=[a-z]{2})(?=[A-Z])|(?<=[a-z])(?=[A-Z][a-z])/u
 
@@ -941,9 +933,8 @@ const compute_tick_layout = (
   const auto_layout = label_config?.auto_layout ?? {}
   const strategies = configured === `auto` ? resolved_strategies(auto_layout) : []
   if (full_texts.length === 0) return upright_layout(axis, side, full_texts)
-  // No axis and no spread between ticks means there is no arrangement to improve: every label
-  // projects to one point, and the scorer would "fix" that pile-up by rotating labels nobody
-  // can see. Real positions still get scored even when the caller omitted a plot size.
+  // No axis and no tick spread leaves nothing to improve (the scorer would rotate a pile-up
+  // nobody sees). Real positions still get scored without a plot size.
   if (configured === `auto` && !(axis_size > 0)) {
     const span = Math.max(...axis.tick_positions) - Math.min(...axis.tick_positions)
     if (!(span > 0)) return upright_layout(axis, side, full_texts)
@@ -1035,9 +1026,8 @@ const compute_tick_layout = (
     )
     candidates.push(wrapped)
   }
-  // Vertical sides stagger only under an explicit band cap: a second column of y labels grows
-  // outward into room the padding pass never reserved (it measured upright labels against the
-  // plot height before outside decorations shrank it), so it spills past the frame edge.
+  // Vertical sides stagger only under an explicit band cap: a second y column grows into room
+  // the padding pass never reserved and spills past the frame edge
   if (
     strategies.includes(`stagger`) &&
     renderable_indices.length > 1 &&
@@ -1048,9 +1038,8 @@ const compute_tick_layout = (
       candidates.push(stagger_candidate(upright, `stagger`))
     }
   }
-  // Horizontal only: rotating a y label trades width for vertical extent, which the scorer
-  // reads as fewer collisions, so short numeric ticks came out sideways. Vertical crowding is
-  // a job for thin/wrap. Wrapped blocks can also tilt as a unit.
+  // Horizontal only: rotated y labels scored as fewer collisions and turned short numeric
+  // ticks sideways; vertical crowding is for thin/wrap. Wrapped blocks can tilt as a unit.
   const rotation_sign = (side === `x2` || side === `y2`) !== inside ? 1 : -1
   const rotated: Candidate[] =
     strategies.includes(`rotate`) && is_horizontal && renderable_indices.length > 1
@@ -1145,9 +1134,8 @@ const arrays_equal = (
 ): boolean =>
   left.length === right.length && left.every((value, idx) => Object.is(value, right[idx]))
 
-// calc_auto_padding and PlotAxis call this same resolver. Memo keys include every geometric and
-// strategy input plus the text-metrics revision, so a resize, font change or web-font load
-// (clear_text_metrics_cache) cannot reuse a stale label decision.
+// Shared by calc_auto_padding and PlotAxis. Memo keys include every input plus the
+// text-metrics revision, so resizes or font loads never reuse a stale decision.
 export const resolve_tick_layout = (
   axis: MeasuredAxis,
   axis_size: number,

@@ -1,5 +1,4 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-import BrillouinBandsDos from '#lib/spectral/BrillouinBandsDos.svelte'
 import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
@@ -38,22 +37,27 @@ const phonon_dos: PhononDos = {
   frequencies: [0, 1, 2, 3, 4],
   densities: [0, 1, 2, 1, 0],
 }
-const pair_props = {
-  structure: make_crystal(3, []),
-  band_structs: { '': band_structs },
-  doses: { '': phonon_dos },
-}
-const wrappers = [
-  [`.bands-and-dos`, 1200, BandsAndDos],
-  [`.bands-and-dos`, 400, BandsAndDos],
-  [`.bands-dos-brillouin`, 1200, BrillouinBandsDos],
-  [`.bands-dos-brillouin`, 400, BrillouinBandsDos],
+const pair_props = { band_structs: { '': band_structs }, doses: { '': phonon_dos } }
+const structure = make_crystal(3, [])
+// copies props' descriptors, so a getter prop stays live
+const mount_pair = (props: object, width = 1200, height = 600) =>
+  mount_sized(
+    BandsAndDos,
+    Object.defineProperties({ ...pair_props }, Object.getOwnPropertyDescriptors(props)),
+    { selector: `.bands-and-dos`, width, height },
+  )
+// side by side at 1200px, stacked at 400px, without and with a Brillouin zone
+const layouts = [
+  [`no BZ`, 1200, {}],
+  [`no BZ`, 400, {}],
+  [`BZ`, 1200, { structure }],
+  [`BZ`, 400, { structure }],
 ] as const
 
 describe(`bands/DOS wrappers`, () => {
-  it.each(wrappers)(
-    `shares an explicit Fermi reference in %s at %ipx`,
-    async (selector, width, Component) => {
+  it.each(layouts)(
+    `shares an explicit Fermi reference (%s, %ipx)`,
+    async (_label, width, layout_props) => {
       const bands: BaseBandStructure = { ...band_structs, type: `electronic`, efermi: 2 }
       const dos: ElectronicDos = {
         type: `electronic`,
@@ -62,17 +66,16 @@ describe(`bands/DOS wrappers`, () => {
         efermi: 3,
       }
       const reference = fromStore(writable<number | undefined>(undefined))
-      const root = await mount_sized(
-        Component,
+      const root = await mount_pair(
         {
-          ...pair_props,
+          ...layout_props,
           band_structs: { '': bands },
           doses: { '': dos },
           get fermi_level() {
             return reference.current
           },
         },
-        { selector, width, height: 600 },
+        width,
       )
       const plots = [...root.querySelectorAll(`.scatter`)]
       expect(plots).toHaveLength(2)
@@ -96,13 +99,13 @@ describe(`bands/DOS wrappers`, () => {
     },
   )
 
-  it.each(wrappers)(
-    `keeps parent data and shares changing frequency units in %s at %ipx`,
-    async (selector, width, Component) => {
+  it.each(layouts)(
+    `keeps parent data and shares changing frequency units (%s, %ipx)`,
+    async (_label, width, layout_props) => {
       const dos: PhononDos = { type: `phonon`, frequencies: [0, 4], densities: [0, 1] }
       // Runtime callers can supply extra keys; the parent's data must still win.
       const props = {
-        ...pair_props,
+        ...layout_props,
         doses: { '': dos },
         units: `meV` as const,
         bands_props: {
@@ -115,7 +118,7 @@ describe(`bands/DOS wrappers`, () => {
           doses: { first: dos, second: dos },
         },
       }
-      const root = await mount_sized(Component, props, { selector, width, height: 600 })
+      const root = await mount_pair(props, width)
       const plots = root.querySelectorAll(`.scatter`)
       expect(plots).toHaveLength(2)
       expect(plots[0].querySelectorAll(`svg path[fill="none"]`)).toHaveLength(3)
@@ -152,18 +155,11 @@ describe(`bands/DOS wrappers`, () => {
   // The bands report their own hover, the composite draws it in both panels: the DOS line
   // lands on the hovered point's pixel row (shared y scale side by side), and leaving the bands
   // clears both lines and, beside a BZ, the shaded branch
-  it.each([
-    [`.bands-and-dos`, BandsAndDos],
-    [`.bands-dos-brillouin`, BrillouinBandsDos],
-  ] as const)(`mirrors a bands hover into the DOS in %s`, async (selector, Component) => {
-    const root = await mount_sized(
-      Component,
-      {
-        ...pair_props,
-        bands_props: { on_point_click: vi.fn(), point_tween: { duration: 0 } },
-      },
-      { selector, width: 1200, height: 600 },
-    )
+  it.each([{}, { structure }])(`mirrors a bands hover into the DOS (%o)`, async (props) => {
+    const root = await mount_pair({
+      ...props,
+      bands_props: { on_point_click: vi.fn(), point_tween: { duration: 0 } },
+    })
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
     const ref_line = (plot: Element, panel: string) =>
       plot.querySelector(`line[stroke*="--${panel}-reference-line-color"]`)
@@ -176,7 +172,7 @@ describe(`bands/DOS wrappers`, () => {
     expect(Number(ref_line(bands_plot, `bands`)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
     expect(Number(ref_line(dos_plot, `dos`)?.getAttribute(`y1`))).toBeCloseTo(point.y, 6)
     const shaded = bands_plot.querySelector(`rect.highlighted-segment`)
-    expect(shaded !== null).toBe(Component === BrillouinBandsDos)
+    expect(shaded !== null).toBe(`structure` in props)
 
     await fire(svg, mouse(`mouseleave`))
     expect(ref_line(bands_plot, `bands`)).toBeNull()
@@ -185,13 +181,10 @@ describe(`bands/DOS wrappers`, () => {
   })
 
   it(`passes the Brillouin panel's cell to the bands popup`, async () => {
-    const root = await mount_sized(
-      BrillouinBandsDos,
-      {
-        ...pair_props,
-        doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } },
-      },
-      { selector: `.bands-dos-brillouin`, width: 1200, height: 400 },
+    const root = await mount_pair(
+      { structure, doses: { '': { type: `phonon`, frequencies: [0, 4], densities: [0, 1] } } },
+      1200,
+      400,
     )
     const symmetry_label = [...root.querySelectorAll(`.x-axis .tick text`)].find(
       (label) => label.textContent === `X`,
@@ -210,13 +203,10 @@ describe(`bands/DOS wrappers`, () => {
     [`DOS inside the bands range`, 4],
     [`DOS ending within tolerance of the bands range`, 4.0001],
   ])(`renders both panels without an effect loop (%s)`, async (_label, dos_max) => {
-    const root = await mount_sized(
-      BandsAndDos,
-      {
-        ...pair_props,
-        doses: { '': { ...phonon_dos, frequencies: [0, 1, 2, 3, dos_max] } },
-      },
-      { selector: `.bands-and-dos`, width: 800, height: 400 },
+    const root = await mount_pair(
+      { doses: { '': { ...phonon_dos, frequencies: [0, 1, 2, 3, dos_max] } } },
+      800,
+      400,
     )
     expect(() => flushSync()).not.toThrow()
     const tick_text = (plot: Element) =>
@@ -230,11 +220,7 @@ describe(`bands/DOS wrappers`, () => {
   // in the DOS panel, and a reset in either panel returns both to the shared range without
   // either panel's axis pin having been touched
   it(`links a zoom in one panel to the other and resets both`, async () => {
-    const root = await mount_sized(BandsAndDos, pair_props, {
-      selector: `.bands-and-dos`,
-      width: 800,
-      height: 400,
-    })
+    const root = await mount_pair({}, 800, 400)
     const y_ticks = (plot: Element) =>
       [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) =>
         Number(element.textContent),
@@ -267,21 +253,24 @@ describe(`bands/DOS wrappers`, () => {
   // One fullscreen button in the top-right plot's header (DOS side by side, bands when stacked)
   // beside the caller's controls, hidden by fullscreen_toggle or that plot's show_controls
   const kinds = [`default`, `fullscreen_toggle`, `show_controls`] as const
-  const cases = wrappers.flatMap((row) => kinds.map((kind) => [...row, kind] as const))
-  it.each(cases)(`fullscreen btn in %s at %ipx, %s`, async (selector, width, Comp, kind) => {
-    const [host_idx, shown] = [width === 1200 ? 1 : 0, Number(kind === `default`)]
-    const hidden = { show_controls: { hidden: [`fullscreen`] as const } }
-    const [bands_props, dos_props] = [`bands`, `dos`].map((name, idx) => ({
-      header_controls: createRawSnippet(() => ({ render: () => `<i class=${name}></i>` })),
-      ...(kind === `show_controls` && idx === host_idx ? hidden : {}),
-    }))
-    const fullscreen_toggle = kind !== `fullscreen_toggle`
-    const props = { ...pair_props, bands_props, dos_props, fullscreen_toggle }
-    const root = await mount_sized(Comp, props, { selector, width, height: 600 })
-    const plots = [...root.querySelectorAll(`.scatter`)]
-    const in_plots = (sel: string) => plots.map((plot) => plot.querySelectorAll(sel).length)
-    expect([...in_plots(`.bands`), ...in_plots(`.dos`)]).toEqual([1, 0, 0, 1])
-    expect(in_plots(`.fullscreen-btn`)).toEqual(host_idx ? [0, shown] : [shown, 0])
-    expect(root.querySelectorAll(`.fullscreen-btn`)).toHaveLength(shown)
-  })
+  const cases = layouts.flatMap((row) => kinds.map((kind) => [...row, kind] as const))
+  it.each(cases)(
+    `fullscreen btn (%s, %ipx, %s)`,
+    async (_label, width, layout_props, kind) => {
+      const [host_idx, shown] = [width === 1200 ? 1 : 0, Number(kind === `default`)]
+      const hidden = { show_controls: { hidden: [`fullscreen`] as const } }
+      const [bands_props, dos_props] = [`bands`, `dos`].map((name, idx) => ({
+        header_controls: createRawSnippet(() => ({ render: () => `<i class=${name}></i>` })),
+        ...(kind === `show_controls` && idx === host_idx ? hidden : {}),
+      }))
+      const fullscreen_toggle = kind !== `fullscreen_toggle`
+      const props = { ...layout_props, bands_props, dos_props, fullscreen_toggle }
+      const root = await mount_pair(props, width)
+      const plots = [...root.querySelectorAll(`.scatter`)]
+      const in_plots = (sel: string) => plots.map((plot) => plot.querySelectorAll(sel).length)
+      expect([...in_plots(`.bands`), ...in_plots(`.dos`)]).toEqual([1, 0, 0, 1])
+      expect(in_plots(`.fullscreen-btn`)).toEqual(host_idx ? [0, shown] : [shown, 0])
+      expect(root.querySelectorAll(`.fullscreen-btn`)).toHaveLength(shown)
+    },
+  )
 })

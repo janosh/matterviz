@@ -129,8 +129,7 @@
   let hover_at_pointer = $state(false)
   // Legend hover dims like a node hover but shows no tooltip
   let legend_hover_idx = $state<number | null>(null)
-  // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable).
-  // Ids of nodes absent from the current data are inert.
+  // Nodes muted via legend toggle (dimmed, not removed: keeps layout stable); absent ids inert
   const muted_nodes = new SvelteSet<string | number>()
 
   let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
@@ -144,8 +143,7 @@
     links: data.links,
   })
 
-  // Long-tail folding runs before layout, so d3-sankey only ever sees the graph the
-  // user will actually look at (positions stay stable under the fold)
+  // Long-tail folding runs before layout, so d3-sankey only sees the graph the user looks at
   let bucketed_data = $derived(bucket_sankey_data(colored_data, { min_fraction, max_links }))
   // Indexed by the folded graph's node_idx, which is what the layout reports; reading
   // the pre-fold arrays here attached colors and metadata to the wrong records
@@ -174,8 +172,7 @@
     }
   })
 
-  // node_idx -> positioned node: orphans are dropped by the layout, so positions
-  // are sparse in node_idx
+  // node_idx -> positioned node: the layout drops orphans, so positions are sparse in node_idx
   let node_by_idx = $derived(new Map(layout.nodes.map((node) => [node.node_idx, node])))
 
   // Node box center in container (pad-offset) pixel space, for tooltip + legend placement
@@ -253,15 +250,10 @@
   }
 
   const link_stroke_opacity = (link: PositionedLink): number => {
-    if (muted_nodes.has(link.source.id) || muted_nodes.has(link.target.id)) {
+    if (muted_nodes.has(link.source.id) || muted_nodes.has(link.target.id))
       return link_opacity * 0.15
-    }
-    if (has_active) {
-      return active_links[link.link_idx]
-        ? Math.min(1, link_opacity + 0.35)
-        : link_opacity * 0.25
-    }
-    return link_opacity
+    if (!has_active) return link_opacity
+    return active_links[link.link_idx] ? Math.min(1, link_opacity + 0.35) : link_opacity * 0.25
   }
 
   // Nodes may carry only an id
@@ -373,11 +365,9 @@
     handle_click(event)
   }
 
-  // Legend: one item per node, toggling mutes (dims) rather than removing.
-  // Auto-place to avoid covering nodes (node box centers act as obstacle points).
+  // Legend: one item per node that survives the layout (orphans are dropped), toggling mutes
+  // (dims) rather than removes. Node box centers are obstacles for its auto-placement.
   let legend_element = $state<HTMLDivElement | undefined>()
-  // Only nodes that survive the layout (orphans with no links are dropped, see
-  // compute_sankey_layout) - keeps the legend in sync with what's drawn.
   let legend_data = $derived(
     layout.nodes.map(({ node_idx: idx, id: identifier, label }) => ({
       series_idx: idx,
@@ -386,8 +376,8 @@
       display_style: { symbol_type: `Square` as const, symbol_color: node_colors[idx] },
     })),
   )
-  // Nodes are labelled in place, so a legend stays opt-in here. Count rendered
-  // legend entries (not raw input nodes) so orphan-only data can't open an empty legend.
+  // Nodes are labelled in place, so a legend stays opt-in. Counting rendered entries (not
+  // input nodes) means orphan-only data can't open an empty legend.
   let legend_visible = $derived(
     resolve_legend_visibility(show_legend, legend, legend_data.length, false),
   )

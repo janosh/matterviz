@@ -27,7 +27,7 @@ test.each([
   { active: `b`, ids: [`b`, `a`], expected: `b` },
   { active: `b`, ids: [], expected: undefined },
 ])(`volume selection follows IDs: $active in $ids`, ({ active, ids, expected }) => {
-  const volumes = ids.map((identifier) => make_volume_fixture([[[1]]], { id: identifier }))
+  const volumes = ids.map((id) => make_volume_fixture([[[1]]], { id }))
   expect(normalize_active_volume_id(active, volumes)).toBe(expected)
 })
 
@@ -53,9 +53,8 @@ const vol_with_range = (min: number, max: number, signed?: boolean): VolumetricD
     ...(signed === undefined ? {} : { signed }),
   })
 
-describe(`auto_isosurface_settings`, () => {
-  // Layer contents (isovalue, show_negative, zero fallback) are auto_volume_layer's, below
-  test(`wraps one auto layer on the supplied volume in the default settings`, () => {
+describe(`auto_volume_layer`, () => {
+  test(`auto_isosurface_settings wraps one auto layer in fresh default settings`, () => {
     const vol = vol_with_range(-5, 10)
     const settings = auto_isosurface_settings(vol)
     expect(settings).toEqual({
@@ -66,16 +65,13 @@ describe(`auto_isosurface_settings`, () => {
     settings.layers.push(settings.layers[0])
     expect(DEFAULT_ISOSURFACE_SETTINGS.layers).toEqual([])
   })
-})
 
-describe(`auto_volume_layer`, () => {
-  test(`defaults to a visible 20%-of-abs_max layer bound to the volume, palette color by offset`, () => {
+  // isovalue, opacity and offset palette colors per shell are pinned by the shell table below
+  test(`defaults to a visible layer bound to the volume, palette color wrapping`, () => {
     const vol = vol_with_range(0, 10)
     const layer = auto_volume_layer(vol)
-    expect(layer.isovalue).toBeCloseTo(2)
     expect(layer).toMatchObject({ volume_id: `0`, visible: true, color: LAYER_COLORS[0] })
     expect(layer.color_volume_id).toBeUndefined()
-    expect(auto_volume_layer(vol, 1).color).toBe(LAYER_COLORS[1])
     expect(auto_volume_layer(vol, LAYER_COLORS.length).color).toBe(LAYER_COLORS[0])
     // all-zero data falls back to a small positive isovalue
     expect(auto_volume_layer(vol_with_range(0, 0)).isovalue).toBe(0.05)
@@ -102,6 +98,8 @@ describe(`auto_volume_layer`, () => {
     [1, 0.8, 0.8],
     [2, 0.5, 0.7],
     [3, 0.1, 0.3],
+    [4, 0.65, 0.75],
+    [5, 0.35, 0.65],
     [SHELL_STEPS.length, 0.2, 0.6], // wraps around
   ])(`shell %i sits at %s·abs_max with opacity %s`, (shell_idx, fraction, opacity) => {
     const layer = auto_volume_layer(vol_with_range(-5, 10), 1, shell_idx)
@@ -113,20 +111,6 @@ describe(`auto_volume_layer`, () => {
       show_negative: true,
     })
   })
-
-  test(`successive shells of one volume never coincide and inner shells are more opaque`, () => {
-    const vol = vol_with_range(0, 10)
-    const shells = SHELL_STEPS.map((_step, idx) => auto_volume_layer(vol, idx, idx))
-    const isovalues = shells.map((layer) => layer.isovalue)
-    expect(new Set(isovalues).size).toBe(shells.length)
-    expect(new Set(shells.map((layer) => layer.color)).size).toBe(shells.length)
-    const by_isovalue = shells.toSorted((left, right) => right.isovalue - left.isovalue)
-    for (let idx = 1; idx < by_isovalue.length; idx++) {
-      expect(by_isovalue[idx - 1].opacity).toBeGreaterThan(by_isovalue[idx].opacity)
-    }
-    expect(Math.max(...isovalues)).toBeCloseTo(8)
-    expect(Math.min(...isovalues)).toBeCloseTo(1)
-  })
 })
 
 test.each([
@@ -134,33 +118,26 @@ test.each([
   { ids: [` `], error: /nonempty string/ },
 ])(`rejects ambiguous volume IDs $ids`, ({ ids, error }) => {
   const volume = make_volume_fixture([[[1]]])
-  expect(() =>
-    index_volumes(ids.map((identifier) => ({ ...volume, id: identifier }))),
-  ).toThrow(error)
+  expect(() => index_volumes(ids.map((id) => ({ ...volume, id })))).toThrow(error)
 })
 
-describe(`remove_volume`, () => {
-  test.each([`geometry`, `color`, `unrelated`] as const)(
-    `removing a %s source preserves surviving identities`,
-    (removed) => {
-      const volumes = [`geometry`, `color`, `unrelated`].map((identifier) =>
-        make_volume_fixture([[[1]]], { id: identifier }),
-      )
-      const layer = { ...auto_volume_layer(volumes[0]), color_volume_id: `color` }
-      const result = remove_volume(volumes, [layer], removed)
-      expect(result.volumes.map(({ id: identifier }) => identifier)).toEqual(
-        volumes
-          .filter(({ id: identifier }) => identifier !== removed)
-          .map(({ id: identifier }) => identifier),
-      )
-      expect(result.layers).toEqual(
-        removed === `geometry`
-          ? []
-          : [{ ...layer, color_volume_id: removed === `color` ? undefined : `color` }],
-      )
-    },
-  )
-})
+test.each([`geometry`, `color`, `unrelated`])(
+  `remove_volume of a %s source preserves surviving identities`,
+  (removed) => {
+    const ids = [`geometry`, `color`, `unrelated`]
+    const volumes = ids.map((id) => make_volume_fixture([[[1]]], { id }))
+    const layer = { ...auto_volume_layer(volumes[0]), color_volume_id: `color` }
+    const result = remove_volume(volumes, [layer], removed)
+    expect(result.volumes.map((volume) => volume.id)).toEqual(
+      ids.filter((id) => id !== removed),
+    )
+    expect(result.layers).toEqual(
+      removed === `geometry`
+        ? []
+        : [{ ...layer, color_volume_id: removed === `color` ? undefined : `color` }],
+    )
+  },
+)
 
 describe(`label_file_volumes`, () => {
   const vol = (label?: string): VolumetricData =>
@@ -232,9 +209,7 @@ describe(`merge_imported_volumes`, () => {
       if (action !== `remove`) incoming.unshift(source_volume(`spin`))
       if (action === `append`) incoming.push(source_volume(`extra`))
       const result = merge_imported_volumes(original.toReversed(), [tuned, retained], incoming)
-      expect(
-        result.volumes.find(({ id: identifier }) => identifier === `charge`)?.values[0],
-      ).toBe(9)
+      expect(result.volumes.find((volume) => volume.id === `charge`)?.values[0]).toBe(9)
       expect(result.layers[0]).toBe(tuned)
       expect(result.layers[1]).toEqual({
         ...retained,
@@ -247,7 +222,7 @@ describe(`merge_imported_volumes`, () => {
       ])
       expect(normalize_active_volume_id(`esp`, result.volumes)).toBe(`esp`)
       expect(result.n_added).toBe(action === `append` ? 1 : 0)
-      expect(result.volumes.map(({ id: identifier }) => identifier)).toEqual([
+      expect(result.volumes.map((volume) => volume.id)).toEqual([
         `esp`,
         ...(action !== `remove` ? [`spin`] : []),
         `charge`,

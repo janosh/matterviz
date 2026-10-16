@@ -69,7 +69,7 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range,
-    // the padding the plot settled on; BandsAndDos/BrillouinBandsDos align both panels to it
+    // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {

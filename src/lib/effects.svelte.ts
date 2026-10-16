@@ -40,10 +40,9 @@ export function create_pulse_animation(
     time = 0
   }
 
-  // Optimistic until an observer says otherwise: a pulse with no `element` (or no
-  // IntersectionObserver) runs unconditionally, a gated one wastes at most a frame off screen.
-  // Waiting for the first callback would delay every pulse, and stall forever under test DOMs
-  // that stub IntersectionObserver without ever invoking it (happy-dom does exactly that).
+  // Optimistic until an observer says otherwise: waiting for the first callback would delay
+  // every pulse, and stall forever under test DOMs whose stub IntersectionObserver never fires
+  // (happy-dom). A gated pulse wastes at most a frame off screen.
   let on_screen = $state(true)
   $effect(() => {
     const node = element?.()
@@ -85,11 +84,9 @@ export function create_pulse_animation(
   }
 }
 
-// A value that falls back to `resting` once `duration_ms` has passed since the last `show`.
-// Backs the "Copied!" indicators, whose six hand-rolled versions each got some part of this
-// wrong: without a stored handle a second copy let the FIRST timer clear the indicator early,
-// and without the teardown an unmount inside the window left a timer writing to a destroyed
-// component. Must be called during component init, for that teardown.
+// A value that falls back to `resting` once `duration_ms` has passed since the last `show`
+// (the "Copied!" indicators). The stored handle stops an earlier timer clearing a later show;
+// the teardown stops a timer writing to an unmounted component, so call during component init.
 export function create_flash<T>(resting: T, duration_ms: number): Flash<T> {
   let value = $state(resting)
   let timer: ReturnType<typeof setTimeout> | undefined

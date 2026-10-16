@@ -333,21 +333,12 @@ describe(`compute_brillouin_zone`, () => {
   })
 })
 
-describe(`generate_bz_vertices`, () => {
-  const k_lattice = recip_2pi(CUBIC_5)
-
-  test(`cubic BZ: 8 vertices at corners`, () => {
-    const vertices = generate_bz_vertices(k_lattice, 1)
-    expect(vertices).toHaveLength(8)
-    const k_max = Math.PI / 5
-    vertices.forEach((vertex) =>
-      vertex.forEach((coord) => expect(Math.abs(Math.abs(coord) - k_max)).toBeLessThan(1e-14)),
-    )
-  })
-
-  test(`clamps unchecked orders above 3`, () => {
-    expect(generate_bz_vertices(k_lattice, 4 as 3)).toEqual(generate_bz_vertices(k_lattice, 3))
-  })
+test(`generate_bz_vertices: the cubic zone's 8 corners at ±π/a`, () => {
+  const vertices = generate_bz_vertices(recip_2pi(CUBIC_5), 1)
+  expect(vertices).toHaveLength(8)
+  for (const coord of vertices.flat()) {
+    expect(Math.abs(Math.abs(coord) - Math.PI / 5)).toBeLessThan(1e-14)
+  }
 })
 
 describe(`compute_convex_hull`, () => {
@@ -433,7 +424,9 @@ describe(`BZ order`, () => {
   })
 
   test(`order >3 clamps to 3`, () => {
-    expect(compute_brillouin_zone(recip_2pi(CUBIC_5), 4 as 3).order).toBe(3)
+    const k_lattice = recip_2pi(CUBIC_5)
+    expect(generate_bz_vertices(k_lattice, 4 as 3)).toEqual(generate_bz_vertices(k_lattice, 3))
+    expect(compute_brillouin_zone(k_lattice, 4 as 3).order).toBe(3)
   })
 })
 

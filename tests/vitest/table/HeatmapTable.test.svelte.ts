@@ -45,6 +45,11 @@ const plain_columns = (...labels: string[]): Column[] =>
 const value_rows = (values: readonly RowData[string][]): RowData[] =>
   values.map((value, idx) => ({ Name: String.fromCharCode(65 + idx), Value: value }))
 
+// Whitespace-collapsed text of every element matching the selector
+const texts = (selector: string): (string | undefined)[] =>
+  [...document.querySelectorAll(selector)].map((elem) =>
+    elem.textContent?.replaceAll(/\s+/g, ` `).trim(),
+  )
 // Trimmed text of every cell in the given column.
 const col_values = (col_name: string): (string | undefined)[] =>
   [...document.querySelectorAll(`td[data-col="${col_name}"]`)].map((cell) =>
@@ -143,25 +148,12 @@ describe(`HeatmapTable`, () => {
       expect(warn).toHaveBeenCalledExactlyOnceWith(
         `HeatmapTable column Hidden: key Hidden is in no row`,
       )
-
-      const headers = document.querySelectorAll(`th`)
-      expect(headers).toHaveLength(show_row_numbers ? 4 : 3)
-      expect(
-        Array.from(headers).map((header) =>
-          header.textContent?.replaceAll(/\s+/g, ` `).trim(),
-        ),
-      ).toEqual(
-        show_row_numbers ? [`#`, `Model`, `Score`, `Value`] : [`Model`, `Score`, `Value`],
-      )
-
+      const model_cols = [`Model`, `Score`, `Value`]
+      expect(texts(`th`)).toEqual(show_row_numbers ? [`#`, ...model_cols] : model_cols)
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
       expect(document.querySelector(`tbody tr[tabindex]`)).toBeNull() // no on_row_click
       expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
-      expect(
-        [...document.querySelectorAll(`td.row-num-col`)].map((cell) =>
-          cell.textContent?.trim(),
-        ),
-      ).toEqual(show_row_numbers ? [`1`, `2`, `3`] : [])
+      expect(texts(`td.row-num-col`)).toEqual(show_row_numbers ? [`1`, `2`, `3`] : [])
       expect(document.querySelector(`tfoot`)).toBeNull() // no footer snippet -> no tfoot
       expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
       expect(document.querySelector(`button[aria-label="Export"]`)).toBeNull()
@@ -330,12 +322,9 @@ describe(`HeatmapTable`, () => {
     it(`maintains sort state on data updates`, async () => {
       const state = $state({ data: sample_data })
       mount_sample(state)
-
       await click(document.querySelectorAll<HTMLElement>(`th`)[1]) // sort by Score
-
       state.data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
       await tick()
-
       expect(col_values(`Score`)).toEqual([`0.95`, `0.85`, `0.75`, `0.65`])
       state.data[0].Score = 0.99
       await tick()
@@ -363,9 +352,7 @@ describe(`HeatmapTable`, () => {
         { id: `Ancient`, label: `Ancient`, datetime_format: `datetime` },
         { id: `Unix`, label: `Unix`, datetime_format: `datetime` },
       ]
-
       mount_table({ data, columns })
-
       const cells = () =>
         [...document.querySelectorAll(`tbody td`)].map((cell) => cell.textContent?.trim())
       const triggers = document.querySelectorAll<HTMLButtonElement>(`.datetime-format-trigger`)
@@ -373,9 +360,7 @@ describe(`HeatmapTable`, () => {
       const options = (select: HTMLSelectElement) =>
         [...select.options].map((option) => option.value)
       const open_select = async (idx: number): Promise<HTMLSelectElement> => {
-        if (triggers[idx].getAttribute(`aria-expanded`) !== `true`) {
-          await click(triggers[idx])
-        }
+        if (triggers[idx].getAttribute(`aria-expanded`) !== `true`) await click(triggers[idx])
         return doc_query<HTMLSelectElement>(`.datetime-format-select`)
       }
       const select_mode = async (idx: number, value: string) => {
@@ -383,7 +368,6 @@ describe(`HeatmapTable`, () => {
         select.value = value
         await fire(select, new Event(`input`, { bubbles: true }))
       }
-
       expect(cells()).toEqual([
         `2024-01-02`,
         `03:04`,
@@ -392,35 +376,21 @@ describe(`HeatmapTable`, () => {
         `2024-01-02 12:00`,
       ])
       expect(document.querySelector(`.datetime-format-select`)).toBeNull()
-      expect([...triggers].map((trigger) => trigger.dataset.mode)).toEqual([
-        `date`,
-        `time`,
-        `datetime`,
-        `datetime`,
-        `datetime`,
-      ])
-
+      const modes = [...triggers].map((trigger) => trigger.dataset.mode)
+      expect(modes).toEqual([`date`, `time`, `datetime`, `datetime`, `datetime`])
       expect(options(await open_select(0))).toEqual([`date`, `relative`])
       expect(options(await open_select(1))).toEqual([`time`])
-      expect(options(await open_select(2))).toEqual([
-        `date`,
-        `time`,
-        `datetime`,
-        `iso`,
-        `relative`,
-      ])
+      const all_modes = [`date`, `time`, `datetime`, `iso`, `relative`]
+      expect(options(await open_select(2))).toEqual(all_modes)
       const active_select = await open_select(2)
       await click(active_select)
       expect(document.querySelector(`.datetime-format-select`)).toBeNull()
-
       await select_mode(2, `relative`)
       expect(document.querySelector(`.datetime-format-select`)).toBeNull()
       expect(triggers[2].dataset.mode).toBe(`relative`)
       expect(cells()[2]).toBe(`1d 2h 30m ago`)
-
       await select_mode(3, `relative`)
       expect(cells()[3]).toBe(`6y 5mo 2w ago`)
-
       await select_mode(2, `time`)
       expect(cells()[2]).toBe(`03:04`)
       expect(cells()[1]).toBe(`03:04`)
@@ -512,15 +482,9 @@ describe(`HeatmapTable`, () => {
       // every cell is numeric, so every cell gets a (distinct) heatmap background
       expect(style_attrs().every((style) => style.includes(`--cell-bg:`))).toBe(true)
       expect(new Set(style_attrs()).size).toBe(input.length)
-
       await click(document.querySelectorAll(`th`)[1])
-      expect(col_values(`Value`)).toEqual([
-        `-1.0 +- 0.1`,
-        `5.0e-4 ± 1e-4`,
-        `0.8`,
-        `1.5 ± 0.2`,
-        `2.3(5)`,
-      ])
+      const sorted = [`-1.0 +- 0.1`, `5.0e-4 ± 1e-4`, `0.8`, `1.5 ± 0.2`, `2.3(5)`]
+      expect(col_values(`Value`)).toEqual(sorted)
     })
 
     // Per-cell guard: only numeric cells get --cell-bg, strings never do. Negatives must still
@@ -568,7 +532,6 @@ describe(`HeatmapTable`, () => {
       data: [{ Num: 0.123 }, { Num: 1.234 }],
       columns: [{ id: `Num`, label: `Num`, format: `.1%` }],
     })
-
     expect(col_values(`Num`)).toEqual([`12.3%`, `123.4%`])
   })
 
@@ -673,17 +636,13 @@ describe(`HeatmapTable`, () => {
     },
   ])(`displays $desc as 'n/a'`, ({ data, present, n_rows }) => {
     mount_table({ data, columns: sample_columns })
-
-    const all_text = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-      cell.textContent?.trim(),
-    )
+    const all_text = texts(`td`)
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(n_rows)
     expect(all_text.filter((text) => text === `n/a`)).toHaveLength(2)
     expect(all_text).not.toContain(`NaN`)
     expect(all_text).not.toContain(`undefined`)
-    for (const value of present) {
+    for (const value of present)
       expect(all_text.some((text) => text?.includes(value))).toBe(true)
-    }
   })
 
   it(`prevents HTML strings from being used as data-sort-value attributes`, async () => {
@@ -693,10 +652,7 @@ describe(`HeatmapTable`, () => {
         Complex: `<span data-sort-value="3373529" title="Complex tooltip with multiple lines&#013;• Line item 1&#013;• Line item 2">3.37M <small>(details)</small> (<a href="https://example.com">Link</a>)</span>`,
       },
     ]
-    mount_table({
-      data: html_data,
-      columns: plain_columns(`HTML`, `Complex`),
-    })
+    mount_table({ data: html_data, columns: plain_columns(`HTML`, `Complex`) })
     expect(doc_query(`td[data-col="HTML"] span`).hasAttribute(`data-sort-value`)).toBe(false)
     await tick()
 

@@ -67,9 +67,9 @@
   const active_shared_bands = $derived.by((): FacetSharedBandSizes => {
     const require_size = (
       slot: Snippet<[FacetSharedBandContext]> | undefined,
-      value: number | undefined,
       name: `title_height` | `legend_width` | `color_bar_width`,
     ): number | undefined => {
+      const value = shared_bands[name]
       if (!slot) return undefined
       if (!Number.isFinite(value) || (value ?? 0) <= 0) {
         throw new RangeError(
@@ -79,13 +79,9 @@
       return value
     }
     return {
-      title_height: require_size(title, shared_bands.title_height, `title_height`),
-      legend_width: require_size(legend, shared_bands.legend_width, `legend_width`),
-      color_bar_width: require_size(
-        color_bar,
-        shared_bands.color_bar_width,
-        `color_bar_width`,
-      ),
+      title_height: require_size(title, `title_height`),
+      legend_width: require_size(legend, `legend_width`),
+      color_bar_width: require_size(color_bar, `color_bar_width`),
       gap: shared_bands.gap,
     }
   })
@@ -102,21 +98,16 @@
   const has_resolved_padding = $derived(Object.keys(resolved_padding).length > 0)
   const panel_layouts = $derived(
     layout.panels.map((panel) => {
-      const resolved_visibility = resolve_facet_axis_visibility(
-        panel,
-        layout,
-        axis_modes,
-        axis_visibility,
-      )
+      const vis = resolve_facet_axis_visibility(panel, layout, axis_modes, axis_visibility)
       return {
         ...panel,
-        axis_visibility: resolved_visibility,
+        axis_visibility: vis,
         padding: has_resolved_padding
           ? {
-              t: resolved_visibility.x2 ? (resolved_padding.t ?? 0) : 0,
-              b: resolved_visibility.x ? (resolved_padding.b ?? 0) : 0,
-              l: resolved_visibility.y ? (resolved_padding.l ?? 0) : 0,
-              r: resolved_visibility.y2 ? (resolved_padding.r ?? 0) : 0,
+              t: vis.x2 ? (resolved_padding.t ?? 0) : 0,
+              b: vis.x ? (resolved_padding.b ?? 0) : 0,
+              l: vis.y ? (resolved_padding.l ?? 0) : 0,
+              r: vis.y2 ? (resolved_padding.r ?? 0) : 0,
             }
           : {},
       }
@@ -169,12 +160,8 @@
     if (grid_width <= 0 || grid_height <= 0) return base_geometry
     const { panel_grid } = base_geometry
     const sum = (sizes: number[]): number => sizes.reduce((total, size) => total + size, 0)
-    const track_offset = (
-      start: number,
-      sizes: number[],
-      track_idx: number,
-      track_gap: number,
-    ) => start + sum(sizes.slice(0, track_idx)) + track_gap * track_idx
+    const track_offset = (start: number, sizes: number[], idx: number, track_gap: number) =>
+      start + sum(sizes.slice(0, idx)) + track_gap * idx
     const track_span = (sizes: number[], track_idx: number, span: number, track_gap: number) =>
       sum(sizes.slice(track_idx, track_idx + span)) + track_gap * (span - 1)
     return {
@@ -212,10 +199,7 @@
     }
   }
 
-  const ranges_equal = (
-    left: FacetAxisRanges | undefined,
-    right: FacetAxisRanges | undefined,
-  ): boolean =>
+  const ranges_equal = (left?: FacetAxisRanges, right?: FacetAxisRanges): boolean =>
     FACET_AXES.every(
       (axis) =>
         Object.is(left?.[axis]?.[0], right?.[axis]?.[0]) &&
@@ -270,10 +254,7 @@
         ranges[axis] = previous_range
       }
     }
-    return {
-      ...(padding && { padding }),
-      ...(ranges && { ranges }),
-    }
+    return { ...(padding && { padding }), ...(ranges && { ranges }) }
   }
 
   // Stable callback identities and value equality make repeated layout reports a no-op.
@@ -297,11 +278,9 @@
         axis_modes,
       )
       for (const entry of next) {
-        if (Object.keys(entry.ranges).length === 0) {
-          range_overrides.delete(entry.key)
-        } else if (!ranges_equal(range_overrides.get(entry.key), entry.ranges)) {
+        if (Object.keys(entry.ranges).length === 0) range_overrides.delete(entry.key)
+        else if (!ranges_equal(range_overrides.get(entry.key), entry.ranges))
           range_overrides.set(entry.key, entry.ranges)
-        }
       }
     },
   })
@@ -313,9 +292,7 @@
       if (!panel_callbacks.has(key)) panel_callbacks.set(key, create_panel_callbacks(key))
     }
     for (const state of [layout_reports, range_overrides, panel_callbacks]) {
-      for (const key of state.keys()) {
-        if (!current_keys.has(key)) state.delete(key)
-      }
+      for (const key of state.keys()) if (!current_keys.has(key)) state.delete(key)
     }
   }
 
@@ -326,9 +303,7 @@
   const contexts = $derived(
     panel_layouts.map((panel): FacetPanelContext<Datum> => {
       const callbacks = panel_callbacks.get(panel.key)
-      if (!callbacks) {
-        throw new Error(`Missing callback state for facet "${panel.key}"`)
-      }
+      if (!callbacks) throw new Error(`Missing callback state for facet "${panel.key}"`)
       return {
         ...panel,
         rect:
@@ -354,12 +329,8 @@
         column_span,
       ]),
     })
-    if (
-      previous_linked_group_signature !== undefined &&
-      previous_linked_group_signature !== next_signature
-    ) {
-      range_overrides.clear()
-    }
+    const prev = previous_linked_group_signature
+    if (prev !== undefined && prev !== next_signature) range_overrides.clear()
     previous_linked_group_signature = next_signature
   })
 

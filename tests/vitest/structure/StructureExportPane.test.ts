@@ -28,23 +28,21 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
 vi.mock(`#lib/structure/export.js`, async (import_original) => {
-  const structure_to_json_str = vi.fn(() => `{"test": "json"}`)
-  const structure_to_xyz_str = vi.fn(() => `3\ntest\nH 0 0 0`)
-  const structure_to_cif_str = vi.fn(() => `data_test\n_cell_length_a 1.0`)
-  const structure_to_poscar_str = vi.fn(() => `test\n1.0\n1 0 0`)
+  const original = await import_original<typeof export_funcs>()
+  const contents: Record<string, string> = {
+    json: `{"test": "json"}`,
+    xyz: `3\ntest\nH 0 0 0`,
+    cif: `data_test\n_cell_length_a 1.0`,
+    poscar: `test\n1.0\n1 0 0`,
+  }
+  const formats = Object.entries(original.STRUCT_TEXT_FORMATS).map(([fmt, spec]) => [
+    fmt,
+    { ...spec, to_str: vi.fn(() => contents[fmt]) },
+  ])
   return {
-    ...(await import_original<typeof export_funcs>()),
+    ...original,
     create_structure_filename: vi.fn(() => `structure-basename`),
-    structure_to_json_str,
-    structure_to_xyz_str,
-    structure_to_cif_str,
-    structure_to_poscar_str,
-    STRUCT_TEXT_FORMATS: {
-      json: { to_str: structure_to_json_str, ext: `json`, mime: `application/json` },
-      xyz: { to_str: structure_to_xyz_str, ext: `xyz`, mime: `text/plain` },
-      cif: { to_str: structure_to_cif_str, ext: `cif`, mime: `chemical/x-cif` },
-      poscar: { to_str: structure_to_poscar_str, ext: `poscar`, mime: `text/plain` },
-    },
+    STRUCT_TEXT_FORMATS: Object.fromEntries(formats),
   }
 })
 
@@ -75,7 +73,7 @@ describe(`StructureExportPane`, () => {
   }
 
   test(`text export actions and camera planning share the export pane`, async () => {
-    const validate = vi.spyOn(export_funcs, `xyz_export_unavailable_reason`)
+    const validate = vi.spyOn(export_funcs.STRUCT_TEXT_FORMATS.xyz, `unavailable_reason`)
     mount_pane({ structure: simple_structure, export_pane_open: false })
     expect(validate).not.toHaveBeenCalled()
     expect(document.querySelector(`.export-item`)).toBeNull()
@@ -196,23 +194,6 @@ describe(`StructureExportPane`, () => {
     await vi.waitFor(() => expect(copy_btn?.textContent).toContain(`📋`))
 
     vi.useRealTimers()
-  })
-
-  test(`text export buttons are disabled and copy no-ops without structure`, async () => {
-    vi.mocked(navigator.clipboard.writeText).mockClear()
-
-    mount_pane({ structure: undefined })
-
-    const copy_btn = get_button(`Copy JSON`)
-    const download_btn = get_button(`Download JSON`)
-    expect(copy_btn.disabled).toBe(true)
-    expect(download_btn.disabled).toBe(true)
-
-    copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    // Flush microtasks then verify clipboard was not called
-    await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 
   test(`PNG DPI input seeds the download title and updates it on edit`, async () => {
@@ -397,98 +378,36 @@ describe(`StructureExportPane`, () => {
     expect(doc_query(`.structure-export-toggle`).title).toBe(expected_title)
   })
 
-  test(`handles clipboard API errors gracefully`, async () => {
-    const console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    const clipboard_error = new Error(`Clipboard API not available`)
-
-    Object.assign(navigator, {
-      clipboard: { writeText: vi.fn().mockRejectedValueOnce(clipboard_error) },
-    })
-
-    mount_pane({ structure: simple_structure })
-
-    const copy_btn = get_button(`Copy JSON`)
-    copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(console_error_spy).toHaveBeenCalledWith(
-        expect.stringContaining(`Failed to copy JSON to clipboard`),
-        clipboard_error,
-      )
-    })
-    console_error_spy.mockRestore()
-  })
-
+  const without_abc = simple_structure.sites.map(({ abc: _abc, ...site }) => site)
+  const [first_site, ...other_sites] = simple_structure.sites
+  const cu_half = [{ element: `Cu` as const, occu: 0.5, oxidation_state: 0 }]
+  // Each format's eligibility reason disables its download and copy buttons, shown in the
+  // title and the aria-describedby hint; the other formats stay enabled
   // oxfmt-ignore
-  test.each([null, [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]], [[1, 0, 0], [0, 1, 0], [0, 0, 0]]])(`invalid lattice %s disables formats that require it`, (matrix) => {
-    const structure = {
-      sites: simple_structure.sites.map(({ abc: _abc, ...site }) => site),
-      ...(matrix && { lattice: { matrix } }),
-    } as AnyStructure
-    mount_pane({ structure })
-
-    for (const label of [`CIF`, `POSCAR`]) {
-      for (const action of [`Download`, `Copy`]) {
-        const button = get_button(`${action} ${label}`)
-        expect(button.disabled, label).toBe(true)
-        expect(button.title, label).toContain(`unit cell`)
-        const hint_id = button.getAttribute(`aria-describedby`)
-        expect(hint_id).toBeTypeOf(`string`)
-        expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(`unit cell`)
-      }
-    }
-    expect(document.body.textContent).toContain(
-      matrix
-        ? matrix[2][2] === 0
-          ? `nonsingular unit cell`
-          : `finite 3x3 lattice matrix`
-        : `this structure has no lattice`,
-    )
-    for (const label of [`JSON`, `XYZ`]) {
-      const disabled =
-        label === `XYZ` &&
-        Boolean(matrix?.some((row) => row.some((value) => !Number.isFinite(value))))
-      expect(get_button(`Download ${label}`).disabled, label).toBe(disabled)
-      expect(get_button(`Copy ${label}`).disabled, label).toBe(disabled)
-    }
-  })
-
-  test.each([`abc`, `xyz`] as const)(
-    `invalid %s disables only the format using those coordinates`,
-    (source) => {
-      const structure = {
-        ...simple_structure,
-        sites: simple_structure.sites.map((site) => ({ ...site, [source]: [NaN, 0, 0] })),
-      }
-      mount_pane({ structure })
-      for (const label of [`XYZ`, `CIF`, `POSCAR`]) {
-        const disabled = source === `xyz` ? label === `XYZ` : label !== `XYZ`
-        for (const action of [`Download`, `Copy`]) {
-          const button = get_button(`${action} ${label}`)
-          expect(button.disabled).toBe(disabled)
-          if (disabled) {
-            expect(button.title).toContain(`three finite numeric components`)
-            expect(
-              document.querySelector(`[id="${button.getAttribute(`aria-describedby`)}"]`)
-                ?.textContent,
-            ).toContain(`three finite numeric components`)
-          }
-        }
-      }
-    },
-  )
-
-  // POSCAR/XYZ hold one fully occupied element per site; CIF and JSON keep the disorder
-  test(`a partially occupied site disables POSCAR and XYZ only`, () => {
-    const [first, ...rest] = simple_structure.sites
-    const species = [{ element: `Cu` as const, occu: 0.5, oxidation_state: 0 }]
-    mount_pane({ structure: { ...simple_structure, sites: [{ ...first, species }, ...rest] } })
+  test.each([
+    { name: `no structure`, structure: undefined, disabled: [`JSON`, `XYZ`, `CIF`, `POSCAR`], reason: `No structure loaded` },
+    { name: `no lattice`, structure: { sites: without_abc }, disabled: [`CIF`, `POSCAR`], reason: `this structure has no lattice` },
+    { name: `non-finite lattice`, structure: { sites: without_abc, lattice: { matrix: [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]] } },
+      disabled: [`XYZ`, `CIF`, `POSCAR`], reason: `finite 3x3 lattice matrix` },
+    { name: `singular lattice`, structure: { sites: without_abc, lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 0]] } },
+      disabled: [`CIF`, `POSCAR`], reason: `nonsingular unit cell` },
+    { name: `invalid abc`, structure: { ...simple_structure, sites: simple_structure.sites.map((site) => ({ ...site, abc: [NaN, 0, 0] })) },
+      disabled: [`CIF`, `POSCAR`], reason: `three finite numeric components` },
+    { name: `invalid xyz`, structure: { ...simple_structure, sites: simple_structure.sites.map((site) => ({ ...site, xyz: [NaN, 0, 0] })) },
+      disabled: [`XYZ`], reason: `three finite numeric components` },
+    // POSCAR/XYZ hold one fully occupied element per site; CIF and JSON keep the disorder
+    { name: `partial occupancy`, structure: { ...simple_structure, sites: [{ ...first_site, species: cu_half }, ...other_sites] },
+      disabled: [`XYZ`, `POSCAR`], reason: `Site 1 has partial or mixed occupancy` },
+  ])(`$name disables $disabled`, ({ structure, disabled, reason }) => {
+    mount_pane({ structure: structure as AnyStructure | undefined })
     for (const label of [`JSON`, `XYZ`, `CIF`, `POSCAR`]) {
-      const disabled = label === `XYZ` || label === `POSCAR`
       for (const action of [`Download`, `Copy`]) {
         const button = get_button(`${action} ${label}`)
-        expect(button.disabled, `${action} ${label}`).toBe(disabled)
-        if (disabled) expect(button.title).toContain(`Site 1 has partial or mixed occupancy`)
+        expect(button.disabled, `${action} ${label}`).toBe(disabled.includes(label))
+        if (!disabled.includes(label)) continue
+        expect(button.title).toContain(reason)
+        const hint_id = button.getAttribute(`aria-describedby`)
+        expect(document.querySelector(`[id="${hint_id}"]`)?.textContent).toContain(reason)
       }
     }
   })

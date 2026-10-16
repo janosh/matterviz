@@ -33,9 +33,8 @@ const sample_hkl_slice = (
   return plane && sample_plane_slice(volume, plane, { resolution: [n_points, n_points] })
 }
 
-// Helper: assert result is non-null and return narrowed type
-function expect_slice(result: ReturnType<typeof sample_hkl_slice>) {
-  expect(result).not.toBeNull()
+// Narrow a slice result, failing the test on null
+const expect_slice = (result: ReturnType<typeof sample_hkl_slice>) => {
   if (!result) throw new Error(`expected non-null slice result`)
   return result
 }
@@ -47,56 +46,34 @@ describe(`trilinear_interpolate`, () => {
   const y_ramp = flat(4, 4, 4, (_ix, idx_y) => idx_y)
   const z_ramp = flat(4, 4, 4, (_ix, _iy, idx_z) => idx_z)
   const constant = flat(4, 4, 4, () => 10)
-  // the same ix*100 + iy*10 + iz field stored x-fastest (index = ix + nx·(iy + ny·iz)); read
-  // with z-fastest strides, grid point (1, 2, 3) gave 321
+  const digits = (idx_x: number, idx_y: number, idx_z: number) =>
+    idx_x * 100 + idx_y * 10 + idx_z
+  // the same digits field stored x-fastest (index = ix + nx·(iy + ny·iz)); read with
+  // z-fastest strides, grid point (1, 2, 3) gave 321
   const x_fastest: ReturnType<typeof flat> = {
-    values: Float64Array.from({ length: 64 }, (_, idx) => {
-      const [idx_x, idx_y, idx_z] = [idx % 4, Math.floor(idx / 4) % 4, Math.floor(idx / 16)]
-      return idx_x * 100 + idx_y * 10 + idx_z
-    }),
+    values: Float64Array.from({ length: 64 }, (_, idx) =>
+      digits(idx % 4, Math.floor(idx / 4) % 4, Math.floor(idx / 16)),
+    ),
     dims: [4, 4, 4],
     order: `x_fastest`,
   }
+  // oxfmt-ignore
   test.each([
     [`grid point (1, 2, 3) of an x-fastest grid`, x_fastest, [0.25, 0.5, 0.75], true, 123],
     [`an x-fastest cell midpoint`, x_fastest, [0.375, 0.625, 0.125], true, 175.5],
-    [
-      `grid point (1, 2, 3) of an ix*100 + iy*10 + iz field`,
-      flat(4, 4, 4, (idx_x, idx_y, idx_z) => idx_x * 100 + idx_y * 10 + idx_z),
-      [0.25, 0.5, 0.75],
-      true,
-      123,
-    ],
+    [`grid point (1, 2, 3) of an ix*100 + iy*10 + iz field`, flat(4, 4, 4, digits), [0.25, 0.5, 0.75], true, 123],
     [`midpoint of an x ramp`, x_ramp, [0.375, 0, 0], true, 1.5],
     [`a negative coordinate wrapping to 0.75`, x_ramp, [-0.25, 0, 0], true, 3],
     [`negative multi-cell seam`, x_ramp, [-1.125, 0, 0], true, 1.5],
     [`positive multi-cell seam`, x_ramp, [2.875, 0, 0], true, 1.5],
     [`exact periodic boundary`, x_ramp, [1, 0, 0], true, 0],
-    [
-      `wrapping all three upper corners`,
-      flat(2, 4, 4, (idx_x, idx_y, idx_z) => idx_x * 100 + idx_y * 10 + idx_z),
-      [0.75, 0.875, 0.875],
-      true,
-      66.5,
-    ],
-    [
-      `singleton axes alongside a wrapped axis`,
-      flat(1, 2, 1, (_idx_x, idx_y) => idx_y * 10),
-      [100.5, 0.75, -123.25],
-      true,
-      5,
-    ],
+    [`wrapping all three upper corners`, flat(2, 4, 4, digits), [0.75, 0.875, 0.875], true, 66.5],
+    [`singleton axes alongside a wrapped axis`, flat(1, 2, 1, (_ix, idx_y) => idx_y * 10), [100.5, 0.75, -123.25], true, 5],
     [`periodic singleton cell`, flat(1, 1, 1, () => 42), [-3, 2.5, 7.25], true, 42],
     [`the non-periodic midpoint between ix=1 and ix=2`, x_ramp, [0.5, 0, 0], false, 1.5],
     // fx=1 must hit the last point (a floor-based fraction read grid[nx-2] = 2 there)
     [`the non-periodic upper x boundary`, x_ramp, [1, 0, 0], false, 3],
-    [
-      `the non-periodic last cell just below the boundary`,
-      x_ramp,
-      [0.875, 0, 0],
-      false,
-      2.625,
-    ],
+    [`the non-periodic last cell just below the boundary`, x_ramp, [0.875, 0, 0], false, 2.625],
     [`the non-periodic upper y boundary`, y_ramp, [0, 1, 0], false, 3],
     [`the non-periodic upper z boundary`, z_ramp, [0, 0, 1], false, 3],
     [`a non-periodic point below the grid`, constant, [-0.1, 0.5, 0.5], false, 0],
@@ -229,33 +206,22 @@ test.each([true, false])(`upsample_volume refines smoothly (periodic=%s)`, (peri
   expect(spline_err).toBeLessThan(trilinear_err / (periodic ? 10 : 2.5))
 })
 
-describe(`Cartesian slice point helpers`, () => {
-  const volume = make_volume([[[0]]], {
-    lattice: [
-      [2, 0, 0],
-      [1, 4, 0],
-      [0.5, 1, 6],
-    ],
-    origin: [10, -2, 5],
-  })
-
-  test(`resolves an explicit point, else the volume center, else the Cartesian origin`, () => {
-    const point: Vec3 = [7, 8, 9]
-    expect(resolve_slice_cartesian_point(point, volume)).toBe(point)
-    // the fractional center (0.5, 0.5, 0.5) in absolute Cartesian coordinates
-    expect(volume_center(volume)).toEqual([11.75, 0.5, 8])
-    expect(resolve_slice_cartesian_point(undefined, volume)).toEqual([11.75, 0.5, 8])
-    expect(resolve_slice_cartesian_point(undefined, undefined)).toEqual([0, 0, 0])
-  })
+test(`slice point resolves to an explicit point, else the volume center, else the origin`, () => {
+  // oxfmt-ignore
+  const volume = make_volume([[[0]]], { lattice: [[2, 0, 0], [1, 4, 0], [0.5, 1, 6]], origin: [10, -2, 5] })
+  const point: Vec3 = [7, 8, 9]
+  expect(resolve_slice_cartesian_point(point, volume)).toBe(point)
+  // the fractional center (0.5, 0.5, 0.5) in absolute Cartesian coordinates
+  expect(volume_center(volume)).toEqual([11.75, 0.5, 8])
+  expect(resolve_slice_cartesian_point(undefined, volume)).toEqual([11.75, 0.5, 8])
+  expect(resolve_slice_cartesian_point(undefined, undefined)).toEqual([0, 0, 0])
 })
 
 test(`slice settings factory returns independent nested values`, () => {
   const first = create_volume_slice_settings()
   const second = create_volume_slice_settings({ miller_indices: [1, 1, 0] })
-
   first.miller_indices[0] = 9
   first.cartesian_normal[2] = 4
-
   expect(second.miller_indices).toEqual([1, 1, 0])
   expect(second.cartesian_normal).toEqual([0, 0, 1])
   expect(create_volume_slice_settings().miller_indices).toEqual([0, 0, 1])
@@ -279,12 +245,11 @@ describe(`sample_plane_slice`, () => {
       { resolution: [5, 5] },
       linear_volume(cubic, [3, -2, 5]),
     )
-
     expect(result.mask.every((value) => value === 1)).toBe(true)
-    expect(result.data[0]).toBeCloseTo(2, 10)
-    expect(result.data.at(-1)).toBeCloseTo(5, 10)
-    expect(result.min).toBeCloseTo(2, 10)
-    expect(result.max).toBeCloseTo(5, 10)
+    // [first pixel, last pixel, min, max]
+    expect([result.data[0], result.data.at(-1), result.min, result.max]).toEqual(
+      [2, 5, 2, 5].map((value) => expect.closeTo(value, 10)),
+    )
   })
 
   test(`preserves aspect ratio and enforces the pixel budget`, () => {
@@ -293,15 +258,9 @@ describe(`sample_plane_slice`, () => {
       [0, 2, 0],
       [0, 0, 1],
     ])
-    const plane: CartesianPlane = {
-      point: [5, 1, 0.5],
-      normal: [0, 0, 1],
-      up: [1, 0, 0],
-    }
+    const plane: CartesianPlane = { point: [5, 1, 0.5], normal: [0, 0, 1], up: [1, 0, 0] }
     const result = plane_slice(plane, { resolution: 100, max_pixels: Number.NaN }, volume)
-
-    expect(result.width).toBe(100)
-    expect(result.height).toBe(20)
+    expect([result.width, result.height]).toEqual([100, 20])
     expect(result.u_range[1] - result.u_range[0]).toBeCloseTo(10)
     expect(result.v_range[1] - result.v_range[0]).toBeCloseTo(2)
     const capped = plane_slice(plane, { resolution: [1_000_000, 2], max_pixels: 100 }, volume)
@@ -330,7 +289,6 @@ describe(`sample_plane_slice`, () => {
       },
       linear_volume(cubic, [0, 0, 0], true),
     )
-
     expect(result.mask.every((value) => value === 1)).toBe(true)
     expect(result.data[Math.floor(result.data.length / 2)]).toBeCloseTo(3.5, 8)
   })
@@ -393,7 +351,6 @@ describe(`sample_plane_slice`, () => {
       { resolution: [9, 9] },
       volume,
     )
-
     expect(hkl_result.data).toEqual(cartesian_result.data)
     expect(hkl_result.mask).toEqual(cartesian_result.mask)
   })

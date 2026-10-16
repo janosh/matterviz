@@ -19,13 +19,11 @@ const SPECIES_KEY_REGEX = /^(?<symbol>[A-Z][a-z]?)(?:\d*\.?\d*[+-])?(?:,spin=[-+
 // Hydrogen isotopes pymatgen treats as their own species
 const ISOTOPE_TO_ELEMENT: Record<string, ElementSymbol> = { D: `H`, T: `H` }
 
-// Normalize convex hull composition keys by stripping oxidation states and spins (e.g.
-// "V4+" -> "V", "Fe2+,spin=5" -> "Fe"), mapping D/T to H and merging amounts for keys that map
-// to the same element. Filters non-positive amounts. pymatgen DummySpecies ("X0+", "Xa") carry
-// no element and are skipped with a warning. Throws on keys that are not a single element
-// species ("Fe2O3", "12345"): silently mapping a compound key to its first element would
-// corrupt every downstream formation energy. With `components` (pseudo-components such as
-// precursor formulas for a pseudo-binary/ternary hull) keys must instead match one of them exactly.
+// Normalize hull composition keys: strip oxidation states and spins ("Fe2+,spin=5" -> "Fe"),
+// map D/T to H, merge amounts per element and drop non-positive ones. pymatgen DummySpecies
+// ("X0+", "Xa") are skipped with a warning. Throws on non-species keys ("Fe2O3"), which would
+// otherwise corrupt every downstream formation energy. With `components` (pseudo-components
+// of a pseudo-binary/ternary hull) keys must instead match one of them exactly.
 export function normalize_hull_composition_keys(
   composition: Record<string, number>,
   components?: readonly string[],
@@ -82,8 +80,7 @@ export function process_hull_entries(
   return { entries: normalized, elements: collect_hull_elements(normalized) }
 }
 
-// Energy per atom with the (total-energy, eV) correction applied — the Materials Project
-// convention — falling back to raw energy_per_atom/energy.
+// Energy per atom with the (total-energy, eV) MP correction applied, else raw energy
 export function get_energy_per_atom(entry: PhaseData): number {
   // Math.max instead of || so pathological non-positive totals can't flip the sign
   const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
@@ -97,9 +94,8 @@ export function get_energy_per_atom(entry: PhaseData): number {
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
 }
 
-// Whether an entry carries an absolute energy, as opposed to E_form-only data: no energy at
-// all, or a 0 eV `energy` placeholder next to a nonzero e_form_per_atom (a real total energy
-// is essentially never exactly 0 eV, and a 0 eV unary reference has E_form 0 either way).
+// Whether an entry carries an absolute energy rather than E_form only (no energy, or a 0 eV
+// placeholder next to a nonzero e_form_per_atom: real totals are never exactly 0 eV)
 export const has_absolute_energy = (entry: PhaseData): boolean =>
   typeof entry.energy_per_atom === `number` ||
   (typeof entry.energy === `number` &&
@@ -110,9 +106,8 @@ export const has_absolute_energy = (entry: PhaseData): boolean =>
       entry.e_form_per_atom !== 0
     ))
 
-// Absolute energy per atom: the entry's own, else its E_form on the references' scale
-// (E_form + Σ x_e E_e, and E_form alone for a reference that is E_form-only itself). NaN
-// when the entry has neither or an element lacks a reference.
+// Absolute energy per atom: the entry's own, else E_form + Σ x_e E_e on the references'
+// scale. NaN when the entry has neither or an element lacks a reference.
 export function absolute_energy_per_atom(
   entry: PhaseData,
   unary_refs: Record<string, PhaseData>,
@@ -141,9 +136,8 @@ export function entry_has_temp_data(entry: PhaseData): boolean {
   )
 }
 
-// `e_above_hull_distances` prefers a cached e_form_per_atom over recomputing one, so any
-// transformation that changes energies or references must clear these or the stale cache
-// outranks the new energies.
+// e_above_hull_distances prefers a cached e_form_per_atom, so transformations that change
+// energies or references must clear these
 export const drop_cached_hull_data = <Entry extends PhaseData>(entry: Entry): Entry => ({
   ...entry,
   e_form_per_atom: undefined,
@@ -151,9 +145,8 @@ export const drop_cached_hull_data = <Entry extends PhaseData>(entry: Entry): En
   is_stable: undefined,
 })
 
-// Formation energy per atom against elemental references (eV/atom), or null when a reference
-// is missing or an energy is non-finite — never E = 0, which is a formation energy against a
-// fictitious element. Zero-amount elements need no reference.
+// Formation energy per atom (eV/atom) against elemental references, or null when a reference
+// is missing or an energy is non-finite (never a fictitious 0 eV reference)
 export function compute_e_form_per_atom(
   entry: PhaseData,
   el_refs: Record<string, PhaseData>,
@@ -171,11 +164,9 @@ export function compute_e_form_per_atom(
   return energy_per_atom - ref_sum
 }
 
-// Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries
-// (which get_energy_per_atom reads as 0 eV) rank by e_form_per_atom, and only for elements
-// without absolute-energy unaries, since their E_form is measured against those. An
-// exclude_from_hull unary is never a reference: it is drawn, but neither anchors the hull
-// nor sets the formation-energy zero, so an element with only excluded unaries has none.
+// Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries rank
+// by e_form_per_atom, and only for elements without absolute-energy unaries. exclude_from_hull
+// unaries are never references.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
 ): Record<string, PhaseData> {
@@ -199,20 +190,17 @@ export function find_lowest_energy_unary_refs(
   )
 }
 
-// Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure.
-// Composition alone collides for same-stoichiometry polymorphs (last distance would win),
-// so add energy + structure.
+// Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure
+// (composition alone collides for polymorphs)
 const id_of = (entry: PhaseData): string => {
   if (entry.entry_id) return entry.entry_id
   const structure_hash = entry.structure ? JSON.stringify(entry.structure) : ``
   return `${JSON.stringify(entry.composition)}|${entry.energy}|${structure_hash}`
 }
 
-// Raw energy above hull (eV/atom, negative below it, e.g. for exclude_from_hull entries) of
-// `entries` against the hull of reference_entries, aligned with `entries`. Formation energies
-// come from e_form_per_atom when present, else from the lowest-energy unary references; pure
-// elements without a reference default to E_form = 0. Entries that can't be placed (missing
-// reference element, zero atoms) get NaN.
+// Unclamped energy above hull (eV/atom) of `entries` against the hull of reference_entries.
+// E_form comes from e_form_per_atom, else the lowest-energy unary references; unreferenced
+// pure elements default to 0. Unplaceable entries (missing reference, zero atoms) get NaN.
 export function e_above_hull_distances(
   entries: PhaseData[],
   reference_entries: PhaseData[],
@@ -220,9 +208,7 @@ export function e_above_hull_distances(
   if (reference_entries.length === 0) {
     throw new Error(`Reference entries cannot be empty`)
   }
-  // The geometry runs on normalized copies so oxidation-state keys ("Fe3+") line up with the
-  // reference system. Zero-atom entries are kept (they yield NaN below) rather than dropped
-  // like process_hull_entries would.
+  // Normalized copies so "Fe3+" keys match the references; zero-atom entries stay (NaN below)
   const normalize = (entry: PhaseData): PhaseData => ({
     ...entry,
     composition: normalize_hull_composition_keys(entry.composition),
@@ -250,12 +236,10 @@ export function e_above_hull_distances(
       ? entry.e_form_per_atom
       : compute_e_form_per_atom(entry, refs)
   const arity = elements.length
-  // Hull points: reduced barycentric coords (first dropped — all N sum to 1 and would
-  // confine the points to an affine subspace) + E_form. NaN E_form marks unplaceable.
+  // Hull points: barycentric coords minus the first (they sum to 1) + E_form (NaN unplaceable)
   const to_point = (entry: PhaseData): number[] => {
     const e_form = e_form_of(entry)
-    // A zero-atom composition with an explicit e_form_per_atom skips the null check above
-    // and would make composition_to_barycentric_nd throw instead of yielding NaN
+    // zero atoms with explicit e_form_per_atom would make composition_to_barycentric_nd throw
     if (e_form === null || count_atoms_in_composition(entry.composition) <= 0) {
       return Array(arity).fill(NaN)
     }
@@ -268,9 +252,8 @@ export function e_above_hull_distances(
     // exclude_from_hull entries are shown but not part of the hull
     (point, idx) => !reference_entries[idx].exclude_from_hull && point.every(Number.isFinite),
   )
-  // Corner energies: lowest E_form at each pure-element corner, defaulting to 0 when missing
-  // (then added as a hull point). In reduced coordinates element 0 is the origin and element
-  // k > 0 has (k-1)th coordinate 1.
+  // Lowest E_form at each pure-element corner, else 0 (then added as a hull point). Element 0
+  // is the origin, element k > 0 has (k-1)th coordinate 1.
   const corner_energies = elements.map((_, el_idx) => {
     const corner: number[] = Array(arity).fill(0)
     if (el_idx > 0) corner[el_idx - 1] = 1
@@ -286,8 +269,7 @@ export function e_above_hull_distances(
 
   const facets = arity > 1 ? compute_lower_hull_nd(ref_points) : []
   if (facets.length > 0) return compute_e_above_hull_nd(query_points, facets, ref_points)
-  // No facets (a unary system, or every hull point on one hyperplane): the corners are always
-  // hull points, so the hull is the plane through them and E_hull = Σ x_k E_corner_k
+  // No facets (unary, or all points on one hyperplane): E_hull = Σ x_k E_corner_k
   return query_points.map((point) => {
     const coords = point.slice(0, -1)
     const first = 1 - coords.reduce((sum, val) => sum + val, 0)
@@ -347,8 +329,7 @@ export function get_convex_hull_stats(
   return {
     total: processed_entries.length,
     unary,
-    // Zero out counts beyond system dimensionality for cleaner display (quinary_plus is the
-    // catch-all and is naturally 0 for systems with fewer than 5 elements)
+    // Zero out counts beyond the system's dimensionality
     binary: max_arity >= 2 ? binary : 0,
     ternary: max_arity >= 3 ? ternary : 0,
     quaternary: max_arity >= 4 ? quaternary : 0,
@@ -374,8 +355,7 @@ export interface HighDimHullResult {
   phase_stats: PhaseStats | null
 }
 
-// Stats for systems the ConvexHull components can't render (5+ elements): computes
-// formation energies, hull distances and stability. Returns null when nothing is usable.
+// Formation energies, hull distances and stability for 5+ element systems (not renderable)
 export function process_hull_for_stats(entries: PhaseData[]): HighDimHullResult | null {
   const processed = process_hull_entries(entries)
   if (processed.entries.length === 0) return null
@@ -388,8 +368,7 @@ export function process_hull_for_stats(entries: PhaseData[]): HighDimHullResult 
       entry.e_form_per_atom ?? compute_e_form_per_atom(entry, el_refs) ?? undefined,
   }))
   const hull_distances = e_above_hull_distances(with_e_form, with_e_form)
-  // x/y/z default to 0 since high-dim systems aren't plotted. Clamped: an excluded entry below
-  // the hull reads 0 here (the 2-4D model keeps its negative distance)
+  // x/y/z are 0 since high-dim systems aren't plotted. Clamped, unlike the 2-4D model
   const hull_entries = with_e_form.map((entry, idx): ConvexHullEntry => ({
     ...entry,
     ...compute_hull_stability(Math.max(0, hull_distances[idx]), entry.exclude_from_hull),
@@ -406,14 +385,12 @@ export function process_hull_for_stats(entries: PhaseData[]): HighDimHullResult 
 
 // === N-dimensional convex hull (quickhull) ===
 
-// Geometric tolerance for hull construction (coordinates are compositions in [0, 1] and
-// energies in eV/atom)
+// Hull construction tolerance (compositions in [0, 1], energies in eV/atom)
 const HULL_EPS = 1e-9
 
-// Facet budget for the incremental construction below (a running tally: nothing cheap predicts
-// the count up front). Measured on points in convex position: 6D/1000 builds ~300k facets in
-// 10 s but 7D/1000 needs 610k in 72 s, so 500k keeps every tractable case and aborts the rest
-// in 12-14 s. Plotted hulls are 2D-4D, so this only fires on the arity-5+ stats path.
+// Facet budget for quickhull (running tally). Points in convex position: 6D/1000 builds ~300k
+// facets in 10 s, 7D/1000 610k in 72 s, so 500k keeps tractable cases and aborts the rest in
+// 12-14 s. Only reachable on the arity-5+ stats path.
 const MAX_HULL_FACETS = 500_000
 
 // Facet of an N-dimensional hull: an (N-1)-simplex of N vertices (indices into the input
@@ -431,8 +408,7 @@ interface WorkFacet extends HullFacet {
   farthest_dist: number
 }
 
-// Signed distance of a point to a facet's hyperplane (> 0 outside). The one hot kernel of
-// quickhull, so it's a bare loop rather than math.dot (no shape checks, no allocation).
+// Signed distance of a point to a facet's hyperplane (> 0 outside). Hot kernel: bare loop
 function signed_distance(facet: HullFacet, point: number[]): number {
   const { normal } = facet
   let sum = facet.offset
@@ -476,8 +452,8 @@ function make_facet(
   return facet
 }
 
-// Give each candidate point to the facet it lies farthest outside of (if any), tracking
-// that facet's farthest point so the main loop never rescans outside sets.
+// Give each candidate point to the facet it lies farthest outside of, tracking each facet's
+// farthest point so the main loop never rescans outside sets
 function claim_outside_points(points: number[][], candidates: number[], facets: WorkFacet[]) {
   for (const pt_idx of candidates) {
     const point = points[pt_idx]
@@ -552,9 +528,8 @@ function horizon_ridges(visible: WorkFacet[]): number[][] {
   return [...ridges.values()].filter((ridge) => ridge !== null)
 }
 
-// Convex hull of points in N dimensions (quickhull). Returns [] for fewer than N+1 points
-// or degenerate (co-hyperplanar) input; throws on mixed dimensions or on passing
-// `max_facets` (see MAX_HULL_FACETS).
+// N-dimensional quickhull. [] for fewer than N+1 points or degenerate input; throws on mixed
+// dimensions or past `max_facets`.
 export function compute_quickhull_nd(
   points: number[][],
   max_facets = MAX_HULL_FACETS,
@@ -628,11 +603,10 @@ export function compute_quickhull_nd(
 export const compute_lower_hull_nd = (points: number[][]): HullFacet[] =>
   compute_quickhull_nd(points).filter((facet) => (facet.normal.at(-1) ?? 0) < -HULL_EPS)
 
-// Energy above the lower hull per query point (last coordinate = energy), unclamped: the
-// highest plane among facets whose projection contains the query. Covering facets tie at the
-// max over all planes, so only those are checked first; a sliver facet's plane can overshoot
-// the covering one, and only then are planes tried from the top. Queries outside the
-// composition domain get NaN.
+// Unclamped energy above the lower hull per query point (last coordinate = energy): the plane
+// of a facet whose projection contains the query. Facets at the max over all planes go
+// first; a sliver facet's plane can overshoot, so then planes are tried from the top. Queries
+// outside the composition domain get NaN.
 export function compute_e_above_hull_nd(
   query_points: number[][],
   facets: HullFacet[],

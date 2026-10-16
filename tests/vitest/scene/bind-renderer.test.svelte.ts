@@ -80,22 +80,18 @@ describe(`destroyAttribute guard`, () => {
     attributeUtils: { destroyAttribute: vi.fn() },
   })
 
-  test(`drops the entry instead of throwing when the upload was refused`, () => {
-    const backend = fake_backend({}) // createBuffer threw before it assigned .buffer
+  // no buffer: createBuffer threw before it assigned one. With one, three's own path deletes.
+  test.each([
+    [`drops the entry instead of throwing when the upload was refused`, undefined],
+    [`delegates to three untouched when the upload succeeded`, { destroy: vi.fn() }],
+  ])(`%s`, (_name, buffer) => {
+    const backend = fake_backend({ buffer })
     const attribute = { name: `position` }
-
     expect(() => backend_proto.destroyAttribute.call(backend, attribute)).not.toThrow()
-    expect(backend.delete).toHaveBeenCalledExactlyOnceWith(attribute)
-    expect(backend.attributeUtils.destroyAttribute).not.toHaveBeenCalled()
-  })
-
-  test(`delegates to three untouched when the upload succeeded`, () => {
-    const backend = fake_backend({ buffer: { destroy: vi.fn() } })
-    const attribute = { name: `position` }
-
-    backend_proto.destroyAttribute.call(backend, attribute)
-    expect(backend.attributeUtils.destroyAttribute).toHaveBeenCalledExactlyOnceWith(attribute)
-    expect(backend.delete).not.toHaveBeenCalled() // three's own path does the deleting
+    expect(backend.delete.mock.calls).toEqual(buffer ? [] : [[attribute]])
+    expect(backend.attributeUtils.destroyAttribute.mock.calls).toEqual(
+      buffer ? [[attribute]] : [],
+    )
   })
 
   test(`looks interleaved attributes up by their shared buffer data`, () => {

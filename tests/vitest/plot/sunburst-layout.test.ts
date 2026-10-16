@@ -401,14 +401,11 @@ describe(`sunburst_from_labels_parents`, () => {
     expect(sunburst_from_labels_parents([`a`, `b`], [null, undefined])).toHaveLength(2)
   })
 
+  // oxfmt-ignore
   test.each([
     [`parents length mismatch`, () => from_lp([`a`, `b`], [``]), /equal length/],
     [`values length mismatch`, () => from_lp([`a`], [``], [1, 2]), /equal length/],
-    [
-      `ids length mismatch`,
-      () => from_lp([`a`], [``], [1], { ids: [`x`, `y`] }),
-      /equal length/,
-    ],
+    [`ids length mismatch`, () => from_lp([`a`], [``], [1], { ids: [`x`, `y`] }), /equal length/],
     [`dup labels`, () => from_lp([`a`, `a`], [``, ``]), /duplicate node label "a".*opts\.ids/],
     [
       `dup ids`,

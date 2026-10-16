@@ -264,9 +264,8 @@ interface CanvasInteractionInputs extends Pick<
   // Draws the hull onto the cleared `ctx` (CSS-pixel coordinates); calls
   // draw_points/draw_labels where they belong in its paint order
   render_frame: (ctx: CanvasRenderingContext2D) => void
-  // Everything else `render_frame` reads. It draws inside a rAF, where reads don't register
-  // as dependencies, so anything missing leaves the canvas silently stale. List the derived
-  // values the draw code reads, not their inputs — the derivation keeps the list honest.
+  // Everything else `render_frame` reads: it draws inside a rAF where reads aren't tracked, so
+  // a missing value leaves the canvas silently stale. List deriveds read, not their inputs.
   repaint_deps: () => unknown
 }
 
@@ -419,9 +418,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     { on_tick: () => surface.schedule(false), element: inputs.wrapper },
   )
 
-  // Base canvas: the component's scene; overlay: the pulsing markers. No elements means the
-  // data hasn't loaded (an arity mismatch unmounts the canvas instead), and the corner labels
-  // need the elements, so the scene waits for them.
+  // Base canvas: the scene; overlay: pulsing markers. The scene waits for elements (data
+  // loaded), which the corner labels need.
   const surface = create_canvas_surface({
     canvas: inputs.canvas,
     overlay_canvas: inputs.overlay_canvas,

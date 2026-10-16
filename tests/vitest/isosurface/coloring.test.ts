@@ -51,10 +51,7 @@ describe(`scalars_to_vertex_colors`, () => {
   })
 
   test(`inverted color range flips the colormap`, () => {
-    const forward = scalars_to_vertex_colors(new Float32Array([0, 10]), {
-      ...viridis_opts,
-      value_range: [0, 10],
-    })
+    const forward = scalars_to_vertex_colors(new Float32Array([0, 10]), viridis_opts)
     const flipped = scalars_to_vertex_colors(new Float32Array([0, 10]), {
       ...viridis_opts,
       value_range: [10, 0],
@@ -134,31 +131,13 @@ describe(`fit_value_range`, () => {
 })
 
 describe(`compute_scalar_range`, () => {
+  // the symmetry modes themselves are fit_value_range's (tabled above)
+  // oxfmt-ignore
   test.each([
     [`positive values keep [min, max]`, [[1, 2, 3]], {}, [1, 3]],
     [`mixed-sign values get symmetric range`, [[-2, 5]], {}, [-5, 5]],
-    [
-      `symmetric forces zero-centered range for one-signed samples`,
-      [[2, 5]],
-      { symmetric: true },
-      [-5, 5],
-    ],
-    [`symmetric covers negative-only samples`, [[-4, -1]], { symmetric: true }, [-4, 4]],
-    [
-      `symmetric=false keeps mixed-sign samples as is`,
-      [[-2, 5]],
-      { symmetric: false },
-      [-2, 5],
-    ],
-    [
-      `multiple arrays merge, non-finite values ignored`,
-      [
-        [1, NaN, 4],
-        [2, Infinity, 8],
-      ],
-      {},
-      [1, 8],
-    ],
+    [`symmetric forces zero-centered range for one-signed samples`, [[2, 5]], { symmetric: true }, [-5, 5]],
+    [`multiple arrays merge, non-finite values ignored`, [[1, NaN, 4], [2, Infinity, 8]], {}, [1, 8]],
     [`all-non-finite falls back to [0, 1]`, [[NaN, Infinity]], {}, [0, 1]],
     [`empty input falls back to [0, 1]`, [], {}, [0, 1]],
   ] as [string, number[][], { symmetric?: boolean }, number[]][])(

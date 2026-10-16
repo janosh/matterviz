@@ -19,6 +19,7 @@ import { mount_scene } from './mount'
 const mount_camera = (
   camera_projection: 'orthographic' | 'perspective',
   extra: Partial<ComponentProps<typeof SceneCamera>> = {},
+  [min_zoom, max_zoom]: [number?, number?] = [],
 ) => {
   const props = $state<ComponentProps<typeof SceneCamera>>({
     camera_projection,
@@ -27,8 +28,8 @@ const mount_camera = (
       ...SCENE_CONTROL_DEFAULTS,
       camera_projection,
       target: [0, 0, 0],
-      min_zoom: undefined,
-      max_zoom: undefined,
+      min_zoom,
+      max_zoom,
     }),
     orbit_controls: undefined, // bound back by SceneCamera
     ...extra,
@@ -59,24 +60,13 @@ test.each([`orthographic`, `perspective`] as const)(
   `%s camera reset restores position, target and zoom and drops the pan`,
   async (camera_projection) => {
     const reset_zoom = vi.fn()
+    // OrbitControls clamps the zoom on update: unset bounds would make it NaN
     const {
       props,
       canvas,
       camera: camera_store,
       unmount_scene,
-    } = mount_camera(camera_projection, {
-      position: [3, 4, 5],
-      zoom: 7,
-      reset_zoom,
-      // OrbitControls clamps the zoom on update: unset bounds would make it NaN
-      orbit_props: build_orbit_props({
-        ...SCENE_CONTROL_DEFAULTS,
-        camera_projection,
-        target: [0, 0, 0],
-        min_zoom: 1,
-        max_zoom: 50,
-      }),
-    })
+    } = mount_camera(camera_projection, { position: [3, 4, 5], zoom: 7, reset_zoom }, [1, 50])
     const controls = props.orbit_controls
     const reset = camera_resets.get(canvas)
     if (!controls || !reset) throw new Error(`SceneCamera registered no reset`)
@@ -200,30 +190,19 @@ test(`an unmeasured container freezes the zoom instead of rescaling against a pl
   })
 })
 
-test(`bounds keep the fit reachable and re-clamp as soon as a limit moves`, () => {
+test(`bounds keep the fit reachable, reach orbit_zoom_props and re-clamp when a limit moves`, () => {
   with_ortho_zoom((zoom, set, camera) => {
     expect([zoom.min_zoom, zoom.max_zoom]).toEqual([10, 500])
+    const { min_zoom, max_zoom } = zoom.orbit_zoom_props()
+    expect([min_zoom, max_zoom]).toEqual([10, 500])
     // a fit below the interaction floor lowers it, or the initial framing is unreachable
     camera.zoom = zoom.zoom
     set({ fit: 5 })
-    expect(zoom.min_zoom).toBe(5)
+    expect([zoom.min_zoom, zoom.orbit_zoom_props().min_zoom]).toEqual([5, 5])
     // lowering the ceiling clamps the live zoom now, not at the next gesture
     wheel_to(camera, zoom, 400)
     set({ max: 50 })
     expect(zoom.zoom).toBe(50)
-  })
-})
-
-test(`orbit_zoom_props carries the bounds and stores the camera's zoom when a gesture ends`, () => {
-  with_ortho_zoom((zoom, set, camera) => {
-    const props = zoom.orbit_zoom_props()
-    expect([props.min_zoom, props.max_zoom]).toEqual([10, 500])
-    // the user wheels to 250: OrbitControls writes the camera, the end hook stores it
-    camera.zoom = 250
-    props.on_end_extra()
-    expect(zoom.zoom).toBe(250)
-    set({ fit: 50 })
-    expect(zoom.zoom).toBe(125)
   })
 })
 
@@ -330,13 +309,9 @@ test(`an unmeasured container holds the initial zoom until it has a size`, () =>
 test(`create_scene_camera derives orbit props from controls, target and fit-aware zoom bounds`, () => {
   const cleanup = $effect.root(() => {
     const controls = $state({
+      ...SCENE_CONTROL_DEFAULTS,
       camera_projection: `orthographic` as const,
-      rotate_speed: 1,
       zoom_speed: 1,
-      zoom_to_cursor: false,
-      pan_speed: 1,
-      auto_rotate: 0,
-      rotation_damping: 0,
       min_zoom: 10,
       max_zoom: 50,
     })

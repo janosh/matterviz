@@ -179,10 +179,6 @@
     })
   }
 
-  // Update one bound of a layer's color range. An empty input resets the whole
-  // range to auto-fit (renderer fits it to the values sampled on the surface).
-  // Typing into an auto range seeds the other bound from the color volume's
-  // full data range as a starting point.
   const layer_color_scale = (layer: IsosurfaceLayer) =>
     to_color_scale_config(layer.color_scale ?? {})
   const update_color_scale = (layer_idx: number, updates: ColorScaleConfig) => {
@@ -192,21 +188,25 @@
     }
   }
 
+  // Update one bound of a layer's color range. An empty input resets the whole
+  // range to auto-fit (renderer fits it to the values sampled on the surface).
+  // Typing into an auto range seeds the other bound from the color volume's
+  // full data range as a starting point.
   function update_value_range(layer_idx: number, bound: 0 | 1, raw_value: string) {
     const layer = settings.layers[layer_idx]
-    if (!layer) return
-    if (raw_value.trim() === ``) {
-      update_color_scale(layer_idx, { value_range: undefined })
-      return
-    }
     const value = Number(raw_value)
-    if (Number.isNaN(value)) return
+    if (!layer || Number.isNaN(value)) return
     const color_vol = color_vol_of(layer)
     const [current_min, current_max] =
       layer_color_scale(layer).value_range ??
       (color_vol ? auto_color_config(color_vol.data_range).value_range : [0, 1])
     update_color_scale(layer_idx, {
-      value_range: bound === 0 ? [value, current_max] : [current_min, value],
+      value_range:
+        raw_value.trim() === ``
+          ? undefined
+          : bound === 0
+            ? [value, current_max]
+            : [current_min, value],
     })
   }
 

@@ -123,6 +123,7 @@ describe(`gas-thermodynamics: chemical potential calculations`, () => {
 })
 
 describe(`gas-thermodynamics: analyze_gas_data`, () => {
+  // oxfmt-ignore
   test.each([
     [`no enabled gases`, { Fe: 1, O: 2 }, {}, [], []],
     [`O from enabled O2`, { Fe: 2, O: 3 }, { enabled_gases: [`O2`] }, [`O`], [`O2`]],
@@ -133,13 +134,7 @@ describe(`gas-thermodynamics: analyze_gas_data`, () => {
       [`O`, `N`],
       [`O2`, `N2`],
     ],
-    [
-      `elements not from enabled gases ignored`,
-      { Fe: 1, O: 1 },
-      { enabled_gases: [`N2`] },
-      [],
-      [],
-    ],
+    [`elements not from enabled gases ignored`, { Fe: 1, O: 1 }, { enabled_gases: [`N2`] }, [], []],
     [
       `custom element_to_gas mapping (Xe from O2)`,
       { Fe: 1, Xe: 1 },

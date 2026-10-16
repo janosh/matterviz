@@ -106,12 +106,12 @@ describe(`zone axis directions`, () => {
     },
   )
 
-  test.each([
-    [[0, 0, 1] as Vec3, 18.3632],
-    [[1, 1, 1] as Vec3, 22.8703],
-    [[1, 0, 1] as Vec3, 29.9819],
-    [[2, -1, 3] as Vec3, 27.3584],
-    [[1, -1, 0] as Vec3, 16.6352],
+  test.each<[Vec3, number]>([
+    [[0, 0, 1], 18.3632],
+    [[1, 1, 1], 22.8703],
+    [[1, 0, 1], 29.9819],
+    [[2, -1, 3], 27.3584],
+    [[1, -1, 0], 16.6352],
   ])(
     `[uvw] and (hkl) %s differ by %s deg in a triclinic cell but coincide in a cubic one`,
     (indices, expected_deg) => {
@@ -141,17 +141,9 @@ describe(`zone axis directions`, () => {
   ])(
     `reports the same axis for scaled indices and the opposite one for negated %s`,
     (_name, indices) => {
-      const base = zone_axis_direction(triclinic, indices, `uvw`)
-      const doubled = zone_axis_direction(
-        triclinic,
-        indices.map((index) => index * 2) as Vec3,
-        `uvw`,
-      )
-      const negated = zone_axis_direction(
-        triclinic,
-        indices.map((index) => -index) as Vec3,
-        `uvw`,
-      )
+      const scaled = (factor: number) =>
+        zone_axis_direction(triclinic, indices.map((index) => index * factor) as Vec3, `uvw`)
+      const [base, doubled, negated] = [1, 2, -1].map(scaled)
       for (const [idx, component] of base.entries()) {
         expect(doubled[idx]).toBeCloseTo(component, 14)
         expect(negated[idx]).toBeCloseTo(-component, 14)
@@ -205,17 +197,30 @@ describe(`camera fly-to`, () => {
     }
     let invalidations = 0
     const hook_calls: string[] = []
-    const fly = create_fly_to({
-      camera: () => camera,
-      controls: () => controls,
-      duration_ms: () => duration_ms,
-      invalidate: () => (invalidations += 1),
+    // a second fly-to sharing the camera and controls, as gizmo and scene do
+    const make_fly = (hooks: Partial<Parameters<typeof create_fly_to>[0]> = {}) =>
+      create_fly_to({
+        camera: () => camera,
+        controls: () => controls,
+        duration_ms: () => duration_ms,
+        invalidate: () => (invalidations += 1),
+        ...hooks,
+      })
+    const fly = make_fly({
       on_start: () => hook_calls.push(`start`),
       on_change: () => hook_calls.push(`change`),
       on_end: () => hook_calls.push(`end`),
     })
     const offset = () => camera.position.clone().sub(controls.target)
-    return { camera, controls, fly, hook_calls, invalidations: () => invalidations, offset }
+    return {
+      camera,
+      controls,
+      fly,
+      make_fly,
+      hook_calls,
+      invalidations: () => invalidations,
+      offset,
+    }
   }
   const to_array = (vec: Vector3): Vec3 => [vec.x, vec.y, vec.z]
 
@@ -380,13 +385,8 @@ describe(`camera fly-to`, () => {
 
   // Gizmo and scene fly-tos share the controls: a takeover ends the first, `enabled` comes back
   test.each([true, false])(`hands back enabled: %s on release and takeover`, (enabled) => {
-    const { camera, controls, fly, hook_calls } = make_rig()
-    const other = create_fly_to({
-      camera: () => camera,
-      controls: () => controls,
-      duration_ms: () => 400,
-      invalidate: () => {},
-    })
+    const { controls, fly, make_fly, hook_calls } = make_rig()
+    const other = make_fly()
     controls.enabled = enabled
     fly.start([1, 0, 0])
     fly.release()

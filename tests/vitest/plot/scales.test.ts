@@ -586,7 +586,6 @@ describe(`scales`, () => {
     // Ticks are rounded to 12 places so 0.6000000000000001 from interval stepping compares as 0.6
     type TickOptions = Parameters<typeof generate_ticks>[4]
     type TickCase = [string, Vec2, ScaleType, number | undefined, TickOptions, number[]]
-    // oxfmt-ignore
     // only all-fractional ticks drop an integer format, so explicit mixed arrays keep it
     test.each([
       [[0.2, 0.4], `d`, undefined],
@@ -599,99 +598,30 @@ describe(`scales`, () => {
       expect(tick_label_format(ticks, format)).toBe(expected)
     })
 
+    // oxfmt-ignore
     test.each<TickCase>([
       [`log powers of 10`, [1, 1000], `log`, 5, undefined, [1, 10, 100, 1000]],
-      [
-        `negative count is a fixed interval`,
-        [0, 100],
-        `linear`,
-        -10,
-        undefined,
-        [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-      ],
+      [`negative count is a fixed interval`, [0, 100], `linear`, -10, undefined, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
       [`fractional interval`, [0, 1], `linear`, -0.2, undefined, [0, 0.2, 0.4, 0.6, 0.8, 1]],
       // reversed (descending) domains are first-class: an interval must still emit ticks
-      [
-        `interval on a descending domain`,
-        [10, 0],
-        `linear`,
-        -2,
-        undefined,
-        [0, 2, 4, 6, 8, 10],
-      ],
-      [
-        `explicit count wins over default_count`,
-        [0, 100],
-        `linear`,
-        5,
-        { default_count: 2 },
-        [0, 20, 40, 60, 80, 100],
-      ],
-      [
-        `default_count applies without a ticks option`,
-        [0, 100],
-        `linear`,
-        undefined,
-        { default_count: 2 },
-        [0, 50, 100],
-      ],
+      [`interval on a descending domain`, [10, 0], `linear`, -2, undefined, [0, 2, 4, 6, 8, 10]],
+      [`explicit count wins over default_count`, [0, 100], `linear`, 5, { default_count: 2 }, [0, 20, 40, 60, 80, 100]],
+      [`default_count applies without a ticks option`, [0, 100], `linear`, undefined, { default_count: 2 }, [0, 50, 100]],
       // an integer format rounds every label, so generated half steps would read `0, 1, 1, 2, 2`
-      [
-        `integer format keeps distinct integer ticks`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `d` },
-        [0, 1, 2],
-      ],
+      [`integer format keeps distinct integer ticks`, [0, 2], `linear`, 10, { format: `d` }, [0, 1, 2]],
       [`grouped integer format`, [0, 1], `linear`, 10, { format: `,d` }, [0, 1]],
-      [
-        `integer format on a descending domain`,
-        [2, 0],
-        `linear`,
-        10,
-        { format: `d` },
-        [0, 1, 2],
-      ],
+      [`integer format on a descending domain`, [2, 0], `linear`, 10, { format: `d` }, [0, 1, 2]],
       // no integer fits a domain zoomed below one unit: keep the plain (decimal) ticks
-      [
-        `integer format with no integer to label`,
-        [0.2, 0.8],
-        `linear`,
-        6,
-        { format: `d` },
-        [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-      ],
+      [`integer format with no integer to label`, [0.2, 0.8], `linear`, 6, { format: `d` }, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]],
       // zero-precision fixed point prints integers too
       [`.0f is an integer format`, [0, 2], `linear`, 10, { format: `.0f` }, [0, 1, 2]],
       [`grouped .0f is an integer format`, [0, 1], `linear`, 10, { format: `,.0f` }, [0, 1]],
-      [
-        `.0% percent is not an integer format`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `.0%` },
-        fine_steps,
-      ],
+      [`.0% percent is not an integer format`, [0, 2], `linear`, 10, { format: `.0%` }, fine_steps],
       [`decimal format keeps fine steps`, [0, 2], `linear`, 10, { format: `.1f` }, fine_steps],
-      [
-        `time-style %d is not an integer format`,
-        [0, 2],
-        `linear`,
-        10,
-        { format: `%d` },
-        fine_steps,
-      ],
+      [`time-style %d is not an integer format`, [0, 2], `linear`, 10, { format: `%d` }, fine_steps],
       [`linear count`, [0, 50], `linear`, 6, undefined, [0, 10, 20, 30, 40, 50]],
       [`degenerate linear domain`, [0, 0], `linear`, 5, undefined, [0]],
-      [
-        `arcsinh mixed range is symmetric around 0`,
-        [-1000, 1000],
-        `arcsinh`,
-        10,
-        undefined,
-        [-1000, -100, -10, -1, 0, 1, 10, 100, 1000],
-      ],
+      [`arcsinh mixed range is symmetric around 0`, [-1000, 1000], `arcsinh`, 10, undefined, [-1000, -100, -10, -1, 0, 1, 10, 100, 1000]],
     ])(`%s`, (_name, domain, type, ticks, opts, expected) => {
       const range: Vec2 = [0, 500]
       const scale =
@@ -735,13 +665,10 @@ describe(`scales`, () => {
       expect([symmetric(-100), symmetric(0), symmetric(100)]).toEqual([0, 50, 100])
     })
 
+    // oxfmt-ignore
     test.each([
       { threshold: 1, domain: [0, 100] as Vec2, values: [0, 1, 10, 50, 100] },
-      {
-        threshold: 1,
-        domain: [-100, 100] as Vec2,
-        values: [-100, -10, -1, 0, 1, 10, 100],
-      },
+      { threshold: 1, domain: [-100, 100] as Vec2, values: [-100, -10, -1, 0, 1, 10, 100] },
       { threshold: 10, domain: [0, 1000] as Vec2, values: [0, 10, 100, 500, 1000] },
     ])(
       `inverse transform (threshold=$threshold, domain=$domain)`,

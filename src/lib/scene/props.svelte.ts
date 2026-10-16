@@ -18,10 +18,6 @@ if (typeof document !== `undefined`) {
   })
 }
 
-// Pointer-move throttle (~60 fps) for hover handlers that would otherwise rebuild tooltip
-// state on every event
-export const HOVER_THROTTLE_MS = 16
-
 // Corner indices of the triangle a raycast hit (three's Intersection.face)
 export type HitFace = { a: number; b: number; c: number }
 

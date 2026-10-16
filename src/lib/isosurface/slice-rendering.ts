@@ -13,9 +13,8 @@ export const DEFAULT_SLICE_SCHEME = `interpolateRdBu`
 
 const MAX_CONTOUR_LEVELS = 256
 
-// Opaque 8-bit sRGB pixels (canvas wants d3's sRGB output as is), written byte-wise and read
-// back as 32-bit words, so they come out in the platform's byte order and each canvas pixel
-// is a single store
+// Opaque 8-bit sRGB pixels (d3's output as is) written byte-wise and read back as 32-bit words,
+// so they come out in the platform's byte order and each canvas pixel is a single store
 const slice_pixel_cache = new Map<string, Uint32Array>()
 const build_pixel_lut = (colors: string[]): Uint32Array => {
   const bytes = new Uint8ClampedArray(colors.length * 4)
@@ -71,8 +70,7 @@ export function resolve_contour_thresholds(
   contour_levels: number | number[],
 ): number[] {
   if (Array.isArray(contour_levels)) {
-    // Sort before truncating so the cap keeps the lowest thresholds deterministically
-    // regardless of input order
+    // Sort before truncating so the cap keeps the lowest thresholds whatever the input order
     const thresholds = contour_levels.filter(Number.isFinite)
     // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- filter() returns a fresh array
     thresholds.sort((left, right) => left - right)
@@ -102,14 +100,11 @@ const CONTOUR_CASES: readonly (readonly number[])[] = [
   [1, 1.5, 1.5, 1], [0.5, 1, 1, 1.5], [],
 ]
 
-// Isoline segments of a row-major `width`×`height` grid of finite values at every threshold,
-// in one pass. Coordinates match d3-contour's (grid point (i, j) sits at (i + 0.5, j + 0.5),
-// cells past the grid edge count as below every threshold, crossings are linearly
-// interpolated), so `emit` receives exactly the segments d3 stitches into rings — without the
-// stitching, hole assignment and one grid scan per threshold, which strokes do not need.
-// Only where a value equals a threshold exactly can the two differ: d3 drops zero-area rings
-// outside any polygon (keeping those inside one), these are drawn as the line they trace.
-// `thresholds` must be sorted ascending.
+// Isoline segments of a row-major `width`×`height` grid at every (ascending) threshold in one
+// pass. Coordinates match d3-contour's (point (i, j) at (i + 0.5, j + 0.5), out-of-grid cells
+// below every threshold, linear crossings), so `emit` gets exactly the segments d3 stitches
+// into rings, minus the stitching and per-threshold scans strokes don't need. They differ only
+// where a value equals a threshold: d3 drops zero-area rings outside polygons, these draw them.
 export function contour_segments(
   values: ArrayLike<number>,
   width: number,
@@ -119,11 +114,9 @@ export function contour_segments(
 ): void {
   const n_levels = thresholds.length
   if (n_levels === 0) return
-  // Band of each grid point = how many thresholds it reaches (value >= threshold), so a level
-  // crosses a cell exactly when its corners' bands straddle it: most cells are skipped with
-  // integer compares, and corner states come from the bands instead of re-comparing values.
-  // A one-cell border of band 0 (below every threshold, like d3's out-of-grid cells) spares
-  // the corner reads any bounds checks.
+  // A point's band counts the thresholds it reaches, so a level crosses a cell exactly when
+  // its corners' bands straddle it: most cells skip on integer compares. A band-0 border (like
+  // d3's out-of-grid cells) spares the corner reads bounds checks.
   const padded_width = width + 2
   const bands = new Uint16Array(padded_width * (height + 2))
   const [lowest, highest] = [thresholds[0], thresholds[n_levels - 1]]

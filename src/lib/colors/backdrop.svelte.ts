@@ -6,8 +6,8 @@ const DEFAULT_BACKDROP_VAR = `--page-bg`
 interface ColorOptions {
   fallback?: string | (() => string)
   require_opaque?: boolean
-  // A usable caller-supplied color skips token lookup and observation, avoiding an
-  // ancestor walk and observer for every repeated child.
+  // A usable caller-supplied color skips token lookup and observation (an ancestor walk and
+  // observer for every repeated child)
   override?: () => string | undefined
 }
 
@@ -46,9 +46,8 @@ const resolve_live_color = (
   const read = () => {
     if (node) color = read_colors(node).find(is_usable) ?? resolve_fallback()
   }
-  // Observers live as long as the node does. The initial read runs in its own effect so
-  // a reactive `fallback` (e.g. a per-point tooltip color) re-reads without tearing down
-  // and rebuilding the theme + ancestor observers on every change.
+  // Observers live as long as the node does. The read runs in its own effect so a reactive
+  // `fallback` (e.g. a per-point tooltip color) re-reads without rebuilding the observers.
   $effect(() => (node ? watch_css_color(node, read) : undefined))
   $effect(read)
 

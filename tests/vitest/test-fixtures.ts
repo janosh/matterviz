@@ -10,6 +10,7 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectorySignal,
 } from '#lib/trajectory/index.js'
 import { TrajectoryProperties, type TrajectoryRun } from '#lib/trajectory/run.js'
 import { type MemoryRunExtras, trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -368,16 +369,16 @@ export const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
 
 // Conventional rocksalt NaCl cell (4 Na + 4 Cl): every ion octahedrally coordinated by 6
 // counter-ions, only 3 of which sit inside the box (the rest are periodic images)
-export const make_rocksalt = (lattice_const = 5.64): Crystal =>
+export const make_rocksalt = (lattice_const = 5.64, cation = `Na`, anion = `Cl`): Crystal =>
   make_crystal(lattice_const, [
-    [`Na`, [0, 0, 0]],
-    [`Na`, [0.5, 0.5, 0]],
-    [`Na`, [0.5, 0, 0.5]],
-    [`Na`, [0, 0.5, 0.5]],
-    [`Cl`, [0.5, 0, 0]],
-    [`Cl`, [0, 0.5, 0]],
-    [`Cl`, [0, 0, 0.5]],
-    [`Cl`, [0.5, 0.5, 0.5]],
+    [cation, [0, 0, 0]],
+    [cation, [0.5, 0.5, 0]],
+    [cation, [0.5, 0, 0.5]],
+    [cation, [0, 0.5, 0.5]],
+    [anion, [0.5, 0, 0]],
+    [anion, [0, 0.5, 0]],
+    [anion, [0, 0, 0.5]],
+    [anion, [0.5, 0.5, 0.5]],
   ])
 
 // Trajectory frame with sites at explicit Cartesian coordinates. With `box_length` the
@@ -438,6 +439,17 @@ export const make_position_stream = (
     ...overrides,
   }
 }
+
+// Signal of n_samples flattened samples on steps 0..n_samples-1
+export const make_signal = (
+  n_samples: number,
+  sample_shape: number[],
+  sample: (sample_idx: number) => number[],
+): TrajectorySignal => ({
+  values: Float64Array.from(Array.from({ length: n_samples }, (_, idx) => sample(idx)).flat()),
+  sample_shape,
+  steps: Array.from({ length: n_samples }, (_, idx) => idx),
+})
 
 // Shared 3x3 matrix fixtures
 export const IDENTITY_MATRIX3: math.Matrix3x3 = [

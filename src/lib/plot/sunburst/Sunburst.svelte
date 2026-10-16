@@ -90,11 +90,9 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
-    // `range_padding` / `title` are Cartesian-only: accepting them here would silently
-    // forward them to the wrapper div as invalid DOM attributes.
+    // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
     Omit<BasePlotProps, `range_padding` | `title`> &
-    // data/value semantics, coloring, legend, export and node handlers are
-    // shared verbatim with Treemap
+    // data/value semantics, coloring, legend, export and node handlers shared with Treemap
     HierarchyChartProps<Metadata> & {
       shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
       inner_radius?: number // center hole as fraction of outer radius
@@ -102,9 +100,8 @@
       label_rotation?: SunburstLabelRotation
       group_gap?: SunburstGroupGap<Metadata> | null
       tween?: TweenOptions<ViewWindow> // zoom transition timing
-      // Fully replace the default arc path. NOTE: this also replaces the built-in
-      // hover/focus/click + tooltip wiring, so re-implement any interactivity you
-      // need inside the snippet.
+      // Fully replace the default arc path, including the built-in hover/focus/click +
+      // tooltip wiring (re-implement interactivity in the snippet)
       arc_content?: Snippet<
         [{ arc: PositionedArc<Metadata>; a0: number; a1: number; r0: number; r1: number }]
       >
@@ -117,15 +114,13 @@
   let center_el: SVGCircleElement | null = $state(null)
   const uid = $props.id()
 
-  // Hierarchy ingestion, zoom/hover/legend state, color-bar layout and keyboard
-  // plumbing are shared with Treemap; only the polar projection below is ours.
-  // annotated because the geometry hooks below close over `chart_state` itself
+  // Hierarchy state and keyboard plumbing are shared with Treemap. Annotated because
+  // the geometry hooks below close over `chart_state` itself
   const chart_state: HierarchyChartState<Metadata> = new HierarchyChartState<Metadata>({
     chart: `sunburst`,
     uid,
     default_padding: DEFAULT_PADDING,
-    // the center circle/label run their own zoom-out click action, so a fast
-    // double-click on them must not compound a full reset on top of it
+    // the center circle/label zoom out on click; a double-click must not also reset
     dblclick_ignore: `.center-circle, .center-label`,
     data: () => data,
     layout_options: () => ({
@@ -159,17 +154,13 @@
     clickable: (arc) => Boolean(on_node_click) || (zoom_on_click && !arc.is_leaf),
     visible: (idx) => screen_arcs[idx]?.visible ?? false,
     node_center: (idx) => (screen_arcs[idx] ? arc_center(screen_arcs[idx]) : null),
-    // Place against the settled (target) geometry, not the animated view -
-    // placement is stable during zoom tweens and runs once per zoom instead of
-    // once per frame
+    // Place against the settled geometry: stable during zoom tweens, runs once per zoom
     legend_points: () =>
       project_arcs(chart_state.arcs, view_target, screen_geom, { group_gap }).visible.map(
         arc_center,
       ),
-    // In icicle mode focus the new root's first child (pre-order: node_idx + 1):
-    // the clicked arc itself collapses to zero height once the zoom tween
-    // settles, so focusing it (the roving index) would drop focus to <body>
-    // mid-animation. Polar mode hands focus to the center zoom-out button.
+    // Icicle: focus the new root's first child (pre-order node_idx + 1) since the clicked
+    // arc collapses to zero height, dropping focus to <body>. Polar: the center button.
     focus_after_zoom: () => {
       if (shape === `sunburst`) center_el?.focus()
       else
@@ -179,8 +170,7 @@
     },
   })
 
-  // The view window in normalized partition coordinates: the zoom root's angular
-  // span + how many rings to show below it
+  // View window in partition coords: the zoom root's span + how many rings to show below it
   let view_target: ViewWindow = $derived.by(() => {
     const { layout, zoom_root } = chart_state
     const below = layout.root ? layout.max_depth - (zoom_root?.depth ?? 0) : 1
@@ -192,11 +182,9 @@
     }
   })
 
-  // Zooming tweens this single object; all arc geometry re-derives from view.current
-  // each frame via clamping scales (the classic zoomable-sunburst trick - no per-arc
-  // tweens, no re-layout). Seeded at view_target so charts load fully drawn; the
-  // structural is_same keeps a data swap that re-derives an identical window from
-  // restarting the tween. untrack reads the tween options once at init.
+  // Zooming tweens this single object; arc geometry re-derives from view.current per frame
+  // via clamping scales (no per-arc tweens). The structural is_same keeps a data swap with an
+  // identical window from restarting the tween. untrack reads the options once at init.
   const view = create_settling_tween(
     () => view_target,
     untrack(() => ({ duration: 400, easing: cubicInOut, ...tween })),
@@ -223,18 +211,15 @@
     hole_r,
   })
 
-  // Projected with view.current once per animation frame; project_arcs is also called
-  // with view_target where settled geometry suffices (e.g. legend placement, which
-  // shouldn't rerun per frame)
+  // Projected with view.current once per animation frame
   let projection = $derived(
     project_arcs(chart_state.arcs, view.current, screen_geom, { group_gap }),
   )
   let screen_arcs = $derived(projection.all)
-  // Only non-collapsed arcs, as stable items: per-frame tween work is geometry only
   let visible_nodes = $derived(projection.visible.map((screen) => screen.arc))
 
-  // Every visible arc is focusable and labelled, not just the clickable ones, so arrow keys
-  // reach leaf tooltips instead of dead-ending. role="button" stays limited to clickable arcs.
+  // Every visible arc is focusable so arrow keys reach leaf tooltips; role="button" only
+  // goes on clickable arcs
   let roving_idx = $derived(chart_state.roving_idx(visible_nodes[0]?.node_idx ?? null))
 
   let arc_gen = $derived(
@@ -254,10 +239,9 @@
       : (arc_gen(screen) ?? ``)
 
   let arc_paths = $derived(projection.visible.map(screen_path))
-  // WebKit rasterizes a patterned fill separately for every SVG path. Hundreds of
-  // thin slices can spend hundreds of milliseconds painting even on a hover. Paint
-  // dense charts as compound paths sharing fill/opacity, with transparent per-node
-  // paths above them for the same hit testing, focus, tooltip and export semantics.
+  // WebKit rasterizes patterned fills per SVG path, so hundreds of thin slices take
+  // hundreds of ms to paint on hover. Dense charts paint compound paths per fill/opacity
+  // under transparent per-node paths that keep hit testing, focus, tooltips and export.
   let batch_paints = $derived(!arc_content && visible_nodes.length > 100)
   let paint_batches = $derived.by(() => {
     if (!batch_paints) return []
@@ -280,8 +264,7 @@
         previous.r0 === screen.r0 &&
         previous.r1 === screen.r1
       ) {
-        // A continuous run needs one textured sector, not a compound path with
-        // hundreds of narrow holes. Borders are painted separately below.
+        // Merge continuous runs into one sector (borders are painted separately)
         previous.a1 = screen.a1
       } else {
         batch.arcs.push({ ...screen })
@@ -295,16 +278,14 @@
     }))
   })
 
-  // Hover dimming as one path with holes for the hovered subtree and its ancestors (see
-  // hover_veil_path). Re-derives per frame while zooming, but only walks the ancestry.
+  // Hover dimming as one path with holes for the hovered subtree and its ancestors
   let hover_veil = $derived(
     chart_state.hovered_idx == null
       ? null
       : hover_veil_path(screen_arcs, chart_state.hovered_idx, screen_geom),
   )
 
-  // The chart group's transform: sunburst draws around the center, icicle from the
-  // top-left of the padded plot area
+  // sunburst draws around the center, icicle from the top-left of the plot area
   let chart_transform = $derived(
     shape === `icicle`
       ? `translate(${chart_state.plot_left}, ${chart_state.pad.t})`
@@ -324,30 +305,19 @@
     return { x: center_x + Math.sin(mid_a) * mid_r, y: center_y - Math.cos(mid_a) * mid_r }
   }
 
-  function handle_center_keydown(event: KeyboardEvent) {
-    if (!is_activation_key(event)) return
-    event.preventDefault()
-    chart_state.zoom_out()
-  }
-
-  // Downscale steps tried when no label variant fits at full size: narrow
-  // slices keep a (smaller) label instead of losing it entirely.
+  // Downscale steps tried when no label variant fits at full size
   const LABEL_FONT_SCALES = [1, 0.85, 0.7]
 
-  // Label text + placement transform for an arc; null = nothing fits, hide the
-  // label. Full font size wins over richer text: within each scale the richest
-  // variant that fits is used (extended -> label -> label_short). When no variant
-  // fits at any scale, the most compact one is cut to an ellipsis at the smallest
-  // scale: a ring of unlabeled arcs beside one bucket that still reads "Other" told
-  // the reader nothing, while a cropped name is at least a name. Only names are
-  // cropped: a value-only mode without a `label_short` would turn "1.2k" into "1…".
+  // Label text + transform for an arc, null = hidden. Full font size beats richer text:
+  // per scale the richest fitting variant wins. If none fits at any scale, the most compact
+  // is ellipsized at the smallest scale (a cropped name beats an unlabeled ring). Only names
+  // are cropped: a value-only mode without `label_short` would turn "1.2k" into "1…".
   function label_attrs(
     screen: ScreenArc,
   ): { transform: string; text: string; font_scale: number } | null {
     const { variants } = chart_state.node_infos[screen.arc.node_idx]
     const { line_height } = chart_state.label_font
-    // Slots are computed once per scale (not per variant); the loop leaves the
-    // smallest scale's slots behind for the ellipsis fallback
+    // The loop leaves the smallest scale's slots behind for the ellipsis fallback
     let font_scale = 1
     let slots: { room: number; transform: string }[] = []
     for (font_scale of LABEL_FONT_SCALES) {
@@ -463,8 +433,7 @@
           <path class="hover-veil" d={hover_veil} />
         {/if}
 
-        <!-- Arc labels: selectable text; data-sunburst-node-idx forwards hover/click
-      to the underlying arc via the chart-group delegation in the shell -->
+        <!-- Selectable arc labels; data-sunburst-node-idx forwards hover/click to the arc -->
         {#if show_labels}
           <g class="arc-labels">
             {#each visible_nodes as arc (arc.node_idx)}
@@ -475,8 +444,7 @@
                 {@const font_style =
                   lbl.font_scale === 1 ? `` : `; font-size: ${lbl.font_scale}em`}
                 {#if info.label_halo}
-                  <!-- Blurred halo in the tile backdrop color so the label stays legible over
-                  hatch/dot strokes; style not attributes since the halo may be a CSS var -->
+                  <!-- Blurred halo for legibility over patterns (style: may be a CSS var) -->
                   <text
                     class="arc-label halo"
                     aria-hidden="true"
@@ -516,7 +484,11 @@
               ? `pointer`
               : `default`}; pointer-events: {chart_state.zoomed ? `auto` : `none`}"
             onclick={chart_state.zoom_out}
-            onkeydown={handle_center_keydown}
+            onkeydown={(event) => {
+              if (!is_activation_key(event)) return
+              event.preventDefault()
+              chart_state.zoom_out()
+            }}
           />
           {#if center_content}
             {@render center_content({
@@ -525,8 +497,7 @@
               zoomed: chart_state.zoomed,
             })}
           {:else if hole_r >= 18 && chart_state.zoom_root}
-            <!-- Selectable text overlaying the center circle; clicks forward to the
-          same zoom-out action as the circle (which also handles keyboard) -->
+            <!-- Selectable text over the center circle; clicks zoom out like the circle -->
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <text
               class="center-label"
@@ -550,9 +521,7 @@
 </ChartShell>
 
 <style>
-  /* fully :global: the wrapper is ChartShell's element and breadcrumbs and chart svg
-  are HierarchyShell's, so none carry this component's scope - but their theming stays
-  in the chart's variable namespace */
+  /* fully :global: wrapper, breadcrumbs and svg belong to ChartShell/HierarchyShell */
   :global(.sunburst .breadcrumb) {
     background: var(--sunburst-btn-bg, rgba(128, 128, 128, 0.15));
     color: inherit;
@@ -592,8 +561,7 @@
   }
   .arcs path,
   .arc-borders {
-    /* stroke via CSS (not presentation attributes): var() substitution in SVG
-    presentation attributes is not reliably supported across browsers */
+    /* stroke via CSS: var() in SVG presentation attributes is unreliable */
     stroke: var(--sunburst-arc-stroke, var(--page-bg, white));
     stroke-width: var(--sunburst-arc-stroke-width, 0.25);
   }
@@ -632,8 +600,7 @@
   .arc-label {
     text-anchor: middle;
     dominant-baseline: central;
-    /* selectable so labels can be copied; clicks/hover still reach the underlying
-    arc via data-sunburst-node-idx + delegation on the chart group */
+    /* selectable so labels can be copied; clicks reach the arc via data-sunburst-node-idx */
     -webkit-user-select: text;
     user-select: text;
   }

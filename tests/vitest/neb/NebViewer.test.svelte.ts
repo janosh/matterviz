@@ -20,20 +20,13 @@ import {
   query,
   resize_element,
   set_input,
+  set_select,
 } from '../setup'
 
 const direct_path = reaction_paths[`direct hop`]
 
 // SVG annotations are split across text nodes and indented, so compare on squashed text
 const squash = (text: string | null): string => (text ?? ``).replaceAll(/\s+/g, ` `)
-
-// Svelte bind:value on <select> reads querySelector(':checked'); happy-dom does not match
-// that on <option>, so the binding would stick on the first option.
-const change_select = (select: HTMLSelectElement, value: string): void => {
-  select.value = value
-  vi.spyOn(select, `querySelector`).mockImplementation(() => select.selectedOptions[0])
-  select.dispatchEvent(new Event(`change`, { bubbles: true }))
-}
 
 // jsdom lays everything out at 0x0, so the scatter plot needs an explicit size before
 // any annotation it positions from the scales can be asserted on.
@@ -233,11 +226,6 @@ describe(`NebViewer`, () => {
     expect(pick(String(result.data))).toEqual(expected)
   })
 
-  test(`export_formats=[] hides the viewer's export pane`, async () => {
-    const viewer = await mount_viewer({ paths: reaction_paths, export_formats: [] })
-    expect(viewer.querySelector(`.neb-export-toggle`)).toBeNull()
-  })
-
   test(`renders the plot, the structure and the barrier summary together`, async () => {
     // a path it cannot profile is reported beside those that render
     const [first, second] = direct_path.images
@@ -310,12 +298,12 @@ describe(`NebViewer`, () => {
       throw new Error(`profile pane controls missing`)
     expect(coord_select.closest(`.plot-controls-pane`)).not.toBeNull()
 
-    change_select(coord_select, `image_index`)
+    set_select(coord_select, `image_index`)
     await flush_render()
     expect(state.coord_mode).toBe(`image_index`)
     expect(viewer.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Image number`)
 
-    change_select(energy_select, `absolute`)
+    set_select(energy_select, `absolute`)
     await flush_render()
     expect(state.energy_reference).toBe(`absolute`)
     expect(viewer.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Energy (eV)`)
@@ -378,16 +366,19 @@ describe(`NebViewer`, () => {
     ).toBe(`7 total images`)
   })
 
-  test(`applies shared control visibility names`, async () => {
+  test(`applies shared control visibility names; export_formats=[] drops the export pane`, async () => {
     const viewer = await mount_viewer({
       paths: direct_path,
-      show_controls: {
-        mode: `always`,
-        hidden: [`fps`, `energy`, `fullscreen`],
-      },
+      export_formats: [],
+      show_controls: { mode: `always`, hidden: [`fps`, `energy`, `fullscreen`] },
     })
-
-    for (const selector of [`.fps-section`, `.image-status`, `.fullscreen-button`]) {
+    const hidden = [
+      `.fps-section`,
+      `.image-status`,
+      `.fullscreen-button`,
+      `.neb-export-toggle`,
+    ]
+    for (const selector of hidden) {
       expect(viewer.querySelector(selector)).toBeNull()
     }
     expect(viewer.querySelector(`.step-section`)).not.toBeNull()
@@ -450,9 +441,7 @@ describe(`NebViewer`, () => {
       query(viewer, `.neb-controls > .shortcuts-btn`).getAttribute(`aria-keyshortcuts`),
     ).toBe(`?`)
 
-    const path_select = query<HTMLSelectElement>(viewer, `.path-control select`)
-    path_select.value = `curved hop`
-    path_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+    set_select(query<HTMLSelectElement>(viewer, `.path-control select`), `curved hop`)
     await flush_render()
     expect([state.active_path_key, state.active_image_idx]).toEqual([`curved hop`, 0])
   })
@@ -594,28 +583,9 @@ describe(`NebViewer`, () => {
     expect(query(viewer, `.scatter`)).toBe(plot)
   })
 
-  test(`keeps fullscreen state synchronized after rejected and successful entry`, async () => {
+  // a rejected request leaving the flag false is FullscreenButton's own (Structure tests it)
+  test(`fullscreen toggling syncs the bound flag and on_fullscreen_change`, async () => {
     mock_fullscreen()
-    const rejected_state = $state({ fullscreen: false })
-    const rejected_callback = vi.fn()
-    const rejected_viewer = await mount_viewer(
-      bind_props(
-        {
-          paths: direct_path,
-          on_fullscreen_change: rejected_callback,
-        },
-        rejected_state,
-      ),
-    )
-    rejected_viewer.requestFullscreen = vi
-      .fn()
-      .mockRejectedValue(new Error(`fullscreen denied`))
-    const console_error = vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    rejected_viewer.querySelector<HTMLButtonElement>(`.fullscreen-button`)?.click()
-    await vi.waitFor(() => expect(console_error).toHaveBeenCalledOnce())
-    expect(rejected_state.fullscreen).toBe(false)
-    expect(rejected_callback).not.toHaveBeenCalled()
-
     const state = $state({ fullscreen: false, show_controls: true })
     const on_fullscreen_change = vi.fn()
     const viewer = await mount_viewer(

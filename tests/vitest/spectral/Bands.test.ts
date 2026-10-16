@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import type { AxisRanges } from '#lib/plot/core/types.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
@@ -20,7 +20,7 @@ import {
   svg_rect,
   translate_of,
 } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 const base_band_structure: BaseBandStructure = {
   type: `phonon`,
@@ -52,13 +52,7 @@ const path_mismatch_structure: BaseBandStructure = {
   branches: [{ start_index: 0, end_index: 2, name: `GAMMA-K` }],
   labels_dict: { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0] },
   distance: [0, 1, 2],
-  nb_bands: 4,
-  bands: [
-    [0.1, 0.7, 1.2],
-    [0.9, 1.5, 2.0],
-    [1.7, 2.3, 2.8],
-    [2.5, 3.1, 3.6],
-  ],
+  bands: base_band_structure.bands.map((band) => band.slice(0, 3)),
 }
 
 const make_unlabeled_band_structure = (
@@ -98,6 +92,8 @@ const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> =
 }
 
 const line_count = (): number => document.querySelectorAll(`svg path[fill="none"]`).length
+const mount_plot = (props: Partial<ComponentProps<typeof Bands>>, width?: number) =>
+  mount_sized(Bands, props, { selector: `.scatter`, width })
 
 describe(`Bands component`, () => {
   it.each<{ name: string; props: ComponentProps<typeof Bands>; expected_line_count: number }>([
@@ -171,8 +167,7 @@ describe(`Bands component`, () => {
   it(`honors legend, display, and hover options, reports the hover in THz`, async () => {
     const on_point_hover = vi.fn()
     const state = { hovered_frequency: null as number | null }
-    const plot = await mount_sized(
-      Bands,
+    const plot = await mount_plot(
       bind_props(
         {
           band_structs: { '': base_band_structure },
@@ -187,7 +182,6 @@ describe(`Bands component`, () => {
         },
         state,
       ),
-      { selector: `.scatter` },
     )
     expect(plot.querySelector(`.legend`)).not.toBeNull()
     for (const axis_tick of plot.querySelectorAll(`.tick`)) {
@@ -217,31 +211,24 @@ describe(`Bands component`, () => {
       }),
     )
     const on_hidden_series_change = vi.fn()
-    const plot = await mount_sized(
-      Bands,
-      {
-        get band_structs() {
-          return state.current.band_structs
-        },
-        get band_spin_mode() {
-          return state.current.band_spin_mode
-        },
-        on_hidden_series_change,
+    const plot = await mount_plot({
+      get band_structs() {
+        return state.current.band_structs
       },
-      { selector: `.scatter` },
-    )
+      get band_spin_mode() {
+        return state.current.band_spin_mode
+      },
+      on_hidden_series_change,
+    })
     // These distinct material/channel identities happen to have the same display label.
     const items = () => [...plot.querySelectorAll<HTMLElement>(`.legend-item`)]
+    const hidden = () => items().map((item) => item.classList.contains(`hidden`))
     expect(items()).toHaveLength(3)
     expect(line_count()).toBe(12)
     items()[0].click()
     flushSync()
     expect(on_hidden_series_change).toHaveBeenLastCalledWith([JSON.stringify([`A`, `up`])])
-    expect(items().map((item) => item.classList.contains(`hidden`))).toEqual([
-      true,
-      false,
-      false,
-    ])
+    expect(hidden()).toEqual([true, false, false])
     expect(line_count()).toBe(8)
 
     const changed = {
@@ -258,12 +245,7 @@ describe(`Bands component`, () => {
     }
     flushSync()
     expect(items()).toHaveLength(4)
-    expect(items().map((item) => item.classList.contains(`hidden`))).toEqual([
-      false,
-      false,
-      true,
-      false,
-    ])
+    expect(hidden()).toEqual([false, false, true, false])
     expect(line_count()).toBe(12)
     for (const [band_spin_mode, expected_lines] of [
       [`up_only`, 4],
@@ -288,12 +270,9 @@ describe(`Bands component`, () => {
       role: `status`,
       'aria-label': `Bands unavailable`,
     })
-    expect(document.querySelector(`[data-testid="strict-mismatch-plot"]`)).toBeInstanceOf(
-      HTMLElement,
-    )
-    expect(
-      document.querySelector(`[role="status"][aria-label="Bands unavailable"]`),
-    ).toBeInstanceOf(HTMLElement)
+    // both throw when the forwarded attributes are missing
+    doc_query(`[data-testid="strict-mismatch-plot"]`)
+    doc_query(`[role="status"][aria-label="Bands unavailable"]`)
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)
   })
@@ -334,17 +313,11 @@ describe(`Bands component`, () => {
       ...base_band_structure,
       bands: base_band_structure.bands.map((band) => band.map((val) => val + 0.5)),
     }
-    const plot = await mount_sized(
-      Bands,
-      {
-        band_structs: multi
-          ? { first: base_band_structure, second: shifted }
-          : { "": base_band_structure },
-        show_legend,
-        show_controls: false,
-      },
-      { selector: `.scatter` },
-    )
+    const plot = await mount_plot({
+      band_structs: multi ? { first: base_band_structure, second: shifted } : { "": base_band_structure },
+      show_legend,
+      show_controls: false,
+    })
     expect(Boolean(plot.querySelector(`.legend`))).toBe(expected)
   })
 
@@ -353,16 +326,12 @@ describe(`Bands component`, () => {
   it.each([`cm^-1`, `cm-1`, `cm⁻¹`])(
     `renders the phonon y-axis in %s as cm⁻¹ and rescales on unit change`,
     async (units) => {
-      await mount_sized(
-        Bands,
-        {
-          band_structs: { '': base_band_structure },
-          units: units as FrequencyUnit,
-          show_controls: true,
-          controls_open: true,
-        },
-        { selector: `.scatter` },
-      )
+      await mount_plot({
+        band_structs: { '': base_band_structure },
+        units: units as FrequencyUnit,
+        show_controls: true,
+        controls_open: true,
+      })
       const max_y_tick = () =>
         Math.max(
           ...[...document.querySelectorAll(`.y-axis .tick text`)].map((element) =>
@@ -523,11 +492,10 @@ describe(`Bands component`, () => {
     [[0, 3], true],
     [[2, 9], false],
   ] as [Vec2, boolean][])(`shades q-point range %j: %s`, async (range, on_path) => {
-    const plot = await mount_sized(
-      Bands,
-      { band_structs: { '': base_band_structure }, highlighted_qpoint_range: range },
-      { selector: `.scatter` },
-    )
+    const plot = await mount_plot({
+      band_structs: { '': base_band_structure },
+      highlighted_qpoint_range: range,
+    })
     const rect = plot.querySelector(`rect.highlighted-segment`)
     expect(rect !== null).toBe(on_path)
     if (!rect) return
@@ -586,7 +554,7 @@ describe(`Bands component`, () => {
   it(`returns both axes to their pinned ranges after a double-click view reset`, async () => {
     // a path end D3's nice() would round up (3.3 -> 3.5), unlike the fixture's 0..3
     const band_structs = { ...spin_polarized_electronic, distance: [0, 1.1, 2.2, 3.3] }
-    await mount_sized(Bands, { band_structs: { '': band_structs } }, { selector: `.scatter` })
+    await mount_plot({ band_structs: { '': band_structs } })
     const svg = plot_svg()
     // the padded energy range differs from the nice()-rounded auto range too
     const y_ticks = () =>
@@ -595,12 +563,7 @@ describe(`Bands component`, () => {
       )
     const y_before = y_ticks()
     // x of the last symmetry-point tick (X) and where the Fermi line stops
-    const last_tick_x = () =>
-      Number(
-        (tick_labels().at(-1)?.closest(`.tick`)?.getAttribute(`transform`) ?? ``).match(
-          /[\d.]+/g,
-        )?.[0],
-      )
+    const last_tick_x = () => translate_of(tick_labels().at(-1)?.closest(`.tick`)).x
     const fermi_x_end = () =>
       Number(document.querySelector(`.fermi-level-line`)?.getAttribute(`x2`))
     const before = last_tick_x()
@@ -626,21 +589,17 @@ describe(`Bands component`, () => {
         band_structs: { '': base_band_structure },
       }),
     )
-    await mount_sized(
-      Bands,
-      {
-        get band_structs() {
-          return state.current.band_structs
-        },
-        get view() {
-          return state.current.view
-        },
-        set view(view) {
-          state.current = { ...state.current, view }
-        },
+    await mount_plot({
+      get band_structs() {
+        return state.current.band_structs
       },
-      { selector: `.scatter` },
-    )
+      get view() {
+        return state.current.view
+      },
+      set view(view) {
+        state.current = { ...state.current, view }
+      },
+    })
     expect(state.current.view?.x).toEqual([0, 3])
     state.current = { ...state.current, band_structs: {} }
     flushSync()
@@ -653,21 +612,16 @@ describe(`Bands component`, () => {
 
   it(`renders with a caller range that is itself unset without looping`, async () => {
     // the reset restore must not re-assign a default whose own range is invalid forever
-    await mount_sized(
-      Bands,
-      { band_structs: { '': base_band_structure }, x_axis: { range: [null, null] } },
-      { selector: `.scatter` },
-    )
+    await mount_plot({
+      band_structs: { '': base_band_structure },
+      x_axis: { range: [null, null] },
+    })
     expect(() => flushSync()).not.toThrow()
     expect(tick_labels()).toHaveLength(2)
   })
 
   // Reciprocal lattice of the cubic a=3 cell, as pymatgen/phonopy inputs carry it
-  const recip_lattice_a3: Matrix3x3 = [
-    [(2 * Math.PI) / 3, 0, 0],
-    [0, (2 * Math.PI) / 3, 0],
-    [0, 0, (2 * Math.PI) / 3],
-  ]
+  const recip_lattice_a3 = cubic_matrix((2 * Math.PI) / 3)
 
   it.each([
     [`no reciprocal lattice`, {}, false],
@@ -675,11 +629,7 @@ describe(`Bands component`, () => {
   ])(
     `symmetry-point tick labels are buttons only with a k lattice (%s)`,
     async (_name, props, clickable) => {
-      await mount_sized(
-        Bands,
-        { band_structs: { '': base_band_structure }, ...props },
-        { selector: `.scatter` },
-      )
+      await mount_plot({ band_structs: { '': base_band_structure }, ...props })
       const labels = tick_labels()
       expect(labels.map((label) => label.textContent?.trim())).toEqual([`Γ`, `X`])
       expect(labels.every((label) => label.hasAttribute(`role`) === clickable)).toBe(true)
@@ -698,7 +648,7 @@ describe(`Bands component`, () => {
       })),
       recip_lattice: recip_lattice_a3,
     }
-    await mount_sized(Bands, { band_structs: { '': shifted_path } }, { selector: `.scatter` })
+    await mount_plot({ band_structs: { '': shifted_path } })
     const labels = tick_labels()
     expect(labels.every((label) => label.getAttribute(`role`) === `button`)).toBe(true)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
@@ -721,10 +671,7 @@ describe(`Bands component`, () => {
     expect(popup?.querySelector(`.bz-popup-close .close-btn`)).not.toBeNull()
     // anchored on the x axis at the tick's scaled x (clamped to half the default popup width
     // from the right edge), not at a rect captured on click
-    const [tick_x, axis_y] =
-      (labels[1].closest(`.tick`)?.getAttribute(`transform`) ?? ``)
-        .match(/[\d.]+/g)
-        ?.map(Number) ?? []
+    const { x: tick_x, y: axis_y } = translate_of(labels[1].closest(`.tick`))
     expect(tick_x).toBeGreaterThan(400 - 160)
     expect((popup as HTMLElement).style.left).toBe(`${400 - 160}px`)
     expect((popup as HTMLElement).style.top).toBe(`${axis_y}px`)
@@ -773,15 +720,11 @@ describe(`Bands component`, () => {
 
   it(`opens the popup from the keyboard and lets bz_popup_props extend without breaking close`, async () => {
     const on_close = vi.fn()
-    await mount_sized(
-      Bands,
-      {
-        band_structs: { '': base_band_structure },
-        structure: make_crystal(3, [[`Si`, [0, 0, 0]]]),
-        bz_popup_props: { width: 200, on_close, style: `border: 1px solid red` },
-      },
-      { selector: `.scatter` },
-    )
+    await mount_plot({
+      band_structs: { '': base_band_structure },
+      structure: make_crystal(3, [[`Si`, [0, 0, 0]]]),
+      bz_popup_props: { width: 200, on_close, style: `border: 1px solid red` },
+    })
     await fire(tick_labels()[0], keydown(`Enter`))
     const popup = document.querySelector<HTMLElement>(`.bz-popup`)
     expect(popup?.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
@@ -802,11 +745,8 @@ describe(`Bands component`, () => {
 
   it(`centers the popup on a plot narrower than the popup instead of clamping past the edges`, async () => {
     // 240px plot vs the 320px default popup: clamp(tick_x, 160, 80) would flip its bounds
-    await mount_sized(
-      Bands,
-      { band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } } },
-      { selector: `.scatter`, width: 240 },
-    )
+    const band_structs = { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } }
+    await mount_plot({ band_structs }, 240)
     await fire(tick_labels()[1], mouse(`click`))
     expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`120px`)
   })

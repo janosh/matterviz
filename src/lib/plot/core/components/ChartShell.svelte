@@ -18,11 +18,9 @@
   import type { ShowControlsProp } from '#lib/controls.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import LiveMessage from '#lib/layout/LiveMessage.svelte'
-  // Outer shell shared by the non-Cartesian charts (Sankey, ScatterPlot3D, Sunburst,
-  // TernaryPlot, Treemap): the measured wrapper div, fullscreen mode and the hover-revealed header row
-  // (caller buttons, controls-pane toggle, fullscreen button). Exposes the same public CSS
-  // knobs as CartesianFrame (`--<prefix>-width`, `--<prefix>-bg`, `--<prefix>-fullscreen-bg`,
-  // …) so every chart is themed the same way.
+  // Outer shell of the non-Cartesian charts: the measured wrapper div, fullscreen mode and the
+  // hover-revealed header row. Exposes the same public CSS knobs as CartesianFrame
+  // (`--<prefix>-width`, `--<prefix>-bg`, …) so every chart is themed the same way.
   import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { Dims } from '#lib/plot/core/components/ChartHeaderControls.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
@@ -68,10 +66,8 @@
       fullscreen?: boolean
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-      // Color for the chrome icons, from whatever the chart paints under the top-right
-      // corner. A prop, not a CSS var passed through `style`: charts spread the caller's
-      // rest props after their own, so a `style` they set would be clobbered by any caller
-      // that passes one - which every sized mount does.
+      // Color for the chrome icons, from what the chart paints under the top-right corner. A
+      // prop, not a CSS var in `style`: a caller's rest `style` would clobber that.
       chrome_color?: string
       controls_toggle_props?: PaneToggleProps
       header_controls?: Snippet<[Dims]>

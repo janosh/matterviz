@@ -348,10 +348,7 @@
   })
   const broadening_settings = track_settings(
     () => ({ ...broadening_params, broadening_enabled }),
-    {
-      ...DEFAULT_BROADENING,
-      broadening_enabled: false,
-    },
+    { ...DEFAULT_BROADENING, broadening_enabled: false },
   )
 </script>
 

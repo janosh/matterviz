@@ -7,6 +7,7 @@ import {
 } from '#lib/structure/bonding.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import { DEFAULTS } from '#lib/settings.js'
+import { cross_3d, dot, scale, subtract } from '#lib/math.js'
 import {
   build_adjacency,
   compute_polyhedra,
@@ -111,6 +112,9 @@ const make_bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
   site_idx_2,
   bond_length: 1,
 })
+// Site indices 1..count, the neighbors of a center at site 0
+const sites_after_0 = (count: number): number[] =>
+  Array.from({ length: count }, (_, idx) => idx + 1)
 // Bonds from a center site to each listed neighbor site
 const bonds_from = (center: number, neighbor_idxs: number[]): BondPair[] =>
   neighbor_idxs.map((idx) => make_bond(center, idx))
@@ -125,33 +129,16 @@ const image_bond = (structure: AnyStructure, site_idx: number, cell_shift?: Vec3
     ...(cell_shift && { cell_shift }),
   })
 
-const add_vec = (origin: Vec3, off: readonly number[]): Vec3 => [
-  origin[0] + off[0],
-  origin[1] + off[1],
-  origin[2] + off[2],
-]
-// Unit-normal of triangle (a, b, c) - not normalized (only signs/ratios are used)
-const tri_normal = ([vert_a, vert_b, vert_c]: Vec3[]): Vec3 => [
-  (vert_b[1] - vert_a[1]) * (vert_c[2] - vert_a[2]) -
-    (vert_b[2] - vert_a[2]) * (vert_c[1] - vert_a[1]),
-  (vert_b[2] - vert_a[2]) * (vert_c[0] - vert_a[0]) -
-    (vert_b[0] - vert_a[0]) * (vert_c[2] - vert_a[2]),
-  (vert_b[0] - vert_a[0]) * (vert_c[1] - vert_a[1]) -
-    (vert_b[1] - vert_a[1]) * (vert_c[0] - vert_a[0]),
-]
-const dot = (vec_a: Vec3, vec_b: Vec3): number =>
-  vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1] + vec_a[2] * vec_b[2]
+const add_vec = (origin: Vec3, off: readonly number[]): Vec3 =>
+  origin.map((coord, axis) => coord + off[axis]) as Vec3
+// Normal of triangle (a, b, c) - not normalized (only signs/ratios are used)
+const tri_normal = ([vert_a, vert_b, vert_c]: Vec3[]): Vec3 =>
+  cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
 const face_verts = (hull: { vertices: Vec3[] }, face: number[]): Vec3[] =>
   face.map((idx) => hull.vertices[idx])
 
-const octahedron_points: Vec3[] = [
-  [1, 0, 0],
-  [-1, 0, 0],
-  [0, 1, 0],
-  [0, -1, 0],
-  [0, 0, 1],
-  [0, 0, -1],
-]
+// oxfmt-ignore
+const octahedron_points: Vec3[] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const cube_points = (side: number): Vec3[] =>
   [0, 1].flatMap((coord_x) =>
     [0, 1].flatMap((coord_y) =>
@@ -164,30 +151,21 @@ const octahedron_sites = (center: string, vertex: string, origin: Vec3, dist: nu
   { element: center, xyz: origin },
   ...octahedron_points.map((off) => ({
     element: vertex,
-    xyz: add_vec(origin, [off[0] * dist, off[1] * dist, off[2] * dist]),
+    xyz: add_vec(origin, scale(off, dist)),
   })),
 ]
 // `center` at `origin` with 4 `vertex` sites at tetrahedral positions `dist` away
 const tetrahedron_sites = (center: string, vertex: string, origin: Vec3, dist: number) => {
   const off = dist / Math.sqrt(3)
-  return [
-    { element: center, xyz: origin },
-    ...[
-      [off, off, off],
-      [-off, -off, off],
-      [-off, off, -off],
-      [off, -off, -off],
-    ].map((offset) => ({ element: vertex, xyz: add_vec(origin, offset) })),
-  ]
+  // oxfmt-ignore
+  const offsets = [[off, off, off], [-off, -off, off], [-off, off, -off], [off, -off, -off]]
+  const vertices = offsets.map((offset) => ({ element: vertex, xyz: add_vec(origin, offset) }))
+  return [{ element: center, xyz: origin }, ...vertices]
 }
 
 describe(`convex_hull_3d`, () => {
-  const tetra: Vec3[] = [
-    [0, 0, 0],
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  // oxfmt-ignore
+  const tetra: Vec3[] = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
   // oxfmt-ignore
   test.each([
     [`tetrahedron`, tetra, 4, 4, 1 / 6, 10],
@@ -236,14 +214,11 @@ describe(`convex_hull_3d`, () => {
 
       // Euler: V - E + F = 2 (triangulated closed surface: E = 3F/2)
       const edges = new Set(
-        hull.faces.flatMap(([vert_a, vert_b, vert_c]) =>
-          [
-            [vert_a, vert_b],
-            [vert_b, vert_c],
-            [vert_c, vert_a],
-          ].map(([from, target]) =>
-            from < target ? `${from}-${target}` : `${target}-${from}`,
-          ),
+        hull.faces.flatMap((face) =>
+          face.map((from, idx) => {
+            const target = face[(idx + 1) % 3]
+            return from < target ? `${from}-${target}` : `${target}-${from}`
+          }),
         ),
       )
       expect(hull.vertices.length - edges.size + hull.faces.length).toBe(2)
@@ -256,16 +231,11 @@ describe(`convex_hull_3d`, () => {
         const verts = face_verts(hull, face)
         const normal = tri_normal(verts)
         // face normal points away from the centroid
-        const centroid_to_vert = add_vec(
-          verts[0],
-          centroid.map((coord) => -coord),
-        )
-        expect(dot(normal, centroid_to_vert)).toBeGreaterThan(0)
+        expect(dot(normal, subtract(verts[0], centroid))).toBeGreaterThan(0)
         // every input point is inside or on the hull (within eps of each face plane)
         const norm_len = Math.hypot(...normal)
-        const neg_vert = verts[0].map((coord) => -coord) as Vec3
         for (const point of points) {
-          expect(dot(normal, add_vec(point, neg_vert)) / norm_len).toBeLessThan(1e-6)
+          expect(dot(normal, subtract(point, verts[0])) / norm_len).toBeLessThan(1e-6)
         }
       }
     }
@@ -318,11 +288,8 @@ const octahedral_bonds = bonds_from(0, [1, 2, 3, 4, 5, 6])
 describe(`compute_polyhedra`, () => {
   test.each([false, true])(`bonded primitive-cell shell with packed bonds %s`, (packed) => {
     const structure = make_crystal(2, [{ element: `Cu`, abc: [0, 0, 0] }])
-    const shifts: Vec3[] = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
+    // oxfmt-ignore
+    const shifts: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     const records = shifts.map((cell_shift) => image_bond(structure, 0, cell_shift))
     const bonds = packed ? new BondFrame(structure, pack_bonds(records)) : records
     expect(compute_polyhedra(structure, bonds)).toEqual([])
@@ -345,11 +312,9 @@ describe(`compute_polyhedra`, () => {
     expect(poly.faces).toHaveLength(8)
     expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 6)
     // vertex_site_idxs maps each hull vertex to the site at that exact position
-    expect(
-      [...poly.vertex_site_idxs].toSorted(
-        (left_value, right_value) => left_value - right_value,
-      ),
-    ).toEqual([1, 2, 3, 4, 5, 6])
+    expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual(
+      sites_after_0(6),
+    )
     for (const [v_idx, site_idx] of poly.vertex_site_idxs.entries()) {
       expect(poly.vertices[v_idx]).toEqual(structure.sites[site_idx].xyz)
     }
@@ -458,14 +423,10 @@ describe(`compute_polyhedra`, () => {
     // the -x neighbor cell, reachable only through a bond cell_shift. Placing that vertex
     // at the in-cell O instead put it 4.2 Å away, which skewed the octahedron into a
     // lopsided hull of the wrong volume.
+    // oxfmt-ignore
     const structure = make_crystal(6, [
-      { element: `Ti`, abc: [0.1, 0.5, 0.5] },
-      { element: `O`, abc: [0.4, 0.5, 0.5] },
-      { element: `O`, abc: [0.1, 0.8, 0.5] },
-      { element: `O`, abc: [0.1, 0.2, 0.5] },
-      { element: `O`, abc: [0.1, 0.5, 0.8] },
-      { element: `O`, abc: [0.1, 0.5, 0.2] },
-      { element: `O`, abc: [0.8, 0.5, 0.5] },
+      [`Ti`, [0.1, 0.5, 0.5]], [`O`, [0.4, 0.5, 0.5]], [`O`, [0.1, 0.8, 0.5]], [`O`, [0.1, 0.2, 0.5]],
+      [`O`, [0.1, 0.5, 0.8]], [`O`, [0.1, 0.5, 0.2]], [`O`, [0.8, 0.5, 0.5]],
     ])
     const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) =>
       image_bond(structure, site_idx, site_idx === 6 ? [-1, 0, 0] : undefined),
@@ -515,8 +476,8 @@ describe(`compute_polyhedra`, () => {
     [0.005, 1, 1], // the same ring puckered 2.5x further
     [0.002, 0.01, 0], // both verdicts survive a 100x shrink
     [0.005, 0.01, 1],
-  ])(`CN-6 ring puckered %s at scale %s -> %i polyhedra`, (pucker, scale, n_polyhedra) => {
-    const [radius, pucker_z] = [1.8 * scale, pucker * scale]
+  ])(`CN-6 ring puckered %s at scale %s -> %i polyhedra`, (pucker, size, n_polyhedra) => {
+    const [radius, pucker_z] = [1.8 * size, pucker * size]
     const ring = Array.from({ length: 6 }, (_un, idx) => ({
       element: `O`,
       xyz: [
@@ -534,12 +495,8 @@ describe(`compute_polyhedra`, () => {
     // Rocksalt-like: Ti at the origin has CN 6 via only 3 O sites, each bonded twice
     // (in-cell at +a/2 and through the -1 image at -a/2). Collapsing the two bonds onto
     // one neighbor left CN 3, below min_neighbors, so nothing rendered at all.
-    const structure = make_crystal(3.6, [
-      { element: `Ti`, abc: [0, 0, 0] },
-      { element: `O`, abc: [0.5, 0, 0] },
-      { element: `O`, abc: [0, 0.5, 0] },
-      { element: `O`, abc: [0, 0, 0.5] },
-    ])
+    // oxfmt-ignore
+    const structure = make_crystal(3.6, [[`Ti`, [0, 0, 0]], [`O`, [0.5, 0, 0]], [`O`, [0, 0.5, 0]], [`O`, [0, 0, 0.5]]])
     // each O bonded twice: in-cell, then through the -1 image along its own axis
     const bonds = [1, 2, 3].flatMap((site_idx) => [
       image_bond(structure, site_idx),
@@ -642,11 +599,9 @@ describe(`VESTA-style detection rules`, () => {
     ])
     const [poly, ...rest] = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
     expect(rest).toHaveLength(0)
-    expect(
-      [...poly.vertex_site_idxs].toSorted(
-        (left_value, right_value) => left_value - right_value,
-      ),
-    ).toEqual([1, 2, 3, 4, 5, 6])
+    expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual(
+      sites_after_0(6),
+    )
     expect(poly.faces).toHaveLength(8)
     // square base of side 2*sqrt(2) with apices 1.83 and 2.39 above/below it
     expect(poly.volume).toBeCloseTo((1 / 3) * 8 * (1.83 + 2.39), 10)
@@ -666,41 +621,34 @@ describe(`VESTA-style detection rules`, () => {
       ),
     ]
     const structure = make_crystal(16, sites)
-    const polyhedra = compute_polyhedra(
-      structure,
-      bonds_from(
-        0,
-        Array.from({ length: 14 }, (_, idx) => idx + 1),
-      ),
-    )
+    const polyhedra = compute_polyhedra(structure, bonds_from(0, sites_after_0(14)))
     expect(polyhedra).toHaveLength(1)
     expect(polyhedra[0].center_element).toBe(`Ti`)
     expect(polyhedra[0].vertex_site_idxs).toHaveLength(6) // only the O vertices
     expect(polyhedra[0].faces).toHaveLength(8)
   })
 
-  test(`spectator cations hidden when framework cations exist, kept when sole`, () => {
-    // Fe octahedron + Li octahedron -> only Fe renders
+  // A spectator cation (Li) or a weakly bound one (lone-pair Bi: Bi-O at 2.7 A, norm ~1.26,
+  // beside Zr-O at 2.0 A, norm ~0.83) is hidden next to a framework cation, and kept when it
+  // is the sole cation (e.g. Li2O-like)
+  test.each([
+    [`Fe`, `Li`, 2.1],
+    [`Zr`, `Bi`, 2.7],
+  ])(`%s framework hides %s polyhedra, which render when sole`, (framework, hidden, dist) => {
     const structure = make_crystal(18, [
-      ...octahedron_sites(`Fe`, `O`, [4, 4, 4], 2.0),
-      ...octahedron_sites(`Li`, `O`, [12, 12, 12], 2.1),
+      ...octahedron_sites(framework, `O`, [4, 4, 4], 2.0),
+      ...octahedron_sites(hidden, `O`, [12, 12, 12], dist),
     ])
-    const bonds = [
-      ...bonds_from(0, [1, 2, 3, 4, 5, 6]),
-      ...bonds_from(7, [8, 9, 10, 11, 12, 13]),
-    ]
-    const polyhedra = compute_polyhedra(structure, bonds)
-    expect(polyhedra.map((poly) => poly.center_element)).toEqual([`Fe`])
-
-    // force-include restores Li
-    const with_li = compute_polyhedra(structure, bonds, {
-      included_center_elements: [`Li`],
-    })
-    expect(with_li.map((poly) => poly.center_element).toSorted()).toEqual([`Fe`, `Li`])
-
-    // Li as the only cation (e.g. Li2O-like) keeps its polyhedra
-    const li_only = make_crystal(18, octahedron_sites(`Li`, `O`, [4, 4, 4], 2.1))
-    expect(compute_polyhedra(li_only, bonds_from(0, [1, 2, 3, 4, 5, 6]))).toHaveLength(1)
+    const bonds = [...octahedral_bonds, ...bonds_from(7, [8, 9, 10, 11, 12, 13])]
+    const centers = (opts: Parameters<typeof compute_polyhedra>[2] = {}) =>
+      compute_polyhedra(structure, bonds, opts).map((poly) => poly.center_element)
+    expect(centers()).toEqual([framework])
+    // force-include restores the spectator
+    if (hidden === `Li`) {
+      expect(centers({ included_center_elements: [`Li`] }).toSorted()).toEqual([`Fe`, `Li`])
+    }
+    const sole = make_crystal(18, octahedron_sites(hidden, `O`, [4, 4, 4], dist))
+    expect(compute_polyhedra(sole, octahedral_bonds)).toHaveLength(1)
   })
 
   test(`spectator suppression is composition-based, not candidate-based`, () => {
@@ -730,10 +678,7 @@ describe(`VESTA-style detection rules`, () => {
       { element: `Ba`, xyz: [8, 8, 8] as Vec3 },
       ...cubo_offsets.map((off) => ({ element: `O`, xyz: add_vec([8, 8, 8], off) })),
     ])
-    const bonds = bonds_from(
-      0,
-      Array.from({ length: 12 }, (_, idx) => idx + 1),
-    )
+    const bonds = bonds_from(0, sites_after_0(12))
     expect(compute_polyhedra(structure, bonds)).toHaveLength(0)
     const uncapped = compute_polyhedra(structure, bonds, { max_neighbors: 12 })
     expect(uncapped).toHaveLength(1)
@@ -745,24 +690,6 @@ describe(`VESTA-style detection rules`, () => {
     })
     expect(included).toHaveLength(1)
     expect(included[0].center_element).toBe(`Ba`)
-  })
-
-  test(`weakly-bound centers hidden when a strong framework exists (lone-pair Bi)`, () => {
-    // Zr-O at 2.0 Å (norm ~0.83, strong) + Bi-O at 2.7 Å (norm ~1.26, weak)
-    const structure = make_crystal(18, [
-      ...octahedron_sites(`Zr`, `O`, [4, 4, 4], 2.0),
-      ...octahedron_sites(`Bi`, `O`, [12, 12, 12], 2.7),
-    ])
-    const bonds = [
-      ...bonds_from(0, [1, 2, 3, 4, 5, 6]),
-      ...bonds_from(7, [8, 9, 10, 11, 12, 13]),
-    ]
-    const polyhedra = compute_polyhedra(structure, bonds)
-    expect(polyhedra.map((poly) => poly.center_element)).toEqual([`Zr`])
-
-    // Bi alone (no strong species) keeps its polyhedra
-    const bi_only = make_crystal(18, octahedron_sites(`Bi`, `O`, [4, 4, 4], 2.7))
-    expect(compute_polyhedra(bi_only, bonds_from(0, [1, 2, 3, 4, 5, 6]))).toHaveLength(1)
   })
 
   test(`is_spectator_center classifies alkali + heavy alkaline earths`, () => {

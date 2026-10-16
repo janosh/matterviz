@@ -35,9 +35,7 @@ export function pack_instances(
     const offset = idx * INSTANCE_STRIDE
     packed.set(position, offset)
     packed[offset + 3] = radius
-    packed[offset + 4] = rgb.r
-    packed[offset + 5] = rgb.g
-    packed[offset + 6] = rgb.b
+    packed.set([rgb.r, rgb.g, rgb.b], offset + 4)
   })
   return packed
 }
@@ -90,8 +88,7 @@ export function create_instance_tween(): InstanceTweenClock {
       else if (same_keys) from = current.slice() // the common re-encoding case: no lookups
       else {
         from = next_target.slice()
-        const prev_idx = new Map<string, number>()
-        keys.forEach((key, idx) => prev_idx.set(key, idx))
+        const prev_idx = new Map(keys.map((key, idx) => [key, idx]))
         next_keys.forEach((key, idx) => {
           const prev = prev_idx.get(key)
           if (prev === undefined) return

@@ -36,8 +36,12 @@ import { expect, test, vi } from 'vitest'
 import { SphereInstances } from '#lib/scene/picking.js'
 import { make_rng } from '../numeric-helpers'
 
-const cell_point = (cell: Matrix4, axis: StructureCutaway[`axis`], depth: number) =>
+// Rotated triclinic cell with a shifted origin
+const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
+const cell_point = (axis: StructureCutaway[`axis`], depth: number) =>
   new Vector3(0.5, 0.5, 0.5).setComponent(axis, depth).applyMatrix4(cell)
+// Hit records without the object, which differs between the compared meshes
+const strip_object = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
 
 test.each([1, 2, 3] as const)(
   `enlarged edit targets cannot pick fully clipped atoms or order-%i bonds`,
@@ -70,8 +74,11 @@ test.each([1, 2, 3] as const)(
     }
     const target = new Mesh(new CylinderGeometry(1, 1, 1, 6), new MeshBasicMaterial())
     const matrix = new Float32Array(16)
-    write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, 0.05)
-    target.matrix.fromArray(matrix)
+    const place_bond = (radius: number) => {
+      write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, radius)
+      target.matrix.fromArray(matrix)
+    }
+    place_bond(0.05)
     target.matrixAutoUpdate = false
     group.add(target)
     // The expanded cylinder overlaps the retained half-space even though every actual
@@ -89,8 +96,7 @@ test.each([1, 2, 3] as const)(
     // cylinders remain visible. Picking must return their surface distances, not the shell.
     bond.pos_1[2] = 0.47
     bond.pos_2[2] = 0.47
-    write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, 0.05)
-    target.matrix.fromArray(matrix)
+    place_bond(0.05)
     raycaster.set(new Vector3(0, 0, 1), new Vector3(0, 0, -1))
     group.set_cutaway(cutaway)
     const visible_hits = raycaster.intersectObject(target)
@@ -112,8 +118,7 @@ test.each([1, 2, 3] as const)(
         [[0, 0, 0.5], [0, 0, -1], 0, 0.05],
         [[0, 1, [0.47, 0.484, 0.49][bond_order - 1]], [0, -1, 0], 0, 0.0125],
       ] as const) {
-        write_bond_transform(matrix, 0, bond.pos_1, bond.pos_2, radius)
-        target.matrix.fromArray(matrix)
+        place_bond(radius)
         group.updateMatrixWorld(true)
         const world_origin = new Vector3(...origin).applyMatrix4(group.matrixWorld)
         const local_direction = new Vector3(...direction)
@@ -136,10 +141,6 @@ test.each([1, 2, 3] as const)(
         expect(actual.every((hit) => hit.object === target)).toBe(true)
       }
     }
-    atom.geometry.dispose()
-    atom.material.dispose()
-    target.geometry.dispose()
-    target.material.dispose()
   },
 )
 
@@ -150,7 +151,6 @@ test.each(
 )(
   `%s cutaway axis %i preserves atom buffers and rejects hidden surface hits in a rotated triclinic cell`,
   (projection, axis) => {
-    const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
     const cutaway: StructureCutaway = {
       mode: `slab`,
       axis,
@@ -161,7 +161,7 @@ test.each(
     const geometry = new SphereGeometry(0.5, 20, 20)
     const material = new MeshBasicMaterial({ side: DoubleSide })
     const atoms = [0.15, 0.5, 0.85].map((depth) => ({
-      position: cell_point(cell, axis, depth).toArray(),
+      position: cell_point(axis, depth).toArray(),
       radius: 0.7,
     }))
     const mesh = new AtomInstances(geometry, material, atoms.length)
@@ -176,7 +176,7 @@ test.each(
     group.set_cutaway(cutaway)
     group.updateMatrixWorld(true)
     const world_point = (depth: number) =>
-      cell_point(cell, axis, depth).applyMatrix4(group.matrixWorld)
+      cell_point(axis, depth).applyMatrix4(group.matrixWorld)
     const camera =
       projection === `orthographic`
         ? new OrthographicCamera(-5, 5, 5, -5, 0.1, 100)
@@ -201,18 +201,17 @@ test.each(
     raycaster.near += 0.01
     expect(hits()).toEqual([])
     raycaster.near = 0
+    const hit_ids = () => new Set(hits().map(({ instanceId }) => instanceId))
     for (const [position, expected_idx] of [
       [0.15, 0],
       [0.85, 2],
     ] as const) {
       cutaway.position = position
       group.set_cutaway(cutaway)
-      expect(new Set(hits().map(({ instanceId }) => instanceId))).toEqual(
-        new Set([expected_idx]),
-      )
+      expect(hit_ids()).toEqual(new Set([expected_idx]))
     }
     group.set_cutaway(undefined)
-    expect(new Set(hits().map(({ instanceId }) => instanceId))).toEqual(new Set([0, 1, 2]))
+    expect(hit_ids()).toEqual(new Set([0, 1, 2]))
     expect(mesh.positions.array).toEqual(original_buffer)
     expect(mesh.positions.version).toBe(original_version)
     expect(mesh.count).toBe(3)
@@ -228,15 +227,12 @@ test.each(
       expect(raycaster.intersectObject(target).length).toBeGreaterThan(0)
     }
     mesh.dispose()
-    geometry.dispose()
-    material.dispose()
   },
 )
 
 test.each([0, 1, 2] as const)(
   `cutaway axis %i retains the requested fractional interval including a shifted cell origin`,
   (axis) => {
-    const cell = new Matrix4().set(8, 2, 1, 11, 0, 7, 2, -4, 0, 0, 9, 3, 0, 0, 0, 1)
     const cutaway: StructureCutaway = {
       mode: `slab`,
       axis,
@@ -255,7 +251,7 @@ test.each([0, 1, 2] as const)(
       [undefined, -0.1, true],
     ] as const) {
       const settings = mode === undefined ? undefined : { ...cutaway, mode }
-      const position = cell_point(cell, axis, coordinate).toArray()
+      const position = cell_point(axis, coordinate).toArray()
       expect(cutaway_contains(settings, position), `${mode} at ${coordinate}`).toBe(visible)
     }
   },
@@ -307,11 +303,7 @@ test(`coordinate-only frames reuse atom records, but appearance topology changes
   expect(update_ordered_atom_positions(atoms, moved)).toBeNull()
   moved[0].species[0].element = `Si`
   const partial_site = { ...last, species: [{ ...last.species[0], occu: 0.5 }] }
-  const partial_atom = {
-    ...atoms[1],
-    species: partial_site.species,
-    occupancy: 0.5,
-  }
+  const partial_atom = { ...atoms[1], species: partial_site.species, occupancy: 0.5 }
   partial_site.species[0].occu = 1
   expect(
     update_ordered_atom_positions(
@@ -407,9 +399,7 @@ test.each([8, 15, 20])(
             optimized: Intersection[] = []
           native.raycast(ray, reference)
           actual.raycast(ray, optimized)
-          const values = (hits: Intersection[]) =>
-            hits.map(({ object: _object, ...hit }) => hit)
-          expect(values(optimized)).toEqual(values(reference))
+          expect(strip_object(optimized)).toEqual(strip_object(reference))
         }
       }
     }
@@ -422,10 +412,6 @@ test.each([8, 15, 20])(
     actual.update_atoms(atoms)
     expect(actual.boundingSphere).toEqual(bounds)
     actual.dispose()
-    translated.dispose()
-    native.dispose()
-    geometry.dispose()
-    material.dispose()
   },
 )
 
@@ -463,14 +449,11 @@ test.each([
       )
       const raycaster = new Raycaster(origin, target.sub(origin).normalize())
       const [actual, expected] = [fast, native].map((mesh) => raycaster.intersectObject(mesh))
-      const values = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
-      expect(values(actual)).toEqual(values(expected))
+      expect(strip_object(actual)).toEqual(strip_object(expected))
       expect(actual[0]?.instanceId).toBe(expected[0]?.instanceId)
       if (expected.length) n_hit_rays++
     }
     expect(n_hit_rays).toBeGreaterThan(5) // the rays exercise real hits, not just misses
-    geometry.dispose()
-    material.dispose()
   },
 )
 
@@ -501,7 +484,6 @@ test.each([6.562, 14.659, 25.996])(
       }
       expect(radius_px - edge).toBeLessThanOrEqual(0.5)
     }
-    geometry.dispose()
   },
 )
 
@@ -526,6 +508,4 @@ test(`invisible sphere targets remain pickable exactly at a rotated pole`, () =>
   ray.far = Infinity
   ray.near = 7
   expect(ray.intersectObject(mesh)).toEqual([])
-  mesh.geometry.dispose()
-  mesh.material.dispose()
 })

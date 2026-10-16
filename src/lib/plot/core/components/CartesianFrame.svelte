@@ -29,9 +29,8 @@
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { on } from 'svelte/events'
 
-  // Public CSS knobs every Cartesian chart exposes, mapped onto the frame's own
-  // variables so the shell can be styled per chart (`--histogram-bg`, `--barplot-bg`, …)
-  // without duplicating this stylesheet per chart.
+  // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
+  // mapped onto the frame's own variables so this stylesheet isn't duplicated per chart
   const css_var_defaults = (prefix: string): Record<string, string> => ({
     ...chart_css_defaults(prefix),
     'svg-width': `100%`,
@@ -231,10 +230,7 @@
       onfocusout={() => pan_zoom.set_focused(false)}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
-      onkeydown={(event) => {
-        if (on_key_down?.(event)) return
-        pan_zoom.on_key_down(event)
-      }}
+      onkeydown={(event) => on_key_down?.(event) || pan_zoom.on_key_down(event)}
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
@@ -279,7 +275,6 @@
         mode={pan_zoom.drag_mode}
       />
 
-      <!-- Marginal distribution strips -->
       <PlotMarginals
         {marginals}
         series={marginal_series}
@@ -300,7 +295,6 @@
   <!-- Where a keyboard cursor landed, for marks with no focusable element of their own -->
   <LiveMessage message={live_message} />
 
-  <!-- User-provided children (e.g. for custom absolutely-positioned overlays) -->
   {@render children?.(content_ctx)}
 </div>
 

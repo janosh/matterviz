@@ -1,4 +1,5 @@
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import type { Matrix3x3 } from '#lib/math.js'
 import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import type {
@@ -26,14 +27,13 @@ import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
 
+// A cell of length `len_x` along x with a unit y-z cross section
+// oxfmt-ignore
+const x_cell = (len_x: number): Matrix3x3 => [[len_x, 0, 0], [0, 1, 0], [0, 0, 1]]
 const grid: HotspotGrid = {
   dims: [2, 1, 1],
   origin: [0, 0, 0],
-  cell: [
-    [2, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
+  cell: x_cell(2),
   pbc: [false, false, false],
 }
 const velocity_options = { grid, mass_unit: `amu`, velocity_unit: `A/ps` } as const
@@ -148,10 +148,7 @@ describe(`spatial kinetic hotspots`, () => {
   })
 
   it.each([1, 3, 8])(`preserves energies across batch size %s`, async (batch_size) => {
-    const result = await calculate_hotspots(3, source(), {
-      ...velocity_options,
-      batch_size,
-    })
+    const result = await calculate_hotspots(3, source(), { ...velocity_options, batch_size })
     expect(Array.from(result.population)).toEqual([8, 8])
     expect(Array.from(result.energy)).toEqual([8 * 28 * conversion, 8 * 28 * conversion * 4])
     expect(hotspot_mean(result, `energy`)).toBe(28 * conversion * 2.5)
@@ -162,10 +159,7 @@ describe(`spatial kinetic hotspots`, () => {
   it.each([`translation`, `local`] as const)(
     `removes %s without subtracting large raw energies`,
     async (motion) => {
-      const options = {
-        ...velocity_options,
-        motion,
-      }
+      const options = { ...velocity_options, motion }
       const expected = await calculate_hotspots(3, source(8), options)
       const actual = await calculate_hotspots(3, source(8, [0, 1, 2], 2 ** 30), options)
       const errors = actual.energy.map((value, idx) => Math.abs(value - expected.energy[idx]))
@@ -234,10 +228,7 @@ describe(`spatial kinetic hotspots`, () => {
       cell: grid.cell,
       pbc: grid.pbc,
     })
-    const result = await calculate_hotspots(1, read, {
-      ...velocity_options,
-      motion: `local`,
-    })
+    const result = await calculate_hotspots(1, read, { ...velocity_options, motion: `local` })
     // The populated bin has residuals [-0.5, 0.5, -0.5, 0.5], with squared sum 1.
     expect(result.energy[0]).toBe(0)
     expect(Math.abs(result.energy[1] - conversion)).toBeLessThanOrEqual(
@@ -348,11 +339,7 @@ describe(`spatial kinetic hotspots`, () => {
       total_atoms: 1,
       start: 0,
       step: frame_idx,
-      cell: [
-        [frame_idx ? 4 : 2, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
+      cell: x_cell(frame_idx ? 4 : 2),
       origin: [0, 0, 0],
       pbc: [true, false, false],
     })
@@ -521,21 +508,11 @@ describe(`spatial kinetic hotspots`, () => {
   it(`rejects changing periodic device grids`, async () => {
     const read: ReadAtoms = (options) => ({
       ...source()(options),
-      cell:
-        options.frame_idx === 0
-          ? grid.cell
-          : [
-              [4, 0, 0],
-              [0, 1, 0],
-              [0, 0, 1],
-            ],
+      cell: x_cell(options.frame_idx === 0 ? 2 : 4),
     })
+    const periodic = { ...grid, pbc: [true, false, false] } as const
     await expect(
-      calculate_hotspots(2, read, {
-        grid: { ...grid, pbc: [true, false, false] },
-        mass_unit: `amu`,
-        velocity_unit: `A/ps`,
-      }),
+      calculate_hotspots(2, read, { ...velocity_options, grid: periodic }),
     ).rejects.toThrow(`unchanged cell`)
   })
 

@@ -46,16 +46,6 @@ export function detect_compression_format(filename: string): CompressionFormat |
   return null
 }
 
-type CompressedSource = ArrayBuffer | Blob | ReadableStream<Uint8Array<ArrayBuffer>>
-
-const unsupported_format_error = (
-  format: CompressionFormat,
-  source = `the ${format.toUpperCase()} file`,
-): Error =>
-  new Error(
-    `${format.toUpperCase()} decompression is not supported in the browser; extract ${source} first`,
-  )
-
 // The compression wrapper named by the first of `names` that has one, rejecting wrappers the
 // browser cannot inflate (xz, bz2) up front instead of handing a parser opaque archive bytes.
 // `source` names the payload in that error, e.g. its URL.
@@ -65,18 +55,11 @@ export function compression_wrapper_of(
 ): BrowserCompressionFormat | null {
   const format = names.map(detect_compression_format).find((fmt) => fmt !== null) ?? null
   if (format && !is_browser_decompressible_format(format)) {
-    throw unsupported_format_error(format, source)
+    throw new Error(
+      `${format.toUpperCase()} decompression is not supported in the browser; extract ${source} first`,
+    )
   }
   return format
-}
-
-// Decompress data and return as text string
-export async function decompress_data(
-  data: CompressedSource,
-  format: CompressionFormat,
-): Promise<string> {
-  const buffer = await decompress_data_binary(data, format)
-  return new TextDecoder().decode(buffer)
 }
 
 // Ceiling on the INFLATED payload: the compressed size bounds nothing (gzip reaches 1029:1 on
@@ -136,18 +119,16 @@ const unzip_single_entry = async (
   return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }
 
-const consume_decompressed = async <Result>(
-  data: CompressedSource,
-  format: CompressionFormat,
-  consume: (response: Response) => Promise<Result>,
+// Inflate one browser-decompressible layer of `blob` (its bytes streamed, never buffered,
+// except a ZIP archive's), reporting a ZIP's entry name
+const decompress_blob = async (
+  blob: Blob,
+  format: BrowserCompressionFormat,
   signal?: AbortSignal,
   on_entry_name?: (name: string) => void,
-): Promise<Result> => {
-  if (!is_browser_decompressible_format(format)) throw unsupported_format_error(format)
+): Promise<Blob> => {
   try {
-    // Blobs and streams are piped through without buffering the compressed bytes first
-    const source = data instanceof ArrayBuffer ? new Blob([data]) : data
-    const stream = source instanceof Blob ? source.stream() : source
+    const stream = blob.stream()
     if (format === `zip`) {
       // fflate needs the whole archive: the identity transform lets an abort stop the buffering
       const zip_stream = stream.pipeThrough(new TransformStream(), { signal })
@@ -155,13 +136,13 @@ const consume_decompressed = async <Result>(
       signal?.throwIfAborted()
       const entry = await unzip_single_entry(bytes)
       on_entry_name?.(entry.name)
-      // The archive is ArrayBuffer-backed; Response snapshots the entry bytes.
-      return await consume(new Response(entry.bytes as Uint8Array<ArrayBuffer>))
+      // The archive is ArrayBuffer-backed; Blob snapshots the entry bytes.
+      return new Blob([entry.bytes as Uint8Array<ArrayBuffer>])
     }
     const decompressed = stream
       .pipeThrough(new DecompressionStream(format), { signal })
       .pipeThrough(inflation_limiter(format))
-    return await consume(new Response(decompressed))
+    return await new Response(decompressed).blob()
   } catch (error) {
     // An abort is the caller's cancellation, not a corrupt archive
     signal?.throwIfAborted()
@@ -169,14 +150,6 @@ const consume_decompressed = async <Result>(
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })
   }
 }
-
-// Decompress data and return as ArrayBuffer (for binary files like .brml.gz)
-export const decompress_data_binary = (
-  data: CompressedSource,
-  format: CompressionFormat,
-  signal?: AbortSignal,
-): Promise<ArrayBuffer> =>
-  consume_decompressed(data, format, (response) => response.arrayBuffer(), signal)
 
 // === consumers of the string | ArrayBuffer content union produced above ===
 
@@ -317,17 +290,11 @@ export async function classify_payload(
         `${source ?? names[0]} nests more than ${MAX_WRAPPER_LAYERS} compression layers`,
       )
     }
-    blob = await consume_decompressed(
-      blob,
-      format,
-      (resp) => resp.blob(),
-      signal,
-      (name) => {
-        // An archive's entry is authoritative; URL/header aliases describe its container.
-        payload_names = [name]
-        sniff_compression = false
-      },
-    )
+    blob = await decompress_blob(blob, format, signal, (name) => {
+      // An archive's entry is authoritative; URL/header aliases describe its container.
+      payload_names = [name]
+      sniff_compression = false
+    })
   }
   signal?.throwIfAborted()
   const magic = await head(8)

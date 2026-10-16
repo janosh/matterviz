@@ -102,9 +102,8 @@ const interpolate_cell = (
   return value_c_0 + (value_c_1 - value_c_0) * z_fraction
 }
 
-// Policy for sampling positions that fall outside a non-periodic volume's grid.
-// 'clamp' samples the nearest edge value; 'fallback' returns NaN so callers can
-// substitute a solid fallback color. Periodic volumes always wrap and never go OOB.
+// Out-of-grid samples of a non-periodic volume: 'clamp' takes the nearest edge value,
+// 'fallback' returns NaN so callers substitute a solid color. Periodic volumes always wrap.
 type OutOfBoundsPolicy = `clamp` | `fallback`
 
 interface VolumeSamplerOptions {
@@ -116,13 +115,11 @@ interface BulkVolumeSamplerOptions extends VolumeSamplerOptions {
   out?: Float32Array
 }
 
-// Small tolerance so vertices numerically on the boundary of a finite grid
-// (e.g. marching-cubes output at fractional coordinate 1.0 + 1e-16) still sample.
+// Lets vertices numerically on a finite grid's boundary (fraction 1 + 1e-16) still sample
 const OOB_TOL = 1e-6
 
-// Absolute Cartesian (x, y, z) in the volume's frame → trilinearly interpolated value.
-// Handles non-orthogonal lattices, origin offsets and periodic wrapping; scalar arithmetic
-// only since it runs once per isosurface vertex / slice pixel.
+// Absolute Cartesian (x, y, z) in the volume's frame → trilinearly interpolated value, for
+// any lattice, origin and wrapping. Scalar arithmetic only: it runs once per vertex / pixel.
 function volume_sampler_xyz(
   volume: VolumeGrid,
   out_of_bounds: OutOfBoundsPolicy,
@@ -159,8 +156,7 @@ function volume_sampler_xyz(
           frac_z > 1 + OOB_TOL)
       )
         return NaN
-      // Clamp both genuine out-of-bounds ('clamp' policy = nearest edge value)
-      // and tiny numerical overshoot at the boundary
+      // Clamp genuine out-of-bounds ('clamp' policy) and tiny overshoot at the boundary
       frac_x = clamp01(frac_x)
       frac_y = clamp01(frac_y)
       frac_z = clamp01(frac_z)
@@ -169,9 +165,8 @@ function volume_sampler_xyz(
   }
 }
 
-// Sampler from absolute Cartesian positions (same physical frame as the volume's `origin`)
-// to scalar values; works for strictly matching grids and for general resampling between
-// volumes that share a Cartesian coordinate system.
+// Sampler from absolute Cartesian positions (the frame of the volume's `origin`) to values,
+// for matching grids and for resampling between volumes sharing a Cartesian frame
 export function create_volume_sampler(
   volume: VolumeGrid,
   { out_of_bounds = `clamp` }: VolumeSamplerOptions = {},
@@ -180,9 +175,8 @@ export function create_volume_sampler(
   return (position) => sample(position[0], position[1], position[2])
 }
 
-// Sample a volume at many Cartesian positions (flat xyz triplets, shifted by
-// `position_offset`). Returns one scalar per position; NaN marks out-of-bounds under the
-// 'fallback' policy. Pass `out` of the right size to fill it in place.
+// Sample a volume at flat xyz triplets shifted by `position_offset`, one scalar per position
+// (NaN marks out-of-bounds under 'fallback'). Pass `out` of the right size to fill in place.
 export function sample_volume_at_positions(
   volume: VolumeGrid,
   positions: Float32Array | Float64Array,
@@ -206,11 +200,9 @@ export function sample_volume_at_positions(
 const fmt_vec = (vec: readonly number[]): string =>
   `[${vec.map((val) => Number(val.toPrecision(6))).join(`, `)}]`
 
-// Strict VESTA-style grid comparison: identical dimensions, origins equal within tolerance,
-// all voxel vectors equal within tolerance, and matching periodic/finite boundary modes.
-// Returns the first mismatch as a diagnostic, null for matching grids. Cross-volume coloring
-// via create_volume_sampler works for any two volumes sharing a Cartesian frame, but strictly
-// matching grids guarantee the sampled field is exact (no cross-grid resampling).
+// Strict VESTA-style grid comparison (same dims and boundary mode, origins and voxel vectors
+// within tolerance): the first mismatch as a diagnostic, null when matching. Cross-volume
+// coloring works for any shared Cartesian frame, but only matching grids sample exactly.
 export function compare_volume_grids(
   vol_a: VolumetricData,
   vol_b: VolumetricData,
@@ -222,10 +214,9 @@ export function compare_volume_grids(
     return `grid dimensions differ: ${nx_a}×${ny_a}×${nz_a} vs ${nx_b}×${ny_b}×${nz_b}`
   }
 
+  const mode = ({ periodic }: VolumetricData) => (periodic ? `periodic` : `finite`)
   if (vol_a.periodic !== vol_b.periodic) {
-    return `boundary modes differ: ${vol_a.periodic ? `periodic` : `finite`} vs ${
-      vol_b.periodic ? `periodic` : `finite`
-    }`
+    return `boundary modes differ: ${mode(vol_a)} vs ${mode(vol_b)}`
   }
 
   for (let axis = 0; axis < 3; axis++) {
@@ -237,10 +228,8 @@ export function compare_volume_grids(
     }
   }
 
-  // Compare voxel vectors: lattice_row / n for periodic grids (spacing 1/n),
-  // lattice_row / (n-1) for finite grids (spacing 1/(n-1), endpoints included).
-  // Dims and boundary modes already match at this point, so one divisor per
-  // axis suffices for both volumes.
+  // Voxel vectors are lattice_row / n (periodic) or / (n - 1) (finite); dims and boundary
+  // modes match by now, so one divisor per axis serves both volumes
   for (let axis = 0; axis < 3; axis++) {
     const divisor = Math.max(vol_a.periodic ? vol_a.dims[axis] : vol_a.dims[axis] - 1, 1)
     for (let comp = 0; comp < 3; comp++) {
@@ -260,9 +249,8 @@ export function compare_volume_grids(
 // Fractional display range per lattice axis, e.g. [[-0.15, 2.15], [-0.15, 2.15], [0, 1]]
 export type DisplayRange = [Vec2, Vec2, Vec2]
 
-// Replace invalid axes (non-finite bounds or non-positive width) with [0, 1].
-// Non-periodic volumes additionally clamp to [0, 1] — a finite volume must not
-// be repeated implicitly.
+// Replace invalid axes (non-finite bounds or non-positive width) with [0, 1]. Non-periodic
+// volumes also clamp to [0, 1]: a finite volume must not be repeated implicitly.
 export function sanitize_display_range(range: DisplayRange, periodic: boolean): DisplayRange {
   return range.map(([lower, upper]) => {
     if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper - lower <= 1e-6)
@@ -279,13 +267,10 @@ interface VolumeDisplayRangeOptions {
   halo?: number
 }
 
-// Resolve the finite window used for marching cubes. Periodic volumes always
-// need an endpoint-inclusive window, including for an integer structure
-// supercell: a periodic N-point grid spans [0, 1), while finite marching cubes
-// interprets N points as spanning [0, 1]. Resampling [0, S] to N*S + 1 points
-// preserves the original voxel spacing and closes the final periodic interval.
-// Finite volumes only get a window when one is explicitly requested and are
-// never repeated to follow the structure supercell.
+// The finite window marching cubes runs on. Periodic volumes always get an endpoint-inclusive
+// one, even for an integer supercell: an N-point periodic grid spans [0, 1) but finite marching
+// cubes reads N points as [0, 1], so [0, S] is resampled to N*S + 1 points (same spacing,
+// closed final interval). Finite volumes get one only on request and never follow tiling.
 export function resolve_volume_display_range(
   volume: VolumetricData,
   { display_range, tiling = [1, 1, 1], halo = 0 }: VolumeDisplayRangeOptions = {},
@@ -343,14 +328,11 @@ const precompute_axis_interpolation = (
   return { lower, upper, weight, direct }
 }
 
-// Resample a volume over a fractional display range (VESTA-style non-integer
-// supercell) into a finite grid whose bounds land exactly on the requested
-// fractional coordinates, so marching cubes clips repeated surfaces precisely
-// at the range instead of at integer cell boundaries. Periodic volumes wrap;
-// the sample resolution follows the source voxel density, capped at max_points
-// (matching the downsampling budget applied to integer-tiled grids).
-// The returned volume's lattice spans the range and its origin shifts by
-// range_min·lattice, keeping vertices in the same Cartesian frame as the source.
+// Resample a volume over a fractional display range (VESTA-style non-integer supercell) into a
+// finite grid whose bounds land exactly on the range, so marching cubes clips there instead of
+// at cell boundaries. Periodic volumes wrap; resolution follows the source voxel density,
+// capped at max_points. The lattice spans the range and the origin shifts by range_min·lattice,
+// keeping vertices in the source's Cartesian frame.
 export function extract_volume_range(
   volume: VolumeGrid & Partial<Pick<VolumetricData, `label` | `source` | `source_filename`>>,
   range: DisplayRange,
@@ -360,9 +342,8 @@ export function extract_volume_range(
   const [range_x, range_y, range_z] = sanitized
   const widths = sanitized.map(([lower, upper]) => upper - lower) as Vec3
 
-  // Sample counts follow the source voxel density, capped to the point budget. The
-  // reduction loop guards against cbrt undershoot when the min-2 floor prevents an axis
-  // from shrinking.
+  // Cap to the point budget; the loop catches cbrt undershoot when the min-2 floor stops an
+  // axis from shrinking
   let counts = range_sample_counts(volume, sanitized)
   const total = counts[0] * counts[1] * counts[2]
   if (total > max_points) {

@@ -1,14 +1,9 @@
-// Selected-area electron diffraction (SAED): the 2D spot pattern seen down a zone axis, as
-// opposed to the 1D powder trace produced by compute_xrd_pattern.
+// Selected-area electron diffraction (SAED): the 2D spot pattern seen down a zone axis.
 //
-// BEAM CONVENTION: the incident wavevector is k0 = +(1/λ)·ẑ with ẑ = zone_hat, i.e. the
-// electrons travel ALONG +[uvw]. Williams & Carter and De Graef instead define the zone axis
-// B as pointing from the specimen back toward the gun, so their k0 = −(1/λ)·B̂. The two
-// differ by the sign of the out-of-plane index: down cubic [001] this module puts the FOLZ
-// at l = −1 where the textbooks put it at l = +1. The zero-order zone is unaffected (l = 0)
-// and so are all spot positions, |F|² and intensities — only the hkl label printed on a
-// higher-order-zone spot flips sign. Flip zone_hat here (and only here) to adopt the
-// textbook convention; laue_zone is |n| and is invariant either way.
+// BEAM CONVENTION: k0 = +(1/λ)·zone_hat, electrons travel ALONG +[uvw]. Williams & Carter and
+// De Graef point B back toward the gun (k0 = −(1/λ)·B̂), so down cubic [001] this module puts
+// the FOLZ at l = −1 where they put it at l = +1. Positions, intensities and laue_zone are
+// unaffected; only higher-order-zone hkl labels flip sign. Flip zone_hat to switch.
 import * as math from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
@@ -22,23 +17,16 @@ import {
 } from './calc-xrd'
 import type { RecipPoint, SaedOptions, SaedPatternData, SaedSpot } from './index'
 
-// sin(πx)/(πx), the 1D Fourier transform of a slab of unit thickness. Equals 1 at x = 0.
+// sin(πx)/(πx), the Fourier transform of a unit-thickness slab
 const sinc = (x_val: number): number =>
   x_val === 0 ? 1 : Math.sin(Math.PI * x_val) / (Math.PI * x_val)
 
-export const laue_zone_label = (laue_zone: number): string => {
-  if (laue_zone === 0) return `ZOLZ`
-  if (laue_zone === 1) return `FOLZ`
-  return `HOLZ${laue_zone}`
-}
+export const laue_zone_label = (laue_zone: number): string =>
+  laue_zone === 0 ? `ZOLZ` : laue_zone === 1 ? `FOLZ` : `HOLZ${laue_zone}`
 
-// Compute the electron diffraction spot pattern for a crystal viewed down [u, v, w].
-//
-// The zone axis is a DIRECT-lattice direction, so its Cartesian form is u·a + v·b + w·c from
-// the row-vector lattice matrix. Because a_i · b_j = δ_ij for this module's reciprocal rows
-// (transpose(inverse(A)), no 2π), the out-of-plane component of g in units of the zone axis is
-// exactly the integer n = h·u + k·v + l·w. The Laue zone index is n reduced by gcd(u, v, w):
-// [002] names the same direction as [001] and must produce the same ZOLZ/FOLZ/HOLZ labels.
+// Electron diffraction spots for a crystal viewed down the direct-lattice direction [u, v, w].
+// With a_i · b_j = δ_ij (no 2π), g's out-of-plane component in zone-axis units is the integer
+// n = h·u + k·v + l·w.
 export function compute_saed_pattern(
   structure: Crystal,
   options: SaedOptions = {},
@@ -51,8 +39,7 @@ export function compute_saed_pattern(
     )
   }
 
-  // Same wavelength/voltage exclusivity the powder path enforces, except that a TEM has an
-  // obvious default beam energy where a diffractometer has no default anode.
+  // Same rules as the powder path, plus a default 200 kV beam
   const wavelength =
     options.wavelength === undefined && options.accelerating_voltage === undefined
       ? electron_wavelength(200)
@@ -78,29 +65,22 @@ export function compute_saed_pattern(
   }
   const zone_hat = math.scale(zone_cart, 1 / zone_length)
 
-  // Orthonormal frame in the plane perpendicular to the beam, shared by every spot so the
-  // returned 2D coordinates form one consistent picture.
+  // Orthonormal frame perpendicular to the beam that every position_2d is expressed in
   const in_plane_basis = math.compute_in_plane_basis(zone_hat)
   const [in_plane_u, in_plane_v] = in_plane_basis
 
-  // Ewald sphere radius 1/λ. At 200 kV this is 39.9 1/Å against reciprocal spacings of order
-  // 0.2 1/Å, so the sphere is nearly a flat plane over the whole visible pattern — which is
-  // precisely why a zone-axis electron pattern lights up an entire plane of reflections at
-  // once, while an X-ray Ewald sphere (0.65 1/Å at Cu Kα) can only ever touch a few.
+  // Ewald radius 1/λ (39.9 1/Å at 200 kV vs ~0.2 1/Å spacings): the sphere is nearly flat,
+  // which is why a zone-axis pattern lights up a whole reciprocal plane at once
   const ewald_radius = 1 / wavelength
   // Beyond 1/λ no reflection can reach the sphere, and sqrt(K² − g_perp²) would go complex
   if (max_g >= ewald_radius) {
     throw new Error(`max_g ${max_g} must stay below the Ewald radius 1/λ = ${ewald_radius}.`)
   }
-  // Excitation error cutoff at the first zero of the relrod: a slab of thickness t smears each
-  // reciprocal-lattice point into a rod of half-length 1/t along the beam.
+  // First zero of the relrod: a slab of thickness t smears points into rods of half-length 1/t
   const excitation_cutoff = 1 / crystal_thickness
 
-  // A point at in-plane radius g_perp lies K − sqrt(K² − g_perp²) below the sphere, so its
-  // g_parallel cannot exceed that sagitta plus the relrod half-length before |s_g| passes the
-  // cutoff. Since g_parallel = (h·u + k·v + l·w)/|zone_cart|, that caps the Laue index, which
-  // lets the enumeration skip the rest of the sphere — only ~1% of a default max_g = 2 sphere
-  // can ever light up, and the fraction shrinks as max_g grows.
+  // |g_parallel| cannot exceed the sphere's sagitta K − sqrt(K² − g_perp²) plus the relrod
+  // half-length, which caps the Laue index: only ~1% of a max_g = 2 sphere can light up
   const max_g_parallel =
     ewald_radius - Math.sqrt(ewald_radius * ewald_radius - max_g * max_g) + excitation_cutoff
   const recip_rows = math.reciprocal_lattice(direct_rows)
@@ -110,9 +90,7 @@ export function compute_saed_pattern(
     max_laue: zone_length * max_g_parallel,
   })
 
-  // Two passes: select the reflections near the sphere first, then evaluate |F|² for just
-  // those. Only a thin shell of the enumerated slab is ever excited, so this avoids the
-  // structure-factor sum for the majority of enumerated points.
+  // Select excited reflections first so |F|² is only summed for that thin shell
   const excited: { point: RecipPoint; position_2d: Vec2; excitation_error: number }[] = []
 
   for (const point of recip_points) {
@@ -125,8 +103,7 @@ export function compute_saed_pattern(
     const g_perp_v = g_x * in_plane_v[0] + g_y * in_plane_v[1] + g_z * in_plane_v[2]
     const g_perp_sq = g_perp_u * g_perp_u + g_perp_v * g_perp_v
 
-    // Exact excitation error, measured along the beam. Solving |k0 + g + s·ẑ| = 1/λ for
-    // k0 = (1/λ)·ẑ gives s = sqrt(K² − g_perp²) − (K + g_parallel), no small-angle expansion.
+    // Exact excitation error along the beam from |k0 + g + s·ẑ| = 1/λ (no small-angle expansion)
     const excitation_error =
       Math.sqrt(ewald_radius * ewald_radius - g_perp_sq) - (ewald_radius + g_parallel)
     if (Math.abs(excitation_error) >= excitation_cutoff) continue
@@ -141,9 +118,7 @@ export function compute_saed_pattern(
     excited.map((entry) => entry.point),
   )
 
-  // Laue order counts planes of the lattice ROW along the axis, so it must be measured
-  // against the primitive direction: [002] is the same beam direction as [001] and its FOLZ
-  // is one plane away, not two.
+  // Laue order is measured against the primitive direction: [002] has the same FOLZ as [001]
   const [zone_u, zone_v, zone_w] = math.reduce_miller_indices(zone_axis)
 
   const raw_spots: SaedSpot[] = excited.map(
@@ -154,8 +129,7 @@ export function compute_saed_pattern(
         hkl,
         position_2d,
         intensity: f_squared[spot_idx] * shape * shape,
-        // Exactly integral; the sign only encodes which side of the zone the reflection sits
-        // on, so report the zone order and let callers keep hkl for the sign.
+        // the sign (which side of the zone) stays readable from hkl
         laue_zone: Math.abs(hkl[0] * zone_u + hkl[1] * zone_v + hkl[2] * zone_w),
         d_spacing: 1 / g_norm,
         excitation_error,
@@ -187,7 +161,6 @@ export const saed_camera_pose = (
   return { direction: math.cross_3d(basis_u, basis_v), up: basis_v }
 }
 
-// Convenience for renderers: the largest |position_2d| in the pattern, i.e. the radius the
-// view has to cover. Returns 0 for an empty pattern.
+// Largest |position_2d|, i.e. the radius a view has to cover (0 for an empty pattern)
 export const saed_pattern_radius = (pattern: SaedPatternData): number =>
   pattern.spots.reduce((radius, spot) => Math.max(radius, Math.hypot(...spot.position_2d)), 0)

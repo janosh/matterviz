@@ -1,5 +1,4 @@
-// Gas phase thermodynamics for convex hull calculations
-// Enables atmosphere-controlled phase diagram analysis
+// Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
@@ -42,11 +41,9 @@ export const GAS_STOICHIOMETRY: Readonly<
 
 // Default Thermodynamic Data (abstracted - users can provide their own)
 
-// Standard chemical potential per atom on the 0 K enthalpy scale of the elements, matching 0 K
-// computed energies: μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T·S(T), divided by atoms per molecule.
-// Elemental gases sit at 0 at 0 K, so a 0 K computed reference E_0K becomes
-// E_0K + [H(T) - H(0 K)] - T·S(T) (+ k_B·T·ln(p/p0), all per atom). Dropping the enthalpy
-// increment (μ° = Δ_fH - T·S) overstated how far μ_O falls by 0.16 eV/atom at 1000 K.
+// Standard chemical potential per atom on the elements' 0 K enthalpy scale (matching 0 K
+// computed energies): μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T·S(T), per atom. Dropping the
+// enthalpy increment overstated how far μ_O falls by 0.16 eV/atom at 1000 K.
 // Source: NIST-JANAF Thermochemical Tables, 4th ed. (Chase 1998, https://janaf.nist.gov/tables):
 // O2 O-029, H2 H-050, N2 N-023, CO C-093, CO2 C-095, H2O H-064 (ideal gas), F2 F-054.
 
@@ -54,12 +51,9 @@ export const GAS_STOICHIOMETRY: Readonly<
 // oxfmt-ignore
 const TS_TEMPERATURES = [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
 
-// T*S(T) in eV PER ATOM (not per molecule) at TS_TEMPERATURES, interpolated between grid points.
-// O2 at 298 K: S = 205.15 J/mol/K = 0.6339 eV/molecule and the table holds 0.317, i.e. half of
-// it. compute_gas_correction's num_atoms factor assumes this, so regenerating the table per
-// molecule would scale every gas correction by its atom count. Barin/NBS tables as compiled by
-// PIRO (https://github.com/GENESIS-EFRC/piro), F2 from JANAF F-054; all within 1e-3 eV/atom of
-// JANAF.
+// T*S(T) in eV PER ATOM (not per molecule) at TS_TEMPERATURES: O2 at 298 K holds 0.317, half
+// of 0.6339 eV/molecule, as compute_gas_correction's num_atoms factor assumes. Barin/NBS data
+// via PIRO (https://github.com/GENESIS-EFRC/piro), F2 from JANAF F-054; within 1e-3 of JANAF.
 // oxfmt-ignore
 const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, number[]>> = {
   O2: [0, 0.317, 0.3192, 0.4433, 0.5718, 0.7041, 0.8396, 0.9781, 1.119, 1.2623, 1.4075, 1.5547, 1.7036, 1.8541, 2.006, 2.1594, 2.3141, 2.47, 2.6271, 2.7854],
@@ -100,19 +94,15 @@ function interpolate_ts(values: number[], temperature: number): number {
   const temps = TS_TEMPERATURES
   if (temperature <= temps[0]) return values[0]
   if (temperature >= temps[temps.length - 1]) return values[values.length - 1]
-
-  // Find bracketing indices
   let idx = 0
   while (idx < temps.length - 1 && temps[idx + 1] < temperature) idx++
-
   const fraction = (temperature - temps[idx]) / (temps[idx + 1] - temps[idx])
   return values[idx] + fraction * (values[idx + 1] - values[idx])
 }
 
 // Default provider backed by the built-in tables above. Stateless, so one shared instance.
 const DEFAULT_GAS_PROVIDER: GasThermodynamicsProvider = {
-  // μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T*S(T); the elemental gases (O2, N2, H2, F2) have
-  // Δ_fH = 0
+  // μ°(T) = Δ_fH(0 K) + [H(T) - H(0 K)] - T*S(T)
   get_standard_chemical_potential(gas: GasSpecies, temperature: number): number {
     const formation_enthalpy = DEFAULT_ENTHALPY[gas] ?? 0
     return (
@@ -131,8 +121,7 @@ export const get_default_gas_provider = (): GasThermodynamicsProvider => DEFAULT
 const gas_num_atoms = (gas: GasSpecies): number =>
   Object.values(GAS_STOICHIOMETRY[gas]).reduce((sum, count) => sum + count, 0)
 
-// Pressure part of the gas chemical potential, k_B·T·ln(P/P₀) / num_atoms in eV/atom: the
-// k_B·T·ln(P/P₀) term is per molecule, hence divided by the atoms per molecule
+// Pressure part of the gas chemical potential (eV/atom): k_B·T·ln(P/P₀) / atoms per molecule
 export const gas_pressure_term = (
   gas: GasSpecies,
   temperature: number,
@@ -266,17 +255,10 @@ export function compute_gas_correction(
   return correction
 }
 
-// Apply gas chemical potential corrections to elemental reference entries only.
-// IMPORTANT: Corrections are only applied to unary (single-element) entries.
-// This is thermodynamically correct because:
-// - Formation energy = E(compound) - Σ n_i * μ_i
-// - For gas-forming elements (O, N, H...), μ_i = μ(gas, T, P)
-// - For solid elements, μ_i = E(element)
-// If we applied corrections to ALL entries, they would cancel out in the
-// formation energy calculation, resulting in no change to the hull.
-// By only correcting unary references, we effectively replace the standard
-// elemental reference with the gas chemical potential at (T, P). A unary with a G(T) table
-// (its energy is G(T) after filter_entries_at_temperature) only gets the pressure term.
+// Apply gas chemical potential corrections to unary (elemental reference) entries only:
+// E_form = E(compound) - Σ n_i μ_i with μ_i = μ(gas, T, P) for gas-forming elements, so
+// shifting the references replaces μ_i (correcting every entry would cancel out). A unary
+// with a G(T) table (via filter_entries_at_temperature) only gets the pressure term.
 export function apply_gas_corrections(
   entries: PhaseData[],
   config: GasThermodynamicsConfig,
@@ -294,13 +276,11 @@ export function apply_gas_corrections(
       : 0
   }
 
-  // Elements whose reference energy moved: every formation energy measured against one of them
-  // is now stale, including on the compounds returned untouched, hence the second pass below.
+  // Elements whose reference moved: formation energies against them are now stale, including
+  // on untouched compounds, hence the second pass below
   const shifted_elements = new Set<string>()
 
   const corrected = entries.map((entry) => {
-    // Only apply corrections to unary (single-element) entries
-    // These serve as reference states for formation energy calculations
     const elements_in_entry = Object.entries(entry.composition).filter(
       ([, amt]) => typeof amt === `number` && amt > 0,
     )
@@ -310,11 +290,9 @@ export function apply_gas_corrections(
       ? tabulated_shift(elements_in_entry[0][0] as ElementSymbol)
       : compute_gas_correction(entry, config, temperature, pressures)
 
-    // If no correction needed, return entry unchanged
     if (Math.abs(correction) < 1e-12) return entry
 
-    // compute_gas_correction is PER-ATOM: shift energy_per_atom by it and rescale total
-    // energy by atom count so downstream formation energies use the corrected values
+    // compute_gas_correction is PER-ATOM: shift energy_per_atom and rescale the total
     const atoms = count_atoms_in_composition(entry.composition)
     const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + correction
     shifted_elements.add(elements_in_entry[0][0])

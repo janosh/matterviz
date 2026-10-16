@@ -203,9 +203,7 @@ describe(`PlotMarginals integration`, () => {
           Number(rect.getAttribute(`height`)),
         ),
       )
-    const auto = await mount_scatter({
-      marginals: { top: { type: `histogram`, size: 80 } },
-    })
+    const auto = await mount_scatter({ marginals: { top: { type: `histogram`, size: 80 } } })
     // a value_range far above the bin counts squashes the bars
     const pinned = await mount_scatter({
       marginals: { top: { type: `histogram`, size: 80, value_range: [0, 1000] } },
@@ -395,9 +393,7 @@ describe(`marginal hover tooltips`, () => {
   test.each(marginal_utils.MARGINAL_SIDES)(
     `%s CDF hover retains the selected sample after resizing`,
     async (side) => {
-      const root = await mount_scatter({
-        marginals: { [side]: `cdf` },
-      })
+      const root = await mount_scatter({ marginals: { [side]: `cdf` } })
       const before = (await hover_strip(root, 0.47))?.textContent
       expect(before).toContain(`CDF:`)
       await resize_element(root, 900, 600)
@@ -482,9 +478,7 @@ describe(`marginal hover tooltips`, () => {
     const tooltip = createRawSnippet(() => ({
       render: () => `<span class="custom-tip">custom marginal tip</span>`,
     }))
-    const root = await mount_scatter({
-      marginals: { top: { type: `kde`, tooltip } },
-    })
+    const root = await mount_scatter({ marginals: { top: { type: `kde`, tooltip } } })
     await hover_strip(root)
     expect(root.querySelector(`.plot-tooltip .custom-tip`)?.textContent).toBe(
       `custom marginal tip`,
@@ -550,9 +544,7 @@ describe(`marginal value-axis`, () => {
   })
 
   test(`y-strip (right kde) renders a horizontal 'density' value-axis`, async () => {
-    const root = await mount_scatter({
-      marginals: { right: { type: `kde` } },
-    })
+    const root = await mount_scatter({ marginals: { right: { type: `kde` } } })
     const axis = root.querySelector(`.marginal-axis-right`)
     expect(axis).not.toBeNull()
     expect(axis?.querySelector(`.marginal-axis-title`)?.textContent).toBe(`density`)

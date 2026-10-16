@@ -24,30 +24,15 @@ const make_children = (text: string = `Test`) =>
     render: () => `<span>${text}</span>`,
   }))
 
+// oxfmt-ignore
 test.each([
   { label: `Energy (eV)`, value: `−789`, expected: `Energy: −789 eV`, units: `eV` },
-  {
-    label: `Heat capacity (J/(mol·K))`,
-    value: `1.23`,
-    expected: `Heat capacity: 1.23 J/(mol·K)`,
-    units: `J/(mol·K)`,
-  },
+  { label: `Heat capacity (J/(mol·K))`, value: `1.23`, expected: `Heat capacity: 1.23 J/(mol·K)`, units: `J/(mol·K)` },
   { label: `Time (ms)`, value: `2.00`, unit: `ms`, expected: `Time: 2.00 ms`, units: `ms` },
-  {
-    label: `ρ residual (rms)`,
-    value: `0.02`,
-    unit: `a.u.`,
-    expected: `ρ residual (rms): 0.02 a.u.`,
-    units: `a.u.`,
-  },
+  { label: `ρ residual (rms)`, value: `0.02`, unit: `a.u.`, expected: `ρ residual (rms): 0.02 a.u.`, units: `a.u.` },
   { label: `Fraction`, value: `25%`, expected: `Fraction: 25 %`, units: `%` },
   { label: `g(r)`, value: 2, expected: `g(r): 2`, units: undefined },
-  {
-    label: `F<sub>max</sub> (eV/Å)`,
-    value: `0.35`,
-    expected: `Fmax: 0.35 eV/Å`,
-    units: `eV/Å`,
-  },
+  { label: `F<sub>max</sub> (eV/Å)`, value: `0.35`, expected: `Fmax: 0.35 eV/Å`, units: `eV/Å` },
 ])(`renders $label units after the value in small text`, ({ expected, units, ...props }) => {
   const target = document.createElement(`div`)
   document.body.append(target)
@@ -72,6 +57,11 @@ const mount_tooltip = (
   flushSync()
   return doc_query(`.plot-tooltip`)
 }
+// Set a CSS custom property on <body> for the current test only
+const body_var = (name: string, value: string): void => {
+  document.body.style.setProperty(name, value)
+  onTestFinished(() => void document.body.style.removeProperty(name))
+}
 
 describe(`PlotTooltip`, () => {
   test(`renders with default offset, absolute position, nowrap chips, class and style`, () => {
@@ -82,10 +72,9 @@ describe(`PlotTooltip`, () => {
       class: `custom-tooltip my-class`,
       style: `z-index: 9999; backdrop-filter: blur(4px);`,
     })
-    expect(tooltip.style.left).toBe(`106px`) // 100 + default offset 6
-    expect(tooltip.style.top).toBe(`200px`)
-    expect(tooltip.style.position).toBe(`absolute`)
-    expect(tooltip.style.pointerEvents).toBe(`none`)
+    const { left, top, position, pointerEvents: events } = tooltip.style
+    // 100 + default offset 6
+    expect([left, top, position, events]).toEqual([`106px`, `200px`, `absolute`, `none`])
     expect(tooltip.textContent).toBe(`Test content`)
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
@@ -105,10 +94,7 @@ describe(`PlotTooltip`, () => {
     [`transparent`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
     [`var(--unset-color)`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
   ])(`bg_color %s paints %s with %s text`, (background, expected_bg, expected_text) => {
-    document.body.style.setProperty(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
-    onTestFinished(() => {
-      document.body.style.removeProperty(`--tooltip-bg`)
-    })
+    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const tooltip = mount_tooltip({ bg_color: background })
     expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
     expect(d3_color(tooltip.style.color)?.formatRgb()).toBe(expected_text)
@@ -121,10 +107,7 @@ describe(`PlotTooltip`, () => {
     [undefined, `rgb(5, 5, 5)`, `white`],
     [() => `#4fc3f7`, `rgb(79, 195, 247)`, `black`],
   ])(`hover_tooltip with fill getter %s paints %s`, (bg_color, expected_bg, expected_text) => {
-    document.body.style.setProperty(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
-    onTestFinished(() => {
-      document.body.style.removeProperty(`--tooltip-bg`)
-    })
+    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const mark = document.createElement(`span`)
     document.body.append(mark)
     const cleanup = $effect.root(() => {
@@ -140,15 +123,10 @@ describe(`PlotTooltip`, () => {
   })
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
-    document.body.style.setProperty(`--series-color`, `white`)
-    onTestFinished(() => {
-      document.body.style.removeProperty(`--series-color`)
-    })
+    body_var(`--series-color`, `white`)
     const tooltip = mount_tooltip({ bg_color: `var(--series-color)` })
-    expect([
-      d3_color(tooltip.style.backgroundColor)?.formatHex(),
-      tooltip.style.color,
-    ]).toEqual([`#ffffff`, `black`])
+    const { backgroundColor, color } = tooltip.style
+    expect([d3_color(backgroundColor)?.formatHex(), color]).toEqual([`#ffffff`, `black`])
     document.body.style.setProperty(`--series-color`, `black`)
     await vi.waitFor(() => expect(tooltip.style.color).toBe(`white`))
   })
@@ -171,14 +149,8 @@ describe(`PlotTooltip`, () => {
             },
           }),
         )
-        onTestFinished(() => {
-          vi.stubGlobal(name, Original)
-        })
-        return {
-          get count() {
-            return count
-          },
-        }
+        onTestFinished(() => void vi.stubGlobal(name, Original))
+        return () => count
       }
       const resize_observers = count_constructions(`ResizeObserver`)
       const mutation_observers = count_constructions(`MutationObserver`)
@@ -191,11 +163,9 @@ describe(`PlotTooltip`, () => {
       })
       flushSync()
       const tooltip = doc_query(`.plot-tooltip`)
-      const at_mount = [
-        resize_observers.count,
-        mutation_observers.count,
-        computed_styles.mock.calls.length,
-      ]
+      const n_styles = () => computed_styles.mock.calls.length
+      const counts = () => [resize_observers(), mutation_observers(), n_styles()]
+      const at_mount = counts()
       expect(at_mount[0]).toBe(1)
       for (let idx = 1; idx <= 50; idx++) {
         props.x = idx
@@ -204,11 +174,7 @@ describe(`PlotTooltip`, () => {
       }
       await new Promise((resolve) => setTimeout(resolve, 0)) // MutationObserver callbacks
       expect(tooltip.style.left).toBe(`56px`)
-      expect([
-        resize_observers.count,
-        mutation_observers.count,
-        computed_styles.mock.calls.length,
-      ]).toEqual(at_mount)
+      expect(counts()).toEqual(at_mount)
     },
   )
 
@@ -226,43 +192,15 @@ describe(`PlotTooltip`, () => {
   // Without a constraining box the signed offset is applied verbatim, absolute or fixed.
   // With one, the fallback size drives decoration-aware placement until a measurement lands.
   const box = { width: 100, height: 100 }
+  const small = { width: 20, height: 10 }
+  // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof PlotTooltip>>, number, number]>([
     [`absolute offset`, { x: 50, y: 40, offset: { x: -10, y: -5 } }, 40, 35],
     [`fixed offset`, { x: 50, y: 40, fixed: true, offset: { x: -10, y: -5 } }, 40, 35],
     [`positive x offset`, { x: 50, y: 40, offset: { x: 10, y: -10 } }, 60, 30],
-    [
-      `fallback size dodging an exclusion rect`,
-      {
-        x: 50,
-        y: 50,
-        offset: { x: 0, y: 0 },
-        constrain_to: box,
-        fallback_size: { width: 20, height: 10 },
-        exclusion_rects: [{ x: 50, y: 50, width: 20, height: 10 }],
-      },
-      50,
-      40,
-    ],
-    [
-      `fallback size flipping at the box edge`,
-      { x: 95, y: 50, constrain_to: box, fallback_size: { width: 30, height: 20 } },
-      59,
-      50,
-    ],
-    [
-      `decoration-aware placement kept fixed`,
-      {
-        x: 95,
-        y: 50,
-        fixed: true,
-        offset: { x: 5, y: 5 },
-        constrain_to: box,
-        fallback_size: { width: 20, height: 10 },
-        exclusion_rects: [],
-      },
-      70,
-      55,
-    ],
+    [`fallback size dodging an exclusion rect`, { x: 50, y: 50, offset: { x: 0, y: 0 }, constrain_to: box, fallback_size: small, exclusion_rects: [{ x: 50, y: 50, ...small }] }, 50, 40],
+    [`fallback size flipping at the box edge`, { x: 95, y: 50, constrain_to: box, fallback_size: { width: 30, height: 20 } }, 59, 50],
+    [`decoration-aware placement kept fixed`, { x: 95, y: 50, fixed: true, offset: { x: 5, y: 5 }, constrain_to: box, fallback_size: small, exclusion_rects: [] }, 70, 55],
   ])(`placement: %s`, (_desc, props, left, top) => {
     const tooltip = mount_tooltip(props)
     expect(tooltip.style.position).toBe(props.fixed ? `fixed` : `absolute`)
@@ -277,25 +215,18 @@ describe(`PlotTooltip`, () => {
     [`bottom edge flips up`, 100, innerHeight - 10, 110, innerHeight - 10 - 5 - 30],
     [`corner clamps`, innerWidth + 50, innerHeight + 50, innerWidth - 60, innerHeight - 30],
   ])(`fixed placement at viewport %s`, (_desc, coord_x, coord_y, left, top) => {
-    const tooltip = mount_tooltip({
-      x: coord_x,
-      y: coord_y,
-      fixed: true,
-      offset: { x: 10, y: 5 },
-      fallback_size: { width: 60, height: 30 },
-    })
-    expect(tooltip.style.left).toBe(`${left}px`)
-    expect(tooltip.style.top).toBe(`${top}px`)
+    const [offset, fallback_size] = [
+      { x: 10, y: 5 },
+      { width: 60, height: 30 },
+    ]
+    const tip = mount_tooltip({ x: coord_x, y: coord_y, fixed: true, offset, fallback_size })
+    expect([tip.style.left, tip.style.top]).toEqual([`${left}px`, `${top}px`])
   })
 
+  // a 100px box with a 10px fallback size, so measured sizes show in the placement
+  const fallback_box = { constrain_to: box, fallback_size: { width: 10, height: 10 } }
   test(`re-measures when its content resizes`, () => {
-    const tooltip = mount_tooltip({
-      x: 80,
-      y: 50,
-      offset: { x: 0, y: 0 },
-      constrain_to: { width: 100, height: 100 },
-      fallback_size: { width: 10, height: 10 },
-    })
+    const tooltip = mount_tooltip({ x: 80, y: 50, offset: { x: 0, y: 0 }, ...fallback_box })
     expect(tooltip.style.left).toBe(`80px`)
     const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(50)
     try {
@@ -313,17 +244,10 @@ describe(`PlotTooltip`, () => {
       .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
       .mockReturnValue(20)
     try {
-      const tooltip = mount_tooltip({
-        x: 75,
-        y: 50,
-        offset: { x: 0, y: 0 },
-        constrain_to: { width: 100, height: 100 },
-        fallback_size: { width: 10, height: 10 },
-        exclusion_rects: [],
-      })
+      const props = { x: 75, y: 50, offset: { x: 0, y: 0 }, exclusion_rects: [] }
+      const tooltip = mount_tooltip({ ...props, ...fallback_box })
       flushSync()
-      expect(tooltip.style.left).toBe(`35px`)
-      expect(tooltip.style.top).toBe(`50px`)
+      expect([tooltip.style.left, tooltip.style.top]).toEqual([`35px`, `50px`])
     } finally {
       width_spy.mockRestore()
       height_spy.mockRestore()
@@ -339,16 +263,9 @@ describe(`PlotTooltip`, () => {
     [`on`, true, `${50 + DEFAULT_CURSOR_SIZE.width}px`],
     [`left to its default`, undefined, `${50 + DEFAULT_CURSOR_SIZE.width}px`],
   ])(`widens a narrower offset to the glyph with avoid_cursor %s`, (_desc, flag, left) => {
-    expect(
-      mount_tooltip({
-        x: 50,
-        y: 50,
-        avoid_cursor: flag,
-        offset: { x: 5, y: 5 },
-        constrain_to: { width: 400, height: 400 },
-        fallback_size: { width: 20, height: 10 },
-      }).style.left,
-    ).toBe(left)
+    const constrain_to = { width: 400, height: 400 }
+    const props = { x: 50, y: 50, offset: { x: 5, y: 5 }, constrain_to, fallback_size: small }
+    expect(mount_tooltip({ ...props, avoid_cursor: flag }).style.left).toBe(left)
   })
 
   // The bug `avoid_cursor` exists for: a tooltip too wide to sit beside its anchor
@@ -362,16 +279,10 @@ describe(`PlotTooltip`, () => {
     [true, `351px`],
   ])(`avoid_cursor=%s places a clamped wide tooltip at top %s`, (avoid_cursor, top) => {
     // The usage sunburst that reported this: a long breadcrumb in a ~1135px pane
-    expect(
-      mount_tooltip({
-        x: 900,
-        y: 400,
-        avoid_cursor,
-        offset: { x: 20, y: 5 },
-        constrain_to: { width: 1135, height: 700 },
-        fallback_size: { width: 1030, height: 44 },
-      }).style.top,
-    ).toBe(top)
+    const constrain_to = { width: 1135, height: 700 }
+    const fallback_size = { width: 1030, height: 44 }
+    const props = { x: 900, y: 400, avoid_cursor, offset: { x: 20, y: 5 }, constrain_to }
+    expect(mount_tooltip({ ...props, fallback_size }).style.top).toBe(top)
   })
 })
 

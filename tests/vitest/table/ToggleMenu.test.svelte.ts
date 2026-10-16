@@ -209,9 +209,7 @@ describe(`ToggleMenu`, () => {
   ]
 
   it.each([false, true])(`toggles a section from collapsed=%s`, async (collapsed) => {
-    mount_menu(two_groups, {
-      collapsed_sections: collapsed ? [`G1`] : [],
-    })
+    mount_menu(two_groups, { collapsed_sections: collapsed ? [`G1`] : [] })
     const headers = document.querySelectorAll<HTMLElement>(`.section-header`)
     expect(headers[1].getAttribute(`aria-expanded`)).toBe(`true`)
     for (const expected of [!collapsed, collapsed]) {

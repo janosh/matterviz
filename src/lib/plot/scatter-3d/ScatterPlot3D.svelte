@@ -64,7 +64,6 @@
     color_scale = SCALE_DEFAULTS.color,
     color_bar = {},
     size_scale = SCALE_DEFAULTS.size_3d,
-    // Legend
     legend = {},
     show_legend,
     // Camera settings
@@ -78,26 +77,20 @@
     rotate_speed = 1,
     zoom_speed = 2,
     pan_speed = 2,
-    // Lighting
     ambient_light = 0.6,
     directional_light = 0.8,
-    // Rendering quality
     sphere_segments = 16,
     point_tween,
-    // Gizmo
     gizmo = true,
     // Controls
     show_controls,
     controls_open = $bindable(false),
     controls_toggle_props,
     controls_pane_props,
-    // State
     hovered = $bindable(false),
     tooltip_point = $bindable(null),
-    // Callbacks
     on_point_click,
     on_point_hover,
-    // Fullscreen
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     // Binding refs
@@ -151,8 +144,7 @@
 
   let [width, height] = $state([0, 0])
 
-  // Track mounted state to avoid SSR/hydration mismatch with Canvas
-  let mounted = $state(false)
+  let mounted = $state(false) // avoids SSR/hydration mismatch with Canvas
   onMount(() => (mounted = true))
 
   // Points are built inside the Canvas scene, so fail fast on misaligned arrays out here
@@ -197,7 +189,6 @@
   const auto_color_range = $derived(auto_scale_range(color_extent, color_scale_type))
   const resolved_color_scale = $derived(resolve_color_scale(color_scale, auto_color_range))
 
-  // Legend data
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
@@ -365,7 +356,6 @@
       </Canvas>
     {/if}
 
-    <!-- Color Bar -->
     {#if has_color_bar && color_bar}
       <!-- spread first, so the corner placement and default bar size below append to the
       caller's styles instead of being dropped by it -->

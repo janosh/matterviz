@@ -53,14 +53,6 @@
   } from './types'
   import { is_fermi_surface_data } from './types'
 
-  type FermiSurfaceControlName = `filename` | `fullscreen` | `controls` | `export-pane`
-
-  type FermiFullscreenData = {
-    fermi_data?: FermiSurfaceData
-    bz_data?: BrillouinZoneData
-    fullscreen?: boolean
-  }
-
   let {
     fermi_data = $bindable(),
     band_data = $bindable(),
@@ -138,7 +130,7 @@
       custom_property_label?: string
       selected_bands?: number[]
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
-      show_controls?: ShowControlsProp<FermiSurfaceControlName>
+      show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
       fullscreen?: boolean
       width?: number
       height?: number
@@ -155,7 +147,11 @@
       on_file_drop?: FileLoadCallback
       on_file_load?: (data: FermiFileLoadData) => void
       on_error?: (data: FermiErrorData) => void
-      on_fullscreen_change?: (data: FermiFullscreenData) => void
+      on_fullscreen_change?: (data: {
+        fermi_data?: FermiSurfaceData
+        bz_data?: BrillouinZoneData
+        fullscreen: boolean
+      }) => void
       tooltip?: FermiTooltipProp
       on_point_hover?: (data: FermiHoverData | null) => void
     } & HTMLAttributes<HTMLDivElement> = $props()
@@ -170,33 +166,53 @@
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
+  const attempt = <T>(prefix: string, compute: () => T): { value?: T; error?: string } => {
+    try {
+      return { value: compute() }
+    } catch (err) {
+      return { error: `${prefix}: ${to_error(err).message}` }
+    }
+  }
   // Normalise the data props once at the boundary: pymatviz's `fermi_data`/`band_data` traits
   // can only travel as JSON (plain vertex/face rows, nested energies), while everything below
   // consumes typed arrays. Typed input passes through by identity. A malformed payload is
   // reported through error_msg/on_error instead of throwing mid-render. Separate deriveds, so
   // committing an extracted fermi_data does not re-normalise a JSON band_data into a new grid
   // (which re-ran the extraction every frame).
-  const try_normalize = <T>(normalize: () => T): { value?: T; error?: string } => {
-    try {
-      return { value: normalize() }
-    } catch (err) {
-      return { error: `Invalid Fermi surface data: ${to_error(err).message}` }
-    }
-  }
+  const invalid = `Invalid Fermi surface data`
   const surface_result = $derived(
-    try_normalize(() => fermi_data && normalize_fermi_surface(fermi_data)),
+    attempt(invalid, () => fermi_data && normalize_fermi_surface(fermi_data)),
   )
   const grid_result = $derived(
-    try_normalize(() => band_data && normalize_band_grid(band_data)),
+    attempt(invalid, () => band_data && normalize_band_grid(band_data)),
   )
   const surface_data = $derived(surface_result.value)
   const grid_data = $derived(grid_result.value)
+
+  // BZ of whichever reciprocal lattice is available (priority order)
+  const k_lattice = $derived(
+    surface_data?.k_lattice ??
+      grid_data?.k_lattice ??
+      (structure?.lattice?.matrix
+        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+        : null),
+  )
+  const bz_result = $derived(
+    attempt(`BZ computation failed`, () => k_lattice && compute_brillouin_zone(k_lattice, 1)),
+  )
+  $effect(() => {
+    bz_data = bz_result.value ?? undefined
+  })
+
   // The notice this effect raised is cleared once a later payload normalises, so a host that
   // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
-  // supplied by the caller are left alone.
+  // supplied by the caller are left alone. Only a structure's (user input) zone is reported.
   let reported_normalize_error: string | undefined
   $effect(() => {
-    const error = surface_result.error ?? grid_result.error
+    const error =
+      surface_result.error ??
+      grid_result.error ??
+      (structure?.lattice?.matrix ? bz_result.error : undefined)
     if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
       error_msg = undefined
     }
@@ -342,34 +358,6 @@
   const resolved_color_scale = $derived(
     resolve_color_scale(color_scale, fitted_value_range).color_scale,
   )
-
-  // BZ of whichever reciprocal lattice is available (priority order)
-  const k_lattice = $derived(
-    surface_data?.k_lattice ??
-      grid_data?.k_lattice ??
-      (structure?.lattice?.matrix
-        ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-        : null),
-  )
-  $effect(() => {
-    if (!k_lattice) {
-      bz_data = undefined
-      return
-    }
-    try {
-      bz_data = compute_brillouin_zone(k_lattice, 1)
-    } catch (err) {
-      const msg = to_error(err).message
-      console.warn(`BZ computation failed:`, msg)
-      bz_data = undefined
-      // Only report error for structure-derived lattice (user-provided data)
-      if (structure?.lattice?.matrix) {
-        const err_msg = `BZ computation failed: ${msg}`
-        error_msg = err_msg
-        untrack(() => on_error?.({ error_msg: err_msg }))
-      }
-    }
-  })
 
   // Auto-enable BZ tiling when irreducible data is detected
   $effect(() => {

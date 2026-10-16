@@ -4,8 +4,6 @@ import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
 import { clamp } from '#lib/math.js'
 import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
-import type { AnyStructure } from '#lib/structure/index.js'
-import { create_structure_filename } from '#lib/structure/export.js'
 import { abortable, to_error } from '#lib/utils.js'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera, OrthographicCamera } from 'three/webgpu'
@@ -160,16 +158,16 @@ export function paint_png_blob(
 // Export a canvas as PNG named `<basename>-<dpi>dpi.png` (triggers browser download)
 export async function export_canvas_as_png(
   canvas: HTMLCanvasElement,
-  structure_or_filename: AnyStructure | string | undefined,
+  filename: string,
   png_dpi = DEFAULT_PNG_DPI,
   save: FileSaver = download,
 ): Promise<void> {
-  const basename =
-    typeof structure_or_filename === `string`
-      ? structure_or_filename
-      : create_structure_filename(structure_or_filename, `png`)
-  const filename = `${basename.replace(/\.png$/i, ``)}-${Math.round(png_dpi)}dpi.png`
-  await save(await canvas_to_png_blob(canvas, png_dpi), filename, `image/png`)
+  const basename = filename.replace(/\.png$/i, ``)
+  await save(
+    await canvas_to_png_blob(canvas, png_dpi),
+    `${basename}-${Math.round(png_dpi)}dpi.png`,
+    `image/png`,
+  )
 }
 
 // === Export model ===
@@ -498,16 +496,16 @@ function svg_viewbox(svg: SVGElement, padding = 0): SvgViewbox | null {
       ? // oxlint-disable-next-line unicorn/prefer-number-coercion -- computed CSS dimensions include px
         [0, 0, Number.parseFloat(style.width), Number.parseFloat(style.height)]
       : null
-  if (parts?.length !== 4 || !parts.every(Number.isFinite)) return null
+  if (parts?.length !== 4) return null
   const [coord_x, coord_y, width, height] = parts
-  if (width <= 0 || height <= 0) return null
+  if (!(width > 0 && height > 0)) return null
   const padded: SvgViewbox = [
     coord_x - padding,
     coord_y - padding,
     width + 2 * padding,
     height + 2 * padding,
   ]
-  return padded.every(Number.isFinite) && padded[2] > 0 && padded[3] > 0 ? padded : null
+  return padded.every(Number.isFinite) ? padded : null
 }
 
 // Standalone SVG markup of a live figure, never mutating it: computed paint styles inlined

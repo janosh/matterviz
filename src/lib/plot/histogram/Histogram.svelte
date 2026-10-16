@@ -174,9 +174,8 @@
   )
   let series: HistogramSeries[] = $derived(legend_vis.resolve(series_in))
 
-  // Merge defaults without writing library-owned values into the caller's bound state.
-  // No default tick format: PlotAxis falls back to format_num, which uses SI
-  // prefixes above 1 but plain decimals below (0.2 must not render as 200m)
+  // Merge defaults without writing into the caller's bound state. No default tick format:
+  // PlotAxis' format_num uses plain decimals below 1 (0.2 must not render as 200m)
   const { format: _default_format, ...axis_defaults } = AXIS_DEFAULTS
   const { format: _x2_format, ...x2_axis_defaults } = X2_AXIS_DEFAULTS
   const final_x_axis = $derived<AxisConfig>({ ...axis_defaults, label: `Value`, ...x_axis })
@@ -342,9 +341,8 @@
   const bar_foot = ([lower, upper]: Vec2): number =>
     clamp(0, Math.min(lower, upper), Math.max(lower, upper))
 
-  // Obstacle field in normalized [0,1] plot coords (y=0 at top) spanning each filled bar, so the
-  // legend can't hide inside one. Built from histogram_bins (pad-independent) + ranges so the
-  // crowding decision can't see its own reservation.
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top) spanning each filled bar.
+  // Pad-independent, so the crowding decision can't see its own reservation.
   const obstacles_norm = $derived.by(() =>
     with_obstacle_frame(frame, histogram_bins.length > 0, () => {
       const { current } = frame.ranges
@@ -404,9 +402,8 @@
     })),
   )
 
-  // Per-series hatch/texture tiles resolved against the bar color, indexed by series (null:
-  // plain fill; ids scoped to this instance). Derived from the series, not the bins, so
-  // pan/zoom frames that rebin do not re-resolve tiles and re-diff the <defs>.
+  // Per-series pattern tiles (null: plain fill), derived from the series, not the bins, so
+  // rebinning pan/zoom frames don't re-resolve tiles and re-diff the <defs>
   const pattern_uid = unique_id(`histogram`)
   let hist_patterns = $derived(
     series.map((series_data, series_idx) =>
@@ -486,8 +483,7 @@
     }
 
   // === Export ===
-  // Bins have an extent, so CSV reports edges rather than the (x, y) the shared long
-  // format would collapse them to.
+  // Bins have an extent, so CSV reports edges rather than the shared (x, y) long format
   const export_sources = {
     csv: csv_source(() => ({
       header: [`series`, `bin_start`, `bin_end`, `count`, `value`],

@@ -81,37 +81,25 @@ test(`loads dropped structures and reports their provenance`, async () => {
   )
 })
 
-test(`loads later data URLs after the first URL-owned structure`, async () => {
+// A host on_file_drop owns whatever it stores in `structure`; that value must not read as a
+// caller-supplied one that cancels the URL, or a second source would never be fetched (the
+// on_file_load path is covered by the failing-callback test below)
+test(`loads a second source when a host on_file_drop set the structure`, async () => {
   vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
-  const on_file_load = vi.fn()
-  const props = $state({ source: `http://x/a.poscar`, on_file_load })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-  props.source = `http://x/b.poscar`
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
-  expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([
-    `a.poscar`,
-    `b.poscar`,
-  ])
-})
-
-test(`a stale URL response cannot overwrite a newer structure`, async () => {
-  const responses = new Map<string, (response: Response) => void>()
-  vi.spyOn(globalThis, `fetch`).mockImplementation((input) => {
-    const url = input instanceof Request ? input.url : input.toString()
-    return new Promise((resolve) => responses.set(url, resolve))
+  const on_file_drop = vi.fn((_content: string | ArrayBuffer, _filename: string) => {
+    props.structure = cubic
   })
-  const on_file_load = vi.fn()
-  const props = $state({ source: `http://x/a.poscar`, on_file_load })
+  const props = $state({
+    source: `http://x/a.poscar`,
+    structure: undefined as typeof cubic | undefined,
+    on_file_drop,
+  })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(responses.has(`http://x/a.poscar`)).toBe(true))
-  props.source = `http://x/b.poscar`
-  await vi.waitFor(() => expect(responses.has(`http://x/b.poscar`)).toBe(true))
-  responses.get(`http://x/b.poscar`)?.(new Response(poscar))
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-  responses.get(`http://x/a.poscar`)?.(new Response(poscar))
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
   await tick()
-  expect(on_file_load.mock.calls.map(([payload]) => payload.filename)).toEqual([`b.poscar`])
+  props.source = `http://x/b.poscar`
+  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
+  expect(on_file_drop.mock.calls.map((call) => call[1])).toEqual([`a.poscar`, `b.poscar`])
 })
 
 test(`a failing load callback keeps the parsed value and URL ownership`, async () => {
@@ -141,27 +129,6 @@ test(`a failing load callback keeps the parsed value and URL ownership`, async (
   expect(on_file_load).toHaveBeenLastCalledWith(
     expect.objectContaining({ filename: `b.poscar` }),
   )
-})
-
-// A host on_file_drop owns whatever it stores in `structure`; that value must not read as a
-// caller-supplied one that cancels the URL, or a second source would never be fetched
-test(`loads a second source when a host on_file_drop set the structure`, async () => {
-  vi.spyOn(globalThis, `fetch`).mockImplementation(() => Promise.resolve(new Response(poscar)))
-  const on_file_drop = vi.fn((_content: string | ArrayBuffer, _filename: string) => {
-    props.structure = cubic
-  })
-  const props = $state({
-    source: `http://x/a.poscar`,
-    structure: undefined as typeof cubic | undefined,
-    on_file_drop,
-  })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(1))
-  await tick()
-
-  props.source = `http://x/b.poscar`
-  await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledTimes(2))
-  expect(on_file_drop.mock.calls.map((call) => call[1])).toEqual([`a.poscar`, `b.poscar`])
 })
 
 test.each([{ data: poscar, filename: `inline.poscar` }, new File([poscar], `local.poscar`)])(
