@@ -463,7 +463,8 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
     added_bonds: [],
   })
   const sites = [0, 3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
-  mount_structure({ structure: { sites }, show_bonds: `never` }, state)
+  // thin bonds, so an atom's cap rises above a delete-mode bond's (5x) hit cylinder
+  mount_structure({ structure: { sites }, show_bonds: `never`, bond_thickness: 0.02 }, state)
   const scene_interactivity = interactivity()
   // Cast a ray straight down onto x and press there, as a click does
   const click = (x_coord: number, init: MouseEventInit = {}, type = `click`) => {
@@ -506,6 +507,15 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   state.bond_edit_mode = `delete`
   flushSync()
   click(1.5)
+  expect(state.added_bonds).toEqual([])
+  // in delete mode a bond outranks the atom in front of it, which ignores the click
+  state.bond_edit_mode = `add`
+  flushSync()
+  click(0)
+  click(3)
+  state.bond_edit_mode = `delete`
+  flushSync()
+  click(0.2) // straight down through atom 0's cap before the bond's hit cylinder
   expect(state.added_bonds).toEqual([])
 })
 

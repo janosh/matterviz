@@ -2186,6 +2186,8 @@
         {@const is_delete_mode = bond_edit_mode === `delete`}
         {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
         {@const bond_hover_radius = bond_thickness * 1.1}
+        <!-- delete mode: a bond under the cursor wins over atoms in front of it (pick_rank),
+        which ignore clicks there, so it is the one highlighted and removed -->
         <T.Mesh
           geometry={bond_hit_geometry}
           material={hit_material}
@@ -2216,6 +2218,7 @@
           onpointerenter={() => (hovered_bond_key = bond_key)}
           onpointermove={() => (hovered_bond_key = bond_key)}
           onpointerleave={() => (hovered_bond_key = null)}
+          userData={{ pick_rank: is_delete_mode ? 1 : 0 }}
         />
         {#if is_hovered}
           <T.Mesh

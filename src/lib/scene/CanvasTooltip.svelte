@@ -64,7 +64,6 @@
     const same = (key: keyof Screen) => screen && Math.abs(next[key] - screen[key]) < 0.5
     if (same(`x`) && same(`y`) && same(`radius`)) return
     screen = next
-    bounds = clip_bounds(host)
   }
   // follow camera motion on rendered frames, like threlte's <HTML>
   useTask(project, { stage: renderStage, autoInvalidate: false })
@@ -73,6 +72,12 @@
     anchor.position.set(...position)
     void [anchor_radius, host, $size]
     untrack(project)
+  })
+
+  // Measured once the tooltip is in the DOM: hosts may lift their clip only while one shows (a
+  // gallery card's overflow), so a box read before mounting would keep it inside the card
+  $effect(() => {
+    if (screen && host) bounds = clip_bounds(host)
   })
 
   const portal_to_host = (node: HTMLElement) => {
