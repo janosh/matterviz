@@ -1,5 +1,5 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { KPathData } from './types'
+import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
+import type { BrillouinZoneData, BZHoverData, KPathData } from './types'
 import * as math from '#lib/math.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
@@ -55,6 +55,28 @@ export const cartesian_to_fractional = (
   k_lattice_inv: Matrix3x3 | null,
   cart: Vec3,
 ): Vec3 | null => k_lattice_inv && math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+
+// Tooltip record for a k-point hovered on the zone, its IBZ wedge or a k-path
+export function bz_hover_data(
+  { order, volume }: Pick<BrillouinZoneData, `order` | `volume`>,
+  k_lattice_inv: Matrix3x3 | null,
+  position_cartesian: Vec3,
+  screen_position: Point2D,
+  { is_ibz = false, ibz_volume = null }: { is_ibz?: boolean; ibz_volume?: number | null } = {},
+): BZHoverData {
+  return {
+    position_cartesian,
+    position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+    screen_position,
+    is_ibz,
+    bz_order: order,
+    bz_volume: volume,
+    ibz_volume,
+    // the point group order
+    symmetry_multiplicity:
+      ibz_volume !== null && ibz_volume > 0 ? Math.round(volume / ibz_volume) : null,
+  }
+}
 
 // Centroid of polyhedron vertices, used as orbit/rotation target by BZ + Fermi scenes
 export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>

@@ -17,7 +17,7 @@
   import {
     bind_renderer,
     create_scene_camera,
-    front_hit,
+    scene_interactivity,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -26,7 +26,6 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
   import { T } from '@threlte/core'
-  import * as extras from '@threlte/extras'
   import {
     BufferGeometry,
     ClippingGroup,
@@ -145,14 +144,9 @@
     threlte.invalidate()
   })
 
-  // Only the front-most visible sheet gets the pointer event (see front_hit); a k-path drawn
-  // through the zone wins over sheets in front of it, or most of it could not be hovered
-  const { enabled: hover_enabled } = extras.interactivity({
-    filter: (hits) => {
-      const path_hit = hits.find((hit) => hit.object.userData.kpath_proxy)
-      return front_hit(path_hit ? [path_hit] : hits, clip_plane)
-    },
-  })
+  // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
+  // wins over sheets in front of it (its pick_rank), or most of it could not be hovered
+  const { enabled: hover_enabled } = scene_interactivity({ clip_plane: () => clip_plane })
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(

@@ -230,10 +230,7 @@
         scale={VECTOR_SCALE}
         {...arrow_sizes}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
-        onpointerenter={(event: { stopPropagation: () => void }) => {
-          event.stopPropagation() // threlte hands it to every arrow and atom on the ray
-          hovered_idx = idx
-        }}
+        onpointerenter={() => (hovered_idx = idx)}
         onpointerleave={() => {
           if (hovered_idx === idx) hovered_idx = null
         }}

@@ -4,10 +4,9 @@
   // path or a label reports the nearer q-point index, so a band plot beside it can mark it.
   import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import type { ThreltePointerEvent } from '#lib/scene/index.js'
+  import { SceneLabel, type ThreltePointerEvent } from '#lib/scene/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
-  import * as extras from '@threlte/extras'
   import {
     Color,
     CylinderGeometry,
@@ -79,8 +78,8 @@
     const line = new InstancedMesh(kpath_geometry, kpath_material, count)
     const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, count)
     line.raycast = () => undefined
-    // lets a host scene give path hovers priority over geometry in front (see FermiSurfaceScene)
-    proxy.userData.kpath_proxy = true
+    // path hovers win over the zone or Fermi sheets the path is drawn through (see front_hit)
+    proxy.userData.pick_rank = 2 // above the IBZ wedge (1)
     for (const mesh of [line, proxy]) mesh.frustumCulled = false
     for (const [instance_idx, { from, to }] of k_path_segs.entries()) {
       write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
@@ -136,13 +135,8 @@
     invalidate()
   })
 
-  // K-path hover: report the nearer endpoint's q-point index of the hovered segment. Threlte
-  // sends a pointer move to every segment along the ray, near to far (at joints, or where the
-  // path crosses itself on screen), so only the first, nearest one answers.
-  let last_move: PointerEvent | null = null
+  // K-path hover: report the nearer endpoint's q-point index of the hovered segment
   function handle_kpath_hover({ point, instanceId, nativeEvent }: ThreltePointerEvent): void {
-    if (nativeEvent === last_move) return
-    last_move = nativeEvent
     const segment = k_path_segs[instanceId ?? -1]
     if (!segment) return
     const { idx, from, to } = segment
@@ -172,7 +166,7 @@
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
     <T.MeshStandardMaterial color="#ffcc00" metalness={0.3} roughness={0.7} />
   </T.Mesh>
-  <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
+  <SceneLabel interactive center position={position.map((coord) => coord * 1.1) as Vec3}>
     <span
       role="presentation"
       class="sym-label"
@@ -184,7 +178,7 @@
     >
       {labels.join(` | `)}
     </span>
-  </extras.HTML>
+  </SceneLabel>
 {/each}
 
 {#if k_markers.length}<T is={marker_mesh} dispose={false} />{/if}

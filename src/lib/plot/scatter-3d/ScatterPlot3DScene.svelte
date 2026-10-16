@@ -25,9 +25,10 @@
     bind_renderer,
     create_scene_camera,
     dispose_on_change,
-    front_hit,
+    scene_interactivity,
     line_geometry,
     SceneCamera,
+    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
   import { T, useTask, useThrelte } from '@threlte/core'
@@ -144,10 +145,8 @@
     camera = threlte_camera
   })
 
-  const { enabled: hover_enabled } = extras.interactivity({
-    // Overlapping points must pick the front surface, not the last (farthest) hit.
-    filter: (hits) => front_hit(hits),
-  })
+  // Overlapping points must pick the front surface, not the last (farthest) hit.
+  const { enabled: hover_enabled } = scene_interactivity()
 
   type AxisKey = `x` | `y` | `z`
 
@@ -726,29 +725,19 @@
           </T.Line>
         {/each}
       {/if}
-      <extras.HTML
-        position={tick_label_pos(tick_val)}
-        center
-        zIndexRange={[1, 0]}
-        style="pointer-events: none"
-      >
+      <SceneLabel position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
         <span class="tick-label"
           >{get_tick_label(tick_val, axis.ticks) ??
             format_num(tick_val, tick_label_format(ticks, axis.format) || `.2~g`)}</span
         >
-      </extras.HTML>
+      </SceneLabel>
     {/each}
     {#if display.show_axis_labels !== false}
-      <extras.HTML
-        position={axis_label_pos}
-        center
-        zIndexRange={[1, 0]}
-        style="pointer-events: none"
-      >
+      <SceneLabel position={axis_label_pos} center zIndexRange={[1, 0]}>
         <span class="axis-label" style:color
           >{@html sanitize_html(axis.label || key.toUpperCase())}</span
         >
-      </extras.HTML>
+      </SceneLabel>
     {/if}
   {/each}
 {/if}
@@ -826,10 +815,10 @@
 
     {@const data = make_event_data(hover_point)}
     {#if tooltip !== false}
-      <extras.HTML
+      <SceneLabel
         position={hover_drawn.position}
         calculatePosition={hover_geometry.tooltip_position}
-        style="translate: -50% -100%; pointer-events: none"
+        style="translate: -50% -100%"
         portal={tooltip_portal}
         zIndexRange={[1000, 1000]}
       >
@@ -849,14 +838,13 @@
             {/if}
           </div>
         {/if}
-      </extras.HTML>
+      </SceneLabel>
     {/if}
   {/if}
 {/if}
 
 <style>
   :is(.axis-label, .tick-label) {
-    pointer-events: none;
     user-select: none;
     white-space: nowrap;
   }
@@ -881,7 +869,6 @@
     border-radius: 4px;
     font-size: 12px;
     white-space: nowrap;
-    pointer-events: none;
     user-select: none;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
