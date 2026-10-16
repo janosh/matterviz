@@ -202,9 +202,10 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   const slices = $derived.by((): Record<string, number> => {
     const [sys, requested] = [system, resolve(`slice_chempots`)]
     const clamped: Record<string, number> = {}
+    if (!sys) return clamped
     for (const element of slice_elements) {
       const value = requested[element]
-      if (value === undefined || !Number.isFinite(value) || !sys) continue
+      if (value === undefined || !Number.isFinite(value)) continue
       const [lower, upper] = slice_range(sys, element, padding, min_limit, clamped)
       clamped[element] = clamp(value, lower, upper)
     }
@@ -379,9 +380,6 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   }
 }
 
-// Pointer position relative to `container`, for tooltip placement. The true hotspot,
-// not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that
-// keeps the pointer glyph clear (its `offset`/`avoid_cursor`).
 // The axis range to show when a computed `next` range replaces the one last `applied`: a range
 // the user set in between (it no longer matches what was applied) is kept
 export const sticky_range = <Range extends readonly (number | null)[] | undefined>(
@@ -390,6 +388,9 @@ export const sticky_range = <Range extends readonly (number | null)[] | undefine
   next: Range,
 ): Range => (current?.[0] === applied?.[0] && current?.[1] === applied?.[1] ? next : current)
 
+// Pointer position relative to `container`, for tooltip placement. The true hotspot,
+// not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that
+// keeps the pointer glyph clear (its `offset`/`avoid_cursor`).
 export const container_pointer = (
   event: MouseEvent,
   container: HTMLElement | undefined,

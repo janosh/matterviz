@@ -232,13 +232,13 @@ const quinary_entries = load_json<PhaseData[]>(
 )
 const ytos_entries = load_json<PhaseData[]>(`${import.meta.dirname}/ytos_entries.json.gz`)
 // create_chempot_state outside a component, its worker result delivered
-const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig) => {
+const chempot_state = async (entries: () => PhaseData[], config: ChemPotDiagramConfig) => {
   const states: ReturnType<typeof create_chempot_state>[] = []
   onTestFinished(
     $effect.root(() => {
       states.push(
         create_chempot_state({
-          entries: () => entries,
+          entries,
           config: () => config,
           temperature: { get: () => undefined, set: () => undefined },
           min_elements: 3,
@@ -257,26 +257,10 @@ const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig)
 // of a different system: no slice controls until the new one arrives
 test(`chempot state offers no slices while its system is stale`, async () => {
   const props = $state({ entries: quinary_entries })
-  const config: ChemPotDiagramConfig = {
+  const chempot = await chempot_state(() => props.entries, {
     elements: [`La`, `Ni`, `O`],
     slice_chempots: { F: -1 },
-  }
-  let chempot: ReturnType<typeof create_chempot_state> | undefined
-  onTestFinished(
-    $effect.root(() => {
-      chempot = create_chempot_state({
-        entries: () => props.entries,
-        config: () => config,
-        temperature: { get: () => undefined, set: () => undefined },
-        min_elements: 3,
-        formulas: () => [],
-        label: `test`,
-      })
-    }),
-  )
-  flushSync()
-  await resolve_latest()
-  if (!chempot) throw new Error(`state not created`)
+  })
   expect(Object.keys(chempot.slice_ranges).toSorted()).toEqual([`F`, `Rb`])
   // drop Rb: the compute axes change and the worker is asked again
   props.entries = quinary_entries.filter((entry) => !(`Rb` in entry.composition))
@@ -293,7 +277,7 @@ test(`chempot state keeps only non-display axis slices and reuses a slice's curv
     elements: display,
     slice_chempots: { F: -1.5, La: -1, Xe: -1 },
   })
-  const chempot = await chempot_state(quinary_entries, config)
+  const chempot = await chempot_state(() => quinary_entries, config)
   const system = compute_chempot_system(quinary_entries, { elements: display })
   const expected_curves = () =>
     section_measure_curves(system, display, chempot.slices, `F`, chempot.slice_ranges.F)
@@ -339,7 +323,7 @@ test.each([
     config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 5, Rb: -99 } },
   },
 ])(`chempot state clamps infeasible slices: $label`, async ({ entries, config }) => {
-  const chempot = await chempot_state(entries, config)
+  const chempot = await chempot_state(() => entries, config)
   expect(chempot.error).toBeNull()
   expect(chempot.diagram_data?.shadow_elements).toEqual([])
   for (const [element, value] of Object.entries(config.slice_chempots)) {
@@ -351,7 +335,7 @@ test.each([
 // A non-finite slice is a config error shown in place of the diagram; the other slices' ranges
 // stay computable (a NaN clamped into the first range used to throw from the second's)
 test(`a non-finite slice value is reported, not thrown`, async () => {
-  const chempot = await chempot_state(quinary_entries, {
+  const chempot = await chempot_state(() => quinary_entries, {
     elements: [`La`, `Ni`, `O`],
     slice_chempots: { F: Number.NaN, Rb: -1 },
   })

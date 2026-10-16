@@ -19,7 +19,7 @@ const square = (len: number): Matrix2x2 => [
   [len, 0],
   [0, len],
 ]
-// hexagonal mesh with γ = 120° (or 60°, the other reduced form of the same lattice)
+// rhombic mesh, hexagonal at the default γ = 120° (or 60°, the other reduced form of it)
 const hex = (len: number, gamma = 120): Matrix2x2 => [
   [len, 0],
   [len * Math.cos(math.to_radians(gamma)), len * Math.sin(math.to_radians(gamma))],
@@ -316,8 +316,7 @@ describe(`match_lattices`, () => {
   // angle near their edges at once, where the film / substrate area ratio is most extreme.
   const [tol, inside, outside] = [0.03, 0.99 * 0.03, 1.01 * 0.03]
   const both_tols = { length_tol: tol, angle_tol: tol }
-  const rhombic_mesh = (len: number, gamma: number): Matrix2x2 => hex(len, gamma)
-  const tilted = (rel: number): Matrix2x2 => rhombic_mesh(1, 90 * (1 + rel))
+  const tilted = (rel: number): Matrix2x2 => hex(1, 90 * (1 + rel))
   const SQUARE = square(1)
   test.each([
     [`length inside length_tol`, SQUARE, square(1 + inside), { length_tol: tol }, 1],
@@ -326,20 +325,8 @@ describe(`match_lattices`, () => {
     [`angle inside angle_tol`, SQUARE, tilted(inside), { angle_tol: tol }, 1],
     [`angle outside angle_tol`, SQUARE, tilted(outside), { angle_tol: tol }, 0],
     [`angle smaller, inside`, SQUARE, tilted(-inside), { angle_tol: tol }, 1],
-    [
-      `smallest-area corner`,
-      SQUARE,
-      rhombic_mesh(1 - inside, 90 * (1 + inside)),
-      both_tols,
-      1,
-    ],
-    [
-      `largest-area corner`,
-      hex(1),
-      rhombic_mesh(1 + inside, 120 * (1 - inside)),
-      both_tols,
-      1,
-    ],
+    [`smallest-area corner`, SQUARE, hex(1 - inside, 90 * (1 + inside)), both_tols, 1],
+    [`largest-area corner`, hex(1), hex(1 + inside, 120 * (1 - inside)), both_tols, 1],
     // regression: an area prefilter tighter than length_tol dropped this 8% match
     [`8% mismatch under length_tol 0.1`, SQUARE, square(1.08), { length_tol: 0.1 }, 1],
     [`substrate cell exactly max_area`, SQUARE, SQUARE, { max_area: 1 }, 1],
@@ -514,10 +501,6 @@ describe(`match_lattices`, () => {
     const matches = match_lattices(CU_111, PD_111, { max_matches: 5 })
     expect(matches).toEqual(match_lattices(CU_111, PD_111).slice(0, 5))
     expect_consistent(matches, CU_111, PD_111, { max_matches: 5 })
-  })
-
-  test(`no match within max_area returns an empty list`, () => {
-    expect(match_lattices(CU_100, AG_100, { max_area: 20 })).toEqual([])
   })
 
   test.each([

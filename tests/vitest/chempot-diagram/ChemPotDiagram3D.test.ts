@@ -12,7 +12,7 @@ import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props, doc_query, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
@@ -358,9 +358,9 @@ const highlighted = (scene: HighlightScene) => scene.highlight?.formula ?? null
 
 // Matched by reduced formula; a phase without a domain here highlights nothing. The fill is
 // exactly the hull triangles drawn in the domain's colour (the whole visible face), in that
-// colour, outlined along their boundary in a darker shade of it.
-// a continuous colour mode gives each domain its own colour (arity colours repeat). The YTOS
-// Ti-Y-O projection case matters: there a face's boundary differs from the domain's crease edges.
+// colour, outlined along their boundary in a darker shade of it. A continuous colour mode
+// gives each domain its own colour (arity colours repeat). In the YTOS Ti-Y-O projection a
+// face's boundary differs from the domain's crease edges.
 test.each([
   [`Fe4O6`, `Fe2O3`, entries, { default_min_limit: -25 }],
   [`NaCl`, null, entries, { default_min_limit: -25 }],
@@ -486,29 +486,10 @@ test(`hover targets are exactly the drawn hull faces' owners`, async () => {
   }
 })
 
-test(`tooltip energies print round-off as 0, not scientific notation`, () => {
-  const hover_info: ChemPotHoverInfo = {
-    formula: `Li2O`,
-    view: `2d`,
-    n_points: 2,
-    axis_ranges: [
-      { element: `Li`, min_val: -2.88, max_val: 3.55e-15 },
-      { element: `O`, min_val: -6.18, max_val: -0.416 },
-    ],
-  }
-  mounted = mount(ChemPotTooltip, {
-    target: document.body,
-    props: { hover_info, pinned: false, constrain_to: { width: 400, height: 400 } },
-  })
-  const text = query(document.body, `.chempot-tooltip .ranges`).textContent ?? ``
-  expect(text).toContain(`Li = [−2.88, 0]`)
-  expect(text).toContain(`O = [−6.18, −0.416]`)
-  expect(text).not.toMatch(/e-\d/)
-})
-
 // The default tooltip body, line by line: summary (single energy when min = max), ranges with
-// `=`, neighbours capped at 6, bounds grouped per side with lower first; narrowed via the
-// PlotTooltip width variable rather than a max-width PlotTooltip would override
+// `=` (vertex round-off like 3.55e-15 as 0, not scientific notation), neighbours capped at 6,
+// bounds grouped per side with lower first; narrowed via the PlotTooltip width variable
+// rather than a max-width PlotTooltip would override
 test.each([
   {
     energies: [-4.98, -4.81],
@@ -527,7 +508,7 @@ test.each([
       n_vertices: 4,
       n_edges: 4,
       ann_loc: [0, 0, 0],
-      axis_ranges: [{ element: `Li`, min_val: -2.88, max_val: 0 }],
+      axis_ranges: [{ element: `Li`, min_val: -2.88, max_val: 3.55e-15 }],
       touches_limits: [
         { element: `O`, side: `upper` },
         { element: `Li`, side: `lower` },
@@ -563,6 +544,9 @@ test.each([
 // and left-aligned even inside a centered page section
 test(`the domain tooltip stays compact and left-aligned`, async () => {
   document.body.style.textAlign = `center`
+  onTestFinished(() => {
+    document.body.style.textAlign = ``
+  })
   // the YTOS Ti-Y-O projection of the bug report: Y2O3 has 10 neighbours
   const scene = await mount_diagram<HighlightScene>({
     entries: ytos_entries,
@@ -590,7 +574,6 @@ test(`the domain tooltip stays compact and left-aligned`, async () => {
   )
   const sides = new Set(touches_limits.map(({ side }) => side))
   expect(bound_rows).toHaveLength(sides.size)
-  document.body.style.textAlign = ``
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it

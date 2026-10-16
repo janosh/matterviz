@@ -1091,6 +1091,18 @@ export function section_chempot_system(
   }
 }
 
+// `system` sliced at every slice except `element`'s, with `element`'s axis index in it
+function slice_others(
+  system: ChemPotSystem,
+  slices: ChemPotSliceValues,
+  element: string,
+): { sliced: ReturnType<typeof slice_system>; axis: number } {
+  const sliced = slice_system(system, { ...slices, [element]: undefined })
+  const axis = sliced.elements.indexOf(element)
+  if (axis === -1) throw new Error(`${element} is not an axis of ${sliced.elements.join(`-`)}`)
+  return { sliced, axis }
+}
+
 // mu range of `element` worth slicing at, given the other `slices`: its extent over the domain
 // vertices of the region they leave (convex, so exactly the feasible interval), ignoring the
 // artificial default_min_limit floor and padding the low end like the plotted axes
@@ -1101,9 +1113,7 @@ export function slice_range(
   default_min_limit: number,
   slices: ChemPotSliceValues = {},
 ): Vec2 {
-  const sliced = slice_system(system, { ...slices, [element]: undefined })
-  const axis = sliced.elements.indexOf(element)
-  if (axis === -1) throw new Error(`${element} is not an axis of ${sliced.elements.join(`-`)}`)
+  const { sliced, axis } = slice_others(system, slices, element)
   const values = Object.values(sliced.domains).flatMap((points) =>
     points.map((point) => point[axis]),
   )
@@ -1182,9 +1192,7 @@ export function section_measure_curves(
   per_interval: number = 8,
 ): Map<string, Vec2[]> | null {
   if (display.includes(element)) throw new Error(`Cannot sweep display axis ${element}`)
-  const sliced = slice_system(system, { ...slices, [element]: undefined })
-  const axis = sliced.elements.indexOf(element)
-  if (axis === -1) throw new Error(`${element} is not an axis of ${sliced.elements.join(`-`)}`)
+  const { sliced, axis } = slice_others(system, slices, element)
   if (sliced.elements.some((other) => other !== element && !display.includes(other)))
     return null
   const [lower, upper] = range

@@ -770,11 +770,10 @@ describe(`milestone feature props`, () => {
     expect(tooltip_el.classList.contains(`visible`)).toBe(false)
   })
 
-  // the edge flip must use the size of the tooltip as shown for THIS cell: measured while
-  // hidden it reads 0 (no flip at the edge), measured before the new text the old cell's size
-  // a snippet tooltip renders on the next flush: measuring before it sized the previous (or no)
-  // content, so the snippet path must flip on the new size too. A raw snippet renders once, so
-  // only the string case re-hovers another cell.
+  // The edge flip must use the tooltip's size as shown for THIS cell: measured while hidden it
+  // reads 0 (no flip), measured before the new content the previous cell's size. A snippet
+  // tooltip renders on the next flush, so it is flushed before measuring. A raw snippet
+  // renders once, so only the string case re-hovers another cell.
   const cell_snippet = createRawSnippet((cell: () => CellContext) => ({
     render: () =>
       `<span>${cell().x_item.label} - ${cell().y_item.label}: ${cell().value}</span>`,

@@ -37,8 +37,8 @@ test(`threlte <HTML> overlays let pointer events through unless meant to be clic
       const attrs = node.attributes as Node[]
       const style = attrs.find((attr) => attr.name === `style`)
       const style_text = JSON.stringify(style?.value ?? ``)
-      const position = source.slice(Number(node.start), Number(node.end))
-      const context = position.includes(`bond_context_menu`)
+      const node_source = source.slice(Number(node.start), Number(node.end))
+      const context = node_source.includes(`bond_context_menu`)
         ? `${path}:bond_context_menu`
         : path
       if (!/pointer-events:\s*none/.test(style_text) && !interactive.has(context)) {

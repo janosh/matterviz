@@ -427,7 +427,6 @@ describe(`BoxPlot`, () => {
     expect(on_box_hover).toHaveBeenLastCalledWith(null)
   })
 
-  // float noise in a computed stat (this mean is 1.85e-17) reads as 0, not -1.85e-17
   // Statistics are snapped to 0 only within float noise n·ε·max|x|: a round-off mean or an
   // interpolated quartile reads 0, a genuinely tiny median or mean beside large values doesn't
   test.each([

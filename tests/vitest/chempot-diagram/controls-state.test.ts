@@ -196,42 +196,13 @@ describe(`rescale_zoom_to_fit`, () => {
 
 // The 2D slice view frames its axes on the unsliced projection; a range the user typed in since
 // the last framing must survive the next one (padding, limit or temperature changes)
+// oxfmt-ignore
 test.each([
-  {
-    label: `untouched axis follows`,
-    current: [-5, 0],
-    applied: [-5, 0],
-    next: [-6, 0],
-    kept: false,
-  },
-  {
-    label: `user range stays`,
-    current: [-2, -1],
-    applied: [-5, 0],
-    next: [-6, 0],
-    kept: true,
-  },
-  {
-    label: `first framing`,
-    current: undefined,
-    applied: undefined,
-    next: [-6, 0],
-    kept: false,
-  },
-  {
-    label: `slicing off resets`,
-    current: [-6, 0],
-    applied: [-6, 0],
-    next: undefined,
-    kept: false,
-  },
-  {
-    label: `user range survives slicing off`,
-    current: [-2, -1],
-    applied: [-6, 0],
-    next: undefined,
-    kept: true,
-  },
-] as const)(`sticky_range: $label`, ({ current, applied, next, kept }) => {
+  [`untouched axis follows`, [-5, 0], [-5, 0], [-6, 0], false],
+  [`user range stays`, [-2, -1], [-5, 0], [-6, 0], true],
+  [`first framing`, undefined, undefined, [-6, 0], false],
+  [`slicing off resets`, [-6, 0], [-6, 0], undefined, false],
+  [`user range survives slicing off`, [-2, -1], [-6, 0], undefined, true],
+] as const)(`sticky_range: %s`, (_label, current, applied, next, kept) => {
   expect(sticky_range(current, applied, next)).toEqual(kept ? current : next)
 })

@@ -4,7 +4,7 @@ import {
   surface_frame,
 } from '#lib/interface/lattice-match.js'
 import { in_plane_supercell, make_interface } from '#lib/interface/stack.js'
-import type { Matrix2x2 } from '#lib/interface/types.js'
+import type { Heterostructure, Matrix2x2 } from '#lib/interface/types.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
@@ -46,6 +46,17 @@ const projected_coords = (cell: Crystal): Vec2[] => {
     (pos_x * b_y - pos_y * b_x) / det,
     (pos_y * a_x - pos_x * a_y) / det,
   ])
+}
+// The film keeps the fractional in-plane coordinates it has in `film_cell`, now on the
+// interface cell: that is the strain (and twist) of the match
+const expect_film_registry = (built: Heterostructure, film_cell: Crystal): void => {
+  const offset = built.interface_info.n_substrate_sites
+  for (const [idx, [frac_a, frac_b]] of projected_coords(film_cell).entries()) {
+    const [out_a, out_b] = built.sites[offset + idx].abc
+    expect(Math.max(off_lattice(out_a - frac_a), off_lattice(out_b - frac_b))).toBeLessThan(
+      1e-9,
+    )
+  }
 }
 
 describe(`in_plane_supercell`, () => {
@@ -248,21 +259,13 @@ describe(`make_interface`, () => {
     expect(Math.abs(sub_bottom)).toBeLessThan(1e-9)
     expect(Math.abs(film_bottom - sub_top - gap)).toBeLessThan(1e-9)
     expect(Math.abs(film_top - film_bottom - info.film_thickness)).toBeLessThan(1e-9)
-    // the film keeps its fractional in-plane coordinates in its own supercell: that is the
-    // strain (and twist) of the match, applied by placing them on the substrate cell
-    const film_cell = in_plane_supercell(AG_100, match.film_matrix)
-    for (const [idx, [frac_a, frac_b]] of projected_coords(film_cell).entries()) {
-      const [out_a, out_b] = sites[info.n_substrate_sites + idx].abc
-      expect(Math.max(off_lattice(out_a - frac_a), off_lattice(out_b - frac_b))).toBeLessThan(
-        1e-9,
-      )
-    }
+    expect_film_registry(built, in_plane_supercell(AG_100, match.film_matrix))
   })
 
   test(`without a match a near-commensurate film is strained 1×1 onto the substrate`, () => {
     const film = slab(fcc(3.615 * 1.02, `Cu`), [1, 0, 0])
     const built = make_interface(CU_100, film)
-    const { match, n_substrate_sites } = built.interface_info
+    const { match } = built.interface_info
     expect([match.n_film_cells, match.n_substrate_cells]).toEqual([1, 1])
     const strain = 1 / 1.02 - 1
     const [exx, exy, , eyy] = match.strain.flat()
@@ -270,12 +273,7 @@ describe(`make_interface`, () => {
       Math.max(Math.abs(exx - strain), Math.abs(exy), Math.abs(eyy - strain)),
     ).toBeLessThan(1e-12)
     expect(built.lattice.matrix.slice(0, 2)).toEqual(CU_100.lattice.matrix.slice(0, 2))
-    for (const [idx, [frac_a, frac_b]] of projected_coords(film).entries()) {
-      const [out_a, out_b] = built.sites[n_substrate_sites + idx].abc
-      expect(Math.max(off_lattice(out_a - frac_a), off_lattice(out_b - frac_b))).toBeLessThan(
-        1e-9,
-      )
-    }
+    expect_film_registry(built, film)
   })
 
   test(`shift moves only the film, by exactly the shift in fractional coordinates`, () => {
