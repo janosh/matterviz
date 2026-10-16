@@ -83,7 +83,7 @@
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
   // Domain geometry in data coords, edges as point pairs so they swizzle with the current axis
   // stretch. Overlays are tracked separately (overlay_formulas) so toggling one never rebuilds
-  // the outlines or hover hulls.
+  // the outlines.
   type RenderDomain = SceneProps[`render_domains`][number] & {
     edges: [number[], number[]][]
     ann_loc: number[]
@@ -503,16 +503,17 @@
       : [],
   )
 
-  // Faces no domain claims
+  // Faces whose owner has no colour
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
   // Highlight colour without domain colours (color_mode none): ConvexHull's highlight red
   const HIGHLIGHT_FALLBACK_COLOR = `#ff4444`
 
-  // Clone of hull_base_geometry with per-domain vertex colors
+  // Clone of hull_base_geometry with each face in its owner's drawn colour. Without domain
+  // colours (color_mode none) only overlay faces are recoloured, the rest keep the base grey.
   const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     const mapping = face_domain_map
     if (!hull_base_geometry || mapping.length === 0) return hull_base_geometry
-    if (color_mode === `none` || domain_colors.size === 0) return hull_base_geometry
+    if (domain_colors.size === 0 && overlay_formulas.size === 0) return hull_base_geometry
 
     const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
@@ -528,6 +529,7 @@
 
     for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
       const rgb = rgb_of(mapping[face_idx])
+      if (!rgb && domain_colors.size === 0) continue
       const [red, green, blue] = rgb ?? HULL_FALLBACK_RGB
       const base = face_idx * 3
       for (let vert_idx = 0; vert_idx < 3; vert_idx++) {
@@ -701,10 +703,7 @@
   function domain_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
     const unique_points = dedup_3d(points_3d)
     if (unique_points.length !== 3) return render_hull_geometry(unique_points)
-    const geom = position_geometry(unique_points.flatMap(to_render_xyz))
-    geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
-    geom.computeVertexNormals()
-    return geom
+    return position_geometry(unique_points.flatMap(to_render_xyz))
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
@@ -741,7 +740,6 @@
     const owned = new Map<string, number[]>()
     const positions = hull_base_geometry?.getAttribute(`position`).array ?? []
     for (const [face_idx, owner] of face_domain_map.entries()) {
-      if (!owner) continue
       const faces = owned.get(owner) ?? []
       for (let idx = face_idx * 9; idx < face_idx * 9 + 9; idx++) faces.push(positions[idx])
       owned.set(owner, faces)
@@ -783,7 +781,7 @@
   const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
   // The highlighted domain as drawn: the hull faces it owns, i.e. exactly the face shown in its
   // colour, outlined along their boundary (edges used by one owned triangle). A domain owning
-  // no hull face (inside the envelope, or cut out as an overlay) gets its own crease edges.
+  // no hull face (buried inside a projected envelope) gets its own crease edges.
   // Fill and outline take the domain's colour, the outline darker, so the face lights up
   // rather than turning a foreign colour.
   const highlight = $derived.by(() => {
@@ -1022,7 +1020,8 @@
 
   function select_neighbor_formulas(): void {
     if (hover_info?.view !== `3d`) return
-    const neighbors = domain_neighbors.get(hover_info.formula) ?? []
+    // the hoverable ones, as the tooltip lists them
+    const neighbors = hover_info.neighbors
     chempot.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
   }
 

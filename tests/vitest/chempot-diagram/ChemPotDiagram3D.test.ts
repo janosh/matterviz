@@ -423,8 +423,8 @@ test.each([
   }
 })
 
-// A drawn overlay is cut out of the base hull and wears its overlay colour, so its tooltip must
-// too; other domains keep their (arity) domain colour
+// A drawn overlay's hull faces wear its overlay colour, so its tooltip must too; other domains
+// keep their (arity) domain colour
 test(`domain tooltips match their drawn colour`, async () => {
   const scene = await mount_diagram<HighlightScene & { formula_meshes: { color: string }[] }>({
     entries,
@@ -464,21 +464,26 @@ test(`hover targets are exactly the drawn hull faces' owners`, async () => {
     for (const neighbor of info.neighbors) expect(hoverable).toContain(neighbor)
   }
 
-  if (mounted) void unmount(mounted)
-  threlte_stub.reset()
+  // the overlay owns its faces in its overlay colour, also without domain colours
   const overlay = `O3Y2`
-  const with_overlay = await mount_diagram<
-    FaceScene & { formula_meshes: { color: string }[] }
-  >({
-    entries: ytos_entries,
-    config: { elements: [`Ti`, `Y`, `O`], formulas_to_draw: [overlay] },
-  })
-  const { face_owners, hull_geometry, formula_meshes } = with_overlay()
-  expect(face_owners).toContain(overlay)
-  const face_idx = face_owners.indexOf(overlay)
-  const colors = hull_geometry?.getAttribute(`color`).array ?? []
-  const overlay_rgb = new THREE.Color(formula_meshes[0].color).toArray()
-  for (const ch of [0, 1, 2]) expect(colors[face_idx * 9 + ch]).toBeCloseTo(overlay_rgb[ch], 6)
+  for (const color_mode of [`arity`, `none`] as const) {
+    if (mounted) void unmount(mounted)
+    threlte_stub.reset()
+    const with_overlay = await mount_diagram<
+      FaceScene & { formula_meshes: { color: string }[] }
+    >({
+      entries: ytos_entries,
+      config: { elements: [`Ti`, `Y`, `O`], formulas_to_draw: [overlay], color_mode },
+    })
+    const { face_owners, hull_geometry, formula_meshes } = with_overlay()
+    expect(face_owners).toContain(overlay)
+    const face_idx = face_owners.indexOf(overlay)
+    const colors = hull_geometry?.getAttribute(`color`).array ?? []
+    const overlay_rgb = new THREE.Color(formula_meshes[0].color).toArray()
+    for (const ch of [0, 1, 2]) {
+      expect(colors[face_idx * 9 + ch], color_mode).toBeCloseTo(overlay_rgb[ch], 6)
+    }
+  }
 })
 
 test(`tooltip energies print round-off as 0, not scientific notation`, () => {

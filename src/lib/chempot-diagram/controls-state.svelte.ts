@@ -175,10 +175,15 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
   $effect(() => () => compute_chempot_async.release())
 
+  // A system computed on other axes is stale (the worker is still on its replacement)
+  const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))
   // Axes beyond the display ones, each sliced at a fixed mu or else shadow-projected. Slices
-  // of axes now displayed (or gone from the data) are kept but inactive.
+  // of axes now displayed (or gone from the data) are kept but inactive. None while stale, so
+  // no slider offers ranges of the old system.
   const slice_elements = $derived(
-    system?.elements.filter((element) => !axes.display.includes(element)) ?? [],
+    stale || !system
+      ? []
+      : system.elements.filter((element) => !axes.display.includes(element)),
   )
   const padding = $derived(resolve(`element_padding`))
   const min_limit = $derived(resolve(`default_min_limit`))
@@ -217,9 +222,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     )
   })
   // Sectioning is a vertex enumeration on the display axes, cheap enough to follow a slider.
-  // A system computed on other axes is stale (the worker is still on its replacement): the
-  // last section stays on screen meanwhile.
-  const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))
+  // While the system is stale the last section stays on screen.
   type Section = { data: ChemPotDiagramData | null; error: string | null }
   let last_section: Section = { data: null, error: null }
   const section = $derived.by((): Section => {
@@ -379,6 +382,14 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
 // Pointer position relative to `container`, for tooltip placement. The true hotspot,
 // not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that
 // keeps the pointer glyph clear (its `offset`/`avoid_cursor`).
+// The axis range to show when a computed `next` range replaces the one last `applied`: a range
+// the user set in between (it no longer matches what was applied) is kept
+export const sticky_range = <Range extends readonly (number | null)[] | undefined>(
+  current: Range,
+  applied: Range,
+  next: Range,
+): Range => (current?.[0] === applied?.[0] && current?.[1] === applied?.[1] ? next : current)
+
 export const container_pointer = (
   event: MouseEvent,
   container: HTMLElement | undefined,

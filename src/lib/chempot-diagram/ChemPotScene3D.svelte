@@ -406,12 +406,11 @@
   const meshes_by_formula = $derived(new Map(hover_meshes.map((mesh) => [mesh.formula, mesh])))
   const face_mesh = ({ faceIndex }: ThreltePointerEvent): HoverMesh | undefined =>
     faceIndex == null ? undefined : meshes_by_formula.get(face_owners[faceIndex])
+  // every face has an owner, so a move only ever re-targets; leave tracks the last one
   let hovered_mesh: HoverMesh | undefined
   function hull_move(event: unknown): void {
-    const mesh = face_mesh(pointer_of(event))
-    if (hovered_mesh && hovered_mesh !== mesh) on_domain_leave(hovered_mesh)
-    hovered_mesh = mesh
-    if (mesh) on_domain_hover(mesh, pointer_of(event))
+    hovered_mesh = face_mesh(pointer_of(event))
+    if (hovered_mesh) on_domain_hover(hovered_mesh, pointer_of(event))
   }
   function hull_leave(): void {
     if (hovered_mesh) on_domain_leave(hovered_mesh)
@@ -465,7 +464,6 @@
   {#key hull_geometry}
     <T.Mesh
       geometry={hull_geometry}
-      onpointerenter={hull_move}
       onpointermove={hull_move}
       onpointerdown={(event: unknown) => {
         const mesh = face_mesh(pointer_of(event))

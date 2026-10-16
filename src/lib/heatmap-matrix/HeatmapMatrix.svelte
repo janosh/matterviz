@@ -31,14 +31,8 @@
   import type { VirtualScroll } from '#lib/table/index.js'
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
-  import {
-    type ComponentProps,
-    flushSync,
-    onDestroy,
-    onMount,
-    type Snippet,
-    tick,
-  } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
+  import { flushSync, onDestroy, onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShowControlsProp } from '#lib/controls.js'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'

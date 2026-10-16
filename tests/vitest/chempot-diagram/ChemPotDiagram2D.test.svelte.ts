@@ -253,6 +253,40 @@ const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig)
   return states[0]
 }
 
+// While the worker computes a system on new axes, the old system's sliders would offer ranges
+// of a different system: no slice controls until the new one arrives
+test(`chempot state offers no slices while its system is stale`, async () => {
+  const props = $state({ entries: quinary_entries })
+  const config: ChemPotDiagramConfig = {
+    elements: [`La`, `Ni`, `O`],
+    slice_chempots: { F: -1 },
+  }
+  let chempot: ReturnType<typeof create_chempot_state> | undefined
+  onTestFinished(
+    $effect.root(() => {
+      chempot = create_chempot_state({
+        entries: () => props.entries,
+        config: () => config,
+        temperature: { get: () => undefined, set: () => undefined },
+        min_elements: 3,
+        formulas: () => [],
+        label: `test`,
+      })
+    }),
+  )
+  flushSync()
+  await resolve_latest()
+  if (!chempot) throw new Error(`state not created`)
+  expect(Object.keys(chempot.slice_ranges).toSorted()).toEqual([`F`, `Rb`])
+  // drop Rb: the compute axes change and the worker is asked again
+  props.entries = quinary_entries.filter((entry) => !(`Rb` in entry.composition))
+  flushSync()
+  expect([chempot.slice_elements, chempot.slices, chempot.slice_ranges]).toEqual([[], {}, {}])
+  await resolve_latest()
+  expect(Object.keys(chempot.slice_ranges)).toEqual([`F`])
+  expect(Object.keys(chempot.slices)).toEqual([`F`])
+})
+
 test(`chempot state keeps only non-display axis slices and reuses a slice's curves while its own value moves`, async () => {
   const display = [`La`, `Ni`, `O`]
   const config = $state<ChemPotDiagramConfig>({

@@ -2,16 +2,13 @@
 
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
-import {
-  type AxisItem,
-  type HeatmapDomainMode,
-  VIRTUAL_CELL_THRESHOLD,
-} from '#lib/heatmap-matrix/index.js'
+import type { AxisItem, CellContext, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
+import { VIRTUAL_CELL_THRESHOLD } from '#lib/heatmap-matrix/index.js'
 import { format_num } from '#lib/labels.js'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import type { ComponentProps } from 'svelte'
-import { flushSync, mount, tick } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
@@ -775,31 +772,45 @@ describe(`milestone feature props`, () => {
 
   // the edge flip must use the size of the tooltip as shown for THIS cell: measured while
   // hidden it reads 0 (no flip at the edge), measured before the new text the old cell's size
-  test(`tooltip flips at the viewport edge using its size for the hovered cell`, async () => {
-    vi.stubGlobal(`innerWidth`, 300)
-    vi.stubGlobal(`innerHeight`, 300)
-    onTestFinished(() => void vi.unstubAllGlobals())
-    mount_matrix({ x: [`A`, `Longer label`], y: [`X`], values: [[1, 2]] })
-    await Promise.resolve()
-    const tooltip_el = doc_query(`.tooltip`)
-    // 10 px per character, like a real layout of the text, and 0 while display: none
-    const shown_size = (size: number) => () =>
-      tooltip_el.classList.contains(`visible`) ? size : 0
-    Object.defineProperty(tooltip_el, `offsetWidth`, {
-      get: () => shown_size((tooltip_el.textContent?.length ?? 0) * 10)(),
-    })
-    Object.defineProperty(tooltip_el, `offsetHeight`, { get: shown_size(20) })
-    const [short_cell, long_cell] = get_data_cells()
-    // "A - X: 1" is 80 px: 250 + 10 + 80 overflows 300, so it flips left of the cursor
-    short_cell.dispatchEvent(mouse(`mouseover`, { clientX: 250, clientY: 10 }))
-    expect(tooltip_el.textContent).toBe(`A - X: 1`)
-    expect(tooltip_el.style.left).toBe(`160px`)
-    expect(tooltip_el.style.top).toBe(`22px`)
-    // "Longer label - X: 2" is 190 px: 100 + 10 + 190 fits exactly, 101 would not
-    long_cell.dispatchEvent(mouse(`mouseover`, { clientX: 101, clientY: 10 }))
-    expect(tooltip_el.textContent).toBe(`Longer label - X: 2`)
-    expect(tooltip_el.style.left).toBe(`0px`)
-  })
+  // a snippet tooltip renders on the next flush: measuring before it sized the previous (or no)
+  // content, so the snippet path must flip on the new size too. A raw snippet renders once, so
+  // only the string case re-hovers another cell.
+  const cell_snippet = createRawSnippet((cell: () => CellContext) => ({
+    render: () =>
+      `<span>${cell().x_item.label} - ${cell().y_item.label}: ${cell().value}</span>`,
+  }))
+  test.each([
+    [`string`, undefined],
+    [`snippet`, cell_snippet],
+  ])(
+    `%s tooltip flips at the viewport edge using its size for the hovered cell`,
+    async (label, tooltip) => {
+      vi.stubGlobal(`innerWidth`, 300)
+      vi.stubGlobal(`innerHeight`, 300)
+      onTestFinished(() => void vi.unstubAllGlobals())
+      mount_matrix({ x: [`A`, `Longer label`], y: [`X`], values: [[1, 2]], tooltip })
+      await Promise.resolve()
+      const tooltip_el = doc_query(`.tooltip`)
+      // 10 px per character, like a real layout of the text, and 0 while display: none
+      const shown_size = (size: number) => () =>
+        tooltip_el.classList.contains(`visible`) ? size : 0
+      Object.defineProperty(tooltip_el, `offsetWidth`, {
+        get: () => shown_size((tooltip_el.textContent?.length ?? 0) * 10)(),
+      })
+      Object.defineProperty(tooltip_el, `offsetHeight`, { get: shown_size(20) })
+      const [short_cell, long_cell] = get_data_cells()
+      // "A - X: 1" is 80 px: 250 + 10 + 80 overflows 300, so it flips left of the cursor
+      short_cell.dispatchEvent(mouse(`mouseover`, { clientX: 250, clientY: 10 }))
+      expect(tooltip_el.textContent).toBe(`A - X: 1`)
+      expect(tooltip_el.style.left).toBe(`160px`)
+      expect(tooltip_el.style.top).toBe(`22px`)
+      if (label === `snippet`) return
+      // "Longer label - X: 2" is 190 px: 100 + 10 + 190 fits exactly, 101 would not
+      long_cell.dispatchEvent(mouse(`mouseover`, { clientX: 101, clientY: 10 }))
+      expect(tooltip_el.textContent).toBe(`Longer label - X: 2`)
+      expect(tooltip_el.style.left).toBe(`0px`)
+    },
+  )
 
   // tooltip, color bar and controls toggle default on like the charts; false/null opt out
   test.each([

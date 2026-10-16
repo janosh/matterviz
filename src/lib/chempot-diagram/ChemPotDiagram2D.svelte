@@ -19,6 +19,7 @@
     create_chempot_state,
     domain_formula_text,
     highlight_key_of,
+    sticky_range,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains, padded_floors } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
@@ -90,9 +91,15 @@
     const points = Object.values(pad(chempot.frame_data.domains)).flat()
     return [0, 1].map((axis) => array_extent(points.map((point) => point[axis])))
   })
+  // frame ranges follow the slice setup, a range the user typed in meanwhile stays
+  let applied_ranges: (Vec2 | undefined)[] = [undefined, undefined]
   $effect(() => {
-    const [x_range, y_range] = frame_ranges
+    const next = frame_ranges
     untrack(() => {
+      const [x_range, y_range] = [x_axis, y_axis].map((axis, idx) =>
+        sticky_range(axis.range, applied_ranges[idx], next[idx]),
+      )
+      applied_ranges = next
       x_axis = { ...x_axis, range: x_range }
       y_axis = { ...y_axis, range: y_range }
     })

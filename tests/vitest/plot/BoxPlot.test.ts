@@ -428,10 +428,16 @@ describe(`BoxPlot`, () => {
   })
 
   // float noise in a computed stat (this mean is 1.85e-17) reads as 0, not -1.85e-17
-  // Only the summed mean is snapped, and only within its summation error n·ε·max|x|: a tiny
-  // median (a sample value) or a resolvable tiny mean beside large values stays as computed
+  // Statistics are snapped to 0 only within float noise n·ε·max|x|: a round-off mean or an
+  // interpolated quartile reads 0, a genuinely tiny median or mean beside large values doesn't
   test.each([
     { label: `round-off mean`, y: [0.1, 0.2, -0.3], median: /median: 0\.1/, mean: /mean: 0$/ },
+    {
+      label: `round-off quartile`,
+      y: [-0.3, 0.1],
+      median: /q3: 0median/,
+      mean: /mean: −0\.1$/,
+    },
     {
       label: `tiny median and mean beside large values`,
       y: [-1e6, 1e-7, 1e6],

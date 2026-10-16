@@ -189,9 +189,18 @@ describe(`PlotTooltip`, () => {
     // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
     expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
     expect(tooltip.style.maxWidth).toBe(``)
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(1024px, 84px)`) // happy-dom resolves 100vw
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
     // never inherits a centered page section
     expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
+  })
+
+  test(`--plot-tooltip-max-width narrows the box, the container cap still applies`, () => {
+    const tooltip = mount_tooltip({
+      constrain_to: { width: 100, height: 300 },
+      style: `--plot-tooltip-max-width: 50px`,
+    })
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(50px, 84px)`)
   })
 
   // a caller's class cannot beat the scoped `nowrap` rule, so wrapping is opt-in by variable

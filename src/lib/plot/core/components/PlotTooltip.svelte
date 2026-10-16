@@ -131,7 +131,7 @@
     border-radius: var(--plot-tooltip-border-radius, 4px);
     font-size: var(--plot-tooltip-font-size, 0.8em);
     /* never inherit a centered page or card layout */
-    text-align: var(--plot-tooltip-text-align, start);
+    text-align: start;
     white-space: var(--plot-tooltip-white-space, nowrap);
     z-index: var(--plot-tooltip-z-index, 1000);
   }
