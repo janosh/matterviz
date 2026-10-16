@@ -11,6 +11,8 @@
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { get_density } from '#lib/structure/index.js'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
+  import SiteTable from '#lib/structure/SiteTable.svelte'
+  import { is_vec3_like, property_column, PROP_PREFIX } from '#lib/structure/site-table.js'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
 
@@ -60,61 +62,6 @@
           if (typeof number === `number`) callback(from_display_idx(number))
         }
       : undefined
-
-  const VEC3_AXES = [`x`, `y`, `z`] as const
-  const FRAC_AXES = [`a`, `b`, `c`] as const
-
-  // Units for per-atom properties the parsers emit. trajectory_property_config covers
-  // per-frame scalars only (force_max, energy, …), never the per-site arrays. Velocities have
-  // no fixed unit (Å/fs in ASE-derived files, Å/ps in LAMMPS metal dumps), so none is shown.
-  const SITE_PROPERTY_UNITS: Record<string, string> = {
-    force: `eV/Å`,
-    forces: `eV/Å`,
-    magmom: `μB`,
-    magmoms: `μB`,
-    charge: `e`,
-    charges: `e`,
-  }
-
-  // Property row keys are namespaced so a property literally named `step` or `element`
-  // cannot overwrite an identity column. Headers use the display label, so the prefix
-  // never reaches the UI or the CSV/JSON export.
-  const PROP_PREFIX = `prop_`
-
-  const is_vec3_like = (value: unknown): value is (number | boolean)[] =>
-    Array.isArray(value) &&
-    value.length === 3 &&
-    value.every((entry) => typeof entry === `number` || typeof entry === `boolean`)
-
-  // Scalars pass through; tensors and nested objects are stringified so the cell shows
-  // the real value rather than [object Object]
-  const to_cell_value = (value: unknown): CellVal =>
-    typeof value === `number` || typeof value === `string` || typeof value === `boolean`
-      ? value
-      : JSON.stringify(value)
-
-  // Column for one property. Per-frame scalars take label and unit from the same config
-  // that labels the plot axes; per-atom keys, which that config never covers, take their
-  // unit from SITE_PROPERTY_UNITS. `axis` splits a vec3 property into one column per axis.
-  const property_column = (prop_name: string, axis?: string): Column => {
-    const config =
-      trajectory_property_config[prop_name] ??
-      trajectory_property_config[prop_name.toLowerCase()]
-    const label =
-      axis === `norm`
-        ? `|${prop_name}|`
-        : axis
-          ? `${prop_name} ${axis}`
-          : (config?.label ?? prop_name)
-    const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
-    const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
-    return {
-      id,
-      key: id,
-      label: unit ? `${label} (${unit})` : label,
-      description: prop_name,
-    }
-  }
 
   let total_frames = $derived(run?.frame_count ?? 0)
 
@@ -171,75 +118,6 @@
   const atom_sample = $derived(Boolean(active_frame?.metadata?.render_sample))
   const atom_indices = $derived(active_frame?.metadata?.source_atom_indices)
 
-  // Enumerated from the sites rather than hardcoded: parsers keep growing the set of
-  // per-atom entries they retain (forces, magmoms, charges, selective dynamics, …).
-  // Each key maps to its shape: scalar (one column), vec3 (three), or a numeric vec3 like a
-  // force or velocity, which also gets its magnitude to sort by.
-  let site_property_specs = $derived.by(() => {
-    const specs = new Map<string, `scalar` | `vec3` | `numeric_vec3`>()
-    for (const site of active_sites) {
-      for (const [key, value] of Object.entries(site.properties ?? {})) {
-        if (value == null || specs.has(key)) continue
-        const shape = !is_vec3_like(value)
-          ? `scalar`
-          : value.every((entry) => typeof entry === `number`)
-            ? `numeric_vec3`
-            : `vec3`
-        specs.set(key, shape)
-      }
-    }
-    return [...specs]
-  })
-
-  let atom_columns: Column[] = $derived([
-    { id: `site`, label: `Site`, format: `d`, color_scale: null, sticky: true },
-    { id: `element`, label: `Element`, color_scale: null },
-    ...[
-      ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
-      ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
-    ].map(([id, label]) => ({ id, key: id, label, format: `.4~f` })),
-    ...site_property_specs.flatMap(([key, shape]) =>
-      shape === `scalar`
-        ? [property_column(key)]
-        : [...VEC3_AXES, ...(shape === `numeric_vec3` ? [`norm`] : [])].map((axis) =>
-            property_column(key, axis),
-          ),
-    ),
-  ])
-
-  let atom_rows = $derived(
-    active_sites.map((site, site_idx) => {
-      const { species, abc, xyz, properties } = site
-      const row: RowData = {
-        site: display_idx(
-          atom_sample && Array.isArray(atom_indices) ? atom_indices[site_idx] : site_idx,
-        ),
-        element: species.map(({ element }) => element).join(`/`),
-        frac_a: abc[0],
-        frac_b: abc[1],
-        frac_c: abc[2],
-        cart_x: xyz[0],
-        cart_y: xyz[1],
-        cart_z: xyz[2],
-      }
-      for (const [key, shape] of site_property_specs) {
-        const value = properties?.[key]
-        if (value == null) continue
-        if (shape === `scalar`) row[`${PROP_PREFIX}${key}`] = to_cell_value(value)
-        // a site whose value does not match the column's vec3 shape leaves the three
-        // cells empty (rendered "n/a") instead of silently misaligning components
-        else if (is_vec3_like(value)) {
-          VEC3_AXES.forEach((axis, axis_idx) => {
-            row[`${PROP_PREFIX}${key}_${axis}`] = value[axis_idx]
-          })
-          if (shape === `numeric_vec3`)
-            row[`${PROP_PREFIX}${key}_norm`] = Math.hypot(...value.map(Number))
-        }
-      }
-      return row
-    }),
-  )
-
   // The displayed frame's scalars as attribute/value rows, updating while the trajectory plays:
   // what the file recorded for this frame, then what its structure implies. A recorded value
   // wins over a derived one of the same name.
@@ -295,17 +173,6 @@
     { id: `value`, label: `Value`, color_scale: null, format: `.6~g` },
     { id: `unit`, label: `Unit`, color_scale: null },
   ]
-
-  // A row click toggles its atom in the selection; the checkbox does that itself, and its
-  // click must not toggle it back on the way up
-  const toggle_atom = (event: MouseEvent | KeyboardEvent, row: RowData) => {
-    if (event.target instanceof HTMLInputElement || typeof row.site !== `number`) return
-    const atom = from_display_idx(row.site)
-    const current = selected_atoms ?? []
-    selected_atoms = current.includes(atom)
-      ? current.filter((idx) => idx !== atom)
-      : [...current, atom]
-  }
 
   const tab_item = (value: typeof active_tab, name: string, count: number) => {
     const label = `${name} (${format_num(count, `,d`)})`
@@ -394,25 +261,15 @@
                 message={`Sampled atoms: ${active_sites.length} of ${active_frame?.metadata?.total_atoms}. Site indices refer to the original frame; exported rows contain this sample only.`}
               />
             {/if}
-            <HeatmapTable
-              data={atom_rows}
-              columns={atom_columns}
-              search={{ placeholder: `Filter atoms`, fuzzy: true }}
-              export_formats={[`csv`, `json`]}
+            <SiteTable
+              sites={active_sites}
+              source_indices={atom_sample && Array.isArray(atom_indices)
+                ? atom_indices
+                : undefined}
+              bind:selected_atoms
+              {on_atoms_hover}
               export_filename={atom_sample ? `frame-atoms-sample` : `frame-atoms`}
-              initial_sort={{ column: `site` }}
-              on_row_click={selected_atoms ? toggle_atom : undefined}
-              on_row_hover={on_atoms_hover &&
-                ((row: RowData | null) =>
-                  on_atoms_hover(
-                    typeof row?.site === `number` ? [from_display_idx(row.site)] : [],
-                  ))}
-              show_row_select={selected_atoms !== undefined}
-              row_key="site"
-              bind:selected_ids={
-                () => (selected_atoms ?? []).map(display_idx),
-                (ids) => (selected_atoms = ids.map((id) => from_display_idx(Number(id))))
-              }
+              search={{ placeholder: `Filter atoms`, fuzzy: true }}
               {...table_props}
             />
           {/if}

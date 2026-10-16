@@ -3357,3 +3357,61 @@ test.each([`quality`, `speed`] as const)(
     })
   },
 )
+
+// The site table docks beside the 3D view only for sites carrying numbers worth reading, and
+// stays linked to it: a row click selects its site, a row hover highlights it.
+describe(`site sidebar`, () => {
+  const with_forces = {
+    ...structure,
+    sites: structure.sites.map((site, site_idx) => ({
+      ...site,
+      properties: { ...site.properties, force: [0.1 * site_idx, 0, 0] as Vec3 },
+    })),
+  }
+  const sidebar = () => document.querySelector(`.structure-site-sidebar`)
+  const reopen_button = () =>
+    document.querySelector<HTMLButtonElement>(`button[aria-label="Show the site table"]`)
+
+  test.each([
+    [`forces, forced on`, with_forces, true, true],
+    [`no site numbers, auto`, structure, `auto`, false],
+    [`no site numbers, forced on`, structure, true, false],
+  ] as const)(`%s shows the sidebar: %s`, async (_label, input, site_sidebar, shown) => {
+    mount_structure({ structure: input, site_sidebar })
+    await tick()
+    expect(sidebar() !== null).toBe(shown)
+    expect(
+      document.querySelector(`.structure-site-layout`)?.classList.contains(`docked`),
+    ).toBe(shown)
+  })
+
+  test(`closes from its header, reopens from the controls, and links rows to sites`, async () => {
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: with_forces,
+      site_sidebar: true,
+      selected_sites: [],
+      highlighted_sites: [],
+    })
+    mounted.push(mount(Structure, { target: document.body, props }))
+    await tick()
+    const rows = () => [
+      ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
+    ]
+    expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
+    rows()[1].click()
+    await tick()
+    expect(props.selected_sites).toEqual([1])
+    rows()[0].dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
+    await tick()
+    expect(props.highlighted_sites).toEqual([0])
+    document
+      .querySelector<HTMLButtonElement>(`button[aria-label="Close the site table"]`)
+      ?.click()
+    await tick()
+    expect(sidebar()).toBeNull()
+    expect(props.site_sidebar).toBe(false)
+    reopen_button()?.click()
+    await tick()
+    expect(sidebar()).not.toBeNull()
+  })
+})

@@ -1067,10 +1067,9 @@ test.describe(`Trajectory Component`, () => {
         .locator(`body`)
         .evaluate((element) => getComputedStyle(element).backgroundColor)
       expect(surface_bg).not.toBe(page_bg)
-      await expect(hover_viewer.locator(`.content-area > .structure`)).toHaveCSS(
-        `background-color`,
-        surface_bg,
-      )
+      await expect(
+        hover_viewer.locator(`.content-area > .structure-site-layout > .structure`),
+      ).toHaveCSS(`background-color`, surface_bg)
       await expect(hover_viewer.locator(`.content-area > .scatter`)).toHaveCSS(
         `background-color`,
         surface_bg,
@@ -1079,7 +1078,7 @@ test.describe(`Trajectory Component`, () => {
       await hover_viewer.hover()
       await expect(hover_controls).toBeVisible()
       const structure_controls = hover_viewer.locator(
-        `.content-area > .structure > .control-buttons`,
+        `.content-area > .structure-site-layout > .structure > .control-buttons`,
       )
       await expect(structure_controls).toBeVisible()
       const [trajectory_box, structure_box] = await Promise.all(

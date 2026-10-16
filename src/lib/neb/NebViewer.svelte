@@ -418,7 +418,7 @@
   }
   .neb-viewer:fullscreen .panes > :global(.scatter),
   .neb-viewer:fullscreen .structure-pane,
-  .neb-viewer:fullscreen .structure-pane > :global(.structure) {
+  .neb-viewer:fullscreen .structure-pane :global(.structure) {
     height: 100% !important;
     min-height: 0 !important;
   }

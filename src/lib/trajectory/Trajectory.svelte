@@ -219,7 +219,7 @@
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
-    data_inspector_docked = $bindable(false),
+    data_inspector_docked = $bindable(),
     on_step_change,
     on_play,
     on_pause,
@@ -291,7 +291,7 @@
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
     // The data inspector as a resizable sidebar beside the structure and plot instead of a
-    // floating pane; its header button toggles it
+    // floating pane; its header button toggles it. Unset, it docks in a viewer at least 900px wide.
     data_inspector_docked?: boolean
     on_step_change?: EventHandler
     on_play?: EventHandler
@@ -1203,6 +1203,9 @@
     selected_sites = scene_site_indices(atoms, current_frame)
   }
   let inspector_ratio = $state(0.64)
+  // The row holds the sidebar too, so docking it cannot shrink this below the bar
+  let viewer_row_width = $state(0)
+  let inspector_docked = $derived(data_inspector_docked ?? viewer_row_width >= 900)
   // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
   const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
     hover,
@@ -1656,7 +1659,7 @@
                   }}
                   toggle_props={analysis_pane_props.toggle_props}
                 />
-                {#if !data_inspector_docked}{@render data_inspector()}{/if}
+                {#if !inspector_docked}{@render data_inspector()}{/if}
               {/snippet}
             </ToolbarMenu>
           {/if}
@@ -1736,10 +1739,14 @@
         bind:selected_atoms={selected_source_atoms, select_source_atoms}
         on_atoms_hover={(atoms) => highlight(scene_site_indices(atoms, current_frame))}
         dockable
-        bind:docked={data_inspector_docked}
+        bind:docked={() => inspector_docked, (docked) => (data_inspector_docked = docked)}
       />
     {/snippet}
-    <div class="viewer-row" class:inspector-docked={data_inspector_docked}>
+    <div
+      class="viewer-row"
+      class:inspector-docked={inspector_docked}
+      bind:clientWidth={viewer_row_width}
+    >
       <div
         class="content-area"
         bind:clientWidth={content_size.width}
@@ -1852,6 +1859,7 @@
             bind:hidden_elements
             bind:selected_sites
             bind:highlighted_sites
+            site_sidebar={false}
           />
         {/if}
 
@@ -1961,7 +1969,7 @@
           {/if}
         {/if}
       </div>
-      {#if data_inspector_docked}
+      {#if inspector_docked}
         <PaneDivider
           orientation="horizontal"
           bind:ratio={inspector_ratio}
