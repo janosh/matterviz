@@ -124,6 +124,10 @@
       "types": "./dist/heatmap-matrix/index.d.ts",
       "default": "./dist/heatmap-matrix/index.js"
     },
+    "./interface": {
+      "types": "./dist/interface/index.d.ts",
+      "default": "./dist/interface/index.js"
+    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js"
