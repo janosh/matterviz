@@ -3,6 +3,7 @@
 // at each T tiles the Gibbs triangle into tie-triangles and only changes at discrete transition
 // temperatures, so a diagram is sampled isothermal sections plus the exact (bisected) list of
 // those transitions.
+import { HIGHLIGHT } from '#lib/colors/index.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex-hull/types.js'
 import { DEFAULT_HULL_COLORS } from '#lib/convex-hull/types.js'
@@ -173,7 +174,7 @@ export const TERNARY_DISPLAY_DEFAULTS: Readonly<TernaryDisplay> = Object.freeze(
 export const TERNARY_COLORS = Object.freeze({
   stable: DEFAULT_HULL_COLORS.stable,
   face: `#4caf50`,
-  selected: `#66f0ff`,
+  selected: HIGHLIGHT.select,
   // Pinned probe: magenta, a hue no other ternary colour uses (overridden by a CSS theme shade)
   pin: `#c2185b`,
   highlight: `#ff9800`,

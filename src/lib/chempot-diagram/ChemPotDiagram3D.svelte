@@ -13,6 +13,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
   import { ViewerPane } from '#lib/overlays/index.js'
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Vec3 } from '#lib/math.js'
   import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '#lib/math.js'
   import { ScatterPlot3DControls } from '#lib/plot/index.js'
@@ -21,6 +22,7 @@
     clear_pan_offset,
     create_renderer,
     dispose_on_change,
+    highlight_edge_color,
     webgpu_available,
   } from '#lib/scene/index.js'
   import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
@@ -506,7 +508,6 @@
   // Faces whose owner has no colour
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
   // Highlight colour without domain colours (color_mode none): ConvexHull's highlight red
-  const HIGHLIGHT_FALLBACK_COLOR = `#ff4444`
 
   // Clone of hull_base_geometry with each face in its owner's drawn colour. Without domain
   // colours (color_mode none) only overlay faces are recoloured, the rest keep the base grey.
@@ -807,13 +808,13 @@
     const boundary = [...edge_counts.values()]
       .filter(({ count }) => count === 1)
       .flatMap(({ coords }) => coords)
-    const color = drawn_color(domain.formula) ?? HIGHLIGHT_FALLBACK_COLOR
+    const color = drawn_color(domain.formula) ?? HIGHLIGHT.emphasis
     return {
       formula: domain.formula,
       fill: owned.length > 0 ? position_geometry(owned) : null,
       edges: boundary.length > 0 ? position_geometry(boundary) : domain_edge_geometry(domain),
       fill_color: color,
-      edge_color: `#${new THREE.Color(color).multiplyScalar(0.6).getHexString()}`,
+      edge_color: highlight_edge_color(color),
     }
   })
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import { type D3SymbolName, symbol_map } from '#lib/labels.js'
   import { lerp, type Point2D } from '#lib/math.js'
   import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'
@@ -147,7 +148,7 @@
     <circle
       r={(radius ?? 4) * 2}
       class={[`effect-ring`, style.highlight_effect]}
-      fill={style.highlight_color ?? `#ff4444`}
+      fill={style.highlight_color ?? HIGHLIGHT.emphasis}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
     />

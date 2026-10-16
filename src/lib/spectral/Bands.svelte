@@ -4,7 +4,7 @@
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
   import type { BZPopupPoint } from '#lib/brillouin/index.js'
-  import { plot_color } from '#lib/colors/index.js'
+  import { HIGHLIGHT, plot_color } from '#lib/colors/index.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -642,7 +642,7 @@
     legend={rest.legend === undefined ? (num_structures > 1 ? {} : null) : rest.legend}
     hover_config={{ threshold_px: 50, click_threshold_px: 10, ...rest.hover_config }}
     {selected_point}
-    style="--tick-active-fill: var(--bands-active-tick-color, #ff2020); {rest.style ?? ``}"
+    style={`--tick-active-fill: var(--bands-active-tick-color, ${HIGHLIGHT.pin}); ${rest.style ?? ``}`}
     {show_controls}
     bind:controls_open
     bind:resolved_padding

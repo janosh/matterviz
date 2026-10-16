@@ -8,6 +8,7 @@
   } from './atom-instances'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
@@ -256,7 +257,7 @@
     bond_edits_enabled = true,
     bond_edit_mode = $bindable<BondEditMode>(`add`),
     bond_edit_order = 1,
-    selection_highlight_color = `#6cf0ff`,
+    selection_highlight_color = HIGHLIGHT.select,
     // Active highlight group with different color
     active_sites = [],
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
@@ -2228,7 +2229,7 @@
             <T.MeshBasicMaterial
               transparent
               opacity={0.25}
-              color={is_delete_mode ? `#ff4444` : `#6cf0ff`}
+              color={is_delete_mode ? HIGHLIGHT.emphasis : HIGHLIGHT.select}
               depthWrite={false}
             />
           </T.Mesh>
@@ -2639,7 +2640,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 14px));
+    font-size: var(--measure-label-font-size, clamp(8pt, 2cqmin, 14px));
     box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .bond-context-menu {
