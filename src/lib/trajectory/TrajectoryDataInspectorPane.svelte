@@ -8,6 +8,8 @@
     trajectory_property_config,
   } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { get_density } from '#lib/structure/index.js'
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
   import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
@@ -35,8 +37,9 @@
     pane_open?: boolean
   } = $props()
 
-  // Per-frame scalars vs per-atom rows
-  let active_tab = $state<`frames` | `atoms`>(`frames`)
+  // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, or the
+  // displayed frame's per-atom rows
+  let active_tab = $state<`global` | `frames` | `atoms`>(`global`)
 
   // Frame and Site columns are 1-based; clicks hand callbacks the 0-based index
   const row_click_handler = (callback: ((idx: number) => void) | undefined, key: string) =>
@@ -208,11 +211,68 @@
     }),
   )
 
+  // The displayed frame's scalars as attribute/value rows, updating while the trajectory plays:
+  // what the file recorded for this frame, then what its structure implies. A recorded value
+  // wins over a derived one of the same name.
+  let global_rows = $derived.by(() => {
+    const recorded =
+      frame_source.entries.find(({ frame_number }) => frame_number === current_step_idx)
+        ?.properties ??
+      Object.fromEntries(
+        Object.entries(active_frame?.metadata ?? {}).filter(
+          (entry): entry is [string, number] => typeof entry[1] === `number`,
+        ),
+      )
+    const rows: RowData[] = []
+    // Label and unit from the config that labels the plot axes, else the given ones
+    const add = (key: string, value: CellVal | undefined, label = key, unit = ``) => {
+      if (value === undefined || rows.some((row) => row.key === key)) return
+      const config =
+        trajectory_property_config[key] ?? trajectory_property_config[key.toLowerCase()]
+      rows.push({ key, attribute: config?.label ?? label, value, unit: config?.unit ?? unit })
+    }
+    add(`frame`, display_idx(current_step_idx), `Frame`)
+    add(`step`, active_frame?.step ?? recorded.step, `Step`)
+    for (const [key, value] of Object.entries(recorded)) if (key !== `Step`) add(key, value)
+    const structure = active_frame?.structure
+    if (!structure) return rows
+    const n_sites = structure.sites.length
+    add(`n_atoms`, n_sites, `Atoms`)
+    add(`formula`, get_electro_neg_formula(structure, { plain_text: true }), `Formula`)
+    if (`lattice` in structure) {
+      const { volume, a, b, c, alpha, beta, gamma } = structure.lattice
+      add(`volume`, volume)
+      add(
+        `volume_per_atom`,
+        n_sites ? volume / n_sites : undefined,
+        `Volume per atom`,
+        `Å³/atom`,
+      )
+      add(`density`, get_density(structure))
+      for (const [key, value] of Object.entries({ a, b, c, alpha, beta, gamma }))
+        add(key, value)
+    }
+    if (typeof recorded.energy === `number` && n_sites)
+      add(`energy_per_atom`, recorded.energy / n_sites)
+    const force_norms = structure.sites.flatMap(({ properties }) => {
+      const force = properties?.force ?? properties?.forces
+      return is_vec3_like(force) ? [Math.hypot(...force.map(Number))] : []
+    })
+    if (force_norms.length) add(`force_max`, Math.max(...force_norms))
+    return rows
+  })
+  const global_columns: Column[] = [
+    { id: `attribute`, label: `Attribute`, color_scale: null, sticky: true },
+    { id: `value`, label: `Value`, color_scale: null, format: `.6~g` },
+    { id: `unit`, label: `Unit`, color_scale: null },
+  ]
+
   const tab_item = (value: typeof active_tab, name: string, count: number) => {
     const label = `${name} (${format_num(count, `,d`)})`
     return { id: label, value, label }
   }
   let tab_items = $derived([
+    tab_item(`global`, `Global`, global_rows.length),
     tab_item(`frames`, `Frames`, frame_table.rows.length),
     tab_item(`atoms`, `Atoms`, active_sites.length),
   ])
@@ -249,7 +309,17 @@
       class="inspector-tabs"
     >
       {#snippet panel({ item, selected })}
-        {#if selected && item.value === `frames`}
+        {#if selected && item.value === `global`}
+          <HeatmapTable
+            data={global_rows}
+            columns={global_columns}
+            search={{ placeholder: `Filter attributes`, fuzzy: true }}
+            export_formats={[`csv`, `json`]}
+            export_filename={`frame-${display_idx(current_step_idx)}-attributes`}
+            {...table_props}
+            virtual={false}
+          />
+        {:else if selected && item.value === `frames`}
           {#if frame_notice}
             <StatusMessage
               type="warning"

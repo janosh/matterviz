@@ -59,11 +59,11 @@ const cell_texts = (row: HTMLTableRowElement) =>
   [...row.querySelectorAll(`td`)].map((cell) =>
     (cell.textContent?.trim() ?? ``).replaceAll(`\u2212`, `-`),
   )
-const open_atoms = async () => {
-  const tab = doc_query<HTMLButtonElement>(`button[role="tab"][data-value="atoms"]`)
-  tab.click()
+const open_tab = async (value: `global` | `frames` | `atoms`) => {
+  doc_query<HTMLButtonElement>(`button[role="tab"][data-value="${value}"]`).click()
   await tick()
 }
+const open_atoms = () => open_tab(`atoms`)
 const expect_headers = (...expected: string[]) => {
   const joined = header_texts().join(` | `)
   for (const label of expected) expect(joined).toContain(label)
@@ -76,9 +76,44 @@ const expect_virtualized = (max_rendered: number) => {
   return rows
 }
 
+// OVITO's global attributes: the displayed frame's recorded scalars, then what its structure
+// implies, as attribute/value/unit rows that follow the displayed frame.
+test(`global tab lists the displayed frame's recorded and derived attributes`, async () => {
+  const run = make_run(4)
+  const attributes = () =>
+    Object.fromEntries(
+      body_rows()
+        .map((row) => cell_texts(row))
+        .map(([name, ...rest]) => [name, rest]),
+    )
+  await mount_pane({ run, current_frame: run.preview })
+  // The default tab
+  expect(
+    doc_query(`button[role="tab"][data-value="global"]`).getAttribute(`aria-selected`),
+  ).toBe(`true`)
+  let rows = attributes()
+  expect(rows.Frame).toEqual([`1`, ``])
+  expect(rows.Energy).toEqual([`-100`, `eV`])
+  expect(rows[`Energy per atom`]).toEqual([`-33.3333`, `eV/atom`])
+  // Recorded, so it wins over the structure's own (absent) forces
+  expect(rows.Fmax).toEqual([`0.5`, `eV/Å`])
+  expect(rows.Atoms).toEqual([`3`, ``])
+  expect(rows.Volume).toEqual([`27`, `Å³`])
+  expect(rows[`Volume per atom`]).toEqual([`9`, `Å³/atom`])
+  expect(rows[`α`]?.[1]).toBe(`°`)
+  expect(rows.Density?.[1]).toBe(`g/cm³`)
+  // A later frame's recorded values replace the first frame's
+  if (mounted_pane) await unmount(mounted_pane)
+  await mount_pane({ run, current_step_idx: 2, current_frame: run.preview })
+  rows = attributes()
+  expect(rows.Frame).toEqual([`3`, ``])
+  expect(rows.Energy).toEqual([`-102`, `eV`])
+})
+
 test(`frames tab renders every property row with units`, async () => {
   const run = make_run(4)
   await mount_pane({ run })
+  await open_tab(`frames`)
   expect(body_rows()).toHaveLength(4)
   expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
   // Frame column numbers from 1 like the step input; Step is the recorded MD step
@@ -145,6 +180,7 @@ test(`sampled property rows keep their real frame numbers and disclose sampling`
     properties: { energy: -100 - sample_idx, temperature: 300 + sample_idx },
   }))
   await mount_pane({ run: with_property_rows(make_run(1), rows, 100_000) })
+  await open_tab(`frames`)
   expect(document.body.textContent).toContain(`Sampled frames: 100 of 100,000`)
   const rendered = expect_virtualized(100)
   expect_headers(`Temperature (K)`)
@@ -224,6 +260,7 @@ test.each([false, true])(`row navigation requires callbacks=%s`, async (can_navi
     on_step_change: can_navigate ? on_step_change : undefined,
     on_site_select: can_navigate ? on_site_select : undefined,
   })
+  await open_tab(`frames`)
   expect(body_rows()[2].getAttribute(`tabindex`)).toBe(can_navigate ? `0` : null)
   body_rows()[2].click()
   if (can_navigate) expect(on_step_change).toHaveBeenCalledExactlyOnceWith(2)
