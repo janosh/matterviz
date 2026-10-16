@@ -1013,6 +1013,13 @@
             orientation === `vertical` ? hover_info.y_axis : hover_info.x_axis}
           {@const fmt = value_axis.format}
           {@const stat = hover_info.stats}
+          <!-- float noise (a mean of [0.1, 0.2, -0.3] is 1.85e-17, an interpolated quartile of
+               [-0.3, 0.1] 5.55e-17) reads as 0; the bound is the summation error n·ε·max|x|, so
+               a genuinely small statistic beside large ones is shown as it is -->
+          {@const noise =
+            Math.max(stat.n, 4) *
+            Number.EPSILON *
+            Math.max(Math.abs(stat.min), Math.abs(stat.max))}
           {@const rows = [
             [`whisker high`, stat.whisker_high],
             [`q3`, stat.q3],
@@ -1028,7 +1035,7 @@
             <div>
               <TooltipValue
                 {label}
-                value={format_value_or_num(value, fmt)}
+                value={format_value_or_num(Math.abs(value) <= noise ? 0 : value, fmt)}
                 unit={value_axis.unit ?? parse_axis_label(value_axis.label ?? ``).unit}
               />
             </div>

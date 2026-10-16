@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AXIS_COLORS } from '#lib/colors/index.js'
-  import { format_num } from '#lib/labels.js'
+  import { format_vec3 } from '#lib/labels.js'
   import type { Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -230,8 +230,13 @@
         scale={VECTOR_SCALE}
         {...arrow_sizes}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
-        onpointerenter={() => (hovered_idx = idx)}
-        onpointerleave={() => (hovered_idx = null)}
+        onpointerenter={(event: { stopPropagation: () => void }) => {
+          event.stopPropagation() // threlte hands it to every arrow and atom on the ray
+          hovered_idx = idx
+        }}
+        onpointerleave={() => {
+          if (hovered_idx === idx) hovered_idx = null
+        }}
       />
     {/each}
 
@@ -240,8 +245,8 @@
       {@const hovered_vec = matrix[hovered_idx]}
       {@const tooltip_position = math.add(vector_origin, hovered_vec)}
       <CanvasTooltip position={tooltip_position} bg_color={AXIS_COLORS[hovered_idx][2]}>
-        <strong>{[`A`, `B`, `C`][hovered_idx]}</strong>
-        ({hovered_vec.map((coord) => format_num(coord, `.2f`)).join(`, `)}) <small>Å</small>
+        <strong>{[`A`, `B`, `C`][hovered_idx]}</strong> =
+        {format_vec3(hovered_vec, `.3~f`)} <small>Å</small>
       </CanvasTooltip>
     {/if}
   {/if}

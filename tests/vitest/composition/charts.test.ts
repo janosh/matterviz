@@ -170,6 +170,13 @@ describe(`shared segment helpers`, () => {
     expect(segment_title(composition_segments(composition, `Vesta`, {}, `p`)[0])).toBe(
       expected,
     )
+    // the hover tooltip rounds the amount (and picks the noun) the same way
+    mount_chart(PieChart, { composition })
+    flushSync()
+    doc_query(`path.pie-segment`).dispatchEvent(new MouseEvent(`pointerenter`))
+    flushSync()
+    const tip_text = doc_query(`.plot-tooltip`).textContent?.trim()
+    expect(tip_text).toBe(expected.replace(/%\)$/, ` %)`))
   })
 
   test.each([

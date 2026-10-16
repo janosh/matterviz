@@ -414,14 +414,19 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
 
 // The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
 // flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint);
-// tooltip=false drops the hovered point's tooltip (the hover halo stays)
+// tooltip=false drops the hovered point's tooltip (the hover halo stays). Its rows stay
+// start-aligned on a page that centers text.
 // oxfmt-ignore
 test.each<[string, false | undefined, string[] | null]>([
-  [`#ffffff`, undefined, [`#ffffff`, `black`]],
-  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`]],
-  [`var(--marker-fill)`, undefined, [``, ``]],
+  [`#ffffff`, undefined, [`#ffffff`, `black`, `start`]],
+  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`, `start`]],
+  [`var(--marker-fill)`, undefined, [``, ``, `start`]],
   [`#ffffff`, false, null],
-])(`3D tooltip fill %s, tooltip=%s: %j bg and text`, (fill, tooltip, expected) => {
+])(`3D tooltip fill %s, tooltip=%s: %j bg, text and alignment`, (fill, tooltip, expected) => {
+  document.body.style.textAlign = `center`
+  onTestFinished(() => {
+    document.body.style.textAlign = ``
+  })
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
       series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
@@ -434,7 +439,8 @@ test.each<[string, false | undefined, string[] | null]>([
   onTestFinished(unmount_scene)
   flushSync()
   const tip = document.querySelector<HTMLElement>(`.tooltip`)
-  expect(tip && [tip.style.background, tip.style.color]).toEqual(expected)
+  const paint = tip && [tip.style.background, tip.style.color, getComputedStyle(tip).textAlign]
+  expect(paint).toEqual(expected)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor

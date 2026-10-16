@@ -103,6 +103,7 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     expect(stub.posted).toHaveLength(1)
     expect(document.querySelector(`.detail`)).not.toBeNull()
   })
+  expect(document.body.textContent).toMatch(/Atmosphere: CO2 = \S+ bar, O2 = \S+ bar/)
   const write_text = vi.fn().mockResolvedValue(undefined)
   vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
   onTestFinished(() => {

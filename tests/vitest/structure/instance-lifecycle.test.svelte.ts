@@ -347,6 +347,52 @@ test.each([
   expect(hover.hovered_idx).toBe(front_idx)
 })
 
+// Lattice arrows start at (-1, -1, -1) of this 4 Å cube and span half their vector. Their
+// hover stops at the nearest arrow: a ray across A's shaft also crosses B's farther along,
+// and one onto A's shaft crosses the atom behind it, either of which used to take over. Coming
+// from B alone, B's pointerleave fires after A took the hover, which must not clear it.
+type Ray = [Vec3, Vec3] // origin, direction
+const [across_a_then_b, onto_a_past_atom, b_only]: Ray[] = [
+  [
+    [6.5, -5, -1],
+    [-1.5, 1, 0],
+  ],
+  [
+    [0, -1, 10],
+    [0, 0, -1],
+  ],
+  [
+    [10, 0, -1],
+    [-1, 0, 0],
+  ],
+]
+test.each<[string, Ray[]]>([
+  [`across A then B`, [across_a_then_b]],
+  [`onto A past an atom`, [onto_a_past_atom]],
+  [`from B onto A in front`, [b_only, across_a_then_b]],
+])(`lattice arrow hover picks the front arrow (%s)`, async (_label, rays) => {
+  const interactivity = spy_interactivity()
+  const hover = $state<SceneProps>({ hovered_idx: null })
+  const structure = make_crystal(4, [[`C`, [0, -0.25, -0.75]]])
+  mount_structure({ structure, show_bonds: `never` }, hover).scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  for (const [move_idx, [origin, direction]] of rays.entries()) {
+    scene_interactivity.compute = (_event, state) =>
+      state.raycaster.set(new Vector3(...origin), new Vector3(...direction).normalize())
+    // threlte drops moves under a quarter pixel and handles one per animation frame
+    const move = new PointerEvent(`pointermove`)
+    Object.defineProperty(move, `offsetX`, { value: move_idx })
+    scene_interactivity.target.current?.dispatchEvent(move)
+    await new Promise(requestAnimationFrame)
+  }
+  flushSync()
+  expect(hover.hovered_idx).toBeNull()
+  const tooltips = document.querySelectorAll(`[role="tooltip"]`)
+  expect([...tooltips].map((tip) => tip.textContent?.replaceAll(/\s+/g, ` `).trim())).toEqual([
+    `A = (4, 0, 0) Å`,
+  ])
+})
+
 // The tooltip wears the hovered mark's one flat fill (translucent ones flattened, per
 // tooltip_paint), text contrasted: an atom's colour or a lattice arrow's tint. Colour fields
 // and a site drawn as several visible elements' wedges (unless a property colour paints the

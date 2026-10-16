@@ -142,6 +142,39 @@
   })}
 </section>
 
+<section data-demo-id="ytos_slice">
+  <h2 id="ytos-mdash-slice-at-fixed-mu-s">YTOS &mdash; Slice at Fixed Δμ<sub>S</sub></h2>
+  <p>
+    Instead of projecting the S axis away, cut the 4D diagram at a fixed sulfur chemical
+    potential: every domain becomes the exact cross-section of its 4D facet at that Δμ<sub
+      >S</sub
+    >. Open the slice pane (scissors icon) to sweep Δμ<sub>S</sub> and see each phase's cross-section
+    area as a function of it; click the plot to jump there.
+  </p>
+  {@render diagram(`YTOS`, {
+    config: {
+      elements: [`O`, `Ti`, `Y`],
+      slice_chempots: { S: -3 },
+      formulas_to_draw: [`O5S2Ti2Y2`, `O7Ti2Y2`],
+    },
+  })}
+</section>
+
+<section data-demo-id="li_fe_o_slice">
+  <h2 id="li-fe-o-mdash-2d-slice-at-fixed-mu-fe">
+    Li-Fe-O &mdash; 2D Slice at Fixed Δμ<sub>Fe</sub>
+  </h2>
+  <p>
+    The same cut one dimension down: the Li-Fe-O diagram on the Li-O axes at fixed Δμ<sub
+      >Fe</sub
+    >. Each line is the exact section of a 3D facet; the slice pane in the settings plots each
+    phase's section length against Δμ<sub>Fe</sub>.
+  </p>
+  {@render diagram(`Li-Fe-O`, {
+    config: { elements: [`Li`, `O`], slice_chempots: { Fe: -1 } },
+  })}
+</section>
+
 <style>
   h1 {
     margin-bottom: 0.5em;

@@ -506,7 +506,7 @@ under its open panes -->
               `.2f`,
             )} (1 = all atoms move equally)"
             >{character.element_weights
-              .map(([symbol, weight]) => `${symbol} ${format_num(weight * 100, `.0f`)}%`)
+              .map(([symbol, weight]) => `${symbol} = ${format_num(weight * 100, `.0f`)}%`)
               .join(` · `)}</span
           >
         {/if}

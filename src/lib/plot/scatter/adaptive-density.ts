@@ -1,3 +1,4 @@
+import { zero_if_negligible } from '#lib/labels.js'
 import { clamp, partition_point, type Point2D, type Vec2 } from '#lib/math.js'
 import {
   axis_transform,
@@ -105,10 +106,10 @@ const bin_range = (
   const transform = txf ?? identity
   const [t_min, t_max] = range_bounds(range).map(transform.forward)
   const step = (t_max - t_min || 1) / n_bins
-  return [
-    transform.inverse(t_min + bin * step),
-    transform.inverse(t_min + (bin + 1) * step),
-  ] as Vec2
+  // An edge meant to sit on 0 lands a few ulps off (-4.9 + 7 * 0.7 = -8.9e-16), which the
+  // tooltip would print as a bin starting at -8.88e-16, so snap it within a step's millionth
+  const edge = (idx: number) => transform.inverse(zero_if_negligible(t_min + idx * step, step))
+  return [edge(bin), edge(bin + 1)] as Vec2
 }
 
 const get_metadata_at = <Metadata>(

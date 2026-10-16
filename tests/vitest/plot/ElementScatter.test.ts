@@ -115,6 +115,8 @@ describe(`ElementScatter`, () => {
       [`Atomic Radius`, `pm`],
     ],
     [`default value label`, {}, [`Value`]],
+    // the tooltip reads like the library's other numbers: no SI milli prefix (790m) below 1
+    [`sub-1 values in plain decimals`, { y: [0.79, 2.2] }, [/Value: 0\.79$/]],
     // a caller's snippet replaces the element tooltip, false drops it
     [
       `a custom snippet`,

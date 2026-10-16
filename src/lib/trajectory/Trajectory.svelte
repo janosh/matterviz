@@ -13,11 +13,8 @@
     Orientation,
   } from '#lib/plot/index.js'
   import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
-  import {
-    normalize_show_controls,
-    shows_fullscreen_toggle,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import FileInput from 'svelte-widgets/FileInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -65,7 +62,8 @@
   import { is_vector_key } from '#lib/structure/vectors.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
   import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
-  import { element_site_indices, scene_site_indices } from './linked-sites'
+  import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
+  import { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
@@ -219,6 +217,7 @@
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
+    data_inspector_docked = $bindable(),
     on_step_change,
     on_play,
     on_pause,
@@ -289,6 +288,9 @@
     extra_controls?: Snippet
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
+    // The data inspector as a resizable sidebar beside the structure and plot instead of a
+    // floating pane; its header button toggles it. Unset, it docks in a viewer at least 900px wide.
+    data_inspector_docked?: boolean
     on_step_change?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
@@ -492,11 +494,17 @@
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
+  // The row holds the docked inspector too, so docking it cannot shrink this below the bar
+  let viewer_row_width = $state(0)
+  let inspector_docked = $derived(
+    data_inspector_docked ?? viewer_row_width >= SIDEBAR_DOCK_MIN_WIDTH,
+  )
   const frame_channels = $derived.by((): FrameChannels | undefined => {
     // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
     // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
     // own channels from the source, independently of this display packet.
     if (
+      inspector_docked ||
       active_pane === `data-inspector` ||
       structure_pane === `info` ||
       structure_pane === `export` ||
@@ -837,6 +845,17 @@
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
     controls_config.mode === `never` ? false : prop
+  // The data inspector lists the sites, so the structure's own site table stays off and so
+  // does its reopen button
+  let structure_controls = $derived.by(
+    (): ComponentProps<typeof Structure>[`show_controls`] => {
+      const prop = nested_controls(structure_props.show_controls)
+      if (prop === false) return false
+      const config: Exclude<typeof prop, boolean | string | undefined> =
+        typeof prop === `object` ? prop : { mode: prop === true ? `always` : prop }
+      return { ...config, hidden: [...(config.hidden ?? []), `site-table`] }
+    },
+  )
   let controls_height = $state(0)
   let content_size = $state({ width: 0, height: 0 })
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
@@ -1187,12 +1206,8 @@
   const highlight = (sites: number[]): void => {
     if (!same_values(sites, highlighted_sites)) highlighted_sites = sites
   }
-  const select_source_atom = (atom_idx: number): void => {
-    const [site_idx] = scene_site_indices([atom_idx], current_frame)
-    if (site_idx === undefined) return
-    selected_sites =
-      selected_sites.length === 1 && selected_sites[0] === site_idx ? [] : [site_idx]
-  }
+  // One hover shared by the 3D view and the inspector's atom rows, so either points at the other
+  let hovered_site_idx = $state<number | null>(null)
   // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
   const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
     hover,
@@ -1592,7 +1607,11 @@
                   title={entry.label}
                   aria-pressed={active_pane === entry.pane}
                   onclick={() => {
-                    set_pane_open(entry.pane, active_pane !== entry.pane)
+                    // A docked inspector has no floating pane: its entry undocks it into one
+                    if (entry.pane === `data-inspector` && inspector_docked) {
+                      data_inspector_docked = false
+                      set_pane_open(entry.pane, true)
+                    } else set_pane_open(entry.pane, active_pane !== entry.pane)
                     analysis_menu_open = false
                   }}
                 >
@@ -1646,21 +1665,7 @@
                   }}
                   toggle_props={analysis_pane_props.toggle_props}
                 />
-                <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
-                cannot be tracked -->
-                <TrajectoryDataInspectorPane
-                  {...analysis_pane_props}
-                  property_rows={session.property_rows}
-                  properties_complete={session.properties_complete}
-                  {current_step_idx}
-                  {current_frame}
-                  bind:pane_open={
-                    () => active_pane === `data-inspector`,
-                    (open) => set_pane_open(`data-inspector`, open)
-                  }
-                  on_step_change={session.commit}
-                  on_site_select={select_source_atom}
-                />
+                {#if !inspector_docked}{@render data_inspector()}{/if}
               {/snippet}
             </ToolbarMenu>
           {/if}
@@ -1723,222 +1728,267 @@
       {/if}
     </SequenceControlBar>
 
-    <div
-      class="content-area"
-      bind:clientWidth={content_size.width}
-      bind:clientHeight={content_size.height}
-      class:hide-plot={!show_plot}
-      class:hide-structure={!show_structure}
-      class:show-both={show_structure && show_plot}
-      class:show-structure-only={show_structure && !show_plot}
-      class:show-plot-only={!show_structure && show_plot}
-      style:--viewer-buttons-top={controls_config.mode === `hover`
-        ? `calc(${controls_height}px + 1ex)`
-        : undefined}
-    >
-      {#if show_structure}
-        {#snippet site_tooltip({ site, site_idx }: { site: Site; site_idx: number })}
-          {#if structure_props.tooltip}{@render structure_props.tooltip({
-              site,
-              site_idx,
-            })}{/if}
-          {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
-            {@const probe = hotspot_probe(
-              hotspot_result,
-              hotspot_values,
-              field_geometry,
-              site.xyz,
-            )}
-            <div
-              style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
-            >
-              {#if probe}
-                <div>
-                  Bin-average {hotspot_metric === `energy`
-                    ? `kinetic energy`
-                    : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
-                  <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
-                </div>
-                <div>
-                  {Number.isFinite(probe.ratio)
-                    ? `${format_num(probe.ratio, `.3~g`)}× mean`
-                    : `Ratio to mean unavailable (zero mean)`}
-                </div>
-                <div>
-                  {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
-                  frames
-                </div>
-              {:else}
-                <div>
-                  Bin-average heat unavailable (outside grid, missing or underpopulated bin)
-                </div>
-              {/if}
-              <div>
-                Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
-                · {hotspot_result.weighting} weighting
-              </div>
-              <div>
-                Viewing frame {session.scene_frame ? display_idx(session.scene_frame.idx) : ``} ·
-                {hotspot_result.options.coordinates ?? `device`} grid
-              </div>
-            </div>
-          {/if}
-        {/snippet}
-
-        <Structure
-          allow_file_drop={false}
-          style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
-          {...{
-            show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
-            // Coordinate playback is not a stream of new crystals to classify: symmetry
-            // analysis on every slider event dominated small-molecule scrubbing
-            analyze_symmetry: false,
-            ...structure_props,
-          }}
-          show_controls={nested_controls(structure_props.show_controls)}
-          tooltip={structure_props.tooltip === false ? false : site_tooltip}
-          bind:scene_props={trail_scene_props}
-          bind:atom_color_config
-          {atom_color_field}
-          {volume_color_field}
-          {cutaway}
-          volume_opacity={hotspot_cloud.opacity}
-          atom_opacity={volume_color_field && hotspot_cloud.opacity > 0
-            ? hotspot_cloud.atom_opacity
-            : 1}
-          structure={session.current_structure}
-          render_token={session.scene_frame}
-          on_rendered={session.mark_rendered}
-          {structure_series_key}
-          bind:display_mode={structure_display_mode}
-          trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
-          trajectory_line_end_frame={spectroscopy_open ? undefined : trajectory_line_end_frame}
-          defer_expensive_geometry={!spectroscopy_open && scrub_active}
-          bind:supercell_scaling
-          bind:active_pane={
-            () => (active_pane === `controls` ? `controls` : structure_pane),
-            (pane) => {
-              // Both export panes plan the same flight, synchronized to MD playback.
-              if (pane === `flight`) {
-                active_pane = `flight`
-                structure_pane = null
-                return
-              }
-              set_pane_open(`controls`, pane === `controls`)
-              structure_pane = pane === `controls` ? null : pane
-            }
-          }
-          bind:hidden_elements
-          bind:selected_sites
-          bind:highlighted_sites
-        />
-      {/if}
-
-      {#if show_structure && show_plot}
-        <PaneDivider
-          orientation={actual_layout}
-          bind:ratio={pane_ratio}
-          aria-label="Resize structure and plot panes"
-        />
-      {/if}
-
-      <TrajectorySpectroscopyPane
-        inline
-        run={trajectory}
+    {#snippet data_inspector()}
+      <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
+      cannot be tracked -->
+      <TrajectoryDataInspectorPane
+        {...analysis_pane_props}
+        property_rows={session.property_rows}
+        properties_complete={session.properties_complete}
+        {current_step_idx}
+        {current_frame}
         bind:pane_open={
-          () => active_pane === `spectroscopy`, (open) => set_pane_open(`spectroscopy`, open)
+          () => active_pane === `data-inspector`,
+          (open) => set_pane_open(`data-inspector`, open)
         }
+        on_step_change={session.commit}
+        bind:selected_atoms={
+          // the inspector names source atoms; a render sample shows only some of them as sites
+          () => site_source_atoms(selected_sites, current_frame),
+          (atoms) => (selected_sites = scene_site_indices(atoms, current_frame))
+        }
+        bind:hovered_atom={
+          () =>
+            hovered_site_idx === null
+              ? null
+              : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null),
+          (atom) =>
+            (hovered_site_idx =
+              atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null))
+        }
+        dockable
+        bind:docked={() => inspector_docked, (docked) => (data_inspector_docked = docked)}
       />
-
-      {#if show_plot && !spectroscopy_open}
-        {#if plot_loading}
-          <Spinner
-            text="Sampling trajectory plot data..."
-            style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
-          />
-        {:else if plot_type === `time-series`}
-          {#snippet series_tooltip({
-            x: coord_x,
-            y: coord_y,
-            raw_y,
-            metadata,
-            label,
-          }: ScatterHandlerProps)}
-            <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
-            {@const value_label = String(metadata?.series_label || label || `Value`)}
-            <TooltipValue label={value_label} value={format_num(coord_y)} />
-            {#if typeof raw_y === `number`}
-              <span style="opacity: 0.65"
-                >&nbsp;(<TooltipValue
-                  label="raw"
-                  value={format_num(raw_y)}
-                  unit={parse_axis_label(value_label).unit}
-                />)</span
+    {/snippet}
+    <div
+      class="viewer-row"
+      class:docked-sidebar-row={inspector_docked}
+      bind:clientWidth={viewer_row_width}
+    >
+      <div
+        class="content-area"
+        bind:clientWidth={content_size.width}
+        bind:clientHeight={content_size.height}
+        class:hide-plot={!show_plot}
+        class:hide-structure={!show_structure}
+        class:show-both={show_structure && show_plot}
+        class:show-structure-only={show_structure && !show_plot}
+        class:show-plot-only={!show_structure && show_plot}
+        style:--viewer-buttons-top={controls_config.mode === `hover`
+          ? `calc(${controls_height}px + 1ex)`
+          : undefined}
+      >
+        {#if show_structure}
+          {#snippet site_tooltip({ site, site_idx }: { site: Site; site_idx: number })}
+            {#if structure_props.tooltip}{@render structure_props.tooltip({
+                site,
+                site_idx,
+              })}{/if}
+            {#if hotspot_result && hotspot_values && field_geometry && (show_heatmap || hotspot_cloud.visible)}
+              {@const probe = hotspot_probe(
+                hotspot_result,
+                hotspot_values,
+                field_geometry,
+                site.xyz,
+              )}
+              <div
+                style="border-top: 1px solid currentColor; margin-top: 0.4em; padding-top: 0.4em"
               >
+                {#if probe}
+                  <div>
+                    Bin-average {hotspot_metric === `energy`
+                      ? `kinetic energy`
+                      : `kinetic temperature`}: {format_num(probe.value, `.4~g`)}
+                    <small>{hotspot_metric === `energy` ? `eV/atom` : `K`}</small>
+                  </div>
+                  <div>
+                    {Number.isFinite(probe.ratio)
+                      ? `${format_num(probe.ratio, `.3~g`)}× mean`
+                      : `Ratio to mean unavailable (zero mean)`}
+                  </div>
+                  <div>
+                    {format_num(probe.average_atoms, `.3~g`)} average atoms/bin · occupied {probe.occupied_frames}/{hotspot_result.frames}
+                    frames
+                  </div>
+                {:else}
+                  <div>
+                    Bin-average heat unavailable (outside grid, missing or underpopulated bin)
+                  </div>
+                {/if}
+                <div>
+                  Analysis: {hotspot_result.frames} frames · steps {hotspot_result.first_step}–{hotspot_result.last_step}
+                  · {hotspot_result.weighting} weighting
+                </div>
+                <div>
+                  Viewing frame {session.scene_frame
+                    ? display_idx(session.scene_frame.idx)
+                    : ``} ·
+                  {hotspot_result.options.coordinates ?? `device`} grid
+                </div>
+              </div>
             {/if}
           {/snippet}
 
-          <ScatterPlot
-            {...scatter_props}
-            tooltip={scatter_props.tooltip ?? series_tooltip}
-            show_controls={nested_controls(scatter_props.show_controls)}
-            series={scatter_series}
-            bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
-            {x_axis}
-            {y_axis}
-            {y2_axis}
-            bind:controls_open={scatter_controls_open}
-            current_x_value={x_map.to_x(settled_plot_step_idx)}
-            on_plot_click={(event) => {
-              if (plot_skimming) handle_plot_click(event)
-              scatter_props.on_plot_click?.(event)
+          <Structure
+            allow_file_drop={false}
+            style="height: 100%; min-height: 0; border-radius: var(--struct-border-radius, 0)"
+            {...{
+              show_image_atoms: false, // avoid atoms popping in/out at cell edges during playback
+              // Coordinate playback is not a stream of new crystals to classify: symmetry
+              // analysis on every slider event dominated small-molecule scrubbing
+              analyze_symmetry: false,
+              ...structure_props,
             }}
-            range_padding={0}
-            style="height: 100%"
-            padding={trajectory_scatter_padding}
-            hover_config={trajectory_hover_config}
-          >
-            {#snippet controls_extra(config)}
-              {@render energy_controls(
-                base_plot_series.some((srs) => is_energy_property(srs.id)),
-              )}
-              {@render scatter_props.controls_extra?.(config)}
-            {/snippet}
-          </ScatterPlot>
-        {:else}
-          <Histogram
-            {...histogram_props}
-            show_controls={nested_controls(histogram_props.show_controls)}
-            series={histogram_series}
-            x_axis={distribution_axis}
-            y_axis={distribution_count_axis}
-            mode="single"
-            show_legend={histogram_props.show_legend ?? false}
-            style="height: 100%"
-          >
-            {#snippet controls_extra(config)}
-              <small
-                class="distribution-coverage"
-                style="color: var(--text-muted, currentColor)"
-                title="Each sample counts one frame with a finite property value; counts are not time-weighted."
-              >
-                Frames with values: {format_num(distribution_count, `,.0f`)} / {format_num(
-                  total_frames,
-                  `,.0f`,
-                )}{!session.properties_complete
-                  ? ` · loading…`
-                  : session.property_rows.length < total_frames
-                    ? ` · sampled`
-                    : ``}
-              </small>
-              {@render energy_controls(
-                Boolean(distribution_series && is_energy_property(distribution_series.id)),
-              )}
-              {@render histogram_props.controls_extra?.(config)}
-            {/snippet}
-          </Histogram>
+            show_controls={structure_controls}
+            tooltip={structure_props.tooltip === false ? false : site_tooltip}
+            bind:scene_props={trail_scene_props}
+            bind:atom_color_config
+            {atom_color_field}
+            {volume_color_field}
+            {cutaway}
+            volume_opacity={hotspot_cloud.opacity}
+            atom_opacity={volume_color_field && hotspot_cloud.opacity > 0
+              ? hotspot_cloud.atom_opacity
+              : 1}
+            structure={session.current_structure}
+            bind:hovered_site_idx
+            render_token={session.scene_frame}
+            on_rendered={session.mark_rendered}
+            {structure_series_key}
+            bind:display_mode={structure_display_mode}
+            trajectory_position_stream={spectroscopy_open ? undefined : trail_stream}
+            trajectory_line_end_frame={spectroscopy_open
+              ? undefined
+              : trajectory_line_end_frame}
+            defer_expensive_geometry={!spectroscopy_open && scrub_active}
+            bind:supercell_scaling
+            bind:active_pane={
+              () => (active_pane === `controls` ? `controls` : structure_pane),
+              (pane) => {
+                // Both export panes plan the same flight, synchronized to MD playback.
+                if (pane === `flight`) {
+                  active_pane = `flight`
+                  structure_pane = null
+                  return
+                }
+                set_pane_open(`controls`, pane === `controls`)
+                structure_pane = pane === `controls` ? null : pane
+              }
+            }
+            bind:hidden_elements
+            bind:selected_sites
+            bind:highlighted_sites
+            site_sidebar={false}
+          />
         {/if}
-      {/if}
+
+        {#if show_structure && show_plot}
+          <PaneDivider
+            orientation={actual_layout}
+            bind:ratio={pane_ratio}
+            aria-label="Resize structure and plot panes"
+          />
+        {/if}
+
+        <TrajectorySpectroscopyPane
+          inline
+          run={trajectory}
+          bind:pane_open={
+            () => active_pane === `spectroscopy`, (open) => set_pane_open(`spectroscopy`, open)
+          }
+        />
+
+        {#if show_plot && !spectroscopy_open}
+          {#if plot_loading}
+            <Spinner
+              text="Sampling trajectory plot data..."
+              style="display: flex; justify-content: center; min-height: 0; margin: 0; color: var(--text-muted, currentColor); background: var(--surface-bg); --spinner-size: 1.4em"
+            />
+          {:else if plot_type === `time-series`}
+            {#snippet series_tooltip({
+              x: coord_x,
+              y: coord_y,
+              raw_y,
+              metadata,
+              label,
+            }: ScatterHandlerProps)}
+              <TooltipValue label={x_axis.label} value={format_num(coord_x, `~g`)} /><br />
+              {@const value_label = String(metadata?.series_label || label || `Value`)}
+              <TooltipValue label={value_label} value={format_num(coord_y)} />
+              {#if typeof raw_y === `number`}
+                <span style="opacity: 0.65"
+                  >&nbsp;(<TooltipValue
+                    label="raw"
+                    value={format_num(raw_y)}
+                    unit={parse_axis_label(value_label).unit}
+                  />)</span
+                >
+              {/if}
+            {/snippet}
+
+            <ScatterPlot
+              {...scatter_props}
+              tooltip={scatter_props.tooltip ?? series_tooltip}
+              show_controls={nested_controls(scatter_props.show_controls)}
+              series={scatter_series}
+              bind:hidden_series={hidden_plot_series, set_hidden_plot_series}
+              {x_axis}
+              {y_axis}
+              {y2_axis}
+              bind:controls_open={scatter_controls_open}
+              current_x_value={x_map.to_x(settled_plot_step_idx)}
+              on_plot_click={(event) => {
+                if (plot_skimming) handle_plot_click(event)
+                scatter_props.on_plot_click?.(event)
+              }}
+              range_padding={0}
+              style="height: 100%"
+              padding={trajectory_scatter_padding}
+              hover_config={trajectory_hover_config}
+            >
+              {#snippet controls_extra(config)}
+                {@render energy_controls(
+                  base_plot_series.some((srs) => is_energy_property(srs.id)),
+                )}
+                {@render scatter_props.controls_extra?.(config)}
+              {/snippet}
+            </ScatterPlot>
+          {:else}
+            <Histogram
+              {...histogram_props}
+              show_controls={nested_controls(histogram_props.show_controls)}
+              series={histogram_series}
+              x_axis={distribution_axis}
+              y_axis={distribution_count_axis}
+              mode="single"
+              show_legend={histogram_props.show_legend ?? false}
+              style="height: 100%"
+            >
+              {#snippet controls_extra(config)}
+                <small
+                  class="distribution-coverage"
+                  style="color: var(--text-muted, currentColor)"
+                  title="Each sample counts one frame with a finite property value; counts are not time-weighted."
+                >
+                  Frames with values: {format_num(distribution_count, `,.0f`)} / {format_num(
+                    total_frames,
+                    `,.0f`,
+                  )}{!session.properties_complete
+                    ? ` · loading…`
+                    : session.property_rows.length < total_frames
+                      ? ` · sampled`
+                      : ``}
+                </small>
+                {@render energy_controls(
+                  Boolean(distribution_series && is_energy_property(distribution_series.id)),
+                )}
+                {@render histogram_props.controls_extra?.(config)}
+              {/snippet}
+            </Histogram>
+          {/if}
+        {/if}
+      </div>
+      {#if inspector_docked}{@render data_inspector()}{/if}
     </div>
   {:else}
     <EmptyState class="trajectory-empty-state">
@@ -2049,6 +2099,16 @@
     &.vertical .content-area {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
+    }
+  }
+  .viewer-row {
+    flex: 1;
+    min-height: 0;
+    &:not(.docked-sidebar-row) {
+      display: grid;
+      position: relative;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
     }
   }
   .content-area {

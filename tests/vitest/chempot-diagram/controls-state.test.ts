@@ -1,12 +1,17 @@
 import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
 import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
-import { create_chempot_overrides } from '#lib/chempot-diagram/controls-state.svelte.js'
+import ChemPotSlices from '#lib/chempot-diagram/ChemPotSlices.svelte'
+import {
+  create_chempot_overrides,
+  sticky_range,
+} from '#lib/chempot-diagram/controls-state.svelte.js'
 import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
+import type { Vec2 } from '#lib/math.js'
 import { readFileSync } from 'node:fs'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, fire, mouse } from '../setup'
+import { clip_rect, doc_query, fire, mouse, plot_svg, resize_element } from '../setup'
 
 const read_component_source = (component: string): string =>
   readFileSync(
@@ -89,6 +94,70 @@ test(`color scale picker and reversal both edit the shared color_scale config`, 
   ])
 })
 
+test(`ChemPotSlices clamps typed values, ignores unparsable ones, jumps to a clicked curve point, toggles slices and plots only the drawn formulas`, async () => {
+  const set_slice = vi.fn()
+  const line: Vec2[] = [
+    [-5, 0],
+    [-2.5, 2],
+    [0, 1],
+  ]
+  const props = {
+    elements: [`F`, `Rb`],
+    slices: { F: -1 },
+    ranges: { F: [-5, 0] as Vec2, Rb: [-4, 0] as Vec2 },
+    curves: {
+      F: new Map([
+        [`LaO`, line],
+        [`NiO`, line],
+      ]),
+    },
+    set_slice,
+    measure_label: `Area (eV²)`,
+    formal_chempots: true,
+    colors: (formula: string) => (formula === `NiO` ? `#123456` : undefined),
+    formulas: [`NiO`],
+  }
+  const component = mount(ChemPotSlices, { target: document.body, props })
+  onTestFinished(() => unmount(component))
+  await tick()
+  const [f_box, rb_box] = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
+  expect([f_box.checked, rb_box.checked]).toEqual([true, false])
+  const number = doc_query<HTMLInputElement>(`input[type="number"]`)
+  for (const value of [`7`, `-9`, ``, `-2.5`]) {
+    number.value = value
+    await fire(number, new Event(`change`, { bubbles: true }))
+  }
+  // a click on the measure plot jumps to the mu of the curve point it lands on: here the
+  // plot area's bottom-left corner, (mu, area) = (-5, 0)
+  await resize_element(doc_query(`.chempot-slice .scatter`), 400, 200)
+  const svg = plot_svg()
+  svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 400, height: 200 })
+  const plot_area = clip_rect()
+  svg.dispatchEvent(
+    mouse(`click`, {
+      detail: 1,
+      clientX: plot_area.x,
+      clientY: plot_area.y + plot_area.height,
+    }),
+  )
+  // toggling on starts at the element-rich (upper) end, off returns to projection
+  await fire(rb_box, new Event(`change`, { bubbles: true }))
+  await fire(f_box, new Event(`change`, { bubbles: true }))
+  expect(set_slice.mock.calls).toEqual([
+    [`F`, 0],
+    [`F`, -5],
+    [`F`, -2.5],
+    [`F`, -5],
+    [`Rb`, 0],
+    [`F`, undefined],
+  ])
+  // only formulas_to_draw are plotted, in their domain colors
+  const strokes = [...document.querySelectorAll(`g[data-series-id] > path[stroke]`)].map(
+    (path) => path.getAttribute(`stroke`),
+  )
+  expect(strokes).toEqual([`#123456`])
+})
+
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
   const source = [`ChemPotDiagram3D`, `ChemPotScene3D`].map(read_component_source).join(`\n`)
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
@@ -123,4 +192,17 @@ describe(`rescale_zoom_to_fit`, () => {
     expect(narrowed).toBeLessThan(400)
     expect(rescale_zoom_to_fit(narrowed, narrow_fit, wide_fit)).toBeCloseTo(400, 10)
   })
+})
+
+// The 2D slice view frames its axes on the unsliced projection; a range the user typed in since
+// the last framing must survive the next one (padding, limit or temperature changes)
+// oxfmt-ignore
+test.each([
+  [`untouched axis follows`, [-5, 0], [-5, 0], [-6, 0], false],
+  [`user range stays`, [-2, -1], [-5, 0], [-6, 0], true],
+  [`first framing`, undefined, undefined, [-6, 0], false],
+  [`slicing off resets`, [-6, 0], [-6, 0], undefined, false],
+  [`user range survives slicing off`, [-2, -1], [-6, 0], undefined, true],
+] as const)(`sticky_range: %s`, (_label, current, applied, next, kept) => {
+  expect(sticky_range(current, applied, next)).toEqual(kept ? current : next)
 })

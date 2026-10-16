@@ -56,7 +56,8 @@ test(`applies cells, preserves the sweep on condition updates, recomputes other 
   const tooltip = doc_query(`.plot-tooltip`)
   // the tooltip wears the focused cell's fill with contrasting text
   expect_tooltip_paint(tooltip, first.style.background)
-  const labels = [`Temperature: 300 K`, `O2:`, `Target above hull:`, `Route 1`]
+  // trailing zeros trimmed: 1e-8 bar, not 1.0e-8
+  const labels = [`Temperature: 300 K`, `O2: 1e-8 bar`, `Target above hull:`, `Route 1`]
   for (const label of [...labels, `Driving force:`, `Selectivity:`])
     expect(tooltip.textContent).toContain(label)
   const units = [...tooltip.querySelectorAll(`small`)].map((node) => node.textContent)
@@ -128,6 +129,7 @@ test(`preferred-route colours wrap past 4 routes and leave unknown routes neutra
   const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.map-grid button`)]
   const fills = buttons.map(({ style }) => style.background)
   expect(buttons.map(({ textContent }) => textContent)).toEqual([`1`, `2`, `3`, `4`, `5`, `–`])
+  expect(buttons[0].getAttribute(`aria-label`)).toMatch(/^300 K; O2 = 1e-8 bar; target /)
   expect(buttons[5].getAttribute(`aria-label`)).toMatch(/; best route outside the shortlist$/)
   expect(new Set(fills.slice(0, 4)).size).toBe(4)
   expect([fills[4], fills[5]]).toEqual([fills[0], ``])

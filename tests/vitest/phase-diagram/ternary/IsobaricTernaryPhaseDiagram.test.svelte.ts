@@ -157,14 +157,23 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
   })
 
   // A hovered phase point's tooltip wears its drawn color; composition probes get the neutral
-  // theme chip (was a hard-coded dark card: white on near-white with the light --tooltip-bg)
+  // theme chip (was a hard-coded dark card: white on near-white with the light --tooltip-bg).
+  // Its width cap goes through PlotTooltip's var (its inline max-width overrode a CSS one) and
+  // long rows wrap inside it instead of running past the chip.
   test(`section tooltip paints a hovered phase's color, else the neutral chip`, async () => {
     mount_diagram()
     await wait_for_events()
     move_to([1, 0])
-    expect_tooltip_paint(doc_query(`.ternary-tooltip`), TERNARY_COLORS.stable)
+    const tip = doc_query(`.ternary-tooltip`)
+    expect_tooltip_paint(tip, TERNARY_COLORS.stable)
+    const style = getComputedStyle(tip)
+    expect([style.getPropertyValue(`--plot-tooltip-max-width`), style.whiteSpace]).toEqual([
+      `320px`,
+      `normal`,
+    ])
     move_to([0.45, 0.25])
-    expect(doc_query(`.ternary-tooltip`).textContent).toContain(`%`)
+    // composition rows read `<element> = <percent> %`
+    expect(doc_query(`.ternary-tooltip`).textContent).toMatch(/[A-Z][a-z]? = \d+(?:\.\d)? %/)
     expect_tooltip_paint(doc_query(`.ternary-tooltip`), null)
   })
 

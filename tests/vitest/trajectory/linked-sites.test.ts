@@ -1,7 +1,11 @@
 import type { Vec3 } from '#lib/math.js'
 import type { StructureIdResult } from '#lib/structure-id/calc-structure-id.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
-import { cna_type_source_atoms, scene_site_indices } from '#lib/trajectory/linked-sites.js'
+import {
+  cna_type_source_atoms,
+  scene_site_indices,
+  site_source_atoms,
+} from '#lib/trajectory/linked-sites.js'
 import { expect, test } from 'vitest'
 import { make_molecule } from '../test-fixtures'
 
@@ -21,6 +25,25 @@ test.each<[string, Record<string, unknown> | null, number[], number[]]>([
 ])(`scene_site_indices: %s`, (_name, metadata, source_indices, expected) => {
   const frame = metadata && { structure, metadata }
   expect(scene_site_indices(source_indices, frame)).toEqual(expected)
+})
+
+test.each<[string, Record<string, unknown>, number[]]>([
+  [`full frame passes sites through`, {}, [3, 1, 7]],
+  // site 7 lies past the 4-site sample
+  [
+    `render sample maps sites to source atoms`,
+    { render_sample: true, source_atom_indices: sampled },
+    [9, 3],
+  ],
+])(`site_source_atoms: %s`, (_name, metadata, expected) => {
+  expect(site_source_atoms([3, 1, 7], { metadata })).toEqual(expected)
+})
+
+// A sample that does not say which atoms it kept would pass site indices off as atoms
+test(`a render sample without source_atom_indices throws`, () => {
+  const metadata = { render_sample: true }
+  expect(() => scene_site_indices([0], { structure, metadata })).toThrow(`source_atom_indices`)
+  expect(() => site_source_atoms([0], { metadata })).toThrow(`source_atom_indices`)
 })
 
 const sweep_of = (frame_numbers: number[], types: (Int8Array | null)[]): StructureIdSweep => ({

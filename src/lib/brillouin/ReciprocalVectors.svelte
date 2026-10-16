@@ -33,7 +33,7 @@
     arrow_head_length={size * 0.1}
   />
   <!-- Vector label beyond tip -->
-  <extras.HTML center position={label_position}>
+  <extras.HTML center position={label_position} style="pointer-events: none">
     <span style="color: {vector_colors[idx]}; font-size: 1.2em">
       {vector_labels[idx]}
     </span>

@@ -353,7 +353,8 @@
 </script>
 
 {#snippet readout(label: string, angle: number, intensity: number)}
-  {@html sanitize_html(label)}<br />
+  <!-- a lone pattern's series has no label, which must not leave a blank first line -->
+  {#if label}{@html sanitize_html(label)}<br />{/if}
   2θ: {format_value(angle, `.2f`)} <small>°</small><br />
   Intensity: {format_value(intensity, `.1f`)}
 {/snippet}

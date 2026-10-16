@@ -662,7 +662,13 @@ describe(`PeriodicTable`, () => {
 
     test(`mixed single values, numeric and color arrays render side by side`, async () => {
       mount_table({
-        heatmap_values: [`#ff0000`, [10, 20], [`#00ff00`, `#0000ff`], 42, [4, 5, 6]] as never,
+        heatmap_values: [
+          `#ff0000`,
+          [10, 0.1 + 0.2],
+          [`#00ff00`, `#0000ff`],
+          42,
+          [4, 5, 6],
+        ] as never,
       })
       const tiles = all_tiles()
       expect(tile_bgs(3)).toEqual([
@@ -678,7 +684,9 @@ describe(`PeriodicTable`, () => {
         await tick()
         const tooltip_text = doc_query(`.tooltip`).textContent
         expect(tooltip_text).toContain(name)
-        if (idx > 0) expect(tooltip_text).toContain(`Values:`)
+        // numbers formatted like the tile labels (no float noise), colors verbatim
+        const values = [/^/, /Values: 10, 0\.3$/, /Values: #00ff00, #0000ff$/][idx]
+        expect(tooltip_text?.trim()).toMatch(values)
         tiles[idx].dispatchEvent(mouseleave)
         await tick()
         expect(document.querySelector(`.tooltip`)).toBeNull()

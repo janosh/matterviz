@@ -517,6 +517,26 @@ describe(`Histogram`, () => {
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
   })
 
+  // the middle of 15 bins over [-4.9, 4.9] has edges ±0.3267 a few ulps apart, whose float
+  // midpoint -4.4e-16 the tooltip printed as its value
+  test(`a bin centered on 0 reports exactly 0 to the tooltip and hover handler`, async () => {
+    const on_bar_hover = vi.fn()
+    await mount_histogram({
+      series: [series_of([-1, 0, 1], { label: `A` })],
+      bins: 15,
+      x_axis: { range: [-4.9, 4.9], label: `E` },
+      on_bar_hover,
+    })
+    const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
+    const middle_bar = [...bars].find((bar) =>
+      bar.getAttribute(`aria-label`)?.includes(`bin 8:`),
+    )
+    middle_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ value: 0 }))
+    expect(document.querySelector(`.plot-tooltip`)?.textContent).toMatch(/E: 0\s*Count: 1/)
+  })
+
   // rounded corners belong on the bar's tip, which a reversed count range puts at the bottom
   test.each([
     [[0, null], `top`],
@@ -645,6 +665,8 @@ describe(`Histogram`, () => {
     expect(third_edges[2]).toBeCloseTo(2 / 3, 15)
     // a value exactly on an interior edge goes to the upper bin
     expect(counts_of([2, 4, 6, 8], [0, 10], 5)).toEqual([0, 1, 1, 1, 1])
+    // an edge meant to sit on 0 is exactly 0, not the -8.9e-16 of -4.9 + 7 / (10 / 7)
+    expect(bin_values([], [-4.9, 2.1], 10).edges[7]).toBe(0)
     // collapsed domain: one bin with the samples sitting on it
     expect(bin_values([5, 5, 6], [5, 5], 10)).toEqual({
       edges: Float64Array.of(5, 5),

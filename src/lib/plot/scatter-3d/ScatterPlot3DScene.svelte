@@ -726,7 +726,12 @@
           </T.Line>
         {/each}
       {/if}
-      <extras.HTML position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
+      <extras.HTML
+        position={tick_label_pos(tick_val)}
+        center
+        zIndexRange={[1, 0]}
+        style="pointer-events: none"
+      >
         <span class="tick-label"
           >{get_tick_label(tick_val, axis.ticks) ??
             format_num(tick_val, tick_label_format(ticks, axis.format) || `.2~g`)}</span
@@ -734,7 +739,12 @@
       </extras.HTML>
     {/each}
     {#if display.show_axis_labels !== false}
-      <extras.HTML position={axis_label_pos} center zIndexRange={[1, 0]}>
+      <extras.HTML
+        position={axis_label_pos}
+        center
+        zIndexRange={[1, 0]}
+        style="pointer-events: none"
+      >
         <span class="axis-label" style:color
           >{@html sanitize_html(axis.label || key.toUpperCase())}</span
         >
@@ -865,6 +875,8 @@
       light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96))
     );
     color: var(--canvas-tooltip-text-color, light-dark(#0f172a, #f8fafc));
+    /* portaled into the plot, so never inherit a centered page or card layout */
+    text-align: var(--canvas-tooltip-text-align, start);
     padding: 6px 10px;
     border-radius: 4px;
     font-size: 12px;

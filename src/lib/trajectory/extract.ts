@@ -34,7 +34,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 }
 
 // Frame bookkeeping rather than per-frame physics: the step is the row's own axis
-const BOOKKEEPING_METADATA_KEYS = new Set([`step`, `frame_number`, `total_atoms`])
+export const BOOKKEEPING_METADATA_KEYS = new Set([`step`, `frame_number`, `total_atoms`])
 
 // The canonical plot row: every finite numeric scalar in the frame's metadata (not an
 // allowlist, so file-specific keys survive) plus the lattice geometry and density. Lattice

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { convex_hull_2d, type Vec2 } from '#lib/math.js'
+  import { array_extent, convex_hull_2d, type Vec2 } from '#lib/math.js'
   import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
@@ -9,17 +9,19 @@
   import { json_source } from '#lib/io/export.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
-  import type { DataSeries, UserContentProps } from '#lib/plot/core/types.js'
+  import type { AxisConfig, DataSeries, UserContentProps } from '#lib/plot/core/types.js'
   import ChemPotControls from './ChemPotControls.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
+  import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
   import {
     container_pointer,
     create_chempot_state,
     domain_formula_text,
     highlight_key_of,
+    sticky_range,
   } from './controls-state.svelte'
-  import { build_axis_ranges, orthonormal_2d, pad_domains } from './compute'
+  import { build_axis_ranges, orthonormal_2d, pad_domains, padded_floors } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
 
   let {
@@ -76,14 +78,35 @@
     const hull = convex_hull_2d(pts as Vec2[], 1e-9)
     return hull.length >= 3 ? [...hull, hull[0]] : hull
   }
+  // While slicing, the unsliced shadow projection bounds every section: its padded floor and
+  // extent fix the floor and the axis ranges, so a sweep moves the domains but not the view
+  const pad = (domains: Record<string, number[][]>) =>
+    pad_domains(domains, [0, 1], element_padding, default_min_limit, frame_floors)
+  const frame_floors = $derived(
+    chempot.frame_data &&
+      padded_floors(chempot.frame_data.domains, [0, 1], element_padding, default_min_limit),
+  )
+  const frame_ranges = $derived.by(() => {
+    if (!chempot.frame_data) return [undefined, undefined]
+    const points = Object.values(pad(chempot.frame_data.domains)).flat()
+    return [0, 1].map((axis) => array_extent(points.map((point) => point[axis])))
+  })
+  // frame ranges follow the slice setup, a range the user typed in meanwhile stays
+  let applied_ranges: (Vec2 | undefined)[] = [undefined, undefined]
+  $effect(() => {
+    const next = frame_ranges
+    untrack(() => {
+      const [x_range, y_range] = [x_axis, y_axis].map((axis, idx) =>
+        sticky_range(axis.range, applied_ranges[idx], next[idx]),
+      )
+      applied_ranges = next
+      x_axis = { ...x_axis, range: x_range }
+      y_axis = { ...y_axis, range: y_range }
+    })
+  })
   const draw_domains = $derived.by((): Record<string, number[][]> => {
     if (!diagram_data || plot_elements.length < 2) return {}
-    const padded = pad_domains(
-      diagram_data.domains,
-      [0, 1],
-      element_padding,
-      default_min_limit,
-    )
+    const padded = pad(diagram_data.domains)
     return Object.fromEntries(
       Object.entries(padded)
         .filter(([, pts]) => pts.length > 0)
@@ -119,8 +142,8 @@
   const axis_label = (element: string): string =>
     `${formal_chempots ? `Δ` : ``}μ<sub>${element}</sub> (eV)`
 
-  let x_axis = $state({ label: ``, label_shift: { y: -45 } })
-  let y_axis = $state({ label: `` })
+  let x_axis = $state<AxisConfig>({ label: ``, label_shift: { y: -45 } })
+  let y_axis = $state<AxisConfig>({ label: `` })
 
   $effect(() => {
     const next_x_label = axis_label(plot_elements[0] ?? ``)
@@ -239,6 +262,18 @@
     on_reset={chempot.reset}
   >
     <ChemPotControls values={chempot} set={chempot.set} />
+    {#if chempot.slice_elements.length > 0}
+      <ChemPotSlices
+        elements={chempot.slice_elements}
+        slices={chempot.slices}
+        ranges={chempot.slice_ranges}
+        curves={chempot.slice_curves}
+        set_slice={chempot.set_slice}
+        measure_label="Length (eV)"
+        {formal_chempots}
+        colors={(formula) => domain_colors.get(formula)}
+      />
+    {/if}
   </SettingsSection>
 {/snippet}
 
@@ -302,6 +337,7 @@
       formulas={Object.keys(draw_domains)}
       style="bottom: 60px; left: 50px"
     />
+    {@render slice_label(chempot.slices, formal_chempots)}
     {#if tooltip !== false && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}

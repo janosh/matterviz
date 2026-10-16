@@ -1,5 +1,6 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
+  import { tooltip_paint } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { format_num } from '#lib/labels.js'
@@ -45,7 +46,13 @@
 >
   <div class="tooltip-content" style:--highlight-color={highlight_style?.color}>
     {#if highlight_style}
-      <span class="highlight-badge">★ Highlighted</span>
+      <!-- a chip in the highlight colour: as text it vanished on a like-coloured point's tooltip -->
+      {@const badge = tooltip_paint(highlight_style.color)}
+      <span
+        class="highlight-badge"
+        style:background={badge?.background}
+        style:color={badge?.color}>★ Highlighted</span
+      >
     {/if}
 
     <div style="margin-bottom: 2px">
@@ -120,10 +127,12 @@
     white-space: nowrap;
   }
   .highlight-badge {
-    display: block;
+    display: inline-block;
     font-size: 0.75em;
     font-weight: 600;
-    color: var(--highlight-color, #ff2222);
+    padding: 0 4px;
+    border-radius: 3px;
+    background: var(--highlight-color, #ff4444);
     margin-bottom: 4px;
   }
   .polymorphs span {

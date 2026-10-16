@@ -269,7 +269,9 @@ describe(`TernaryPlot`, () => {
     const plot = await mount_ternary({ series, labels: [`Fe`, `Ni`, `Cr`] })
     const tabindexes = roving_tabindexes(plot)
     expect(tabindexes).toEqual(one_tab_stop(5))
-    expect(markers(plot)[1].getAttribute(`aria-label`)).toBe(`Oxides: Fe 20%, Ni 30%, Cr 50%`)
+    expect(markers(plot)[1].getAttribute(`aria-label`)).toBe(
+      `Oxides: Fe = 20%, Ni = 30%, Cr = 50%`,
+    )
   })
 
   test.each([
@@ -359,6 +361,20 @@ describe(`TernaryPlot`, () => {
     expect(colorbar).toContain(`E (eV)`)
     expect(colorbar).toContain(`5`) // spans the min/max of the non-null color values
     expect(bar_extent(plot)).toEqual([0, 5])
+  })
+
+  // the tooltip's color row is formatted like the color bar ticks, not a raw float
+  test.each([
+    [undefined, `E: 0.333 eV`],
+    [`.1f`, `E: 0.3 eV`],
+  ])(`tooltip color value with tick_format %s reads %s`, async (tick_format, expected) => {
+    const plot = await mount_ternary({
+      series: [{ points: [[1, 1, 1]], color_values: [1 / 3] }],
+      color_bar: { title: `E (eV)`, tick_format },
+    })
+    await fire(markers(plot)[0], mouse(`mousemove`, { clientX: 100, clientY: 100 }))
+    const text = plot.querySelector(`.plot-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
+    expect(text).toContain(expected)
   })
 
   // type spaces the colors and value_range ends override the data extent, on markers and bar

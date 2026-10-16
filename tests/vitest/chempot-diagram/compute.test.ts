@@ -17,6 +17,7 @@ import {
   build_hyperplanes,
   chebyshev_centre,
   compute_chempot_diagram,
+  compute_chempot_system,
   dedup_points,
   fit_plane,
   formula_key_from_composition,
@@ -31,7 +32,11 @@ import {
   renormalize_entries,
   safe_energy_per_atom,
   scale_to_font_range,
+  section_chempot_system,
+  section_measure,
+  section_measure_curves,
   simple_pca,
+  slice_range,
   strip_closing_faces,
 } from '#lib/chempot-diagram/compute.js'
 import { get_domain_color_data } from '#lib/chempot-diagram/color.js'
@@ -1183,13 +1188,18 @@ describe(`fit_plane`, () => {
 describe(`get_touches_limits`, () => {
   const elements = [`Y`, `Ti`]
   test.each([
-    [`wide window`, [-25, 0], [-25, -12, -3, -0.5], [`Y lower bound`]],
+    [`wide window`, [-25, 0], [-25, -12, -3, -0.5], [{ element: `Y`, side: `lower` }]],
     [`narrow window`, [-0.004, 0], [-0.0039, -0.0039, -0.0001, -0.0001], []],
     [
       `domain spanning a narrow window`,
       [-0.004, 0],
       [-0.004, -0.004, 0, 0],
-      [`Y lower bound`, `Y upper bound`, `Ti lower bound`, `Ti upper bound`],
+      [
+        { element: `Y`, side: `lower` },
+        { element: `Y`, side: `upper` },
+        { element: `Ti`, side: `lower` },
+        { element: `Ti`, side: `upper` },
+      ],
     ],
   ])(`%s`, (_label, window, flat_points, expected) => {
     const lims = [window, window] as Vec2[]
@@ -1859,5 +1869,246 @@ describe(`compute_chempot_async`, () => {
     expect(reordered).toBe(first)
     expect(renamed).not.toBe(first)
     await Promise.all([first, renamed])
+  })
+})
+
+describe(`sections (slicing non-display axes at fixed mu)`, () => {
+  const ytos_display = [`O`, `Ti`, `Y`]
+  const ytos_system = compute_chempot_system(ytos_entries, { elements: ytos_display })
+  const quinary_entries = load_json<PhaseData[]>(
+    `${test_dir}/../../../src/site/convex-hull/quinaries/F-La-Ni-O-Rb.json.gz`,
+  )
+  const quinary_display = [`La`, `Ni`, `O`]
+  const quinary_system = compute_chempot_system(quinary_entries, { elements: quinary_display })
+  const range_of = (system: typeof ytos_system, element: string) =>
+    slice_range(system, element, 1, CHEMPOT_DEFAULTS.default_min_limit)
+  // S's own reference row mu_S <= 0 has no free coefficient once S is fixed: a constant
+  // constraint, violated above 0 (with formal chempots only reachable via a custom upper limit)
+  const s_above_ref = compute_chempot_system(ytos_entries, {
+    elements: ytos_display,
+    limits: { S: [-50, 1] },
+  })
+
+  // Two independent paths must agree: halfspace substitution + vertex re-enumeration
+  // (section_chempot_system) vs intersecting the N-D facets' vertex hulls with the slice plane
+  // and interpolating (section_measure_curves). Compared at the curves' interval-interior
+  // points; at the interval ends a curve holds one-sided limits.
+  test.each([
+    { label: `ytos 4D -> 3D`, system: ytos_system, display: ytos_display, fixed: {} },
+    {
+      label: `quinary 5D -> 3D, F fixed`,
+      system: quinary_system,
+      display: quinary_display,
+      fixed: { F: -1.5 },
+    },
+  ])(`$label: halfspace slices match geometric sections`, ({ system, display, fixed }) => {
+    const element = system.elements.find(
+      (el) => !display.includes(el) && !Object.keys(fixed).includes(el),
+    )
+    if (!element) throw new Error(`no free slice axis in ${system.elements}`)
+    const per_interval = 4
+    const range = range_of(system, element)
+    // the swept element's own slice value is ignored
+    const slices = { ...fixed, [element]: range[1] }
+    const curves = section_measure_curves(
+      system,
+      display,
+      slices,
+      element,
+      range,
+      per_interval,
+    )
+    if (!curves) throw new Error(`expected curves for ${element}`)
+    const sections = new Map<number, Record<string, number[][]>>()
+    const section_at = (mu: number) =>
+      sections.get(mu) ??
+      sections
+        .set(mu, section_chempot_system(system, display, { ...fixed, [element]: mu }).domains)
+        .get(mu) ??
+      {}
+    let [max_rel_err, n_checked, min_measure] = [0, 0, Infinity]
+    let worst = ``
+    const with_section = new Set<string>()
+    for (const [formula, curve] of curves) {
+      for (const [idx, [mu, measure]] of curve.entries()) {
+        min_measure = Math.min(min_measure, measure)
+        if (idx % (per_interval + 1) === 0 || idx % (per_interval + 1) === per_interval)
+          continue
+        const domains = section_at(mu)
+        const direct = section_measure(domains[formula] ?? [])
+        const rel_err = Math.abs(direct - measure) / Math.max(1, direct)
+        if (rel_err > max_rel_err)
+          [max_rel_err, worst] = [rel_err, `${formula} at ${mu}: ${direct} vs ${measure}`]
+        n_checked++
+        for (const [other, points] of Object.entries(domains)) {
+          if (section_measure(points) > 1e-9) with_section.add(other)
+        }
+      }
+    }
+    expect(n_checked).toBeGreaterThan(50)
+    // a curve exactly for each phase with a real section somewhere in the range
+    expect(new Set(curves.keys())).toEqual(with_section)
+    expect(min_measure).toBe(0) // clamped: round-off never dips below 0
+    // both paths are exact up to round-off on ~1e3 eV² areas
+    expect(max_rel_err, worst).toBeLessThan(1e-9)
+  })
+
+  test(`measure curves keep the jump where a facet face lies in a mu_S = const plane`, () => {
+    // the O facet (mu_O = 0) ends on the S-O compound facets at fixed mu_S, so its section
+    // drops from a full polygon to nothing at its top vertex height
+    const curve = section_measure_curves(
+      ytos_system,
+      ytos_display,
+      {},
+      `S`,
+      range_of(ytos_system, `S`),
+    )?.get(`O`)
+    if (!curve) throw new Error(`no O curve`)
+    const top = Math.max(
+      ...ytos_system.domains.O.map((point) => point[ytos_system.elements.indexOf(`S`)]),
+    )
+    const at_top = curve.filter(([mu]) => Math.abs(mu - top) < 1e-9).map(([, area]) => area)
+    expect(at_top).toHaveLength(2)
+    expect(Math.max(...at_top)).toBeGreaterThan(1000)
+    expect(Math.min(...at_top)).toBe(0)
+    for (const [mu, area] of curve) if (mu > top + 1e-9) expect(area).toBe(0)
+  })
+
+  test.each([
+    { config: { elements: ytos_display }, shadow: [`S`] },
+    { config: { elements: ytos_display, slice_chempots: { S: -1 } }, shadow: [] },
+    { config: { elements: [`O`, `S`, `Ti`, `Y`] }, shadow: [] },
+  ])(`shadow_elements for $config`, ({ config, shadow }) => {
+    expect(compute_chempot_diagram(ytos_entries, config).shadow_elements).toEqual(shadow)
+  })
+
+  test(`compute_chempot_diagram applies config.slice_chempots like section_chempot_system, keeping each display axis' limits`, () => {
+    const limits: Record<string, Vec2> = { S: [-40, 0], Y: [-30, 0] }
+    const config = { elements: ytos_display, slice_chempots: { S: -2.5 }, limits }
+    const diagram = compute_chempot_diagram(ytos_entries, config)
+    expect(diagram.lims).toEqual([[-50, 0], [-50, 0], limits.Y])
+    expect(diagram).toEqual(
+      section_chempot_system(compute_chempot_system(ytos_entries, config), ytos_display, {
+        S: -2.5,
+      }),
+    )
+  })
+
+  test(`a sliced element's own reference drops out and the upper end is sliceable`, () => {
+    const [, upper] = range_of(ytos_system, `S`)
+    expect(upper).toBe(0) // formal chempots: S's reference plane is mu_S = 0
+    const { domains, elements } = section_chempot_system(ytos_system, ytos_display, {
+      S: upper,
+    })
+    expect(elements).toEqual(ytos_display)
+    expect(domains.S).toBeUndefined()
+    // S-bearing phases touch the S-rich face
+    expect(Object.keys(domains).some((formula) => formula.includes(`S`))).toBe(true)
+    for (const points of Object.values(domains)) {
+      for (const point of points) expect(point).toHaveLength(3)
+    }
+  })
+
+  test(`slice_range spans the real vertices, padded below the min-limit floor`, () => {
+    const [lower, upper] = range_of(ytos_system, `S`)
+    const axis = ytos_system.elements.indexOf(`S`)
+    const real = Object.values(ytos_system.domains)
+      .flat()
+      .map((point) => point[axis])
+      .filter((val) => val > CHEMPOT_DEFAULTS.default_min_limit + 1e-6)
+    expect(lower).toBeCloseTo(Math.min(...real) - 1, 12)
+    expect(upper).toBe(Math.max(...real))
+    expect(() => range_of(ytos_system, `Xe`)).toThrow(`Xe is not an axis of O-S-Ti-Y`)
+    // clamped to the limits: big padding stops at the floor, the top at the real vertices
+    expect(slice_range(ytos_system, `S`, 100, -50)[0]).toBe(-50)
+    expect(range_of(s_above_ref, `S`)[1]).toBe(0)
+    const narrow = compute_chempot_system(ytos_entries, {
+      elements: ytos_display,
+      limits: { S: [-2, -1] },
+    })
+    expect(range_of(narrow, `S`)).toEqual([-2, -1])
+    // an axis with only floor vertices falls back to its limits
+    const floored = { ...ytos_system, elements: [`A`], lims: [[-5, 0]] as Vec2[] }
+    expect(slice_range({ ...floored, domains: { B: [[-5], [-5]] } }, `A`, 1, -5)).toEqual([
+      -5, 0,
+    ])
+  })
+
+  // ranges given the other slices are exactly the feasible intervals: values clamped into them
+  // one element after another section without error, even at the range ends where a
+  // compound of only sliced elements (FRb, NS, ...) turns tight
+  test.each([
+    { name: `F-La-Ni-O-Rb`, display: [`La`, `Ni`, `O`], formal_chempots: true },
+    { name: `C-H-N-O-S`, display: [`C`, `H`, `O`], formal_chempots: false },
+  ])(`slice_range given other slices: $name`, ({ name, display, formal_chempots }) => {
+    const system = compute_chempot_system(
+      load_json<PhaseData[]>(
+        `${test_dir}/../../../src/site/convex-hull/quinaries/${name}.json.gz`,
+      ),
+      { elements: display, formal_chempots },
+    )
+    const [first, second] = system.elements.filter((el) => !display.includes(el))
+    const [, first_top] = range_of(system, first)
+    const [, second_top] = range_of(system, second)
+    // fixing one at its top shrinks the other's feasible range
+    expect(slice_range(system, second, 1, -50, { [first]: first_top })[1]).toBeLessThan(
+      second_top,
+    )
+    for (const [frac_1, frac_2] of [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [0.5, 1],
+    ]) {
+      const slices: Record<string, number> = {}
+      for (const [element, frac] of [
+        [first, frac_1],
+        [second, frac_2],
+      ] as const) {
+        const [lower, upper] = slice_range(system, element, 1, -50, slices)
+        slices[element] = lower + frac * (upper - lower)
+      }
+      const { domains, shadow_elements } = section_chempot_system(system, display, slices)
+      expect(shadow_elements).toEqual([])
+      expect(Object.keys(domains).length).toBeGreaterThan(0)
+    }
+  })
+
+  test.each([
+    { slices: { S: 1 }, message: `Slice mu_S = 1 eV lies outside its limits [-50, 0]` },
+    { slices: { S: -51 }, message: `Slice mu_S = -51 eV lies outside its limits [-50, 0]` },
+    { slices: { Ti: -1 }, message: `Cannot slice display axis Ti` },
+    { slices: { Xe: -1 }, message: `Cannot slice Xe: not an axis of O-S-Ti-Y` },
+    { slices: { S: 0.5 }, system: s_above_ref, message: `puts S 0.5 eV above its reference` },
+    { slices: {}, display: [`O`, `Ti`, `Xe`], message: `Display axes Xe not in O-S-Ti-Y` },
+  ])(`section_chempot_system rejects $message`, ({ slices, system, display, message }) => {
+    expect(() =>
+      section_chempot_system(system ?? ytos_system, display ?? ytos_display, slices),
+    ).toThrow(message)
+  })
+
+  test(`section_measure_curves is null while another axis stays shadow-projected, throws for a display axis`, () => {
+    expect(
+      section_measure_curves(quinary_system, quinary_display, {}, `F`, [-5, 0]),
+    ).toBeNull()
+    expect(() =>
+      section_measure_curves(ytos_system, ytos_display, { S: -1 }, `Ti`, [-5, 0]),
+    ).toThrow(`Cannot sweep display axis Ti`)
+  })
+
+  test.each([
+    // unit square with interior and repeated points, in the z = 2 plane
+    {
+      points: chunk(3, [0, 0, 2, 1, 0, 2, 1, 1, 2, 0, 1, 2, 0.5, 0.5, 2, 1, 1, 2]),
+      measure: 1,
+    },
+    // triangle in a tilted plane: area = |a x b| / 2 with a x b = (12, 12, 12)
+    { points: chunk(3, [0, 0, 0, 3, 0, -3, 0, 4, -4]), measure: Math.hypot(12, 12, 12) / 2 },
+    { points: chunk(3, [0, 0, 0, 1, 1, 1, 2, 2, 2]), measure: 0 }, // collinear
+    { points: chunk(2, [3, 1, 0, 0, 1.5, 0.5, 6, 2]), measure: Math.hypot(6, 2) }, // segment
+    { points: [[1, 2, 3]], measure: 0 },
+  ])(`section_measure of $points.length points = $measure`, ({ points, measure }) => {
+    expect(section_measure(points)).toBeCloseTo(measure, 12)
   })
 })

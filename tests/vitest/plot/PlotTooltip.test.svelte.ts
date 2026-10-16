@@ -78,6 +78,9 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.textContent).toBe(`Test content`)
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
+    // no container cap, and no inline max-width that would override a caller's CSS
+    expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(``)
+    expect(tooltip.style.maxWidth).toBe(``)
     expect([...tooltip.classList]).toEqual(
       expect.arrayContaining([`plot-tooltip`, `custom-tooltip`, `my-class`]),
     )
@@ -185,8 +188,31 @@ describe(`PlotTooltip`, () => {
       children: make_children(`a`.repeat(80)),
     })
     expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
-    expect(tooltip.style.maxWidth).toBe(`84px`)
+    // the container cap rides a CSS variable, not an inline max-width that would beat the
+    // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
+    expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
+    expect(tooltip.style.maxWidth).toBe(``)
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(1024px, 84px)`) // happy-dom resolves 100vw
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
+    // never inherits a centered page section
+    expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
+  })
+
+  test(`--plot-tooltip-max-width narrows the box, the container cap still applies`, () => {
+    const tooltip = mount_tooltip({
+      constrain_to: { width: 100, height: 300 },
+      style: `--plot-tooltip-max-width: 50px`,
+    })
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(50px, 84px)`)
+  })
+
+  // a caller's class cannot beat the scoped `nowrap` rule, so wrapping is opt-in by variable
+  test.each([
+    [`chip`, {}],
+    [`wrapping box`, { constrain_to: { width: 100, height: 300 } }],
+  ])(`--plot-tooltip-white-space overrides the %s default`, (_label, props) => {
+    const tooltip = mount_tooltip({ ...props, style: `--plot-tooltip-white-space: pre-line` })
+    expect(getComputedStyle(tooltip).whiteSpace).toBe(`pre-line`)
   })
 
   // Without a constraining box the signed offset is applied verbatim, absolute or fixed.

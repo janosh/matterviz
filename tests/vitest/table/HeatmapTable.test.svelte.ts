@@ -988,6 +988,33 @@ describe(`HeatmapTable`, () => {
 
   describe(`Column Visibility Toggle`, () => {
     // The menu is ToggleMenu, whose dropdown portals to <body>, so query from document.
+    // Default-hidden columns start hidden without counting as a change, and Reset hides them again
+    it(`default_hidden_columns is the reset baseline`, async () => {
+      const state = $state({ hidden_columns: [`Value`] })
+      mount_table(
+        bind_props(
+          {
+            data: sample_data,
+            columns: sample_columns,
+            show_column_toggle: true,
+            default_hidden_columns: [`Value`],
+          },
+          state,
+        ),
+      )
+      await tick()
+      expect(document.querySelector(`.column-toggles > .reset-btn`)).toBeNull()
+      await click(doc_query(`.column-toggles > button`))
+      const value_box = [
+        ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
+      ].find((box) => box.closest(`label`)?.textContent?.includes(`Value`))
+      if (!value_box) throw new Error(`no Value checkbox`)
+      await click(value_box)
+      expect(state.hidden_columns).toEqual([])
+      await click(doc_query(`.column-toggles > .reset-btn`))
+      expect(state.hidden_columns).toEqual([`Value`])
+    })
+
     it(`toggles columns and resets without enabling caller-hidden columns`, async () => {
       const state = $state({ hidden_columns: [`Value`] })
       mount_table(
@@ -1644,6 +1671,72 @@ describe(`HeatmapTable`, () => {
       await fire(cell_at(2, 0), keydown(`ArrowUp`))
       expect(document.activeElement).toBe(cell_at(1, 0))
     })
+
+    // A row-select checkbox toggles its row itself; the click or key it bubbles into the row
+    // must not fire on_row_click too, or a toggling row action undoes the checkbox
+    it(`row-select checkbox clicks and keys skip on_row_click`, async () => {
+      const on_row_click = vi.fn()
+      const state = $state({ selected_ids: [] as RowId[] })
+      const props = { data: [{ A: 1 }, { A: 2 }], columns: plain_columns(`A`), on_row_click }
+      mount_table(bind_props({ ...props, show_row_select: true, row_key: `A` }, state))
+      await tick()
+      const checkbox = doc_query<HTMLInputElement>(`tbody tr[data-row-idx="1"] input`)
+      checkbox.click()
+      await fire(checkbox, keydown(` `))
+      expect(state.selected_ids).toEqual([2])
+      expect(on_row_click).not.toHaveBeenCalled()
+    })
+  })
+
+  // on_row_hover links a row to something outside the table (a 3D atom highlight), so the
+  // row under a still pointer is re-reported when the data under it changes, and an unmount
+  // mid-hover clears it
+  it(`on_row_hover follows data changes under the pointer and clears on unmount`, async () => {
+    const on_row_hover = vi.fn()
+    const state = $state({ data: [{ A: 1 }, { A: 2 }] })
+    const table = mount_table(bind_props({ columns: plain_columns(`A`), on_row_hover }, state))
+    await tick()
+    const over = (row_idx: number) =>
+      doc_query(`tbody tr[data-row-idx="${row_idx}"] td`).dispatchEvent(
+        new PointerEvent(`pointerover`, { bubbles: true }),
+      )
+    over(1)
+    expect(on_row_hover.mock.calls).toEqual([[{ A: 2 }]])
+    state.data = [{ A: 3 }, { A: 4 }]
+    await tick()
+    expect(on_row_hover.mock.lastCall).toEqual([{ A: 4 }])
+    // the row is gone: nothing is under the pointer any more
+    state.data = [{ A: 5 }]
+    await tick()
+    expect(on_row_hover.mock.lastCall).toEqual([null])
+    over(0)
+    const n_calls = on_row_hover.mock.calls.length
+    await unmount(table)
+    expect(on_row_hover.mock.calls.slice(n_calls)).toEqual([[null]])
+  })
+
+  // A linked view names a row (an atom hovered in 3D): it is shaded like the hovered row
+  it(`highlighted_row_id shades the named row`, async () => {
+    const state = $state<{ highlighted_row_id: number | null }>({ highlighted_row_id: 2 })
+    mount_table(
+      bind_props(
+        {
+          columns: plain_columns(`id`),
+          data: [{ id: 1 }, { id: 2 }, { id: 3 }],
+          row_key: `id`,
+        },
+        state,
+      ),
+    )
+    await tick()
+    const shaded = () =>
+      [...document.querySelectorAll(`tbody tr[data-row-idx]`)].map((row) =>
+        row.classList.contains(`hovered`),
+      )
+    expect(shaded()).toEqual([false, true, false])
+    state.highlighted_row_id = null
+    await tick()
+    expect(shaded()).toEqual([false, false, false])
   })
 
   describe(`Filtering, summaries and per-column state`, () => {
@@ -2481,6 +2574,27 @@ describe(`HeatmapTable`, () => {
         virtualized ? `${n_rendered} of ${many_rows.length} rows` : undefined,
       )
       expect(document.querySelector(`.pagination`) !== null).toBe(`pagination` in props)
+    })
+
+    // a row a linked view names (an atom hovered in 3D) outside the window is scrolled to, and
+    // followed when new data (the next frame) moves it while it stays named
+    it(`highlighted_row_id scrolls an unrendered row into the window`, async () => {
+      const props = $state<TableProps>({
+        data: many_rows,
+        columns: two_cols,
+        virtual: true,
+        row_key: `Score`,
+        highlighted_row_id: 150,
+      })
+      mount_table(props)
+      await tick()
+      const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
+      // centred in the viewport by the row-height estimate
+      expect(scroller.scrollTop).toBe(150 * row_height_px - scroller.clientHeight / 2)
+      expect(doc_query(`tbody tr.hovered`).textContent).toContain(`Model 150`)
+      props.data = many_rows.toReversed()
+      await tick()
+      expect(scroller.scrollTop).toBe(49 * row_height_px - scroller.clientHeight / 2)
     })
 
     it(`moves the window and preserves absolute row numbers on scroll`, async () => {

@@ -81,7 +81,9 @@
   })
 
   // Position flipping alone cannot keep a nowrap chip inside a small plot when the
-  // label path is long — cap width to the constrained box and let the text wrap.
+  // label path is long — cap width to the constrained box and let the text wrap. Callers
+  // can ask for a narrower box with --plot-tooltip-max-width; the container still caps it.
+  // Both meet in a zero-specificity rule, so a caller's own max-width still wins.
   const max_width = $derived(constrain_to ? Math.max(0, constrain_to.width - 16) : undefined)
   // A fill JS can parse is painted outright, with no DOM reads as the tooltip follows the
   // pointer. Anything else (var() fill, or none: the neutral chip) resolves through a probe
@@ -105,7 +107,7 @@
   class={[`plot-tooltip`, max_width != null && `plot-tooltip-wrap`, rest.class]}
   style:background-color={paint?.background}
   style:color={paint?.color}
-  style:max-width={max_width != null ? `${max_width}px` : undefined}
+  style:--plot-tooltip-cap={max_width != null ? `${max_width}px` : undefined}
   style:position={fixed ? `fixed` : `absolute`}
   style:left="{pos.x}px"
   style:top="{pos.y}px"
@@ -121,17 +123,20 @@
   :where(.plot-tooltip) {
     background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     color: var(--tooltip-color, light-dark(#222, #eee));
+    max-width: min(var(--plot-tooltip-max-width, 100vw), var(--plot-tooltip-cap, 100vw));
   }
   .plot-tooltip {
     box-sizing: border-box;
     padding: var(--plot-tooltip-padding, 2px 6px);
     border-radius: var(--plot-tooltip-border-radius, 4px);
     font-size: var(--plot-tooltip-font-size, 0.8em);
-    white-space: nowrap;
+    /* never inherit a centered page or card layout */
+    text-align: start;
+    white-space: var(--plot-tooltip-white-space, nowrap);
     z-index: var(--plot-tooltip-z-index, 1000);
   }
   .plot-tooltip-wrap {
-    white-space: normal;
+    white-space: var(--plot-tooltip-white-space, normal);
     overflow-wrap: break-word; /* mid-token only when that token alone exceeds the line */
   }
 </style>

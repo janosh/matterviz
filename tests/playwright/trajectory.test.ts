@@ -1067,10 +1067,9 @@ test.describe(`Trajectory Component`, () => {
         .locator(`body`)
         .evaluate((element) => getComputedStyle(element).backgroundColor)
       expect(surface_bg).not.toBe(page_bg)
-      await expect(hover_viewer.locator(`.content-area > .structure`)).toHaveCSS(
-        `background-color`,
-        surface_bg,
-      )
+      await expect(
+        hover_viewer.locator(`.content-area > .structure-site-layout > .structure`),
+      ).toHaveCSS(`background-color`, surface_bg)
       await expect(hover_viewer.locator(`.content-area > .scatter`)).toHaveCSS(
         `background-color`,
         surface_bg,
@@ -1079,7 +1078,7 @@ test.describe(`Trajectory Component`, () => {
       await hover_viewer.hover()
       await expect(hover_controls).toBeVisible()
       const structure_controls = hover_viewer.locator(
-        `.content-area > .structure > .control-buttons`,
+        `.content-area > .structure-site-layout > .structure > .control-buttons`,
       )
       await expect(structure_controls).toBeVisible()
       const [trajectory_box, structure_box] = await Promise.all(
@@ -1419,8 +1418,9 @@ test.describe(`Trajectory Component`, () => {
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
 
-      // Widening the sidebar puts them back side by side without a remount
-      await set_size(900)
+      // Widening the sidebar puts them back side by side without a remount. 890px stays
+      // below the 900px from which the data inspector docks and takes a third of the row.
+      await set_size(890)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)
 

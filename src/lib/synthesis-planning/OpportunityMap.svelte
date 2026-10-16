@@ -134,7 +134,7 @@
       : idx < 0
         ? `best route outside the shortlist`
         : `route ${idx + 1}: driving force ${format_num(route.driving_force * 1000, `.1f`)}, selectivity ${format_num(route.selectivity_margin * 1000, `.1f`)} meV/atom`
-    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} ${format_num(cell.pressure, `.2g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull; ${route_text}`
+    return `${format_num(cell.temperature, `.0f`)} K; ${scan_gas} = ${format_num(cell.pressure, `.2~g`)} bar; target ${format_num(cell.e_above_hull * 1000, `.1f`)} meV/atom above hull; ${route_text}`
   }
   function apply_cell(cell: OpportunityCell) {
     if (!scan_gas) return
@@ -237,7 +237,7 @@
               {@const route = shown_route(cell)}
               {@const idx = route_idx(route)}
               {@render tooltip_row(`Temperature`, cell.temperature, `K`, `.0f`)}
-              {@render tooltip_row(scan_gas, cell.pressure, `bar`, `.2g`)}
+              {@render tooltip_row(scan_gas, cell.pressure, `bar`, `.2~g`)}
               {@render tooltip_row(`Target above hull`, cell.e_above_hull * 1000, `meV/atom`)}
               {#if route && idx >= 0}
                 <div>Route {idx + 1}</div>

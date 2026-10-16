@@ -78,7 +78,7 @@ export const expand_ion_types = (
   })
   const total_ions = ion_counts.reduce((sum, count) => sum + count, 0)
   if (available && total_ions > available.max_ions) {
-    const declared = symbols.map((symbol, idx) => `${symbol} ${ion_counts[idx]}`).join(`, `)
+    const declared = symbols.map((symbol, idx) => `${symbol} = ${ion_counts[idx]}`).join(`, `)
     throw new Error(
       `ion counts declare ${total_ions} ions (${declared}) but only ` +
         `${available.max_ions} ${available.source} remain`,

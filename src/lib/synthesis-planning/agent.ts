@@ -130,7 +130,7 @@ function format_route_text(route: SynthesisRoute, rank?: number): string {
   if (route.intermediate_step)
     lines.push(`   step 1: ${route.intermediate_step.reaction.equation}`)
   lines.push(
-    `   ΔE ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu); gas exchange: ${thermodynamics.atmosphere}`,
+    `   ΔE = ${format_mev(reaction.energy_per_atom)} (${format_num(reaction.energy_per_fu, `.2~f`)} eV/fu); gas exchange: ${thermodynamics.atmosphere}`,
   )
   const competitor_text = selectivity.competitors
     .slice(0, 4)

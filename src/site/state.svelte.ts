@@ -153,6 +153,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/reciprocal/ir-raman': [`IrRamanSpectrum`],
   '/structure/bond-angles': [`BondAnglePlot`],
   '/structure/coordination': [`CoordinationBarPlot`],
+  '/structure/interface': [`InterfaceBuilder`],
   '/structure/rdf': [`RdfPlot`],
   '/structure/slab': [`SlabBuilder`],
   '/structure/symmetry': [`SymmetryStats`, `WyckoffTable`],

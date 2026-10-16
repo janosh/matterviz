@@ -465,6 +465,19 @@ describe(`XrdPlot`, () => {
     expect(await peak_top(0.0001)).toBeCloseTo(await peak_top(0.01), 6)
   })
 
+  // a lone pattern's profile series is unlabelled, which left an empty line atop its tooltip
+  test(`broadened profile tooltip of a single pattern starts with its readout`, async () => {
+    const target = await mount_xrd({
+      patterns: pattern,
+      broadening_enabled: true,
+      // hovered/tooltip_point pass through to ScatterPlot but aren't XrdPlot's public props
+      hovered: true,
+      tooltip_point: { x: 30, y: 50, series_idx: 0, point_idx: 0 },
+    } as XrdProps)
+    const tooltip_el = query(target, `.plot-tooltip`)
+    expect(tooltip_el.innerHTML).toMatch(/^(?:<!---->|\s)*2θ: /)
+  })
+
   // A profile (measured scan) is never broadened again and gets its own 100 scale, apart
   // from the area-normalized sticks, in either orientation
   test.each([`vertical`, `horizontal`] as const)(

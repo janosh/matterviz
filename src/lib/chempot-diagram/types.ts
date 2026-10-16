@@ -48,6 +48,22 @@ export interface ChemPotDiagramConfig {
   // For quaternary+ systems: show one diagram with projection switcher ("single")
   // or all C(n,3) ternary projections in a grid ("grid"). Default: "single"
   projection_mode?: ChemPotProjectionMode
+  // Fix the chemical potentials (eV) of data elements outside `elements` to slice the diagram
+  // there: exact cross-sections of the full N-D domains instead of the shadow projection
+  // non-display elements get otherwise. Each value must lie within that element's limits.
+  slice_chempots?: ChemPotSliceValues
+}
+
+export type ChemPotSliceValues = Partial<Record<string, number>>
+
+// Halfspace system and N-D domains on every axis a view needs (see compute_chempot_system)
+export interface ChemPotSystem {
+  elements: string[]
+  lims: Vec2[]
+  // Entry rows [x_1, ..., x_n, -E_per_atom] meaning x·mu - E <= 0, named by `formulas`
+  hyperplanes: number[][]
+  formulas: string[]
+  domains: Record<string, number[][]>
 }
 
 // Computed chemical potential diagram data
@@ -58,6 +74,9 @@ export interface ChemPotDiagramData {
   elements: string[]
   // Axis limits array: [[min, max], ...] per element
   lims: Vec2[]
+  // Elements neither displayed nor sliced, whose axis was dropped (shadow projection): the
+  // domains are then projected polyhedra rather than the facets of one polytope
+  shadow_elements: string[]
 }
 
 interface ChemPotHoverInfoBase {
@@ -78,12 +97,15 @@ interface ChemPotHoverInfo2D extends ChemPotHoverInfoBase {
   view: `2d`
 }
 
+// An axis bound (limit) a domain is clipped against
+export type ChemPotBound = { element: string; side: `lower` | `upper` }
+
 export interface ChemPotHoverInfo3D extends ChemPotHoverInfoBase {
   view: `3d`
   n_vertices: number
   n_edges: number
   ann_loc: number[]
-  touches_limits: string[]
+  touches_limits: ChemPotBound[]
   is_elemental: boolean
   is_draw_formula: boolean
   matching_entry_count: number
@@ -94,7 +116,7 @@ export interface ChemPotHoverInfo3D extends ChemPotHoverInfoBase {
 
 export type ChemPotHoverInfo = ChemPotHoverInfo2D | ChemPotHoverInfo3D
 
-// detail_level `compact` drops the axis ranges and 3D geometry (default `detailed`)
+// detail_level `compact` drops the axis ranges, neighbours and bounds (default `detailed`)
 export type ChemPotTooltipConfig = { detail_level?: `compact` | `detailed` }
 export type ChemPotTooltipProp = TooltipProp<ChemPotHoverInfo, ChemPotTooltipConfig>
 
@@ -111,6 +133,7 @@ export const CHEMPOT_DEFAULTS = {
   interpolate_temperature: true,
   max_interpolation_gap: 500,
   projection_mode: `single` as ChemPotProjectionMode,
+  slice_chempots: {} as ChemPotSliceValues,
   // Dark2 qualitative palette (same as pymatgen/plotly default)
   formula_colors: [
     `#1b9e77`,

@@ -427,6 +427,33 @@ describe(`BoxPlot`, () => {
     expect(on_box_hover).toHaveBeenLastCalledWith(null)
   })
 
+  // Statistics are snapped to 0 only within float noise n·ε·max|x|: a round-off mean or an
+  // interpolated quartile reads 0, a genuinely tiny median or mean beside large values doesn't
+  test.each([
+    { label: `round-off mean`, y: [0.1, 0.2, -0.3], median: /median: 0\.1/, mean: /mean: 0$/ },
+    {
+      label: `round-off quartile`,
+      y: [-0.3, 0.1],
+      median: /q3: 0median/,
+      mean: /mean: −0\.1$/,
+    },
+    {
+      label: `tiny median and mean beside large values`,
+      y: [-1e6, 1e-7, 1e6],
+      median: /median: 1e-7/,
+      mean: /mean: 3\.33e-8$/,
+    },
+  ])(`tooltip statistics: $label`, async ({ y, median, mean }) => {
+    const plot = await mount_sized_box_plot({ series: [{ y, label: `A` }], show_mean: true })
+    query(plot, `g.box-series[role="button"]`).dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true }),
+    )
+    await tick()
+    const text = query(plot, `.plot-tooltip`).textContent?.trim()
+    expect(text).toMatch(median)
+    expect(text).toMatch(mean)
+  })
+
   // aria-labels are read aloud: the interpolated median 0.15000000000000002 reads as 0.15
   test.each([
     [{}, `box 1: A, median 0.15`],

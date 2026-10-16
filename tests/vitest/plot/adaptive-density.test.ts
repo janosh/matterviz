@@ -90,6 +90,22 @@ describe(`adaptive density utilities`, () => {
     },
   )
 
+  // -4.9 + 7 * 0.7 is -8.9e-16 in floats, which the bin tooltip printed as its edge
+  it.each([
+    [{ x: 65, y: 50 }, 6, [-0.7, 0]],
+    [{ x: 75, y: 50 }, 7, [0, 0.7]],
+  ] as const)(`snaps a bin edge meant to sit on 0 (pointer %o)`, (pointer, x_bin, edges) => {
+    const x_range: Vec2 = [-4.9, 2.1]
+    const density = bin_points([{ x: [-0.35, 0.35], y: [0, 0] }], x_range, [-1, 1], 10, 1)
+    const plot_rect = { x: 0, y: 0, width: 100, height: 100 }
+    const bin = density_bin_at_point(density, pointer, plot_rect, x_range, [-1, 1])
+    expect(bin?.x_bin).toBe(x_bin)
+    expect(bin?.x_range[0]).toBeCloseTo(edges[0], 12)
+    expect(bin?.x_range[1]).toBeCloseTo(edges[1], 12)
+    // exactly 0, not a few ulps off
+    expect(bin?.x_range[edges.indexOf(0)]).toBe(0)
+  })
+
   it(`switches to point rendering for sparse or small views`, () => {
     expect(should_render_points(10_000, 300 * 300, 25_000, 0.12)).toBe(true)
     expect(should_render_points(30_000, 300 * 300, 25_000, 0.5)).toBe(true)

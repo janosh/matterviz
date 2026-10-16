@@ -68,18 +68,22 @@ const get_export_button = (export_pane: Locator, label_text: string): Locator =>
 
 const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Promise<void> => {
   await diagram.hover()
+  // A clicked toggle's tooltip stays up while the toggle has focus and takes clicks during its
+  // ~250 ms close, so a click right after focus moves on can land on it instead of this toggle
+  await expect(diagram.page().locator(`.tooltip-content`)).toBeHidden()
   await toggle.click({ force: true })
   await expect(pane).toBeVisible()
 }
 
-// `toggle` is the pane's chrome button suffix, `label` text unique to that pane's contents
-const get_pane = (diagram: Locator, toggle: string, label: string) => ({
-  toggle: diagram.locator(`button.chempot-${toggle}-toggle`).first(),
-  pane: diagram.locator(`.draggable-pane`).filter({ hasText: label }).first(),
+// `name` is the pane's class infix: button.chempot-<name>-toggle opens .chempot-<name>-pane.
+// Matched by class, not by the pane's contents, so relabelled sections don't hide a pane.
+const get_pane = (diagram: Locator, name: string) => ({
+  toggle: diagram.locator(`button.chempot-${name}-toggle`).first(),
+  pane: diagram.locator(`.draggable-pane.chempot-${name}-pane`).first(),
 })
 
 const open_export_pane = async (diagram: Locator): Promise<Locator> => {
-  const { toggle, pane } = get_pane(diagram, `export`, `Export Image`)
+  const { toggle, pane } = get_pane(diagram, `export`)
   await open_pane(diagram, toggle, pane)
   return pane
 }
@@ -101,12 +105,12 @@ const assert_pin_toggle_and_escape = async (
 ): Promise<void> => {
   const hit_point = await find_tooltip_hit_point(page, surface, tooltip)
   await page.mouse.click(hit_point.x, hit_point.y)
-  await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
+  await expect(tooltip).toContainText(`Pinned · Esc to unlock`)
   await focus_target.focus()
   await page.keyboard.press(`Escape`)
   await expect
     .poll(async () => ((await tooltip.count()) ? ((await tooltip.textContent()) ?? ``) : ``))
-    .not.toContain(`Pinned · Press Esc to unlock`)
+    .not.toContain(`Pinned · Esc to unlock`)
 }
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
@@ -148,7 +152,8 @@ test.describe(`ChemPot Diagram interactions`, () => {
 
     const color_mode_select = controls_pane.getByLabel(`Color mode:`)
     await color_mode_select.selectOption(`energy`)
-    const colorbar = diagram.locator(`.colorbar`).first()
+    // the legend's bar; the controls pane's colour-scale picker draws preview bars of its own
+    const colorbar = diagram.locator(`.chempot-legend .colorbar`)
     await expect(colorbar).toBeVisible()
     await expect(colorbar).toContainText(`Energy per atom`)
     await expect(controls_pane.getByLabel(`Color scale:`)).toBeVisible()
@@ -179,11 +184,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
       `overflow`,
       `hidden`,
     )
-    const { toggle: controls_toggle, pane: controls_pane } = get_pane(
-      diagram,
-      `controls`,
-      `ChemPot`,
-    )
+    const { toggle: controls_toggle, pane: controls_pane } = get_pane(diagram, `controls`)
     await open_pane(diagram, controls_toggle, controls_pane)
 
     const projection = [`x`, `y`, `z`].map((axis) =>
@@ -246,6 +247,30 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(formula_pane.locator(`input[type="checkbox"]`).first()).toBeVisible()
   })
 
+  // Domain labels sit on their faces as HTML over the canvas; they must let the pointer through
+  // to the face underneath (threlte's <HTML> wrapper takes pointer events by default)
+  test(`hovering a domain's label shows that domain's tooltip`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1600 })
+    const diagram = await get_diagram_by_heading(
+      page,
+      /Ternary System \(Li-Fe-O\) — 3D/,
+      `.chempot-diagram-3d`,
+    )
+    await expect(diagram.locator(`canvas`).first()).toBeVisible()
+    await expect.poll(() => diagram.locator(`.domain-label`).count()).toBeGreaterThan(5)
+    const tooltip = diagram.locator(`.chempot-tooltip h4`)
+    const labels = await diagram.locator(`.domain-label`).all()
+    const checked: string[] = []
+    for (const label of labels) {
+      const text = ((await label.textContent()) ?? ``).replaceAll(/\s/g, ``)
+      const box = await require_bbox(label, `${text} label`)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await expect(tooltip, `tooltip over the ${text} label`).toHaveText(text)
+      checked.push(text)
+    }
+    expect(checked).toContain(`LiFeO2`)
+  })
+
   test(`3D tooltip lock toggles and export actions download files`, async ({ page }) => {
     test.setTimeout(60_000) // four downloads plus a tooltip hunt over a WebGPU canvas
     const diagram = await get_diagram_by_heading(
@@ -278,13 +303,11 @@ test.describe(`ChemPot Diagram interactions`, () => {
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
 
     // A pinned camera stops the diagram re-fitting itself, so Reset has to offer to undo it
-    const { toggle: controls_toggle, pane: controls_pane } = get_pane(
-      diagram,
-      `controls`,
-      `ChemPot`,
-    )
+    const { toggle: controls_toggle, pane: controls_pane } = get_pane(diagram, `controls`)
     await open_pane(diagram, controls_toggle, controls_pane)
-    await expect(controls_pane.getByRole(`button`, { name: /Reset chempot/i })).toBeVisible()
+    await expect(
+      controls_pane.getByRole(`button`, { name: /Clear chempot overrides/i }),
+    ).toBeVisible()
     // the pane overlays the canvas centre, and the reset below deliberately ignores pane clicks
     await controls_toggle.click({ force: true })
     await expect(controls_pane).toBeHidden()

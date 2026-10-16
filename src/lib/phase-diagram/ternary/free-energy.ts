@@ -266,7 +266,7 @@ export function build_free_energy_model(
   if (reference_t_range && !(reference_t_range[0] < reference_t_range[1])) {
     const tables = refs
       .filter(([, , range]) => range)
-      .map(([element, , range]) => `${element} ${range?.join(`–`)} K`)
+      .map(([element, , range]) => `${element} = ${range?.join(`–`)} K`)
     throw new Error(`Elemental references share no temperature range: ${tables.join(`, `)}`)
   }
   const compounds_use_sisso = entries.some(

@@ -2,7 +2,7 @@
   import { TooltipValue } from '#lib/tooltip/index.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { element_data } from '#lib/element/index.js'
-  import { format_num } from '#lib/labels.js'
+  import { format_value_or_num } from '#lib/labels.js'
   import type { AxisConfig, InternalPoint } from '#lib/plot/core/types.js'
   import ScatterPlot from './ScatterPlot.svelte'
   import { selected } from '#lib/state.svelte.js'
@@ -48,7 +48,7 @@
   ><br />
   <TooltipValue
     label={y_axis.label || `Value`}
-    value={format_num(coord_y, y_axis.format ?? `~s`)}
+    value={format_value_or_num(coord_y, y_axis.format)}
     unit={y_unit || y_axis.unit}
   />
 {/snippet}

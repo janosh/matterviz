@@ -589,8 +589,7 @@
           {#each model.elements as element, idx (element)}
             {#if idx > 0}
               ·
-            {/if}{element}
-            {format_num(barycentric[idx] * 100, `.1f`)} <small>%</small>
+            {/if}{element} = {format_num(barycentric[idx] * 100, `.1f`)} <small>%</small>
           {/each}
         </div>
         {#if decomposition}
@@ -833,7 +832,8 @@
     font-size: 0.9em;
   }
   :global(.ternary-tooltip) {
-    max-width: 320px;
+    --plot-tooltip-max-width: 320px;
+    --plot-tooltip-white-space: normal; /* wrap within that width */
     font-size: 0.85em;
     line-height: 1.4;
   }
