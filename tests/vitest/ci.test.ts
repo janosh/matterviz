@@ -102,7 +102,8 @@ test.each([`true`, `false`, ``])(`E2E jobs run only when e2e-gate outputs run=%j
 })
 
 // Past CI runs (newest first) as [run id, head repo, E2E gate conclusion, event (default
-// pull_request)]; run 100 is this one
+// pull_request)]; run 100 is this one. `shard failed` is a still-running run whose E2E shard
+// already failed, `running` one without a failure yet
 const fork = `someone/matterviz`
 const own = `janosh/matterviz`
 type PastRun = [number, string, string, string?]
@@ -122,6 +123,9 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
   [`a dispatched run failed`, `synchronize`, [[5, own, `failure`, `workflow_dispatch`], [3, own, `success`]], true],
   [`a dispatched run passed`, `synchronize`, [[5, own, `success`, `workflow_dispatch`], [3, own, `failure`]], false],
   [`a push run`, `synchronize`, [[5, own, `failure`, `push`], [3, own, `success`]], false],
+  // a failed E2E shard decides before the run completes; a running run without one doesn't
+  [`a running run whose shard failed`, `synchronize`, [[9, own, `shard failed`], [3, own, `success`]], true],
+  [`a running run without failures`, `synchronize`, [[9, own, `running`], [3, own, `success`]], false],
 ])(`e2e-gate decides whether E2E runs: %s`, (_label, action, runs, expected) => {
   const [step] = jobs[`e2e-gate`].steps
   const scratch = mkdtempSync(join(tmpdir(), `matterviz-e2e-gate-`))
@@ -134,10 +138,13 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
   }))
   writeFileSync(join(scratch, `runs.json`), JSON.stringify({ workflow_runs }))
   for (const [id, , conclusion] of runs) {
+    const running = conclusion === `shard failed` || conclusion === `running`
     const jobs_json = [
-      { name: `Unit tests`, conclusion: `failure` },
-      { name: `E2E tests (shard 1/4)`, conclusion },
+      { name: `Unit tests`, conclusion: `failure` }, // non-E2E failures decide nothing
+      { name: `E2E production (shard 6/6)`, conclusion: running ? null : conclusion },
+      { name: `E2E tests (shard 1/4)`, conclusion: running ? null : conclusion },
     ]
+    if (conclusion === `shard failed`) jobs_json[1].conclusion = `failure`
     writeFileSync(join(scratch, `jobs-${id}.json`), JSON.stringify({ jobs: jobs_json }))
   }
   // logs each call's endpoint, then answers with jq over the matching file
@@ -162,19 +169,19 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
   })
   expect(status, stderr).toBe(0)
   expect(readFileSync(output_file, `utf8`)).toBe(`run=${expected}\n`)
-  // only pushes ask the API: completed runs of this branch, then the jobs of each PR or
+  // only pushes ask the API: runs of this branch, then the jobs of each PR or
   // dispatched run until one decides
   const calls = action === `synchronize` ? readFileSync(join(scratch, `calls`), `utf8`) : ``
   const listed = runs.filter(
     ([id, repo, , event = `pull_request`]) =>
       id !== 100 && repo === own && [`pull_request`, `workflow_dispatch`].includes(event),
   )
-  const decided = listed.findIndex(([, , gate]) => gate !== `cancelled`)
+  const decided = listed.findIndex(([, , gate]) => ![`cancelled`, `running`].includes(gate))
   const queried = listed.slice(0, decided === -1 ? listed.length : decided + 1)
   expect(calls.trim().split(`\n`).filter(Boolean)).toEqual(
     action === `synchronize`
       ? [
-          `api repos/${own}/actions/workflows/ci.yml/runs?status=completed&branch=feature&per_page=30 --jq`,
+          `api repos/${own}/actions/workflows/ci.yml/runs?branch=feature&per_page=30 --jq`,
           ...queried.map(([id]) => `api repos/${own}/actions/runs/${id}/jobs?per_page=100 --jq`),
         ]
       : [],
