@@ -31,8 +31,9 @@
     // Signed gap from the anchor; the sign picks the preferred side (right/below for positive)
     offset?: { x: number; y: number }
     fixed?: boolean // position: fixed for viewport coords (absolute otherwise)
-    // Flip/clamp inside this box (defaults to the viewport when `fixed`); omit for raw placement
-    constrain_to?: { width: number; height: number }
+    // Flip/clamp inside this box (defaults to the viewport when `fixed`); omit for raw placement.
+    // x/y place its origin in the tooltip's coordinates (default 0, e.g. a clipping ancestor).
+    constrain_to?: { x?: number; y?: number; width: number; height: number }
     exclusion_rects?: readonly Rect[] // decorations (legend, colorbar) to keep clear of
     // Keep the pointer glyph clear too, widening a narrower `offset.x` to its width (keeping
     // the sign). Pass false when `x`/`y` snap to a mark, so no glyph sits on the anchor.
@@ -57,7 +58,7 @@
   }
 
   const pos = $derived.by(() => {
-    const bounds =
+    const bounds: typeof constrain_to =
       constrain_to ??
       (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
     if (!bounds) return { x: coord_x + offset.x, y: coord_y + offset.y }
@@ -72,7 +73,12 @@
     return place_tooltip({
       anchor: { x: coord_x, y: coord_y },
       tooltip_size,
-      bounds: { x: 0, y: 0, ...bounds },
+      bounds: {
+        x: bounds.x ?? 0,
+        y: bounds.y ?? 0,
+        width: bounds.width,
+        height: bounds.height,
+      },
       exclusion_rects: avoid_cursor
         ? [...exclusion_rects, { x: coord_x, y: coord_y, ...DEFAULT_CURSOR_SIZE }]
         : exclusion_rects,

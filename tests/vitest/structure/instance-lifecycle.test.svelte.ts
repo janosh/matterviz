@@ -443,7 +443,7 @@ test.each<[string, SceneProps, string?, string?, Vec3?]>([
   scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
   flushSync()
   const { style } = doc_query(`[role="tooltip"]`)
-  expect([style.background, style.color]).toEqual([bg, text_color])
+  expect([style.backgroundColor, style.color]).toEqual([bg, text_color])
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path

@@ -2,6 +2,7 @@
 // creation and binding, STL/OBJ/GLB export) used by BrillouinZoneScene, FermiSurfaceScene,
 // StructureScene, ScatterPlot3DScene, TernaryPrismScene and ChemPotScene3D.
 export * from './bind-renderer.svelte'
+export { default as CanvasTooltip } from './CanvasTooltip.svelte'
 export * from './colors'
 export * from './camera-flight'
 export * from './export'

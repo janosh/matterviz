@@ -29,6 +29,7 @@
   import {
     bind_renderer,
     brighten_hex,
+    CanvasTooltip,
     clear_pan_offset,
     create_fit_zoom,
     create_fly_to,
@@ -125,7 +126,7 @@
     set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
-  import { CanvasTooltip, compose_perceived_bonds, perceive_bond_orders } from './index'
+  import { compose_perceived_bonds, perceive_bond_orders } from './index'
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
   import {
@@ -2325,7 +2326,13 @@
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
           atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
-        <CanvasTooltip position={hovered_site.xyz} bg_color={hovered_tooltip_bg}>
+        {@const hover_shell = highlight_targets.find(({ kind }) => kind === `hover`)}
+        <!-- keeps clear of the hover shell (radius 0.5 scaled, see highlight_sphere_geometry) -->
+        <CanvasTooltip
+          position={hovered_site.xyz}
+          anchor_radius={0.5 * HIGHLIGHT_SHELL_SCALE * (hover_shell?.radius ?? 0)}
+          bg_color={hovered_tooltip_bg}
+        >
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
