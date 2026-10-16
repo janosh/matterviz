@@ -234,6 +234,7 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
 }
 
 const VIRTUAL_ID = `virtual:prop-docs`
+const LIB_DIR = `${repo_root}/src/lib/`
 
 // `virtual:prop-docs` default-exports every src/lib component's PropDoc[] keyed by name. Pages
 // import it lazily, so the extraction (one TS program, a few seconds) only runs on first use.
@@ -242,10 +243,16 @@ export const prop_docs_plugin = (): Plugin => ({
   resolveId: (id) => (id === VIRTUAL_ID ? `\0${id}` : null),
   load(id) {
     if (id !== `\0${VIRTUAL_ID}`) return null
-    const lib_dir = `${repo_root}/src/lib/`
-    const files = globSync(`**/*.svelte`, { cwd: lib_dir })
-      .map((path) => `${lib_dir}${path}`)
+    const files = globSync(`**/*.svelte`, { cwd: LIB_DIR })
+      .map((path) => `${LIB_DIR}${path}`)
       .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
     return `export default ${JSON.stringify(extract_prop_docs(files))}`
+  },
+  // A component or a type it imports changed: returning the loaded virtual module too makes
+  // Vite invalidate it and update its importers, so the next import re-extracts the props
+  hotUpdate({ file, modules }) {
+    if (!file.startsWith(LIB_DIR) || !/\.(svelte|ts)$/.test(file)) return
+    const prop_docs_module = this.environment.moduleGraph.getModuleById(`\0${VIRTUAL_ID}`)
+    return prop_docs_module ? [...modules, prop_docs_module] : undefined
   },
 })

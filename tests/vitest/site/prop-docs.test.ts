@@ -1,10 +1,12 @@
 // Generated API reference: prop extraction from component scripts and its demo-page wiring
-import { extract_prop_docs, type PropDoc } from '#root/src/scripts/prop-docs.ts'
+import { extract_prop_docs, prop_docs_plugin } from '#root/src/scripts/prop-docs.ts'
+import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
 import PropsTable from '#site/PropsTable.svelte'
 import { PAGE_COMPONENTS, page_components } from '#site/state.svelte.js'
 import prop_docs from 'virtual:prop-docs'
 import { flushSync, mount } from 'svelte'
 import { globSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -127,6 +129,30 @@ describe(`PropsTable page mapping`, () => {
       for (const name of names) expect(prop_docs).toHaveProperty(name)
     }
   })
+})
+
+// Dev server: editing a component re-extracts its props instead of serving the cached table
+test.each([
+  [`src/lib/structure/Structure.svelte`, true],
+  [`src/lib/plot/types.ts`, true],
+  [`src/lib/structure/Structure.svelte.ts`, true],
+  [`src/lib/app.css`, false],
+  [`src/routes/+page.svelte`, false],
+])(`hotUpdate for %s invalidates virtual:prop-docs: %s`, (path, invalidates) => {
+  const { hotUpdate } = prop_docs_plugin()
+  if (typeof hotUpdate !== `function`) throw new Error(`hotUpdate must be a function`)
+  const prop_docs_module = { id: `\0virtual:prop-docs` }
+  const edited_module = { id: `${repo_root}/${path}` }
+  const get_module_by_id = vi.fn((id: string) =>
+    id === prop_docs_module.id ? prop_docs_module : undefined,
+  )
+  const context = { environment: { moduleGraph: { getModuleById: get_module_by_id } } }
+  const file = resolve(repo_root, path)
+  const result = hotUpdate.call(context as never, { file, modules: [edited_module] } as never)
+  expect(result).toEqual(invalidates ? [edited_module, prop_docs_module] : undefined)
+  // virtual module not loaded yet (lazy import never ran): nothing to invalidate
+  get_module_by_id.mockReturnValue(undefined)
+  expect(hotUpdate.call(context as never, { file, modules: [] } as never)).toBeUndefined()
 })
 
 test(`PropsTable loads the page component's props when opened`, async () => {
