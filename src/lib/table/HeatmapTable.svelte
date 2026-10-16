@@ -1011,16 +1011,19 @@
   $effect(() => () => {
     if (hovered_row_data !== null) on_row_hover?.(null)
   })
+  // Tracked so a re-sort or new data that moves the named row scrolls to its new place
+  const highlighted_row_idx = $derived(
+    highlighted_row_id === null
+      ? -1
+      : sorted_data.findIndex((row) => get_row_id(row) === highlighted_row_id),
+  )
   // Scrolls only the table's own scroller (never the page) to a row named from outside; a row
   // under the pointer named itself and stays put
   $effect(() => {
-    const target = highlighted_row_id
-    const scroller = scroll_el
-    if (target === null || !scroller) return
+    const [target, row_idx, scroller] = [highlighted_row_id, highlighted_row_idx, scroll_el]
+    if (row_idx === -1 || !scroller) return
     untrack(() => {
       if (hovered_row_data && get_row_id(hovered_row_data) === target) return
-      const row_idx = sorted_data.findIndex((row) => get_row_id(row) === target)
-      if (row_idx === -1) return
       const row_el = own_row_el(row_idx)
       if (!row_el) {
         if (virtual_config)

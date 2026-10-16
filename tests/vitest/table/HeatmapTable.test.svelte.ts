@@ -2576,14 +2576,25 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.pagination`) !== null).toBe(`pagination` in props)
     })
 
-    // a row a linked view names (an atom hovered in 3D) outside the window is scrolled to
+    // a row a linked view names (an atom hovered in 3D) outside the window is scrolled to, and
+    // followed when new data (the next frame) moves it while it stays named
     it(`highlighted_row_id scrolls an unrendered row into the window`, async () => {
-      mount_virtual({ row_key: `Score`, highlighted_row_id: 150 })
+      const props = $state<TableProps>({
+        data: many_rows,
+        columns: two_cols,
+        virtual: true,
+        row_key: `Score`,
+        highlighted_row_id: 150,
+      })
+      mount_table(props)
       await tick()
       const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
       // centred in the viewport by the row-height estimate
       expect(scroller.scrollTop).toBe(150 * row_height_px - scroller.clientHeight / 2)
       expect(doc_query(`tbody tr.hovered`).textContent).toContain(`Model 150`)
+      props.data = many_rows.toReversed()
+      await tick()
+      expect(scroller.scrollTop).toBe(49 * row_height_px - scroller.clientHeight / 2)
     })
 
     it(`moves the window and preserves absolute row numbers on scroll`, async () => {
