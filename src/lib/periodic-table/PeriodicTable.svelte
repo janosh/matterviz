@@ -342,7 +342,7 @@
   // The tooltip fill is a translucent theme token, so it needs the page behind it.
   let tooltip_node = $state<HTMLElement | null>(null)
   const tooltip_fill = resolve_css_color(() => tooltip_node, {
-    css_var: `--tooltip-bg`,
+    css_var: `--plot-tooltip-bg`,
     // mirrors the light-dark() default in the .tooltip rule below
     fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
   })
@@ -534,7 +534,7 @@
     aspect-ratio: 1 / var(--ptable-inner-transition-offset, 0.5);
   }
   .tooltip {
-    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
+    --_bg: var(--plot-tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
     position: absolute;
     transform: translate(-50%, -10%);
     /* auto width would stop at the table edge right of `left`, wrapping near it */
@@ -543,7 +543,7 @@
     max-width: var(--tooltip-max-width, 280px);
     text-wrap: balance;
     background: var(--_bg);
-    color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
+    color: var(--plot-tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
     padding: var(--tooltip-padding, 4px 6px);
     border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
     font-size: var(--tooltip-font-size, 14px);

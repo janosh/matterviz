@@ -17,7 +17,7 @@ import {
   type ComponentProps,
 } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, fire, mount_sized, mouse, trigger_resize_observer } from '../setup'
+import { doc_query, fire, mount_sized, mouse, query, trigger_resize_observer } from '../setup'
 
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
@@ -64,7 +64,7 @@ const body_var = (name: string, value: string): void => {
 }
 
 describe(`PlotTooltip`, () => {
-  test(`renders with default offset, absolute position, nowrap chips, class and style`, () => {
+  test(`renders with default offset, absolute position, content-wide chips, class and style`, () => {
     const tooltip = mount_tooltip({
       x: 100,
       y: 200,
@@ -76,8 +76,9 @@ describe(`PlotTooltip`, () => {
     // 100 + default offset 6
     expect([left, top, position, events]).toEqual([`106px`, `200px`, `absolute`, `none`])
     expect(tooltip.textContent).toBe(`Test content`)
-    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
-    expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
+    // as wide as its content up to --plot-tooltip-max-width, wrapping only beyond that
+    const { whiteSpace, width } = getComputedStyle(tooltip)
+    expect([whiteSpace, width]).toEqual([`normal`, `max-content`])
     expect([...tooltip.classList]).toEqual(
       expect.arrayContaining([`plot-tooltip`, `custom-tooltip`, `my-class`]),
     )
@@ -85,7 +86,7 @@ describe(`PlotTooltip`, () => {
   })
 
   // Contrast ratios are covered in colors.test.ts; here only the wiring. No fill (or one
-  // that resolves to nothing) paints the neutral --tooltip-bg chip (resolved where it renders)
+  // that resolves to nothing) paints the neutral --plot-tooltip-bg chip (resolved where it renders)
   test.each([
     [`#000000`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
     [`#4fc3f7`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
@@ -94,7 +95,7 @@ describe(`PlotTooltip`, () => {
     [`transparent`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
     [`var(--unset-color)`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
   ])(`bg_color %s paints %s with %s text`, (background, expected_bg, expected_text) => {
-    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    body_var(`--plot-tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const tooltip = mount_tooltip({ bg_color: background })
     expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
     expect(d3_color(tooltip.style.color)?.formatRgb()).toBe(expected_text)
@@ -107,7 +108,7 @@ describe(`PlotTooltip`, () => {
     [undefined, `rgb(5, 5, 5)`, `white`],
     [() => `#4fc3f7`, `rgb(79, 195, 247)`, `black`],
   ])(`hover_tooltip with fill getter %s paints %s`, (bg_color, expected_bg, expected_text) => {
-    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    body_var(`--plot-tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const mark = document.createElement(`span`)
     document.body.append(mark)
     const cleanup = $effect.root(() => {
@@ -184,7 +185,6 @@ describe(`PlotTooltip`, () => {
       constrain_to: { width: 100, height: 300 },
       children: make_children(`a`.repeat(80)),
     })
-    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
     // the container cap rides a CSS variable, not an inline max-width that would beat the
     // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
     expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
@@ -194,13 +194,29 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
   })
 
-  // a caller's class cannot beat the scoped `nowrap` rule, so wrapping is opt-in by variable
+  // a caller's class cannot beat the scoped white-space rule, so it is set by variable
   test.each([
     [`chip`, {}, `pre-line`],
     [`wrapping box`, { constrain_to: { width: 100, height: 300 } }, `pre-line`],
   ])(`--plot-tooltip-white-space overrides the %s default`, (_label, props, expected) => {
     const tooltip = mount_tooltip({ ...props, style: `--plot-tooltip-white-space: pre-line` })
     expect(getComputedStyle(tooltip).whiteSpace).toBe(expected)
+  })
+
+  // UA and page margins would pad a dense chip; the reset has zero specificity, so a tooltip
+  // snippet's own (here inline) styles still win
+  test(`resets h4, p, small and .key inside the chip`, () => {
+    const tooltip = mount_tooltip({
+      children: createRawSnippet(() => ({
+        render: () =>
+          `<div><h4>Fe</h4><p><span class="key">E</span> 1 <small>eV</small></p><p style="margin: 5px">x</p></div>`,
+      })),
+    })
+    const style = (selector: string) => getComputedStyle(query(tooltip, selector))
+    expect([style(`h4`).marginTop, style(`h4`).marginBottom]).toEqual([`0px`, `0px`])
+    expect(style(`p`).marginTop).toBe(`1px`)
+    expect([style(`small`).opacity, style(`.key`).opacity]).toEqual([`0.75`, `0.75`])
+    expect(style(`p[style]`).marginTop).toBe(`5px`)
   })
 
   test(`without a constraining box no cap is set and no inline max-width overrides callers`, () => {

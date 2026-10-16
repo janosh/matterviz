@@ -317,7 +317,7 @@ test(`periodic-table settings update rendered styles and reset each section`, as
   await expect.poll(() => css_value(`--tooltip-text-align`)).toBe(`left`)
   const background = controls.locator(`[data-key="tooltip_bg_color"] input`)
   await background.fill(`#123456`)
-  await expect.poll(() => css_value(`--tooltip-bg`)).toBe(`#123456`)
+  await expect.poll(() => css_value(`--plot-tooltip-bg`)).toBe(`#123456`)
   await controls
     .getByRole(`button`, { name: `Reset tooltip to defaults`, exact: true })
     .click()

@@ -236,16 +236,8 @@
 
 <style>
   .phase-diagram-tooltip {
-    --border: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-    background: light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9));
-    color: light-dark(#1a1a1a, white);
-    padding: 8px 10px;
-    border-radius: 4px;
-    font-size: 12px;
+    --border: color-mix(in srgb, currentColor 18%, transparent);
     min-width: 130px;
-    box-shadow: 0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.3));
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.1), transparent);
-    pointer-events: none;
   }
   header {
     margin-bottom: 5px;

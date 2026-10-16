@@ -832,14 +832,9 @@
         fixed
         offset={{ x: 15, y: 15 }}
         fallback_size={{ width: 200, height: 150 }}
-        class={[
-          `tooltip-container`,
-          { locked: locked_hover_info, colored: tooltip_region_color },
-        ]}
+        class={[`tooltip-container`, { locked: locked_hover_info }]}
         bg_color={tooltip_region_color}
-        style="--plot-tooltip-padding: 0; white-space: normal{locked_hover_info
-          ? `; pointer-events: auto`
-          : ``}"
+        style={locked_hover_info ? `pointer-events: auto` : undefined}
       >
         {#if locked_hover_info}
           <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
@@ -920,11 +915,6 @@
   }
   .binary-phase-diagram :global(.tooltip-container.locked) {
     filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
-  }
-  /* the region's fill shows through the card, under the tooltip's contrasting text */
-  .binary-phase-diagram :global(.tooltip-container.colored .phase-diagram-tooltip) {
-    background: transparent;
-    color: inherit;
   }
   .tooltip-lock-indicator {
     position: absolute;

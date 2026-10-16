@@ -166,12 +166,12 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.tooltip-container`)?.textContent).toContain(`Liquid`)
     expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
     // a single-phase region's tooltip wears its opaque palette hue (not the translucent drawn
-    // fill), shown through the card; a two-phase gradient keeps the neutral card
+    // fill); a two-phase gradient keeps the neutral chip. The content paints no card of its own.
     const tip_bgs = () => [
       doc_query(`.tooltip-container`).style.backgroundColor,
       getComputedStyle(doc_query(`.phase-diagram-tooltip`)).backgroundColor,
     ]
-    expect(tip_bgs()).toEqual([get_phase_color(`Liquid`, `hex`), `transparent`])
+    expect(tip_bgs()).toEqual([get_phase_color(`Liquid`, `hex`), ``])
 
     await hover_at(wrapper, 0.25, 250) // inside the α + β field spanning x: [0, 1]
     expect(on_phase_hover.mock.lastCall?.[0]?.lever_rule).toMatchObject({

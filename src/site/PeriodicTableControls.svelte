@@ -93,7 +93,7 @@
       '--elem-symbol-font-weight': `${controls.symbol_font_weight}`,
       '--elem-number-font-weight': `${controls.number_font_weight}`,
       '--tooltip-font-size': `${controls.tooltip_font_size}px`,
-      '--tooltip-bg': controls.tooltip_bg_color,
+      '--plot-tooltip-bg': controls.tooltip_bg_color,
       '--tooltip-border-radius': `${controls.tooltip_border_radius}px`,
       '--tooltip-padding': controls.tooltip_padding,
       '--tooltip-line-height': `${controls.tooltip_line_height}`,

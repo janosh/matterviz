@@ -453,7 +453,7 @@
           y={hover_data.screen_position.y}
           bg_color={hover_data.is_ibz ? ibz_color : surface_color}
           fixed
-          style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1)"
         >
           <BrillouinZoneTooltip {hover_data} {tooltip} />
         </PlotTooltip>
