@@ -29,6 +29,7 @@
     quaternary_loader,
     quinary_files,
   } from '#site/convex-hull/index.js'
+  import { hover_links } from '#lib/tooltip/index.js'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
@@ -37,6 +38,9 @@
   const primary_data = new SvelteMap<string, PhaseData[]>()
   const primary_errors = new SvelteMap<string, string>()
   const primary_systems = [`Na-Fe-P-O`, `Li-Co-Ni-O`]
+
+  // Hull and stats table pairs below link their hovers through channels of this page
+  hover_links()
 
   // State for the 3D example with stats display
   let stats_hull = $state<ReturnType<typeof ConvexHull>>()
@@ -169,6 +173,7 @@
     `<b>Shared model</b>: <code>get_model()</code> exposes the current numerical hull for <code>ConvexHullStats model={model}</code>; display thresholds and categories do not change the model`,
     `<b>Headless computation</b>: <code>compute_hull_model(entries)</code> builds the same model without mounting a diagram`,
     `<b>Row highlighting</b>: click a table row to highlight it (<code>highlighted_entry_id</code> + <code>on_entry_click</code>)`,
+    `<b>Linked hover</b>: hovering a hull point shades and scrolls to its table row, hovering a row highlights its point (<code>hover_links()</code> + the same <code>link_hover</code> channel on both)`,
     `<b>Clickable IDs</b>: <code>entry_href</code> callback turns the ID column into links`,
     `<b>Poly column</b>: shows polymorph count per reduced formula`,
     `<b>Polymorphs filter</b>: dropdown to isolate entries sharing a composition`,
@@ -394,6 +399,7 @@
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O with Stats` }}
           bind:this={stats_hull}
+          link_hover="na-fe-o"
           bind:max_hull_dist_show_phases
           style="height: 100%"
         />
@@ -401,6 +407,7 @@
           <ConvexHullStats
             {model}
             highlighted_entry_id={clicked_entry_id}
+            link_hover="na-fe-o"
             on_entry_click={(entry) => (clicked_entry_id = entry.entry_id)}
             entry_href={get_entry_href}
             style="--hull-stats-max-height: var(--hull-height, 500px)"
@@ -417,11 +424,13 @@
           entries={li_co_ni_o_data}
           controls={{ title: `Li-Co-O` }}
           bind:this={side_hull}
+          link_hover="li-co-o"
         />
         {#if side_model}
           <ConvexHullStats
             model={side_model}
             layout="side-by-side"
+            link_hover="li-co-o"
             entry_href={get_entry_href}
             style="--hull-stats-padding: 0"
           />

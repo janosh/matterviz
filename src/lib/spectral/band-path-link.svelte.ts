@@ -28,6 +28,24 @@ export interface BandHover {
   metadata?: Record<string, unknown> | null
 }
 
+// The q-point of `band_struct` a band hover stands for: a point of band_struct itself names it
+// exactly, one of another structure plotted beside it maps onto band_struct's path by x
+export function band_hover_qpoint(
+  band_struct: BaseBandStructure,
+  hover: BandHover,
+  x_positions: Record<string, Vec2> | undefined,
+): number | null {
+  const point = band_point_meta(hover.metadata)
+  if (!point) return null
+  const own_coords = band_struct.qpoints[point.qpoint_idx]?.frac_coords
+  const is_own =
+    own_coords && point.frac_coords?.every((coord, idx) => coord === own_coords[idx])
+  if (is_own) return point.qpoint_idx
+  return x_positions && Object.keys(x_positions).length > 0
+    ? find_qpoint_at_rescaled_x(band_struct, hover.x, x_positions)
+    : null
+}
+
 export function create_band_path_link(inputs: {
   band_struct: () => BaseBandStructure | null | undefined // whose k-path the zone draws
   k_lattice: () => Matrix3x3 | undefined // reciprocal lattice incl. 2π, as the zone's
@@ -45,17 +63,8 @@ export function create_band_path_link(inputs: {
   // q-point of band_struct under the hovered band point
   const band_qpoint = $derived.by((): number | null => {
     const band_struct = inputs.band_struct()
-    if (!band_hover || !band_struct) return null
-    const point = band_point_meta(band_hover.metadata)
-    if (!point) return null
-    // a point of band_struct itself names its q-point exactly
-    const own_coords = band_struct.qpoints[point.qpoint_idx]?.frac_coords
-    const is_own =
-      own_coords && point.frac_coords?.every((coord, idx) => coord === own_coords[idx])
-    if (is_own) return point.qpoint_idx
-    const x_positions = inputs.x_positions?.()
-    return x_positions && Object.keys(x_positions).length > 0
-      ? find_qpoint_at_rescaled_x(band_struct, band_hover.x, x_positions)
+    return band_hover && band_struct
+      ? band_hover_qpoint(band_struct, band_hover, inputs.x_positions?.())
       : null
   })
   // a band hover wins over a k-path hover

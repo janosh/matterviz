@@ -21,6 +21,7 @@
   import { PlotTooltip } from '#lib/plot/index.js'
   import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
   import { Canvas } from '@threlte/core'
@@ -106,6 +107,7 @@
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
+    link_hover,
     children,
     tooltip,
     on_file_load,
@@ -152,6 +154,10 @@
     highlighted_qpoint_range?: Vec2 | null
     // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
+    // Channel of an enclosing hover_links() the k-path's hover joins by q-point index, e.g. the
+    // Bands plotting the band structure k_path came from: a q-point hovered there marks its
+    // k-point and branch here, and the hovered k-path q-point there
+    link_hover?: string
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
     tooltip?: BZTooltipProp
     on_file_load?: (data: BZHandlerData) => void
@@ -165,6 +171,23 @@
   let hover_data = $state<BZHoverData | null>(null)
 
   $effect(() => on_point_hover?.(hover_data))
+
+  // A q-point hovered in a linked view marks its k-point and k-path branch
+  const qpoint_link = join_hover_link(() => link_hover, `number`)
+  const linked = $derived.by(() => {
+    const qpoint_idx = qpoint_link.linked
+    if (qpoint_idx === null || !k_path) return null
+    const in_branch = ([start, end]: Vec2) => start <= qpoint_idx && qpoint_idx <= end
+    return {
+      qpoint_idx,
+      k_point: k_path.points[qpoint_idx] ?? null,
+      range: k_path.branches.find(in_branch) ?? null,
+    }
+  })
+  const handle_kpath_hover = (qpoint_idx: number | null): void => {
+    qpoint_link.publish(qpoint_idx)
+    on_kpath_hover?.(qpoint_idx)
+  }
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -435,11 +458,11 @@
           {vector_scale}
           {camera_projection}
           {k_path}
-          {hovered_k_point}
+          hovered_k_point={hovered_k_point ?? linked?.k_point ?? null}
           {highlighted_k_points}
-          {hovered_qpoint_index}
-          {highlighted_qpoint_range}
-          {on_kpath_hover}
+          hovered_qpoint_index={hovered_qpoint_index ?? linked?.qpoint_idx ?? null}
+          highlighted_qpoint_range={highlighted_qpoint_range ?? linked?.range ?? null}
+          on_kpath_hover={handle_kpath_hover}
           {show_ibz}
           {ibz_data}
           {ibz_color}

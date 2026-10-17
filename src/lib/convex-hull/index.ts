@@ -154,6 +154,9 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   display?: { x_grid?: boolean; y_grid?: boolean }
   // Highlighted entries with customizable visual effects
   highlighted_entries?: (string | AnyDimEntry)[]
+  // Channel of an enclosing hover_links() this hull's hover joins: entries hovered in other
+  // views on it (by entry_id) highlight here, and this hull's hovered entry there
+  link_hover?: string
   highlight_style?: HighlightStyle
   selected_entry?: AnyDimEntry | null
   // Compositions marked by a linked view (lines between compositions, ringed compositions)

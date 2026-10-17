@@ -16,6 +16,7 @@
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import { first_duplicate } from '#lib/utils.js'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
@@ -71,6 +72,7 @@
     energy_source_mode = $bindable(`precomputed`),
     display = $bindable({ x_grid: false, y_grid: false }),
     highlighted_entries = $bindable([]),
+    link_hover,
     selected_entry = $bindable(null),
     temperature = $bindable(),
     gas_pressures = $bindable({}),
@@ -217,6 +219,14 @@
       ? build_hull_overlay(hull_data.model, decomposition_focus, annotations)
       : undefined,
   )
+  // Hovered entries link by entry_id; one hovered in another view highlights here
+  const entry_link = join_hover_link(() => link_hover, `string`)
+  $effect(() => entry_link.publish(selection.hover_data?.entry.entry_id ?? null))
+  const shown_highlights = $derived(
+    entry_link.linked === null
+      ? highlighted_entries
+      : [...highlighted_entries, entry_link.linked],
+  )
   const { config, highlight_style, gizmo, x_axis, y_axis, ...dom_attrs } = $derived(rest)
   const plot_props = $derived({
     ...dom_attrs,
@@ -225,7 +235,7 @@
     chrome: chrome_content,
     config,
     color_mode,
-    highlighted_entries,
+    highlighted_entries: shown_highlights,
     highlight_style,
     selected_entry,
     overlay,

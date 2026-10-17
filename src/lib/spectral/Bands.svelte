@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { TooltipValue } from '#lib/tooltip/index.js'
+  import { join_hover_link, TooltipValue } from '#lib/tooltip/index.js'
+  import { band_hover_qpoint } from './band-path-link.svelte'
   import { track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
@@ -58,6 +59,7 @@
     highlighted_qpoint_index = null,
     highlighted_qpoint_range = null,
     highlighted_band_index = null,
+    link_hover,
     ribbon_config = {},
     fermi_level,
     units = $bindable(`THz`),
@@ -99,6 +101,10 @@
     highlighted_qpoint_range?: Vec2 | null
     // Band index to emphasize together with the selected q-point marker
     highlighted_band_index?: number | null
+    // Channel of an enclosing hover_links() the plot's hover joins by q-point index of the first
+    // band structure, e.g. a BrillouinZone's whose k_path it draws: a q-point hovered there
+    // marks its line and branch here, and the hovered band point's q-point there
+    link_hover?: string
     ribbon_config?: RibbonConfig
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
@@ -531,12 +537,20 @@
     if (qpoint_idx == null || !band_structure) return null
     return helpers.qpoint_x_position(band_structure, qpoint_idx, internal_x_positions)
   }
+  const qpoint_link = join_hover_link(() => link_hover, `number`)
+  const linked_range = $derived.by((): Vec2 | null => {
+    const [qpoint_idx, band_structure] = [qpoint_link.linked, structures[0]?.bs]
+    return qpoint_idx === null || !band_structure
+      ? null
+      : helpers.branch_qpoint_range(band_structure, qpoint_idx)
+  })
   // externally hovered q-point (from BZ k-path), for the highlight line
-  let highlight_x = $derived(qpoint_x(highlighted_qpoint_index))
+  let highlight_x = $derived(qpoint_x(highlighted_qpoint_index ?? qpoint_link.linked))
   // x-span of the highlighted path stretch, null unless both ends are plotted
   let highlight_x_range = $derived.by((): Vec2 | null => {
-    if (!highlighted_qpoint_range) return null
-    const [x_start, x_end] = highlighted_qpoint_range.map(qpoint_x)
+    const range = highlighted_qpoint_range ?? linked_range
+    if (!range) return null
+    const [x_start, x_end] = range.map(qpoint_x)
     return x_start === null || x_end === null ? null : [x_start, x_end]
   })
 
@@ -649,6 +663,12 @@
     on_point_hover={(event) => {
       const point_y = event?.point?.y
       hovered_frequency = point_y == null ? null : to_data_unit(point_y)
+      const band_structure = structures[0]?.bs
+      qpoint_link.publish(
+        event && band_structure
+          ? band_hover_qpoint(band_structure, event, internal_x_positions)
+          : null,
+      )
       rest.on_point_hover?.(event)
     }}
     children={frame_children}

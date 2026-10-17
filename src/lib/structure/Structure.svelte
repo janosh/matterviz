@@ -79,6 +79,7 @@
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
@@ -209,6 +210,7 @@
     selected_sites = $bindable([]),
     highlighted_sites = $bindable([]),
     hovered_site_idx = $bindable(null),
+    link_hover,
     measured_sites = $bindable([]),
 
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
@@ -310,6 +312,9 @@
     selected_sites?: number[]
     highlighted_sites?: number[]
     hovered_site_idx?: number | null
+    // Channel of an enclosing hover_links() the site hover joins by source atom (0-based), e.g.
+    // a SiteTable's: a site hovered there is hovered here, and an atom hovered here there
+    link_hover?: string
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
     hidden_elements?: Set<ElementSymbol>
     symmetry_settings?: Partial<SymmetrySettings>
@@ -391,6 +396,7 @@
   // Declared before the session: its pre-effect builds the display pipeline during construction,
   // when active_overlay is not yet initialized (and no overlay exists yet).
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
+  const atom_link = join_hover_link(() => link_hover, `number`)
   const session: StructureSession = new StructureSession({
     structure: () => structure,
     site_properties: (): Record<string, unknown>[] | undefined =>
@@ -406,7 +412,7 @@
     set_measured_sites: (value) => (measured_sites = value),
     highlighted_sites: () => highlighted_sites,
     set_highlighted_sites: (value) => (highlighted_sites = value),
-    hovered_site_idx: () => hovered_site_idx,
+    hovered_site_idx: () => hovered_site_idx ?? atom_link.linked,
     set_hovered_site_idx: (value) => (hovered_site_idx = value),
     measure_mode: () => measure_mode,
     set_measure_mode: (value) => (measure_mode = value),
@@ -1165,6 +1171,13 @@
   // appends images after the sites it copies, so a row's index stays its scene index.
   let scene_sites = $derived(session.render_structure?.sites ?? [])
   let sidebar_sites = $derived(scene_sites.filter((site) => !is_image_site(site)))
+  // The source atom (table row) of the hovered site: an image atom points at the site it copies
+  let hovered_atom = $derived(
+    hovered_site_idx === null
+      ? null
+      : get_image_source_idx(scene_sites[hovered_site_idx], hovered_site_idx),
+  )
+  $effect(() => atom_link.publish(hovered_atom))
   let sidebar_width = $state(0)
   // A host that turns the table off and hides its button (Trajectory) never pays for the scan
   let site_data_available = $derived(
@@ -1579,12 +1592,7 @@
         sites={sidebar_sites}
         bind:selected_atoms={selected_sites}
         bind:hovered_atom={
-          // an image atom hovered in 3D points at the row of the site it copies
-          () =>
-            hovered_site_idx === null
-              ? null
-              : get_image_source_idx(scene_sites[hovered_site_idx], hovered_site_idx),
-          (atom) => (hovered_site_idx = atom)
+          () => hovered_atom ?? atom_link.linked, (atom) => (hovered_site_idx = atom)
         }
         export_filename="structure-sites"
         scroll_style={DOCKED_SCROLL_STYLE}
