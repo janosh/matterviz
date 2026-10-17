@@ -1,13 +1,14 @@
-// Content-AABB camera framing: look-at center + padded bounding-sphere extent for the
-// shorter viewport edge. Lattice midpoint alone mis-frames asymmetric image atoms.
+// Content-AABB camera framing: look-at center, a padded bounding-sphere extent, and the padded
+// width and height the content spans as seen from the initial view, which the ortho zoom fits
+// to the viewport. Lattice midpoint alone mis-frames asymmetric image atoms.
 
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
-import type { Vec3 } from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Site } from '#lib/structure/index.js'
 
-// Occupy at most 92% of the shorter viewport edge.
+// Occupy at most 92% of the viewport along the tighter axis.
 export const DEFAULT_FIT_PADDING = 1 / 0.92
 // Paired with DEFAULTS.structure.initial_zoom (50): default zoom = min(w,h) / fit_extent.
 export const FIT_ZOOM_REF_PX = 50
@@ -19,11 +20,33 @@ export type StructureFitOpts = {
   same_size_atoms?: boolean
   element_radius_overrides?: Partial<Record<ElementSymbol, number>>
   site_radius_overrides?: ReadonlyMap<number, number>
+  // Camera offset from its target (missing/zero: the default angled view) and world up, which
+  // the spans are measured against
+  view_dir?: Vec3 | null
+  view_up?: Vec3 | null
 }
 
-type StructureFitFrame = { center: Vec3; extent: number }
+// `extent` (bounding-sphere diameter) is orientation-free: perspective distance and the
+// outgrown-fit check use it. `spans` is the screen-aligned [width, height] from the initial
+// view, so a slab seen edge-on or a long supercell fills the viewer instead of a sphere around it.
+type StructureFitFrame = { center: Vec3; extent: number; spans: Vec2 }
 
-const empty_frame = (): StructureFitFrame => ({ center: [0, 0, 0], extent: 10 })
+const empty_frame = (): StructureFitFrame => ({
+  center: [0, 0, 0],
+  extent: 10,
+  spans: [10, 10],
+})
+
+// Screen right and up for a camera at `view_dir` from its target with world `view_up`; null
+// when the view looks along the up vector and leaves no screen orientation to measure
+const view_basis = (view_dir?: Vec3 | null, view_up?: Vec3 | null): [Vec3, Vec3] | null => {
+  const offset = view_dir?.some((val) => val !== 0) ? view_dir : DEFAULT_CAMERA_VIEW
+  const forward = math.normalize_vec(math.scale(offset, -1))
+  const right = math.cross_3d(forward, view_up ?? [0, 1, 0])
+  if (Math.hypot(...right) < 1e-6) return null
+  const unit_right = math.normalize_vec(right)
+  return [unit_right, math.cross_3d(unit_right, forward)]
+}
 
 export const camera_needs_fit = (
   position: Vec3 | undefined,
@@ -135,7 +158,14 @@ export function structure_fit_frame(
   if (!Number.isFinite(min[0])) return empty_frame()
 
   const center = math.add(min, math.scale(math.subtract(max, min), 0.5))
+  const basis = view_basis(opts.view_dir, opts.view_up)
+  const [right, up] = basis ?? [
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
   let radius_sq = 0
+  // half-widths about the center, which stays the look-at point
+  let [half_right, half_up] = [0, 0]
   for (let idx = 0; idx < n_samples; idx++) {
     const point = idx < sites.length ? sites[idx].xyz : corners[idx - sites.length]
     const radius = idx < sites.length ? radii[idx] : 0
@@ -145,9 +175,21 @@ export function structure_fit_frame(
     // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- preserve distance arithmetic
     const reach = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z) + radius
     radius_sq = Math.max(radius_sq, reach * reach)
+    const along_right = delta_x * right[0] + delta_y * right[1] + delta_z * right[2]
+    const along_up = delta_x * up[0] + delta_y * up[1] + delta_z * up[2]
+    half_right = Math.max(half_right, Math.abs(along_right) + radius)
+    half_up = Math.max(half_up, Math.abs(along_up) + radius)
   }
-  if (!(radius_sq > 0)) return { center, extent: 10 }
-  return { center, extent: 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING }
+  if (!(radius_sq > 0)) return { center, extent: 10, spans: [10, 10] }
+  const extent = 2 * Math.sqrt(radius_sq) * DEFAULT_FIT_PADDING
+  // Each span floors at 1 Å so content seen end-on (a hidden-atom chain along the view) still
+  // has a finite zoom, like the framing distance
+  const span = (half: number) => Math.max(1, 2 * half) * DEFAULT_FIT_PADDING
+  return {
+    center,
+    extent,
+    spans: basis ? [span(half_right), span(half_up)] : [extent, extent],
+  }
 }
 
 // `fit_extent` is a scene diameter in the scene's own units, so it has no lower bound of its
@@ -155,16 +197,20 @@ export function structure_fit_frame(
 const bad_fit = (extent: number, width: number, height: number): boolean =>
   !(extent > 0 && extent < Infinity) || !(width > 0) || !(height > 0)
 
+// A number is a sphere's diameter, which must fit the shorter edge; a [width, height] pair is
+// a screen-aligned box whose sides each fit their own viewport edge
 export const ortho_zoom_for_extent = (
-  fit_extent: number,
+  fit_extent: number | Vec2,
   width: number,
   height: number,
   initial_zoom: number,
 ): number => {
-  if (bad_fit(fit_extent, width, height)) {
+  const [extent_x, extent_y] =
+    typeof fit_extent === `number` ? [fit_extent, fit_extent] : fit_extent
+  if (bad_fit(extent_x, width, height) || bad_fit(extent_y, width, height)) {
     throw new Error(`Invalid ortho fit: extent=${fit_extent}, viewport=${width}x${height}`)
   }
-  return (initial_zoom * Math.min(width, height)) / (fit_extent * FIT_ZOOM_REF_PX)
+  return (initial_zoom / FIT_ZOOM_REF_PX) * Math.min(width / extent_x, height / extent_y)
 }
 
 export const perspective_distance_for_extent = (

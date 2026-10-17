@@ -44,7 +44,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   import { whole_tile_counts } from '#lib/structure/supercell.js'
   import { untrack } from 'svelte'
   import { T } from '@threlte/core'
-  import { HTML } from '@threlte/extras'
+  import SceneLabel from '#lib/scene/SceneLabel.svelte'
   import {
     BufferAttribute,
     BufferGeometry,
@@ -379,16 +379,16 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
 </script>
 
 {#if resolved_tiling.unavailable_reason}
-  <!-- a notice, not a control: without this its 20em card swallows hovers and orbit drags
-  (HTML applies pointerEvents only in CSS-3D mode) -->
-  <HTML zIndexRange={[1000, 1000]} style="pointer-events: none">
+  <!-- a notice, not a control: pointer-transparent, else its 20em card swallows hovers and
+  orbit drags -->
+  <SceneLabel zIndexRange={[1000, 1000]}>
     <div
       role="status"
       style="background: var(--surface-bg, white); padding: 0.5em; width: 20em"
     >
       {resolved_tiling.unavailable_reason}
     </div>
-  </HTML>
+  </SceneLabel>
 {/if}
 
 {#each axis_groups as group, idx (idx)}

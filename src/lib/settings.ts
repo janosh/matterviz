@@ -453,7 +453,7 @@ export const SETTINGS_CONFIG = define_settings({
     camera_projection: camera_projection_setting(`orthographic`, `Camera projection type`),
     initial_zoom: {
       value: 50,
-      description: `Relative orthographic zoom scale (50 = fit structure bounding sphere to the shorter viewport edge; ignored for perspective)`,
+      description: `Relative orthographic zoom scale (50 = fit the structure as seen from the initial view to the viewport; ignored for perspective)`,
       minimum: 0.1,
       maximum: 200,
     },

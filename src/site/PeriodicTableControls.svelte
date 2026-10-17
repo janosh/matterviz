@@ -92,12 +92,12 @@
       '--elem-value-font-size': `${controls.value_font_size}cqw`,
       '--elem-symbol-font-weight': `${controls.symbol_font_weight}`,
       '--elem-number-font-weight': `${controls.number_font_weight}`,
-      '--tooltip-font-size': `${controls.tooltip_font_size}px`,
-      '--tooltip-bg': controls.tooltip_bg_color,
-      '--tooltip-border-radius': `${controls.tooltip_border_radius}px`,
-      '--tooltip-padding': controls.tooltip_padding,
-      '--tooltip-line-height': `${controls.tooltip_line_height}`,
-      '--tooltip-text-align': controls.tooltip_text_align,
+      '--plot-tooltip-font-size': `${controls.tooltip_font_size}px`,
+      '--plot-tooltip-bg': controls.tooltip_bg_color,
+      '--plot-tooltip-border-radius': `${controls.tooltip_border_radius}px`,
+      '--plot-tooltip-padding': controls.tooltip_padding,
+      '--plot-tooltip-line-height': `${controls.tooltip_line_height}`,
+      '--plot-tooltip-text-align': controls.tooltip_text_align,
     }
     const root_style = document.documentElement.style
     for (const [prop, val] of Object.entries(css_vars)) root_style.setProperty(prop, val)

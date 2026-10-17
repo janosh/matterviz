@@ -6,7 +6,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { dispose_on_change } from '#lib/scene/geometry.svelte.js'
   import { cell_vector_arrow_sizes, cell_vector_origin } from '#lib/structure/geometry.js'
-  import { CanvasTooltip } from '#lib/structure/index.js'
+  import CanvasTooltip from '#lib/scene/CanvasTooltip.svelte'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { supercell_grid_edges, whole_tile_counts } from '#lib/structure/supercell.js'
   import Arrow from './Arrow.svelte'
@@ -230,10 +230,7 @@
         scale={VECTOR_SCALE}
         {...arrow_sizes}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
-        onpointerenter={(event: { stopPropagation: () => void }) => {
-          event.stopPropagation() // threlte hands it to every arrow and atom on the ray
-          hovered_idx = idx
-        }}
+        onpointerenter={() => (hovered_idx = idx)}
         onpointerleave={() => {
           if (hovered_idx === idx) hovered_idx = null
         }}

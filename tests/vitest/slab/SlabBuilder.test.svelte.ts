@@ -30,7 +30,7 @@ describe(`SlabBuilder`, () => {
     document.body.innerHTML = ``
   })
 
-  const mount_builder = (structure: Crystal) => {
+  const mount_builder = (structure: Crystal, props: { show_cell_options?: boolean } = {}) => {
     const state = $state<BuilderState>({
       slab: null,
       error: null,
@@ -39,7 +39,7 @@ describe(`SlabBuilder`, () => {
     })
     mounted = mount(SlabBuilder, {
       target: document.body,
-      props: bind_props({ structure }, state),
+      props: bind_props({ structure, ...props }, state),
     })
     flushSync()
     return state
@@ -53,7 +53,18 @@ describe(`SlabBuilder`, () => {
     const table = doc_query(`.slab-builder dl`).textContent
     expect(table).toContain(`Interplanar spacing d`)
     expect(table).toContain(`Terminations`)
-    expect(doc_query(`.slab-builder select`).querySelectorAll(`option`)).toHaveLength(1)
+    // fcc (111) ends on one kind of plane only: no termination choice to offer
+    expect(document.querySelector(`.slab-builder select`)).toBeNull()
+  })
+
+  // Vacuum, centering and z-alignment shape only the slab's own cell, which a heterostructure
+  // restacks and drops, so a builder feeding one can hide them
+  test.each([true, false])(`show_cell_options=%s shows the cell-only controls`, (show) => {
+    mount_builder(fcc(), { show_cell_options: show })
+    const text = doc_query(`.slab-builder .controls`).textContent ?? ``
+    for (const cell_only of [`Vacuum`, `center slab`, `normal along z`])
+      expect(text.includes(cell_only), cell_only).toBe(show)
+    expect(text).toContain(`primitive mesh`)
   })
 
   test(`lists every distinct termination, rebuilds on pick and resets on a new surface`, () => {

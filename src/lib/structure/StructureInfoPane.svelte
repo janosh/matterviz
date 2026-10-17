@@ -25,6 +25,7 @@
   import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
   import { count_symmetry_op_kinds, WyckoffTable } from '#lib/symmetry/index.js'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
 
   type SiteCard = InfoPaneCard & { idx: number; element: string }
 
@@ -69,6 +70,7 @@
     pane_open?: boolean
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
+    shortcut_scopes?: readonly ShortcutScope[] // the Structure's, listed at the pane's bottom
     highlighted_sites?: number[] // Sites highlighted from Wyckoff table hover
     hovered_site_idx?: number | null // Site hovered in this pane or in the 3D scene
     selected_sites?: number[] // Sites selected from Wyckoff table click

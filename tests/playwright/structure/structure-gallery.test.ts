@@ -90,8 +90,7 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
               const probe_x = card_rect.right + 8
               const hit = document.elementFromPoint(probe_x, tooltip_rect.top + 8)
               return {
-                portaled_to_viewport:
-                  element.parentElement?.parentElement?.parentElement === viewport,
+                portaled_to_viewport: element.parentElement?.parentElement === viewport,
                 canvas_overflow: getComputedStyle(canvas_host).overflow,
                 card_overflow: getComputedStyle(card).overflow,
                 crosses_card: tooltip_rect.right > probe_x,

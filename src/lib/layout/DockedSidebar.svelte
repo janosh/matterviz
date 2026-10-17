@@ -98,7 +98,6 @@
     overflow: hidden;
     padding: 6pt 8pt;
     background: var(--surface-bg, transparent);
-    border-inline-start: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
     h4 {
       display: flex;
       align-items: center;

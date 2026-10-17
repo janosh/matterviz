@@ -17,7 +17,7 @@ export type ViewerPaneOptions = Omit<
   `children` | `open` | `pane_name` | `class_prefix` | `closed_icon`
 >
 
-export { Info as info_pane_icon } from 'svelte-widgets/icons'
+export { InformationOutline as info_pane_icon } from 'svelte-widgets/icons'
 
 // Label/value rows grouped into titled cards, as rendered by InfoPaneCards
 export type InfoPaneRow = {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import {
     bz_fit_extent,
     cartesian_to_fractional,
@@ -16,17 +16,22 @@
   import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     bind_renderer,
+    corner_vertex,
     create_scene_camera,
-    front_hit,
+    faces_centroid,
+    HoverHighlight,
+    scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
   import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
   import { T } from '@threlte/core'
-  import * as extras from '@threlte/extras'
   import {
     BufferGeometry,
     ClippingGroup,
@@ -52,7 +57,7 @@
   import KPath from '#lib/brillouin/KPath.svelte'
   import type { ComponentProps } from 'svelte'
   import type {
-    FermiHoverData,
+    FermiHover,
     FermiIsosurface,
     FermiSurfaceData,
     FermiSurfaceSettings,
@@ -87,8 +92,8 @@
     k_path,
     scene = $bindable(),
     camera = $bindable(),
-    hover_data = $bindable<FermiHoverData | null>(null),
-    kpath_hover_data = $bindable<BZHoverData | null>(null),
+    hovered = $bindable<FermiHover | null>(null),
+    pin = mark_pin<FermiHover>(),
     width = 0,
     height = 0,
     // camera/lighting/interaction props, resolved against the shared defaults below
@@ -104,11 +109,14 @@
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
       // a band structure's k-path to draw (its hovered point is the k_marker dot)
-      k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
+      k_path?: Omit<
+        ComponentProps<typeof KPath>,
+        `size` | `edge_width` | `hovered_k_point` | `touch_hover`
+      >
       selected_bands?: number[]
       selected_spins?: SpinChannel[]
-      hover_data?: FermiHoverData | null
-      kpath_hover_data?: BZHoverData | null // the hovered k-path point, for a zone tooltip
+      hovered?: FermiHover | null // the sheet tile or k-path point under the pointer
+      pin?: TooltipPin<FermiHover> // the host's, whose tooltip a click pins (else the scene's own)
     } = $props()
 
   const controls = $derived(resolve_scene_controls(scene_controls))
@@ -145,13 +153,13 @@
     threlte.invalidate()
   })
 
-  // Only the front-most visible sheet gets the pointer event (see front_hit); a k-path drawn
-  // through the zone wins over sheets in front of it, or most of it could not be hovered
-  const { enabled: hover_enabled } = extras.interactivity({
-    filter: (hits) => {
-      const path_hit = hits.find((hit) => hit.object.userData.kpath_proxy)
-      return front_hit(path_hit ? [path_hit] : hits, clip_plane)
-    },
+  // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
+  // wins over sheets in front of it (its pick_rank), or most of it could not be hovered. A
+  // click on a mark pins its tooltip, one on empty space unpins.
+  const { set_hover_enabled, touch_hover } = scene_interactivity({
+    clip_plane: () => clip_plane,
+    on_click: () => pin.toggle(hovered),
+    on_empty_click: () => pin.unpin(),
   })
 
   let visible_surfaces = $derived(
@@ -280,10 +288,9 @@
     // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (!moving) return
-      hover_data = null
-      kpath_hover_data = null
+      hovered = null
     },
   })
 
@@ -385,31 +392,70 @@
   // The hovered k-path point as a Brillouin zone viewer hover, also passed on to the caller
   const on_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
     const position_cartesian = k_path?.path.points[qpoint_idx ?? -1]
-    kpath_hover_data =
+    hovered =
       position_cartesian && screen_position && bz_data
         ? {
-            position_cartesian,
-            position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
-            screen_position,
-            is_ibz: false,
-            bz_order: bz_data.order,
-            bz_volume: bz_data.volume,
-            ibz_volume: null,
-            symmetry_multiplicity: null,
+            mark: `k-path ${qpoint_idx}`,
+            data: {
+              position_cartesian,
+              position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+              screen_position,
+              is_ibz: false,
+              bz_order: bz_data.order,
+              bz_volume: bz_data.volume,
+              ibz_volume: null,
+              symmetry_multiplicity: null,
+            },
           }
         : null
     k_path?.on_kpath_hover?.(qpoint_idx, screen_position)
   }
 
-  // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
-  // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
-  function handle_pointer_move(
+  // The pinned sheet tile, else the hovered one, lights up (HoverHighlight, see TooltipPin). Not
+  // in property mode: a flat fill would hide the colour map the tooltip value is read against.
+  const shown_sheet = $derived(pin.shown(hovered)?.sheet) // re-derives the below on change only
+  const highlighted_sheet = $derived.by(() => {
+    if (!shown_sheet || use_vertex_colors) return null
+    const { surface, sym_idx } = shown_sheet
+    const geometry = geometries[visible_surfaces.indexOf(surface)]
+    const matrix = symmetry_ops[sym_idx]
+    return geometry && matrix ? { geometry, matrix, color: get_surface_color(surface) } : null
+  })
+
+  // The viewer root walks the visible sheets, hovering each at its first triangle (untiled)
+  const pointer_at = scene_pointer()
+  const key_sheets = $derived(
+    visible_surfaces.flatMap((surface, surface_idx) => {
+      const geometry = geometries[surface_idx]
+      return geometry ? [{ surface, geometry }] : []
+    }),
+  )
+  const walk_hover = ({ surface, geometry }: (typeof key_sheets)[number]) => {
+    const [a, b, c] = [0, 1, 2].map((corner) => corner_vertex(geometry, 0, corner))
+    const sym_matrix = new Matrix4().fromArray(symmetry_ops[0])
+    const point = new Vector3(...faces_centroid(geometry, [0])).applyMatrix4(sym_matrix)
+    const event = pointer_at([point.x, point.y, point.z], { face: { a, b, c } })
+    return sheet_hover(event, surface, geometry, get_surface_color(surface), 0)
+  }
+  scene_key_walk({
+    targets: () => key_sheets,
+    hover: (sheet) => (hovered = walk_hover(sheet)),
+    leave: () => (hovered = null),
+    click: (sheet) => pin.toggle(walk_hover(sheet)),
+    hovered: ({ surface }) => hovered?.sheet?.surface === surface,
+    label: ({ surface: { band_index, spin } }) =>
+      `Band ${band_index + 1}${spin ? ` (spin ${spin})` : ``}`,
+  })
+
+  // The hover of a pointer event on a (possibly symmetry-tiled) surface mesh. The per-vertex
+  // property comes from the hit triangle's nearest corner, so no throttle is needed
+  function sheet_hover(
     event: ThreltePointerEvent,
     surface: FermiIsosurface,
     geometry: BufferGeometry,
     surface_color: string,
     sym_idx: number,
-  ): void {
+  ): FermiHover {
     // event.point is in world space (after sym_matrix transformation)
     const position_cartesian: Vec3 = [event.point.x, event.point.y, event.point.z]
     const position_fractional = cartesian_to_fractional(k_lattice_inv, position_cartesian)
@@ -434,9 +480,10 @@
         : undefined
 
     const { clientX, clientY } = event.nativeEvent
-    hover_data = {
-      band_index: surface.band_index,
-      spin: surface.spin,
+    const { band_index, spin } = surface
+    const data = {
+      band_index,
+      spin,
       position_cartesian,
       position_fractional,
       screen_position: { x: clientX, y: clientY },
@@ -448,7 +495,19 @@
       symmetry_index: sym_idx,
       n_symmetry_ops: symmetry_ops.length,
     }
+    return {
+      mark: `sheet ${band_index} ${spin} ${sym_idx}`,
+      data,
+      sheet: { surface, sym_idx },
+    }
   }
+  // Threlte drops a hidden sheet's meshes without a pointerleave
+  $effect(() => {
+    const gone = (hover: FermiHover | null) =>
+      hover?.sheet && !visible_surfaces.includes(hover.sheet.surface)
+    if (gone(hovered)) hovered = null
+    if (gone(pin.value)) pin.unpin()
+  })
 </script>
 
 <SceneCamera
@@ -492,12 +551,13 @@
       size={scene_size}
       edge_width={DEFAULTS.brillouin.edge_width}
       {on_kpath_hover}
+      {touch_hover}
     />
   {/if}
   {#if k_marker}
     <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->
     <T.Mesh position={k_marker} renderOrder={1001}>
-      <T.SphereGeometry args={[0.015 * scene_size, 16, 12]} />
+      <T.SphereGeometry args={[0.015 * scene_size, 32, 32]} />
       <T.MeshBasicMaterial color={SLICE_PLANE_COLOR} depthTest={false} transparent />
     </T.Mesh>
   {/if}
@@ -516,11 +576,19 @@
           matrix={sym_matrix}
           matrixAutoUpdate={false}
           {renderOrder}
-          onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
-          onpointerleave={() => (hover_data = null)}
+          {...touch_hover({
+            onpointermove: (event: ThreltePointerEvent) =>
+              (hovered = sheet_hover(event, surface, geometry, surface_color, sym_idx)),
+            onpointerleave: () => (hovered = null),
+          })}
         />
       {/each}
     {/if}
   {/each}
+  {#if highlighted_sheet}
+    {@const { geometry, matrix, color } = highlighted_sheet}
+    <T.Group {matrix} matrixAutoUpdate={false}>
+      <HoverHighlight {geometry} {color} />
+    </T.Group>
+  {/if}
 </T>

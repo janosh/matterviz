@@ -7,7 +7,7 @@
   import type { CompositionType } from '#lib/composition/index.js'
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { ChevronCollapse, ChevronExpand } from 'svelte-widgets/icons'
+  import { ChevronCollapse, ChevronExpand, Close } from 'svelte-widgets/icons'
   import { display_idx, ELEM_SYMBOLS, format_num } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
@@ -63,7 +63,7 @@
     sym_data?: SymmetryDataset | null
     structure?: AnyStructure | null
     show_mode_toggle?: boolean
-    children?: Snippet<[{ mode_menu_open: boolean }]>
+    children?: Snippet
   } = $props()
 
   const palette = get_element_palette()
@@ -352,6 +352,8 @@
       {@const displayed_elem = element_mapping?.[symbol] || symbol}
       {@const is_hidden = hidden_elements.has(displayed_elem)}
       {@const color = palette.colors[displayed_elem]}
+      <!-- the swatch already names the element, so the hover hint is just the action; screen
+        readers still hear which atoms -->
       {@const visibility_label = `${is_hidden ? `Show` : `Hide`} ${displayed_elem} atoms`}
       <div class="legend-item">
         <label
@@ -386,12 +388,12 @@
           class={['toggle-visibility', { 'element-hidden': is_hidden }]}
           onclick={(event) =>
             (hidden_elements = toggle_visibility(hidden_elements, displayed_elem, event))}
-          title={visibility_label}
+          title={is_hidden ? `Show` : `Hide`}
           aria-label={visibility_label}
           {@attach tooltip({ placement: `top` })}
           type="button"
         >
-          ×
+          <Icon icon={Close} />
         </button>
         {#if remap_menu_open === elem}
           <div
@@ -479,7 +481,7 @@
       </div>
     {/each}
     {@render site_radius_control_snippet()}
-    {@render children?.({ mode_menu_open })}
+    {@render children?.()}
   </div>
 {:else if show_property_legend}
   <div
@@ -505,7 +507,7 @@
             aria-pressed={is_hidden}
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={toggle_label(value, is_hidden)}
+            title={is_hidden ? `Show` : `Hide`}
             aria-label={toggle_label(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
             style:color={property_text_color(color)}
@@ -547,18 +549,18 @@
             class={['toggle-visibility', { 'element-hidden': is_hidden }]}
             onclick={(event) =>
               (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={toggle_label(value, is_hidden)}
+            title={is_hidden ? `Show` : `Hide`}
             aria-label={toggle_label(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
             type="button"
           >
-            ×
+            <Icon icon={Close} />
           </button>
         </div>
       {/each}
     {/if}
     {@render site_radius_control_snippet()}
-    {@render children?.({ mode_menu_open })}
+    {@render children?.()}
   </div>
 {/if}
 
@@ -612,11 +614,13 @@
   }
   /* Toggle visibility button - shared between element and property legends */
   .atom-legend button.toggle-visibility {
+    --cross: 0.4em; /* the drawn × itself */
     position: absolute;
-    top: -3px;
-    right: -7px;
-    width: 1em;
-    height: 1em;
+    top: 0;
+    right: 0;
+    translate: 50% -50%; /* centred on the swatch's top-right corner */
+    width: calc(var(--cross) + 6px); /* 3px of circle around the cross */
+    height: calc(var(--cross) + 6px);
     padding: 0;
     margin: 0;
     border: none;
@@ -624,7 +628,6 @@
     color: light-dark(white, black);
     border-radius: 50%;
     font-size: 0.9em;
-    line-height: 1;
     cursor: pointer;
     display: grid;
     place-items: center;
@@ -635,6 +638,12 @@
       transform 0.1s ease;
     z-index: 2;
     pointer-events: auto;
+  }
+  /* an SVG, not the × glyph: fonts set × off the circle's centre. Its cross spans 14/24 of
+     the icon box, so the box is that much larger than the cross */
+  .atom-legend button.toggle-visibility :global(svg) {
+    width: calc(var(--cross) * 24 / 14);
+    height: calc(var(--cross) * 24 / 14);
   }
   .atom-legend button.toggle-visibility.element-hidden,
   .atom-legend .legend-item:hover button.toggle-visibility {

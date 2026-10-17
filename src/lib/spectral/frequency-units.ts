@@ -59,9 +59,11 @@ const UNIT_ALIASES: Record<string, FrequencyUnit> = {
 export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null =>
   typeof unit === `string` ? (UNIT_ALIASES[unit.trim().toLowerCase()] ?? null) : null
 
-// How a unit reads on an axis label
+// How a unit reads on an axis label or in HTML: a <sup>, as fonts set the ⁻ of ⁻¹ lower than
+// the 1. Plain text that can't hold markup (<option>, aria-label) uses frequency_unit_text.
 export const frequency_unit_label = (unit: string): string =>
-  unit === `cm^-1` ? `cm⁻¹` : unit
+  unit === `cm^-1` ? `cm<sup>−1</sup>` : unit
+export const frequency_unit_text = (unit: string): string => (unit === `cm^-1` ? `cm⁻¹` : unit)
 
 // Time units whose inverse is expressible in THz. A dt in anything else can still drive a
 // lag axis, but asking for a THz / cm^-1 spectrum on top of it throws.

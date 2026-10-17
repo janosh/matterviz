@@ -2,9 +2,8 @@
 // meshes must survive an opacity-slider tick (they are shared per surface and recompiled on
 // rebuild) and a surface whose geometry cannot be built must not get a mesh.
 import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
-import type { BZHoverData } from '#lib/brillouin/index.js'
-import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
-import type * as threlte_core from '@threlte/core'
+import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
+import type { FermiHover, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   type BufferGeometry,
@@ -14,41 +13,36 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
+import { sheet_color } from '#lib/fermi-surface/constants.js'
+import { brighten_hex } from '#lib/scene/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props } from '../setup'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import {
+  hover_highlight,
+  scene_pin_driver,
+  threlte_stub,
+  touch_tap,
+} from '../isosurface/threlte-stub'
+import { mount_with_keys } from '../scene/mount'
+import { bind_props, doc_query, pin_cycle } from '../setup'
 import { make_fermi_surface } from '../test-fixtures'
 
 const invalidate = vi.hoisted(() => vi.fn())
-vi.mock(`@threlte/core`, async (original) => {
-  const core = await original<typeof threlte_core>()
-  return {
-    ...core,
-    T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    useThrelte: () => ({
-      invalidate,
-      scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
-      // SceneCamera re-applies its view-offset pan on resize
-      size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: { domElement: document.createElement(`canvas`) },
-    }),
-  }
-})
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original, invalidate),
+)
 // OrbitControls is a Threlte component; interactivity() registers pointer plugins on a renderer,
 // so it is replaced by a recording `enabled` switch that also records the hit filter
 const hover_enabled = vi.hoisted(() => ({ set: vi.fn() }))
 const interactivity = vi.hoisted(() =>
   vi.fn((_options?: unknown) => ({ enabled: hover_enabled })),
 )
-vi.mock(`@threlte/extras`, async () => ({
-  OrbitControls: Reflect.get(
-    (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    `OrbitControls`,
-  ),
-  interactivity,
-}))
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_extras(interactivity),
+)
+
+// a viewer's camera always draws the gizmo, which needs a real Threlte parent
+vi.mock(`#lib/scene/Gizmo.svelte`, () => ({ default: () => ({}) }))
 
 let teardown: (() => void) | undefined
 afterEach(() => {
@@ -73,15 +67,16 @@ const sheet = (band_index: number, n_vertices = 3): FermiIsosurface => ({
 const fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
 
 const mount_scene = (props: ComponentProps<typeof FermiSurfaceScene>) => {
-  const component = mount(FermiSurfaceScene, {
-    target: document.body,
-    props: bind_props(
+  const { keys, mounted } = mount_with_keys(
+    FermiSurfaceScene,
+    bind_props(
       { fermi_data, tile_bz: false, show_bz: false, show_vectors: false, gizmo: false },
       props,
     ),
-  })
-  teardown = () => void unmount(component)
+  )
+  teardown = () => void unmount(mounted)
   flushSync()
+  return keys
 }
 
 // Materials of the sheet meshes in mount order (surface-major)
@@ -200,8 +195,7 @@ test(`tiling the BZ mounts one mesh set per point-group operation`, () => {
 test(`orbiting disables hover raycasts and drops the tooltip until the gesture ends`, () => {
   // only nullness of the tooltip is asserted, so a stub stands in for the full hover record
   const props = $state({
-    hover_data: { band_index: 0 } as FermiHoverData | null,
-    kpath_hover_data: { bz_order: 1 } as BZHoverData | null,
+    hovered: { mark: `sheet`, data: { band_index: 0 } } as FermiHover | null,
   })
   mount_scene(props)
 
@@ -216,7 +210,7 @@ test(`orbiting disables hover raycasts and drops the tooltip until the gesture e
   onchange()
   flushSync()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(false)
-  expect([props.hover_data, props.kpath_hover_data]).toEqual([null, null])
+  expect(props.hovered).toBeNull()
 
   onend()
   expect(hover_enabled.set).toHaveBeenLastCalledWith(true)
@@ -238,7 +232,7 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   const [inner, outer] = [hit(-1), hit(1)]
   expect(filter([inner, outer])).toStrictEqual([inner])
   // a k-path drawn through the zone wins over a sheet in front of it
-  const path = hit(0.5, { kpath_proxy: true })
+  const path = hit(0.5, { pick_rank: 2 })
   expect(filter([inner, path, outer])).toStrictEqual([path])
   props.clip_enabled = true // keeps z >= 0
   flushSync()
@@ -247,7 +241,7 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
 
 // Property mode colours each sheet by the selected named property (the first when none is
 // named); a sheet without it keeps its flat colour, and the tooltip carries every property at
-// the hit vertex
+// the hit vertex. The hovered sheet's highlight shows in flat colour modes only.
 test(`colours by the selected property and reports all properties on hover`, () => {
   const f32 = (values: number[]) => Float32Array.from(values)
   const data = make_fermi_surface([
@@ -259,9 +253,9 @@ test(`colours by the selected property and reports all properties on hover`, () 
     color_property: `property`,
     color_scale: `interpolateViridis`,
     property_name: undefined,
-    hover_data: null,
+    hovered: null,
   })
-  mount_scene(props)
+  const keys = mount_scene(props)
   const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
   expect(vertex_colors()).toEqual([true, true]) // first property λ: both sheets have it
   // equal colouring still needs a material per sheet: depth bias and stencil mask differ
@@ -297,11 +291,42 @@ test(`colours by the selected property and reports all properties on hover`, () 
     face: { a: 0, b: 1, c: 2 },
     nativeEvent: { clientX: 1, clientY: 2 },
   })
-  expect(props.hover_data).toMatchObject({
+  expect(props.hovered?.data).toMatchObject({
     property_name: `λ`,
     property_value: 0.5,
     property_values: { λ: 0.5, Δ: 2 },
   })
+  // touch has no hover: a tap shows what hovering there would, and keeps it
+  const on_leave = mesh?.props.onpointerleave as (event: unknown) => void
+  on_leave({ nativeEvent: {} })
+  expect(props.hovered).toBeNull()
+  const tap = () =>
+    touch_tap(mesh?.props ?? {}, { point: new Vector3(0, 4, 5), face: { a: 0, b: 1, c: 2 } })
+  tap()
+  expect(props.hovered?.data).toMatchObject({ property_name: `λ`, property_value: 0.5 })
+  // the hovered sheet lights up in its band colour, except over a property colour map
+  flushSync()
+  expect(hover_highlight()).toBeNull()
+  props.color_property = `band`
+  flushSync()
+  expect(hover_highlight()).toEqual({
+    geometry: mesh?.props.geometry,
+    color: brighten_hex(sheet_color(0, null, `band`)),
+  })
+  tap() // the tap pinned it too (see the pin test below): tapping it again hides and unpins it
+  flushSync()
+  expect([props.hovered, hover_highlight()]).toEqual([null, null])
+
+  // by keyboard from the focused viewer root: each sheet at its first triangle's centroid,
+  // here vertex 1 again, with the same tooltip and highlight
+  expect(keys.press(`ArrowRight`)).toBe(true)
+  expect(props.hovered?.data).toMatchObject({
+    band_index: 0,
+    position_cartesian: [0, 4, 5],
+    property_value: 0.5,
+  })
+  expect(keys.message).toBe(`Band 1`)
+  expect(hover_highlight()?.geometry).toBe(mesh?.props.geometry)
 })
 
 // The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:
@@ -371,7 +396,7 @@ test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
       on_kpath_hover,
     },
     k_marker: k_path_points[1],
-    kpath_hover_data: null,
+    hovered: null,
   })
   mount_scene(scene_props)
   // KPath's hover proxy has one instance per path segment
@@ -385,7 +410,7 @@ test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
   hover_segment({ point: new Vector3(0.5, 0.45, 0), instanceId: 1, nativeEvent })
   flushSync()
   const screen_position = { x: 3, y: 4 }
-  expect(scene_props.kpath_hover_data).toMatchObject({
+  expect(scene_props.hovered?.data).toMatchObject({
     position_cartesian: k_path_points[2],
     position_fractional: [0, 0.5, 0],
     screen_position,
@@ -399,4 +424,52 @@ test(`k_path mounts the band path and k_marker draws the on-top dot`, () => {
   scene_props.k_marker = null
   flushSync()
   expect(threlte_stub.nodes.some(({ props }) => props.renderOrder === 1001)).toBe(false)
+})
+
+// A click on a sheet pins its tooltip where it was clicked, and the sheet stays lit; a tap on
+// the other sheet moves the pin, one on the pinned sheet hides and unpins it. The viewer is
+// mounted around the real scene (navigator.gpu stubbed).
+test(`a sheet click pins its tooltip; it again, empty space or Escape unpin`, async () => {
+  Object.defineProperty(navigator, `gpu`, { value: {}, configurable: true })
+  onTestFinished(() => void Reflect.deleteProperty(navigator, `gpu`))
+  const mounted = mount(FermiSurface, { target: document.body, props: { fermi_data } })
+  onTestFinished(() => unmount(mounted))
+  flushSync()
+  // the two drawn sheets (band 1 has no geometry), hit at the first corner of their triangle
+  const sheets = threlte_stub.nodes
+    .filter(({ tag, props }) => tag === `Mesh` && props.onclick)
+    .map(({ props }, idx) => ({
+      props,
+      hit: {
+        point: new Vector3(
+          ...(props.geometry as BufferGeometry).getAttribute(`position`).array,
+        ),
+        face: { a: 0, b: 1, c: 2 },
+        eventObject: { uuid: `sheet ${idx}` }, // what a tap holds
+      },
+    }))
+  expect(sheets).toHaveLength(2)
+  const [sheet_0, sheet_2] = sheets
+  const lit = (mark_idx: 0 | 1) =>
+    hover_highlight()?.geometry === sheets[mark_idx].props.geometry
+  const driver = scene_pin_driver(doc_query(`.fermi-surface`), [sheet_0, sheet_2])
+  const text = await pin_cycle(driver, { keyboard: true, lit })
+  expect(text).toMatch(/Band 1/)
+
+  const pinned_tooltip = () => document.querySelector(`.plot-tooltip.pinned`)
+  touch_tap(sheet_0.props, sheet_0.hit, { clientX: 5, clientY: 5 })
+  flushSync()
+  expect([pinned_tooltip()?.textContent, lit(0)]).toEqual([
+    expect.stringMatching(/Band 1/),
+    true,
+  ])
+  touch_tap(sheet_2.props, sheet_2.hit, { clientX: 9, clientY: 9 })
+  flushSync()
+  expect([pinned_tooltip()?.textContent, lit(1)]).toEqual([
+    expect.stringMatching(/Band 3/),
+    true,
+  ])
+  touch_tap(sheet_2.props, sheet_2.hit, { clientX: 9, clientY: 9 })
+  flushSync()
+  expect([document.querySelector(`.plot-tooltip`), hover_highlight()]).toEqual([null, null])
 })

@@ -44,7 +44,7 @@
   snippet_arg={{ entry, highlight_style } as TooltipSnippetProps<EntryT>}
   {tooltip}
 >
-  <div class="tooltip-content" style:--highlight-color={highlight_style?.color}>
+  <div class="tooltip-content">
     {#if highlight_style}
       <!-- a chip in the highlight colour: as text it vanished on a like-coloured point's tooltip -->
       {@const badge = tooltip_paint(highlight_style.color)}
@@ -117,10 +117,7 @@
 </TooltipContent>
 
 <style>
-  .tooltip-content {
-    max-width: var(--tooltip-max-width, 200px);
-    text-align: left;
-  }
+  /* rows end in an ellipsis at the chip's max-width rather than wrapping */
   .tooltip-content > div {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -132,7 +129,6 @@
     font-weight: 600;
     padding: 0 4px;
     border-radius: 3px;
-    background: var(--highlight-color, #ff4444);
     margin-bottom: 4px;
   }
   .polymorphs span {

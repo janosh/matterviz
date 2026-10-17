@@ -1,6 +1,7 @@
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
+import { HOVER_SHELL_SCALE } from '#lib/scene/index.js'
 import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
 import {
@@ -8,7 +9,7 @@ import {
   empty_extent,
   nice_range_from_extent,
 } from '#lib/plot/core/scales.js'
-import { type Camera, type Object3D, Plane, Vector3 } from 'three/webgpu'
+import { Plane, Vector3 } from 'three/webgpu'
 import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
 
 // Scene box: x/y are horizontal (2:2), z is vertical (1)
@@ -42,27 +43,9 @@ export function create_to_threejs(
   })
 }
 
-// Anchor the tooltip above the halo in screen space, independent of orbit angle.
-// Scratch vectors live with the hovered point, not with each animation frame.
-export function hover_marker_geometry(marker_radius: number) {
-  const radius = marker_radius * 1.15
-  const center = new Vector3()
-  const top = new Vector3()
-  return {
-    radius,
-    tooltip_position: (
-      object: Object3D,
-      camera: Camera,
-      size: { width: number; height: number },
-    ): Vec2 => {
-      center.setFromMatrixPosition(object.matrixWorld)
-      top.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(radius).add(center)
-      center.project(camera)
-      top.project(camera)
-      return [((center.x + 1) * size.width) / 2, ((1 - top.y) * size.height) / 2 - 8]
-    },
-  }
-}
+// The hover halo is a translucent shell just outside the marker; tooltips keep clear of it
+export const hover_halo_radius = (marker_radius: number): number =>
+  marker_radius * HOVER_SHELL_SCALE
 
 // A surface's vertices in data coordinates, exactly as Surface3D draws them: grid surfaces
 // sample z_fn over their own x/y ranges (else the plot's), parametric ones their u/v ranges,

@@ -199,8 +199,8 @@ test.describe(`StructureScene Component Tests`, () => {
       expect(await tooltip.isVisible()).toBe(true)
     }
 
-    // Container-relative typography must stay compact when the viewer fills the screen.
-    await expect(tooltip).toHaveCSS(`font-size`, `14px`)
+    // The dense chip's typography stays compact when the viewer fills the screen.
+    await expect(tooltip).toHaveCSS(`font-size`, `12px`)
     await page.setViewportSize({ width: 1920, height: 1080 })
     const viewer = page.locator(`#test-structure`)
     const fullscreen_button = viewer.locator(`> section.control-buttons > .fullscreen-btn`)
@@ -208,14 +208,14 @@ test.describe(`StructureScene Component Tests`, () => {
     await expect(viewer).toHaveCSS(`height`, `1080px`)
     await hover_canvas_center(canvas)
     await expect(tooltip).toBeVisible()
-    await expect(tooltip).toHaveCSS(`font-size`, `14px`)
+    await expect(tooltip).toHaveCSS(`font-size`, `12px`)
     // The public CSS override remains available for intentional custom sizing.
     await viewer.evaluate((element) =>
-      element.style.setProperty(`--canvas-tooltip-font-size`, `18px`),
+      element.style.setProperty(`--plot-tooltip-font-size`, `18px`),
     )
     await expect(tooltip).toHaveCSS(`font-size`, `18px`)
     await viewer.evaluate((element) =>
-      element.style.removeProperty(`--canvas-tooltip-font-size`),
+      element.style.removeProperty(`--plot-tooltip-font-size`),
     )
     await fullscreen_button.click()
     await hover_canvas_corner(canvas)
@@ -264,9 +264,11 @@ test.describe(`StructureScene Component Tests`, () => {
     }
     // partial occupancies render next to each species
     await expect(elements.locator(`.occupancy`)).toHaveText([`0.645`, `0.345`, `0.01`])
-    // tooltip must respect its max-width (wrap) rather than grow unbounded
+    // tooltip must respect its max-width (wrap) rather than grow unbounded: a 10rem cap is
+    // narrower than the three long species, which fit on one line under the default 16rem
     const { width, max_width, line_count } = await elements.evaluate((element) => {
       const tip = element.closest(`[role="tooltip"]`) as HTMLElement
+      tip.style.setProperty(`--plot-tooltip-max-width`, `10rem`)
       const species = element.querySelector(`.species`) as HTMLElement
       return {
         width: tip.getBoundingClientRect().width,

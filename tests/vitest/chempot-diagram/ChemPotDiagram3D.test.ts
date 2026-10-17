@@ -1,5 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import type ChemPotScene3D from '#lib/chempot-diagram/ChemPotScene3D.svelte'
 import ChemPotTooltip from '#lib/chempot-diagram/ChemPotTooltip.svelte'
 import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
@@ -14,7 +15,17 @@ import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
-import { bind_props, doc_query, query, set_input } from '../setup'
+import { mount_scene } from '../scene/mount'
+import {
+  bind_props,
+  doc_query,
+  expect_shortcuts_in_pane,
+  keydown,
+  pin_cycle,
+  pin_spot,
+  query,
+  set_input,
+} from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -198,6 +209,11 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(controls_toggle?.style.position).toBe(`static`)
   controls_toggle?.click()
   flushSync()
+  expect_shortcuts_in_pane(document, `.scatter-3d-controls-pane`, [
+    `viewer`,
+    `camera`,
+    `chempot-3d`,
+  ])
   const pane_inputs = [...document.querySelectorAll<HTMLInputElement>(`.draggable-pane input`)]
   const by_label = (text: string) =>
     pane_inputs.find((input) => input.closest(`label`)?.textContent?.includes(text))
@@ -225,6 +241,60 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
 })
 
+// From the focused viewer root the keyboard walks the drawn domains in legend order, each
+// tooltip placed at the hull faces the domain owns, and Enter pins it like a click. The real
+// scene is mounted on the props the diagram hands its stub.
+test(`keyboard walks the domains and Enter pins`, async () => {
+  const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
+  const get_scene = await mount_diagram<ComponentProps<typeof ChemPotScene3D>>(
+    bind_props({ entries, config: { default_min_limit: -25 } }, bound),
+  )
+  const { default: Scene } = await vi.importActual<{ default: typeof ChemPotScene3D }>(
+    `#lib/chempot-diagram/ChemPotScene3D.svelte`,
+  )
+  const scene_props = get_scene()
+  const { keys, unmount_scene } = mount_scene((anchor) => Scene(anchor, scene_props))
+  onTestFinished(unmount_scene)
+  flushSync()
+  expect(keys.press(`ArrowRight`)).toBe(true)
+  const [first] = scene_props.hover_meshes
+  expect([bound.hover_info?.formula, keys.message]).toEqual([first.formula, first.formula])
+  const { x, y } = bound.hover_info?.pointer ?? {}
+  expect([x, y].every(Number.isFinite)).toBe(true)
+  // pinned, the tooltip outlives the cursor the walk's Escape clears
+  expect([`Enter`, `Escape`].map((key) => keys.press(key))).toEqual([true, true])
+  expect(bound.hover_info?.formula).toBe(first.formula)
+})
+
+// Domains pin through the scene's hover and press callbacks, the wrapper (a press on it is one
+// on empty space) and its Escape. The pinned tooltip sits where the pointer pinned it, not
+// sliding along while the pointer moves on over its domain.
+test(`a domain press pins its tooltip; it again, empty space or Escape unpin`, async () => {
+  const get_scene = await mount_diagram<{
+    hover_meshes: unknown[]
+    on_domain_hover: (mesh: unknown, event: unknown) => void
+    on_domain_press: (mesh: unknown, event: unknown) => void
+    on_domain_leave: (mesh: unknown) => void
+  }>({ entries, config: { default_min_limit: -25 } })
+  const wrapper = doc_query(`.chempot-diagram-3d`)
+  const text = await pin_cycle((step, mark_idx) => {
+    const scene = get_scene()
+    const domain = scene.hover_meshes[mark_idx ?? 0]
+    const event = {
+      nativeEvent: new PointerEvent(`pointermove`, pin_spot(mark_idx, step)),
+      stopPropagation: () => undefined,
+    }
+    if (step === `escape`) wrapper.dispatchEvent(keydown(`Escape`))
+    else if (step === `leave`) scene.on_domain_leave(domain)
+    else if (mark_idx !== null) scene.on_domain_hover(domain, event)
+    if (step !== `click`) return
+    if (mark_idx === null)
+      wrapper.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    else scene.on_domain_press(domain, event)
+  })
+  expect(text).toMatch(/μ \(eV\)/)
+})
+
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)
 test(`camera start clears an unpinned domain tooltip, a pinned one survives and follows recomputes`, async () => {
   // plain object: the test only reads the bound value back, no reactivity needed
@@ -242,8 +312,9 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   if (info.view !== `3d`) throw new Error(`expected 3D hover info, got ${info.view}`)
   expect(info.matching_entry_count).toBeGreaterThan(0)
   expect(info.min_energy_per_atom).toBeLessThanOrEqual(info.max_energy_per_atom ?? -Infinity)
+  // by touch: it has no hover, so a tap's press is what shows (and pins) a domain's tooltip
   const event = {
-    nativeEvent: new PointerEvent(`pointerdown`),
+    nativeEvent: new PointerEvent(`pointerdown`, { pointerType: `touch` }),
     stopPropagation: () => undefined,
   }
 
@@ -254,7 +325,7 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   flushSync()
   expect(bound.hover_info).toBeNull()
 
-  scene.on_domain_press(domain, event) // click pins the tooltip
+  scene.on_domain_press(domain, event) // a tap or click pins the tooltip
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)
   scene.on_camera_start()
@@ -272,6 +343,23 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   const fresh = get_scene().hover_meshes.find(({ formula }) => formula === domain.formula)
   expect(bound.hover_info?.formula).toBe(domain.formula)
   expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
+  // a press on the pinned domain or Escape unpins, closing the tooltip
+  const wrapper = doc_query(`.chempot-diagram-3d`)
+  const escape = () =>
+    wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+  escape() // closes the controls pane still open from above first
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  for (const unpin of [() => get_scene().on_domain_press(fresh, event), escape]) {
+    get_scene().on_domain_hover(fresh, event)
+    flushSync()
+    expect(bound.hover_info?.formula).toBe(domain.formula)
+    unpin()
+    flushSync()
+    expect(bound.hover_info).toBeNull()
+    get_scene().on_domain_press(fresh, event) // re-pin
+    flushSync()
+  }
 })
 
 // A hull face's owner is the domain holding all three corners (nearest-centroid labelled six
@@ -345,26 +433,21 @@ type HighlightScene = {
   on_domain_hover: (mesh: unknown, event: unknown) => void
   on_domain_leave: (mesh: unknown) => void
   hull_geometry: Geometry | null
-  highlight: {
-    formula: string
-    fill: Geometry | null
-    edges: Geometry
-    fill_color: string
-    edge_color: string
-  } | null
+  highlight: { formula: string; color: string; faces?: number[]; edges?: Geometry } | null
 }
 const pointer_event = { nativeEvent: new PointerEvent(`pointermove`), stopPropagation() {} }
 const highlighted = (scene: HighlightScene) => scene.highlight?.formula ?? null
 
-// Matched by reduced formula; a phase without a domain here highlights nothing. The fill is
-// exactly the hull triangles drawn in the domain's colour (the whole visible face), in that
-// colour, outlined along their boundary in a darker shade of it. A continuous colour mode
-// gives each domain its own colour (arity colours repeat). In the YTOS Ti-Y-O projection a
-// face's boundary differs from the domain's crease edges.
+// Matched by reduced formula; a phase without a domain here highlights nothing. The highlight
+// (HoverHighlight, tested on its own) covers exactly the hull triangles drawn in the domain's
+// colour, the whole visible face; a domain buried in a projection (TiSO5 in the S-less Ti-Y-O
+// view) owns none and outlines its crease edges. A continuous colour mode gives each domain its
+// own colour (arity colours repeat).
 test.each([
   [`Fe4O6`, `Fe2O3`, entries, { default_min_limit: -25 }],
   [`NaCl`, null, entries, { default_min_limit: -25 }],
   [`Y2O3`, `O3Y2`, ytos_entries, { elements: [`Ti`, `Y`, `O`] }],
+  [`TiSO5`, `O5STi`, ytos_entries, { elements: [`Ti`, `Y`, `O`] }],
 ])(`highlighted_formula %s highlights domain %s`, async (input, key, data, config) => {
   const scene = await mount_diagram<HighlightScene>({
     entries: data,
@@ -374,53 +457,17 @@ test.each([
   const { highlight, hull_geometry } = scene()
   expect(highlight?.formula ?? null).toBe(key)
   if (!highlight || !hull_geometry) return
-  const triangles = (geometry: Geometry) => {
-    const { array } = geometry.getAttribute(`position`)
-    return Array.from({ length: array.length / 9 }, (_, idx) =>
-      Array.from(array).slice(idx * 9, idx * 9 + 9),
-    )
-  }
-  const rgb = new THREE.Color(highlight.fill_color).toArray()
+  const rgb = new THREE.Color(highlight.color).toArray()
   const hull_colors = hull_geometry.getAttribute(`color`).array
-  const hull_tris = triangles(hull_geometry)
-  const same_rgb = (tri_idx: number) =>
-    [0, 1, 2].every((ch) => Math.abs(hull_colors[tri_idx * 9 + ch] - rgb[ch]) < 1e-6)
-  const owned = hull_tris.filter((_, tri_idx) => same_rgb(tri_idx))
-  if (!highlight.fill) throw new Error(`${key} owns no hull face`)
-  const fill = triangles(highlight.fill)
-  expect(fill.length).toBeGreaterThan(0)
-  expect(fill).toEqual(owned)
-  // darker shade of the same hue: every channel scaled by one factor < 1
-  const edge_rgb = new THREE.Color(highlight.edge_color).toArray()
-  for (const ch of [0, 1, 2]) expect(edge_rgb[ch]).toBeCloseTo(0.6 * rgb[ch], 2)
-  // the outline is the boundary: each of its edges belongs to exactly one fill triangle
-  const key_of = (pt_a: number[], pt_b: number[]) =>
-    [pt_a, pt_b]
-      .map((pt) => pt.map((val) => val.toFixed(4)).join(`,`))
-      .toSorted()
-      .join(`|`)
-  const fill_edge_counts = new Map<string, number>()
-  for (const tri of fill) {
-    for (const [start, end] of [
-      [0, 3],
-      [3, 6],
-      [6, 0],
-    ]) {
-      const edge = key_of(tri.slice(start, start + 3), tri.slice(end, end + 3))
-      fill_edge_counts.set(edge, (fill_edge_counts.get(edge) ?? 0) + 1)
-    }
-  }
-  const { array: edge_array } = highlight.edges.getAttribute(`position`)
-  const edge_points = Array.from(edge_array)
-  const n_boundary = [...fill_edge_counts.values()].filter((count) => count === 1).length
-  expect(edge_points.length / 6).toBe(n_boundary)
-  for (let offset = 0; offset < edge_points.length; offset += 6) {
-    const edge = key_of(
-      edge_points.slice(offset, offset + 3),
-      edge_points.slice(offset + 3, offset + 6),
-    )
-    expect(fill_edge_counts.get(edge)).toBe(1)
-  }
+  const owned = Array.from(
+    { length: hull_geometry.getAttribute(`position`).count / 3 },
+    (_, idx) => idx,
+  ).filter((tri_idx) =>
+    [0, 1, 2].every((ch) => Math.abs(hull_colors[tri_idx * 9 + ch] - rgb[ch]) < 1e-6),
+  )
+  expect(highlight.faces).toEqual(owned.length > 0 ? owned : undefined)
+  // a buried domain outlines its crease edges instead
+  expect(Boolean(highlight.edges?.getAttribute(`position`).count)).toBe(owned.length === 0)
 })
 
 // A drawn overlay's hull faces wear its overlay colour, so its tooltip must too; other domains
@@ -438,9 +485,9 @@ test(`domain tooltips match their drawn colour`, async () => {
   }
   expect(tip_bg(`Fe2O3`)).toBe(scene().formula_meshes[0].color)
   // the hovered face lights up in that same colour, never a foreign highlight red
-  expect(scene().highlight?.fill_color).toBe(scene().formula_meshes[0].color)
+  expect(scene().highlight?.color).toBe(scene().formula_meshes[0].color)
   expect(ARITY_COLORS).toContain(tip_bg(`Li2O`))
-  expect(ARITY_COLORS).toContain(scene().highlight?.fill_color)
+  expect(ARITY_COLORS).toContain(scene().highlight?.color)
 })
 
 // Hover picks what is drawn: the scene raycasts the drawn hull and reads the face's owner, so
@@ -523,7 +570,12 @@ test.each([
     }
     mounted = mount(ChemPotTooltip, {
       target: document.body,
-      props: { hover_info, pinned: false, constrain_to: { width: 400, height: 400 } },
+      props: {
+        hover_info,
+        pointer: undefined,
+        pinned: false,
+        constrain_to: { width: 400, height: 400 },
+      },
     })
     const tooltip = query(document.body, `.chempot-tooltip`)
     const lines = [...tooltip.querySelectorAll(`p`)].map((line) =>
@@ -577,7 +629,7 @@ test(`the domain tooltip stays compact and left-aligned`, async () => {
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
-test(`a domain hovered in one quaternary grid pane is highlighted in all, tooltip only in its own`, async () => {
+test(`a quaternary grid shares one arity legend; a domain hovered in one pane is highlighted in all, tooltip only in its own`, async () => {
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
   const config = { projection_mode: `grid` as const, default_min_limit: -25 }
@@ -594,6 +646,12 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
     expect(scenes()).toHaveLength(4)
     expect(scenes().every((scene) => scene.hover_meshes.length > 0)).toBe(true)
   })
+  // one arity legend above the grid, not one per pane over its axis labels
+  const legends = [...document.querySelectorAll<HTMLElement>(`.arity-legend`)].filter(
+    (legend) => getComputedStyle(legend).display !== `none`,
+  )
+  expect(legends.map((legend) => legend.closest(`.projection-grid`))).toEqual([null])
+  expect(legends[0].textContent).toBe(`UnaryBinaryTernary4+`)
   const panes = [...document.querySelectorAll(`.chempot-diagram-3d`)]
   const tooltip_panes = () =>
     panes.map((pane) => pane.querySelectorAll(`.chempot-tooltip`).length)

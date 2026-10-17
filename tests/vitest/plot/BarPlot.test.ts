@@ -9,6 +9,7 @@ import { measure_text_width } from '#lib/plot/core/tick-layout.js'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   clip_rect,
+  pin_cycle,
   inside_clip_path,
   keydown,
   mount_sized,
@@ -16,8 +17,10 @@ import {
   click_export,
   one_tab_stop,
   pattern_id_of,
+  plot_svg,
   query,
   roving_tabindexes,
+  svg_mark_driver,
   with_measured_text,
 } from '../setup'
 
@@ -138,6 +141,30 @@ describe(`BarPlot`, () => {
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
   })
+
+  // Bars and line-series markers alike; on_bar_click/on_point_click would claim the click.
+  // Bars have no hover look, markers keep theirs while pinned.
+  test.each([
+    [`bars`, basic, `.bar-series path[role="button"]`, {}, null],
+    [
+      `line markers`,
+      { ...basic, render_mode: `line`, markers: `line+points` },
+      `[data-bar-idx]`,
+      { hover: `mouseover`, leave: `mouseout` },
+      `.marker.is-hovered`,
+    ],
+  ] as const)(
+    `%s: a click or Enter pins the tooltip; it again, empty space or Escape unpin`,
+    async (_label, series, selector, events, lit_selector) => {
+      const plot = await mount_sized_bar_plot({ series: [series] })
+      const marks = [...plot.querySelectorAll(selector)]
+      const driver = svg_mark_driver(marks, plot_svg(plot), events)
+      const lit = lit_selector
+        ? (idx: 0 | 1) => marks[idx].querySelector(lit_selector) !== null
+        : undefined
+      expect(await pin_cycle(driver, { keyboard: true, lit })).toMatch(/x: 1\s*y: 10/)
+    },
+  )
 
   test(`arrow keys move the tab stop between marks`, async () => {
     const plot = await mount_sized_bar_plot({ series: [basic] })

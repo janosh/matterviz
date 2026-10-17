@@ -340,7 +340,7 @@ Enable automatic rotation with the `auto_rotate` prop. Use the controls pane (ge
   z_axis={{ label: `Z` }}
   color_scale={{ scheme: `interpolateYlOrRd` }}
   {auto_rotate}
-  camera_position={[0, 8, 4]}
+  camera_position={[0, 12, 6]}
   style="height: 500px"
   legend={null}
 />
@@ -384,7 +384,6 @@ Combine multiple surfaces in the same plot:
   x_axis={{ label: `X` }}
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
-  camera_position={[4, 3, 3]}
   style="height: 500px"
   legend={null}
 />
@@ -559,7 +558,6 @@ Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, Y
   x_axis={{ label: `Feature 1`, range: [-2, 2] }}
   y_axis={{ label: `Feature 2`, range: [-2, 2] }}
   z_axis={{ label: `Feature 3`, range: [-2, 2] }}
-  camera_position={[5, 4, 3]}
   style="height: 500px"
 />
 ```
@@ -665,7 +663,6 @@ Create complex 3D visualizations by combining reference lines, planes, and surfa
   z_axis={{ label: `Z = X² + Y²` }}
   color_scale={{ scheme: `interpolatePlasma` }}
   color_bar={{ title: `Height` }}
-  camera_position={[4, 4, 3]}
   style="height: 550px"
 />
 ```
@@ -764,7 +761,6 @@ Define a plane by specifying three non-collinear points:
   x_axis={{ label: `X`, range: [-0.5, 1.5] }}
   y_axis={{ label: `Y`, range: [-0.5, 1.5] }}
   z_axis={{ label: `Z`, range: [-0.5, 1.5] }}
-  camera_position={[3, 3, 3]}
   style="height: 500px"
 />
 ```
@@ -803,7 +799,6 @@ Surfaces can be colored using a custom color function that receives x, y, z coor
   x_axis={{ label: `X` }}
   y_axis={{ label: `Y` }}
   z_axis={{ label: `Z` }}
-  camera_position={[4, 3, 3]}
   style="height: 500px"
   legend={null}
 />

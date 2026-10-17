@@ -2,6 +2,8 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import DraggablePane from 'svelte-widgets/DraggablePane.svelte'
   import type { IconData } from 'svelte-widgets/icons'
+  import ShortcutsList from '#lib/layout/ShortcutsList.svelte'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
 
   let {
     open = $bindable(false),
@@ -14,6 +16,7 @@
     max_width,
     position = `absolute`,
     resize = `both`,
+    shortcut_scopes,
     children,
     ...rest
   }: Omit<
@@ -23,6 +26,8 @@
     pane_name: string
     class_prefix: string
     closed_icon: IconData
+    // The owning viewer's keyboard shortcuts, listed at the bottom of the pane
+    shortcut_scopes?: readonly ShortcutScope[]
     children?: Snippet
   } = $props()
 
@@ -161,6 +166,7 @@
   {...rest}
 >
   {@render children?.()}
+  {#if shortcut_scopes}<ShortcutsList scopes={shortcut_scopes} />{/if}
 </DraggablePane>
 
 <style>

@@ -53,7 +53,7 @@ const select_supercell = async (explorer: Locator, scale: number): Promise<void>
   // The cell selector is hover-revealed viewer chrome: a pointer parked on the toolbar
   // leaves it at opacity 0 behind the legend, so enter the viewer first
   await explorer.locator(`.trajectory-pane .trajectory`).hover()
-  await explorer.locator(`.cell-select .toggle-btn`).hover()
+  await explorer.locator(`.cell-select .toggle-btn`).click() // the menu opens only on click
   const preset = explorer
     .locator(`.cell-select .preset-btn`)
     .filter({ hasText: String(scale) })

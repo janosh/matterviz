@@ -1,4 +1,4 @@
-import type { AnyStructure, Crystal, ElementSymbol, Site, Vec3 } from '#lib'
+import type { AnyStructure, Crystal, ElementSymbol, Site, Vec2, Vec3 } from '#lib'
 import * as struct_utils from '#lib/structure/index.js'
 import type { StructureFitOpts } from '#lib/structure/index.js'
 import {
@@ -229,6 +229,38 @@ describe(`structure_fit_frame`, () => {
     expect(extent(input)).toBe(10)
     structure_fit_frame(input).center[0] = 5
     expect(structure_fit_frame(input).center).toEqual([0, 0, 0])
+  })
+
+  // spans are the [width, height] seen from the view: a 20 Å rod of bare atom centers
+  // seen side-on, end-on (each span floors at 1 Å), and looking down the up vector, which
+  // has no screen orientation and falls back to the sphere
+  const rod = { sites: [site(`H`, [-10, 0, 0]), site(`H`, [10, 0, 0])] }
+  test.each([
+    [`side-on`, [0, 0, 1], [20, 1]],
+    [`end-on`, [1, 0, 0], [1, 1]],
+    [`along up`, [0, 1, 0], [20, 20]],
+  ] satisfies [string, Vec3, Vec2][])(`rod spans seen %s`, (_desc, view_dir, expected) => {
+    const { spans, extent: fit } = structure_fit_frame(rod, { atom_radius_scale: 0, view_dir })
+    expect(fit).toBeCloseTo(20 * DEFAULT_FIT_PADDING, 10)
+    spans.forEach((span, axis) =>
+      expect(span).toBeCloseTo(expected[axis] * DEFAULT_FIT_PADDING, 10),
+    )
+  })
+
+  // the side-on rod zooms to fill a wide viewport, twice what its sphere allows
+  test(`ortho zoom fits each span to its own viewport edge`, () => {
+    const { spans, extent: fit } = structure_fit_frame(rod, {
+      atom_radius_scale: 0,
+      view_dir: [0, 0, 1],
+    })
+    const sphere_zoom = ortho_zoom_for_extent(fit, 800, 400, FIT_ZOOM_REF_PX)
+    expect(ortho_zoom_for_extent(spans, 800, 400, FIT_ZOOM_REF_PX)).toBeCloseTo(
+      2 * sphere_zoom,
+      10,
+    )
+    expect(ortho_zoom_for_extent([20, 2], 800, 400, FIT_ZOOM_REF_PX)).toBeCloseTo(40, 10)
+    expect(ortho_zoom_for_extent([2, 20], 800, 400, FIT_ZOOM_REF_PX)).toBeCloseTo(20, 10)
+    expect(() => ortho_zoom_for_extent([10, 0], 800, 400, 10)).toThrow(/Invalid ortho fit/)
   })
 
   test(`molecule / cell framing`, () => {

@@ -673,10 +673,9 @@
     min-inline-size: 0;
     overflow: hidden;
   }
-  /* with a header the gallery is a panel: one border around bar and cards */
+  /* with a header the gallery is a panel: one tint behind bar and cards, no frame */
   .structure-gallery.paneled {
     box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
     border-radius: 6px;
     background: color-mix(in srgb, currentColor 5%, transparent);
   }

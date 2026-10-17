@@ -151,8 +151,8 @@ test.describe(`Bands Component Tests`, () => {
   }) => {
     const plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(plot).toBeVisible()
-    // unit lives in the y-axis label ("Frequency (cm⁻¹)"), not the tick text
-    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm⁻¹`)
+    // unit lives in the y-axis label ("Frequency (cm<sup>−1</sup>)"), not the tick text
+    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm−1`)
     await expect(plot.locator(`svg path`).first()).toBeVisible()
   })
 

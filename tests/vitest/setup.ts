@@ -1,5 +1,8 @@
 import { tooltip_paint } from '#lib/colors/index.js'
+import { host } from '#lib/host.js'
 import type { Rect } from '#lib/plot/core/layout.js'
+import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
+import type { ShortcutScope } from '#lib/shortcuts.js'
 import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -114,6 +117,126 @@ export const expect_tooltip_paint = (tooltip: HTMLElement, fill: string | null):
   if (!expected) throw new Error(`tooltip_paint gives no paint for fill ${fill}`)
   expect({ background, color }).toEqual(expected)
 }
+
+// A viewer lists its keyboard shortcuts (`scopes`) last in `pane`, its info or settings pane,
+// and no longer behind a shortcuts button in its chrome
+export const expect_shortcuts_in_pane = (
+  root: ParentNode,
+  pane: string,
+  scopes: readonly ShortcutScope[],
+): void => {
+  expect(root.querySelector(`button[aria-label="Keyboard shortcuts"]`)).toBeNull()
+  const list = query(root, `${pane} > .pane-content`).lastElementChild
+  expect(list?.matches(`details.shortcuts-list:not([open])`)).toBe(true)
+  const listed = [...(list?.querySelectorAll(`dd`) ?? [])].map((node) => node.textContent)
+  const expected = shortcuts_for(scopes).filter(
+    (shortcut) => host.fullscreen || shortcut !== SHORTCUTS.fullscreen,
+  )
+  expect(listed).toEqual(expected.map((shortcut) => shortcut.description))
+}
+
+// Runs one component's tooltip pin cycle (see TooltipPin), driven through its own events, and
+// returns the pinned tooltip's text for the caller to check. `act`
+// performs a step on mark 0 or 1, or on empty space (null): `hover` moves the pointer onto
+// it, `nudge` on to another spot over it, `leave` off it, `click` hovers then clicks it,
+// `escape` presses Escape where the component's key handling listens and, with `keyboard`,
+// `enter` focuses it and presses Enter. Each mark is hovered at its own spot, so a pinned
+// tooltip that followed the pointer would move. `lit` reads whether a mark wears its hover
+// look, which the pinned mark keeps until unpinned. `text` reads the tooltip's content, minus
+// any pinned-only hint.
+// A tooltip's text minus the pinned-only "Pinned · Esc to unpin" hint
+const without_pin_hint = (node: HTMLElement): string | null => {
+  const copy = node.cloneNode(true) as HTMLElement
+  copy.querySelector(`.pin-hint`)?.remove()
+  return copy.textContent
+}
+export type PinStep = `hover` | `nudge` | `leave` | `click` | `escape` | `enter`
+export async function pin_cycle(
+  act: (step: PinStep, mark_idx: 0 | 1 | null) => unknown,
+  {
+    keyboard = false,
+    tooltip = () => document.querySelector<HTMLElement>(`.plot-tooltip`),
+    lit,
+    text: read_text = without_pin_hint,
+  }: {
+    keyboard?: boolean
+    tooltip?: () => HTMLElement | null
+    lit?: (mark_idx: 0 | 1) => boolean
+    text?: (tooltip: HTMLElement) => string | null
+  } = {},
+): Promise<string | null | undefined> {
+  const run = async (step: PinStep, mark_idx: 0 | 1 | null = null) => {
+    await act(step, mark_idx)
+    flushSync()
+    await tick()
+  }
+  const pinned = () => tooltip()?.classList.contains(`pinned`) ?? false
+  const state = () => {
+    const node = tooltip()
+    const content = node && read_text(node)
+    return [pinned(), node?.style.pointerEvents, content, node?.getAttribute(`role`)] as const
+  }
+  await run(`hover`, 0)
+  const [, , text, role] = state()
+  expect(state()).toEqual([false, `none`, text, role])
+  expect(tooltip()?.querySelector(`.pin-hint`)).toBeNull()
+  await run(`click`, 0) // pinned: takes pointer events so its text can be selected
+  expect(state()).toEqual([true, `auto`, text, role])
+  // every pinned chip says how to unpin, in a tab on its edge that adds no height to it
+  const hint = tooltip()?.querySelector(`.pin-hint`)
+  expect(hint && getComputedStyle(hint).position).toBe(`absolute`)
+  expect(getComputedStyle(tooltip() ?? document.body).userSelect).toBe(`text`)
+  const anchor = () => [tooltip()?.style.left, tooltip()?.style.top]
+  const pinned_at = anchor()
+  await run(`nudge`, 0) // holds still while the pointer moves on over its mark
+  expect(anchor()).toEqual(pinned_at)
+  await run(`leave`, 0) // outlives the pointer, other hovers don't replace or move it
+  await run(`hover`, 1)
+  expect([...state(), ...anchor()]).toEqual([true, `auto`, text, role, ...pinned_at])
+  if (lit) expect(lit(0)).toBe(true)
+  await run(`leave`, 1) // the pinned mark keeps its hover look, the one left behind drops it
+  if (lit) expect([lit(0), lit(1)]).toEqual([true, false])
+  await run(`click`, 0) // the pinned mark again unpins
+  expect(pinned()).toBe(false)
+  for (const step of [`escape`, `click`] as const) {
+    await run(`click`, 0)
+    expect(pinned()).toBe(true)
+    if (step === `click`) await run(`leave`, 0) // over to empty space
+    await run(step) // Escape, or a click on empty space
+    expect(pinned(), step).toBe(false)
+  }
+  expect(tooltip()).toBeNull() // the empty-space click left the marks
+  if (lit) expect([lit(0), lit(1)]).toEqual([false, false]) // unpinned, nothing hovered
+  if (keyboard) {
+    await run(`enter`, 1) // Enter on a focused mark pins it, like a click
+    expect(pinned()).toBe(true)
+    await run(`escape`)
+    expect(pinned()).toBe(false)
+  }
+  return text
+}
+
+// pin_cycle's pointer spot over mark 0 or 1 (a `nudge` a few px on), in client pixels
+export const pin_spot = (mark_idx: 0 | 1 | null, step: PinStep) => {
+  const shift = 30 * (mark_idx ?? 0) + (step === `nudge` ? 7 : 0)
+  return { clientX: 20 + shift, clientY: 20 + shift }
+}
+
+// pin_cycle driver for SVG marks that take pointer hovers, focus and keys, inside an
+// svg that takes clicks (a click on it is one on empty space)
+export const svg_mark_driver =
+  (marks: Element[], svg: Element, { hover = `mousemove`, leave = `mouseleave` } = {}) =>
+  (step: PinStep, mark_idx: 0 | 1 | null): void => {
+    const mark = mark_idx === null ? svg : marks[mark_idx]
+    const at = pin_spot(mark_idx, step)
+    if (step === `escape`) marks[0].dispatchEvent(keydown(`Escape`))
+    else if (step === `leave`) mark.dispatchEvent(mouse(leave))
+    else if (step === `enter`) {
+      mark.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      mark.dispatchEvent(keydown(`Enter`))
+    } else if (mark !== svg) mark.dispatchEvent(mouse(hover, at))
+    if (step === `click`) mark.dispatchEvent(mouse(`click`, at))
+  }
 
 // Wait for a button to render (e.g. a controls-pane toggle whose content mounts on first
 // open), click it and flush the update. Returns the button for follow-up assertions.

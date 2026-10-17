@@ -28,13 +28,14 @@
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { webgpu_available } from '#lib/scene/index.js'
+  import { key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
   import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
@@ -78,6 +79,7 @@
   import { OVERLAYS_INPUT_FRAME_NOTE } from './lattice-planes'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import { onDestroy, untrack } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import { create_shortcut_flash } from '#lib/effects.svelte.js'
@@ -208,6 +210,7 @@
     selected_sites = $bindable([]),
     highlighted_sites = $bindable([]),
     hovered_site_idx = $bindable(null),
+    link_hover,
     measured_sites = $bindable([]),
 
     hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
@@ -309,6 +312,9 @@
     selected_sites?: number[]
     highlighted_sites?: number[]
     hovered_site_idx?: number | null
+    // Channel of an enclosing hover_links() the site hover joins by source atom (0-based), e.g.
+    // a SiteTable's: a site hovered there is hovered here, and an atom hovered here there
+    link_hover?: string
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
     hidden_elements?: Set<ElementSymbol>
     symmetry_settings?: Partial<SymmetrySettings>
@@ -390,6 +396,7 @@
   // Declared before the session: its pre-effect builds the display pipeline during construction,
   // when active_overlay is not yet initialized (and no overlay exists yet).
   let tool_overlay = $state.raw<StructureToolPrediction | null>(null)
+  const atom_link = join_hover_link(() => link_hover, `number`)
   const session: StructureSession = new StructureSession({
     structure: () => structure,
     site_properties: (): Record<string, unknown>[] | undefined =>
@@ -405,7 +412,7 @@
     set_measured_sites: (value) => (measured_sites = value),
     highlighted_sites: () => highlighted_sites,
     set_highlighted_sites: (value) => (highlighted_sites = value),
-    hovered_site_idx: () => hovered_site_idx,
+    hovered_site_idx: () => hovered_site_idx ?? atom_link.linked,
     set_hovered_site_idx: (value) => (hovered_site_idx = value),
     measure_mode: () => measure_mode,
     set_measure_mode: (value) => (measure_mode = value),
@@ -1149,6 +1156,7 @@
     handle_keydown,
     (event) => !measure_mode.startsWith(`edit-`) && handle_keydown(event),
   )
+  const key_walk = key_walk_root() // the active pane's atoms, by keyboard (see KeyWalk)
 
   // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
   let background_override = $derived(
@@ -1163,6 +1171,13 @@
   // appends images after the sites it copies, so a row's index stays its scene index.
   let scene_sites = $derived(session.render_structure?.sites ?? [])
   let sidebar_sites = $derived(scene_sites.filter((site) => !is_image_site(site)))
+  // The source atom (table row) of the hovered site: an image atom points at the site it copies
+  let hovered_atom = $derived(
+    hovered_site_idx === null
+      ? null
+      : get_image_source_idx(scene_sites[hovered_site_idx], hovered_site_idx),
+  )
+  $effect(() => atom_link.publish(hovered_atom))
   let sidebar_width = $state(0)
   // A host that turns the table off and hides its button (Trajectory) never pays for the scan
   let site_data_available = $derived(
@@ -1210,7 +1225,9 @@
     class={[`structure`, rest.class]}
     {@attach drop_zone}
     {@attach keys}
+    {@attach key_walk.attach}
   >
+    <LiveMessage message={key_walk.message} />
     {@render children?.({ structure, fullscreen })}
     {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
     <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
@@ -1282,14 +1299,6 @@
           fullscreen_bg_css_var="--struct-bg-fullscreen"
           on_fullscreen_change={(value) =>
             on_fullscreen_change?.({ structure, fullscreen: value })}
-          shortcut_scopes={[
-            `viewer`,
-            `structure`,
-            ...(has_3d_view ? [`camera` as const] : []),
-            ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
-              ? [`structure-edit` as const]
-              : []),
-          ]}
           style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
         >
           {#if layout_control_visible}
@@ -1366,6 +1375,14 @@
                 style: shortcut_flash.style(`info`),
                 ...shortcut_attrs(`info_pane`),
               }}
+              shortcut_scopes={[
+                `viewer`,
+                `structure`,
+                `camera`,
+                ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
+                  ? [`structure-edit` as const]
+                  : []),
+              ]}
               {@attach attach_tooltip({ content: `Structure info pane` })}
             />
           {/if}
@@ -1457,7 +1474,7 @@
             show_mode_toggle={viewer_active}
             {sym_data}
           >
-            {#snippet children({ mode_menu_open })}
+            {#snippet children()}
               <!-- A lattice is enough: repeating a cell is well defined whatever its pbc flags say
             (the phonon explorer tiles a deliberately aperiodic cell), while the primitive and
             conventional buttons inside gate themselves on sym_data -->
@@ -1467,7 +1484,6 @@
                   bind:cell_type
                   {sym_data}
                   loading={session.supercell_loading}
-                  suppress_hover={mode_menu_open}
                 />
               {/if}
             {/snippet}
@@ -1575,12 +1591,7 @@
         sites={sidebar_sites}
         bind:selected_atoms={selected_sites}
         bind:hovered_atom={
-          // an image atom hovered in 3D points at the row of the site it copies
-          () =>
-            hovered_site_idx === null
-              ? null
-              : get_image_source_idx(scene_sites[hovered_site_idx], hovered_site_idx),
-          (atom) => (hovered_site_idx = atom)
+          () => hovered_atom ?? atom_link.linked, (atom) => (hovered_site_idx = atom)
         }
         export_filename="structure-sites"
         scroll_style={DOCKED_SCROLL_STYLE}
@@ -1725,8 +1736,7 @@
     }
   }
   /* CellSelect sits left of the legend and, like the legend's mode toggle, only shows while the
-    viewer is hovered or focused. Focus matters: the control is tabbable while hidden, and its
-    menu opens on focus. ViewerChrome's generic hover-visible rule only covers its own button
+    viewer is hovered or focused. Focus matters: the control is tabbable while hidden. ViewerChrome's generic hover-visible rule only covers its own button
     row, so this stays here. */
   .structure :global(.cell-select) {
     order: -1;
@@ -1734,7 +1744,9 @@
     pointer-events: none;
     transition: opacity 0.3s ease;
   }
-  .structure:is(:hover, :focus-within) :global(.cell-select) {
+  /* an open menu stays visible too: it no longer closes when the pointer leaves */
+  .structure:is(:hover, :focus-within) :global(.cell-select),
+  .structure :global(.cell-select:has(.dropdown)) {
     opacity: 1;
     pointer-events: auto;
   }

@@ -15,7 +15,12 @@
   import {
     build_orbit_props,
     dispose_on_change,
+    HoverHighlight,
+    scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     SceneCamera,
+    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
   import { T, useThrelte } from '@threlte/core'
@@ -35,6 +40,7 @@
   } from 'three/webgpu'
   import {
     decompose_composition,
+    facet_index_at,
     hits_pin,
     prism_composition,
     prism_position,
@@ -74,7 +80,9 @@
     on_section_hover?: (hover: SectionHover | null) => void // compositions on the plane
   } = $props()
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  // Rods win the pick over the cutting plane, also where seen through it, and the drag catcher
+  // wins over both (their pick_rank)
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
 
   // === Frame: composition in XZ (centred), temperature along Y ===
 
@@ -242,6 +250,10 @@
   }
   const pinned_probe = $derived(probe_of(pinned_composition))
   const hover_probe = $derived(probe_of(hover_xy))
+  // the tie triangle under the pointer lights up while its decomposition shows
+  const hover_facet = $derived(
+    hover_xy ? facet_index_at(diagram.phases, section_facets, hover_xy) : -1,
+  )
   dispose_on_change(() => [pinned_probe?.spokes])
   dispose_on_change(() => [hover_probe?.spokes])
   const probe_marks = $derived(
@@ -305,7 +317,7 @@
     rotation_damping: 0,
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving) {
         hover_xy = null
         on_hover?.(null)
@@ -315,31 +327,48 @@
   let orbit_controls = $state<ComponentProps<typeof extras.OrbitControls>[`ref`]>()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
-  // Rod handlers stop Threlte propagation so the cutting plane behind a rod is not hit too
   function handle_rod_hover(phase: number, event: unknown): void {
     if (camera_is_moving || dragging_plane) return
-    const pointer = pointer_of(event)
-    pointer.stopPropagation()
-    const { point, nativeEvent } = pointer
+    const { point, nativeEvent } = pointer_of(event)
     hovered_phase = phase
-    hover_xy = null // the rod's tooltip replaces the plane's
     on_hover?.({
       phase,
       temperature: clamp(t_of(point.y), t_min, t_max),
       position: [nativeEvent.clientX, nativeEvent.clientY],
     })
   }
+  const leave_rod = () => {
+    hovered_phase = null
+    on_hover?.(null)
+  }
+  const click_rod = (phase: number) =>
+    (selected_phase = selected_phase === phase ? null : phase)
   const rod_handlers = (phase: number) => ({
-    onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
-    onpointermove: (event: unknown) => handle_rod_hover(phase, event),
-    onpointerleave: () => {
-      hovered_phase = null
-      on_hover?.(null)
-    },
-    onclick: (event: unknown) => {
-      pointer_of(event).stopPropagation()
-      selected_phase = selected_phase === phase ? null : phase
-    },
+    ...touch_hover({
+      onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
+      onpointermove: (event: unknown) => handle_rod_hover(phase, event),
+      onpointerleave: leave_rod,
+      onclick: () => click_rod(phase),
+      // a press on a rod still drags the plane, but pins nothing (said here, not read off the
+      // hover, as a touch press comes with none)
+      onpointerdown: (event: unknown) => start_plane_drag(event, false),
+    }),
+    userData: { pick_rank: 1 },
+  })
+  // The viewer root walks the rods in phase order, each where the cutting plane crosses it,
+  // else at its nearer end; Enter selects like a click
+  const pointer_at = scene_pointer()
+  scene_key_walk({
+    targets: () => (settings.show_rods ? rods : []),
+    hover: ({ phase, position: [x_pos, y_pos, z_pos], length }) =>
+      handle_rod_hover(
+        phase,
+        pointer_at([x_pos, clamp(plane_y, y_pos - length / 2, y_pos + length / 2), z_pos]),
+      ),
+    leave: leave_rod,
+    click: ({ phase }) => click_rod(phase),
+    hovered: ({ phase }) => phase === hovered_phase,
+    label: ({ phase }) => diagram.phases[phase].label,
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
@@ -360,14 +389,12 @@
     for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.removeEventListener(type, end_plane_drag)
   }
-  function start_plane_drag(event: unknown): void {
-    const { nativeEvent, point, stopPropagation } = pointer_of(event)
+  function start_plane_drag(event: unknown, can_pin = true): void {
+    const { nativeEvent, point } = pointer_of(event)
     if (nativeEvent.button !== 0) return // right/middle button orbit and pan
-    stopPropagation()
-    // a press on a rod (which doesn't claim pointerdown) drags but pins nothing
     press = {
       client: [nativeEvent.clientX, nativeEvent.clientY],
-      coords_xy: hovered_phase === null ? prism_composition(point) : null,
+      coords_xy: can_pin ? prism_composition(point) : null,
       moved: false,
     }
     dragging_plane = true
@@ -401,9 +428,9 @@
 </script>
 
 {#snippet html_label(position: Vec3, text: string, class_name: string, z_lo: number)}
-  <extras.HTML {position} center style="pointer-events: none" zIndexRange={[z_lo, 0]}>
+  <SceneLabel {position} center zIndexRange={[z_lo, 0]}>
     <span class={class_name}>{text}</span>
-  </extras.HTML>
+  </SceneLabel>
 {/snippet}
 
 <SceneCamera
@@ -467,9 +494,11 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 <T.Group position={[0, plane_y, 0]}>
   <T.Mesh
     geometry={plane_geometry}
-    onpointerdown={start_plane_drag}
-    onpointermove={hover_plane}
-    onpointerleave={clear_plane_hover}
+    {...touch_hover({
+      onpointerdown: start_plane_drag,
+      onpointermove: hover_plane,
+      onpointerleave: clear_plane_hover,
+    })}
   >
     <T.MeshStandardMaterial
       color="#fff59d"
@@ -492,6 +521,13 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
       />
     </T.Mesh>
   {/if}
+  {#if hover_facet !== -1}
+    <HoverHighlight
+      geometry={facet_geometry}
+      faces={[hover_facet]}
+      color={TERNARY_COLORS.face}
+    />
+  {/if}
   <T.LineSegments geometry={tie_line_geometry}>
     <T.LineBasicMaterial color={text_color} />
   </T.LineSegments>
@@ -508,18 +544,13 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
       <T.MeshStandardMaterial color={color_of(point.phase, point.is_element)} />
     </T.Mesh>
     {#if settings.show_stable_labels && !point.is_element}
-      <extras.HTML
-        position={point.label_position}
-        center
-        style="pointer-events: none"
-        zIndexRange={[4, 0]}
-      >
+      <SceneLabel position={point.label_position} center zIndexRange={[4, 0]}>
         <span class="phase-label">
           {#each point.segments as segment, seg_idx (seg_idx)}<span
               class:sub={segment.subscript}>{segment.text}</span
             >{/each}
         </span>
-      </extras.HTML>
+      </SceneLabel>
     {/if}
   {/each}
 </T.Group>
@@ -533,7 +564,7 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 
 {#if dragging_plane}
   <extras.Billboard>
-    <T.Mesh onpointermove={drag_plane}>
+    <T.Mesh onpointermove={drag_plane} userData={{ pick_rank: 2 }}>
       <T.PlaneGeometry args={[8, 8]} />
       <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} side={DoubleSide} />
     </T.Mesh>
@@ -555,7 +586,6 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 
 <style>
   :is(.tick-label, .axis-label, .phase-label) {
-    pointer-events: none;
     user-select: none;
     white-space: nowrap;
     color: var(--text-color, #ddd);

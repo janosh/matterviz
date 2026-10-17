@@ -9,19 +9,22 @@ import type {
   AxisConfig3D,
   DataSeries3D,
   DisplayConfig3D,
+  InternalPoint3D,
   Scatter3DHandlerEvent,
   Surface3DConfig,
 } from '#lib/plot/core/types.js'
 import {
-  hover_marker_geometry,
+  hover_halo_radius,
   normalize_to_scene,
   sample_surface,
   get_3d_auto_ranges,
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
+import { brighten_hex } from '#lib/scene/index.js'
+import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import type { BufferGeometry } from 'three/webgpu'
+import type { BufferGeometry, Object3D, SphereGeometry } from 'three/webgpu'
 import {
   ClippingGroup,
   EdgesGeometry,
@@ -32,9 +35,6 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  Object3D,
-  OrthographicCamera,
-  PerspectiveCamera,
   SRGBColorSpace,
   Vector3,
 } from 'three/webgpu'
@@ -48,6 +48,8 @@ import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } fro
 import {
   bind_props,
   expect_plot_controls,
+  expect_shortcuts_in_pane,
+  expect_tooltip_paint,
   export_via_pane,
   mock_fullscreen,
   mount_sized,
@@ -269,6 +271,39 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
+// Default ticks follow each box edge's drawn length: user z is half as long as x and y, so it
+// gets ~half the labels instead of crowding them (the surface demo's z range read
+// −0.2, −0.1, …, 0.4 on the short edge). An explicit count still wins.
+test.each([
+  [undefined, [`−0.2`, `0`, `0.2`, `0.4`]],
+  [8, [`−0.2`, `−0.1`, `0`, `0.1`, `0.2`, `0.3`, `0.4`]],
+])(`z ticks=%s on the short edge read %j`, (ticks, expected) => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      series: [],
+      ranges: { x: [-1, 1], y: [-1, 1], z: [-0.25, 0.45] },
+      z_axis: { ticks },
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const labels = [...document.querySelectorAll(`.tick-label`)].map((node) => node.textContent)
+  expect(labels).toEqual([
+    `−1`,
+    `−0.5`,
+    `0`,
+    `0.5`,
+    `1`,
+    `−1`,
+    `−0.5`,
+    `0`,
+    `0.5`,
+    `1`,
+    ...expected,
+  ])
+})
+
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [
@@ -385,11 +420,24 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     flushSync()
     render_frame()
     expect(tip_text()).toBe(`2,1,3 true`)
-    // the hover halo is the one mesh drawn without depth testing
+    // the hover halo is the one mesh drawn without depth testing, glowing in the marker's hue
     const halo = find_objects(scene, Mesh).findLast(
       (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
     )
     expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
+    const marker = new Color()
+    instances().getColorAt(1, marker)
+    const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
+    expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
+    // a hair outside the marker on the markers' own smooth sphere, so the outlines are concentric
+    const marker_matrix = new Matrix4()
+    instances().getMatrixAt(1, marker_matrix)
+    const marker_radius = new Vector3().setFromMatrixScale(marker_matrix).x
+    expect(halo?.scale.x).toBeCloseTo(1.04 * marker_radius, 12)
+    expect(halo?.geometry).toBe(instances().geometry)
+    const { widthSegments, heightSegments } = (instances().geometry as SphereGeometry)
+      .parameters
+    expect([widthSegments, heightSegments]).toEqual([32, 32])
     // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
     // tooltip follows the same logical point to its new values
     state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
@@ -412,17 +460,14 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   }
 })
 
-// The default tooltip follows tooltip_paint: an opaque marker fill as is, a translucent one
-// flattened, an unresolvable one leaves the CSS theme chip ('' = no inline paint);
-// tooltip=false drops the hovered point's tooltip (the hover halo stays). Its rows stay
+// The default tooltip is a PlotTooltip painted per tooltip_paint (an opaque marker fill as is,
+// a translucent one flattened); tooltip=false drops it (the hover halo stays). Its rows stay
 // start-aligned on a page that centers text.
-// oxfmt-ignore
-test.each<[string, false | undefined, string[] | null]>([
-  [`#ffffff`, undefined, [`#ffffff`, `black`, `start`]],
-  [`rgba(255, 255, 255, 0.5)`, undefined, [`rgb(255, 255, 255)`, `black`, `start`]],
-  [`var(--marker-fill)`, undefined, [``, ``, `start`]],
-  [`#ffffff`, false, null],
-])(`3D tooltip fill %s, tooltip=%s: %j bg, text and alignment`, (fill, tooltip, expected) => {
+test.each<[string, false | undefined, boolean]>([
+  [`#ffffff`, undefined, true],
+  [`rgba(255, 255, 255, 0.5)`, undefined, true],
+  [`#ffffff`, false, false],
+])(`3D tooltip fill %s, tooltip=%s shown: %s`, (fill, tooltip, shown) => {
   document.body.style.textAlign = `center`
   onTestFinished(() => {
     document.body.style.textAlign = ``
@@ -438,62 +483,91 @@ test.each<[string, false | undefined, string[] | null]>([
   )
   onTestFinished(unmount_scene)
   flushSync()
-  const tip = document.querySelector<HTMLElement>(`.tooltip`)
-  const paint = tip && [tip.style.background, tip.style.color, getComputedStyle(tip).textAlign]
-  expect(paint).toEqual(expected)
+  const tip = document.querySelector<HTMLElement>(`.plot-tooltip`)
+  expect(tip !== null).toBe(shown)
+  if (!tip) return
+  expect_tooltip_paint(tip, fill)
+  expect(getComputedStyle(tip).textAlign).toBe(`start`)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
-test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () => {
-  const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
-  const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
-  const { exports, unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      // x=9 falls outside the x range, so the cursor skips it
-      series: [
-        { x: [1, 2], y: [1, 1], z: [1, 1] },
-        { x: [3, 9], y: [1, 1], z: [1, 1] },
-      ],
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      gizmo: false,
-      on_point_hover,
-      on_point_click,
-      get hovered_point() {
-        return state.hovered_point as never
-      },
-      set hovered_point(value) {
-        state.hovered_point = value
-      },
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  const { handle_key } = exports
-  const press = (key: string) => {
-    const point = handle_key(new KeyboardEvent(`keydown`, { key }))
+// (KeyWalk). Enter clicks the cursor's point, or without on_point_click pins its tooltip, which
+// the first Escape then unpins before the next clears the cursor. Keys pick up from the
+// marker the mouse hovers. A touch tap (touch has no hover) is such a click on the point too.
+test.each([
+  [true, [true, false, false]],
+  [false, [true, true, false]],
+])(
+  `ScatterPlot3DScene walks, clicks and clears its markers by keyboard, on_point_click: %s`,
+  (clickable, escapes) => {
+    const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const interactivity = vi.spyOn(extras, `interactivity`)
+    onTestFinished(() => interactivity.mockRestore())
+    const state = $state<{ hovered_point: InternalPoint3D | null }>({ hovered_point: null })
+    const { keys, unmount_scene } = mount_scene((anchor) =>
+      ScatterPlot3DScene(anchor, {
+        // x=9 falls outside the x range, so the cursor skips it
+        series: [
+          { x: [1, 2], y: [1, 1], z: [1, 1], label: `A` },
+          { x: [3, 9], y: [1, 1], z: [1, 1] },
+        ],
+        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+        gizmo: false,
+        on_point_hover,
+        on_point_click: clickable ? on_point_click : undefined,
+        get hovered_point() {
+          return state.hovered_point
+        },
+        set hovered_point(value) {
+          state.hovered_point = value
+        },
+      }),
+    )
+    onTestFinished(unmount_scene)
     flushSync()
-    return point && [point.series_idx, point.point_idx]
-  }
-  // chords, composing and already-handled keys are left alone
-  const arrow_right = (init: KeyboardEventInit) =>
-    new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
-  const handled = arrow_right({ cancelable: true })
-  handled.preventDefault()
-  const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(arrow_right)
-  for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
-  const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
-  // oxfmt-ignore
-  expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
-  expect(on_point_hover).toHaveBeenLastCalledWith(
-    expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
-  )
-  expect(document.querySelector(`.tooltip`)).not.toBeNull()
-  expect(press(`Enter`)).toEqual([0, 0])
-  expect(on_point_click).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0, x: 1 }))
-  expect([`Escape`, `Escape`, `a`].map(press)).toEqual([null, undefined, undefined])
-  expect(state.hovered_point).toBeNull()
-  expect(on_point_hover).toHaveBeenLastCalledWith(null)
-})
+    const hovered_at = () =>
+      state.hovered_point && [state.hovered_point.series_idx, state.hovered_point.point_idx]
+    const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map((key) => {
+      keys.press(key)
+      return hovered_at()
+    })
+    // oxfmt-ignore
+    expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
+    expect(keys.message).toBe(`A point 1: 1, 1, 1`)
+    expect(on_point_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
+    )
+    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(keys.press(`Enter`)).toBe(true)
+    expect(on_point_click.mock.calls).toEqual(
+      clickable ? [[expect.objectContaining({ series_idx: 0, x: 1 })]] : [],
+    )
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect([`Escape`, `Escape`, `a`].map((key) => keys.press(key))).toEqual(escapes)
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    expect(state.hovered_point).toBeNull()
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
+
+    const { handlers, interactiveObjects } = interactivity.mock.results[0].value as ReturnType<
+      typeof extras.interactivity
+    >
+    const point_events = interactiveObjects
+      .map((object) => handlers.get(object))
+      .find((events) => events?.onpointermissed)
+    // the walk steps on from the marker the mouse hovers
+    point_events?.onpointerenter?.({
+      instanceId: 1,
+      nativeEvent: new PointerEvent(`pointerenter`),
+    })
+    keys.press(`ArrowRight`)
+    expect(hovered_at()).toEqual([1, 0])
+    const tap = new PointerEvent(`click`, { pointerType: `touch` })
+    point_events?.onclick?.({ instanceId: 0, nativeEvent: tap })
+    flushSync()
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect(on_point_click).toHaveBeenCalledTimes(clickable ? 2 : 0)
+  },
+)
 
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame
@@ -597,10 +671,10 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
     const half = lerp(start, end, 0.5)
     expect(marker(0)).toEqual(drawn(half))
-    expect(document.querySelector(`.tooltip`)).not.toBeNull()
+    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
     // the hover halo rides on the moving marker the raycast hits, not on its target
     expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
-    expect(halo()?.scale.x).toBe(hover_marker_geometry(half[3]).radius)
+    expect(halo()?.scale.x).toBe(hover_halo_radius(half[3]))
     // shadows switched on mid-flight join the same clock, flattened onto the floor
     state.display = { show_axes: false, projections: { xy: true } }
     flushSync()
@@ -714,6 +788,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       { series, on_export },
       { selector: `.scatter-3d` },
     )
+    expect_shortcuts_in_pane(plot, `.scatter-3d-controls-pane`, [`viewer`, `camera`])
     const result = await export_via_pane(on_export, `CSV`, plot)
     expect(result.offered).toEqual([`PNG`, `CSV`])
     expect(result.filename).toBe(`scatter3d`)
@@ -1060,47 +1135,6 @@ describe(`scene coordinates`, () => {
     // spanning the plot's x/y, it has nothing to add until those ranges are known
     expect(sample_surface(surface)).toEqual([])
   })
-
-  test.each([`perspective`, `orthographic`] as const)(
-    `%s tooltip clears the halo by 8 screen pixels at every orbit angle and zoom`,
-    (projection) => {
-      const size = { width: 800, height: 400 }
-      const point = new Object3D()
-      point.position.set(1, 0.5, -0.5)
-      point.updateMatrixWorld()
-      const camera =
-        projection === `perspective`
-          ? new PerspectiveCamera(60, 2, 0.1, 100)
-          : new OrthographicCamera(-10, 10, 5, -5, 0.1, 100)
-      for (const elevation of [0, Math.PI / 4, Math.PI / 2 - 0.001, Math.PI / 2]) {
-        camera.position
-          .copy(point.position)
-          .add(new Vector3(10 * Math.cos(elevation), 10 * Math.sin(elevation), 0))
-        camera.lookAt(point.position)
-        camera.updateMatrixWorld()
-        for (const zoom of [1, 2]) {
-          camera.zoom = zoom
-          camera.updateProjectionMatrix()
-          for (const marker_radius of [0, 0.1, 0.25, 1]) {
-            const geometry = hover_marker_geometry(marker_radius)
-            // 1e-9 CSS pixels is far below visible precision for these matrix projections.
-            const pixels_per_unit =
-              projection === `perspective`
-                ? (size.height * zoom) / (20 * Math.tan(Math.PI / 6))
-                : (size.height * zoom) / 10
-            const [pixel_x, pixel_y] = geometry.tooltip_position(point, camera, size)
-            expect(Math.abs(geometry.radius - marker_radius * 1.15)).toBeLessThanOrEqual(
-              Number.EPSILON,
-            )
-            expect(Math.abs(pixel_x - size.width / 2)).toBeLessThan(1e-9)
-            expect(
-              Math.abs(pixel_y - (size.height / 2 - geometry.radius * pixels_per_unit - 8)),
-            ).toBeLessThan(1e-9)
-          }
-        }
-      }
-    },
-  )
 
   // oxfmt-ignore
   test.each<[[number | null, number | null] | undefined, [number, number]]>([

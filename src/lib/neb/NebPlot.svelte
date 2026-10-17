@@ -7,6 +7,7 @@
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { clamp, nearest_value_idx } from '#lib/math.js'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { EnergyReference, ReactionCoordMode, ReactionPathInput } from './index'
   import type { PathProfile, PathSplineOptions } from './reaction-path'
   import { normalize_paths, path_energy_unit, path_profile } from './reaction-path'
@@ -51,6 +52,7 @@
     active_path_key?: string
     active_image_idx?: number
     on_image_change?: (payload: PointMeta) => void
+    shortcut_scopes?: readonly ShortcutScope[] // NebViewer's, listed at the controls' bottom
   } & Omit<ScatterPlotOptions, `controls_extra`> = $props()
 
   const named_paths = $derived(normalize_paths(paths))

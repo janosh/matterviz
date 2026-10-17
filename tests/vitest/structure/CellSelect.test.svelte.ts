@@ -16,7 +16,6 @@ type CellSelectProps = {
   cell_type?: CellType
   sym_data?: SymmetryDataset | null
   loading?: boolean
-  suppress_hover?: boolean
 }
 
 const normalize_supercell_label = (label: string | undefined): string | undefined =>
@@ -50,7 +49,7 @@ describe(`CellSelect`, () => {
   describe(`dropdown menu`, () => {
     afterEach(() => vi.useRealTimers())
 
-    test(`opens on click/mouseenter (after hover-intent delay), closes on mouseleave or focus leaving`, async () => {
+    test(`opens on click, closes on click, click outside or focus leaving, never on hover`, async () => {
       vi.useFakeTimers()
       mount_select({ supercell_scaling: `1x1x1` })
 
@@ -78,62 +77,31 @@ describe(`CellSelect`, () => {
       await tick()
       expect(dropdown()).toBeNull()
 
+      // the pointer overshooting the menu keeps it open; the toggle closes it again
       toggle.click()
       await tick()
       root.dispatchEvent(mouse(`mouseleave`))
       await tick()
-      expect(dropdown()).toBeNull()
-
-      // leaving during the hover-intent delay cancels opening
-      root.dispatchEvent(mouse(`mouseenter`))
-      root.dispatchEvent(mouse(`mouseleave`))
-      vi.advanceTimersByTime(250)
-      await tick()
-      expect(dropdown()).toBeNull()
-
-      // mouseenter alone doesn't open it (hover-intent delay pending)...
-      root.dispatchEvent(mouse(`mouseenter`))
-      await tick()
-      expect(dropdown()).toBeNull()
-
-      // ...but a sustained hover does
-      vi.advanceTimersByTime(250)
-      await tick()
       expect(dropdown()).toBeInstanceOf(HTMLElement)
-    })
-
-    test(`suppress_hover blocks hover/focus opening and closes an open menu`, async () => {
-      vi.useFakeTimers()
-      let suppressed = $state(false)
-      mount_select({
-        supercell_scaling: `1x1x1`,
-        get suppress_hover() {
-          return suppressed
-        },
-      })
-
-      // sustained hover opens normally
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
-      vi.advanceTimersByTime(250)
+      toggle.click()
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+      expect(dropdown()).toBeNull()
 
-      // suppressing (e.g. the atom color-mode dropdown opened) closes it...
-      suppressed = true
+      // a click elsewhere (e.g. on the legend's color-mode toggle) closes it too
+      toggle.click()
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      document.body.dispatchEvent(
+        new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }),
+      )
+      await tick()
+      expect(dropdown()).toBeNull()
 
-      // ...and hover/focus no longer reopen it while suppressed
-      doc_query(`.cell-select`).dispatchEvent(mouse(`mouseenter`))
-      doc_query(`.cell-select`).dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-      vi.advanceTimersByTime(250)
+      // neither a sustained hover nor focus opens it: only a click does
+      root.dispatchEvent(mouse(`mouseenter`))
+      toggle.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+      vi.advanceTimersByTime(1000)
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
-
-      // a manual toggle click must not reopen it either while suppressed
-      doc_query(`.toggle-btn`).dispatchEvent(mouse(`click`))
-      await tick()
-      expect(document.querySelector(`.dropdown`)).toBeNull()
+      expect(dropdown()).toBeNull()
     })
   })
 
@@ -238,18 +206,6 @@ describe(`CellSelect`, () => {
         expect(document.querySelector(`.dropdown`) !== null).toBe(menu_stays_open)
       },
     )
-  })
-
-  test(`a press that never clicks does not block later keyboard focus`, async () => {
-    mount_select({ supercell_scaling: `1x1x1` })
-    const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
-    toggle.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
-    toggle.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-    await tick()
-    expect(document.querySelector(`.dropdown`)).toBeNull() // the click decides
-    toggle.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true })) // later Tab focus
-    await tick()
-    expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`toggle label and custom input follow external props; closing discards a draft`, async () => {

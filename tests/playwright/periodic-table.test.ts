@@ -164,7 +164,7 @@ test.describe(`Periodic Table`, () => {
     const get_element_tile = (page: Page, symbol: string) =>
       page.locator(`.periodic-table [data-element-symbol="${symbol}"]`).first()
 
-    const get_tooltip = (page: Page) => page.locator(`.tooltip`)
+    const get_tooltip = (page: Page) => page.locator(`.periodic-table .plot-tooltip`)
 
     // Hover an element tile until its tooltip appears, returning the tooltip
     // locator. Retries the whole hover (move away first to re-arm mouseenter)
@@ -261,10 +261,10 @@ test(`periodic-table settings update rendered styles and reset each section`, as
     [`value_font_size`, `24`, `--elem-value-font-size`, `24cqw`],
     [`symbol_font_weight`, `700`, `--elem-symbol-font-weight`, `700`],
     [`number_font_weight`, `600`, `--elem-number-font-weight`, `600`],
-    [`tooltip_font_size`, `18`, `--tooltip-font-size`, `18px`],
-    [`tooltip_border_radius`, `12`, `--tooltip-border-radius`, `12px`],
-    [`tooltip_padding`, `8px 12px`, `--tooltip-padding`, `8px 12px`],
-    [`tooltip_line_height`, `1.5`, `--tooltip-line-height`, `1.5`],
+    [`tooltip_font_size`, `18`, `--plot-tooltip-font-size`, `18px`],
+    [`tooltip_border_radius`, `12`, `--plot-tooltip-border-radius`, `12px`],
+    [`tooltip_padding`, `8px 12px`, `--plot-tooltip-padding`, `8px 12px`],
+    [`tooltip_line_height`, `1.5`, `--plot-tooltip-line-height`, `1.5`],
   ]) {
     const row = controls.locator(`[data-key="${key}"]`)
     const input = row.locator(`input:not([type=range])`)
@@ -314,10 +314,10 @@ test(`periodic-table settings update rendered styles and reset each section`, as
 
   const alignment = controls.locator(`[data-key="tooltip_text_align"] select`)
   await alignment.selectOption(`left`)
-  await expect.poll(() => css_value(`--tooltip-text-align`)).toBe(`left`)
+  await expect.poll(() => css_value(`--plot-tooltip-text-align`)).toBe(`left`)
   const background = controls.locator(`[data-key="tooltip_bg_color"] input`)
   await background.fill(`#123456`)
-  await expect.poll(() => css_value(`--tooltip-bg`)).toBe(`#123456`)
+  await expect.poll(() => css_value(`--plot-tooltip-bg`)).toBe(`#123456`)
   await controls
     .getByRole(`button`, { name: `Reset tooltip to defaults`, exact: true })
     .click()

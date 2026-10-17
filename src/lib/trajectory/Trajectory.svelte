@@ -44,7 +44,7 @@
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton, SettingsSection, ShortcutsHelp } from '#lib/layout/index.js'
+  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
   import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
@@ -1554,6 +1554,11 @@
                 () => active_pane === `info`, (open) => set_pane_open(`info`, open)
               }
               {pane_props}
+              shortcut_scopes={[
+                `viewer`,
+                `sequence`,
+                ...(has_plot_properties ? [`trajectory` as const] : []),
+              ]}
             />
           {/if}
           {#if controls_config.visible(`export-pane`)}
@@ -1706,14 +1711,6 @@
               {/each}
             </ToolbarMenu>
           {/if}
-          <ShortcutsHelp
-            scopes={[
-              `viewer`,
-              `sequence`,
-              ...(has_plot_properties ? [`trajectory` as const] : []),
-            ]}
-            {wrapper}
-          />
           {#if fullscreen || show_toggle}
             <FullscreenButton
               bind:fullscreen

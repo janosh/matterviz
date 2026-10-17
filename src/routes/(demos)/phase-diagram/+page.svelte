@@ -219,7 +219,6 @@
     margin: 0.5em 0 1em;
     padding: 0.25em 0.75em;
     background: var(--surface-bg, rgba(255, 255, 255, 0.03));
-    border: 1px solid var(--border-color, #444);
     border-radius: 6px;
   }
   .tdb-info summary {

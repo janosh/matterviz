@@ -294,7 +294,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     throw new Error(`No tie-line found in the two-phase scan positions`)
   })
 
-  test(`click or Enter locks the tooltip; click, Escape or Space unlocks it`, async ({
+  test(`click or Enter pins the tooltip; click, Escape or Space unpins it`, async ({
     page,
   }) => {
     const { diagram, svg } = get_diagram_elements(page)
@@ -306,32 +306,32 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     }
     await region.hover()
     await expect(tooltip).toBeVisible()
-    await expect(tooltip).not.toHaveClass(/locked/)
+    await expect(tooltip).not.toHaveClass(/pinned/)
     await region.click()
-    await expect(tooltip).toHaveClass(/locked/)
-    await expect(diagram.locator(`.tooltip-lock-indicator`)).toBeVisible()
-    // a locked tooltip outlives the pointer leaving; clicking the region again unlocks it
+    await expect(tooltip).toHaveClass(/pinned/)
+    await expect(diagram.locator(`.pin-hint`)).toBeVisible()
+    // a pinned tooltip outlives the pointer leaving; clicking the region again unpins it
     await page.mouse.move(10, 10)
     await expect(tooltip).toBeVisible()
-    await expect(tooltip).toHaveClass(/locked/)
+    await expect(tooltip).toHaveClass(/pinned/)
     await region.click()
-    await expect(tooltip).not.toHaveClass(/locked/)
+    await expect(tooltip).not.toHaveClass(/pinned/)
     await leave()
 
     await region.click()
-    await expect(tooltip).toHaveClass(/locked/)
+    await expect(tooltip).toHaveClass(/pinned/)
     await page.keyboard.press(`Escape`)
-    await expect(tooltip).not.toHaveClass(/locked/)
+    await expect(tooltip).not.toHaveClass(/pinned/)
     await leave()
 
-    // Enter locks and Space unlocks while the SVG is focused
+    // Enter pins and Space unpins while the SVG is focused
     await region.hover()
     await expect(tooltip).toBeVisible()
     await svg.focus()
     await page.keyboard.press(`Enter`)
-    await expect(tooltip).toHaveClass(/locked/)
+    await expect(tooltip).toHaveClass(/pinned/)
     await page.keyboard.press(`Space`)
-    await expect(tooltip).not.toHaveClass(/locked/)
+    await expect(tooltip).not.toHaveClass(/pinned/)
   })
 
   test(`e toggles the export pane, its chords stay the browser's`, async ({ page }) => {

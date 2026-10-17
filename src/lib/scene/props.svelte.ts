@@ -131,10 +131,10 @@ export const resize_orthographic_zoom = (
 // reset, projection change) move the framing. The effect below never reads `extent`: any
 // re-run reading the live extent (a resize, a prop changing identity) landed the accumulated
 // change as a zoom jump (#459).
-export function create_fit_zoom(opts: {
-  extent: () => number
+export function create_fit_zoom<Extent>(opts: {
+  extent: () => Extent
   // Maps an extent to a zoom. Must read the viewport size so resizes re-run the effect below.
-  zoom_for: (extent: number) => number
+  zoom_for: (extent: Extent) => number
   // False while the container has no size, as in create_orthographic_zoom.
   measured: () => boolean
   // Held until the first measured run, when there is no viewport to fit to yet. A thunk even

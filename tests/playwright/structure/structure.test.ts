@@ -328,7 +328,7 @@ test.describe(`Structure Component Tests`, () => {
       .toBeLessThan(300)
     await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
-    await cell_select.dispatchEvent(`mouseenter`)
+    await cell_select.locator(`.toggle-btn`).click() // the menu opens only on click
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
 
     const get_font_size = (selector: string): Promise<number> =>
@@ -977,11 +977,12 @@ test.describe(`Structure Event Handler Tests`, () => {
     await reset_btn.click()
     const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
     const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
-    expect(resized_zoom / reset_zoom).toBeCloseTo(
-      Math.min(resized_box.width, resized_box.height) /
-        Math.min(initial_box.width, initial_box.height),
-      2,
-    )
+    // the reset re-fits to the narrower viewer, dropping the wheel zoom-in: the structure's
+    // width and height each fit their own edge, so only the width shrinking can tighten the
+    // zoom, by at most the width ratio
+    const width_ratio = resized_box.width / initial_box.width
+    expect(resized_zoom / reset_zoom).toBeGreaterThanOrEqual(width_ratio - 0.01)
+    expect(resized_zoom / reset_zoom).toBeLessThanOrEqual(1.01)
   })
 
   test(`click without camera movement does not report a move`, async ({ page }) => {
@@ -1361,8 +1362,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(cell_select).toHaveCSS(`opacity`, `1`)
     expect(await receives_pointer_at_center(cell_toggle)).toBe(true)
     expect(await receives_pointer_at_center(element_badge)).toBe(true)
-    // hovering opens the menu; a click could race that timer on a loaded runner and toggle it shut
-    await cell_toggle.hover()
+    await cell_toggle.click() // the menu opens only on click
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
     expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })

@@ -8,6 +8,7 @@
   import type { Column, RowData } from '#lib/table/index.js'
   import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import { escape_html } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -27,6 +28,7 @@
     layout = `toggle`,
     on_entry_click,
     highlighted_entry_id,
+    link_hover,
     min_n_elements = $bindable(1),
     entry_href,
     ...rest
@@ -41,6 +43,9 @@
     layout?: `toggle` | `side-by-side`
     on_entry_click?: (entry: ModelEntry) => void // table row click
     highlighted_entry_id?: string // row to highlight (e.g. current material on a detail page)
+    // Channel of an enclosing hover_links() the table's row hover joins (by entry_id), e.g.
+    // the hull's: an entry hovered there shades and scrolls to its row here, and back
+    link_hover?: string
     min_n_elements?: number // table filter: minimum number of elements (bindable for URL sync)
     entry_href?: (entry: ModelEntry) => string | null // makes the ID column a link
   } = $props()
@@ -251,10 +256,17 @@
     }),
   )
 
+  const row_entry = (row: RowData): ModelEntry | undefined =>
+    table_entries[Number(row[`#`]) - 1]
   function handle_row_click(_event: KeyboardEvent | MouseEvent, row: RowData): void {
-    const entry = table_entries[Number(row[`#`]) - 1]
+    const entry = row_entry(row)
     if (entry) on_entry_click?.(entry)
   }
+  const entry_link = join_hover_link(() => link_hover, `string`)
+  const linked_row = $derived.by((): number | null => {
+    const idx = table_entries.findIndex(({ entry_id }) => entry_id === entry_link.linked)
+    return entry_link.linked === null || idx === -1 ? null : idx + 1
+  })
 
   // Every column's header is its id; only the energy columns are colour-scaled
   const col = (id: string, opts: Partial<Column> = {}): Column => ({
@@ -383,6 +395,11 @@
     style="width: 100%"
     root_style="min-width: 0; margin-inline: 0; flex: 1 1 0"
     on_row_click={on_entry_click ? handle_row_click : undefined}
+    on_row_hover={link_hover === undefined
+      ? undefined
+      : (row: RowData | null) => entry_link.publish((row && row_entry(row)?.entry_id) ?? null)}
+    highlighted_row_id={linked_row}
+    row_key={link_hover === undefined ? undefined : `#`}
     export_formats={TABLE_EXPORT_FORMATS}
     {export_filename}
   />

@@ -16,7 +16,7 @@
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
-  <div style="max-width: var(--bz-tooltip-max-width, 250px)">
+  <div>
     {#if hover_data.is_ibz || hover_data.bz_order > 1}
       <div style="margin-bottom: 4px">
         {#if hover_data.is_ibz}<strong>Irreducible BZ</strong>{/if}
@@ -31,12 +31,12 @@
     />
     <div style="display: flex; gap: 4px">
       <span style="opacity: 0.8; min-width: 75px">BZ Volume:</span>
-      <span>{format_num(hover_data.bz_volume, `.4~`)} <small>Å⁻³</small></span>
+      <span>{format_num(hover_data.bz_volume, `.4~`)} <small>Å<sup>−3</sup></small></span>
     </div>
     {#if hover_data.is_ibz && hover_data.ibz_volume != null}
       <div style="display: flex; gap: 4px">
         <span style="opacity: 0.8; min-width: 75px">IBZ Volume:</span>
-        <span>{format_num(hover_data.ibz_volume, `.4~`)} <small>Å⁻³</small></span>
+        <span>{format_num(hover_data.ibz_volume, `.4~`)} <small>Å<sup>−3</sup></small></span>
       </div>
       {#if hover_data.symmetry_multiplicity != null}
         <div class="bz-tooltip-symmetry">

@@ -90,7 +90,8 @@
     z-index: var(--fullscreen-btn-z-index, 10);
     display: flex;
     align-items: center;
-    gap: 8px;
+    /* icons ~9px apart like the 3D viewers' chrome, also in the corner */
+    gap: var(--chart-chrome-gap, 4px);
     opacity: 0;
     transition:
       opacity 0.2s,
@@ -100,7 +101,6 @@
   .header-controls.corner {
     top: var(--ctrl-btn-top, 2px);
     right: var(--fullscreen-btn-right, 2px);
-    gap: var(--chart-chrome-gap, 3px);
   }
   /* on the buttons, not the row: <button> doesn't inherit `color`, and the controls pane
      (also a child of this row) must keep its own colors */

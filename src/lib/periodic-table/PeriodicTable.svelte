@@ -1,12 +1,6 @@
 <script lang="ts">
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import {
-    is_color,
-    is_dark_mode,
-    pick_contrast_color,
-    resolve_backdrop,
-    resolve_css_color,
-  } from '#lib/colors/index.js'
+  import { is_color, resolve_backdrop } from '#lib/colors/index.js'
   import type {
     ChemicalElement,
     ElementCategory,
@@ -21,14 +15,19 @@
     is_elem_symbol,
   } from '#lib/element/index.js'
   import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
-  import { array_extent, type Point2D } from '#lib/math.js'
+  import { array_extent } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { beside_rect, clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
   import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
@@ -143,9 +142,13 @@
   let active_symbols = $derived(
     new Set(active_elements.map((elem) => (typeof elem === `string` ? elem : elem.symbol))),
   )
-  // shared by the tiles and the tooltip snippet, so both agree on what is active
-  const is_active = ({ category, name, symbol }: ChemicalElement): boolean =>
-    active_category === category || active_element?.name === name || active_symbols.has(symbol)
+  // shared by the tiles and the tooltip snippet, so both agree on what is active. A pinned
+  // tooltip's tile stays active like a hovered one.
+  const is_active = (element: ChemicalElement): boolean =>
+    active_category === element.category ||
+    active_element?.name === element.name ||
+    pin.is({ element }) ||
+    active_symbols.has(element.symbol)
   let focused_symbol = $state<ElementSymbol | null>(null)
   let first_interactive_symbol = $derived(
     element_data.find(element_is_interactive)?.symbol ?? null,
@@ -173,15 +176,19 @@
       )
   })
 
-  let tooltip_element = $state<ChemicalElement | null>(null)
-  let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
-  // tooltip hangs below the tile by default; flipped above for the f-block rows when the
-  // table clips its overflow (phone pan mode), where a tooltip below them would be cut off
-  let tooltip_above = $state(false)
+  // The hovered tile's box in table coordinates, and the box that would clip a tooltip there:
+  // the table itself when it pans (phones), so f-block tooltips flip above their tiles
+  type TileTooltip = { element: ChemicalElement; tile: Rect; bounds: Rect }
+  let tooltip_hover = $state<TileTooltip | null>(null)
+  // Clicking a tile without a link or on_activate pins its tooltip, as does a touch preview
+  const pin = new TooltipPin<TileTooltip, Pick<TileTooltip, `element`>>({
+    key: ({ element }) => element.symbol,
+  })
+  const shown_tooltip = $derived(pin.shown(tooltip_hover))
 
-  // Touch has no hover, so the first tap on a tile only selects it (active ring, tooltip,
-  // inset) and a second tap follows its link or fires on_activate. Mouse clicks unaffected.
-  // Plain (non-state) flag: it's consumed by the click of the same tap.
+  // Touch has no hover, so the first tap on a tile only selects it (active ring, pinned
+  // tooltip, inset) and a second tap follows its link or fires on_activate. Mouse clicks
+  // unaffected. Plain (non-state) flag: it's consumed by the click of the same tap.
   let tap_is_preview = false
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
     tap_is_preview =
@@ -191,16 +198,22 @@
     if (tap_is_preview) {
       set_active_element(element)
       handle_tooltip_enter(element, event)
+      pin.value = tooltip_hover
     }
   }
   const handle_tile_click = (
     data: { element: ChemicalElement; event: MouseEvent },
+    interactive: boolean,
     activation?: (element: ChemicalElement) => void,
   ): void => {
     const preview = tap_is_preview
     tap_is_preview = false
-    if (preview) data.event.preventDefault() // keep the link from navigating on the first tap
-    else if (activation) activation(data.element)
+    // the preview tap pinned on pointerdown; keep a link from navigating until the second tap
+    if (preview && interactive) return data.event.preventDefault()
+    if (interactive) pin.unpin() // activation ends the preview
+    else if (!preview)
+      pin.toggle(tooltip_hover?.element.symbol === data.element.symbol ? tooltip_hover : null)
+    if (activation) activation(data.element)
     else tile_props?.onclick?.(data)
   }
 
@@ -251,18 +264,12 @@
 
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
     if (tooltip === false || disabled) return
-    tooltip_element = element
     const target = event.currentTarget
     if (!(target instanceof HTMLElement) || !table_node) return
-    const rect = target.getBoundingClientRect()
-    const container_rect = table_node.getBoundingClientRect()
-    tooltip_above = element.row > 7 && getComputedStyle(table_node).overflowY !== `visible`
-    tooltip_pos = {
-      x: rect.left - container_rect.left + rect.width / 2,
-      y: tooltip_above
-        ? rect.top - container_rect.top - 8
-        : rect.bottom - container_rect.top + 8,
-    }
+    const { left, top, width, height } = target.getBoundingClientRect()
+    const origin = table_node.getBoundingClientRect()
+    const tile = { x: left - origin.left, y: top - origin.top, width, height }
+    tooltip_hover = { element, tile, bounds: clip_bounds(table_node) }
   }
 
   let use_log = $derived(
@@ -339,27 +346,6 @@
   // Resolve the shared surface once rather than installing a theme observer per tile.
   let table_node = $state<HTMLDivElement>()
   const page_backdrop = resolve_backdrop(() => table_node)
-  // The tooltip fill is a translucent theme token, so it needs the page behind it.
-  let tooltip_node = $state<HTMLElement | null>(null)
-  const tooltip_fill = resolve_css_color(() => tooltip_node, {
-    css_var: `--tooltip-bg`,
-    // mirrors the light-dark() default in the .tooltip rule below
-    fallback: () => (is_dark_mode() ? `rgba(0, 0, 0, 0.85)` : `rgba(255, 255, 255, 0.95)`),
-  })
-  const tooltip_text_color = $derived(
-    pick_contrast_color({ background: tooltip_fill.current, backdrop: page_backdrop.current }),
-  )
-  // CSS keeps wrapped text at the full max-width, so shrink the (content-box) tooltip to
-  // its lines, whose union is the range's bounding rect. Scale undoes ancestor transforms.
-  $effect(() => {
-    void tooltip_element // re-fit for each hovered tile
-    if (!tooltip_node) return
-    tooltip_node.style.width = ``
-    const range = document.createRange()
-    range.selectNodeContents(tooltip_node)
-    const scale = tooltip_node.getBoundingClientRect().width / tooltip_node.offsetWidth
-    tooltip_node.style.width = `${Math.ceil(range.getBoundingClientRect().width / scale)}px`
-  })
 </script>
 
 <div
@@ -368,6 +354,11 @@
   class={[`periodic-table`, rest.class]}
   style:gap
   onkeydown={handle_key}
+  {@attach viewer_keys(() => ({ Escape: pin.unpin }))}
+  onpointerdown={({ target }) => {
+    if (!(target instanceof Element && target.closest(`.element-tile, .plot-tooltip`)))
+      pin.unpin()
+  }}
 >
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
@@ -410,7 +401,7 @@
       }}
       onmouseleave={() => {
         set_active_element(null)
-        tooltip_element = null
+        tooltip_hover = null
       }}
       onfocus={() => {
         focused_symbol = symbol
@@ -423,9 +414,9 @@
       role={tile_activation ? `button` : href ? `link` : tile_props?.role}
       tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
-      onclick={interactive
+      onclick={interactive || tooltip !== false
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>
-            handle_tile_click(data, tile_activation)
+            handle_tile_click(data, interactive, tile_activation)
         : tile_props?.onclick}
       onkeydown={tile_activation
         ? (event: KeyboardEvent) => {
@@ -457,15 +448,15 @@
     <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
   {/if}
 
-  {#if tooltip_element && tooltip !== false}
-    {@const element = tooltip_element}
+  {#if shown_tooltip && tooltip !== false}
+    {@const { element, tile, bounds } = shown_tooltip}
     {@const tooltip_value = heat_values[element.number - 1]}
-    <div
-      class={[`tooltip`, tooltip_above && `above`]}
-      style:left="{tooltip_pos.x}px"
-      style:top="{tooltip_pos.y}px"
-      bind:this={tooltip_node}
-      style:--tooltip-auto-color={tooltip_text_color}
+    <!-- inline, so it beats PlotTooltip's start default while still reading the variable -->
+    <PlotTooltip
+      {...beside_rect(tile, `bottom`, 8)}
+      constrain_to={bounds}
+      pinned={pin.value !== null}
+      style="text-align: var(--plot-tooltip-text-align, center)"
     >
       {#if typeof tooltip === `function`}
         {@render tooltip({
@@ -490,7 +481,7 @@
           >
         {/if}
       {/if}
-    </div>
+    </PlotTooltip>
   {/if}
 </div>
 
@@ -532,49 +523,5 @@
     grid-row: 8;
     /* spacer height in tile widths; 0 degenerates the ratio to auto, i.e. no offset */
     aspect-ratio: 1 / var(--ptable-inner-transition-offset, 0.5);
-  }
-  .tooltip {
-    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    position: absolute;
-    transform: translate(-50%, -10%);
-    /* auto width would stop at the table edge right of `left`, wrapping near it */
-    width: max-content;
-    box-sizing: content-box;
-    max-width: var(--tooltip-max-width, 280px);
-    text-wrap: balance;
-    background: var(--_bg);
-    color: var(--tooltip-color, var(--tooltip-auto-color, light-dark(#222, #eee)));
-    padding: var(--tooltip-padding, 4px 6px);
-    border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
-    font-size: var(--tooltip-font-size, 14px);
-    text-align: var(--tooltip-text-align, center);
-    line-height: var(--tooltip-line-height, 1.2);
-    z-index: var(--tooltip-z-index, 2);
-    pointer-events: none;
-    box-shadow: var(
-      --tooltip-shadow,
-      0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
-    );
-  }
-  .tooltip::before {
-    content: '';
-    position: absolute;
-    top: -15%;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 8px solid transparent;
-    border-right: 8px solid transparent;
-    border-bottom: 8px solid var(--_bg);
-    box-sizing: border-box;
-    margin: 0 auto;
-  }
-  .tooltip.above {
-    transform: translate(-50%, -100%);
-  }
-  .tooltip.above::before {
-    top: auto;
-    bottom: -15%;
-    border-bottom: none;
-    border-top: 8px solid var(--_bg);
   }
 </style>

@@ -709,7 +709,7 @@
   }
   .main {
     display: grid;
-    gap: 1em;
+    gap: 2em;
     transition: opacity 0.2s;
     &.replanning {
       opacity: 0.6;
@@ -731,9 +731,9 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 0.7em 1.5em;
     padding: 0.8em;
-    border: 1px solid var(--border-color, #ddd);
     border-radius: var(--border-radius, 4px);
-    background: var(--surface-bg, transparent);
+    /* the tint groups it, no frame needed */
+    background: var(--surface-bg, light-dark(#0000000a, #ffffff0d));
   }
   .detail .equation {
     grid-column: 1 / -1;

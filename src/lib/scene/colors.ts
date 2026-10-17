@@ -54,3 +54,10 @@ export function brighten_hex(css_color = `#cccccc`): string {
   brighten_scratch.setRGB(...parse_linear_rgb(css_color)).lerp(brighten_white, 0.55)
   return `#${brighten_scratch.getHexString()}`
 }
+
+// Outline of a highlighted face or domain filled with `css_color`: 60% of it in Linear-sRGB,
+// encoded as sRGB hex, parsed like brighten_hex
+export function highlight_edge_color(css_color: string): string {
+  brighten_scratch.setRGB(...parse_linear_rgb(css_color)).multiplyScalar(0.6)
+  return `#${brighten_scratch.getHexString()}`
+}

@@ -137,7 +137,7 @@ describe(`Dos component`, () => {
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
-    expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
+    expect(document.body.textContent).toContain(`Frequency (cm−1)`)
     const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
     // picking an option writes the canonical unit back to `units` (the handler is delegated, so

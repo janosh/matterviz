@@ -25,6 +25,7 @@ import {
   bind_props,
   create_drop_event,
   doc_query,
+  expect_shortcuts_in_pane,
   expect_tooltip_paint,
   mock_canvas_context,
   set_input,
@@ -90,6 +91,10 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
     mount_diagram()
     doc_query(`.ternary-section canvas`)
+    expect_shortcuts_in_pane(document, `.ternary-phase-diagram-controls-pane`, [
+      `viewer`,
+      `ternary-phase-diagram`,
+    ])
     await wait_for_events()
     expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
@@ -157,20 +162,15 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
   })
 
   // A hovered phase point's tooltip wears its drawn color; composition probes get the neutral
-  // theme chip (was a hard-coded dark card: white on near-white with the light --tooltip-bg).
-  // Its width cap goes through PlotTooltip's var (its inline max-width overrode a CSS one) and
-  // long rows wrap inside it instead of running past the chip.
+  // theme chip (was a hard-coded dark card: white on near-white with the light --plot-tooltip-bg).
+  // Long rows wrap inside PlotTooltip's default width cap instead of running past the chip.
   test(`section tooltip paints a hovered phase's color, else the neutral chip`, async () => {
     mount_diagram()
     await wait_for_events()
     move_to([1, 0])
     const tip = doc_query(`.ternary-tooltip`)
     expect_tooltip_paint(tip, TERNARY_COLORS.stable)
-    const style = getComputedStyle(tip)
-    expect([style.getPropertyValue(`--plot-tooltip-max-width`), style.whiteSpace]).toEqual([
-      `320px`,
-      `normal`,
-    ])
+    expect(getComputedStyle(tip).whiteSpace).toBe(`normal`)
     move_to([0.45, 0.25])
     // composition rows read `<element> = <percent> %`
     expect(doc_query(`.ternary-tooltip`).textContent).toMatch(/[A-Z][a-z]? = \d+(?:\.\d)? %/)

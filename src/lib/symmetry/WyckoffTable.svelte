@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { contrast_text_color, HIGHLIGHT, resolve_backdrop } from '#lib/colors/index.js'
   import { format_fractional } from '#lib/labels.js'
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
@@ -72,7 +72,12 @@
 </script>
 
 {#if rows.length > 0 || unoccupied_rows.length > 0}
-  <table bind:this={table_node} {...rest} class={[`wyckoff-table`, rest.class]}>
+  <table
+    bind:this={table_node}
+    {...rest}
+    class={[`wyckoff-table`, rest.class]}
+    style:--hover-color={HIGHLIGHT.select}
+  >
     <thead>
       <tr>
         {#each [[`Wyckoff`, `Wyckoff position: Multiplicity + Letter`], [`Element`, `Chemical element symbol`], [`Fractional Coords`, `Fractional coordinates within the unit cell`], ...(has_ita_coords ? [[`ITA Coords`, `Representative coordinates from the International Tables: x/y/z mark free parameters, fractions mark symmetry-fixed coordinates`]] : []), ...(has_site_symmetry ? [[`Site Symm.`, `Site symmetry: point group of operations leaving the site invariant`]] : [])] as [col, title] (col)}
@@ -145,8 +150,9 @@
     margin-top: 0.5em;
     border-collapse: collapse;
   }
+  /* no vertical rules between columns (app.css), so the padding keeps them apart */
   .wyckoff-table :is(th, td) {
-    padding: 1px 3px;
+    padding: 1px 0.6em;
     text-align: center;
     vertical-align: middle;
   }
@@ -155,7 +161,7 @@
     transition: background-color 0.2s ease;
   }
   .wyckoff-row:hover {
-    background-color: color-mix(in srgb, #6cf0ff 25%, transparent);
+    background-color: color-mix(in srgb, var(--hover-color) 25%, transparent);
   }
   .wyckoff-row.selected {
     background-color: color-mix(in srgb, #2563eb 30%, transparent);

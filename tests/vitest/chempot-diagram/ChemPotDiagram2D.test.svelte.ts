@@ -12,6 +12,7 @@ import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import {
   doc_query,
   expect_tooltip_paint,
+  keydown,
   marker_position,
   mouse,
   plot_svg,
@@ -125,6 +126,10 @@ test(`recomputes run only for compute-relevant changes, keep the plot, abort sup
   await resolve_latest()
   expect(props.hover_info?.formula).toBe(`Li2O`)
   expect(props.hover_info?.axis_ranges).not.toEqual(pinned_ranges)
+  expect(doc_query(`.chempot-tooltip`).classList.contains(`pinned`)).toBe(true)
+  doc_query(`.chempot-diagram-2d`).dispatchEvent(keydown(`Escape`))
+  flushSync()
+  expect(props.hover_info).toBeNull() // Escape unpins, closing the tooltip
 
   props.config = { default_min_limit: -20 }
   flushSync()

@@ -138,7 +138,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     const info = await open_info_pane(page, diagram)
     await expect(info).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
-    await expect(info.getByText(`Stability`)).toBeVisible()
+    // the heading, not the shortcut list's "Toggle stability / energy coloring" below it
+    await expect(info.getByRole(`heading`, { name: `Stability` })).toBeVisible()
 
     // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
     const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()

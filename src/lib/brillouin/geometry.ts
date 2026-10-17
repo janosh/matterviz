@@ -1,6 +1,7 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { KPathData } from './types'
+import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
+import type { BrillouinZoneData, BZHoverData, KPathData } from './types'
 import * as math from '#lib/math.js'
+import { faces_centroid } from '#lib/scene/geometry.svelte.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 // Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Assumes convex faces (true for BZ/IBZ polyhedra); non-convex faces would triangulate incorrectly. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.
@@ -40,6 +41,41 @@ export function polyhedron_geometry(
   return geometry
 }
 
+// Each polygon face of a polyhedron (bz_data faces may come pre-triangulated): its triangles
+// in polyhedron_geometry (a pointer event's faceIndex there), the first of them and its
+// centroid, e.g. where a keyboard walk hovers the face
+type FaceAnchor = { centroid: Vec3; triangle: number; triangles: number[] }
+export function face_anchors({
+  vertices,
+  faces,
+}: Pick<BrillouinZoneData, `vertices` | `faces`>): FaceAnchor[] {
+  const geometry = polyhedron_geometry(vertices, faces)
+  if (!geometry) return []
+  const anchors: FaceAnchor[] = []
+  const covered = new Set<number>()
+  for (let triangle = 0; triangle < geometry.getAttribute(`position`).count / 3; triangle++) {
+    if (covered.has(triangle)) continue
+    const triangles = polygon_triangles(geometry, triangle)
+    for (const idx of triangles) covered.add(idx)
+    anchors.push({ centroid: faces_centroid(geometry, triangles), triangle, triangles })
+  }
+  geometry.dispose()
+  return anchors
+}
+
+// Triangles of the polygon face that triangle `face_idx` of a polyhedron_geometry lies in: a
+// convex polyhedron has one face per outward normal, so they are the triangles sharing its
+// flat normal
+export function polygon_triangles(geometry: BufferGeometry, face_idx: number): number[] {
+  const normals = geometry.getAttribute(`normal`)
+  const normal_of = (tri_idx: number) =>
+    [normals.getX(3 * tri_idx), normals.getY(3 * tri_idx), normals.getZ(3 * tri_idx)] as const
+  const hovered = normal_of(face_idx)
+  return Array.from({ length: normals.count / 3 }, (_, tri_idx) => tri_idx).filter((tri_idx) =>
+    normal_of(tri_idx).every((coord, axis) => Math.abs(coord - hovered[axis]) < 1e-4),
+  )
+}
+
 // Cartesian → fractional via transposed row-vector inverse; null if missing/singular
 export function k_lattice_inverse(k_lattice: Matrix3x3 | undefined): Matrix3x3 | null {
   if (!k_lattice) return null
@@ -55,6 +91,28 @@ export const cartesian_to_fractional = (
   k_lattice_inv: Matrix3x3 | null,
   cart: Vec3,
 ): Vec3 | null => k_lattice_inv && math.mat3x3_vec3_multiply(k_lattice_inv, cart)
+
+// Tooltip record for a k-point hovered on the zone, its IBZ wedge or a k-path
+export function bz_hover_data(
+  { order, volume }: Pick<BrillouinZoneData, `order` | `volume`>,
+  k_lattice_inv: Matrix3x3 | null,
+  position_cartesian: Vec3,
+  screen_position: Point2D,
+  { is_ibz = false, ibz_volume = null }: { is_ibz?: boolean; ibz_volume?: number | null } = {},
+): BZHoverData {
+  return {
+    position_cartesian,
+    position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
+    screen_position,
+    is_ibz,
+    bz_order: order,
+    bz_volume: volume,
+    ibz_volume,
+    // the point group order
+    symmetry_multiplicity:
+      ibz_volume !== null && ibz_volume > 0 ? Math.round(volume / ibz_volume) : null,
+  }
+}
 
 // Centroid of polyhedron vertices, used as orbit/rotation target by BZ + Fermi scenes
 export const polyhedron_centroid = (vertices: Vec3[] | undefined): Vec3 =>

@@ -10,7 +10,7 @@ import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import type { ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse, query, set_input } from '../setup'
+import { bind_props, doc_query, pin_cycle, keydown, mouse, query, set_input } from '../setup'
 import { CATEGORY_COUNTS } from '../test-fixtures'
 
 const { page, replace_url } = vi.hoisted(() => ({
@@ -24,8 +24,12 @@ const mouseenter = new MouseEvent(`mouseenter`)
 const mouseleave = new MouseEvent(`mouseleave`)
 
 type TableProps = ComponentProps<typeof PeriodicTable>
-const mount_table = (props: TableProps = {}) =>
-  mount(PeriodicTable, { target: document.body, props })
+// flushed, so bind:this refs (the tooltip's positioning box) exist before the first event
+const mount_table = (props: TableProps = {}) => {
+  const component = mount(PeriodicTable, { target: document.body, props })
+  flushSync()
+  return component
+}
 const all_tiles = () => [...document.querySelectorAll<HTMLElement>(`.element-tile`)]
 // mounts PeriodicTable with active_element bound to a plain object the test reads back
 const mount_bound = (props: TableProps = {}) => {
@@ -109,14 +113,14 @@ describe(`PeriodicTable`, () => {
     expect(state.active_element?.symbol).toBe(expected)
   })
 
-  // also: the root CSS tokens the controls write (e.g. --tooltip-bg) must leave on unmount
+  // also: the root CSS tokens the controls write (e.g. --plot-tooltip-bg) must leave on unmount
   test(`row and section resets restore defaults; root CSS vars clear on unmount`, async () => {
     const category = `noble gas`
     colors.category[category] = `#123456`
     const root_style = document.documentElement.style
     const controls = mount(PeriodicTableControls, { target: document.body })
     flushSync()
-    expect(root_style.getPropertyValue(`--tooltip-bg`)).toBe(`#000000`)
+    expect(root_style.getPropertyValue(`--plot-tooltip-bg`)).toBe(`#000000`)
     expect(document.querySelector(`[aria-label="Reset font sizes to defaults"]`)).toBeNull()
     const click_reset = async (selector: string): Promise<void> => {
       doc_query<HTMLButtonElement>(selector).click()
@@ -153,7 +157,7 @@ describe(`PeriodicTable`, () => {
     await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
     await unmount(controls)
-    for (const prop of [`--tooltip-bg`, `--elem-tile-border-radius`, `--ptable-gap`])
+    for (const prop of [`--plot-tooltip-bg`, `--elem-tile-border-radius`, `--ptable-gap`])
       expect(root_style.getPropertyValue(prop)).toBe(``)
   })
 
@@ -240,17 +244,37 @@ describe(`PeriodicTable`, () => {
     const on_activate = vi.fn<(element: ChemicalElement) => void>()
     mount_table({ on_activate })
     const [hydrogen, helium] = all_tiles()
-    tap(hydrogen, `touch`) // first tap: select only
+    tap(hydrogen, `touch`) // first tap: select only, pinning the tooltip (touch has no hover)
     expect(hydrogen.classList.contains(`active`)).toBe(true)
-    expect(doc_query(`.tooltip`).textContent).toContain(`Hydrogen`)
+    expect(doc_query(`.plot-tooltip.pinned`).textContent).toContain(`Hydrogen`)
     expect(on_activate).not.toHaveBeenCalled()
-    tap(hydrogen, `touch`) // same tile again: activate
+    tap(hydrogen, `touch`) // same tile again: activate and unpin
     expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`])
+    expect(document.querySelector(`.plot-tooltip.pinned`)).toBeNull()
     tap(helium, `touch`) // another tile: back to preview
     expect(helium.classList.contains(`active`)).toBe(true)
     expect(on_activate).toHaveBeenCalledTimes(1)
     tap(helium, `mouse`) // a mouse click never previews
     expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `He`])
+  })
+
+  // Tiles without a link or on_activate have a free click, which pins their tooltip
+  test(`clicking a plain tile pins its tooltip; it again, the background or Escape unpin`, async () => {
+    mount_table()
+    const table = doc_query(`.periodic-table`)
+    const tiles = all_tiles()
+    const text = await pin_cycle(
+      (step, mark_idx) => {
+        const tile = mark_idx === null ? table : tiles[mark_idx]
+        if (step === `escape`) table.dispatchEvent(keydown(`Escape`))
+        else if (step === `leave`) tile.dispatchEvent(mouse(`mouseleave`))
+        else if (tile !== table) tile.dispatchEvent(mouse(`mouseenter`))
+        if (step === `click`)
+          for (const type of [`pointerdown`, `click`]) tile.dispatchEvent(mouse(type))
+      },
+      { lit: (idx) => tiles[idx].classList.contains(`active`) },
+    )
+    expect(text).toContain(`Hydrogen`)
   })
 
   test(`a touch tap on a linked tile holds the link until the second tap`, () => {
@@ -335,7 +359,7 @@ describe(`PeriodicTable`, () => {
     expect(helium.style.backgroundColor).toBe(`#666`)
     helium.dispatchEvent(mouseenter)
     await tick()
-    expect(doc_query(`.periodic-table > .tooltip`).textContent).toContain(`N/A`)
+    expect(doc_query(`.periodic-table > .plot-tooltip`).textContent).toContain(`N/A`)
     doc_query(`form .multiselect ul.selected button.remove`).click()
     await tick()
     expect(doc_query(`form .multiselect ul.selected`).textContent?.trim()).toBe(``)
@@ -587,35 +611,38 @@ describe(`PeriodicTable`, () => {
 
   // on by default like every other component's tooltip; false opts out
   test.each([undefined, false] as const)(`tooltip=%s`, async (tooltip) => {
-    mount_table({ tooltip, style: `--tooltip-bg: #4fc3f7` })
+    mount_table({ tooltip, style: `--plot-tooltip-bg: #4fc3f7` })
     const hydrogen_tile = doc_query(`.element-tile`)
     hydrogen_tile.dispatchEvent(mouseenter)
     await tick()
-    const tooltip_el = document.querySelector<HTMLElement>(`.tooltip`)
+    const tooltip_el = document.querySelector<HTMLElement>(`.plot-tooltip`)
     expect(Boolean(tooltip_el)).toBe(tooltip === undefined)
     if (tooltip_el) {
       expect(tooltip_el.textContent).toContain(`Hydrogen`)
-      expect(tooltip_el.style.getPropertyValue(`--tooltip-auto-color`)).toBe(`black`)
+      expect(tooltip_el.style.color).toBe(`black`) // contrasts the themed chip
       expect(getComputedStyle(tooltip_el).pointerEvents).toBe(`none`)
       hydrogen_tile.dispatchEvent(mouseleave)
       await tick()
-      expect(document.querySelector(`.tooltip`)).toBeNull()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     }
   })
 
-  // happy-dom has no layout: stub a 200px tooltip whose text spans 80.2px, both scaled
-  test.each([1, 0.5])(`tooltip shrinks to its text at scale %s`, async (scale) => {
-    vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(200)
-    vi.spyOn(HTMLElement.prototype, `getBoundingClientRect`).mockReturnValue(
-      new DOMRect(0, 0, 200 * scale),
-    )
-    vi.spyOn(Range.prototype, `getBoundingClientRect`).mockReturnValue(
-      new DOMRect(0, 0, 80.2 * scale),
-    )
-    mount_table()
-    doc_query(`.element-tile`).dispatchEvent(mouseenter)
+  // happy-dom has no layout: stub a 30px-tall tooltip, a 400x300 table and a tile near its
+  // bottom. The tooltip hangs below the tile, unless the table clips its overflow (phones pan
+  // it), where that would cut it off: then it flips above.
+  test.each([
+    [``, `288px`],
+    [`overflow: auto`, `222px`],
+  ])(`tooltip with table style %j sits at top %s`, async (style, top) => {
+    vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(30)
+    mount_table({ style })
+    doc_query(`.periodic-table`).getBoundingClientRect = () => new DOMRect(0, 0, 400, 300)
+    const tile = doc_query(`.element-tile`)
+    tile.getBoundingClientRect = () => new DOMRect(10, 260, 20, 20)
+    tile.dispatchEvent(mouseenter)
     await tick()
-    expect(doc_query(`.tooltip`).style.width).toBe(`81px`)
+    const tooltip = doc_query(`.periodic-table > .plot-tooltip`)
+    expect([tooltip.style.left, tooltip.style.top]).toEqual([`20px`, top])
   })
 
   describe(`multi-value heatmaps`, () => {
@@ -682,14 +709,14 @@ describe(`PeriodicTable`, () => {
       for (const [idx, name] of [`Hydrogen`, `Helium`, `Lithium`].entries()) {
         tiles[idx].dispatchEvent(mouseenter)
         await tick()
-        const tooltip_text = doc_query(`.tooltip`).textContent
+        const tooltip_text = doc_query(`.plot-tooltip`).textContent
         expect(tooltip_text).toContain(name)
         // numbers formatted like the tile labels (no float noise), colors verbatim
         const values = [/^/, /Values: 10, 0\.3$/, /Values: #00ff00, #0000ff$/][idx]
         expect(tooltip_text?.trim()).toMatch(values)
         tiles[idx].dispatchEvent(mouseleave)
         await tick()
-        expect(document.querySelector(`.tooltip`)).toBeNull()
+        expect(document.querySelector(`.plot-tooltip`)).toBeNull()
       }
     })
   })

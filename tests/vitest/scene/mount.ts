@@ -1,9 +1,10 @@
 import { type CameraPose, create_camera_flight_controller } from '#lib/scene/camera-flight.js'
+import { key_walk_root, type KeyWalkRoot } from '#lib/scene/key-walk.svelte.js'
 import { createThrelteContext } from '@threlte/core'
-import { type Component, mount, unmount } from 'svelte'
+import { type Component, flushSync, mount, unmount } from 'svelte'
 import type { WebGLRenderer } from 'three'
 import { type OrthographicCamera, type PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { vi } from 'vitest'
+import { onTestFinished, vi } from 'vitest'
 
 // Level perspective camera on +z, 10 units from the origin it looks at
 export const pose: CameraPose = {
@@ -30,14 +31,52 @@ export const flight_controller = (
     invalidate,
   )
 
-// Keep real Threlte attachment/disposal while replacing only the GPU renderer.
-export function mount_scene<Exports extends Record<string, unknown>>(
-  render: Component<Record<string, never>, Exports>,
+// A focused viewer root for a scene's KeyWalk: `provide` it (key_walk_root) during the init of
+// a component wrapping the scene, then `press` keys at it. press returns whether the walk took
+// the key, `message` is what the root's live region announces.
+function key_walk_host() {
+  const node = Object.assign(document.createElement(`div`), { tabIndex: 0 })
+  let root: KeyWalkRoot | undefined
+  return {
+    provide: (): void => {
+      root = key_walk_root()
+      document.body.append(node)
+      onTestFinished(root.attach(node))
+      onTestFinished(() => node.remove())
+    },
+    press: (key: string): boolean => {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
+      node.dispatchEvent(event)
+      flushSync()
+      return event.defaultPrevented
+    },
+    get message(): string {
+      return root?.message ?? ``
+    },
+  }
+}
+
+// mount() `component` inside a component providing a key_walk_host, for scenes mounted against
+// the recording Threlte stub
+export function mount_with_keys<Props extends Record<string, unknown>>(
+  component: Component<Props>,
+  props: Props,
 ) {
+  const keys = key_walk_host()
+  const Harness: Component = (anchor) => {
+    keys.provide()
+    return component(anchor, props)
+  }
+  return { keys, mounted: mount(Harness, { target: document.body }) }
+}
+
+// Keep real Threlte attachment/disposal while replacing only the GPU renderer.
+export function mount_scene(render: Component) {
   const contexts: ReturnType<typeof createThrelteContext>[] = []
+  const keys = key_walk_host()
   const noop = () => {}
   const canvas = document.createElement(`canvas`)
-  const Harness: Component<Record<string, never>, Exports> = (anchor) => {
+  const Harness: Component = (anchor) => {
     const info = { render: { calls: 0 } }
     // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
     const dom = document.createElement(`div`)
@@ -64,13 +103,13 @@ export function mount_scene<Exports extends Record<string, unknown>>(
           }) as unknown as WebGLRenderer,
       }),
     )
+    keys.provide()
     return render(anchor, {})
   }
   const component = mount(Harness, { target: document.body })
   const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
   return {
-    // whatever the rendered component exports (e.g. ScatterPlot3DScene's handle_key)
-    exports: component,
+    keys, // the scene's keyboard walk (key_walk_host)
     canvas,
     scene,
     camera,
