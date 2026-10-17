@@ -17,6 +17,7 @@
   import {
     bind_renderer,
     create_scene_camera,
+    HoverHighlight,
     scene_interactivity,
     resolve_scene_controls,
     SceneCamera,
@@ -400,6 +401,19 @@
     k_path?.on_kpath_hover?.(qpoint_idx, screen_position)
   }
 
+  // The hovered sheet tile lights up (HoverHighlight) while its tooltip shows: hover_data
+  // gates the last tile a move hit, so every path clearing the tooltip clears this too. Not in
+  // property mode: a flat fill would hide the colour map the tooltip value is read against.
+  let hovered_sheet = $state.raw<{ surface: FermiIsosurface; sym_idx: number } | null>(null)
+  const tooltip_shown = $derived(hover_data !== null) // re-derives the below on change only
+  const highlighted_sheet = $derived.by(() => {
+    if (!tooltip_shown || !hovered_sheet || use_vertex_colors) return null
+    const { surface, sym_idx } = hovered_sheet
+    const geometry = geometries[visible_surfaces.indexOf(surface)]
+    const matrix = symmetry_ops[sym_idx]
+    return geometry && matrix ? { geometry, matrix, color: get_surface_color(surface) } : null
+  })
+
   // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
   // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
   function handle_pointer_move(
@@ -432,6 +446,8 @@
         ? display_label(property_name, property_label)
         : undefined
 
+    if (hovered_sheet?.surface !== surface || hovered_sheet.sym_idx !== sym_idx)
+      hovered_sheet = { surface, sym_idx }
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
       band_index: surface.band_index,
@@ -525,4 +541,10 @@
       {/each}
     {/if}
   {/each}
+  {#if highlighted_sheet}
+    {@const { geometry, matrix, color } = highlighted_sheet}
+    <T.Group {matrix} matrixAutoUpdate={false}>
+      <HoverHighlight {geometry} {color} />
+    </T.Group>
+  {/if}
 </T>

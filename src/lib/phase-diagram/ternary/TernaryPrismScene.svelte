@@ -15,6 +15,7 @@
   import {
     build_orbit_props,
     dispose_on_change,
+    HoverHighlight,
     scene_interactivity,
     SceneCamera,
     SceneLabel,
@@ -37,6 +38,7 @@
   } from 'three/webgpu'
   import {
     decompose_composition,
+    facet_index_at,
     hits_pin,
     prism_composition,
     prism_position,
@@ -246,6 +248,10 @@
   }
   const pinned_probe = $derived(probe_of(pinned_composition))
   const hover_probe = $derived(probe_of(hover_xy))
+  // the tie triangle under the pointer lights up while its decomposition shows
+  const hover_facet = $derived(
+    hover_xy ? facet_index_at(diagram.phases, section_facets, hover_xy) : -1,
+  )
   dispose_on_change(() => [pinned_probe?.spokes])
   dispose_on_change(() => [hover_probe?.spokes])
   const probe_marks = $derived(
@@ -493,6 +499,13 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
         polygonOffsetFactor={-1}
       />
     </T.Mesh>
+  {/if}
+  {#if hover_facet !== -1}
+    <HoverHighlight
+      geometry={facet_geometry}
+      faces={[hover_facet]}
+      color={TERNARY_COLORS.face}
+    />
   {/if}
   <T.LineSegments geometry={tie_line_geometry}>
     <T.LineBasicMaterial color={text_color} />

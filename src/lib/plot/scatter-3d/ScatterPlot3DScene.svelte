@@ -24,6 +24,7 @@
   import type { SceneControlProps } from '#lib/scene/index.js'
   import {
     bind_renderer,
+    brighten_hex,
     CanvasTooltip,
     create_scene_camera,
     dispose_on_change,
@@ -347,6 +348,7 @@
   // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
   // the tooltip paint (a $derived only notifies when its value changes)
   const hover_color = $derived(point_instances[shown_idx ?? -1]?.color)
+  const halo_color = $derived(brighten_hex(hover_color)) // the marker's hue, like every hover
 
   // One sphere mesh for every point: instance transforms carry each radius
   const point_geometry = $derived(
@@ -820,10 +822,10 @@
     <T.Mesh position={hover_drawn.position} scale={halo_radius}>
       <T.SphereGeometry args={[1, 16, 16]} />
       <T.MeshStandardMaterial
-        color="white"
+        color={halo_color}
         transparent
         opacity={0.4}
-        emissive="white"
+        emissive={halo_color}
         emissiveIntensity={0.3}
         depthTest={false}
         depthWrite={false}

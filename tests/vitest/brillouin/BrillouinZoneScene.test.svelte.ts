@@ -4,10 +4,12 @@ import BrillouinZoneScene from '#lib/brillouin/BrillouinZoneScene.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import type { BZHoverData, KPathData } from '#lib/brillouin/index.js'
 import { reciprocal_lattice } from '#lib/math.js'
+import { brighten_hex } from '#lib/scene/index.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub, touch_tap } from '../isosurface/threlte-stub'
+import { hover_highlight, threlte_stub, touch_tap } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { cubic_matrix } from '../test-fixtures'
 
@@ -68,10 +70,16 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   expect(ranks).toEqual([0, 1, 2])
 
   const nativeEvent = new PointerEvent(`pointermove`, { clientX: 5, clientY: 6 })
-  ibz.onpointermove({ point: new Vector3(0.1, 0, 0), nativeEvent })
+  ibz.onpointermove({ point: new Vector3(0.1, 0, 0), nativeEvent, faceIndex: 0 })
+  flushSync()
   expect(state.hover_data).toMatchObject({ is_ibz: true, symmetry_multiplicity: 48 })
+  // the hovered polygon face lights up in its mesh's colour: both triangles of a cube face
+  expect(hover_highlight()?.color).toBe(brighten_hex(DEFAULTS.brillouin.ibz_color))
+  expect(hover_highlight()?.geometry.getAttribute(`position`).count).toBe(6)
   ibz.onpointerleave({ nativeEvent })
+  flushSync()
   expect(state.hover_data).toBeNull()
+  expect(hover_highlight()).toBeNull()
 
   path.onpointermove({ point: new Vector3(0.4, 0, 0), instanceId: 0, nativeEvent })
   expect(on_kpath_hover).toHaveBeenLastCalledWith(1, { x: 5, y: 6 })
@@ -83,8 +91,10 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   path.onpointerleave({ nativeEvent })
   expect(state.hover_data).toBeNull()
 
-  zone.onpointermove({ point: new Vector3(0, 0.2, 0), nativeEvent })
+  zone.onpointermove({ point: new Vector3(0, 0.2, 0), nativeEvent, faceIndex: 3 })
+  flushSync()
   expect(state.hover_data).toMatchObject({ position_cartesian: [0, 0.2, 0], is_ibz: false })
+  expect(hover_highlight()?.color).toBe(brighten_hex(DEFAULTS.brillouin.surface_color))
 
   // touch has no hover: a tap shows what hovering there would, and keeps it
   zone.onpointerleave({ nativeEvent })

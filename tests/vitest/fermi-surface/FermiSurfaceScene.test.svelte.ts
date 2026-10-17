@@ -13,9 +13,11 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
+import { sheet_color } from '#lib/fermi-surface/constants.js'
+import { brighten_hex } from '#lib/scene/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub, touch_tap } from '../isosurface/threlte-stub'
+import { hover_highlight, threlte_stub, touch_tap } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { make_fermi_surface } from '../test-fixtures'
 
@@ -230,7 +232,7 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
 
 // Property mode colours each sheet by the selected named property (the first when none is
 // named); a sheet without it keeps its flat colour, and the tooltip carries every property at
-// the hit vertex
+// the hit vertex. The hovered sheet's highlight shows in flat colour modes only.
 test(`colours by the selected property and reports all properties on hover`, () => {
   const f32 = (values: number[]) => Float32Array.from(values)
   const data = make_fermi_surface([
@@ -291,6 +293,18 @@ test(`colours by the selected property and reports all properties on hover`, () 
   expect(props.hover_data).toBeNull()
   touch_tap(mesh?.props ?? {}, { point: new Vector3(0, 4, 5), face: { a: 0, b: 1, c: 2 } })
   expect(props.hover_data).toMatchObject({ property_name: `λ`, property_value: 0.5 })
+  // the hovered sheet lights up in its band colour, except over a property colour map
+  flushSync()
+  expect(hover_highlight()).toBeNull()
+  props.color_property = `band`
+  flushSync()
+  expect(hover_highlight()).toEqual({
+    geometry: mesh?.props.geometry,
+    color: brighten_hex(sheet_color(0, null, `band`)),
+  })
+  on_leave({ nativeEvent: {} })
+  flushSync()
+  expect(hover_highlight()).toBeNull()
 })
 
 // The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:

@@ -363,26 +363,21 @@ type HighlightScene = {
   on_domain_hover: (mesh: unknown, event: unknown) => void
   on_domain_leave: (mesh: unknown) => void
   hull_geometry: Geometry | null
-  highlight: {
-    formula: string
-    fill: Geometry | null
-    edges: Geometry
-    fill_color: string
-    edge_color: string
-  } | null
+  highlight: { formula: string; color: string; faces?: number[]; edges?: Geometry } | null
 }
 const pointer_event = { nativeEvent: new PointerEvent(`pointermove`), stopPropagation() {} }
 const highlighted = (scene: HighlightScene) => scene.highlight?.formula ?? null
 
-// Matched by reduced formula; a phase without a domain here highlights nothing. The fill is
-// exactly the hull triangles drawn in the domain's colour (the whole visible face), in that
-// colour, outlined along their boundary in a darker shade of it. A continuous colour mode
-// gives each domain its own colour (arity colours repeat). In the YTOS Ti-Y-O projection a
-// face's boundary differs from the domain's crease edges.
+// Matched by reduced formula; a phase without a domain here highlights nothing. The highlight
+// (HoverHighlight, tested on its own) covers exactly the hull triangles drawn in the domain's
+// colour, the whole visible face; a domain buried in a projection (TiSO5 in the S-less Ti-Y-O
+// view) owns none and outlines its crease edges. A continuous colour mode gives each domain its
+// own colour (arity colours repeat).
 test.each([
   [`Fe4O6`, `Fe2O3`, entries, { default_min_limit: -25 }],
   [`NaCl`, null, entries, { default_min_limit: -25 }],
   [`Y2O3`, `O3Y2`, ytos_entries, { elements: [`Ti`, `Y`, `O`] }],
+  [`TiSO5`, `O5STi`, ytos_entries, { elements: [`Ti`, `Y`, `O`] }],
 ])(`highlighted_formula %s highlights domain %s`, async (input, key, data, config) => {
   const scene = await mount_diagram<HighlightScene>({
     entries: data,
@@ -392,53 +387,17 @@ test.each([
   const { highlight, hull_geometry } = scene()
   expect(highlight?.formula ?? null).toBe(key)
   if (!highlight || !hull_geometry) return
-  const triangles = (geometry: Geometry) => {
-    const { array } = geometry.getAttribute(`position`)
-    return Array.from({ length: array.length / 9 }, (_, idx) =>
-      Array.from(array).slice(idx * 9, idx * 9 + 9),
-    )
-  }
-  const rgb = new THREE.Color(highlight.fill_color).toArray()
+  const rgb = new THREE.Color(highlight.color).toArray()
   const hull_colors = hull_geometry.getAttribute(`color`).array
-  const hull_tris = triangles(hull_geometry)
-  const same_rgb = (tri_idx: number) =>
-    [0, 1, 2].every((ch) => Math.abs(hull_colors[tri_idx * 9 + ch] - rgb[ch]) < 1e-6)
-  const owned = hull_tris.filter((_, tri_idx) => same_rgb(tri_idx))
-  if (!highlight.fill) throw new Error(`${key} owns no hull face`)
-  const fill = triangles(highlight.fill)
-  expect(fill.length).toBeGreaterThan(0)
-  expect(fill).toEqual(owned)
-  // darker shade of the same hue: every channel scaled by one factor < 1
-  const edge_rgb = new THREE.Color(highlight.edge_color).toArray()
-  for (const ch of [0, 1, 2]) expect(edge_rgb[ch]).toBeCloseTo(0.6 * rgb[ch], 2)
-  // the outline is the boundary: each of its edges belongs to exactly one fill triangle
-  const key_of = (pt_a: number[], pt_b: number[]) =>
-    [pt_a, pt_b]
-      .map((pt) => pt.map((val) => val.toFixed(4)).join(`,`))
-      .toSorted()
-      .join(`|`)
-  const fill_edge_counts = new Map<string, number>()
-  for (const tri of fill) {
-    for (const [start, end] of [
-      [0, 3],
-      [3, 6],
-      [6, 0],
-    ]) {
-      const edge = key_of(tri.slice(start, start + 3), tri.slice(end, end + 3))
-      fill_edge_counts.set(edge, (fill_edge_counts.get(edge) ?? 0) + 1)
-    }
-  }
-  const { array: edge_array } = highlight.edges.getAttribute(`position`)
-  const edge_points = Array.from(edge_array)
-  const n_boundary = [...fill_edge_counts.values()].filter((count) => count === 1).length
-  expect(edge_points.length / 6).toBe(n_boundary)
-  for (let offset = 0; offset < edge_points.length; offset += 6) {
-    const edge = key_of(
-      edge_points.slice(offset, offset + 3),
-      edge_points.slice(offset + 3, offset + 6),
-    )
-    expect(fill_edge_counts.get(edge)).toBe(1)
-  }
+  const owned = Array.from(
+    { length: hull_geometry.getAttribute(`position`).count / 3 },
+    (_, idx) => idx,
+  ).filter((tri_idx) =>
+    [0, 1, 2].every((ch) => Math.abs(hull_colors[tri_idx * 9 + ch] - rgb[ch]) < 1e-6),
+  )
+  expect(highlight.faces).toEqual(owned.length > 0 ? owned : undefined)
+  // a buried domain outlines its crease edges instead
+  expect(Boolean(highlight.edges?.getAttribute(`position`).count)).toBe(owned.length === 0)
 })
 
 // A drawn overlay's hull faces wear its overlay colour, so its tooltip must too; other domains
@@ -456,9 +415,9 @@ test(`domain tooltips match their drawn colour`, async () => {
   }
   expect(tip_bg(`Fe2O3`)).toBe(scene().formula_meshes[0].color)
   // the hovered face lights up in that same colour, never a foreign highlight red
-  expect(scene().highlight?.fill_color).toBe(scene().formula_meshes[0].color)
+  expect(scene().highlight?.color).toBe(scene().formula_meshes[0].color)
   expect(ARITY_COLORS).toContain(tip_bg(`Li2O`))
-  expect(ARITY_COLORS).toContain(scene().highlight?.fill_color)
+  expect(ARITY_COLORS).toContain(scene().highlight?.color)
 })
 
 // Hover picks what is drawn: the scene raycasts the drawn hull and reads the face's owner, so

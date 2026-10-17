@@ -20,6 +20,7 @@ import {
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
+import { brighten_hex } from '#lib/scene/index.js'
 import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import type { BufferGeometry, Object3D } from 'three/webgpu'
@@ -384,11 +385,15 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     flushSync()
     render_frame()
     expect(tip_text()).toBe(`2,1,3 true`)
-    // the hover halo is the one mesh drawn without depth testing
+    // the hover halo is the one mesh drawn without depth testing, glowing in the marker's hue
     const halo = find_objects(scene, Mesh).findLast(
       (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
     )
     expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
+    const marker = new Color()
+    instances().getColorAt(1, marker)
+    const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
+    expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
     // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
     // tooltip follows the same logical point to its new values
     state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]

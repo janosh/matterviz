@@ -22,7 +22,7 @@
     clear_pan_offset,
     create_renderer,
     dispose_on_change,
-    highlight_edge_color,
+    positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
   import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
@@ -313,13 +313,6 @@
     return edges
   }
 
-  // BufferGeometry over a flat xyz position array
-  const position_geometry = (positions: ArrayLike<number>): THREE.BufferGeometry => {
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    return geom
-  }
-
   // While slicing, the unsliced shadow projection bounds every section: axes, camera and the
   // padded floor follow it, so a sweep moves the domains but not the view or the floor faces
   const frame_floors = $derived(
@@ -453,7 +446,7 @@
         positions.push(...to_render_xyz(pt_a), ...to_render_xyz(pt_b))
       }
     }
-    return position_geometry(positions)
+    return positions_geometry(positions)
   })
 
   // Coplanar-merged convex hull in render coords; null for < 4 points or a degenerate hull
@@ -480,7 +473,7 @@
       occlusion_hull_geometry &&
       strip_closing_faces(occlusion_hull_geometry.getAttribute(`position`).array)
     if (!merged) return null
-    const geom = position_geometry(merged)
+    const geom = positions_geometry(merged)
     const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
     const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
     geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
@@ -666,7 +659,7 @@
 
   // Formula overlay edges (crease edges, per formula)
   const domain_edge_geometry = (domain: RenderDomain): THREE.BufferGeometry =>
-    position_geometry(
+    positions_geometry(
       domain.edges.flatMap(([pt_a, pt_b]) => [...to_render_xyz(pt_a), ...to_render_xyz(pt_b)]),
     )
   const overlay_edge_geometries = memo_overlay_geometry(domain_edge_geometry)
@@ -694,7 +687,7 @@
   // Merge coplanar ConvexGeometry triangles, removing diagonal edges across flat hull faces
   function merge_coplanar_geometry(geom: ConvexGeometry): THREE.BufferGeometry {
     const pos = geom.getAttribute(`position`)
-    const result = position_geometry(merge_coplanar_triangles(pos.array as Float32Array))
+    const result = positions_geometry(merge_coplanar_triangles(pos.array as Float32Array))
     result.computeVertexNormals()
     // Callers always pass a freshly created ConvexGeometry, so we own it
     geom.dispose()
@@ -705,7 +698,7 @@
   function domain_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
     const unique_points = dedup_3d(points_3d)
     if (unique_points.length !== 3) return render_hull_geometry(unique_points)
-    return position_geometry(unique_points.flatMap(to_render_xyz))
+    return positions_geometry(unique_points.flatMap(to_render_xyz))
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
@@ -737,13 +730,12 @@
     )
   })
 
-  // Hull triangles per owning domain: exactly the surface each domain is drawn on
+  // Hull triangle indices per owning domain: exactly the surface each domain is drawn on
   const owned_faces = $derived.by((): Map<string, number[]> => {
     const owned = new Map<string, number[]>()
-    const positions = hull_base_geometry?.getAttribute(`position`).array ?? []
     for (const [face_idx, owner] of face_domain_map.entries()) {
       const faces = owned.get(owner) ?? []
-      for (let idx = face_idx * 9; idx < face_idx * 9 + 9; idx++) faces.push(positions[idx])
+      faces.push(face_idx)
       owned.set(owner, faces)
     }
     return owned
@@ -781,46 +773,22 @@
   })
 
   const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
-  // The highlighted domain as drawn: the hull faces it owns, i.e. exactly the face shown in its
-  // colour, outlined along their boundary (edges used by one owned triangle). A domain owning
-  // no hull face (buried inside a projected envelope) gets its own crease edges.
-  // Fill and outline take the domain's colour, the outline darker, so the face lights up
-  // rather than turning a foreign colour.
+  // The highlighted domain as drawn (HoverHighlight): the hull faces it owns, i.e. exactly the
+  // face shown in its colour, so the face lights up rather than turning a foreign colour. A
+  // domain owning no hull face (buried inside a projected envelope) gets its crease edges.
   const highlight = $derived.by(() => {
     const domain = render_domains.find(({ formula }) => formula === highlight_key)
     if (!domain) return null
-    const owned = owned_faces.get(domain.formula) ?? []
-    const edge_counts = new Map<string, { count: number; coords: number[] }>()
-    for (let offset = 0; offset < owned.length; offset += 9) {
-      for (const [start, end] of [
-        [0, 3],
-        [3, 6],
-        [6, 0],
-      ]) {
-        const [pt_a, pt_b] = [start, end].map((at) =>
-          owned.slice(offset + at, offset + at + 3),
-        )
-        const key = edge_key(point_key(pt_a), point_key(pt_b))
-        const entry = edge_counts.get(key)
-        if (entry) entry.count++
-        else edge_counts.set(key, { count: 1, coords: [...pt_a, ...pt_b] })
-      }
-    }
-    const boundary = [...edge_counts.values()]
-      .filter(({ count }) => count === 1)
-      .flatMap(({ coords }) => coords)
-    const color = drawn_color(domain.formula) ?? HIGHLIGHT.emphasis
-    return {
-      formula: domain.formula,
-      fill: owned.length > 0 ? position_geometry(owned) : null,
-      edges: boundary.length > 0 ? position_geometry(boundary) : domain_edge_geometry(domain),
-      fill_color: color,
-      edge_color: highlight_edge_color(color),
-    }
+    const { formula } = domain
+    const color = drawn_color(formula) ?? HIGHLIGHT.emphasis
+    const faces = owned_faces.get(formula)
+    return faces
+      ? { formula, color, faces }
+      : { formula, color, edges: domain_edge_geometry(domain) }
   })
 
   dispose_on_change(() => [edge_geometry])
-  dispose_on_change(() => [highlight?.fill, highlight?.edges])
+  dispose_on_change(() => [highlight?.edges])
   dispose_on_change(() => [occlusion_hull_geometry])
 
   let label_occlusion_frame: number | null = null

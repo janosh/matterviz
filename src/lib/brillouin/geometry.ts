@@ -40,6 +40,19 @@ export function polyhedron_geometry(
   return geometry
 }
 
+// Triangles of the polygon face that triangle `face_idx` of a polyhedron_geometry lies in: a
+// convex polyhedron has one face per outward normal, so they are the triangles sharing its
+// flat normal
+export function polygon_triangles(geometry: BufferGeometry, face_idx: number): number[] {
+  const normals = geometry.getAttribute(`normal`)
+  const normal_of = (tri_idx: number) =>
+    [normals.getX(3 * tri_idx), normals.getY(3 * tri_idx), normals.getZ(3 * tri_idx)] as const
+  const hovered = normal_of(face_idx)
+  return Array.from({ length: normals.count / 3 }, (_, tri_idx) => tri_idx).filter((tri_idx) =>
+    normal_of(tri_idx).every((coord, axis) => Math.abs(coord - hovered[axis]) < 1e-4),
+  )
+}
+
 // Cartesian → fractional via transposed row-vector inverse; null if missing/singular
 export function k_lattice_inverse(k_lattice: Matrix3x3 | undefined): Matrix3x3 | null {
   if (!k_lattice) return null

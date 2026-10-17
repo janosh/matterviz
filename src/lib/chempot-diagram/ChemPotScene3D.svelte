@@ -14,6 +14,8 @@
     bind_renderer,
     build_orbit_props,
     dispose_on_change,
+    fat_lines,
+    HoverHighlight,
     scene_interactivity,
     line_geometry,
     SceneCamera,
@@ -25,14 +27,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
-  import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js'
-  import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
-  import {
-    BufferGeometry,
-    DoubleSide,
-    Float32BufferAttribute,
-    Line2NodeMaterial,
-  } from 'three/webgpu'
+  import { BufferGeometry, DoubleSide, Float32BufferAttribute } from 'three/webgpu'
   import { swizzle_to_render, type VisibleDomainLabel } from './compute'
   import type { ChemPotHoverInfo3D } from './types'
 
@@ -105,13 +100,13 @@
     on_domain_leave: (mesh: HoverMesh) => void
     // fires when OrbitControls starts a gesture (drag or wheel zoom)
     on_camera_start: () => void
-    // The highlighted domain: its visible hull faces (null when it owns none), outline, colours
+    // The highlighted domain in its drawn colour: the hull triangles it owns, else (buried
+    // inside a projected envelope) its crease edges
     highlight: {
       formula: string
-      fill: BufferGeometry | null
-      edges: BufferGeometry
-      fill_color: string
-      edge_color: string
+      color: string
+      faces?: number[]
+      edges?: BufferGeometry
     } | null
     formula_meshes: OverlayGeometry[]
     formula_edges: OverlayGeometry[]
@@ -416,31 +411,14 @@
     hovered_mesh = undefined
   }
 
-  // Highlight and overlay outlines at a fixed screen width: GPU APIs ignore `linewidth` on basic
-  // lines. Opaque, so the round caps overlapping at shared corners stay invisible. The source
-  // geometries belong to the caller; only the line copies made here are disposed. Overlays and
-  // the highlight are built apart, so hovering doesn't rebuild every overlay outline.
-  const fat_lines = (geometry: BufferGeometry, color: string): LineSegments2 => {
-    const positions = Float32Array.from(geometry.getAttribute(`position`).array)
-    return new LineSegments2(
-      new LineSegmentsGeometry().setPositions(positions),
-      new Line2NodeMaterial({ color, linewidth: 2.5 }),
-    )
-  }
-  const dispose_lines = (lines: LineSegments2[]) => () => {
-    for (const line of lines) {
-      line.geometry.dispose()
-      line.material.dispose()
-    }
-  }
+  // Overlay outlines at a fixed screen width; the source geometries belong to the caller, only
+  // the line copies made here are disposed
   const overlay_lines = $derived(
-    formula_edges.map(({ geometry, color }) => fat_lines(geometry, color)),
+    formula_edges.map(({ geometry, color }) =>
+      fat_lines(geometry.getAttribute(`position`).array, color),
+    ),
   )
-  const highlight_lines = $derived(
-    highlight ? [fat_lines(highlight.edges, highlight.edge_color)] : [],
-  )
-  $effect(() => dispose_lines(overlay_lines))
-  $effect(() => dispose_lines(highlight_lines))
+  dispose_on_change(() => overlay_lines.flatMap((line) => [line.geometry, line.material]))
 </script>
 
 <!-- Orthographic (pymatgen's projection style) by default; the near plane clips in front of the
@@ -487,20 +465,16 @@
   <T.LineBasicMaterial color={0x333333} linewidth={1} />
 </T.LineSegments>
 
-{#if highlight?.fill}
-  <!-- in front of the hull (no polygon offset), its colour at a stronger opacity -->
-  <T.Mesh geometry={highlight.fill} renderOrder={1}>
-    <T.MeshBasicMaterial
-      color={highlight.fill_color}
-      transparent
-      opacity={0.75}
-      side={DoubleSide}
-      depthWrite={false}
-    />
-  </T.Mesh>
+{#if highlight}
+  <HoverHighlight
+    geometry={highlight.faces ? hull_geometry : null}
+    faces={highlight.faces}
+    color={highlight.color}
+    edges={highlight.edges}
+  />
 {/if}
 
-{#each [...overlay_lines, ...highlight_lines] as line (line.id)}
+{#each overlay_lines as line (line.id)}
   <T is={line} />
 {/each}
 

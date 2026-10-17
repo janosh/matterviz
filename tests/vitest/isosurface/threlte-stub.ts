@@ -3,6 +3,7 @@
 // without a WebGPU renderer. `threlte_stub.T` is the drop-in for `@threlte/core`'s `T`:
 // `<T.Mesh>` records under the tag `Mesh`, the bare `<T is={object}>` form under `T`.
 import type * as threlte_core from '@threlte/core'
+import { BufferGeometry } from 'three/webgpu'
 import ThrelteStub from './ThrelteStub.svelte'
 
 export type StubNode = { tag: string; props: Record<string, unknown> }
@@ -52,6 +53,18 @@ export const mock_threlte_extras = (
   ),
   interactivity,
 })
+
+// The mounted HoverHighlight's fill (scene/HoverHighlight.svelte): its geometry and the colour
+// its material paints, null when none is drawn
+export function hover_highlight(): { geometry: BufferGeometry; color: string } | null {
+  const idx = stub_state.nodes.findIndex(({ props }) => props.name === `hover-highlight`)
+  if (idx === -1) return null
+  const { geometry } = stub_state.nodes[idx].props
+  const { color } = stub_state.nodes[idx + 1].props
+  if (!(geometry instanceof BufferGeometry) || typeof color !== `string`)
+    throw new Error(`hover-highlight mesh without a geometry and material colour`)
+  return { geometry, color }
+}
 
 // A touch tap on an object as threlte dispatches it to the object's handlers (a
 // scene_interactivity touch_hover target): its press, the window's pointerup, then its click.
