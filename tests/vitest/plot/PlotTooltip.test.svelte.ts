@@ -7,6 +7,7 @@ import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
 import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
 import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip.js'
 import { color as d3_color } from 'd3-color'
 import {
@@ -17,7 +18,17 @@ import {
   type ComponentProps,
 } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, fire, mount_sized, mouse, trigger_resize_observer } from '../setup'
+import {
+  doc_query,
+  pin_cycle,
+  pin_spot,
+  fire,
+  keydown,
+  mount_sized,
+  mouse,
+  query,
+  trigger_resize_observer,
+} from '../setup'
 
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
@@ -64,7 +75,7 @@ const body_var = (name: string, value: string): void => {
 }
 
 describe(`PlotTooltip`, () => {
-  test(`renders with default offset, absolute position, nowrap chips, class and style`, () => {
+  test(`renders with default offset, absolute position, content-wide chips, class and style`, () => {
     const tooltip = mount_tooltip({
       x: 100,
       y: 200,
@@ -76,8 +87,9 @@ describe(`PlotTooltip`, () => {
     // 100 + default offset 6
     expect([left, top, position, events]).toEqual([`106px`, `200px`, `absolute`, `none`])
     expect(tooltip.textContent).toBe(`Test content`)
-    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(false)
-    expect(getComputedStyle(tooltip).whiteSpace).toBe(`nowrap`)
+    // as wide as its content up to --plot-tooltip-max-width, wrapping only beyond that
+    const { whiteSpace, width } = getComputedStyle(tooltip)
+    expect([whiteSpace, width]).toEqual([`normal`, `max-content`])
     // no container cap, and no inline max-width that would override a caller's CSS
     expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(``)
     expect(tooltip.style.maxWidth).toBe(``)
@@ -88,7 +100,7 @@ describe(`PlotTooltip`, () => {
   })
 
   // Contrast ratios are covered in colors.test.ts; here only the wiring. No fill (or one
-  // that resolves to nothing) paints the neutral --tooltip-bg chip (resolved where it renders)
+  // that resolves to nothing) paints the neutral --plot-tooltip-bg chip (resolved where it renders)
   test.each([
     [`#000000`, `rgb(0, 0, 0)`, `rgb(255, 255, 255)`],
     [`#4fc3f7`, `rgb(79, 195, 247)`, `rgb(0, 0, 0)`],
@@ -97,7 +109,7 @@ describe(`PlotTooltip`, () => {
     [`transparent`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
     [`var(--unset-color)`, `rgb(5, 5, 5)`, `rgb(255, 255, 255)`],
   ])(`bg_color %s paints %s with %s text`, (background, expected_bg, expected_text) => {
-    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    body_var(`--plot-tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const tooltip = mount_tooltip({ bg_color: background })
     expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
     expect(d3_color(tooltip.style.color)?.formatRgb()).toBe(expected_text)
@@ -110,7 +122,7 @@ describe(`PlotTooltip`, () => {
     [undefined, `rgb(5, 5, 5)`, `white`],
     [() => `#4fc3f7`, `rgb(79, 195, 247)`, `black`],
   ])(`hover_tooltip with fill getter %s paints %s`, (bg_color, expected_bg, expected_text) => {
-    body_var(`--tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
+    body_var(`--plot-tooltip-bg`, `rgba(5, 5, 5, 0.9)`)
     const mark = document.createElement(`span`)
     document.body.append(mark)
     const cleanup = $effect.root(() => {
@@ -123,6 +135,43 @@ describe(`PlotTooltip`, () => {
     const tooltip = doc_query(`.plot-tooltip`)
     expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
     expect(tooltip.style.color).toBe(expected_text)
+  })
+
+  // One pin across every hover_tooltip mark on the page; a button's click is its own
+  test(`hover_tooltip: a click pins, the mark again, a press elsewhere or Escape unpin`, async () => {
+    const marks = [`span`, `span`, `button`].map((tag, idx) => {
+      const mark = document.createElement(tag)
+      mark.textContent = `mark ${idx}`
+      document.body.append(mark)
+      return mark
+    })
+    const cleanup = $effect.root(() => {
+      for (const [idx, mark] of marks.entries())
+        $effect(() => hover_tooltip(make_children(`tip ${idx}`))(mark))
+    })
+    onTestFinished(cleanup)
+    flushSync()
+    const enter = (mark: Element) => mark.dispatchEvent(new PointerEvent(`pointerenter`))
+    const text = await pin_cycle(
+      (step, mark_idx) => {
+        const mark = mark_idx === null ? document.body : marks[mark_idx]
+        if (step === `escape`) document.dispatchEvent(keydown(`Escape`))
+        else if (step === `leave`) mark.dispatchEvent(new PointerEvent(`pointerleave`))
+        else if (step === `nudge`)
+          mark.dispatchEvent(new PointerEvent(`pointermove`, pin_spot(mark_idx, step)))
+        else if (mark !== document.body) enter(mark)
+        if (step === `click`) {
+          mark.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+          mark.dispatchEvent(mouse(`click`))
+        }
+      },
+      { lit: (idx) => marks[idx].hasAttribute(`data-pinned`) },
+    ) // CSS adds :hover
+    expect(text).toBe(`tip 0`)
+    enter(marks[2])
+    marks[2].click()
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).classList.contains(`pinned`)).toBe(false)
   })
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
@@ -187,12 +236,11 @@ describe(`PlotTooltip`, () => {
       constrain_to: { width: 100, height: 300 },
       children: make_children(`a`.repeat(80)),
     })
-    expect(tooltip.classList.contains(`plot-tooltip-wrap`)).toBe(true)
     // the container cap rides a CSS variable, not an inline max-width that would beat the
     // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
     expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
     expect(tooltip.style.maxWidth).toBe(``)
-    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(1024px, 84px)`) // happy-dom resolves 100vw
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(256px, 84px)`) // the 16rem default
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
     // never inherits a centered page section
     expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
@@ -206,13 +254,43 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).maxWidth).toBe(`min(50px, 84px)`)
   })
 
-  // a caller's class cannot beat the scoped `nowrap` rule, so wrapping is opt-in by variable
+  // a caller's class cannot beat the scoped white-space rule, so it is set by variable
   test.each([
     [`chip`, {}],
     [`wrapping box`, { constrain_to: { width: 100, height: 300 } }],
   ])(`--plot-tooltip-white-space overrides the %s default`, (_label, props) => {
     const tooltip = mount_tooltip({ ...props, style: `--plot-tooltip-white-space: pre-line` })
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`pre-line`)
+  })
+
+  // A pinned chip says how to unpin in a tab on its top edge (no extra height, no overlap with
+  // a full-width first row), which slides back in after a couple of seconds
+  test.each([false, true])(`pinned=%s shows the unpin tab`, (pinned) => {
+    const tooltip = mount_tooltip({ pinned })
+    const hint = tooltip.querySelector<HTMLElement>(`.pin-hint`)
+    expect(hint !== null).toBe(pinned)
+    if (!hint) return
+    // happy-dom keeps the animation shorthand unexpanded
+    const { position, animation } = getComputedStyle(hint)
+    expect(position).toBe(`absolute`)
+    expect(animation).toMatch(/pin-hint-retract.* 2\.5s /)
+  })
+
+  // UA and page margins would pad a dense chip; the reset has zero specificity, so a tooltip
+  // snippet's own (here inline) styles still win
+  test(`resets h4, p, small, .key and sup inside the chip`, () => {
+    const tooltip = mount_tooltip({
+      children: createRawSnippet(() => ({
+        render: () =>
+          `<div><h4>Fe</h4><p><span class="key">E</span> 1 <small>Å<sup>−3</sup></small></p><p style="margin: 5px">x</p></div>`,
+      })),
+    })
+    const style = (selector: string) => getComputedStyle(query(tooltip, selector))
+    expect([style(`h4`).marginTop, style(`h4`).marginBottom]).toEqual([`0px`, `0px`])
+    expect(style(`p`).marginTop).toBe(`1px`)
+    expect([style(`small`).opacity, style(`.key`).opacity]).toEqual([`0.75`, `0.75`])
+    expect(style(`sup`).lineHeight).toBe(`0`) // a unit's superscript keeps the row dense
+    expect(style(`p[style]`).marginTop).toBe(`5px`)
   })
 
   // Without a constraining box the signed offset is applied verbatim, absolute or fixed.
@@ -337,4 +415,42 @@ test.each<[string, unknown, string, Props, string, MouseEventInit?]>([
     expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
     plot.parentElement?.remove()
   }
+})
+
+// The pin state machine every pinnable tooltip shares. Marks are keyed by `id`, so `a2` is a
+// fresher snapshot of the pinned `a`; `off` stands for a mark whose click the host claimed.
+describe(`TooltipPin`, () => {
+  type Mark = { id: string }
+  const [a, a2, b, off] = [{ id: `a` }, { id: `a` }, { id: `b` }, { id: `off` }]
+  test.each<[string, (Mark | null)[], Mark | null, number]>([
+    [`a click pins the mark`, [a], a, 0],
+    [`clicking it again unpins, even as a fresher snapshot`, [a, a2], null, 1],
+    [`another mark moves the pin`, [a, b], b, 0],
+    [`empty space unpins`, [a, null], null, 1],
+    [`a claimed mark only unpins`, [a, off], null, 1],
+    [`a claimed mark never pins`, [off], null, 0],
+  ])(`%s`, (_label, clicks, pinned, n_unpins) => {
+    const on_unpin = vi.fn()
+    const pin = new TooltipPin<Mark>({
+      key: ({ id }) => id,
+      enabled: ({ id }) => id !== `off`,
+      on_unpin,
+    })
+    for (const mark of clicks) pin.toggle(mark)
+    expect(pin.value).toBe(pinned)
+    expect(on_unpin).toHaveBeenCalledTimes(n_unpins)
+  })
+
+  test(`hovers other than the pinned mark are held off; Escape reports whether it unpinned`, () => {
+    const pin = new TooltipPin<Mark>({ key: ({ id }) => id })
+    expect([pin.allows(b), pin.is(a), pin.unpin()]).toEqual([true, false, false])
+    pin.toggle(a)
+    expect([pin.allows(a2), pin.allows(b), pin.is(a2), pin.is(null)]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+    expect([pin.unpin(), pin.value, pin.unpin()]).toEqual([true, null, false])
+  })
 })

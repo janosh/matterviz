@@ -328,7 +328,7 @@ test.describe(`Structure Component Tests`, () => {
       .toBeLessThan(300)
     await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
-    await cell_select.dispatchEvent(`mouseenter`)
+    await cell_select.locator(`.toggle-btn`).click() // the menu opens only on click
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
 
     const get_font_size = (selector: string): Promise<number> =>
@@ -1361,8 +1361,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(cell_select).toHaveCSS(`opacity`, `1`)
     expect(await receives_pointer_at_center(cell_toggle)).toBe(true)
     expect(await receives_pointer_at_center(element_badge)).toBe(true)
-    // hovering opens the menu; a click could race that timer on a loaded runner and toggle it shut
-    await cell_toggle.hover()
+    await cell_toggle.click() // the menu opens only on click
     await expect(cell_select.locator(`.dropdown`)).toBeVisible()
     expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })

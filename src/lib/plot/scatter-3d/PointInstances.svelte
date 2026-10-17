@@ -31,6 +31,7 @@
     onpointerenter?: (event: InstanceEvent) => void
     onpointerleave?: (event: InstanceEvent) => void
     onclick?: (event: InstanceEvent) => void
+    onpointermissed?: () => void // a click that hit no instance
   } = $props()
 
   const { invalidate } = useThrelte()

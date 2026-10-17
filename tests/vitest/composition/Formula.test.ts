@@ -101,12 +101,31 @@ test.each([`Vesta`, `Jmol`] as const)(
     mount_formula({ formula: `Fe2O3`, color_scheme })
     doc_query(`.element-group`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 0))
-    const tile = doc_query(`.tooltip .element-tile`)
+    const tile = doc_query(`.plot-tooltip .element-tile`)
     expect(rgb(tile.style.backgroundColor).formatHex()).toBe(
       ELEMENT_COLOR_SCHEMES[color_scheme].Fe.toLowerCase(),
     )
   },
 )
+
+// The tooltip sits beside the hovered symbol on tooltip_side, tooltip_offset away, and flips
+// to the opposite side where the viewport (1024x768 in happy-dom) has no room
+test.each([
+  [`bottom`, { x: 100, y: 50 }, [110, 79]],
+  [`top`, { x: 100, y: 50 }, [110, 45]],
+  [`right`, { x: 100, y: 50 }, [125, 62]],
+  [`left`, { x: 100, y: 50 }, [95, 62]],
+  [`bottom`, { x: 100, y: 760 }, [110, 755]], // no room below: above
+  [`right`, { x: 1010, y: 50 }, [1005, 62]], // no room right: left
+] as const)(`tooltip_side=%s at %o lands at %j`, async (tooltip_side, origin, [left, top]) => {
+  mount_formula({ formula: `Fe`, tooltip_side, tooltip_offset: 5 })
+  const group = doc_query(`.element-group`)
+  group.getBoundingClientRect = () => DOMRect.fromRect({ ...origin, width: 20, height: 24 })
+  group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const tooltip = doc_query(`.plot-tooltip`)
+  expect([tooltip.style.left, tooltip.style.top]).toEqual([`${left}px`, `${top}px`])
+})
 
 // Helper to simulate copy event and return clipboard data
 function simulate_copy(

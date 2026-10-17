@@ -13,18 +13,16 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls } from '#lib/controls.js'
 
-  import {
-    contrast_color_memo,
-    is_color,
-    resolve_backdrop,
-    tooltip_paint,
-  } from '#lib/colors/index.js'
+  import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
   import { get_scale_type_name } from '#lib/plot/core/types.js'
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
+  import { beside_rect } from '#lib/plot/core/decorations/tooltip.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { virtual_window } from 'svelte-widgets/virtual'
   import { with_defaults } from '#lib/utils.js'
@@ -32,7 +30,7 @@
   import { rows_to_csv } from 'svelte-widgets/csv'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { flushSync, onDestroy, onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShowControlsProp } from '#lib/controls.js'
   import HeatmapMatrixControls from './HeatmapMatrixControls.svelte'
@@ -517,11 +515,9 @@
     on_select?.(selected_cells)
   }
 
-  // Hover is imperative (no $state writes on mouseover); active_cell is deferred to rAF
-  // so a dense matrix doesn't flush a reactive update per pointer move.
-  let tooltip_div: HTMLDivElement | undefined = $state()
-  // only used for custom tooltip snippets; the default tooltip writes textContent directly
-  let tooltip_cell: CellContext | null = $state(null)
+  // active_cell is deferred to rAF so a dense matrix doesn't restyle its cells per pointer
+  // move; the tooltip, one component, follows each cell entered at once
+  let tooltip_hover = $state<{ context: CellContext; cell: Rect } | null>(null)
   let active_cell_raf = 0
   let last_hover = { x_idx: -1, y_idx: -1 }
   const cancel_raf = () => {
@@ -531,7 +527,8 @@
 
   // Pointer handlers first resolve the cell under the event and do nothing when disabled
   const on_cell =
-    (handler: (context: CellContext, event: MouseEvent) => void) => (event: MouseEvent) => {
+    (handler: (context: CellContext, event: MouseEvent, cell_el: HTMLElement) => void) =>
+    (event: MouseEvent) => {
       const cell_el =
         !disabled && event.target instanceof Element
           ? event.target.closest(`[data-x][data-y]`)
@@ -539,39 +536,18 @@
       if (!(cell_el instanceof HTMLElement)) return
       const [x_idx, y_idx] = [Number(cell_el.dataset.x), Number(cell_el.dataset.y)]
       if (Number.isInteger(x_idx) && Number.isInteger(y_idx)) {
-        handler(build_cell_context(x_idx, y_idx), event)
+        handler(build_cell_context(x_idx, y_idx), event, cell_el)
       }
     }
 
-  function show_tooltip(event: MouseEvent, context: CellContext): void {
-    if (tooltip === false || !tooltip_div) return
-    // no paint sets `` (removes the inline values), restoring the neutral CSS defaults
-    const paint = tooltip_paint(context.bg_color)
-    tooltip_div.style.setProperty(`--_bg`, paint?.background ?? ``)
-    tooltip_div.style.color = paint?.color ?? ``
-    if (typeof tooltip === `function`) {
-      tooltip_cell = context
-      flushSync() // render this cell's snippet now so the size measured below is its own
-    } else {
-      const { value } = context
-      const value_str =
-        value == null ? `` : typeof value === `number` ? format_num(value) : String(value)
-      const pair = `${context.x_item.label} - ${context.y_item.label}`
-      tooltip_div.textContent = value_str ? `${pair}: ${value_str}` : pair
-    }
-    // Measure only once shown with this cell's content: a hidden (display: none) tooltip
-    // measures 0 and a stale one the previous cell's size, so edge flips would misfire
-    tooltip_div.classList.add(`visible`)
-    // Flip to the cursor's other side near viewport edges (client coords avoid forced layout)
-    const flip = (pos: number, offset: number, size: number, limit: number) =>
-      Math.max(0, pos + offset + size > limit ? pos - offset - size : pos + offset)
-    const { offsetWidth: width, offsetHeight: height } = tooltip_div
-    tooltip_div.style.left = `${flip(event.clientX, 10, width, globalThis.innerWidth)}px`
-    tooltip_div.style.top = `${flip(event.clientY, 12, height, globalThis.innerHeight)}px`
+  function show_tooltip(cell_el: HTMLElement, context: CellContext): void {
+    if (tooltip === false) return
+    const { left, top, width, height } = cell_el.getBoundingClientRect()
+    tooltip_hover = { context, cell: { x: left, y: top, width, height } }
   }
-  const hide_tooltip = () => tooltip_div?.classList.remove(`visible`)
+  const hide_tooltip = () => (tooltip_hover = null)
 
-  const handle_mouseover = on_cell((context, event) => {
+  const handle_mouseover = on_cell((context, _event, cell_el) => {
     const { x_idx, y_idx } = context
     // Ignore redundant enters on the same cell (nested children)
     if (last_hover.x_idx === x_idx && last_hover.y_idx === y_idx) return
@@ -581,7 +557,7 @@
       active_cell = { x_idx, y_idx }
     })
     if (enable_brush && brush_start) brush_end = { x_idx, y_idx }
-    if (tooltip_mode !== `pinned`) show_tooltip(event, context)
+    if (tooltip_mode !== `pinned`) show_tooltip(cell_el, context)
   })
 
   function handle_mouseout(event: MouseEvent) {
@@ -595,7 +571,6 @@
     cancel_raf()
     active_cell_raf = globalThis.requestAnimationFrame(() => {
       active_cell = null
-      if (!keep_tooltip) tooltip_cell = null
     })
   }
 
@@ -617,12 +592,12 @@
     }, DBLCLICK_DELAY_MS)
   }
 
-  const handle_click = on_cell((context, event) => {
+  const handle_click = on_cell((context, event, cell_el) => {
     const { x_idx, y_idx } = context
     update_selected_cells(event, { x_idx, y_idx })
     if (tooltip_mode !== `hover`) {
       pinned_cell = { x_idx, y_idx }
-      show_tooltip(event, context)
+      show_tooltip(cell_el, context)
     }
     if (!on_click) return
     if (on_double_click) schedule_single_click(context)
@@ -813,7 +788,6 @@
     brush_start = null
     brush_end = null
     last_hover = { x_idx: -1, y_idx: -1 }
-    tooltip_cell = null
     hide_tooltip()
   })
 
@@ -969,13 +943,24 @@
       </div>
     {/if}
 
-    <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->
-    {#if tooltip !== false}
-      <div class="tooltip" bind:this={tooltip_div}>
-        {#if typeof tooltip === `function` && tooltip_cell}
-          {@render tooltip(tooltip_cell)}
+    {#if tooltip !== false && tooltip_hover}
+      {@const { context, cell } = tooltip_hover}
+      {@const { value, x_item, y_item } = context}
+      {@const value_str =
+        value == null ? `` : typeof value === `number` ? format_num(value) : String(value)}
+      <!-- inline, so it beats PlotTooltip's start default while still reading the variable -->
+      <PlotTooltip
+        {...beside_rect(cell, `bottom`, 4)}
+        fixed
+        bg_color={context.bg_color}
+        style="text-align: var(--plot-tooltip-text-align, center)"
+      >
+        {#if typeof tooltip === `function`}
+          {@render tooltip(context)}
+        {:else}
+          {x_item.label} - {y_item.label}{value_str && `: ${value_str}`}
         {/if}
-      </div>
+      </PlotTooltip>
     {/if}
 
     {@render children?.()}
@@ -1147,37 +1132,5 @@
     justify-self: center;
     color: var(--text-color-muted, currentColor);
     opacity: 0.9;
-  }
-  .tooltip {
-    --_bg: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.85)));
-    display: none;
-    position: fixed;
-    background: var(--_bg);
-    color: var(--tooltip-color, light-dark(#222, #eee));
-    padding: var(--tooltip-padding, 4px 6px);
-    border-radius: var(--tooltip-border-radius, var(--border-radius, 3pt));
-    font-size: var(--tooltip-font-size, 12px);
-    text-align: var(--tooltip-text-align, center);
-    line-height: var(--tooltip-line-height, 1.2);
-    z-index: var(--tooltip-z-index, 10);
-    pointer-events: none;
-    box-shadow: var(
-      --tooltip-shadow,
-      0 2px 8px light-dark(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.4))
-    );
-    white-space: nowrap;
-    &.visible {
-      display: block;
-    }
-    &::before {
-      content: '';
-      position: absolute;
-      top: -6px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 6px solid var(--_bg);
-    }
   }
 </style>

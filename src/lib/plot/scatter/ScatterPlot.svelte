@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -127,6 +128,7 @@
   } from '#lib/plot/core/canvas-markers.svelte.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
   import { resolve_line_tween } from '#lib/plot/core/utils.js'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -205,6 +207,7 @@
     header_controls,
     export_sources: extra_export_sources = {},
     controls_extra,
+    shortcut_scopes,
     axis_loading = null,
     on_axis_change,
     pan = {},
@@ -250,6 +253,8 @@
       controls_extra?: Snippet<
         [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
       >
+      // A host viewer's keyboard shortcuts (NebViewer), listed at the controls pane's bottom
+      shortcut_scopes?: readonly ShortcutScope[]
       color_scale?: ColorScale
       size_scale?: SizeScaleConfig
       // Reference circles for size_values, shown when the size scale maps 2+ legend values to
@@ -950,19 +955,19 @@
       ),
     )
   })
-  // Plus the hovered point, for its hover effects. tooltip_point may come from a previous
-  // filtered derivation, so it is matched by logical key rather than identity.
+  // Plus the hovered and pinned points, for their hover effects. They may come from a previous
+  // filtered derivation, so they are matched by logical key rather than identity.
   const svg_overlay_points_by_series = $derived.by(() => {
-    const hovered_pt = tooltip_point
+    const lit_points = [tooltip_point, pin.is(tooltip_point) ? null : pin.value]
     return static_overlay_points_by_series.map((points, series_pos) => {
-      if (
-        hovered_pt == null ||
-        hovered_pt.point_label?.text != null ||
-        hovered_pt.series_idx !== filtered_series[series_pos].orig_series_idx ||
-        points.some((point) => same_logical_point(point, hovered_pt))
+      const extra = lit_points.filter(
+        (lit_pt): lit_pt is InternalPoint<Metadata> =>
+          lit_pt != null &&
+          lit_pt.point_label?.text == null &&
+          lit_pt.series_idx === filtered_series[series_pos].orig_series_idx &&
+          !points.some((point) => same_logical_point(point, lit_pt)),
       )
-        return points
-      return [...points, hovered_pt]
+      return extra.length ? [...points, ...extra] : points
     })
   })
 
@@ -1104,7 +1109,7 @@
       )
   })
   const active_legend_idx = $derived.by(() => {
-    const idx = tooltip_point?.series_idx ?? frame.hovered_series_idx
+    const idx = pin.shown(tooltip_point)?.series_idx ?? frame.hovered_series_idx
     if (idx == null || !series[idx]) return null
     return (
       legend_data.find((item) =>
@@ -1281,13 +1286,7 @@
   // Canvas markers have no DOM node to click, so a plot-surface click activates the nearest
   // point within the click radius instead of reaching on_plot_click
   function handle_plot_click(evt: MouseEvent) {
-    if (
-      !(on_plot_click || canvas_points_clickable) ||
-      pan_zoom.is_panning ||
-      pan_zoom.drag_start ||
-      pan_zoom.suppress_click
-    )
-      return
+    if (!(on_plot_click || canvas_points_clickable)) return pin.toggle(tooltip_point)
     const coords = get_relative_coords(evt)
     if (!coords) return
     const point = plot_click_target(
@@ -1417,8 +1416,6 @@
     if (props) on_point_click?.({ ...props, event, point })
   }
 
-  let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
-
   let has_multiple_series = $derived(assigned_series.filter(Boolean).length > 1)
 
   // Non-click point_events names, computed once instead of per rendered point
@@ -1428,6 +1425,18 @@
       : [],
   )
   let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
+  // A click pins the hovered point's tooltip (see TooltipPin) unless on_plot_click or
+  // clickable points take the click
+  const pin_free = $derived(tooltip !== false && !on_plot_click && !points_interactive)
+  const pin = new TooltipPin<
+    InternalPoint<Metadata>,
+    Pick<InternalPoint<Metadata>, `series_idx` | `point_idx`>
+  >({
+    key: ({ series_idx, point_idx }) => `${series_idx}:${point_idx}`,
+    enabled: () => pin_free,
+  })
+  const tip_point = $derived(pin.shown(hovered ? tooltip_point : null))
+  let handler_props = $derived(tip_point ? construct_handler_props(tip_point) : null)
   const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
   // Set, not a scan per point: a rect drag can select thousands, and the membership test
@@ -1520,11 +1529,14 @@
     return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
   })
 
-  // Data swaps fire no pointer event, so re-resolve the hovered point on every data change
-  // (closing once it is gone, which the host hears as on_point_hover(null))
+  // Data swaps fire no pointer event, so re-resolve the hovered and pinned points on every data
+  // change (closing once gone, which the host hears as on_point_hover(null))
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
+      const pinned = pin.value && plotted_point(pin.value)
+      if (pinned) pin.value = pinned
+      else pin.unpin()
       if (!tooltip_point) return
       const next = plotted_point(tooltip_point)
       if (next === tooltip_point) return
@@ -1554,9 +1566,10 @@
       hovered = false
       return true
     }
-    if (kbd_cursor_at && points_interactive && is_activation_key(event)) {
+    if (kbd_cursor_at && (points_interactive || pin_free) && is_activation_key(event)) {
       event.preventDefault()
-      activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
+      if (points_interactive) activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
+      else pin.toggle(kbd_cursor_at.point)
       return true
     }
     return move_kbd_cursor(event)
@@ -1665,6 +1678,7 @@
     : undefined}
   on_mouse_click={handle_plot_click}
   on_key_down={handle_plot_key_down}
+  unpin={pin.unpin}
   {live_message}
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
@@ -1844,7 +1858,7 @@
                 x={center_x - offset.x}
                 y={center_y - offset.y}
                 is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
-                is_hovered={same_logical_point(point, tooltip_point)}
+                is_hovered={pin.lit(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point) ||
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}
@@ -1917,16 +1931,17 @@
         () => active_series_idx, (value) => (selected_series_idx = value)
       }
       series={assigned_series}
+      {shortcut_scopes}
       children={controls_extra}
     />
   {/snippet}
 
   {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
-    {#if handler_props && hovered && tooltip_point && tooltip !== false}
-      {@const { point_label, series_idx } = tooltip_point}
+    {#if handler_props && tip_point && tooltip !== false}
+      {@const { point_label, series_idx } = tip_point}
       {@const tooltip_bg_color = pick_tooltip_bg(
-        tooltip_point,
+        tip_point,
         assigned_series[series_idx],
         color_scale_fn,
       )}
@@ -1940,6 +1955,7 @@
         fallback_size={{ width: 120, height: 50 }}
         exclusion_rects={frame.exclusion_rects}
         bg_color={tooltip_bg_color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip(handler_props)}

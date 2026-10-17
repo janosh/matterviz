@@ -111,16 +111,13 @@ describe(`ConvexHullTooltip`, () => {
 
   // the badge is a chip in the highlight colour with contrasted text: as plain text in that
   // colour it vanished on a tooltip painted in a similar point colour (#ff4444 on #E69F00)
-  test(`highlight badge and colour var render only with a highlight_style`, () => {
+  test(`highlight badge renders only with a highlight_style`, () => {
     mount_tooltip()
     expect(document.querySelector(`.highlight-badge`)).toBeNull()
     document.body.innerHTML = ``
     mount_tooltip({ highlight_style: { color: `#00ff00` } })
     expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
     expect_tooltip_paint(doc_query(`.highlight-badge`), `#00ff00`)
-    expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
-      `#00ff00`,
-    )
   })
 
   describe(`fractional composition`, () => {

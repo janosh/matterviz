@@ -294,11 +294,6 @@
 </section>
 
 <style>
-  .opportunity-map {
-    padding: 1em;
-    border: 1px solid var(--border-color, #8885);
-    border-radius: 6px;
-  }
   h3 {
     margin: 0;
   }

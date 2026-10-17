@@ -8,6 +8,7 @@
   } from './atom-instances'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
+  import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
@@ -29,16 +30,21 @@
   import {
     bind_renderer,
     brighten_hex,
+    CanvasTooltip,
     clear_pan_offset,
     create_fit_zoom,
     create_fly_to,
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
     flight_holds,
+    HOVER_SHELL_SCALE,
+    scene_interactivity,
+    scene_key_walk,
     SceneCamera,
+    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
-  import type { SceneControlProps } from '#lib/scene/index.js'
+  import type { SceneControlProps, TapEvent } from '#lib/scene/index.js'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
@@ -123,7 +129,7 @@
     set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
-  import { CanvasTooltip, compose_perceived_bonds, perceive_bond_orders } from './index'
+  import { compose_perceived_bonds, perceive_bond_orders } from './index'
   import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
   import {
@@ -253,7 +259,7 @@
     bond_edits_enabled = true,
     bond_edit_mode = $bindable<BondEditMode>(`add`),
     bond_edit_order = 1,
-    selection_highlight_color = `#6cf0ff`,
+    selection_highlight_color = HIGHLIGHT.select,
     // Active highlight group with different color
     active_sites = [],
     active_highlight_color = `var(--struct-active-highlight-color, #2563eb)`,
@@ -559,34 +565,30 @@
   }
   $effect(() => cancel_atom_hover_clear)
 
-  // Threlte hands a pointer event to every object under the cursor, nearest first, so the atom
-  // or editable bond behind would take over the hover unless the front one stops it
-  type StoppableEvent = { stopPropagation: () => void }
-  function set_atom_hover(site_idx: number, event?: StoppableEvent): void {
-    event?.stopPropagation()
+  function set_atom_hover(site_idx: number): void {
     cancel_atom_hover_clear()
     if (hovered_idx !== site_idx) hovered_idx = site_idx
     if (!atom_tooltip_active) atom_tooltip_active = true
+  }
+
+  function clear_atom_hover(site_idx: number): void {
+    cancel_atom_hover_clear()
+    if (hovered_idx !== site_idx) return
+    hovered_idx = null
+    atom_tooltip_active = false
   }
 
   function schedule_atom_hover_clear(site_idx: number): void {
     cancel_atom_hover_clear()
     clear_atom_hover_timeout = setTimeout(() => {
       clear_atom_hover_timeout = null
-      if (hovered_idx !== site_idx) return
-      hovered_idx = null
-      atom_tooltip_active = false
+      clear_atom_hover(site_idx)
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
-  function hover_front_bond(bond_key: string, event: StoppableEvent): void {
-    event.stopPropagation()
-    hovered_bond_key = bond_key
-  }
-
   const atom_hover_props = (site_idx: number) => ({
-    onpointerenter: (event: StoppableEvent) => set_atom_hover(site_idx, event),
-    onpointermove: (event: StoppableEvent) => set_atom_hover(site_idx, event),
+    onpointerenter: () => set_atom_hover(site_idx),
+    onpointermove: () => set_atom_hover(site_idx),
     onpointerleave: () => schedule_atom_hover_clear(site_idx),
   })
 
@@ -703,9 +705,6 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
-  // Outer translucent shell around hover/selection. Atom meshes use the same
-  // SphereGeometry(0.5) × radius scale, so this is a pure radial margin (1.2 was a bulky 20%).
-  const HIGHLIGHT_SHELL_SCALE = 1.08
   const editable_bond_matrix = new Float32Array(16)
 
   // Analytic atom hit targets need no vertices; share resources across targets and highlights.
@@ -879,10 +878,6 @@
       apply_delete_bond(current_bond_edit_state(), target, editable_perceived_bond_pairs),
     )
 
-  // Deduplicate clicks: when a highlight sphere and the underlying atom both
-  // intercept the same native click, only the first intersection should fire.
-  // All threlte intersection events from one click share the same nativeEvent ref.
-  let last_native_event: Event | null = null
   // Instanced-atom raycasts do not always emit pointerdown, so edit-bonds also
   // falls back to click. When pointerdown did fire, skip the matching click once.
   let last_edit_bonds_pointerdown_site_idx: number | null = null
@@ -897,7 +892,7 @@
     }, 250)
   }
 
-  function select_edit_bonds_site(site_idx: number, event: Event): void {
+  function select_edit_bonds_site(site_idx: number, event: Event | TapEvent): void {
     toggle_selection(site_idx, event)
     remember_edit_bonds_pointerdown_site(site_idx)
   }
@@ -911,23 +906,14 @@
 
   // Selection handlers shared by instanced atom meshes and per-site hit targets
   // so the edit-bonds click semantics can't drift between the two paths
-  const handle_atom_pointerdown = (site_idx: number, event: PointerEvent) => {
+  const handle_atom_pointerdown = (site_idx: number, event: TapEvent) => {
     if (measure_mode !== `edit-bonds` || bond_edit_mode !== `add`) return
     select_edit_bonds_site(site_idx, event)
   }
-  const handle_atom_click = (site_idx: number, event: MouseEvent) => {
-    // Touch cannot hover, so a tap is the only way to surface the atom tooltip; it stays
-    // until the next orbit or tap (the pointerleave-driven clear never fires for touch).
-    // On click rather than pointerdown: OrbitControls' `start` fires on pointerdown and
-    // wipes the hover. Threlte wraps the DOM event, so pointerType lives on nativeEvent.
-    const native_event = (event as BondContextMenuEvent).nativeEvent ?? event
-    if ((native_event as PointerEvent).pointerType === `touch`) set_atom_hover(site_idx)
+  const handle_atom_click = (site_idx: number, event: TapEvent) => {
     if (measure_mode === `edit-bonds`) {
       if (bond_edit_mode !== `add`) return
-      if (skip_duplicate_edit_bonds_click(site_idx)) {
-        event.stopPropagation()
-        return
-      }
+      if (skip_duplicate_edit_bonds_click(site_idx)) return
     }
     toggle_selection(site_idx, event)
   }
@@ -935,40 +921,33 @@
   // Pointer handlers for an instanced atom mesh: intersection events carry the
   // hit `instanceId`, which indexes into the mesh's `atoms` array. One handler
   // set per mesh instead of one per atom. Inactive grid panes render without
-  // raycast handlers; ghosted edit-mode image atoms are non-interactive.
-  type InstanceEvent = { instanceId?: number }
+  // raycast handlers; ghosted edit-mode image atoms are non-interactive. A touch
+  // tap shows the atom tooltip besides selecting it (touch_hover).
   const atom_instance_events = (
     instance_atoms: { site_idx: number }[],
     is_edit_image: boolean,
   ) => {
     if (!interactive || is_edit_image) return {}
     const wrap =
-      <Event_ extends InstanceEvent>(handler: (site_idx: number, event: Event_) => void) =>
-      (event: Event_) => {
+      (handler: (site_idx: number, event: TapEvent) => void) => (event: TapEvent) => {
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
-    const hover = wrap<StoppableEvent & InstanceEvent>(set_atom_hover)
-    return {
+    const hover = wrap(set_atom_hover)
+    return touch_hover({
       onpointerenter: hover,
       onpointermove: hover,
       onpointerleave: wrap(schedule_atom_hover_clear),
-      onpointerdown: wrap<PointerEvent & InstanceEvent>(handle_atom_pointerdown),
-      onclick: wrap<MouseEvent & InstanceEvent>(handle_atom_click),
-    }
+      onpointerdown: wrap(handle_atom_pointerdown),
+      onclick: wrap(handle_atom_click),
+    })
   }
 
   const toggle_site = (sites: number[], site_idx: number): number[] =>
     sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
 
-  function toggle_selection(site_index: number, evt?: Event) {
-    evt?.stopPropagation?.()
-    const event_with_native = evt as (Event & { nativeEvent?: unknown }) | undefined
-    const native_event = event_with_native?.nativeEvent ?? evt
-    if (native_event instanceof Event) {
-      if (native_event === last_native_event) return
-      last_native_event = native_event
-    }
+  function toggle_selection(site_index: number, evt?: Event | TapEvent) {
+    const native_event = (evt as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? evt
 
     if (measure_mode === `edit-bonds`) {
       // Only the active pane edits: inactive panes keep selection/hover overlays visible
@@ -1065,11 +1044,31 @@
     cursor = canvas_cursor
   })
 
-  const { enabled: hover_enabled } = extras.interactivity()
+  // One target per pointer event (the front-most atom, bond or hit target), so handlers need no
+  // stopPropagation() to keep the ones behind from taking over the hover or selection
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
   // No hover raycasts while orbiting or dragging atoms: the highlight and tooltip hopping
   // between atoms under the cursor read as flicker
-  $effect(() => hover_enabled.set(!camera_is_moving && !dragging_atoms))
+  $effect(() => set_hover_enabled(!camera_is_moving && !dragging_atoms))
   let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
+  // The viewer root walks the drawn atoms in site order (image atoms repeat them), Enter
+  // selects like a click. Inactive multi-view panes walk nothing (see scene_key_walk).
+  scene_key_walk({
+    targets: () =>
+      interactive
+        ? [...atom_groups.first_by_site.keys()]
+            .filter((site_idx) => !is_image_site_idx(site_idx))
+            .toSorted((idx_a, idx_b) => idx_a - idx_b)
+        : [],
+    hover: set_atom_hover,
+    leave: clear_atom_hover,
+    click: (site_idx) => toggle_selection(site_idx),
+    hovered: (site_idx) => site_idx === hovered_idx,
+    label: (site_idx) => {
+      const elements = get_site(structure, site_idx)?.species.map(({ element }) => element)
+      return `Site ${site_idx + 1}: ${elements?.join(`, `) ?? ``}`
+    },
+  })
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
   // JSON cutaways (movie configs) carry no transform: slice the displayed cell
   const cutaway = $derived(resolve_cutaway(cutaway_input, lattice?.matrix))
@@ -2201,6 +2200,8 @@
         {@const is_delete_mode = bond_edit_mode === `delete`}
         {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
         {@const bond_hover_radius = bond_thickness * 1.1}
+        <!-- delete mode: a bond under the cursor wins over atoms in front of it (pick_rank),
+        which ignore clicks there, so it is the one highlighted and removed -->
         <T.Mesh
           geometry={bond_hit_geometry}
           material={hit_material}
@@ -2214,7 +2215,6 @@
           }}
           onpointerdown={(event: BondPointerEvent) => {
             if (event.nativeEvent?.button === 2) return
-            event.stopPropagation()
             if (is_delete_mode) {
               remove_bond(bond)
               measured_sites = []
@@ -2227,12 +2227,12 @@
           }}
           oncontextmenu={(event: BondContextMenuEvent) => {
             event.nativeEvent?.preventDefault()
-            event.stopPropagation?.()
             open_bond_context_menu(bond, event)
           }}
-          onpointerenter={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
-          onpointermove={(event: StoppableEvent) => hover_front_bond(bond_key, event)}
+          onpointerenter={() => (hovered_bond_key = bond_key)}
+          onpointermove={() => (hovered_bond_key = bond_key)}
           onpointerleave={() => (hovered_bond_key = null)}
+          userData={{ pick_rank: is_delete_mode ? 1 : 0 }}
         />
         {#if is_hovered}
           <T.Mesh
@@ -2246,7 +2246,7 @@
             <T.MeshBasicMaterial
               transparent
               opacity={0.25}
-              color={is_delete_mode ? `#ff4444` : `#6cf0ff`}
+              color={is_delete_mode ? HIGHLIGHT.emphasis : HIGHLIGHT.select}
               depthWrite={false}
             />
           </T.Mesh>
@@ -2262,10 +2262,10 @@
           visible={false}
           position={atom_hit.position}
           scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
-          {...atom_hover_props(atom_hit.site_idx)}
-          onpointerdown={(event: PointerEvent) => {
-            select_edit_bonds_site(atom_hit.site_idx, event)
-          }}
+          {...touch_hover({
+            ...atom_hover_props(atom_hit.site_idx),
+            onpointerdown: (event) => select_edit_bonds_site(atom_hit.site_idx, event),
+          })}
         />
       {/each}
 
@@ -2275,7 +2275,7 @@
           bond_context_menu.site_idx_2,
           bond_context_menu.cell_shift,
         )}
-        <extras.HTML autoRender={false} position={bond_context_menu.position}>
+        <SceneLabel interactive autoRender={false} position={bond_context_menu.position}>
           <div class="bond-context-menu">
             <strong>Bond Order ({current_order ?? 1})</strong>
             {#each BOND_ORDER_OPTIONS as { order, label } (label)}
@@ -2297,7 +2297,7 @@
               Close
             </button>
           </div>
-        </extras.HTML>
+        </SceneLabel>
       {/if}
 
       <!-- highlight hovered, active and selected sites. The target list is a pulse-
@@ -2308,7 +2308,7 @@
         <T.Mesh
           geometry={highlight_sphere_geometry}
           position={entry.site.xyz}
-          scale={HIGHLIGHT_SHELL_SCALE * entry.radius}
+          scale={HOVER_SHELL_SCALE * entry.radius}
           oncreate={disable_raycast}
         >
           <T.MeshStandardMaterial
@@ -2331,9 +2331,9 @@
             <!-- shift selected site labels down to avoid overlapping regular site labels-->
             {@const selection_offset = math.add<Vec3>(site_label_offset, [0, -0.5, 0])}
             {@const pos = math.add(site.xyz, selection_offset)}
-            <extras.HTML center position={pos} style="pointer-events: none">
+            <SceneLabel center position={pos}>
               <span class="selection-label">{loop_idx + 1}</span>
-            </extras.HTML>
+            </SceneLabel>
           {/if}
         {/each}
       {/if}
@@ -2344,7 +2344,13 @@
         {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
         {@const tooltip_species =
           atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
-        <CanvasTooltip position={hovered_site.xyz} bg_color={hovered_tooltip_bg}>
+        {@const hover_shell = highlight_targets.find(({ kind }) => kind === `hover`)}
+        <!-- keeps clear of the hover shell (radius 0.5 scaled, see highlight_sphere_geometry) -->
+        <CanvasTooltip
+          position={hovered_site.xyz}
+          anchor_radius={0.5 * HOVER_SHELL_SCALE * (hover_shell?.radius ?? 0)}
+          bg_color={hovered_tooltip_bg}
+        >
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
             {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
@@ -2449,7 +2455,8 @@
       {/if}
 
       <!-- Invisible plane for click-to-place atom in add-atom mode -->
-      <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
+      <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit; its negative
+      pick_rank keeps it from shadowing the atoms behind it, so clicking an atom selects it -->
       {#if interactive && measure_mode === `edit-atoms` && add_atom_mode}
         <T.Mesh
           position={rotation_target}
@@ -2458,6 +2465,7 @@
           }}
           onclick={(event: { point: Vector3 }) =>
             on_add_atom?.(event.point.toArray(), add_element)}
+          userData={{ pick_rank: -1 }}
         >
           <T.PlaneGeometry
             args={[Math.max(200, structure_size * 4), Math.max(200, structure_size * 4)]}
@@ -2500,7 +2508,7 @@
                   ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
                   : direct}
                 {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-                <extras.HTML center position={mid_pos} style="pointer-events: none">
+                <SceneLabel center position={mid_pos}>
                   <span class="measure-label">
                     {#if differ}
                       PBC: {format_num(pbc, FLOAT_FMT)} Å<br /><small>
@@ -2510,7 +2518,7 @@
                       {format_num(pbc, FLOAT_FMT)} Å
                     {/if}
                   </span>
-                </extras.HTML>
+                </SceneLabel>
               {/if}
             {/each}
           {/each}
@@ -2557,9 +2565,9 @@
               {@const bis_norm = Math.hypot(...bisector) || 1}
               {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
               {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
-              <extras.HTML center position={label_pos} style="pointer-events: none">
+              <SceneLabel center position={label_pos}>
                 <span class="measure-label">{format_num(angle_deg, FLOAT_FMT)}°</span>
-              </extras.HTML>
+              </SceneLabel>
             {/if}
           {/if}
         {:else if measure_mode === `dihedral` && measured_sites.length === 4}
@@ -2588,13 +2596,9 @@
               lattice?.pbc,
             )}
             <!-- label sits on the central bond, the axis the torsion is measured about -->
-            <extras.HTML
-              center
-              position={math.lerp_vec3(draw_2, draw_3, 0.5)}
-              style="pointer-events: none"
-            >
+            <SceneLabel center position={math.lerp_vec3(draw_2, draw_3, 0.5)}>
               <span class="measure-label">{format_num(torsion_deg, FLOAT_FMT)}°</span>
-            </extras.HTML>
+            </SceneLabel>
           {/if}
         {/if}
       {/if}
@@ -2653,7 +2657,7 @@
     display: grid;
     place-items: center;
     line-height: 1.2;
-    font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 14px));
+    font-size: var(--measure-label-font-size, clamp(8pt, 2cqmin, 14px));
     box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
   }
   .bond-context-menu {
@@ -2667,7 +2671,6 @@
     color: var(--struct-context-menu-color, var(--menu-color));
     border: 1px solid var(--struct-context-menu-border, var(--menu-border));
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    pointer-events: auto;
     strong {
       font-size: 0.85em;
       padding: 0 2pt 2pt;

@@ -1,6 +1,8 @@
 // Mounts TernaryPrismScene against the recording Threlte stub to drive the cutting plane's
-// pointer handlers: a click on the plane pins a composition, a drag never does
-import type { Vec2 } from '#lib/math.js'
+// pointer handlers: a click on the plane pins a composition, a drag never does, a touch tap
+// also shows the composition tooltip a hover there would, and lights up its tie triangle.
+// From the focused viewer root, the keyboard walks the rods.
+import { clamp, type Vec2 } from '#lib/math.js'
 import {
   compute_section,
   compute_ternary_phase_diagram,
@@ -8,39 +10,22 @@ import {
   prism_position,
 } from '#lib/phase-diagram/ternary/compute.js'
 import TernaryPrismScene from '#lib/phase-diagram/ternary/TernaryPrismScene.svelte'
-import { TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
-import type * as threlte_core from '@threlte/core'
-import { flushSync, mount, unmount } from 'svelte'
+import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
+import { brighten_hex } from '#lib/scene/index.js'
+import { flushSync, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub } from '../../isosurface/threlte-stub'
+import { hover_highlight, threlte_stub, touch_tap } from '../../isosurface/threlte-stub'
+import { mount_with_keys } from '../../scene/mount'
 import { bind_props } from '../../setup'
 import { toy_elements, toy_entries } from './fixtures'
 
-vi.mock(`@threlte/core`, async (original) => {
-  const core = await original<typeof threlte_core>()
-  return {
-    ...core,
-    T: (await import(`../../isosurface/threlte-stub`)).threlte_stub.T,
-    useThrelte: () => ({
-      invalidate: () => {},
-      scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
-      size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: { domElement: document.createElement(`canvas`) },
-    }),
-  }
-})
-vi.mock(`@threlte/extras`, async () => {
-  const { T } = (await import(`../../isosurface/threlte-stub`)).threlte_stub
-  const stub = (tag: string) => Reflect.get(T, tag)
-  return {
-    OrbitControls: stub(`OrbitControls`),
-    HTML: stub(`HTML`),
-    Billboard: stub(`Billboard`),
-    interactivity: () => ({ enabled: { set: () => {} } }),
-  }
-})
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../../isosurface/threlte-stub`)).mock_threlte_extras(),
+)
 
 let teardown: (() => void) | undefined
 afterEach(() => {
@@ -52,11 +37,6 @@ afterEach(() => {
 const diagram = compute_ternary_phase_diagram(toy_entries, { elements: toy_elements })
 const model = prepare_diagram(toy_entries, { elements: toy_elements })
 type Handler = (event: unknown) => void
-const handler = (name: string): Handler => {
-  const node = threlte_stub.nodes.find(({ props }) => typeof props[name] === `function`)
-  if (!node) throw new Error(`no stub node with ${name}`)
-  return node.props[name] as Handler
-}
 // Threlte pointer event on the plane at composition coords_xy, the pointer at client_x
 const pointer = (coords_xy: Vec2, client_x: number) => ({
   point: new Vector3(...prism_position(coords_xy)),
@@ -70,23 +50,34 @@ const release = (client_x: number) => {
 
 test(`a plane click pins its composition; a drag or a flick out of the canvas does not`, () => {
   const temperature = 600
-  const state = $state({ temperature, pinned_composition: null as Vec2 | null })
-  const component = mount(TernaryPrismScene, {
-    target: document.body,
-    props: bind_props(
+  const state = $state({
+    temperature,
+    pinned_composition: null as Vec2 | null,
+    hovered_phase: null as number | null,
+    selected_phase: null as number | null,
+  })
+  const [on_section_hover, on_hover] = [vi.fn(), vi.fn()]
+  const { keys, mounted } = mount_with_keys(
+    TernaryPrismScene,
+    bind_props(
       {
         diagram,
         section: compute_section(model, temperature),
         settings: TERNARY_DISPLAY_DEFAULTS,
+        on_section_hover,
+        on_hover,
       },
       state,
     ),
-  })
-  teardown = () => void unmount(component)
+  )
+  teardown = () => void unmount(mounted)
   flushSync()
   const pin: Vec2 = [0.4, 0.25]
+  // the plane: rods (ranked) render before it and pin nothing on a press
+  const plane = threlte_stub.nodes.find(({ props }) => props.onpointerdown && !props.userData)
+  if (!plane) throw new Error(`cutting plane not mounted`)
   const press = () => {
-    handler(`onpointerdown`)(pointer(pin, 100))
+    ;(plane.props.onpointerdown as Handler)(pointer(pin, 100))
     flushSync()
   }
 
@@ -115,4 +106,55 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
   expect(state.temperature).toBeGreaterThan(temperature)
   release(100)
   expect(state.pinned_composition).toBeNull()
+
+  touch_tap(plane.props, pointer(pin, 100), { clientX: 100, clientY: 100 })
+  flushSync()
+  expect(state.pinned_composition).toEqual(pin)
+  expect(on_section_hover).toHaveBeenLastCalledWith(
+    expect.objectContaining({ kind: `composition`, position: [100, 100] }),
+  )
+  // the tie triangle the composition decomposes into lights up
+  const { decomposition } = on_section_hover.mock.lastCall?.[0] ?? {}
+  expect(decomposition?.phases).toHaveLength(3)
+  const highlight = hover_highlight()
+  expect(highlight?.color).toBe(brighten_hex(TERNARY_COLORS.face))
+  const corners = Array.from(highlight?.geometry.getAttribute(`position`).array ?? [])
+  const corner_keys = (coords: number[]) =>
+    [0, 1, 2].map((idx) =>
+      coords
+        .slice(3 * idx, 3 * idx + 3)
+        .map((val) => val.toFixed(5))
+        .join(`,`),
+    )
+  expect(corner_keys(corners).toSorted()).toEqual(
+    corner_keys(
+      decomposition.phases.flatMap((idx: number) => prism_position(diagram.phases[idx].xy)),
+    ).toSorted(),
+  )
+
+  // by keyboard: the first rod where the plane crosses its stability window (else at its
+  // nearer end) shows the rod tooltip, Enter selects its phase like a click
+  const phase = diagram.phases.findIndex(({ idx }) => diagram.stability_windows[idx].length)
+  const [lower, upper] = diagram.stability_windows[phase][0]
+  expect(keys.press(`ArrowDown`)).toBe(true)
+  expect([state.hovered_phase, keys.message]).toEqual([phase, diagram.phases[phase].label])
+  expect(on_hover).toHaveBeenLastCalledWith(expect.objectContaining({ phase }))
+  expect(on_hover.mock.lastCall?.[0].temperature).toBeCloseTo(
+    clamp(state.temperature, lower, upper),
+    6,
+  )
+  keys.press(`Enter`)
+  expect(state.selected_phase).toBe(phase)
+
+  // a touch tap on a rod selects its phase but pins nothing: touch makes no hover before the
+  // press, so the rod itself says it pins nothing (the tap lands on the pin and would clear it)
+  keys.press(`Escape`)
+  expect(state.hovered_phase).toBeNull()
+  const rod = threlte_stub.nodes.find(
+    ({ props }) => (props.userData as { pick_rank?: number } | undefined)?.pick_rank === 1,
+  )
+  touch_tap(rod?.props ?? {}, pointer(pin, 100), { clientX: 100, clientY: 100 })
+  flushSync()
+  expect(state.pinned_composition).toEqual(pin)
+  expect(state.selected_phase).not.toBe(phase)
 })

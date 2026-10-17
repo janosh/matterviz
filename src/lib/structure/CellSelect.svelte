@@ -19,7 +19,7 @@
     cell_type?: CellType
     sym_data?: SymmetryDataset | null
     loading?: boolean
-    suppress_hover?: boolean // don't auto-open the menu on hover/focus (e.g. while a sibling popover is open)
+    suppress_hover?: boolean // close the menu and keep it shut (e.g. while a sibling popover is open)
   } = $props()
 
   let menu_open = $state(false)
@@ -27,32 +27,12 @@
   let input_value = $derived(supercell_scaling)
   let input_valid = $derived(is_valid_supercell_input(input_value))
 
-  // Hover-intent gate: opening instantly on mouseenter made the menu pop open
-  // when merely scrubbing the pointer across compact embeds (gallery cards).
-  // Deliberate hovers still open it; keyboard focus and clicks open instantly.
-  const hover_open_delay_ms = 200
-  let hover_timer: ReturnType<typeof setTimeout> | undefined
-
-  const schedule_hover_open = () => {
-    if (suppress_hover) return
-    clearTimeout(hover_timer)
-    // re-check suppression at fire time: a sibling popover may have opened meanwhile
-    hover_timer = setTimeout(() => (menu_open = !suppress_hover), hover_open_delay_ms)
-  }
-
+  // Opens only on click (Enter/Space on the focused button included): hover and focus left it
+  // popping open whenever the pointer crossed the viewer chrome
   const close_menu = () => {
-    clearTimeout(hover_timer)
     menu_open = false
     input_value = supercell_scaling // drop an unapplied (possibly invalid) draft
   }
-
-  // A press focuses the button (focusin) before its click fires. Opening on that focusin
-  // and then toggling on the click closed the menu again on every tap, so pointer-caused
-  // focus leaves the decision to the click; keyboard focus still opens instantly. The focusin
-  // consumes the flag, so a press that never clicks can't swallow later keyboard focus.
-  let pointer_press_pending = false
-
-  $effect(() => () => clearTimeout(hover_timer))
 
   const supercell_presets = [`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`]
 
@@ -107,22 +87,12 @@
   class="cell-select hover-visible"
   role="group"
   {@attach click_outside({ callback: close_menu })}
-  onmouseenter={schedule_hover_open}
   onmouseleave={close_menu}
-  onfocusin={() => {
-    if (!pointer_press_pending) menu_open = !suppress_hover
-    pointer_press_pending = false
-  }}
   onfocusout={handle_focus_out}
 >
   <button
     type="button"
-    onpointerdown={() => (pointer_press_pending = true)}
-    onclick={() => {
-      clearTimeout(hover_timer)
-      pointer_press_pending = false
-      menu_open = !suppress_hover && !menu_open
-    }}
+    onclick={() => (menu_open = !suppress_hover && !menu_open)}
     onkeydown={handle_key_down}
     class={['toggle-btn', { active: menu_open }]}
     aria-expanded={menu_open}

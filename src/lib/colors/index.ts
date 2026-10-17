@@ -19,6 +19,17 @@ export * from './backdrop.svelte'
 export * from './scale-names'
 export { ELEMENT_COLOR_SCHEME_NAMES, type ColorSchemeName } from '#lib/constants.js'
 
+// Highlight colours shared by every viewer, so one state reads the same everywhere. A hover
+// glows in the hovered mark's own hue instead (brighten_hex, with highlight_edge_color for
+// outlines, in scene/colors). select: picked sites, phases and entries; pin: marked or pinned
+// points (k-points, active band ticks); emphasis: caller-highlighted marks and destructive
+// targets (a bond about to be deleted).
+export const HIGHLIGHT = Object.freeze({
+  select: `#66f0ff`,
+  pin: `#ff2020`,
+  emphasis: `#ff4444`,
+})
+
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 

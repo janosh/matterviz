@@ -14,6 +14,7 @@ export type TooltipConfig<T> = {
   suffix?: string | ((data: T) => string)
 }
 
+export * from './hover-link.svelte'
 export { default as KCoords } from './KCoords.svelte'
 export { default as TooltipContent } from './TooltipContent.svelte'
 export { default as TooltipValue } from './TooltipValue.svelte'

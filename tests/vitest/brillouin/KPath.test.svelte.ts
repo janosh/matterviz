@@ -1,7 +1,7 @@
 // KPath against the recording Threlte stub (no WebGPU renderer)
 import KPath from '#lib/brillouin/KPath.svelte'
 import type { Vec2, Vec3 } from '#lib/math.js'
-import type * as threlte_core from '@threlte/core'
+import { TouchTaps } from '#lib/scene/interactivity.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   Color,
@@ -15,17 +15,15 @@ import { threlte_stub } from '../isosurface/threlte-stub'
 
 type KMarker = { position: Vec3; color: string }
 
-vi.mock(`@threlte/core`, async (original) => ({
-  ...(await original<typeof threlte_core>()),
-  T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-  useThrelte: () => ({ invalidate: () => undefined }),
-}))
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
 vi.mock(`@threlte/extras`, async () => ({
   HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
 }))
 
-// Threlte dispatches a pointer move to every hit along the ray, near to far: where the path
-// crosses itself on screen, the front segment wins. Segments touching the hovered q-point
+// A segment hover reports its nearer endpoint's q-point, and the proxy's pick_rank lets it win
+// over the zone or IBZ wedge it is drawn through (front_hit). Segments touching the hovered q-point
 // tint over the highlighted range, and a new path frees the old meshes. Threlte drops an
 // unregistered mesh's handlers without a pointerleave, so a rebuild or unmount while hovered
 // must clear the hover itself. Props spread from a fresh object per hover must keep an
@@ -46,6 +44,7 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
     highlighted_k_points: [k_path_points[2]],
     k_markers: [{ position: [0.5, 0.5, 0], color: `#e74c3c` }],
     on_kpath_hover,
+    touch_hover: new TouchTaps().wrap,
     size: 1,
   })
   // the scene props pass on their own, as FermiSurfaceScene and BrillouinZoneScene do
@@ -60,11 +59,13 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   const [line, proxy] = meshes().map((node_props) => node_props.is as InstancedMesh)
   const on_move = meshes()[1].onpointermove as (event: unknown) => void
   const nativeEvent = new PointerEvent(`pointermove`, { clientX: 40, clientY: 30 })
-  for (const instanceId of [2, 0]) {
-    const point = new Vector3(...k_path_points[instanceId + 1]) // segment end
-    on_move({ point, instanceId, nativeEvent })
-  }
-  expect(on_kpath_hover.mock.calls).toEqual([[3, { x: 40, y: 30 }]])
+  expect(proxy.userData.pick_rank).toBe(2)
+  on_move({ point: new Vector3(0.9, 0.9, 0), instanceId: 2, nativeEvent }) // nearer to q-point 2
+  on_move({ point: new Vector3(...k_path_points[3]), instanceId: 2, nativeEvent })
+  expect(on_kpath_hover.mock.calls).toEqual([
+    [2, { x: 40, y: 30 }],
+    [3, { x: 40, y: 30 }],
+  ])
   // k_markers: unlit dots drawn over everything (sheets they sit on included), instanced
   const marker_mesh = () =>
     meshes()
@@ -115,7 +116,7 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   const same_args = meshes(`SphereGeometry`).map(({ args }, idx) => args === sphere_args[idx])
   expect(same_args).toEqual([true, true, true])
   expect(meshes()[0].is).toBe(line)
-  expect(on_kpath_hover).toHaveBeenCalledOnce()
+  expect(on_kpath_hover).toHaveBeenCalledTimes(2) // no extra report from the tint pass
 
   const disposed: string[] = []
   for (const [name, mesh] of Object.entries({ line, proxy }))
@@ -140,6 +141,6 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   await unmount(component)
   expect(threlte_stub.nodes).toEqual([])
   const hovered = on_kpath_hover.mock.calls.map(([qpoint_idx]) => qpoint_idx)
-  expect(hovered).toEqual([3, null, 2, null, 0, null])
-  expect(on_kpath_hover).toHaveBeenNthCalledWith(3, 2, { x: 12, y: 34 })
+  expect(hovered).toEqual([2, 3, null, 2, null, 0, null])
+  expect(on_kpath_hover).toHaveBeenNthCalledWith(4, 2, { x: 12, y: 34 })
 })

@@ -98,7 +98,7 @@
   .bubble {
     transition: all 0.2s ease;
   }
-  .bubble:hover {
+  .bubble:is(:hover, [data-pinned]) {
     filter: brightness(1.1);
   }
 </style>

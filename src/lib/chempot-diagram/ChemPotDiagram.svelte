@@ -3,6 +3,7 @@
   import { plural } from '#lib/labels.js'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
+  import ChemPotLegend from './ChemPotLegend.svelte'
   import { entry_elements, get_ternary_combinations } from './compute'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -92,6 +93,16 @@
       Showing all {ternary_combos.length} ternary projections of the
       {display_elements.length}-element system ({display_elements.join(`-`)})
     </p>
+    <!-- One arity legend for every pane (they share its colours): one per small pane sat on its
+    axis labels. Panes default to arity colours; numeric modes keep each pane's own bar. -->
+    {#if (config.color_mode ?? `arity`) === `arity`}
+      <ChemPotLegend
+        color_mode="arity"
+        color_bar={null}
+        formulas={entries.map(({ composition }) => Object.keys(composition).join(``))}
+        style="position: static; justify-content: center; max-width: none; margin-bottom: 0.4em"
+      />
+    {/if}
     <div class="projection-grid">
       {#each ternary_combos as combo, pane_idx (combo.join(`|`))}
         <div style="min-width: 0">
@@ -126,6 +137,9 @@
        inside a desktop layout stacks), never more: each track is at least half the row */
     grid-template-columns: repeat(auto-fit, minmax(max(min(280px, 100%), 50% - 0.2em), 1fr));
     gap: 0.4em;
+  }
+  .projection-grid :global(.arity-legend) {
+    display: none;
   }
   .projection-label {
     margin: 0 0 0.3em;

@@ -302,6 +302,7 @@
     <button
       type="button"
       class={['scenario-card', { active: active_scenario === scenario.id }]}
+      aria-pressed={active_scenario === scenario.id}
       onclick={() => load_scenario(scenario)}
     >
       <strong>{scenario.title}</strong>
@@ -422,9 +423,9 @@
     gap: 0.35em;
     padding: 0.7em 0.85em;
     text-align: left;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
+    border: none; /* the tint marks the card, hover and active recolour it */
     border-radius: 6px;
-    background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.06));
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.06));
     cursor: pointer;
     transition: all 0.15s ease;
     font: inherit;
@@ -432,11 +433,10 @@
     user-select: text; /* buttons suppress text selection by default */
   }
   .scenario-card:hover {
-    border-color: var(--accent-color, #007acc);
     background: light-dark(rgba(0, 122, 204, 0.08), rgba(0, 122, 204, 0.18));
   }
   .scenario-card.active {
-    border-color: var(--success-color, #00c853);
+    box-shadow: inset 3px 0 var(--success-color, #00c853);
     background: light-dark(rgba(0, 200, 83, 0.08), rgba(0, 200, 83, 0.15));
   }
   .scenario-card strong {

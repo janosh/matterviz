@@ -52,6 +52,7 @@ import {
   create_drop_event,
   deferred_fetch_responses,
   doc_query,
+  expect_shortcuts_in_pane,
   keydown,
   mock_fullscreen,
   mouse,
@@ -1806,6 +1807,12 @@ describe(`Structure`, () => {
     expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
       `edit-atoms`,
     )
+    expect_shortcuts_in_pane(document, `.structure-info-pane`, [
+      `viewer`,
+      `structure`,
+      `camera`,
+      `structure-edit`,
+    ])
 
     await fire(doc_query(`.structure`), new PointerEvent(`pointerenter`))
     // hovered (not focused) + edit mode → window forwarder ignores the key

@@ -1,3 +1,4 @@
+import { HIGHLIGHT } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
@@ -263,7 +264,7 @@ export const hull_style_css = (colors: ConvexHullConfig[`colors`] | undefined): 
 
 const DEFAULT_HIGHLIGHT_STYLE: Required<HighlightStyle> = {
   effect: `pulse`,
-  color: `#ff4444`,
+  color: HIGHLIGHT.emphasis,
   size_multiplier: 1.8,
   opacity: 0.85,
   pulse_speed: 3,

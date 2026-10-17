@@ -8,6 +8,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
   import { property_label } from './constants'
@@ -42,6 +43,7 @@
     interpolation_factor = $bindable(defaults.interpolation_factor),
     // Camera
     camera_projection = $bindable(defaults.camera_projection),
+    shortcut_scopes,
     children,
   }: Partial<FermiSurfaceSettings> & {
     controls_open?: boolean
@@ -51,6 +53,7 @@
     fitted_value_range?: Vec2 // placeholder for the color_scale.value_range ends left unset
     custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
+    shortcut_scopes?: readonly ShortcutScope[] // listed at the bottom of the pane
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
 
@@ -167,6 +170,7 @@
   pane_style="--ctrl-label-w: 8.5em; --ctrl-value-w: 4em;"
   toggle_style=""
   toggle_props={{ title: `Fermi surface controls` }}
+  {shortcut_scopes}
 >
   <SettingsGroup title="Surface" open>
     {#if fermi_data}

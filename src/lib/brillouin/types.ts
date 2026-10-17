@@ -31,6 +31,10 @@ export type BZHoverData = {
   symmetry_multiplicity: number | null // BZ volume / IBZ volume (e.g., 48 for cubic)
 }
 
+// A hovered zone or IBZ face or k-path point and the tooltip it shows. `mark` names it, so a
+// TooltipPin tells marks apart; `face` is a face's hit triangle, whose polygon lights up.
+export type BZHover = { mark: string; data: BZHoverData; face?: number }
+
 export type BZTooltipProp = TooltipProp<
   { hover_data: BZHoverData },
   TooltipConfig<BZHoverData>

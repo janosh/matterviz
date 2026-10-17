@@ -93,7 +93,6 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
     --success-hover: var(--tdb-success-hover, #16a34a);
     --warning-color: var(--tdb-warning-color, #eab308);
     background: var(--surface-bg, rgba(255, 255, 255, 0.05));
-    border: 1px solid var(--border-color, #444);
     border-radius: var(--border-radius, 8px);
     padding: 8pt 9pt;
     font-size: 10pt;

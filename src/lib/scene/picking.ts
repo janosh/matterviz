@@ -1,15 +1,26 @@
-import type { Intersection, Plane, Raycaster, Sphere, Vector3 } from 'three/webgpu'
+import type { Intersection, Object3D, Plane, Raycaster, Sphere, Vector3 } from 'three/webgpu'
 import { InstancedMesh, Matrix4, Mesh, Ray } from 'three/webgpu'
 
-// interactivity() `filter` keeping only the front-most hit: Threlte dispatches pointer events to
-// every hit under the cursor, nearest first, so a hover handler that stores its target ends up
-// reporting the farthest one. Raycasts ignore clipping, so hits on the cut-away side of
-// `clip_plane` are skipped first, else an invisible, clipped-off surface would win the pick.
-export const front_hit = <Hit extends { point: Vector3 }>(
+// interactivity() `filter` keeping a single hit: the front-most one among those whose object has
+// the highest `userData.pick_rank` (default 0). Threlte dispatches pointer events to every hit
+// under the cursor, nearest first, so a hover handler that stores its target ends up reporting
+// the farthest one. A positive rank lets thin or nested targets win over surfaces in front of
+// them (k-paths through a zone, rods behind a cutting plane), a negative one keeps catch-all
+// planes from shadowing the objects behind them. Raycasts ignore clipping, so hits on the
+// cut-away side of `clip_plane` are skipped first, else an invisible, clipped-off surface would
+// win the pick.
+export function front_hit<Hit extends { point: Vector3; object: Object3D }>(
   hits: Hit[],
   clip_plane?: Plane | null,
-): Hit[] =>
-  hits.filter(({ point }) => (clip_plane?.distanceToPoint(point) ?? 0) >= 0).slice(0, 1)
+): Hit[] {
+  let [best, best_rank]: [Hit | null, number] = [null, -Infinity]
+  for (const hit of hits) {
+    if (clip_plane && clip_plane.distanceToPoint(hit.point) < 0) continue
+    const rank = hit.object.userData.pick_rank ?? 0
+    if (rank > best_rank) [best, best_rank] = [hit, rank]
+  }
+  return best ? [best] : []
+}
 
 // Indices of packed sphere instances `ray` may hit, all in the mesh's local space: one
 // analytic ray-sphere pass over `values`, `stride` floats per instance with its xyz at

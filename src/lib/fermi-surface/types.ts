@@ -1,4 +1,5 @@
 // Type definitions for Fermi surface visualization
+import type { BZHoverData } from '#lib/brillouin/index.js'
 import type { FileLoadData } from '#lib/io/types.js'
 import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
 import type { Matrix3x3, Point2D, Vec2, Vec3 } from '#lib/math.js'
@@ -157,6 +158,14 @@ export interface FermiHoverData {
   // Index into lattice_point_group_matrices(k_lattice) (0 = identity; up to 47 for cubic)
   symmetry_index?: number
   n_symmetry_ops?: number // size of the lattice point group used for tiling (48 cubic, 24 hexagonal, …)
+}
+
+// A hovered sheet tile (`sheet`, which lights up) or k-path point (a zone hover) and the tooltip
+// it shows. `mark` names it, so a TooltipPin tells marks apart.
+export type FermiHover = {
+  mark: string
+  data: FermiHoverData | BZHoverData
+  sheet?: { surface: FermiIsosurface; sym_idx: number }
 }
 
 export type FermiTooltipProp = TooltipProp<

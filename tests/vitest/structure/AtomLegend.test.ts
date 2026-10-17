@@ -179,7 +179,8 @@ describe(`AtomLegend Component`, () => {
   })
 
   // The same toggle-visibility buttons serve the element legend and the categorical property
-  // legend; each flips its accessible name and hides its label
+  // legend; each flips its accessible name and hides its label. The hover hint is just the
+  // action, as the swatch already names what it hides.
   // oxfmt-ignore
   test.each([
     [`element`, false, `label`, [`Hide O atoms`, `Hide Fe atoms`], [`Show O atoms`, `Hide Fe atoms`]],
@@ -195,6 +196,9 @@ describe(`AtomLegend Component`, () => {
     const toggle_buttons = document.querySelectorAll<HTMLButtonElement>(
       `button.toggle-visibility`,
     )
+    // the hover hint is the bare action; read it before the click, as the tooltip attachment
+    // strips `title` while its tooltip shows
+    expect([...toggle_buttons].map((btn) => btn.title)).toEqual([`Hide`, `Hide`])
     const names = () => [...toggle_buttons].map((btn) => btn.getAttribute(`aria-label`))
     expect(names()).toEqual(before)
     toggle_buttons[0].click()

@@ -5,6 +5,7 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
@@ -18,8 +19,10 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
-  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import { join_hover_link } from '#lib/tooltip/index.js'
+  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
   import { Canvas } from '@threlte/core'
@@ -41,6 +44,7 @@
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
+    BZHover,
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
@@ -105,6 +109,7 @@
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
+    link_hover,
     children,
     tooltip,
     on_file_load,
@@ -151,6 +156,10 @@
     highlighted_qpoint_range?: Vec2 | null
     // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
+    // Channel of an enclosing hover_links() the k-path's hover joins by q-point index, e.g. the
+    // Bands plotting the band structure k_path came from: a q-point hovered there marks its
+    // k-point and branch here, and the hovered k-path q-point there
+    link_hover?: string
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
     tooltip?: BZTooltipProp
     on_file_load?: (data: BZHandlerData) => void
@@ -161,9 +170,29 @@
 
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
-  let hover_data = $state<BZHoverData | null>(null)
+  // A click pins the hovered mark's tooltip where it was (see TooltipPin)
+  const pin = mark_pin<BZHover>()
+  let hovered_mark = $state.raw<BZHover | null>(null)
+  const hover_data = $derived(pin.shown(hovered_mark)?.data ?? null)
 
   $effect(() => on_point_hover?.(hover_data))
+
+  // A q-point hovered in a linked view marks its k-point and k-path branch
+  const qpoint_link = join_hover_link(() => link_hover, `number`)
+  const linked = $derived.by(() => {
+    const qpoint_idx = qpoint_link.linked
+    if (qpoint_idx === null || !k_path) return null
+    const in_branch = ([start, end]: Vec2) => start <= qpoint_idx && qpoint_idx <= end
+    return {
+      qpoint_idx,
+      k_point: k_path.points[qpoint_idx] ?? null,
+      range: k_path.branches.find(in_branch) ?? null,
+    }
+  })
+  const handle_kpath_hover = (qpoint_idx: number | null): void => {
+    qpoint_link.publish(qpoint_idx)
+    on_kpath_hover?.(qpoint_idx)
+  }
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -282,7 +311,11 @@
       values.map((val) => format_num(val, spec)).join(`, `)
     const zone_rows: InfoPaneRow[] = [
       { label: `Order`, value: ordinal_label(zone.order), key: `bz-order` },
-      { label: `Volume`, value: `${format_num(zone.volume, `.3f`)} Å⁻³`, key: `bz-volume` },
+      {
+        label: `Volume`,
+        value: `${format_num(zone.volume, `.3f`)} Å<sup>−3</sup>`,
+        key: `bz-volume`,
+      },
       {
         label: `Vertices / Faces`,
         value: `${zone.vertices.length} / ${zone.faces.length}`,
@@ -309,7 +342,7 @@
       })
     }
     cards.push({
-      title: `Reciprocal Lattice (Å⁻¹)`,
+      title: `Reciprocal Lattice (Å<sup>−1</sup>)`,
       rows: zone.k_lattice.map((vec, idx) => ({
         label: [`b₁`, `b₂`, `b₃`][idx],
         value: `(${fmt(vec, `.3~f`)})`,
@@ -330,18 +363,22 @@
     }),
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
+  // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
   const keys = viewer_keys(() => ({
     i: () => {
       info_pane_open = !info_pane_open
     },
     r: () => reset_scene_cameras(wrapper),
+    Escape: pin.unpin,
   }))
+  const key_walk = key_walk_root() // the zone's faces, by keyboard (see KeyWalk)
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={info_pane_open || controls_open || export_pane_open}
-  role="region"
+  role="application"
+  tabindex="0"
   aria-label="Brillouin zone viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -352,7 +389,9 @@
   class={[`brillouin-zone`, rest.class]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach key_walk.attach}
 >
+  <LiveMessage message={key_walk.message} />
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}
     <LoadingStatus overlay label="Loading structure..." {...spinner_props} />
@@ -371,7 +410,6 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--bz-bg-fullscreen"
-      shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, bz_data: zone, bz_order, fullscreen: value })}
     >
@@ -382,6 +420,7 @@
           class_prefix="bz-info"
           closed_icon={info_pane_icon}
           toggle_props={shortcut_attrs(`info_pane`)}
+          shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >
           <InfoPaneCards cards={info_cards} empty_label="Brillouin zone info" />
         </ViewerPane>
@@ -429,11 +468,11 @@
           {vector_scale}
           {camera_projection}
           {k_path}
-          {hovered_k_point}
+          hovered_k_point={hovered_k_point ?? linked?.k_point ?? null}
           {highlighted_k_points}
-          {hovered_qpoint_index}
-          {highlighted_qpoint_range}
-          {on_kpath_hover}
+          hovered_qpoint_index={hovered_qpoint_index ?? linked?.qpoint_idx ?? null}
+          highlighted_qpoint_range={highlighted_qpoint_range ?? linked?.range ?? null}
+          on_kpath_hover={handle_kpath_hover}
           {show_ibz}
           {ibz_data}
           {ibz_color}
@@ -442,7 +481,8 @@
           {height}
           bind:scene
           bind:camera
-          bind:hover_data
+          bind:hovered={hovered_mark}
+          {pin}
         />
       </Canvas>
 
@@ -452,8 +492,9 @@
           x={hover_data.screen_position.x}
           y={hover_data.screen_position.y}
           bg_color={hover_data.is_ibz ? ibz_color : surface_color}
+          pinned={pin.value !== null}
           fixed
-          style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1)"
         >
           <BrillouinZoneTooltip {hover_data} {tooltip} />
         </PlotTooltip>

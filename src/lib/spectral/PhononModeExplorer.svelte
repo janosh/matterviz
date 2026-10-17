@@ -254,7 +254,7 @@
   })
 
   const wavenumber = (thz: number): string =>
-    `${format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)} cm⁻¹`
+    format_num(thz * frequency_unit_per_thz(`cm^-1`), `.1f`)
 
   let reset_key = ``
   $effect(() => {
@@ -490,7 +490,7 @@ under its open panes -->
         <strong>Mode {selection.mode_idx + 1}</strong>
         <span
           >{format_num(selected_mode.frequency, `.5~`)} THz
-          <small>{wavenumber(selected_mode.frequency)}</small></span
+          <small>{wavenumber(selected_mode.frequency)} cm<sup>−1</sup></small></span
         >
         {#if qpoint_labels[selection.qpoint_idx]}
           <span class="qpoint-label"

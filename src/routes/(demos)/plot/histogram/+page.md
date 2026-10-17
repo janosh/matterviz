@@ -243,9 +243,7 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
   style="height: 450px; margin-block: 1em;"
 >
   {#snippet tooltip({ value, count, property })}
-    <strong style="color: {series.find((srs) => srs.label === property)?.color}"
-      >{property}</strong
-    ><br />
+    <strong>{property}</strong><br />
     Value: {value.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
@@ -688,17 +686,10 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   ][0]}; border-radius: 8px;"
 >
   {#snippet tooltip({ value, count, property })}
-    <div
-      style="background: {color_schemes[
-        color_scheme
-      ][0]}; color: white; padding: 8px; border-radius: 6px;"
-    >
-      <strong>{property}</strong><br />
-      {x_format === `currency`
-        ? `Price: $${value.toFixed(0)}`
-        : `Value: ${value.toFixed(2)}`}<br />
-      Count: {count}
-    </div>
+    <strong>{property}</strong><br />
+    {x_format === `currency` ? `Price: $${value.toFixed(0)}` : `Value: ${value.toFixed(2)}`}<br
+    />
+    Count: {count}
   {/snippet}
 </Histogram>
 ```

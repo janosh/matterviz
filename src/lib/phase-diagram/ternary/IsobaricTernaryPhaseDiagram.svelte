@@ -21,11 +21,12 @@
   import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import { clamp, type Vec2 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { viewer_keydown } from '#lib/shortcuts.js'
-  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
@@ -330,6 +331,8 @@
     else return false
     return true
   })
+  // The prism's rods by keyboard (see KeyWalk), with the keys the above leaves free
+  const key_walk = key_walk_root()
 
   // === Hover ===
 
@@ -385,14 +388,15 @@
   aria-label="{model?.elements.join(`-`) ?? ``} ternary composition-temperature phase diagram"
   {@attach keys}
   {@attach drop_zone}
+  {@attach key_walk.attach}
 >
+  <LiveMessage message={key_walk.message} />
   <ViewerChrome
     {controls_config}
     bind:fullscreen
     {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
-    shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
   >
     {#if controls_config.visible(`controls`)}
       <TernaryPhaseDiagramControls
@@ -408,6 +412,7 @@
         sources={diagram_raw?.sources ?? []}
         n_phases={diagram_raw?.phases.length ?? 0}
         n_events={events.length}
+        shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
       />
     {/if}
   </ViewerChrome>
@@ -579,7 +584,6 @@
       bg_color={hover.kind === `section` && hover.data.kind === `phase`
         ? hover.data.color
         : undefined}
-      style="box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); z-index: 1000"
     >
       {#if typeof tooltip === `function`}
         {@render tooltip(hover)}
@@ -830,11 +834,5 @@
   .muted {
     opacity: 0.7;
     font-size: 0.9em;
-  }
-  :global(.ternary-tooltip) {
-    --plot-tooltip-max-width: 320px;
-    --plot-tooltip-white-space: normal; /* wrap within that width */
-    font-size: 0.85em;
-    line-height: 1.4;
   }
 </style>

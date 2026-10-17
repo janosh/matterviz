@@ -1,4 +1,10 @@
-import { brighten_hex, css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
+import { HIGHLIGHT } from '#lib/colors/index.js'
+import {
+  brighten_hex,
+  css_to_linear_rgb,
+  highlight_edge_color,
+  parse_linear_rgb,
+} from '#lib/scene/colors.js'
 import { Color } from 'three/webgpu'
 import { expect, test } from 'vitest'
 
@@ -34,6 +40,17 @@ test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   brighten_hex(`#ff0000`)
   expect(brighten_hex(`not-a-color`)).toBe(`#${new Color(0.775, 0.775, 0.775).getHexString()}`)
 })
+
+// Bit-identical to the chempot domain outline it replaced: three's Color scaled by 0.6 in
+// Linear-sRGB, the darker the fill the darker the edge
+test.each([HIGHLIGHT.emphasis, `#f0f`, `rgb(12, 200, 99)`, `teal`])(
+  `highlight_edge_color(%s) darkens like three's Color.multiplyScalar(0.6)`,
+  (color) => {
+    expect(highlight_edge_color(color)).toBe(
+      `#${new Color(color).multiplyScalar(0.6).getHexString()}`,
+    )
+  },
+)
 
 test(`css_to_linear_rgb memoizes without changing results, and stays bounded`, () => {
   // same array identity proves the second call came from the cache rather than a reparse

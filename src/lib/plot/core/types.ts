@@ -1,6 +1,7 @@
 import type { ExportProps } from '#lib/io/export.js'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
+import type { ShortcutScope } from '#lib/shortcuts.js'
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { D3SymbolName } from '#lib/labels.js'
 import type { Point2D, Vec2 } from '#lib/math.js'
@@ -712,6 +713,7 @@ export interface PlotControlsProps
   controls_name?: string
   toggle_props?: PaneToggleProps
   pane_props?: PaneProps
+  shortcut_scopes?: readonly ShortcutScope[] // the host viewer's, listed at the pane's bottom
 }
 
 // Base props shared across plot components (non-bindable props only)

@@ -302,9 +302,6 @@
 <style>
   .route-comparison {
     min-width: 0;
-    border: 1px solid var(--border-color, #ddd);
-    border-radius: 0.5em;
-    padding: 1em;
   }
   header {
     display: flex;

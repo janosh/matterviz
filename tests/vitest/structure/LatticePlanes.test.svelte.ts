@@ -7,17 +7,14 @@ import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
 import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
 import { SYM_ELEM_COLORS, tile_symmetry_elements } from '#lib/symmetry/symmetry-elements.js'
 import type { LatticePlane } from '#lib/structure/lattice-planes.js'
-import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
-vi.mock(`@threlte/core`, async (original) => ({
-  ...(await original<typeof threlte_core>()),
-  T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-  useThrelte: () => ({ invalidate: vi.fn() }),
-}))
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
 vi.mock(`@threlte/extras`, async () => ({
   HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
 }))

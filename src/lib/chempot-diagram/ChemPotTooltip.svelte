@@ -1,7 +1,7 @@
 <script lang="ts">
   // Hover tooltip shared by ChemPotDiagram2D and ChemPotDiagram3D.
-  // Placed with PlotTooltip inside the diagram container; `hover_info.pointer` is already
-  // container-relative (see container_pointer in controls-state.svelte.ts).
+  // Placed with PlotTooltip inside the diagram container at `pointer`, container-relative (see
+  // container_pointer in controls-state.svelte.ts): hover_info's, held still while pinned.
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { format_num } from '#lib/labels.js'
   import { PlotTooltip } from '#lib/plot/index.js'
@@ -10,12 +10,14 @@
 
   let {
     hover_info,
+    pointer,
     pinned,
     tooltip,
     constrain_to,
     bg_color,
   }: {
     hover_info: ChemPotHoverInfo
+    pointer: ChemPotHoverInfo[`pointer`]
     pinned: boolean
     tooltip?: ChemPotTooltipProp // a snippet replaces the content below
     // container size the tooltip is flipped/clamped inside
@@ -64,11 +66,12 @@
 </script>
 
 <PlotTooltip
-  x={hover_info.pointer?.x ?? 4}
-  y={hover_info.pointer?.y ?? 4}
+  x={pointer?.x ?? 4}
+  y={pointer?.y ?? 4}
   {constrain_to}
   fallback_size={{ width: 200, height: 100 }}
   {bg_color}
+  {pinned}
   class="chempot-tooltip"
 >
   {#if typeof tooltip === `function`}
@@ -79,7 +82,6 @@
         {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
       {/each}
     </h4>
-    {#if pinned}<small>Pinned · Esc to unlock</small>{/if}
     {#if summary}<p>{summary}</p>{/if}
     {#if detail_level === `detailed`}
       <!-- running text, not a two-column grid: lines fill the width and wrap early -->
@@ -109,28 +111,6 @@
   :global(.chempot-tooltip) {
     /* narrow, so the wrapping lines below fill the box instead of leaving gutters */
     --plot-tooltip-max-width: 14rem;
-    background: var(--tooltip-bg, light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9)));
-    color: var(--tooltip-text, var(--text-color, #222));
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --plot-tooltip-padding: 3px 6px;
-    --plot-tooltip-border-radius: 5px;
-    --plot-tooltip-font-size: 11px;
-    line-height: 1.25;
-  }
-  h4 {
-    margin: 0;
-    font-size: 12px;
-  }
-  small {
-    display: block;
-    opacity: 0.75;
-  }
-  p {
-    margin: 1px 0 0;
-  }
-  .key {
-    opacity: 0.7;
   }
   /* each range stays whole and lines break between ranges, packed with the key */
   .ranges {

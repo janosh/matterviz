@@ -81,7 +81,10 @@ test(`renders a typed phonon dataset`, async () => {
   await vi.waitFor(() => {
     const summary = target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
     expect(summary).toContain(`Mode 4`)
-    expect(summary).toContain(`cm⁻¹`)
+    expect(summary).toContain(`cm−1`)
+    expect(target.querySelector(`[data-testid="phonon-mode-summary"] sup`)?.textContent).toBe(
+      `−1`,
+    )
     expect(summary).toMatch(/Na = \d+% · Cl = \d+%|Cl = \d+% · Na = \d+%/)
     expect(summary).toContain(`NaCl-band.yaml`)
     // NaCl has no polarizability data, so there is no IR/Raman choice to offer

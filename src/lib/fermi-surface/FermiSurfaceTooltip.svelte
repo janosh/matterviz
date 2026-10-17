@@ -26,7 +26,7 @@
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
-  <div class="tooltip-content" style="max-width: var(--tooltip-max-width, 250px)">
+  <div class="tooltip-content">
     <div class="tooltip-title">
       <strong>Band {hover_data.band_index + 1}</strong>
       {#if hover_data.spin}

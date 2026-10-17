@@ -7,8 +7,6 @@
   import { createAttachmentKey } from 'svelte/attachments'
   import { tooltip } from 'svelte-widgets/attachments'
   import FullscreenButton from './FullscreenButton.svelte'
-  import ShortcutsHelp from './ShortcutsHelp.svelte'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -18,7 +16,6 @@
     fullscreen_toggle = true,
     fullscreen_bg_css_var = `--fullscreen-bg`,
     on_fullscreen_change,
-    shortcut_scopes,
     wrapper,
     children,
     ...rest
@@ -29,8 +26,6 @@
     fullscreen_toggle?: boolean
     fullscreen_bg_css_var?: string
     on_fullscreen_change?: (fullscreen: boolean) => void
-    // The viewer's keyboard shortcut scopes, listed by a shortcuts button and the `?` key
-    shortcut_scopes?: readonly ShortcutScope[]
     wrapper?: HTMLDivElement
     children?: Snippet // viewer-specific panes and controls, before the fullscreen toggle
   } = $props()
@@ -51,7 +46,6 @@
 
   {#if controls_config.mode !== `never`}
     {@render children?.()}
-    {#if shortcut_scopes}<ShortcutsHelp scopes={shortcut_scopes} {wrapper} />{/if}
   {/if}
 
   {#if fullscreen || show_toggle}
@@ -72,7 +66,8 @@
     display: flex;
     top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--viewer-buttons-right, var(--ctrl-btn-right, 1ex));
-    gap: var(--viewer-buttons-gap, clamp(6pt, 1cqmin, 9pt));
+    /* the buttons' own 4px padding spaces the icons ~9px apart */
+    gap: var(--viewer-buttons-gap, 1px);
     z-index: var(--viewer-buttons-z-index, var(--z-index-overlay-controls, 100000000));
     /* own compositing layer, or WKWebView paints the canvas over this (see app.css) */
     will-change: transform;

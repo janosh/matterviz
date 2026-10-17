@@ -32,6 +32,8 @@
   } from '#lib/plot/sankey/sankey-types.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { to_error } from '#lib/utils.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -190,10 +192,26 @@
     return node_colors[link.source.node_idx]
   }
 
-  // Node/link indices kept fully opaque for the current hover target (null = no hover)
+  // The tooltip: the hovered node or link where it was hovered, unless a click pinned one (see
+  // TooltipPin) when on_node_click/on_link_click leaves the click free
+  const pin = new TooltipPin<SankeyHandlerProps<Metadata>>({
+    key: (info) => (info.type === `node` ? `node ${info.node_idx}` : `link ${info.link_idx}`),
+    enabled: (info) =>
+      tooltip !== false && !(info.type === `node` ? on_node_click : on_link_click),
+  })
+  const tip_info = $derived(pin.shown(hover_info))
+  const tip_anchor = pin.anchored(() => ({ ...hover_pos, at_pointer: hover_at_pointer }))
+  // a pinned payload describes the previous layout
+  $effect.pre(() => {
+    void layout
+    untrack(pin.unpin)
+  })
+
+  // Node/link indices kept fully opaque for the hover target, or the pinned tooltip's while
+  // one is pinned (null = neither)
   let active = $derived.by(() => {
     const hovered_node =
-      legend_hover_idx ?? (hover_info?.type === `node` ? hover_info.node_idx : null)
+      legend_hover_idx ?? (tip_info?.type === `node` ? tip_info.node_idx : null)
     if (hovered_node != null) {
       const node = node_by_idx.get(hovered_node)
       if (!node) return null
@@ -206,10 +224,10 @@
       }
       return { links, nodes }
     }
-    if (hover_info?.type === `link`) {
+    if (tip_info?.type === `link`) {
       return {
-        links: new Set([hover_info.link_idx]),
-        nodes: new Set([hover_info.source_idx, hover_info.target_idx]),
+        links: new Set([tip_info.link_idx]),
+        nodes: new Set([tip_info.source_idx, tip_info.target_idx]),
       }
     }
     return null
@@ -354,9 +372,10 @@
 
   function handle_click(event: MouseEvent | KeyboardEvent) {
     const node = node_from_event(event)
-    if (node) return on_node_click?.({ ...node_props(node), event })
-    const link = link_from_event(event)
-    if (link) on_link_click?.({ ...link_props(link), event })
+    const link = node ? null : link_from_event(event)
+    if (node) on_node_click?.({ ...node_props(node), event })
+    else if (link) on_link_click?.({ ...link_props(link), event })
+    pin.toggle(node || link ? hover_info : null)
   }
 
   function handle_keydown(event: KeyboardEvent) {
@@ -430,6 +449,7 @@
   {export_sources}
   {children}
   {...rest}
+  {@attach viewer_keys(() => ({ Escape: pin.unpin }))}
 >
   {#snippet controls(toggle_props, show_controls)}
     <SankeyControls
@@ -452,11 +472,14 @@
 
   {#snippet body()}
     <ViewerError message={layout.error} />
+    <!-- Clicks land here so empty space unpins; keys go through the focusable nodes and links -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <svg
       bind:this={svg_element}
       role="application"
       aria-label={rest[`aria-label`] ?? `Sankey diagram`}
       onmouseleave={clear_hover}
+      onclick={handle_click}
     >
       {#if link_color_mode === `gradient`}
         <defs>
@@ -486,7 +509,6 @@
         onmouseleave={clear_hover}
         onfocusin={handle_hover}
         onfocusout={clear_hover}
-        onclick={handle_click}
         onkeydown={handle_keydown}
       >
         <g class="links" fill="none">
@@ -553,31 +575,32 @@
       </g>
     </svg>
 
-    {#if hover_info && tooltip !== false}
+    {#if tip_info && tooltip !== false}
+      {@const { at_pointer, ...pos } = tip_anchor.current}
       <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color, or for
     a url(...) gradient ribbon the source node color it fades from. -->
       <PlotTooltip
-        x={hover_pos.x}
-        y={hover_pos.y}
+        {...pos}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={hover_at_pointer}
+        avoid_cursor={at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 44 }}
-        bg_color={hover_info.type === `link` && hover_info.color.startsWith(`url(`)
-          ? node_colors[hover_info.source_idx]
-          : hover_info.color}
+        bg_color={tip_info.type === `link` && tip_info.color.startsWith(`url(`)
+          ? node_colors[tip_info.source_idx]
+          : tip_info.color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
-          {@render tooltip(hover_info)}
-        {:else if hover_info.type === `node`}
-          <strong>{node_name(hover_info)}</strong>: <TooltipValue
-            value={format_value(hover_info.value, value_format)}
+          {@render tooltip(tip_info)}
+        {:else if tip_info.type === `node`}
+          <strong>{node_name(tip_info)}</strong>: <TooltipValue
+            value={format_value(tip_info.value, value_format)}
           />
         {:else}
-          {@const { source_idx, target_idx, source_label, target_label } = hover_info}
+          {@const { source_idx, target_idx, source_label, target_label } = tip_info}
           {source_label ?? node_by_idx.get(source_idx)?.id} &rarr; {target_label ??
             node_by_idx.get(target_idx)?.id}: <TooltipValue
-            value={format_value(hover_info.value, value_format)}
+            value={format_value(tip_info.value, value_format)}
           />
         {/if}
       </PlotTooltip>

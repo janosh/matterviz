@@ -3,6 +3,7 @@
   // vacuum, termination and cell options. The built slab is exposed through `bind:slab`
   // so the caller decides how to render it (typically a second <Structure>).
   import { format_num } from '#lib/labels.js'
+  import { KeyValueList } from '#lib/layout/index.js'
   import type { Vec3 } from '#lib/math.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { Crystal } from '#lib/structure/index.js'
@@ -25,6 +26,7 @@
     slab = $bindable(null),
     error = $bindable(null),
     show_info = true,
+    show_cell_options = true,
     children,
     ...rest
   }: {
@@ -41,6 +43,9 @@
     error?: string | null
     // Render the summary table (d_hkl, layers, thickness, ...) below the controls
     show_info?: boolean
+    // Vacuum, centering and z-alignment shape only the slab's own cell. A heterostructure
+    // (InterfaceBuilder) restacks the atoms by height and ignores them, so it hides these.
+    show_cell_options?: boolean
     // Extra controls rendered at the start of the controls row, e.g. a bulk-structure picker
     children?: Snippet
   } & HTMLAttributes<HTMLDivElement> = $props()
@@ -117,17 +122,20 @@
       Slab <input type="range" min="2" max="30" step="0.5" bind:value={min_slab_thickness} />
       <span class="value">{format_num(min_slab_thickness, `.3~f`)} Å</span>
     </label>
-    <label>
-      Vacuum <input
-        type="range"
-        min="0"
-        max="30"
-        step="0.5"
-        bind:value={min_vacuum_thickness}
-      />
-      <span class="value">{format_num(min_vacuum_thickness, `.3~f`)} Å</span>
-    </label>
-    {#if info}
+    {#if show_cell_options}
+      <label>
+        Vacuum <input
+          type="range"
+          min="0"
+          max="30"
+          step="0.5"
+          bind:value={min_vacuum_thickness}
+        />
+        <span class="value">{format_num(min_vacuum_thickness, `.3~f`)} Å</span>
+      </label>
+    {/if}
+    <!-- only a choice when the cut can end on more than one layer -->
+    {#if info && info.terminations.length > 1}
       <label>
         Termination
         <select bind:value={termination_idx}>
@@ -141,21 +149,19 @@
       </label>
     {/if}
     <label><input type="checkbox" bind:checked={primitive_in_plane} /> primitive mesh</label>
-    <label><input type="checkbox" bind:checked={center_slab} /> center slab</label>
-    <label><input type="checkbox" bind:checked={reorient_lattice} /> normal along z</label>
+    {#if show_cell_options}
+      <label><input type="checkbox" bind:checked={center_slab} /> center slab</label>
+      <label><input type="checkbox" bind:checked={reorient_lattice} /> normal along z</label>
+    {/if}
   </div>
   {#if result.error}
     <p class="error">{result.error}</p>
   {/if}
   {#if show_info && rows.length > 0}
-    <dl>
-      {#each rows as [term, value] (term)}
-        <div>
-          <dt>{term}</dt>
-          <dd title={value}>{value}</dd>
-        </div>
-      {/each}
-    </dl>
+    <KeyValueList
+      {rows}
+      style="grid-template-columns: repeat(auto-fill, minmax(min(100%, 26em), 1fr)); margin-block: 1em"
+    />
   {/if}
 </div>
 
@@ -181,33 +187,5 @@
     color: var(--error-color, tomato);
     font-family: monospace;
     white-space: pre-wrap;
-  }
-  /* Every row stays on one line: labels never wrap and long values (e.g. a dozen layer
-     spacings) are clipped with an ellipsis, the full text living in the dd title. */
-  dl {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 26em), 1fr));
-    gap: 4pt 2em;
-    margin: 1em 0;
-    div {
-      display: flex;
-      justify-content: space-between;
-      gap: 1em;
-      min-width: 0;
-      border-bottom: 1px solid var(--border-color, #3339);
-      padding: 2pt 0;
-    }
-    dt {
-      opacity: 0.7;
-      white-space: nowrap;
-    }
-    dd {
-      margin: 0;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
   }
 </style>

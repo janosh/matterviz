@@ -2,6 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { HOVER_SHELL_SCALE } from '#lib/scene/geometry.svelte.js'
 import { DEFAULTS } from '#lib/settings.js'
 import type {
   AnyStructure,
@@ -325,26 +326,61 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
 
 // Threlte hands the pointer event to every atom on the ray, nearest first: the atom behind
 // used to take over the hover and tooltip. A partial-occupancy site 0 resolves through the
-// wedge group's instanceId and must also win over, or yield to, an ordered atom.
+// wedge group's instanceId and must also win over, or yield to, an ordered atom. Touch has no
+// hover, so a tap (press, then click) on the atom shows its tooltip instead.
 test.each([
-  [10, 0, 1],
-  [-10, 1, 1], // same ray from behind
-  [10, 0, 0.5],
-  [-10, 1, 0.5],
-])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
-  const interactivity = spy_interactivity()
-  const hover = $state<SceneProps>({ hovered_idx: null })
-  const sites = [0, -3].map((z_coord, idx) =>
-    make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+  [10, 0, 1, [`pointermove`]],
+  [-10, 1, 1, [`pointermove`]], // same ray from behind
+  [10, 0, 0.5, [`pointermove`]],
+  [-10, 1, 0.5, [`pointermove`]],
+  [10, 0, 1, [`pointerdown`, `click`]],
+  [-10, 1, 0.5, [`pointerdown`, `click`]],
+])(
+  `hover picks the front atom from z=%i (site %i, occu %s, %j)`,
+  (origin_z, front_idx, occu, types) => {
+    const interactivity = spy_interactivity()
+    const hover = $state<SceneProps>({ hovered_idx: null })
+    const sites = [0, -3].map((z_coord, idx) =>
+      make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+    )
+    mount_structure({ structure: { sites }, show_bonds: `never` }, hover)
+    // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
+    const scene_interactivity = interactivity()
+    scene_interactivity.compute = (_event, state) =>
+      state.raycaster.set(
+        new Vector3(0, 0, origin_z),
+        new Vector3(0, 0, -origin_z).normalize(),
+      )
+    const pointerType = types.length > 1 ? `touch` : `mouse`
+    for (const type of types)
+      scene_interactivity.target.current?.dispatchEvent(
+        new PointerEvent(type, { pointerType }),
+      )
+    flushSync()
+    expect(hover.hovered_idx).toBe(front_idx)
+    expect(document.querySelectorAll(`[role="tooltip"]`)).toHaveLength(1)
+  },
+)
+
+// From the focused viewer root, arrows walk the atoms in site order (KeyWalk), starting from a
+// hovered atom, with the hover tooltip a pointer would show, and Enter selects like a click
+test(`keyboard walks the atoms in site order and Enter selects`, () => {
+  const state = $state<SceneProps>({ hovered_idx: null, selected_sites: [] })
+  const sites = ([`C`, `N`] as const).map((element, idx) =>
+    make_site(element, [0, 0, 0], [2 * idx, 0, 0], element),
   )
-  mount_structure({ structure: { sites }, show_bonds: `never` }, hover)
-  // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
-  const scene_interactivity = interactivity()
-  scene_interactivity.compute = (_event, state) =>
-    state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
-  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
-  flushSync()
-  expect(hover.hovered_idx).toBe(front_idx)
+  const { keys } = mount_structure({ structure: { sites }, show_bonds: `never` }, state)
+  expect([`ArrowRight`, `ArrowRight`].map((key) => keys.press(key))).toEqual([true, true])
+  expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
+  expect(document.querySelectorAll(`[role="tooltip"]`)).toHaveLength(1)
+  keys.press(`Enter`)
+  expect(state.selected_sites).toEqual([1])
+  keys.press(`Escape`)
+  expect(state.hovered_idx).toBeNull()
+  expect(document.querySelector(`[role="tooltip"]`)).toBeNull()
+  state.hovered_idx = 0 // the pointer's hover is where the walk picks up
+  keys.press(`ArrowRight`)
+  expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
 })
 
 // Lattice arrows start at (-1, -1, -1) of this 4 Å cube and span half their vector. Their
@@ -443,7 +479,37 @@ test.each<[string, SceneProps, string?, string?, Vec3?]>([
   scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
   flushSync()
   const { style } = doc_query(`[role="tooltip"]`)
-  expect([style.background, style.color]).toEqual([bg, text_color])
+  expect([style.backgroundColor, style.color]).toEqual([bg, text_color])
+})
+
+// The hover shell hugs the atom: HOVER_SHELL_SCALE (a hair outside), not a bulkier sphere
+test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, () => {
+  const interactivity = spy_interactivity()
+  const { scene } = mount_structure({ show_bonds: `never`, structure: lone_c })
+  scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(0, 0, 10), new Vector3(0, 0, -1))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  const atoms = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find((mesh) => mesh instanceof AtomInstances)
+  if (!(atoms instanceof AtomInstances)) throw new Error(`no atom instances`)
+  const atom_matrix = new Matrix4()
+  atoms.getMatrixAt(0, atom_matrix)
+  const atom_scale = new Vector3().setFromMatrixScale(atom_matrix).x
+  // the shell: a plain mesh on the shared 0.5-radius sphere, centred on the atom
+  const shell = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find(
+      (mesh) =>
+        !(mesh instanceof AtomInstances) &&
+        mesh.position.length() < 1e-9 &&
+        mesh.scale.x > atom_scale,
+    )
+  // instance matrices are Float32 (eps 1.2e-7): the atom scale reads back to ~2e-8 relative
+  expect(shell?.scale.x).toBeCloseTo(HOVER_SHELL_SCALE * atom_scale, 6)
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path
@@ -463,7 +529,8 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
     added_bonds: [],
   })
   const sites = [0, 3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
-  mount_structure({ structure: { sites }, show_bonds: `never` }, state)
+  // thin bonds, so an atom's cap rises above a delete-mode bond's (5x) hit cylinder
+  mount_structure({ structure: { sites }, show_bonds: `never`, bond_thickness: 0.02 }, state)
   const scene_interactivity = interactivity()
   // Cast a ray straight down onto x and press there, as a click does
   const click = (x_coord: number, init: MouseEventInit = {}, type = `click`) => {
@@ -506,6 +573,15 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   state.bond_edit_mode = `delete`
   flushSync()
   click(1.5)
+  expect(state.added_bonds).toEqual([])
+  // in delete mode a bond outranks the atom in front of it, which ignores the click
+  state.bond_edit_mode = `add`
+  flushSync()
+  click(0)
+  click(3)
+  state.bond_edit_mode = `delete`
+  flushSync()
+  click(0.2) // straight down through atom 0's cap before the bond's hit cylinder
   expect(state.added_bonds).toEqual([])
 })
 

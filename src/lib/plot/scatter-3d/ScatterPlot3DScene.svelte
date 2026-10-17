@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
@@ -23,11 +24,15 @@
   import type { SceneControlProps } from '#lib/scene/index.js'
   import {
     bind_renderer,
+    brighten_hex,
+    CanvasTooltip,
     create_scene_camera,
     dispose_on_change,
-    front_hit,
     line_geometry,
+    scene_interactivity,
     SceneCamera,
+    scene_key_walk,
+    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
   import { T, useTask, useThrelte } from '@threlte/core'
@@ -37,13 +42,13 @@
   import * as THREE from 'three/webgpu'
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-  import { plot_color, tooltip_paint } from '#lib/colors/index.js'
+  import { plot_color } from '#lib/colors/index.js'
   import { extract_series_color } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
     box_clipping_planes,
-    hover_marker_geometry,
+    hover_halo_radius,
     normalize_to_scene,
     SCENE_SIZE,
   } from '#lib/plot/scatter-3d/scene-coords.js'
@@ -58,8 +63,6 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-  import { is_activation_key, step_point_cursor } from '#lib/plot/core/interactions.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     collect_size_range,
     create_size_scale,
@@ -94,7 +97,7 @@
     pan_speed = 2,
     ambient_light = 0.6,
     directional_light = 0.8,
-    sphere_segments = 16,
+    sphere_segments,
     point_tween = {},
     gizmo = true,
     hovered_point = $bindable(null),
@@ -124,7 +127,7 @@
     color_scale_fn?: (value: number) => string
     size_scale?: SizeScaleConfig
     camera_position?: Vec3
-    sphere_segments?: number
+    sphere_segments?: number // marker sphere detail; unset: smooth, coarser past 5000 points
     // Marker position, size and colour glide to new data or encodings; `{ duration: 0 }` snaps
     point_tween?: InstanceTween
     hovered_point?: InternalPoint3D<Metadata> | null
@@ -144,10 +147,8 @@
     camera = threlte_camera
   })
 
-  const { enabled: hover_enabled } = extras.interactivity({
-    // Overlapping points must pick the front surface, not the last (farthest) hit.
-    filter: (hits) => front_hit(hits),
-  })
+  // Overlapping points must pick the front surface, not the last (farthest) hit.
+  const { set_hover_enabled } = scene_interactivity()
 
   type AxisKey = `x` | `y` | `z`
 
@@ -180,7 +181,7 @@
     // No point hover while orbiting: a drag would raycast every instance on each pointermove,
     // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving && hovered_point) {
         hovered_point = null
         on_point_hover?.(null)
@@ -292,11 +293,22 @@
   })
   const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
 
-  // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
-  // tracking the same logical point's current values and position, or drop it (tell the host)
+  // A click pins a point's tooltip (see TooltipPin) unless on_point_click takes the click
+  const pin = new TooltipPin<InternalPoint3D<Metadata>>({
+    key: point_key,
+    enabled: () => tooltip !== false && !on_point_click,
+  })
+  const shown_point = $derived(pin.shown(hovered_point))
+
+  // New data (or a hidden series) leaves no pointer event behind: keep the hovered and pinned
+  // points tracking the same logical point's current values and position, or drop them (tell
+  // the host)
   $effect.pre(() => {
     const lookup = idx_by_key
     untrack(() => {
+      const pinned = pin.value && point_instances[lookup.get(point_key(pin.value)) ?? -1]
+      if (pinned) pin.value = pinned.point
+      else pin.unpin()
       if (!hovered_point) return
       const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
       if (next === hovered_point) return
@@ -324,21 +336,25 @@
   // Like the task above, runs every frame without forcing renders: only a moving tween
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
-  const hover_idx = $derived(hovered_point && idx_by_key.get(point_key(hovered_point)))
-  // The hovered marker as drawn, so the halo and tooltip ride along with a moving point
+  const shown_idx = $derived(shown_point && idx_by_key.get(point_key(shown_point)))
+  // The shown marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
-    if (hover_idx == null) return null
-    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(hover_idx * INSTANCE_STRIDE)
+    if (shown_idx == null) return null
+    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(shown_idx * INSTANCE_STRIDE)
     return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
   // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
-  // the paint (a $derived only notifies when its value changes)
-  const hover_color = $derived(point_instances[hover_idx ?? -1]?.color)
-  const hover_paint = $derived(tooltip_paint(hover_color))
+  // the tooltip paint (a $derived only notifies when its value changes)
+  const hover_color = $derived(point_instances[shown_idx ?? -1]?.color)
+  const halo_color = $derived(brighten_hex(hover_color)) // the marker's hue, like every hover
 
   // One sphere mesh for every point: instance transforms carry each radius
+  // 32 segments keep marker silhouettes round; past 5000 points 16 keep the triangle count down
+  const marker_segments = $derived(
+    sphere_segments ?? (point_instances.length > 5000 ? 16 : 32),
+  )
   const point_geometry = $derived(
-    new THREE.SphereGeometry(1, sphere_segments, sphere_segments),
+    new THREE.SphereGeometry(1, marker_segments, marker_segments),
   )
   const projection_geometry = new THREE.SphereGeometry(1, 8, 8)
   const point_material = new THREE.MeshStandardMaterial()
@@ -353,55 +369,51 @@
     projection_material.dispose()
   })
 
+  const hover_point = (point: InternalPoint3D<Metadata>) => {
+    hovered_point = point
+    on_point_hover?.(make_event_data(point))
+  }
+  const leave_point = () => {
+    hovered_point = null
+    on_point_hover?.(null)
+  }
+  const click_point = (point: InternalPoint3D<Metadata>, event?: MouseEvent) => {
+    on_point_click?.(make_event_data(point, event))
+    pin.toggle(point)
+  }
   const instance_point = (event: InstanceEvent) =>
     point_instances[event.instanceId ?? -1]?.point ?? null
   // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
   const point_events = {
     onpointerenter: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
-      hovered_point = point
-      on_point_hover?.(make_event_data(point))
+      if (point) hover_point(point)
     },
-    onpointerleave: () => {
-      hovered_point = null
-      on_point_hover?.(null)
-    },
+    onpointerleave: leave_point,
     onclick: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
       const native = event.nativeEvent
-      on_point_click?.(
-        make_event_data(point, native instanceof MouseEvent ? native : undefined),
-      )
+      if (point) click_point(point, native instanceof MouseEvent ? native : undefined)
     },
+    onpointermissed: pin.unpin,
   }
 
-  // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
-  // walk point_instances in (series, point) order, Home/End jump, Enter/Space click, Escape
-  // clears. Returns the cursor point, null once cleared, undefined for keys it leaves alone.
-  export function handle_key(
-    event: KeyboardEvent,
-  ): InternalPoint3D<Metadata> | null | undefined {
-    if (event.defaultPrevented || event.isComposing || is_modifier_chord(event))
-      return undefined
-    if (event.key === `Escape`) {
-      if (!hovered_point) return undefined
-      hovered_point = null
-      on_point_hover?.(null)
-      return null
-    }
-    if (hovered_point && is_activation_key(event)) {
-      on_point_click?.(make_event_data(hovered_point))
-      return hovered_point
-    }
-    const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
-    if (next === null) return undefined
-    const { point } = point_instances[next]
-    hovered_point = point
-    on_point_hover?.(make_event_data(point))
-    return point
-  }
+  // The plot root's one tab stop walks the in-range markers in (series, point) order, like the
+  // 2D ScatterPlot's cursor (see KeyWalk)
+  scene_key_walk({
+    targets: () => point_instances,
+    hover: ({ point }) => hover_point(point),
+    leave: leave_point,
+    click: ({ point }) => click_point(point),
+    unpin: pin.unpin,
+    hovered: ({ key }) => key === (hovered_point && point_key(hovered_point)),
+    label: ({ point: { x, y, z, series_idx, point_idx } }) => {
+      const axes = [x_axis, y_axis, z_axis]
+      const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
+      const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
+      return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+    },
+  })
 
   $effect(() => {
     projection_material.opacity = display.projection_opacity ?? 0.3
@@ -520,16 +532,23 @@
     }
   })
 
-  // Same tick options (and integer-format dedupe) as the 2D axes, defaulting to 5 nice ticks
-  const gen_ticks = (range: Vec2, { ticks, format }: Omit<AxisConfig3D, `range`>): number[] =>
+  // Same tick options (and integer-format dedupe) as the 2D axes. By default ~5 nice ticks on
+  // the longest box edge and proportionally fewer on shorter ones (user z is half as long), so
+  // labels sit equally dense on every edge.
+  const longest_edge = Math.max(scene_x, scene_y, scene_z)
+  const gen_ticks = (
+    range: Vec2,
+    { ticks, format }: Omit<AxisConfig3D, `range`>,
+    edge: number,
+  ): number[] =>
     generate_ticks(range, `linear`, ticks, scaleLinear().domain(range), {
-      default_count: 5,
+      default_count: Math.max(2, Math.round((5 * edge) / longest_edge)),
       format,
     })
 
-  let x_ticks = $derived(gen_ticks(x_range, x_axis))
-  let y_ticks = $derived(gen_ticks(y_range, y_axis))
-  let z_ticks = $derived(gen_ticks(z_range, z_axis))
+  let x_ticks = $derived(gen_ticks(x_range, x_axis, scene_x))
+  let y_ticks = $derived(gen_ticks(y_range, y_axis, scene_y))
+  let z_ticks = $derived(gen_ticks(z_range, z_axis, scene_z))
 
   // Build event data for point interactions (the point is in data coordinates)
   function make_event_data(
@@ -726,29 +745,19 @@
           </T.Line>
         {/each}
       {/if}
-      <extras.HTML
-        position={tick_label_pos(tick_val)}
-        center
-        zIndexRange={[1, 0]}
-        style="pointer-events: none"
-      >
+      <SceneLabel position={tick_label_pos(tick_val)} center zIndexRange={[1, 0]}>
         <span class="tick-label"
           >{get_tick_label(tick_val, axis.ticks) ??
             format_num(tick_val, tick_label_format(ticks, axis.format) || `.2~g`)}</span
         >
-      </extras.HTML>
+      </SceneLabel>
     {/each}
     {#if display.show_axis_labels !== false}
-      <extras.HTML
-        position={axis_label_pos}
-        center
-        zIndexRange={[1, 0]}
-        style="pointer-events: none"
-      >
+      <SceneLabel position={axis_label_pos} center zIndexRange={[1, 0]}>
         <span class="axis-label" style:color
           >{@html sanitize_html(axis.label || key.toUpperCase())}</span
         >
-      </extras.HTML>
+      </SceneLabel>
     {/if}
   {/each}
 {/if}
@@ -807,17 +816,22 @@
   />
 {/each}
 
-{#if hovered_point}
-  {@const hover_point = hovered_point}
+{#if shown_point}
+  {@const hover_point = shown_point}
   {#if hover_drawn}
-    {@const hover_geometry = hover_marker_geometry(hover_drawn.radius)}
-    <T.Mesh position={hover_drawn.position} scale={hover_geometry.radius}>
-      <T.SphereGeometry args={[1, 16, 16]} />
+    {@const halo_radius = hover_halo_radius(hover_drawn.radius)}
+    <!-- the markers' own sphere, so the halo's outline stays concentric with the marker's -->
+    <T.Mesh
+      position={hover_drawn.position}
+      scale={halo_radius}
+      geometry={point_geometry}
+      dispose={false}
+    >
       <T.MeshStandardMaterial
-        color="white"
+        color={halo_color}
         transparent
         opacity={0.4}
-        emissive="white"
+        emissive={halo_color}
         emissiveIntensity={0.3}
         depthTest={false}
         depthWrite={false}
@@ -826,37 +840,30 @@
 
     {@const data = make_event_data(hover_point)}
     {#if tooltip !== false}
-      <extras.HTML
+      <CanvasTooltip
         position={hover_drawn.position}
-        calculatePosition={hover_geometry.tooltip_position}
-        style="translate: -50% -100%; pointer-events: none"
+        anchor_radius={halo_radius}
         portal={tooltip_portal}
-        zIndexRange={[1000, 1000]}
+        bg_color={hover_color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip(data)}
         {:else}
-          <div
-            class="tooltip"
-            style:background={hover_paint?.background}
-            style:color={hover_paint?.color}
-          >
-            {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
-              <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
-            {/each}
-            {#if data.color_value != null}
-              <div>value: {format_num(data.color_value, `.3~g`)}</div>
-            {/if}
-          </div>
+          {#each [[`x`, x_axis, data.x_formatted], [`y`, y_axis, data.y_formatted], [`z`, z_axis, data.z_formatted]] as const as [name, axis, value] (name)}
+            <div><TooltipValue label={axis.label || name} {value} unit={axis.unit} /></div>
+          {/each}
+          {#if data.color_value != null}
+            <div>value: {format_num(data.color_value, `.3~g`)}</div>
+          {/if}
         {/if}
-      </extras.HTML>
+      </CanvasTooltip>
     {/if}
   {/if}
 {/if}
 
 <style>
   :is(.axis-label, .tick-label) {
-    pointer-events: none;
     user-select: none;
     white-space: nowrap;
   }
@@ -867,25 +874,5 @@
   .tick-label {
     font-size: 10px;
     color: var(--text-color, #333);
-  }
-  .tooltip {
-    /* the neutral chip for markers without a usable color, as in CanvasTooltip */
-    background: var(
-      --canvas-tooltip-bg,
-      light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96))
-    );
-    color: var(--canvas-tooltip-text-color, light-dark(#0f172a, #f8fafc));
-    /* portaled into the plot, so never inherit a centered page or card layout */
-    text-align: var(--canvas-tooltip-text-align, start);
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    pointer-events: none;
-    user-select: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-  .tooltip div {
-    line-height: 1.4;
   }
 </style>

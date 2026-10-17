@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from 'svelte-widgets/Icon.svelte'
   import { is_modifier_chord } from 'svelte-widgets/utils'
-  import { Circle, Close, Info, Lock, Star, Unlock } from 'svelte-widgets/icons'
+  import { Circle, Close, InformationOutline, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { make_change_detector } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -746,7 +746,7 @@
           aria-expanded={examples_open}
           aria-haspopup="menu"
         >
-          <Icon icon={Info} style="width: 1.1em; height: 1.1em" />
+          <Icon icon={InformationOutline} style="width: 1.1em; height: 1.1em" />
         </button>
         {#if examples_open}
           <div

@@ -109,9 +109,9 @@ test.each([
 
 // Fill tokens may be translucent even though backdrop tokens may not.
 test(`resolve_css_color keeps translucent tokens`, () => {
-  const node = make_node(`--tooltip-bg`, `rgba(0, 0, 0, 0.85)`)
+  const node = make_node(`--plot-tooltip-bg`, `rgba(0, 0, 0, 0.85)`)
   const fill = observe(() =>
-    resolve_css_color(() => node, { css_var: `--tooltip-bg`, fallback: `white` }),
+    resolve_css_color(() => node, { css_var: `--plot-tooltip-bg`, fallback: `white` }),
   )
   expect(fill.current).toBe(`rgba(0, 0, 0, 0.85)`)
 })

@@ -3,7 +3,7 @@ import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, click_export } from '../setup'
+import { bind_props, click_export, doc_query } from '../setup'
 import { make_phase } from '../test-fixtures'
 
 // Entry with tabulated free energies
@@ -63,6 +63,10 @@ const mount_2d_with_config = (config: {
   })
 const slider_value = () =>
   document.querySelector<HTMLInputElement>(`.temperature-slider input[type="range"]`)?.value
+// The slider overlays the scene; left in flow it took ~170px of the viewer's fixed height and
+// pushed the canvas into the content below
+const expect_overlay_slider = () =>
+  expect(getComputedStyle(doc_query(`.temperature-slider`)).position).toBe(`absolute`)
 
 describe(`ChemPot temperature config wiring`, () => {
   test(`2D hides temperature slider for datasets without temperature data`, async () => {
@@ -107,7 +111,7 @@ describe(`ChemPot temperature config wiring`, () => {
     // one export entry point: the plot's own pane, with the domains added as JSON
     expect(document.querySelectorAll(`button.export-toggle`)).toHaveLength(1)
     expect(await click_export(null)).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])
-    expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
+    expect_overlay_slider()
     expect(slider_value()).toBe(`700`)
   })
 
@@ -141,7 +145,7 @@ describe(`ChemPot temperature config wiring`, () => {
     // Fe + O alone are below the 3-entry minimum for a 3D diagram; the slider stays since
     // the dataset still has temperature data to pick from
     expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
+    expect_overlay_slider()
     expect(slider_value()).toBe(`1`)
   })
 

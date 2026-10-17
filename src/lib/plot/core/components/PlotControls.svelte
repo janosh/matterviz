@@ -41,6 +41,7 @@
     controls_name = `plot`,
     toggle_props = {},
     pane_props = {},
+    shortcut_scopes,
   }: PlotControlsProps = $props()
 
   const all_axes = [`x`, `x2`, `y`, `y2`] as const
@@ -222,6 +223,7 @@
   pane_class="compact-settings"
   {toggle_props}
   {pane_props}
+  {shortcut_scopes}
 >
   {@render children?.()}
 

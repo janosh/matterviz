@@ -1,5 +1,9 @@
 <script lang="ts">
+  import { browser } from '$app/env'
+  import { goto } from '$app/navigation'
+  import { page } from '$app/state'
   import { InterfaceBuilder } from '#lib/interface/index.js'
+  import { ControlGroup } from '#lib/layout/index.js'
   import type { Heterostructure } from '#lib/interface/index.js'
   import { SlabBuilder } from '#lib/slab/index.js'
   import type { Slab } from '#lib/slab/index.js'
@@ -11,6 +15,8 @@
   import pd_fcc from '#site/structures/mp-2.json'
   import ac_hexagonal from '#site/structures/mp-862690-Ac4-hexagonal.json'
   import po_cubic from '#site/structures/Po-simple-cubic.json'
+  import { untrack } from 'svelte'
+  import { sync_url_params } from 'svelte-widgets/url-params'
 
   const bulk_structures = {
     'Cu (fcc)': cu_fcc,
@@ -28,6 +34,19 @@
     film: { bulk: `Pd (fcc)`, slab: null as Slab | null },
   })
   let heterostructure = $state<Heterostructure | null>(null)
+  // ?match=7 picks match #7, the number the plot, select and stats show; the pick writes back,
+  // #1 leaving it off. Read in the browser only: prerender forbids url.searchParams, and the
+  // builder (slabs come from effects) never renders server-side anyway.
+  const url_match = browser ? Number(page.url.searchParams.get(`match`)) : 0
+  let match_idx = $state(Number.isInteger(url_match) && url_match >= 1 ? url_match - 1 : 0)
+  $effect(() => {
+    sync_url_params(
+      [[`match`, String(match_idx + 1), `1`]],
+      globalThis.location,
+      (url) =>
+        void goto(url, { shallow: true, replace: true, state: untrack(() => page.state) }),
+    )
+  })
   let atom_color_config = $state<AtomColorConfig>({
     ...DEFAULT_ATOM_COLOR_CONFIG,
     mode: `custom`,
@@ -49,21 +68,25 @@
 <div class="bleed-1400">
   <section class="demo-2col">
     {#each SIDES as side (side)}
-      <SlabBuilder
-        structure={bulk_structures[sides[side].bulk]}
-        bind:slab={sides[side].slab}
-        min_slab_thickness={6}
-        show_info={false}
-      >
-        <label>
-          {side === `substrate` ? `Substrate` : `Film`}
-          <select bind:value={sides[side].bulk}>
-            {#each Object.keys(bulk_structures) as key (key)}
-              <option value={key}>{key}</option>
-            {/each}
-          </select>
-        </label>
-      </SlabBuilder>
+      <ControlGroup legend={side === `substrate` ? `Substrate` : `Film`}>
+        <SlabBuilder
+          structure={bulk_structures[sides[side].bulk]}
+          bind:slab={sides[side].slab}
+          min_slab_thickness={6}
+          show_info={false}
+          show_cell_options={false}
+        >
+          <label>
+            Material
+            <!-- a new material means a new match list, so #N would name another interface -->
+            <select bind:value={sides[side].bulk} onchange={() => (match_idx = 0)}>
+              {#each Object.keys(bulk_structures) as key (key)}
+                <option value={key}>{key}</option>
+              {/each}
+            </select>
+          </label>
+        </SlabBuilder>
+      </ControlGroup>
     {/each}
   </section>
 
@@ -71,6 +94,7 @@
     <InterfaceBuilder
       substrate={sides.substrate.slab}
       film={sides.film.slab}
+      bind:match_idx
       bind:interface={heterostructure}
     />
   {/if}
@@ -88,10 +112,7 @@
   .bleed-1400 {
     --struct-height: 650px;
   }
-  .bleed-1400 :global(:is(.slab-builder, .interface-builder) .controls) {
-    justify-content: center;
-  }
   .demo-2col {
-    gap: 1.5em;
+    gap: 1em;
   }
 </style>

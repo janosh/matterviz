@@ -6,6 +6,7 @@
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import {
     frequency_unit_label,
+    frequency_unit_text,
     MD_FREQUENCY_UNITS,
     thz_per_inverse_time,
     TIME_UNIT_TO_THZ,
@@ -99,10 +100,10 @@
         disabled={effective_frequency_unit(ctx) === `1/frame`}
       >
         {#each MD_FREQUENCY_UNITS as unit (unit)}
-          <option value={unit}>{frequency_unit_label(unit)}</option>
+          <option value={unit}>{frequency_unit_text(unit)}</option>
         {/each}
       </select>
-      <span class="hint">{frequency_unit_label(effective_frequency_unit(ctx))}</span>
+      <span class="hint">{@html frequency_unit_label(effective_frequency_unit(ctx))}</span>
     </label>
     <label>
       Show

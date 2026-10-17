@@ -8,7 +8,6 @@
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { resolve_axis_range } from '#lib/plot/core/interactions.js'
-  import { format_num } from '#lib/labels.js'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -34,12 +33,11 @@
     create_legend_visibility,
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
-  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import ScatterPlot3DControls, {
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import ShortcutsHelp from '#lib/layout/ShortcutsHelp.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { canvas_overlay_png_blob } from '#lib/io/export.js'
@@ -79,7 +77,7 @@
     pan_speed = 2,
     ambient_light = 0.6,
     directional_light = 0.8,
-    sphere_segments = 16,
+    sphere_segments,
     point_tween,
     gizmo = true,
     // Controls
@@ -204,23 +202,8 @@
     return { ...opts, offset: { bottom: 70, ...opts.offset } }
   })
 
-  // Keys reach the scene's marker cursor only while the plot root itself has focus, so typing
-  // in the controls pane or legend never walks the points
-  let scene_ref = $state<ReturnType<typeof ScatterPlot3DScene<Metadata>>>()
-  let live_message = $state(``)
-  function handle_key_down(event: KeyboardEvent): void {
-    if (event.target !== event.currentTarget) return
-    const point = scene_ref?.handle_key(event)
-    if (point === undefined) return
-    event.preventDefault()
-    live_message = point ? point_label(point) : ``
-  }
-  const point_label = ({ x, y, z, series_idx, point_idx }: InternalPoint3D<Metadata>) => {
-    const axes = [resolved_x_axis, resolved_y_axis, resolved_z_axis]
-    const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
-    const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
-    return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
-  }
+  // The scene's marker cursor walks from the plot root's one tab stop (see KeyWalk)
+  const key_walk = key_walk_root()
 
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
@@ -260,11 +243,6 @@
   }
 </script>
 
-{#snippet chrome_buttons(dims: { height: number; width: number; fullscreen: boolean })}
-  <ShortcutsHelp scopes={[`viewer`, `camera`]} {wrapper} />
-  {@render header_controls?.(dims)}
-{/snippet}
-
 <ChartShell
   empty={!series_in.some((srs) => srs.x.length) && !surfaces.length}
   chart_class="scatter-3d"
@@ -277,19 +255,16 @@
   {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
-  header_controls={chrome_buttons}
+  {header_controls}
   {export_sources}
   {children}
-  {live_message}
+  live_message={key_walk.message}
   role="application"
   aria-label="3D scatter plot of {resolved_x_axis.label}, {resolved_y_axis.label} and {resolved_z_axis.label}"
   tabindex={0}
   {...rest}
-  onkeydown={(event) => {
-    rest.onkeydown?.(event)
-    handle_key_down(event)
-  }}
   {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}
+  {@attach key_walk.attach}
 >
   {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls
@@ -304,6 +279,7 @@
       bind:camera_projection
       bind:auto_rotate
       {auto_ranges}
+      shortcut_scopes={[`viewer`, `camera`]}
       children={controls_extra}
     />
   {/snippet}
@@ -313,7 +289,6 @@
     {#if mounted && webgpu_available()}
       <Canvas createRenderer={create_renderer}>
         <ScatterPlot3DScene
-          bind:this={scene_ref}
           {series}
           {surfaces}
           {ranges}

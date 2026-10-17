@@ -17,6 +17,7 @@
   import {
     convert_frequencies,
     frequency_unit_label,
+    frequency_unit_text,
     parse_frequency_unit,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
@@ -346,7 +347,7 @@
               {y2}
               role="button"
               tabindex="0"
-              aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${frequency_unit_label(unit)}`}
+              aria-label={`Select mode ${mode.mode_idx + 1} at ${format_num(position, `.4~`)} ${frequency_unit_text(unit)}`}
               onclick={() => select_mode(mode.mode_idx)}
               onkeydown={(event) => {
                 if (event.key !== `Enter` && event.key !== ` `) return

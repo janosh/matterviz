@@ -365,11 +365,20 @@
   ) {
     position: static;
   }
+  /* A narrow pane shrinks the labels to an ellipsis rather than wrapping "Frames (408)" */
   :global(.inspector-tabs .tabs-tab) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     padding: 2pt 8pt;
     background: transparent;
     border-bottom: 2px solid transparent;
     border-radius: 0;
+  }
+  /* The tables span the inspector instead of hugging their content */
+  :global(.inspector-tabs .tabs-panel :is(.table-container, table.heatmap)) {
+    width: 100%;
   }
   :global(.inspector-tabs .tabs-tab[data-state='active']) {
     border-bottom-color: var(--accent-color, cornflowerblue);

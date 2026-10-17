@@ -2,7 +2,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, type ExportProps } from '#lib/io/export.js'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index.js'
   import { reciprocal_lattice } from '#lib/math.js'
@@ -10,13 +10,19 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type { FileSaver } from '#lib/io/file-export.svelte.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { PlotTooltip } from '#lib/plot/index.js'
-  import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    key_walk_root,
+    export_scene_as,
+    webgpu_available,
+  } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -40,11 +46,13 @@
   import { to_error } from '#lib/utils.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
+  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BandGridData,
     FermiErrorData,
     FermiFileLoadData,
+    FermiHover,
     FermiHoverData,
     FermiSurfaceData,
     FermiSurfaceSettings,
@@ -159,8 +167,11 @@
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
-  let hover_data = $state<FermiHoverData | null>(null)
-  let kpath_hover_data = $state<BZHoverData | null>(null) // hovered k-path point
+  // A click pins the hovered sheet tile's or k-path point's tooltip where it was (see TooltipPin)
+  const pin = mark_pin<FermiHover>()
+  let hovered_mark = $state.raw<FermiHover | null>(null)
+  const shown = $derived(pin.shown(hovered_mark))
+  const hover_data = $derived(shown && `band_index` in shown.data ? shown.data : null)
 
   $effect(() => on_point_hover?.(hover_data))
 
@@ -364,12 +375,18 @@
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
-  const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
+  // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
+  const keys = viewer_keys(() => ({
+    r: () => reset_scene_cameras(wrapper),
+    Escape: pin.unpin,
+  }))
+  const key_walk = key_walk_root() // the sheets, by keyboard (see KeyWalk)
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  role="region"
+  role="application"
+  tabindex="0"
   aria-label="Fermi surface viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -380,7 +397,9 @@
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach key_walk.attach}
 >
+  <LiveMessage message={key_walk.message} />
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
     <LoadingStatus overlay label="Loading Fermi surface..." {...spinner_props} />
@@ -397,7 +416,6 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
-      shortcut_scopes={[`viewer`, `camera`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ fermi_data: surface_data, bz_data, fullscreen: value })}
     >
@@ -425,6 +443,7 @@
           bind:clip_flip
           bind:interpolation_factor
           bind:camera_projection
+          shortcut_scopes={[`viewer`, `camera`]}
         />
       {/if}
       {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
@@ -472,8 +491,8 @@
           {height}
           bind:scene
           bind:camera
-          bind:hover_data
-          bind:kpath_hover_data
+          bind:hovered={hovered_mark}
+          {pin}
         />
       </Canvas>
 
@@ -492,19 +511,20 @@
       {/if}
 
       <!-- Hover tooltip; a k-path point reads like a Brillouin zone hover, in its tint -->
-      {@const hovered = hover_data ?? kpath_hover_data}
-      {#if hovered && tooltip !== false}
+      {#if shown && tooltip !== false}
+        {@const { data } = shown}
         <PlotTooltip
-          {...hovered.screen_position}
+          {...data.screen_position}
           offset={{ x: 12, y: -12 }}
-          bg_color={hover_data ? hover_data.surface_color : KPATH_COLORS.hover}
+          bg_color={`band_index` in data ? data.surface_color : KPATH_COLORS.hover}
+          pinned={pin.value !== null}
           fixed
-          style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          style="z-index: var(--z-index-overlay-nav, 100000001)"
         >
-          {#if hover_data}
-            <FermiSurfaceTooltip {hover_data} {tooltip} />
-          {:else if kpath_hover_data}
-            <BrillouinZoneTooltip hover_data={kpath_hover_data} />
+          {#if `band_index` in data}
+            <FermiSurfaceTooltip hover_data={data} {tooltip} />
+          {:else}
+            <BrillouinZoneTooltip hover_data={data} />
           {/if}
         </PlotTooltip>
       {/if}

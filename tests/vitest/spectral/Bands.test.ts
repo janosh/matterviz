@@ -338,7 +338,10 @@ describe(`Bands component`, () => {
             Number(element.textContent),
           ),
         )
-      expect(document.body.textContent).toContain(`Frequency (cm⁻¹)`)
+      expect(document.body.textContent).toContain(`Frequency (cm−1)`)
+      // −1 is a raised segment, not the ⁻¹ glyphs fonts set unevenly
+      const exponent = doc_query(`.y-axis .axis-label tspan[baseline-shift="super"]`)
+      expect(exponent.textContent).toBe(`−1`)
       expect(max_y_tick()).toBeGreaterThan(100) // 0..130 cm⁻¹
       const select = doc_query<HTMLSelectElement>(`#bands-units`)
       expect(select.value).toBe(`cm^-1`)

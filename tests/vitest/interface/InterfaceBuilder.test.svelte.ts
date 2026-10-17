@@ -96,6 +96,10 @@ describe(`InterfaceBuilder`, () => {
     expect(document.querySelectorAll(`.interface-builder .effect-ring.selected`)).toHaveLength(
       1,
     )
+    // controls sit in purpose-named groups; with matches found the search limits stay folded
+    const legends = [...document.querySelectorAll(`.interface-builder legend`)]
+    expect(legends.map((legend) => legend.textContent)).toEqual([`Match`, `Stacking`])
+    expect(doc_query<HTMLDetailsElement>(`.interface-builder details`).open).toBe(false)
   })
 
   test(`picking a match in the select or the plot rebuilds the interface`, () => {
@@ -111,10 +115,16 @@ describe(`InterfaceBuilder`, () => {
     )
     const points = document.querySelectorAll(`.interface-builder .scatter [role=button]`)
     expect(points).toHaveLength(MATCHES.length)
+    // each point carries its match number, the one the select, stats and a URL use
+    const numbers = [...points].map((point) =>
+      point.querySelector(`text`)?.textContent?.trim(),
+    )
+    expect(numbers).toEqual(MATCHES.map((_, idx) => String(idx + 1)))
     points[5].dispatchEvent(mouse(`click`))
     flushSync()
     expect(built.match_idx).toBe(5)
     expect(built.interface?.interface_info.match).toEqual(MATCHES[5])
+    expect(row_value(`Match`)).toBe(`#6 of ${MATCHES.length}`)
   })
 
   // each slider writes its own bound prop and the interface is rebuilt from it
@@ -196,6 +206,14 @@ describe(`InterfaceBuilder`, () => {
     )
     expect(document.querySelector(`.interface-builder select`)).toBeNull()
     expect(document.querySelector(`.interface-builder dl`)).toBeNull()
+    // the search limits are what to loosen now, so their collapsible opens by itself
+    const details = doc_query<HTMLDetailsElement>(`.interface-builder details`)
+    expect(details.open).toBe(true)
+    // and stays open once a larger max area finds matches, not folding under the input
+    set_input(inputs(`number`)[0], 400, `change`)
+    expect(built.max_area).toBe(400)
+    expect(select().querySelectorAll(`option`)).toHaveLength(MATCHES.length)
+    expect(details.open).toBe(true)
   })
 
   // errors from the search and from stacking surface as text instead of throwing

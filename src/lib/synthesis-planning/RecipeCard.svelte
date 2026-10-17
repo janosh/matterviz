@@ -238,7 +238,9 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(10em, 1fr));
     gap: 0.6em;
-    border: 1px solid var(--border-color, #ddd);
+    margin: 0;
+    padding: 0;
+    border: none; /* the legend heads the group */
   }
   fieldset label {
     display: grid;

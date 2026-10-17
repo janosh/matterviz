@@ -108,9 +108,8 @@
     align-items: center;
     gap: 1pt;
     padding: 4pt 9pt;
-    background: var(--card-bg, rgba(255, 255, 255, 0.05));
+    background: var(--surface-bg);
     border-radius: var(--border-radius);
-    border: 1px solid var(--card-border, rgba(255, 255, 255, 0.1));
   }
   .composition-card h3 {
     margin: 0 0 4pt;

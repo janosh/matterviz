@@ -150,7 +150,7 @@
   .bar-segment {
     transition: all 0.2s ease;
   }
-  .bar-segment:hover {
+  .bar-segment:is(:hover, [data-pinned]) {
     filter: brightness(1.1);
   }
   text {

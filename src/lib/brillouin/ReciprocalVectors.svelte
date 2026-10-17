@@ -2,7 +2,7 @@
   // Reciprocal lattice vector arrows (b₁, b₂, b₃) with HTML labels beyond the tips, shared by BrillouinZoneScene and FermiSurfaceScene
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import Arrow from '#lib/structure/Arrow.svelte'
-  import * as extras from '@threlte/extras'
+  import { SceneLabel } from '#lib/scene/index.js'
 
   let {
     k_lattice,
@@ -33,9 +33,9 @@
     arrow_head_length={size * 0.1}
   />
   <!-- Vector label beyond tip -->
-  <extras.HTML center position={label_position} style="pointer-events: none">
+  <SceneLabel center position={label_position}>
     <span style="color: {vector_colors[idx]}; font-size: 1.2em">
       {vector_labels[idx]}
     </span>
-  </extras.HTML>
+  </SceneLabel>
 {/each}

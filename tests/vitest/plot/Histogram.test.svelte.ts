@@ -16,9 +16,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  pin_cycle,
   expect_tooltip_paint,
   export_via_pane,
   form_controls,
+  keydown,
   mount_sized,
   mouse,
   one_tab_stop,
@@ -26,6 +28,7 @@ import {
   plot_svg,
   roving_tabindexes,
   set_input,
+  svg_mark_driver,
 } from '../setup'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
@@ -456,6 +459,25 @@ describe(`Histogram`, () => {
     },
   )
 
+  test(`a bar click or Enter pins its tooltip; it again, empty space or Escape unpin`, async () => {
+    await mount_histogram({ series: [series_of([0, 1, 1, 9])], bins: 5 })
+    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
+    const text = await pin_cycle(svg_mark_driver(bars, plot_svg()), {
+      keyboard: true,
+      lit: (idx) => bars[idx].getAttribute(`opacity`) === `1`, // else the 0.7 default
+    })
+    expect(text).toMatch(/Value: 0.9\s*Count: 3/)
+    // a mouse click focuses no bar: the page's Escape reaches the chart under the pointer
+    bars[0].dispatchEvent(mouse(`mousemove`))
+    bars[0].dispatchEvent(mouse(`click`))
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).classList.contains(`pinned`)).toBe(true)
+    doc_query(`.histogram`).dispatchEvent(new PointerEvent(`pointerenter`))
+    globalThis.dispatchEvent(keydown(`Escape`))
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).classList.contains(`pinned`)).toBe(false)
+  })
+
   test(`tooltip takes the color of the hovered bar's own series`, async () => {
     await mount_histogram({ series: [series_of([0, 1]), series_of([5, 6])], mode: `overlay` })
     const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
@@ -501,6 +523,7 @@ describe(`Histogram`, () => {
     first_bar.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
     expect(on_bar_click).toHaveBeenCalledTimes(3)
     expect(on_bar_click).toHaveBeenLastCalledWith(expect.objectContaining(hit))
+    expect(document.querySelector(`.plot-tooltip.pinned`)).toBeNull() // a claimed click
     first_bar.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)

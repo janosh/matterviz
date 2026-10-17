@@ -23,6 +23,7 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  pin_cycle,
   form_controls,
   keydown,
   marker_fill,
@@ -38,6 +39,7 @@ import {
   svg_query,
   set_input,
   translate_of,
+  type PinStep,
 } from '../setup'
 
 // Pass-through spy so tests can inspect what the tooltip was told to dodge
@@ -166,7 +168,7 @@ describe(`ScatterPlot`, () => {
     }
     const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
-    test(`End and arrows step and wrap, Escape clears the announcement`, async () => {
+    test(`End and arrows step and wrap, Enter pins, Escape unpins then clears`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [dense],
         marker_renderer: `canvas`,
@@ -174,8 +176,11 @@ describe(`ScatterPlot`, () => {
       // the live region is mounted before its first message, or that message goes unheard
       expect(announced(plot)).toBe(``)
       const svg = plot_svg(plot)
-      for (const [key, expected] of [
+      for (const [key, expected, pinned = false] of [
         [`End`, `point 40`],
+        [`Enter`, `point 40`, true], // free click: pins the cursor point's tooltip
+        [`ArrowLeft`, `point 39`, true],
+        [`Escape`, `point 39`], // the pin goes first
         [`Escape`, ``],
         [`ArrowRight`, `point 1`],
         [`ArrowRight`, `point 2`],
@@ -183,10 +188,11 @@ describe(`ScatterPlot`, () => {
         // Backwards off the start wraps to the end rather than dead-ending
         [`ArrowLeft`, `point 40`],
         [`Escape`, ``],
-      ]) {
+      ] as const) {
         await arrow(svg, key)
         if (expected) expect(announced(plot), key).toContain(expected)
         else expect(announced(plot), key).toBe(``)
+        expect(plot.querySelector(`.plot-tooltip.pinned`) !== null, key).toBe(pinned)
       }
     })
 
@@ -291,6 +297,45 @@ describe(`ScatterPlot`, () => {
     expect(state.tooltip_point).toBeNull()
     expect(on_point_hover).toHaveBeenCalledTimes(3)
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  // No on_point_click or on_plot_click claims the click here, so it pins the tooltip
+  test(`a click pins the hovered point's tooltip, which follows its point through data changes`, async () => {
+    const state = $state<{
+      series: DataSeries[]
+      tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`]
+      hovered: boolean
+    }>({
+      series: [{ x: [0, 1, 2], y: [0, 1, 2], id: `a` }],
+      tooltip_point: null,
+      hovered: false,
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props({ ...bare, color_bar: null }, state),
+    )
+    const svg = plot_svg(plot)
+    const hover_on = (point_idx: number) => {
+      const { x, y } = state.series[0]
+      state.tooltip_point = { x: x[point_idx], y: y[point_idx], series_idx: 0, point_idx }
+      state.hovered = true
+    }
+    const act = (step: PinStep, mark_idx: 0 | 1 | null) => {
+      if (step === `escape`) svg.dispatchEvent(keydown(`Escape`))
+      else if (step === `leave`) svg.dispatchEvent(mouse(`mouseleave`))
+      else if (mark_idx !== null) hover_on(mark_idx + 1)
+      if (step === `click`) svg.dispatchEvent(mouse(`click`))
+    }
+    const lit = (idx: 0 | 1) =>
+      plot.querySelectorAll(`.marker`)[idx + 1].classList.contains(`is-hovered`)
+    expect(await pin_cycle(act, { lit })).toMatch(/x: 1\s*y: 1/)
+    act(`click`, 1)
+    act(`leave`, 1)
+    state.series = [{ x: [0, 1, 7], y: [0, 1, 8], id: `a` }]
+    flushSync()
+    expect(doc_query(`.plot-tooltip.pinned`).textContent).toMatch(/x: 7\s*y: 8/)
+    state.series = [{ x: [5, 6], y: [50, 60], id: `a` }]
+    flushSync()
+    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
   })
 
   test(`image export redraws the legend and color bar without touching the chart`, async () => {
