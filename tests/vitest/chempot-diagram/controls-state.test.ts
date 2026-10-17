@@ -1,7 +1,10 @@
 import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
 import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
 import ChemPotSlices from '#lib/chempot-diagram/ChemPotSlices.svelte'
-import { create_chempot_overrides } from '#lib/chempot-diagram/controls-state.svelte.js'
+import {
+  create_chempot_overrides,
+  sticky_range,
+} from '#lib/chempot-diagram/controls-state.svelte.js'
 import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import type { Vec2 } from '#lib/math.js'
@@ -189,4 +192,17 @@ describe(`rescale_zoom_to_fit`, () => {
     expect(narrowed).toBeLessThan(400)
     expect(rescale_zoom_to_fit(narrowed, narrow_fit, wide_fit)).toBeCloseTo(400, 10)
   })
+})
+
+// The 2D slice view frames its axes on the unsliced projection; a range the user typed in since
+// the last framing must survive the next one (padding, limit or temperature changes)
+// oxfmt-ignore
+test.each([
+  [`untouched axis follows`, [-5, 0], [-5, 0], [-6, 0], false],
+  [`user range stays`, [-2, -1], [-5, 0], [-6, 0], true],
+  [`first framing`, undefined, undefined, [-6, 0], false],
+  [`slicing off resets`, [-6, 0], [-6, 0], undefined, false],
+  [`user range survives slicing off`, [-2, -1], [-6, 0], undefined, true],
+] as const)(`sticky_range: %s`, (_label, current, applied, next, kept) => {
+  expect(sticky_range(current, applied, next)).toEqual(kept ? current : next)
 })

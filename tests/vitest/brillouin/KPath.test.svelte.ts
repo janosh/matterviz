@@ -1,7 +1,6 @@
 // KPath against the recording Threlte stub (no WebGPU renderer)
 import KPath from '#lib/brillouin/KPath.svelte'
 import type { Vec2, Vec3 } from '#lib/math.js'
-import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   Color,
@@ -15,11 +14,9 @@ import { threlte_stub } from '../isosurface/threlte-stub'
 
 type KMarker = { position: Vec3; color: string }
 
-vi.mock(`@threlte/core`, async (original) => ({
-  ...(await original<typeof threlte_core>()),
-  T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-  useThrelte: () => ({ invalidate: () => undefined }),
-}))
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
 vi.mock(`@threlte/extras`, async () => ({
   HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
 }))

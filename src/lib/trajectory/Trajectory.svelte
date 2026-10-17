@@ -13,11 +13,8 @@
     Orientation,
   } from '#lib/plot/index.js'
   import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
-  import {
-    normalize_show_controls,
-    shows_fullscreen_toggle,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import FileInput from 'svelte-widgets/FileInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -65,7 +62,8 @@
   import { is_vector_key } from '#lib/structure/vectors.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
   import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
-  import { element_site_indices, scene_site_indices } from './linked-sites'
+  import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
+  import { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
@@ -496,11 +494,17 @@
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
+  // The row holds the docked inspector too, so docking it cannot shrink this below the bar
+  let viewer_row_width = $state(0)
+  let inspector_docked = $derived(
+    data_inspector_docked ?? viewer_row_width >= SIDEBAR_DOCK_MIN_WIDTH,
+  )
   const frame_channels = $derived.by((): FrameChannels | undefined => {
     // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
     // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
     // own channels from the source, independently of this display packet.
     if (
+      inspector_docked ||
       active_pane === `data-inspector` ||
       structure_pane === `info` ||
       structure_pane === `export` ||
@@ -841,6 +845,17 @@
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
     controls_config.mode === `never` ? false : prop
+  // The data inspector lists the sites, so the structure's own site table stays off and so
+  // does its reopen button
+  let structure_controls = $derived.by(
+    (): ComponentProps<typeof Structure>[`show_controls`] => {
+      const prop = nested_controls(structure_props.show_controls)
+      if (prop === false) return false
+      const config: Exclude<typeof prop, boolean | string | undefined> =
+        typeof prop === `object` ? prop : { mode: prop === true ? `always` : prop }
+      return { ...config, hidden: [...(config.hidden ?? []), `site-table`] }
+    },
+  )
   let controls_height = $state(0)
   let content_size = $state({ width: 0, height: 0 })
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
@@ -1191,21 +1206,8 @@
   const highlight = (sites: number[]): void => {
     if (!same_values(sites, highlighted_sites)) highlighted_sites = sites
   }
-  // The inspector selects source atoms; a render sample shows only some of them as sites
-  const selected_source_atoms = (): number[] => {
-    const metadata = current_frame?.metadata
-    const sampled = metadata?.render_sample ? metadata.source_atom_indices : undefined
-    return Array.isArray(sampled)
-      ? selected_sites.flatMap((site_idx) => sampled[site_idx] ?? [])
-      : selected_sites
-  }
-  const select_source_atoms = (atoms: number[]): void => {
-    selected_sites = scene_site_indices(atoms, current_frame)
-  }
-  let inspector_ratio = $state(0.64)
-  // The row holds the sidebar too, so docking it cannot shrink this below the bar
-  let viewer_row_width = $state(0)
-  let inspector_docked = $derived(data_inspector_docked ?? viewer_row_width >= 900)
+  // One hover shared by the 3D view and the inspector's atom rows, so either points at the other
+  let hovered_site_idx = $state<number | null>(null)
   // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
   const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
     hover,
@@ -1605,7 +1607,11 @@
                   title={entry.label}
                   aria-pressed={active_pane === entry.pane}
                   onclick={() => {
-                    set_pane_open(entry.pane, active_pane !== entry.pane)
+                    // A docked inspector has no floating pane: its entry undocks it into one
+                    if (entry.pane === `data-inspector` && inspector_docked) {
+                      data_inspector_docked = false
+                      set_pane_open(entry.pane, true)
+                    } else set_pane_open(entry.pane, active_pane !== entry.pane)
                     analysis_menu_open = false
                   }}
                 >
@@ -1736,15 +1742,27 @@
           (open) => set_pane_open(`data-inspector`, open)
         }
         on_step_change={session.commit}
-        bind:selected_atoms={selected_source_atoms, select_source_atoms}
-        on_atoms_hover={(atoms) => highlight(scene_site_indices(atoms, current_frame))}
+        bind:selected_atoms={
+          // the inspector names source atoms; a render sample shows only some of them as sites
+          () => site_source_atoms(selected_sites, current_frame),
+          (atoms) => (selected_sites = scene_site_indices(atoms, current_frame))
+        }
+        bind:hovered_atom={
+          () =>
+            hovered_site_idx === null
+              ? null
+              : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null),
+          (atom) =>
+            (hovered_site_idx =
+              atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null))
+        }
         dockable
         bind:docked={() => inspector_docked, (docked) => (data_inspector_docked = docked)}
       />
     {/snippet}
     <div
       class="viewer-row"
-      class:inspector-docked={inspector_docked}
+      class:docked-sidebar-row={inspector_docked}
       bind:clientWidth={viewer_row_width}
     >
       <div
@@ -1821,7 +1839,7 @@
               analyze_symmetry: false,
               ...structure_props,
             }}
-            show_controls={nested_controls(structure_props.show_controls)}
+            show_controls={structure_controls}
             tooltip={structure_props.tooltip === false ? false : site_tooltip}
             bind:scene_props={trail_scene_props}
             bind:atom_color_config
@@ -1833,6 +1851,7 @@
               ? hotspot_cloud.atom_opacity
               : 1}
             structure={session.current_structure}
+            bind:hovered_site_idx
             render_token={session.scene_frame}
             on_rendered={session.mark_rendered}
             {structure_series_key}
@@ -1969,16 +1988,7 @@
           {/if}
         {/if}
       </div>
-      {#if inspector_docked}
-        <PaneDivider
-          orientation="horizontal"
-          bind:ratio={inspector_ratio}
-          min_px={320}
-          second_min_px={280}
-          aria-label="Resize the data inspector sidebar"
-        />
-        {@render data_inspector()}
-      {/if}
+      {#if inspector_docked}{@render data_inspector()}{/if}
     </div>
   {:else}
     <EmptyState class="trajectory-empty-state">
@@ -2092,14 +2102,13 @@
     }
   }
   .viewer-row {
-    display: grid;
-    position: relative;
     flex: 1;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    &.inspector-docked {
-      grid-template-columns: minmax(0, var(--split-pane-size, 64%)) minmax(0, 1fr);
+    &:not(.docked-sidebar-row) {
+      display: grid;
+      position: relative;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
     }
   }
   .content-area {

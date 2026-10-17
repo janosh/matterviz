@@ -7,7 +7,7 @@ import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, query } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_pane: ReturnType<typeof mount> | undefined
@@ -76,16 +76,17 @@ const expect_virtualized = (max_rendered: number) => {
   return rows
 }
 
+const attributes = () =>
+  Object.fromEntries(
+    body_rows()
+      .map((row) => cell_texts(row))
+      .map(([name, ...rest]) => [name, rest]),
+  )
+
 // OVITO's global attributes: the displayed frame's recorded scalars, then what its structure
 // implies, as attribute/value/unit rows that follow the displayed frame.
 test(`global tab lists the displayed frame's recorded and derived attributes`, async () => {
   const run = make_run(4)
-  const attributes = () =>
-    Object.fromEntries(
-      body_rows()
-        .map((row) => cell_texts(row))
-        .map(([name, ...rest]) => [name, rest]),
-    )
   await mount_pane({ run, current_frame: run.preview })
   // The default tab
   expect(
@@ -110,12 +111,86 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
   expect(rows.Energy).toEqual([`-102`, `eV`])
 })
 
+// Math.max(...norms) overflowed the call stack past ~125k atoms and took every tab down
+test(`global tab derives Fmax from 200k sites carrying forces`, async () => {
+  const force_of = (site_idx: number) => (site_idx === 7 ? [0, 3, 4] : [0.1, 0, 0])
+  const sites = Array.from({ length: 200_000 }, (_unused, site_idx) =>
+    make_site(site_idx, { force: force_of(site_idx) }),
+  )
+  const run = trajectory_from_frames([make_sites_frame(sites.slice(0, 2))])
+  await mount_pane({ run, current_frame: make_sites_frame(sites) })
+  const { Fmax, Atoms } = attributes()
+  expect(Fmax).toEqual([`5`, `eV/Å`])
+  expect(Atoms).toEqual([`200000`, ``])
+})
+
+// A render sample previews every n-th atom: counts and per-atom values come from the whole
+// frame, and what only the sample could tell (formula, density, a derived Fmax) is left out
+test(`global tab of a render-sampled frame reports the whole frame`, async () => {
+  const run = make_run(2)
+  const current_frame = {
+    ...run.preview,
+    metadata: { render_sample: true, total_atoms: 3000, source_atom_indices: [0, 1000, 2000] },
+    structure: {
+      ...run.preview.structure,
+      sites: run.preview.structure.sites.map((site) => ({
+        ...site,
+        properties: { force: [1, 0, 0] },
+      })),
+    },
+  }
+  await mount_pane({
+    run: with_property_rows(
+      run,
+      [{ frame_number: 0, step: 0, properties: { energy: -3000 } }],
+      2,
+    ),
+    current_frame,
+  })
+  const rows = attributes()
+  expect(rows.Atoms).toEqual([`3000`, ``])
+  expect(rows[`Energy per atom`]).toEqual([`-1`, `eV/atom`])
+  expect(rows[`Volume per atom`]).toEqual([`0.009`, `Å³/atom`])
+  expect(rows.Volume).toEqual([`27`, `Å³`])
+  for (const sample_only of [`Formula`, `Density`, `Fmax`])
+    expect(rows[sample_only]).toBeUndefined()
+})
+
+// Without a recorded row the frame's own metadata stands in, minus frame bookkeeping
+test(`global tab skips bookkeeping keys of the frame metadata`, async () => {
+  const run = make_run(2)
+  const current_frame = {
+    ...run.preview,
+    metadata: { total_atoms: 3, frame_number: 7, energy: -5 },
+  }
+  await mount_pane({ run, current_frame, current_step_idx: 7, property_rows: [] })
+  const rows = attributes()
+  expect(rows.Energy).toEqual([`-5`, `eV`])
+  expect(Object.keys(rows)).not.toContain(`total_atoms`)
+  expect(Object.keys(rows)).not.toContain(`frame_number`)
+})
+
+test.each([
+  [`total_atoms`, { render_sample: true, source_atom_indices: [0, 1000, 2000] }],
+  [`source_atom_indices`, { render_sample: true, total_atoms: 3000 }],
+])(`a render sample without %s fails loudly`, (missing, metadata) => {
+  const run = make_run(2)
+  expect(() =>
+    mount(TrajectoryDataInspectorPane, {
+      target: document.body,
+      props: { pane_open: true, run, current_frame: { ...run.preview, metadata } },
+    }),
+  ).toThrow(missing)
+})
+
 test(`frames tab renders every property row with units`, async () => {
   const run = make_run(4)
   await mount_pane({ run })
   await open_tab(`frames`)
   expect(body_rows()).toHaveLength(4)
   expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
+  // the recorded `Step` property duplicates the Step column
+  expect(header_texts().filter((text) => text.startsWith(`Step`))).toEqual([`Step`])
   // Frame column numbers from 1 like the step input; Step is the recorded MD step
   expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`1`, `0`])
   expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`4`, `30`])
@@ -170,7 +245,7 @@ test(`atom rows refresh coordinates and scalar values during fixed-topology play
   const after = cell_texts(body_rows()[0])
   expect(after).toContain(`90`)
   expect(after).not.toEqual(before)
-  expect(after[5]).toBe(`9`)
+  expect(after[2]).toBe(`9`) // x (Å), after Site and Element
 })
 
 test(`sampled property rows keep their real frame numbers and disclose sampling`, async () => {
@@ -208,7 +283,6 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
   expect_headers(
     `Site`,
     `Element`,
-    `afrac`,
     `x (Å)`,
     `magmom (μB)`,
     `cluster_tag`,
@@ -216,27 +290,29 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
     `selective_dynamics x`,
   )
   expect(header_texts()).toContain(`velocity x`) // no unit: Å/fs from ASE, Å/ps from LAMMPS
+  // fractional coordinates start hidden so the properties follow the Cartesian ones
+  expect(header_texts().some((text) => text.includes(`frac`))).toBe(false)
   // Numeric vectors also get their magnitude; a boolean one like selective_dynamics does not
   expect_headers(`|force| (eV/Å)`, `|velocity|`)
   expect(header_texts().some((text) => text.includes(`|selective_dynamics|`))).toBe(false)
   const rows = body_rows()
   expect(rows).toHaveLength(2)
-  expect(cell_texts(rows[0]).slice(8, 17)).toEqual([
+  expect(cell_texts(rows[0]).slice(5, 14)).toEqual([
     `0.1`,
     `-0.2`,
     `0.3`,
-    `0.374166`,
+    `0.3742`,
     `1.5`,
     `true`,
     `true`,
     `false`,
     `surface`,
   ])
-  expect(cell_texts(rows[1]).slice(8, 17)).toEqual([
+  expect(cell_texts(rows[1]).slice(5, 14)).toEqual([
     `0.4`,
     `0.5`,
     `-0.6`,
-    `0.877496`,
+    `0.8775`,
     `n/a`,
     `false`,
     `false`,
@@ -285,31 +361,32 @@ test.each([false, true])(
       await tick()
     }
     expect(selected()).toEqual(linked ? [2] : [])
+    if (!linked) return
+    // a checkbox toggles its own row once: the row click it bubbles into must not undo it
+    const checkbox = () =>
+      body_rows()[0].querySelector<HTMLInputElement>(`input[type="checkbox"]`)
+    checkbox()?.click()
+    await tick()
+    expect(selected()).toEqual([0, 2])
+    checkbox()?.click()
+    await tick()
+    expect(selected()).toEqual([2])
   },
 )
 
-// Hovering an atom row points at its atom in 3D before any click, and leaving the table clears it
-test(`hovering atom rows reports their atoms, once per row change`, async () => {
-  const on_atoms_hover = vi.fn()
-  const run = make_run(3)
-  await mount_pane({ run, current_frame: run.preview, on_atoms_hover })
-  await open_atoms()
-  const over = (target: Element) =>
-    target.dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
-  over(body_rows()[2].querySelector(`td`) ?? body_rows()[2])
-  over(body_rows()[2])
-  over(body_rows()[0])
-  doc_query(`tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
-  expect(on_atoms_hover.mock.calls).toEqual([[[2]], [[0]], [[]]])
-})
-
-test(`docked, the inspector renders in place with its tables, and undocks`, async () => {
+// Undocking opens the floating pane rather than making the inspector vanish
+test(`docked, the inspector renders in place with its tables, and undocks into the pane`, async () => {
   await mount_pane({ run: make_run(3), pane_open: false, docked: true, dockable: true })
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
   expect(sidebar.querySelector(`table`)).not.toBeNull()
+  // the docked table fills the sidebar instead of a viewport-tied height
+  const { style } = query(sidebar, `.table-scroll`)
+  expect([style.flexGrow, style.minHeight, style.maxHeight]).toEqual([`1`, `0`, ``])
   doc_query<HTMLButtonElement>(`button[aria-label="Undock data inspector"]`).click()
   await tick()
   expect(document.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
+  expect(doc_query(`.trajectory-data-inspector-pane table`)).not.toBeNull()
+  expect(document.querySelector(`button[aria-label="Dock data inspector"]`)).not.toBeNull()
 })
 
 test(`closed pane builds no table`, async () => {

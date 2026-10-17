@@ -68,6 +68,9 @@ const get_export_button = (export_pane: Locator, label_text: string): Locator =>
 
 const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Promise<void> => {
   await diagram.hover()
+  // A clicked toggle's tooltip stays up while the toggle has focus and takes clicks during its
+  // ~250 ms close, so a click right after focus moves on can land on it instead of this toggle
+  await expect(diagram.page().locator(`.tooltip-content`)).toBeHidden()
   await toggle.click({ force: true })
   await expect(pane).toBeVisible()
 }

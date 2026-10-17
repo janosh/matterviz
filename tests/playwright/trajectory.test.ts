@@ -1418,8 +1418,9 @@ test.describe(`Trajectory Component`, () => {
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
 
-      // Widening the sidebar puts them back side by side without a remount
-      await set_size(900)
+      // Widening the sidebar puts them back side by side without a remount. 890px stays
+      // below the 900px from which the data inspector docks and takes a third of the row.
+      await set_size(890)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)
 

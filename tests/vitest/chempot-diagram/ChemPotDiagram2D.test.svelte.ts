@@ -232,13 +232,13 @@ const quinary_entries = load_json<PhaseData[]>(
 )
 const ytos_entries = load_json<PhaseData[]>(`${import.meta.dirname}/ytos_entries.json.gz`)
 // create_chempot_state outside a component, its worker result delivered
-const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig) => {
+const chempot_state = async (entries: () => PhaseData[], config: ChemPotDiagramConfig) => {
   const states: ReturnType<typeof create_chempot_state>[] = []
   onTestFinished(
     $effect.root(() => {
       states.push(
         create_chempot_state({
-          entries: () => entries,
+          entries,
           config: () => config,
           temperature: { get: () => undefined, set: () => undefined },
           min_elements: 3,
@@ -253,13 +253,31 @@ const chempot_state = async (entries: PhaseData[], config: ChemPotDiagramConfig)
   return states[0]
 }
 
+// While the worker computes a system on new axes, the old system's sliders would offer ranges
+// of a different system: no slice controls until the new one arrives
+test(`chempot state offers no slices while its system is stale`, async () => {
+  const props = $state({ entries: quinary_entries })
+  const chempot = await chempot_state(() => props.entries, {
+    elements: [`La`, `Ni`, `O`],
+    slice_chempots: { F: -1 },
+  })
+  expect(Object.keys(chempot.slice_ranges).toSorted()).toEqual([`F`, `Rb`])
+  // drop Rb: the compute axes change and the worker is asked again
+  props.entries = quinary_entries.filter((entry) => !(`Rb` in entry.composition))
+  flushSync()
+  expect([chempot.slice_elements, chempot.slices, chempot.slice_ranges]).toEqual([[], {}, {}])
+  await resolve_latest()
+  expect(Object.keys(chempot.slice_ranges)).toEqual([`F`])
+  expect(Object.keys(chempot.slices)).toEqual([`F`])
+})
+
 test(`chempot state keeps only non-display axis slices and reuses a slice's curves while its own value moves`, async () => {
   const display = [`La`, `Ni`, `O`]
   const config = $state<ChemPotDiagramConfig>({
     elements: display,
     slice_chempots: { F: -1.5, La: -1, Xe: -1 },
   })
-  const chempot = await chempot_state(quinary_entries, config)
+  const chempot = await chempot_state(() => quinary_entries, config)
   const system = compute_chempot_system(quinary_entries, { elements: display })
   const expected_curves = () =>
     section_measure_curves(system, display, chempot.slices, `F`, chempot.slice_ranges.F)
@@ -305,13 +323,26 @@ test.each([
     config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 5, Rb: -99 } },
   },
 ])(`chempot state clamps infeasible slices: $label`, async ({ entries, config }) => {
-  const chempot = await chempot_state(entries, config)
+  const chempot = await chempot_state(() => entries, config)
   expect(chempot.error).toBeNull()
   expect(chempot.diagram_data?.shadow_elements).toEqual([])
   for (const [element, value] of Object.entries(config.slice_chempots)) {
     const [lower, upper] = chempot.slice_ranges[element]
     expect(chempot.slices[element]).toBe(Math.min(Math.max(value, lower), upper))
   }
+})
+
+// A non-finite slice is a config error shown in place of the diagram; the other slices' ranges
+// stay computable (a NaN clamped into the first range used to throw from the second's)
+test(`a non-finite slice value is reported, not thrown`, async () => {
+  const chempot = await chempot_state(() => quinary_entries, {
+    elements: [`La`, `Ni`, `O`],
+    slice_chempots: { F: Number.NaN, Rb: -1 },
+  })
+  expect(chempot.error).toBe(`slice_chempots.F must be finite, got NaN`)
+  expect(chempot.diagram_data).toBeNull()
+  expect(Object.keys(chempot.slices)).toEqual([`Rb`])
+  expect(Object.keys(chempot.slice_ranges).toSorted()).toEqual([`F`, `Rb`])
 })
 
 test(`a 2D slice sweep keeps the axes of the unsliced projection and labels the slice`, async () => {

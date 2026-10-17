@@ -9,7 +9,6 @@ import {
 } from '#lib/phase-diagram/ternary/compute.js'
 import TernaryPrismScene from '#lib/phase-diagram/ternary/TernaryPrismScene.svelte'
 import { TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
-import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -17,30 +16,12 @@ import { threlte_stub } from '../../isosurface/threlte-stub'
 import { bind_props } from '../../setup'
 import { toy_elements, toy_entries } from './fixtures'
 
-vi.mock(`@threlte/core`, async (original) => {
-  const core = await original<typeof threlte_core>()
-  return {
-    ...core,
-    T: (await import(`../../isosurface/threlte-stub`)).threlte_stub.T,
-    useThrelte: () => ({
-      invalidate: () => {},
-      scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
-      size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: { domElement: document.createElement(`canvas`) },
-    }),
-  }
-})
-vi.mock(`@threlte/extras`, async () => {
-  const { T } = (await import(`../../isosurface/threlte-stub`)).threlte_stub
-  const stub = (tag: string) => Reflect.get(T, tag)
-  return {
-    OrbitControls: stub(`OrbitControls`),
-    HTML: stub(`HTML`),
-    Billboard: stub(`Billboard`),
-    interactivity: () => ({ enabled: { set: () => {} } }),
-  }
-})
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../../isosurface/threlte-stub`)).mock_threlte_extras(),
+)
 
 let teardown: (() => void) | undefined
 afterEach(() => {

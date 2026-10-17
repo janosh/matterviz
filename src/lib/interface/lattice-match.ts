@@ -306,13 +306,7 @@ const same_strain = (
   { strain: strain_2 }: MatchStrain,
   symmetries: Matrix2x2[],
 ): boolean =>
-  [
-    [
-      [1, 0],
-      [0, 1],
-    ] as Matrix2x2,
-    ...symmetries,
-  ].some((op) => {
+  [identity_2x2(), ...symmetries].some((op) => {
     const rotated = mul2(mul2(op, strain_1), [
       [op[0][0], op[1][0]],
       [op[0][1], op[1][1]],

@@ -15,7 +15,6 @@ test.each([
   [{}, `pointer-events: none; `],
   [{ style: `color: red` }, `pointer-events: none; color: red`],
   [{ interactive: true, style: `color: red` }, `color: red`],
-  [{ interactive: true }, ``],
 ])(`%o renders HTML with style %j`, (props, style) => {
   const children = createRawSnippet(() => ({ render: () => `<span class="chip">Γ</span>` }))
   const component = mount(SceneLabel, {

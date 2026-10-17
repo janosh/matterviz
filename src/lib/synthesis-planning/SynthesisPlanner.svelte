@@ -332,7 +332,7 @@
     return gases
       .map((gas) => {
         const pressure = conditions.partial_pressures?.[gas] ?? DEFAULT_GAS_PRESSURES[gas]
-        return `${sanitize_formula(gas)} = ${format_num(pressure, `.2~`)} bar`
+        return `${sanitize_formula(gas)} = ${format_num(pressure, `.2~g`)} bar`
       })
       .join(`, `)
   })

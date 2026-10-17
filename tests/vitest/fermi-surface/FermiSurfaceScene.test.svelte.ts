@@ -4,7 +4,6 @@
 import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { BZHoverData } from '#lib/brillouin/index.js'
 import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
-import type * as threlte_core from '@threlte/core'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   type BufferGeometry,
@@ -21,34 +20,18 @@ import { bind_props } from '../setup'
 import { make_fermi_surface } from '../test-fixtures'
 
 const invalidate = vi.hoisted(() => vi.fn())
-vi.mock(`@threlte/core`, async (original) => {
-  const core = await original<typeof threlte_core>()
-  return {
-    ...core,
-    T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    useThrelte: () => ({
-      invalidate,
-      scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
-      // SceneCamera re-applies its view-offset pan on resize
-      size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: { domElement: document.createElement(`canvas`) },
-    }),
-  }
-})
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original, invalidate),
+)
 // OrbitControls is a Threlte component; interactivity() registers pointer plugins on a renderer,
 // so it is replaced by a recording `enabled` switch that also records the hit filter
 const hover_enabled = vi.hoisted(() => ({ set: vi.fn() }))
 const interactivity = vi.hoisted(() =>
   vi.fn((_options?: unknown) => ({ enabled: hover_enabled })),
 )
-vi.mock(`@threlte/extras`, async () => ({
-  OrbitControls: Reflect.get(
-    (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    `OrbitControls`,
-  ),
-  interactivity,
-}))
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_extras(interactivity),
+)
 
 let teardown: (() => void) | undefined
 afterEach(() => {

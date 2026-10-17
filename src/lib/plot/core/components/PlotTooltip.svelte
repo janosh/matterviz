@@ -146,7 +146,7 @@
     font-size: var(--plot-tooltip-font-size, 12px);
     line-height: var(--plot-tooltip-line-height, 1.25);
     /* never inherit a centered page or card layout */
-    text-align: var(--plot-tooltip-text-align, start);
+    text-align: start;
     /* as wide as the content up to max-width, then wrap: an absolute box would otherwise
     shrink to the room left of its anchor and wrap early near the right edge */
     width: max-content;

@@ -269,6 +269,11 @@ describe(`display modes`, () => {
     await vi.waitFor(() => expect(last_channels()).toBeUndefined())
     props.active_pane = null
     await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
+    // a docked inspector is open without being the active pane
+    props.data_inspector_docked = true
+    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
+    props.data_inspector_docked = false
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
     props.structure_props = {
       scene_props: {
         vector_configs: { force: { visible: false }, velocity: { visible: false } },
@@ -523,6 +528,68 @@ describe(`controls`, () => {
       )
       expect(target.querySelector(`.content-area .plot-toolbar`)).toBeNull()
     }
+  })
+
+  // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
+  // its sites, so selection and hover map between the two in both directions
+  test(`a docked inspector links render-sampled atom rows to scene sites`, async () => {
+    const structure_props = last_props<StructureProps>(structure_component)
+    const sample = { render_sample: true, total_atoms: 12, source_atom_indices: [3, 9] }
+    const frames = [0, 10].map((step) => make_trajectory_frame(step, 2, sample))
+    for (const frame of frames)
+      for (const site of frame.structure.sites) site.properties.force = [1, 2, 3]
+    const props = $state(
+      default_props({
+        trajectory: trajectory_from_frames(frames),
+        data_inspector_docked: true,
+        active_pane: null,
+      }),
+    )
+    const target = mount_trajectory(props)
+    await vi.waitFor(() => expect(structure_props().selected_sites).toBeDefined())
+    const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
+    query<HTMLButtonElement>(sidebar, `[role="tab"][data-value="atoms"]`).click()
+    const rows = () => [...sidebar.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`)]
+    await vi.waitFor(() => expect(rows()).toHaveLength(2))
+    expect(
+      rows().map((row) => row.querySelector(`td[data-col="Site"]`)?.textContent?.trim()),
+    ).toEqual([`4`, `10`])
+    expect(sidebar.querySelector(`thead`)?.textContent).toContain(`|force|`)
+    rows()[1].click()
+    await tick()
+    expect(structure_props().selected_sites).toEqual([1])
+    // a hovered row is the 3D hover of its sampled site, and a site hovered in 3D shades its row
+    rows()[0].dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
+    await tick()
+    expect(structure_props().hovered_site_idx).toBe(0)
+    structure_props().hovered_site_idx = 1
+    await tick()
+    expect(rows().map((row) => row.classList.contains(`hovered`))).toEqual([false, true])
+    // a site selected in 3D marks the row of its source atom
+    structure_props().selected_sites = [0]
+    await tick()
+    expect(rows().map((row) => row.classList.contains(`selected`))).toEqual([true, false])
+    // the inner structure's own site table stays off: the inspector lists the sites
+    expect(target.querySelector(`button[aria-label="Show the site table"]`)).toBeNull()
+    // a docked inspector has no floating pane, so its Analysis menu entry undocks it into one
+    await open_analysis(target, `Data inspector`)
+    expect(props.data_inspector_docked).toBe(false)
+    expect(props.active_pane).toBe(`data-inspector`)
+    expect(target.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
+    expect(query(target, `.trajectory-data-inspector-pane table`)).not.toBeNull()
+  })
+
+  // Unset, the inspector docks once the viewer row has 900 px for it
+  test.each([
+    [899, false],
+    [900, true],
+  ])(`a %d px viewer docks the inspector: %s`, async (width, docked) => {
+    const target = mount_trajectory(default_props())
+    const row = query(target, `.viewer-row`)
+    await resize_element(row, width, 600)
+    trigger_resize_observer(row)
+    await tick()
+    expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(docked)
   })
 
   test(`linked views: inspector rows select atoms, analysis hovers highlight them, structure types seek`, async () => {

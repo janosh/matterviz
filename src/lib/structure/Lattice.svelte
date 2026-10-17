@@ -231,7 +231,9 @@
         {...arrow_sizes}
         color={AXIS_COLORS[idx][hovered_idx === idx ? 2 : 1]}
         onpointerenter={() => (hovered_idx = idx)}
-        onpointerleave={() => (hovered_idx = null)}
+        onpointerleave={() => {
+          if (hovered_idx === idx) hovered_idx = null
+        }}
       />
     {/each}
 

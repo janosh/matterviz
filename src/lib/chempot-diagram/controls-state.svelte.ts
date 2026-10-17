@@ -175,22 +175,37 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   })
   $effect(() => () => compute_chempot_async.release())
 
+  // A system computed on other axes is stale (the worker is still on its replacement)
+  const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))
   // Axes beyond the display ones, each sliced at a fixed mu or else shadow-projected. Slices
-  // of axes now displayed (or gone from the data) are kept but inactive.
+  // of axes now displayed (or gone from the data) are kept but inactive. None while stale, so
+  // no slider offers ranges of the old system.
   const slice_elements = $derived(
-    system?.elements.filter((element) => !axes.display.includes(element)) ?? [],
+    stale || !system
+      ? []
+      : system.elements.filter((element) => !axes.display.includes(element)),
   )
   const padding = $derived(resolve(`element_padding`))
   const min_limit = $derived(resolve(`default_min_limit`))
+  // A non-finite slice value is a config error, shown instead of a diagram (controls stay
+  // editable); the clamping below skips it so every range computation stays finite
+  const slice_error = $derived.by((): string | null => {
+    const [element, value] =
+      Object.entries(resolve(`slice_chempots`)).find(
+        ([, val]) => val !== undefined && !Number.isFinite(val),
+      ) ?? []
+    return element ? `slice_chempots.${element} must be finite, got ${value}` : null
+  })
   // Requested slices clamped in element order, each into the range the ones before it leave
   // feasible, so no combination empties the region (e.g. a value above the element's
   // reference in absolute chempots, or two jointly above a compound of just those elements)
   const slices = $derived.by((): Record<string, number> => {
     const [sys, requested] = [system, resolve(`slice_chempots`)]
     const clamped: Record<string, number> = {}
+    if (!sys) return clamped
     for (const element of slice_elements) {
       const value = requested[element]
-      if (value === undefined || !sys) continue
+      if (value === undefined || !Number.isFinite(value)) continue
       const [lower, upper] = slice_range(sys, element, padding, min_limit, clamped)
       clamped[element] = clamp(value, lower, upper)
     }
@@ -208,13 +223,12 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     )
   })
   // Sectioning is a vertex enumeration on the display axes, cheap enough to follow a slider.
-  // A system computed on other axes is stale (the worker is still on its replacement): the
-  // last section stays on screen meanwhile.
-  const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))
+  // While the system is stale the last section stays on screen.
   type Section = { data: ChemPotDiagramData | null; error: string | null }
   let last_section: Section = { data: null, error: null }
   const section = $derived.by((): Section => {
     if (!system) return (last_section = { data: null, error: null })
+    if (slice_error) return (last_section = { data: null, error: slice_error })
     if (stale) return last_section
     try {
       const data = section_chempot_system(system, axes.display, slices)
@@ -365,6 +379,14 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     },
   }
 }
+
+// The axis range to show when a computed `next` range replaces the one last `applied`: a range
+// the user set in between (it no longer matches what was applied) is kept
+export const sticky_range = <Range extends readonly (number | null)[] | undefined>(
+  current: Range,
+  applied: Range,
+  next: Range,
+): Range => (current?.[0] === applied?.[0] && current?.[1] === applied?.[1] ? next : current)
 
 // Pointer position relative to `container`, for tooltip placement. The true hotspot,
 // not a nudged one: PlotTooltip needs it to flip correctly and to size the gap that

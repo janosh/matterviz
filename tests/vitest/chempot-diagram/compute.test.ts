@@ -2081,16 +2081,11 @@ describe(`sections (slicing non-display axes at fixed mu)`, () => {
     { slices: { Ti: -1 }, message: `Cannot slice display axis Ti` },
     { slices: { Xe: -1 }, message: `Cannot slice Xe: not an axis of O-S-Ti-Y` },
     { slices: { S: 0.5 }, system: s_above_ref, message: `puts S 0.5 eV above its reference` },
-  ])(`section_chempot_system rejects $slices`, ({ slices, system, message }) => {
-    expect(() => section_chempot_system(system ?? ytos_system, ytos_display, slices)).toThrow(
-      message,
-    )
-  })
-
-  test(`section_chempot_system rejects display axes the system lacks`, () => {
-    expect(() => section_chempot_system(ytos_system, [`O`, `Ti`, `Xe`])).toThrow(
-      `Display axes Xe not in O-S-Ti-Y`,
-    )
+    { slices: {}, display: [`O`, `Ti`, `Xe`], message: `Display axes Xe not in O-S-Ti-Y` },
+  ])(`section_chempot_system rejects $message`, ({ slices, system, display, message }) => {
+    expect(() =>
+      section_chempot_system(system ?? ytos_system, display ?? ytos_display, slices),
+    ).toThrow(message)
   })
 
   test(`section_measure_curves is null while another axis stays shadow-projected, throws for a display axis`, () => {
