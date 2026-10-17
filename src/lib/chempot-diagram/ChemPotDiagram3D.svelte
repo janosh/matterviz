@@ -1402,6 +1402,8 @@
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
   }
   .chempot-diagram-3d :global(.chempot-temp-slider) {
+    /* overlays the scene: in flow it pushes the fixed-height viewer's canvas out of its box */
+    position: absolute;
     top: var(--chempot-temp-slider-top, calc(1ex + 108px));
     right: 4px;
     z-index: 11;
