@@ -145,3 +145,7 @@ export function dispose_on_change(
     }
   })
 }
+
+// Radius of a hovered or selected sphere's translucent shell, as a multiple of the sphere's:
+// just outside it, so the shell outlines the sphere rather than a bulkier one around it
+export const HOVER_SHELL_SCALE = 1.04

@@ -1,6 +1,7 @@
 // Data-to-scene coordinate mapping shared by the 3D scatter scene, its surfaces and its
 // reference lines/planes.
 
+import { HOVER_SHELL_SCALE } from '#lib/scene/index.js'
 import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
 import {
@@ -43,7 +44,8 @@ export function create_to_threejs(
 }
 
 // The hover halo is a translucent shell just outside the marker; tooltips keep clear of it
-export const hover_halo_radius = (marker_radius: number): number => marker_radius * 1.04
+export const hover_halo_radius = (marker_radius: number): number =>
+  marker_radius * HOVER_SHELL_SCALE
 
 // A surface's vertices in data coordinates, exactly as Surface3D draws them: grid surfaces
 // sample z_fn over their own x/y ranges (else the plot's), parametric ones their u/v ranges,

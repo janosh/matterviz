@@ -2,6 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
+import { HOVER_SHELL_SCALE } from '#lib/scene/geometry.svelte.js'
 import { DEFAULTS } from '#lib/settings.js'
 import type {
   AnyStructure,
@@ -479,6 +480,36 @@ test.each<[string, SceneProps, string?, string?, Vec3?]>([
   flushSync()
   const { style } = doc_query(`[role="tooltip"]`)
   expect([style.backgroundColor, style.color]).toEqual([bg, text_color])
+})
+
+// The hover shell hugs the atom: HOVER_SHELL_SCALE (a hair outside), not a bulkier sphere
+test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, () => {
+  const interactivity = spy_interactivity()
+  const { scene } = mount_structure({ show_bonds: `never`, structure: lone_c })
+  scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, state) =>
+    state.raycaster.set(new Vector3(0, 0, 10), new Vector3(0, 0, -1))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  const atoms = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find((mesh) => mesh instanceof AtomInstances)
+  if (!(atoms instanceof AtomInstances)) throw new Error(`no atom instances`)
+  const atom_matrix = new Matrix4()
+  atoms.getMatrixAt(0, atom_matrix)
+  const atom_scale = new Vector3().setFromMatrixScale(atom_matrix).x
+  // the shell: a plain mesh on the shared 0.5-radius sphere, centred on the atom
+  const shell = scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .find(
+      (mesh) =>
+        !(mesh instanceof AtomInstances) &&
+        mesh.position.length() < 1e-9 &&
+        mesh.scale.x > atom_scale,
+    )
+  // instance matrices are Float32 (eps 1.2e-7): the atom scale reads back to ~2e-8 relative
+  expect(shell?.scale.x).toBeCloseTo(HOVER_SHELL_SCALE * atom_scale, 6)
 })
 
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path

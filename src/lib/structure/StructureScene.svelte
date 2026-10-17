@@ -37,6 +37,7 @@
     create_scene_camera,
     DEFAULT_FLY_TO_DURATION_MS,
     flight_holds,
+    HOVER_SHELL_SCALE,
     scene_interactivity,
     scene_key_walk,
     SceneCamera,
@@ -704,9 +705,6 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
-  // Outer translucent shell around hover/selection. Atom meshes use the same
-  // SphereGeometry(0.5) × radius scale, so this is a pure radial margin (1.2 was a bulky 20%).
-  const HIGHLIGHT_SHELL_SCALE = 1.08
   const editable_bond_matrix = new Float32Array(16)
 
   // Analytic atom hit targets need no vertices; share resources across targets and highlights.
@@ -2310,7 +2308,7 @@
         <T.Mesh
           geometry={highlight_sphere_geometry}
           position={entry.site.xyz}
-          scale={HIGHLIGHT_SHELL_SCALE * entry.radius}
+          scale={HOVER_SHELL_SCALE * entry.radius}
           oncreate={disable_raycast}
         >
           <T.MeshStandardMaterial
@@ -2350,7 +2348,7 @@
         <!-- keeps clear of the hover shell (radius 0.5 scaled, see highlight_sphere_geometry) -->
         <CanvasTooltip
           position={hovered_site.xyz}
-          anchor_radius={0.5 * HIGHLIGHT_SHELL_SCALE * (hover_shell?.radius ?? 0)}
+          anchor_radius={0.5 * HOVER_SHELL_SCALE * (hover_shell?.radius ?? 0)}
           bg_color={hovered_tooltip_bg}
         >
           <!-- Element symbols with occupancies for disordered sites -->
