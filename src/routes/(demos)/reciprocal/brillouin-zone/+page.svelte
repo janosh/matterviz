@@ -22,15 +22,13 @@
     id: string
     label: string
     description: string
-    show_ibz?: boolean
   }
 
   const examples: BZExample[] = [
     {
       id: `Po-simple-cubic`,
       label: `Simple Cubic (SC)`,
-      description: `Po - cubic BZ with IBZ wedge (1/48th)`,
-      show_ibz: true,
+      description: `Po - cubic BZ, IBZ wedge 1/48th of it`,
     },
     {
       id: `Fe-BCC`,
@@ -40,8 +38,7 @@
     {
       id: `Cu-FCC`,
       label: `Face-Centered Cubic (FCC)`,
-      description: `Cu - rhombic dodecahedron with IBZ`,
-      show_ibz: true,
+      description: `Cu - rhombic dodecahedron`,
     },
     {
       id: `mp-1207297-Ac2Br2O1-tetragonal`,
@@ -51,8 +48,7 @@
     {
       id: `mp-862690-Ac4-hexagonal`,
       label: `Hexagonal`,
-      description: `Ac - hexagonal prism with IBZ`,
-      show_ibz: true,
+      description: `Ac - hexagonal prism`,
     },
     {
       id: `mp-1183085-Ac4Mg2-orthorhombic`,
@@ -99,13 +95,13 @@
 </label>
 
 <div class="full-bleed grid">
-  {#each examples as { id: identifier, label, description, show_ibz } (identifier)}
+  {#each examples as { id: identifier, label, description } (identifier)}
     {@const structure = structure_map.get(identifier)}
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
       <LazyDemo label="brillouin zone">
-        <BrillouinZone {structure} {surface_opacity} {show_ibz} />
+        <BrillouinZone {structure} {surface_opacity} show_ibz />
       </LazyDemo>
     </div>
   {/each}
@@ -129,6 +125,7 @@
     <BrillouinZone
       bind:structure={dropped_structure}
       {surface_opacity}
+      show_ibz
       show_controls
       allow_file_drop
       style="height: 450px"
@@ -151,6 +148,7 @@
           {structure}
           {surface_opacity}
           bz_order={order}
+          show_ibz
           show_controls
           allow_file_drop
         />
