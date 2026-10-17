@@ -137,12 +137,6 @@
 
   // `always` by default: the editor and export toggles are how users discover those features
   const controls_config = $derived(normalize_show_controls(show_controls))
-  // Shared icon/toggle styling for the controls, export and editor panes
-  const pane_props = {
-    icon_style: `width: 14px; height: 14px`,
-    toggle_props: { style: `padding: 0` },
-  }
-
   // Instance-unique prefix for gradient ids: region ids come from user data (e.g.
   // 'liquid'), so two diagrams on one page would otherwise cross-reference each
   // other's gradients (first-in-document wins, with that instance's pixel coords)
@@ -504,7 +498,6 @@
           bind:y_axis
           data={effective_data}
           shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
-          {...pane_props}
         />
       {/if}
       {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
@@ -516,7 +509,6 @@
           filename={export_filename}
           {export_formats}
           {on_export}
-          {...pane_props}
         />
       {/if}
       {#if controls_config.visible(`editor`)}
@@ -525,7 +517,6 @@
           bind:diagram_input
           data={effective_data}
           on_data={(edited) => (source_data = edited)}
-          {...pane_props}
         />
       {/if}
     </ViewerChrome>
