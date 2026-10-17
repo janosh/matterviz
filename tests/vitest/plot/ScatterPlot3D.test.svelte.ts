@@ -440,57 +440,71 @@ test.each<[string, false | undefined, boolean]>([
   expect(getComputedStyle(tip).textAlign).toBe(`start`)
 })
 
-// The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
-test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () => {
-  const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
-  const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
-  const { exports, unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      // x=9 falls outside the x range, so the cursor skips it
-      series: [
-        { x: [1, 2], y: [1, 1], z: [1, 1] },
-        { x: [3, 9], y: [1, 1], z: [1, 1] },
-      ],
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      gizmo: false,
-      on_point_hover,
-      on_point_click,
-      get hovered_point() {
-        return state.hovered_point as never
-      },
-      set hovered_point(value) {
-        state.hovered_point = value
-      },
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  const { handle_key } = exports
-  const press = (key: string) => {
-    const point = handle_key(new KeyboardEvent(`keydown`, { key }))
+// The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor.
+// Enter clicks the cursor's point, or without on_point_click pins its tooltip, which the first
+// Escape then unpins before the next clears the cursor.
+test.each([
+  [true, [null, undefined, undefined]],
+  [false, [null, null, undefined]],
+])(
+  `ScatterPlot3DScene walks, clicks and clears its markers by keyboard, on_point_click: %s`,
+  (clickable, escapes) => {
+    const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
+    const { exports, unmount_scene } = mount_scene((anchor) =>
+      ScatterPlot3DScene(anchor, {
+        // x=9 falls outside the x range, so the cursor skips it
+        series: [
+          { x: [1, 2], y: [1, 1], z: [1, 1] },
+          { x: [3, 9], y: [1, 1], z: [1, 1] },
+        ],
+        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+        gizmo: false,
+        on_point_hover,
+        on_point_click: clickable ? on_point_click : undefined,
+        get hovered_point() {
+          return state.hovered_point as never
+        },
+        set hovered_point(value) {
+          state.hovered_point = value
+        },
+      }),
+    )
+    onTestFinished(unmount_scene)
     flushSync()
-    return point && [point.series_idx, point.point_idx]
-  }
-  // chords, composing and already-handled keys are left alone
-  const arrow_right = (init: KeyboardEventInit) =>
-    new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
-  const handled = arrow_right({ cancelable: true })
-  handled.preventDefault()
-  const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(arrow_right)
-  for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
-  const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
-  // oxfmt-ignore
-  expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
-  expect(on_point_hover).toHaveBeenLastCalledWith(
-    expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
-  )
-  expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
-  expect(press(`Enter`)).toEqual([0, 0])
-  expect(on_point_click).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0, x: 1 }))
-  expect([`Escape`, `Escape`, `a`].map(press)).toEqual([null, undefined, undefined])
-  expect(state.hovered_point).toBeNull()
-  expect(on_point_hover).toHaveBeenLastCalledWith(null)
-})
+    const { handle_key } = exports
+    const press = (key: string) => {
+      const point = handle_key(new KeyboardEvent(`keydown`, { key }))
+      flushSync()
+      return point && [point.series_idx, point.point_idx]
+    }
+    // chords, composing and already-handled keys are left alone
+    const arrow_right = (init: KeyboardEventInit) =>
+      new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
+    const handled = arrow_right({ cancelable: true })
+    handled.preventDefault()
+    const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(
+      arrow_right,
+    )
+    for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
+    const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
+    // oxfmt-ignore
+    expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
+    expect(on_point_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
+    )
+    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(press(`Enter`)).toEqual([0, 0])
+    expect(on_point_click.mock.calls).toEqual(
+      clickable ? [[expect.objectContaining({ series_idx: 0, x: 1 })]] : [],
+    )
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect([`Escape`, `Escape`, `a`].map(press)).toEqual(escapes)
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    expect(state.hovered_point).toBeNull()
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
+  },
+)
 
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame

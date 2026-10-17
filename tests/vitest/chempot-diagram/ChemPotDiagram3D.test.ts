@@ -272,6 +272,23 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   const fresh = get_scene().hover_meshes.find(({ formula }) => formula === domain.formula)
   expect(bound.hover_info?.formula).toBe(domain.formula)
   expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
+  // a press on the pinned domain or Escape unpins, closing the tooltip
+  const wrapper = doc_query(`.chempot-diagram-3d`)
+  const escape = () =>
+    wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+  escape() // closes the controls pane still open from above first
+  flushSync()
+  expect(bound.hover_info?.formula).toBe(domain.formula)
+  for (const unpin of [() => get_scene().on_domain_press(fresh, event), escape]) {
+    get_scene().on_domain_hover(fresh, event)
+    flushSync()
+    expect(bound.hover_info?.formula).toBe(domain.formula)
+    unpin()
+    flushSync()
+    expect(bound.hover_info).toBeNull()
+    get_scene().on_domain_press(fresh, event) // re-pin
+    flushSync()
+  }
 })
 
 // A hull face's owner is the domain holding all three corners (nearest-centroid labelled six

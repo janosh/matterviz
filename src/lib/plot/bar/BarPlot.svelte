@@ -73,6 +73,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
@@ -508,21 +509,23 @@
   let legend_data = $derived(build_legend_items(series, legend_swatch))
 
   // Hover state is indices only: the tooltip follows new data and closes once its mark is gone
-  // or hidden. `line` marks a line-series point, whose hover callback is on_point_hover.
-  let hover_key = $state<{
-    series_idx: number
-    bar_idx: number
-    color: string
-    line?: boolean
-  } | null>(null)
-  const hover_info = $derived.by(() => {
-    if (!hover_key) return null
-    const { series_idx, bar_idx, color } = hover_key
+  // or hidden. `line` marks a line-series point, whose hover callback is on_point_hover. A
+  // click pins the hovered mark's tooltip unless on_bar_click/on_point_click takes the click.
+  type MarkKey = { series_idx: number; bar_idx: number; color: string; line?: boolean }
+  let hover_key = $state<MarkKey | null>(null)
+  const pin = new TooltipPin<MarkKey>({
+    key: (mark) => `${mark.series_idx}:${mark.bar_idx}:${mark.line}`,
+    enabled: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
+  })
+  const mark_info = (key: MarkKey | null) => {
+    if (!key) return null
+    const { series_idx, bar_idx, color } = key
     const srs = internal_series[series_idx]
     return srs && srs.visible !== false && bar_idx < srs.x.length
       ? get_bar_data(series_idx, bar_idx, color)
       : null
-  })
+  }
+  const hover_info = $derived(mark_info(pin.value ?? hover_key))
 
   function get_bar_data(
     series_idx: number,
@@ -557,7 +560,7 @@
 
   // Line points anchor where drawn, bars at their drawn tip (group slot, stack base, log floor)
   const tooltip_anchor = $derived.by((): Vec2 | null => {
-    if (!hover_info || !hovered) return null
+    if (!hover_info || !(hovered || pin.value)) return null
     const { series_idx, bar_idx, orient_x, orient_y } = hover_info
     const srs = internal_series[series_idx]
     if (srs.render_mode === `line`) {
@@ -604,9 +607,10 @@
     on_point_hover?.(null)
   }
   clear_stale_hover(
-    () => hover_key && !hover_info,
+    () => hover_key && !mark_info(hover_key),
     () => (hover_key?.line ? clear_point_hover() : clear_hover()),
   )
+  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
 
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
   let group_info = $derived(compute_group_info(internal_series, mode))
@@ -659,6 +663,8 @@
     hovered = false
     clear_hover()
   }}
+  on_mouse_click={() => pin.toggle(hover_key)}
+  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -812,9 +818,10 @@
                   onkeydown={(evt) => {
                     if (roving.handle_keydown(evt)) return
                     const point = get_pt(evt)
-                    if (point && clickable && is_activation_key(evt)) {
+                    if (point && is_activation_key(evt)) {
                       evt.preventDefault()
-                      do_click(point, evt)
+                      if (clickable) do_click(point, evt)
+                      pin.toggle(hover_key) // focus is the keyboard's hover
                     }
                   }}
                 >
@@ -907,6 +914,7 @@
                       if (is_activation_key(evt)) {
                         evt.preventDefault()
                         click_bar(evt)
+                        pin.toggle(hover_key) // focus is the keyboard's hover
                       }
                     }}
                   />
@@ -1001,6 +1009,7 @@
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

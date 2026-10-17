@@ -6,6 +6,7 @@ import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  pin_cycle,
   export_via_pane,
   fire,
   keydown,
@@ -16,6 +17,7 @@ import {
   plot_svg,
   query,
   roving_tabindexes,
+  svg_mark_driver,
   translate_of,
 } from '../setup'
 
@@ -115,6 +117,12 @@ describe(`TernaryPlot`, () => {
     const message = plot.querySelector(`.viewer-error [role="alert"]`)?.textContent
     expect(message).toContain(`Bad point 2 has a negative amount`)
     expect(markers(plot)).toHaveLength(0)
+  })
+
+  test(`a point click or Enter pins its tooltip; it again, empty space or Escape unpin`, async () => {
+    const plot = await mount_ternary({ series })
+    const driver = svg_mark_driver(markers(plot), plot_svg(plot))
+    expect(await pin_cycle(driver, { keyboard: true })).toMatch(/Oxides\s*A: 100 %/)
   })
 
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {

@@ -43,6 +43,7 @@
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     container_pointer,
@@ -981,11 +982,12 @@
     reset_camera_view()
   }
 
-  // Controls and panes own their own double-click, but passive render overlays must not
+  // Controls, panes and a pinned tooltip (word selection) own their own double-click, but passive render overlays must not
   // swallow reset. `closest` handles clicks reported by a control's child.
   const handle_dblclick = ({ target }: MouseEvent): void => {
     const on_chrome =
-      target instanceof Element && target.closest(`button, input, select, .draggable-pane`)
+      target instanceof Element &&
+      target.closest(`button, input, select, .draggable-pane, .plot-tooltip`)
     if (!on_chrome) reset_camera_view()
   }
 
@@ -1092,7 +1094,7 @@
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
   })
 
-  let locked_hover_formula = $state<string | null>(null)
+  const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
 
   function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     hover_info = {
@@ -1101,46 +1103,36 @@
     }
   }
 
-  function clear_hover_lock(): void {
-    locked_hover_formula = null
-    hover_info = null
-  }
-
   function handle_phase_hover(domain_data: HoverMesh, event: ThreltePointerEvent): void {
-    if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
-    set_hover_info(domain_data, event)
+    if (pin.allows(domain_data.formula)) set_hover_info(domain_data, event)
   }
 
   // Stops both Threlte's dispatch to farther hits and the DOM event the wrapper listens to
-  function toggle_phase_lock(domain_data: HoverMesh, event: ThreltePointerEvent): void {
+  function toggle_phase_pin(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     event.stopPropagation()
     event.nativeEvent.stopPropagation()
-    if (locked_hover_formula === domain_data.formula) {
-      clear_hover_lock()
-      return
-    }
-    locked_hover_formula = domain_data.formula
-    set_hover_info(domain_data, event)
+    pin.toggle(domain_data.formula)
+    if (pin.value) set_hover_info(domain_data, event)
   }
 
   function handle_phase_leave(domain_data: HoverMesh): void {
-    if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
+    if (!pin.value && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
   // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
   $effect(() => {
     const meshes = hover_mesh_data
     untrack(() => {
-      if (!locked_hover_formula) return
-      const current = meshes.find(({ formula }) => formula === locked_hover_formula)
-      if (!current) clear_hover_lock()
+      if (!pin.value) return
+      const current = meshes.find(({ formula }) => formula === pin.value)
+      if (!current) pin.unpin()
       else if (hover_info) hover_info = { ...current.info, pointer: hover_info.pointer }
     })
   })
 
   // A wheel zoom shifts the domains under a still cursor with no pointerleave to clear the tooltip
   function handle_camera_start(): void {
-    if (!locked_hover_formula) hover_info = null
+    if (!pin.value) hover_info = null
   }
 
   // Color mode cycling (keyboard shortcut 'c')
@@ -1173,16 +1165,10 @@
   {@attach viewer_keys(() => ({
     c: cycle_color_mode,
     r: reset_camera_view,
-    Escape: () => {
-      if (!locked_hover_formula) return false
-      clear_hover_lock()
-    },
+    Escape: pin.unpin,
   }))}
-  onpointerdown={(event) => {
-    const target = event.target
-    if (locked_hover_formula && (target === wrapper || target instanceof HTMLCanvasElement)) {
-      clear_hover_lock()
-    }
+  onpointerdown={({ target }) => {
+    if (target === wrapper || target instanceof HTMLCanvasElement) pin.unpin()
   }}
   onpointermovecapture={mark_input}
   onwheelcapture={mark_input}
@@ -1398,7 +1384,7 @@
           hover_meshes={hover_mesh_data}
           face_owners={face_domain_map}
           on_domain_hover={handle_phase_hover}
-          on_domain_press={toggle_phase_lock}
+          on_domain_press={toggle_phase_pin}
           on_domain_leave={handle_phase_leave}
           on_camera_start={handle_camera_start}
           {highlight}
@@ -1420,7 +1406,7 @@
   {#if tooltip !== false && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
-      pinned={locked_hover_formula === hover_info.formula}
+      pinned={pin.value === hover_info.formula}
       {tooltip}
       bg_color={drawn_color(hover_info.formula)}
       constrain_to={{ width: container_width, height: container_height }}

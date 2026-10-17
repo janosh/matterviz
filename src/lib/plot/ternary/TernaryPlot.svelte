@@ -56,6 +56,7 @@
   import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -279,6 +280,23 @@
   const hover_idx = $derived(hover_key ? rendered.findIndex(is_hovered) : -1)
   const hover_info = $derived(hover_idx < 0 ? null : point_props(rendered[hover_idx]))
   clear_stale_hover(() => hover_key && !hover_info, clear_hover)
+  // The tooltip: the hovered point where it was hovered, unless a click pinned one (see
+  // TooltipPin) when on_point_click leaves the click free
+  type Tip = PointKey & { pos: { x: number; y: number }; at_pointer: boolean }
+  const pin = new TooltipPin<Tip>({
+    key: ({ series_idx, point_idx }) => `${series_idx}:${point_idx}`,
+    enabled: () => tooltip !== false && !on_point_click,
+  })
+  const hover_tip = $derived(
+    hover_key && { ...hover_key, pos: hover_pos, at_pointer: hover_at_pointer },
+  )
+  const tip = $derived(pin.value ?? hover_tip)
+  const tip_info = $derived.by(() => {
+    if (!pin.value) return hover_info
+    const point = rendered.find((candidate) => same_point(pin.value, candidate))
+    return point ? point_props(point) : null
+  })
+  clear_stale_hover(() => pin.value && !tip_info, pin.unpin)
   const accessible_label = (point: PlacedPoint): string =>
     `${series_label(point.series_idx)}: ${labels
       .map((label, idx) => `${label} = ${format_value(point.fractions[idx], tick_format)}`)
@@ -382,11 +400,13 @@
 
   function handle_click(event: MouseEvent | KeyboardEvent, point = point_from_event(event)) {
     if (point) on_point_click?.({ ...point_props(point), event })
+    pin.toggle(point && hover_tip)
   }
 
   const roving = create_roving_focus({ container: () => svg_element, items: () => svg_points })
 
   function handle_keydown(event: KeyboardEvent) {
+    if (event.key === `Escape` && pin.unpin()) return event.preventDefault()
     if (roving.handle_keydown(event) || !is_activation_key(event)) return
     event.preventDefault()
     handle_click(event)
@@ -403,6 +423,7 @@
   function handle_canvas_keydown(event: KeyboardEvent) {
     if (event.target !== svg_element || event.defaultPrevented || is_modifier_chord(event))
       return
+    if (event.key === `Escape` && pin.unpin()) return event.preventDefault()
     if (event.key === `Escape` && kbd_key) {
       kbd_key = null
       clear_hover()
@@ -612,30 +633,31 @@
       </g>
     </svg>
 
-    {#if hover_info && tooltip !== false}
+    {#if tip && tip_info && tooltip !== false}
       <PlotTooltip
-        x={hover_pos.x}
-        y={hover_pos.y}
+        x={tip.pos.x}
+        y={tip.pos.y}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={hover_at_pointer}
+        avoid_cursor={tip.at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 60 }}
-        bg_color={hover_info.color}
+        bg_color={tip_info.color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
-          {@render tooltip(hover_info)}
+          {@render tooltip(tip_info)}
         {:else}
-          <strong>{hover_info.series_label}</strong>
+          <strong>{tip_info.series_label}</strong>
           {#each labels as label, idx (idx)}
             <br /><TooltipValue
               {label}
-              value={format_value(hover_info.fractions[idx], tick_format)}
+              value={format_value(tip_info.fractions[idx], tick_format)}
             />
           {/each}
-          {#if hover_info.color_value !== null}
+          {#if tip_info.color_value !== null}
             <br /><TooltipValue
               label={color_bar?.title ?? `value`}
-              value={format_value_or_num(hover_info.color_value, color_bar?.tick_format)}
+              value={format_value_or_num(tip_info.color_value, color_bar?.tick_format)}
             />
           {/if}
         {/if}

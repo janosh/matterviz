@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
@@ -292,11 +293,22 @@
   })
   const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
 
-  // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
-  // tracking the same logical point's current values and position, or drop it (tell the host)
+  // A click pins a point's tooltip (see TooltipPin) unless on_point_click takes the click
+  const pin = new TooltipPin<InternalPoint3D<Metadata>>({
+    key: point_key,
+    enabled: () => tooltip !== false && !on_point_click,
+  })
+  const shown_point = $derived(pin.value ?? hovered_point)
+
+  // New data (or a hidden series) leaves no pointer event behind: keep the hovered and pinned
+  // points tracking the same logical point's current values and position, or drop them (tell
+  // the host)
   $effect.pre(() => {
     const lookup = idx_by_key
     untrack(() => {
+      const pinned = pin.value && point_instances[lookup.get(point_key(pin.value)) ?? -1]
+      if (pinned) pin.value = pinned.point
+      else pin.unpin()
       if (!hovered_point) return
       const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
       if (next === hovered_point) return
@@ -325,15 +337,16 @@
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
   const hover_idx = $derived(hovered_point && idx_by_key.get(point_key(hovered_point)))
-  // The hovered marker as drawn, so the halo and tooltip ride along with a moving point
+  const shown_idx = $derived(shown_point && idx_by_key.get(point_key(shown_point)))
+  // The shown marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
-    if (hover_idx == null) return null
-    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(hover_idx * INSTANCE_STRIDE)
+    if (shown_idx == null) return null
+    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(shown_idx * INSTANCE_STRIDE)
     return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
   // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
   // the tooltip paint (a $derived only notifies when its value changes)
-  const hover_color = $derived(point_instances[hover_idx ?? -1]?.color)
+  const hover_color = $derived(point_instances[shown_idx ?? -1]?.color)
 
   // One sphere mesh for every point: instance transforms carry each radius
   const point_geometry = $derived(
@@ -373,7 +386,9 @@
       on_point_click?.(
         make_event_data(point, native instanceof MouseEvent ? native : undefined),
       )
+      pin.toggle(point)
     },
+    onpointermissed: pin.unpin,
   }
 
   // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
@@ -385,6 +400,7 @@
     if (event.defaultPrevented || event.isComposing || is_modifier_chord(event))
       return undefined
     if (event.key === `Escape`) {
+      if (pin.unpin()) return null
       if (!hovered_point) return undefined
       hovered_point = null
       on_point_hover?.(null)
@@ -392,6 +408,7 @@
     }
     if (hovered_point && is_activation_key(event)) {
       on_point_click?.(make_event_data(hovered_point))
+      pin.toggle(hovered_point)
       return hovered_point
     }
     const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
@@ -796,8 +813,8 @@
   />
 {/each}
 
-{#if hovered_point}
-  {@const hover_point = hovered_point}
+{#if shown_point}
+  {@const hover_point = shown_point}
   {#if hover_drawn}
     {@const halo_radius = hover_halo_radius(hover_drawn.radius)}
     <T.Mesh position={hover_drawn.position} scale={halo_radius}>
@@ -820,6 +837,7 @@
         anchor_radius={halo_radius}
         portal={tooltip_portal}
         bg_color={hover_color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip(data)}

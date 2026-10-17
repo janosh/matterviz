@@ -820,8 +820,6 @@
   }
 
   function on_click(event: MouseEvent) {
-    // A rect-zoom drag ends in a click the frame flags; don't also zoom the bin under it
-    if (pan_zoom.suppress_click || pan_zoom.drag_start || pan_zoom.is_panning) return
     const coords = get_relative_coords(event)
     if (!coords) return
     if (render_mode === `points`) {

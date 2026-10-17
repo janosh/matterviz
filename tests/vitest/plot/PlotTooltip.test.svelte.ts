@@ -7,6 +7,7 @@ import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import TooltipValue from '#lib/tooltip/TooltipValue.svelte'
 import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
 import { DEFAULT_CURSOR_SIZE } from '#lib/plot/core/decorations/tooltip.js'
 import { color as d3_color } from 'd3-color'
 import {
@@ -17,7 +18,16 @@ import {
   type ComponentProps,
 } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, fire, mount_sized, mouse, query, trigger_resize_observer } from '../setup'
+import {
+  doc_query,
+  pin_cycle,
+  fire,
+  keydown,
+  mount_sized,
+  mouse,
+  query,
+  trigger_resize_observer,
+} from '../setup'
 
 const make_children = (text: string = `Test`) =>
   createRawSnippet(() => ({
@@ -124,6 +134,50 @@ describe(`PlotTooltip`, () => {
     const tooltip = doc_query(`.plot-tooltip`)
     expect(d3_color(tooltip.style.backgroundColor)?.formatRgb()).toBe(expected_bg)
     expect(tooltip.style.color).toBe(expected_text)
+  })
+
+  // A pinned chip takes pointer events and selectable text, so its contents can be copied
+  test.each([
+    [false, `none`],
+    [true, `auto`],
+  ])(`pinned=%s sets pointer-events %s and keeps the tooltip role`, (pinned, events) => {
+    const tooltip = mount_tooltip({ pinned, role: `tooltip` })
+    const { classList, style } = tooltip
+    expect([classList.contains(`pinned`), style.pointerEvents]).toEqual([pinned, events])
+    expect(tooltip.getAttribute(`role`)).toBe(`tooltip`)
+    if (pinned) expect(getComputedStyle(tooltip).userSelect).toBe(`text`)
+  })
+
+  // One pin across every hover_tooltip mark on the page; a button's click is its own
+  test(`hover_tooltip: a click pins, the mark again, a press elsewhere or Escape unpin`, async () => {
+    const marks = [`span`, `span`, `button`].map((tag, idx) => {
+      const mark = document.createElement(tag)
+      mark.textContent = `mark ${idx}`
+      document.body.append(mark)
+      return mark
+    })
+    const cleanup = $effect.root(() => {
+      for (const [idx, mark] of marks.entries())
+        $effect(() => hover_tooltip(make_children(`tip ${idx}`))(mark))
+    })
+    onTestFinished(cleanup)
+    flushSync()
+    const enter = (mark: Element) => mark.dispatchEvent(new PointerEvent(`pointerenter`))
+    const text = await pin_cycle((step, mark_idx) => {
+      const mark = mark_idx === null ? document.body : marks[mark_idx]
+      if (step === `escape`) document.dispatchEvent(keydown(`Escape`))
+      else if (step === `leave`) mark.dispatchEvent(new PointerEvent(`pointerleave`))
+      else if (mark !== document.body) enter(mark)
+      if (step === `click`) {
+        mark.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+        mark.dispatchEvent(mouse(`click`))
+      }
+    })
+    expect(text).toBe(`tip 0`)
+    enter(marks[2])
+    marks[2].click()
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).classList.contains(`pinned`)).toBe(false)
   })
 
   test(`resolves CSS-variable backgrounds and reacts to token changes`, async () => {
@@ -353,4 +407,42 @@ test.each<[string, unknown, string, Props, string, MouseEventInit?]>([
     expect(plot.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
     plot.parentElement?.remove()
   }
+})
+
+// The pin state machine every pinnable tooltip shares. Marks are keyed by `id`, so `a2` is a
+// fresher snapshot of the pinned `a`; `off` stands for a mark whose click the host claimed.
+describe(`TooltipPin`, () => {
+  type Mark = { id: string }
+  const [a, a2, b, off] = [{ id: `a` }, { id: `a` }, { id: `b` }, { id: `off` }]
+  test.each<[string, (Mark | null)[], Mark | null, number]>([
+    [`a click pins the mark`, [a], a, 0],
+    [`clicking it again unpins, even as a fresher snapshot`, [a, a2], null, 1],
+    [`another mark moves the pin`, [a, b], b, 0],
+    [`empty space unpins`, [a, null], null, 1],
+    [`a claimed mark only unpins`, [a, off], null, 1],
+    [`a claimed mark never pins`, [off], null, 0],
+  ])(`%s`, (_label, clicks, pinned, n_unpins) => {
+    const on_unpin = vi.fn()
+    const pin = new TooltipPin<Mark>({
+      key: ({ id }) => id,
+      enabled: ({ id }) => id !== `off`,
+      on_unpin,
+    })
+    for (const mark of clicks) pin.toggle(mark)
+    expect(pin.value).toBe(pinned)
+    expect(on_unpin).toHaveBeenCalledTimes(n_unpins)
+  })
+
+  test(`hovers other than the pinned mark are held off; Escape reports whether it unpinned`, () => {
+    const pin = new TooltipPin<Mark>({ key: ({ id }) => id })
+    expect([pin.allows(b), pin.is(a), pin.unpin()]).toEqual([true, false, false])
+    pin.toggle(a)
+    expect([pin.allows(a2), pin.allows(b), pin.is(a2), pin.is(null)]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+    expect([pin.unpin(), pin.value, pin.unpin()]).toEqual([true, null, false])
+  })
 })

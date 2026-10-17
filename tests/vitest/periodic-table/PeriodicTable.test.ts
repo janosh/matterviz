@@ -10,7 +10,7 @@ import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import type { ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, keydown, mouse, query, set_input } from '../setup'
+import { bind_props, doc_query, pin_cycle, keydown, mouse, query, set_input } from '../setup'
 import { CATEGORY_COUNTS } from '../test-fixtures'
 
 const { page, replace_url } = vi.hoisted(() => ({
@@ -244,17 +244,34 @@ describe(`PeriodicTable`, () => {
     const on_activate = vi.fn<(element: ChemicalElement) => void>()
     mount_table({ on_activate })
     const [hydrogen, helium] = all_tiles()
-    tap(hydrogen, `touch`) // first tap: select only
+    tap(hydrogen, `touch`) // first tap: select only, pinning the tooltip (touch has no hover)
     expect(hydrogen.classList.contains(`active`)).toBe(true)
-    expect(doc_query(`.plot-tooltip`).textContent).toContain(`Hydrogen`)
+    expect(doc_query(`.plot-tooltip.pinned`).textContent).toContain(`Hydrogen`)
     expect(on_activate).not.toHaveBeenCalled()
-    tap(hydrogen, `touch`) // same tile again: activate
+    tap(hydrogen, `touch`) // same tile again: activate and unpin
     expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`])
+    expect(document.querySelector(`.plot-tooltip.pinned`)).toBeNull()
     tap(helium, `touch`) // another tile: back to preview
     expect(helium.classList.contains(`active`)).toBe(true)
     expect(on_activate).toHaveBeenCalledTimes(1)
     tap(helium, `mouse`) // a mouse click never previews
     expect(on_activate.mock.calls.map(([element]) => element.symbol)).toEqual([`H`, `He`])
+  })
+
+  // Tiles without a link or on_activate have a free click, which pins their tooltip
+  test(`clicking a plain tile pins its tooltip; it again, the background or Escape unpin`, async () => {
+    mount_table()
+    const table = doc_query(`.periodic-table`)
+    const tiles = all_tiles()
+    const text = await pin_cycle((step, mark_idx) => {
+      const tile = mark_idx === null ? table : tiles[mark_idx]
+      if (step === `escape`) table.dispatchEvent(keydown(`Escape`))
+      else if (step === `leave`) tile.dispatchEvent(mouse(`mouseleave`))
+      else if (tile !== table) tile.dispatchEvent(mouse(`mouseenter`))
+      if (step === `click`)
+        for (const type of [`pointerdown`, `click`]) tile.dispatchEvent(mouse(type))
+    })
+    expect(text).toContain(`Hydrogen`)
   })
 
   test(`a touch tap on a linked tile holds the link until the second tap`, () => {

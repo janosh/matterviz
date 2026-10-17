@@ -26,6 +26,8 @@
   import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { viewer_keys } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { MissingCellStyle } from '#lib/heatmap-matrix/index.js'
   import type { ScaleContext } from './index'
@@ -172,13 +174,15 @@
 
   // The hovered tile's box in table coordinates, and the box that would clip a tooltip there:
   // the table itself when it pans (phones), so f-block tooltips flip above their tiles
-  let tooltip_hover = $state<{ element: ChemicalElement; tile: Rect; bounds: Rect } | null>(
-    null,
-  )
+  type TileTooltip = { element: ChemicalElement; tile: Rect; bounds: Rect }
+  let tooltip_hover = $state<TileTooltip | null>(null)
+  // Clicking a tile without a link or on_activate pins its tooltip, as does a touch preview
+  const pin = new TooltipPin<TileTooltip>({ key: ({ element }) => element.symbol })
+  const shown_tooltip = $derived(pin.value ?? tooltip_hover)
 
-  // Touch has no hover, so the first tap on a tile only selects it (active ring, tooltip,
-  // inset) and a second tap follows its link or fires on_activate. Mouse clicks unaffected.
-  // Plain (non-state) flag: it's consumed by the click of the same tap.
+  // Touch has no hover, so the first tap on a tile only selects it (active ring, pinned
+  // tooltip, inset) and a second tap follows its link or fires on_activate. Mouse clicks
+  // unaffected. Plain (non-state) flag: it's consumed by the click of the same tap.
   let tap_is_preview = false
   const handle_tile_pointerdown = (element: ChemicalElement, event: PointerEvent): void => {
     tap_is_preview =
@@ -188,16 +192,22 @@
     if (tap_is_preview) {
       set_active_element(element)
       handle_tooltip_enter(element, event)
+      pin.value = tooltip_hover
     }
   }
   const handle_tile_click = (
     data: { element: ChemicalElement; event: MouseEvent },
+    interactive: boolean,
     activation?: (element: ChemicalElement) => void,
   ): void => {
     const preview = tap_is_preview
     tap_is_preview = false
-    if (preview) data.event.preventDefault() // keep the link from navigating on the first tap
-    else if (activation) activation(data.element)
+    // the preview tap pinned on pointerdown; keep a link from navigating until the second tap
+    if (preview && interactive) return data.event.preventDefault()
+    if (interactive) pin.unpin() // activation ends the preview
+    else if (!preview)
+      pin.toggle(tooltip_hover?.element.symbol === data.element.symbol ? tooltip_hover : null)
+    if (activation) activation(data.element)
     else tile_props?.onclick?.(data)
   }
 
@@ -338,6 +348,11 @@
   class={[`periodic-table`, rest.class]}
   style:gap
   onkeydown={handle_key}
+  {@attach viewer_keys(() => ({ Escape: pin.unpin }))}
+  onpointerdown={({ target }) => {
+    if (!(target instanceof Element && target.closest(`.element-tile, .plot-tooltip`)))
+      pin.unpin()
+  }}
 >
   {#if should_show_color_bar}
     <TableInset class="auto-colorbar-inset">
@@ -393,9 +408,9 @@
       role={tile_activation ? `button` : href ? `link` : tile_props?.role}
       tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}
       onpointerdown={(event: PointerEvent) => handle_tile_pointerdown(element, event)}
-      onclick={interactive
+      onclick={interactive || tooltip !== false
         ? (data: { element: ChemicalElement; event: MouseEvent }) =>
-            handle_tile_click(data, tile_activation)
+            handle_tile_click(data, interactive, tile_activation)
         : tile_props?.onclick}
       onkeydown={tile_activation
         ? (event: KeyboardEvent) => {
@@ -427,13 +442,14 @@
     <ElementPhoto element={active_element} style="grid-area: 9/1/span 2/span 2" />
   {/if}
 
-  {#if tooltip_hover && tooltip !== false}
-    {@const { element, tile, bounds } = tooltip_hover}
+  {#if shown_tooltip && tooltip !== false}
+    {@const { element, tile, bounds } = shown_tooltip}
     {@const tooltip_value = heat_values[element.number - 1]}
     <!-- inline, so it beats PlotTooltip's start default while still reading the variable -->
     <PlotTooltip
       {...beside_rect(tile, `bottom`, 8)}
       constrain_to={bounds}
+      pinned={pin.value !== null}
       style="text-align: var(--plot-tooltip-text-align, center)"
     >
       {#if typeof tooltip === `function`}

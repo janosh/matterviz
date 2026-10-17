@@ -69,6 +69,7 @@
   {constrain_to}
   fallback_size={{ width: 200, height: 100 }}
   {bg_color}
+  {pinned}
   class="chempot-tooltip"
 >
   {#if typeof tooltip === `function`}
@@ -79,7 +80,7 @@
         {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
       {/each}
     </h4>
-    {#if pinned}<small>Pinned · Esc to unlock</small>{/if}
+    {#if pinned}<small>Pinned · Esc to unpin</small>{/if}
     {#if summary}<p>{summary}</p>{/if}
     {#if detail_level === `detailed`}
       <!-- running text, not a two-column grid: lines fill the width and wrap early -->

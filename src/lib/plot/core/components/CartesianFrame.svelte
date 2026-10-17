@@ -68,6 +68,7 @@
     on_mouse_enter?: () => void
     on_mouse_leave?: () => void
     on_mouse_move?: (event: MouseEvent) => void
+    // Single clicks, not the click ending a pan or a rect-zoom drag
     on_mouse_click?: (event: MouseEvent) => void
     // Cursor while no pan gesture claims it. Charts switch it to `pointer` when a click on
     // the plot surface would land on a mark, so the hand shows before the user commits.
@@ -234,7 +235,11 @@
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}
-      onclick={(event) => event.detail <= 1 && on_mouse_click?.(event)}
+      onclick={(event) => {
+        const { suppress_click, drag_start, is_panning } = pan_zoom
+        if (event.detail <= 1 && !suppress_click && !drag_start && !is_panning)
+          on_mouse_click?.(event)
+      }}
       onwheel={pan_zoom.on_wheel}
       {@attach (svg: SVGSVGElement) =>
         on(svg, `touchstart`, pan_zoom.on_touch_start as EventListener, { passive: false })}

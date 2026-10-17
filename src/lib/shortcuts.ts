@@ -18,7 +18,7 @@ export type Shortcut = {
 export const SHORTCUTS = {
   help: { keys: `?`, description: `Show keyboard shortcuts`, scopes: [`viewer`] },
   fullscreen: { keys: `F`, description: `Toggle fullscreen`, scopes: [`viewer`] },
-  close: { keys: `Escape`, description: `Close the open pane, menu or mode`, scopes: [`viewer`] },
+  close: { keys: `Escape`, description: `Close the open pane, menu or mode, or unpin the tooltip`, scopes: [`viewer`] },
   reset_camera: { keys: `R`, description: `Reset camera`, scopes: [`camera`] },
   play: { keys: `Space`, description: `Play / pause`, scopes: [`sequence`] },
   previous: { keys: `ArrowLeft`, description: `Previous frame`, scopes: [`sequence`] },
