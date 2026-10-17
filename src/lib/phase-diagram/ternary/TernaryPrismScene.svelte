@@ -349,8 +349,9 @@
       onpointermove: (event: unknown) => handle_rod_hover(phase, event),
       onpointerleave: leave_rod,
       onclick: () => click_rod(phase),
-      // a press on a rod still drags the plane, but pins nothing
-      onpointerdown: start_plane_drag,
+      // a press on a rod still drags the plane, but pins nothing (said here, not read off the
+      // hover, as a touch press comes with none)
+      onpointerdown: (event: unknown) => start_plane_drag(event, false),
     }),
     userData: { pick_rank: 1 },
   })
@@ -388,12 +389,12 @@
     for (const type of [`pointerup`, `pointercancel`] as const)
       globalThis.removeEventListener(type, end_plane_drag)
   }
-  function start_plane_drag(event: unknown): void {
+  function start_plane_drag(event: unknown, can_pin = true): void {
     const { nativeEvent, point } = pointer_of(event)
     if (nativeEvent.button !== 0) return // right/middle button orbit and pan
     press = {
       client: [nativeEvent.clientX, nativeEvent.clientY],
-      coords_xy: hovered_phase === null ? prism_composition(point) : null,
+      coords_xy: can_pin ? prism_composition(point) : null,
       moved: false,
     }
     dragging_plane = true

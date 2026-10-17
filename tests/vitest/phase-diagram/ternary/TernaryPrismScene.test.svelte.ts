@@ -37,11 +37,6 @@ afterEach(() => {
 const diagram = compute_ternary_phase_diagram(toy_entries, { elements: toy_elements })
 const model = prepare_diagram(toy_entries, { elements: toy_elements })
 type Handler = (event: unknown) => void
-const handler = (name: string): Handler => {
-  const node = threlte_stub.nodes.find(({ props }) => typeof props[name] === `function`)
-  if (!node) throw new Error(`no stub node with ${name}`)
-  return node.props[name] as Handler
-}
 // Threlte pointer event on the plane at composition coords_xy, the pointer at client_x
 const pointer = (coords_xy: Vec2, client_x: number) => ({
   point: new Vector3(...prism_position(coords_xy)),
@@ -78,8 +73,11 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
   teardown = () => void unmount(mounted)
   flushSync()
   const pin: Vec2 = [0.4, 0.25]
+  // the plane: rods (ranked) render before it and pin nothing on a press
+  const plane = threlte_stub.nodes.find(({ props }) => props.onpointerdown && !props.userData)
+  if (!plane) throw new Error(`cutting plane not mounted`)
   const press = () => {
-    handler(`onpointerdown`)(pointer(pin, 100))
+    ;(plane.props.onpointerdown as Handler)(pointer(pin, 100))
     flushSync()
   }
 
@@ -109,8 +107,7 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
   release(100)
   expect(state.pinned_composition).toBeNull()
 
-  const plane = threlte_stub.nodes.find(({ props }) => props.onpointerdown && !props.userData)
-  touch_tap(plane?.props ?? {}, pointer(pin, 100), { clientX: 100, clientY: 100 })
+  touch_tap(plane.props, pointer(pin, 100), { clientX: 100, clientY: 100 })
   flushSync()
   expect(state.pinned_composition).toEqual(pin)
   expect(on_section_hover).toHaveBeenLastCalledWith(
@@ -148,4 +145,16 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
   )
   keys.press(`Enter`)
   expect(state.selected_phase).toBe(phase)
+
+  // a touch tap on a rod selects its phase but pins nothing: touch makes no hover before the
+  // press, so the rod itself says it pins nothing (the tap lands on the pin and would clear it)
+  keys.press(`Escape`)
+  expect(state.hovered_phase).toBeNull()
+  const rod = threlte_stub.nodes.find(
+    ({ props }) => (props.userData as { pick_rank?: number } | undefined)?.pick_rank === 1,
+  )
+  touch_tap(rod?.props ?? {}, pointer(pin, 100), { clientX: 100, clientY: 100 })
+  flushSync()
+  expect(state.pinned_composition).toEqual(pin)
+  expect(state.selected_phase).not.toBe(phase)
 })
