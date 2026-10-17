@@ -1,5 +1,8 @@
 import { tooltip_paint } from '#lib/colors/index.js'
+import { host } from '#lib/host.js'
 import type { Rect } from '#lib/plot/core/layout.js'
+import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
+import type { ShortcutScope } from '#lib/shortcuts.js'
 import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -113,6 +116,23 @@ export const expect_tooltip_paint = (tooltip: HTMLElement, fill: string | null):
   const expected = fill === null ? { background: ``, color: `` } : tooltip_paint(fill)
   if (!expected) throw new Error(`tooltip_paint gives no paint for fill ${fill}`)
   expect({ background, color }).toEqual(expected)
+}
+
+// A viewer lists its keyboard shortcuts (`scopes`) last in `pane`, its info or settings pane,
+// and no longer behind a shortcuts button in its chrome
+export const expect_shortcuts_in_pane = (
+  root: ParentNode,
+  pane: string,
+  scopes: readonly ShortcutScope[],
+): void => {
+  expect(root.querySelector(`button[aria-label="Keyboard shortcuts"]`)).toBeNull()
+  const list = query(root, `${pane} > .pane-content`).lastElementChild
+  expect(list?.matches(`details.shortcuts-list:not([open])`)).toBe(true)
+  const listed = [...(list?.querySelectorAll(`dd`) ?? [])].map((node) => node.textContent)
+  const expected = shortcuts_for(scopes).filter(
+    (shortcut) => host.fullscreen || shortcut !== SHORTCUTS.fullscreen,
+  )
+  expect(listed).toEqual(expected.map((shortcut) => shortcut.description))
 }
 
 // Runs one component's tooltip pin cycle (see TooltipPin), driven through its own events, and

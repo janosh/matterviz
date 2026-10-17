@@ -7,7 +7,7 @@ export { default as InfoTag } from './InfoTag.svelte'
 export { default as NumberRangeInput } from 'svelte-widgets/NumberRangeInput.svelte'
 export * from 'svelte-widgets/json-tree'
 export { default as PropertyFilter } from './PropertyFilter.svelte'
-export { default as ShortcutsHelp } from './ShortcutsHelp.svelte'
+export { default as ShortcutsList } from './ShortcutsList.svelte'
 export { default as ViewerChrome } from './ViewerChrome.svelte'
 
 export type InfoTagVariant = `default` | `success` | `warning` | `error` | `info`

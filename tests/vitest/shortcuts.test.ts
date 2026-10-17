@@ -1,6 +1,7 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import ShortcutsHelp from '#lib/layout/ShortcutsHelp.svelte'
+import { host } from '#lib/host.js'
+import ShortcutsList from '#lib/layout/ShortcutsList.svelte'
 import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
 import type * as camera_reset from '#lib/scene/camera-reset.js'
 import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
@@ -8,10 +9,10 @@ import {
   format_shortcut_keys,
   SHORTCUTS,
   shortcut_attrs,
-  type ShortcutScope,
   shortcuts_for,
   viewer_keys,
 } from '#lib/shortcuts.js'
+import type { Shortcut, ShortcutScope } from '#lib/shortcuts.js'
 import { type Component, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { fire, keydown } from './setup'
@@ -45,7 +46,7 @@ describe(`shortcut registry`, () => {
     [SHORTCUTS.speed, `- / +`],
     [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+Shift+Z / ⌘+Shift+Z`],
     [SHORTCUTS.jump, `0-9`],
-    [SHORTCUTS.help, `?`],
+    [SHORTCUTS.close, `Esc`],
   ])(`formats %j as %s`, (shortcut, expected) => {
     expect(format_shortcut_keys(shortcut)).toBe(expected)
   })
@@ -104,52 +105,36 @@ describe(`viewer_keys`, () => {
   })
 })
 
-describe(`ShortcutsHelp`, () => {
-  const mount_help = (wrapper: HTMLElement, scopes: ShortcutScope[]) => {
-    const target = create_root(wrapper)
-    mounted.push(mount(ShortcutsHelp, { target, props: { scopes, wrapper } }))
-    return target
-  }
-  const listed = () =>
-    [...document.querySelectorAll(`.shortcuts-list dd`)].map((node) => node.textContent)
-
-  test(`? and the header button toggle the hovered viewer's shortcut list`, async () => {
-    const root = create_root()
-    const target = mount_help(root, [`viewer`])
-    await tick()
-    expect(root.getAttribute(`data-mv-shortcuts`)).toBe(`viewer`)
-    const button = target.querySelector<HTMLButtonElement>(`button.shortcuts-btn`)
-    expect(button?.getAttribute(`aria-keyshortcuts`)).toBe(`?`)
-
-    root.dispatchEvent(new PointerEvent(`pointerenter`))
-    await press(`?`, { shiftKey: true })
-    expect(listed()).toEqual([
-      SHORTCUTS.help.description,
-      SHORTCUTS.fullscreen.description,
-      SHORTCUTS.close.description,
-    ])
-    expect(button?.getAttribute(`aria-expanded`)).toBe(`true`)
-    await press(`?`, { shiftKey: true })
-    expect(document.querySelector(`.shortcuts-list`)).toBeNull()
-    await fire(button)
-    expect(listed()).toHaveLength(3)
+describe(`ShortcutsList`, () => {
+  const orig_fullscreen = host.fullscreen
+  afterEach(() => {
+    host.fullscreen = orig_fullscreen
   })
 
-  // Like `f`, the outer viewer owns `?` and lists the scopes of the viewers active inside it
-  test(`a nested viewer defers ? to the outer one, which lists both`, async () => {
-    const outer = create_root()
-    const inner = create_root(outer)
-    mount_help(outer, [`viewer`, `sequence`])
-    mount_help(inner, [`camera`])
-    await tick()
-    const focused = document.createElement(`button`)
-    inner.append(focused)
-    focused.focus()
-    await press(`?`, { shiftKey: true }, focused) // bubbles through inner to outer
-    expect(document.querySelectorAll(`.shortcuts-list`)).toHaveLength(1)
-    expect(listed()).toContain(SHORTCUTS.reset_camera.description)
-    expect(listed()).toContain(SHORTCUTS.play.description)
-  })
+  // Lists exactly the given scopes' entries, collapsed until opened; `F` only where the host
+  // can fullscreen
+  const { fullscreen: full, close, reset_camera, hover_walk, info_pane } = SHORTCUTS
+  test.each([
+    [[`viewer`, `camera`], true, [full, close, reset_camera, hover_walk]],
+    [[`viewer`, `camera`, `brillouin`], false, [close, reset_camera, hover_walk, info_pane]],
+    [[`viewer`], false, [close]],
+  ] as [ShortcutScope[], boolean, Shortcut[]][])(
+    `scopes %j (fullscreen %s)`,
+    async (scopes, fullscreen, expected) => {
+      host.fullscreen = fullscreen
+      const target = create_root()
+      mounted.push(mount(ShortcutsList, { target, props: { scopes } }))
+      await tick()
+      const details = target.querySelector<HTMLDetailsElement>(`details.shortcuts-list`)
+      expect(details?.open).toBe(false)
+      expect(details?.querySelector(`summary`)?.textContent).toBe(`Keyboard shortcuts`)
+      const listed = [...target.querySelectorAll(`dd`)].map((node) => node.textContent)
+      expect(listed).toEqual(expected.map((shortcut) => shortcut.description))
+      expect(target.querySelector(`dt kbd`)?.textContent).toBe(
+        format_shortcut_keys(expected[0]),
+      )
+    },
+  )
 })
 
 // `r` resets the camera of every 3D viewer through SceneCamera's shared reset, only while

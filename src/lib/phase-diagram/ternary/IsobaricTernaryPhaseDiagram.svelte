@@ -397,7 +397,6 @@
     {fullscreen_toggle}
     {wrapper}
     fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
-    shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
   >
     {#if controls_config.visible(`controls`)}
       <TernaryPhaseDiagramControls
@@ -413,6 +412,7 @@
         sources={diagram_raw?.sources ?? []}
         n_phases={diagram_raw?.phases.length ?? 0}
         n_events={events.length}
+        shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
       />
     {/if}
   </ViewerChrome>

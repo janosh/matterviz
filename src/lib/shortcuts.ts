@@ -2,21 +2,20 @@ import { forward_window_keydown } from 'svelte-widgets/attachments'
 import { on } from 'svelte/events'
 import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
 
-// One registry of the keyboard shortcuts viewers handle. The `?` overlay (ShortcutsHelp) lists
-// the entries of every viewer under the pointer, and buttons with a shortcut take their
-// aria-keyshortcuts and title hint from here, so the list and the hints cannot drift apart.
+// One registry of the keyboard shortcuts viewers handle. Each viewer lists its scopes' entries
+// at the bottom of its info (or settings) pane (ShortcutsList), and buttons with a shortcut take
+// their aria-keyshortcuts and title hint from here, so the list and the hints cannot drift apart.
 
 export type Shortcut = {
   keys: string // aria-keyshortcuts value: space-separated alternatives of `+`-joined chords
   label?: string // shown instead of the formatted keys (a key range like 0-9)
   description: string
-  // viewer: every viewer with a ShortcutsHelp button, camera: 3D viewers, sequence: playback
+  // viewer: every viewer with a ShortcutsList, camera: 3D viewers, sequence: playback
   scopes: readonly string[]
 }
 
 // oxfmt-ignore
 export const SHORTCUTS = {
-  help: { keys: `?`, description: `Show keyboard shortcuts`, scopes: [`viewer`] },
   fullscreen: { keys: `F`, description: `Toggle fullscreen`, scopes: [`viewer`] },
   close: { keys: `Escape`, description: `Close the open pane, menu or mode, unpin or clear the tooltip`, scopes: [`viewer`] },
   reset_camera: { keys: `R`, description: `Reset camera`, scopes: [`camera`] },
@@ -121,7 +120,7 @@ export const viewer_keydown =
 
 // Plain-key shortcuts of one viewer (see viewer_keydown). Chords stay the browser's (Cmd/Ctrl+R
 // reloads), typing and autorepeat are ignored. Keys are matched lowercased for letters and by
-// `event.key` otherwise (`Escape`, `?`). An action returning false had nothing to do, which
+// `event.key` otherwise (`Escape`, `+`). An action returning false had nothing to do, which
 // leaves the key to the host.
 export const viewer_keys = (bindings: () => Partial<Record<string, () => unknown>>) =>
   viewer_keydown((event) => {

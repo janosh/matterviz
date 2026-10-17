@@ -11,6 +11,7 @@ import {
   click_export,
   create_drop_event,
   doc_query,
+  expect_shortcuts_in_pane,
   mock_parse_worker,
 } from '../setup'
 import type { Vec3 } from '#lib/math.js'
@@ -440,6 +441,7 @@ test.each([
   // the chrome (with the controls toggle) mounts once the band grid is loaded
   const controls_toggle = () => document.querySelector(`.fermi-surface .pane-toggle`)
   await vi.waitFor(() => expect(controls_toggle()).not.toBeNull())
+  expect_shortcuts_in_pane(document, `.fermi-controls`, [`viewer`, `camera`])
   const toggle = document.querySelector(`.fermi-export-toggle`)
   expect(toggle === null).toBe(offered === null)
   if (offered) expect(await click_export(null, document)).toEqual(offered)

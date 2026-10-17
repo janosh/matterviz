@@ -321,14 +321,6 @@
     {wrapper}
     fullscreen_bg_css_var="--hull-bg-fullscreen"
     on_fullscreen_change={context?.recenter_camera}
-    shortcut_scopes={[
-      `viewer`,
-      `convex-hull`,
-      ...(dim === 2
-        ? [`convex-hull-2d` as const]
-        : [`convex-hull-3d` as const, `camera` as const]),
-      ...(dim === 3 ? [`convex-hull-ternary` as const] : []),
-    ]}
     class="convex-hull-toolbar"
     style="--viewer-buttons-gap: 0"
   >
@@ -358,6 +350,14 @@
         {max_hull_dist_show_labels}
         {label_threshold}
         toggle_props={{ class: `info-btn` }}
+        shortcut_scopes={[
+          `viewer`,
+          `convex-hull`,
+          ...(dim === 2
+            ? [`convex-hull-2d` as const]
+            : [`convex-hull-3d` as const, `camera` as const]),
+          ...(dim === 3 ? [`convex-hull-ternary` as const] : []),
+        ]}
       />
     {/if}
 

@@ -16,7 +16,7 @@ import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { mount_scene } from '../scene/mount'
-import { bind_props, doc_query, query, set_input } from '../setup'
+import { bind_props, doc_query, expect_shortcuts_in_pane, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -200,6 +200,11 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(controls_toggle?.style.position).toBe(`static`)
   controls_toggle?.click()
   flushSync()
+  expect_shortcuts_in_pane(document, `.scatter-3d-controls-pane`, [
+    `viewer`,
+    `camera`,
+    `chempot-3d`,
+  ])
   const pane_inputs = [...document.querySelectorAll<HTMLInputElement>(`.draggable-pane input`)]
   const by_label = (text: string) =>
     pane_inputs.find((input) => input.closest(`label`)?.textContent?.includes(text))

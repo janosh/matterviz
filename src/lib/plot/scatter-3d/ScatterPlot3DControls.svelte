@@ -20,6 +20,7 @@
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { Vec2 } from '#lib/math.js'
   import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types.js'
   import type { Snippet } from 'svelte'
@@ -42,6 +43,7 @@
     auto_ranges = { x: [0, 1], y: [0, 1], z: [0, 1] },
     toggle_props,
     pane_props,
+    shortcut_scopes,
     children,
   }: {
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
@@ -56,6 +58,7 @@
     auto_ranges?: Record<`x` | `y` | `z`, Vec2>
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
+    shortcut_scopes?: readonly ShortcutScope[] // listed at the bottom of the pane
     children?: Snippet
   } = $props()
 
@@ -127,6 +130,7 @@
   pane_class="compact-settings"
   {toggle_props}
   pane_props={{ title: `3D plot settings`, ...pane_props }}
+  {shortcut_scopes}
 >
   <SettingsSection
     title="Camera"

@@ -25,6 +25,7 @@ import {
   bind_props,
   create_drop_event,
   doc_query,
+  expect_shortcuts_in_pane,
   expect_tooltip_paint,
   mock_canvas_context,
   set_input,
@@ -90,6 +91,10 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
     mount_diagram()
     doc_query(`.ternary-section canvas`)
+    expect_shortcuts_in_pane(document, `.ternary-phase-diagram-controls-pane`, [
+      `viewer`,
+      `ternary-phase-diagram`,
+    ])
     await wait_for_events()
     expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]

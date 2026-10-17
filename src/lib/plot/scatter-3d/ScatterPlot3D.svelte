@@ -38,7 +38,6 @@
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
   import ScatterPlot3DScene from '#lib/plot/scatter-3d/ScatterPlot3DScene.svelte'
-  import ShortcutsHelp from '#lib/layout/ShortcutsHelp.svelte'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { canvas_overlay_png_blob } from '#lib/io/export.js'
@@ -244,11 +243,6 @@
   }
 </script>
 
-{#snippet chrome_buttons(dims: { height: number; width: number; fullscreen: boolean })}
-  <ShortcutsHelp scopes={[`viewer`, `camera`]} {wrapper} />
-  {@render header_controls?.(dims)}
-{/snippet}
-
 <ChartShell
   empty={!series_in.some((srs) => srs.x.length) && !surfaces.length}
   chart_class="scatter-3d"
@@ -261,7 +255,7 @@
   {fullscreen_toggle}
   {show_controls}
   {controls_toggle_props}
-  header_controls={chrome_buttons}
+  {header_controls}
   {export_sources}
   {children}
   live_message={key_walk.message}
@@ -285,6 +279,7 @@
       bind:camera_projection
       bind:auto_rotate
       {auto_ranges}
+      shortcut_scopes={[`viewer`, `camera`]}
       children={controls_extra}
     />
   {/snippet}

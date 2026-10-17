@@ -354,7 +354,7 @@
     }),
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
+  // `f` is owned by FullscreenButton, Escape by the open pane
   const keys = viewer_keys(() => ({
     i: () => {
       info_pane_open = !info_pane_open
@@ -400,7 +400,6 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--bz-bg-fullscreen"
-      shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ structure, bz_data: zone, bz_order, fullscreen: value })}
     >
@@ -411,6 +410,7 @@
           class_prefix="bz-info"
           closed_icon={info_pane_icon}
           toggle_props={shortcut_attrs(`info_pane`)}
+          shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >
           <InfoPaneCards cards={info_cards} empty_label="Brillouin zone info" />
         </ViewerPane>

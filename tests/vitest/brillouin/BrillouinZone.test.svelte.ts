@@ -12,6 +12,7 @@ import {
   keydown,
   mock_fullscreen,
   mock_parse_worker,
+  expect_shortcuts_in_pane,
 } from '../setup'
 import { cubic_matrix, make_crystal, type SimpleSite } from '../test-fixtures'
 
@@ -421,7 +422,7 @@ test(`Escape closes the open info pane`, async () => {
   const state = $state({ bz_data: external, info_pane_open: true })
   mounted_component = mount(BrillouinZone, { target: document.body, props: state })
   await tick()
-  doc_query(`.bz-info-pane`)
+  expect_shortcuts_in_pane(document, `.bz-info-pane`, [`viewer`, `camera`, `brillouin`])
   doc_query(`.brillouin-zone`).dispatchEvent(keydown(`Escape`, { cancelable: true }))
   await tick()
   expect(state.info_pane_open).toBe(false)

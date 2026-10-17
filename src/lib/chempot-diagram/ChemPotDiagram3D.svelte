@@ -1151,7 +1151,6 @@
     bind:fullscreen
     {wrapper}
     fullscreen_bg_css_var="--chempot-3d-bg-fullscreen"
-    shortcut_scopes={[`viewer`, `camera`, `chempot-3d`]}
   >
     {#if controls_config.visible(`export`)}
       <ExportPane
@@ -1244,6 +1243,7 @@
       bind:camera_projection
       bind:auto_rotate
       auto_ranges={controls_auto_ranges}
+      shortcut_scopes={[`viewer`, `camera`, `chempot-3d`]}
       toggle_props={{
         class: `chempot-controls-toggle`,
         style: `position: static`,

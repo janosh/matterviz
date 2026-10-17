@@ -489,7 +489,6 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--phase-diagram-bg-fullscreen"
-      shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
       style="--viewer-buttons-top: var(--ctrl-btn-top, 30px); --viewer-buttons-right: var(--ctrl-btn-right, 20px)"
     >
       {#if controls_config.visible(`controls`)}
@@ -504,6 +503,7 @@
           bind:x_axis
           bind:y_axis
           data={effective_data}
+          shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
           {...pane_props}
         />
       {/if}

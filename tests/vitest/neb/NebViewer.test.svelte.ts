@@ -14,6 +14,7 @@ import {
   export_via_pane,
   create_drop_event,
   doc_query,
+  expect_shortcuts_in_pane,
   flush_render,
   mouse,
   plot_svg,
@@ -433,13 +434,11 @@ describe(`NebViewer`, () => {
       )
     }
     // NebViewer forwards its keys to playback, so the play button names its shortcut and the
-    // chrome lists them all behind `?`
+    // plot's settings pane lists them all at its bottom
     expect(viewer.querySelector(`.play-button`)?.getAttribute(`aria-keyshortcuts`)).toBe(
       `Space`,
     )
-    expect(
-      query(viewer, `.neb-controls > .shortcuts-btn`).getAttribute(`aria-keyshortcuts`),
-    ).toBe(`?`)
+    expect_shortcuts_in_pane(viewer, `.plot-controls-pane`, [`viewer`, `sequence`])
 
     set_select(query<HTMLSelectElement>(viewer, `.path-control select`), `curved hop`)
     await flush_render()

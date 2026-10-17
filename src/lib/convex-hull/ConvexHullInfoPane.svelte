@@ -4,6 +4,7 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import { visible_entries as filter_visible } from './helpers'
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
@@ -50,6 +51,7 @@
     pane_open?: boolean
     toggle_props?: PaneToggleProps
     pane_props?: PaneProps
+    shortcut_scopes?: readonly ShortcutScope[] // the hull's, listed at the pane's bottom
   } = $props()
 
   // Show flags true: filter_visible only applies the category filter here

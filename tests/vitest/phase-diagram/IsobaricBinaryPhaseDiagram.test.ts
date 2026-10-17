@@ -8,6 +8,7 @@ import {
   create_drop_event,
   doc_query,
   pin_cycle,
+  expect_shortcuts_in_pane,
   keydown,
   mount_sized,
   mouse,
@@ -62,7 +63,7 @@ const hover_at = async (
 
 describe(`IsobaricBinaryPhaseDiagram`, () => {
   // A 2D chart reveals its buttons on hover like every other chart (it used to pin them), and
-  // its row carries the keyboard shortcuts button
+  // its controls pane lists the keyboard shortcuts
   test.each([
     [undefined, `hover-visible`],
     [`always`, `always-visible`],
@@ -70,8 +71,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const wrapper = await mount_diagram(show_controls ? { show_controls } : {})
     const row = wrapper.querySelector(`section.control-buttons`)
     expect(row?.classList.contains(row_class)).toBe(true)
-    expect(row?.querySelector(`.shortcuts-btn`)).not.toBeNull()
-    expect(wrapper.getAttribute(`data-mv-shortcuts`)).toBe(`viewer binary-phase-diagram`)
+    expect_shortcuts_in_pane(wrapper, `.phase-diagram-controls-pane`, [
+      `viewer`,
+      `binary-phase-diagram`,
+    ])
   })
 
   // A container briefly narrower than the margins (mid-resize) gave a negative plot width,

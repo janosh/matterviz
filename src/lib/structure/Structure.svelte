@@ -1299,14 +1299,6 @@
           fullscreen_bg_css_var="--struct-bg-fullscreen"
           on_fullscreen_change={(value) =>
             on_fullscreen_change?.({ structure, fullscreen: value })}
-          shortcut_scopes={[
-            `viewer`,
-            `structure`,
-            ...(has_3d_view ? [`camera` as const] : []),
-            ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
-              ? [`structure-edit` as const]
-              : []),
-          ]}
           style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
         >
           {#if layout_control_visible}
@@ -1383,6 +1375,14 @@
                 style: shortcut_flash.style(`info`),
                 ...shortcut_attrs(`info_pane`),
               }}
+              shortcut_scopes={[
+                `viewer`,
+                `structure`,
+                `camera`,
+                ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
+                  ? [`structure-edit` as const]
+                  : []),
+              ]}
               {@attach attach_tooltip({ content: `Structure info pane` })}
             />
           {/if}

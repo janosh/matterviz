@@ -128,6 +128,7 @@
   } from '#lib/plot/core/canvas-markers.svelte.js'
   import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
   import { resolve_line_tween } from '#lib/plot/core/utils.js'
+  import type { ShortcutScope } from '#lib/shortcuts.js'
   import {
     build_fill_legend_items,
     build_series_legend_items,
@@ -206,6 +207,7 @@
     header_controls,
     export_sources: extra_export_sources = {},
     controls_extra,
+    shortcut_scopes,
     axis_loading = null,
     on_axis_change,
     pan = {},
@@ -251,6 +253,8 @@
       controls_extra?: Snippet<
         [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
       >
+      // A host viewer's keyboard shortcuts (NebViewer), listed at the controls pane's bottom
+      shortcut_scopes?: readonly ShortcutScope[]
       color_scale?: ColorScale
       size_scale?: SizeScaleConfig
       // Reference circles for size_values, shown when the size scale maps 2+ legend values to
@@ -1924,6 +1928,7 @@
         () => active_series_idx, (value) => (selected_series_idx = value)
       }
       series={assigned_series}
+      {shortcut_scopes}
       children={controls_extra}
     />
   {/snippet}

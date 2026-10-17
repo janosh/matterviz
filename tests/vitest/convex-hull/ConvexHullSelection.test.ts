@@ -13,6 +13,7 @@ import {
   create_drop_event,
   export_via_pane,
   doc_query,
+  expect_shortcuts_in_pane,
   marker_fill,
   mock_parse_worker,
   mount_sized,
@@ -470,13 +471,14 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
+  // the info pane ends with the shortcuts of the hull's dimension
   test.each([
-    [`2D`, `2d`, `.convex-hull-2d`],
-    [`3D`, `3d`, `.convex-hull-3d`],
-    [`4D`, `4d`, `.convex-hull-4d`],
+    [`2D`, `2d`, `.convex-hull-2d`, [`convex-hull-2d`]],
+    [`3D`, `3d`, `.convex-hull-3d`, [`convex-hull-3d`, `camera`, `convex-hull-ternary`]],
+    [`4D`, `4d`, `.convex-hull-4d`, [`convex-hull-3d`, `camera`]],
   ] as const)(
     `recovers the %s component when entries arrive`,
-    async (_name, dim, plot_selector) => {
+    async (_name, dim, plot_selector, dim_scopes) => {
       await mount_harness({ dim, start_missing: true })
       expect(document.body.textContent).toContain(`Missing convex hull data`)
 
@@ -484,6 +486,11 @@ describe(`convex hull replacement state`, () => {
       await tick()
       expect(document.body.textContent).not.toContain(`Missing convex hull data`)
       expect(document.body.querySelector(plot_selector)).not.toBeNull()
+      expect_shortcuts_in_pane(document, `.convex-hull-info-pane`, [
+        `viewer`,
+        `convex-hull`,
+        ...dim_scopes,
+      ])
       button(`select-entry`).click()
       await tick()
       expect(selected_text()).not.toBe(`none`)

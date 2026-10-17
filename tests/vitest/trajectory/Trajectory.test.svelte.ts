@@ -31,6 +31,7 @@ import {
   mock_fullscreen,
   bind_props,
   doc_query,
+  expect_shortcuts_in_pane,
   query,
   form_controls,
   fire,
@@ -1385,8 +1386,13 @@ describe(`panes`, () => {
       doc_query(`[aria-label="${label}"]`).getAttribute(`aria-keyshortcuts`),
     )
     expect(nav_keys).toEqual([`ArrowLeft`, `Space`, `ArrowRight`])
-    expect(doc_query(`.shortcuts-btn`).getAttribute(`aria-keyshortcuts`)).toBe(`?`)
     expect(target.querySelector(`.x-quantity-select`)).not.toBeNull()
+    // the info pane ends with them all, `trajectory` (V) included since the run has a plot
+    expect_shortcuts_in_pane(target, `.trajectory-info-pane`, [
+      `viewer`,
+      `sequence`,
+      `trajectory`,
+    ])
 
     props.active_pane = `spectroscopy`
     await tick()
@@ -1458,7 +1464,7 @@ describe(`events`, () => {
     vi.advanceTimersByTime(150)
     await tick()
     expect(view_button.style.boxShadow).toBe(``)
-    // hovered without focus too, like `?` and `f`; only the hovered viewer reacts
+    // hovered without focus too, like `f`; only the hovered viewer reacts
     viewer.blur()
     sibling.dispatchEvent(new PointerEvent(`pointerleave`))
     viewer.dispatchEvent(new PointerEvent(`pointerenter`))

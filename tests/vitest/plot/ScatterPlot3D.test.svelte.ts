@@ -48,6 +48,7 @@ import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } fro
 import {
   bind_props,
   expect_plot_controls,
+  expect_shortcuts_in_pane,
   expect_tooltip_paint,
   export_via_pane,
   mock_fullscreen,
@@ -745,6 +746,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       { series, on_export },
       { selector: `.scatter-3d` },
     )
+    expect_shortcuts_in_pane(plot, `.scatter-3d-controls-pane`, [`viewer`, `camera`])
     const result = await export_via_pane(on_export, `CSV`, plot)
     expect(result.offered).toEqual([`PNG`, `CSV`])
     expect(result.filename).toBe(`scatter3d`)

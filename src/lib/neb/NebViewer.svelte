@@ -16,7 +16,7 @@
   import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { display_idx, format_num, parse_warnings_notice } from '#lib/labels.js'
-  import { FullscreenButton, ShortcutsHelp } from '#lib/layout/index.js'
+  import { FullscreenButton } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import {
     create_sequence_player,
@@ -314,7 +314,6 @@
         </span>
       {/if}
 
-      <ShortcutsHelp scopes={[`viewer`, `sequence`]} {wrapper} />
       {#if fullscreen || show_toggle}
         <FullscreenButton
           bind:fullscreen
@@ -356,6 +355,7 @@
         bind:show_spline
         bind:active_path_key
         bind:active_image_idx
+        shortcut_scopes={[`viewer`, `sequence`]}
         show_controls={controls_config.mode === `never` ? false : plot_props.show_controls}
       />
       <PaneDivider
@@ -399,9 +399,12 @@
     --sequence-controls-wrap: wrap;
     --sequence-slider-min-width: 80pt;
   }
-  /* push the chrome buttons (shortcuts, fullscreen, export) to the bar's end */
-  .neb-viewer :global(.neb-controls > .shortcuts-btn) {
+  /* push the chrome buttons (fullscreen, export) to the bar's end */
+  .neb-viewer :global(.neb-controls > :is(.fullscreen-button, .neb-export-toggle)) {
     margin-inline-start: auto;
+  }
+  .neb-viewer :global(.neb-controls > .fullscreen-button ~ .neb-export-toggle) {
+    margin-inline-start: 0;
   }
   .neb-viewer:fullscreen {
     width: 100vw;

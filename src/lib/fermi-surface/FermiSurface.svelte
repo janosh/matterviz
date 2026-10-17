@@ -370,7 +370,7 @@
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
+  // `f` is owned by FullscreenButton, Escape by the open pane
   const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
   const key_walk = key_walk_root() // the sheets, by keyboard (see KeyWalk)
 </script>
@@ -408,7 +408,6 @@
       {fullscreen_toggle}
       {wrapper}
       fullscreen_bg_css_var="--fermi-bg-fullscreen"
-      shortcut_scopes={[`viewer`, `camera`]}
       on_fullscreen_change={(value) =>
         on_fullscreen_change?.({ fermi_data: surface_data, bz_data, fullscreen: value })}
     >
@@ -436,6 +435,7 @@
           bind:clip_flip
           bind:interpolation_factor
           bind:camera_projection
+          shortcut_scopes={[`viewer`, `camera`]}
         />
       {/if}
       {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
