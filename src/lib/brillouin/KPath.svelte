@@ -71,7 +71,7 @@
   const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
   // k_markers: unlit dots drawn over everything (sheets they sit on included), one instance
   // each, so markers that change per hover never compile a material
-  const marker_geometry = new SphereGeometry(1, 12, 8)
+  const marker_geometry = new SphereGeometry(1, 32, 32)
   const marker_material = new MeshBasicMaterial({ depthTest: false, transparent: true })
   const tint = new Color() // setColorAt copies it
   const transform = new Matrix4()

@@ -41,22 +41,23 @@ export function polyhedron_geometry(
   return geometry
 }
 
-// Each polygon face of a polyhedron (bz_data faces may come pre-triangulated): its first
-// triangle in polyhedron_geometry (a pointer event's faceIndex there) and its centroid, e.g.
-// where a keyboard walk hovers the face
+// Each polygon face of a polyhedron (bz_data faces may come pre-triangulated): its triangles
+// in polyhedron_geometry (a pointer event's faceIndex there), the first of them and its
+// centroid, e.g. where a keyboard walk hovers the face
+type FaceAnchor = { centroid: Vec3; triangle: number; triangles: number[] }
 export function face_anchors({
   vertices,
   faces,
-}: Pick<BrillouinZoneData, `vertices` | `faces`>): { centroid: Vec3; triangle: number }[] {
+}: Pick<BrillouinZoneData, `vertices` | `faces`>): FaceAnchor[] {
   const geometry = polyhedron_geometry(vertices, faces)
   if (!geometry) return []
-  const anchors: { centroid: Vec3; triangle: number }[] = []
+  const anchors: FaceAnchor[] = []
   const covered = new Set<number>()
   for (let triangle = 0; triangle < geometry.getAttribute(`position`).count / 3; triangle++) {
     if (covered.has(triangle)) continue
-    const polygon = polygon_triangles(geometry, triangle)
-    for (const idx of polygon) covered.add(idx)
-    anchors.push({ centroid: faces_centroid(geometry, polygon), triangle })
+    const triangles = polygon_triangles(geometry, triangle)
+    for (const idx of triangles) covered.add(idx)
+    anchors.push({ centroid: faces_centroid(geometry, triangles), triangle, triangles })
   }
   geometry.dispose()
   return anchors

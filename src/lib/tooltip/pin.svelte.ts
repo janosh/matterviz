@@ -79,3 +79,7 @@ export class TooltipPin<T extends K, K = T> {
     return true
   }
 }
+
+// A TooltipPin over hovers that name their mark in `mark`
+export const mark_pin = <T extends { mark: string }>(): TooltipPin<T> =>
+  new TooltipPin<T>({ key: ({ mark }) => mark })

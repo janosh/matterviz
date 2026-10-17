@@ -22,6 +22,7 @@
   import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { join_hover_link } from '#lib/tooltip/index.js'
+  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
   import { Canvas } from '@threlte/core'
@@ -43,6 +44,7 @@
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
+    BZHover,
     BZHoverData,
     BZTooltipProp,
     IrreducibleBZData,
@@ -168,7 +170,10 @@
 
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
-  let hover_data = $state<BZHoverData | null>(null)
+  // A click pins the hovered mark's tooltip where it was (see TooltipPin)
+  const pin = mark_pin<BZHover>()
+  let hovered_mark = $state.raw<BZHover | null>(null)
+  const hover_data = $derived(pin.shown(hovered_mark)?.data ?? null)
 
   $effect(() => on_point_hover?.(hover_data))
 
@@ -358,12 +363,13 @@
     }),
   })
 
-  // `f` is owned by FullscreenButton, Escape by the open pane
+  // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
   const keys = viewer_keys(() => ({
     i: () => {
       info_pane_open = !info_pane_open
     },
     r: () => reset_scene_cameras(wrapper),
+    Escape: pin.unpin,
   }))
   const key_walk = key_walk_root() // the zone's faces, by keyboard (see KeyWalk)
 </script>
@@ -475,7 +481,8 @@
           {height}
           bind:scene
           bind:camera
-          bind:hover_data
+          bind:hovered={hovered_mark}
+          {pin}
         />
       </Canvas>
 
@@ -485,6 +492,7 @@
           x={hover_data.screen_position.x}
           y={hover_data.screen_position.y}
           bg_color={hover_data.is_ibz ? ibz_color : surface_color}
+          pinned={pin.value !== null}
           fixed
           style="z-index: calc(var(--z-index-overlay-controls, 100000000) + 1)"
         >

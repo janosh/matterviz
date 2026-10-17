@@ -9,6 +9,7 @@ export type TapEvent = {
   nativeEvent: { pointerType?: string; timeStamp: number }
   eventObject?: { uuid: string }
   instanceId?: number
+  faceIndex?: number | null
 }
 // Method syntax keeps the parameter bivariant, so hosts' handlers can take their own event types
 type Handler = { handle(event: TapEvent): void }[`handle`]
@@ -36,12 +37,21 @@ const key_of = ({ eventObject, instanceId }: TapEvent): string =>
 // on the same object again, on another one or on empty space (threlte's onpointermissed) replays
 // its leave, as does `release` (hover raycasts switched off for an orbit). Presses and clicks
 // still reach the object's own handlers, mouse and pen events pass through untouched. One per
-// scene, so a tap moves the one held tooltip between all objects wrapped in it.
+// scene, so a tap moves the one held tooltip between all objects wrapped in it. `wrap`'s
+// `tap_key` names what a tap holds where one object draws several marks (a polyhedron's faces).
+// `clicks` hooks a scene's TooltipPin in: `on_click` runs after any wrapped object's click (any
+// pointer, so after a tap's hover), `on_empty_click` for a click no wrapped object took.
+type SceneClicks = { on_click?: () => void; on_empty_click?: () => void }
 export class TouchTaps {
   // the press starting the current gesture, and which object was held when it started
   #press: { touch: boolean; at: number; held: string | undefined } | null = null
   #held: { key: string; leave: () => void } | null = null
   #claimed: unknown = null // the last click a wrapped object took
+  readonly #clicks: SceneClicks
+
+  constructor(clicks: SceneClicks = {}) {
+    this.#clicks = clicks
+  }
 
   release = (): void => {
     const held = this.#held
@@ -49,7 +59,7 @@ export class TouchTaps {
     held?.leave()
   }
 
-  wrap = (handlers: HoverHandlers): TouchHoverProps => {
+  wrap = (handlers: HoverHandlers, tap_key = key_of): TouchHoverProps => {
     const { onpointerenter, onpointermove, onpointerleave, onpointerdown, onclick } = handlers
     const unless_touch = (handler?: (event: TapEvent) => void) =>
       handler &&
@@ -70,7 +80,7 @@ export class TouchTaps {
         this.#press = null
         this.#claimed = event.nativeEvent
         if (press?.touch && event.nativeEvent.timeStamp - press.at <= TAP_MS) {
-          const key = key_of(event)
+          const key = tap_key(event)
           this.release()
           if (press.held !== key) {
             onpointerenter?.(event)
@@ -79,12 +89,15 @@ export class TouchTaps {
           }
         }
         onclick?.(event)
+        this.#clicks.on_click?.()
       },
       // Threlte calls this on each object a click missed before the hit one's onclick, so
       // release once the dispatch is over and no wrapped object took the click
       onpointermissed: (event) =>
         queueMicrotask(() => {
-          if (this.#claimed !== event) this.release()
+          if (this.#claimed === event) return
+          this.release()
+          this.#clicks.on_empty_click?.()
         }),
     }
   }
@@ -96,13 +109,16 @@ export class TouchTaps {
 // init, like interactivity() itself. `touch_hover` wraps an object's hover handlers so touch
 // taps show its tooltip (see TouchTaps), `set_hover_enabled(false)` stops hover raycasts (while
 // the camera moves) and hides a tapped tooltip as the orbit would a hovered one.
+// `on_click` and `on_empty_click` see clicks on and off the wrapped objects (see TouchTaps), e.g.
+// to toggle a TooltipPin on the hovered mark and unpin.
 export const scene_interactivity = ({
   clip_plane,
-}: { clip_plane?: () => Plane | null } = {}) => {
+  ...clicks
+}: { clip_plane?: () => Plane | null } & SceneClicks = {}) => {
   const { enabled } = extras.interactivity({
     filter: (hits) => front_hit(hits, clip_plane?.()),
   })
-  const taps = new TouchTaps()
+  const taps = new TouchTaps(clicks)
   return {
     set_hover_enabled: (on: boolean): void => {
       enabled.set(on)

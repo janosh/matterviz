@@ -2,7 +2,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, type ExportProps } from '#lib/io/export.js'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
-  import type { BrillouinZoneData, BZHoverData } from '#lib/brillouin/index.js'
+  import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index.js'
   import { reciprocal_lattice } from '#lib/math.js'
@@ -46,11 +46,13 @@
   import { to_error } from '#lib/utils.js'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
+  import { mark_pin } from '#lib/tooltip/pin.svelte.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
     BandGridData,
     FermiErrorData,
     FermiFileLoadData,
+    FermiHover,
     FermiHoverData,
     FermiSurfaceData,
     FermiSurfaceSettings,
@@ -165,8 +167,11 @@
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)
   let current_filename = $state<string | undefined>(undefined)
-  let hover_data = $state<FermiHoverData | null>(null)
-  let kpath_hover_data = $state<BZHoverData | null>(null) // hovered k-path point
+  // A click pins the hovered sheet tile's or k-path point's tooltip where it was (see TooltipPin)
+  const pin = mark_pin<FermiHover>()
+  let hovered_mark = $state.raw<FermiHover | null>(null)
+  const shown = $derived(pin.shown(hovered_mark))
+  const hover_data = $derived(shown && `band_index` in shown.data ? shown.data : null)
 
   $effect(() => on_point_hover?.(hover_data))
 
@@ -370,8 +375,11 @@
     if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
   })
 
-  // `f` is owned by FullscreenButton, Escape by the open pane
-  const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
+  // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
+  const keys = viewer_keys(() => ({
+    r: () => reset_scene_cameras(wrapper),
+    Escape: pin.unpin,
+  }))
   const key_walk = key_walk_root() // the sheets, by keyboard (see KeyWalk)
 </script>
 
@@ -483,8 +491,8 @@
           {height}
           bind:scene
           bind:camera
-          bind:hover_data
-          bind:kpath_hover_data
+          bind:hovered={hovered_mark}
+          {pin}
         />
       </Canvas>
 
@@ -503,19 +511,20 @@
       {/if}
 
       <!-- Hover tooltip; a k-path point reads like a Brillouin zone hover, in its tint -->
-      {@const hovered = hover_data ?? kpath_hover_data}
-      {#if hovered && tooltip !== false}
+      {#if shown && tooltip !== false}
+        {@const { data } = shown}
         <PlotTooltip
-          {...hovered.screen_position}
+          {...data.screen_position}
           offset={{ x: 12, y: -12 }}
-          bg_color={hover_data ? hover_data.surface_color : KPATH_COLORS.hover}
+          bg_color={`band_index` in data ? data.surface_color : KPATH_COLORS.hover}
+          pinned={pin.value !== null}
           fixed
           style="z-index: var(--z-index-overlay-nav, 100000001)"
         >
-          {#if hover_data}
-            <FermiSurfaceTooltip {hover_data} {tooltip} />
-          {:else if kpath_hover_data}
-            <BrillouinZoneTooltip hover_data={kpath_hover_data} />
+          {#if `band_index` in data}
+            <FermiSurfaceTooltip hover_data={data} {tooltip} />
+          {:else}
+            <BrillouinZoneTooltip hover_data={data} />
           {/if}
         </PlotTooltip>
       {/if}
