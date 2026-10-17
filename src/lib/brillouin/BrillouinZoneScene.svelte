@@ -6,6 +6,8 @@
     create_scene_camera,
     resolve_scene_controls,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -17,6 +19,7 @@
     bz_fit_extent,
     bz_hover_data,
     default_camera_position,
+    face_anchors,
     k_lattice_inverse,
     bz_mark_sizes,
     k_space_size,
@@ -154,6 +157,30 @@
       is_ibz,
     )
   }
+  // The viewer root walks the zone's faces, then the IBZ wedge's, hovering each at its centroid
+  const pointer_at = scene_pointer()
+  const key_faces = $derived(
+    [
+      { polyhedron: bz_data, is_ibz: false },
+      { polyhedron: show_ibz ? ibz_data : null, is_ibz: true },
+    ].flatMap(({ polyhedron, is_ibz }) => {
+      const anchors = polyhedron ? face_anchors(polyhedron) : []
+      return anchors.map((anchor, face_idx) => ({
+        ...anchor,
+        is_ibz,
+        face_idx,
+        n_faces: anchors.length,
+      }))
+    }),
+  )
+  scene_key_walk({
+    targets: () => key_faces,
+    hover: ({ centroid, triangle, is_ibz }) =>
+      handle_hover(pointer_at(centroid, { faceIndex: triangle }), is_ibz),
+    leave: clear_hover,
+    label: ({ is_ibz, face_idx, n_faces }) =>
+      `${is_ibz ? `Irreducible zone` : `Brillouin zone`} face ${face_idx + 1} of ${n_faces}`,
+  })
   // a hovered k-path point gets the zone tooltip at its k-point
   const handle_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
     const position = k_path.points[qpoint_idx ?? -1]

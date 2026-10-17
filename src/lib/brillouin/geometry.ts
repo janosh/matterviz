@@ -1,6 +1,7 @@
 import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
 import type { BrillouinZoneData, BZHoverData, KPathData } from './types'
 import * as math from '#lib/math.js'
+import { faces_centroid } from '#lib/scene/geometry.svelte.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 // Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Assumes convex faces (true for BZ/IBZ polyhedra); non-convex faces would triangulate incorrectly. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.
@@ -38,6 +39,27 @@ export function polyhedron_geometry(
   geometry.setAttribute(`normal`, new BufferAttribute(new Float32Array(normals), 3))
   geometry.computeBoundingSphere()
   return geometry
+}
+
+// Each polygon face of a polyhedron (bz_data faces may come pre-triangulated): its first
+// triangle in polyhedron_geometry (a pointer event's faceIndex there) and its centroid, e.g.
+// where a keyboard walk hovers the face
+export function face_anchors({
+  vertices,
+  faces,
+}: Pick<BrillouinZoneData, `vertices` | `faces`>): { centroid: Vec3; triangle: number }[] {
+  const geometry = polyhedron_geometry(vertices, faces)
+  if (!geometry) return []
+  const anchors: { centroid: Vec3; triangle: number }[] = []
+  const covered = new Set<number>()
+  for (let triangle = 0; triangle < geometry.getAttribute(`position`).count / 3; triangle++) {
+    if (covered.has(triangle)) continue
+    const polygon = polygon_triangles(geometry, triangle)
+    for (const idx of polygon) covered.add(idx)
+    anchors.push({ centroid: faces_centroid(geometry, polygon), triangle })
+  }
+  geometry.dispose()
+  return anchors
 }
 
 // Triangles of the polygon face that triangle `face_idx` of a polyhedron_geometry lies in: a

@@ -3,7 +3,7 @@
 // without a WebGPU renderer. `threlte_stub.T` is the drop-in for `@threlte/core`'s `T`:
 // `<T.Mesh>` records under the tag `Mesh`, the bare `<T is={object}>` form under `T`.
 import type * as threlte_core from '@threlte/core'
-import { BufferGeometry } from 'three/webgpu'
+import { BufferGeometry, PerspectiveCamera } from 'three/webgpu'
 import ThrelteStub from './ThrelteStub.svelte'
 
 export type StubNode = { tag: string; props: Record<string, unknown> }
@@ -23,7 +23,8 @@ export const threlte_stub = {
 }
 
 // `vi.mock` factories for a scene mounted without a <Canvas>: core's recording `T` plus the
-// useThrelte() fields scenes read, and extras' components as recorded stubs. interactivity()
+// useThrelte() fields scenes read (a camera on +z looking at the origin, as scene_pointer
+// projects through it), and extras' components as recorded stubs. interactivity()
 // would register pointer plugins on a renderer, so it defaults to an inert `enabled` switch.
 export const mock_threlte_core = async (
   import_original: <Module>() => Promise<Module>,
@@ -36,8 +37,9 @@ export const mock_threlte_core = async (
     useThrelte: () => ({
       invalidate,
       scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
+      camera: core.currentWritable(new PerspectiveCamera().translateZ(10)),
       size: core.currentWritable({ width: 800, height: 600 }),
+      dom: document.createElement(`div`),
       renderer: { domElement: document.createElement(`canvas`) },
     }),
   }

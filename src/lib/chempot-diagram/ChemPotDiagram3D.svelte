@@ -12,6 +12,7 @@
   import { json_source, type ExportSources } from '#lib/io/export.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import { ViewerPane } from '#lib/overlays/index.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Vec3 } from '#lib/math.js'
@@ -22,6 +23,7 @@
     clear_pan_offset,
     create_renderer,
     dispose_on_change,
+    key_walk_root,
     positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
@@ -1063,6 +1065,7 @@
   })
 
   const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
+  const key_walk = key_walk_root() // the domains, by keyboard (see KeyWalk)
 
   function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     hover_info = {
@@ -1135,6 +1138,7 @@
     r: reset_camera_view,
     Escape: pin.unpin,
   }))}
+  {@attach key_walk.attach}
   onpointerdown={({ target }) => {
     if (target === wrapper || target instanceof HTMLCanvasElement) pin.unpin()
   }}
@@ -1142,6 +1146,7 @@
   onwheelcapture={mark_input}
   ondblclick={handle_dblclick}
 >
+  <LiveMessage message={key_walk.message} />
   <ViewerChrome
     {controls_config}
     bind:fullscreen

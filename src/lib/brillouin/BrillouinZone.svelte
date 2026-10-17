@@ -5,6 +5,7 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
@@ -18,7 +19,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
-  import { create_renderer, webgpu_available } from '#lib/scene/index.js'
+  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/index.js'
@@ -337,11 +338,14 @@
     },
     r: () => reset_scene_cameras(wrapper),
   }))
+  const key_walk = key_walk_root() // the zone's faces, by keyboard (see KeyWalk)
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:active={info_pane_open || controls_open || export_pane_open}
-  role="region"
+  role="application"
+  tabindex="0"
   aria-label="Brillouin zone viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -352,7 +356,9 @@
   class={[`brillouin-zone`, rest.class]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach key_walk.attach}
 >
+  <LiveMessage message={key_walk.message} />
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}
     <LoadingStatus overlay label="Loading structure..." {...spinner_props} />

@@ -14,9 +14,12 @@
     bind_renderer,
     build_orbit_props,
     dispose_on_change,
+    faces_centroid,
     fat_lines,
     HoverHighlight,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     line_geometry,
     SceneCamera,
     SceneLabel,
@@ -410,6 +413,30 @@
     if (hovered_mesh) on_domain_leave(hovered_mesh)
     hovered_mesh = undefined
   }
+
+  // The viewer root walks the drawn domains in legend order, pointing at the centroid of the
+  // hull faces each owns; Enter pins like a click
+  const pointer_at = scene_pointer()
+  const domain_event = ({ formula }: HoverMesh): ThreltePointerEvent | null => {
+    if (!hull_geometry) return null
+    const faces = face_owners.flatMap((owner, face_idx) =>
+      owner === formula ? [face_idx] : [],
+    )
+    return pointer_at(faces_centroid(hull_geometry, faces))
+  }
+  scene_key_walk({
+    targets: () => hover_meshes,
+    hover: (mesh) => {
+      const event = domain_event(mesh)
+      if (event) on_domain_hover(mesh, event)
+    },
+    leave: (mesh) => on_domain_leave(mesh),
+    click: (mesh) => {
+      const event = domain_event(mesh)
+      if (event) on_domain_press(mesh, event)
+    },
+    label: ({ formula }) => formula,
+  })
 
   // Overlay outlines at a fixed screen width; the source geometries belong to the caller, only
   // the line copies made here are disposed

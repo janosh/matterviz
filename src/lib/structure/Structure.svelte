@@ -28,13 +28,14 @@
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels.js'
   import { is_editable_event_target } from 'svelte-widgets/utils'
-  import { webgpu_available } from '#lib/scene/index.js'
+  import { key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
   import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
@@ -1149,6 +1150,7 @@
     handle_keydown,
     (event) => !measure_mode.startsWith(`edit-`) && handle_keydown(event),
   )
+  const key_walk = key_walk_root() // the active pane's atoms, by keyboard (see KeyWalk)
 
   // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
   let background_override = $derived(
@@ -1210,7 +1212,9 @@
     class={[`structure`, rest.class]}
     {@attach drop_zone}
     {@attach keys}
+    {@attach key_walk.attach}
   >
+    <LiveMessage message={key_walk.message} />
     {@render children?.({ structure, fullscreen })}
     {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
     <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->

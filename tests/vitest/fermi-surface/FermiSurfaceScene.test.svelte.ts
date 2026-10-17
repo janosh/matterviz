@@ -4,7 +4,7 @@
 import FermiSurfaceScene from '#lib/fermi-surface/FermiSurfaceScene.svelte'
 import type { BZHoverData } from '#lib/brillouin/index.js'
 import type { FermiHoverData, FermiIsosurface } from '#lib/fermi-surface/types.js'
-import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
+import { type ComponentProps, flushSync, unmount } from 'svelte'
 import {
   type BufferGeometry,
   DoubleSide,
@@ -18,6 +18,7 @@ import { brighten_hex } from '#lib/scene/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { afterEach, expect, test, vi } from 'vitest'
 import { hover_highlight, threlte_stub, touch_tap } from '../isosurface/threlte-stub'
+import { mount_with_keys } from '../scene/mount'
 import { bind_props } from '../setup'
 import { make_fermi_surface } from '../test-fixtures'
 
@@ -58,15 +59,16 @@ const sheet = (band_index: number, n_vertices = 3): FermiIsosurface => ({
 const fermi_data = make_fermi_surface([sheet(0), sheet(1, 0), sheet(2)])
 
 const mount_scene = (props: ComponentProps<typeof FermiSurfaceScene>) => {
-  const component = mount(FermiSurfaceScene, {
-    target: document.body,
-    props: bind_props(
+  const { keys, mounted } = mount_with_keys(
+    FermiSurfaceScene,
+    bind_props(
       { fermi_data, tile_bz: false, show_bz: false, show_vectors: false, gizmo: false },
       props,
     ),
-  })
-  teardown = () => void unmount(component)
+  )
+  teardown = () => void unmount(mounted)
   flushSync()
+  return keys
 }
 
 // Materials of the sheet meshes in mount order (surface-major)
@@ -246,7 +248,7 @@ test(`colours by the selected property and reports all properties on hover`, () 
     property_name: undefined,
     hover_data: null,
   })
-  mount_scene(props)
+  const keys = mount_scene(props)
   const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
   expect(vertex_colors()).toEqual([true, true]) // first property λ: both sheets have it
   // equal colouring still needs a material per sheet: depth bias and stencil mask differ
@@ -305,6 +307,17 @@ test(`colours by the selected property and reports all properties on hover`, () 
   on_leave({ nativeEvent: {} })
   flushSync()
   expect(hover_highlight()).toBeNull()
+
+  // by keyboard from the focused viewer root: each sheet at its first triangle's centroid,
+  // here vertex 1 again, with the same tooltip and highlight
+  expect(keys.press(`ArrowRight`)).toBe(true)
+  expect(props.hover_data).toMatchObject({
+    band_index: 0,
+    position_cartesian: [0, 4, 5],
+    property_value: 0.5,
+  })
+  expect(keys.message).toBe(`Band 1`)
+  expect(hover_highlight()?.geometry).toBe(mesh?.props.geometry)
 })
 
 // The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:

@@ -1,7 +1,8 @@
 // Mounts TernaryPrismScene against the recording Threlte stub to drive the cutting plane's
 // pointer handlers: a click on the plane pins a composition, a drag never does, a touch tap
-// also shows the composition tooltip a hover there would, and lights up its tie triangle
-import type { Vec2 } from '#lib/math.js'
+// also shows the composition tooltip a hover there would, and lights up its tie triangle.
+// From the focused viewer root, the keyboard walks the rods.
+import { clamp, type Vec2 } from '#lib/math.js'
 import {
   compute_section,
   compute_ternary_phase_diagram,
@@ -11,10 +12,11 @@ import {
 import TernaryPrismScene from '#lib/phase-diagram/ternary/TernaryPrismScene.svelte'
 import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
 import { brighten_hex } from '#lib/scene/index.js'
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { hover_highlight, threlte_stub, touch_tap } from '../../isosurface/threlte-stub'
+import { mount_with_keys } from '../../scene/mount'
 import { bind_props } from '../../setup'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -53,21 +55,27 @@ const release = (client_x: number) => {
 
 test(`a plane click pins its composition; a drag or a flick out of the canvas does not`, () => {
   const temperature = 600
-  const state = $state({ temperature, pinned_composition: null as Vec2 | null })
-  const on_section_hover = vi.fn()
-  const component = mount(TernaryPrismScene, {
-    target: document.body,
-    props: bind_props(
+  const state = $state({
+    temperature,
+    pinned_composition: null as Vec2 | null,
+    hovered_phase: null as number | null,
+    selected_phase: null as number | null,
+  })
+  const [on_section_hover, on_hover] = [vi.fn(), vi.fn()]
+  const { keys, mounted } = mount_with_keys(
+    TernaryPrismScene,
+    bind_props(
       {
         diagram,
         section: compute_section(model, temperature),
         settings: TERNARY_DISPLAY_DEFAULTS,
         on_section_hover,
+        on_hover,
       },
       state,
     ),
-  })
-  teardown = () => void unmount(component)
+  )
+  teardown = () => void unmount(mounted)
   flushSync()
   const pin: Vec2 = [0.4, 0.25]
   const press = () => {
@@ -126,4 +134,18 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
       decomposition.phases.flatMap((idx: number) => prism_position(diagram.phases[idx].xy)),
     ).toSorted(),
   )
+
+  // by keyboard: the first rod where the plane crosses its stability window (else at its
+  // nearer end) shows the rod tooltip, Enter selects its phase like a click
+  const phase = diagram.phases.findIndex(({ idx }) => diagram.stability_windows[idx].length)
+  const [lower, upper] = diagram.stability_windows[phase][0]
+  expect(keys.press(`ArrowDown`)).toBe(true)
+  expect([state.hovered_phase, keys.message]).toEqual([phase, diagram.phases[phase].label])
+  expect(on_hover).toHaveBeenLastCalledWith(expect.objectContaining({ phase }))
+  expect(on_hover.mock.lastCall?.[0].temperature).toBeCloseTo(
+    clamp(state.temperature, lower, upper),
+    6,
+  )
+  keys.press(`Enter`)
+  expect(state.selected_phase).toBe(phase)
 })

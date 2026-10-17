@@ -34,10 +34,30 @@ export const line_geometry = (start: Vec3, end: Vec3): BufferGeometry =>
   positions_geometry([...start, ...end])
 
 // Vertex index of each corner of triangle `face`, for indexed and non-indexed geometry alike
-const corner_vertex = (geometry: BufferGeometry, face: number, corner: number): number =>
-  geometry.index ? geometry.index.getX(3 * face + corner) : 3 * face + corner
+export const corner_vertex = (
+  geometry: BufferGeometry,
+  face: number,
+  corner: number,
+): number => (geometry.index ? geometry.index.getX(3 * face + corner) : 3 * face + corner)
 const n_triangles = (geometry: BufferGeometry): number =>
   (geometry.index?.count ?? geometry.getAttribute(`position`).count) / 3
+
+// Mean corner of the triangles `faces` (indices into the source's triangles): a point on a
+// surface patch, e.g. where a KeyWalk points the tooltip at it
+export function faces_centroid(geometry: BufferGeometry, faces: readonly number[]): Vec3 {
+  const source = geometry.getAttribute(`position`)
+  const sum: Vec3 = [0, 0, 0]
+  for (const face of faces) {
+    for (let corner = 0; corner < 3; corner++) {
+      const vertex = corner_vertex(geometry, face, corner)
+      sum[0] += source.getX(vertex)
+      sum[1] += source.getY(vertex)
+      sum[2] += source.getZ(vertex)
+    }
+  }
+  const n_corners = 3 * faces.length
+  return [sum[0] / n_corners, sum[1] / n_corners, sum[2] / n_corners]
+}
 
 // Non-indexed copy of the triangles `faces` (indices into the source's triangles)
 export function triangle_subset(

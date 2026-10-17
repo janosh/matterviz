@@ -38,6 +38,7 @@
     DEFAULT_FLY_TO_DURATION_MS,
     flight_holds,
     scene_interactivity,
+    scene_key_walk,
     SceneCamera,
     SceneLabel,
     SceneLights,
@@ -569,13 +570,18 @@
     if (!atom_tooltip_active) atom_tooltip_active = true
   }
 
+  function clear_atom_hover(site_idx: number): void {
+    cancel_atom_hover_clear()
+    if (hovered_idx !== site_idx) return
+    hovered_idx = null
+    atom_tooltip_active = false
+  }
+
   function schedule_atom_hover_clear(site_idx: number): void {
     cancel_atom_hover_clear()
     clear_atom_hover_timeout = setTimeout(() => {
       clear_atom_hover_timeout = null
-      if (hovered_idx !== site_idx) return
-      hovered_idx = null
-      atom_tooltip_active = false
+      clear_atom_hover(site_idx)
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
@@ -1047,6 +1053,23 @@
   // between atoms under the cursor read as flicker
   $effect(() => set_hover_enabled(!camera_is_moving && !dragging_atoms))
   let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
+  // The viewer root walks the drawn atoms in site order (image atoms repeat them), Enter
+  // selects like a click. Inactive multi-view panes walk nothing (see scene_key_walk).
+  scene_key_walk({
+    targets: () =>
+      interactive
+        ? [...atom_groups.first_by_site.keys()]
+            .filter((site_idx) => !is_image_site_idx(site_idx))
+            .toSorted((idx_a, idx_b) => idx_a - idx_b)
+        : [],
+    hover: set_atom_hover,
+    leave: clear_atom_hover,
+    click: (site_idx) => toggle_selection(site_idx),
+    label: (site_idx) => {
+      const elements = get_site(structure, site_idx)?.species.map(({ element }) => element)
+      return `Site ${site_idx + 1}: ${elements?.join(`, `) ?? ``}`
+    },
+  })
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
   // JSON cutaways (movie configs) carry no transform: slice the displayed cell
   const cutaway = $derived(resolve_cutaway(cutaway_input, lattice?.matrix))

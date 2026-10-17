@@ -2,14 +2,16 @@
 // (scene_interactivity), with the k-path outranking the IBZ wedge and the wedge the zone
 import BrillouinZoneScene from '#lib/brillouin/BrillouinZoneScene.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
+import { face_anchors } from '#lib/brillouin/geometry.js'
 import type { BZHoverData, KPathData } from '#lib/brillouin/index.js'
 import { reciprocal_lattice } from '#lib/math.js'
 import { brighten_hex } from '#lib/scene/index.js'
 import { DEFAULTS } from '#lib/settings.js'
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { hover_highlight, threlte_stub, touch_tap } from '../isosurface/threlte-stub'
+import { mount_with_keys } from '../scene/mount'
 import { bind_props } from '../setup'
 import { cubic_matrix } from '../test-fixtures'
 
@@ -37,9 +39,9 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
     branches: [[0, 1]],
   }
   const state = $state({ hover_data: null as BZHoverData | null })
-  const component = mount(BrillouinZoneScene, {
-    target: document.body,
-    props: bind_props(
+  const { keys, mounted } = mount_with_keys(
+    BrillouinZoneScene,
+    bind_props(
       {
         bz_data,
         show_ibz: true,
@@ -51,7 +53,7 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
       },
       state,
     ),
-  })
+  )
   flushSync()
   // the scene's filter keeps one hit, so no handler stops propagation itself
   expect(interactivity).toHaveBeenCalledWith({ filter: expect.any(Function) })
@@ -100,5 +102,19 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   zone.onpointerleave({ nativeEvent })
   touch_tap(targets[1].props, { point: new Vector3(0.1, 0, 0) }, { clientX: 7, clientY: 8 })
   expect(state.hover_data).toMatchObject({ is_ibz: true, screen_position: { x: 7, y: 8 } })
-  void unmount(component)
+
+  // by keyboard from the focused viewer root: the zone's faces at their centroids, then the
+  // IBZ wedge's, each lit up like a hovered face
+  expect(keys.press(`ArrowRight`)).toBe(true)
+  const [first_face] = face_anchors(bz_data)
+  expect(state.hover_data).toMatchObject({
+    position_cartesian: first_face.centroid,
+    is_ibz: false,
+  })
+  expect(keys.message).toBe(`Brillouin zone face 1 of 6`) // a cube: 2 triangles per face
+  expect(hover_highlight()?.color).toBe(brighten_hex(DEFAULTS.brillouin.surface_color))
+  keys.press(`ArrowLeft`)
+  expect(state.hover_data).toMatchObject({ is_ibz: true })
+  expect(keys.message).toBe(`Irreducible zone face 6 of 6`)
+  void unmount(mounted)
 })

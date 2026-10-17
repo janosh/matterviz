@@ -31,6 +31,7 @@
     line_geometry,
     scene_interactivity,
     SceneCamera,
+    scene_key_walk,
     SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -62,8 +63,6 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-  import { is_activation_key, step_point_cursor } from '#lib/plot/core/interactions.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     collect_size_range,
     create_size_scale,
@@ -337,7 +336,6 @@
   // Like the task above, runs every frame without forcing renders: only a moving tween
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
-  const hover_idx = $derived(hovered_point && idx_by_key.get(point_key(hovered_point)))
   const shown_idx = $derived(shown_point && idx_by_key.get(point_key(shown_point)))
   // The shown marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
@@ -367,59 +365,50 @@
     projection_material.dispose()
   })
 
+  const hover_point = (point: InternalPoint3D<Metadata>) => {
+    hovered_point = point
+    on_point_hover?.(make_event_data(point))
+  }
+  const leave_point = () => {
+    hovered_point = null
+    on_point_hover?.(null)
+  }
+  const click_point = (point: InternalPoint3D<Metadata>, event?: MouseEvent) => {
+    on_point_click?.(make_event_data(point, event))
+    pin.toggle(point)
+  }
   const instance_point = (event: InstanceEvent) =>
     point_instances[event.instanceId ?? -1]?.point ?? null
   // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
   const point_events = {
     onpointerenter: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
-      hovered_point = point
-      on_point_hover?.(make_event_data(point))
+      if (point) hover_point(point)
     },
-    onpointerleave: () => {
-      hovered_point = null
-      on_point_hover?.(null)
-    },
+    onpointerleave: leave_point,
     onclick: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
       const native = event.nativeEvent
-      on_point_click?.(
-        make_event_data(point, native instanceof MouseEvent ? native : undefined),
-      )
-      pin.toggle(point)
+      if (point) click_point(point, native instanceof MouseEvent ? native : undefined)
     },
     onpointermissed: pin.unpin,
   }
 
-  // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
-  // walk point_instances in (series, point) order, Home/End jump, Enter/Space click, Escape
-  // clears. Returns the cursor point, null once cleared, undefined for keys it leaves alone.
-  export function handle_key(
-    event: KeyboardEvent,
-  ): InternalPoint3D<Metadata> | null | undefined {
-    if (event.defaultPrevented || event.isComposing || is_modifier_chord(event))
-      return undefined
-    if (event.key === `Escape`) {
-      if (pin.unpin()) return null
-      if (!hovered_point) return undefined
-      hovered_point = null
-      on_point_hover?.(null)
-      return null
-    }
-    if (hovered_point && is_activation_key(event)) {
-      on_point_click?.(make_event_data(hovered_point))
-      pin.toggle(hovered_point)
-      return hovered_point
-    }
-    const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
-    if (next === null) return undefined
-    const { point } = point_instances[next]
-    hovered_point = point
-    on_point_hover?.(make_event_data(point))
-    return point
-  }
+  // The plot root's one tab stop walks the in-range markers in (series, point) order, like the
+  // 2D ScatterPlot's cursor (see KeyWalk)
+  scene_key_walk({
+    targets: () => point_instances,
+    hover: ({ point }) => hover_point(point),
+    leave: leave_point,
+    click: ({ point }) => click_point(point),
+    unpin: pin.unpin,
+    label: ({ point: { x, y, z, series_idx, point_idx } }) => {
+      const axes = [x_axis, y_axis, z_axis]
+      const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
+      const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
+      return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+    },
+  })
 
   $effect(() => {
     projection_material.opacity = display.projection_opacity ?? 0.3

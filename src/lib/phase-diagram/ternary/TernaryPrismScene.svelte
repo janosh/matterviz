@@ -17,6 +17,8 @@
     dispose_on_change,
     HoverHighlight,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     SceneCamera,
     SceneLabel,
     SceneLights,
@@ -335,19 +337,36 @@
       position: [nativeEvent.clientX, nativeEvent.clientY],
     })
   }
+  const leave_rod = () => {
+    hovered_phase = null
+    on_hover?.(null)
+  }
+  const click_rod = (phase: number) =>
+    (selected_phase = selected_phase === phase ? null : phase)
   const rod_handlers = (phase: number) => ({
     ...touch_hover({
       onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
       onpointermove: (event: unknown) => handle_rod_hover(phase, event),
-      onpointerleave: () => {
-        hovered_phase = null
-        on_hover?.(null)
-      },
-      onclick: () => (selected_phase = selected_phase === phase ? null : phase),
+      onpointerleave: leave_rod,
+      onclick: () => click_rod(phase),
       // a press on a rod still drags the plane, but pins nothing
       onpointerdown: start_plane_drag,
     }),
     userData: { pick_rank: 1 },
+  })
+  // The viewer root walks the rods in phase order, each where the cutting plane crosses it,
+  // else at its nearer end; Enter selects like a click
+  const pointer_at = scene_pointer()
+  scene_key_walk({
+    targets: () => (settings.show_rods ? rods : []),
+    hover: ({ phase, position: [x_pos, y_pos, z_pos], length }) =>
+      handle_rod_hover(
+        phase,
+        pointer_at([x_pos, clamp(plane_y, y_pos - length / 2, y_pos + length / 2), z_pos]),
+      ),
+    leave: leave_rod,
+    click: ({ phase }) => click_rod(phase),
+    label: ({ phase }) => diagram.phases[phase].label,
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)

@@ -1,5 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
+import type ChemPotScene3D from '#lib/chempot-diagram/ChemPotScene3D.svelte'
 import ChemPotTooltip from '#lib/chempot-diagram/ChemPotTooltip.svelte'
 import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
@@ -14,6 +15,7 @@ import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
+import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query, query, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 
@@ -223,6 +225,31 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   expect(document.querySelector(`.spinner`)).toBeNull()
   expect(document.querySelector(`.empty-state`)).toBeNull()
   expect(scene_labels()).toBe(0) // labels hidden without touching the geometry
+})
+
+// From the focused viewer root the keyboard walks the drawn domains in legend order, each
+// tooltip placed at the hull faces the domain owns, and Enter pins it like a click. The real
+// scene is mounted on the props the diagram hands its stub.
+test(`keyboard walks the domains and Enter pins`, async () => {
+  const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
+  const get_scene = await mount_diagram<ComponentProps<typeof ChemPotScene3D>>(
+    bind_props({ entries, config: { default_min_limit: -25 } }, bound),
+  )
+  const { default: Scene } = await vi.importActual<{ default: typeof ChemPotScene3D }>(
+    `#lib/chempot-diagram/ChemPotScene3D.svelte`,
+  )
+  const scene_props = get_scene()
+  const { keys, unmount_scene } = mount_scene((anchor) => Scene(anchor, scene_props))
+  onTestFinished(unmount_scene)
+  flushSync()
+  expect(keys.press(`ArrowRight`)).toBe(true)
+  const [first] = scene_props.hover_meshes
+  expect([bound.hover_info?.formula, keys.message]).toEqual([first.formula, first.formula])
+  const { x, y } = bound.hover_info?.pointer ?? {}
+  expect([x, y].every(Number.isFinite)).toBe(true)
+  // pinned, the tooltip outlives the cursor the walk's Escape clears
+  expect([`Enter`, `Escape`].map((key) => keys.press(key))).toEqual([true, true])
+  expect(bound.hover_info?.formula).toBe(first.formula)
 })
 
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)

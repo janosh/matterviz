@@ -16,9 +16,13 @@
   import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     bind_renderer,
+    corner_vertex,
     create_scene_camera,
+    faces_centroid,
     HoverHighlight,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -412,6 +416,28 @@
     const geometry = geometries[visible_surfaces.indexOf(surface)]
     const matrix = symmetry_ops[sym_idx]
     return geometry && matrix ? { geometry, matrix, color: get_surface_color(surface) } : null
+  })
+
+  // The viewer root walks the visible sheets, hovering each at its first triangle (untiled)
+  const pointer_at = scene_pointer()
+  const key_sheets = $derived(
+    visible_surfaces.flatMap((surface, surface_idx) => {
+      const geometry = geometries[surface_idx]
+      return geometry ? [{ surface, geometry }] : []
+    }),
+  )
+  scene_key_walk({
+    targets: () => key_sheets,
+    hover: ({ surface, geometry }) => {
+      const [a, b, c] = [0, 1, 2].map((corner) => corner_vertex(geometry, 0, corner))
+      const sym_matrix = new Matrix4().fromArray(symmetry_ops[0])
+      const point = new Vector3(...faces_centroid(geometry, [0])).applyMatrix4(sym_matrix)
+      const event = pointer_at([point.x, point.y, point.z], { face: { a, b, c } })
+      handle_pointer_move(event, surface, geometry, get_surface_color(surface), 0)
+    },
+    leave: () => (hover_data = null),
+    label: ({ surface: { band_index, spin } }) =>
+      `Band ${band_index + 1}${spin ? ` (spin ${spin})` : ``}`,
   })
 
   // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
