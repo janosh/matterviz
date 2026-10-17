@@ -144,6 +144,12 @@ export const expect_shortcuts_in_pane = (
 // tooltip that followed the pointer would move. `lit` reads whether a mark wears its hover
 // look, which the pinned mark keeps until unpinned. `text` reads the tooltip's content, minus
 // any pinned-only hint.
+// A tooltip's text minus the pinned-only "Pinned · Esc to unpin" hint
+const without_pin_hint = (node: HTMLElement): string | null => {
+  const copy = node.cloneNode(true) as HTMLElement
+  copy.querySelector(`.pin-hint`)?.remove()
+  return copy.textContent
+}
 export type PinStep = `hover` | `nudge` | `leave` | `click` | `escape` | `enter`
 export async function pin_cycle(
   act: (step: PinStep, mark_idx: 0 | 1 | null) => unknown,
@@ -151,7 +157,7 @@ export async function pin_cycle(
     keyboard = false,
     tooltip = () => document.querySelector<HTMLElement>(`.plot-tooltip`),
     lit,
-    text: read_text = (node) => node.textContent,
+    text: read_text = without_pin_hint,
   }: {
     keyboard?: boolean
     tooltip?: () => HTMLElement | null
@@ -173,8 +179,12 @@ export async function pin_cycle(
   await run(`hover`, 0)
   const [, , text, role] = state()
   expect(state()).toEqual([false, `none`, text, role])
+  expect(tooltip()?.querySelector(`.pin-hint`)).toBeNull()
   await run(`click`, 0) // pinned: takes pointer events so its text can be selected
   expect(state()).toEqual([true, `auto`, text, role])
+  // every pinned chip says how to unpin, in a tab on its edge that adds no height to it
+  const hint = tooltip()?.querySelector(`.pin-hint`)
+  expect(hint && getComputedStyle(hint).position).toBe(`absolute`)
   expect(getComputedStyle(tooltip() ?? document.body).userSelect).toBe(`text`)
   const anchor = () => [tooltip()?.style.left, tooltip()?.style.top]
   const pinned_at = anchor()

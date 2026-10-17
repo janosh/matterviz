@@ -277,45 +277,22 @@ test(`a domain press pins its tooltip; it again, empty space or Escape unpin`, a
     on_domain_leave: (mesh: unknown) => void
   }>({ entries, config: { default_min_limit: -25 } })
   const wrapper = doc_query(`.chempot-diagram-3d`)
-  const text = await pin_cycle(
-    (step, mark_idx) => {
-      const scene = get_scene()
-      const domain = scene.hover_meshes[mark_idx ?? 0]
-      const event = {
-        nativeEvent: new PointerEvent(`pointermove`, pin_spot(mark_idx, step)),
-        stopPropagation: () => undefined,
-      }
-      if (step === `escape`) wrapper.dispatchEvent(keydown(`Escape`))
-      else if (step === `leave`) scene.on_domain_leave(domain)
-      else if (mark_idx !== null) scene.on_domain_hover(domain, event)
-      if (step !== `click`) return
-      if (mark_idx === null)
-        wrapper.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
-      else scene.on_domain_press(domain, event)
-    },
-    {
-      text: ({ children }) =>
-        [...children]
-          .filter((child) => child.tagName !== `SMALL`)
-          .map((child) => child.textContent)
-          .join(``),
-    },
-  ) // the pin hint aside
+  const text = await pin_cycle((step, mark_idx) => {
+    const scene = get_scene()
+    const domain = scene.hover_meshes[mark_idx ?? 0]
+    const event = {
+      nativeEvent: new PointerEvent(`pointermove`, pin_spot(mark_idx, step)),
+      stopPropagation: () => undefined,
+    }
+    if (step === `escape`) wrapper.dispatchEvent(keydown(`Escape`))
+    else if (step === `leave`) scene.on_domain_leave(domain)
+    else if (mark_idx !== null) scene.on_domain_hover(domain, event)
+    if (step !== `click`) return
+    if (mark_idx === null)
+      wrapper.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+    else scene.on_domain_press(domain, event)
+  })
   expect(text).toMatch(/μ \(eV\)/)
-  // pinned again: the hint floats into the title row's corner instead of adding a line
-  const scene = get_scene()
-  const event = {
-    nativeEvent: new PointerEvent(`pointermove`, pin_spot(0, `click`)),
-    stopPropagation: () => undefined,
-  }
-  scene.on_domain_hover(scene.hover_meshes[0], event)
-  scene.on_domain_press(scene.hover_meshes[0], event)
-  flushSync()
-  const hint = doc_query(`.chempot-tooltip .pin-hint`)
-  expect([hint.nextElementSibling?.tagName, getComputedStyle(hint).float]).toEqual([
-    `H4`,
-    `right`,
-  ])
 })
 
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)

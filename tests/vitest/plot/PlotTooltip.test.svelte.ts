@@ -263,6 +263,19 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`pre-line`)
   })
 
+  // A pinned chip says how to unpin in a tab on its top edge (no extra height, no overlap with
+  // a full-width first row), which slides back in after a couple of seconds
+  test.each([false, true])(`pinned=%s shows the unpin tab`, (pinned) => {
+    const tooltip = mount_tooltip({ pinned })
+    const hint = tooltip.querySelector<HTMLElement>(`.pin-hint`)
+    expect(hint !== null).toBe(pinned)
+    if (!hint) return
+    // happy-dom keeps the animation shorthand unexpanded
+    const { position, animation } = getComputedStyle(hint)
+    expect(position).toBe(`absolute`)
+    expect(animation).toMatch(/pin-hint-retract.* 2\.5s /)
+  })
+
   // UA and page margins would pad a dense chip; the reset has zero specificity, so a tooltip
   // snippet's own (here inline) styles still win
   test(`resets h4, p, small, .key and sup inside the chip`, () => {

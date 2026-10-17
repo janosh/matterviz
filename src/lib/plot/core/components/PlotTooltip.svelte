@@ -124,7 +124,9 @@
   bind:this={wrapper}
   {@attach measure}
 >
-  {@render children()}
+  <!-- a tab on the chip's top-right edge: inside, a float squeezed full-width first rows and
+  an overlay covered them, while a line of its own made the chip taller -->
+  {#if pinned}<small class="pin-hint">Pinned · Esc to unpin</small>{/if}{@render children()}
 </div>
 
 <style>
@@ -160,6 +162,40 @@
   .plot-tooltip.pinned {
     user-select: text;
     cursor: auto;
+  }
+  .pin-hint {
+    position: absolute;
+    bottom: 100%; /* over the chip's top border, so tab and chip join seamlessly */
+    right: 6px;
+    padding: 1px 5px 0;
+    border: 1px solid currentColor;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    background: inherit;
+    opacity: 1; /* the dense <small> reset would make the tab's fill see-through */
+    color: color-mix(in srgb, currentColor 65%, transparent);
+    font-size: 0.7em;
+    white-space: nowrap;
+    /* a reminder, not chrome: once read it slides back into the chip */
+    animation: pin-hint-retract 0.35s ease-in 2.5s forwards;
+  }
+  @keyframes pin-hint-retract {
+    to {
+      transform: translateY(100%);
+      opacity: 0;
+      visibility: hidden;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pin-hint {
+      animation-name: pin-hint-fade;
+    }
+    @keyframes pin-hint-fade {
+      to {
+        opacity: 0;
+        visibility: hidden;
+      }
+    }
   }
   /* a pinned chip wears a solid border */
   :where(.plot-tooltip.pinned) {
