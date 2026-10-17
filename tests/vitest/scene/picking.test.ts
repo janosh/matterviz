@@ -1,6 +1,7 @@
+import { TAP_MS, TouchTaps } from '#lib/scene/interactivity.js'
 import { front_hit } from '#lib/scene/picking.js'
 import { Object3D, Plane, Vector3 } from 'three/webgpu'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 // Raycaster hits come sorted nearest first; each hit is labelled by its distance along z
 const hit = (z_coord: number, pick_rank?: number) => {
@@ -23,4 +24,119 @@ test.each([
   [`all hits clipped picks nothing`, [hit(-2), hit(-1)], keeps_positive_z, []],
 ])(`front_hit: %s`, (_desc, hits, clip_plane, expected) => {
   expect(front_hit(hits, clip_plane).map(({ z_coord }) => z_coord)).toEqual(expected)
+})
+
+// Gestures as threlte dispatches them to two touch_hover-wrapped objects (0, 1) or empty space.
+// A click (at most 8 px from its press, else threlte sends none) first reaches every object it
+// missed, then the hit one. `release` is scene_interactivity's on orbit (hover raycasts off).
+type Gesture = `tap` | `long_press` | `drag` | `hover` | `click` | `leave` | `miss` | `release`
+test.each<[string, [Gesture, (0 | 1)?][], (0 | 1)[], number | null]>([
+  [`a tap shows the tooltip and keeps it`, [[`tap`, 0]], [0], 0],
+  [
+    `a second tap on the same object hides it`,
+    [
+      [`tap`, 0],
+      [`tap`, 0],
+    ],
+    [0, 0],
+    null,
+  ],
+  [
+    `a tap on another object moves it there`,
+    [
+      [`tap`, 0],
+      [`tap`, 1],
+    ],
+    [0, 1],
+    1,
+  ],
+  [`an empty-space tap hides it`, [[`tap`, 0], [`miss`]], [0], null],
+  [
+    `an orbit hides it, the next tap shows it again`,
+    [[`tap`, 0], [`release`], [`tap`, 0]],
+    [0, 0],
+    0,
+  ],
+  [`a drag shows nothing`, [[`drag`, 0]], [], null],
+  [
+    `a drag leaves a held tooltip alone`,
+    [
+      [`tap`, 0],
+      [`drag`, 1],
+    ],
+    [0],
+    0,
+  ],
+  [`a long press shows nothing`, [[`long_press`, 0]], [0], null],
+  [
+    `mouse hovers pass through`,
+    [
+      [`hover`, 0],
+      [`hover`, 1],
+    ],
+    [],
+    1,
+  ],
+  [
+    `a mouse click holds nothing`,
+    [
+      [`hover`, 0],
+      [`click`, 0],
+      [`leave`, 0],
+    ],
+    [0],
+    null,
+  ],
+])(`TouchTaps: %s`, async (_desc, gestures, clicked, expected) => {
+  const taps = new TouchTaps()
+  let shown: number | null = null
+  const on_click = vi.fn()
+  const objects = [0, 1].map((idx) => {
+    const eventObject = new Object3D()
+    const props = taps.wrap({
+      onpointerenter: () => (shown = idx),
+      onpointermove: () => (shown = idx),
+      onpointerleave: () => (shown = null),
+      onclick: () => on_click(idx),
+    })
+    return {
+      props,
+      at: (pointerType: string, timeStamp = 0) => {
+        const nativeEvent = new PointerEvent(`click`, { pointerType })
+        return {
+          eventObject,
+          nativeEvent: Object.defineProperty(nativeEvent, `timeStamp`, { value: timeStamp }),
+        }
+      },
+    }
+  })
+  for (const [gesture, idx] of gestures) {
+    if (gesture === `release`) taps.release()
+    else if (idx === undefined) {
+      const click = new MouseEvent(`click`)
+      for (const { props } of objects) props.onpointermissed(click)
+    } else {
+      const { props, at } = objects[idx]
+      const pointer_type = [`hover`, `click`, `leave`].includes(gesture) ? `mouse` : `touch`
+      if (gesture === `hover`) props.onpointermove?.(at(pointer_type))
+      if (gesture === `leave`) props.onpointerleave?.(at(pointer_type))
+      if (gesture === `drag`) {
+        props.onpointerdown?.(at(pointer_type))
+        props.onpointerenter?.(at(pointer_type))
+        props.onpointermove?.(at(pointer_type))
+        props.onpointerleave?.(at(pointer_type))
+      }
+      if ([`tap`, `long_press`, `click`].includes(gesture)) {
+        props.onpointerdown?.(at(pointer_type))
+        const click = at(pointer_type, gesture === `long_press` ? TAP_MS + 1 : TAP_MS)
+        for (const other of objects) {
+          if (other !== objects[idx]) other.props.onpointermissed(click.nativeEvent)
+        }
+        props.onclick?.(click)
+      }
+    }
+    await Promise.resolve() // missed clicks release in a microtask
+  }
+  expect(on_click.mock.calls.flat()).toEqual(clicked)
+  expect(shown).toBe(expected)
 })

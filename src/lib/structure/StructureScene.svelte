@@ -42,7 +42,7 @@
     SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
-  import type { SceneControlProps } from '#lib/scene/index.js'
+  import type { SceneControlProps, TapEvent } from '#lib/scene/index.js'
   import type { ShowBonds, VectorColorMode, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
   import { applies_to_structure, resolve_cell_vectors } from './settings'
@@ -888,7 +888,7 @@
     }, 250)
   }
 
-  function select_edit_bonds_site(site_idx: number, event: Event): void {
+  function select_edit_bonds_site(site_idx: number, event: Event | TapEvent): void {
     toggle_selection(site_idx, event)
     remember_edit_bonds_pointerdown_site(site_idx)
   }
@@ -902,17 +902,11 @@
 
   // Selection handlers shared by instanced atom meshes and per-site hit targets
   // so the edit-bonds click semantics can't drift between the two paths
-  const handle_atom_pointerdown = (site_idx: number, event: PointerEvent) => {
+  const handle_atom_pointerdown = (site_idx: number, event: TapEvent) => {
     if (measure_mode !== `edit-bonds` || bond_edit_mode !== `add`) return
     select_edit_bonds_site(site_idx, event)
   }
-  const handle_atom_click = (site_idx: number, event: MouseEvent) => {
-    // Touch cannot hover, so a tap is the only way to surface the atom tooltip; it stays
-    // until the next orbit or tap (the pointerleave-driven clear never fires for touch).
-    // On click rather than pointerdown: OrbitControls' `start` fires on pointerdown and
-    // wipes the hover. Threlte wraps the DOM event, so pointerType lives on nativeEvent.
-    const native_event = (event as BondContextMenuEvent).nativeEvent ?? event
-    if ((native_event as PointerEvent).pointerType === `touch`) set_atom_hover(site_idx)
+  const handle_atom_click = (site_idx: number, event: TapEvent) => {
     if (measure_mode === `edit-bonds`) {
       if (bond_edit_mode !== `add`) return
       if (skip_duplicate_edit_bonds_click(site_idx)) return
@@ -923,35 +917,33 @@
   // Pointer handlers for an instanced atom mesh: intersection events carry the
   // hit `instanceId`, which indexes into the mesh's `atoms` array. One handler
   // set per mesh instead of one per atom. Inactive grid panes render without
-  // raycast handlers; ghosted edit-mode image atoms are non-interactive.
-  type InstanceEvent = { instanceId?: number }
+  // raycast handlers; ghosted edit-mode image atoms are non-interactive. A touch
+  // tap shows the atom tooltip besides selecting it (touch_hover).
   const atom_instance_events = (
     instance_atoms: { site_idx: number }[],
     is_edit_image: boolean,
   ) => {
     if (!interactive || is_edit_image) return {}
     const wrap =
-      <Event_ extends InstanceEvent>(handler: (site_idx: number, event: Event_) => void) =>
-      (event: Event_) => {
+      (handler: (site_idx: number, event: TapEvent) => void) => (event: TapEvent) => {
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
         if (site_idx != null) handler(site_idx, event)
       }
     const hover = wrap(set_atom_hover)
-    return {
+    return touch_hover({
       onpointerenter: hover,
       onpointermove: hover,
       onpointerleave: wrap(schedule_atom_hover_clear),
-      onpointerdown: wrap<PointerEvent & InstanceEvent>(handle_atom_pointerdown),
-      onclick: wrap<MouseEvent & InstanceEvent>(handle_atom_click),
-    }
+      onpointerdown: wrap(handle_atom_pointerdown),
+      onclick: wrap(handle_atom_click),
+    })
   }
 
   const toggle_site = (sites: number[], site_idx: number): number[] =>
     sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
 
-  function toggle_selection(site_index: number, evt?: Event) {
-    const event_with_native = evt as (Event & { nativeEvent?: unknown }) | undefined
-    const native_event = event_with_native?.nativeEvent ?? evt
+  function toggle_selection(site_index: number, evt?: Event | TapEvent) {
+    const native_event = (evt as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? evt
 
     if (measure_mode === `edit-bonds`) {
       // Only the active pane edits: inactive panes keep selection/hover overlays visible
@@ -1050,10 +1042,10 @@
 
   // One target per pointer event (the front-most atom, bond or hit target), so handlers need no
   // stopPropagation() to keep the ones behind from taking over the hover or selection
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
   // No hover raycasts while orbiting or dragging atoms: the highlight and tooltip hopping
   // between atoms under the cursor read as flicker
-  $effect(() => hover_enabled.set(!camera_is_moving && !dragging_atoms))
+  $effect(() => set_hover_enabled(!camera_is_moving && !dragging_atoms))
   let hovered_site = $derived(get_site(structure, hovered_idx ?? -1) ?? null)
   let lattice = $derived(structure && `lattice` in structure ? structure.lattice : null)
   // JSON cutaways (movie configs) carry no transform: slice the displayed cell
@@ -2248,10 +2240,10 @@
           visible={false}
           position={atom_hit.position}
           scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
-          {...atom_hover_props(atom_hit.site_idx)}
-          onpointerdown={(event: PointerEvent) => {
-            select_edit_bonds_site(atom_hit.site_idx, event)
-          }}
+          {...touch_hover({
+            ...atom_hover_props(atom_hit.site_idx),
+            onpointerdown: (event) => select_edit_bonds_site(atom_hit.site_idx, event),
+          })}
         />
       {/each}
 

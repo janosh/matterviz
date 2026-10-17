@@ -7,7 +7,7 @@ import { reciprocal_lattice } from '#lib/math.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub } from '../isosurface/threlte-stub'
+import { threlte_stub, touch_tap } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { cubic_matrix } from '../test-fixtures'
 
@@ -55,7 +55,10 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   expect(interactivity).toHaveBeenCalledWith({ filter: expect.any(Function) })
 
   const targets = threlte_stub.nodes.filter(({ props }) => props.onpointermove)
-  type Handlers = { onpointermove: (event: unknown) => void; onpointerleave: () => void }
+  type Handlers = {
+    onpointermove: (event: unknown) => void
+    onpointerleave: (event: unknown) => void
+  }
   const [zone, ibz, path] = targets.map(({ props }) => props as unknown as Handlers)
   const ranks = targets.map(
     ({ props }) =>
@@ -67,7 +70,7 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
   const nativeEvent = new PointerEvent(`pointermove`, { clientX: 5, clientY: 6 })
   ibz.onpointermove({ point: new Vector3(0.1, 0, 0), nativeEvent })
   expect(state.hover_data).toMatchObject({ is_ibz: true, symmetry_multiplicity: 48 })
-  ibz.onpointerleave()
+  ibz.onpointerleave({ nativeEvent })
   expect(state.hover_data).toBeNull()
 
   path.onpointermove({ point: new Vector3(0.4, 0, 0), instanceId: 0, nativeEvent })
@@ -77,10 +80,15 @@ test(`IBZ and k-path outrank the zone; a k-path hover shows the zone tooltip at 
     screen_position: { x: 5, y: 6 },
     is_ibz: false,
   })
-  path.onpointerleave()
+  path.onpointerleave({ nativeEvent })
   expect(state.hover_data).toBeNull()
 
   zone.onpointermove({ point: new Vector3(0, 0.2, 0), nativeEvent })
   expect(state.hover_data).toMatchObject({ position_cartesian: [0, 0.2, 0], is_ibz: false })
+
+  // touch has no hover: a tap shows what hovering there would, and keeps it
+  zone.onpointerleave({ nativeEvent })
+  touch_tap(targets[1].props, { point: new Vector3(0.1, 0, 0) }, { clientX: 7, clientY: 8 })
+  expect(state.hover_data).toMatchObject({ is_ibz: true, screen_position: { x: 7, y: 8 } })
   void unmount(component)
 })

@@ -20,6 +20,7 @@ import {
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
+import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import type { BufferGeometry, Object3D } from 'three/webgpu'
 import {
@@ -442,7 +443,8 @@ test.each<[string, false | undefined, boolean]>([
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor.
 // Enter clicks the cursor's point, or without on_point_click pins its tooltip, which the first
-// Escape then unpins before the next clears the cursor.
+// Escape then unpins before the next clears the cursor. A touch tap (touch has no hover) is
+// such a click on the point too.
 test.each([
   [true, [null, undefined, undefined]],
   [false, [null, null, undefined]],
@@ -450,6 +452,8 @@ test.each([
   `ScatterPlot3DScene walks, clicks and clears its markers by keyboard, on_point_click: %s`,
   (clickable, escapes) => {
     const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const interactivity = vi.spyOn(extras, `interactivity`)
+    onTestFinished(() => interactivity.mockRestore())
     const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
     const { exports, unmount_scene } = mount_scene((anchor) =>
       ScatterPlot3DScene(anchor, {
@@ -503,6 +507,18 @@ test.each([
     expect(document.querySelector(`.plot-tooltip`)).toBeNull()
     expect(state.hovered_point).toBeNull()
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
+
+    const { handlers, interactiveObjects } = interactivity.mock.results[0].value as ReturnType<
+      typeof extras.interactivity
+    >
+    const points = interactiveObjects.map((object) => handlers.get(object))
+    const tap = new PointerEvent(`click`, { pointerType: `touch` })
+    points
+      .find((events) => events?.onpointermissed)
+      ?.onclick?.({ instanceId: 0, nativeEvent: tap })
+    flushSync()
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect(on_point_click).toHaveBeenCalledTimes(clickable ? 2 : 0)
   },
 )
 

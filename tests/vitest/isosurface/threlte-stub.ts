@@ -52,3 +52,21 @@ export const mock_threlte_extras = (
   ),
   interactivity,
 })
+
+// A touch tap on an object as threlte dispatches it to the object's handlers (a
+// scene_interactivity touch_hover target): its press, the window's pointerup, then its click.
+// `event` adds the intersection's fields (point, ...), `init` the DOM events'.
+export const touch_tap = (
+  props: Record<string, unknown>,
+  event: Record<string, unknown> = {},
+  init: PointerEventInit = {},
+): void => {
+  const dispatch = (type: string) =>
+    (props[`on${type}`] as (event: unknown) => void)({
+      ...event,
+      nativeEvent: new PointerEvent(type, { pointerType: `touch`, ...init }),
+    })
+  dispatch(`pointerdown`)
+  globalThis.dispatchEvent(new PointerEvent(`pointerup`, { pointerType: `touch`, ...init }))
+  dispatch(`click`)
+}

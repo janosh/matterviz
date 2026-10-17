@@ -122,7 +122,7 @@
   bind_renderer() // lets the PNG export re-render the frame
 
   // The tooltip names the domain in front, not the farthest one the pick ray passes through
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled } = scene_interactivity()
   const pointer_of = (event: unknown) => event as ThreltePointerEvent
 
   const swiz = $derived(swizzle_to_render(render_axis_scale))
@@ -395,7 +395,7 @@
       // No domain hover while orbiting: the tooltip popping between domains under the cursor
       // reads as flicker. A wheel zoom moves no pointer (no pointerleave), so the parent drops an
       // unpinned tooltip itself. Flagged on the first camera change, so presses still pin
-      set_camera_is_moving: (moving) => hover_enabled.set(!moving),
+      set_camera_is_moving: (moving) => set_hover_enabled(!moving),
       on_start_extra: on_camera_start,
     }),
   )

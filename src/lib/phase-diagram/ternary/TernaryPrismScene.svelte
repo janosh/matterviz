@@ -78,7 +78,7 @@
 
   // Rods win the pick over the cutting plane, also where seen through it, and the drag catcher
   // wins over both (their pick_rank)
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
 
   // === Frame: composition in XZ (centred), temperature along Y ===
 
@@ -309,7 +309,7 @@
     rotation_damping: 0,
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving) {
         hover_xy = null
         on_hover?.(null)
@@ -330,15 +330,17 @@
     })
   }
   const rod_handlers = (phase: number) => ({
-    onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
-    onpointermove: (event: unknown) => handle_rod_hover(phase, event),
-    onpointerleave: () => {
-      hovered_phase = null
-      on_hover?.(null)
-    },
-    onclick: () => (selected_phase = selected_phase === phase ? null : phase),
-    // a press on a rod still drags the plane, but pins nothing
-    onpointerdown: start_plane_drag,
+    ...touch_hover({
+      onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
+      onpointermove: (event: unknown) => handle_rod_hover(phase, event),
+      onpointerleave: () => {
+        hovered_phase = null
+        on_hover?.(null)
+      },
+      onclick: () => (selected_phase = selected_phase === phase ? null : phase),
+      // a press on a rod still drags the plane, but pins nothing
+      onpointerdown: start_plane_drag,
+    }),
     userData: { pick_rank: 1 },
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
@@ -465,9 +467,11 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 <T.Group position={[0, plane_y, 0]}>
   <T.Mesh
     geometry={plane_geometry}
-    onpointerdown={start_plane_drag}
-    onpointermove={hover_plane}
-    onpointerleave={clear_plane_hover}
+    {...touch_hover({
+      onpointerdown: start_plane_drag,
+      onpointermove: hover_plane,
+      onpointerleave: clear_plane_hover,
+    })}
   >
     <T.MeshStandardMaterial
       color="#fff59d"

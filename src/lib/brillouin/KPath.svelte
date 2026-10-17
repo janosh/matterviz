@@ -5,7 +5,12 @@
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import { SceneLabel, type ThreltePointerEvent } from '#lib/scene/index.js'
+  import { SceneLabel } from '#lib/scene/index.js'
+  import type {
+    ThreltePointerEvent,
+    TouchHoverProps,
+    HoverHandlers,
+  } from '#lib/scene/index.js'
   import { write_bond_transform } from '#lib/structure/bond-rendering.js'
   import { T, useThrelte } from '@threlte/core'
   import {
@@ -28,6 +33,7 @@
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
+    touch_hover,
     size,
     edge_width = 0,
   }: {
@@ -39,6 +45,8 @@
     hovered_qpoint_index?: number | null
     highlighted_qpoint_range?: Vec2 | null
     on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
+    // the host scene's scene_interactivity().touch_hover, so a tap on the path shows its tooltip
+    touch_hover: (handlers: HoverHandlers) => TouchHoverProps
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
     edge_width?: number
   } = $props()
@@ -152,8 +160,10 @@
   <T
     is={kpath_meshes.proxy}
     dispose={false}
-    onpointermove={handle_kpath_hover}
-    onpointerleave={() => report_hover(null)}
+    {...touch_hover({
+      onpointermove: handle_kpath_hover,
+      onpointerleave: () => report_hover(null),
+    })}
   />
 {/if}
 

@@ -103,7 +103,10 @@
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
       // a band structure's k-path to draw (its hovered point is the k_marker dot)
-      k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
+      k_path?: Omit<
+        ComponentProps<typeof KPath>,
+        `size` | `edge_width` | `hovered_k_point` | `touch_hover`
+      >
       selected_bands?: number[]
       selected_spins?: SpinChannel[]
       hover_data?: FermiHoverData | null
@@ -146,7 +149,9 @@
 
   // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
   // wins over sheets in front of it (its pick_rank), or most of it could not be hovered
-  const { enabled: hover_enabled } = scene_interactivity({ clip_plane: () => clip_plane })
+  const { set_hover_enabled, touch_hover } = scene_interactivity({
+    clip_plane: () => clip_plane,
+  })
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
@@ -274,7 +279,7 @@
     // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (!moving) return
       hover_data = null
       kpath_hover_data = null
@@ -486,6 +491,7 @@
       size={scene_size}
       edge_width={DEFAULTS.brillouin.edge_width}
       {on_kpath_hover}
+      {touch_hover}
     />
   {/if}
   {#if k_marker}
@@ -510,9 +516,11 @@
           matrix={sym_matrix}
           matrixAutoUpdate={false}
           {renderOrder}
-          onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
-          onpointerleave={() => (hover_data = null)}
+          {...touch_hover({
+            onpointermove: (event: ThreltePointerEvent) =>
+              handle_pointer_move(event, surface, geometry, surface_color, sym_idx),
+            onpointerleave: () => (hover_data = null),
+          })}
         />
       {/each}
     {/if}

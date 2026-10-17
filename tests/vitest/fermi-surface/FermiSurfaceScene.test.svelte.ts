@@ -15,7 +15,7 @@ import {
 import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub } from '../isosurface/threlte-stub'
+import { threlte_stub, touch_tap } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { make_fermi_surface } from '../test-fixtures'
 
@@ -285,6 +285,12 @@ test(`colours by the selected property and reports all properties on hover`, () 
     property_value: 0.5,
     property_values: { λ: 0.5, Δ: 2 },
   })
+  // touch has no hover: a tap shows what hovering there would, and keeps it
+  const on_leave = mesh?.props.onpointerleave as (event: unknown) => void
+  on_leave({ nativeEvent: {} })
+  expect(props.hover_data).toBeNull()
+  touch_tap(mesh?.props ?? {}, { point: new Vector3(0, 4, 5), face: { a: 0, b: 1, c: 2 } })
+  expect(props.hover_data).toMatchObject({ property_name: `λ`, property_value: 0.5 })
 })
 
 // The 2D slice shows up as a translucent plane plus outline, cut to the cell the data lives in:

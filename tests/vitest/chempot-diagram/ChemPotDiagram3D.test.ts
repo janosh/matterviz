@@ -242,8 +242,9 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   if (info.view !== `3d`) throw new Error(`expected 3D hover info, got ${info.view}`)
   expect(info.matching_entry_count).toBeGreaterThan(0)
   expect(info.min_energy_per_atom).toBeLessThanOrEqual(info.max_energy_per_atom ?? -Infinity)
+  // by touch: it has no hover, so a tap's press is what shows (and pins) a domain's tooltip
   const event = {
-    nativeEvent: new PointerEvent(`pointerdown`),
+    nativeEvent: new PointerEvent(`pointerdown`, { pointerType: `touch` }),
     stopPropagation: () => undefined,
   }
 
@@ -254,7 +255,7 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   flushSync()
   expect(bound.hover_info).toBeNull()
 
-  scene.on_domain_press(domain, event) // click pins the tooltip
+  scene.on_domain_press(domain, event) // a tap or click pins the tooltip
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)
   scene.on_camera_start()

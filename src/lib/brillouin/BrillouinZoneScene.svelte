@@ -84,7 +84,7 @@
 
   // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
   // wins over the zone (their pick_rank), else the front-most
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
 
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
@@ -112,7 +112,7 @@
     // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
     // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (!moving) return
       hover_data = null
       on_kpath_hover?.(null)
@@ -170,8 +170,10 @@
       opacity={surface_opacity}
       {edge_color}
       edge_width={mark_sizes.edge}
-      onpointermove={(event) => handle_hover(event, false)}
-      onpointerleave={() => (hover_data = null)}
+      {...touch_hover({
+        onpointermove: (event: ThreltePointerEvent) => handle_hover(event, false),
+        onpointerleave: () => (hover_data = null),
+      })}
     />
 
     <!-- Irreducible BZ wedge, outlined in its own colour -->
@@ -181,8 +183,10 @@
         color={ibz_color}
         opacity={ibz_opacity}
         edge_width={mark_sizes.edge * 1.5}
-        onpointermove={(event) => handle_hover(event, true)}
-        onpointerleave={() => (hover_data = null)}
+        {...touch_hover({
+          onpointermove: (event: ThreltePointerEvent) => handle_hover(event, true),
+          onpointerleave: () => (hover_data = null),
+        })}
         pick_rank={1}
       />
     {/if}
@@ -199,6 +203,7 @@
       {hovered_qpoint_index}
       {highlighted_qpoint_range}
       on_kpath_hover={handle_kpath_hover}
+      {touch_hover}
       size={bz_size}
       {edge_width}
     />

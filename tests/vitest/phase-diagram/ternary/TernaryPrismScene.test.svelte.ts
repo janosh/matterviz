@@ -1,5 +1,6 @@
 // Mounts TernaryPrismScene against the recording Threlte stub to drive the cutting plane's
-// pointer handlers: a click on the plane pins a composition, a drag never does
+// pointer handlers: a click on the plane pins a composition, a drag never does, a touch tap
+// also shows the composition tooltip a hover there would
 import type { Vec2 } from '#lib/math.js'
 import {
   compute_section,
@@ -12,7 +13,7 @@ import { TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ternary/types.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
-import { threlte_stub } from '../../isosurface/threlte-stub'
+import { threlte_stub, touch_tap } from '../../isosurface/threlte-stub'
 import { bind_props } from '../../setup'
 import { toy_elements, toy_entries } from './fixtures'
 
@@ -52,6 +53,7 @@ const release = (client_x: number) => {
 test(`a plane click pins its composition; a drag or a flick out of the canvas does not`, () => {
   const temperature = 600
   const state = $state({ temperature, pinned_composition: null as Vec2 | null })
+  const on_section_hover = vi.fn()
   const component = mount(TernaryPrismScene, {
     target: document.body,
     props: bind_props(
@@ -59,6 +61,7 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
         diagram,
         section: compute_section(model, temperature),
         settings: TERNARY_DISPLAY_DEFAULTS,
+        on_section_hover,
       },
       state,
     ),
@@ -96,4 +99,12 @@ test(`a plane click pins its composition; a drag or a flick out of the canvas do
   expect(state.temperature).toBeGreaterThan(temperature)
   release(100)
   expect(state.pinned_composition).toBeNull()
+
+  const plane = threlte_stub.nodes.find(({ props }) => props.onpointerdown && !props.userData)
+  touch_tap(plane?.props ?? {}, pointer(pin, 100), { clientX: 100, clientY: 100 })
+  flushSync()
+  expect(state.pinned_composition).toEqual(pin)
+  expect(on_section_hover).toHaveBeenLastCalledWith(
+    expect.objectContaining({ kind: `composition`, position: [100, 100] }),
+  )
 })

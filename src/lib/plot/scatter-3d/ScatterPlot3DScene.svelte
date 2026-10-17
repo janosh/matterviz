@@ -148,7 +148,7 @@
   })
 
   // Overlapping points must pick the front surface, not the last (farthest) hit.
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled } = scene_interactivity()
 
   type AxisKey = `x` | `y` | `z`
 
@@ -181,7 +181,7 @@
     // No point hover while orbiting: a drag would raycast every instance on each pointermove,
     // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving && hovered_point) {
         hovered_point = null
         on_point_hover?.(null)
