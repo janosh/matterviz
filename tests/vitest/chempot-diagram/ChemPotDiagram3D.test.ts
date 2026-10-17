@@ -581,7 +581,7 @@ test(`the domain tooltip stays compact and left-aligned`, async () => {
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it
-test(`a domain hovered in one quaternary grid pane is highlighted in all, tooltip only in its own`, async () => {
+test(`a quaternary grid shares one arity legend; a domain hovered in one pane is highlighted in all, tooltip only in its own`, async () => {
   const bound: { hover_info: ChemPotHoverInfo | null } = { hover_info: null }
   vi.spyOn(console, `error`).mockImplementation(() => undefined)
   const config = { projection_mode: `grid` as const, default_min_limit: -25 }
@@ -598,6 +598,12 @@ test(`a domain hovered in one quaternary grid pane is highlighted in all, toolti
     expect(scenes()).toHaveLength(4)
     expect(scenes().every((scene) => scene.hover_meshes.length > 0)).toBe(true)
   })
+  // one arity legend above the grid, not one per pane over its axis labels
+  const legends = [...document.querySelectorAll<HTMLElement>(`.arity-legend`)].filter(
+    (legend) => getComputedStyle(legend).display !== `none`,
+  )
+  expect(legends.map((legend) => legend.closest(`.projection-grid`))).toEqual([null])
+  expect(legends[0].textContent).toBe(`UnaryBinaryTernary4+`)
   const panes = [...document.querySelectorAll(`.chempot-diagram-3d`)]
   const tooltip_panes = () =>
     panes.map((pane) => pane.querySelectorAll(`.chempot-tooltip`).length)
