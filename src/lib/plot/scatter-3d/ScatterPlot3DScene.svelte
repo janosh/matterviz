@@ -532,16 +532,23 @@
     }
   })
 
-  // Same tick options (and integer-format dedupe) as the 2D axes, defaulting to 5 nice ticks
-  const gen_ticks = (range: Vec2, { ticks, format }: Omit<AxisConfig3D, `range`>): number[] =>
+  // Same tick options (and integer-format dedupe) as the 2D axes. By default ~5 nice ticks on
+  // the longest box edge and proportionally fewer on shorter ones (user z is half as long), so
+  // labels sit equally dense on every edge.
+  const longest_edge = Math.max(scene_x, scene_y, scene_z)
+  const gen_ticks = (
+    range: Vec2,
+    { ticks, format }: Omit<AxisConfig3D, `range`>,
+    edge: number,
+  ): number[] =>
     generate_ticks(range, `linear`, ticks, scaleLinear().domain(range), {
-      default_count: 5,
+      default_count: Math.max(2, Math.round((5 * edge) / longest_edge)),
       format,
     })
 
-  let x_ticks = $derived(gen_ticks(x_range, x_axis))
-  let y_ticks = $derived(gen_ticks(y_range, y_axis))
-  let z_ticks = $derived(gen_ticks(z_range, z_axis))
+  let x_ticks = $derived(gen_ticks(x_range, x_axis, scene_x))
+  let y_ticks = $derived(gen_ticks(y_range, y_axis, scene_y))
+  let z_ticks = $derived(gen_ticks(z_range, z_axis, scene_z))
 
   // Build event data for point interactions (the point is in data coordinates)
   function make_event_data(

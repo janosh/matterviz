@@ -271,6 +271,39 @@ const find_objects = <Ctor extends new (...args: never[]) => Object3D>(
   return found
 }
 
+// Default ticks follow each box edge's drawn length: user z is half as long as x and y, so it
+// gets ~half the labels instead of crowding them (the surface demo's z range read
+// −0.2, −0.1, …, 0.4 on the short edge). An explicit count still wins.
+test.each([
+  [undefined, [`−0.2`, `0`, `0.2`, `0.4`]],
+  [8, [`−0.2`, `−0.1`, `0`, `0.1`, `0.2`, `0.3`, `0.4`]],
+])(`z ticks=%s on the short edge read %j`, (ticks, expected) => {
+  const { unmount_scene } = mount_scene((anchor) =>
+    ScatterPlot3DScene(anchor, {
+      series: [],
+      ranges: { x: [-1, 1], y: [-1, 1], z: [-0.25, 0.45] },
+      z_axis: { ticks },
+      gizmo: false,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  const labels = [...document.querySelectorAll(`.tick-label`)].map((node) => node.textContent)
+  expect(labels).toEqual([
+    `−1`,
+    `−0.5`,
+    `0`,
+    `0.5`,
+    `1`,
+    `−1`,
+    `−0.5`,
+    `0`,
+    `0.5`,
+    `1`,
+    ...expected,
+  ])
+})
+
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
   // Scene position of a data point in the [0, 4]^3 test box: user z is Three.js y
   const scene_pos = (data_x: number, data_y: number, data_z: number) => [
