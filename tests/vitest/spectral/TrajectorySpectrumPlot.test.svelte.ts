@@ -153,7 +153,7 @@ describe(`TrajectorySpectrumPlot`, () => {
     await tick()
     const cropped_plot = cropped_target.querySelector(`.scatter`)
     expect(cropped_plot?.querySelector(`.x-axis .axis-label`)?.textContent).toContain(
-      `Frequency (cm⁻¹)`,
+      `Frequency (cm−1)`,
     )
     expect(cropped_plot?.querySelectorAll(peak_markers)).toHaveLength(1)
 

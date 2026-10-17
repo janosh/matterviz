@@ -1,6 +1,10 @@
 import { THZ_TO_INVERSE_CM } from '#lib/constants.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { convert_frequencies } from '#lib/spectral/frequency-units.js'
+import {
+  convert_frequencies,
+  frequency_unit_label,
+  frequency_unit_text,
+} from '#lib/spectral/frequency-units.js'
 import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
@@ -865,6 +869,15 @@ describe(`normalize_dos`, () => {
     expect(flagged).toMatchObject({ spin_polarized: true })
     const with_down = normalize_dos({ ...flat, spin_down_densities: [2, 2] })
     expect(with_down).toMatchObject({ spin_polarized: true, spin_down_densities: [2, 2] })
+  })
+
+  // markup where it renders (axis labels, HTML: fonts set the ⁻ of ⁻¹ low), glyphs where
+  // it can't (<option>, aria-label)
+  it.each([
+    [`cm^-1`, `cm<sup>−1</sup>`, `cm⁻¹`],
+    [`THz`, `THz`, `THz`],
+  ])(`%s reads as %s in markup and %s in plain text`, (unit, label, text) => {
+    expect([frequency_unit_label(unit), frequency_unit_text(unit)]).toEqual([label, text])
   })
 
   it.each([

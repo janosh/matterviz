@@ -5,7 +5,7 @@
   import type { FrequencyUnit } from './frequency-units'
   import {
     FREQUENCY_UNITS,
-    frequency_unit_label,
+    frequency_unit_text,
     parse_frequency_unit,
   } from './frequency-units'
 
@@ -21,7 +21,7 @@
     onchange={(event) => (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
   >
     {#each FREQUENCY_UNITS as option (option)}
-      <option value={option}>{frequency_unit_label(option)}</option>
+      <option value={option}>{frequency_unit_text(option)}</option>
     {/each}
   </select>
 </label>

@@ -188,7 +188,7 @@
           <td>{format_num(vacf[0], `.3~e`)} {summary.velocity_unit}</td>
           <td>
             {format_num(peak_frequency, `.4~g`)}
-            {frequency_unit_label(summary.frequency_unit)}
+            {@html frequency_unit_label(summary.frequency_unit)}
           </td>
         </tr>
       {/each}

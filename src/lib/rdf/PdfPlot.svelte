@@ -192,7 +192,10 @@
       {series}
       {ref_lines}
       x_axis={{ label: `r (Å)`, range: [0, cutoff], ...x_axis }}
-      y_axis={{ label: quantity === `reduced_g_r` ? `G(r) (Å⁻²)` : `g(r)`, ...y_axis }}
+      y_axis={{
+        label: quantity === `reduced_g_r` ? `G(r) (Å<sup>−2</sup>)` : `g(r)`,
+        ...y_axis,
+      }}
       styles={{ show_lines: true, show_points: false, ...rest.styles }}
       style={rest.style ?? `height: 450px;`}
     />

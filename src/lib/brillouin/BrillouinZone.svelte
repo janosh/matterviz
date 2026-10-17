@@ -306,7 +306,11 @@
       values.map((val) => format_num(val, spec)).join(`, `)
     const zone_rows: InfoPaneRow[] = [
       { label: `Order`, value: ordinal_label(zone.order), key: `bz-order` },
-      { label: `Volume`, value: `${format_num(zone.volume, `.3f`)} Å⁻³`, key: `bz-volume` },
+      {
+        label: `Volume`,
+        value: `${format_num(zone.volume, `.3f`)} Å<sup>−3</sup>`,
+        key: `bz-volume`,
+      },
       {
         label: `Vertices / Faces`,
         value: `${zone.vertices.length} / ${zone.faces.length}`,
@@ -333,7 +337,7 @@
       })
     }
     cards.push({
-      title: `Reciprocal Lattice (Å⁻¹)`,
+      title: `Reciprocal Lattice (Å<sup>−1</sup>)`,
       rows: zone.k_lattice.map((vec, idx) => ({
         label: [`b₁`, `b₂`, `b₃`][idx],
         value: `(${fmt(vec, `.3~f`)})`,
