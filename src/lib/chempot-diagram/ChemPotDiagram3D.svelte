@@ -507,7 +507,6 @@
 
   // Faces whose owner has no colour
   const HULL_FALLBACK_RGB = new THREE.Color(`#e8e8e8`).toArray() as Vec3
-  // Highlight colour without domain colours (color_mode none): ConvexHull's highlight red
 
   // Clone of hull_base_geometry with each face in its owner's drawn colour. Without domain
   // colours (color_mode none) only overlay faces are recoloured, the rest keep the base grey.
