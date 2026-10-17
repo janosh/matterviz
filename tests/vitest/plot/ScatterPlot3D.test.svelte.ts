@@ -449,8 +449,8 @@ test.each<[string, false | undefined, boolean]>([
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
 // (KeyWalk). Enter clicks the cursor's point, or without on_point_click pins its tooltip, which
-// the first Escape then unpins before the next clears the cursor. A touch tap (touch has no
-// hover) is such a click on the point too.
+// the first Escape then unpins before the next clears the cursor. Keys pick up from the
+// marker the mouse hovers. A touch tap (touch has no hover) is such a click on the point too.
 test.each([
   [true, [true, false, false]],
   [false, [true, true, false]],
@@ -482,11 +482,11 @@ test.each([
     )
     onTestFinished(unmount_scene)
     flushSync()
+    const hovered_at = () =>
+      state.hovered_point && [state.hovered_point.series_idx, state.hovered_point.point_idx]
     const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map((key) => {
       keys.press(key)
-      return (
-        state.hovered_point && [state.hovered_point.series_idx, state.hovered_point.point_idx]
-      )
+      return hovered_at()
     })
     // oxfmt-ignore
     expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
@@ -508,11 +508,18 @@ test.each([
     const { handlers, interactiveObjects } = interactivity.mock.results[0].value as ReturnType<
       typeof extras.interactivity
     >
-    const points = interactiveObjects.map((object) => handlers.get(object))
-    const tap = new PointerEvent(`click`, { pointerType: `touch` })
-    points
+    const point_events = interactiveObjects
+      .map((object) => handlers.get(object))
       .find((events) => events?.onpointermissed)
-      ?.onclick?.({ instanceId: 0, nativeEvent: tap })
+    // the walk steps on from the marker the mouse hovers
+    point_events?.onpointerenter?.({
+      instanceId: 1,
+      nativeEvent: new PointerEvent(`pointerenter`),
+    })
+    keys.press(`ArrowRight`)
+    expect(hovered_at()).toEqual([1, 0])
+    const tap = new PointerEvent(`click`, { pointerType: `touch` })
+    point_events?.onclick?.({ instanceId: 0, nativeEvent: tap })
     flushSync()
     expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
     expect(on_point_click).toHaveBeenCalledTimes(clickable ? 2 : 0)

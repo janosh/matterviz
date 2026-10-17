@@ -361,8 +361,8 @@ test.each([
   },
 )
 
-// From the focused viewer root, arrows walk the atoms in site order (KeyWalk) with the hover
-// tooltip a pointer would show, and Enter selects the atom like a click
+// From the focused viewer root, arrows walk the atoms in site order (KeyWalk), starting from a
+// hovered atom, with the hover tooltip a pointer would show, and Enter selects like a click
 test(`keyboard walks the atoms in site order and Enter selects`, () => {
   const state = $state<SceneProps>({ hovered_idx: null, selected_sites: [] })
   const sites = ([`C`, `N`] as const).map((element, idx) =>
@@ -377,6 +377,9 @@ test(`keyboard walks the atoms in site order and Enter selects`, () => {
   keys.press(`Escape`)
   expect(state.hovered_idx).toBeNull()
   expect(document.querySelector(`[role="tooltip"]`)).toBeNull()
+  state.hovered_idx = 0 // the pointer's hover is where the walk picks up
+  keys.press(`ArrowRight`)
+  expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
 })
 
 // Lattice arrows start at (-1, -1, -1) of this 4 Å cube and span half their vector. Their

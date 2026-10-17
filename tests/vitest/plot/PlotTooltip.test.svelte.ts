@@ -136,18 +136,6 @@ describe(`PlotTooltip`, () => {
     expect(tooltip.style.color).toBe(expected_text)
   })
 
-  // A pinned chip takes pointer events and selectable text, so its contents can be copied
-  test.each([
-    [false, `none`],
-    [true, `auto`],
-  ])(`pinned=%s sets pointer-events %s and keeps the tooltip role`, (pinned, events) => {
-    const tooltip = mount_tooltip({ pinned, role: `tooltip` })
-    const { classList, style } = tooltip
-    expect([classList.contains(`pinned`), style.pointerEvents]).toEqual([pinned, events])
-    expect(tooltip.getAttribute(`role`)).toBe(`tooltip`)
-    if (pinned) expect(getComputedStyle(tooltip).userSelect).toBe(`text`)
-  })
-
   // One pin across every hover_tooltip mark on the page; a button's click is its own
   test(`hover_tooltip: a click pins, the mark again, a press elsewhere or Escape unpin`, async () => {
     const marks = [`span`, `span`, `button`].map((tag, idx) => {

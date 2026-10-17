@@ -402,6 +402,7 @@
     leave: leave_point,
     click: ({ point }) => click_point(point),
     unpin: pin.unpin,
+    hovered: ({ key }) => key === (hovered_point && point_key(hovered_point)),
     label: ({ point: { x, y, z, series_idx, point_idx } }) => {
       const axes = [x_axis, y_axis, z_axis]
       const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))

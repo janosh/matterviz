@@ -2,7 +2,8 @@
 // rods, markers) in the order users expect and how the pointer hovers, leaves and clicks one;
 // the viewer root's one tab stop then walks them: arrows step and wrap, Home/End jump,
 // Enter/Space does what a click would (select, or pin the tooltip), Escape unpins, then
-// clears, as does focus leaving the viewer. Each step replays the target's pointer handlers,
+// clears, as does focus leaving the viewer. A target the pointer hovers is where the walk
+// stands, so keys pick up from the mouse. Each step replays the target's pointer handlers,
 // so a keyboard user gets the same tooltip, HoverHighlight and on_*_hover payload as the
 // mouse, and the viewer's live region announces the target.
 import type { Vec3 } from '#lib/math.js'
@@ -24,6 +25,7 @@ export type KeyWalkOptions<T> = {
   leave: (target: T) => void // and leaving it
   click?: (target: T) => void // Enter/Space, where a click on the target does something
   unpin?: () => boolean // Escape unpins first, for a scene holding its own TooltipPin
+  hovered?: (target: T) => boolean // whether the pointer hovers the target
   label: (target: T) => string // announced by the viewer's live region
 }
 
@@ -48,12 +50,16 @@ export class KeyWalk<T> {
   // Whether the key was taken. Chords, composing and keys something else handled are not.
   handle_key = (event: KeyboardEvent): boolean => {
     if (event.defaultPrevented || event.isComposing || is_modifier_chord(event)) return false
-    const { targets, hover, click, unpin } = this.#options
-    const { current } = this
+    const { targets, hovered, hover, leave, click, unpin } = this.#options
+    const items = targets()
+    const pointer_idx = hovered ? items.findIndex(hovered) : -1
+    const idx = pointer_idx === -1 ? this.idx : pointer_idx
+    const current = idx === null ? null : (items[idx] ?? null)
     if (event.key === `Escape`) {
       if (unpin?.()) return true
       if (current === null) return false
-      this.clear()
+      this.idx = null
+      leave(current)
       return true
     }
     if (is_activation_key(event)) {
@@ -61,11 +67,10 @@ export class KeyWalk<T> {
       click(current)
       return true
     }
-    const items = targets()
-    const next = step_point_cursor(event.key, current === null ? null : this.idx, items.length)
+    const next = step_point_cursor(event.key, current === null ? null : idx, items.length)
     if (next === null) return false
     // like the pointer moving from one object to the next: leave, then enter
-    if (current !== null) this.#options.leave(current)
+    if (current !== null) leave(current)
     this.idx = next
     hover(items[next])
     return true

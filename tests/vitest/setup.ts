@@ -143,6 +143,7 @@ export async function pin_cycle(
   expect(state()).toEqual([false, `none`, text, role])
   await run(`click`, 0) // pinned: takes pointer events so its text can be selected
   expect(state()).toEqual([true, `auto`, text, role])
+  expect(getComputedStyle(tooltip() ?? document.body).userSelect).toBe(`text`)
   await run(`leave`, 0) // outlives the pointer, other hovers don't replace it
   await run(`hover`, 1)
   expect(state()).toEqual([true, `auto`, text, role])

@@ -16,12 +16,8 @@ afterEach(() => threlte_stub.reset())
 
 // Unit square in z=0 split along its 0-2 diagonal, as an indexed mesh and as a triangle soup
 // whose shared corners differ by float noise (welded for the outline)
-const [p0, p1, p2, p3] = [
-  [0, 0, 0],
-  [1, 0, 0],
-  [1, 1, 0],
-  [0, 1, 0],
-]
+// oxfmt-ignore
+const [p0, p1, p2, p3] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
 const indexed_quad = () =>
   positions_geometry([...p0, ...p1, ...p2, ...p3]).setIndex(
     new BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1),
@@ -61,34 +57,12 @@ const outline_edges = (line: LineSegments2): string[] => {
 // the source; the outline their boundary, or `edges` when given, in a darker shade. A colour
 // change rebuilds only the outline, a faces change the copy too; unmounting disposes what was
 // built here and never the caller's geometries.
+// oxfmt-ignore
 test.each([
-  [
-    `indexed, all faces`,
-    indexed_quad(),
-    undefined,
-    [
-      [p0, p1, p2],
-      [p0, p2, p3],
-    ],
-    square,
-  ],
-  [
-    `indexed, one face`,
-    indexed_quad(),
-    [1],
-    [[p0, p2, p3]],
-    [edge(p0, p2), edge(p2, p3), edge(p3, p0)],
-  ],
-  [
-    `welded soup`,
-    soup_quad(),
-    [0, 1],
-    [
-      [p0, p1, p2],
-      [p0, p2, p3],
-    ],
-    square,
-  ],
+  [`indexed, all faces`, indexed_quad(), undefined, [[p0, p1, p2], [p0, p2, p3]], square],
+  [`indexed, one face`, indexed_quad(), [1], [[p0, p2, p3]],
+    [edge(p0, p2), edge(p2, p3), edge(p3, p0)]],
+  [`welded soup`, soup_quad(), [0, 1], [[p0, p1, p2], [p0, p2, p3]], square],
   [`edges only`, null, undefined, null, [edge(p0, p1)]],
 ] as const)(`%s`, (_label, geometry, faces, fill_tris, edges) => {
   const edges_geometry = geometry ? undefined : positions_geometry([...p0, ...p1])

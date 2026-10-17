@@ -366,6 +366,7 @@
       ),
     leave: leave_rod,
     click: ({ phase }) => click_rod(phase),
+    hovered: ({ phase }) => phase === hovered_phase,
     label: ({ phase }) => diagram.phases[phase].label,
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion

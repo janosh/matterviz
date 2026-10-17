@@ -58,44 +58,18 @@ describe(`HoverLinks`, () => {
   const members = { a: Symbol(`a`), b: Symbol(`b`), c: Symbol(`c`) }
   type Name = keyof typeof members
   // publishes in turn as [member, channel, key], then what each member reads on channels x, y
+  // oxfmt-ignore
   test.each<[string, [Name, string, HoverKey | null][], Record<Name, (HoverKey | null)[]>]>([
-    [
-      `a hover reaches the other members, not its own`,
-      [[`a`, `x`, 1]],
-      { a: [null, null], b: [1, null], c: [1, null] },
-    ],
-    [
-      `a later hover takes over`,
-      [
-        [`a`, `x`, 1],
-        [`b`, `x`, 2],
-      ],
-      { a: [2, null], b: [null, null], c: [2, null] },
-    ],
-    [
-      `null ends a member's own hover`,
-      [
-        [`a`, `x`, 1],
-        [`a`, `x`, null],
-      ],
-      { a: [null, null], b: [null, null], c: [null, null] },
-    ],
-    [
-      `but never another member's`,
-      [
-        [`a`, `x`, 1],
-        [`b`, `x`, null],
-      ],
-      { a: [null, null], b: [1, null], c: [1, null] },
-    ],
-    [
-      `channels stay apart`,
-      [
-        [`a`, `x`, 1],
-        [`b`, `y`, `id`],
-      ],
-      { a: [null, `id`], b: [1, null], c: [1, `id`] },
-    ],
+    [`a hover reaches the other members, not its own`, [[`a`, `x`, 1]],
+      { a: [null, null], b: [1, null], c: [1, null] }],
+    [`a later hover takes over`, [[`a`, `x`, 1], [`b`, `x`, 2]],
+      { a: [2, null], b: [null, null], c: [2, null] }],
+    [`null ends a member's own hover`, [[`a`, `x`, 1], [`a`, `x`, null]],
+      { a: [null, null], b: [null, null], c: [null, null] }],
+    [`but never another member's`, [[`a`, `x`, 1], [`b`, `x`, null]],
+      { a: [null, null], b: [1, null], c: [1, null] }],
+    [`channels stay apart`, [[`a`, `x`, 1], [`b`, `y`, `id`]],
+      { a: [null, `id`], b: [1, null], c: [1, `id`] }],
   ])(`%s`, (_label, publishes, reads) => {
     const links = new HoverLinks()
     for (const [name, channel, key] of publishes) links.publish(channel, members[name], key)
@@ -106,32 +80,21 @@ describe(`HoverLinks`, () => {
 })
 
 // A viewer joining the channel its props name, mounted under `links` as its host's context
-type Joined = { link: HoverLink<number>; props: { channel?: string }; viewer: object }
-const Member: Component<{ channel?: string; on_join: (link: HoverLink<number>) => void }> = (
+const Member: Component<{ channel?: string }, { link: HoverLink<number> }> = (
   _anchor,
   props,
-) => {
-  props.on_join(join_hover_link(() => props.channel, `number`))
-  return {}
-}
-const join = (links: HoverLinks | undefined, channel?: string): Joined => {
+) => ({
+  link: join_hover_link(() => props.channel, `number`),
+})
+const join = (links: HoverLinks | undefined, channel?: string) => {
   const props = $state({ channel })
-  let link: HoverLink<number> | undefined
-  const viewer = mount(Member, {
-    target: document.body,
-    props: {
-      get channel() {
-        return props.channel
-      },
-      on_join: (joined) => (link = joined),
-    },
-    context: links && new Map([[HoverLinks, links]]),
-  })
+  const context = links && new Map([[HoverLinks, links]])
+  const viewer = mount(Member, { target: document.body, props, context })
   mounted.push(viewer)
   flushSync()
-  if (!link) throw new Error(`member never joined`)
-  return { link, props, viewer }
+  return { link: viewer.link, props, viewer }
 }
+type Joined = ReturnType<typeof join>
 
 describe(`join_hover_link`, () => {
   // what member b reads after member a of the same host hovers 1 on channel x and then...

@@ -436,6 +436,7 @@
       handle_pointer_move(event, surface, geometry, get_surface_color(surface), 0)
     },
     leave: () => (hover_data = null),
+    hovered: ({ surface }) => tooltip_shown && hovered_sheet?.surface === surface,
     label: ({ surface: { band_index, spin } }) =>
       `Band ${band_index + 1}${spin ? ` (spin ${spin})` : ``}`,
   })

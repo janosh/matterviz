@@ -31,26 +31,21 @@ export const flight_controller = (
     invalidate,
   )
 
-// A focused viewer root for a scene's KeyWalk: call `provide` during the init of a component
-// wrapping the scene (key_walk_root), then `press` keys as typed with the root focused. press
-// returns whether the walk took the key, `message` is what the root's live region announces.
-export function key_walk_host() {
+// A focused viewer root for a scene's KeyWalk: `provide` it (key_walk_root) during the init of
+// a component wrapping the scene, then `press` keys at it. press returns whether the walk took
+// the key, `message` is what the root's live region announces.
+function key_walk_host() {
   const node = Object.assign(document.createElement(`div`), { tabIndex: 0 })
-  document.body.append(node)
   let root: KeyWalkRoot | undefined
   return {
-    node,
     provide: (): void => {
       root = key_walk_root()
+      document.body.append(node)
       onTestFinished(root.attach(node))
+      onTestFinished(() => node.remove())
     },
-    press: (key: string, init: KeyboardEventInit = {}): boolean => {
-      const event = new KeyboardEvent(`keydown`, {
-        key,
-        bubbles: true,
-        cancelable: true,
-        ...init,
-      })
+    press: (key: string): boolean => {
+      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
       node.dispatchEvent(event)
       flushSync()
       return event.defaultPrevented
@@ -76,14 +71,12 @@ export function mount_with_keys<Props extends Record<string, unknown>>(
 }
 
 // Keep real Threlte attachment/disposal while replacing only the GPU renderer.
-export function mount_scene<Exports extends Record<string, unknown>>(
-  render: Component<Record<string, never>, Exports>,
-) {
+export function mount_scene(render: Component) {
   const contexts: ReturnType<typeof createThrelteContext>[] = []
   const keys = key_walk_host()
   const noop = () => {}
   const canvas = document.createElement(`canvas`)
-  const Harness: Component<Record<string, never>, Exports> = (anchor) => {
+  const Harness: Component = (anchor) => {
     const info = { render: { calls: 0 } }
     // Threlte skips auto-rendering while its DOM measures 0x0, which happy-dom always reports
     const dom = document.createElement(`div`)
@@ -116,8 +109,6 @@ export function mount_scene<Exports extends Record<string, unknown>>(
   const component = mount(Harness, { target: document.body })
   const { scene, camera, disposableObjects: disposable_objects } = contexts[0]
   return {
-    // whatever the rendered component exports (e.g. ScatterPlot3DScene's handle_key)
-    exports: component,
     keys, // the scene's keyboard walk (key_walk_host)
     canvas,
     scene,

@@ -20,48 +20,29 @@ const keydown = (key: string, init: KeyboardEventInit = {}) =>
 
 describe(`KeyWalk`, () => {
   // keys pressed in turn, whether each was taken, then the cursor's target and the replayed
-  // pointer handlers (each step leaves the last target, then enters the next)
-  test.each<[string, string[], boolean[], string | null, string[]]>([
+  // pointer handlers (each step leaves the last target, then enters the next), optionally with
+  // the pointer resting on a target
+  // oxfmt-ignore
+  test.each<[string, string[], boolean[], string | null, string[], string?]>([
     [`first step forward`, [`ArrowRight`], [true], `a`, [`hover a`]],
     [`first step back starts at the end`, [`ArrowLeft`], [true], `c`, [`hover c`]],
-    [
-      `Down/Up step like Right/Left`,
-      [`ArrowDown`, `ArrowDown`, `ArrowUp`],
-      [true, true, true],
-      `a`,
-      [`hover a`, `leave a`, `hover b`, `leave b`, `hover a`],
-    ],
-    [
-      `wraps past the end`,
-      [`End`, `ArrowRight`],
-      [true, true],
-      `a`,
-      [`hover c`, `leave c`, `hover a`],
-    ],
-    [
-      `wraps past the start`,
-      [`Home`, `ArrowLeft`],
-      [true, true],
-      `c`,
-      [`hover a`, `leave a`, `hover c`],
-    ],
-    [
-      `Escape leaves, then is left alone`,
-      [`Home`, `Escape`, `Escape`],
-      [true, true, false],
-      null,
-      [`hover a`, `leave a`],
-    ],
-    [
-      `Enter without a click is left alone`,
-      [`Enter`, `Home`, `Enter`, ` `],
-      [false, true, false, false],
-      `a`,
-      [`hover a`],
-    ],
+    [`Down/Up step like Right/Left`, [`ArrowDown`, `ArrowDown`, `ArrowUp`], [true, true, true],
+      `a`, [`hover a`, `leave a`, `hover b`, `leave b`, `hover a`]],
+    [`wraps past the end`, [`End`, `ArrowRight`], [true, true], `a`,
+      [`hover c`, `leave c`, `hover a`]],
+    [`wraps past the start`, [`Home`, `ArrowLeft`], [true, true], `c`,
+      [`hover a`, `leave a`, `hover c`]],
+    [`Escape leaves, then is left alone`, [`Home`, `Escape`, `Escape`], [true, true, false],
+      null, [`hover a`, `leave a`]],
+    [`Enter without a click is left alone`, [`Enter`, `Home`, `Enter`, ` `],
+      [false, true, false, false], `a`, [`hover a`]],
     [`other keys are left alone`, [`a`, `Tab`, `PageDown`], [false, false, false], null, []],
-  ])(`%s`, (_label, keys, taken, current, log_expected) => {
-    const { walk, log } = make_walk([`a`, `b`, `c`])
+    [`steps on from the pointer's hover`, [`ArrowRight`], [true], `c`, [`leave b`, `hover c`], `b`],
+    [`Escape leaves the pointer's hover`, [`Escape`], [true], null, [`leave b`], `b`],
+  ])(`%s`, (_label, keys, taken, current, log_expected, pointer) => {
+    const { walk, log } = make_walk([`a`, `b`, `c`], {
+      hovered: (target) => target === pointer,
+    })
     expect(keys.map((key) => walk.handle_key(keydown(key)))).toEqual(taken)
     expect(walk.current).toBe(current)
     expect(walk.message).toBe(current === null ? `` : `target ${current}`)

@@ -1065,6 +1065,7 @@
     hover: set_atom_hover,
     leave: clear_atom_hover,
     click: (site_idx) => toggle_selection(site_idx),
+    hovered: (site_idx) => site_idx === hovered_idx,
     label: (site_idx) => {
       const elements = get_site(structure, site_idx)?.species.map(({ element }) => element)
       return `Site ${site_idx + 1}: ${elements?.join(`, `) ?? ``}`
