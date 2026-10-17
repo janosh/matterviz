@@ -1,6 +1,7 @@
 <script lang="ts">
   import { display_idx, from_display_idx } from '#lib/labels.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+  import { join_hover_link } from '#lib/tooltip/index.js'
   import type { RowData } from '#lib/table/index.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'
@@ -13,6 +14,7 @@
     source_indices,
     selected_atoms = $bindable(),
     hovered_atom = $bindable(null),
+    link_hover,
     export_filename = `sites`,
     // Fractional coordinates start hidden (the column toggle shows them) so the per-site
     // properties come right after the Cartesian ones in a narrow sidebar
@@ -28,8 +30,15 @@
     // Source atom (0-based) of the row under the pointer, null once it leaves the table. Set
     // from outside (an atom hovered in 3D), it shades that row and scrolls it into view.
     hovered_atom?: number | null
+    // Channel of an enclosing hover_links() the row hover joins by source atom, e.g. a
+    // Structure's: an atom hovered there shades its row here, and the hovered row's atom there
+    link_hover?: string
     export_filename?: string
   } = $props()
+
+  const atom_link = join_hover_link(() => link_hover, `number`)
+  $effect(() => atom_link.publish(hovered_atom))
+  const shown_atom = $derived(hovered_atom ?? atom_link.linked)
 
   let specs = $derived(site_property_specs(sites))
   let columns = $derived(site_columns(specs))
@@ -58,7 +67,7 @@
   on_row_click={selected_atoms ? toggle_atom : undefined}
   on_row_hover={(row: RowData | null) =>
     (hovered_atom = typeof row?.site === `number` ? from_display_idx(row.site) : null)}
-  highlighted_row_id={hovered_atom === null ? null : display_idx(hovered_atom)}
+  highlighted_row_id={shown_atom === null ? null : display_idx(shown_atom)}
   show_row_select={selected_atoms !== undefined}
   row_key="site"
   bind:hidden_columns

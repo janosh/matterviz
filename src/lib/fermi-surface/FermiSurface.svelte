@@ -10,13 +10,19 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type { FileSaver } from '#lib/io/file-export.svelte.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { PlotTooltip } from '#lib/plot/index.js'
-  import { create_renderer, export_scene_as, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    key_walk_root,
+    export_scene_as,
+    webgpu_available,
+  } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -366,10 +372,13 @@
 
   // `f` and `?` are owned by FullscreenButton and ShortcutsHelp, Escape by the open pane
   const keys = viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))
+  const key_walk = key_walk_root() // the sheets, by keyboard (see KeyWalk)
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-  role="region"
+  role="application"
+  tabindex="0"
   aria-label="Fermi surface viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -380,7 +389,9 @@
   class={[`fermi-surface`, rest.class, { active: controls_open }]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach key_walk.attach}
 >
+  <LiveMessage message={key_walk.message} />
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
     <LoadingStatus overlay label="Loading Fermi surface..." {...spinner_props} />

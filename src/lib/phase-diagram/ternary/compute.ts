@@ -246,6 +246,18 @@ function facet_weights(
   return true
 }
 
+// Index of the facet (tie triangle) containing coords_xy, -1 outside all; its barycentric
+// weights are left in `weights`
+export const facet_index_at = (
+  phases: DiagramPhase[],
+  facets: number[][],
+  coords_xy: Vec2,
+  weights = new Float64Array(3),
+): number =>
+  facets.findIndex((facet) =>
+    facet_weights(phases, facet, coords_xy[0], coords_xy[1], weights),
+  )
+
 // Which tie-triangle contains each composition and with what weights: independent of T, so
 // computed once per topology and reused for every temperature in the interval
 interface FacetAssignment {
@@ -263,9 +275,7 @@ function assign_facets(
   const weights = new Float64Array(3 * phases.length)
   const scratch = new Float64Array(3)
   for (const [idx, { xy: coords_xy }] of phases.entries()) {
-    const facet_idx = facets.findIndex((facet) =>
-      facet_weights(phases, facet, coords_xy[0], coords_xy[1], scratch),
-    )
+    const facet_idx = facet_index_at(phases, facets, coords_xy, scratch)
     if (facet_idx === -1) continue
     facet_of[idx] = facet_idx
     weights.set(scratch, 3 * idx)
@@ -292,10 +302,8 @@ export function decompose_composition(
   coords_xy: Vec2,
 ): Decomposition | null {
   const scratch = new Float64Array(3)
-  const facet = section.facets.find((candidate) =>
-    facet_weights(model.phases, candidate, coords_xy[0], coords_xy[1], scratch),
-  )
-  return facet ? decomposition_of(facet, scratch) : null
+  const facet_idx = facet_index_at(model.phases, section.facets, coords_xy, scratch)
+  return facet_idx === -1 ? null : decomposition_of(section.facets[facet_idx], scratch)
 }
 
 // Hull assemblage of a phase (stable phases decompose into themselves)

@@ -16,6 +16,7 @@
   import { unique_id } from '#lib/plot/core/utils.js'
   import { to_error } from '#lib/utils.js'
   import { viewer_keys } from '#lib/shortcuts.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -294,8 +295,8 @@
   )
 
   let hover_info = $state<PhaseHoverInfo | null>(null)
-  // Locked tooltip state (click to lock, click again to unlock)
-  let locked_hover_info = $state<PhaseHoverInfo | null>(null)
+  // A click pins the hovered snapshot; its region names the mark, so a click in it unpins
+  const pin = new TooltipPin<PhaseHoverInfo>({ key: ({ region }) => region.id })
 
   function clear_hover() {
     hover_info = null
@@ -303,23 +304,19 @@
     on_phase_hover?.(null)
   }
 
-  // Hover and lock state describe the previous data, so drop them when the data changes
+  // Hover and pin describe the previous data, so drop them when the data changes
   $effect(() => {
     void source_data
     untrack(() => {
-      if (!hover_info && !locked_hover_info && !hovered_region) return
-      locked_hover_info = null
+      if (!hover_info && !pin.value && !hovered_region) return
+      pin.unpin()
       clear_hover()
     })
   })
 
-  // Click toggles the tooltip lock
-  function handle_click() {
-    if (locked_hover_info) locked_hover_info = null
-    else if (hover_info) locked_hover_info = { ...hover_info }
-  }
+  const handle_click = () => pin.toggle(hover_info)
 
-  const effective_hover_info = $derived(locked_hover_info ?? hover_info)
+  const effective_hover_info = $derived(pin.value ?? hover_info)
   // The tooltip wears the hovered region's hue (PlotTooltip flattens a translucent one, so
   // labels never show through); gradient regions keep the neutral card
   const tooltip_region_color = $derived.by(() => {
@@ -412,20 +409,17 @@
   }
 
   function handle_pointer_leave(event: PointerEvent) {
-    // Don't clear on touch lift (allows reading tooltip) or when locked
-    if (event.pointerType === `touch` || locked_hover_info) return
+    // Don't clear on touch lift (allows reading tooltip) or when pinned
+    if (event.pointerType === `touch` || pin.value) return
     clear_hover()
   }
 
-  // `e` toggles the export pane, Escape releases a locked hover
+  // `e` toggles the export pane, Escape unpins the tooltip
   const keys = viewer_keys(() => ({
     e: () => {
       export_pane_open = !export_pane_open
     },
-    Escape: () => {
-      if (!locked_hover_info) return false
-      locked_hover_info = null
-    },
+    Escape: pin.unpin,
   }))
 
   function handle_svg_keydown(event: KeyboardEvent) {
@@ -552,7 +546,7 @@
         ? `crosshair`
         : `default`}; touch-action: none"
       role="application"
-      aria-label="Binary phase diagram. Use mouse to explore phases. Click to lock tooltip, double-click to copy data. Press E to export."
+      aria-label="Binary phase diagram. Use mouse to explore phases. Click to pin tooltip, double-click to copy data. Press E to export."
     >
       <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>
@@ -660,7 +654,7 @@
           endpoints: [start, end],
         } = tie_line}
         {@const tie_style = merged_config.tie_line}
-        <g class="tie-line" class:locked={locked_hover_info} clip-path={plot_clip}>
+        <g class="tie-line" class:pinned={pin.value} clip-path={plot_clip}>
           {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
             <line
               x1={start.cx}
@@ -832,13 +826,10 @@
         fixed
         offset={{ x: 15, y: 15 }}
         fallback_size={{ width: 200, height: 150 }}
-        class={[`tooltip-container`, { locked: locked_hover_info }]}
+        class="tooltip-container"
         bg_color={tooltip_region_color}
-        style={locked_hover_info ? `pointer-events: auto` : undefined}
+        pinned={pin.value !== null}
       >
-        {#if locked_hover_info}
-          <div class="tooltip-lock-indicator" title="Click diagram to unlock">🔒</div>
-        {/if}
         <PhaseDiagramTooltip
           hover_info={effective_hover_info}
           temperature_unit={temp_unit}
@@ -905,30 +896,12 @@
     pointer-events: none;
     animation: tie-line-fade-in 150ms ease-out;
   }
-  .tie-line.locked {
+  .tie-line.pinned {
     filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
   }
   @keyframes tie-line-fade-in {
     from {
       opacity: 0;
     }
-  }
-  .binary-phase-diagram :global(.tooltip-container.locked) {
-    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
-  }
-  .tooltip-lock-indicator {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    font-size: 12px;
-    background: rgba(99, 102, 241, 0.9);
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
 </style>

@@ -4,7 +4,15 @@ import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, doc_query, keydown, mount_sized, mouse, plot_svg } from '../setup'
+import {
+  create_drop_event,
+  doc_query,
+  pin_cycle,
+  keydown,
+  mount_sized,
+  mouse,
+  plot_svg,
+} from '../setup'
 import { create_hover_info, lever_rule, pts, rect } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
 
@@ -115,7 +123,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(doc_query(`[data-testid="hovered-region"]`).textContent).toBe(`liq`)
     svg.dispatchEvent(mouse(`click`))
     await tick()
-    expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
+    expect(wrapper.querySelector(`.plot-tooltip.pinned`)).not.toBeNull()
 
     await click(`clear-phase-data`)
     expect(wrapper.textContent).toContain(`Missing phase diagram data`)
@@ -212,33 +220,25 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect([style.backgroundColor, style.color]).toEqual([expected, `white`])
   })
 
-  test(`click locks the tooltip; click again or Escape unlocks`, async () => {
+  // The marks are the liquid and two-phase regions, empty space the margin left of the axes
+  test(`click pins the hovered region's tooltip, its region, the margin or Escape unpin it`, async () => {
     const wrapper = await mount_diagram()
-    const svg = await hover_at(wrapper, 0.5, 750)
-    const leave = () => {
-      svg.dispatchEvent(new PointerEvent(`pointerleave`))
-      return tick()
-    }
-    svg.dispatchEvent(mouse(`click`))
-    await tick()
-    expect(wrapper.querySelector(`.tooltip-lock-indicator`)).not.toBeNull()
-    await leave() // locked tooltips survive the pointer leaving
-    expect(wrapper.querySelector(`.tooltip-container.locked`)).not.toBeNull()
-
-    svg.dispatchEvent(mouse(`click`)) // unlock
-    await tick()
-    expect(wrapper.querySelector(`.tooltip-lock-indicator`)).toBeNull()
-    await leave()
-    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
-
-    await hover_at(wrapper, 0.5, 750)
-    svg.dispatchEvent(mouse(`click`)) // re-lock
-    await tick()
-    // keys reach the diagram through the hover forwarder, not the whole document
-    wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-    globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    await tick()
-    expect(wrapper.querySelector(`.tooltip-lock-indicator`)).toBeNull()
+    const svg = plot_svg(wrapper)
+    const at: [number, number][] = [
+      [0.5, 750],
+      [0.5, 250],
+      [-0.1, 500],
+    ]
+    const text = await pin_cycle(async (step, mark_idx) => {
+      if (step === `escape`) {
+        // keys reach the diagram through the hover forwarder, not the whole document
+        wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+      } else if (step === `leave`) svg.dispatchEvent(new PointerEvent(`pointerleave`))
+      else await hover_at(wrapper, ...at[mark_idx ?? 2])
+      if (step === `click`) svg.dispatchEvent(mouse(`click`))
+    })
+    expect(text).toMatch(/Liquid\s*Temperature 750 K/)
   })
 
   test(`display_temp_unit converts y-axis ticks and label`, async () => {

@@ -73,6 +73,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '#lib/plot/core/svg.js'
@@ -597,15 +598,21 @@
 
   // === Tooltip / hover ===
   // Box index + pointer (null on keyboard focus: whisker-tip anchor), so a resting tooltip
-  // follows new data and closes once its box is gone
-  let hover_key = $state<{ idx: number; pointer: Point2D | null } | null>(null)
-  const hover_info = $derived.by((): BoxHover | null => {
-    if (!hover_key) return null
-    const { idx, pointer } = hover_key
-    const box_item = visible_boxes.find((item) => item.idx === idx)
-    if (!box_item || !Number.isFinite(box_item.stats.median)) return null
-    return get_box_data(box_item, pointer)
+  // follows new data and closes once its box is gone. A click pins the hovered box's tooltip
+  // unless on_box_click takes the click.
+  type BoxKey = { idx: number; pointer: Point2D | null }
+  let hover_key = $state<BoxKey | null>(null)
+  const pin = new TooltipPin<BoxKey>({
+    key: ({ idx }) => idx,
+    enabled: () => tooltip !== false && !on_box_click,
   })
+  const shown_key = $derived(pin.value ?? hover_key)
+  const box_info = (key: BoxKey | null): BoxHover | null => {
+    const box_item = key && visible_boxes.find((item) => item.idx === key.idx)
+    if (!box_item || !Number.isFinite(box_item.stats.median)) return null
+    return get_box_data(box_item, key.pointer)
+  }
+  const hover_info = $derived(box_info(shown_key))
 
   // Anchored at the pointer when there is one, else at the whisker tip
   function get_box_data(box_item: Box, pointer: Point2D | null = null): BoxHover {
@@ -653,7 +660,8 @@
     hover_key = null
     on_box_hover?.(null)
   }
-  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
+  clear_stale_hover(() => hover_key && !box_info(hover_key), clear_hover)
+  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 
@@ -733,6 +741,8 @@
     hovered = false
     clear_hover()
   }}
+  on_mouse_click={() => pin.toggle(hover_key)}
+  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -844,6 +854,7 @@
               if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item), event: evt })
+                pin.toggle(hover_key) // focus is the keyboard's hover
               }
             }}
           >
@@ -995,16 +1006,17 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && hovered && tooltip !== false}
+    {#if hover_info && (hovered || pin.value) && tooltip !== false}
       <PlotTooltip
         x={hover_info.cx}
         y={hover_info.cy}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={Boolean(hover_key?.pointer)}
+        avoid_cursor={Boolean(shown_key?.pointer)}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

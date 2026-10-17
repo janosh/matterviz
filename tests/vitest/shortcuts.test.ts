@@ -60,7 +60,7 @@ describe(`shortcut registry`, () => {
 
   test(`shortcuts_for lists each matching entry once, in registry order`, () => {
     const listed = shortcuts_for([`camera`, `brillouin`, `brillouin`])
-    expect(listed).toEqual([SHORTCUTS.reset_camera, SHORTCUTS.info_pane])
+    expect(listed).toEqual([SHORTCUTS.reset_camera, SHORTCUTS.hover_walk, SHORTCUTS.info_pane])
     expect(shortcuts_for([])).toEqual([])
   })
 })

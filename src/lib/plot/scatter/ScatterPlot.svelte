@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
   import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -1281,13 +1282,7 @@
   // Canvas markers have no DOM node to click, so a plot-surface click activates the nearest
   // point within the click radius instead of reaching on_plot_click
   function handle_plot_click(evt: MouseEvent) {
-    if (
-      !(on_plot_click || canvas_points_clickable) ||
-      pan_zoom.is_panning ||
-      pan_zoom.drag_start ||
-      pan_zoom.suppress_click
-    )
-      return
+    if (!(on_plot_click || canvas_points_clickable)) return pin.toggle(tooltip_point)
     const coords = get_relative_coords(evt)
     if (!coords) return
     const point = plot_click_target(
@@ -1417,8 +1412,6 @@
     if (props) on_point_click?.({ ...props, event, point })
   }
 
-  let handler_props = $derived(tooltip_point ? construct_handler_props(tooltip_point) : null)
-
   let has_multiple_series = $derived(assigned_series.filter(Boolean).length > 1)
 
   // Non-click point_events names, computed once instead of per rendered point
@@ -1428,6 +1421,15 @@
       : [],
   )
   let points_interactive = $derived(Boolean(on_point_click || point_events?.onclick))
+  // A click pins the hovered point's tooltip (see TooltipPin) unless on_plot_click or
+  // clickable points take the click
+  const pin_free = $derived(tooltip !== false && !on_plot_click && !points_interactive)
+  const pin = new TooltipPin<InternalPoint<Metadata>>({
+    key: ({ series_idx, point_idx }) => `${series_idx}:${point_idx}`,
+    enabled: () => pin_free,
+  })
+  const tip_point = $derived(pin.value ?? (hovered ? tooltip_point : null))
+  let handler_props = $derived(tip_point ? construct_handler_props(tip_point) : null)
   const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
   // Set, not a scan per point: a rect drag can select thousands, and the membership test
@@ -1520,11 +1522,14 @@
     return { point: list[list_idx], nav_idx: kbd_nav.offsets[series_pos] + list_idx }
   })
 
-  // Data swaps fire no pointer event, so re-resolve the hovered point on every data change
-  // (closing once it is gone, which the host hears as on_point_hover(null))
+  // Data swaps fire no pointer event, so re-resolve the hovered and pinned points on every data
+  // change (closing once gone, which the host hears as on_point_hover(null))
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
+      const pinned = pin.value && plotted_point(pin.value)
+      if (pinned) pin.value = pinned
+      else pin.unpin()
       if (!tooltip_point) return
       const next = plotted_point(tooltip_point)
       if (next === tooltip_point) return
@@ -1547,6 +1552,7 @@
 
   // Runs before pan/zoom's own key handling, which claims Enter/Space for reset
   function handle_plot_key_down(event: KeyboardEvent): boolean {
+    if (event.key === `Escape` && pin.unpin()) return true
     if (!use_canvas_markers || event.metaKey || event.ctrlKey || event.altKey) return false
     if (event.key === `Escape` && kbd_cursor != null) {
       kbd_cursor = null
@@ -1554,9 +1560,10 @@
       hovered = false
       return true
     }
-    if (kbd_cursor_at && points_interactive && is_activation_key(event)) {
+    if (kbd_cursor_at && (points_interactive || pin_free) && is_activation_key(event)) {
       event.preventDefault()
-      activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
+      if (points_interactive) activate_point(kbd_cursor_at.point, new MouseEvent(`click`))
+      else pin.toggle(kbd_cursor_at.point)
       return true
     }
     return move_kbd_cursor(event)
@@ -1923,10 +1930,10 @@
 
   {#snippet overlays()}
     <!-- Tooltip overlay above all plot overlays (legend, colorbar) -->
-    {#if handler_props && hovered && tooltip_point && tooltip !== false}
-      {@const { point_label, series_idx } = tooltip_point}
+    {#if handler_props && tip_point && tooltip !== false}
+      {@const { point_label, series_idx } = tip_point}
       {@const tooltip_bg_color = pick_tooltip_bg(
-        tooltip_point,
+        tip_point,
         assigned_series[series_idx],
         color_scale_fn,
       )}
@@ -1940,6 +1947,7 @@
         fallback_size={{ width: 120, height: 50 }}
         exclusion_rects={frame.exclusion_rects}
         bg_color={tooltip_bg_color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip(handler_props)}

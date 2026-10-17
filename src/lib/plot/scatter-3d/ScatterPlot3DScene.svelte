@@ -3,6 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
@@ -23,12 +24,14 @@
   import type { SceneControlProps } from '#lib/scene/index.js'
   import {
     bind_renderer,
+    brighten_hex,
     CanvasTooltip,
     create_scene_camera,
     dispose_on_change,
     line_geometry,
     scene_interactivity,
     SceneCamera,
+    scene_key_walk,
     SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -60,8 +63,6 @@
     pack_instances,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
-  import { is_activation_key, step_point_cursor } from '#lib/plot/core/interactions.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
   import {
     collect_size_range,
     create_size_scale,
@@ -147,7 +148,7 @@
   })
 
   // Overlapping points must pick the front surface, not the last (farthest) hit.
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled } = scene_interactivity()
 
   type AxisKey = `x` | `y` | `z`
 
@@ -180,7 +181,7 @@
     // No point hover while orbiting: a drag would raycast every instance on each pointermove,
     // and the highlight sphere + tooltip hopping between points under the cursor reads as flicker
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving && hovered_point) {
         hovered_point = null
         on_point_hover?.(null)
@@ -292,11 +293,22 @@
   })
   const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
 
-  // New data (or a hidden series) leaves no pointer event behind: keep the hovered point
-  // tracking the same logical point's current values and position, or drop it (tell the host)
+  // A click pins a point's tooltip (see TooltipPin) unless on_point_click takes the click
+  const pin = new TooltipPin<InternalPoint3D<Metadata>>({
+    key: point_key,
+    enabled: () => tooltip !== false && !on_point_click,
+  })
+  const shown_point = $derived(pin.value ?? hovered_point)
+
+  // New data (or a hidden series) leaves no pointer event behind: keep the hovered and pinned
+  // points tracking the same logical point's current values and position, or drop them (tell
+  // the host)
   $effect.pre(() => {
     const lookup = idx_by_key
     untrack(() => {
+      const pinned = pin.value && point_instances[lookup.get(point_key(pin.value)) ?? -1]
+      if (pinned) pin.value = pinned.point
+      else pin.unpin()
       if (!hovered_point) return
       const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
       if (next === hovered_point) return
@@ -324,16 +336,17 @@
   // Like the task above, runs every frame without forcing renders: only a moving tween
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
-  const hover_idx = $derived(hovered_point && idx_by_key.get(point_key(hovered_point)))
-  // The hovered marker as drawn, so the halo and tooltip ride along with a moving point
+  const shown_idx = $derived(shown_point && idx_by_key.get(point_key(shown_point)))
+  // The shown marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
-    if (hover_idx == null) return null
-    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(hover_idx * INSTANCE_STRIDE)
+    if (shown_idx == null) return null
+    const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(shown_idx * INSTANCE_STRIDE)
     return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
   // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
   // the tooltip paint (a $derived only notifies when its value changes)
-  const hover_color = $derived(point_instances[hover_idx ?? -1]?.color)
+  const hover_color = $derived(point_instances[shown_idx ?? -1]?.color)
+  const halo_color = $derived(brighten_hex(hover_color)) // the marker's hue, like every hover
 
   // One sphere mesh for every point: instance transforms carry each radius
   const point_geometry = $derived(
@@ -352,55 +365,51 @@
     projection_material.dispose()
   })
 
+  const hover_point = (point: InternalPoint3D<Metadata>) => {
+    hovered_point = point
+    on_point_hover?.(make_event_data(point))
+  }
+  const leave_point = () => {
+    hovered_point = null
+    on_point_hover?.(null)
+  }
+  const click_point = (point: InternalPoint3D<Metadata>, event?: MouseEvent) => {
+    on_point_click?.(make_event_data(point, event))
+    pin.toggle(point)
+  }
   const instance_point = (event: InstanceEvent) =>
     point_instances[event.instanceId ?? -1]?.point ?? null
   // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
   const point_events = {
     onpointerenter: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
-      hovered_point = point
-      on_point_hover?.(make_event_data(point))
+      if (point) hover_point(point)
     },
-    onpointerleave: () => {
-      hovered_point = null
-      on_point_hover?.(null)
-    },
+    onpointerleave: leave_point,
     onclick: (event: InstanceEvent) => {
       const point = instance_point(event)
-      if (!point) return
       const native = event.nativeEvent
-      on_point_click?.(
-        make_event_data(point, native instanceof MouseEvent ? native : undefined),
-      )
+      if (point) click_point(point, native instanceof MouseEvent ? native : undefined)
     },
+    onpointermissed: pin.unpin,
   }
 
-  // Keyboard cursor driven from the plot root (one tab stop) like the 2D ScatterPlot: arrows
-  // walk point_instances in (series, point) order, Home/End jump, Enter/Space click, Escape
-  // clears. Returns the cursor point, null once cleared, undefined for keys it leaves alone.
-  export function handle_key(
-    event: KeyboardEvent,
-  ): InternalPoint3D<Metadata> | null | undefined {
-    if (event.defaultPrevented || event.isComposing || is_modifier_chord(event))
-      return undefined
-    if (event.key === `Escape`) {
-      if (!hovered_point) return undefined
-      hovered_point = null
-      on_point_hover?.(null)
-      return null
-    }
-    if (hovered_point && is_activation_key(event)) {
-      on_point_click?.(make_event_data(hovered_point))
-      return hovered_point
-    }
-    const next = step_point_cursor(event.key, hover_idx ?? null, point_instances.length)
-    if (next === null) return undefined
-    const { point } = point_instances[next]
-    hovered_point = point
-    on_point_hover?.(make_event_data(point))
-    return point
-  }
+  // The plot root's one tab stop walks the in-range markers in (series, point) order, like the
+  // 2D ScatterPlot's cursor (see KeyWalk)
+  scene_key_walk({
+    targets: () => point_instances,
+    hover: ({ point }) => hover_point(point),
+    leave: leave_point,
+    click: ({ point }) => click_point(point),
+    unpin: pin.unpin,
+    hovered: ({ key }) => key === (hovered_point && point_key(hovered_point)),
+    label: ({ point: { x, y, z, series_idx, point_idx } }) => {
+      const axes = [x_axis, y_axis, z_axis]
+      const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
+      const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
+      return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+    },
+  })
 
   $effect(() => {
     projection_material.opacity = display.projection_opacity ?? 0.3
@@ -796,17 +805,17 @@
   />
 {/each}
 
-{#if hovered_point}
-  {@const hover_point = hovered_point}
+{#if shown_point}
+  {@const hover_point = shown_point}
   {#if hover_drawn}
     {@const halo_radius = hover_halo_radius(hover_drawn.radius)}
     <T.Mesh position={hover_drawn.position} scale={halo_radius}>
       <T.SphereGeometry args={[1, 16, 16]} />
       <T.MeshStandardMaterial
-        color="white"
+        color={halo_color}
         transparent
         opacity={0.4}
-        emissive="white"
+        emissive={halo_color}
         emissiveIntensity={0.3}
         depthTest={false}
         depthWrite={false}
@@ -820,6 +829,7 @@
         anchor_radius={halo_radius}
         portal={tooltip_portal}
         bg_color={hover_color}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip(data)}

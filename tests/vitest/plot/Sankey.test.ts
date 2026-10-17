@@ -10,7 +10,17 @@ import type {
 import type { ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
-import { export_via_pane, fire, keydown, mount_sized, mouse, plot_svg, query } from '../setup'
+import {
+  pin_cycle,
+  export_via_pane,
+  fire,
+  keydown,
+  mount_sized,
+  mouse,
+  plot_svg,
+  query,
+  svg_mark_driver,
+} from '../setup'
 
 const data: SankeyData = {
   nodes: [
@@ -135,6 +145,15 @@ describe(`Sankey`, () => {
       )
     },
   )
+
+  // Nodes take no focus without on_node_click (which would claim the click), so Escape reaches
+  // the chart through its hover-scoped keys
+  test(`a node click pins its tooltip; it again, empty space or Escape unpin`, async () => {
+    const plot = await mount_sized_sankey({ data })
+    const nodes = [...plot.querySelectorAll(`.nodes rect`)]
+    const driver = svg_mark_driver(nodes, plot_svg(plot))
+    expect(await pin_cycle(driver)).toBe(`A: 8`)
+  })
 
   test(`hovering a node then a link swaps the tooltip and fires each callback once`, async () => {
     const [on_node_hover, on_link_hover] = [vi.fn(), vi.fn()]

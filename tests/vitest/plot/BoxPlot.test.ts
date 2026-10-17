@@ -9,14 +9,17 @@ import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  pin_cycle,
   expect_plot_controls,
   export_via_pane,
   form_controls,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
+  plot_svg,
   query,
   roving_tabindexes,
+  svg_mark_driver,
   svg_rect,
   with_measured_text,
 } from '../setup'
@@ -425,6 +428,14 @@ describe(`BoxPlot`, () => {
     expect(tooltip_after([{ y: [1, 2, 30, 40, 50], label: `A` }])).toContain(`median: 30`)
     expect(tooltip_after([])).toBeNull()
     expect(on_box_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`a box click or Enter pins its tooltip; it again, empty space or Escape unpin`, async () => {
+    const series = [basic, { y: dist(80, 3), label: `Box B` }]
+    const plot = await mount_sized_box_plot({ series })
+    const boxes = [...plot.querySelectorAll(`g.box-series[role="button"]`)]
+    const text = await pin_cycle(svg_mark_driver(boxes, plot_svg(plot)), { keyboard: true })
+    expect(text).toContain(`Box A`)
   })
 
   // Statistics are snapped to 0 only within float noise n·ε·max|x|: a round-off mean or an

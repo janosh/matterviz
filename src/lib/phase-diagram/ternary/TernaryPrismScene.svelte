@@ -15,7 +15,10 @@
   import {
     build_orbit_props,
     dispose_on_change,
+    HoverHighlight,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     SceneCamera,
     SceneLabel,
     SceneLights,
@@ -37,6 +40,7 @@
   } from 'three/webgpu'
   import {
     decompose_composition,
+    facet_index_at,
     hits_pin,
     prism_composition,
     prism_position,
@@ -78,7 +82,7 @@
 
   // Rods win the pick over the cutting plane, also where seen through it, and the drag catcher
   // wins over both (their pick_rank)
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
 
   // === Frame: composition in XZ (centred), temperature along Y ===
 
@@ -246,6 +250,10 @@
   }
   const pinned_probe = $derived(probe_of(pinned_composition))
   const hover_probe = $derived(probe_of(hover_xy))
+  // the tie triangle under the pointer lights up while its decomposition shows
+  const hover_facet = $derived(
+    hover_xy ? facet_index_at(diagram.phases, section_facets, hover_xy) : -1,
+  )
   dispose_on_change(() => [pinned_probe?.spokes])
   dispose_on_change(() => [hover_probe?.spokes])
   const probe_marks = $derived(
@@ -309,7 +317,7 @@
     rotation_damping: 0,
     set_camera_is_moving: (moving) => {
       camera_is_moving = moving
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (moving) {
         hover_xy = null
         on_hover?.(null)
@@ -329,17 +337,37 @@
       position: [nativeEvent.clientX, nativeEvent.clientY],
     })
   }
+  const leave_rod = () => {
+    hovered_phase = null
+    on_hover?.(null)
+  }
+  const click_rod = (phase: number) =>
+    (selected_phase = selected_phase === phase ? null : phase)
   const rod_handlers = (phase: number) => ({
-    onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
-    onpointermove: (event: unknown) => handle_rod_hover(phase, event),
-    onpointerleave: () => {
-      hovered_phase = null
-      on_hover?.(null)
-    },
-    onclick: () => (selected_phase = selected_phase === phase ? null : phase),
-    // a press on a rod still drags the plane, but pins nothing
-    onpointerdown: start_plane_drag,
+    ...touch_hover({
+      onpointerenter: (event: unknown) => handle_rod_hover(phase, event),
+      onpointermove: (event: unknown) => handle_rod_hover(phase, event),
+      onpointerleave: leave_rod,
+      onclick: () => click_rod(phase),
+      // a press on a rod still drags the plane, but pins nothing
+      onpointerdown: start_plane_drag,
+    }),
     userData: { pick_rank: 1 },
+  })
+  // The viewer root walks the rods in phase order, each where the cutting plane crosses it,
+  // else at its nearer end; Enter selects like a click
+  const pointer_at = scene_pointer()
+  scene_key_walk({
+    targets: () => (settings.show_rods ? rods : []),
+    hover: ({ phase, position: [x_pos, y_pos, z_pos], length }) =>
+      handle_rod_hover(
+        phase,
+        pointer_at([x_pos, clamp(plane_y, y_pos - length / 2, y_pos + length / 2), z_pos]),
+      ),
+    leave: leave_rod,
+    click: ({ phase }) => click_rod(phase),
+    hovered: ({ phase }) => phase === hovered_phase,
+    label: ({ phase }) => diagram.phases[phase].label,
   })
   // Dragging the plane pauses orbiting; a camera-facing catcher quad turns pointer motion
   // into a new height (temperature)
@@ -465,9 +493,11 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
 <T.Group position={[0, plane_y, 0]}>
   <T.Mesh
     geometry={plane_geometry}
-    onpointerdown={start_plane_drag}
-    onpointermove={hover_plane}
-    onpointerleave={clear_plane_hover}
+    {...touch_hover({
+      onpointerdown: start_plane_drag,
+      onpointermove: hover_plane,
+      onpointerleave: clear_plane_hover,
+    })}
   >
     <T.MeshStandardMaterial
       color="#fff59d"
@@ -489,6 +519,13 @@ ignore clipping, so only the solid copy carries pointer handlers (else every hit
         polygonOffsetFactor={-1}
       />
     </T.Mesh>
+  {/if}
+  {#if hover_facet !== -1}
+    <HoverHighlight
+      geometry={facet_geometry}
+      faces={[hover_facet]}
+      color={TERNARY_COLORS.face}
+    />
   {/if}
   <T.LineSegments geometry={tie_line_geometry}>
     <T.LineBasicMaterial color={text_color} />

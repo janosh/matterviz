@@ -12,6 +12,7 @@
   import { json_source, type ExportSources } from '#lib/io/export.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { SettingsSection, ViewerChrome } from '#lib/layout/index.js'
+  import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import { ViewerPane } from '#lib/overlays/index.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Vec3 } from '#lib/math.js'
@@ -22,7 +23,8 @@
     clear_pan_offset,
     create_renderer,
     dispose_on_change,
-    highlight_edge_color,
+    key_walk_root,
+    positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
   import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
@@ -43,6 +45,7 @@
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import {
     CHEMPOT_COLOR_MODE_OPTIONS,
     container_pointer,
@@ -312,13 +315,6 @@
     return edges
   }
 
-  // BufferGeometry over a flat xyz position array
-  const position_geometry = (positions: ArrayLike<number>): THREE.BufferGeometry => {
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    return geom
-  }
-
   // While slicing, the unsliced shadow projection bounds every section: axes, camera and the
   // padded floor follow it, so a sweep moves the domains but not the view or the floor faces
   const frame_floors = $derived(
@@ -452,7 +448,7 @@
         positions.push(...to_render_xyz(pt_a), ...to_render_xyz(pt_b))
       }
     }
-    return position_geometry(positions)
+    return positions_geometry(positions)
   })
 
   // Coplanar-merged convex hull in render coords; null for < 4 points or a degenerate hull
@@ -479,7 +475,7 @@
       occlusion_hull_geometry &&
       strip_closing_faces(occlusion_hull_geometry.getAttribute(`position`).array)
     if (!merged) return null
-    const geom = position_geometry(merged)
+    const geom = positions_geometry(merged)
     const base_rgb = new THREE.Color(`#f6f6f6`).toArray()
     const colors = Float32Array.from({ length: merged.length }, (_, idx) => base_rgb[idx % 3])
     geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
@@ -664,7 +660,7 @@
 
   // Formula overlay edges (crease edges, per formula)
   const domain_edge_geometry = (domain: RenderDomain): THREE.BufferGeometry =>
-    position_geometry(
+    positions_geometry(
       domain.edges.flatMap(([pt_a, pt_b]) => [...to_render_xyz(pt_a), ...to_render_xyz(pt_b)]),
     )
   const overlay_edge_geometries = memo_overlay_geometry(domain_edge_geometry)
@@ -692,7 +688,7 @@
   // Merge coplanar ConvexGeometry triangles, removing diagonal edges across flat hull faces
   function merge_coplanar_geometry(geom: ConvexGeometry): THREE.BufferGeometry {
     const pos = geom.getAttribute(`position`)
-    const result = position_geometry(merge_coplanar_triangles(pos.array as Float32Array))
+    const result = positions_geometry(merge_coplanar_triangles(pos.array as Float32Array))
     result.computeVertexNormals()
     // Callers always pass a freshly created ConvexGeometry, so we own it
     geom.dispose()
@@ -703,7 +699,7 @@
   function domain_hull_geometry(points_3d: number[][]): THREE.BufferGeometry | null {
     const unique_points = dedup_3d(points_3d)
     if (unique_points.length !== 3) return render_hull_geometry(unique_points)
-    return position_geometry(unique_points.flatMap(to_render_xyz))
+    return positions_geometry(unique_points.flatMap(to_render_xyz))
   }
 
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
@@ -735,13 +731,12 @@
     )
   })
 
-  // Hull triangles per owning domain: exactly the surface each domain is drawn on
+  // Hull triangle indices per owning domain: exactly the surface each domain is drawn on
   const owned_faces = $derived.by((): Map<string, number[]> => {
     const owned = new Map<string, number[]>()
-    const positions = hull_base_geometry?.getAttribute(`position`).array ?? []
     for (const [face_idx, owner] of face_domain_map.entries()) {
       const faces = owned.get(owner) ?? []
-      for (let idx = face_idx * 9; idx < face_idx * 9 + 9; idx++) faces.push(positions[idx])
+      faces.push(face_idx)
       owned.set(owner, faces)
     }
     return owned
@@ -779,46 +774,22 @@
   })
 
   const highlight_key = $derived(highlight_key_of(hover_info?.formula, highlighted_formula))
-  // The highlighted domain as drawn: the hull faces it owns, i.e. exactly the face shown in its
-  // colour, outlined along their boundary (edges used by one owned triangle). A domain owning
-  // no hull face (buried inside a projected envelope) gets its own crease edges.
-  // Fill and outline take the domain's colour, the outline darker, so the face lights up
-  // rather than turning a foreign colour.
+  // The highlighted domain as drawn (HoverHighlight): the hull faces it owns, i.e. exactly the
+  // face shown in its colour, so the face lights up rather than turning a foreign colour. A
+  // domain owning no hull face (buried inside a projected envelope) gets its crease edges.
   const highlight = $derived.by(() => {
     const domain = render_domains.find(({ formula }) => formula === highlight_key)
     if (!domain) return null
-    const owned = owned_faces.get(domain.formula) ?? []
-    const edge_counts = new Map<string, { count: number; coords: number[] }>()
-    for (let offset = 0; offset < owned.length; offset += 9) {
-      for (const [start, end] of [
-        [0, 3],
-        [3, 6],
-        [6, 0],
-      ]) {
-        const [pt_a, pt_b] = [start, end].map((at) =>
-          owned.slice(offset + at, offset + at + 3),
-        )
-        const key = edge_key(point_key(pt_a), point_key(pt_b))
-        const entry = edge_counts.get(key)
-        if (entry) entry.count++
-        else edge_counts.set(key, { count: 1, coords: [...pt_a, ...pt_b] })
-      }
-    }
-    const boundary = [...edge_counts.values()]
-      .filter(({ count }) => count === 1)
-      .flatMap(({ coords }) => coords)
-    const color = drawn_color(domain.formula) ?? HIGHLIGHT.emphasis
-    return {
-      formula: domain.formula,
-      fill: owned.length > 0 ? position_geometry(owned) : null,
-      edges: boundary.length > 0 ? position_geometry(boundary) : domain_edge_geometry(domain),
-      fill_color: color,
-      edge_color: highlight_edge_color(color),
-    }
+    const { formula } = domain
+    const color = drawn_color(formula) ?? HIGHLIGHT.emphasis
+    const faces = owned_faces.get(formula)
+    return faces
+      ? { formula, color, faces }
+      : { formula, color, edges: domain_edge_geometry(domain) }
   })
 
   dispose_on_change(() => [edge_geometry])
-  dispose_on_change(() => [highlight?.fill, highlight?.edges])
+  dispose_on_change(() => [highlight?.edges])
   dispose_on_change(() => [occlusion_hull_geometry])
 
   let label_occlusion_frame: number | null = null
@@ -980,11 +951,12 @@
     reset_camera_view()
   }
 
-  // Controls and panes own their own double-click, but passive render overlays must not
+  // Controls, panes and a pinned tooltip (word selection) own their own double-click, but passive render overlays must not
   // swallow reset. `closest` handles clicks reported by a control's child.
   const handle_dblclick = ({ target }: MouseEvent): void => {
     const on_chrome =
-      target instanceof Element && target.closest(`button, input, select, .draggable-pane`)
+      target instanceof Element &&
+      target.closest(`button, input, select, .draggable-pane, .plot-tooltip`)
     if (!on_chrome) reset_camera_view()
   }
 
@@ -1091,7 +1063,8 @@
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
   })
 
-  let locked_hover_formula = $state<string | null>(null)
+  const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
+  const key_walk = key_walk_root() // the domains, by keyboard (see KeyWalk)
 
   function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     hover_info = {
@@ -1100,46 +1073,36 @@
     }
   }
 
-  function clear_hover_lock(): void {
-    locked_hover_formula = null
-    hover_info = null
-  }
-
   function handle_phase_hover(domain_data: HoverMesh, event: ThreltePointerEvent): void {
-    if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
-    set_hover_info(domain_data, event)
+    if (pin.allows(domain_data.formula)) set_hover_info(domain_data, event)
   }
 
   // Stops both Threlte's dispatch to farther hits and the DOM event the wrapper listens to
-  function toggle_phase_lock(domain_data: HoverMesh, event: ThreltePointerEvent): void {
+  function toggle_phase_pin(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     event.stopPropagation()
     event.nativeEvent.stopPropagation()
-    if (locked_hover_formula === domain_data.formula) {
-      clear_hover_lock()
-      return
-    }
-    locked_hover_formula = domain_data.formula
-    set_hover_info(domain_data, event)
+    pin.toggle(domain_data.formula)
+    if (pin.value) set_hover_info(domain_data, event)
   }
 
   function handle_phase_leave(domain_data: HoverMesh): void {
-    if (!locked_hover_formula && hover_info?.formula === domain_data.formula) hover_info = null
+    if (!pin.value && hover_info?.formula === domain_data.formula) hover_info = null
   }
 
   // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
   $effect(() => {
     const meshes = hover_mesh_data
     untrack(() => {
-      if (!locked_hover_formula) return
-      const current = meshes.find(({ formula }) => formula === locked_hover_formula)
-      if (!current) clear_hover_lock()
+      if (!pin.value) return
+      const current = meshes.find(({ formula }) => formula === pin.value)
+      if (!current) pin.unpin()
       else if (hover_info) hover_info = { ...current.info, pointer: hover_info.pointer }
     })
   })
 
   // A wheel zoom shifts the domains under a still cursor with no pointerleave to clear the tooltip
   function handle_camera_start(): void {
-    if (!locked_hover_formula) hover_info = null
+    if (!pin.value) hover_info = null
   }
 
   // Color mode cycling (keyboard shortcut 'c')
@@ -1172,21 +1135,17 @@
   {@attach viewer_keys(() => ({
     c: cycle_color_mode,
     r: reset_camera_view,
-    Escape: () => {
-      if (!locked_hover_formula) return false
-      clear_hover_lock()
-    },
+    Escape: pin.unpin,
   }))}
-  onpointerdown={(event) => {
-    const target = event.target
-    if (locked_hover_formula && (target === wrapper || target instanceof HTMLCanvasElement)) {
-      clear_hover_lock()
-    }
+  {@attach key_walk.attach}
+  onpointerdown={({ target }) => {
+    if (target === wrapper || target instanceof HTMLCanvasElement) pin.unpin()
   }}
   onpointermovecapture={mark_input}
   onwheelcapture={mark_input}
   ondblclick={handle_dblclick}
 >
+  <LiveMessage message={key_walk.message} />
   <ViewerChrome
     {controls_config}
     bind:fullscreen
@@ -1397,7 +1356,7 @@
           hover_meshes={hover_mesh_data}
           face_owners={face_domain_map}
           on_domain_hover={handle_phase_hover}
-          on_domain_press={toggle_phase_lock}
+          on_domain_press={toggle_phase_pin}
           on_domain_leave={handle_phase_leave}
           on_camera_start={handle_camera_start}
           {highlight}
@@ -1419,7 +1378,7 @@
   {#if tooltip !== false && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
-      pinned={locked_hover_formula === hover_info.formula}
+      pinned={pin.value === hover_info.formula}
       {tooltip}
       bg_color={drawn_color(hover_info.formula)}
       constrain_to={{ width: container_width, height: container_height }}

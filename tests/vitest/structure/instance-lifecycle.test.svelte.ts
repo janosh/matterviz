@@ -325,26 +325,61 @@ test(`Scene disables hover raycasts while orbiting or dragging atoms`, () => {
 
 // Threlte hands the pointer event to every atom on the ray, nearest first: the atom behind
 // used to take over the hover and tooltip. A partial-occupancy site 0 resolves through the
-// wedge group's instanceId and must also win over, or yield to, an ordered atom.
+// wedge group's instanceId and must also win over, or yield to, an ordered atom. Touch has no
+// hover, so a tap (press, then click) on the atom shows its tooltip instead.
 test.each([
-  [10, 0, 1],
-  [-10, 1, 1], // same ray from behind
-  [10, 0, 0.5],
-  [-10, 1, 0.5],
-])(`hover picks the front atom from z=%i (site %i, occu %s)`, (origin_z, front_idx, occu) => {
-  const interactivity = spy_interactivity()
-  const hover = $state<SceneProps>({ hovered_idx: null })
-  const sites = [0, -3].map((z_coord, idx) =>
-    make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+  [10, 0, 1, [`pointermove`]],
+  [-10, 1, 1, [`pointermove`]], // same ray from behind
+  [10, 0, 0.5, [`pointermove`]],
+  [-10, 1, 0.5, [`pointermove`]],
+  [10, 0, 1, [`pointerdown`, `click`]],
+  [-10, 1, 0.5, [`pointerdown`, `click`]],
+])(
+  `hover picks the front atom from z=%i (site %i, occu %s, %j)`,
+  (origin_z, front_idx, occu, types) => {
+    const interactivity = spy_interactivity()
+    const hover = $state<SceneProps>({ hovered_idx: null })
+    const sites = [0, -3].map((z_coord, idx) =>
+      make_site(`C`, [0, 0, 0], [0, 0, z_coord], `C`, {}, idx ? 1 : occu),
+    )
+    mount_structure({ structure: { sites }, show_bonds: `never` }, hover)
+    // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
+    const scene_interactivity = interactivity()
+    scene_interactivity.compute = (_event, state) =>
+      state.raycaster.set(
+        new Vector3(0, 0, origin_z),
+        new Vector3(0, 0, -origin_z).normalize(),
+      )
+    const pointerType = types.length > 1 ? `touch` : `mouse`
+    for (const type of types)
+      scene_interactivity.target.current?.dispatchEvent(
+        new PointerEvent(type, { pointerType }),
+      )
+    flushSync()
+    expect(hover.hovered_idx).toBe(front_idx)
+    expect(document.querySelectorAll(`[role="tooltip"]`)).toHaveLength(1)
+  },
+)
+
+// From the focused viewer root, arrows walk the atoms in site order (KeyWalk), starting from a
+// hovered atom, with the hover tooltip a pointer would show, and Enter selects like a click
+test(`keyboard walks the atoms in site order and Enter selects`, () => {
+  const state = $state<SceneProps>({ hovered_idx: null, selected_sites: [] })
+  const sites = ([`C`, `N`] as const).map((element, idx) =>
+    make_site(element, [0, 0, 0], [2 * idx, 0, 0], element),
   )
-  mount_structure({ structure: { sites }, show_bonds: `never` }, hover)
-  // happy-dom has no layout to turn client coordinates into a ray, so cast a fixed one
-  const scene_interactivity = interactivity()
-  scene_interactivity.compute = (_event, state) =>
-    state.raycaster.set(new Vector3(0, 0, origin_z), new Vector3(0, 0, -origin_z).normalize())
-  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
-  flushSync()
-  expect(hover.hovered_idx).toBe(front_idx)
+  const { keys } = mount_structure({ structure: { sites }, show_bonds: `never` }, state)
+  expect([`ArrowRight`, `ArrowRight`].map((key) => keys.press(key))).toEqual([true, true])
+  expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
+  expect(document.querySelectorAll(`[role="tooltip"]`)).toHaveLength(1)
+  keys.press(`Enter`)
+  expect(state.selected_sites).toEqual([1])
+  keys.press(`Escape`)
+  expect(state.hovered_idx).toBeNull()
+  expect(document.querySelector(`[role="tooltip"]`)).toBeNull()
+  state.hovered_idx = 0 // the pointer's hover is where the walk picks up
+  keys.press(`ArrowRight`)
+  expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
 })
 
 // Lattice arrows start at (-1, -1, -1) of this 4 Å cube and span half their vector. Their

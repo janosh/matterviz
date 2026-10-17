@@ -6,6 +6,8 @@
     create_scene_camera,
     resolve_scene_controls,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     SceneCamera,
     SceneLights,
   } from '#lib/scene/index.js'
@@ -17,6 +19,7 @@
     bz_fit_extent,
     bz_hover_data,
     default_camera_position,
+    face_anchors,
     k_lattice_inverse,
     bz_mark_sizes,
     k_space_size,
@@ -84,7 +87,7 @@
 
   // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
   // wins over the zone (their pick_rank), else the front-most
-  const { enabled: hover_enabled } = scene_interactivity()
+  const { set_hover_enabled, touch_hover } = scene_interactivity()
 
   // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
   const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
@@ -112,9 +115,9 @@
     // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
     // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (!moving) return
-      hover_data = null
+      clear_hover()
       on_kpath_hover?.(null)
     },
   })
@@ -122,9 +125,17 @@
   // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
+  // The hovered triangle of the zone and of the IBZ wedge, whose polygon face lights up
+  const hovered_face = $state<Record<`zone` | `ibz`, number | null>>({ zone: null, ibz: null })
+  const clear_hover = () => {
+    hover_data = null
+    hovered_face.zone = null
+    hovered_face.ibz = null
+  }
+
   // Threlte drops an unmounted mesh without a pointerleave
   $effect(() => {
-    if (!show_ibz && hover_data?.is_ibz) hover_data = null
+    if (!show_ibz && hover_data?.is_ibz) clear_hover()
   })
 
   const hover_at = (position_cartesian: Vec3, screen_position: Point2D, is_ibz = false) => {
@@ -135,12 +146,41 @@
       ibz_volume,
     })
   }
-  const handle_hover = ({ point, nativeEvent }: ThreltePointerEvent, is_ibz: boolean) =>
+  const handle_hover = (
+    { point, nativeEvent, faceIndex }: ThreltePointerEvent,
+    is_ibz: boolean,
+  ) => {
+    hovered_face[is_ibz ? `ibz` : `zone`] = faceIndex ?? null
     hover_at(
       [point.x, point.y, point.z],
       { x: nativeEvent.clientX, y: nativeEvent.clientY },
       is_ibz,
     )
+  }
+  // The viewer root walks the zone's faces, then the IBZ wedge's, hovering each at its centroid
+  const pointer_at = scene_pointer()
+  const key_faces = $derived(
+    [
+      { polyhedron: bz_data, is_ibz: false },
+      { polyhedron: show_ibz ? ibz_data : null, is_ibz: true },
+    ].flatMap(({ polyhedron, is_ibz }) => {
+      const anchors = polyhedron ? face_anchors(polyhedron) : []
+      return anchors.map((anchor, face_idx) => ({
+        ...anchor,
+        is_ibz,
+        face_idx,
+        n_faces: anchors.length,
+      }))
+    }),
+  )
+  scene_key_walk({
+    targets: () => key_faces,
+    hover: ({ centroid, triangle, is_ibz }) =>
+      handle_hover(pointer_at(centroid, { faceIndex: triangle }), is_ibz),
+    leave: clear_hover,
+    label: ({ is_ibz, face_idx, n_faces }) =>
+      `${is_ibz ? `Irreducible zone` : `Brillouin zone`} face ${face_idx + 1} of ${n_faces}`,
+  })
   // a hovered k-path point gets the zone tooltip at its k-point
   const handle_kpath_hover = (qpoint_idx: number | null, screen_position?: Point2D) => {
     const position = k_path.points[qpoint_idx ?? -1]
@@ -170,8 +210,11 @@
       opacity={surface_opacity}
       {edge_color}
       edge_width={mark_sizes.edge}
-      onpointermove={(event) => handle_hover(event, false)}
-      onpointerleave={() => (hover_data = null)}
+      hovered_face={hovered_face.zone}
+      {...touch_hover({
+        onpointermove: (event: ThreltePointerEvent) => handle_hover(event, false),
+        onpointerleave: clear_hover,
+      })}
     />
 
     <!-- Irreducible BZ wedge, outlined in its own colour -->
@@ -181,8 +224,11 @@
         color={ibz_color}
         opacity={ibz_opacity}
         edge_width={mark_sizes.edge * 1.5}
-        onpointermove={(event) => handle_hover(event, true)}
-        onpointerleave={() => (hover_data = null)}
+        hovered_face={hovered_face.ibz}
+        {...touch_hover({
+          onpointermove: (event: ThreltePointerEvent) => handle_hover(event, true),
+          onpointerleave: clear_hover,
+        })}
         pick_rank={1}
       />
     {/if}
@@ -199,6 +245,7 @@
       {hovered_qpoint_index}
       {highlighted_qpoint_range}
       on_kpath_hover={handle_kpath_hover}
+      {touch_hover}
       size={bz_size}
       {edge_width}
     />

@@ -21,6 +21,7 @@
     exclusion_rects = [],
     avoid_cursor = true,
     fallback_size,
+    pinned = false,
     wrapper = $bindable(),
     children,
     ...rest
@@ -39,6 +40,8 @@
     // the sign). Pass false when `x`/`y` snap to a mark, so no glyph sits on the anchor.
     avoid_cursor?: boolean
     fallback_size?: { width: number; height: number } // size estimate before first measure
+    // Pinned (see TooltipPin): takes pointer events and selectable text, so it can be copied
+    pinned?: boolean
     wrapper?: HTMLDivElement // bindable reference for measuring tooltip size
     children: Snippet
   } = $props()
@@ -110,14 +113,14 @@
 
 <div
   {...rest}
-  class={[`plot-tooltip`, rest.class]}
+  class={[`plot-tooltip`, { pinned }, rest.class]}
   style:background-color={paint?.background}
   style:color={paint?.color}
   style:--plot-tooltip-cap={max_width != null ? `${max_width}px` : undefined}
   style:position={fixed ? `fixed` : `absolute`}
   style:left="{pos.x}px"
   style:top="{pos.y}px"
-  style="pointer-events: none; {rest.style ?? ``}"
+  style="pointer-events: {pinned ? `auto` : `none`}; {rest.style ?? ``}"
   bind:this={wrapper}
   {@attach measure}
 >
@@ -153,6 +156,14 @@
     white-space: var(--plot-tooltip-white-space, normal);
     overflow-wrap: break-word; /* mid-token only when that token alone exceeds the line */
     z-index: var(--plot-tooltip-z-index, 1000);
+  }
+  .plot-tooltip.pinned {
+    user-select: text;
+    cursor: auto;
+  }
+  /* a pinned chip wears a solid border */
+  :where(.plot-tooltip.pinned) {
+    border-color: currentColor;
   }
   /* Dense defaults for common tooltip markup: page and UA margins would pad a small chip.
   Zero specificity, so any tooltip snippet's own styles win. */

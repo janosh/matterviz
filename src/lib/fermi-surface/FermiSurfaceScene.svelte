@@ -16,8 +16,13 @@
   import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     bind_renderer,
+    corner_vertex,
     create_scene_camera,
+    faces_centroid,
+    HoverHighlight,
     scene_interactivity,
+    scene_key_walk,
+    scene_pointer,
     resolve_scene_controls,
     SceneCamera,
     SceneLights,
@@ -103,7 +108,10 @@
       slice_plane?: { miller_indices: Vec3; distance: number }
       k_marker?: Vec3 | null
       // a band structure's k-path to draw (its hovered point is the k_marker dot)
-      k_path?: Omit<ComponentProps<typeof KPath>, `size` | `edge_width` | `hovered_k_point`>
+      k_path?: Omit<
+        ComponentProps<typeof KPath>,
+        `size` | `edge_width` | `hovered_k_point` | `touch_hover`
+      >
       selected_bands?: number[]
       selected_spins?: SpinChannel[]
       hover_data?: FermiHoverData | null
@@ -146,7 +154,9 @@
 
   // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
   // wins over sheets in front of it (its pick_rank), or most of it could not be hovered
-  const { enabled: hover_enabled } = scene_interactivity({ clip_plane: () => clip_plane })
+  const { set_hover_enabled, touch_hover } = scene_interactivity({
+    clip_plane: () => clip_plane,
+  })
 
   let visible_surfaces = $derived(
     fermi_data?.isosurfaces.filter(
@@ -274,7 +284,7 @@
     // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
     // and out as the sheets sweep under the cursor reads as the surface flickering
     set_camera_is_moving: (moving) => {
-      hover_enabled.set(!moving)
+      set_hover_enabled(!moving)
       if (!moving) return
       hover_data = null
       kpath_hover_data = null
@@ -395,6 +405,42 @@
     k_path?.on_kpath_hover?.(qpoint_idx, screen_position)
   }
 
+  // The hovered sheet tile lights up (HoverHighlight) while its tooltip shows: hover_data
+  // gates the last tile a move hit, so every path clearing the tooltip clears this too. Not in
+  // property mode: a flat fill would hide the colour map the tooltip value is read against.
+  let hovered_sheet = $state.raw<{ surface: FermiIsosurface; sym_idx: number } | null>(null)
+  const tooltip_shown = $derived(hover_data !== null) // re-derives the below on change only
+  const highlighted_sheet = $derived.by(() => {
+    if (!tooltip_shown || !hovered_sheet || use_vertex_colors) return null
+    const { surface, sym_idx } = hovered_sheet
+    const geometry = geometries[visible_surfaces.indexOf(surface)]
+    const matrix = symmetry_ops[sym_idx]
+    return geometry && matrix ? { geometry, matrix, color: get_surface_color(surface) } : null
+  })
+
+  // The viewer root walks the visible sheets, hovering each at its first triangle (untiled)
+  const pointer_at = scene_pointer()
+  const key_sheets = $derived(
+    visible_surfaces.flatMap((surface, surface_idx) => {
+      const geometry = geometries[surface_idx]
+      return geometry ? [{ surface, geometry }] : []
+    }),
+  )
+  scene_key_walk({
+    targets: () => key_sheets,
+    hover: ({ surface, geometry }) => {
+      const [a, b, c] = [0, 1, 2].map((corner) => corner_vertex(geometry, 0, corner))
+      const sym_matrix = new Matrix4().fromArray(symmetry_ops[0])
+      const point = new Vector3(...faces_centroid(geometry, [0])).applyMatrix4(sym_matrix)
+      const event = pointer_at([point.x, point.y, point.z], { face: { a, b, c } })
+      handle_pointer_move(event, surface, geometry, get_surface_color(surface), 0)
+    },
+    leave: () => (hover_data = null),
+    hovered: ({ surface }) => tooltip_shown && hovered_sheet?.surface === surface,
+    label: ({ surface: { band_index, spin } }) =>
+      `Band ${band_index + 1}${spin ? ` (spin ${spin})` : ``}`,
+  })
+
   // Build hover data from a pointer event on a (possibly symmetry-tiled) surface mesh. The
   // per-vertex property comes from the hit triangle's nearest corner, so no throttle is needed
   function handle_pointer_move(
@@ -427,6 +473,8 @@
         ? display_label(property_name, property_label)
         : undefined
 
+    if (hovered_sheet?.surface !== surface || hovered_sheet.sym_idx !== sym_idx)
+      hovered_sheet = { surface, sym_idx }
     const { clientX, clientY } = event.nativeEvent
     hover_data = {
       band_index: surface.band_index,
@@ -486,6 +534,7 @@
       size={scene_size}
       edge_width={DEFAULTS.brillouin.edge_width}
       {on_kpath_hover}
+      {touch_hover}
     />
   {/if}
   {#if k_marker}
@@ -510,11 +559,19 @@
           matrix={sym_matrix}
           matrixAutoUpdate={false}
           {renderOrder}
-          onpointermove={(event: ThreltePointerEvent) =>
-            handle_pointer_move(event, surface, geometry, surface_color, sym_idx)}
-          onpointerleave={() => (hover_data = null)}
+          {...touch_hover({
+            onpointermove: (event: ThreltePointerEvent) =>
+              handle_pointer_move(event, surface, geometry, surface_color, sym_idx),
+            onpointerleave: () => (hover_data = null),
+          })}
         />
       {/each}
     {/if}
   {/each}
+  {#if highlighted_sheet}
+    {@const { geometry, matrix, color } = highlighted_sheet}
+    <T.Group {matrix} matrixAutoUpdate={false}>
+      <HoverHighlight {geometry} {color} />
+    </T.Group>
+  {/if}
 </T>

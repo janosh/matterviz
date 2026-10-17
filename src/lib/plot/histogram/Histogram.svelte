@@ -64,6 +64,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '#lib/math.js'
   import {
@@ -452,15 +453,21 @@
       normalize === `count` ? `` : `, value ${format_value_or_num(bin.value, `.3~g`)}`
     return `${hist.label} bin ${bin_idx + 1}: ${lower} to ${upper}, count ${count}${value}`
   }
-  // Hover state is indices only: the tooltip follows rebinned data and closes once its bin is gone
-  let hover_key = $state<{ series_idx: number; bin_idx: number } | null>(null)
-  const hover_info = $derived.by(() => {
-    if (!hover_key) return null
-    const { series_idx, bin_idx } = hover_key
-    const hist = histogram_bins.find((binned) => binned.series_idx === series_idx)
-    const bin = hist?.bins[bin_idx]
-    return hist && bin ? bar_data(hist, bin) : null
+  // Hover state is indices only: the tooltip follows rebinned data and closes once its bin is
+  // gone. A click pins the hovered bin's tooltip unless on_bar_click takes the click.
+  type BinKey = { series_idx: number; bin_idx: number }
+  let hover_key = $state<BinKey | null>(null)
+  const pin = new TooltipPin<BinKey>({
+    key: ({ series_idx, bin_idx }) => `${series_idx}:${bin_idx}`,
+    enabled: () => tooltip !== false && !on_bar_click,
   })
+  const bin_info = (key: BinKey | null) => {
+    if (!key) return null
+    const hist = histogram_bins.find((binned) => binned.series_idx === key.series_idx)
+    const bin = hist?.bins[key.bin_idx]
+    return hist && bin ? bar_data(hist, bin) : null
+  }
+  const hover_info = $derived(bin_info(pin.value ?? hover_key))
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
     (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
@@ -472,16 +479,19 @@
     hover_key = null
     on_bar_hover?.(null)
   }
-  clear_stale_hover(() => hover_key && !hover_info, clear_hover)
+  clear_stale_hover(() => hover_key && !bin_info(hover_key), clear_hover)
+  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const handle_bar_click =
-    (hist: BinnedSeries, bin: HistogramBin) => (event: MouseEvent | KeyboardEvent) => {
+    (hist: BinnedSeries, bin_idx: number) => (event: MouseEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
         if (!is_activation_key(event)) return
         event.preventDefault()
       }
-      on_bar_click?.({ ...bar_data(hist, bin), event })
+      on_bar_click?.({ ...bar_data(hist, hist.bins[bin_idx]), event })
+      // mouse clicks pin through the frame, which also sees clicks on empty space
+      if (event instanceof KeyboardEvent) pin.toggle({ series_idx: hist.series_idx, bin_idx })
     }
 
   // === Export ===
@@ -524,6 +534,8 @@
     hovered = false
     clear_hover()
   }}
+  on_mouse_click={() => pin.toggle(hover_key)}
+  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -589,10 +601,10 @@
                 handle_bar_hover(hist, bin_idx)(evt)
               }}
               onfocusout={clear_hover_on_exit}
-              onclick={handle_bar_click(hist, bin)}
+              onclick={handle_bar_click(hist, bin_idx)}
               onkeydown={(evt) => {
                 if (roving.handle_keydown(evt)) return
-                handle_bar_click(hist, bin)(evt)
+                handle_bar_click(hist, bin_idx)(evt)
               }}
               style:cursor={on_bar_click ? `pointer` : undefined}
             />
@@ -631,7 +643,7 @@
   {/snippet}
 
   {#snippet overlays()}
-    {#if hover_info && hovered && tooltip !== false}
+    {#if hover_info && (hovered || pin.value) && tooltip !== false}
       {@const { value, count, y: coord_y } = hover_info}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
@@ -643,6 +655,7 @@
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}
+        pinned={pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

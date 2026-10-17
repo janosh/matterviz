@@ -14,6 +14,7 @@
   import ChemPotLegend from './ChemPotLegend.svelte'
   import ChemPotSlices, { slice_label } from './ChemPotSlices.svelte'
   import ChemPotTooltip from './ChemPotTooltip.svelte'
+  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import {
     container_pointer,
     create_chempot_state,
@@ -169,7 +170,7 @@
   })
 
   // === Hover info for external consumers ===
-  let locked_hover_formula = $state<string | null>(null)
+  const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
 
   function set_hover_info(formula: string, pts: number[][], event: MouseEvent): void {
     hover_info = {
@@ -181,18 +182,13 @@
     }
   }
 
-  function clear_hover_lock(): void {
-    locked_hover_formula = null
-    hover_info = null
-  }
-
   // A pinned tooltip re-reads its domain after recomputes, unpinning once the domain is gone
   $effect(() => {
     const domains = draw_domains
     untrack(() => {
-      if (!locked_hover_formula) return
-      const pts = domains[locked_hover_formula]
-      if (!pts) clear_hover_lock()
+      if (!pin.value) return
+      const pts = domains[pin.value]
+      if (!pts) pin.unpin()
       else if (hover_info) {
         hover_info = {
           ...hover_info,
@@ -207,26 +203,19 @@
     data: { point: { series_idx: number }; event: MouseEvent } | null,
   ): void {
     if (!data) {
-      if (!locked_hover_formula) hover_info = null
+      if (!pin.value) hover_info = null
       return
     }
     const entry = domain_entries[data.point.series_idx]
-    if (!entry) return
-    const [formula, pts] = entry
-    if (locked_hover_formula && locked_hover_formula !== formula) return
-    set_hover_info(formula, pts, data.event)
+    if (!entry || !pin.allows(entry[0])) return
+    set_hover_info(...entry, data.event)
   }
 
   function handle_click(data: { point: { series_idx: number }; event: MouseEvent }): void {
     const entry = domain_entries[data.point.series_idx]
     if (!entry) return
-    const [formula, pts] = entry
-    if (locked_hover_formula === formula) {
-      clear_hover_lock()
-      return
-    }
-    locked_hover_formula = formula
-    set_hover_info(formula, pts, data.event)
+    pin.toggle(entry[0])
+    if (pin.value) set_hover_info(...entry, data.event)
   }
 
   // === Export ===
@@ -301,17 +290,13 @@
     onkeydown={(event) => {
       // Escape inside a pane input belongs to that input, as in the 3D sibling
       if (is_editable_event_target(event.target)) return
-      if (event.key === `Escape`) clear_hover_lock()
+      if (event.key === `Escape`) pin.unpin()
     }}
-    onpointerdown={(event) => {
-      const target = event.target
-      if (!locked_hover_formula) return
-      const is_background_click =
+    onpointerdown={({ target }) => {
+      const is_background =
         target === wrapper ||
         (target instanceof SVGElement && target.closest(`g[data-series-id]`) === null)
-      if (is_background_click) {
-        clear_hover_lock()
-      }
+      if (is_background) pin.unpin()
     }}
   >
     <ScatterPlot
@@ -341,7 +326,7 @@
     {#if tooltip !== false && hover_info?.view === `2d`}
       <ChemPotTooltip
         {hover_info}
-        pinned={locked_hover_formula === hover_info.formula}
+        pinned={pin.value === hover_info.formula}
         {tooltip}
         bg_color={domain_colors.get(hover_info.formula)}
         constrain_to={{ width: render_width, height: render_height }}

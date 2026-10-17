@@ -9,6 +9,7 @@ import type {
   AxisConfig3D,
   DataSeries3D,
   DisplayConfig3D,
+  InternalPoint3D,
   Scatter3DHandlerEvent,
   Surface3DConfig,
 } from '#lib/plot/core/types.js'
@@ -20,6 +21,8 @@ import {
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
+import { brighten_hex } from '#lib/scene/index.js'
+import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import type { BufferGeometry, Object3D } from 'three/webgpu'
 import {
@@ -383,11 +386,15 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     flushSync()
     render_frame()
     expect(tip_text()).toBe(`2,1,3 true`)
-    // the hover halo is the one mesh drawn without depth testing
+    // the hover halo is the one mesh drawn without depth testing, glowing in the marker's hue
     const halo = find_objects(scene, Mesh).findLast(
       (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
     )
     expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
+    const marker = new Color()
+    instances().getColorAt(1, marker)
+    const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
+    expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
     // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
     // tooltip follows the same logical point to its new values
     state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
@@ -441,56 +448,83 @@ test.each<[string, false | undefined, boolean]>([
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
-test(`ScatterPlot3DScene walks, clicks and clears its markers by keyboard`, () => {
-  const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
-  const state = $state<{ hovered_point: unknown }>({ hovered_point: null })
-  const { exports, unmount_scene } = mount_scene((anchor) =>
-    ScatterPlot3DScene(anchor, {
-      // x=9 falls outside the x range, so the cursor skips it
-      series: [
-        { x: [1, 2], y: [1, 1], z: [1, 1] },
-        { x: [3, 9], y: [1, 1], z: [1, 1] },
-      ],
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
-      gizmo: false,
-      on_point_hover,
-      on_point_click,
-      get hovered_point() {
-        return state.hovered_point as never
-      },
-      set hovered_point(value) {
-        state.hovered_point = value
-      },
-    }),
-  )
-  onTestFinished(unmount_scene)
-  flushSync()
-  const { handle_key } = exports
-  const press = (key: string) => {
-    const point = handle_key(new KeyboardEvent(`keydown`, { key }))
+// (KeyWalk). Enter clicks the cursor's point, or without on_point_click pins its tooltip, which
+// the first Escape then unpins before the next clears the cursor. Keys pick up from the
+// marker the mouse hovers. A touch tap (touch has no hover) is such a click on the point too.
+test.each([
+  [true, [true, false, false]],
+  [false, [true, true, false]],
+])(
+  `ScatterPlot3DScene walks, clicks and clears its markers by keyboard, on_point_click: %s`,
+  (clickable, escapes) => {
+    const [on_point_hover, on_point_click] = [vi.fn(), vi.fn()]
+    const interactivity = vi.spyOn(extras, `interactivity`)
+    onTestFinished(() => interactivity.mockRestore())
+    const state = $state<{ hovered_point: InternalPoint3D | null }>({ hovered_point: null })
+    const { keys, unmount_scene } = mount_scene((anchor) =>
+      ScatterPlot3DScene(anchor, {
+        // x=9 falls outside the x range, so the cursor skips it
+        series: [
+          { x: [1, 2], y: [1, 1], z: [1, 1], label: `A` },
+          { x: [3, 9], y: [1, 1], z: [1, 1] },
+        ],
+        ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+        gizmo: false,
+        on_point_hover,
+        on_point_click: clickable ? on_point_click : undefined,
+        get hovered_point() {
+          return state.hovered_point
+        },
+        set hovered_point(value) {
+          state.hovered_point = value
+        },
+      }),
+    )
+    onTestFinished(unmount_scene)
     flushSync()
-    return point && [point.series_idx, point.point_idx]
-  }
-  // chords, composing and already-handled keys are left alone
-  const arrow_right = (init: KeyboardEventInit) =>
-    new KeyboardEvent(`keydown`, { key: `ArrowRight`, ...init })
-  const handled = arrow_right({ cancelable: true })
-  handled.preventDefault()
-  const chords = [{ ctrlKey: true }, { altKey: true }, { isComposing: true }].map(arrow_right)
-  for (const event of [...chords, handled]) expect(handle_key(event)).toBeUndefined()
-  const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map(press)
-  // oxfmt-ignore
-  expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
-  expect(on_point_hover).toHaveBeenLastCalledWith(
-    expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
-  )
-  expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
-  expect(press(`Enter`)).toEqual([0, 0])
-  expect(on_point_click).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0, x: 1 }))
-  expect([`Escape`, `Escape`, `a`].map(press)).toEqual([null, undefined, undefined])
-  expect(state.hovered_point).toBeNull()
-  expect(on_point_hover).toHaveBeenLastCalledWith(null)
-})
+    const hovered_at = () =>
+      state.hovered_point && [state.hovered_point.series_idx, state.hovered_point.point_idx]
+    const walk = [`ArrowLeft`, `ArrowRight`, `ArrowRight`, `End`, `Home`].map((key) => {
+      keys.press(key)
+      return hovered_at()
+    })
+    // oxfmt-ignore
+    expect(walk).toEqual([[1, 0], [0, 0], [0, 1], [1, 0], [0, 0]])
+    expect(keys.message).toBe(`A point 1: 1, 1, 1`)
+    expect(on_point_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ series_idx: 0, x: 1, z: 1 }),
+    )
+    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+    expect(keys.press(`Enter`)).toBe(true)
+    expect(on_point_click.mock.calls).toEqual(
+      clickable ? [[expect.objectContaining({ series_idx: 0, x: 1 })]] : [],
+    )
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect([`Escape`, `Escape`, `a`].map((key) => keys.press(key))).toEqual(escapes)
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    expect(state.hovered_point).toBeNull()
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
+
+    const { handlers, interactiveObjects } = interactivity.mock.results[0].value as ReturnType<
+      typeof extras.interactivity
+    >
+    const point_events = interactiveObjects
+      .map((object) => handlers.get(object))
+      .find((events) => events?.onpointermissed)
+    // the walk steps on from the marker the mouse hovers
+    point_events?.onpointerenter?.({
+      instanceId: 1,
+      nativeEvent: new PointerEvent(`pointerenter`),
+    })
+    keys.press(`ArrowRight`)
+    expect(hovered_at()).toEqual([1, 0])
+    const tap = new PointerEvent(`click`, { pointerType: `touch` })
+    point_events?.onclick?.({ instanceId: 0, nativeEvent: tap })
+    flushSync()
+    expect(document.querySelector(`.plot-tooltip.pinned`) !== null).toBe(!clickable)
+    expect(on_point_click).toHaveBeenCalledTimes(clickable ? 2 : 0)
+  },
+)
 
 test(`ScatterPlot3DScene tweens marker position, size and colour by point identity`, async () => {
   // Svelte and Threlte read the faked clock; frames only run via render_frame

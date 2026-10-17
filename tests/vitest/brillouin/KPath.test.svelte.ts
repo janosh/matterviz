@@ -1,6 +1,7 @@
 // KPath against the recording Threlte stub (no WebGPU renderer)
 import KPath from '#lib/brillouin/KPath.svelte'
 import type { Vec2, Vec3 } from '#lib/math.js'
+import { TouchTaps } from '#lib/scene/interactivity.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import {
   Color,
@@ -43,6 +44,7 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
     highlighted_k_points: [k_path_points[2]],
     k_markers: [{ position: [0.5, 0.5, 0], color: `#e74c3c` }],
     on_kpath_hover,
+    touch_hover: new TouchTaps().wrap,
     size: 1,
   })
   // the scene props pass on their own, as FermiSurfaceScene and BrillouinZoneScene do
