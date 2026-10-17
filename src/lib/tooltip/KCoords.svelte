@@ -14,7 +14,7 @@
 
 <div class="k-coord-row">
   <span class="k-coord-label"><span class="vec">k</span>:</span>
-  <span>{format_vec3(cartesian)} <small>Å⁻¹</small></span>
+  <span>{format_vec3(cartesian)} <small>Å<sup>−1</sup></small></span>
 </div>
 {#if fractional}
   <div class="k-coord-row">
@@ -32,6 +32,10 @@
     opacity: 0.8;
     min-width: 50px;
   }
+  /* a <sup>, not the ⁻¹ glyphs: fonts place the superscript minus lower than the 1 */
+  sup {
+    line-height: 0;
+  }
   .vec {
     position: relative;
     font-style: italic;
@@ -40,7 +44,7 @@
     content: '→';
     position: absolute;
     left: 50%;
-    top: -0.85em;
+    top: -0.62em; /* in the arrow's 0.6em: just clear of the k's ascender */
     transform: translateX(-50%);
     font-size: 0.6em;
     font-style: normal;

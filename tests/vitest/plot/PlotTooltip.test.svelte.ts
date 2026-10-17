@@ -259,17 +259,18 @@ describe(`PlotTooltip`, () => {
 
   // UA and page margins would pad a dense chip; the reset has zero specificity, so a tooltip
   // snippet's own (here inline) styles still win
-  test(`resets h4, p, small and .key inside the chip`, () => {
+  test(`resets h4, p, small, .key and sup inside the chip`, () => {
     const tooltip = mount_tooltip({
       children: createRawSnippet(() => ({
         render: () =>
-          `<div><h4>Fe</h4><p><span class="key">E</span> 1 <small>eV</small></p><p style="margin: 5px">x</p></div>`,
+          `<div><h4>Fe</h4><p><span class="key">E</span> 1 <small>Å<sup>−3</sup></small></p><p style="margin: 5px">x</p></div>`,
       })),
     })
     const style = (selector: string) => getComputedStyle(query(tooltip, selector))
     expect([style(`h4`).marginTop, style(`h4`).marginBottom]).toEqual([`0px`, `0px`])
     expect(style(`p`).marginTop).toBe(`1px`)
     expect([style(`small`).opacity, style(`.key`).opacity]).toEqual([`0.75`, `0.75`])
+    expect(style(`sup`).lineHeight).toBe(`0`) // a unit's superscript keeps the row dense
     expect(style(`p[style]`).marginTop).toBe(`5px`)
   })
 

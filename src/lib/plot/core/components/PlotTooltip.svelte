@@ -174,6 +174,10 @@
   :where(.plot-tooltip) :global(:where(p)) {
     margin: 1px 0 0;
   }
+  /* superscripts (units like Å<sup>−3</sup>) must not open up a dense row */
+  :where(.plot-tooltip) :global(:where(sup)) {
+    line-height: 0;
+  }
   :where(.plot-tooltip) :global(:where(small, .key)) {
     opacity: 0.75;
   }
