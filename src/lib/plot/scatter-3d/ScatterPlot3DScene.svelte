@@ -97,7 +97,7 @@
     pan_speed = 2,
     ambient_light = 0.6,
     directional_light = 0.8,
-    sphere_segments = 16,
+    sphere_segments,
     point_tween = {},
     gizmo = true,
     hovered_point = $bindable(null),
@@ -127,7 +127,7 @@
     color_scale_fn?: (value: number) => string
     size_scale?: SizeScaleConfig
     camera_position?: Vec3
-    sphere_segments?: number
+    sphere_segments?: number // marker sphere detail; unset: smooth, coarser past 5000 points
     // Marker position, size and colour glide to new data or encodings; `{ duration: 0 }` snaps
     point_tween?: InstanceTween
     hovered_point?: InternalPoint3D<Metadata> | null
@@ -349,8 +349,12 @@
   const halo_color = $derived(brighten_hex(hover_color)) // the marker's hue, like every hover
 
   // One sphere mesh for every point: instance transforms carry each radius
+  // 32 segments keep marker silhouettes round; past 5000 points 16 keep the triangle count down
+  const marker_segments = $derived(
+    sphere_segments ?? (point_instances.length > 5000 ? 16 : 32),
+  )
   const point_geometry = $derived(
-    new THREE.SphereGeometry(1, sphere_segments, sphere_segments),
+    new THREE.SphereGeometry(1, marker_segments, marker_segments),
   )
   const projection_geometry = new THREE.SphereGeometry(1, 8, 8)
   const point_material = new THREE.MeshStandardMaterial()
@@ -809,8 +813,13 @@
   {@const hover_point = shown_point}
   {#if hover_drawn}
     {@const halo_radius = hover_halo_radius(hover_drawn.radius)}
-    <T.Mesh position={hover_drawn.position} scale={halo_radius}>
-      <T.SphereGeometry args={[1, 16, 16]} />
+    <!-- the markers' own sphere, so the halo's outline stays concentric with the marker's -->
+    <T.Mesh
+      position={hover_drawn.position}
+      scale={halo_radius}
+      geometry={point_geometry}
+      dispose={false}
+    >
       <T.MeshStandardMaterial
         color={halo_color}
         transparent

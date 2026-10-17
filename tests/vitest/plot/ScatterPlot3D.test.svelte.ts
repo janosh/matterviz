@@ -24,7 +24,7 @@ import { mount_scene } from '../scene/mount'
 import { brighten_hex } from '#lib/scene/index.js'
 import * as extras from '@threlte/extras'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import type { BufferGeometry, Object3D } from 'three/webgpu'
+import type { BufferGeometry, Object3D, SphereGeometry } from 'three/webgpu'
 import {
   ClippingGroup,
   EdgesGeometry,
@@ -396,6 +396,15 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     instances().getColorAt(1, marker)
     const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
     expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
+    // a hair outside the marker on the markers' own smooth sphere, so the outlines are concentric
+    const marker_matrix = new Matrix4()
+    instances().getMatrixAt(1, marker_matrix)
+    const marker_radius = new Vector3().setFromMatrixScale(marker_matrix).x
+    expect(halo?.scale.x).toBeCloseTo(1.04 * marker_radius, 12)
+    expect(halo?.geometry).toBe(instances().geometry)
+    const { widthSegments, heightSegments } = (instances().geometry as SphereGeometry)
+      .parameters
+    expect([widthSegments, heightSegments]).toEqual([32, 32])
     // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
     // tooltip follows the same logical point to its new values
     state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]

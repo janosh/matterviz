@@ -77,7 +77,7 @@
     pan_speed = 2,
     ambient_light = 0.6,
     directional_light = 0.8,
-    sphere_segments = 16,
+    sphere_segments,
     point_tween,
     gizmo = true,
     // Controls

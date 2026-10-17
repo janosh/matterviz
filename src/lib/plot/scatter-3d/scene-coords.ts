@@ -43,7 +43,7 @@ export function create_to_threejs(
 }
 
 // The hover halo is a translucent shell just outside the marker; tooltips keep clear of it
-export const hover_halo_radius = (marker_radius: number): number => marker_radius * 1.15
+export const hover_halo_radius = (marker_radius: number): number => marker_radius * 1.04
 
 // A surface's vertices in data coordinates, exactly as Surface3D draws them: grid surfaces
 // sample z_fn over their own x/y ranges (else the plot's), parametric ones their u/v ranges,
