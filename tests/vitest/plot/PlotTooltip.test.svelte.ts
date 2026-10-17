@@ -21,6 +21,7 @@ import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   doc_query,
   pin_cycle,
+  pin_spot,
   fire,
   keydown,
   mount_sized,
@@ -151,16 +152,21 @@ describe(`PlotTooltip`, () => {
     onTestFinished(cleanup)
     flushSync()
     const enter = (mark: Element) => mark.dispatchEvent(new PointerEvent(`pointerenter`))
-    const text = await pin_cycle((step, mark_idx) => {
-      const mark = mark_idx === null ? document.body : marks[mark_idx]
-      if (step === `escape`) document.dispatchEvent(keydown(`Escape`))
-      else if (step === `leave`) mark.dispatchEvent(new PointerEvent(`pointerleave`))
-      else if (mark !== document.body) enter(mark)
-      if (step === `click`) {
-        mark.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
-        mark.dispatchEvent(mouse(`click`))
-      }
-    })
+    const text = await pin_cycle(
+      (step, mark_idx) => {
+        const mark = mark_idx === null ? document.body : marks[mark_idx]
+        if (step === `escape`) document.dispatchEvent(keydown(`Escape`))
+        else if (step === `leave`) mark.dispatchEvent(new PointerEvent(`pointerleave`))
+        else if (step === `nudge`)
+          mark.dispatchEvent(new PointerEvent(`pointermove`, pin_spot(mark_idx, step)))
+        else if (mark !== document.body) enter(mark)
+        if (step === `click`) {
+          mark.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+          mark.dispatchEvent(mouse(`click`))
+        }
+      },
+      { lit: (idx) => marks[idx].hasAttribute(`data-pinned`) },
+    ) // CSS adds :hover
     expect(text).toBe(`tip 0`)
     enter(marks[2])
     marks[2].click()

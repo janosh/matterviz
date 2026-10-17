@@ -138,14 +138,25 @@ export const expect_shortcuts_in_pane = (
 // Runs one component's tooltip pin cycle (see TooltipPin), driven through its own events, and
 // returns the pinned tooltip's text for the caller to check. `act`
 // performs a step on mark 0 or 1, or on empty space (null): `hover` moves the pointer onto
-// it, `leave` off it, `click` hovers then clicks it, `escape` presses Escape where the
-// component's key handling listens and, with `keyboard`, `enter` focuses it and presses Enter.
-export type PinStep = `hover` | `leave` | `click` | `escape` | `enter`
+// it, `nudge` on to another spot over it, `leave` off it, `click` hovers then clicks it,
+// `escape` presses Escape where the component's key handling listens and, with `keyboard`,
+// `enter` focuses it and presses Enter. Each mark is hovered at its own spot, so a pinned
+// tooltip that followed the pointer would move. `lit` reads whether a mark wears its hover
+// look, which the pinned mark keeps until unpinned. `text` reads the tooltip's content, minus
+// any pinned-only hint.
+export type PinStep = `hover` | `nudge` | `leave` | `click` | `escape` | `enter`
 export async function pin_cycle(
   act: (step: PinStep, mark_idx: 0 | 1 | null) => unknown,
   {
     keyboard = false,
     tooltip = () => document.querySelector<HTMLElement>(`.plot-tooltip`),
+    lit,
+    text: read_text = (node) => node.textContent,
+  }: {
+    keyboard?: boolean
+    tooltip?: () => HTMLElement | null
+    lit?: (mark_idx: 0 | 1) => boolean
+    text?: (tooltip: HTMLElement) => string | null
   } = {},
 ): Promise<string | null | undefined> {
   const run = async (step: PinStep, mark_idx: 0 | 1 | null = null) => {
@@ -156,18 +167,25 @@ export async function pin_cycle(
   const pinned = () => tooltip()?.classList.contains(`pinned`) ?? false
   const state = () => {
     const node = tooltip()
-    return [pinned(), node?.style.pointerEvents, node?.textContent, node?.getAttribute(`role`)]
+    const content = node && read_text(node)
+    return [pinned(), node?.style.pointerEvents, content, node?.getAttribute(`role`)] as const
   }
   await run(`hover`, 0)
-  const [text, role] = [tooltip()?.textContent, tooltip()?.getAttribute(`role`)]
+  const [, , text, role] = state()
   expect(state()).toEqual([false, `none`, text, role])
   await run(`click`, 0) // pinned: takes pointer events so its text can be selected
   expect(state()).toEqual([true, `auto`, text, role])
   expect(getComputedStyle(tooltip() ?? document.body).userSelect).toBe(`text`)
-  await run(`leave`, 0) // outlives the pointer, other hovers don't replace it
+  const anchor = () => [tooltip()?.style.left, tooltip()?.style.top]
+  const pinned_at = anchor()
+  await run(`nudge`, 0) // holds still while the pointer moves on over its mark
+  expect(anchor()).toEqual(pinned_at)
+  await run(`leave`, 0) // outlives the pointer, other hovers don't replace or move it
   await run(`hover`, 1)
-  expect(state()).toEqual([true, `auto`, text, role])
-  await run(`leave`, 1)
+  expect([...state(), ...anchor()]).toEqual([true, `auto`, text, role, ...pinned_at])
+  if (lit) expect(lit(0)).toBe(true)
+  await run(`leave`, 1) // the pinned mark keeps its hover look, the one left behind drops it
+  if (lit) expect([lit(0), lit(1)]).toEqual([true, false])
   await run(`click`, 0) // the pinned mark again unpins
   expect(pinned()).toBe(false)
   for (const step of [`escape`, `click`] as const) {
@@ -178,6 +196,7 @@ export async function pin_cycle(
     expect(pinned(), step).toBe(false)
   }
   expect(tooltip()).toBeNull() // the empty-space click left the marks
+  if (lit) expect([lit(0), lit(1)]).toEqual([false, false]) // unpinned, nothing hovered
   if (keyboard) {
     await run(`enter`, 1) // Enter on a focused mark pins it, like a click
     expect(pinned()).toBe(true)
@@ -187,19 +206,26 @@ export async function pin_cycle(
   return text
 }
 
+// pin_cycle's pointer spot over mark 0 or 1 (a `nudge` a few px on), in client pixels
+export const pin_spot = (mark_idx: 0 | 1 | null, step: PinStep) => {
+  const shift = 30 * (mark_idx ?? 0) + (step === `nudge` ? 7 : 0)
+  return { clientX: 20 + shift, clientY: 20 + shift }
+}
+
 // pin_cycle driver for SVG marks that take pointer hovers, focus and keys, inside an
 // svg that takes clicks (a click on it is one on empty space)
 export const svg_mark_driver =
   (marks: Element[], svg: Element, { hover = `mousemove`, leave = `mouseleave` } = {}) =>
   (step: PinStep, mark_idx: 0 | 1 | null): void => {
     const mark = mark_idx === null ? svg : marks[mark_idx]
+    const at = pin_spot(mark_idx, step)
     if (step === `escape`) marks[0].dispatchEvent(keydown(`Escape`))
     else if (step === `leave`) mark.dispatchEvent(mouse(leave))
     else if (step === `enter`) {
       mark.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
       mark.dispatchEvent(keydown(`Enter`))
-    } else if (mark !== svg) mark.dispatchEvent(mouse(hover))
-    if (step === `click`) mark.dispatchEvent(mouse(`click`))
+    } else if (mark !== svg) mark.dispatchEvent(mouse(hover, at))
+    if (step === `click`) mark.dispatchEvent(mouse(`click`, at))
   }
 
 // Wait for a button to render (e.g. a controls-pane toggle whose content mounts on first

@@ -1,7 +1,7 @@
 <script lang="ts">
   // Hover tooltip shared by ChemPotDiagram2D and ChemPotDiagram3D.
-  // Placed with PlotTooltip inside the diagram container; `hover_info.pointer` is already
-  // container-relative (see container_pointer in controls-state.svelte.ts).
+  // Placed with PlotTooltip inside the diagram container at `pointer`, container-relative (see
+  // container_pointer in controls-state.svelte.ts): hover_info's, held still while pinned.
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { format_num } from '#lib/labels.js'
   import { PlotTooltip } from '#lib/plot/index.js'
@@ -10,12 +10,14 @@
 
   let {
     hover_info,
+    pointer,
     pinned,
     tooltip,
     constrain_to,
     bg_color,
   }: {
     hover_info: ChemPotHoverInfo
+    pointer: ChemPotHoverInfo[`pointer`]
     pinned: boolean
     tooltip?: ChemPotTooltipProp // a snippet replaces the content below
     // container size the tooltip is flipped/clamped inside
@@ -64,8 +66,8 @@
 </script>
 
 <PlotTooltip
-  x={hover_info.pointer?.x ?? 4}
-  y={hover_info.pointer?.y ?? 4}
+  x={pointer?.x ?? 4}
+  y={pointer?.y ?? 4}
   {constrain_to}
   fallback_size={{ width: 200, height: 100 }}
   {bg_color}

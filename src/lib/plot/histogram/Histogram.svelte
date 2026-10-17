@@ -467,7 +467,7 @@
     const bin = hist?.bins[key.bin_idx]
     return hist && bin ? bar_data(hist, bin) : null
   }
-  const hover_info = $derived(bin_info(pin.value ?? hover_key))
+  const hover_info = $derived(bin_info(pin.shown(hover_key)))
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
     (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
@@ -535,7 +535,7 @@
     clear_hover()
   }}
   on_mouse_click={() => pin.toggle(hover_key)}
-  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
+  unpin={pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -586,7 +586,9 @@
                 value_px > baseline,
               )}
               fill={hist_patterns[hist.series_idx]?.url ?? hist.color}
-              opacity={resolved_bar.opacity}
+              opacity={pin.lit({ series_idx: hist.series_idx, bin_idx }, hover_key)
+                ? 1
+                : resolved_bar.opacity}
               stroke={resolved_bar.stroke_color}
               stroke-opacity={resolved_bar.stroke_opacity}
               stroke-width={resolved_bar.stroke_width}
@@ -699,8 +701,5 @@
 <style>
   .histogram-series path {
     transition: opacity 0.2s ease;
-  }
-  .histogram-series path:hover {
-    opacity: 1 !important;
   }
 </style>

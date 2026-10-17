@@ -28,6 +28,7 @@
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { on } from 'svelte/events'
+  import { viewer_keys } from '#lib/shortcuts.js'
 
   // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
   // mapped onto the frame's own variables so this stylesheet isn't duplicated per chart
@@ -77,6 +78,9 @@
     // true to consume the key. Canvas-rendered marks have no focusable DOM of their
     // own, so this is the only keyboard route into them.
     on_key_down?: (event: KeyboardEvent) => boolean
+    // Unpins the chart's pinned tooltip (see TooltipPin), false when none was. Escape calls it
+    // first, from focus inside the chart or the page while the pointer is over it.
+    unpin?: () => boolean
     // Announced to screen readers via a polite live region. Charts whose marks aren't
     // individually focusable use it to report where a keyboard cursor landed.
     live_message?: string
@@ -119,6 +123,7 @@
     on_mouse_click,
     idle_cursor = `crosshair`,
     on_key_down,
+    unpin,
     live_message = ``,
     empty = false,
     header_controls,
@@ -199,6 +204,7 @@
   {...rest}
   class={[plot_class, `plot-frame`, rest.class, { fullscreen }]}
   style={`${css_vars} ${rest.style ?? ``}`}
+  {@attach viewer_keys(() => ({ Escape: () => unpin?.() ?? false }))}
 >
   {#if measured}
     <ChartHeaderControls
@@ -231,7 +237,10 @@
       onfocusout={() => pan_zoom.set_focused(false)}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
-      onkeydown={(event) => on_key_down?.(event) || pan_zoom.on_key_down(event)}
+      onkeydown={(event) =>
+        (event.key === `Escape` && unpin?.()) ||
+        on_key_down?.(event) ||
+        pan_zoom.on_key_down(event)}
       onmouseenter={on_mouse_enter}
       onmouseleave={on_mouse_leave}
       onmousemove={on_mouse_move}

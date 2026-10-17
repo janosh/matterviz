@@ -325,7 +325,9 @@ describe(`ScatterPlot`, () => {
       else if (mark_idx !== null) hover_on(mark_idx + 1)
       if (step === `click`) svg.dispatchEvent(mouse(`click`))
     }
-    expect(await pin_cycle(act)).toMatch(/x: 1\s*y: 1/)
+    const lit = (idx: 0 | 1) =>
+      plot.querySelectorAll(`.marker`)[idx + 1].classList.contains(`is-hovered`)
+    expect(await pin_cycle(act, { lit })).toMatch(/x: 1\s*y: 1/)
     act(`click`, 1)
     act(`leave`, 1)
     state.series = [{ x: [0, 1, 7], y: [0, 1, 8], id: `a` }]

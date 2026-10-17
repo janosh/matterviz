@@ -122,7 +122,8 @@ describe(`TernaryPlot`, () => {
   test(`a point click or Enter pins its tooltip; it again, empty space or Escape unpin`, async () => {
     const plot = await mount_ternary({ series })
     const driver = svg_mark_driver(markers(plot), plot_svg(plot))
-    expect(await pin_cycle(driver, { keyboard: true })).toMatch(/Oxides\s*A: 100 %/)
+    const lit = (idx: 0 | 1) => markers(plot)[idx].querySelector(`.marker.is-hovered`) !== null
+    expect(await pin_cycle(driver, { keyboard: true, lit })).toMatch(/Oxides\s*A: 100 %/)
   })
 
   test(`hover shows the fractions tooltip and fires the callback once per point`, async () => {

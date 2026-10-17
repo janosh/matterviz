@@ -16,7 +16,16 @@ import * as THREE from 'three/webgpu'
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { mount_scene } from '../scene/mount'
-import { bind_props, doc_query, expect_shortcuts_in_pane, query, set_input } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_shortcuts_in_pane,
+  keydown,
+  pin_cycle,
+  pin_spot,
+  query,
+  set_input,
+} from '../setup'
 import { load_json } from '../test-fixtures'
 
 // happy-dom has no WebGPU: the scene is swapped for a recording stub (its props are still
@@ -255,6 +264,44 @@ test(`keyboard walks the domains and Enter pins`, async () => {
   // pinned, the tooltip outlives the cursor the walk's Escape clears
   expect([`Enter`, `Escape`].map((key) => keys.press(key))).toEqual([true, true])
   expect(bound.hover_info?.formula).toBe(first.formula)
+})
+
+// Domains pin through the scene's hover and press callbacks, the wrapper (a press on it is one
+// on empty space) and its Escape. The pinned tooltip sits where the pointer pinned it, not
+// sliding along while the pointer moves on over its domain.
+test(`a domain press pins its tooltip; it again, empty space or Escape unpin`, async () => {
+  const get_scene = await mount_diagram<{
+    hover_meshes: unknown[]
+    on_domain_hover: (mesh: unknown, event: unknown) => void
+    on_domain_press: (mesh: unknown, event: unknown) => void
+    on_domain_leave: (mesh: unknown) => void
+  }>({ entries, config: { default_min_limit: -25 } })
+  const wrapper = doc_query(`.chempot-diagram-3d`)
+  const text = await pin_cycle(
+    (step, mark_idx) => {
+      const scene = get_scene()
+      const domain = scene.hover_meshes[mark_idx ?? 0]
+      const event = {
+        nativeEvent: new PointerEvent(`pointermove`, pin_spot(mark_idx, step)),
+        stopPropagation: () => undefined,
+      }
+      if (step === `escape`) wrapper.dispatchEvent(keydown(`Escape`))
+      else if (step === `leave`) scene.on_domain_leave(domain)
+      else if (mark_idx !== null) scene.on_domain_hover(domain, event)
+      if (step !== `click`) return
+      if (mark_idx === null)
+        wrapper.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+      else scene.on_domain_press(domain, event)
+    },
+    {
+      text: ({ children }) =>
+        [...children]
+          .filter((child) => child.tagName !== `SMALL`)
+          .map((child) => child.textContent)
+          .join(``),
+    },
+  ) // the pin hint aside
+  expect(text).toMatch(/μ \(eV\)/)
 })
 
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)
@@ -532,7 +579,12 @@ test.each([
     }
     mounted = mount(ChemPotTooltip, {
       target: document.body,
-      props: { hover_info, pinned: false, constrain_to: { width: 400, height: 400 } },
+      props: {
+        hover_info,
+        pointer: undefined,
+        pinned: false,
+        constrain_to: { width: 400, height: 400 },
+      },
     })
     const tooltip = query(document.body, `.chempot-tooltip`)
     const lines = [...tooltip.querySelectorAll(`p`)].map((line) =>

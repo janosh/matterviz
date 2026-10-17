@@ -955,19 +955,19 @@
       ),
     )
   })
-  // Plus the hovered point, for its hover effects. tooltip_point may come from a previous
-  // filtered derivation, so it is matched by logical key rather than identity.
+  // Plus the hovered and pinned points, for their hover effects. They may come from a previous
+  // filtered derivation, so they are matched by logical key rather than identity.
   const svg_overlay_points_by_series = $derived.by(() => {
-    const hovered_pt = tooltip_point
+    const lit_points = [tooltip_point, pin.is(tooltip_point) ? null : pin.value]
     return static_overlay_points_by_series.map((points, series_pos) => {
-      if (
-        hovered_pt == null ||
-        hovered_pt.point_label?.text != null ||
-        hovered_pt.series_idx !== filtered_series[series_pos].orig_series_idx ||
-        points.some((point) => same_logical_point(point, hovered_pt))
+      const extra = lit_points.filter(
+        (lit_pt): lit_pt is InternalPoint<Metadata> =>
+          lit_pt != null &&
+          lit_pt.point_label?.text == null &&
+          lit_pt.series_idx === filtered_series[series_pos].orig_series_idx &&
+          !points.some((point) => same_logical_point(point, lit_pt)),
       )
-        return points
-      return [...points, hovered_pt]
+      return extra.length ? [...points, ...extra] : points
     })
   })
 
@@ -1109,7 +1109,7 @@
       )
   })
   const active_legend_idx = $derived.by(() => {
-    const idx = tooltip_point?.series_idx ?? frame.hovered_series_idx
+    const idx = pin.shown(tooltip_point)?.series_idx ?? frame.hovered_series_idx
     if (idx == null || !series[idx]) return null
     return (
       legend_data.find((item) =>
@@ -1428,11 +1428,14 @@
   // A click pins the hovered point's tooltip (see TooltipPin) unless on_plot_click or
   // clickable points take the click
   const pin_free = $derived(tooltip !== false && !on_plot_click && !points_interactive)
-  const pin = new TooltipPin<InternalPoint<Metadata>>({
+  const pin = new TooltipPin<
+    InternalPoint<Metadata>,
+    Pick<InternalPoint<Metadata>, `series_idx` | `point_idx`>
+  >({
     key: ({ series_idx, point_idx }) => `${series_idx}:${point_idx}`,
     enabled: () => pin_free,
   })
-  const tip_point = $derived(pin.value ?? (hovered ? tooltip_point : null))
+  const tip_point = $derived(pin.shown(hovered ? tooltip_point : null))
   let handler_props = $derived(tip_point ? construct_handler_props(tip_point) : null)
   const canvas_points_clickable = $derived(use_canvas_markers && points_interactive)
 
@@ -1556,7 +1559,6 @@
 
   // Runs before pan/zoom's own key handling, which claims Enter/Space for reset
   function handle_plot_key_down(event: KeyboardEvent): boolean {
-    if (event.key === `Escape` && pin.unpin()) return true
     if (!use_canvas_markers || event.metaKey || event.ctrlKey || event.altKey) return false
     if (event.key === `Escape` && kbd_cursor != null) {
       kbd_cursor = null
@@ -1676,6 +1678,7 @@
     : undefined}
   on_mouse_click={handle_plot_click}
   on_key_down={handle_plot_key_down}
+  unpin={pin.unpin}
   {live_message}
   on_mouse_leave={() => {
     end_queued_mouse_move(false)
@@ -1855,7 +1858,7 @@
                 x={center_x - offset.x}
                 y={center_y - offset.y}
                 is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
-                is_hovered={same_logical_point(point, tooltip_point)}
+                is_hovered={pin.lit(point, tooltip_point)}
                 is_selected={same_logical_point(point, selected_point) ||
                   selected_keys.has(roving_key(point.series_idx, point.point_idx))}
                 leader_line_threshold={actual_label_config.leader_line_threshold}

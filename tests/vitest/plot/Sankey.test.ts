@@ -152,7 +152,11 @@ describe(`Sankey`, () => {
     const plot = await mount_sized_sankey({ data })
     const nodes = [...plot.querySelectorAll(`.nodes rect`)]
     const driver = svg_mark_driver(nodes, plot_svg(plot))
-    expect(await pin_cycle(driver)).toBe(`A: 8`)
+    // a hover look keeps the target's node opaque and dims the unlinked rest (B beside A)
+    const opacity = (node: Element) => node.closest<SVGElement>(`.node`)?.style.opacity
+    const lit = (idx: 0 | 1) =>
+      opacity(nodes[idx]) === `1` && nodes.some((node) => opacity(node) !== `1`)
+    expect(await pin_cycle(driver, { lit })).toBe(`A: 8`)
   })
 
   test(`hovering a node then a link swaps the tooltip and fires each callback once`, async () => {

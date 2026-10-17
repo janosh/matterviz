@@ -282,19 +282,15 @@
   clear_stale_hover(() => hover_key && !hover_info, clear_hover)
   // The tooltip: the hovered point where it was hovered, unless a click pinned one (see
   // TooltipPin) when on_point_click leaves the click free
-  type Tip = PointKey & { pos: { x: number; y: number }; at_pointer: boolean }
-  const pin = new TooltipPin<Tip>({
+  const pin = new TooltipPin<PointKey>({
     key: ({ series_idx, point_idx }) => `${series_idx}:${point_idx}`,
     enabled: () => tooltip !== false && !on_point_click,
   })
-  const hover_tip = $derived(
-    hover_key && { ...hover_key, pos: hover_pos, at_pointer: hover_at_pointer },
-  )
-  const tip = $derived(pin.value ?? hover_tip)
+  const tip_anchor = pin.anchored(() => ({ ...hover_pos, at_pointer: hover_at_pointer }))
+  const pinned_idx = $derived(pin.value ? rendered.findIndex(pin.is) : -1)
   const tip_info = $derived.by(() => {
     if (!pin.value) return hover_info
-    const point = rendered.find((candidate) => same_point(pin.value, candidate))
-    return point ? point_props(point) : null
+    return pinned_idx < 0 ? null : point_props(rendered[pinned_idx])
   })
   clear_stale_hover(() => pin.value && !tip_info, pin.unpin)
   const accessible_label = (point: PlacedPoint): string =>
@@ -349,17 +345,21 @@
     },
   )
   // [index into `rendered`, point] per SVG marker: all, or in canvas mode the highlighted ones
-  // plus the hovered one. Derived apart from the hover so pointer moves don't rescan points.
+  // plus the hovered and pinned ones. Derived apart from the hover so pointer moves don't
+  // rescan points.
   const static_svg_points = $derived(
     canvas_layer
       ? [...rendered.entries()].filter(([, point]) => needs_svg(point))
       : [...rendered.entries()],
   )
-  const svg_points = $derived(
-    canvas_layer && hover_idx >= 0 && !needs_svg(rendered[hover_idx])
-      ? [...static_svg_points, [hover_idx, rendered[hover_idx]] as [number, PlacedPoint]]
-      : static_svg_points,
-  )
+  const svg_points = $derived.by(() => {
+    if (!canvas_layer) return static_svg_points
+    const lit_idxs = new Set([hover_idx, pinned_idx])
+    const extra = [...lit_idxs]
+      .filter((idx) => idx >= 0 && !needs_svg(rendered[idx]))
+      .map((idx): [number, PlacedPoint] => [idx, rendered[idx]])
+    return extra.length ? [...static_svg_points, ...extra] : static_svg_points
+  })
 
   const marker_canvas = create_marker_canvas(() => ({
     markers: canvas_layer?.markers ?? [],
@@ -400,7 +400,7 @@
 
   function handle_click(event: MouseEvent | KeyboardEvent, point = point_from_event(event)) {
     if (point) on_point_click?.({ ...point_props(point), event })
-    pin.toggle(point && hover_tip)
+    pin.toggle(point && hover_key)
   }
 
   const roving = create_roving_focus({ container: () => svg_element, items: () => svg_points })
@@ -619,7 +619,7 @@
                 ...marker_style(point),
                 cursor: on_point_click ? `pointer` : undefined,
               }}
-              is_hovered={is_hovered(point)}
+              is_hovered={pin.lit(point, hover_key)}
               is_dimmed={is_dimmed(point.series_idx)}
               hit_padding={HIT_PADDING}
               data-ternary-idx={flat_idx}
@@ -633,12 +633,12 @@
       </g>
     </svg>
 
-    {#if tip && tip_info && tooltip !== false}
+    {#if tip_info && tooltip !== false}
+      {@const { at_pointer, ...pos } = tip_anchor.current}
       <PlotTooltip
-        x={tip.pos.x}
-        y={tip.pos.y}
+        {...pos}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={tip.at_pointer}
+        avoid_cursor={at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 60 }}
         bg_color={tip_info.color}

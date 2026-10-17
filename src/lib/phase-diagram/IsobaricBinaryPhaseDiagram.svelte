@@ -290,7 +290,9 @@
 
   let hover_info = $state<PhaseHoverInfo | null>(null)
   // A click pins the hovered snapshot; its region names the mark, so a click in it unpins
-  const pin = new TooltipPin<PhaseHoverInfo>({ key: ({ region }) => region.id })
+  const pin = new TooltipPin<PhaseHoverInfo, Pick<PhaseHoverInfo, `region`>>({
+    key: ({ region }) => region.id,
+  })
 
   function clear_hover() {
     hover_info = null
@@ -310,7 +312,7 @@
 
   const handle_click = () => pin.toggle(hover_info)
 
-  const effective_hover_info = $derived(pin.value ?? hover_info)
+  const effective_hover_info = $derived(pin.shown(hover_info))
   // The tooltip wears the hovered region's hue (PlotTooltip flattens a translucent one, so
   // labels never show through); gradient regions keep the neutral card
   const tooltip_region_color = $derived.by(() => {
@@ -403,8 +405,8 @@
   }
 
   function handle_pointer_leave(event: PointerEvent) {
-    // Don't clear on touch lift (allows reading tooltip) or when pinned
-    if (event.pointerType === `touch` || pin.value) return
+    // Don't clear on touch lift (allows reading tooltip); a pinned one outlives the hover
+    if (event.pointerType === `touch`) return
     clear_hover()
   }
 
@@ -590,7 +592,7 @@
               ? `url(#${gradient_uid}-${region.id})`
               : region.color || get_phase_color(region.name)}
             stroke="none"
-            class:hovered={hovered_region?.id === region.id}
+            class:hovered={pin.lit({ region }, hover_info)}
           />
         {/each}
       </g>

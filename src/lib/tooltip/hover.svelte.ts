@@ -11,7 +11,8 @@ const pin = new TooltipPin<Element>()
 // `bg_color` gets the mark's fill for the tooltip (nullish: PlotTooltip's neutral chip); read
 // in a child effect so a re-derived mark updates the open tooltip rather than remounting it.
 // A click pins the tooltip (see TooltipPin) unless the mark is a control whose click is taken;
-// a click elsewhere or Escape unpins it.
+// a click elsewhere or Escape unpins it. The pinned mark carries `data-pinned`, so CSS can keep
+// its hover look with `:is(:hover, [data-pinned])`.
 export const hover_tooltip =
   (
     children: Snippet,
@@ -63,7 +64,8 @@ export const hover_tooltip =
     }
     const sync = () => (hovered || focused || props.pinned ? show() : hide())
     $effect(() => {
-      props.pinned = pin.value === node
+      props.pinned = pin.is(node)
+      node.toggleAttribute(`data-pinned`, props.pinned)
       untrack(sync)
     })
     const set_anchor = (x: number, y: number) => {
@@ -100,7 +102,7 @@ export const hover_tooltip =
     if (!node.matches(`button, a[href]`)) off.push(on(node, `click`, () => pin.toggle(node)))
     return () => {
       off.forEach((remove) => remove())
-      if (pin.value === node) pin.unpin()
+      if (pin.is(node)) pin.unpin()
       hide()
     }
   }

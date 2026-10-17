@@ -1064,6 +1064,7 @@
   })
 
   const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
+  const tooltip_pointer = pin.anchored(() => hover_info?.pointer)
   const key_walk = key_walk_root() // the domains, by keyboard (see KeyWalk)
 
   function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
@@ -1378,6 +1379,7 @@
   {#if tooltip !== false && hover_info?.view === `3d`}
     <ChemPotTooltip
       {hover_info}
+      pointer={tooltip_pointer.current}
       pinned={pin.value === hover_info.formula}
       {tooltip}
       bg_color={drawn_color(hover_info.formula)}

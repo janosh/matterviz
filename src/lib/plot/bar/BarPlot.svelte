@@ -513,7 +513,7 @@
   // click pins the hovered mark's tooltip unless on_bar_click/on_point_click takes the click.
   type MarkKey = { series_idx: number; bar_idx: number; color: string; line?: boolean }
   let hover_key = $state<MarkKey | null>(null)
-  const pin = new TooltipPin<MarkKey>({
+  const pin = new TooltipPin<MarkKey, Omit<MarkKey, `color`>>({
     key: (mark) => `${mark.series_idx}:${mark.bar_idx}:${mark.line}`,
     enabled: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
   })
@@ -525,7 +525,7 @@
       ? get_bar_data(series_idx, bar_idx, color)
       : null
   }
-  const hover_info = $derived(mark_info(pin.value ?? hover_key))
+  const hover_info = $derived(mark_info(pin.shown(hover_key)))
 
   function get_bar_data(
     series_idx: number,
@@ -664,7 +664,7 @@
     clear_hover()
   }}
   on_mouse_click={() => pin.toggle(hover_key)}
-  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
+  unpin={pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -832,13 +832,13 @@
                       point.size_value != null
                         ? size_scale_fn(point.size_value)
                         : (sty?.radius ?? 4)}
-                    {@const hov =
-                      hover_info?.series_idx === series_idx &&
-                      hover_info?.bar_idx === point.idx}
                     <ScatterPoint
                       x={point.x}
                       y={point.y}
-                      is_hovered={hov}
+                      is_hovered={pin.lit(
+                        { series_idx, bar_idx: point.idx, line: true },
+                        hover_key,
+                      )}
                       style={{
                         ...sty,
                         radius: rad,

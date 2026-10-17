@@ -142,9 +142,13 @@
   let active_symbols = $derived(
     new Set(active_elements.map((elem) => (typeof elem === `string` ? elem : elem.symbol))),
   )
-  // shared by the tiles and the tooltip snippet, so both agree on what is active
-  const is_active = ({ category, name, symbol }: ChemicalElement): boolean =>
-    active_category === category || active_element?.name === name || active_symbols.has(symbol)
+  // shared by the tiles and the tooltip snippet, so both agree on what is active. A pinned
+  // tooltip's tile stays active like a hovered one.
+  const is_active = (element: ChemicalElement): boolean =>
+    active_category === element.category ||
+    active_element?.name === element.name ||
+    pin.is({ element }) ||
+    active_symbols.has(element.symbol)
   let focused_symbol = $state<ElementSymbol | null>(null)
   let first_interactive_symbol = $derived(
     element_data.find(element_is_interactive)?.symbol ?? null,
@@ -177,8 +181,10 @@
   type TileTooltip = { element: ChemicalElement; tile: Rect; bounds: Rect }
   let tooltip_hover = $state<TileTooltip | null>(null)
   // Clicking a tile without a link or on_activate pins its tooltip, as does a touch preview
-  const pin = new TooltipPin<TileTooltip>({ key: ({ element }) => element.symbol })
-  const shown_tooltip = $derived(pin.value ?? tooltip_hover)
+  const pin = new TooltipPin<TileTooltip, Pick<TileTooltip, `element`>>({
+    key: ({ element }) => element.symbol,
+  })
+  const shown_tooltip = $derived(pin.shown(tooltip_hover))
 
   // Touch has no hover, so the first tap on a tile only selects it (active ring, pinned
   // tooltip, inset) and a second tap follows its link or fires on_activate. Mouse clicks

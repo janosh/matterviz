@@ -232,15 +232,25 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       [0.5, 250],
       [-0.1, 500],
     ]
-    const text = await pin_cycle(async (step, mark_idx) => {
-      if (step === `escape`) {
-        // keys reach the diagram through the hover forwarder, not the whole document
-        wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
-        globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-      } else if (step === `leave`) svg.dispatchEvent(new PointerEvent(`pointerleave`))
-      else await hover_at(wrapper, ...at[mark_idx ?? 2])
-      if (step === `click`) svg.dispatchEvent(mouse(`click`))
-    })
+    const text = await pin_cycle(
+      async (step, mark_idx) => {
+        if (step === `escape`) {
+          // keys reach the diagram through the hover forwarder, not the whole document
+          wrapper.dispatchEvent(new PointerEvent(`pointerenter`))
+          globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
+        } else if (step === `leave`) svg.dispatchEvent(new PointerEvent(`pointerleave`))
+        else {
+          const [composition, temperature] = at[mark_idx ?? 2]
+          const nudge = step === `nudge` ? 1 : 0 // further into the same region
+          await hover_at(wrapper, composition + 0.05 * nudge, temperature + 50 * nudge)
+        }
+        if (step === `click`) svg.dispatchEvent(mouse(`click`))
+      },
+      {
+        lit: (idx) =>
+          svg.querySelectorAll(`.phase-regions path`)[idx].classList.contains(`hovered`),
+      },
+    )
     expect(text).toMatch(/Liquid\s*Temperature 750 K/)
   })
 

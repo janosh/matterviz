@@ -298,7 +298,7 @@
     key: point_key,
     enabled: () => tooltip !== false && !on_point_click,
   })
-  const shown_point = $derived(pin.value ?? hovered_point)
+  const shown_point = $derived(pin.shown(hovered_point))
 
   // New data (or a hidden series) leaves no pointer event behind: keep the hovered and pinned
   // points tracking the same logical point's current values and position, or drop them (tell

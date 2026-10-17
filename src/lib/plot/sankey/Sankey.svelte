@@ -192,10 +192,26 @@
     return node_colors[link.source.node_idx]
   }
 
-  // Node/link indices kept fully opaque for the current hover target (null = no hover)
+  // The tooltip: the hovered node or link where it was hovered, unless a click pinned one (see
+  // TooltipPin) when on_node_click/on_link_click leaves the click free
+  const pin = new TooltipPin<SankeyHandlerProps<Metadata>>({
+    key: (info) => (info.type === `node` ? `node ${info.node_idx}` : `link ${info.link_idx}`),
+    enabled: (info) =>
+      tooltip !== false && !(info.type === `node` ? on_node_click : on_link_click),
+  })
+  const tip_info = $derived(pin.shown(hover_info))
+  const tip_anchor = pin.anchored(() => ({ ...hover_pos, at_pointer: hover_at_pointer }))
+  // a pinned payload describes the previous layout
+  $effect.pre(() => {
+    void layout
+    untrack(pin.unpin)
+  })
+
+  // Node/link indices kept fully opaque for the hover target, or the pinned tooltip's while
+  // one is pinned (null = neither)
   let active = $derived.by(() => {
     const hovered_node =
-      legend_hover_idx ?? (hover_info?.type === `node` ? hover_info.node_idx : null)
+      legend_hover_idx ?? (tip_info?.type === `node` ? tip_info.node_idx : null)
     if (hovered_node != null) {
       const node = node_by_idx.get(hovered_node)
       if (!node) return null
@@ -208,10 +224,10 @@
       }
       return { links, nodes }
     }
-    if (hover_info?.type === `link`) {
+    if (tip_info?.type === `link`) {
       return {
-        links: new Set([hover_info.link_idx]),
-        nodes: new Set([hover_info.source_idx, hover_info.target_idx]),
+        links: new Set([tip_info.link_idx]),
+        nodes: new Set([tip_info.source_idx, tip_info.target_idx]),
       }
     }
     return null
@@ -354,35 +370,12 @@
     else on_link_hover?.(null)
   }
 
-  // The tooltip: the hovered node or link where it was hovered, unless a click pinned one (see
-  // TooltipPin) when on_node_click/on_link_click leaves the click free
-  type Tip = {
-    info: SankeyHandlerProps<Metadata>
-    pos: { x: number; y: number }
-    at_pointer: boolean
-  }
-  const pin = new TooltipPin<Tip>({
-    key: ({ info }) =>
-      info.type === `node` ? `node ${info.node_idx}` : `link ${info.link_idx}`,
-    enabled: ({ info }) =>
-      tooltip !== false && !(info.type === `node` ? on_node_click : on_link_click),
-  })
-  const hover_tip = $derived(
-    hover_info && { info: hover_info, pos: hover_pos, at_pointer: hover_at_pointer },
-  )
-  const tip = $derived(pin.value ?? hover_tip)
-  // a pinned payload describes the previous layout
-  $effect.pre(() => {
-    void layout
-    untrack(pin.unpin)
-  })
-
   function handle_click(event: MouseEvent | KeyboardEvent) {
     const node = node_from_event(event)
     const link = node ? null : link_from_event(event)
     if (node) on_node_click?.({ ...node_props(node), event })
     else if (link) on_link_click?.({ ...link_props(link), event })
-    pin.toggle(node || link ? hover_tip : null)
+    pin.toggle(node || link ? hover_info : null)
   }
 
   function handle_keydown(event: KeyboardEvent) {
@@ -582,8 +575,8 @@
       </g>
     </svg>
 
-    {#if tip && tooltip !== false}
-      {@const { info, pos, at_pointer } = tip}
+    {#if tip_info && tooltip !== false}
+      {@const { at_pointer, ...pos } = tip_anchor.current}
       <!-- Solid chip bg (PlotTooltip auto-contrasts text). Links use their ribbon color, or for
     a url(...) gradient ribbon the source node color it fades from. -->
       <PlotTooltip
@@ -592,22 +585,22 @@
         avoid_cursor={at_pointer}
         constrain_to={{ width, height }}
         fallback_size={{ width: 140, height: 44 }}
-        bg_color={info.type === `link` && info.color.startsWith(`url(`)
-          ? node_colors[info.source_idx]
-          : info.color}
+        bg_color={tip_info.type === `link` && tip_info.color.startsWith(`url(`)
+          ? node_colors[tip_info.source_idx]
+          : tip_info.color}
         pinned={pin.value !== null}
       >
         {#if tooltip}
-          {@render tooltip(info)}
-        {:else if info.type === `node`}
-          <strong>{node_name(info)}</strong>: <TooltipValue
-            value={format_value(info.value, value_format)}
+          {@render tooltip(tip_info)}
+        {:else if tip_info.type === `node`}
+          <strong>{node_name(tip_info)}</strong>: <TooltipValue
+            value={format_value(tip_info.value, value_format)}
           />
         {:else}
-          {@const { source_idx, target_idx, source_label, target_label } = info}
+          {@const { source_idx, target_idx, source_label, target_label } = tip_info}
           {source_label ?? node_by_idx.get(source_idx)?.id} &rarr; {target_label ??
             node_by_idx.get(target_idx)?.id}: <TooltipValue
-            value={format_value(info.value, value_format)}
+            value={format_value(tip_info.value, value_format)}
           />
         {/if}
       </PlotTooltip>

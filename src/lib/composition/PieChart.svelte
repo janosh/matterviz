@@ -143,7 +143,7 @@
   .pie-segment {
     transition: all 0.2s ease;
   }
-  .pie-segment:hover {
+  .pie-segment:is(:hover, [data-pinned]) {
     filter: brightness(1.1);
   }
 </style>

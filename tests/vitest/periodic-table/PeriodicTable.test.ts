@@ -263,14 +263,17 @@ describe(`PeriodicTable`, () => {
     mount_table()
     const table = doc_query(`.periodic-table`)
     const tiles = all_tiles()
-    const text = await pin_cycle((step, mark_idx) => {
-      const tile = mark_idx === null ? table : tiles[mark_idx]
-      if (step === `escape`) table.dispatchEvent(keydown(`Escape`))
-      else if (step === `leave`) tile.dispatchEvent(mouse(`mouseleave`))
-      else if (tile !== table) tile.dispatchEvent(mouse(`mouseenter`))
-      if (step === `click`)
-        for (const type of [`pointerdown`, `click`]) tile.dispatchEvent(mouse(type))
-    })
+    const text = await pin_cycle(
+      (step, mark_idx) => {
+        const tile = mark_idx === null ? table : tiles[mark_idx]
+        if (step === `escape`) table.dispatchEvent(keydown(`Escape`))
+        else if (step === `leave`) tile.dispatchEvent(mouse(`mouseleave`))
+        else if (tile !== table) tile.dispatchEvent(mouse(`mouseenter`))
+        if (step === `click`)
+          for (const type of [`pointerdown`, `click`]) tile.dispatchEvent(mouse(type))
+      },
+      { lit: (idx) => tiles[idx].classList.contains(`active`) },
+    )
     expect(text).toContain(`Hydrogen`)
   })
 

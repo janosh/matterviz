@@ -606,7 +606,7 @@
     key: ({ idx }) => idx,
     enabled: () => tooltip !== false && !on_box_click,
   })
-  const shown_key = $derived(pin.value ?? hover_key)
+  const shown_key = $derived(pin.shown(hover_key))
   const box_info = (key: BoxKey | null): BoxHover | null => {
     const box_item = key && visible_boxes.find((item) => item.idx === key.idx)
     if (!box_item || !Number.isFinite(box_item.stats.median)) return null
@@ -742,7 +742,7 @@
     clear_hover()
   }}
   on_mouse_click={() => pin.toggle(hover_key)}
-  on_key_down={(event) => event.key === `Escape` && pin.unpin()}
+  unpin={pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
