@@ -192,7 +192,7 @@ describe(`PlotTooltip`, () => {
     // caller's own CSS; the stylesheet combines it with --plot-tooltip-max-width
     expect(tooltip.style.getPropertyValue(`--plot-tooltip-cap`)).toBe(`84px`)
     expect(tooltip.style.maxWidth).toBe(``)
-    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(1024px, 84px)`) // happy-dom resolves 100vw
+    expect(getComputedStyle(tooltip).maxWidth).toBe(`min(256px, 84px)`) // the 16rem default
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
     // never inherits a centered page section
     expect(getComputedStyle(tooltip).textAlign).toBe(`start`)

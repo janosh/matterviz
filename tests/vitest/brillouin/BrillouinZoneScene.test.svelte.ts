@@ -4,7 +4,6 @@ import BrillouinZoneScene from '#lib/brillouin/BrillouinZoneScene.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import type { BZHoverData, KPathData } from '#lib/brillouin/index.js'
 import { reciprocal_lattice } from '#lib/math.js'
-import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -12,31 +11,15 @@ import { threlte_stub } from '../isosurface/threlte-stub'
 import { bind_props } from '../setup'
 import { cubic_matrix } from '../test-fixtures'
 
-vi.mock(`@threlte/core`, async (original) => {
-  const core = await original<typeof threlte_core>()
-  return {
-    ...core,
-    T: (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    useThrelte: () => ({
-      invalidate: () => undefined,
-      scene: { name: `scene` },
-      camera: core.currentWritable({ id: 1 }),
-      size: core.currentWritable({ width: 800, height: 600 }),
-      renderer: { domElement: document.createElement(`canvas`) },
-    }),
-  }
-})
+vi.mock(`@threlte/core`, async (original) =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
+)
 const interactivity = vi.hoisted(() =>
   vi.fn((_options?: unknown) => ({ enabled: { set: vi.fn() } })),
 )
-vi.mock(`@threlte/extras`, async () => ({
-  OrbitControls: Reflect.get(
-    (await import(`../isosurface/threlte-stub`)).threlte_stub.T,
-    `OrbitControls`,
-  ),
-  HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
-  interactivity,
-}))
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_extras(interactivity),
+)
 
 afterEach(() => threlte_stub.reset())
 
