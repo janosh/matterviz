@@ -77,12 +77,13 @@
   {#if typeof tooltip === `function`}
     {@render tooltip(hover_info)}
   {:else}
+    <!-- floated into the title row's corner: no extra line, and a long title wraps around it -->
+    {#if pinned}<small class="pin-hint">Pinned · Esc to unpin</small>{/if}
     <h4>
       {#each get_formula_label_segments(domain_formula_text(hover_info.formula)) as segment, idx (idx)}
         {#if segment.subscript}<sub>{segment.text}</sub>{:else}{segment.text}{/if}
       {/each}
     </h4>
-    {#if pinned}<small>Pinned · Esc to unpin</small>{/if}
     {#if summary}<p>{summary}</p>{/if}
     {#if detail_level === `detailed`}
       <!-- running text, not a two-column grid: lines fill the width and wrap early -->
@@ -113,8 +114,10 @@
     /* narrow, so the wrapping lines below fill the box instead of leaving gutters */
     --plot-tooltip-max-width: 14rem;
   }
-  small {
-    display: block;
+  .pin-hint {
+    float: right;
+    margin-left: 0.8em;
+    line-height: 1.6; /* the title's line box, so the hint sits on its baseline */
   }
   /* each range stays whole and lines break between ranges, packed with the key */
   .ranges {

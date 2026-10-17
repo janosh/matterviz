@@ -302,6 +302,20 @@ test(`a domain press pins its tooltip; it again, empty space or Escape unpin`, a
     },
   ) // the pin hint aside
   expect(text).toMatch(/μ \(eV\)/)
+  // pinned again: the hint floats into the title row's corner instead of adding a line
+  const scene = get_scene()
+  const event = {
+    nativeEvent: new PointerEvent(`pointermove`, pin_spot(0, `click`)),
+    stopPropagation: () => undefined,
+  }
+  scene.on_domain_hover(scene.hover_meshes[0], event)
+  scene.on_domain_press(scene.hover_meshes[0], event)
+  flushSync()
+  const hint = doc_query(`.chempot-tooltip .pin-hint`)
+  expect([hint.nextElementSibling?.tagName, getComputedStyle(hint).float]).toEqual([
+    `H4`,
+    `right`,
+  ])
 })
 
 // A wheel zoom fires OrbitControls' start without any pointer move (so no pointerleave)
