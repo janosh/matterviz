@@ -2186,6 +2186,13 @@
       flex: none;
     }
   }
+  /* a column description renders inside its header, but wraps as prose instead of taking
+     the header's single bold line (which the popover's max-width then clips) */
+  th :global(.popover) {
+    white-space: normal;
+    text-align: start;
+    font-weight: normal;
+  }
   th {
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
     position: sticky;

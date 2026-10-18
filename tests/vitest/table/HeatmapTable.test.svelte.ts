@@ -611,6 +611,9 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.popover b`)?.textContent).toBe(`Description`),
     )
     expect(header?.classList.contains(`sticky-col`)).toBe(true)
+    // It wraps as prose, not as the header's single bold line.
+    const { whiteSpace, fontWeight } = getComputedStyle(doc_query(`th .popover`))
+    expect({ whiteSpace, fontWeight }).toEqual({ whiteSpace: `normal`, fontWeight: `normal` })
   })
 
   // Missing values displayed as 'n/a', never as literal 'NaN' or 'undefined'. A row whose
