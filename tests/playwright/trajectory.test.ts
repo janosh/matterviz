@@ -122,9 +122,10 @@ test.describe(`Trajectory Component`, () => {
       await expect(controls.locator(`.view-mode-button > svg`)).toHaveCount(1)
       const check_icon_sizes = async () => {
         // the invisible analysis anchors (checked above) stretch over the Analysis button and
-        // squeeze their icons, so only visible toggles count
+        // squeeze their icons, so only visible toggles count; the data inspector's table
+        // toolbar is deliberately compact, so only the viewer's own toolbars count
         const icons = trajectory_viewer.locator(
-          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor) > svg`,
+          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor, .docked-sidebar button) > svg`,
         )
         // Resizing can unmount panes: read the current icons and sizes in one DOM snapshot.
         await expect(async () => {
@@ -607,11 +608,8 @@ test.describe(`Trajectory Component`, () => {
         }
         const structure = trajectory_viewer.locator(`.structure`)
         const toolbar = structure.locator(`.control-buttons`)
-        for (const label of [
-          `Thermal hotspots`,
-          `Mean squared displacement`,
-          `Data inspector`,
-        ]) {
+        // the data inspector is a sidebar, not a floating pane
+        for (const label of [`Thermal hotspots`, `Mean squared displacement`]) {
           await controls.locator(`.analysis-button`).click()
           await controls.getByRole(`button`, { name: label, exact: true }).click()
           const pane = controls.locator(`.viewer-pane-open`)
@@ -1425,8 +1423,7 @@ test.describe(`Trajectory Component`, () => {
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
 
-      // Widening the sidebar puts them back side by side without a remount. 890px stays
-      // below the 900px from which the data inspector docks and takes a third of the row.
+      // Widening the sidebar puts them back side by side without a remount
       await set_size(890)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)
