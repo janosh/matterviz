@@ -20,6 +20,8 @@
     constrain_to,
     exclusion_rects = [],
     avoid_cursor = true,
+    center,
+    arrow = false,
     fallback_size,
     pinned = false,
     wrapper = $bindable(),
@@ -39,6 +41,9 @@
     // Keep the pointer glyph clear too, widening a narrower `offset.x` to its width (keeping
     // the sign). Pass false when `x`/`y` snap to a mark, so no glyph sits on the anchor.
     avoid_cursor?: boolean
+    center?: `x` | `y` // center on the anchor along this axis (see beside_rect)
+    // with `center`: a small triangle on the edge facing the anchor, pointing at it
+    arrow?: boolean
     fallback_size?: { width: number; height: number } // size estimate before first measure
     // Pinned (see TooltipPin): takes pointer events and selectable text, so it can be copied
     pinned?: boolean
@@ -64,10 +69,15 @@
     const bounds: typeof constrain_to =
       constrain_to ??
       (fixed ? { width: globalThis.innerWidth, height: globalThis.innerHeight } : undefined)
-    if (!bounds) return { x: coord_x + offset.x, y: coord_y + offset.y }
     const tooltip_size = {
       width: measured_width || fallback_size?.width || 0,
       height: measured_height || fallback_size?.height || 0,
+    }
+    if (!bounds) {
+      return {
+        x: coord_x + (center === `x` ? -tooltip_size.width / 2 : offset.x),
+        y: coord_y + (center === `y` ? -tooltip_size.height / 2 : offset.y),
+      }
     }
     // The glyph is another rect to keep clear of, but a gap narrower than its width leaves the
     // right-hand candidates overlapping it from the start, so widen to its width (keeping the
@@ -86,7 +96,26 @@
         ? [...exclusion_rects, { x: coord_x, y: coord_y, ...DEFAULT_CURSOR_SIZE }]
         : exclusion_rects,
       offset: avoid_cursor ? { x: offset.x >= 0 ? gap : -gap, y: offset.y } : offset,
+      center,
     })
+  })
+
+  // The arrow sits on the edge facing the anchor (the placement may have flipped) and points at
+  // it, clamped off the rounded corners when bounds push the chip sideways
+  const arrow_style = $derived.by(() => {
+    if (!arrow || !center) return undefined
+    const [size, offset_px] =
+      center === `x` ? [measured_width, coord_x - pos.x] : [measured_height, coord_y - pos.y]
+    // offsets are from the border box, absolute children from inside the border
+    const border = (center === `x` ? wrapper?.clientLeft : wrapper?.clientTop) ?? 0
+    const along = Math.max(8, Math.min(size - 8, offset_px)) - border
+    // the 12x6 box is centered on `along`; rotated a quarter turn it stands 6 wide, 12 tall
+    if (center === `x`) {
+      const edge = pos.y >= coord_y ? `top: -6px` : `bottom: -6px; rotate: 180deg`
+      return `${edge}; left: ${along - 6}px`
+    }
+    const edge = pos.x >= coord_x ? `left: -9px; rotate: -90deg` : `right: -9px; rotate: 90deg`
+    return `${edge}; top: ${along - 3}px`
   })
 
   // Position flipping alone cannot keep a wide chip inside a small plot, so its width is
@@ -126,7 +155,10 @@
 >
   <!-- a tab on the chip's top-right edge: inside, a float squeezed full-width first rows and
   an overlay covered them, while a line of its own made the chip taller -->
-  {#if pinned}<small class="pin-hint">Pinned · Esc to unpin</small>{/if}{@render children()}
+  {#if pinned}<small class="pin-hint">Pinned · Esc to unpin</small>{/if}{#if arrow_style}<span
+      class="arrow"
+      style={arrow_style}
+    ></span>{/if}{@render children()}
 </div>
 
 <style>
@@ -158,6 +190,15 @@
     white-space: var(--plot-tooltip-white-space, normal);
     overflow-wrap: break-word; /* mid-token only when that token alone exceeds the line */
     z-index: var(--plot-tooltip-z-index, 1000);
+  }
+  /* 12x6 triangle pointing up, centered on its `left`/`top`; rotated for the other edges */
+  .arrow {
+    position: absolute;
+    width: 12px;
+    height: 6px;
+    background: inherit;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    pointer-events: none;
   }
   .plot-tooltip.pinned {
     user-select: text;

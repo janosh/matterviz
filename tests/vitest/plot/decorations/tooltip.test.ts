@@ -1,5 +1,6 @@
 import type { TooltipPlacementConfig } from '#lib/plot/core/decorations/index.js'
 import {
+  beside_rect,
   get_tooltip_placement_candidates,
   place_tooltip,
 } from '#lib/plot/core/decorations/tooltip.js'
@@ -74,6 +75,36 @@ describe(`tooltip decoration placement`, () => {
     ],
   ])(`rejects invalid geometry on %s`, (_desc, overrides, regex) => {
     expect(() => place_tooltip({ ...base_config, ...overrides })).toThrow(regex)
+  })
+
+  // beside_rect centers the chip along the side it sits on (a 30x10 chip around a 20x20 tile
+  // centered at (50, 50), gap 4); a corner placement put its edge at the tile's middle
+  const tile = { x: 40, y: 40, width: 20, height: 20 }
+  const place_beside = (rect: typeof tile, side: Parameters<typeof beside_rect>[1]) => {
+    const { x: coord_x, y: coord_y, ...rest } = beside_rect(rect, side, 4)
+    return place_tooltip({
+      ...rest,
+      anchor: { x: coord_x, y: coord_y },
+      tooltip_size: { width: 30, height: 10 },
+      bounds: { x: 0, y: 0, width: 200, height: 200 },
+    })
+  }
+  test.each([
+    [`bottom`, 35, 64],
+    [`top`, 35, 26],
+    [`right`, 64, 45],
+    [`left`, 6, 45],
+  ] as const)(`beside_rect %s centers the chip along that side`, (side, coord_x, coord_y) => {
+    expect(place_beside(tile, side)).toMatchObject({ x: coord_x, y: coord_y, overlap_area: 0 })
+  })
+
+  // no room below a tile at the bottom edge: it flips above and stays centered
+  test(`beside_rect flips across the tile at the bounds and keeps centered`, () => {
+    expect(place_beside({ ...tile, y: 180 }, `bottom`)).toMatchObject({
+      x: 35,
+      y: 166,
+      overlap_area: 0,
+    })
   })
 
   test(`breaks exact score ties by candidate order deterministically`, () => {

@@ -186,13 +186,14 @@
           }}
         />
       </label>
+      <!-- always enabled: picking a color is how a user turns automatic contrast off, and a
+      disabled swatch looked live but ignored clicks -->
       <label>
         <span>Font color</span>
         <input
           aria-label="Tile font color"
           type="color"
           value={tile_font_color ?? `#ffffff`}
-          disabled={tile_font_color === null}
           oninput={(event) => (tile_font_color = event.currentTarget.value)}
         />
       </label>

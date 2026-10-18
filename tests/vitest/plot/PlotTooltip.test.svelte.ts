@@ -305,10 +305,41 @@ describe(`PlotTooltip`, () => {
     [`fallback size dodging an exclusion rect`, { x: 50, y: 50, offset: { x: 0, y: 0 }, constrain_to: box, fallback_size: small, exclusion_rects: [{ x: 50, y: 50, ...small }] }, 50, 40],
     [`fallback size flipping at the box edge`, { x: 95, y: 50, constrain_to: box, fallback_size: { width: 30, height: 20 } }, 59, 50],
     [`decoration-aware placement kept fixed`, { x: 95, y: 50, fixed: true, offset: { x: 5, y: 5 }, constrain_to: box, fallback_size: small, exclusion_rects: [] }, 70, 55],
+    [`centered under the anchor`, { x: 50, y: 50, offset: { x: 0, y: 20 }, center: `x`, constrain_to: box, fallback_size: small }, 40, 70],
+    [`centered beside the anchor`, { x: 50, y: 50, offset: { x: 20, y: 0 }, center: `y`, constrain_to: box, fallback_size: small }, 70, 45],
+    [`centered without bounds`, { x: 50, y: 40, offset: { x: 0, y: 10 }, center: `x`, fallback_size: small }, 40, 50],
   ])(`placement: %s`, (_desc, props, left, top) => {
     const tooltip = mount_tooltip(props)
     expect(tooltip.style.position).toBe(props.fixed ? `fixed` : `absolute`)
     expect([tooltip.style.left, tooltip.style.top]).toEqual([`${left}px`, `${top}px`])
+  })
+
+  // the arrow sits on the edge facing the anchor, also after a flip, and needs `center`
+  test.each([
+    [`below the anchor`, { y: 20, center: `x` }, `top: -6px`],
+    [
+      `flipped above at the bottom edge`,
+      { y: 95, center: `x` },
+      `bottom: -6px; rotate: 180deg`,
+    ],
+    [
+      `right of the anchor`,
+      { y: 50, x: 20, center: `y`, offset: { x: 20, y: 0 } },
+      `left: -9px; rotate: -90deg`,
+    ],
+    [`without center`, { y: 20 }, null],
+  ] as const)(`arrow %s`, (_desc, props, edge) => {
+    mount_tooltip({
+      x: 50,
+      offset: { x: 0, y: 20 },
+      constrain_to: box,
+      fallback_size: small,
+      arrow: true,
+      ...props,
+    })
+    const style = document.querySelector(`.plot-tooltip .arrow`)?.getAttribute(`style`) ?? null
+    if (edge === null) expect(style).toBeNull()
+    else expect(style).toContain(edge)
   })
 
   // Fixed tooltips are bounded by the viewport: anchors near its right/bottom edges flip the
