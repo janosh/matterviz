@@ -3,6 +3,9 @@
   // viewer would keep under ~600 px, where its floating panes (export, info, ~28em) cover
   // most of the scene and any host controls drawn over it.
   export const SIDEBAR_DOCK_MIN_WIDTH = 900
+  // The divider keeps the viewer at least this wide and the sidebar at least SIDEBAR_MIN_PX
+  const VIEWER_MIN_PX = 320
+  const SIDEBAR_MIN_PX = 260
 </script>
 
 <script lang="ts">
@@ -49,6 +52,14 @@
   // The divider is the row's child and reads its place from the row, so the measured width
   // goes there while the column fits its content. The ratio follows too, so the divider's
   // arrow keys step from where it is drawn and it announces that place.
+  // A row too narrow for both minimums (a phone) stacks the sidebar under the viewer: beside it,
+  // the viewer's floor left the sidebar a few dozen px, too narrow to read or use
+  let stacked = $derived(row_width > 0 && row_width < VIEWER_MIN_PX + SIDEBAR_MIN_PX)
+  $effect(() => {
+    const row = aside?.parentElement
+    row?.classList.toggle(`docked-sidebar-stacked`, stacked)
+    return () => row?.classList.remove(`docked-sidebar-stacked`)
+  })
   $effect(() => {
     const row = aside?.parentElement
     row?.style.setProperty(`--docked-sidebar-width`, `${width}px`)
@@ -61,8 +72,8 @@
   orientation="horizontal"
   bind:ratio
   on_resize={() => (resized = true)}
-  min_px={320}
-  second_min_px={260}
+  min_px={VIEWER_MIN_PX}
+  second_min_px={SIDEBAR_MIN_PX}
   aria-label="Resize the {label}"
 />
 <aside
@@ -89,6 +100,14 @@
   }
   :global(.docked-sidebar-row:has(> .docked-sidebar.fit-content) > .pane-divider) {
     inset-inline-start: calc(100% - var(--docked-sidebar-width, 0px));
+  }
+  /* stacked: viewer above, sidebar below at full width, no divider to drag */
+  :global(.docked-sidebar-row.docked-sidebar-stacked:has(> .docked-sidebar)) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 55%) minmax(0, 1fr);
+  }
+  :global(.docked-sidebar-row.docked-sidebar-stacked > .pane-divider) {
+    display: none;
   }
   .docked-sidebar {
     display: flex;

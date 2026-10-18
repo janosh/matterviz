@@ -557,6 +557,21 @@ describe(`controls`, () => {
     },
   )
 
+  // A row too narrow for the viewer's 320px floor plus a usable 260px sidebar (a phone) stacks
+  // the inspector under the viewer: beside it, the inspector got a few dozen px
+  test.each([
+    [375, true],
+    [1200, false],
+  ])(`a %ipx viewer row stacks the inspector: %s`, async (row_width, stacked) => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
+    const target = mount_trajectory(default_props())
+    const row = query(target, `.viewer-row`)
+    await vi.waitFor(() =>
+      expect(row.classList.contains(`docked-sidebar-stacked`)).toBe(stacked),
+    )
+    expect(row.querySelector(`.trajectory-data-inspector-sidebar`)).not.toBeNull()
+  })
+
   // The inspector's Info tab stands in for the info pane while it shows: an `info` active_pane
   // opens that tab, and switching between other panes keeps whichever tab the user picked
   test(`active_pane="info" opens the inspector's Info tab`, async () => {
