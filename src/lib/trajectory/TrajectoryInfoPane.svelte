@@ -1,7 +1,5 @@
-<script lang="ts">
-  import type { InfoPaneCard, InfoPaneRow, ViewerPaneOptions } from '#lib/overlays/index.js'
-  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
-  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+<script module lang="ts">
+  import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
   import {
     display_idx,
     format_num,
@@ -18,28 +16,6 @@
     get_frame_time_step,
     summarize_properties,
   } from './plotting'
-
-  let {
-    run,
-    current_step_idx,
-    current_frame = null,
-    property_rows,
-    properties_complete,
-    pane_open = $bindable(false),
-    toggle_props,
-    ...pane_options
-  }: ViewerPaneOptions & {
-    run: TrajectoryRun
-    current_step_idx: number
-    current_frame?: TrajectoryFrame | null
-    // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
-    property_rows?: readonly TrajectoryMetadata[]
-    properties_complete?: boolean
-    pane_open?: boolean
-  } = $props()
-
-  let rows = $derived(property_rows ?? run.properties.rows)
-  let rows_complete = $derived(properties_complete ?? run.properties.complete)
 
   const is_valid_number = (val: unknown): val is number =>
     typeof val === `number` && Number.isFinite(val)
@@ -79,14 +55,17 @@
     return rank === -1 ? STAT_PRIORITY.length : rank
   }
 
-  let total_frames = $derived(run.frame_count)
-  let step_samples = $derived(get_frame_step_samples(rows))
-  let simulation_time_step = $derived(run.time_step?.value ?? null)
-  let simulation_time_unit = $derived(run.time_step?.unit ?? ``)
-
-  // Whole-run facts: computed once per trajectory, not per frame. Stepping through a
-  // 100k-frame run must not re-scan every frame for min/max energy on each slider tick.
-  let run_summary = $derived.by(() => {
+  // Whole-run facts, for the caller to derive once per trajectory rather than per frame:
+  // stepping through a 100k-frame run must not re-scan every frame for min/max energy on each
+  // slider tick. Shared by the info pane and the data inspector's Info tab.
+  export const summarize_run_info = (
+    run: TrajectoryRun,
+    rows: readonly TrajectoryMetadata[],
+  ) => {
+    const total_frames = run.frame_count
+    const step_samples = get_frame_step_samples(rows)
+    const simulation_time_step = run.time_step?.value ?? null
+    const simulation_time_unit = run.time_step?.unit ?? ``
     const { frame_numbers, steps } = step_samples
     const [first_step, last_step] = [steps[0], steps.at(-1)]
     const step_span =
@@ -161,9 +140,27 @@
         }
       })
     return { step_span, duration, stat_sections }
-  })
+  }
 
-  let info_pane_data = $derived.by((): InfoPaneCard[] => {
+  // The info cards of the displayed frame: file, run timing, then per-property statistics
+  export const trajectory_info_cards = ({
+    run,
+    rows,
+    rows_complete,
+    current_step_idx,
+    current_frame,
+    summary,
+  }: {
+    run: TrajectoryRun
+    rows: readonly TrajectoryMetadata[]
+    rows_complete: boolean
+    current_step_idx: number
+    current_frame: TrajectoryFrame | null
+    summary: ReturnType<typeof summarize_run_info>
+  }): InfoPaneCard[] => {
+    const total_frames = run.frame_count
+    const simulation_time_step = run.time_step?.value ?? null
+    const simulation_time_unit = run.time_step?.unit ?? ``
     if (total_frames === 0 || current_step_idx < 0 || current_step_idx >= total_frames) {
       return []
     }
@@ -173,7 +170,7 @@
       displayed_frame && simulation_time_step
         ? displayed_frame.step * simulation_time_step
         : null
-    const { step_span, duration, stat_sections } = run_summary
+    const { step_span, duration, stat_sections } = summary
     const { filename, source_bytes, format } = run.provenance
 
     return [
@@ -234,7 +231,47 @@
         ])
       }),
     ].filter((entry) => entry !== null)
-  })
+  }
+</script>
+
+<script lang="ts">
+  import type { ViewerPaneOptions } from '#lib/overlays/index.js'
+  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
+
+  let {
+    run,
+    current_step_idx,
+    current_frame = null,
+    property_rows,
+    properties_complete,
+    pane_open = $bindable(false),
+    toggle_props,
+    ...pane_options
+  }: ViewerPaneOptions & {
+    run: TrajectoryRun
+    current_step_idx: number
+    current_frame?: TrajectoryFrame | null
+    // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
+    property_rows?: readonly TrajectoryMetadata[]
+    properties_complete?: boolean
+    pane_open?: boolean
+  } = $props()
+
+  let rows = $derived(property_rows ?? run.properties.rows)
+  let rows_complete = $derived(properties_complete ?? run.properties.complete)
+  // Whole-run facts once per trajectory, the cards once per displayed frame
+  let summary = $derived(summarize_run_info(run, rows))
+  let info_pane_data = $derived(
+    trajectory_info_cards({
+      run,
+      rows,
+      rows_complete,
+      current_step_idx,
+      current_frame,
+      summary,
+    }),
+  )
 
   let n_info_items = $derived(
     info_pane_data.reduce((count, card) => count + card.rows.length, 0),

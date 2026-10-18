@@ -108,11 +108,11 @@ test.describe(`Trajectory Component`, () => {
     `toolbar icons stay consistent and analysis anchors stay hidden`,
     { tag: `@single-viewer` },
     async ({ page }) => {
-      // The MSD/VACF/RDF/hotspots/structure-id/data-inspector panes keep their ViewerPane toggles inside
+      // The MSD/VACF/RDF/hotspots/structure-id panes keep their ViewerPane toggles inside
       // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
       // component and a scoped selector stopped hiding them (stray toolbar icons)
       const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
-      await expect(anchors).toHaveCount(6)
+      await expect(anchors).toHaveCount(5)
       for (const anchor of await anchors.all()) {
         await expect(anchor).toHaveCSS(`opacity`, `0`)
         await expect(anchor).toHaveCSS(`pointer-events`, `none`)
@@ -1176,7 +1176,14 @@ test.describe(`Trajectory Component`, () => {
         `title`,
         /Play|Pause/,
       )
+      // The open data inspector's Info tab replaces the info button; closing it brings it back
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
+      await expect(trajectory.locator(`.trajectory-data-inspector-sidebar`)).toBeVisible()
+      await expect(info_toggle).toHaveCount(0)
+      await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
+      await trajectory
+        .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
+        .click()
       await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
       await info_toggle.click()
       const info_pane = trajectory.locator(`.trajectory-info-pane`)

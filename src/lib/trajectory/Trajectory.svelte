@@ -63,7 +63,6 @@
   import { has_usable_lattice } from '#lib/structure/validation.js'
   import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
   import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
-  import { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
   import TrajectoryStructureIdPane from '#lib/structure-id/TrajectoryStructureIdPane.svelte'
@@ -96,7 +95,7 @@
   } from './index'
   import {
     pick_pane_orientation,
-    TrajectoryDataInspectorPane,
+    TrajectoryDataInspector,
     TrajectoryExportPane,
     TrajectoryInfoPane,
   } from './index'
@@ -141,7 +140,6 @@
     | `spectroscopy`
     | `hotspots`
     | `structure-id`
-    | `data-inspector`
     | `export`
     | `flight`
   export type TrajectoryDisplayMode = `auto` | `structure+plot` | `structure` | `plot`
@@ -217,7 +215,7 @@
     trajectory_controls,
     extra_controls,
     active_pane = $bindable(null),
-    data_inspector_docked = $bindable(),
+    data_inspector_open = $bindable(true),
     on_step_change,
     on_play,
     on_pause,
@@ -288,9 +286,10 @@
     extra_controls?: Snippet
     // bindable: the one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
-    // The data inspector as a resizable sidebar beside the structure and plot instead of a
-    // floating pane; its header button toggles it. Unset, it docks in a viewer at least 900px wide.
-    data_inspector_docked?: boolean
+    // bindable: the data inspector, a resizable sidebar beside the structure and plot. Not a
+    // floating pane, so it stays open beside whichever pane is active. Hiding its
+    // `data-inspector-pane` control (or all controls) hides the sidebar too.
+    data_inspector_open?: boolean
     on_step_change?: EventHandler
     on_play?: EventHandler
     on_pause?: EventHandler
@@ -494,18 +493,12 @@
   let atom_color_config = $derived(
     structure_props.atom_color_config ?? { ...DEFAULT_ATOM_COLOR_CONFIG },
   )
-  // The row holds the docked inspector too, so docking it cannot shrink this below the bar
-  let viewer_row_width = $state(0)
-  let inspector_docked = $derived(
-    data_inspector_docked ?? viewer_row_width >= SIDEBAR_DOCK_MIN_WIDTH,
-  )
   const frame_channels = $derived.by((): FrameChannels | undefined => {
     // Inspectors, exports and arbitrary host snippets/callbacks need complete properties.
     // Ordinary atom hover uses only species, coordinates and bonds. Analyses read their
     // own channels from the source, independently of this display packet.
     if (
-      inspector_docked ||
-      active_pane === `data-inspector` ||
+      inspector_shown ||
       structure_pane === `info` ||
       structure_pane === `export` ||
       structure_props.children ||
@@ -841,6 +834,10 @@
 
   // === layout ===
   let controls_config = $derived(normalize_show_controls(show_controls, `always`))
+  // A host that hides the inspector's menu entry could not close it, so it stays closed there
+  let inspector_shown = $derived(
+    data_inspector_open && controls_config.visible(`data-inspector-pane`),
+  )
   const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
@@ -1257,7 +1254,7 @@
       [`data-inspector`, `Data inspector`, Database],
     ] as const
   ).map(([pane, label, icon]) => ({
-    pane: pane as TrajectoryPane,
+    pane,
     control_name: `${pane}-pane` as TrajectoryControlName,
     label,
     icon,
@@ -1265,7 +1262,10 @@
   let visible_analyses = $derived(
     ANALYSES.filter((entry) => controls_config.visible(entry.control_name)),
   )
-  let any_analysis_open = $derived(ANALYSES.some((entry) => entry.pane === active_pane))
+  // The data inspector is a sidebar with its own open state, the other analyses floating panes
+  const analysis_open = (pane: (typeof ANALYSES)[number][`pane`]): boolean =>
+    pane === `data-inspector` ? data_inspector_open : active_pane === pane
+  let any_analysis_open = $derived(ANALYSES.some((entry) => analysis_open(entry.pane)))
 </script>
 
 {#snippet energy_controls(has_energy: boolean)}
@@ -1543,7 +1543,8 @@
           {#if session.loading}
             <Spinner style="--spinner-size: 1em; margin: 0" />
           {/if}
-          {#if controls_config.visible(`info-pane`)}
+          <!-- The inspector's Info tab shows the same cards -->
+          {#if controls_config.visible(`info-pane`) && !inspector_shown}
             <TrajectoryInfoPane
               run={trajectory}
               {current_frame}
@@ -1608,15 +1609,13 @@
               {#each visible_analyses as entry (entry.pane)}
                 <button
                   type="button"
-                  class={['view-mode-option', { selected: active_pane === entry.pane }]}
+                  class={['view-mode-option', { selected: analysis_open(entry.pane) }]}
                   title={entry.label}
-                  aria-pressed={active_pane === entry.pane}
+                  aria-pressed={analysis_open(entry.pane)}
                   onclick={() => {
-                    // A docked inspector has no floating pane: its entry undocks it into one
-                    if (entry.pane === `data-inspector` && inspector_docked) {
-                      data_inspector_docked = false
-                      set_pane_open(entry.pane, true)
-                    } else set_pane_open(entry.pane, active_pane !== entry.pane)
+                    if (entry.pane === `data-inspector`)
+                      data_inspector_open = !data_inspector_open
+                    else set_pane_open(entry.pane, active_pane !== entry.pane)
                     analysis_menu_open = false
                   }}
                 >
@@ -1670,7 +1669,6 @@
                   }}
                   toggle_props={analysis_pane_props.toggle_props}
                 />
-                {#if !inspector_docked}{@render data_inspector()}{/if}
               {/snippet}
             </ToolbarMenu>
           {/if}
@@ -1725,43 +1723,7 @@
       {/if}
     </SequenceControlBar>
 
-    {#snippet data_inspector()}
-      <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
-      cannot be tracked -->
-      <TrajectoryDataInspectorPane
-        {...analysis_pane_props}
-        property_rows={session.property_rows}
-        properties_complete={session.properties_complete}
-        {current_step_idx}
-        {current_frame}
-        bind:pane_open={
-          () => active_pane === `data-inspector`,
-          (open) => set_pane_open(`data-inspector`, open)
-        }
-        on_step_change={session.commit}
-        bind:selected_atoms={
-          // the inspector names source atoms; a render sample shows only some of them as sites
-          () => site_source_atoms(selected_sites, current_frame),
-          (atoms) => (selected_sites = scene_site_indices(atoms, current_frame))
-        }
-        bind:hovered_atom={
-          () =>
-            hovered_site_idx === null
-              ? null
-              : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null),
-          (atom) =>
-            (hovered_site_idx =
-              atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null))
-        }
-        dockable
-        bind:docked={() => inspector_docked, (docked) => (data_inspector_docked = docked)}
-      />
-    {/snippet}
-    <div
-      class="viewer-row"
-      class:docked-sidebar-row={inspector_docked}
-      bind:clientWidth={viewer_row_width}
-    >
+    <div class="viewer-row" class:docked-sidebar-row={inspector_shown}>
       <div
         class="content-area"
         bind:clientWidth={content_size.width}
@@ -1985,7 +1947,32 @@
           {/if}
         {/if}
       </div>
-      {#if inspector_docked}{@render data_inspector()}{/if}
+      {#if inspector_shown}
+        <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
+        cannot be tracked -->
+        <TrajectoryDataInspector
+          run={trajectory}
+          property_rows={session.property_rows}
+          properties_complete={session.properties_complete}
+          {current_step_idx}
+          {current_frame}
+          on_step_change={session.commit}
+          bind:selected_atoms={
+            // the inspector names source atoms; a render sample shows only some of them as sites
+            () => site_source_atoms(selected_sites, current_frame),
+            (atoms) => (selected_sites = scene_site_indices(atoms, current_frame))
+          }
+          bind:hovered_atom={
+            () =>
+              hovered_site_idx === null
+                ? null
+                : (site_source_atoms([hovered_site_idx], current_frame)[0] ?? null),
+            (atom) =>
+              (hovered_site_idx =
+                atom === null ? null : (scene_site_indices([atom], current_frame)[0] ?? null))
+          }
+        />
+      {/if}
     </div>
   {:else}
     <EmptyState class="trajectory-empty-state">

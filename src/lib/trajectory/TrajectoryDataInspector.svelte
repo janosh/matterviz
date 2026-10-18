@@ -2,7 +2,6 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
-  import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
   import { numeric_sites, site_count } from '#lib/structure/site.js'
@@ -10,6 +9,7 @@
   import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
   import SiteTable from '#lib/structure/SiteTable.svelte'
   import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
+  import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import {
     DATA_TABLE_PROPS,
     DOCKED_SCROLL_STYLE,
@@ -18,10 +18,10 @@
     PROP_PREFIX,
     vec3_norm,
   } from '#lib/structure/site-table.js'
-  import { HeatmapTable as HeatmapTableIcon } from 'svelte-widgets/icons'
   import { BOOKKEEPING_METADATA_KEYS } from './extract'
   import { sampled_source_indices } from './linked-sites'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
+  import { summarize_run_info, trajectory_info_cards } from './TrajectoryInfoPane.svelte'
 
   let {
     run,
@@ -32,11 +32,7 @@
     on_step_change,
     selected_atoms = $bindable(),
     hovered_atom = $bindable(null),
-    pane_open = $bindable(false),
-    docked = $bindable(false),
-    dockable = false,
-    ...pane_options
-  }: ViewerPaneOptions & {
+  }: {
     run?: TrajectoryRun
     // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
     property_rows?: readonly TrajectoryMetadata[]
@@ -51,17 +47,11 @@
     // Source atom (0-based) of the atom row under the pointer, null once it leaves. Bound to the
     // viewer's hover, an atom hovered in 3D shades and scrolls to its row.
     hovered_atom?: number | null
-    pane_open?: boolean
-    // Docked, the inspector renders in place as a resizable sidebar (the host puts it last in
-    // a `docked-sidebar-row`) instead of as a floating pane; `dockable` shows the button that
-    // switches between the two
-    docked?: boolean
-    dockable?: boolean
   } = $props()
 
   // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, or the
   // displayed frame's per-atom rows
-  let active_tab = $state<`global` | `frames` | `atoms`>(`global`)
+  let active_tab = $state<`global` | `frames` | `atoms` | `info`>(`global`)
 
   let total_frames = $derived(run?.frame_count ?? 0)
 
@@ -216,31 +206,72 @@
     tab_item(`global`, `Global`),
     tab_item(`frames`, `Frames`, frame_source.entries.length),
     tab_item(`atoms`, `Atoms`, n_sites),
+    tab_item(`info`, `Info`),
   ])
 
-  // Docked, the tables fill the sidebar's height instead of the floating pane's cap
-  let scroll_style = $derived(docked ? DOCKED_SCROLL_STYLE : `max-height: min(50vh, 26em)`)
+  // The info pane's cards (file, timing, property statistics), which the host hides its info
+  // button for while this sidebar shows. Read only by the Info tab, so built only while open.
+  let info_summary = $derived(run && summarize_run_info(run, frame_source.entries))
+  let info_cards = $derived(
+    run && info_summary
+      ? trajectory_info_cards({
+          run,
+          rows: frame_source.entries,
+          rows_complete: frame_source.complete,
+          current_step_idx,
+          current_frame: active_frame,
+          summary: info_summary,
+        })
+      : [],
+  )
+
+  // The table toolbar shares the tab row while the full tab labels and the toolbar both fit
+  // there, else it takes its own row above the table. Measured, since labels ("Atoms (12,345)")
+  // and the toolbar (an open search box) both vary in width.
+  const fit_toolbar = (tabs: HTMLElement) => {
+    const list = tabs.querySelector<HTMLElement>(`:scope > .tabs-list`)
+    if (!list) throw new Error(`Data inspector tabs have no .tabs-list`)
+    let toolbar: HTMLElement | null = null
+    const sizes = new ResizeObserver(() => fit())
+    const fit = (): void => {
+      // Only a table that starts its panel can lift its toolbar: a notice above it keeps its own
+      const next = tabs.querySelector<HTMLElement>(
+        `.tabs-panel > .table-container:first-child > .control-buttons`,
+      )
+      if (next !== toolbar) {
+        if (toolbar) sizes.unobserve(toolbar)
+        // Recorded before observing: an observer that reports synchronously re-enters fit
+        toolbar = next
+        if (next) sizes.observe(next)
+      }
+      // Tried inline first: the room the tabs then reserve lets a content-fit sidebar widen for
+      // the toolbar, which a sidebar measured with the toolbar in its own row never would. It
+      // stays there unless that cuts a tab label short.
+      tabs.style.setProperty(`--toolbar-width`, `${toolbar?.offsetWidth ?? 0}px`)
+      tabs.dataset.toolbar = `inline`
+      const inline =
+        toolbar !== null &&
+        [...list.children].every((tab) => tab.scrollWidth <= tab.clientWidth)
+      if (!inline) tabs.dataset.toolbar = `row`
+    }
+    sizes.observe(tabs)
+    // relabelled tabs (growing counts) and the table a tab switch mounts
+    const mutations = new MutationObserver(fit)
+    mutations.observe(list, { subtree: true, childList: true, characterData: true })
+    for (const panel of tabs.querySelectorAll(`:scope > .tabs-panel`))
+      mutations.observe(panel, { childList: true })
+    fit()
+    return () => {
+      sizes.disconnect()
+      mutations.disconnect()
+    }
+  }
 </script>
 
-{#snippet header()}
-  Data Inspector
-  {#if dockable}
-    <!-- Undocking opens the floating pane, docking closes it: the inspector never vanishes -->
-    <button
-      type="button"
-      title={docked ? `Undock into a floating pane` : `Dock as a sidebar`}
-      aria-label={docked ? `Undock data inspector` : `Dock data inspector`}
-      onclick={() => {
-        docked = !docked
-        pane_open = !docked
-      }}
-    >
-      {docked ? `⇱` : `⇥`}
-    </button>
-  {/if}
-{/snippet}
-
-{#snippet inspector_body()}
+<!-- The host puts the sidebar last in a `docked-sidebar-row` and mounts it only while open,
+so a closed inspector builds no tables -->
+<DockedSidebar label="data inspector" class="trajectory-data-inspector-sidebar">
+  {#snippet header()}Data Inspector{/snippet}
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
@@ -249,6 +280,7 @@
       bind:value={active_tab}
       label="Data inspector tabs"
       class="inspector-tabs"
+      {@attach fit_toolbar}
     >
       {#snippet panel({ item, selected })}
         {#if selected && item.value === `global`}
@@ -259,7 +291,7 @@
             export_formats={[`csv`, `json`]}
             export_filename={`frame-${display_idx(current_step_idx)}-attributes`}
             {...DATA_TABLE_PROPS}
-            {scroll_style}
+            scroll_style={DOCKED_SCROLL_STYLE}
             virtual={false}
           />
         {:else if selected && item.value === `frames`}
@@ -283,7 +315,7 @@
                 if (typeof row.frame === `number`) on_step_change(from_display_idx(row.frame))
               })}
             {...DATA_TABLE_PROPS}
-            {scroll_style}
+            scroll_style={DOCKED_SCROLL_STYLE}
           />
         {:else if selected && item.value === `atoms`}
           {#if n_sites === 0}
@@ -301,43 +333,24 @@
               bind:hovered_atom
               export_filename={sample ? `frame-atoms-sample` : `frame-atoms`}
               search={{ placeholder: `Filter atoms`, fuzzy: true }}
-              {scroll_style}
+              scroll_style={DOCKED_SCROLL_STYLE}
             />
           {/if}
+        {:else if selected && item.value === `info`}
+          <!-- No filter: a handful of cards, which start right under the tabs -->
+          <InfoPaneCards
+            cards={info_cards}
+            empty_label="trajectory info"
+            style="--info-card-accent: 0; min-height: 0; overflow: auto"
+          />
         {/if}
       {/snippet}
     </Tabs>
   {/if}
-{/snippet}
-
-{#if docked}
-  <DockedSidebar label="data inspector" class="trajectory-data-inspector-sidebar" {header}>
-    {@render inspector_body()}
-  </DockedSidebar>
-{:else}
-  <ViewerPane
-    bind:open={pane_open}
-    pane_name="data inspector"
-    class_prefix="trajectory-data-inspector"
-    max_width="min(56em, 92vw)"
-    closed_icon={HeatmapTableIcon}
-    {...pane_options}
-  >
-    <h4 class="inspector-header">{@render header()}</h4>
-    <!-- ViewerPane keeps its children mounted and merely hides them, so without the
-    pane_open gate a closed pane would still rebuild a 100k-row atom table on every frame -->
-    {#if pane_open}{@render inspector_body()}{/if}
-  </ViewerPane>
-{/if}
+</DockedSidebar>
 
 <style>
-  .inspector-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: 0 0 4pt;
-  }
-  /* Docked, the tabs and the open panel pass the sidebar's height down to the table */
+  /* The tabs and the open panel pass the sidebar's height down to the table */
   :global(.trajectory-data-inspector-sidebar :is(.inspector-tabs, .tabs-panel:not([hidden]))) {
     display: flex;
     flex: 1;
@@ -347,31 +360,35 @@
   :global(.inspector-tabs .tabs-list) {
     display: flex;
     gap: 2pt;
-    /* room for the table toolbar placed over the end of this row: up to six 22px buttons
-       (search, columns, reset, export, selection badge, settings) with 2px gaps */
-    padding-inline-end: 144px;
   }
-  /* The table's toolbar sits at the right end of the tab row, so the table starts right under
-     the tabs; a notice above the table keeps the toolbar in its own row */
-  :global(.inspector-tabs .tabs-panel > .table-container:first-child > .control-buttons) {
+  /* As wide as its buttons in either row, so fit_toolbar measures the same width in both */
+  :global(.inspector-tabs .tabs-panel > .table-container > .control-buttons) {
+    width: max-content;
+    margin-inline-start: auto;
+  }
+  /* Inline, the toolbar sits at the right end of the tab row, so the table starts right under
+     the tabs, and the tabs leave it the room it takes */
+  :global(.inspector-tabs[data-toolbar='inline'] .tabs-list) {
+    padding-inline-end: calc(var(--toolbar-width) + 2pt);
+  }
+  :global(
+    .inspector-tabs[data-toolbar='inline']
+      .tabs-panel
+      > .table-container:first-child
+      > .control-buttons
+  ) {
     position: absolute;
     bottom: 100%;
     inset-inline-end: 0;
     margin: 0;
   }
-  /* an open search box outgrows the reserve: the toolbar takes its own row meanwhile */
-  :global(
-    .inspector-tabs .tabs-panel > .table-container > .control-buttons:has(.search-input)
-  ) {
-    position: static;
-  }
-  /* A narrow pane shrinks the labels to an ellipsis rather than wrapping "Frames (408)" */
+  /* A sidebar too narrow for the labels alone shrinks them to an ellipsis, never wrapping */
   :global(.inspector-tabs .tabs-tab) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 2pt 8pt;
+    padding: 2pt 5pt;
     background: transparent;
     border-bottom: 2px solid transparent;
     border-radius: 0;
@@ -379,6 +396,11 @@
   /* The tables span the inspector instead of hugging their content */
   :global(.inspector-tabs .tabs-panel :is(.table-container, table.heatmap)) {
     width: 100%;
+  }
+  /* The first column (attribute, frame or site) fits its content; the rest take the width */
+  :global(.inspector-tabs .tabs-panel table.heatmap :is(th, td):first-child) {
+    width: 1%;
+    white-space: nowrap;
   }
   :global(.inspector-tabs .tabs-tab[data-state='active']) {
     border-bottom-color: var(--accent-color, cornflowerblue);

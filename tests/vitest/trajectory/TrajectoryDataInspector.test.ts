@@ -2,7 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import type { Site } from '#lib/structure/index.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import TrajectoryDataInspectorPane from '#lib/trajectory/TrajectoryDataInspectorPane.svelte'
+import TrajectoryDataInspector from '#lib/trajectory/TrajectoryDataInspector.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
@@ -10,10 +10,10 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { doc_query, query } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
-let mounted_pane: ReturnType<typeof mount> | undefined
+let mounted_inspector: ReturnType<typeof mount> | undefined
 afterEach(async () => {
-  if (mounted_pane) await unmount(mounted_pane)
-  mounted_pane = undefined
+  if (mounted_inspector) await unmount(mounted_inspector)
+  mounted_inspector = undefined
   document.body.replaceChildren()
 })
 
@@ -41,10 +41,10 @@ const make_sites_frame = (sites: Site[]): TrajectoryFrame => ({
   metadata: {},
   structure: { sites },
 })
-const mount_pane = async (props: Record<string, unknown>) => {
-  mounted_pane = mount(TrajectoryDataInspectorPane, {
+const mount_inspector = async (props: Record<string, unknown>) => {
+  mounted_inspector = mount(TrajectoryDataInspector, {
     target: document.body,
-    props: { pane_open: true, ...props },
+    props,
   })
   await tick()
 }
@@ -59,7 +59,7 @@ const cell_texts = (row: HTMLTableRowElement) =>
   [...row.querySelectorAll(`td`)].map((cell) =>
     (cell.textContent?.trim() ?? ``).replaceAll(`\u2212`, `-`),
   )
-const open_tab = async (value: `global` | `frames` | `atoms`) => {
+const open_tab = async (value: `global` | `frames` | `atoms` | `info`) => {
   doc_query<HTMLButtonElement>(`button[role="tab"][data-value="${value}"]`).click()
   await tick()
 }
@@ -87,7 +87,7 @@ const attributes = () =>
 // implies, as attribute/value/unit rows that follow the displayed frame.
 test(`global tab lists the displayed frame's recorded and derived attributes`, async () => {
   const run = make_run(4)
-  await mount_pane({ run, current_frame: run.preview })
+  await mount_inspector({ run, current_frame: run.preview })
   // The default tab
   expect(
     doc_query(`button[role="tab"][data-value="global"]`).getAttribute(`aria-selected`),
@@ -104,8 +104,8 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
   expect(rows[`α`]?.[1]).toBe(`°`)
   expect(rows.Density?.[1]).toBe(`g/cm³`)
   // A later frame's recorded values replace the first frame's
-  if (mounted_pane) await unmount(mounted_pane)
-  await mount_pane({ run, current_step_idx: 2, current_frame: run.preview })
+  if (mounted_inspector) await unmount(mounted_inspector)
+  await mount_inspector({ run, current_step_idx: 2, current_frame: run.preview })
   rows = attributes()
   expect(rows.Frame).toEqual([`3`, ``])
   expect(rows.Energy).toEqual([`-102`, `eV`])
@@ -118,7 +118,7 @@ test(`global tab derives Fmax from 200k sites carrying forces`, async () => {
     make_site(site_idx, { force: force_of(site_idx) }),
   )
   const run = trajectory_from_frames([make_sites_frame(sites.slice(0, 2))])
-  await mount_pane({ run, current_frame: make_sites_frame(sites) })
+  await mount_inspector({ run, current_frame: make_sites_frame(sites) })
   const { Fmax, Atoms } = attributes()
   expect(Fmax).toEqual([`5`, `eV/Å`])
   expect(Atoms).toEqual([`200000`, ``])
@@ -139,7 +139,7 @@ test(`global tab of a render-sampled frame reports the whole frame`, async () =>
       })),
     },
   }
-  await mount_pane({
+  await mount_inspector({
     run: with_property_rows(
       run,
       [{ frame_number: 0, step: 0, properties: { energy: -3000 } }],
@@ -163,7 +163,7 @@ test(`global tab skips bookkeeping keys of the frame metadata`, async () => {
     ...run.preview,
     metadata: { total_atoms: 3, frame_number: 7, energy: -5 },
   }
-  await mount_pane({ run, current_frame, current_step_idx: 7, property_rows: [] })
+  await mount_inspector({ run, current_frame, current_step_idx: 7, property_rows: [] })
   const rows = attributes()
   expect(rows.Energy).toEqual([`-5`, `eV`])
   expect(Object.keys(rows)).not.toContain(`total_atoms`)
@@ -176,16 +176,16 @@ test.each([
 ])(`a render sample without %s fails loudly`, (missing, metadata) => {
   const run = make_run(2)
   expect(() =>
-    mount(TrajectoryDataInspectorPane, {
+    mount(TrajectoryDataInspector, {
       target: document.body,
-      props: { pane_open: true, run, current_frame: { ...run.preview, metadata } },
+      props: { run, current_frame: { ...run.preview, metadata } },
     }),
   ).toThrow(missing)
 })
 
 test(`frames tab renders every property row with units`, async () => {
   const run = make_run(4)
-  await mount_pane({ run })
+  await mount_inspector({ run })
   await open_tab(`frames`)
   expect(body_rows()).toHaveLength(4)
   expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
@@ -203,7 +203,7 @@ test(`sampled atom rows retain source indices and identify exported samples`, as
     ...run.preview,
     metadata: { render_sample: true, total_atoms: 1500, source_atom_indices: [0, 500, 1000] },
   }
-  await mount_pane({ run, current_frame })
+  await mount_inspector({ run, current_frame })
   await open_atoms()
   expect(document.body.textContent).toContain(`Sampled atoms: 3 of 1500`)
   // source atom index 500 is site 501, numbered like the structure's site labels
@@ -226,10 +226,9 @@ test(`atom rows refresh coordinates and scalar values during fixed-topology play
   const view = new FrameView()
   const frames = writable(make_frame(1))
   const display = fromStore(derived(frames, (frame) => view.update(frame)))
-  mounted_pane = mount(TrajectoryDataInspectorPane, {
+  mounted_inspector = mount(TrajectoryDataInspector, {
     target: document.body,
     props: {
-      pane_open: true,
       run: make_run(),
       get current_frame() {
         return display.current
@@ -254,9 +253,11 @@ test(`sampled property rows keep their real frame numbers and disclose sampling`
     step: sample_idx * 200,
     properties: { energy: -100 - sample_idx, temperature: 300 + sample_idx },
   }))
-  await mount_pane({ run: with_property_rows(make_run(1), rows, 100_000) })
+  await mount_inspector({ run: with_property_rows(make_run(1), rows, 100_000) })
   await open_tab(`frames`)
   expect(document.body.textContent).toContain(`Sampled frames: 100 of 100,000`)
+  // the notice above the table keeps the table toolbar out of the tab row
+  expect(doc_query(`.inspector-tabs`).dataset.toolbar).toBe(`row`)
   const rendered = expect_virtualized(100)
   expect_headers(`Temperature (K)`)
   expect(header_texts().some((text) => text.includes(`Volume`))).toBe(false)
@@ -278,7 +279,7 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
       selective_dynamics: [false, false, false],
     }),
   ])
-  await mount_pane({ run: trajectory_from_frames([frame]), current_frame: frame })
+  await mount_inspector({ run: trajectory_from_frames([frame]), current_frame: frame })
   await open_atoms()
   expect_headers(
     `Site`,
@@ -325,7 +326,7 @@ test(`atoms tab virtualizes a large frame`, async () => {
   const frame = make_sites_frame(
     Array.from({ length: 100 }, (_unused, site_idx) => make_site(site_idx, {})),
   )
-  await mount_pane({ run: trajectory_from_frames([frame]), current_frame: frame })
+  await mount_inspector({ run: trajectory_from_frames([frame]), current_frame: frame })
   await open_atoms()
   expect_virtualized(100)
   expect(document.body.textContent).toContain(`Atoms (100)`)
@@ -336,7 +337,7 @@ test.each([false, true])(
   async (linked) => {
     const on_step_change = vi.fn()
     const run = make_run(5)
-    await mount_pane({
+    await mount_inspector({
       run,
       current_frame: run.preview,
       on_step_change: linked ? on_step_change : undefined,
@@ -374,22 +375,50 @@ test.each([false, true])(
   },
 )
 
-// Undocking opens the floating pane rather than making the inspector vanish
-test(`docked, the inspector renders in place with its tables, and undocks into the pane`, async () => {
-  await mount_pane({ run: make_run(3), pane_open: false, docked: true, dockable: true })
+// The info pane's cards, so a host can hide its info button while the sidebar shows
+test(`info tab carries the info pane's file, timing and property statistics`, async () => {
+  const run = make_shared_run([0, 10, 20, 30], {
+    frame_metadata: (frame_idx) => ({ energy: -100 - frame_idx }),
+    provenance: { filename: `md.extxyz`, format: `xyz`, source_bytes: 2048 },
+    time_step: { value: 2, unit: `fs` },
+  })
+  await mount_inspector({ run, current_step_idx: 1, current_frame: run.preview })
+  expect(document.querySelector(`.info-row`)).toBeNull() // built only once the tab opens
+  await open_tab(`info`)
+  const rows = Object.fromEntries(
+    [...document.querySelectorAll(`.info-row`)].map((row) => {
+      const [label, value] = [...row.querySelectorAll(`span`)].map((span) =>
+        span.textContent?.trim(),
+      )
+      return [label, value]
+    }),
+  )
+  expect(rows).toMatchObject({
+    Name: `md.extxyz`,
+    'File Size': `2.00 KiB`,
+    Format: `xyz`,
+    'Total Frames': `4 (current: 2)`,
+    'Time Step': `2 fs`,
+    Duration: `60 fs`,
+    'Energy Range': `−103 - −100 eV`,
+  })
+  // neither a table toolbar nor a card filter: the cards start right under the tabs
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
-  expect(sidebar.querySelector(`table`)).not.toBeNull()
-  // the docked table fills the sidebar instead of a viewport-tied height
-  const { style } = query(sidebar, `.table-scroll`)
-  expect([style.flexGrow, style.minHeight, style.maxHeight]).toEqual([`1`, `0`, ``])
-  doc_query<HTMLButtonElement>(`button[aria-label="Undock data inspector"]`).click()
-  await tick()
-  expect(document.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
-  expect(doc_query(`.trajectory-data-inspector-pane table`)).not.toBeNull()
-  expect(document.querySelector(`button[aria-label="Dock data inspector"]`)).not.toBeNull()
+  for (const selector of [`.control-buttons`, `.filter-toggle`, `.info-filter`])
+    expect(sidebar.querySelector(selector), selector).toBeNull()
+  expect(
+    sidebar.querySelector(`.tabs-panel:not([hidden]) > :first-child`)?.classList,
+  ).toContain(`info-cards`)
 })
 
-test(`closed pane builds no table`, async () => {
-  await mount_pane({ run: make_run(3), pane_open: false })
-  expect(document.querySelector(`table`)).toBeNull()
+test(`the inspector is a sidebar whose table fills its height, with no dock button`, async () => {
+  await mount_inspector({ run: make_run(3) })
+  const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
+  expect(sidebar.querySelector(`h4`)?.textContent?.trim()).toBe(`Data Inspector`)
+  expect(sidebar.querySelector(`h4 button`)).toBeNull()
+  // jsdom lays nothing out, so no label is cut and the toolbar joins the tab row
+  expect(query(sidebar, `.inspector-tabs`).dataset.toolbar).toBe(`inline`)
+  // the table fills the sidebar instead of a viewport-tied height
+  const { style } = query(sidebar, `.table-scroll`)
+  expect([style.flexGrow, style.minHeight, style.maxHeight]).toEqual([`1`, `0`, ``])
 })

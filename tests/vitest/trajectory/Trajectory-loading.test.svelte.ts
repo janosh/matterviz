@@ -657,6 +657,8 @@ describe(`bindable re-exposure`, () => {
         current_step_idx: 0,
         display_mode: `structure`,
         active_pane: null,
+        // closed, so the info button the round trip clicks shows
+        data_inspector_open: false,
         show_controls: `always`,
         on_file_load,
       })
