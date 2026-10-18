@@ -3,6 +3,7 @@ import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import { opacity_of, require_bbox, test_without_errors as test } from '../helpers'
 import {
   dom_click,
+  expect_face_color_modes,
   get_canvas_hash,
   goto_perf_page,
   open_controls_pane,
@@ -169,14 +170,8 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await controls.getByText(`Hull Faces`, { exact: false }).click()
     await expect(diagram.locator(`canvas`).first()).toBeVisible()
 
-    // All 4 mode buttons present with Uniform active by default, which shows the color picker
-    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
-    await expect(mode_buttons).toBeVisible()
-    for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      await expect(mode_buttons.getByText(label)).toBeVisible()
-    }
-    await expect(mode_buttons.getByText(`Uniform`)).toHaveClass(/active/)
-    await expect(controls.locator(`input[type="color"]`).first()).toBeVisible()
+    // Uniform is active by default, which shows the color picker
+    await expect_face_color_modes(controls, `Uniform`)
 
     // Color scale label is clickable and its multiselect rendered
     const color_label = controls.getByText(`Color scale`, { exact: true })

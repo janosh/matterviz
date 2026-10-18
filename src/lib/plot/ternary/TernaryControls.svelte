@@ -12,14 +12,12 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    show_controls = true,
     controls_open = $bindable(false),
     grid_step = $bindable(GRID_DEFAULTS.grid_step),
     show_grid = $bindable(GRID_DEFAULTS.show_grid),
     show_ticks = $bindable(GRID_DEFAULTS.show_ticks),
-    toggle_props = {},
-    pane_props = {},
     children,
+    ...rest
   }: {
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
@@ -37,13 +35,7 @@
   )
 </script>
 
-<ControlPane
-  {show_controls}
-  bind:controls_open
-  controls_name="ternary"
-  {toggle_props}
-  {pane_props}
->
+<ControlPane bind:controls_open controls_name="ternary" {...rest}>
   {@render children?.()}
   <SettingsSection
     title="Grid"

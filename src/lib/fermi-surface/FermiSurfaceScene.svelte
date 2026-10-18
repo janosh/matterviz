@@ -4,35 +4,27 @@
     bz_fit_extent,
     bz_hover_data,
     cartesian_to_fractional,
-    default_camera_position,
     k_cell_fit_extent,
     k_lattice_inverse,
     bz_mark_sizes,
     k_space_size,
-    polyhedron_centroid,
     PolyhedronMesh,
     ReciprocalVectors,
   } from '#lib/brillouin/index.js'
   import type { Point2D, Vec3 } from '#lib/math.js'
   import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
-    bind_renderer,
     corner_vertex,
-    create_scene_camera,
     faces_centroid,
     HoverHighlight,
     scene_interactivity,
     scene_key_walk,
     scene_pointer,
-    resolve_scene_controls,
-    SceneCamera,
-    SceneLights,
   } from '#lib/scene/index.js'
   import type { SceneControlProps, ThreltePointerEvent } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
-  import { T } from '@threlte/core'
+  import { T, useThrelte } from '@threlte/core'
   import {
     BufferGeometry,
     ClippingGroup,
@@ -57,6 +49,7 @@
   import { reciprocal_cell_section, slice_plane_normal } from './compute'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import KPath from '#lib/brillouin/KPath.svelte'
+  import KSpaceCamera from '#lib/brillouin/KSpaceCamera.svelte'
   import type { ComponentProps } from 'svelte'
   import type {
     FermiHover,
@@ -98,8 +91,7 @@
     pin = mark_pin<FermiHover>(),
     width = 0,
     height = 0,
-    // camera/lighting/interaction props, resolved against the shared defaults below
-    ...scene_controls
+    ...scene_controls // camera/lighting/interaction props, handed to KSpaceCamera
   }: SceneControlProps &
     Partial<Omit<FermiSurfaceSettings, `mu` | `interpolation_factor`>> & {
       fermi_data?: FermiSurfaceData
@@ -121,14 +113,10 @@
       pin?: TooltipPin<FermiHover> // the host's, whose tooltip a click pins (else the scene's own)
     } = $props()
 
-  const controls = $derived(resolve_scene_controls(scene_controls))
   const SLICE_PLANE_COLOR = `#f59e0b`
 
   // Transparent surfaces depth-sort correctly because renderer.sortObjects defaults to true
-  const threlte = bind_renderer((threlte_scene, threlte_camera) => {
-    scene = threlte_scene
-    camera = threlte_camera
-  })
+  const { invalidate } = useThrelte()
 
   // Characteristic scene size, used for clipping and camera positioning
   const scene_size = $derived(k_space_size(fermi_data?.k_lattice))
@@ -152,7 +140,7 @@
     clipping_group.enabled = Boolean(clip_plane)
     // Mutating a three object bypasses the <T> props Threlte watches, so under this scene's
     // on-demand render mode nothing would repaint until the next unrelated invalidation.
-    threlte.invalidate()
+    invalidate()
   })
 
   // Only the front-most visible sheet gets the pointer event; a k-path drawn through the zone
@@ -244,7 +232,7 @@
       const values = vertex_property(visible_surfaces[idx], property_name)
       if (geometry) apply_vertex_colors(geometry, values, spec)
     }
-    threlte.invalidate()
+    invalidate()
   })
 
   // Tiling draws up to 48 copies (cubic), so it is auto-disabled above 50k triangles
@@ -252,17 +240,14 @@
     visible_surfaces.reduce((sum, surface) => sum + surface.indices.length / 3, 0),
   )
   let effective_tile_bz = $derived(tile_bz && total_triangles < 50_000)
-  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices)) // BZ centroid
   $effect(() => {
     if (tile_bz && !effective_tile_bz) {
       console.warn(`Fermi surface has ${total_triangles} triangles, BZ tiling auto-disabled`)
     }
   })
 
-  // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
-  // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
-  // renders the zone several times too small. Tiling replicates by point-group symmetry, which
-  // maps the zone onto itself, so it does not widen the extent.
+  // Tiling replicates by point-group symmetry, which maps the zone onto itself, so it does not
+  // widen the fitted extent
   const fit_extent = $derived(
     Math.max(
       bz_fit_extent(bz_data?.vertices, fermi_data?.k_lattice),
@@ -272,25 +257,13 @@
       k_cell_fit_extent(fermi_data?.k_lattice),
     ),
   )
-  const measured = $derived(width > 0 && height > 0)
-  const scene_camera = create_scene_camera({
-    controls: () => ({ ...controls, camera_projection }),
-    target: () => rotation_target,
-    fit_zoom: () =>
-      measured
-        ? ortho_zoom_for_extent(fit_extent, width, height, controls.initial_zoom)
-        : controls.initial_zoom,
-    measured: () => measured,
-    camera: () => camera,
-    // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
-    // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
-    // and out as the sheets sweep under the cursor reads as the surface flickering
-    set_camera_is_moving: (moving) => {
-      set_hover_enabled(!moving)
-      if (!moving) return
-      hovered = null
-    },
-  })
+  // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
+  // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in
+  // and out as the sheets sweep under the cursor reads as the surface flickering
+  const set_camera_is_moving = (moving: boolean) => {
+    set_hover_enabled(!moving)
+    if (moving) hovered = null
+  }
 
   // Only the transparency flag feeds the material set: the opacity value itself is written in
   // place below, so an opacity-slider tick does not rebuild (and recompile) every material.
@@ -357,7 +330,7 @@
   // Opacity is a per-frame uniform, so write it in place and repaint rather than rebuild
   $effect(() => {
     for (const material of materials) material.opacity = surface_opacity
-    threlte.invalidate()
+    invalidate()
   })
 
   // Where the 2D slice cuts the cell the surfaces live in (Γ-centred parallelepiped or zone);
@@ -371,7 +344,6 @@
     // the drawn zone, nothing while it is missing
     return reciprocal_cell_section(fermi_data, normal, distance, bz_data?.edges ?? [])
   })
-  // Inverse of k_lattice for Cartesian->fractional conversion (cached)
   const k_lattice_inv = $derived(k_lattice_inverse(fermi_data?.k_lattice))
 
   // Point-group operations used to tile the stored wedge/cell over the full zone. Derived from
@@ -499,20 +471,18 @@
   })
 </script>
 
-<SceneCamera
+<KSpaceCamera
+  {...scene_controls}
   {camera_projection}
-  position={default_camera_position(scene_size)}
-  fov={controls.fov}
-  zoom={scene_camera.zoom}
-  reset_zoom={scene_camera.reset_to_fit}
-  orbit_props={scene_camera.orbit_props}
-  gizmo={controls.gizmo}
-/>
-
-<SceneLights
-  ambient={controls.ambient_light}
-  directional={controls.directional_light}
+  bind:scene
+  bind:camera
+  zone_vertices={bz_data?.vertices}
+  size={scene_size}
+  {fit_extent}
+  {width}
+  {height}
   fill={0.5}
+  {set_camera_is_moving}
 />
 
 <T is={clipping_group}>
@@ -527,7 +497,6 @@
     />
   {/if}
 
-  <!-- Reciprocal lattice vectors -->
   {#if show_vectors && fermi_data?.k_lattice}
     <ReciprocalVectors k_lattice={fermi_data.k_lattice} size={scene_size} />
   {/if}

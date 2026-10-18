@@ -9,8 +9,9 @@
   import { format_value, format_value_or_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { BasePlotProps, ColorScale, LegendConfig, PointStyle } from '#lib/plot/index.js'
-  import { ColorBar, PlotLegend, PlotTooltip } from '#lib/plot/index.js'
+  import { ColorBar, PlotTooltip } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
@@ -32,7 +33,7 @@
     pointer_pos,
     step_point_cursor,
   } from '#lib/plot/core/interactions.js'
-  import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
+  import { filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { csv_source, export_filename } from '#lib/plot/core/utils/chart-export.js'
@@ -439,7 +440,6 @@
   }
 
   // Legend: one entry per series, toggling hides the series
-  let legend_element = $state<HTMLDivElement | undefined>()
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: style_at(srs, 0).symbol_type ?? `Circle`,
@@ -451,16 +451,6 @@
     })),
   )
   let legend_visible = $derived(resolve_legend_visibility(show_legend, legend, series.length))
-  let legend_placement = $derived.by(() => {
-    if (!legend_visible || !width || !height) return null
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: legend?.axis_clearance,
-      points: visible_points.map(svg_pixel),
-    })
-  })
   const is_dimmed = (series_idx: number): boolean =>
     legend_hover_idx !== null && legend_hover_idx !== series_idx
 
@@ -665,11 +655,12 @@
     {/if}
 
     {#if legend_visible}
-      {@const legend_left = legend_placement?.x ?? pad.l + 10}
-      {@const legend_top = legend_placement?.y ?? pad.t + 10}
-      <PlotLegend
-        bind:root_element={legend_element}
-        {...legend}
+      <InsetLegend
+        {legend}
+        measured={width > 0 && height > 0}
+        plot_bounds={{ x: pad.l, y: pad.t, width: inner_width, height: inner_height }}
+        points={visible_points.map(svg_pixel)}
+        bind:hover_idx={legend_hover_idx}
         series_data={legend_data}
         on_toggle={(idx) => {
           legend_vis.on_toggle(idx)
@@ -679,11 +670,6 @@
           legend_vis.on_double_click(idx)
           legend?.on_double_click?.(idx)
         }}
-        on_item_hover={(item) =>
-          (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
-        style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
-          legend?.style ?? ``
-        }`}
       />
     {/if}
 

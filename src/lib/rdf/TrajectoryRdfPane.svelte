@@ -8,7 +8,7 @@
   import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'
   import type { TrajectoryRun } from '#lib/trajectory/index.js'
   import type { AnalysisCollectOptions } from '#lib/trajectory/analysis.js'
-  import { positive_int, sweep_frame_plan, sweep_progress } from '#lib/trajectory/analysis.js'
+  import { positive_int, sweep_progress, window_sweep_plan } from '#lib/trajectory/analysis.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import type { FrameRdfOptions } from './calc-rdf'
@@ -102,10 +102,7 @@
 >
   <!-- with no stride control, collected_frames is the selected frame window's count -->
   {#snippet controls({ collected_frames: window_frames, n_atoms })}
-    {@const plan =
-      window_frames > 0
-        ? sweep_frame_plan(window_frames, safe_max_frames)
-        : { frame_numbers: [], frame_stride: 1 }}
+    {@const plan = window_sweep_plan(window_frames, safe_max_frames)}
     <label>
       Max frames
       <input

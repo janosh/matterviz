@@ -197,17 +197,8 @@ test(`a caller-supplied bz_data without a structure renders the zone`, async () 
 // A coplanar lattice has no reciprocal lattice: the viewer must report that (error_msg +
 // on_error) rather than render NaN geometry or quietly show nothing
 test(`reports a singular lattice and clears the error once a structure derives again`, async () => {
-  const on_error = vi.fn()
-  const { children, rendered } = zone_probe()
-  const props = $state({
-    structure: coplanar,
-    on_error,
-    children,
-    error_msg: undefined as string | undefined,
-  })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-  expect(on_error.mock.calls[0][0].error_msg).toMatch(/BZ computation failed: .*singular/)
+  const { props, rendered, error } = await mount_until_error({ structure: coplanar })
+  expect(error).toMatch(/BZ computation failed: .*singular/)
   expect(props.error_msg).toMatch(/singular/)
   expect(doc_query(`.brillouin-zone > .viewer-error [role="alert"]`).textContent).toMatch(
     /singular/,
@@ -232,6 +223,21 @@ function zone_probe() {
     },
   })) as ComponentProps<typeof BrillouinZone>[`children`]
   return { children, rendered: () => rendered }
+}
+
+// Mounts the viewer with a zone probe and waits for its first on_error report
+async function mount_until_error(init: { structure: typeof cubic; show_ibz?: boolean }) {
+  const on_error = vi.fn()
+  const { children, rendered } = zone_probe()
+  const props = $state({
+    ...init,
+    on_error,
+    children,
+    error_msg: undefined as string | undefined,
+  })
+  mounted_component = mount(BrillouinZone, { target: document.body, props })
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  return { props, rendered, error: on_error.mock.calls[0][0].error_msg }
 }
 
 // Regression: the zone used to be computed once and then frozen (the effect early-returned
@@ -322,18 +328,11 @@ test(`a caller-supplied bz_data keeps rendering when the structure's zone fails 
 // whole viewer (and stuck there after show_ibz was switched off)
 test(`an IBZ failure keeps the zone rendered and clears once show_ibz is off`, async () => {
   analyze_structure_symmetry.mockRejectedValue(new Error(`degenerate point group`))
-  const on_error = vi.fn()
-  const { children, rendered } = zone_probe()
-  const props = $state({
+  const { props, rendered, error } = await mount_until_error({
     structure: cubic,
     show_ibz: true,
-    on_error,
-    children,
-    error_msg: undefined as string | undefined,
   })
-  mounted_component = mount(BrillouinZone, { target: document.body, props })
-  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-  expect(on_error.mock.calls[0][0].error_msg).toMatch(/IBZ computation failed: .*degenerate/)
+  expect(error).toMatch(/IBZ computation failed: .*degenerate/)
   expect(props.error_msg).toBeUndefined()
   expect(rendered()?.vertices.length).toBeGreaterThan(0)
   const viewer = document.body.querySelector(`.brillouin-zone`)

@@ -4,9 +4,9 @@ import type { Heterostructure, LatticeMatchOptions } from '#lib/interface/types.
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
-import { bind_props, doc_query, mouse } from '../setup'
+import { flushSync } from 'svelte'
+import { describe, expect, test } from 'vitest'
+import { bind_props, doc_query, mount_in_test, mouse } from '../setup'
 import { make_crystal, make_fcc } from '../test-fixtures'
 
 const fcc_slab = (lattice_const: number, element: string, hkl: Vec3 = [1, 0, 0]) =>
@@ -31,13 +31,6 @@ type BuilderState = {
 }
 
 describe(`InterfaceBuilder`, () => {
-  let mounted: ReturnType<typeof mount> | null = null
-  afterEach(async () => {
-    if (mounted) await unmount(mounted)
-    mounted = null
-    document.body.innerHTML = ``
-  })
-
   const mount_builder = (
     substrate: Crystal,
     film: Crystal,
@@ -55,10 +48,7 @@ describe(`InterfaceBuilder`, () => {
       shift: [0, 0],
       ...overrides,
     })
-    mounted = mount(InterfaceBuilder, {
-      target: document.body,
-      props: bind_props({ substrate, film }, state),
-    })
+    mount_in_test(InterfaceBuilder, bind_props({ substrate, film }, state))
     flushSync()
     return state
   }
@@ -139,10 +129,10 @@ describe(`InterfaceBuilder`, () => {
   test(`shift slider replaces an unbound shift tuple`, () => {
     const shift: Vec2 = [0, 0]
     const state = $state<{ interface: Heterostructure | null }>({ interface: null })
-    mounted = mount(InterfaceBuilder, {
-      target: document.body,
-      props: bind_props({ substrate: CU_100, film: AG_100, shift }, state),
-    })
+    mount_in_test(
+      InterfaceBuilder,
+      bind_props({ substrate: CU_100, film: AG_100, shift }, state),
+    )
     flushSync()
     set_input(inputs(`range`)[2], 0.5, `input`)
     expect(shift).toEqual([0, 0])

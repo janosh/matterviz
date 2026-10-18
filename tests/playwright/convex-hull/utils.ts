@@ -93,3 +93,20 @@ export const get_canvas_hash = (canvas: Locator): Promise<string> =>
 
 // Dispatch directly through Playwright so canvas overlays cannot intercept control clicks.
 export const dom_click = (target: Locator): Promise<void> => target.dispatchEvent(`click`)
+
+// The hull-face color mode buttons all render, `active` is selected and the uniform color
+// picker shows only in Uniform mode; resolves to the button group
+export const expect_face_color_modes = async (
+  controls: Locator,
+  active: `Uniform` | `Energy` | `Element` | `Index`,
+): Promise<Locator> => {
+  const mode_buttons = controls.locator(`.face-color-mode-buttons`)
+  await expect(mode_buttons).toBeVisible()
+  for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
+    await expect(mode_buttons.getByText(label)).toBeVisible()
+  }
+  await expect(mode_buttons.getByText(active)).toHaveClass(/active/)
+  const color_picker = controls.locator(`input[type="color"]`).first()
+  await expect(color_picker).toBeVisible({ visible: active === `Uniform` })
+  return mode_buttons
+}

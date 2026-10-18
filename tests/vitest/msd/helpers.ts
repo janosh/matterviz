@@ -49,3 +49,23 @@ export const drift_positions = (n_frames = 30, velocity = 0.2): TrajectoryPositi
       [1 + velocity * frame_idx, 0, 0],
     ]),
   )
+
+// Brute-force oracle for the FFT origin averages: sum of `term(from, to)` over every origin t
+// with t + lag < n_frames and each listed atom, where `from`/`to` index that atom's x at t and
+// t + lag in a flat frame-major xyz array (y and z follow)
+export function direct_origin_sum(
+  n_frames: number,
+  n_atoms: number,
+  lag: number,
+  atoms: number[],
+  term: (from: number, to: number) => number,
+): number {
+  let total = 0
+  for (let origin = 0; origin + lag < n_frames; origin++) {
+    for (const atom_idx of atoms) {
+      const from = (origin * n_atoms + atom_idx) * 3
+      total += term(from, from + lag * n_atoms * 3)
+    }
+  }
+  return total
+}

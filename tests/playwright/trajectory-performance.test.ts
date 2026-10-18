@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type * as IoExport from '#lib/io/export.js'
 import type * as AtomModule from '#lib/structure/atom-instances.js'
+import { write_torchsim_si_frames } from '../fixtures/torchsim-h5'
 
 // The page builds a seeded synthetic run from ?frames=&atoms= (see
 // src/routes/test/trajectory-performance), so there is no fixture to host. Thresholds are
@@ -47,52 +48,22 @@ test.describe(`Trajectory performance`, () => {
     try {
       const file = new h5.File(filename, `w`)
       try {
-        const data = file.create_group(`data`)
-        const steps = file.create_group(`steps`)
-        const positions = new Float32Array(n_atoms * 6)
-        const velocities = new Float32Array(positions.length)
-        for (let idx = 0; idx < n_atoms * 2; idx++) {
-          const atom_idx = idx % n_atoms
-          positions.set(
-            [
+        const { data, steps } = write_torchsim_si_frames(
+          file,
+          n_atoms,
+          [300, 0, 0, 0, 300, 0, 0, 0, 3 * cell_depth],
+          (row_idx) => {
+            const atom_idx = row_idx % n_atoms
+            return [
               3 * ((atom_idx % 100) + 0.5),
               3 * ((Math.floor(atom_idx / 100) % 100) + 0.5),
               3 * (Math.floor(atom_idx / 10_000) + 0.5),
-            ],
-            idx * 3,
-          )
-          velocities[idx * 3] = (atom_idx % 2 ? 1 : -1) * (atom_idx % 100 >= 50 ? 2 : 1)
-        }
-        for (const [name, values] of [
-          [`positions`, positions],
-          [`velocities`, velocities],
-        ] as const) {
-          data.create_dataset({
-            name,
-            data: values,
-            shape: [2, n_atoms, 3],
-            chunks: [1, 10_000, 3],
-          })
-          steps.create_dataset({ name, data: [0, 1], shape: [2] })
-        }
-        data.create_dataset({
-          name: `atomic_numbers`,
-          data: new Uint8Array(n_atoms).fill(14),
-          shape: [n_atoms],
-        })
-        data.create_dataset({
-          name: `masses`,
-          data: new Float64Array(n_atoms).fill(28),
-          shape: [n_atoms],
-        })
+              (atom_idx % 2 ? 1 : -1) * (atom_idx % 100 >= 50 ? 2 : 1),
+            ]
+          },
+        )
         data.create_dataset({ name: `energy`, data: [-10, -9], shape: [2] })
         steps.create_dataset({ name: `energy`, data: [0, 1], shape: [2] })
-        data.create_dataset({
-          name: `cell`,
-          data: [300, 0, 0, 0, 300, 0, 0, 0, 3 * cell_depth],
-          shape: [3, 3],
-        })
-        data.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
       } finally {
         file.close()
       }
@@ -166,27 +137,9 @@ test.describe(`Trajectory performance`, () => {
         transfer.setData(`application/json`, JSON.stringify({ url: `/hotspot-device.h5` }))
         target.dispatchEvent(new DragEvent(`drop`, { bubbles: true, dataTransfer: transfer }))
       })
-      const atom_count = () =>
-        viewer.evaluate(async (element) => {
-          const export_path = `/src/lib/io/export.ts`
-          const atoms_path = `/src/lib/structure/atom-instances.ts`
-          const { scene_registry } = (await import(export_path)) as typeof IoExport
-          const { AtomInstances } = (await import(atoms_path)) as typeof AtomModule
-          const canvas = element.querySelector<HTMLCanvasElement>(`.structure canvas`)
-          const scene = canvas && scene_registry.get(canvas)?.scene
-          let count = 0
-          scene?.traverseVisible((object) => {
-            if (object instanceof AtomInstances) count += object.count
-          })
-          return count
-        })
-      await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
-      await expect_3d_pixels()
-      await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
-      await atom_canvas.evaluate((element) =>
-        element.setAttribute(`data-test-mounted`, `true`),
-      )
-      const scene_snapshot = () =>
+      // In-page read of the structure scene: visible atom count, whether a point cloud replaced
+      // the atoms, and the identity of its atom meshes and camera (null before it mounts)
+      const read_scene = () =>
         viewer.evaluate(async (element) => {
           const export_path = `/src/lib/io/export.ts`
           const atoms_path = `/src/lib/structure/atom-instances.ts`
@@ -194,19 +147,42 @@ test.describe(`Trajectory performance`, () => {
           const { AtomInstances } = (await import(atoms_path)) as typeof AtomModule
           const canvas = element.querySelector<HTMLCanvasElement>(`.structure canvas`)
           const view = canvas && scene_registry.get(canvas)
-          if (!view) throw new Error(`Missing structure scene`)
+          if (!view) return null
+          let count = 0
+          let has_points = false
           const atoms: string[] = []
           view.scene.traverseVisible((object) => {
-            if (object instanceof AtomInstances) atoms.push(object.uuid)
-            if (`isPoints` in object) throw new Error(`Heatmap replaced atoms with points`)
+            if (object instanceof AtomInstances) {
+              count += object.count
+              atoms.push(object.uuid)
+            }
+            if (`isPoints` in object) has_points = true
           })
+          const { camera } = view
           return {
-            atoms,
-            camera: view.camera.uuid,
-            position: view.camera.position.toArray(),
-            rotation: view.camera.quaternion.toArray(),
+            count,
+            has_points,
+            snapshot: {
+              atoms,
+              camera: camera.uuid,
+              position: camera.position.toArray(),
+              rotation: camera.quaternion.toArray(),
+            },
           }
         })
+      const atom_count = async () => (await read_scene())?.count ?? 0
+      await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
+      await expect_3d_pixels()
+      await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
+      await atom_canvas.evaluate((element) =>
+        element.setAttribute(`data-test-mounted`, `true`),
+      )
+      const scene_snapshot = async () => {
+        const scene = await read_scene()
+        if (!scene) throw new Error(`Missing structure scene`)
+        if (scene.has_points) throw new Error(`Heatmap replaced atoms with points`)
+        return scene.snapshot
+      }
       const original_scene = await scene_snapshot()
       await open_hotspots()
       await expect(viewer.locator(`.structure`)).toBeVisible()

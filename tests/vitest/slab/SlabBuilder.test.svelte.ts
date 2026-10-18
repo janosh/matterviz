@@ -2,9 +2,9 @@ import type { Vec3 } from '#lib/math.js'
 import type { Slab } from '#lib/slab/index.js'
 import SlabBuilder from '#lib/slab/SlabBuilder.svelte'
 import type { Crystal } from '#lib/structure/index.js'
-import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
-import { bind_props, doc_query } from '../setup'
+import { flushSync } from 'svelte'
+import { describe, expect, test } from 'vitest'
+import { bind_props, doc_query, mount_in_test } from '../setup'
 import { make_fcc, make_rocksalt } from '../test-fixtures'
 
 const fcc = (): Crystal => make_fcc(3.615)
@@ -17,13 +17,6 @@ type BuilderState = {
 }
 
 describe(`SlabBuilder`, () => {
-  let mounted: ReturnType<typeof mount> | null = null
-  afterEach(async () => {
-    if (mounted) await unmount(mounted)
-    mounted = null
-    document.body.innerHTML = ``
-  })
-
   const mount_builder = (structure: Crystal, props: { show_cell_options?: boolean } = {}) => {
     const state = $state<BuilderState>({
       slab: null,
@@ -31,10 +24,7 @@ describe(`SlabBuilder`, () => {
       miller_indices: [1, 1, 1],
       termination_idx: 0,
     })
-    mounted = mount(SlabBuilder, {
-      target: document.body,
-      props: bind_props({ structure, ...props }, state),
-    })
+    mount_in_test(SlabBuilder, bind_props({ structure, ...props }, state))
     flushSync()
     return state
   }

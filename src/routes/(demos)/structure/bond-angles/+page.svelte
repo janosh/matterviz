@@ -1,7 +1,6 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import type { Crystal } from '#lib'
-  import { SETTINGS_CONFIG } from '#lib'
   import type { BondAngleNormalizeMode, BondAngleSplitMode } from '#lib/bond-angles/index.js'
   import {
     BondAnglePlot,
@@ -14,12 +13,8 @@
   import { Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_files, structure_map } from '#site/structures.js'
-  import EnumSelect from '../../EnumSelect.svelte'
+  import EnumSelect, { default_strategy, strategy_options } from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
-
-  const { value: default_strategy, enum: strategy_options } =
-    SETTINGS_CONFIG.structure.bonding_strategy
-  const strategies = strategy_options ?? {}
 
   // Zr16Bi16O56 spans several coordination environments, so its ADF shows well separated
   // tetrahedral, octahedral and cubic angle families
@@ -51,7 +46,7 @@
   <h2 id="single-structure">Single Structure</h2>
 
   <div class="demo-controls">
-    <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
+    <EnumSelect label="Strategy" options={strategy_options} bind:value={single_strategy} />
     <EnumSelect
       label="Split Mode"
       options={BOND_ANGLE_SPLIT_MODES}
@@ -92,7 +87,7 @@
   </p>
 
   <div class="demo-controls">
-    <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
+    <EnumSelect label="Strategy" options={strategy_options} bind:value={multi_strategy} />
     <EnumSelect
       label="Normalization"
       options={BOND_ANGLE_NORMALIZE_MODES}

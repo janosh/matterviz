@@ -10,6 +10,7 @@
   import EmptyState from '#lib/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
+  import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
   import LiveMessage from '#lib/layout/LiveMessage.svelte'
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
@@ -30,14 +31,12 @@
   import type { Crystal } from '#lib/structure/index.js'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
-  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three/webgpu'
   import { detect_irreducible_bz, preview_interpolation_factor } from './compute'
   import * as extraction from './extract-async'
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
-
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { property_label } from './constants'
   import {
@@ -219,24 +218,15 @@
     bz_data = bz_result.value ?? undefined
   })
 
-  // The notice this effect raised is cleared once a later payload normalises, so a host that
-  // sends a bad then a good `fermi_data` sees the surface rather than a sticky error. Errors
-  // supplied by the caller are left alone. Only a structure's (user input) zone is reported.
-  let reported_normalize_error: string | undefined
-  $effect(() => {
-    const error =
+  // Only a structure's (user input) zone failure is reported
+  derived_error_notice(
+    () =>
       surface_result.error ??
       grid_result.error ??
-      (structure?.lattice?.matrix ? bz_result.error : undefined)
-    if (!error && reported_normalize_error && error_msg === reported_normalize_error) {
-      error_msg = undefined
-    }
-    reported_normalize_error = error
-    if (error) {
-      error_msg = error
-      untrack(() => on_error?.({ error_msg: error }))
-    }
-  })
+      (structure?.lattice?.matrix ? bz_result.error : undefined),
+    { get: () => error_msg, set: (message) => (error_msg = message) },
+    (error) => on_error?.({ error_msg: error }),
+  )
 
   const drop_zone = create_material_loader<FermiSurfaceData | BandGridData>({
     source: () => source,

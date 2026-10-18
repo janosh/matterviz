@@ -32,6 +32,7 @@ import {
 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
+import { octahedron_points } from './geometry-fixtures'
 
 const uniform_red = { mode: `uniform`, color: `#ff0000` } as const
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
@@ -138,14 +139,21 @@ const face_verts = (hull: { vertices: Vec3[] }, face: number[]): Vec3[] =>
   face.map((idx) => hull.vertices[idx])
 const sorted_vertex_sites = (poly: Polyhedron): number[] =>
   poly.vertex_site_idxs.toSorted((left, right) => left - right)
+// 1.8 Å bonds that close exactly one regular octahedron around site 0
+const expect_one_octahedron = (structure: AnyStructure, bonds: BondPair[]): Polyhedron => {
+  for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
+  const [poly, ...rest] = compute_polyhedra(structure, bonds)
+  expect(rest).toHaveLength(0)
+  expect(poly.vertices).toHaveLength(6)
+  expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12)
+  return poly
+}
 // vertex_site_idxs maps each hull vertex to the site at that exact position
 const expect_vertices_on_sites = (poly: Polyhedron, structure: AnyStructure) => {
   for (const [vertex_idx, site_idx] of poly.vertex_site_idxs.entries())
     expect(poly.vertices[vertex_idx]).toEqual(structure.sites[site_idx].xyz)
 }
 
-// oxfmt-ignore
-const octahedron_points: Vec3[] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const cube_points = (side: number): Vec3[] =>
   [0, 1].flatMap((coord_x) =>
     [0, 1].flatMap((coord_y) =>
@@ -426,13 +434,8 @@ describe(`compute_polyhedra`, () => {
     const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) =>
       image_bond(structure, site_idx, site_idx === 6 ? [-1, 0, 0] : undefined),
     )
-    for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
-
-    const [poly, ...rest] = compute_polyhedra(structure, bonds)
-    expect(rest).toHaveLength(0)
-    expect(poly.vertices).toHaveLength(6)
+    const poly = expect_one_octahedron(structure, bonds)
     expect(poly.faces).toHaveLength(8)
-    expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12) // regular octahedron
     // the 6th corner sits at the -x image of site 6, not at its in-cell position
     expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
 
@@ -501,12 +504,7 @@ describe(`compute_polyhedra`, () => {
         [0, 1, 2].map((axis) => (axis === site_idx - 1 ? -1 : 0)) as Vec3,
       ),
     ])
-    for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
-
-    const [poly, ...rest] = compute_polyhedra(structure, bonds)
-    expect(rest).toHaveLength(0)
-    expect(poly.vertices).toHaveLength(6)
-    expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12)
+    expect(expect_one_octahedron(structure, bonds).faces).toHaveLength(8)
   })
 
   test(`one physical neighbor reached twice is counted once`, () => {

@@ -1,3 +1,4 @@
+import { parse_formula } from '#lib/composition/parse.js'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import {
   analyze_gas_data,
@@ -22,17 +23,10 @@ import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
-// pin the stoichiometry/gas-mapping tables: a typo here silently skews all corrections
+// a typo in the stoichiometry/gas-mapping tables silently skews all corrections, so each row
+// must match its gas's own formula
 test(`GAS_STOICHIOMETRY and DEFAULT_ELEMENT_TO_GAS hold the standard gas data`, () => {
-  expect(GAS_STOICHIOMETRY).toEqual({
-    O2: { O: 2 },
-    N2: { N: 2 },
-    H2: { H: 2 },
-    F2: { F: 2 },
-    CO: { C: 1, O: 1 },
-    CO2: { C: 1, O: 2 },
-    H2O: { H: 2, O: 1 },
-  })
+  for (const gas of GAS_SPECIES) expect(GAS_STOICHIOMETRY[gas]).toEqual(parse_formula(gas))
   expect(DEFAULT_ELEMENT_TO_GAS).toEqual({ O: `O2`, N: `N2`, H: `H2`, F: `F2`, C: `CO2` })
 })
 

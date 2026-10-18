@@ -13,24 +13,7 @@ import {
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
-
-const band_structs: BaseBandStructure = {
-  type: `phonon`,
-  qpoints: [
-    { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
-    { label: null, frac_coords: [0.25, 0, 0], distance: 0.5 },
-    { label: `X`, frac_coords: [0.5, 0, 0], distance: 1 },
-  ],
-  branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
-  labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-  distance: [0, 0.5, 1],
-  nb_bands: 3,
-  bands: [
-    [0, 1, 2],
-    [1, 2, 3],
-    [2, 3, 4],
-  ],
-}
+import { mock_band_structure as band_structs } from '#root/src/routes/test/spectral-mocks.ts'
 
 const phonon_dos: PhononDos = {
   type: `phonon`,

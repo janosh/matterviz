@@ -1,8 +1,9 @@
 import Treemap from '#lib/plot/treemap/Treemap.svelte'
-import type { SunburstNodeHandlerProps, TreemapArc, TreemapNode } from '#lib/plot/index.js'
+import type { TreemapArc, TreemapNode } from '#lib/plot/index.js'
 import { PLOT_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { expect_a1_hover, tree } from './hierarchy-fixtures'
 import {
   export_via_pane,
   fire,
@@ -16,19 +17,6 @@ import {
   translate_of,
   trigger_resize_observer,
 } from '../setup'
-
-// A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
-const tree: TreemapNode[] = [
-  {
-    label: `A`,
-    color: `#e15759`,
-    children: [
-      { label: `A1`, value: 4 },
-      { label: `A2`, value: 6 },
-    ],
-  },
-  { label: `B`, value: 10 },
-]
 
 // duration 0 makes zoom transitions synchronous for assertions
 const size = { selector: `.treemap`, width: 500, height: 360 }
@@ -92,18 +80,7 @@ describe(`Treemap`, () => {
         (cell) => cell.getAttribute(`fill-opacity`) === `1`,
       ),
     ).toBe(true)
-    expect(on_node_hover).toHaveBeenCalledOnce()
-    expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
-      type: `node`,
-      label: `A1`,
-      value: 4,
-      depth: 2,
-      is_leaf: true,
-      path: [`A`, `A/A1`],
-      label_path: [`A`, `A1`],
-      fraction: expect.closeTo(0.2, 9),
-      parent_fraction: expect.closeTo(0.4, 9),
-    })
+    expect_a1_hover(on_node_hover)
   })
 
   test(`clicking a branch cell zooms in (fires on_zoom + on_node_click, hides siblings)`, async () => {

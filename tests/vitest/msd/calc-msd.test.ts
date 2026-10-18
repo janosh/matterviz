@@ -7,6 +7,7 @@ import { cubic_matrix } from '../test-fixtures'
 import {
   ballistic_frames,
   build_positions,
+  direct_origin_sum,
   drift_positions,
   make_rng,
   max_rel_error,
@@ -90,27 +91,6 @@ describe(`analytic MSD limits`, () => {
 })
 
 describe(`FFT origin average`, () => {
-  // Brute-force <|r(t + lag) - r(t)|^2> over every origin and the given atoms
-  const direct_msd = (
-    positions: Float64Array,
-    n_frames: number,
-    n_atoms: number,
-    lag: number,
-    atoms: number[],
-  ): number => {
-    let total = 0
-    for (let origin = 0; origin + lag < n_frames; origin++) {
-      for (const atom_idx of atoms) {
-        for (let axis = 0; axis < 3; axis++) {
-          const from = (origin * n_atoms + atom_idx) * 3 + axis
-          const delta = positions[from + lag * n_atoms * 3] - positions[from]
-          total += delta * delta
-        }
-      }
-    }
-    return total / ((n_frames - lag) * atoms.length)
-  }
-
   it.each([
     [`near the origin`, 0],
     // S1 - 2 S2 on raw coordinates would cancel ~1e6 Å² terms down to ~0.05 Å² MSDs
@@ -128,13 +108,25 @@ describe(`FFT origin average`, () => {
     })
     const stream = build_positions(frames, { elements })
     const result = calc_msd(stream, { max_lag_fraction: 1 })
+    // Brute-force <|r(t + lag) - r(t)|^2> summand of one atom and origin
+    const { positions } = stream
+    const squared_disp = (from: number, to: number): number => {
+      let sum = 0
+      for (let axis = 0; axis < 3; axis++) {
+        const delta = positions[to + axis] - positions[from + axis]
+        sum += delta * delta
+      }
+      return sum
+    }
     let [max_abs, max_rel] = [0, 0]
     for (const curve of result.curves) {
       const atoms = [...elements.keys()].filter(
         (atom_idx) => curve.label === `Total` || elements[atom_idx] === curve.label,
       )
       for (const [lag_idx, lag] of result.lags.entries()) {
-        const expected = direct_msd(stream.positions, n_frames, n_atoms, lag, atoms)
+        const expected =
+          direct_origin_sum(n_frames, n_atoms, lag, atoms, squared_disp) /
+          ((n_frames - lag) * atoms.length)
         const diff = Math.abs(curve.msd[lag_idx] - expected)
         max_abs = Math.max(max_abs, diff)
         max_rel = Math.max(max_rel, diff / expected)

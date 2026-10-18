@@ -4,7 +4,6 @@
   import { get_formula_label_segments } from '#lib/composition/format.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
-  import type { PhaseData } from '#lib/convex-hull/types.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
@@ -76,12 +75,7 @@
     swizzle_to_render,
     vertex_mean,
   } from './compute'
-  import type {
-    ChemPotDiagramConfig,
-    ChemPotHoverInfo,
-    ChemPotHoverInfo3D,
-    ChemPotTooltipProp,
-  } from './types'
+  import type { ChemPotDiagramProps, ChemPotHoverInfo3D } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
@@ -107,23 +101,14 @@
     config = {},
     width = 800,
     height = 600,
-    // Auto-corrected to a valid available temperature when needed.
-    temperature = $bindable<number | undefined>(undefined),
-    hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    temperature = $bindable(),
+    hover_info = $bindable(null),
+    highlighted_formula = null,
     tooltip,
-  }: {
-    entries: PhaseData[]
+  }: ChemPotDiagramProps & {
     show_controls?: ShowControlsProp<
       `controls` | `fullscreen` | `export` | `formulas` | `slice`
     >
-    config?: ChemPotDiagramConfig
-    width?: number
-    height?: number
-    temperature?: number
-    hover_info?: ChemPotHoverInfo | null
-    highlighted_formula?: string | null
-    tooltip?: ChemPotTooltipProp
   } = $props()
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)

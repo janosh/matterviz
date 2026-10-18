@@ -1,37 +1,14 @@
 <script lang="ts">
   import { normalize_dos } from '#lib/spectral/index.js'
   import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
-  import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
+  import type { PhononDos } from '#lib/spectral/types.js'
   import { electronic_bands } from '#site/electronic/bands/index.js'
   import { dos_spin_polarization } from '#site/electronic/dos/index.js'
+  import { mock_band_structure, mock_dos } from '../spectral-mocks'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
   const electronic_dos = normalize_dos(dos_spin_polarization)
   if (!electronic_dos) throw new Error(`Invalid electronic DOS fixture`)
-
-  const mock_band_structure: BaseBandStructure = {
-    type: `phonon`,
-    qpoints: [
-      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
-      { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
-      { label: `X`, frac_coords: [0.5, 0.0, 0.0], distance: 1.0 },
-    ],
-    branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
-    labels_dict: { GAMMA: [0.0, 0.0, 0.0], X: [0.5, 0.0, 0.0] },
-    distance: [0.0, 0.5, 1.0],
-    nb_bands: 3,
-    bands: [
-      [0.0, 1.0, 2.0],
-      [1.0, 2.0, 3.0],
-      [2.0, 3.0, 4.0],
-    ],
-  }
-
-  const mock_dos: PhononDos = {
-    type: `phonon`,
-    frequencies: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-    densities: [0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.5, 0.2, 0.0],
-  }
 
   const high_freq_dos: PhononDos = {
     type: `phonon`,

@@ -248,19 +248,7 @@ export const worker_run = (
     const reply = event.data
     if (`properties` in reply) {
       if (properties.complete) return
-      let errors: unknown[] | undefined
-      try {
-        properties.push(reply.properties)
-      } catch (error) {
-        errors = [error]
-      }
-      try {
-        if (reply.complete) properties.finish()
-      } catch (error) {
-        ;(errors ??= []).push(error)
-      }
-      if (errors?.length === 1) throw errors[0]
-      if (errors) throw new AggregateError(errors, `Worker property notifications failed`)
+      properties.deliver(reply.properties, reply.complete, `Worker`)
       return
     }
     const request = pending.get(reply.id)

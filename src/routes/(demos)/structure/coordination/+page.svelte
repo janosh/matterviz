@@ -1,24 +1,18 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { type Crystal, SETTINGS_CONFIG } from '#lib'
-  import { plot_color } from '#lib/colors/index.js'
+  import type { Crystal } from '#lib'
   import type { CoordinationSplitMode } from '#lib/coordination/index.js'
   import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
   import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import { type AtomColorConfig, type AnyStructure, Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_map } from '#site/structures.js'
-  import EnumSelect from '../../EnumSelect.svelte'
-  import StructurePicker, {
-    hex_with_alpha,
-    labeled_structures,
-  } from '../../StructurePicker.svelte'
+  import EnumSelect, { default_strategy, strategy_options } from '../../EnumSelect.svelte'
+  import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
+  import StructureTiles from '../../StructureTiles.svelte'
 
   // Single structure example. Default to a complex oxide (Zr16Bi16O56) whose sites span
   // coordination numbers 4, 6 and 8, so the discrete color bar shows several segments.
-  const { value: default_strategy, enum: strategy_options } =
-    SETTINGS_CONFIG.structure.bonding_strategy
-  const strategies = strategy_options ?? {}
   let single_id = $state<string>(`mp-756175`)
   let single_strategy = $state<BondingStrategy>(default_strategy)
   let single_split_mode = $state<CoordinationSplitMode>(`by_element`)
@@ -69,7 +63,7 @@
   <h2 id="single-structure">Single Structure</h2>
 
   <div class="demo-controls">
-    <EnumSelect label="Strategy" options={strategies} bind:value={single_strategy} />
+    <EnumSelect label="Strategy" options={strategy_options} bind:value={single_strategy} />
     <EnumSelect
       label="Split Mode"
       options={COORDINATION_SPLIT_MODES}
@@ -104,7 +98,7 @@
   <h2 id="multiple-structures-overlay">Multiple Structures Overlay</h2>
 
   <div class="demo-controls">
-    <EnumSelect label="Strategy" options={strategies} bind:value={multi_strategy} />
+    <EnumSelect label="Strategy" options={strategy_options} bind:value={multi_strategy} />
     <EnumSelect
       label="Split Mode"
       options={COORDINATION_SPLIT_MODES}
@@ -124,28 +118,19 @@
         style="height: 100%"
         on_sites_hover={(highlights) => (multi_highlights = highlights ?? [])}
       />
-      <div class="selected-structures-grid">
-        {#each selected_ids as struct_id, idx (struct_id)}
-          {@const struct_obj = structure_map.get(struct_id)}
-          {#if struct_obj}
-            <div
-              class="structure-tile"
-              style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
-            >
-              <h3>{struct_id}</h3>
-              <Structure
-                structure={struct_obj}
-                highlighted_sites={highlight_of(struct_obj)}
-                bind:atom_color_config={multi_color_config}
-                scene_props={multi_scene_props}
-                style="height: 100%"
-                enable_info_pane={false}
-                enable_measure_mode={false}
-              />
-            </div>
-          {/if}
-        {/each}
-      </div>
+      <StructureTiles struct_ids={selected_ids}>
+        {#snippet tile(struct_obj)}
+          <Structure
+            structure={struct_obj}
+            highlighted_sites={highlight_of(struct_obj)}
+            bind:atom_color_config={multi_color_config}
+            scene_props={multi_scene_props}
+            style="height: 100%"
+            enable_info_pane={false}
+            enable_measure_mode={false}
+          />
+        {/snippet}
+      </StructureTiles>
     </section>
   </LazyDemo>
 </div>
@@ -159,12 +144,12 @@
     grid-template-columns: 1fr 1fr;
     gap: 1em;
   }
-  .selected-structures-grid {
+  .multi-structure-layout :global(.selected-structures-grid) {
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: minmax(0, 1fr);
   }
   @container (min-width: 901px) {
-    .structure-tile:last-child:nth-child(odd) {
+    .multi-structure-layout :global(.structure-tile:last-child:nth-child(odd)) {
       grid-column: 1 / -1;
     }
   }
@@ -175,7 +160,7 @@
         minmax(0, 1.1fr) minmax(0, 0.9fr);
       gap: 0.5em;
     }
-    .selected-structures-grid {
+    .multi-structure-layout :global(.selected-structures-grid) {
       display: contents;
     }
   }

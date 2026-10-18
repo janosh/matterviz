@@ -201,6 +201,16 @@ export function sweep_frame_plan(
   return { frame_numbers, frame_stride }
 }
 
+// `sweep_frame_plan` over a pane's selected window, empty while that window is: the panes'
+// frame-count hints render before a trajectory (or a non-empty window) is loaded
+export const window_sweep_plan = (
+  window_frames: number,
+  max_frames: number,
+): { frame_numbers: number[]; frame_stride: number } =>
+  window_frames > 0
+    ? sweep_frame_plan(window_frames, max_frames)
+    : { frame_numbers: [], frame_stride: 1 }
+
 export interface FrameSweepOptions extends FrameRange {
   max_frames: number
   // Visits in flight at once, for visitors backed by a worker pool (default one: a single

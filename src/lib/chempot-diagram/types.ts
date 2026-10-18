@@ -1,3 +1,4 @@
+import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Point2D, Vec2 } from '#lib/math.js'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
@@ -119,6 +120,21 @@ export type ChemPotHoverInfo = ChemPotHoverInfo2D | ChemPotHoverInfo3D
 // detail_level `compact` drops the axis ranges, neighbours and bounds (default `detailed`)
 export type ChemPotTooltipConfig = { detail_level?: `compact` | `detailed` }
 export type ChemPotTooltipProp = TooltipProp<ChemPotHoverInfo, ChemPotTooltipConfig>
+
+// Props shared by ChemPotDiagram and its 2D and 3D views
+export type ChemPotDiagramProps = {
+  entries: PhaseData[]
+  config?: ChemPotDiagramConfig
+  width?: number
+  height?: number
+  // Bound; views auto-correct it to a valid available temperature when needed
+  temperature?: number
+  hover_info?: ChemPotHoverInfo | null
+  // Shown while no domain is hovered, any formula spelling
+  highlighted_formula?: string | null
+  // false hides the domain tooltip, a snippet replaces its content, { detail_level } trims it
+  tooltip?: ChemPotTooltipProp
+}
 
 // Default configuration values
 export const CHEMPOT_DEFAULTS = {

@@ -1,9 +1,10 @@
 import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
-import type { PositionedArc, SunburstNode, SunburstNodeHandlerProps } from '#lib/plot/index.js'
+import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
 import { PLOT_COLORS } from '#lib/colors/index.js'
 import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { expect_a1_hover, tree } from './hierarchy-fixtures'
 import {
   export_via_pane,
   fire,
@@ -14,19 +15,6 @@ import {
   query,
   with_measured_text,
 } from '../setup'
-
-// A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
-const tree: SunburstNode[] = [
-  {
-    label: `A`,
-    color: `#e15759`,
-    children: [
-      { label: `A1`, value: 4 },
-      { label: `A2`, value: 6 },
-    ],
-  },
-  { label: `B`, value: 10 },
-]
 
 // 8 siblings spanning 1..8, for the 'Other' bucketing options
 const long_tail: SunburstNode[] = Array.from({ length: 8 }, (_item, idx) => ({
@@ -56,15 +44,12 @@ const deep: SunburstNode[] = [
 ]
 
 // duration 0 makes zoom transitions synchronous for assertions
+const size = { selector: `.sunburst`, width: 500, height: 360 }
 const mount_sized_sunburst = (
   props: Partial<ComponentProps<typeof Sunburst>>,
-  size = { width: 500, height: 360 },
+  dims: { width?: number; height?: number } = {},
 ): Promise<HTMLElement> =>
-  mount_sized(
-    Sunburst,
-    { tween: { duration: 0 }, ...props },
-    { selector: `.sunburst`, ...size },
-  )
+  mount_sized(Sunburst, { tween: { duration: 0 }, ...props }, { ...size, ...dims })
 
 // Pre-order node indices for the `tree` fixture (root=0)
 const IDX = { A: 1, A1: 2, A2: 3, B: 4 } as const
@@ -135,18 +120,7 @@ describe(`Sunburst`, () => {
     expect(
       [...plot.querySelectorAll(`.plot-tooltip small`)].map((unit) => unit.textContent),
     ).toEqual([`%`, `%`])
-    expect(on_node_hover).toHaveBeenCalledOnce()
-    expect(on_node_hover.mock.calls[0][0] as SunburstNodeHandlerProps).toMatchObject({
-      type: `node`,
-      label: `A1`,
-      value: 4,
-      depth: 2,
-      is_leaf: true,
-      path: [`A`, `A/A1`],
-      label_path: [`A`, `A1`],
-      fraction: expect.closeTo(0.2, 9),
-      parent_fraction: expect.closeTo(0.4, 9),
-    })
+    expect_a1_hover(on_node_hover)
     const opacity = (lbl: keyof typeof IDX) => arc_path(plot, lbl).getAttribute(`fill-opacity`)
     expect([opacity(`A1`), opacity(`A`), opacity(`B`)]).toEqual([`1`, `1`, `1`])
     // disk + hovered wedge (A1, out to the rim) + ancestor A; the root is collapsed
@@ -462,7 +436,7 @@ describe(`Sunburst`, () => {
         const plot = await mount_sized(
           Sunburst,
           { data: multi_root, value_mode: `total` },
-          { selector: `.sunburst`, width: 500, height: 360 },
+          size,
         )
         expect(n_arcs(plot)).toBe(7 * 35) // 7 roots x (34 children + 1 root arc)
       }
@@ -490,11 +464,7 @@ describe(`Sunburst`, () => {
   test(`swapping data clears stale hover/tooltip state`, async () => {
     // mounted with the $state object itself so reassigning data reaches the component
     const props = $state({ data: tree, tween: { duration: 0 } })
-    const plot = await mount_sized(Sunburst, props, {
-      selector: `.sunburst`,
-      width: 500,
-      height: 360,
-    })
+    const plot = await mount_sized(Sunburst, props, size)
     await fire(arc_path(plot, `B`), mouse(`mousemove`))
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     props.data = Array.from({ length: 5 }, (_node, idx) => ({

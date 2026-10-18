@@ -74,6 +74,28 @@ export class TrajectoryProperties {
     this.notify(batch)
   }
 
+  // Push a streamed batch and finish on the last one, finishing even when a push listener
+  // throws. One error is rethrown as is, several as an AggregateError naming the source.
+  deliver(
+    batch: readonly TrajectoryMetadata[],
+    complete: boolean | undefined,
+    source: string,
+  ): void {
+    let errors: unknown[] | undefined
+    try {
+      this.push(batch)
+    } catch (error) {
+      errors = [error]
+    }
+    try {
+      if (complete) this.finish()
+    } catch (error) {
+      ;(errors ??= []).push(error)
+    }
+    if (errors?.length === 1) throw errors[0]
+    if (errors) throw new AggregateError(errors, `${source} property notifications failed`)
+  }
+
   finish(): void {
     if (this.complete) return
     this.complete = true

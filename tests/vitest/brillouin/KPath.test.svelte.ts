@@ -18,9 +18,9 @@ type KMarker = { position: Vec3; color: string }
 vi.mock(`@threlte/core`, async (original) =>
   (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
 )
-vi.mock(`@threlte/extras`, async () => ({
-  HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
-}))
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_extras(),
+)
 
 // A segment hover reports its nearer endpoint's q-point, and the proxy's pick_rank lets it win
 // over the zone or IBZ wedge it is drawn through (front_hit). Segments touching the hovered q-point

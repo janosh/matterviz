@@ -3,7 +3,6 @@
   import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
-  import type { PhaseData } from '#lib/convex-hull/types.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { json_source } from '#lib/io/export.js'
@@ -23,28 +22,18 @@
     sticky_range,
   } from './controls-state.svelte'
   import { build_axis_ranges, orthonormal_2d, pad_domains, padded_floors } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
+  import type { ChemPotDiagramProps } from './types'
 
   let {
     entries = [],
     config = {},
     width = 800,
     height = 600,
-    // Auto-corrected to a valid available temperature when needed.
-    temperature = $bindable<number | undefined>(undefined),
-    hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    temperature = $bindable(),
+    hover_info = $bindable(null),
+    highlighted_formula = null,
     tooltip,
-  }: {
-    entries: PhaseData[]
-    config?: ChemPotDiagramConfig
-    width?: number
-    height?: number
-    temperature?: number
-    hover_info?: ChemPotHoverInfo | null
-    highlighted_formula?: string | null
-    tooltip?: ChemPotTooltipProp
-  } = $props()
+  }: ChemPotDiagramProps = $props()
   // Plot wrapper element (pointer hit-testing), bound from the ScatterPlot
   let wrapper = $state<HTMLDivElement>()
   let container_width = $state(0)

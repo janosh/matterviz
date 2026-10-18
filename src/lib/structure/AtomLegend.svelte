@@ -145,8 +145,13 @@
   const backdrop = resolve_backdrop(() => property_legend_node)
   const property_text_color = (background: string): string =>
     contrast_text_color({ background, backdrop: backdrop.current })
-  const toggle_label = (value: number | string, hidden: boolean): string =>
-    `${hidden ? `Show` : `Hide`} ${format_value(value)}`
+  // Click handler and labels shared by the discrete-colorbar and categorical value toggles
+  const prop_val_toggle = (value: number | string, hidden: boolean) => ({
+    onclick: (event: MouseEvent) =>
+      (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event)),
+    title: hidden ? `Show` : `Hide`,
+    'aria-label': `${hidden ? `Show` : `Hide`} ${format_value(value)}`,
+  })
 
   // The legend filter darkens saturated swatches, so their perceived brightness is a
   // better text-color signal than maximum contrast against the unfiltered CSS color.
@@ -503,10 +508,7 @@
             class={['discrete-segment', { hidden: is_hidden }]}
             style:background-color={color}
             aria-pressed={is_hidden}
-            onclick={(event) =>
-              (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={is_hidden ? `Show` : `Hide`}
-            aria-label={toggle_label(value, is_hidden)}
+            {...prop_val_toggle(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
             style:color={property_text_color(color)}
           >
@@ -545,10 +547,7 @@
           </span>
           <button
             class={['toggle-visibility', { 'element-hidden': is_hidden }]}
-            onclick={(event) =>
-              (hidden_prop_vals = toggle_visibility(hidden_prop_vals, value, event))}
-            title={is_hidden ? `Show` : `Hide`}
-            aria-label={toggle_label(value, is_hidden)}
+            {...prop_val_toggle(value, is_hidden)}
             {@attach tooltip({ placement: `top` })}
             type="button"
           >

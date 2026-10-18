@@ -10,6 +10,7 @@ import {
 } from '#lib/structure/supercell.js'
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../test-fixtures'
+import { thousand_site_crystal } from './geometry-fixtures'
 
 const sample_structure = make_crystal(
   4,
@@ -414,13 +415,7 @@ describe(`size limit`, () => {
 
 // Timing of large supercells lives in perf-baselines.test.ts
 test(`constructs a 64k-site supercell with xyz and abc on every site`, () => {
-  const test_structure = make_crystal(
-    1,
-    Array.from({ length: 1000 }, (_, idx) => ({
-      element: `H`,
-      abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-    })),
-  )
+  const test_structure = thousand_site_crystal()
   const supercell = make_supercell(test_structure, `4x4x4`)
   expect(supercell.sites).toHaveLength(64_000)
   const finite_xyz = supercell.sites.every((site) => site.xyz.every(Number.isFinite))

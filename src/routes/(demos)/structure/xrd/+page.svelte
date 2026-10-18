@@ -25,7 +25,8 @@
   import { structure_map, structures } from '#site/structures.js'
   import { to_error } from '#lib/utils.js'
   import { fixture_ext, site_file_info } from '#site/imports.js'
-  import StructurePicker, { formula_for, hex_with_alpha } from '../../StructurePicker.svelte'
+  import StructurePicker, { formula_for } from '../../StructurePicker.svelte'
+  import StructureTiles from '../../StructureTiles.svelte'
 
   // static/xrd symlinks these fixtures so the globbed files remain available at /xrd/<name>.
   const xrd_file_modules = import.meta.glob(
@@ -346,26 +347,17 @@
       hkl_format="compact"
       style="height: 400px"
     />
-    <div class="selected-structures-grid">
-      {#each selected_ids as struct_id, idx (struct_id)}
-        {@const struct_obj = structure_map.get(struct_id)}
-        {#if struct_obj}
-          <div
-            class="structure-tile"
-            style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
-          >
-            <h3>{struct_id}</h3>
-            <Structure
-              structure={struct_obj}
-              style="height: 180px; width: 100%"
-              enable_info_pane={false}
-              enable_measure_mode={false}
-              scene_props={{ gizmo: false }}
-            />
-          </div>
-        {/if}
-      {/each}
-    </div>
+    <StructureTiles struct_ids={selected_ids}>
+      {#snippet tile(struct_obj)}
+        <Structure
+          structure={struct_obj}
+          style="height: 180px; width: 100%"
+          enable_info_pane={false}
+          enable_measure_mode={false}
+          scene_props={{ gizmo: false }}
+        />
+      {/snippet}
+    </StructureTiles>
   </LazyDemo>
 
   <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>

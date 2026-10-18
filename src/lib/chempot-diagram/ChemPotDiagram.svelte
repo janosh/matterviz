@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { PhaseData } from '#lib/convex-hull/types.js'
   import { plural } from '#lib/labels.js'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import ChemPotLegend from './ChemPotLegend.svelte'
   import { entry_elements, get_ternary_combinations } from './compute'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo, ChemPotTooltipProp } from './types'
+  import type { ChemPotDiagramProps, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
@@ -13,22 +12,11 @@
     config = {},
     width = 600,
     height = 600,
-    // Bound temperature may be auto-corrected by 2D/3D child components.
     temperature = $bindable(),
-    hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    highlighted_formula = null, // shown in every view while none is hovered, any spelling
-    // false hides the domain tooltip, a snippet replaces its content, { detail_level } trims it
+    hover_info = $bindable(null),
+    highlighted_formula = null,
     tooltip,
-  }: {
-    entries: PhaseData[]
-    config?: ChemPotDiagramConfig
-    width?: number
-    height?: number
-    temperature?: number
-    hover_info?: ChemPotHoverInfo | null
-    highlighted_formula?: string | null
-    tooltip?: ChemPotTooltipProp
-  } = $props()
+  }: ChemPotDiagramProps = $props()
 
   const all_elements = $derived(entry_elements(entries))
 

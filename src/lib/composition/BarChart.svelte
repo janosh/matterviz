@@ -107,8 +107,7 @@
         {@attach hover_tooltip(segment_tooltip, () => segment.color)}
         stroke-width="1"
         class="bar-segment"
-      >
-      </rect>
+      />
     {/each}
   </g>
 

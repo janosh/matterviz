@@ -33,8 +33,7 @@
     treemap_hover_veil,
   } from '#lib/plot/treemap/treemap.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { type Snippet, untrack } from 'svelte'
   import { cubicInOut } from 'svelte/easing'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
@@ -81,15 +80,12 @@
     on_node_click,
     on_node_hover,
     on_zoom,
-    show_controls,
     controls_open = $bindable(false),
-    controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
-    fullscreen_toggle = true,
-    children,
-    header_controls,
     controls_extra,
+    // show_controls, controls_toggle_props, fullscreen_toggle, header_controls and children
+    // reach ChartShell through rest
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
     // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
@@ -363,12 +359,7 @@
   bind:width
   bind:height
   bind:fullscreen
-  {fullscreen_toggle}
-  {show_controls}
-  {controls_toggle_props}
-  {header_controls}
   export_sources={chart_state.export_sources}
-  {children}
   {...rest}
 >
   {#snippet controls(toggle_props, show_controls)}

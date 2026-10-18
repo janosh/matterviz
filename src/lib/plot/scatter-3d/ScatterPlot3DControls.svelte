@@ -20,6 +20,7 @@
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
+  import CameraSection from '#lib/scene/CameraSection.svelte'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import type { Vec2 } from '#lib/math.js'
   import type { AxisConfig3D, CameraProjection3D } from '#lib/plot/core/types.js'
@@ -132,22 +133,17 @@
   pane_props={{ title: `3D plot settings`, ...pane_props }}
   {shortcut_scopes}
 >
-  <SettingsSection
-    title="Camera"
+  <CameraSection
+    bind:camera_projection
+    default_projection={defaults.camera_projection}
     changed_keys={camera_settings.changed_keys}
     on_reset={() => ({ camera_projection, auto_rotate } = camera_settings.snapshot())}
+    layout="flow"
   >
-    <label>
-      <span>Projection</span>
-      <select bind:value={camera_projection}>
-        <option value="perspective">Perspective</option>
-        <option value="orthographic">Orthographic</option>
-      </select>
-    </label>
     <NumberRangeInput min={0} max={5} step={0.1} bind:value={auto_rotate}
       >Auto-rotate</NumberRangeInput
     >
-  </SettingsSection>
+  </CameraSection>
 
   <SettingsSection
     title="Display"

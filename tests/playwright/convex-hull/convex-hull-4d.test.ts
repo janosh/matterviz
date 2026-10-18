@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI, require_bbox } from '../helpers'
 import {
   ensure_pane_visible,
+  expect_face_color_modes,
   get_canvas_hash,
   goto_perf_page,
   open_info_and_controls,
@@ -198,15 +199,9 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     const initial_hash = await get_canvas_hash(canvas)
     const controls = await open_pane(diagram, `controls`)
 
-    // All 4 mode buttons present, Element active by default (no color picker)
-    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
-    await expect(mode_buttons).toBeVisible()
-    for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      await expect(mode_buttons.getByText(label)).toBeVisible()
-    }
-    await expect(mode_buttons.getByText(`Element`)).toHaveClass(/active/)
+    // Element is active by default (no color picker)
+    const mode_buttons = await expect_face_color_modes(controls, `Element`)
     const color_picker = controls.locator(`input[type="color"]`).first()
-    await expect(color_picker).toBeHidden()
 
     await mode_buttons.getByText(`Uniform`).click()
     await expect(color_picker).toBeVisible()

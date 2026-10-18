@@ -53,6 +53,7 @@ import {
   read_maybe_gz,
 } from './test-fixtures'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
+import { thousand_site_crystal } from './structure/geometry-fixtures'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,
 // vitest 4.1.11, happy-dom 20.11 (2026-08-21), with other vitest workers sharing the CPU
@@ -654,13 +655,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
 
   // 3x3x3 of 1000 sites: 4x4x4 (64k sites) spent most reps in major GC (18 ms to 2.9 s)
   test(`make_supercell 1000 sites x 3x3x3`, async () => {
-    const structure = make_crystal(
-      1,
-      Array.from({ length: 1000 }, (_, idx) => ({
-        element: `H`,
-        abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-      })),
-    )
+    const structure = thousand_site_crystal()
     await measure(`make_supercell 1000 sites x 3x3x3`, () => {
       expect(make_supercell(structure, `3x3x3`).sites).toHaveLength(27_000)
     })

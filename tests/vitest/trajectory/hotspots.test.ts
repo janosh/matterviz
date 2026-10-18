@@ -22,6 +22,7 @@ import { summarize_run } from '#lib/trajectory/run.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { create_trajectory_frame } from '#lib/trajectory/helpers.js'
 import { h5_bytes } from './fixtures'
+import { write_torchsim_si_frames } from '../../fixtures/torchsim-h5'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
@@ -618,41 +619,12 @@ describe(`spatial kinetic hotspots`, () => {
     // Cross the old 8 MiB whole-species/mass ceiling as well as one million positions.
     const n_atoms = 1_050_000
     const bytes = await h5_bytes(`million-atom-hotspots`, (file) => {
-      const data = file.create_group(`data`)
-      const steps = file.create_group(`steps`)
-      const positions = new Float32Array(n_atoms * 2 * 3)
-      const velocities = new Float32Array(positions.length)
-      for (let idx = 0; idx < n_atoms * 2; idx++) {
-        positions.set(
-          [idx % n_atoms < n_atoms / 2 ? 0.5 : 1 + (idx % 8) / 8, 0.5, 0.5],
-          idx * 3,
-        )
-        velocities[idx * 3] = idx % 2 ? 1 : -1
-      }
-      for (const [name, values] of [
-        [`positions`, positions],
-        [`velocities`, velocities],
-      ] as const) {
-        data.create_dataset({
-          name,
-          data: values,
-          shape: [2, n_atoms, 3],
-          chunks: [1, 10_000, 3],
-        })
-        steps.create_dataset({ name, data: [0, 1], shape: [2] })
-      }
-      data.create_dataset({
-        name: `atomic_numbers`,
-        data: new Uint8Array(n_atoms).fill(14),
-        shape: [n_atoms],
-      })
-      data.create_dataset({
-        name: `masses`,
-        data: new Float64Array(n_atoms).fill(28),
-        shape: [n_atoms],
-      })
-      data.create_dataset({ name: `cell`, data: grid.cell.flat(), shape: [3, 3] })
-      data.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
+      write_torchsim_si_frames(file, n_atoms, grid.cell.flat(), (row_idx) => [
+        row_idx % n_atoms < n_atoms / 2 ? 0.5 : 1 + (row_idx % 8) / 8,
+        0.5,
+        0.5,
+        row_idx % 2 ? 1 : -1,
+      ])
     })
     const started = performance.now()
     const opened = await open_hdf5_trajectory(bytes, create_warning_collector(), `million.h5`)
