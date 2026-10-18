@@ -32,8 +32,8 @@
     icon_style = ``,
     toggle_props = {},
     pane_props = {},
-    header = undefined,
-    children = undefined,
+    header,
+    children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean
@@ -65,11 +65,11 @@
 
   // Clamp DPI into [min_dpi, max_dpi] on input change (fires on blur, before any download click)
   function clamp_dpi(): void {
-    if (typeof png_dpi !== `number` || !Number.isFinite(png_dpi)) png_dpi = DEFAULT_PNG_DPI
+    if (!Number.isFinite(png_dpi)) png_dpi = DEFAULT_PNG_DPI
     else png_dpi = Math.round(clamp(png_dpi, min_dpi, max_dpi))
   }
 
-  const { copied, copy } = create_clipboard_feedback(1000)
+  const { copied, copy } = create_clipboard_feedback()
   const handle_copy = async (item: ExportItem, key: string) => {
     if (busy || item.disabled) return
     try {
@@ -99,7 +99,7 @@
     pane_props={{
       ...rest,
       ...pane_props,
-      class: [rest.class, pane_props?.class],
+      class: [rest.class, pane_props.class],
     }}
     {toggle_props}
     closed_icon={export_variant}

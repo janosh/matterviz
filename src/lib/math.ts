@@ -17,7 +17,7 @@ export const is_finite_vec3_like = (values: unknown): values is ArrayLike<number
   if (typeof values !== `object` || values === null) return false
   const array_like = values as ArrayLike<unknown>
   // Number.isFinite does not coerce, so non-numbers fail too. Unrolled so per-site hot loops
-  // (runs/memory.ts) allocate nothing.
+  // (trajectory/runs/memory.ts) allocate nothing.
   return (
     array_like.length === 3 &&
     Number.isFinite(array_like[0]) &&
@@ -119,6 +119,23 @@ export const in_range = (value: number, [bound_a, bound_b]: Vec2): boolean =>
 // Whether idx is an integer in [0, length), i.e. a valid index into that many items
 export const is_valid_index = (idx: number, length: number): boolean =>
   Number.isInteger(idx) && idx >= 0 && idx < length
+
+// Leading numeric prefix like parseFloat (`2px` -> 2, `600 K` -> 600, else NaN)
+export const leading_number = (text: string | null | undefined): number => {
+  const match = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i.exec(text?.trim() ?? ``)
+  return match ? Number(match[0]) : NaN
+}
+
+// Returns value if it is >= 0 and finite (or +Infinity when allowed), else throws naming it
+export const assert_non_negative = (
+  value: number,
+  name: string,
+  allow_infinity = false,
+): number => {
+  if (value >= 0 && (allow_infinity || Number.isFinite(value))) return value
+  const kind = allow_infinity ? `non-negative number` : `non-negative finite number`
+  throw new RangeError(`${name} must be a ${kind}, got ${value}`)
+}
 
 // Ascending array of the given numbers, e.g. a Set of site indices
 export const sorted_numbers = (values: Iterable<number>): number[] =>
@@ -351,16 +368,7 @@ export const pbc_dist = (
   lattice_matrix: Matrix3x3,
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
-): number => {
-  const [delta_x, delta_y, delta_z] = min_image_displacement(
-    pos1,
-    pos2,
-    lattice_matrix,
-    converters,
-    pbc,
-  )
-  return Math.hypot(delta_x, delta_y, delta_z)
-}
+): number => Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
 
 export function det_3x3(matrix: Matrix3x3): number {
   // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
@@ -1468,12 +1476,11 @@ export function array_extent(values: readonly number[]): Vec2 {
   return [min, max]
 }
 
-// Shared quantile + selection helpers used by box-plot.ts and kde.ts. quickselect partially
-// sorts in place, so quantile_unordered mutates its input.
+// Quantile + selection helpers. quickselect partially sorts in place, so quantile_unordered
+// mutates its input.
 //
 // Unguarded contract: both assume values.length > 0 and 0 <= p <= 1. Out-of-range inputs
-// index past the array and yield undefined/NaN — callers (box-plot.ts, kde.ts) must length-
-// and p-range-check before calling.
+// index past the array and yield undefined/NaN, so callers must length- and p-range-check.
 
 export function quickselect(values: number[], kth: number): number {
   let left = 0

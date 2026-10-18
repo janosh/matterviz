@@ -36,8 +36,10 @@ import {
   reaction_slice_lines,
   reaction_slice_points,
   slice_point_on_hull,
+  solid_reactants,
 } from '#lib/synthesis-planning/thermo.js'
 import { fractional_composition } from '#lib/composition/parse.js'
+import { format_model_conditions } from '#lib/synthesis-planning/recipe.js'
 import { describe_atmosphere, describe_interface } from '#lib/synthesis-planning/scoring.js'
 import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
 import * as math from '#lib/math.js'
@@ -67,6 +69,17 @@ const find = (phases: PlannerPhase[], formula: string): PlannerPhase => {
   const phase = phases.find((candidate) => candidate.formula === formula)
   if (!phase) throw new Error(`${formula} missing from phase set`)
   return phase
+}
+
+// balance_reaction (every precursor used) that throws instead of returning a failure reason
+const balance = (
+  precursors: PlannerPhase[],
+  target: PlannerPhase,
+  gases: PlannerPhase[] = [],
+) => {
+  const balanced = balance_reaction(precursors, target, gases, true)
+  if (typeof balanced === `string`) throw new Error(balanced)
+  return balanced
 }
 
 describe(`prepare_phase_set`, () => {
@@ -202,8 +215,7 @@ describe(`balance_reaction`, () => {
     [[`BaO`, `Ti`], `O2`, -1, 5, `BaO + Ti + O2 → BaTiO3`],
   ])(`balances %j with %s exchange %d`, (formulas, gas, exchange, n_atoms, equation) => {
     const precursors = formulas.map((formula) => find(phase_set.phases, formula))
-    const balanced = balance_reaction(precursors, target, gases, true)
-    if (typeof balanced === `string`) throw new Error(balanced)
+    const balanced = balance(precursors, target, gases)
     expect(balanced.coefficients).toEqual([1, 1])
     const gas_idx = gases.findIndex(({ formula }) => formula === gas)
     expect(balanced.gas_exchange[gas_idx]).toBeCloseTo(exchange, 9)
@@ -236,8 +248,7 @@ describe(`analyze_selectivity`, () => {
     assign_e_above_hull(phases)
     const precursors = [find(phases, `Li2O`), find(phases, `TiO2`)]
     const target = find(phases, `Li2TiO3`)
-    const balanced = balance_reaction(precursors, target, [], true)
-    if (typeof balanced === `string`) throw new Error(balanced)
+    const balanced = balance(precursors, target)
     // Li2O (3 atoms, -2) + TiO2 (3 atoms, -3) → Li2TiO3 (6 atoms, -2.8): ΔE = -16.8 + 15 = -1.8 eV
     expect(balanced.energy_per_fu).toBeCloseTo(-1.8, 9)
     const target_force = balanced.energy_per_fu / balanced.reactant_atoms
@@ -284,8 +295,7 @@ describe(`analyze_selectivity`, () => {
     assign_e_above_hull(phases)
     const precursors = [find(phases, `BaO`), find(phases, `TiO2`)]
     const target = find(phases, `BaTiO3`)
-    const balanced = balance_reaction(precursors, target, [], true)
-    if (typeof balanced === `string`) throw new Error(balanced)
+    const balanced = balance(precursors, target)
     const target_force = balanced.energy_per_fu / balanced.reactant_atoms
     const selectivity = analyze_selectivity(precursors, target, [], phases, target_force)
     const forces = new Map(
@@ -362,13 +372,11 @@ describe(`temperature dependence`, () => {
     }
     const phase_set = prepare_phase_set(ca_c_o, conditions)
     const gases = phase_set.phases.filter((phase) => phase.is_gas)
-    const balanced = balance_reaction(
+    const balanced = balance(
       [find(phase_set.phases, `CaCO3`)],
       find(phase_set.phases, `CaO`),
       gases,
-      true,
     )
-    if (typeof balanced === `string`) throw new Error(balanced)
     const energy_at = reaction_energy_at_temperature(balanced, gases, [`CO2`], conditions)
     const cached = reaction_energy_at_temperature(balanced, gases, [`CO2`], conditions, cache)
     const temperatures = Array.from({ length: 2001 }, (_, idx) => idx)
@@ -571,6 +579,11 @@ describe(`plan_synthesis`, () => {
       ).toThrow(/Target mass/)
     }
     expect(plan.routes[0].thermodynamics.atmosphere).toBe(`releases CO2`)
+    for (const [temperature, partial_pressures, expected] of [
+      [300, {}, `300 K; closed system`],
+      [900, { O2: 0.21, CO2: 1 }, `900 K; O2: 0.21 bar, CO2: 1 bar`],
+    ] as const)
+      expect(format_model_conditions({ temperature, partial_pressures })).toBe(expected)
     for (const [exchange, expected] of [
       [{}, `no net gas exchange`],
       [{ CO2: 0 }, `no net gas exchange`],
@@ -653,11 +666,9 @@ describe(`plan_synthesis`, () => {
     expect(everything.precursor_pool.length).toBeGreaterThan(allowed.precursor_pool.length + 2)
 
     const single = plan_synthesis({ ...base_request, max_precursors: 1 })
-    expect(
-      single.routes.every(
-        (route) => route.reaction.reactants.filter(({ phase }) => !phase.is_gas).length === 1,
-      ),
-    ).toBe(true)
+    expect(single.routes.every((route) => solid_reactants(route.reaction).length === 1)).toBe(
+      true,
+    )
     expect(single.warnings.some((warning) => warning.includes(`matches no phase`))).toBe(false)
     const bogus = plan_synthesis({
       ...base_request,
@@ -808,7 +819,7 @@ describe(`reaction slice on the full hull`, () => {
     })
     const route = plan.routes.find(({ reaction }) => reaction.equation === equation)
     if (!route) throw new Error(`no ${equation} in ${plan.routes.map(({ id }) => id)}`)
-    const solids = route.reaction.reactants.filter(({ phase }) => !phase.is_gas)
+    const solids = solid_reactants(route.reaction)
     const lines = reaction_slice_lines(route).map(({ from, to }) => [from.label, to.label])
     expect(lines).toEqual([solids.map(({ phase }) => phase.formula)])
     const [corners, target, competitors] = [

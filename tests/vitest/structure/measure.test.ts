@@ -12,10 +12,7 @@ import {
   rolls_measured_sites,
 } from '#lib/structure/measure.js'
 import { describe, expect, test } from 'vitest'
-import { make_molecule } from '../test-fixtures'
-
-// oxfmt-ignore
-const cubic = (a_len: number): Matrix3x3 => [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]]
+import { cubic_matrix as cubic, make_molecule } from '../test-fixtures'
 
 const PBC_ALL: Pbc = [true, true, true]
 const SLAB_PBC: Pbc = [true, true, false]
@@ -328,27 +325,29 @@ describe(`measure: displacement fields`, () => {
   // oxfmt-ignore
   const cubic_cur: Vec3[] = [[9.8, 0, 0], [5.2, 5.1, 4.9], [0.2, 1, 1]]
 
-  test(`uses the minimum image so atoms that relaxed across a face move a fraction of an Angstrom`, () => {
-    const [reference, current] = [sites(cubic_ref), sites(cubic_cur)]
-    const { vectors, rmsd, max_displacement } = compute_displacements(
-      reference,
-      current,
-      cubic(10),
-      PBC_ALL,
-    )
-    // oxfmt-ignore
-    const expected: Vec3[] = [[-0.3, 0, 0], [0.2, 0.1, -0.1], [0.3, 0, 0]]
-    for (const [site_idx, expected_vec] of expected.entries()) {
-      expect_vec3_close(vectors[site_idx], expected_vec, 12)
-    }
-    expect(rmsd).toBeCloseTo(0.282842712474619, 12) // sqrt(0.24 / 3)
-    expect(max_displacement).toBeCloseTo(0.3, 12)
+  // oxfmt-ignore
+  test.each([
+    // atoms that relaxed across a face move a fraction of an Angstrom; rmsd = sqrt(0.24 / 3)
+    [`cubic cell`, cubic(10), cubic_ref, cubic_cur, [[-0.3, 0, 0], [0.2, 0.1, -0.1], [0.3, 0, 0]], 0.282842712474619, 0.3],
+    // the shortest image is not axis-aligned
+    [`triclinic cell`, [[6, 0, 0], [1.5, 5.5, 0], [0.8, 1.2, 7]], [[0.2, 0.1, 0.1], [3, 2, 1]], [[7.4, 5.4, 6.9], [3.1, 2.05, 1.02]], [[-1.1, -1.4, -0.2], [0.1, 0.05, 0.02]], 1.269429005498141, 1.791647286716891],
+  ] as [string, Matrix3x3, Vec3[], Vec3[], Vec3[], number, number][])(
+    `uses the minimum image in a %s`,
+    (_name, lattice, reference, current, expected, expected_rmsd, expected_max) => {
+      const field = compute_displacements(sites(reference), sites(current), lattice, PBC_ALL)
+      for (const [site_idx, expected_vec] of expected.entries()) {
+        expect_vec3_close(field.vectors[site_idx], expected_vec, 12)
+      }
+      expect(field.rmsd).toBeCloseTo(expected_rmsd, 12)
+      expect(field.max_displacement).toBeCloseTo(expected_max, 12)
+    },
+  )
 
-    // Ignoring periodicity inflates the very same relaxation by over an order of magnitude
-    const without_pbc = compute_displacements(reference, current, null)
+  // Ignoring periodicity inflates the cubic relaxation above by over an order of magnitude
+  test(`without a lattice the same relaxation spans most of the cell`, () => {
+    const without_pbc = compute_displacements(sites(cubic_ref), sites(cubic_cur), null)
     expect(without_pbc.rmsd).toBeCloseTo(7.921279357948858, 12)
     expect(without_pbc.max_displacement).toBeCloseTo(9.7, 12)
-    expect(without_pbc.rmsd / rmsd).toBeGreaterThan(25)
   })
 
   // Atom 0 hops the a face (a real 0.3 A relaxation) and atom 2 sits at the two ends of a
@@ -375,28 +374,6 @@ describe(`measure: displacement fields`, () => {
     expect(() => compute_displacements(reference, current, null)).toThrow(
       /Species mismatch at site 2: reference has Si, current has O/,
     )
-  })
-
-  test(`wraps correctly in a triclinic cell, where the shortest image is not axis-aligned`, () => {
-    // oxfmt-ignore
-    const triclinic: Matrix3x3 = [[6, 0, 0], [1.5, 5.5, 0], [0.8, 1.2, 7]]
-    // oxfmt-ignore
-    const reference = sites([[0.2, 0.1, 0.1], [3, 2, 1]])
-    // oxfmt-ignore
-    const current = sites([[7.4, 5.4, 6.9], [3.1, 2.05, 1.02]])
-    const { vectors, rmsd, max_displacement } = compute_displacements(
-      reference,
-      current,
-      triclinic,
-      PBC_ALL,
-    )
-    // oxfmt-ignore
-    const expected: Vec3[] = [[-1.1, -1.4, -0.2], [0.1, 0.05, 0.02]]
-    for (const [site_idx, expected_vec] of expected.entries()) {
-      expect_vec3_close(vectors[site_idx], expected_vec, 12)
-    }
-    expect(rmsd).toBeCloseTo(1.269429005498141, 12)
-    expect(max_displacement).toBeCloseTo(1.791647286716891, 12)
   })
 
   test.each([

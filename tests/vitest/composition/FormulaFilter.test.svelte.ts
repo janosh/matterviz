@@ -568,7 +568,7 @@ describe(`FormulaFilter`, () => {
   })
 
   describe(`extended features`, () => {
-    test(`mode lock prevents mode inference and ignores mode hint clicks`, async () => {
+    test(`mode lock prevents mode inference, ignores mode hint clicks and the lock button toggles it`, async () => {
       const on_change = vi.fn()
       const state: { search_mode: FormulaSearchMode; mode_locked: boolean } = $state({
         search_mode: `elements`,
@@ -581,6 +581,12 @@ describe(`FormulaFilter`, () => {
       flushSync()
       expect(on_change).not.toHaveBeenCalled()
       expect(get_mode_btn().classList.contains(`locked`)).toBe(true)
+      const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
+      for (const locked of [false, true]) {
+        lock_btn.click()
+        flushSync()
+        expect(state.mode_locked).toBe(locked)
+      }
     })
 
     test(`on_parse emits structured token data`, () => {
@@ -681,18 +687,6 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_change, ...props })
       submit_input(input)
       expect(on_change).toHaveBeenLastCalledWith(expected, `exact`)
-    })
-
-    test(`lock button toggles mode_locked binding`, () => {
-      const state = $state({ mode_locked: false })
-      mount_filter(bind_props({ value: `Li,Fe` }, state))
-      const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
-      lock_btn.click()
-      flushSync()
-      expect(state.mode_locked).toBe(true)
-      lock_btn.click()
-      flushSync()
-      expect(state.mode_locked).toBe(false)
     })
 
     // a duplicate token chip removes only one instance

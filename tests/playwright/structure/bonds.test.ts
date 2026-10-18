@@ -48,6 +48,8 @@ const get_structure_bonds = (page: Page) =>
   page.evaluate(() => (globalThis as Record<string, unknown>).structure_bonds)
 const expect_bonds = (page: Page, expected: unknown) =>
   expect.poll(() => get_structure_bonds(page)).toEqual(expected)
+// the sole bond of a two-site structure
+const bond_0_1 = (order: number) => [{ site_idx_1: 0, site_idx_2: 1, order }]
 
 const click_canvas_center = async (
   page: Page,
@@ -140,10 +142,7 @@ const two_atom_sites = [
 const dispatch_two_atom_bond_structure = (page: Page, order: 1 | 2 | 3) =>
   dispatch_structure(
     page,
-    {
-      sites: two_atom_sites,
-      properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
-    },
+    { sites: two_atom_sites, properties: { bonds: bond_0_1(order) } },
     { ...front_camera, show_bonds: `always` },
   )
 const dispatch_two_atom_unbonded_structure = (page: Page) =>
@@ -299,7 +298,7 @@ test.describe(`Bond component`, () => {
             make_site(`Cs`, [-1.2, 0, 0], [0, 0, 0]),
             make_site(`Pb`, [1.2, 0, 0], [0, 0, 0]),
           ],
-          properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }] },
+          properties: { bonds: bond_0_1(1) },
         },
         {
           show_atoms: false,
@@ -404,7 +403,7 @@ test.describe(`Bond component`, () => {
 
     test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
       await dispatch_two_atom_bond_structure(page, 1)
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
 
       await click_canvas_center(page, `right`)
       const menu = page.locator(`#test-structure .bond-context-menu`)
@@ -416,16 +415,16 @@ test.describe(`Bond component`, () => {
       await click_canvas_center(page, `right`)
       await expect(menu).toBeVisible()
       await expect(menu).toContainText(`Bond Order (2)`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await expect_bonds(page, bond_0_1(2))
       await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+      await expect_bonds(page, bond_0_1(1))
 
       // Delete mode must still allow right-click order edits (not only left-click delete).
-      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await page.getByTestId(`btn-set-bond-delete`).click()
       await click_canvas_center(page, `right`)
       await expect(menu).toBeVisible()
       await menu.getByRole(`button`, { name: `Triple` }).click()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+      await expect_bonds(page, bond_0_1(3))
     })
 
     test(`edit-bonds add mode opens order editing after clicking two atoms`, async ({
@@ -433,15 +432,15 @@ test.describe(`Bond component`, () => {
     }) => {
       await dispatch_two_atom_bond_structure(page, 1)
       await set_scene_props(page, labelled)
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-      await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
+      await page.getByTestId(`btn-set-edit-bonds`).click()
+      await expect(page.getByTestId(`bond-edit-mode-status`)).toContainText(`add`)
 
       await click_canvas_center(page)
       const menu = page.locator(`#test-structure .bond-context-menu`)
       await expect(menu).toBeHidden()
       await expect_bonds(page, undefined)
-      await page.locator(`[data-testid="btn-clear-selected"]`).click()
-      await page.locator(`[data-testid="btn-clear-measured"]`).click()
+      await page.getByTestId(`btn-clear-selected`).click()
+      await page.getByTestId(`btn-clear-measured`).click()
 
       await select_atom_label_with_keyboard(page, `C`)
       await expect(menu).toBeHidden()
@@ -454,13 +453,13 @@ test.describe(`Bond component`, () => {
       page,
     }) => {
       await dispatch_two_atom_unbonded_structure(page)
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
       const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
       await order_select.selectOption({ label: `Double` })
 
       await select_atom_label_with_keyboard(page, `C`)
       await select_atom_label_with_keyboard(page, `O`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await expect_bonds(page, bond_0_1(2))
 
       await order_select.selectOption({ label: `Triple` })
       await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
@@ -469,12 +468,12 @@ test.describe(`Bond component`, () => {
 
       await select_atom_label_with_keyboard(page, `C`)
       await select_atom_label_with_keyboard(page, `O`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await expect_bonds(page, bond_0_1(2))
     })
 
     test(`edit-bonds add mode handles image atom bonds`, async ({ page }) => {
       await dispatch_two_image_atom_unbonded_structure(page)
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
 
       const menu = page.locator(`#test-structure .bond-context-menu`)
       await select_atom_label_with_keyboard(page, `C`, `first`)
@@ -507,9 +506,9 @@ test.describe(`Bond component`, () => {
 
     test(`edit-bonds shortcuts switch modes and keyboard undo redo`, async ({ page }) => {
       await dispatch_two_atom_bond_structure(page, 1)
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
       const structure_div = page.locator(`#test-structure`)
-      const mode_status = page.locator(`[data-testid="bond-edit-mode-status"]`)
+      const mode_status = page.getByTestId(`bond-edit-mode-status`)
       await structure_div.getByRole(`button`, { name: `Add` }).focus()
       await page.keyboard.press(`d`)
       await expect(mode_status).toContainText(`delete`)
@@ -535,7 +534,7 @@ test.describe(`Bond component`, () => {
       await expect_bonds(page, [])
 
       await page.keyboard.press(`${primary_modifier_key}+Z`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+      await expect_bonds(page, bond_0_1(1))
 
       await page.keyboard.press(`${primary_modifier_key}+Y`)
       await expect_bonds(page, [])
@@ -550,8 +549,8 @@ test.describe(`Bond component`, () => {
       await dispatch_periodic_image_structure(page, {
         bonding_options: { strategy: `electroneg_ratio` },
       })
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
+      await page.getByTestId(`btn-set-bond-delete`).click()
       await expect_canvas_changed_by(canvas, async () => {
         const outer_delete_area = await canvas_center(canvas, { y: 24 })
         await page.mouse.move(outer_delete_area.x, outer_delete_area.y)
@@ -561,13 +560,13 @@ test.describe(`Bond component`, () => {
 
       // manually added image bond
       await dispatch_periodic_image_structure(page, { ...unbonded, show_site_labels: true })
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-      await page.locator(`[data-testid="btn-set-bond-add"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
+      await page.getByTestId(`btn-set-bond-add`).click()
       await select_atom_label_with_keyboard(page, `C`, `first`)
       await select_atom_label_with_keyboard(page, `O`)
       await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
 
-      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await page.getByTestId(`btn-set-bond-delete`).click()
       await click_canvas_center(page)
       await expect_bonds(page, undefined)
     })
@@ -580,7 +579,7 @@ test.describe(`Bond component`, () => {
         name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
       })
       const delete_center_bond = async () => {
-        await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+        await page.getByTestId(`btn-set-bond-delete`).click()
         await click_canvas_center(page)
         await expect_bonds(page, [])
       }
@@ -589,44 +588,44 @@ test.describe(`Bond component`, () => {
         await expect_bonds(page, expected_bonds)
       }
       const reenter_edit_bonds = async () => {
-        await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
-        await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+        await page.getByTestId(`btn-set-edit-atoms`).click()
+        await page.getByTestId(`btn-set-edit-bonds`).click()
       }
 
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
 
       // Mid-edit structure swap must emit the new structure's bonds (not keep the override).
       await click_canvas_center(page, `right`)
       const menu = page.locator(`#test-structure .bond-context-menu`)
       await expect(menu).toBeVisible()
       await menu.getByRole(`button`, { name: `Double` }).click()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await expect_bonds(page, bond_0_1(2))
       await dispatch_two_atom_bond_structure(page, 3)
       await expect(redo_button).toBeDisabled()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+      await expect_bonds(page, bond_0_1(3))
 
       // external bonds prop write clears redo
       await delete_center_bond()
-      await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
-      await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await undo_bond_delete(bond_0_1(3))
+      await set_structure_bonds(page, bond_0_1(2))
       await expect(redo_button).toBeDisabled()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await expect_bonds(page, bond_0_1(2))
 
       // leaving for edit-atoms clears redo
       await delete_center_bond()
-      await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+      await undo_bond_delete(bond_0_1(2))
       await reenter_edit_bonds()
       await expect(redo_button).toBeDisabled()
 
       // same for a structure whose bonds came from the bonds prop rather than the structure
       await dispatch_two_atom_unbonded_structure(page)
-      await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await set_structure_bonds(page, bond_0_1(1))
+      await page.getByTestId(`btn-set-edit-bonds`).click()
       await delete_center_bond()
-      await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+      await undo_bond_delete(bond_0_1(1))
       await reenter_edit_bonds()
       await delete_center_bond()
-      await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+      await undo_bond_delete(bond_0_1(1))
       await set_structure_bonds(page, undefined)
       await expect(redo_button).toBeDisabled()
     })
@@ -680,7 +679,7 @@ test.describe(`Bond component`, () => {
       // camera_target sent alongside, which would slide the bond off the canvas centre.
       await set_scene_props(page, { auto_bond_order: true, ...front_camera })
 
-      await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+      await page.getByTestId(`btn-set-edit-bonds`).click()
 
       // dispatch_co2 puts the C-O1 bond midpoint at the canvas centre, but the click only
       // picks it once perception has rebuilt the bond meshes and the camera has settled
@@ -690,20 +689,15 @@ test.describe(`Bond component`, () => {
         await click_canvas_center(page, `right`)
         await expect(menu).toBeVisible({ timeout: 500 })
       }).toPass({ timeout: 15_000 })
-      // Pre-override: the menu reports the PERCEIVED order. Perception relabels
-      // this C-O connectivity bond as a double (2) - non-vacuous proof that
-      // perception is actually driving the order before any manual override.
+      // the menu first reports the perceived double, so perception is driving the order
       await expect(menu).toContainText(`Bond Order (2)`)
-      // Manually override to Triple - must win over the perceived double.
       await menu.getByRole(`button`, { name: `Triple` }).click()
       await expect(menu).toBeHidden()
-      // The override is recorded in the bound bonds list (globalThis hook),
-      // not the perceived order - concrete proof of precedence.
       await expect
         .poll(() => get_structure_bonds(page))
         .toContainEqual(expect.objectContaining({ order: 3 }))
 
-      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await page.getByTestId(`btn-set-bond-delete`).click()
       await click_canvas_center(page)
       await expect_bonds(page, [])
       await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()

@@ -5,6 +5,7 @@ import { format_num, plural } from '#lib/labels.js'
 import { clamp01 } from '#lib/utils.js'
 import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'
+import { solid_reactants } from './thermo'
 import type {
   CompetingPhase,
   PairwiseInterface,
@@ -31,9 +32,6 @@ const ENERGY_SCALE = 0.1
 // Smooth saturation of an energy onto (-1, 1)
 const saturate = (energy: number): number => energy / (Math.abs(energy) + ENERGY_SCALE)
 
-const solid_precursors = (reaction: SynthesisReaction) =>
-  reaction.reactants.filter(({ phase }) => !phase.is_gas)
-
 // Stoichiometric gas exchange does not determine a furnace atmosphere or container.
 export function describe_atmosphere(
   gas_exchange: Partial<Record<GasSpecies, number>>,
@@ -58,7 +56,7 @@ export function describe_atmosphere(
 export function assess_practicality(reaction: SynthesisReaction): PracticalityAssessment {
   const notes: string[] = []
   const takes_up_gas = reaction.reactants.some(({ phase }) => phase.is_gas)
-  const precursors = solid_precursors(reaction)
+  const precursors = solid_reactants(reaction)
   let score = 0
   for (const { phase } of precursors) {
     const info = lookup_precursor_info(phase.formula)
@@ -132,7 +130,7 @@ export function score_route(
     driving_force: downhill ? Math.min(1, -reaction.driving_force / (2 * ENERGY_SCALE)) : -0.5,
     competition: -Math.min(1, selectivity.n_more_favorable / 3),
     practicality: practicality.score,
-    simplicity: 1 / solid_precursors(reaction).length,
+    simplicity: 1 / solid_reactants(reaction).length,
   }
   const breakdown = Object.fromEntries(
     Object.entries(weights).map(([key, weight]) => [

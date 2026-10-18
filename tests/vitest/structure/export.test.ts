@@ -208,20 +208,19 @@ describe(`Export functionality`, () => {
     })
 
     // The 4-component row is the regression: the check is xyz.length >= 3, not === 3
-    it.each([`CIF`, `POSCAR`] as const)(
+    it.each([
+      [`CIF`, structure_to_cif_str],
+      [`POSCAR`, structure_to_poscar_str],
+    ] as const)(
       `%s export converts xyz (incl. extra components) to fractional coords`,
-      (format) => {
+      (_format, serialize) => {
         const site = {
           ...make_site(`H`),
           xyz: [1, 1, 1, 0.5] as unknown as Vec3,
           abc: undefined as unknown as Vec3,
         }
         const structure: AnyStructure = { sites: [site], lattice: diag_lattice(2) }
-        const content =
-          format === `CIF`
-            ? structure_to_cif_str(structure)
-            : structure_to_poscar_str(structure)
-        expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
+        expect(serialize(structure)).toContain(`0.50000000 0.50000000 0.50000000`)
       },
     )
   })
@@ -304,19 +303,24 @@ describe(`Export functionality`, () => {
 
     // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
     // inverse; sites already carry abc, so the inverse must not be built unless one needs it
-    it.each([`CIF`, `POSCAR`] as const)(
+    // POSCAR checks poscar_export_unavailable_reason up front; CIF fails on inverting
+    it.each([
+      [`CIF`, structure_to_cif_str, `singular or ill-conditioned`],
+      [
+        `POSCAR`,
+        structure_to_poscar_str,
+        `POSCAR export: A nonsingular unit cell with finite volume is required`,
+      ],
+    ] as const)(
       `%s export of a singular lattice uses the sites' abc`,
-      (format) => {
+      (format, serialize, error) => {
         // oxfmt-ignore
         const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 0]]
         const structure: AnyStructure = {
           sites: [make_site(`H`, [0.2, 0.4, 0], [1, 2, 0])],
           lattice: { ...diag_lattice(5), matrix },
         }
-        const content =
-          format === `CIF`
-            ? structure_to_cif_str(structure)
-            : structure_to_poscar_str(structure)
+        const content = serialize(structure)
         expect(content).toContain(`0.20000000 0.40000000 0.00000000`)
         expect(fractional_export_unavailable_reason(structure)).toBeUndefined()
         const without_abc = {
@@ -326,14 +330,7 @@ describe(`Export functionality`, () => {
         expect(fractional_export_unavailable_reason(without_abc)).toContain(
           `nonsingular unit cell`,
         )
-        expect(() =>
-          (format === `CIF` ? structure_to_cif_str : structure_to_poscar_str)(without_abc),
-        ).toThrow(
-          // POSCAR checks poscar_export_unavailable_reason up front; CIF fails on inverting
-          format === `CIF`
-            ? `singular or ill-conditioned`
-            : `POSCAR export: A nonsingular unit cell with finite volume is required`,
-        )
+        expect(() => serialize(without_abc)).toThrow(error)
         if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
       },
     )

@@ -23,7 +23,6 @@ const SITE_PROPS = {
   ],
   single: [{ force: [0.3, -0.1, 0.2] }, { force: [0.6, -0.2, 0.4] }],
 } as const
-const VECTOR_KEYS = { multi: [`force_DFT`, `force_MLFF`, `magmom`], single: [`force`] }
 
 // Inject a test structure with vector site properties; the component auto-populates one
 // vector layer per key (union over all sites) and surfaces them in its pane
@@ -58,14 +57,14 @@ const labels_with = (pane: Locator, text: string) =>
   pane.locator(`label`).filter({ hasText: text })
 
 test.describe(`Site Vectors`, () => {
-  test.beforeEach(() => {
+  test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `3D vector tests require WebGL, skip in CI`)
+    await goto_structure_test(page)
   })
 
   test(`multi-vector structure gets per-key layer toggles and scale sliders`, async ({
     page,
   }) => {
-    await goto_structure_test(page)
     await inject_vectors(page, `multi`)
     const { pane_div } = await open_structure_control_pane(page)
     const section = pane_div.getByRole(`region`, { name: `Site Vectors`, exact: true })
@@ -74,7 +73,7 @@ test.describe(`Site Vectors`, () => {
     // per-key rows replace the single-key Color picker
     await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
 
-    for (const key of VECTOR_KEYS.multi) {
+    for (const key of [`force_DFT`, `force_MLFF`, `magmom`]) {
       const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
       await expect(toggle.locator(`input[type="checkbox"]`)).toBeVisible()
       await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
@@ -95,7 +94,6 @@ test.describe(`Site Vectors`, () => {
   test(`single-vector structure draws arrows and has no origin gap or per-key scale`, async ({
     page,
   }) => {
-    await goto_structure_test(page)
     await expect_canvas_changed_by(structure_canvas(page), () =>
       inject_vectors(page, `single`),
     )

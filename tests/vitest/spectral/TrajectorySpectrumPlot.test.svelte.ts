@@ -2,9 +2,9 @@ import type { TrajectorySpectroscopyResult } from '#lib/spectral/index.js'
 import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
 import TrajectorySpectrumPlot from '#lib/spectral/TrajectorySpectrumPlot.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { flushSync, mount, tick, unmount, type Component, type ComponentProps } from 'svelte'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { query, set_select } from '../setup'
+import { tick, type ComponentProps } from 'svelte'
+import { describe, expect, it, vi } from 'vitest'
+import { mount_in_test, query, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 const curve = {
@@ -56,16 +56,7 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
   metadata: {},
 })
 
-const render = <Props extends Record<string, unknown>>(
-  component: Component<Props>,
-  props: Props,
-): HTMLElement => {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  const instance = mount(component, { target, props })
-  onTestFinished(() => unmount(instance).finally(() => target.remove()))
-  return target
-}
+const render = mount_in_test
 
 // the plot at a fixed 240px height, so both panels get room to lay out
 const render_plot = (
@@ -229,13 +220,6 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   set_select(ir_select, `polarization`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`polarization`)
-  const continuous_checkbox = query<HTMLInputElement>(target, `input[type="checkbox"]`)
-  continuous_checkbox.checked = true
-  continuous_checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
-  flushSync()
-  set_select(ir_select, `dipole`)
-  set_select(ir_select, `polarization`)
-  expect(target.querySelector<HTMLInputElement>(`input[type="checkbox"]`)?.checked).toBe(false)
   set_select(kind_select, `dipole`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`dipole`)

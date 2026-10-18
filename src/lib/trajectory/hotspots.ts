@@ -566,6 +566,13 @@ async function reduce_hotspots(
     let global_mass = 0
     let reference_bin = -1
     const mean_velocity = [0, 0, 0]
+    // Bin mean velocity relative to the running mass-weighted mean, both anchored to the first
+    // occupied bin
+    const relative_velocity = (base: number, axis: number): number =>
+      scratch[base + 6 + axis] -
+      scratch[reference_bin + 6 + axis] -
+      mean_velocity[axis] +
+      scratch[base + 2 + axis]
     if (motion === `translation`) {
       for (let bin = 0; bin < n_bins; bin++) {
         const base = bin * 9
@@ -574,12 +581,7 @@ async function reduce_hotspots(
         if (reference_bin < 0) reference_bin = base
         global_mass += mass
         for (let axis = 0; axis < dimensions; axis++)
-          mean_velocity[axis] +=
-            (scratch[base + 6 + axis] -
-              scratch[reference_bin + 6 + axis] -
-              mean_velocity[axis] +
-              scratch[base + 2 + axis]) *
-            (mass / global_mass)
+          mean_velocity[axis] += relative_velocity(base, axis) * (mass / global_mass)
       }
     }
     for (let bin = 0; bin < n_bins; bin++) {
@@ -590,13 +592,7 @@ async function reduce_hotspots(
       let centered = scratch[base + 5]
       if (motion === `translation`)
         for (let axis = 0; axis < dimensions; axis++)
-          centered +=
-            mass *
-            (scratch[base + 6 + axis] -
-              scratch[reference_bin + 6 + axis] -
-              mean_velocity[axis] +
-              scratch[base + 2 + axis]) **
-              2
+          centered += mass * relative_velocity(base, axis) ** 2
       const energy = options.energy_key ? centered : centered * kinetic_factor
       const removed_dof =
         motion === `local`

@@ -488,26 +488,26 @@ describe(`should_hide_plot`, () => {
 
   // oxfmt-ignore
   it.each([
-    { name: `no series`, frames: multi, series: [], expected: true },
-    { name: `constant series`, frames: multi, series: [create_series([1.0, 1.0, 1.0])], expected: true },
-    { name: `varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0])], expected: false },
-    { name: `hidden varying series`, frames: multi, series: [create_series([1.0, 2.0, 3.0], { visible: false })], expected: false },
+    { name: `no series`, series: [], expected: true },
+    { name: `constant series`, series: [create_series([1.0, 1.0, 1.0])], expected: true },
+    { name: `varying series`, series: [create_series([1.0, 2.0, 3.0])], expected: false },
+    { name: `hidden varying series`, series: [create_series([1.0, 2.0, 3.0], { visible: false })], expected: false },
     { name: `single-frame trajectory`, frames: [{ energy: -10 }], series: [create_series([1.0, 2.0, 3.0])], expected: true },
-    { name: `NaN values`, frames: multi, series: [create_series([1.0, NaN, 1.0])], expected: true },
-    { name: `Infinity values`, frames: multi, series: [create_series([1.0, Infinity, 1.0])], expected: true },
-    { name: `all NaN values`, frames: multi, series: [create_series([NaN, NaN, NaN])], expected: true },
-    { name: `leading NaN values`, frames: multi, series: [create_series([NaN, 1, 2])], expected: false },
-    { name: `only one Infinity sample`, frames: multi, series: [create_series([NaN, Infinity, NaN])], expected: true },
-    { name: `repeated Infinity samples`, frames: multi, series: [create_series([Infinity, Infinity, NaN])], expected: true },
-    { name: `tiny variation on its own axis`, frames: multi, series: [create_series([1e-20, 2e-20, 3e-20])], expected: false },
-    { name: `large offset on its own axis`, frames: multi, series: [create_series([-1e6, -1e6 + 1, -1e6])], expected: false },
-    { name: `energy offsets dwarf variations`, frames: multi, series: [create_series([-1_750_000, -1_749_999, -1_750_001]), create_series([9500, 9501, 9499])], expected: true },
-    { name: `meaningful second axis`, frames: multi, series: [create_series([-1e6, -1e6, -1e6]), create_series([4, 4.1, 4.2], { y_axis: `y2` })], expected: false },
-    { name: `hidden offsets do not flatten visible curves`, frames: multi, series: [create_series([-1e6, -1e6, -1e6], { visible: false }), create_series([4, 4.1, 4.2])], expected: false },
-    { name: `invalid x values cannot show variation`, frames: multi, series: [{ ...create_series([1, 2, 3]), x: [NaN, 1, Infinity] }], expected: true },
-    { name: `flat second axis`, frames: multi, series: [create_series([1, 1]), create_series([2, 2], { y_axis: `y2` })], expected: true },
-    { name: `logarithmic variation`, frames: multi, series: [create_series([1e-8, 1e-6, 1e-4], { axis_group: `eV (SCF)` }), create_series([1, 1, 1], { axis_group: `eV (SCF)` })], expected: false },
-  ])(`$name → hide=$expected`, ({ frames, series, expected }) => {
+    { name: `NaN values`, series: [create_series([1.0, NaN, 1.0])], expected: true },
+    { name: `Infinity values`, series: [create_series([1.0, Infinity, 1.0])], expected: true },
+    { name: `all NaN values`, series: [create_series([NaN, NaN, NaN])], expected: true },
+    { name: `leading NaN values`, series: [create_series([NaN, 1, 2])], expected: false },
+    { name: `only one Infinity sample`, series: [create_series([NaN, Infinity, NaN])], expected: true },
+    { name: `repeated Infinity samples`, series: [create_series([Infinity, Infinity, NaN])], expected: true },
+    { name: `tiny variation on its own axis`, series: [create_series([1e-20, 2e-20, 3e-20])], expected: false },
+    { name: `large offset on its own axis`, series: [create_series([-1e6, -1e6 + 1, -1e6])], expected: false },
+    { name: `energy offsets dwarf variations`, series: [create_series([-1_750_000, -1_749_999, -1_750_001]), create_series([9500, 9501, 9499])], expected: true },
+    { name: `meaningful second axis`, series: [create_series([-1e6, -1e6, -1e6]), create_series([4, 4.1, 4.2], { y_axis: `y2` })], expected: false },
+    { name: `hidden offsets do not flatten visible curves`, series: [create_series([-1e6, -1e6, -1e6], { visible: false }), create_series([4, 4.1, 4.2])], expected: false },
+    { name: `invalid x values cannot show variation`, series: [{ ...create_series([1, 2, 3]), x: [NaN, 1, Infinity] }], expected: true },
+    { name: `flat second axis`, series: [create_series([1, 1]), create_series([2, 2], { y_axis: `y2` })], expected: true },
+    { name: `logarithmic variation`, series: [create_series([1e-8, 1e-6, 1e-4], { axis_group: `eV (SCF)` }), create_series([1, 1, 1], { axis_group: `eV (SCF)` })], expected: false },
+  ])(`$name → hide=$expected`, ({ frames = multi, series, expected }) => {
     expect(should_hide_plot(frames.length, series)).toBe(expected)
   })
 

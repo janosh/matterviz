@@ -71,6 +71,7 @@
   import {
     compute_label_positions,
     estimate_label_size,
+    LABEL_PLACEMENT_DEFAULTS,
     label_leader_segment,
   } from '#lib/plot/core/utils/label-placement.js'
   import type { LabelSize } from '#lib/plot/core/utils/label-placement.js'
@@ -456,9 +457,7 @@
     render_mode === `points` ? build_spatial_index(points_in_view, pick_radius_px) : null,
   )
   const actual_label_placement_config = $derived({
-    sa_iterations: 2000,
-    max_labels: 300,
-    leader_line_threshold: 15,
+    ...LABEL_PLACEMENT_DEFAULTS,
     candidate_gap: 0,
     ...point_labels_settings.placement,
   })
@@ -777,7 +776,11 @@
       label_position.x - payload.cx,
       label_position.y - payload.cy,
     )
-    if (displacement <= (actual_label_placement_config.leader_line_threshold ?? 15))
+    if (
+      displacement <=
+      (actual_label_placement_config.leader_line_threshold ??
+        LABEL_PLACEMENT_DEFAULTS.leader_line_threshold)
+    )
       return null
     return label_leader_segment({
       point: { x: payload.cx, y: payload.cy },

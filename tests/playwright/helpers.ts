@@ -280,6 +280,20 @@ export const expect_synced_y_ticks = (
     expect(await numeric_y_ticks(target_plot)).toEqual(source_ticks)
   }).toPass({ timeout: 10_000 })
 
+// Equal outer panel heights are not enough for side-by-side plots: their clipped drawable
+// regions must share a top offset and height so equal values sit at equal y. Not polling:
+// call it inside a toPass while the plots settle.
+export const expect_same_clip_rows = async (first: Locator, second: Locator) => {
+  const [first_clip, second_clip] = [first, second].map((plot) =>
+    plot.locator(`clipPath rect`),
+  )
+  for (const attribute of [`y`, `height`]) {
+    expect(await first_clip.getAttribute(attribute)).toBe(
+      await second_clip.getAttribute(attribute),
+    )
+  }
+}
+
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time
 export const get_canvas_timeout = (): number =>

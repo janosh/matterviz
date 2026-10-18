@@ -16,11 +16,6 @@ interface XYZ {
 const xyz_tuple = (point?: XYZ | null): number[] | null =>
   point ? [point.x, point.y, point.z] : null
 
-const get_gl_canvas = (wrapper: HTMLElement | undefined): HTMLCanvasElement | null => {
-  const canvas = wrapper?.querySelector(`canvas`)
-  return canvas instanceof HTMLCanvasElement ? canvas : null
-}
-
 // Serializable snapshot of the current 3D view (embedded in SVG/JSON exports)
 export function get_view_settings(opts: {
   elements: string[]
@@ -58,15 +53,17 @@ function get_overlay_text_items(
   canvas_rect: DOMRect,
 ): OverlayTextItem[] {
   const text_items: OverlayTextItem[] = []
-  for (const element of wrapper.querySelectorAll(`.tick-label, .axis-label, .domain-label`)) {
-    const html_element = element as HTMLElement
-    const style = getComputedStyle(html_element)
+  const labels = wrapper.querySelectorAll<HTMLElement>(
+    `.tick-label, .axis-label, .domain-label`,
+  )
+  for (const element of labels) {
+    const style = getComputedStyle(element)
     if (style.display === `none` || style.visibility === `hidden`) continue
-    const element_rect = html_element.getBoundingClientRect()
+    const element_rect = element.getBoundingClientRect()
     text_items.push({
       x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
       y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
-      text: html_element.textContent ?? ``,
+      text: element.textContent ?? ``,
       font: style.font || `${style.fontSize} ${style.fontFamily}`,
       font_size: style.fontSize || `11px`,
       font_family: style.fontFamily || `sans-serif`,
@@ -83,7 +80,7 @@ function require_canvas(wrapper: HTMLElement | undefined): {
   rect: DOMRect
   wrapper: HTMLElement
 } {
-  const canvas = get_gl_canvas(wrapper)
+  const canvas = wrapper?.querySelector(`canvas`)
   const rect = canvas?.getBoundingClientRect()
   if (!canvas || !wrapper || !rect || !(rect.width > 0) || !(rect.height > 0))
     throw new Error(`Chemical potential diagram has no rendered canvas to export`)

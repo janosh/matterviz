@@ -187,6 +187,17 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     striped?: boolean
   }
 
+  // Faceted octahedron marker at a fractional point of `cell`
+  const octahedron_at = (point: Vec3, radius: number): OctahedronGeometry =>
+    new OctahedronGeometry(radius).translate(...frac_to_cart_direction(point, cell))
+
+  // One geometry per material group; the merged-in parts are disposed either way
+  const merge_parts = (parts: BufferGeometry[]): BufferGeometry | null => {
+    const merged = mergeGeometries(parts)
+    for (const part of parts) part.dispose()
+    return merged
+  }
+
   // Cylinder of given radius/length centered at `center` pointing along unit `dir`
   const oriented_cylinder = (
     center: Vector3,
@@ -231,12 +242,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
       parts_by_group.set(color, group)
 
       if (elem.kind === `rotoinversion`) {
-        const [center_x, center_y, center_z] = frac_to_cart_direction(elem.point, cell)
-        const marker = new OctahedronGeometry(INVERSION_RADIUS * 0.8).translate(
-          center_x,
-          center_y,
-          center_z,
-        )
+        const marker = octahedron_at(elem.point, INVERSION_RADIUS * 0.8)
         // Cylinders are indexed; every part in a merged geometry must agree on indexing.
         marker.setIndex(
           Array.from({ length: marker.getAttribute(`position`).count }, (_unused, idx) => idx),
@@ -268,8 +274,7 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
     }
 
     return [...parts_by_group.entries()].flatMap(([color, geometries]) => {
-      const merged = mergeGeometries(geometries)
-      geometries.forEach((geo) => geo.dispose())
+      const merged = merge_parts(geometries)
       return merged ? [{ geometry: merged, color }] : []
     })
   })
@@ -354,13 +359,11 @@ color/opacity instead of one mesh per element) and disposed on change/unmount. -
   // used for atoms) merged into a single geometry
   const inversion_group: MaterialGroup | null = $derived.by(() => {
     void centers_key
-    const markers = untrack(() => center_elements).map((elem) => {
-      const [center_x, center_y, center_z] = frac_to_cart_direction(elem.point, cell)
-      return new OctahedronGeometry(INVERSION_RADIUS).translate(center_x, center_y, center_z)
-    })
+    const markers = untrack(() => center_elements).map((elem) =>
+      octahedron_at(elem.point, INVERSION_RADIUS),
+    )
     if (markers.length === 0) return null
-    const merged = mergeGeometries(markers)
-    markers.forEach((geo) => geo.dispose())
+    const merged = merge_parts(markers)
     return merged ? { geometry: merged, color: SYM_ELEM_COLORS.inversion } : null
   })
 

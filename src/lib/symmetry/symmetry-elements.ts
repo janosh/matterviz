@@ -139,8 +139,6 @@ const mat_add = (mat_a: Matrix3x3, mat_b: Matrix3x3): Matrix3x3 =>
 const mat_scale = (mat: Matrix3x3, factor: number): Matrix3x3 =>
   mat.map((row) => row.map((val) => val * factor)) as Matrix3x3
 
-const mat_negate = (mat: Matrix3x3): Matrix3x3 => mat_scale(mat, -1)
-
 export const is_identity = (mat: Matrix3x3): boolean =>
   mat.every((row, idx) => row.every((val, jdx) => val === (idx === jdx ? 1 : 0)))
 
@@ -175,8 +173,7 @@ function axis_from_projector(proj: Matrix3x3, order: number): Vec3 | null {
     }
   }
   if (!best) return null
-  const divisor = math.gcd_all(best)
-  let axis = best.map((val) => val / divisor) as Vec3
+  let axis = math.reduce_miller_indices(best)
   const first_nonzero = axis.find((val) => val !== 0) ?? 1
   // normalize -0 to 0 when flipping to canonical sign (first nonzero positive)
   if (first_nonzero < 0) axis = axis.map((val) => (val === 0 ? 0 : -val)) as Vec3
@@ -335,7 +332,7 @@ function build_rotation_info(
 
   // Improper: mirror/glide (trace 1) or rotoinversion −3/−4/−6. The proper part −W is a
   // rotation about the same axis (the plane normal for mirrors).
-  const proper_part = mat_negate(mat)
+  const proper_part = mat_scale(mat, -1)
   const { proj: proper_proj, order: proper_order } = invariant_projector(proper_part)
   const axis = axis_from_projector(proper_proj, proper_order)
   if (!axis) throw new Error(`Failed to extract improper-operation axis`)

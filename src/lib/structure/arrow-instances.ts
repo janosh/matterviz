@@ -20,7 +20,7 @@ import {
 } from './vectors'
 import type { AnyStructure } from './index'
 
-export type VectorArrow = {
+type VectorArrow = {
   position: Vec3
   vector: Vec3
   magnitude: number

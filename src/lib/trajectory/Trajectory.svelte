@@ -56,6 +56,7 @@
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Site, StructurePane, StructureOptions } from '#lib/structure/index.js'
+  import { site_stride } from '#lib/structure/site.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
@@ -646,7 +647,7 @@
       const max: Vec3 = [-Infinity, -Infinity, -Infinity]
       const frame = session.numeric_frame
       if (!frame) throw new Error(`Trajectory display frame is not ready`)
-      const stride = 6 + frame.vector_keys.length * 3
+      const stride = site_stride(frame.vector_keys)
       for (let atom_idx = 0; atom_idx < frame.sites.length; atom_idx++) {
         for (let axis = 0; axis < 3; axis++) {
           const value = frame.coordinates[atom_idx * stride + axis]
@@ -2184,7 +2185,7 @@
   }
   /* Keep ViewerPane's toggle for layout anchoring; the analysis menu owns clicks. Fully
      global: the wrapper is ToolbarMenu's root (a child component), so a scoped selector
-     would never match and the four pane toggles would render as bare toolbar icons. */
+     would never match and the pane toggles would render as bare toolbar icons. */
   :global(.analysis-dropdown-wrapper .analysis-toggle-anchor) {
     position: absolute;
     inset: 0;

@@ -369,6 +369,15 @@ export const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
 
 // Conventional rocksalt NaCl cell (4 Na + 4 Cl): every ion octahedrally coordinated by 6
 // counter-ions, only 3 of which sit inside the box (the rest are periodic images)
+// oxfmt-ignore
+export const FCC_FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+// Conventional 4-atom fcc cell of one element (Cu by default)
+export const make_fcc = (lattice_const: number, element = `Cu`): Crystal =>
+  make_crystal(
+    lattice_const,
+    FCC_FACE_CENTRES.map((abc) => ({ element, abc })),
+  )
+
 export const make_rocksalt = (lattice_const = 5.64, cation = `Na`, anion = `Cl`): Crystal =>
   make_crystal(lattice_const, [
     [cation, [0, 0, 0]],

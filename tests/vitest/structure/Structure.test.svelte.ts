@@ -1366,10 +1366,7 @@ test.each([false, true])(
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
       active_volume_id: `0`,
     })
-    const tool_props = await mount_host_structure(
-      bind_props({ structure: source }, state),
-      mount_structure,
-    )
+    const tool_props = await mount_host_structure(bind_props({ structure: source }, state))
     const overlay = { volumes: [{ ...volumetric_data[0], label: `Prediction` }] }
     flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => (state.isosurface_settings.layers[0].isovalue = 0.321))
@@ -3485,7 +3482,7 @@ describe(`site sidebar`, () => {
       selected_sites: [],
       hovered_site_idx: null,
     })
-    mounted.push(mount(Structure, { target: document.body, props }))
+    mount_structure(props)
     await tick()
     const rows = () => [
       ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),

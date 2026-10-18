@@ -345,8 +345,7 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
   // a press on the pinned domain or Escape unpins, closing the tooltip
   const wrapper = doc_query(`.chempot-diagram-3d`)
-  const escape = () =>
-    wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+  const escape = () => wrapper.dispatchEvent(keydown(`Escape`))
   escape() // closes the controls pane still open from above first
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)

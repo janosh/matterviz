@@ -1,7 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import {
   drag_plot_area,
   expect_combined_fullscreen,
+  expect_same_clip_rows,
   expect_synced_y_ticks,
   get_chart_svg,
   measure_plot_area,
@@ -9,6 +10,12 @@ import {
   require_bbox,
   reset_plot_area,
 } from '../helpers'
+
+// [bands, DOS] plots of the default BandsAndDos
+const default_plots = (page: Page) => {
+  const plots = page.locator(`[data-testid="bands-and-dos-default"] .scatter`)
+  return [plots.first(), plots.nth(1)] as const
+}
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -45,16 +52,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const dos_x_ticks = await dos_plot.locator(`g.x-axis text`).allTextContents()
     expect(dos_x_ticks.some((tick) => !isNaN(Number(tick)))).toBe(true)
 
-    // Shared top/bottom padding must align the actual drawable regions, not only
-    // the equal-height outer plot containers.
-    const bands_clip = bands_plot.locator(`clipPath rect`)
-    const dos_clip = dos_plot.locator(`clipPath rect`)
     await expect(async () => {
-      for (const attribute of [`y`, `height`]) {
-        expect(await bands_clip.getAttribute(attribute)).toBe(
-          await dos_clip.getAttribute(attribute),
-        )
-      }
+      await expect_same_clip_rows(bands_plot, dos_plot)
       // shared y-axis: tick values overlap significantly
       const [bands_y_ticks, dos_y_ticks] = await Promise.all([
         numeric_y_ticks(bands_plot),
@@ -70,10 +69,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
   test(`y-axis zoom, reset, and re-enabled sync propagate without stale ranges`, async ({
     page,
   }) => {
-    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
-    const plots = container.locator(`.scatter`)
-    const bands_plot = plots.first()
-    const dos_plot = plots.nth(1)
+    const [bands_plot, dos_plot] = default_plots(page)
     const initial_ticks = await numeric_y_ticks(dos_plot)
     const dos_area = await measure_plot_area(dos_plot)
     await drag_plot_area(page, dos_area)
@@ -97,12 +93,10 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
-    // Check custom widths
     const custom_container = page.locator(`[data-testid="bands-and-dos-custom-widths"]`)
     await expect(custom_container).toBeVisible()
     await expect(custom_container).toHaveAttribute(`style`, /grid-template-columns/)
 
-    // Check bands props passed
     const bands_container = page.locator(`[data-testid="bands-and-dos-bands-styling"]`)
     const bands_path = bands_container
       .locator(`.scatter`)
@@ -129,9 +123,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await expect(plots).toHaveCount(2)
     const [bands_y_ticks, dos_y_ticks] = await Promise.all(
       [plots.first(), plots.nth(1)].map(async (plot) =>
-        (await plot.locator(`g.y-axis text`).allTextContents())
-          .map(Number)
-          .filter((num) => !isNaN(num)),
+        (await numeric_y_ticks(plot)).map(Number),
       ),
     )
     expect(bands_y_ticks.length).toBeGreaterThan(2)
@@ -141,16 +133,10 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`hovering over DOS shows reference lines in both plots`, async ({ page }) => {
-    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
-    const plots = container.locator(`.scatter`)
-    const bands_plot = plots.first()
-    const dos_plot = plots.nth(1)
-
-    // Initially no reference lines should be visible
+    const [bands_plot, dos_plot] = default_plots(page)
     const initial_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
     const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
 
-    // Hover over DOS plot
     const dos_svg = get_chart_svg(dos_plot)
     const dos_box = await require_bbox(dos_svg, `DOS plot`)
     await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
@@ -179,7 +165,6 @@ test.describe(`BandsAndDos Component Tests`, () => {
       await page.locator(anchor).scrollIntoViewIfNeeded()
       const container = page.locator(`[data-testid="${testid}"]`)
       await expect(container).toBeVisible()
-      // Wait for plots to render rather than fixed delay
       const plots = container.locator(`.scatter`)
       await expect(plots).toHaveCount(2)
 

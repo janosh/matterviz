@@ -544,9 +544,7 @@ export function compute_irreducible_bz(
         ...point_group_ops.map((rot) => rot.map((row) => row.map((val) => -val)) as Matrix3x3),
       ]
     : point_group_ops
-  // Convert fractional rotations to Cartesian k-space rotations
-  // R_cart = Bᵀ · W^{-T} · B^{-T}, where B is k_lattice (reciprocal vectors as rows).
-  // Duplicates (−R already in a centrosymmetric group) collapse onto one plane below.
+  // Duplicates (−R already in a centrosymmetric group) collapse onto one plane below
   const cartesian_ops = ops.map((rotation_matrix) =>
     fractional_to_cartesian_rotation(rotation_matrix, bz_data.k_lattice),
   )

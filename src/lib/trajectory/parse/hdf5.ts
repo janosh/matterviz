@@ -2,8 +2,13 @@ import { display_idx } from '#lib/labels.js'
 import type { FrameChannels } from '../frame'
 import { create_numeric_md_frame, materialize_frame, write_frame_vector } from '../frame'
 import type { Matrix3x3 } from '#lib/math.js'
-import { element_by_symbol } from '#lib/element/data.js'
-import { ATOM_BATCH_SIZE, atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
+import {
+  ATOM_BATCH_SIZE,
+  atom_batch_masses,
+  atom_range,
+  type AtomBatch,
+  type ReadAtoms,
+} from '../atom-batches'
 import {
   calc_lattice_params,
   first_non_increasing_index,
@@ -825,16 +830,7 @@ const parse_torch_sim_datasets = (
       ...(energy_key && { energies: channel(energy_key, 1) }),
     }
     if (mass_source)
-      batch.masses = Float64Array.from({ length: count }, (_unused, idx) => {
-        const atom_idx = start + idx
-        const mass =
-          mass_source === `standard`
-            ? element_by_symbol.get(elements[atom_idx])?.atomic_mass
-            : atom_masses?.[atom_idx]
-        if (mass === undefined || !Number.isFinite(mass) || mass <= 0)
-          throw new Error(`Missing ${mass_source} mass at atom ${display_idx(atom_idx)}`)
-        return mass
-      })
+      batch.masses = atom_batch_masses(mass_source, start, count, elements, atom_masses)
     if (selection_key)
       batch.selected = Uint8Array.from(channel(selection_key, 1), (value) => {
         if (value !== 0 && value !== 1)

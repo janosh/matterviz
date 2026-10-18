@@ -21,6 +21,7 @@
     scene_key_walk,
     scene_pointer,
     line_geometry,
+    positions_geometry,
     SceneCamera,
     SceneLabel,
     SceneLights,
@@ -30,7 +31,7 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps } from 'svelte'
   import { untrack } from 'svelte'
-  import { BufferGeometry, DoubleSide, Float32BufferAttribute } from 'three/webgpu'
+  import { type BufferGeometry, DoubleSide } from 'three/webgpu'
   import { swizzle_to_render, type VisibleDomainLabel } from './compute'
   import type { ChemPotHoverInfo3D } from './types'
 
@@ -338,13 +339,9 @@
       [2, 6],
       [3, 7],
     ]
-    const positions: number[] = []
-    for (const [start_idx, end_idx] of edges) {
-      positions.push(...vertices[start_idx], ...vertices[end_idx])
-    }
-    const geom = new BufferGeometry()
-    geom.setAttribute(`position`, new Float32BufferAttribute(positions, 3))
-    return geom
+    return positions_geometry(
+      edges.flatMap(([start_idx, end_idx]) => [...vertices[start_idx], ...vertices[end_idx]]),
+    )
   })
 
   dispose_on_change(() => [bounding_box_geometry])

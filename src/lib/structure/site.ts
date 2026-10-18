@@ -25,6 +25,10 @@ export const structure_json_data = (structure: AnyStructure): object => ({
   }),
 })
 
+// Add `site_idx` to a selection, or drop it when already selected
+export const toggle_site = (sites: readonly number[], site_idx: number): number[] =>
+  sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
+
 // Only immutable viewer snapshots register a topology identity. Editable structures use
 // their actual site records; copying or editing a snapshot deliberately drops this identity.
 export const snapshot_topologies = new WeakMap<AnyStructure, object>()
@@ -58,7 +62,7 @@ export class NumericSites {
     return this.numbers.length
   }
   get stride(): number {
-    return 6 + this.vector_keys.length * 3
+    return site_stride(this.vector_keys)
   }
   property_keys(): readonly string[] {
     if (this.keys) return this.keys
@@ -128,6 +132,10 @@ export class NumericSites {
   }
 }
 
+// Floats per site in packed coordinate columns: abc and xyz, then 3 per vector property
+export const site_stride = (vector_keys: readonly string[]): number =>
+  6 + vector_keys.length * 3
+
 // Display snapshots and editable exports decode the same columns. Scalar values override
 // dense vectors of the same name; unrelated record properties remain untouched.
 export function write_site_properties(
@@ -136,7 +144,7 @@ export function write_site_properties(
   properties: Record<string, unknown>,
 ): void {
   const { coordinates, vector_keys, scalar_columns } = columns
-  const offset = idx * (6 + vector_keys.length * 3)
+  const offset = idx * site_stride(vector_keys)
   for (let column = 0; column < vector_keys.length; column++) {
     const start = offset + 6 + column * 3
     properties[vector_keys[column]] = [

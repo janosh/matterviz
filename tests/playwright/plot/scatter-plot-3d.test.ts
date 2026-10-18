@@ -403,7 +403,6 @@ test.describe(`ScatterPlot3D`, () => {
 })
 
 test.describe(`ScatterPlot3D Projections`, () => {
-  // Helper to get projection checkbox
   const get_projection_checkbox = (pane: Locator, plane: string) =>
     pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
 
@@ -484,10 +483,8 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await opacity_row.locator(`input[type="range"]`).fill(`0.8`)
     await size_row.locator(`input[type="range"]`).fill(`0.9`)
 
-    // Click reset button in Projections section specifically
     await pane.locator(`button[title="Reset projections to defaults"]`).click()
 
-    // Verify reset to defaults
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       await expect(get_projection_checkbox(pane, plane)).not.toBeChecked()
     }
@@ -500,7 +497,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await wait_for_canvas_rendered(canvas)
     const pane = await open_controls_pane(page)
 
-    // Enable all projections
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       await get_projection_checkbox(pane, plane).click()
     }

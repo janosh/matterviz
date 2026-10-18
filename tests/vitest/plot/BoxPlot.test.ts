@@ -170,7 +170,7 @@ describe(`BoxPlot`, () => {
   })
 
   test(`a far outlier expands the value-axis range`, async () => {
-    // value_points must reach the extreme outliers, not just the whiskers
+    // range_values must reach the extreme outliers, not just the whiskers
     const cluster = dist(200, 0, 1) // ~[-1, 1.4]
     const series: BoxPlotSeries[] = [{ y: [...cluster, 500], label: `Tail` }]
     const plot = await mount_sized_box_plot({ series })

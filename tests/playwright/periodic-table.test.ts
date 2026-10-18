@@ -179,7 +179,6 @@ test.describe(`Periodic Table`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })
 
-    // test utilities
     const get_element_tile = (page: Page, symbol: string) =>
       page.locator(`.periodic-table [data-element-symbol="${symbol}"]`).first()
 
@@ -214,12 +213,9 @@ test.describe(`Periodic Table`, () => {
       const heatmap_value = hydrogen[first_heatmap_key]
       if (typeof heatmap_value !== `number`)
         throw new Error(`Hydrogen atomic mass is not numeric`)
-      await expect(
-        page
-          .locator(`.periodic-table`)
-          .first()
-          .locator(`[data-element-symbol="${hydrogen.symbol}"]`),
-      ).toContainText(format_num(heatmap_value))
+      await expect(get_element_tile(page, hydrogen.symbol)).toContainText(
+        format_num(heatmap_value),
+      )
 
       await page.mouse.click(10, 10)
       await expect(option_list).not.toBeVisible()
@@ -227,8 +223,6 @@ test.describe(`Periodic Table`, () => {
       const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
       await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
       await expect(tooltip).toContainText(`C • 6`)
-
-      // Check for enhanced data - but be more flexible about the format
       await expect(tooltip).toContainText(/Position:|Column|Row/)
       await expect(tooltip).toContainText(/Range:|Min|Max/)
     })

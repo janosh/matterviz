@@ -16,7 +16,7 @@ import {
   target_stability,
 } from './phases'
 import type { PlannerPhase } from './phases'
-import { balance_reaction } from './thermo'
+import { balance_reaction, reaction_energy_per_fu } from './thermo'
 import type { SynthesisConditions } from './types'
 import { validate_synthesis_plan_request } from './validation'
 
@@ -83,23 +83,10 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
     const prepare_product = (product: PlannerPhase, require_all: boolean) => {
       const balanced = balance_reaction(precursors, product, gases, require_all)
       if (typeof balanced === `string`) return null
-      const product_energy = product.energy_per_atom * product.n_atoms_per_fu
-      const precursor_energy = precursors.reduce(
-        (sum, phase, idx) =>
-          sum + balanced.coefficients[idx] * (phase.energy_per_atom * phase.n_atoms_per_fu),
-        0,
-      )
       return {
         product,
         force: () =>
-          (product_energy +
-            gases.reduce(
-              (sum, phase, idx) =>
-                sum +
-                balanced.gas_exchange[idx] * (phase.energy_per_atom * phase.n_atoms_per_fu),
-              0,
-            ) -
-            precursor_energy) /
+          reaction_energy_per_fu(precursors, product, gases, balanced) /
           balanced.reactant_atoms,
       }
     }

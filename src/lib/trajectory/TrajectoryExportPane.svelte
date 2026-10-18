@@ -60,7 +60,6 @@
   }: {
     export_pane_open?: boolean
     flight_pane_open?: boolean
-    // Trajectory data for generating filename
     run?: TrajectoryRun
     // Canvas wrapper for video export
     wrapper?: HTMLDivElement

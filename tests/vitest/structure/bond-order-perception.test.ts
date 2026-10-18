@@ -7,6 +7,7 @@ import type { BondPair, Site, StructureBond } from '#lib/structure/index.js'
 import type { PerceivedBond } from '#lib/structure/bond-order-perception.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
+import { euclidean_dist } from '#lib/math.js'
 import { make_rng } from '../numeric-helpers'
 // per-test spies: a trailing `warn.mockRestore()` is skipped by the first failing assertion
 beforeEach(() => vi.restoreAllMocks())
@@ -30,11 +31,7 @@ function make_input(elements: ElementSymbol[], coords: Vec3[], edges: Vec2[]) {
     pos_2: coords[idx_2],
     site_idx_1: idx_1,
     site_idx_2: idx_2,
-    bond_length: Math.hypot(
-      coords[idx_1][0] - coords[idx_2][0],
-      coords[idx_1][1] - coords[idx_2][1],
-      coords[idx_1][2] - coords[idx_2][2],
-    ),
+    bond_length: euclidean_dist(coords[idx_1], coords[idx_2]),
   }))
   return { sites, bonds }
 }
@@ -265,9 +262,6 @@ describe(`aromaticity`, () => {
     )
   }
 
-  const ring_bonds_from = (result: PerceivedBond[]) =>
-    result.filter(({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6)
-
   const c5 = carbons(5)
   // oxfmt-ignore
   test.each<{
@@ -290,8 +284,9 @@ describe(`aromaticity`, () => {
         substituent_counts,
       )
 
-      const result = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-      const ring_bonds = ring_bonds_from(result)
+      const ring_bonds = perceive_bond_orders(sites, bonds, { total_charge: 0 }).filter(
+        ({ site_idx_1, site_idx_2 }) => site_idx_1 < 6 && site_idx_2 < 6,
+      )
 
       if (has_double_bond) {
         expect(ring_bonds.some((bond) => bond.bond_order === 2)).toBe(true)

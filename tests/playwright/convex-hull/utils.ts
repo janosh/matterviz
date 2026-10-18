@@ -4,7 +4,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 // the fast route to a hull of a given size; resolves to the rendered diagram
 export const goto_perf_page = async (
   page: Page,
-  dim: `3d` | `4d`,
+  dim: `2d` | `3d` | `4d`,
   query: string,
 ): Promise<Locator> => {
   await page.goto(`/test/convex-hull-performance?dim=${dim}&${query}`, {
@@ -69,9 +69,15 @@ export async function open_info_and_controls(
   return { info, controls }
 }
 
-// Position-sensitive rolling hash over every 4th canvas pixel. The previous
-// sum-of-every-100th-pixel hash only sampled 8 fixed columns (stride 100 pixels in
-// row-major order), so small marker changes between those columns went undetected.
+// Visible count X of an info-pane "Visible ... X / Y" row
+export const visible_count = async (info: Locator, testid: string): Promise<number> => {
+  const text = await info.getByTestId(testid).textContent()
+  const match = text?.match(/(?<visible>\d+)\s*\//)
+  if (!match?.groups) throw new Error(`unparsable ${testid} text: ${text}`)
+  return Number(match.groups.visible)
+}
+
+// Position-sensitive rolling hash over every 4th canvas pixel, so small marker changes register
 export const get_canvas_hash = (canvas: Locator): Promise<string> =>
   canvas.evaluate((element) => {
     const ctx = (element as HTMLCanvasElement).getContext(`2d`)

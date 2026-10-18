@@ -429,7 +429,7 @@
     drop_target_panel_idx = Math.max(hit_idx, 0)
     // Prevent mixed-axis splits until nested layouts are supported
     const cross_axis = layout_direction === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
-    if (panels.length > 1 && cross_axis.includes(drop_zone ?? ``)) {
+    if (panels.length > 1 && cross_axis.includes(drop_zone)) {
       drop_zone = `center`
     }
   }
@@ -567,7 +567,6 @@
     ondrop={on_canvas_drop}
   >
     {#if panels.length === 0}
-      <!-- Placeholder when no panels -->
       <div class="placeholder">
         {#if renderable_paths.size === 0}
           <p class="placeholder-title">No renderable data found</p>
@@ -602,12 +601,7 @@
         {/if}
       </div>
     {:else}
-      <!-- Panel layout -->
-      <div
-        class="panel-container"
-        class:vertical={layout_direction === `vertical`}
-        class:horizontal={layout_direction === `horizontal`}
-      >
+      <div class="panel-container" class:vertical={layout_direction === `vertical`}>
         {#each panels as panel, idx (panel.id)}
           {@const panel_background = `${TYPE_COLORS[panel.detected_type]}cc`}
           {#if idx > 0}
@@ -626,7 +620,6 @@
           {/if}
           <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
             <div class="panel-mount" {@attach attach_viewer(panel)}></div>
-            <!-- Panel label -->
             <div
               class="panel-label"
               style:background={panel_background}
@@ -642,7 +635,6 @@
       </div>
     {/if}
 
-    <!-- Drop zone overlay -->
     {#if drop_zone && drop_zone !== `center`}
       <div class={[`drop-indicator`, drop_zone]}></div>
     {/if}
@@ -684,9 +676,6 @@
   }
   .panel-container.vertical {
     flex-direction: column;
-  }
-  .panel-container.horizontal {
-    flex-direction: row;
   }
   .viz-panel {
     position: relative;
@@ -752,27 +741,19 @@
     transition: all 0.1s;
   }
   .drop-indicator.top {
-    top: 0;
-    left: 0;
-    right: 0;
+    inset: 0 0 auto;
     height: 40%;
   }
   .drop-indicator.bottom {
-    bottom: 0;
-    left: 0;
-    right: 0;
+    inset: auto 0 0;
     height: 40%;
   }
   .drop-indicator.left {
-    top: 0;
-    left: 0;
-    bottom: 0;
+    inset: 0 auto 0 0;
     width: 40%;
   }
   .drop-indicator.right {
-    top: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0 0 0 auto;
     width: 40%;
   }
   /* === Placeholder === */

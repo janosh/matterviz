@@ -50,7 +50,6 @@
   // X options: numeric for scatter/histogram, numeric + string for bar
   let x_keys = $derived(plot_type === `bar` ? [...string_keys, ...numeric_keys] : numeric_keys)
 
-  // Build the appropriate series from current mapping
   let scatter_series = $derived(
     plot_type === `scatter` ? [build_scatter_series(columns, mapping)] : [],
   )
@@ -70,9 +69,8 @@
     const keys = Object.keys(rec).filter((key) => Array.isArray(rec[key]))
     if (keys.length === 0) return []
     return Array.from(
-      { length: (rec[keys[0]] as unknown[]).length },
-      (_, idx) =>
-        Object.fromEntries(keys.map((key) => [key, (rec[key] as unknown[])[idx]])) as RowData,
+      { length: rec[keys[0]].length },
+      (_, idx) => Object.fromEntries(keys.map((key) => [key, rec[key][idx]])) as RowData,
     )
   })
 
@@ -95,7 +93,6 @@
   const col_label = (key: string): string =>
     `${columns.get(key)?.type === `numeric` ? `#` : `A`} ${key}`
 
-  // Available plot types based on columns
   let available_types = $derived.by<{ value: PlotType; label: string }[]>(() => {
     const types: { value: PlotType; label: string }[] = []
     if (numeric_keys.length >= 2) types.push({ value: `scatter`, label: `Scatter` })

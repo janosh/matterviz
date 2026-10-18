@@ -65,6 +65,10 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
+  const open_analysis = async (label: string): Promise<void> => {
+    await controls.locator(`.analysis-button`).click()
+    await trajectory_viewer.getByRole(`button`, { name: label, exact: true }).click()
+  }
 
   test.beforeEach(async ({ page }, test_info) => {
     test_info.setTimeout(test_info.timeout + HYDRATION_TIMEOUT)
@@ -519,10 +523,7 @@ test.describe(`Trajectory Component`, () => {
         .join(``)
       await drop_file(page, trajectory_viewer, trajectory_xyz, `hotspot-settings.xyz`)
       await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `2`)
-      await controls.locator(`.analysis-button`).click()
-      await trajectory_viewer
-        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
-        .click()
+      await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       const calculate = pane.getByRole(`button`, { name: `Calculate hotspots`, exact: true })
       await expect(pane.getByText(`Inferred from recorded masses`)).toBeVisible()
@@ -663,10 +664,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `4`)
       await controls.locator(`.step-input`).fill(`2`) // frame index 1
       await controls.locator(`.step-input`).press(`Enter`)
-      await controls.locator(`.analysis-button`).click()
-      await trajectory_viewer
-        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
-        .click()
+      await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       await pane.getByLabel(/^Velocity units/).selectOption(`A/ps`)
       await pane.getByLabel(/^Masses/).selectOption(`standard`)
@@ -791,13 +789,7 @@ test.describe(`Trajectory Component`, () => {
     ).join(``)
     await drop_file(page, trajectory_viewer, content, `spectroscopy.xyz`)
     await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `8`)
-    await controls.locator(`.analysis-button`).click()
-    await trajectory_viewer
-      .getByRole(`button`, {
-        name: `Trajectory IR/Raman & VDOS`,
-        exact: true,
-      })
-      .click()
+    await open_analysis(`Trajectory IR/Raman & VDOS`)
     const analysis = trajectory_viewer.locator(`.trajectory-spectroscopy-inline`)
     await expect(analysis.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
     await analysis.locator(`.plot-controls-toggle`).click()

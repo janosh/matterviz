@@ -136,6 +136,13 @@ const tri_normal = ([vert_a, vert_b, vert_c]: Vec3[]): Vec3 =>
   cross_3d(subtract(vert_b, vert_a), subtract(vert_c, vert_a))
 const face_verts = (hull: { vertices: Vec3[] }, face: number[]): Vec3[] =>
   face.map((idx) => hull.vertices[idx])
+const sorted_vertex_sites = (poly: Polyhedron): number[] =>
+  poly.vertex_site_idxs.toSorted((left, right) => left - right)
+// vertex_site_idxs maps each hull vertex to the site at that exact position
+const expect_vertices_on_sites = (poly: Polyhedron, structure: AnyStructure) => {
+  for (const [vertex_idx, site_idx] of poly.vertex_site_idxs.entries())
+    expect(poly.vertices[vertex_idx]).toEqual(structure.sites[site_idx].xyz)
+}
 
 // oxfmt-ignore
 const octahedron_points: Vec3[] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -283,7 +290,7 @@ describe(`build_adjacency`, () => {
 
 // Na octahedrally coordinated by 6 Cl (rocksalt-like local environment)
 const make_nacl_cluster = () => make_crystal(10, octahedron_sites(`Na`, `Cl`, [5, 5, 5], 2))
-const octahedral_bonds = bonds_from(0, [1, 2, 3, 4, 5, 6])
+const octahedral_bonds = bonds_from(0, sites_after_0(6))
 
 describe(`compute_polyhedra`, () => {
   test.each([false, true])(`bonded primitive-cell shell with packed bonds %s`, (packed) => {
@@ -311,13 +318,8 @@ describe(`compute_polyhedra`, () => {
     expect(poly.center_site_idx).toBe(0)
     expect(poly.faces).toHaveLength(8)
     expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 6)
-    // vertex_site_idxs maps each hull vertex to the site at that exact position
-    expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual(
-      sites_after_0(6),
-    )
-    for (const [v_idx, site_idx] of poly.vertex_site_idxs.entries()) {
-      expect(poly.vertices[v_idx]).toEqual(structure.sites[site_idx].xyz)
-    }
+    expect(sorted_vertex_sites(poly)).toEqual(sites_after_0(6))
+    expect_vertices_on_sites(poly, structure)
   })
 
   // C is more electronegative than H, so methane gets no polyhedron
@@ -339,11 +341,8 @@ describe(`compute_polyhedra`, () => {
       expect(polyhedra.map((poly) => poly.center_element)).toEqual(expected)
       for (const poly of polyhedra) {
         expect(poly.faces).toHaveLength(4)
-        expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual([
-          1, 2, 3, 4,
-        ])
-        for (const [vertex_idx, site_idx] of poly.vertex_site_idxs.entries())
-          expect(poly.vertices[vertex_idx]).toEqual(structure.sites[site_idx].xyz)
+        expect(sorted_vertex_sites(poly)).toEqual(sites_after_0(4))
+        expect_vertices_on_sites(poly, structure)
       }
     },
   )
@@ -411,11 +410,7 @@ describe(`compute_polyhedra`, () => {
       expect(poly.faces).toHaveLength(8)
     }
     // every polyhedron corner is a displayed atom (no phantom vertices)
-    for (const poly of polyhedra) {
-      for (const [v_idx, site_idx] of poly.vertex_site_idxs.entries()) {
-        expect(poly.vertices[v_idx]).toEqual(with_images.sites[site_idx].xyz)
-      }
-    }
+    for (const poly of polyhedra) expect_vertices_on_sites(poly, with_images)
   })
 
   test(`explicit bonds with cell_shift close polyhedra across the cell boundary`, () => {
@@ -540,7 +535,7 @@ describe(`compute_polyhedra`, () => {
     // Two sites at the same position (base + fake image) must yield one polyhedron
     const structure = make_nacl_cluster()
     structure.sites.push({ ...structure.sites[0], provenance: { image_of: 0 } })
-    const bonds = [...octahedral_bonds, ...bonds_from(7, [1, 2, 3, 4, 5, 6])]
+    const bonds = [...octahedral_bonds, ...bonds_from(7, sites_after_0(6))]
     expect(compute_polyhedra(structure, bonds)).toHaveLength(1)
   })
 
@@ -597,11 +592,9 @@ describe(`VESTA-style detection rules`, () => {
       { element: `O`, xyz: [6, 4, 6] as Vec3 },
       { element: `O`, xyz: [6, 6, 8.39] as Vec3 }, // 2.39 Å
     ])
-    const [poly, ...rest] = compute_polyhedra(structure, bonds_from(0, [1, 2, 3, 4, 5, 6]))
+    const [poly, ...rest] = compute_polyhedra(structure, octahedral_bonds)
     expect(rest).toHaveLength(0)
-    expect([...poly.vertex_site_idxs].toSorted((left, right) => left - right)).toEqual(
-      sites_after_0(6),
-    )
+    expect(sorted_vertex_sites(poly)).toEqual(sites_after_0(6))
     expect(poly.faces).toHaveLength(8)
     // square base of side 2*sqrt(2) with apices 1.83 and 2.39 above/below it
     expect(poly.volume).toBeCloseTo((1 / 3) * 8 * (1.83 + 2.39), 10)
@@ -659,7 +652,7 @@ describe(`VESTA-style detection rules`, () => {
       { element: `Fe`, xyz: [12, 12, 12] as Vec3 },
       { element: `O`, xyz: [14, 12, 12] as Vec3 },
     ])
-    const bonds = [...bonds_from(0, [1, 2, 3, 4, 5, 6]), make_bond(7, 8)]
+    const bonds = [...octahedral_bonds, make_bond(7, 8)]
     expect(compute_polyhedra(structure, bonds)).toHaveLength(0)
   })
 

@@ -359,14 +359,13 @@ const SCALE_TYPE_NAMES = new Set<string>([`linear`, `log`, `arcsinh`, `time`])
 export const is_scale_type_name = (val: string): val is ScaleTypeName =>
   SCALE_TYPE_NAMES.has(val)
 
-// Helper to normalize ScaleType to base type name
 export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTypeName {
   if (!scale_type) return `linear`
   if (typeof scale_type === `string`) return scale_type
   return scale_type.type
 }
 
-// Helper to get arcsinh threshold (returns 1 as default for non-arcsinh scales)
+// 1 for non-arcsinh scales
 export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number {
   if (typeof scale_type === `object` && scale_type.type === `arcsinh`) {
     const threshold = scale_type.threshold ?? 1
@@ -378,7 +377,6 @@ export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number
   return 1
 }
 
-// Helper to detect an explicit time scale
 export const is_time_scale = (scale_type: ScaleType | undefined): boolean =>
   get_scale_type_name(scale_type) === `time`
 

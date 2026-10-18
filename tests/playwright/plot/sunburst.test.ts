@@ -111,7 +111,7 @@ test.describe(`Sunburst Component Tests`, () => {
     const { section, plot } = zoom_section(page)
     const label = plot.locator(`.arc-label[data-sunburst-node-idx="2"]`) // Solar
     await expect(label).toHaveText(`Solar`)
-    // selectable (not pointer-events: none like before)
+    // selectable, and not pointer-events: none
     const styles = await label.evaluate((element) => {
       const computed = getComputedStyle(element)
       return { user_select: computed.userSelect, pointer_events: computed.pointerEvents }

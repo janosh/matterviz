@@ -4,6 +4,7 @@ import {
   drag_plot_area,
   expect_canvas_changed,
   expect_combined_fullscreen,
+  expect_same_clip_rows,
   expect_synced_y_ticks,
   get_chart_svg,
   IS_CI,
@@ -64,7 +65,6 @@ test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () =>
       timeout: 5000,
     })
 
-    // DOS SVG - find by looking for the second SVG with axes
     const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg).toBeVisible({ timeout: 10_000 })
     await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
@@ -72,7 +72,6 @@ test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () =>
       timeout: 5000,
     })
 
-    // Check for high-symmetry labels in bands
     const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
     expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
   })
@@ -90,7 +89,6 @@ test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () =>
   })
 
   test(`handles independent y-axes and custom BZ appearance`, async ({ page }) => {
-    // Independent axes with mismatched ranges
     const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
     const bands_y = await indep_container
       .locator(`svg:has(g.x-axis)`)
@@ -151,17 +149,7 @@ test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () =>
     await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
     await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
 
-    // Equal outer panel heights are insufficient: the clipped drawable regions
-    // must use the same top offset and height for matching y coordinates.
-    const bands_clip = bands_plot.locator(`clipPath rect`)
-    const dos_clip = dos_plot.locator(`clipPath rect`)
-    await expect(async () => {
-      for (const attribute of [`y`, `height`]) {
-        expect(await bands_clip.getAttribute(attribute)).toBe(
-          await dos_clip.getAttribute(attribute),
-        )
-      }
-    }).toPass({ timeout: 30_000 })
+    await expect(() => expect_same_clip_rows(bands_plot, dos_plot)).toPass({ timeout: 30_000 })
     await expect_synced_y_ticks(bands_plot, dos_plot)
 
     const bands_area = await measure_plot_area(bands_plot)

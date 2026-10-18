@@ -1,5 +1,5 @@
 import { expect, type Locator, test } from '@playwright/test'
-import { require_bbox } from '../helpers'
+import { numeric_y_ticks, require_bbox } from '../helpers'
 
 const band_paths = (plot: Locator) => plot.locator(`svg path[fill="none"]`)
 // Discontinuity labels join their points with no-break spaces so the axis never wraps them
@@ -36,8 +36,7 @@ test.describe(`Bands Component Tests`, () => {
     const x_labels = await x_axis_labels(plot)
     expect(x_labels).toContain(`Γ`)
     expect(x_labels).toContain(`X`)
-    const y_ticks = await plot.locator(`g.y-axis text`).allTextContents()
-    expect(y_ticks.filter((tick) => !isNaN(Number(tick))).length).toBeGreaterThan(2)
+    expect((await numeric_y_ticks(plot)).length).toBeGreaterThan(2)
   })
 
   // path_count null only requires that bands rendered

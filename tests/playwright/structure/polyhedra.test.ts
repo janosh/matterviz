@@ -37,7 +37,6 @@ test.describe(`Coordination Polyhedra Demo`, () => {
     await page
       .getByRole(`region`, { name: `Molecular polyhedra`, exact: true })
       .scrollIntoViewIfNeeded()
-    // Two Structure viewers on the page: crystal demo + SF6 molecule
     await expect(page.locator(`.structure canvas`)).toHaveCount(2)
     expect(console_errors).toEqual([])
   })
@@ -68,7 +67,7 @@ test.describe(`Coordination Polyhedra Demo`, () => {
     const new_canvas = await demo_canvas(page)
 
     const ba_toggle = control_checkbox(page, `Ba polyhedra`)
-    await expect(ba_toggle).not.toBeChecked() // spectator A-site hidden by default
+    await expect(ba_toggle).not.toBeChecked()
     await expect_redraw(new_canvas, () => ba_toggle.check())
   })
 })

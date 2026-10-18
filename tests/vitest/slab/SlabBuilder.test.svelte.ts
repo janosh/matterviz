@@ -5,15 +5,9 @@ import type { Crystal } from '#lib/structure/index.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { bind_props, doc_query } from '../setup'
-import { make_crystal, make_rocksalt } from '../test-fixtures'
+import { make_fcc, make_rocksalt } from '../test-fixtures'
 
-// oxfmt-ignore
-const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-const fcc = (): Crystal =>
-  make_crystal(
-    3.615,
-    FACE_CENTRES.map((abc) => ({ element: `Cu`, abc })),
-  )
+const fcc = (): Crystal => make_fcc(3.615)
 
 type BuilderState = {
   slab: Slab | null

@@ -52,6 +52,16 @@ export const dataset_at = (h5_file: h5wasm.File, path: string | undefined): Data
   return is_hdf5_dataset(entity) ? entity : null
 }
 
+export const required_dataset = (
+  h5_file: h5wasm.File,
+  path: string,
+  format: string,
+): Dataset => {
+  const dataset = dataset_at(h5_file, path)
+  if (!dataset) throw new Error(`${format} is missing dataset ${path}`)
+  return dataset
+}
+
 // A dataset's shape, rejecting scalars and degenerate axes: every dataset the trajectory
 // parsers read is indexed along at least one axis of positive length
 export const dataset_shape = (dataset: Dataset, path: string, format: string): number[] => {

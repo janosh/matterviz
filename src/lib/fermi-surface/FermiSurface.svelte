@@ -40,7 +40,11 @@
 
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { property_label } from './constants'
-  import { available_property_names, property_value_range } from './geometry'
+  import {
+    available_property_names,
+    property_value_range,
+    visible_isosurfaces,
+  } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
   import { to_error } from '#lib/utils.js'
@@ -356,11 +360,7 @@
   const fitted_value_range = $derived<Vec2>(
     color_property === `property`
       ? property_value_range(
-          surface_data?.isosurfaces.filter(
-            ({ band_index, spin }) =>
-              (selected_bands?.includes(band_index) ?? true) &&
-              (selected_spins?.includes(spin) ?? true),
-          ) ?? [],
+          visible_isosurfaces(surface_data?.isosurfaces, selected_bands, selected_spins),
           active_property,
         )
       : [0, 1],

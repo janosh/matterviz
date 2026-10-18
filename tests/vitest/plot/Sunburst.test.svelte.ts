@@ -400,7 +400,7 @@ describe(`Sunburst`, () => {
       [...plot.querySelectorAll(`.arc-label`)]
         .find((element) => element.textContent?.trim().startsWith(text))
         ?.getAttribute(`fill-opacity`)
-    // legend hover dims without hover_info; set_arc_hover's same-arc early return must not
+    // legend hover dims without hover_info; set_hover's same-node early return must not
     // then suppress the arc's own tooltip
     await fire(plot.querySelector(`.legend-item`), mouse(`mouseenter`))
     await fire(arc_path(plot, `A`), mouse(`mousemove`))

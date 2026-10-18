@@ -5,6 +5,7 @@
   import type { RowData } from '#lib/table/index.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'
+  import { toggle_site } from './site'
   import { DATA_TABLE_PROPS, site_columns, site_property_specs, site_rows } from './site-table'
 
   const FRAC_COLUMNS = [`frac_a`, `frac_b`, `frac_c`] as const
@@ -46,11 +47,7 @@
 
   const toggle_atom = (_event: MouseEvent | KeyboardEvent, row: RowData) => {
     if (typeof row.site !== `number`) return
-    const atom = from_display_idx(row.site)
-    const current = selected_atoms ?? []
-    selected_atoms = current.includes(atom)
-      ? current.filter((idx) => idx !== atom)
-      : [...current, atom]
+    selected_atoms = toggle_site(selected_atoms ?? [], from_display_idx(row.site))
   }
 </script>
 

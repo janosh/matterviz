@@ -263,16 +263,14 @@ export function is_plottable_data(obj: unknown): boolean {
   if (!is_tabular_data(obj)) return false
   if (Array.isArray(obj)) {
     const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<string, unknown>[]
-    if (sample.length === 0) return false
     const all_keys = new Set(sample.flatMap(Object.keys))
     const num_cols = [...all_keys].filter((key) =>
       sample.some((row) => typeof row[key] === `number`),
     ).length
     return num_cols >= 2
   }
-  const data = as_record(obj)
-  if (!data) return false
-  const array_entries = Object.entries(data).filter(
+  // is_tabular_data guarantees a record here
+  const array_entries = Object.entries(as_record(obj) ?? {}).filter(
     ([, val]) => Array.isArray(val) && (val as unknown[]).length > 0,
   )
   const num_cols = array_entries.filter(([, val]) =>

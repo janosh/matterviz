@@ -28,7 +28,7 @@
 
 import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
-import { finite_vec3_from_values, is_finite_vec3_like } from '#lib/math.js'
+import { finite_vec3_from_values } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { count_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
@@ -54,12 +54,13 @@ function parse_forces(val: unknown, context: string): Vec3[] | undefined {
     throw new TypeError(`${context} forces must be an array of [x, y, z] vectors`)
   }
   return val.map((entry, atom_idx) => {
-    if (!Array.isArray(entry) || !is_finite_vec3_like(entry)) {
+    const force = Array.isArray(entry) ? finite_vec3_from_values(entry) : undefined
+    if (!force) {
       throw new Error(
         `${context} force on atom ${display_idx(atom_idx)} must be 3 finite numbers, got ${JSON.stringify(entry)}`,
       )
     }
-    return [entry[0], entry[1], entry[2]] as Vec3
+    return force
   })
 }
 

@@ -1,5 +1,5 @@
 // Helper utilities for band structure and DOS data processing
-import { parse_axis_label, SUBSCRIPT_MAP } from '#lib/labels.js'
+import { parse_axis_label, subscript_digits } from '#lib/labels.js'
 import { is_plain_object } from '#lib/utils.js'
 import {
   array_extent,
@@ -20,9 +20,6 @@ import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type { KPathData } from '#lib/brillouin/types.js'
 import type * as types from './types'
 
-const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
-  key in SUBSCRIPT_MAP
-
 // Fractional reciprocal coordinates are equivalent when they differ by a lattice vector.
 export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e-6): boolean =>
   first.every((coordinate, axis) => {
@@ -30,7 +27,6 @@ export const are_qpoints_equivalent = (first: Vec3, second: Vec3, tolerance = 1e
     return Math.abs(delta - Math.round(delta)) < tolerance
   })
 
-// Band structure constants
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
 // Pretty-print a symmetry point symbol: Greek names (plain GAMMA or LaTeX \Gamma) become
@@ -47,12 +43,7 @@ export function pretty_sym_point(symbol: string): string {
     .replaceAll(/\\?LAMBDA/gi, `Λ`)
     .replaceAll(
       /(?<letter>\p{L})(?<num>\d+)/gu,
-      (_, letter, num) =>
-        letter +
-        num
-          .split(``)
-          .map((digit: string) => (is_subscript_key(digit) ? SUBSCRIPT_MAP[digit] : digit))
-          .join(``),
+      (_, letter: string, num: string) => letter + subscript_digits(num),
     )
 }
 
@@ -411,8 +402,6 @@ export function normalize_band_structure(
   band_struct: unknown,
 ): types.BaseBandStructure | null {
   if (!is_plain_object(band_struct)) return null
-
-  // Check if this is pymatgen format and convert if so
   if (is_pymatgen_format(band_struct)) {
     return convert_pymatgen_band_structure(band_struct)
   }
@@ -485,7 +474,6 @@ export function normalize_dos(dos: unknown): types.DosData | null {
 
   if (!Array.isArray(densities)) return null
 
-  // Phonon DOS: has frequencies
   if (Array.isArray(frequencies)) {
     if (frequencies.length !== densities.length) return null
     const declared_unit = dos.frequency_unit ?? dos.unit
@@ -500,7 +488,6 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     }
   }
 
-  // Electronic DOS: has energies
   if (Array.isArray(energies)) {
     if (energies.length !== densities.length) return null
     return electronic_dos(energies, densities, spin_down_densities, {
@@ -509,7 +496,6 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     })
   }
 
-  // For pymatgen format, log a helpful message if format wasn't recognized
   if (has_pymatgen_marker(dos)) {
     console.warn(
       `Pymatgen DOS format detected but missing required fields. ` +
@@ -547,9 +533,8 @@ const BZ_TIE_RTOL = 1e-6
 export function extract_k_path_points(
   band_struct: types.BaseBandStructure,
   recip_lattice_matrix: Matrix3x3,
-  options: { wrap_to_bz?: boolean } = {},
+  { wrap_to_bz = true }: { wrap_to_bz?: boolean } = {},
 ): Vec3[] {
-  const { wrap_to_bz = true } = options
   if (
     recip_lattice_matrix.length !== 3 ||
     recip_lattice_matrix.some((row) => row?.length !== 3)
@@ -760,7 +745,6 @@ export function find_qpoint_at_rescaled_x(
   if (!band_struct.branches.length) return null
   const branches = plotted_branches(band_struct, x_positions)
 
-  // Find which segment contains this x coordinate
   for (const [{ start_index: start_idx, end_index: end_idx }, [x_start, x_end]] of branches) {
     // Zero-length segment: match only if x is exactly at this point
     if (Math.abs(x_end - x_start) < 1e-6) {

@@ -12,8 +12,7 @@ test.describe(`Atom Radius Controls`, () => {
   let page: Page
   let legend: Locator
 
-  // Open the remap dropdown.
-  // Uses dispatchEvent('contextmenu') instead of mouse right-click for better CI stability
+  // dispatchEvent('contextmenu') instead of mouse right-click for better CI stability
   // (avoids potential browser context menu interference in headless environments)
   const open_remap_dropdown = async (item: Locator) => {
     await item.locator(`label`).dispatchEvent(`contextmenu`)

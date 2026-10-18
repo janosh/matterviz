@@ -57,7 +57,6 @@
     reference_frequency = null,
     fermi_level,
     spin_mode = $bindable(`mirror`),
-    // Controls configuration
     display = $bindable({
       x_grid: true,
       y_grid: true,
@@ -85,7 +84,6 @@
     reference_frequency?: number | null
     fermi_level?: number // Fermi level for electronic DOS (auto-detected if not provided)
     spin_mode?: SpinMode // How to display spin-polarized DOS: mirror (default), overlay, up_only, down_only, or null (auto)
-    // Controls configuration
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
     sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
@@ -101,6 +99,7 @@
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
+  const fermi_color = `var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
 
   let has_spin_polarized = $derived(
     Object.values(doses).some(
@@ -412,7 +411,7 @@
         <line
           class="fermi-level-line"
           {...plot_area_line(fermi_pos, is_horizontal, ctx)}
-          stroke="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          stroke={fermi_color}
           stroke-width="var(--dos-fermi-line-width, 1.5)"
           stroke-dasharray="var(--dos-fermi-line-dash, 6,3)"
           opacity="var(--dos-fermi-line-opacity, 0.8)"
@@ -426,7 +425,7 @@
           dy={is_horizontal ? `0.35em` : undefined}
           text-anchor={is_horizontal ? (label_fits_right ? `start` : `end`) : `middle`}
           font-size="10"
-          fill="var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          fill={fermi_color}
           opacity="0.9"
         >
           E<tspan dy="2" font-size="8">F</tspan>

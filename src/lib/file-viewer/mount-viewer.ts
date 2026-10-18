@@ -67,10 +67,9 @@ export function mount_viewer(
 ): ReturnType<typeof mount> {
   target.innerHTML = ``
   void target.offsetHeight // force layout so Three.js measures real dimensions
-  const common_props = VIEWER_COMMON_PROPS
   // The outer file viewer (main.ts) owns drops; nested viewers still expose their drop API
   // standalone
-  const no_file_drop = { ...common_props, allow_file_drop: false }
+  const no_file_drop = { ...VIEWER_COMMON_PROPS, allow_file_drop: false }
   const structure_props = {
     ...build_structure_props_from_settings(defaults),
     ...no_file_drop,
@@ -110,7 +109,7 @@ export function mount_viewer(
   if (type === `phase_diagram`) {
     return mount(IsobaricBinaryPhaseDiagram, {
       target,
-      props: { data: data as PhaseDiagramData, ...common_props },
+      props: { data: data as PhaseDiagramData, ...VIEWER_COMMON_PROPS },
     })
   }
   if (type === `bands_and_dos` || type === `band_structure` || type === `dos`) {
@@ -120,13 +119,12 @@ export function mount_viewer(
     const dos = type === `band_structure` ? null : normalize_dos(record.dos ?? data)
     if (type !== `dos` && !bands) throw new Error(`Invalid band structure data`)
     if (type !== `band_structure` && !dos) throw new Error(`Invalid DOS data`)
-    return mount_spectral(target, { bands, dos }, common_props, { b: 60 })
+    return mount_spectral(target, { bands, dos }, VIEWER_COMMON_PROPS, { b: 60 })
   }
   if (type === `brillouin_zone`) {
     const record = data as Record<string, unknown>
     const bz_props: Record<string, unknown> = { ...no_file_drop }
     if (record.structure) bz_props.structure = record.structure
-    // Pass pre-computed BZ data (vertices, faces, edges) if present
     if (record.vertices && record.faces) bz_props.bz_data = data
     return mount(BrillouinZone, { target, props: bz_props })
   }

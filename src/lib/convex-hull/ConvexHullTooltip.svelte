@@ -1,7 +1,10 @@
 <script lang="ts" generics="EntryT extends PhaseData = PhaseData">
   // Unified tooltip component for convex hull diagrams
   import { tooltip_paint } from '#lib/colors/index.js'
-  import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import {
+    count_atoms_in_composition,
+    get_electro_neg_formula,
+  } from '#lib/composition/index.js'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -85,7 +88,7 @@
     {/if}
 
     {#if !is_element}
-      {@const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)}
+      {@const total = count_atoms_in_composition(entry.composition)}
       {#if total > 0}
         {@const fractions = Object.entries(entry.composition)
           .filter(([, amt]) => amt > 0)

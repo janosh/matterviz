@@ -1,4 +1,5 @@
 import type { Point2D } from '#lib/math.js'
+import { assert_non_negative } from '#lib/math.js'
 
 // Uniform-grid spatial hash for nearest-point picking in screen pixels.
 // Integer keys avoid allocating strings; coordinates outside the exact packing range are
@@ -25,9 +26,7 @@ export function build_spatial_index<T extends Positioned>(
   items: Iterable<T>,
   radius_px: number,
 ): SpatialIndex<T> {
-  if (!Number.isFinite(radius_px) || radius_px < 0) {
-    throw new RangeError(`radius_px must be a non-negative finite number, got ${radius_px}`)
-  }
+  assert_non_negative(radius_px, `radius_px`)
   const cell_size = Math.max(1, radius_px)
   const cells = new Map<number, number[]>()
   const indexed_items: T[] = Array.isArray(items) ? Array<T>(items.length) : []

@@ -36,12 +36,10 @@
     elements,
     hidden_elements = $bindable(new SvelteSet()),
     hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
-    // Element remapping: maps original element symbols to new ones
     element_mapping = $bindable(),
-    // Per-element and per-site radius overrides
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
-    selected_sites = [] as number[],
+    selected_sites = [],
     sym_data = null,
     structure = undefined,
     show_mode_toggle = true,
@@ -588,17 +586,21 @@
     position: relative;
     display: inline-block;
   }
-  .element-legend label {
+  .element-legend label,
+  .category-label {
     padding: var(--struct-legend-padding, 0 4pt);
     border-radius: var(--struct-legend-radius, var(--border-radius, 3pt));
     line-height: var(--struct-legend-line-height, 1.3);
     display: inline-block;
-    cursor: pointer;
-    visibility: visible;
     white-space: nowrap;
     transition: opacity 0.2s ease;
   }
-  .element-legend label.hidden {
+  .element-legend label {
+    cursor: pointer;
+    visibility: visible;
+  }
+  .element-legend label.hidden,
+  .category-label.hidden {
     opacity: 0.4;
   }
   .element-legend label input[type='color'] {
@@ -661,16 +663,19 @@
     outline: 2px dashed var(--accent-color, #4a90d9);
     outline-offset: 1px;
   }
+  .remap-dropdown,
+  .mode-dropdown {
+    background: var(--legend-menu-bg, var(--menu-bg));
+    color: var(--legend-menu-color, var(--menu-color));
+    border: 1px solid var(--legend-menu-border, var(--menu-border));
+    border-radius: var(--legend-menu-border-radius, 4px);
+  }
   .remap-dropdown {
     position: absolute;
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
     margin-bottom: 0.4rem;
-    background: var(--legend-menu-bg, var(--menu-bg));
-    color: var(--legend-menu-color, var(--menu-color));
-    border: 1px solid var(--legend-menu-border, var(--menu-border));
-    border-radius: var(--legend-menu-border-radius, 4px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   }
   .remap-search {
@@ -706,15 +711,12 @@
     font-style: italic;
     color: inherit;
   }
-
-  /* Radius Control Styles */
   :is(.radius-control, .site-radius-control) {
     display: flex;
     align-items: center;
     gap: 4pt;
     padding: 0.3rem 0.4rem;
     border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1));
-
     & label {
       display: flex;
       align-items: center;
@@ -761,7 +763,6 @@
       min-width: 2em;
     }
   }
-
   .mode-selector {
     display: flex;
     align-items: center;
@@ -790,10 +791,6 @@
   }
   .mode-dropdown {
     padding: 0;
-    background: var(--legend-menu-bg, var(--menu-bg));
-    color: var(--legend-menu-color, var(--menu-color));
-    border: 1px solid var(--legend-menu-border, var(--menu-border));
-    border-radius: var(--legend-menu-border-radius, 4px);
     box-shadow:
       0 8px 16px -4px rgba(0, 0, 0, 0.3),
       0 4px 8px -2px rgba(0, 0, 0, 0.1);
@@ -868,17 +865,6 @@
   .discrete-segment.hidden {
     opacity: 0.35;
     text-decoration: line-through;
-  }
-  .category-label {
-    padding: var(--struct-legend-padding, 0 4pt);
-    border-radius: var(--struct-legend-radius, var(--border-radius, 3pt));
-    line-height: var(--struct-legend-line-height, 1.3);
-    display: inline-block;
-    white-space: nowrap;
-    transition: opacity 0.2s ease;
-  }
-  .category-label.hidden {
-    opacity: 0.4;
   }
   .legend-header {
     margin: 0;

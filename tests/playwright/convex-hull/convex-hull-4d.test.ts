@@ -5,6 +5,7 @@ import {
   get_canvas_hash,
   goto_perf_page,
   open_info_and_controls,
+  visible_count,
 } from './utils'
 
 const quaternary_diagram = (page: Page) =>
@@ -92,12 +93,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(color_bar.getByText(/Energy above hull/i)).toBeVisible()
 
     const threshold = controls.getByRole(`spinbutton`, { name: `Points threshold (eV/atom)` })
-    const unstable_count = async () => {
-      const text = await info.getByTestId(`hull-visible-unstable`).textContent()
-      const match = text?.match(/(?<visible>\d+)\s*\//)
-      if (!match) throw new Error(`Missing visible unstable count: ${text}`)
-      return Number(match.groups?.visible)
-    }
+    const unstable_count = () => visible_count(info, `hull-visible-unstable`)
     await threshold.fill(`0`)
     await expect.poll(unstable_count).toBe(0)
     await threshold.fill(`0.5`)
@@ -246,14 +242,8 @@ test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
     test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
     const diagram = await goto_perf_page(page, `4d`, `count=20`)
     const info = await open_pane(diagram, `info`)
-    const visible_count = async (testid: string) => {
-      const text = await info.getByTestId(testid).textContent()
-      const match = text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
-      if (!match) throw new Error(`unparsable ${testid} text: ${text}`)
-      return Number(match[1])
-    }
-    expect(Number.isFinite(await visible_count(`hull-visible-unstable`))).toBe(true)
-    expect(await visible_count(`hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
+    expect(Number.isFinite(await visible_count(info, `hull-visible-unstable`))).toBe(true)
+    expect(await visible_count(info, `hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
   })
 
   for (const [direction, axis, [delta_x, delta_y], expect_increase] of [

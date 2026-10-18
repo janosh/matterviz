@@ -164,10 +164,10 @@ export const normalize_structure_bond = (
   site_idx_2: number,
   order: BondOrder,
   cell_shift?: Vec3,
-): StructureBond => {
-  const bond = normalize_bond_endpoints(site_idx_1, site_idx_2, cell_shift)
-  return { ...bond, order }
-}
+): StructureBond => ({
+  ...normalize_bond_endpoints(site_idx_1, site_idx_2, cell_shift),
+  order,
+})
 
 // Explicit bonds after site i moved by whole lattice vectors `site_shift(i)` (undefined =
 // unmoved): bond i -> j + S keeps its geometry as i -> j + (S + k_i - k_j)
@@ -1623,9 +1623,7 @@ export function get_bond_data(
   strategy: BondingStrategy,
   options: Record<string, unknown> = {},
 ): BondPair[] | BondFrame {
-  const sig = `${strategy}:${JSON.stringify(options)}`
-  let by_sig = bond_memo.get(structure)
-  const cached = by_sig?.get(sig)
+  const cached = bond_memo.get(structure)?.get(`${strategy}:${JSON.stringify(options)}`)
   if (cached) return cached
   // Strategy names arrive as plain strings from widgets and saved settings
   if (!Object.hasOwn(BONDING_STRATEGIES, strategy)) {
@@ -1634,8 +1632,7 @@ export function get_bond_data(
   }
   const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
   const bonds = strategy_fn(structure, options)
-  if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
-  by_sig.set(sig, bonds)
+  cache_prepared_bonds(structure, strategy, options, bonds)
   return bonds
 }
 
@@ -1680,10 +1677,7 @@ function bond_columns(
   { centers, slots, count, neighbors, image_geometry, distances }: PerceivedBonds,
 ): BondColumns {
   const explicit = new Map(
-    get_explicit_bond_metadata(structure).map((bond) => [
-      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
-      bond,
-    ]),
+    get_explicit_bond_metadata(structure).map((bond) => [rendered_bond_key_for(bond), bond]),
   )
   const matched_keys = new Set<string>()
   const indices = new Uint32Array((count + explicit.size) * 2)

@@ -46,6 +46,8 @@ const mount_pair = (props: object, width = 1200, height = 600) =>
     Object.defineProperties({ ...pair_props }, Object.getOwnPropertyDescriptors(props)),
     { selector: `.bands-and-dos`, width, height },
   )
+const y_tick_text = (plot: Element) =>
+  [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) => element.textContent)
 // side by side at 1200px, stacked at 400px, without and with a Brillouin zone
 const layouts = [
   [`no BZ`, 1200, {}],
@@ -209,11 +211,9 @@ describe(`bands/DOS wrappers`, () => {
       400,
     )
     expect(() => flushSync()).not.toThrow()
-    const tick_text = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) => element.textContent)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
-    expect(tick_text(bands_plot)).toEqual(tick_text(dos_plot))
-    expect(tick_text(bands_plot).length).toBeGreaterThan(2)
+    expect(y_tick_text(bands_plot)).toEqual(y_tick_text(dos_plot))
+    expect(y_tick_text(bands_plot).length).toBeGreaterThan(2)
   })
 
   // The panels link their live y views: a rect zoom in the bands panel shows the same y range
@@ -221,10 +221,7 @@ describe(`bands/DOS wrappers`, () => {
   // either panel's axis pin having been touched
   it(`links a zoom in one panel to the other and resets both`, async () => {
     const root = await mount_pair({}, 800, 400)
-    const y_ticks = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) =>
-        Number(element.textContent),
-      )
+    const y_ticks = (plot: Element) => y_tick_text(plot).map(Number)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
     const initial = y_ticks(bands_plot)
     expect(initial.length).toBeGreaterThan(2)

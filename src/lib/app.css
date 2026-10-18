@@ -140,8 +140,8 @@
   /* DraggablePane chrome. svelte-widgets sets --pane-bg from --page-bg but does not set
      color; without a paired ink token, a light pane inherits a host's light --text-color
      (or an inline VS Code foreground) and becomes unreadable. */
-  --pane-bg: var(--page-bg, light-dark(#f1f3f5, #18171c));
-  --pane-color: var(--text-color, light-dark(#374151, #eee));
+  --pane-bg: var(--page-bg);
+  --pane-color: var(--text-color);
 
   /* Shared by viewer, sequence and plot toolbars. rem keeps icons independent of local
      font sizes, container dimensions and fullscreen. Hosts can override this per viewer. */
@@ -249,7 +249,6 @@
 .draggable-pane input[type='range'] {
   margin-left: 4pt;
   width: 100px;
-  flex-shrink: 0;
   flex: 1;
   min-width: 60px;
 }
@@ -710,7 +709,6 @@
     width: auto;
   }
   input[type='color'] {
-    border: none;
     padding: 0;
     outline: none;
     border-radius: var(--border-radius);

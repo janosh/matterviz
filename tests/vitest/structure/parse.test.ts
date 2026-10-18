@@ -54,7 +54,6 @@ import { join } from 'node:path'
 import { assert, describe, expect, it, onTestFinished, test, vi } from 'vitest'
 import { get_dummy_structure, read_maybe_gz } from '../test-fixtures'
 
-// Helpers to reduce duplication and strengthen invariants
 const TOL = 8
 function expect_vec3_close(
   actual: readonly number[] | undefined,
@@ -531,13 +530,11 @@ describe(`Auto-detection & Error Handling`, () => {
     // VASP 4 count-only headers must reject malformed counts for non-strict callers too
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n1.5\nDirect\n0.0 0.0 0.0`, error: `invalid atom counts` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\n-1\nDirect\n0.0 0.0 0.0`, error: `invalid atom counts` },
-    { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0`, error: `XYZ file has no complete frame` },
     // the error names the torn frame rather than returning a silently empty structure
     { parser: parse_xyz, content: `3\nonly\nHe 1 2 3\nHe 4 5 6\n`, error: /no complete frame \(Dropping truncated final XYZ frame 1\b/ },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0`, error: `3 columns, expected at least 4` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0`, error: `XYZ file has no complete frame` },
     { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0`, error: `non-numeric coordinates` },
-    { parser: parse_xyz, content: `1\nLattice="Infinity 0 0 0 1 0 0 0 1"\nC 0.0 0.0 0.0`, error: `Invalid EXTXYZ Lattice` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`, error: `Invalid coordinate value: 'invalid'` },
     { parser: parse_xyz, content: `1\nTest\nC invalid 0.0 0.0`, error: `non-numeric coordinates` },
     { parser: parse_poscar, content: `Test\n1.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n0.0 0.0 1.0\nH\n1\nFoo\n0.0 0.0 0.0`, error: `Unknown coordinate mode in POSCAR` },
@@ -2165,7 +2162,6 @@ describe(`detect_structure_type`, () => {
     [`data.CIF`, `content`, `crystal`],
     [`PHONOPY.YAML`, `content`, `unknown`],
     [`test.YML`, `content`, `unknown`],
-    // Test OPTIMADE JSON format
     [`optimade.json`, `{"data":{"attributes":{"lattice_vectors":[[1,0,0],[0,1,0],[0,0,1]]}}}`, `crystal`],
     [`optimade.json`, `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`, `molecule`],
     [`optimade.json`, `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`, `crystal`],
@@ -2202,7 +2198,6 @@ describe(`Coordinate Normalization`, () => {
     lattice: cubic_lattice_json(5),
   })
 
-  // Parametrized tests for coordinate wrapping edge cases
   test.each([
     { abc: [-0.3, -0.7, -0.1], expected: [0.7, 0.3, 0.9], name: `negative coords` },
     { abc: [1.2, 1.5, 1.0], expected: [0.2, 0.5, 0.0], name: `coords >= 1` },

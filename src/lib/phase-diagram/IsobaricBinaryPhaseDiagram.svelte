@@ -62,11 +62,11 @@
     fullscreen = $bindable(false),
     wrapper = $bindable(),
     hovered_region = $bindable(null),
-    show_boundaries = $bindable(true),
-    show_labels = $bindable(true),
-    show_special_points = $bindable(true),
-    show_grid = $bindable(true),
-    show_component_labels = $bindable(true),
+    show_boundaries = $bindable(PHASE_DIAGRAM_DEFAULTS.show_boundaries),
+    show_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_labels),
+    show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
+    show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
+    show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
     fullscreen_toggle = true,
     show_controls,
     display_temp_unit = $bindable(),
@@ -90,13 +90,10 @@
     ExportProps & {
       data?: PhaseDiagramData
       config?: Partial<PhaseDiagramConfig>
-      // Hover callback
       on_phase_hover?: (info: PhaseHoverInfo | null) => void
-      // Bindable state
       fullscreen?: boolean
       wrapper?: HTMLDivElement
       hovered_region?: PhaseRegion | null
-      // Display options
       show_boundaries?: boolean
       show_labels?: boolean
       show_special_points?: boolean
@@ -105,9 +102,8 @@
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
       // Temperature display unit (can differ from data.temperature_unit)
-      display_temp_unit?: `K` | `°C` | `°F`
+      display_temp_unit?: TempUnit
       controls_open?: boolean
-      // Export options
       export_pane_open?: boolean
       png_dpi?: number
       // Diagram input editor (for SVG drop editing)
@@ -119,7 +115,6 @@
       on_file_drop?: FileLoadCallback
       // Called with each dropped SVG's diagram input once it is shown
       on_file_load?: (data: FileLoadData & { diagram_input: DiagramInput }) => void
-      // Axis configuration
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
@@ -202,8 +197,6 @@
   const plot_width = $derived(right - left)
   const plot_height = $derived(bottom - top)
 
-  // Compute x domain from data extent, x_axis.range override, or default [0, 1]
-  // Auto-extends to 0/1 when edge regions contain a pure component
   const x_domain = $derived(compute_x_domain(x_axis.range, effective_data))
 
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
@@ -327,18 +320,19 @@
     const info = effective_hover_info
     if (!info?.lever_rule) return null
     const { lever_rule } = info
-    const cursor = { cx: x_scale(info.composition), cy: y_scale(info.temperature) }
-    const endpoint = (phase: string, composition: number) =>
-      ({
-        cx: x_scale(composition),
-        cy: cursor.cy,
-        color: get_phase_color(phase, `hex`),
-      }) as const
-    const endpoints = [
-      endpoint(lever_rule.left_phase, lever_rule.left_composition),
-      endpoint(lever_rule.right_phase, lever_rule.right_composition),
-    ] as const
-    return { cursor, endpoints }
+    const cy = y_scale(info.temperature)
+    const endpoint = (phase: string, composition: number) => ({
+      cx: x_scale(composition),
+      cy,
+      color: get_phase_color(phase, `hex`),
+    })
+    return {
+      cursor: { cx: x_scale(info.composition), cy },
+      endpoints: [
+        endpoint(lever_rule.left_phase, lever_rule.left_composition),
+        endpoint(lever_rule.right_phase, lever_rule.right_composition),
+      ] as const,
+    }
   })
 
   // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
@@ -680,7 +674,7 @@
         </g>
       {/if}
 
-      <!-- Special points (rendered last for highest z-index) -->
+      <!-- Special points, drawn over regions, boundaries and the tie-line -->
       {#if show_special_points}
         <g class="special-points">
           {#each transformed_special_points as point (point.id)}

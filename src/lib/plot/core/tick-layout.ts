@@ -2,7 +2,7 @@
 // measured geometry, for calc_auto_padding (label band) and PlotAxis (rendering).
 
 import { format_tick_values } from '#lib/labels.js'
-import { array_max, array_min, clamp } from '#lib/math.js'
+import { array_max, array_min, assert_non_negative, clamp } from '#lib/math.js'
 import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,
@@ -781,13 +781,6 @@ interface ResolvedTickLayout {
   stagger_step: number
 }
 
-const finite_nonnegative = (value: number, name: string): number => {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${name} must be a finite non-negative number, got ${value}`)
-  }
-  return value
-}
-
 const positive_integer = (value: number, name: string): number => {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive safe integer, got ${value}`)
@@ -973,13 +966,13 @@ const compute_tick_layout = (
     return finalize_layout(measure_candidate(explicit, base_config), side)
   }
 
-  const max_angle = finite_nonnegative(auto_layout.max_angle ?? 90, `auto_layout.max_angle`)
+  const max_angle = assert_non_negative(auto_layout.max_angle ?? 90, `auto_layout.max_angle`)
   if (max_angle > 90)
     throw new Error(`auto_layout.max_angle must not exceed 90, got ${max_angle}`)
   const max_band =
     auto_layout.max_band == null
       ? undefined
-      : finite_nonnegative(auto_layout.max_band, `auto_layout.max_band`)
+      : assert_non_negative(auto_layout.max_band, `auto_layout.max_band`)
   const min_visible_ticks = Math.min(
     renderable_indices.length,
     positive_integer(
@@ -989,7 +982,7 @@ const compute_tick_layout = (
   )
   const config: MeasureConfig = {
     ...base_config,
-    edge_gap: finite_nonnegative(auto_layout.edge_gap ?? 0, `auto_layout.edge_gap`),
+    edge_gap: assert_non_negative(auto_layout.edge_gap ?? 0, `auto_layout.edge_gap`),
     max_band,
     min_visible_ticks,
     preserve_endpoints: (auto_layout.endpoint_policy ?? `preserve`) === `preserve`,
@@ -1141,7 +1134,7 @@ export const resolve_tick_layout = (
   axis_size: number,
   side: TickLayoutSide,
 ): ResolvedTickLayout => {
-  finite_nonnegative(axis_size, `axis_size`)
+  assert_non_negative(axis_size, `axis_size`)
   const full_texts = tick_texts(axis.tick_values ?? [], axis.format, axis.ticks)
   const label = axis.tick_label
   const auto_layout = label?.auto_layout

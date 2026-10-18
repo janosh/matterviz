@@ -17,6 +17,7 @@
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import { get_density, type AnyStructure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
+  import { toggle_site } from '#lib/structure/site.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
   import { DEFAULTS } from '#lib/settings.js'
   import RdfPlot from '#lib/rdf/RdfPlot.svelte'
@@ -92,9 +93,7 @@
   function select_site(site_idx: number, event?: MouseEvent | KeyboardEvent) {
     set_site_hover(null)
     if (event?.shiftKey) {
-      selected_sites = selected_sites.includes(site_idx)
-        ? selected_sites.filter((idx) => idx !== site_idx)
-        : [...selected_sites, site_idx]
+      selected_sites = toggle_site(selected_sites, site_idx)
       return
     }
     selected_sites =
@@ -346,21 +345,20 @@
   <div class="structure-info">
     <InfoPaneCards cards={structure_cards} empty_label="structure info" show_filter={false} />
 
-    {#if pane_open && wyckoff_positions.length > 0}
-      <details class="wyckoff" bind:open={wyckoff_table_expanded}>
-        <summary>Wyckoff table ({wyckoff_positions.length})</summary>
-        {#if wyckoff_table_expanded}
-          <WyckoffTable
-            {wyckoff_positions}
-            on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
-            on_click={(site_indices) => (selected_sites = site_indices ?? [])}
-            style="width: 100%; margin-top: 2pt; font-size: 0.8em"
-          />
-        {/if}
-      </details>
-    {/if}
-
     {#if pane_open}
+      {#if wyckoff_positions.length > 0}
+        <details class="wyckoff" bind:open={wyckoff_table_expanded}>
+          <summary>Wyckoff table ({wyckoff_positions.length})</summary>
+          {#if wyckoff_table_expanded}
+            <WyckoffTable
+              {wyckoff_positions}
+              on_hover={(site_indices) => (highlighted_sites = site_indices ?? [])}
+              on_click={(site_indices) => (selected_sites = site_indices ?? [])}
+              style="width: 100%; margin-top: 2pt; font-size: 0.8em"
+            />
+          {/if}
+        </details>
+      {/if}
       <section class="selected-sites">
         <h4>Selected sites ({site_cards.length})</h4>
         <input

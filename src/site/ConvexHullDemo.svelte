@@ -15,7 +15,7 @@
   let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 
   // System name (e.g. `Li-Co-Ni-O`) -> lazy loader of its entries
-  const systems = new SvelteMap(
+  const systems = new Map(
     Object.entries(quaternary_files)
       .map(([path, loader]) => [hull_system_name(path), loader] as const)
       .toSorted(([name_a], [name_b]) => name_a.localeCompare(name_b)),

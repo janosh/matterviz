@@ -13,12 +13,6 @@ import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { clip_rect, doc_query, fire, mouse, plot_svg, resize_element } from '../setup'
 
-const read_component_source = (component: string): string =>
-  readFileSync(
-    `${import.meta.dirname}/../../../src/lib/chempot-diagram/${component}.svelte`,
-    `utf8`,
-  )
-
 describe(`create_chempot_overrides`, () => {
   test(`resolve falls back override > config > custom default > CHEMPOT_DEFAULTS`, () => {
     let config: ChemPotDiagramConfig = {}
@@ -159,7 +153,14 @@ test(`ChemPotSlices clamps typed values, ignores unparsable ones, jumps to a cli
 })
 
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
-  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`].map(read_component_source).join(`\n`)
+  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`]
+    .map((name) =>
+      readFileSync(
+        `${import.meta.dirname}/../../../src/lib/chempot-diagram/${name}.svelte`,
+        `utf8`,
+      ),
+    )
+    .join(`\n`)
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
     (match.groups?.expr ?? ``).trim(),
   )

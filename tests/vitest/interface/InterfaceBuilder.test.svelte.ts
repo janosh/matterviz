@@ -7,19 +7,10 @@ import type { Crystal } from '#lib/structure/index.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { bind_props, doc_query, mouse } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { make_crystal, make_fcc } from '../test-fixtures'
 
-// oxfmt-ignore
-const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
 const fcc_slab = (lattice_const: number, element: string, hkl: Vec3 = [1, 0, 0]) =>
-  make_slab(
-    make_crystal(
-      lattice_const,
-      FACE_CENTRES.map((abc) => ({ element, abc })),
-    ),
-    hkl,
-    { min_slab_thickness: 4 },
-  )
+  make_slab(make_fcc(lattice_const, element), hkl, { min_slab_thickness: 4 })
 const CU_100 = fcc_slab(3.615, `Cu`)
 const AG_100 = fcc_slab(4.086, `Ag`)
 const PD_111 = fcc_slab(3.89, `Pd`, [1, 1, 1])

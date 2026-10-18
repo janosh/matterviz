@@ -263,7 +263,6 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
-
   .supercell-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -272,7 +271,6 @@
   .preset-btn {
     padding: 1px;
   }
-
   .custom-input-row {
     display: flex;
     align-items: center;

@@ -453,29 +453,22 @@ describe(`normalize_atom_color_config`, () => {
     )
   })
 
+  const default_scale = DEFAULT_ATOM_COLOR_CONFIG.color_scale
   test.each([
     [
       { mode: `coordination` },
-      {
-        mode: `coordination`,
-        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
-        scale_type: `continuous`,
-      },
+      { mode: `coordination`, color_scale: default_scale, scale_type: `continuous` },
     ],
     [
       { mode: `wyckoff` },
-      {
-        mode: `wyckoff`,
-        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
-        scale_type: `categorical`,
-      },
+      { mode: `wyckoff`, color_scale: default_scale, scale_type: `categorical` },
     ],
     [
       { mode: `property`, property_key: `charge` },
       {
         mode: `property`,
         property_key: `charge`,
-        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
+        color_scale: default_scale,
         scale_type: `continuous`,
       },
     ],
@@ -484,19 +477,19 @@ describe(`normalize_atom_color_config`, () => {
       {
         mode: `property`,
         property_key: CNA_TYPE_PROPERTY,
-        color_scale: atom_properties.DEFAULT_ATOM_COLOR_CONFIG.color_scale,
+        color_scale: default_scale,
         scale_type: `categorical`,
       },
     ],
-    [{ mode: `property` }, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
+    [{ mode: `property` }, DEFAULT_ATOM_COLOR_CONFIG],
     // the shared ColorScale guard: function schemes pass, unknown scheme names don't
     [
       { mode: `element`, color_scale: { scheme: red_ramp } },
       { mode: `element`, color_scale: { scheme: red_ramp }, scale_type: `continuous` },
     ],
     [{ mode: `element`, color_scale: { scheme: `Viridis` } }, DEFAULT_ATOM_COLOR_CONFIG],
-    [as_serialized({ mode: `custom` }), atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
-    [{}, atom_properties.DEFAULT_ATOM_COLOR_CONFIG],
+    [as_serialized({ mode: `custom` }), DEFAULT_ATOM_COLOR_CONFIG],
+    [{}, DEFAULT_ATOM_COLOR_CONFIG],
   ])(`normalizes partial or unsupported payload %#`, (input, expected) => {
     expect(atom_properties.normalize_atom_color_config(input)).toEqual(expected)
   })
@@ -691,26 +684,21 @@ describe(`Site property coloring`, () => {
   })
 
   test.each([
-    [`numbers and vec3s`, { charge: -1, velocity: [1, 0, 0] }, [`charge`, `velocity`]],
-    [`skips non-numeric`, { tag: `core`, frozen: true, charge: 1 }, [`charge`]],
-    [`skips non-finite`, { charge: NaN, c_pe: 2 }, [`c_pe`]],
-    [`skips vec3s with a bad component`, { velocity: [1, `x`, 0], charge: 0 }, [`charge`]],
+    [`numbers and vec3s`, [{ charge: -1, velocity: [1, 0, 0] }], [`charge`, `velocity`]],
+    [`skips non-numeric`, [{ tag: `core`, frozen: true, charge: 1 }], [`charge`]],
+    [`skips non-finite`, [{ charge: NaN, c_pe: 2 }], [`c_pe`]],
+    [`skips vec3s with a bad component`, [{ velocity: [1, `x`, 0], charge: 0 }], [`charge`]],
     // Source properties with formerly reserved names remain available to the user.
     [
       `preserves source provenance properties`,
-      { orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 },
+      [{ orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 }],
       [`charge`, `orig_site_idx`, `orig_unit_cell_idx`],
     ],
-  ])(`get_colorable_property_keys: %s`, (_desc, properties, expected) => {
-    expect(atom_properties.get_colorable_property_keys(with_props([properties]))).toEqual(
-      expected,
-    )
-  })
-
-  test(`unions keys across sites`, () => {
-    const structure = with_props([{ charge: 1 }, { c_pe: -2 }, undefined])
-    expect(atom_properties.get_colorable_property_keys(structure)).toEqual([`c_pe`, `charge`])
-    expect(atom_properties.get_colorable_property_keys(undefined)).toEqual([])
+    [`unions keys across sites`, [{ charge: 1 }, { c_pe: -2 }, undefined], [`c_pe`, `charge`]],
+    [`a missing structure`, undefined, []],
+  ])(`get_colorable_property_keys: %s`, (_desc, props, expected) => {
+    const structure = props && with_props(props)
+    expect(atom_properties.get_colorable_property_keys(structure)).toEqual(expected)
   })
 
   test.each([

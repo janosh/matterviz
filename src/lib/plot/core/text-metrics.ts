@@ -1,3 +1,5 @@
+import { leading_number } from '#lib/math.js'
+
 export interface FontSpec {
   font_family: string
   font_size: number
@@ -71,11 +73,6 @@ const normalize_font_spec = (font: Readonly<FontSpec>): FontSpec => {
     font_stretch: font.font_stretch.trim() || DEFAULT_FONT_SPEC.font_stretch,
     line_height: positive_number(font.line_height, DEFAULT_FONT_SPEC.line_height),
   }
-}
-
-const leading_number = (value: string): number => {
-  const match = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/iu.exec(value.trim())
-  return Number(match?.[0])
 }
 
 const parse_font_size = (value: string, fallback: number): number =>

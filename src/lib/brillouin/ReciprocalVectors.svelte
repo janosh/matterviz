@@ -32,7 +32,6 @@
     arrow_head_radius={size * 0.028}
     arrow_head_length={size * 0.1}
   />
-  <!-- Vector label beyond tip -->
   <SceneLabel center position={label_position}>
     <span style="color: {vector_colors[idx]}; font-size: 1.2em">
       {vector_labels[idx]}

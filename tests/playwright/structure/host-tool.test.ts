@@ -1,4 +1,4 @@
-import { expect, type Download, type Page } from '@playwright/test'
+import { expect, type Download, type Locator, type Page } from '@playwright/test'
 import { goto_structure_test, test_without_errors as test } from '../helpers'
 
 const scene_state = (page: Page) =>
@@ -184,6 +184,16 @@ test(`caller camera updates during a host view take precedence over its saved vi
   }).toPass()
 })
 
+const export_prediction_btn = (page: Page) =>
+  page.getByTitle(`Download Export prediction`, { exact: true })
+
+// Click a download button and resolve with the download it triggers
+const click_download = async (button: Locator): Promise<Download> => {
+  const download = button.page().waitForEvent(`download`)
+  await button.click()
+  return download
+}
+
 const read_download = async (download: Download) => {
   const stream = await download.createReadStream()
   if (!stream) throw new Error(`Download has no stream`)
@@ -200,9 +210,7 @@ test(`exports reproducible predictions separately from the original structure`, 
   await page.locator(`button.structure-controls-toggle`).click()
   await page.locator(`button.structure-export-toggle`).click()
   await page.getByRole(`textbox`, { name: `File name`, exact: true }).fill(`host-result`)
-  const prediction_download = page.waitForEvent(`download`)
-  await page.getByTitle(`Download Export prediction`, { exact: true }).click()
-  const download = await prediction_download
+  const download = await click_download(export_prediction_btn(page))
   expect(download.suggestedFilename()).toBe(`host-result-prediction.json`)
   const data = await read_download(download)
   expect(data.provenance).toMatchObject({
@@ -216,9 +224,7 @@ test(`exports reproducible predictions separately from the original structure`, 
   expect(data.input.sites[0].properties.charge).toBeUndefined()
   expect(data.volumes[0]).toMatchObject({ id: `density`, dims: [12, 12, 12] })
   expect(data.volumes[0].values).toHaveLength(12 ** 3)
-  const original_download = page.waitForEvent(`download`)
-  await page.getByTitle(`Download JSON`, { exact: true }).click()
-  const original_file = await original_download
+  const original_file = await click_download(page.getByTitle(`Download JSON`, { exact: true }))
   expect(original_file.suggestedFilename()).toBe(`host-result.json`)
   const original = await read_download(original_file)
   expect(original.sites).toEqual(data.input.sites)
@@ -234,14 +240,13 @@ test(`exports reproducible predictions separately from the original structure`, 
   await expect(density_surface).toHaveCount(1)
   await page.getByRole(`button`, { name: `Reset prediction surfaces` }).click()
   await page.getByRole(`button`, { name: `Clear prediction`, exact: true }).click()
-  await expect(page.getByTitle(`Download Export prediction`, { exact: true })).toHaveCount(0)
+  await expect(export_prediction_btn(page)).toHaveCount(0)
   await expect(density_surface).toHaveCount(0)
   await drop_prediction(page, data)
   await expect(density_surface).toHaveCount(1)
-  const reopened_download = page.waitForEvent(`download`)
-  await page.getByTitle(`Download Export prediction`, { exact: true }).click()
+  const reimported = await click_download(export_prediction_btn(page))
   // The import takes a fresh run_id after run 1, so no later run can claim it.
-  expect(await read_download(await reopened_download)).toEqual({ ...data, run_id: 2 })
+  expect(await read_download(reimported)).toEqual({ ...data, run_id: 2 })
 })
 
 test(`worker predictions guard reversed completion, failure and cancellation`, async ({
@@ -282,15 +287,13 @@ test(`worker predictions guard reversed completion, failure and cancellation`, a
   await expect(status).toContainText(`Prediction 2 ready`)
   await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `2`)
   await expect(status).toContainText(`Prediction 2 ready`)
-  const exporting = page.getByTitle(`Download Export prediction`, { exact: true })
+  const exporting = export_prediction_btn(page)
   await page.getByRole(`checkbox`, { name: `Fail prediction` }).check()
   await predict.click()
   await expect(status).toContainText(`Simulated model failure`)
   await page.locator(`button.structure-export-toggle`).click()
   await expect(exporting).toBeVisible()
-  const saved = page.waitForEvent(`download`)
-  await exporting.click()
-  const retained = await read_download(await saved)
+  const retained = await read_download(await click_download(exporting))
   expect(retained.run_id).toBe(2)
   await page.getByRole(`checkbox`, { name: `Fail prediction` }).uncheck()
   await delay.fill(`500`)
@@ -305,10 +308,9 @@ test(`worker predictions guard reversed completion, failure and cancellation`, a
   await drop_prediction(page, retained)
   await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `5`)
   await page.locator(`button.structure-export-toggle`).click()
-  const imported = page.waitForEvent(`download`)
-  await exporting.click()
+  const imported = await click_download(exporting)
   // Runs took ids 1-5 (the last one aborted by the drop), so the import takes 6.
-  expect(await read_download(await imported)).toEqual({ ...retained, run_id: 6 })
+  expect(await read_download(imported)).toEqual({ ...retained, run_id: 6 })
   await page.evaluate(() => {
     document.documentElement.dataset.failWorkerSetup = `true`
   })

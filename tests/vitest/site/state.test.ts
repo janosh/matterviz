@@ -27,22 +27,20 @@ test.each([
   expect(normalize_static_url(url)).toBe(expected),
 )
 
-describe(`?file= helpers`, () => {
-  test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
-    expect(file_param()).toBe(`old.cif`)
-    set_file_param(`new.cif`)
-    expect(goto).toHaveBeenLastCalledWith(
-      `https://example.test/structure/?file=new.cif&view=slice`,
-      { replace: true, reset: false },
-    )
-    // page.url is read-only reactive state and must not have been mutated in place
-    expect(file_param()).toBe(`old.cif`)
-    set_file_param(null)
-    expect(goto).toHaveBeenLastCalledWith(
-      `https://example.test/structure/?view=slice`,
-      expect.any(Object),
-    )
-  })
+test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
+  expect(file_param()).toBe(`old.cif`)
+  set_file_param(`new.cif`)
+  expect(goto).toHaveBeenLastCalledWith(
+    `https://example.test/structure/?file=new.cif&view=slice`,
+    { replace: true, reset: false },
+  )
+  // page.url is read-only reactive state and must not have been mutated in place
+  expect(file_param()).toBe(`old.cif`)
+  set_file_param(null)
+  expect(goto).toHaveBeenLastCalledWith(
+    `https://example.test/structure/?view=slice`,
+    expect.any(Object),
+  )
 })
 
 describe(`group_nav_routes`, () => {

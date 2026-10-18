@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Tooltip component for Brillouin zone hover information
-  // Displays k-coordinates, BZ order, volume, and IBZ-specific info
   import { format_num } from '#lib/labels.js'
   import { KCoords, TooltipContent } from '#lib/tooltip/index.js'
   import type { BZHoverData, BZTooltipProp } from './types'
@@ -29,15 +27,15 @@
       cartesian={hover_data.position_cartesian}
       fractional={hover_data.position_fractional}
     />
-    <div style="display: flex; gap: 4px">
-      <span style="opacity: 0.8; min-width: 75px">BZ Volume:</span>
-      <span>{format_num(hover_data.bz_volume, `.4~`)} <small>Å<sup>−3</sup></small></span>
-    </div>
-    {#if hover_data.is_ibz && hover_data.ibz_volume != null}
+    {#snippet volume_row(label: string, volume: number)}
       <div style="display: flex; gap: 4px">
-        <span style="opacity: 0.8; min-width: 75px">IBZ Volume:</span>
-        <span>{format_num(hover_data.ibz_volume, `.4~`)} <small>Å<sup>−3</sup></small></span>
+        <span style="opacity: 0.8; min-width: 75px">{label} Volume:</span>
+        <span>{format_num(volume, `.4~`)} <small>Å<sup>−3</sup></small></span>
       </div>
+    {/snippet}
+    {@render volume_row(`BZ`, hover_data.bz_volume)}
+    {#if hover_data.is_ibz && hover_data.ibz_volume != null}
+      {@render volume_row(`IBZ`, hover_data.ibz_volume)}
       {#if hover_data.symmetry_multiplicity != null}
         <div class="bz-tooltip-symmetry">
           Symmetry: 1/{Math.round(hover_data.symmetry_multiplicity)} of BZ

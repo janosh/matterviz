@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
+import { element_by_symbol } from '#lib/element/data.js'
 import {
   FrameView,
   materialize_frame,
@@ -337,6 +338,18 @@ describe(`MD HDF5`, () => {
     })
     expect(repeated.atomic_numbers).toEqual(Uint8Array.of(32, 14))
     expect(repeated.masses).toEqual(Float64Array.of(72.6308, 28.085))
+    const standard = await opened.lazy.read_atoms({
+      frame_idx: 1,
+      start: 1,
+      count: 2,
+      mass_source: `standard`,
+    })
+    expect(standard.masses).toEqual(
+      Float64Array.from(
+        [`Ge`, `Si`] as const,
+        (symbol) => element_by_symbol.get(symbol)?.atomic_mass ?? NaN,
+      ),
+    )
     // 1-based frame numbers: index -1 is frame 0, which no committed prefix holds
     expect(() => opened.lazy.read_atoms?.({ frame_idx: -1, start: 0, count: 1 })).toThrow(
       `frame 0 is outside the 3 committed frames`,

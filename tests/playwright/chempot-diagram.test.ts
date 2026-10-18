@@ -26,6 +26,11 @@ const find_tooltip_hit_point = async (
   tooltip: Locator,
 ): Promise<{ x: number; y: number }> => {
   await target_surface.scrollIntoViewIfNeeded()
+  const shows_tooltip = async (x: number, y: number): Promise<boolean> => {
+    await page.mouse.move(x, y)
+    await page.waitForTimeout(80)
+    return tooltip.isVisible()
+  }
   const candidates = target_surface.locator(`path.marker, path[fill="transparent"]`)
   const candidate_count = await candidates.count()
   for (let candidate_idx = 0; candidate_idx < Math.min(candidate_count, 16); candidate_idx++) {
@@ -33,9 +38,7 @@ const find_tooltip_hit_point = async (
     if (!candidate_box) continue
     const click_x = candidate_box.x + candidate_box.width / 2
     const click_y = candidate_box.y + candidate_box.height / 2
-    await page.mouse.move(click_x, click_y)
-    await page.waitForTimeout(80)
-    if (await tooltip.isVisible()) return { x: click_x, y: click_y }
+    if (await shows_tooltip(click_x, click_y)) return { x: click_x, y: click_y }
   }
 
   const box = await require_bbox(target_surface, `target surface`)
@@ -43,9 +46,7 @@ const find_tooltip_hit_point = async (
     for (let y_frac = 0.15; y_frac <= 0.85; y_frac += 0.1) {
       const click_x = box.x + box.width * x_frac
       const click_y = box.y + box.height * y_frac
-      await page.mouse.move(click_x, click_y)
-      await page.waitForTimeout(80)
-      if (await tooltip.isVisible()) return { x: click_x, y: click_y }
+      if (await shows_tooltip(click_x, click_y)) return { x: click_x, y: click_y }
     }
   }
   throw new Error(`Failed to find clickable phase region`)
@@ -206,7 +207,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await alternate_preset.click()
     await expect.poll(read_projection).toEqual(expected_projection)
 
-    const formula_toggle = diagram.locator(`button.chempot-formula-toggle`).first()
+    const { toggle: formula_toggle, pane: formula_pane } = get_pane(diagram, `formula`)
     await expect(controls_toggle).toHaveCSS(`position`, `static`)
     // The gear must not cover the adjacent formula button in the chrome row.
     await expect
@@ -219,12 +220,6 @@ test.describe(`ChemPot Diagram interactions`, () => {
         }),
       )
       .toBe(true)
-    const formula_pane = diagram
-      .locator(`.draggable-pane`)
-      .filter({
-        hasText: `Formula Overlays`,
-      })
-      .first()
     await open_pane(diagram, formula_toggle, formula_pane)
 
     const checkboxes = formula_pane.locator(`input[type="checkbox"]`)

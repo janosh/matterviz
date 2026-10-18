@@ -9,7 +9,14 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, click_when_ready, query, set_select, set_input } from '../setup'
+import {
+  bind_props,
+  click_when_ready,
+  mount_in_test,
+  query,
+  set_input,
+  set_select,
+} from '../setup'
 import { make_position_stream } from '../test-fixtures'
 
 const mocks = vi.hoisted(() => {
@@ -87,16 +94,11 @@ const make_result = (name: string): TrajectorySpectroscopyResult => ({
 const render_pane = (props: {
   run: TrajectoryRun
   result?: TrajectorySpectroscopyResult
-}): HTMLElement => {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  const component = mount(TrajectorySpectroscopyPane, {
-    target,
-    props: bind_props({ inline: true, pane_open: true }, props),
-  })
-  onTestFinished(() => unmount(component).finally(() => target.remove()))
-  return target
-}
+}): HTMLElement =>
+  mount_in_test(
+    TrajectorySpectroscopyPane,
+    bind_props({ inline: true, pane_open: true }, props),
+  )
 
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset()

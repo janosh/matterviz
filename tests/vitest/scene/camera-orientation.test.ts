@@ -284,15 +284,6 @@ describe(`camera fly-to`, () => {
     expect(forward.distanceTo(to_target)).toBeLessThan(1e-12)
   })
 
-  test(`lands on the first frame under reduced motion`, () => {
-    stub_reduced_motion(() => true)
-    const { fly, offset } = make_rig([0, 0, 10])
-    fly.start([1, 0, 0])
-    fly.step(0.001) // 1 ms of a 400 ms flight
-    expect(fly.active).toBe(false)
-    expect(to_array(offset())).toEqual([10, 0, 0].map((val) => expect.closeTo(val, 10)))
-  })
-
   // A lerp between opposite offsets passes through zero: the camera held still, spent a frame
   // on the orbit target (radius 0, scene gone) and snapped to the far side. The flight has to
   // orbit the whole way round at full radius, around the camera's up axis so it stays level.
@@ -418,11 +409,19 @@ describe(`camera fly-to`, () => {
     expect(to_array(camera.position)).toEqual([1, 2, 4])
   })
 
-  test(`a zero duration snaps to the destination on the first frame`, () => {
-    const { fly, offset, controls } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0], 0)
-    fly.start([1, 0, 0])
-    fly.step(0)
-    expect(to_array(offset())).toEqual([expect.closeTo(10, 12), 0, expect.closeTo(0, 12)])
-    expect([fly.active, controls.enabled]).toEqual([false, true])
-  })
+  // step_s: a zero duration must land even on a zero-length frame; reduced motion after 1 ms
+  test.each([
+    [`a zero duration`, 0, false, 0],
+    [`reduced motion`, 400, true, 0.001],
+  ])(
+    `%s snaps to the destination on the first frame`,
+    (_name, duration_ms, reduced, step_s) => {
+      if (reduced) stub_reduced_motion(() => true)
+      const { fly, offset, controls } = make_rig([0, 0, 10], [0, 0, 0], [0, 1, 0], duration_ms)
+      fly.start([1, 0, 0])
+      fly.step(step_s)
+      expect(to_array(offset())).toEqual([expect.closeTo(10, 12), 0, expect.closeTo(0, 12)])
+      expect([fly.active, controls.enabled]).toEqual([false, true])
+    },
+  )
 })

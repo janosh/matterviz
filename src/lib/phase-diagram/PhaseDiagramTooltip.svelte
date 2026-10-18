@@ -72,9 +72,11 @@
   })
 
   const stability = $derived(get_phase_stability_range(hover_info.region))
+  // TooltipValue unit of a composition (bare fractions have none)
+  const comp_unit_label = $derived(composition_unit === `fraction` ? `` : composition_unit)
 
-  // Format special point type for display (e.g., "peritectic" → "Peritectic")
-  // For melting points and congruent points at composition edges, show element-specific info
+  // Badge and description of a hovered special point; melting and congruent points at a
+  // composition edge name the pure component that melts there
   const special_point_info = $derived.by(() => {
     if (!hover_info.special_point) return null
     const { type, position } = hover_info.special_point
@@ -118,7 +120,6 @@
     return min_dist
   })
 
-  // Lever rule: one [phase, fraction, composition] row per tie-line end
   const lever_rows = $derived(lever_rule_rows(hover_info, composition_unit))
 </script>
 
@@ -156,13 +157,13 @@
       <dd>
         <TooltipValue
           value={format_composition(hover_info.composition, composition_unit, false)}
-          unit={composition_unit === `fraction` ? `` : composition_unit}
+          unit={comp_unit_label}
         />
         {@html safe_formula(component_b)}
         <small
           >(<TooltipValue
             value={format_composition(1 - hover_info.composition, composition_unit, false)}
-            unit={composition_unit === `fraction` ? `` : composition_unit}
+            unit={comp_unit_label}
           />
           {@html safe_formula(component_a)})</small
         >

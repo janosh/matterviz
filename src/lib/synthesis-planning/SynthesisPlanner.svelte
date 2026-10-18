@@ -16,7 +16,7 @@
   import { prepare_phase_set, resolve_phase } from './phases'
   import { DEFAULT_MAX_E_ABOVE_HULL } from './plan'
   import { plan_synthesis_async } from './plan-synthesis-async.svelte'
-  import { build_route_recipe } from './recipe'
+  import { rescale_route } from './recipe'
   import RouteComparison from './RouteComparison.svelte'
   import OpportunityMap from './OpportunityMap.svelte'
   import ReactionSlicePlot from './ReactionSlicePlot.svelte'
@@ -131,10 +131,7 @@
     return {
       ...worker_plan,
       routes: worker_plan.routes.map((route) => {
-        const scaled =
-          target_mass_g === route.recipe.target_mass_g
-            ? route
-            : { ...route, ...build_route_recipe(route, target_mass_g) }
+        const scaled = rescale_route(route, target_mass_g)
         const choices = experiment_choices[route.id]
         if (!choices) return scaled
         return {

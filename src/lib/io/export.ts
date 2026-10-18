@@ -907,7 +907,7 @@ export async function render_video_frames(
     finish?: () => Promise<void>
   },
 ): Promise<void> {
-  signal?.throwIfAborted()
+  signal.throwIfAborted()
   if (
     !Number.isFinite(fps) ||
     fps <= 0 ||
@@ -925,13 +925,13 @@ export async function render_video_frames(
   const sample = camera_flight && create_camera_flight_sampler(camera_flight)
   const renderer = renderer_registry.get(canvas)
   if (renderer) await wait_for_renderer(renderer)
-  signal?.throwIfAborted()
+  signal.throwIfAborted()
   let restore_renderer: (() => void) | undefined
   try {
     const prepare = async (idx: number) => {
-      signal?.throwIfAborted()
+      signal.throwIfAborted()
       on_progress?.((idx / Math.max(1, total_frames)) * 100)
-      signal?.throwIfAborted()
+      signal.throwIfAborted()
       await abortable(() => on_step?.(idx, signal), signal)
       await wait_for_video_tick(signal)
       await wait_for_video_tick(signal)
@@ -961,7 +961,7 @@ export async function render_video_frames(
     if (!context) throw new Error(`Canvas 2D context not available for video export`)
     const aspect = capture_canvas.width / capture_canvas.height
     const capture = (idx: number) => {
-      signal?.throwIfAborted()
+      signal.throwIfAborted()
       if (is_3d_camera) {
         const duration = camera_flight?.keyframes.at(-1)?.time ?? 0
         const pose = sample?.(total_frames <= 1 ? 0 : (duration * idx) / (total_frames - 1))
@@ -1013,7 +1013,7 @@ export async function render_video_frames(
         capture(idx)
       }
       await abortable(() => sink.frame(capture_canvas, idx, signal), signal)
-      signal?.throwIfAborted()
+      signal.throwIfAborted()
     }
     await abortable(() => sink.finish?.(), signal)
   } finally {

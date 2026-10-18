@@ -10,15 +10,9 @@ import * as math from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_rocksalt } from '../test-fixtures'
+import { make_crystal, make_fcc, make_rocksalt } from '../test-fixtures'
 
-// oxfmt-ignore
-const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-const fcc = (lattice_const: number, element: string): Crystal =>
-  make_crystal(
-    lattice_const,
-    FACE_CENTRES.map((abc) => ({ element, abc })),
-  )
+const fcc = make_fcc
 // reoriented slabs: a ∥ x, surface normal ∥ z
 const slab = (crystal: Crystal, hkl: Vec3, min_slab_thickness = 6) =>
   make_slab(crystal, hkl, { min_slab_thickness, min_vacuum_thickness: 10 })

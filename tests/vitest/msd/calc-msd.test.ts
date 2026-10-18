@@ -455,7 +455,7 @@ describe(`input validation`, () => {
 })
 
 // happy-dom has no Worker, so this exercises the SSR/no-Worker synchronous fallback;
-// worker-path.test.ts stubs a Worker in to cover the postMessage branch and
+// worker-path.test.svelte.ts stubs a Worker in to cover the postMessage branch and
 // worker-client.test.ts the shared dedupe/abort/error rules.
 it(`compute_msd_async matches the synchronous result without a Worker`, async () => {
   expect(typeof Worker).toBe(`undefined`)

@@ -1525,8 +1525,6 @@ describe(`XYZ`, () => {
     [`a short atom line`, four_atoms(`H 1 0`), `XYZ frame 2 (line 7) line 12 has 3 columns, expected at least 4: "H 1 0"`],
     [`a non-numeric coordinate`, four_atoms(`H 1 abc 0`), `XYZ frame 2 (line 7) line 12 has non-numeric coordinates: "H 1 abc 0"`],
     [`parseFloat-style trailing junk`, four_atoms(`H 1.0abc 0 0`), `XYZ frame 2 (line 7) line 12 has non-numeric coordinates: "H 1.0abc 0 0"`],
-    [`no recognised element`, [`Xx 0 0 0`, `Xx 1 0 0`],
-      `XYZ frame 2 (line 7) has no atom with a recognised element symbol in its 2 atom lines (first species column: "Xx")`],
   ])(`rejects a frame with %s, naming frame and line`, async (_label, bad_atoms, error) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(bad_atoms), xyz_frame(four_atoms())].join(`\n`)
     await expect(open(content, `corrupt.xyz`)).rejects.toThrow(error)

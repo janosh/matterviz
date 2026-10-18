@@ -74,6 +74,14 @@ const bonds_per_site = (bonds: BondPair[], n_sites: number): number[] => {
   return counts
 }
 
+// Fe-O bonded at 2 A, C 2 A further along x
+const make_fe_o_c = () =>
+  make_struct([
+    { xyz: [0, 0, 0], element: `Fe` },
+    { xyz: [2, 0, 0], element: `O` },
+    { xyz: [4, 0, 0], element: `C` },
+  ])
+
 // 4600 H atoms (10.6M pairs) on a 17 x 17 x 16 grid
 const hydrogen_grid = (spacing: number): [string, Vec3][] =>
   Array.from({ length: 4600 }, (_, idx) => [
@@ -87,11 +95,7 @@ const hydrogen_grid = (spacing: number): [string, Vec3][] =>
 
 describe(`Bonding Algorithms`, () => {
   test(`electroneg_ratio returns valid BondPair format`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0], element: `Fe` },
-      { xyz: [2, 0, 0], element: `O` },
-      { xyz: [4, 0, 0], element: `C` },
-    ])
+    const structure = make_fe_o_c()
     const bonds = bonding.electroneg_ratio(structure)
     // Fe-O at 2.0 A (covalent sum 1.98) bonds; O-C at 2.0 A is 1.4x its covalent sum and Fe-C
     // at 4.0 A is far out of range
@@ -1113,11 +1117,7 @@ describe(`compute_bonds memo`, () => {
       expect(Boolean(find_bond(bonds, 0, 1))).toBe(element === `S`)
     }
   })
-  const structure = make_struct([
-    { xyz: [0, 0, 0], element: `Fe` },
-    { xyz: [2, 0, 0], element: `O` },
-    { xyz: [4, 0, 0], element: `C` },
-  ])
+  const structure = make_fe_o_c()
 
   test.each([`solid_angle`, `toString`])(`rejects unknown strategy %s by name`, (strategy) => {
     expect(() =>
@@ -1719,16 +1719,6 @@ describe(`neighbor_query`, () => {
     }
   })
 
-  test(`rejects a non-finite position naming its 1-based site`, () => {
-    const molecule = make_molecule([
-      [`H`, [0, 0, 0]],
-      [`H`, [Number.NaN, 0, 0]],
-    ])
-    expect(() => bonding.neighbor_query(molecule, { cutoff: 2 })).toThrow(
-      `neighbor_query: site 2 has a non-finite position (NaN, 0, 0)`,
-    )
-  })
-
   test(`rejects a degenerate lattice and absurd cutoffs, not in-band bond perception`, () => {
     const flat = make_crystal(
       [
@@ -1898,7 +1888,9 @@ describe(`neighbor_query`, () => {
     const molecule = {
       sites: crystal.sites.map((site) => ({ ...site, abc: [0, 0, 0] as Vec3 })),
     }
-    expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(/non-finite/)
+    expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(
+      `neighbor_query: site 2 has a non-finite position (${bad}, 2, 2)`,
+    )
   })
 
   test.each([

@@ -413,7 +413,6 @@ export function padded_floors(
   padding: number,
   default_min_limit: number,
 ): number[] {
-  // Single pass: track min per axis, skipping default_min_limit values
   const mins = elem_indices.map(() => Infinity)
   for (const pts of Object.values(domains)) {
     for (const point of pts) {
@@ -455,15 +454,14 @@ export function pad_domains(
 }
 
 // Build per-axis min/max ranges for a set of points
-export function build_axis_ranges(
+export const build_axis_ranges = (
   points: number[][],
   elements: string[],
-): { element: string; min_val: number; max_val: number }[] {
-  return elements.map((element, axis_idx) => {
+): { element: string; min_val: number; max_val: number }[] =>
+  elements.map((element, axis_idx) => {
     const [min_val, max_val] = array_extent(points.map((point) => point[axis_idx]))
     return { element, min_val, max_val }
   })
-}
 
 // Axis bounds a domain is clipped against, as labels. Tolerance is relative to each axis'
 // window: on a window a few meV wide an absolute eV tolerance flags every bound.

@@ -404,6 +404,9 @@ export const superscript_digits = (input: string): string =>
     /[\d+-]/g,
     (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP],
   )
+// replaces all digits with their unicode subscript equivalent
+export const subscript_digits = (input: string): string =>
+  input.replaceAll(/\d/g, (match) => SUBSCRIPT_MAP[match as keyof typeof SUBSCRIPT_MAP])
 
 // Axis-group key for SCF convergence series: shared between the property config
 // below and the log-scale detection in trajectory/plotting.ts so the two can't drift

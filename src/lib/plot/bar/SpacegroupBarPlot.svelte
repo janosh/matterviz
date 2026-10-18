@@ -4,6 +4,7 @@
     BarPlotOptions,
     BarHandlerProps,
     BarSeries,
+    UserContentProps,
   } from '#lib/plot/index.js'
   import { format_num, format_value } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
@@ -41,14 +42,12 @@
     show_counts?: boolean
   } = $props()
 
-  // Normalize input data to space group numbers
   const normalized_data = $derived(
     data
       .map(spg.normalize_spacegroup)
       .filter((space_group): space_group is number => space_group !== null),
   )
 
-  // Histogram of space group number counts
   const histogram = $derived.by(() => {
     const hist = new Map<number, number>()
     for (const space_group of normalized_data)
@@ -56,7 +55,6 @@
     return hist
   })
 
-  // Total counts per crystal system
   const crystal_system_counts = $derived.by(() => {
     const counts = new Map<CrystalSystem, number>()
     for (const [space_group, count] of histogram) {
@@ -66,11 +64,8 @@
     return counts
   })
 
-  // Create sorted list of space groups for x-axis
   const sorted_spacegroups = $derived(
-    Array.from(histogram.keys()).toSorted(
-      (left_value, right_value) => left_value - right_value,
-    ),
+    Array.from(histogram.keys()).toSorted((left, right) => left - right),
   )
 
   // Always show full space group range (1-230)
@@ -117,7 +112,6 @@
   const bar_series = $derived.by<BarSeries[]>(() => {
     const series_by_system = new Map<CrystalSystem, { x: number[]; y: number[] }>()
 
-    // Group data by crystal system
     for (const space_group of sorted_spacegroups) {
       const system = spg.spacegroup_to_crystal_sys(space_group)
       if (!system) continue
@@ -127,7 +121,6 @@
       series.y.push(histogram.get(space_group) ?? 0)
     }
 
-    // Convert to BarSeries array, maintaining order of crystal systems
     return symmetry.CRYSTAL_SYSTEMS.flatMap((system) => {
       const system_data = series_by_system.get(system)
       if (!system_data) return []
@@ -210,19 +203,7 @@
   Count: {format_value(count, `.0f`)}
 {/snippet}
 
-{#snippet user_content({
-  width,
-  height,
-  x_scale_fn,
-  y_scale_fn,
-  pad,
-}: {
-  width: number
-  height: number
-  x_scale_fn: (coord_x: number) => number
-  y_scale_fn: (coord_y: number) => number
-  pad: { t: number; b: number; l: number; r: number }
-})}
+{#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad }: UserContentProps)}
   <g class="crystal-system-overlays" pointer-events="none">
     {#each crystal_system_regions as region (region.system)}
       {#if orientation === `vertical`}
@@ -230,7 +211,6 @@
         {@const x_end = x_scale_fn(region.sg_end + 0.5)}
         {@const x_center = (x_start + x_end) / 2}
         {@const rect_width = x_end - x_start}
-        <!-- Background colored rectangle (vertical mode) -->
         <rect
           x={x_start}
           y={pad.t}
@@ -273,7 +253,6 @@
         {@const y_end = y_scale_fn(region.sg_start - 0.5)}
         {@const y_center = (y_start + y_end) / 2}
         {@const rect_height = y_end - y_start}
-        <!-- Background colored rectangle (horizontal mode) -->
         <rect
           x={pad.l}
           y={y_start}

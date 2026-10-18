@@ -2,6 +2,7 @@
   import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import {
     bz_fit_extent,
+    bz_hover_data,
     cartesian_to_fractional,
     default_camera_position,
     k_cell_fit_extent,
@@ -50,6 +51,7 @@
     property_value_range,
     property_names,
     vertex_property,
+    visible_isosurfaces,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
   import { reciprocal_cell_section, slice_plane_normal } from './compute'
@@ -163,11 +165,7 @@
   })
 
   let visible_surfaces = $derived(
-    fermi_data?.isosurfaces.filter(
-      ({ band_index, spin }) =>
-        (selected_bands?.includes(band_index) ?? true) &&
-        (selected_spins?.includes(spin) ?? true),
-    ) ?? [],
+    visible_isosurfaces(fermi_data?.isosurfaces, selected_bands, selected_spins),
   )
 
   // Mean vertex distance from Γ: inner sheets render first so outer transparent shells blend
@@ -396,16 +394,7 @@
       position_cartesian && screen_position && bz_data
         ? {
             mark: `k-path ${qpoint_idx}`,
-            data: {
-              position_cartesian,
-              position_fractional: cartesian_to_fractional(k_lattice_inv, position_cartesian),
-              screen_position,
-              is_ibz: false,
-              bz_order: bz_data.order,
-              bz_volume: bz_data.volume,
-              ibz_volume: null,
-              symmetry_multiplicity: null,
-            },
+            data: bz_hover_data(bz_data, k_lattice_inv, position_cartesian, screen_position),
           }
         : null
     k_path?.on_kpath_hover?.(qpoint_idx, screen_position)

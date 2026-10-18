@@ -173,7 +173,7 @@
   tints its chip, and hovering one reports its q-point like hovering the path there. Otherwise
   light, so as not to blot out the surface behind, with a text shadow for legibility. -->
   {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
-  <T.Mesh position={[position[0], position[1], position[2]]}>
+  <T.Mesh {position}>
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
     <T.MeshStandardMaterial color={KPATH_COLORS.base} metalness={0.3} roughness={0.7} />
   </T.Mesh>

@@ -8,7 +8,7 @@
   import { ConvexHull } from '#lib/convex-hull/index.js'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import type { ComponentProps } from 'svelte'
-  import { reaction_slice_points } from './thermo'
+  import { reaction_slice_points, solid_reactants } from './thermo'
   import type { SynthesisRoute } from './types'
 
   // entries and components come from the route; every other ConvexHull prop passes through
@@ -23,8 +23,7 @@
   // edits that rebuild the route object keep these, so the hull isn't recomputed
   const reaction = $derived(route.reaction)
   const selectivity = $derived(route.selectivity)
-  const solids = $derived(reaction.reactants.filter(({ phase }) => !phase.is_gas))
-  const components = $derived(solids.map(({ phase }) => phase.formula))
+  const components = $derived(solid_reactants(reaction).map(({ phase }) => phase.formula))
 
   const entries = $derived(
     reaction_slice_points({ reaction, selectivity }).map(

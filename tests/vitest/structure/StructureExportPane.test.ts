@@ -27,17 +27,20 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
 
 vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
 
+// what each mocked serializer returns
+const mock_contents = vi.hoisted(() => ({
+  json: `{"test": "json"}`,
+  xyz: `3\ntest\nH 0 0 0`,
+  cif: `data_test\n_cell_length_a 1.0`,
+  poscar: `test\n1.0\n1 0 0`,
+}))
+type MockFormat = keyof typeof mock_contents
+
 vi.mock(`#lib/structure/export.js`, async (import_original) => {
   const original = await import_original<typeof export_funcs>()
-  const contents: Record<string, string> = {
-    json: `{"test": "json"}`,
-    xyz: `3\ntest\nH 0 0 0`,
-    cif: `data_test\n_cell_length_a 1.0`,
-    poscar: `test\n1.0\n1 0 0`,
-  }
   const formats = Object.entries(original.STRUCT_TEXT_FORMATS).map(([fmt, spec]) => [
     fmt,
-    { ...spec, to_str: vi.fn(() => contents[fmt]) },
+    { ...spec, to_str: vi.fn(() => mock_contents[fmt as MockFormat]) },
   ])
   return {
     ...original,
@@ -54,14 +57,12 @@ vi.mock(`#lib/scene/export.js`, () => ({ export_scene_as: vi.fn(() => Promise.re
 
 describe(`StructureExportPane`, () => {
   let wrapper_div: HTMLDivElement
-  let mock_scene: Scene
+  const mock_scene = {} as Scene
 
   beforeEach(() => {
     wrapper_div = document.createElement(`div`)
-    const canvas = document.createElement(`canvas`)
-    wrapper_div.append(canvas)
+    wrapper_div.append(document.createElement(`canvas`))
     document.body.append(wrapper_div)
-    mock_scene = {} as Scene
   })
 
   const get_button = (title_part: string) => {
@@ -150,48 +151,39 @@ describe(`StructureExportPane`, () => {
   })
 
   test.each(
-    (
-      [
-        [`json`, `{"test": "json"}`],
-        [`xyz`, `3\ntest\nH 0 0 0`],
-        [`cif`, `data_test\n_cell_length_a 1.0`],
-        [`poscar`, `test\n1.0\n1 0 0`],
-      ] as const
-    ).flatMap(([format, content]) =>
-      [`Download`, `Copy`].map((action) => ({ format, content, action })),
+    (Object.keys(mock_contents) as MockFormat[]).flatMap((format) =>
+      [`Download`, `Copy`].map((action) => ({ format, action })),
     ),
-  )(
-    `$action $format uses its serializer and chosen filename`,
-    async ({ format, content, action }) => {
-      vi.mocked(download).mockClear()
-      mount_pane({ structure: simple_structure })
-      const name_input = doc_query<HTMLInputElement>(`.export-destination input`)
-      set_input(name_input, `Relaxed structure`)
-      await tick()
-      get_button(`${action} ${format.toUpperCase()}`).click()
-      const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
-      await vi.waitFor(() => {
-        expect(to_str).toHaveBeenCalledWith(simple_structure)
-        if (action === `Download`)
-          expect(download).toHaveBeenCalledWith(content, `Relaxed structure.${ext}`, mime)
-        else expect(navigator.clipboard.writeText).toHaveBeenCalledWith(content)
-      })
-    },
-  )
+  )(`$action $format uses its serializer and chosen filename`, async ({ format, action }) => {
+    const content = mock_contents[format]
+    vi.mocked(download).mockClear()
+    mount_pane({ structure: simple_structure })
+    const name_input = doc_query<HTMLInputElement>(`.export-destination input`)
+    set_input(name_input, `Relaxed structure`)
+    await tick()
+    get_button(`${action} ${format.toUpperCase()}`).click()
+    const { to_str, ext, mime } = export_funcs.STRUCT_TEXT_FORMATS[format]
+    await vi.waitFor(() => {
+      expect(to_str).toHaveBeenCalledWith(simple_structure)
+      if (action === `Download`)
+        expect(download).toHaveBeenCalledWith(content, `Relaxed structure.${ext}`, mime)
+      else expect(navigator.clipboard.writeText).toHaveBeenCalledWith(content)
+    })
+  })
 
   test(`shows checkmark feedback after successful copy`, async () => {
     vi.useFakeTimers()
     mount_pane({ structure: simple_structure })
 
     const copy_btn = get_button(`Copy JSON`)
-    expect(copy_btn?.textContent).toContain(`📋`)
+    expect(copy_btn.textContent).toContain(`📋`)
 
-    copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    await vi.waitFor(() => expect(copy_btn?.textContent).toContain(`✅`))
+    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`✅`))
 
     vi.advanceTimersByTime(1000)
-    await vi.waitFor(() => expect(copy_btn?.textContent).toContain(`📋`))
+    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`📋`))
 
     vi.useRealTimers()
   })
@@ -462,8 +454,8 @@ describe(`StructureExportPane`, () => {
     })
 
     const png_btn = get_button(`PNG`)
-    await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
-    png_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
+    await vi.waitFor(() => expect(png_btn.disabled).toBe(false))
+    png_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
       expect(export_canvas_as_png).toHaveBeenCalledWith(

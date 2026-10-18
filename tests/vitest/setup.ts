@@ -6,7 +6,7 @@ import type { ShortcutScope } from '#lib/shortcuts.js'
 import { to_error } from '#lib/utils.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { type Component, type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { prefersReducedMotion } from 'svelte/motion'
 import { expect, onTestFinished, vi } from 'vitest'
 
@@ -689,6 +689,26 @@ export async function mount_sized<Comp extends Component<any>>(
   const root = query(target, selector)
   await resize_element(root, width, height)
   return root
+}
+
+// Obstacle field filling the whole [0, 1] plot (a 21 x 21 grid), so any interior decoration
+// unavoidably overlaps data
+const unit_grid_steps = Array.from({ length: 21 }, (_, idx) => idx / 20)
+export const dense_unit_grid = unit_grid_steps.flatMap((x_pos) =>
+  unit_grid_steps.map((y_pos) => ({ x: x_pos, y: y_pos })),
+)
+
+// Mount a component into a fresh container for one test, unmounted and removed once the test
+// finishes. Returns the container to query.
+export const mount_in_test = <Props extends object>(
+  component: Component<Props>,
+  props: Props,
+): HTMLElement => {
+  const target = document.createElement(`div`)
+  document.body.append(target)
+  const instance = mount(component, { target, props })
+  onTestFinished(() => unmount(instance).finally(() => target.remove()))
+  return target
 }
 
 // Drop event carrying files, for the file-drop handlers of Structure, Trajectory,

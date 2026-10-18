@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { mean, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
 import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
 import {
@@ -114,9 +114,6 @@ const pair_of = (partial: { element_pair?: [string, string] }): [string, string]
   if (!partial.element_pair) throw new Error(`partial pattern without element_pair`)
   return partial.element_pair
 }
-
-const mean = (values: number[]): number =>
-  values.reduce((sum, val) => sum + val, 0) / values.length
 
 const rms = (values: number[]): number =>
   Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)

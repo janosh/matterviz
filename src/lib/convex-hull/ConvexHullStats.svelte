@@ -1,6 +1,10 @@
 <script lang="ts">
   // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
-  import { get_electro_neg_formula, get_reduced_formula } from '#lib/composition/index.js'
+  import {
+    count_atoms_in_composition,
+    get_electro_neg_formula,
+    get_reduced_formula,
+  } from '#lib/composition/index.js'
   import { format_num } from '#lib/labels.js'
   import type { InfoPaneCard } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
@@ -245,10 +249,7 @@
       if (has_polymorphs)
         row.Poly = polymorph_counts.get(composition_key(entry.composition)) ?? 1
       row[`N<sub>el</sub>`] = get_arity(entry)
-      row[`N<sub>at</sub>`] = Object.values(entry.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      )
+      row[`N<sub>at</sub>`] = count_atoms_in_composition(entry.composition)
       if (is_highlighted(entry)) {
         row.style = `background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent)`
       }

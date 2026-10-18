@@ -1,9 +1,11 @@
 // Bounded numeric atom reads for spatial analysis.
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
+import type { ElementSymbol } from '#lib/element/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { finite_vec3_from_values, partition_point } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
+import { site_stride } from '#lib/structure/site.js'
 import type { TrajectoryRunSignal } from './index'
 import type { NumericFrame } from './frame'
 import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
@@ -63,6 +65,25 @@ export function atom_range(
   return { start, count: Math.min(count, total - start) }
 }
 
+// Masses of atoms [start, start + count): the file's recorded ones or the elements' standard ones
+export const atom_batch_masses = (
+  mass_source: `recorded` | `standard`,
+  start: number,
+  count: number,
+  symbols: readonly ElementSymbol[],
+  recorded_masses?: ArrayLike<number>,
+): Float64Array =>
+  Float64Array.from({ length: count }, (_unused, idx) => {
+    const atom_idx = start + idx
+    const mass =
+      mass_source === `standard`
+        ? element_by_symbol.get(symbols[atom_idx])?.atomic_mass
+        : recorded_masses?.[atom_idx]
+    if (mass === undefined || !Number.isFinite(mass) || mass <= 0)
+      throw new Error(`Missing ${mass_source} mass at atom ${display_idx(atom_idx)}`)
+    return mass
+  })
+
 export function frame_atom_batch(
   frame: NumericFrame,
   options: AtomReadOptions,
@@ -113,7 +134,7 @@ export function frame_atom_batch(
     )
   })
   const [velocity_signal, energy_signal, selection_signal] = channels
-  const frame_width = 6 + 3 * vector_keys.length
+  const frame_width = site_stride(vector_keys)
   const velocity_column =
     velocity_key && !Object.hasOwn(frame.scalar_columns ?? {}, velocity_key)
       ? vector_keys.indexOf(velocity_key)

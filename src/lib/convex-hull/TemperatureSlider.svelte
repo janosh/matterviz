@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { clamp } from '#lib/math.js'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { get_valid_temperature } from './helpers'
   import VerticalSlider from './VerticalSlider.svelte'
 
   let {
@@ -24,13 +24,11 @@
   const from_slider = (value: number) =>
     interpolate_temperature ? value : available_temperatures[value]
 
+  // Typed values clamp to the range, or snap to the nearest tabulated T without interpolation
   function set_closest_temp(value: number): void {
     if (!Number.isFinite(value)) return
-    temperature = interpolate_temperature
-      ? clamp(value, min_temp, max_temp)
-      : available_temperatures.reduce((prev, curr) =>
-          Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev,
-        )
+    temperature =
+      get_valid_temperature(value, available_temperatures, interpolate_temperature) ?? value
   }
 </script>
 

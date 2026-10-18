@@ -1,4 +1,3 @@
-// Tests for isosurface type utilities
 import {
   auto_isosurface_settings,
   auto_volume_layer,

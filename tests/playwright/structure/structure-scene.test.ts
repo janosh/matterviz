@@ -147,7 +147,6 @@ test(`large atom mesh keeps drawing across zoom detail transitions @source`, asy
 
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    // Skip in CI - 3D canvas and camera control tests are unreliable
     test.skip(IS_CI, `3D scene tests are flaky in CI`)
     await goto_structure_test(page)
   })
@@ -308,16 +307,12 @@ test.describe(`StructureScene Component Tests`, () => {
     }
   })
 
-  test(`camera controls (rotation, zoom, pan) each change the view`, async ({ page }) => {
+  // orbit and wheel zoom are covered in structure.test.ts, including on CI
+  test(`right-drag pans the view`, async ({ page }) => {
     const canvas = structure_canvas(page)
-    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 100 }))
-    await expect_canvas_changed_by(canvas, async () => {
-      await hover_canvas_center(canvas)
-      await page.mouse.wheel(0, -200) // Zoom in
-    })
     await expect_canvas_changed_by(canvas, () =>
       drag_canvas(canvas, { dx: 50, dy: 30, button: `right` }),
-    ) // pan
+    )
   })
 
   // Regression guard for commit 16dbcf0b (disordered sites wrongly used only the first
@@ -362,22 +357,19 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Site labeling functionality tests (labels only, indices only, then combined)
   test(`site labels and indices display correctly alone and combined`, async ({ page }) => {
     const labels = page.locator(`.atom-label`)
 
-    // Labels only: at least one atom label renders
     await goto_structure_test(page, `/test/structure?show_site_labels=true`)
     await expect(labels.first()).toBeVisible()
 
-    // Indices only: indices start at 1 (and not 0)
+    // indices are 1-based
     await goto_structure_test(page, `/test/structure?show_site_indices=true`)
     await expect(labels.first()).toBeVisible()
     const index_texts = await labels.allTextContents()
     expect(index_texts.some((text) => /^\s*1\s*$/.test(text))).toBe(true)
     expect(index_texts.some((text) => /^\s*0\s*$/.test(text))).toBe(false)
 
-    // Combined: at least one label matches "X-<n>"
     await goto_structure_test(
       page,
       `/test/structure?show_site_labels=true&show_site_indices=true`,
@@ -446,8 +438,6 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // same_size_atoms swaps per-element atomic radii for a uniform radius — the
-  // rendered atom sizes must visibly change
   test(`same_size_atoms visibly changes atom scaling`, async ({ page }) => {
     const console_errors = collect_console_errors(page)
     const canvas = structure_canvas(page)

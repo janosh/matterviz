@@ -20,6 +20,7 @@ import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   read_numeric_samples,
   require_shape,
+  required_dataset as required_h5_dataset,
   resolve_stream_channels,
   sampled_property_rows,
   signal_descriptors as describe_signals,
@@ -43,11 +44,8 @@ const required_group = (h5_file: h5wasm.File, path: string): Group => {
   throw new Error(`Reference MD HDF5 is missing group ${path}`)
 }
 
-const required_dataset = (h5_file: h5wasm.File, path: string): Dataset => {
-  const entity = h5_file.get(path)
-  if (is_hdf5_dataset(entity)) return entity
-  throw new Error(`Reference MD HDF5 is missing dataset ${path}`)
-}
+const required_dataset = (h5_file: h5wasm.File, path: string): Dataset =>
+  required_h5_dataset(h5_file, path, `Reference MD HDF5`)
 
 const shape_of = (dataset: Dataset, path: string): number[] =>
   dataset_shape(dataset, path, `Reference MD HDF5`)

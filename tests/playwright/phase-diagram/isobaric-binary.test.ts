@@ -2,10 +2,8 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { drop_file, IS_CI, require_bbox } from '../helpers'
 import { readFile } from 'node:fs/promises'
 
-// CI environments are slower - use longer timeouts
 const LOAD_TIMEOUT = IS_CI ? 20_000 : 8000
 
-// Fixture-like helper returning both diagram and svg
 function get_diagram_elements(page: Page): { diagram: Locator; svg: Locator } {
   const diagram = page.locator(`div.binary-phase-diagram`).first()
   return { diagram, svg: diagram.locator(`:scope > svg`) }
@@ -75,7 +73,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(tooltip).toContainText(`Temperature`)
     await expect(tooltip).toContainText(`Composition`)
 
-    // Hovered region gets highlight class
     await expect(svg.locator(`.phase-regions path.hovered`)).toBeVisible()
 
     await page.mouse.move(10, 10)
@@ -251,19 +248,15 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   test(`tie-line and lever rule in two-phase regions`, async ({ page }) => {
     const { diagram, svg } = get_diagram_elements(page)
 
-    // Check if diagram has two-phase regions (labeled with "+")
+    // two-phase regions are labeled with "+"
     const two_phase_label = svg.locator(`.region-labels text`).filter({ hasText: /\+/ })
     if ((await two_phase_label.count()) === 0) test.skip()
 
-    // Scroll diagram into view first
     await svg.scrollIntoViewIfNeeded()
-
-    // Get SVG bounding box and scan for tie-line by hovering at grid positions
     const box = await require_bbox(svg)
-
     const tie_line = svg.locator(`.tie-line`)
 
-    // Scan middle portion of diagram where two-phase regions typically are
+    // Hover a grid over the plot area (default margins) until a tie-line shows
     const margin = { left: 60, right: 15, top: 25, bottom: 50 }
     const plot_left = box.x + margin.left
     const plot_right = box.x + box.width - margin.right
@@ -282,7 +275,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
           expect(await tie_line.locator(`line`).count()).toBe(2)
           expect(await tie_line.locator(`circle`).count()).toBe(3)
 
-          // Lever rule section should appear in tooltip
           const tooltip = diagram.locator(`.tooltip-container`)
           await expect(tooltip).toBeVisible()
           await expect(tooltip.locator(`.lever`)).toBeVisible()

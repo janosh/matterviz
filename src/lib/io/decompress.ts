@@ -151,8 +151,6 @@ const decompress_blob = async (
   }
 }
 
-// === consumers of the string | ArrayBuffer content union produced above ===
-
 // Decode loaded content for parsers that only accept text.
 export const as_text = (content: string | ArrayBuffer): string =>
   content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content

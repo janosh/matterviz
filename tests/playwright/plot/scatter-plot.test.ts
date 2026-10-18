@@ -329,8 +329,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // INTERACTION TESTS
-
   test(`bind:hovered prop reflects hover state`, async ({ page }) => {
     const svg = get_chart_svg(page.locator(`#bind-hovered .scatter`))
     const hover_status = page.locator(`#hover-status`)
@@ -552,8 +550,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
-  // TOOLTIP AND STYLING TESTS
-
   // tooltip background follows point fill > stroke > line color, text contrasts with it
   const tooltip_precedence_cases = [
     {
@@ -620,13 +616,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
         center_y <= header_box.y + header_box.height
       )
     })
-    const rightmost = hoverable.toSorted(
-      (left_value, right_value) => (right_value.bbox?.x ?? 0) - (left_value.bbox?.x ?? 0),
-    )[0]
-    const bottommost = hoverable.toSorted(
-      (left_value, right_value) => (right_value.bbox?.y ?? 0) - (left_value.bbox?.y ?? 0),
-    )[0]
-    for (const { marker } of [rightmost, bottommost]) {
+    const last_along = (key: `x` | `y`) =>
+      hoverable.toSorted(
+        (left, right) => (right.bbox?.[key] ?? 0) - (left.bbox?.[key] ?? 0),
+      )[0]
+    for (const { marker } of [last_along(`x`), last_along(`y`)]) {
       await hover_to_show_tooltip(page, plot, marker)
       const tooltip_box = await require_bbox(tooltip, `tooltip`)
       expect(tooltip_box.x + tooltip_box.width).toBeLessThanOrEqual(
@@ -639,8 +633,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await plot.hover()
     await expect(tooltip).toBeHidden()
   })
-
-  // Control Pane Tests
 
   test(`control pane toggles points and grid lines and closes via its toggle`, async ({
     page,
@@ -738,9 +730,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(x_scale_select).toHaveValue(`linear`)
     await expect(y_scale_select).toHaveValue(`linear`)
   })
-
-  // CONTROL PRECEDENCE TESTS - explicit styling wins on page load and only user-modified
-  // controls override it
 
   test(`explicit styling survives page load; sparse overrides change only their property and reset restores it`, async ({
     page,
@@ -895,8 +884,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
       Math.max(bottom_left.y + bottom_left.height, bottom_right.y + bottom_right.height),
     ).toBeLessThan(Math.min(top_left.y, top_right.y))
   })
-
-  // PAN FUNCTIONALITY TESTS
 
   test(`Shift+drag pans the plot instead of zooming, with grab/grabbing cursors`, async ({
     page,

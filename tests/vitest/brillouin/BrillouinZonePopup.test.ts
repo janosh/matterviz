@@ -1,4 +1,5 @@
 import BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
+import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
 import type { Matrix3x3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
@@ -70,4 +71,25 @@ test(`a singular reciprocal lattice shows the error where the zone would be`, ()
   expect(doc_query(`.bz-popup-stats`).querySelectorAll(`strong`)).toHaveLength(3)
   doc_query<HTMLButtonElement>(`.bz-popup-close .close-btn`).click()
   expect(on_close).toHaveBeenCalledOnce()
+})
+
+// the IBZ volume and symmetry fraction show only on the wedge, next to the zone's volume
+test.each([
+  [false, [`BZVolume:8Å−3`]],
+  [true, [`BZVolume:8Å−3`, `IBZVolume:0.1667Å−3`, `Symmetry:1/48ofBZ`]],
+])(`BrillouinZoneTooltip is_ibz=%s`, (is_ibz, expected) => {
+  const hover_data = {
+    position_cartesian: [0, 0, 0],
+    position_fractional: [0, 0, 0],
+    screen_position: { x: 0, y: 0 },
+    is_ibz,
+    bz_order: 1,
+    bz_volume: 8,
+    ibz_volume: 1 / 6,
+    symmetry_multiplicity: 48,
+  } satisfies ComponentProps<typeof BrillouinZoneTooltip>[`hover_data`]
+  mount(BrillouinZoneTooltip, { target: document.body, props: { hover_data } })
+  const text = document.body.textContent?.replaceAll(/\s+/g, ``) ?? ``
+  for (const line of expected) expect(text).toContain(line)
+  expect(text.includes(`IBZVolume`)).toBe(is_ibz)
 })

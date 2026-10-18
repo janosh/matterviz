@@ -1,15 +1,12 @@
 <script lang="ts">
   import { format_num } from '#lib/labels.js'
-  import type { StructurePlotProps } from '#lib/plot/bar/index.js'
+  import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {
     compute_structure_entries,
     to_structure_entries,
   } from '#lib/plot/core/structure-input.js'
-  import type {
-    StructureEntry,
-    StructureSiteHighlight,
-  } from '#lib/plot/core/structure-input.js'
+  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps } from '#lib/plot/core/types.js'
   import { to_error } from '#lib/utils.js'
   import {
@@ -35,7 +32,6 @@
     error_msg = $bindable(),
     show_controls,
     controls_open = $bindable(false),
-    on_sites_hover,
     ...rest
   }: StructurePlotProps & {
     split_mode?: BondAngleSplitMode
@@ -43,9 +39,6 @@
     bin_width?: number
     center_elements?: readonly string[]
     neighbor_elements?: readonly string[]
-    // Per structure behind the hovered bar: its angles' centre atoms (site_indices) and
-    // bonded outer atoms (neighbor_indices); null once the pointer leaves
-    on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } = $props()
 
   let dropped_entries = $state<StructureEntry[]>([])
@@ -84,27 +77,21 @@
 
   const bar_series = $derived(to_angle_bar_series(binned.entries, split_mode, normalize))
 
-  // bar_idx is the angle bin: every series shares the bin_width binning on one x axis
-  // Wraps the caller's on_bar_change rather than replacing it: passing both props must call both
-  const report_sites: StructurePlotProps[`on_bar_change`] = (bar) => {
-    rest.on_bar_change?.(bar)
-    const { structure_label, triplet } = bar?.metadata ?? {}
-    on_sites_hover?.(
-      bar &&
-        computed.entries
-          .filter(
-            ({ label }) => typeof structure_label !== `string` || label === structure_label,
-          )
-          .map(({ label, structure, data }) => ({
-            label,
-            structure,
-            ...bond_angle_bin_sites(data, {
-              bin_width,
-              bin_idx: bar.bar_idx,
-              triplet: typeof triplet === `string` ? triplet : undefined,
-            }),
-          })),
-    )
+  // Per structure behind a bar: its angles' centre atoms (site_indices) and bonded outer atoms
+  // (neighbor_indices). bar_idx is the angle bin: every series shares one bin_width binning
+  const bar_sites: BarSites = (bar) => {
+    const { structure_label, triplet } = bar.metadata ?? {}
+    return computed.entries
+      .filter(({ label }) => typeof structure_label !== `string` || label === structure_label)
+      .map(({ label, structure, data }) => ({
+        label,
+        structure,
+        ...bond_angle_bin_sites(data, {
+          bin_width,
+          bin_idx: bar.bar_idx,
+          triplet: typeof triplet === `string` ? triplet : undefined,
+        }),
+      }))
   }
 
   const angle_axis = {
@@ -141,5 +128,5 @@
   bind:mode
   bind:loading
   bind:error_msg
-  on_bar_change={on_sites_hover ? report_sites : rest.on_bar_change}
+  {bar_sites}
 />

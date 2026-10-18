@@ -1,5 +1,5 @@
 import type { StructureEntry, StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
-import type { AnyStructure } from '#lib/structure/index.js'
+import type { AnyStructure, Site } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
 import {
   compute_bonds,
@@ -7,6 +7,9 @@ import {
   get_majority_element,
 } from '#lib/structure/bonding.js'
 import type { Pbc } from '#lib/structure/pbc.js'
+
+// Element a site is bucketed under; `Unknown` when its majority species cannot be resolved
+const site_element = (site: Site): string => get_majority_element(site) ?? `Unknown`
 
 export interface CoordinationOptions {
   strategy?: BondingStrategy
@@ -51,7 +54,7 @@ export function calc_coordination_nums(
   for (const [site_idx, site] of sites.entries()) {
     const coordination_num = coordination_nums[site_idx]
     inc(cn_histogram, coordination_num)
-    const element = get_majority_element(site) ?? `Unknown`
+    const element = site_element(site)
     const element_histogram = cn_histogram_by_element.get(element) ?? new Map<number, number>()
     inc(element_histogram, coordination_num)
     cn_histogram_by_element.set(element, element_histogram)
@@ -75,8 +78,7 @@ export const coordination_bar_sites = (
       structure,
       site_indices: data.coordination_nums.flatMap((site_cn, site_idx) =>
         site_cn === bar.coordination_num &&
-        (bar.element === undefined ||
-          (get_majority_element(structure.sites[site_idx]) ?? `Unknown`) === bar.element)
+        (bar.element === undefined || site_element(structure.sites[site_idx]) === bar.element)
           ? [site_idx]
           : [],
       ),

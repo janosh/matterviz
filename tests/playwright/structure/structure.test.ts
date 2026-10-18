@@ -110,9 +110,10 @@ Direct
 0.5 0.0 0.5
 0.0 0.5 0.5`
 
-const compressed_source_path = `/structures/source-loop.json.gz`
-const compressed_source_filename =
-  compressed_source_path.split(`/`).at(-1) ?? compressed_source_path
+const compressed_source_filename = `source-loop.json.gz`
+const compressed_source_path = `/structures/${compressed_source_filename}`
+// show_controls=always so buttons are visible and clickable without hover
+const always_controls_url = `/test/structure?show_controls=always`
 const source_structure = JSON.stringify({
   lattice: {
     matrix: [
@@ -672,11 +673,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
   })
 
-  test(`camera projection behavior and visual differences`, async ({ page }) => {
+  test(`perspective and orthographic projections differ and both zoom`, async ({ page }) => {
     test.setTimeout(IS_CI ? 90_000 : 45_000)
     const canvas = structure_canvas(page)
-
-    // Test both projections produce different visuals and respond to zoom
     const screenshots: Record<string, Buffer> = {}
 
     for (const projection of [`perspective`, `orthographic`]) {
@@ -691,13 +690,11 @@ test.describe(`Structure Component Tests`, () => {
       await page.keyboard.press(`Escape`)
       await expect(pane_div).toBeHidden()
       await canvas.hover({ position: { x: 60, y: 60 } })
-      const initial = await canvas_screenshot(canvas)
-      screenshots[projection] = initial
+      screenshots[projection] = await canvas_screenshot(canvas)
       // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
       await page.mouse.wheel(0, -250)
       await page.mouse.wheel(0, -250)
-      // Wait for zoom to be applied (screenshot should differ from initial)
-      await expect_canvas_changed(canvas, initial)
+      await expect_canvas_changed(canvas, screenshots[projection])
     }
 
     expect(screenshots.perspective.equals(screenshots.orthographic)).toBe(false)
@@ -705,7 +702,6 @@ test.describe(`Structure Component Tests`, () => {
 })
 
 test.describe(`File Drop Functionality Tests`, () => {
-  // Synthetic DataTransfer events are unreliable in headless CI; these work locally
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
     await goto_structure_test(page)
@@ -743,8 +739,7 @@ test.describe(`File Drop Functionality Tests`, () => {
 
 test.describe(`Export and edit controls`, () => {
   test.beforeEach(async ({ page }) => {
-    // Use show_controls=always so buttons are visible and clickable without hover
-    await goto_structure_test(page, `/test/structure?show_controls=always`)
+    await goto_structure_test(page, always_controls_url)
   })
 
   test(`JSON, XYZ, and PNG export buttons trigger downloads`, async ({ page }) => {
@@ -831,8 +826,7 @@ test(`should trigger on_file_load event when structure is loaded from a source U
 
 test.describe(`Structure Event Handler Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    // Use show_controls=always so buttons are visible and clickable without hover
-    await goto_structure_test(page, `/test/structure?show_controls=always`)
+    await goto_structure_test(page, always_controls_url)
   })
 
   const wait_for_camera_move = async (
@@ -1154,9 +1148,8 @@ test.describe(`Element Visibility Toggle`, () => {
 
 test.describe(`Edit Atoms Mode`, () => {
   test.beforeEach(async ({ page }) => {
-    // Edit-atoms tests require WebGL for 3D canvas interactions
     test.skip(IS_CI, `Edit atoms tests require WebGL, skip in CI`)
-    await goto_structure_test(page, `/test/structure?show_controls=always`)
+    await goto_structure_test(page, always_controls_url)
   })
 
   // class-scoped: the camera-flight pane has its own "Undo flight edit" button
@@ -1230,7 +1223,7 @@ test.describe(`Edit Atoms Mode`, () => {
 
 test.describe(`Multi-side view (2x2 grid)`, () => {
   test.beforeEach(async ({ page }) => {
-    await goto_structure_test(page, `/test/structure?show_controls=always`)
+    await goto_structure_test(page, always_controls_url)
   })
 
   test(`collapses and restores multi-view across its responsive size threshold`, async ({

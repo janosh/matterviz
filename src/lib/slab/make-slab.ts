@@ -9,11 +9,6 @@ import { detect_layers, layer_spacings, terminations_of_oriented_bulk } from './
 import { MAX_SLAB_SITES, SLAB_DEFAULT_THICKNESS, SLAB_DEFAULT_VACUUM } from './types'
 import type { Slab, SlabOptions } from './types'
 
-function assert_non_negative(value: number, name: string): void {
-  if (Number.isFinite(value) && value >= 0) return
-  throw new Error(`${name} must be a non-negative finite number, got ${value}`)
-}
-
 // Generate a surface slab of `crystal` cut along the (hkl) planes.
 //
 // Conventions:
@@ -38,8 +33,8 @@ export function make_slab(
     // left undefined so detect_layers stays the single source of the SLAB_LAYER_TOLERANCE default
     layer_tolerance,
   } = options
-  assert_non_negative(min_slab_thickness, `min_slab_thickness`)
-  assert_non_negative(min_vacuum_thickness, `min_vacuum_thickness`)
+  math.assert_non_negative(min_slab_thickness, `min_slab_thickness`)
+  math.assert_non_negative(min_vacuum_thickness, `min_vacuum_thickness`)
 
   const bulk = make_oriented_bulk(crystal, miller_indices, { primitive_in_plane })
   const layers = detect_layers(bulk, layer_tolerance)

@@ -1,6 +1,5 @@
-// Single source of truth for binary-vs-text detection in the io layer (used by
-// decompress.ts and url-drop.ts): (1) is_binary string heuristic, (2) has_*_magic byte
-// signatures, (3) extension/filename classification.
+// Single source of truth for binary-vs-text detection: (1) is_binary string heuristic,
+// (2) has_*_magic byte signatures, (3) extension/filename classification.
 
 import {
   BINARY_VIEWER_EXTENSIONS,

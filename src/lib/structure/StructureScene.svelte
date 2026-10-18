@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { numeric_sites, get_site, site_count, snapshot_topologies } from './site'
+  import {
+    numeric_sites,
+    get_site,
+    site_count,
+    snapshot_topologies,
+    toggle_site,
+  } from './site'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
   import {
     enable_atom_sphere_picking,
@@ -942,9 +948,6 @@
       onclick: wrap(handle_atom_click),
     })
   }
-
-  const toggle_site = (sites: number[], site_idx: number): number[] =>
-    sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
 
   function toggle_selection(site_index: number, evt?: Event | TapEvent) {
     const native_event = (evt as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? evt

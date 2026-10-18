@@ -217,12 +217,10 @@
     transition: all 0.2s ease;
     border: 1px solid transparent;
     &:hover {
-      opacity: 1;
       background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
       border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
     }
     &.active {
-      opacity: 1;
       background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
       border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
       font-weight: bold;

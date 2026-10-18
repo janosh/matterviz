@@ -13,17 +13,12 @@ import {
   place_outside_decorations,
 } from '#lib/plot/core/decorations/outside.js'
 import type { Vec2 } from '#lib/math.js'
+import { dense_unit_grid } from '../../setup'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
 const width = 400
 const height = 300
-
-// obstacle field filling the whole [0,1] plot so any interior decoration unavoidably overlaps data
-const grid_steps = Array.from({ length: 21 }, (_, idx) => idx / 20)
-const dense = grid_steps.flatMap((x_pos) =>
-  grid_steps.map((y_pos) => ({ x: x_pos, y: y_pos })),
-)
 
 // Outside placement over the shared plot box; tests override only what they vary (obstacles
 // default to the fully-dense field that forces every interior decoration to overlap data)
@@ -42,7 +37,7 @@ const place = ({
     base_pad,
     width,
     height,
-    obstacles_norm: dense,
+    obstacles_norm: dense_unit_grid,
     items,
     ...overrides,
   })

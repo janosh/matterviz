@@ -1,4 +1,3 @@
-// Tests for FermiSurfaceTooltip component
 import { SPIN_COLORS } from '#lib/fermi-surface/constants.js'
 import FermiSurfaceTooltip from '#lib/fermi-surface/FermiSurfaceTooltip.svelte'
 import type { FermiHoverData, FermiTooltipProp } from '#lib/fermi-surface/types.js'
