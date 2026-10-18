@@ -31,15 +31,5 @@
     overflow: auto;
     overflow-wrap: anywhere;
     backdrop-filter: blur(8px);
-    /* StatusMessage keeps its status and alert regions mounted while empty, so it brings two
-       children: stacked in the one centered cell, the empty one adds no row and the card
-       stays centered. Not display: contents, which some browsers and screen readers drop
-       from the accessibility tree, live regions included. A long message stretches its
-       region to the full width, so the region centers the narrower (36em) card in turn. */
-    > :global(*) {
-      grid-area: 1 / 1;
-      display: grid;
-      justify-items: center;
-    }
   }
 </style>

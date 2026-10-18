@@ -204,7 +204,8 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
   }) => {
     const { diagram } = get_diagram_elements(page)
     await drop_file(page, diagram, `<svg><unclosed`, `bad.svg`, `image/svg+xml`)
-    const banner = diagram.locator(`[role="alert"]`)
+    // the card, not its alert live region, which StatusMessage renders without a box
+    const banner = diagram.locator(`[role="alert"] .status-message`)
     await expect(banner).toContainText(`Phase diagram file drop failed`)
     await diagram.hover()
     const [banner_box, buttons_box] = await Promise.all([

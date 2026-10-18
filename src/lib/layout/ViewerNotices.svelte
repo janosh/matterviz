@@ -20,17 +20,13 @@
     max-width: min(calc(100% - 8em), 36em);
     display: flex;
     flex-direction: column;
+    gap: 4pt;
     z-index: 5;
     pointer-events: none;
     overflow-wrap: anywhere;
-    /* Space between cards only, not a flex gap: StatusMessage keeps its status and alert
-       live regions mounted while empty, and each would take a gap. Not display: contents,
-       which some browsers and screen readers drop from the accessibility tree. */
-    > :global(:not(:empty) ~ :not(:empty)) {
-      margin-top: 4pt;
-    }
-    /* doubled class: StatusMessage's own type padding ties a single-class rule and wins on
-       load order */
+    /* descendant, not child: each card sits in StatusMessage's live region, a display:
+       contents box. Doubled class: StatusMessage's own type padding ties a single-class rule
+       and wins on load order */
     :global(.status-message.status-message) {
       pointer-events: auto;
       font-size: 0.8rem;
