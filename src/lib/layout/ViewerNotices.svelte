@@ -20,15 +20,14 @@
     max-width: min(calc(100% - 8em), 36em);
     display: flex;
     flex-direction: column;
-    gap: 4pt;
     z-index: 5;
     pointer-events: none;
     overflow-wrap: anywhere;
-    /* StatusMessage keeps its status and alert live regions mounted while empty; as boxes
-       they would each take a flex gap. display: contents drops the box but keeps the region in
-       the accessibility tree, so its message becomes the flex item. */
-    > :global([role='status'], [role='alert']) {
-      display: contents;
+    /* Space between cards only, not a flex gap: StatusMessage keeps its status and alert
+       live regions mounted while empty, and each would take a gap. Not display: contents,
+       which some browsers and screen readers drop from the accessibility tree. */
+    > :global(:not(:empty) ~ :not(:empty)) {
+      margin-top: 4pt;
     }
     /* doubled class: StatusMessage's own type padding ties a single-class rule and wins on
        load order */
