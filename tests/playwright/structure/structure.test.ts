@@ -1271,6 +1271,9 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     async ({ page }) => {
       // each sweep probe costs a frame, and a frame here draws all 4 panes (~1 min under load)
       test.setTimeout(IS_CI ? 180_000 : 120_000)
+      // room for the whole viewer and its legend, whose mode toggle activate_viewer waits on
+      // (at 1280x720 the viewer's bottom is cut off and on CI the toggle never fades in)
+      await page.setViewportSize({ width: 1400, height: 1200 })
       const structure_div = page.locator(`#test-structure`)
       const cells = structure_div.locator(`.viewport-cell`)
       const multi_stage = structure_div.locator(`.viewport-stage.multi`)
