@@ -2,6 +2,9 @@
 
 A violin plot is a [BoxPlot](/plot/box-plot) with `kind="violin"`: it draws a smoothed kernel-density estimate of each raw `y[]` distribution instead of the quartile box and shares the box plot's orientation, axes, controls, and interactions.
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Basic Usage
 
 Pass one series per distribution. Bandwidth defaults to Silverman's rule; override per series or
@@ -41,6 +44,9 @@ across all 2D plots ([full reference](/plot/scatter-plot#marginal-distributions)
 />
 ```
 
+</section>
+<section>
+
 ## Violin + Box Overlay
 
 Set `kind="violin+box"` (per series or on the component) to draw the quartile box and whiskers
@@ -75,6 +81,12 @@ inside the violin, the way `plotly.express.violin(box=True)` does.
   style="height: 400px"
 />
 ```
+
+</section>
+</div>
+
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
 
 ## One-Sided Violins (RMSD style)
 
@@ -120,6 +132,9 @@ keeps the density physical; `show_value_labels` with `value_label_stat="mean"` p
   style="height: 420px"
 />
 ```
+
+</section>
+<section>
 
 ## Split Violins
 
@@ -176,3 +191,6 @@ slot. Series in a shared slot are identified by the legend rather than colored a
   style="height: 400px"
 />
 ```
+
+</section>
+</div>

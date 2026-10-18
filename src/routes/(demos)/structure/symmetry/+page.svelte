@@ -39,7 +39,7 @@
     {
       id: `two-column-stats-structure`,
       title: `Two Column - Stats + Structure`,
-      layout: `two-column-layout`,
+      layout: `demo-2col`,
       height: `300px`,
       style: `height: 300px; border-radius: 8pt`,
     },
@@ -141,12 +141,12 @@
         on_click={(site_indices) => (active_wyckoff_sites = site_indices ?? [])}
       />
       {#if wyckoff_db.length > 0}
-        <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
+        <label>
           <input type="checkbox" bind:checked={show_unoccupied_wyckoff} />
           Show unoccupied Wyckoff positions
         </label>
       {/if}
-      <label style="display: flex; gap: 6pt; align-items: center; margin-top: 1em">
+      <label>
         <input type="checkbox" bind:checked={show_sym_elements} />
         Show symmetry elements
       </label>
@@ -161,10 +161,7 @@
         />
       {/if}
     {:else}
-      <EmptyState
-        message="Load a structure to analyze its symmetry"
-        style="min-height: 300px; padding: 2em; background: var(--surface-bg, #f5f5f5); border-radius: 8pt; color: var(--text-muted, #666)"
-      />
+      <EmptyState message="Load a structure to analyze its symmetry" />
     {/if}
   </div>
 
@@ -185,15 +182,13 @@
     }}
     style="height: 100%; min-height: 500px"
   >
-    <h2
-      style="position: absolute; left: 1em; top: 1ex; margin: 0; font-family: monospace; font-size: 1em"
-    >
+    <h2 class="demo-overlay-label" style="font-family: monospace">
       {display_filename}
     </h2>
   </Structure>
 </div>
 
-<p style="margin: 2em 0; text-align: center">Drag any structure onto the viewer:</p>
+<p class="demo-note">Drag any structure onto the viewer:</p>
 
 <FilePicker files={structure_files} show_category_filters style="margin-bottom: 3em" />
 
@@ -205,20 +200,18 @@
     {#each layout_examples as { id, title, layout, height, style }, idx (id)}
       <div class="example-section">
         <h3 {id}>{title}</h3>
-        <LazyDemo label={title} {height}>
-          <div class={layout}>
-            <SymmetryStats
-              sym_data={layout_viewers[idx]?.analysis.sym_data ?? null}
-              bind:settings={layout_sym_settings[idx]}
-            />
-            <Structure
-              source="/structures/{source_filename}"
-              show_controls
-              bind:this={layout_viewers[idx]}
-              bind:symmetry_settings={layout_sym_settings[idx]}
-              {style}
-            />
-          </div>
+        <LazyDemo label={title} {height} class={layout}>
+          <SymmetryStats
+            sym_data={layout_viewers[idx]?.analysis.sym_data ?? null}
+            bind:settings={layout_sym_settings[idx]}
+          />
+          <Structure
+            source="/structures/{source_filename}"
+            show_controls
+            bind:this={layout_viewers[idx]}
+            bind:symmetry_settings={layout_sym_settings[idx]}
+            {style}
+          />
         </LazyDemo>
       </div>
     {/each}
@@ -241,6 +234,19 @@
     @media (max-width: 900px) {
       grid-template-columns: minmax(0, 1fr);
     }
+    label {
+      display: flex;
+      gap: 6pt;
+      align-items: center;
+      margin-top: 1em;
+    }
+    > div > :global(.empty-state) {
+      min-height: 300px;
+      padding: 2em;
+      background: var(--surface-bg, #f5f5f5);
+      border-radius: 8pt;
+      color: var(--text-muted, #666);
+    }
   }
   .loading-placeholder {
     display: flex;
@@ -250,17 +256,9 @@
   }
   .example-section {
     margin: 3em 0;
-  }
-  .two-column-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2em;
-    @media (max-width: 900px) {
-      grid-template-columns: minmax(0, 1fr);
+    > :global(.stacked-layout) {
+      max-width: 900px;
+      margin: 0 auto;
     }
-  }
-  .stacked-layout {
-    max-width: 900px;
-    margin: 0 auto;
   }
 </style>

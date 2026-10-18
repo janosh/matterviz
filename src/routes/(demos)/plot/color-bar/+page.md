@@ -26,21 +26,15 @@ You can make fat and skinny bars:
 ```svelte example
 <script lang="ts">
   import { ColorBar } from 'matterviz'
-
-  const wrapper_style = 'margin: auto;'
 </script>
 
-<ColorBar {wrapper_style} bar_style="width: 10em; height: 8pt" />
-<br />
-<ColorBar
-  title="Viridis"
-  {wrapper_style}
-  bar_style="width: 4em; height: 2em"
-  tick_labels={2}
-/>
-<br />
-<ColorBar {wrapper_style} --cbar-width="10em" --cbar-height="2em" tick_labels={3} />
-<br />
+<div style="--cbar-margin: auto">
+  <ColorBar bar_style="width: 10em; height: 8pt" />
+  <br />
+  <ColorBar title="Viridis" bar_style="width: 4em; height: 2em" tick_labels={2} />
+  <br />
+  <ColorBar --cbar-width="10em" --cbar-height="2em" tick_labels={3} />
+</div>
 ```
 
 `PeriodicTable` shows a `ColorBar` when `heatmap_values` is provided.
@@ -195,9 +189,7 @@ You can format tick labels for date/time ranges by providing a D3 format string 
   ]
 </script>
 
-<div
-  style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em 4em; align-items: center; padding-inline: 1.5em"
->
+<section>
   <ColorBar
     title="YYYY-MM-DD"
     color_scale={{ value_range: date_range }}
@@ -222,7 +214,18 @@ You can format tick labels for date/time ranges by providing a D3 format string 
     orientation="vertical"
     bar_style="height: 200px;"
   />
-</div>
+</section>
+
+<style>
+  section {
+    display: flex;
+    flex-wrap: wrap;
+    place-content: center;
+    place-items: center;
+    gap: 2em 4em;
+    padding-inline: 1.5em;
+  }
+</style>
 ```
 
 ## Interactive Property and Color Scale Selection
@@ -321,9 +324,7 @@ Vertical orientation with the title on different sides:
   let range_right = $derived(ranges[prop_right])
 </script>
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 4em; justify-content: center; align-items: center"
->
+<section>
   <ColorBar
     title="Energy"
     orientation="vertical"
@@ -351,7 +352,17 @@ Vertical orientation with the title on different sides:
     on_color_scale_change={(key) => (scale_right = key)}
     bar_style="height: 200px;"
   />
-</div>
+</section>
+
+<style>
+  section {
+    display: flex;
+    flex-wrap: wrap;
+    place-content: center;
+    place-items: center;
+    gap: 4em;
+  }
+</style>
 ```
 
 ## Large Value Ranges (Linear and Log)
@@ -363,9 +374,7 @@ Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`).
   import { ColorBar } from 'matterviz'
 </script>
 
-<div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr)); gap: 4em; place-items: center; margin: 2em 0; padding-inline: 1em"
->
+<section>
   <ColorBar
     title="Large Linear Range (0 to 1e6)"
     color_scale={{ value_range: [0, 1e6] }}
@@ -400,7 +409,18 @@ Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`).
     bar_style="width: 400px"
     tick_labels={5}
   />
-</div>
+</section>
+
+<style>
+  section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr));
+    place-items: center;
+    gap: 4em;
+    margin: 2em 0;
+    padding-inline: 1em;
+  }
+</style>
 ```
 
 ## Arcsinh Scale: Symmetric Ranges Including Negative Values
@@ -415,11 +435,11 @@ Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`).
   let type = $derived(scale_type === `arcsinh` ? { type: `arcsinh`, threshold } : scale_type)
 </script>
 
-<div style="display: flex; gap: 2em; margin-bottom: 1em; align-items: center; flex-wrap: wrap">
+<div class="demo-controls">
   <fieldset>
     <legend>Scale Type</legend>
     {#each scale_types as scale (scale)}
-      <label style="margin-right: 0.5em">
+      <label>
         <input type="radio" bind:group={scale_type} value={scale} />
         {scale}
       </label>
@@ -434,9 +454,7 @@ Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`).
   {/if}
 </div>
 
-<div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr)); gap: 3em; place-items: center; margin: 1em 0; padding-inline: 1em"
->
+<section>
   <ColorBar
     title="Symmetric Range (-1000 to 1000)"
     color_scale={{ scheme: `interpolateRdBu`, value_range: [-1000, 1000], type }}
@@ -464,5 +482,20 @@ Large numeric ranges on linear and log scales (`color_scale={{ type: 'log' }}`).
     tick_labels={5}
     bar_style="width: 350px"
   />
-</div>
+</section>
+
+<style>
+  fieldset {
+    display: flex;
+    gap: 1em;
+  }
+  section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20em), 1fr));
+    place-items: center;
+    gap: 3em;
+    margin: 1em 0;
+    padding-inline: 1em;
+  }
+</style>
 ```

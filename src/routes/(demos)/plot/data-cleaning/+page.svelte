@@ -602,7 +602,7 @@ const { series: cleaned, quality } = clean_series(series, config)
       .invalid_values_found} glitches)
   </div>
 
-  <div class="multi-series-grid">
+  <div class="multi-series-grid bleed-1400">
     <div>
       <h3 id="raw-data-nan-positions-marked">Raw Data (NaN positions marked)</h3>
       <LazyDemo label="Raw Data (NaN positions marked)" height="280px">
@@ -656,7 +656,7 @@ const { series: cleaned, quality } = clean_series(series, config)
       .invalid_values_found} invalid values removed from all coordinates)
   </div>
 
-  <div class="multi-series-grid">
+  <div class="multi-series-grid bleed-1400">
     <div>
       <h3 id="raw-data-nan-positions-marked-1">Raw Data (NaN positions marked)</h3>
       <LazyDemo label="Raw Data (NaN positions marked)" height="300px">
@@ -760,7 +760,7 @@ const { series: cleaned, quality } = clean_series(series, config)
   }
   .multi-series-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
     gap: 1.5em;
     h3 {
       margin: 0 0 0.5em;

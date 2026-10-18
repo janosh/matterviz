@@ -16,6 +16,10 @@
   // reads this mapping, so it goes to the empty drop target meant for those dumps, not to
   // the HDF5 / XDATCAR / extXYZ viewers
   const lammps_loading_options = { atom_type_mapping: { 1: `Cu`, 2: `Zr` } } as const
+  const traj_pair = [
+    [`Gold cluster trajectory`, `flame-gold-cluster-55-atoms.h5`],
+    [`VASP trajectory`, `vasp-XDATCAR-traj.gz`],
+  ] as const
 </script>
 
 <h1 id="trajectory">Trajectory</h1>
@@ -49,7 +53,7 @@
 </details>
 
 <div class="full-bleed traj-pair">
-  {#each [[`Gold cluster trajectory`, `flame-gold-cluster-55-atoms.h5`], [`VASP trajectory`, `vasp-XDATCAR-traj.gz`]] as [label, filename] (filename)}
+  {#each traj_pair as [label, filename] (filename)}
     <LazyDemo {label} height="600px">
       <Trajectory
         source="/trajectories/{filename}"
@@ -62,40 +66,43 @@
 
 <h2 id="bindable-visible_properties">Bindable <code>visible_properties</code></h2>
 <p>Legend toggles update the bound list of displayed trajectory properties.</p>
-<strong
-  style="display: block; margin: 1em auto; padding: 1em; background: var(--surface-bg-hover); border-radius: var(--border-radius); font-family: monospace; font-size: 0.9em"
->
+<strong class="bound-props">
   bind:visible_properties = {JSON.stringify(visible_props_cantor_qha)}
 </strong>
-<LazyDemo label="Bindable visible_properties" height="600px">
+<LazyDemo
+  label="Bindable visible_properties"
+  height="600px"
+  class="full-bleed"
+  style="margin-top: 1em"
+>
   <Trajectory
     source="/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz"
     bind:visible_properties={visible_props_cantor_qha}
-    class="full-bleed"
-    style="margin-top: 1em; {viewer_style}"
+    style={viewer_style}
     on_file_load={handle_file_load}
   />
 </LazyDemo>
-<LazyDemo label="Growing silver cluster trajectory" height="600px">
+<LazyDemo
+  label="Growing silver cluster trajectory"
+  height="600px"
+  class="full-bleed"
+  style="margin-top: 5em"
+>
   <Trajectory
     source="/trajectories/ase-images-Ag-0-to-97.xyz.gz"
-    class="full-bleed"
-    style="margin-top: 5em; {viewer_style}"
+    style={viewer_style}
     on_file_load={handle_file_load}
   />
 </LazyDemo>
-<LazyDemo label="Load a trajectory" height="600px">
+<LazyDemo label="Load a trajectory" height="600px" class="full-bleed" style="margin-top: 5em">
   <Trajectory
-    class="full-bleed"
-    style="margin-top: 5em; {viewer_style}"
+    style={viewer_style}
     on_file_load={handle_file_load}
     loading_options={lammps_loading_options}
   />
 </LazyDemo>
 
-<p style="margin: 2em auto; text-align: center">
-  Drag any of these trajectory files onto a viewer above to load them:
-</p>
+<p class="demo-note">Drag any of these trajectory files onto a viewer above to load them:</p>
 
 <FilePicker
   files={trajectory_files}
@@ -104,6 +111,15 @@
 />
 
 <style>
+  .bound-props {
+    display: block;
+    margin: 1em auto;
+    padding: 1em;
+    background: var(--surface-bg-hover);
+    border-radius: var(--border-radius);
+    font-family: monospace;
+    font-size: 0.9em;
+  }
   .traj-pair {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));

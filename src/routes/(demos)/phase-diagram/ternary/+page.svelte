@@ -125,10 +125,10 @@
   aria-label="Ternary phase diagram viewer - drag and drop files here"
 >
   {#if loading}
-    <div class="loading-overlay">Loading {system_title || `entries`}…</div>
+    <div class="demo-loading-overlay">Loading {system_title || `entries`}…</div>
   {/if}
   {#if error_message}
-    <div class="error-message" role="alert">{error_message}</div>
+    <div class="demo-error-message" role="alert">{error_message}</div>
   {/if}
   {#if current_entries}
     <IsobaricTernaryPhaseDiagram
@@ -153,7 +153,7 @@
 {#if diagram}
   {@const bound = diagram}
   {@const windows = selected ? bound.stability_windows[selected.idx] : []}
-  <section class="demo-section">
+  <section>
     <h2 id="bound-state">Bound state</h2>
     <p>
       T = <strong>{format_num(temperature, `.0f`)} K</strong> · {bound.events.length} transitions
@@ -176,7 +176,7 @@
   </section>
 {/if}
 
-<section class="demo-section">
+<section>
   <h2 id="how-to-read-it">How to read it</h2>
   <ul class="feature-list">
     <li>
@@ -223,28 +223,10 @@
 <style>
   .diagram-container {
     position: relative;
-    margin-block: 1em 2em; /* not the shorthand: bleed-1400 owns margin-left */
+    margin-block: 1em 2em; /* not the shorthand: full-bleed owns margin-left */
     &.loading {
       opacity: 0.7;
     }
-  }
-  .loading-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 1em 2em;
-    border-radius: 8px;
-    z-index: 10;
-  }
-  .error-message {
-    background: rgba(255, 0, 0, 0.1);
-    color: #d32f2f;
-    padding: 0.5em 1em;
-    border-radius: 4px;
-    margin: 0.5em;
   }
   .feature-list li {
     margin: 0.4em 0;

@@ -34,9 +34,7 @@
   inner-shell electrons of large atoms would be invisibly fast.
 </p>
 
-<label
-  style="display: flex; align-items: center; gap: 1ex; margin: 1em auto; place-content: center"
->
+<label>
   Electron Orbital Period
   <input type="number" bind:value={orbital_period} min={0} max={5} step={0.1} />
   <input type="range" bind:value={orbital_period} min={0} max={5} step={0.1} />
@@ -56,6 +54,13 @@
 </ol>
 
 <style>
+  label {
+    display: flex;
+    align-items: center;
+    place-content: center;
+    gap: 1ex;
+    margin: 1em auto;
+  }
   ol {
     display: flex;
     flex-wrap: wrap;

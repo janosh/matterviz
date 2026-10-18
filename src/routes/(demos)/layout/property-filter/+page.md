@@ -33,9 +33,7 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   )
 </script>
 
-<label style="display: flex; gap: 0.5em; margin-bottom: 1em; font-size: 0.9em">
-  <input type="checkbox" bind:checked={log_scale} /> Logarithmic histogram
-</label>
+<p><label><input type="checkbox" bind:checked={log_scale} /> Logarithmic histogram</label></p>
 
 <PropertyFilter
   label="Band Gap"
@@ -49,12 +47,19 @@ Filter with histogram, logarithmic scale toggle, and callbacks:
   on_clear={() => log_event(`clear`)}
 />
 
-<div style="display: flex; justify-content: space-between; margin-top: 8pt; font-size: 0.85em">
+<div class="status">
   <span><strong>{filtered_count}</strong> of {bandgaps.length} materials in range</span>
-  <span style="opacity: 0.6; font-family: monospace"
-    >{events[events.length - 1] || `No events yet`}</span
-  >
+  <span style="opacity: 0.6; font-family: monospace">{events.at(-1) ?? `No events yet`}</span>
 </div>
+
+<style>
+  .status {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8pt;
+    font-size: 0.85em;
+  }
+</style>
 ```
 
 ## Histogram Positions & Configuration
@@ -76,11 +81,9 @@ Control histogram placement, custom placeholders, and without histogram:
   let disabled = $state(false)
 </script>
 
-<label style="display: flex; gap: 0.5em; margin-bottom: 1em; font-size: 0.9em">
-  <input type="checkbox" bind:checked={disabled} /> Disable all
-</label>
+<p><label><input type="checkbox" bind:checked={disabled} /> Disable all</label></p>
 
-<div style="display: flex; flex-direction: column; gap: 1.5em">
+<div style="display: grid; gap: 1.5em">
   <PropertyFilter
     label="ΔH<sub>f</sub>"
     bind:min_value={min1}
@@ -154,9 +157,7 @@ Filter materials by multiple properties simultaneously:
   }
 </script>
 
-<div
-  style="display: grid; gap: 1em; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr))"
->
+<div class="filters">
   <PropertyFilter
     label="Band Gap"
     bind:min_value={bg_min}
@@ -183,12 +184,26 @@ Filter materials by multiple properties simultaneously:
   />
 </div>
 
-<div
-  style="display: flex; justify-content: space-between; align-items: center; margin-top: 1em; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2)"
->
+<footer>
   <span><strong>~{total}</strong> of {n_mats} materials match all filters</span>
-  <button onclick={clear_all} style="font-size: 0.85em; padding: 6pt 12pt"> Clear all </button>
-</div>
+  <button onclick={clear_all} style="font-size: 0.85em; padding: 6pt 12pt">Clear all</button>
+</footer>
+
+<style>
+  .filters {
+    display: grid;
+    gap: 1em;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+  footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1em;
+    padding-top: 1em;
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
+  }
+</style>
 ```
 
 ## Data Table Integration
@@ -232,33 +247,36 @@ Filter and display a materials table:
   style="margin-bottom: 1em"
 />
 
-<table style="width: 100%; border-collapse: collapse; font-size: 0.9em">
+<table>
   <thead>
-    <tr style="border-bottom: 2px solid rgba(128, 128, 128, 0.25)">
-      <th style="text-align: left; padding: 8pt">Formula</th>
-      <th style="text-align: right; padding: 8pt">E<sub>g</sub> (eV)</th>
-      <th style="text-align: right; padding: 8pt">ΔH (eV)</th>
-      <th style="text-align: right; padding: 8pt">V (Å³)</th>
+    <tr>
+      <th>Formula</th>
+      <th>E<sub>g</sub> (eV)</th>
+      <th>ΔH (eV)</th>
+      <th>V (Å³)</th>
     </tr>
   </thead>
   <tbody>
     {#each filtered as mat (mat.name)}
-      <tr style="border-bottom: 1px solid rgba(128, 128, 128, 0.1)">
-        <td style="padding: 8pt; font-family: monospace">{mat.name}</td>
-        <td style="padding: 8pt; text-align: right">{mat.bandgap}</td>
-        <td style="padding: 8pt; text-align: right">{mat.energy}</td>
-        <td style="padding: 8pt; text-align: right">{mat.volume}</td>
+      <tr>
+        <td>{mat.name}</td>
+        <td>{mat.bandgap}</td>
+        <td>{mat.energy}</td>
+        <td>{mat.volume}</td>
       </tr>
     {:else}
-      <tr>
-        <td colspan="4" style="padding: 16pt; text-align: center; opacity: 0.5">
-          No materials match
-        </td>
-      </tr>
+      <tr><td colspan="4" style="text-align: center; opacity: 0.5">No materials match</td></tr>
     {/each}
   </tbody>
 </table>
-<div style="margin-top: 6pt; font-size: 0.8em; opacity: 0.6">
-  {filtered.length} of {materials.length} materials
-</div>
+<small style="opacity: 0.6">{filtered.length} of {materials.length} materials</small>
+
+<style>
+  :is(th, td) {
+    text-align: right;
+  }
+  :is(th, td):first-child {
+    text-align: left;
+  }
+</style>
 ```

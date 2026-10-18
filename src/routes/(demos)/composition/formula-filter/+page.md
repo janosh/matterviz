@@ -57,7 +57,6 @@ An interactive search filter for chemical formulas. The search mode is automatic
   // Use library function for proper formula formatting (handles count=1 correctly)
   const to_str = (comp) => get_alphabetical_formula(comp, { plain_text: true, delim: `` })
   const quick_examples = [`Li,Fe`, `+Li,-O`, `Fe:1-2,Ni:>=1`, `Li-Fe-O`, `NaCl`]
-  const quick_btn_style = `font-family: monospace; font-size: 0.8em; border: 1px solid rgba(128,128,128,0.25); border-radius: 4px; padding: 2pt 6pt; background: rgba(77,182,255,0.08); cursor: pointer`
 
   type DemoToken = {
     operator: `include` | `exclude`
@@ -157,9 +156,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
   }}
 />
 
-<div
-  style="display: flex; flex-wrap: wrap; align-items: center; gap: 4pt 12pt; margin-top: 6pt"
->
+<div class="demo-controls">
   <label title="Lock search mode to prevent auto-inference while typing" {@attach tooltip()}>
     <input type="checkbox" bind:checked={mode_locked} />
     lock mode
@@ -176,35 +173,59 @@ An interactive search filter for chemical formulas. The search mode is automatic
   {/if}
 </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 5pt; margin-top: 8pt">
+<div class="demo-controls">
   {#each quick_examples as example}
-    <button type="button" onclick={() => (value = example)} style={quick_btn_style}>
-      {example}
-    </button>
+    <button type="button" class="quick" onclick={() => (value = example)}>{example}</button>
   {/each}
 </div>
 
 {#if parse_preview}
-  <pre
-    style="margin-top: 8pt; max-height: 180px; overflow: auto; padding: 6pt 8pt; border-radius: 6px; background: rgba(128, 128, 128, 0.08); font-size: max(0.8em, 11px)">{parse_preview}</pre>
+  <pre>{parse_preview}</pre>
 {/if}
 
-<div style="margin-top: 1em">
+<div class="matches">
   <strong style="font-size: 0.85em; opacity: 0.7"
     >{filtered.length} of {materials.length}:</strong
   >
-  <div style="display: flex; flex-wrap: wrap; gap: 6pt; margin-top: 6pt">
-    {#each filtered.slice(0, 40) as comp (to_str(comp))}
-      <span style="padding: 3pt 6pt; background: rgba(77, 182, 255, 0.1); border-radius: 4px">
-        <Formula formula={to_str(comp)} />
-      </span>
-    {:else}
-      <span style="opacity: 0.5">No matches</span>
-    {/each}
-    {#if filtered.length > 40}<span style="opacity: 0.5">+{filtered.length - 40} more</span
-      >{/if}
-  </div>
+  {#each filtered.slice(0, 40) as comp (to_str(comp))}
+    <Formula formula={to_str(comp)} />
+  {:else}
+    <span style="opacity: 0.5">No matches</span>
+  {/each}
+  {#if filtered.length > 40}<span style="opacity: 0.5">+{filtered.length - 40} more</span>{/if}
 </div>
+
+<style>
+  button.quick {
+    font-family: monospace;
+    font-size: 0.8em;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 4px;
+    padding: 2pt 6pt;
+    background: rgba(77, 182, 255, 0.08);
+    cursor: pointer;
+  }
+  pre {
+    max-height: 180px;
+    overflow: auto;
+    padding: 6pt 8pt;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.08);
+    font-size: max(0.8em, 11px);
+  }
+  .matches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6pt;
+    margin-top: 1em;
+  }
+  .matches :global(.formula) {
+    padding: 3pt 6pt;
+    background: rgba(77, 182, 255, 0.1);
+    border-radius: 4px;
+  }
+</style>
 ```
 
 Try these examples:
@@ -233,7 +254,6 @@ Additional features in `FormulaFilter`:
   let include = $state(`+Li,-O`)
   let exclude = $state(``)
   const advanced_example = `Fe:1-2,Ni:>=1`
-  const quick_btn_style = `font-family: monospace; font-size: 0.78em; border: 1px solid rgba(128,128,128,0.25); border-radius: 4px; padding: 2pt 6pt; background: rgba(77,182,255,0.08); cursor: pointer`
 
   const els = [`Li`, `Na`, `Mg`, `Ca`, `Fe`, `Co`, `Ni`, `Cu`, `Zn`, `Mn`, `Ti`, `Al`]
   const materials = []
@@ -299,9 +319,7 @@ Additional features in `FormulaFilter`:
   })
 </script>
 
-<div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr)); gap: 1em; margin-bottom: 1em"
->
+<div class="filters">
   <FormulaFilter bind:value={include} history_key="formula-filter-include" />
   <FormulaFilter
     bind:value={exclude}
@@ -310,11 +328,9 @@ Additional features in `FormulaFilter`:
   />
 </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 6pt; margin-bottom: 8pt">
-  <button type="button" onclick={() => (include = `+Li,-O`)} style={quick_btn_style}>
-    +Li,-O
-  </button>
-  <button type="button" onclick={() => (include = advanced_example)} style={quick_btn_style}>
+<div class="demo-controls">
+  <button type="button" class="quick" onclick={() => (include = `+Li,-O`)}>+Li,-O</button>
+  <button type="button" class="quick" onclick={() => (include = advanced_example)}>
     {advanced_example}
   </button>
   <span style="font-size: 0.78em; opacity: 0.7"
@@ -322,15 +338,39 @@ Additional features in `FormulaFilter`:
   >
 </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 6pt">
+<div class="matches">
   {#each results.slice(0, 30) as comp (to_str(comp))}
-    <span style="padding: 3pt 6pt; background: rgba(16, 185, 129, 0.15); border-radius: 4px">
-      <Formula formula={to_str(comp)} />
-    </span>
+    <Formula formula={to_str(comp)} />
   {:else}<span style="opacity: 0.5">No matches</span>{/each}
   {#if results.length > 30}<span style="opacity: 0.5">+{results.length - 30} more</span>{/if}
 </div>
-<div style="margin-top: 6pt; font-size: 0.8em; opacity: 0.6">
-  {results.length} of {materials.length}
-</div>
+<small style="opacity: 0.6">{results.length} of {materials.length}</small>
+
+<style>
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14em), 1fr));
+    gap: 1em;
+  }
+  button.quick {
+    font-family: monospace;
+    font-size: 0.8em;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 4px;
+    padding: 2pt 6pt;
+    background: rgba(77, 182, 255, 0.08);
+    cursor: pointer;
+  }
+  .matches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6pt;
+    margin-bottom: 6pt;
+  }
+  .matches :global(.formula) {
+    padding: 3pt 6pt;
+    background: rgba(16, 185, 129, 0.15);
+    border-radius: 4px;
+  }
+</style>
 ```

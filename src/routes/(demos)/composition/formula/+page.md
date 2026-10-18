@@ -11,7 +11,7 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   import { Formula } from 'matterviz'
 </script>
 
-<div style="display: flex; gap: 2em; flex-wrap: wrap; font-size: 1.5em">
+<div class="demo-controls" style="font-size: 1.5em">
   <Formula formula="H2O" />
   <Formula formula="CO2" />
   <Formula formula="NaCl" />
@@ -20,11 +20,9 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   <Formula formula="C6H12O6" />
 </div>
 
-<div style="margin-top: 1.5em; font-size: 1.4em">
-  With oxidation states (use <code>^2+</code> or <code>[2+]</code> syntax):
-</div>
+<p>With oxidation states (use <code>^2+</code> or <code>[2+]</code> syntax):</p>
 
-<div style="display: flex; gap: 2em; flex-wrap: wrap; font-size: 1.5em; margin-top: 1em">
+<div class="demo-controls" style="font-size: 1.5em">
   <Formula formula="Fe^2+O" />
   <Formula formula="Fe[3+]2O[2-]3" />
   <Formula formula="Na^+Cl^-" />
@@ -44,18 +42,25 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   let color_scheme = $state(`Vesta`)
 </script>
 
-<label>
-  Formula:
-  <input type="text" bind:value={formula} style="width: 250px; margin-left: 1em" />
-</label>
+<div class="demo-controls">
+  <label>Formula: <input type="text" bind:value={formula} style="width: 250px" /></label>
+  <label>
+    Color Scheme:
+    <select bind:value={color_scheme}>
+      <option value="Vesta">Vesta</option>
+      <option value="Jmol">Jmol</option>
+      <option value="Alloy">Alloy</option>
+      <option value="Pastel">Pastel</option>
+      <option value="Muted">Muted</option>
+      <option value="Dark Mode">Dark Mode</option>
+    </select>
+  </label>
+</div>
 
-<div style="display: flex; gap: 1em; flex-wrap: wrap; margin: 1em 0">
+<div class="demo-controls">
   <strong>Ordering:</strong>
   <label><input type="radio" bind:group={ordering} value="original" /> Original</label>
-  <label
-    ><input type="radio" bind:group={ordering} value="alphabetical" />
-    Alphabetical</label
-  >
+  <label><input type="radio" bind:group={ordering} value="alphabetical" /> Alphabetical</label>
   <label
     ><input type="radio" bind:group={ordering} value="electronegativity" />
     Electronegativity</label
@@ -63,23 +68,18 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   <label><input type="radio" bind:group={ordering} value="hill" /> Hill Notation</label>
 </div>
 
-<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
-  <strong>Color Scheme:</strong>
-  <select bind:value={color_scheme}>
-    <option value="Vesta">Vesta</option>
-    <option value="Jmol">Jmol</option>
-    <option value="Alloy">Alloy</option>
-    <option value="Pastel">Pastel</option>
-    <option value="Muted">Muted</option>
-    <option value="Dark Mode">Dark Mode</option>
-  </select>
-</div>
-
-<div
-  style="font-size: 2.5em; padding: 1em; background: rgba(255, 255, 255, 0.03); border-radius: 8px"
->
+<div class="card">
   <Formula {formula} {ordering} {color_scheme} />
 </div>
+
+<style>
+  .card {
+    font-size: 2.5em;
+    padding: 1em;
+    background: var(--surface-bg);
+    border-radius: 8px;
+  }
+</style>
 ```
 
 ## Interactive Click Handlers
@@ -97,22 +97,29 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   }
 </script>
 
-<div style="display: flex; gap: 2em; flex-wrap: wrap; font-size: 1.8em; margin-bottom: 1em">
+<div class="demo-controls" style="font-size: 1.8em">
   <Formula formula="H2O" on_click={handle_click} />
   <Formula formula="Fe[3+]2O[2-]3" on_click={handle_click} />
   <Formula formula="Ca(OH)2" on_click={handle_click} />
   <Formula formula="H2SO4" on_click={handle_click} />
 </div>
 
-<div
-  style="padding: 1em; background: rgba(0, 150, 255, 0.1); border-radius: 8px; border: 1px solid rgba(0, 150, 255, 0.3)"
->
+<div class="card">
   {#if clicked_element}
     <strong>Last clicked:</strong> {clicked_element} (Total: {click_count})
   {:else}
     <em>Click any element symbol above...</em>
   {/if}
 </div>
+
+<style>
+  .card {
+    padding: 1em;
+    background: rgba(0, 150, 255, 0.1);
+    border: 1px solid rgba(0, 150, 255, 0.3);
+    border-radius: 8px;
+  }
+</style>
 ```
 
 ## Tooltip Positioning
@@ -125,36 +132,31 @@ All formula inputs go through one parser (`parse_formula`, `parse_formula_with_o
   let tooltip_offset = $state(5)
 </script>
 
-<div style="display: flex; gap: 1.5em; align-items: center; margin-bottom: 1em">
-  <div>
-    <strong>Side:</strong>
-    <label><input type="radio" bind:group={tooltip_side} value="top" /> Top</label>
-    <label><input type="radio" bind:group={tooltip_side} value="bottom" /> Bottom</label>
-    <label><input type="radio" bind:group={tooltip_side} value="left" /> Left</label>
-    <label><input type="radio" bind:group={tooltip_side} value="right" /> Right</label>
-  </div>
-
-  <div style="display: flex; gap: 0.5em; align-items: center">
+<div class="demo-controls">
+  <strong>Side:</strong>
+  <label><input type="radio" bind:group={tooltip_side} value="top" /> Top</label>
+  <label><input type="radio" bind:group={tooltip_side} value="bottom" /> Bottom</label>
+  <label><input type="radio" bind:group={tooltip_side} value="left" /> Left</label>
+  <label><input type="radio" bind:group={tooltip_side} value="right" /> Right</label>
+  <label>
     <strong>Offset:</strong>
-    <input
-      type="range"
-      bind:value={tooltip_offset}
-      min="0"
-      max="30"
-      step="5"
-      style="width: 100px"
-    />
-    <span>{tooltip_offset}px</span>
-  </div>
+    <input type="range" bind:value={tooltip_offset} min="0" max="30" step="5" />
+    {tooltip_offset}px
+  </label>
 </div>
 
-<div
-  style="padding: 3em; background: rgba(255, 255, 255, 0.03); border-radius: 8px; text-align: center"
->
-  <div style="font-size: 2em; display: inline-block">
-    <Formula formula="Fe[3+]2O[2-]3" {tooltip_side} {tooltip_offset} />
-  </div>
+<div class="card">
+  <Formula formula="Fe[3+]2O[2-]3" {tooltip_side} {tooltip_offset} style="font-size: 2em" />
 </div>
+
+<style>
+  .card {
+    padding: 3em;
+    background: var(--surface-bg);
+    border-radius: 8px;
+    text-align: center;
+  }
+</style>
 ```
 
 ## As Different HTML Elements
@@ -194,30 +196,21 @@ Use `OxiComposition` objects and customize number formatting:
   let amount_format = $state(`.3~s`)
 </script>
 
-<div style="display: flex; gap: 2em; align-items: center">
-  <div>
-    <div style="font-size: 0.9em; color: var(--text-color-muted); margin-bottom: 0.3em">
-      From object:
-    </div>
-    <div style="font-size: 2em">
-      <Formula formula={iron_oxide} ordering="alphabetical" />
-    </div>
-  </div>
-
-  <div style="flex: 1">
-    <label>
-      Amount Format:
-      <select bind:value={amount_format} style="margin-left: 0.5em">
-        <option value=".3~s">Compact (default)</option>
-        <option value=".2f">2 decimals</option>
-        <option value=".0f">Integer</option>
-        <option value=".1f">1 decimal</option>
-      </select>
-    </label>
-    <div style="font-size: 1.5em; margin-top: 0.5em">
-      <Formula formula="H2.567O1.234C0.891" {amount_format} />
-    </div>
-  </div>
+<div class="demo-controls" style="gap: 2em">
+  <span>
+    From object:
+    <Formula formula={iron_oxide} ordering="alphabetical" style="font-size: 2em" />
+  </span>
+  <label>
+    Amount Format:
+    <select bind:value={amount_format}>
+      <option value=".3~s">Compact (default)</option>
+      <option value=".2f">2 decimals</option>
+      <option value=".0f">Integer</option>
+      <option value=".1f">1 decimal</option>
+    </select>
+    <Formula formula="H2.567O1.234C0.891" {amount_format} style="font-size: 1.5em" />
+  </label>
 </div>
 ```
 
@@ -248,24 +241,38 @@ Use `OxiComposition` objects and customize number formatting:
 
 {#each Object.entries(categories) as [category, compounds] (category)}
   <h3 style="margin: 1.5em 0 0.5em; font-size: 1.1em">{category}</h3>
-  <div
-    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1em"
-  >
+  <div class="grid">
     {#each compounds as { name, formula } (formula)}
-      <div
-        style="padding: 0.8em; border: 1px solid var(--border-color, #ddd); border-radius: 6px"
-      >
-        <div style="font-size: 1.3em; margin-bottom: 0.4em">
-          <Formula
-            {formula}
-            ordering={category === 'Organic' ? 'hill' : 'electronegativity'}
-          />
-        </div>
-        <div style="font-size: 0.85em; color: var(--text-color-muted)">{name}</div>
+      <div>
+        <Formula
+          {formula}
+          ordering={category === 'Organic' ? 'hill' : 'electronegativity'}
+          style="font-size: 1.3em"
+        />
+        <small>{name}</small>
       </div>
     {/each}
   </div>
 {/each}
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1em;
+    > div {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+      padding: 0.8em;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+    }
+    small {
+      color: var(--text-color-muted);
+    }
+  }
+</style>
 ```
 
 ## Interactive Builder
@@ -289,25 +296,15 @@ Use `OxiComposition` objects and customize number formatting:
   })
 </script>
 
-<div style="margin-bottom: 1em">
-  <button
-    onclick={() =>
-      (elements = [
-        ...elements,
-        {
-          id: next_id++,
-          symbol: `H`,
-          amount: 1,
-          oxidation: 0,
-        },
-      ])}
-  >
-    Add Element
-  </button>
-</div>
+<button
+  onclick={() =>
+    (elements = [...elements, { id: next_id++, symbol: `H`, amount: 1, oxidation: 0 }])}
+>
+  Add Element
+</button>
 
 {#each elements as element (element.id)}
-  <div style="display: flex; gap: 0.8em; align-items: center; margin-bottom: 0.5em">
+  <div class="row">
     <input type="text" bind:value={element.symbol} style="width: 50px" placeholder="El" />
     <input
       type="number"
@@ -325,9 +322,23 @@ Use `OxiComposition` objects and customize number formatting:
   </div>
 {/each}
 
-<div
-  style="padding: 1.5em; background: rgba(255, 255, 255, 0.05); border-radius: 8px; font-size: 2.5em; margin-top: 1em"
->
+<div class="card">
   <Formula formula={formula_obj} />
 </div>
+
+<style>
+  .row {
+    display: flex;
+    gap: 0.8em;
+    align-items: center;
+    margin-top: 0.5em;
+  }
+  .card {
+    padding: 1.5em;
+    background: var(--surface-bg);
+    border-radius: 8px;
+    font-size: 2.5em;
+    margin-top: 0.4em;
+  }
+</style>
 ```

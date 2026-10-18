@@ -154,10 +154,10 @@
   aria-label="Phase diagram viewer - drag and drop files here"
 >
   {#if loading}
-    <div class="loading-overlay">Loading...</div>
+    <div class="demo-loading-overlay">Loading...</div>
   {/if}
   {#if error_message}
-    <div class="error-message">{error_message}</div>
+    <div class="demo-error-message">{error_message}</div>
   {/if}
   {#if current_data}
     {#if current_data.title}
@@ -191,24 +191,6 @@
   }
   .diagram-container.loading {
     opacity: 0.7;
-  }
-  .loading-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 1em 2em;
-    border-radius: 8px;
-    z-index: 10;
-  }
-  .error-message {
-    background: rgba(255, 0, 0, 0.1);
-    color: #d32f2f;
-    padding: 0.5em 1em;
-    border-radius: 4px;
-    margin: 0.5em;
   }
   .diagram-title {
     text-align: center;

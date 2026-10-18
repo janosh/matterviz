@@ -220,7 +220,7 @@
 
 <div class="bleed-1400">
   <StructurePicker bind:selected={compute_id} />
-  <section>
+  <section class="demo-2col">
     <LazyDemo label="xrd" height="600px">
       <XrdPlot
         patterns={computed.pattern
@@ -306,7 +306,7 @@
     {#if saed.error}
       <p class="error">SAED error: {saed.error}</p>
     {:else if saed.pattern}
-      <section>
+      <section class="demo-2col">
         <SaedPattern
           pattern={saed.pattern}
           style="height: 520px"
@@ -339,38 +339,34 @@
 
   <h2 id="overlay-multiple-structures">Overlay multiple structures</h2>
   <StructurePicker bind:selected={selected_ids} />
-  <section>
-    <LazyDemo label="Overlay multiple structures" height="400px">
-      <XrdPlot
-        patterns={selected_patterns}
-        annotate_peaks={3}
-        hkl_format="compact"
-        style="height: 400px"
-      />
-    </LazyDemo>
-    <LazyDemo label="Overlay multiple structures" height="180px">
-      <div class="selected-structures-grid">
-        {#each selected_ids as struct_id, idx (struct_id)}
-          {@const struct_obj = structure_map.get(struct_id)}
-          {#if struct_obj}
-            <div
-              class="structure-tile"
-              style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
-            >
-              <h3>{struct_id}</h3>
-              <Structure
-                structure={struct_obj}
-                style="height: 180px; width: 100%"
-                enable_info_pane={false}
-                enable_measure_mode={false}
-                scene_props={{ gizmo: false }}
-              />
-            </div>
-          {/if}
-        {/each}
-      </div>
-    </LazyDemo>
-  </section>
+  <LazyDemo label="Overlay multiple structures" height="400px" class="demo-2col">
+    <XrdPlot
+      patterns={selected_patterns}
+      annotate_peaks={3}
+      hkl_format="compact"
+      style="height: 400px"
+    />
+    <div class="selected-structures-grid">
+      {#each selected_ids as struct_id, idx (struct_id)}
+        {@const struct_obj = structure_map.get(struct_id)}
+        {#if struct_obj}
+          <div
+            class="structure-tile"
+            style:background-color={hex_with_alpha(plot_color(idx), 0.15)}
+          >
+            <h3>{struct_id}</h3>
+            <Structure
+              structure={struct_obj}
+              style="height: 180px; width: 100%"
+              enable_info_pane={false}
+              enable_measure_mode={false}
+              scene_props={{ gizmo: false }}
+            />
+          </div>
+        {/if}
+      {/each}
+    </div>
+  </LazyDemo>
 
   <h2 id="xrd-file-drop-demo">XRD File Drop Demo</h2>
   <p>
@@ -384,19 +380,14 @@
     <code>.xrdml</code> (PANalytical), <code>.brml</code>/<code>.raw</code> (Bruker). Gzipped
     versions (<code>.xy.gz</code>, etc.) are also supported.
   </p>
-  <section>
+  <section class="demo-2col">
     <FilePicker
       files={xrd_data_files}
       file_type_paints={xrd_file_paints}
       show_category_filters
     />
     <LazyDemo label="XRD File Drop Demo">
-      <XrdPlot
-        patterns={[]}
-        annotate_peaks={5}
-        hkl_format="compact"
-        style="height: 500px; width: 100%; min-width: 0"
-      />
+      <XrdPlot patterns={[]} annotate_peaks={5} hkl_format="compact" style="height: 500px" />
     </LazyDemo>
   </section>
 </div>
@@ -425,31 +416,5 @@
   .error {
     color: var(--error-color, crimson);
     text-align: center;
-  }
-  .bleed-1400 section {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1em;
-    /* Structure has a 300px floor, so two columns overflow phone widths */
-    @media (max-width: 700px) {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-  .selected-structures-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-    gap: 0.5em;
-    align-content: start;
-  }
-  .structure-tile {
-    border-radius: 4px;
-    position: relative;
-    h3 {
-      margin: 0;
-      font-size: 14px;
-      position: absolute;
-      top: 3pt;
-      left: 1ex;
-    }
   }
 </style>

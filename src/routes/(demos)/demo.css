@@ -67,6 +67,11 @@
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 0.9em;
+  /* one line that stops short of the viewer toolbar, which widens to finger-sized buttons on phones */
+  max-width: calc(100% - 2em - 240px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Plot beside structure viewer, stacked once there is no room for two columns */
 .demo-2col {
@@ -74,8 +79,86 @@
   grid-template-columns: 1fr 1fr;
   gap: 1em;
 }
+/* A LazyDemo carrying the grid class spans its placeholder or loader across both columns */
+.demo-2col > :is(.placeholder, [role='status']) {
+  grid-column: 1 / -1;
+}
 @media (max-width: 1024px) {
   .demo-2col {
     grid-template-columns: 1fr;
   }
+}
+/* Related examples side by side, each a <section> of heading, blurb and demo spanning
+   --pair-rows (default 3) rows of a shared subgrid, so the demos line up whatever the blurb
+   lengths. A markdown example adds its show-code toggle, so markdown pages set
+   --pair-rows: 4. Combine with bleed-1400 to use the page margins; one column below 1024px
+   like .demo-2col. minmax(0, 1fr): a long code line must not widen its column. */
+.demo-pairs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2em;
+  margin-block: 2em;
+  /* auto side margins would shrink a markdown example to its content instead of its column */
+  --code-example-margin: 1em 0;
+  > section {
+    display: grid;
+    grid-row: span var(--pair-rows, 3);
+    grid-template-rows: subgrid;
+    align-content: start;
+    margin: 0;
+    > :is(h2, h3) {
+      text-align: center; /* like the top-level headings it sits among */
+    }
+  }
+}
+@media (max-width: 1024px) {
+  .demo-pairs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Centered one-line note between demos, e.g. a drag-and-drop hint */
+.demo-note {
+  margin: 2em auto;
+  text-align: center;
+}
+/* Tinted tiles of small structure viewers, one per selected structure, id pinned top-left */
+.selected-structures-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  align-content: start;
+  gap: 0.5em;
+}
+.structure-tile {
+  --struct-min-width: 0;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 4px;
+  > h3 {
+    position: absolute;
+    top: 3pt;
+    left: 1ex;
+    z-index: 1;
+    margin: 0;
+    font-size: 14px;
+  }
+}
+/* Centered badge over a viewer while its data loads, and an inline load-error banner */
+.demo-loading-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  padding: 1em 2em;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+}
+.demo-error-message {
+  margin: 0.5em;
+  padding: 0.5em 1em;
+  border-radius: 4px;
+  background: rgba(255, 0, 0, 0.1);
+  color: #d32f2f;
 }

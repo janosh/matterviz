@@ -69,15 +69,11 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
   })
 </script>
 
-<div
-  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div class="demo-controls">
   {#each [`grouped`, `stacked`, `overlay`] as opt (opt)}
     <label><input type="radio" bind:group={mode} value={opt} /> {opt}</label>
   {/each}
-  <label style="margin-left: 1em">
-    <input type="checkbox" bind:checked={custom_order} /> Sort by band gap
-  </label>
+  <label><input type="checkbox" bind:checked={custom_order} /> Sort by band gap</label>
   <label>
     <input
       type="checkbox"
@@ -128,9 +124,7 @@ Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nod
   )
 </script>
 
-<div
-  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div class="demo-controls">
   <label
     >size <input type="range" min="4" max="20" step="1" bind:value={size} /> {size}px</label
   >
@@ -251,9 +245,7 @@ Automatic wrapping uses at most three lines by default; set `tick_label.max_line
   })
 </script>
 
-<div
-  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
->
+<div class="demo-controls">
   <label>
     Categories: {n_categories}
     <input
@@ -311,15 +303,10 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
   let mode = $state(`grouped`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1em; align-items: center">
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="radio" bind:group={mode} value="overlay" /> Overlay</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="radio" bind:group={mode} value="stacked" /> Stacked (Sum)</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="radio" bind:group={mode} value="grouped" /> Grouped (Side-by-Side)</label
+<div class="demo-controls">
+  <label><input type="radio" bind:group={mode} value="overlay" /> Overlay</label>
+  <label><input type="radio" bind:group={mode} value="stacked" /> Stacked (Sum)</label>
+  <label><input type="radio" bind:group={mode} value="grouped" /> Grouped (Side-by-Side)</label
   >
 </div>
 
@@ -331,6 +318,9 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
   style="height: 400px"
 />
 ```
+
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
 
 ## Reaction Kinetics with Dual Y-Axes
 
@@ -387,6 +377,9 @@ Combine bars and lines with **dual y-axes** to show product formation alongside 
 />
 ```
 
+</section>
+<section>
+
 ## Sales vs Profit Margin (Dual Y-Axes)
 
 A classic business use case: comparing raw sales (bars, left axis) with profit margins (line, right axis) that have different scales and units. The line uses `markers: 'line+points'` with custom `point_style` for triangle markers:
@@ -432,6 +425,9 @@ A classic business use case: comparing raw sales (bars, left axis) with profit m
 />
 ```
 
+</section>
+</div>
+
 ## Element Abundance in Earth's Crust
 
 Horizontal bars suit long category labels. `tick_label.inside` puts tick labels inside the plot for a tighter layout:
@@ -470,18 +466,17 @@ Horizontal bars suit long category labels. `tick_label.inside` puts tick labels 
   })
 </script>
 
-<label style="margin-bottom: 1em; display: inline-block">
-  <input
-    type="checkbox"
-    checked={orientation === `horizontal`}
-    onchange={(evt) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
-  />
-  Horizontal Orientation
-</label>
-<label style="margin-bottom: 1em; display: inline-block; margin-left: 2em">
-  <input type="checkbox" bind:checked={inside} />
-  Tick Labels Inside
-</label>
+<div class="demo-controls">
+  <label>
+    <input
+      type="checkbox"
+      checked={orientation === `horizontal`}
+      onchange={(evt) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
+    />
+    Horizontal Orientation
+  </label>
+  <label><input type="checkbox" bind:checked={inside} /> Tick Labels Inside</label>
+</div>
 
 <BarPlot
   series={abundances}
@@ -545,8 +540,6 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
       hovered_info = `${metadata.phase} at ${category_label}: ${coord_y}% stability`
     } else hovered_info = `Hover over a bar`
   }
-
-  const info_style = `margin: 1em 0; padding: 4pt 8pt; background: rgba(255,255,255,0.1); border-radius: var(--border-radius); font-size: 0.9em`
 </script>
 
 <BarPlot
@@ -566,14 +559,18 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   {/snippet}
 </BarPlot>
 
-<div style={info_style}>
-  <strong>Clicked:</strong>
-  {clicked_info}
-</div>
-<div style={info_style}>
-  <strong>Hovered:</strong>
-  {hovered_info}
-</div>
+<p><strong>Clicked:</strong> {clicked_info}</p>
+<p><strong>Hovered:</strong> {hovered_info}</p>
+
+<style>
+  p {
+    margin: 1em 0;
+    padding: 4pt 8pt;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+  }
+</style>
 ```
 
 ## Arcsinh Scale: Large Range with Positive and Negative Values
@@ -606,11 +603,11 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
   })
 </script>
 
-<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center">
+<div class="demo-controls">
   <fieldset>
     <legend>Y-axis Scale</legend>
     {#each scale_types as scale (scale)}
-      <label style="margin-right: 0.5em">
+      <label>
         <input type="radio" bind:group={y_scale_type} value={scale} />
         {scale}
       </label>
@@ -631,6 +628,13 @@ Add rich interactivity with custom tooltips, hover effects, and click handlers:
     Energy: {coord_y.toLocaleString()} eV
   {/snippet}
 </BarPlot>
+
+<style>
+  fieldset {
+    display: flex;
+    gap: 1em;
+  }
+</style>
 ```
 
 ## Formation Energy Diagram
@@ -706,7 +710,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
   let y2_axis = $state({ label: `Compute Power (TFLOPS)`, format: `.2s`, ticks: 6 })
 </script>
 
-<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap">
+<div class="demo-controls">
   <label>
     X Format:
     <select bind:value={x_axis.format}>
@@ -778,12 +782,10 @@ Zoom and pan on a larger dataset (drag to zoom, double-click to reset). Line mar
   ]
 </script>
 
-<div
-  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: 4px"
->
+<aside>
   <strong>Instructions:</strong> Click and drag to zoom into a wavelength region. Double-click
   to reset the view. Marker colors show intensity via color scale.
-</div>
+</aside>
 
 <BarPlot
   series={spectroscopy}
@@ -792,6 +794,15 @@ Zoom and pan on a larger dataset (drag to zoom, double-click to reset). Line mar
   color_scale={{ scheme: `interpolatePlasma` }}
   style="height: 450px"
 />
+
+<style>
+  aside {
+    margin-bottom: 1em;
+    padding: 8pt;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+  }
+</style>
 ```
 
 ## Line Marker Customization
@@ -847,7 +858,7 @@ Line series support full marker customization including symbol types, sizes, col
   )
 </script>
 
-<div style="display: flex; gap: 2em; margin-bottom: 1em; flex-wrap: wrap; align-items: center">
+<div class="demo-controls">
   <label>
     Markers:
     <select bind:value={markers}>
@@ -879,6 +890,9 @@ Line series support full marker customization including symbol types, sizes, col
   style="height: 400px"
 />
 ```
+
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
 
 ## Reference Lines: Thresholds, Means, and Comparisons
 
@@ -998,6 +1012,9 @@ Use `ref_lines` to add horizontal, vertical, and diagonal reference lines to bar
 />
 ```
 
+</section>
+<section>
+
 ## Interactive Reference Lines on Bar Plot
 
 Reference lines support hover effects and click handlers for interactivity:
@@ -1079,6 +1096,9 @@ Reference lines support hover effects and click handlers for interactivity:
   {selected_target ?? `Click a target line`}
 </div>
 ```
+
+</section>
+</div>
 
 ## Legend Grouping
 
@@ -1251,10 +1271,10 @@ When comparing results from different computational methods or experimental tech
   )
 </script>
 
-<div style="margin-bottom: 0.5em; font-size: 0.8em; opacity: 0.7">
+<p style="margin: 0 0 0.5em">
   Switches: <strong>{switch_count}</strong> | Avg load: <strong>{avg_load_time}ms</strong>
   | Materials: <strong>{n_materials}</strong>
-</div>
+</p>
 
 <BarPlot
   {series}
@@ -1272,9 +1292,16 @@ When comparing results from different computational methods or experimental tech
   style="height: 400px"
 />
 
-<p style="margin-top: 0.5em; font-size: 0.8em; opacity: 0.7">
+<p style="margin-top: 0.5em">
   50 materials grouped by crystal system. Click Y-axis to switch properties.
 </p>
+
+<style>
+  p {
+    font-size: 0.8em;
+    opacity: 0.7;
+  }
+</style>
 ```
 
 ## Multiple Plots in 2×2 Grid Layout
@@ -1334,7 +1361,7 @@ Display multiple bar plots in a responsive 2×2 grid:
   ]
 </script>
 
-<div class="grid">
+<div class="grid bleed-1400">
   {#each plots as { title, data, x_label, y_label, color } (title)}
     <div class="cell">
       <h4>{title}</h4>
@@ -1352,7 +1379,7 @@ Display multiple bar plots in a responsive 2×2 grid:
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1em;
-    margin: 2em 0;
+    margin-block: 2em; /* margin-inline belongs to bleed-1400 */
   }
   .cell {
     border: 1px solid var(--border-color, #ddd);
@@ -1414,7 +1441,7 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
   let sync_mode = $state(`synced`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+<div class="demo-controls">
   <strong>Y2 Sync:</strong>
   {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
@@ -1516,11 +1543,8 @@ Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: 
   const series = [{ x: synthesis_routes, y: observations, color: `#4c6ef5` }]
 </script>
 
-<div
-  data-testid="adaptive-tick-demo"
-  style="width: min(900px, calc(100vw - 2em)); margin-left: 50%; transform: translateX(-50%)"
->
-  <div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
+<div data-testid="adaptive-tick-demo" class="bleed-1400">
+  <div class="demo-controls">
     <label
       >Width: {chart_width}px
       <input type="range" bind:value={chart_width} min="280" max="900" step="20" /></label

@@ -139,9 +139,8 @@
 
 <div
   data-testid="facet-grid-demo"
-  class="bleed-1400"
+  class="facet-demo bleed-1400"
   style:height="{columns === 1 ? 1100 : 720}px"
-  style="min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 1em"
   bind:clientWidth={demo_width}
 >
   <FacetGrid
@@ -183,6 +182,12 @@
 </div>
 
 <style>
+  .facet-demo {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 1em;
+    min-width: 0;
+  }
   .shared-title {
     display: grid;
     place-content: center;

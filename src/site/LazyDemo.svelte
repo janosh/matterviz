@@ -38,19 +38,46 @@
     observer.observe(element)
     return () => observer.disconnect()
   }
+
+  // The wrapper holds `height` until the demo itself has laid out with some height. Dropping it
+  // as soon as any child exists let a demo that renders nothing while its own chunk loads
+  // collapse to 0, pulling every demo below into view so they all loaded at once.
+  let laid_out = $state(false)
+  const hold_height = (element: HTMLElement) => {
+    const is_demo = (child: Element) =>
+      !child.matches(`.placeholder, [role='status']`) &&
+      child.getBoundingClientRect().height > 0
+    const resize = new ResizeObserver(() => {
+      if (![...element.children].some(is_demo)) return
+      laid_out = true
+      stop()
+    })
+    const watch_children = () => {
+      for (const child of element.children) resize.observe(child)
+    }
+    const mutation = new MutationObserver(watch_children)
+    const stop = () => {
+      resize.disconnect()
+      mutation.disconnect()
+    }
+    mutation.observe(element, { childList: true })
+    watch_children()
+    return stop
+  }
 </script>
 
 <div
   {...rest}
   class={[`lazy-demo`, rest.class]}
-  style:--demo-height={height}
+  style:min-height={laid_out ? undefined : height}
   role="region"
   aria-label={label}
   {@attach observe}
+  {@attach hold_height}
 >
   {#if pending && props}
     {#await pending}
-      <p class="placeholder" role="status">Loading {label}…</p>
+      <p role="status">Loading {label}…</p>
     {:then { default: Demo, props: loaded_props }}
       <Demo {...loaded_props} {...props} />
     {:catch error}
@@ -68,14 +95,12 @@
 <style>
   .lazy-demo {
     min-width: 0;
-    min-height: var(--demo-height);
-    /* Retain the placeholder's space while an async snippet imports its component. */
-    &:has(> :not(.placeholder, [role='status'])) {
-      min-height: 0;
-    }
-    .placeholder {
-      display: grid;
-      place-items: center;
+    /* the placeholder, or a role="status" loader an async child shows, fills the held height */
+    > :is(.placeholder, :global([role='status'])) {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5em;
       min-height: inherit;
       margin: 0;
       padding: 1em;

@@ -38,24 +38,17 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
       1,
     )}, Count: ${count}, Percentage: ${format_num(count / sample_size, `.2~%`)}`
   }
-
-  const info_style =
-    'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em">
-  <label style="display: flex; align-items: center; gap: 4px"
-    >Bins: {bins}<input type="range" bind:value={bins} min="5" max="200" /></label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    >Size: {sample_size}
+<div class="demo-controls">
+  <label>Bins: {bins}<input type="range" bind:value={bins} min="5" max="200" /></label>
+  <label>
+    Size: {sample_size}
     <input type="range" bind:value={sample_size} min="100" max="10000" step="100" />
   </label>
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={show_controls} />Controls</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    >Radius: {border_radius}
+  <label><input type="checkbox" bind:checked={show_controls} />Controls</label>
+  <label>
+    Radius: {border_radius}
     <input type="range" bind:value={border_radius} min="0" max="8" />
   </label>
 </div>
@@ -79,8 +72,17 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
   style="height: 400px"
 />
 
-<div style={info_style} data-testid="hover-status">{hover_info}</div>
-<div style={info_style} data-testid="click-status">{click_info}</div>
+<div class="status" data-testid="hover-status">{hover_info}</div>
+<div class="status" data-testid="click-status">{click_info}</div>
+
+<style>
+  .status {
+    margin: 1em 0;
+    padding: 2pt 5pt;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+</style>
 ```
 
 ## Dual Y-Axes for Different Sample Sizes
@@ -108,16 +110,10 @@ When sample sizes differ a lot, use **dual y-axes** for independent scaling. Tes
   ])
 </script>
 
-<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.x_grid} />X grid</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label
-  >
+<div class="demo-controls">
+  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
+  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
 <Histogram
@@ -183,7 +179,7 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
   let series = $derived(base_series.map((srs, idx) => ({ ...srs, visible: visible[idx] })))
 </script>
 
-<div style="display: flex; gap: 1em; flex-wrap: wrap; margin-block: 2em; align-items: center;">
+<div class="demo-controls">
   <label
     >Opacity:
     <input type="number" bind:value={bar.opacity} min="0.1" max="1" step="0.1" />
@@ -195,41 +191,37 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
     <input type="range" bind:value={bar.stroke_width} min="0" max="5" step="0.5" />
   </label>
 
-  <label style="display: flex; gap: 5pt"
+  <label
     >X: {#each [`linear`, `log`] as scale (scale)}
       <input type="radio" bind:group={x_axis.scale_type} value={scale} />{scale}
     {/each}</label
   >
-  <label style="display: flex; gap: 5pt"
+  <label
     >Y1: {#each [`linear`, `log`] as scale (scale)}
       <input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}
     {/each}</label
   >
-  <label style="display: flex; gap: 5pt"
+  <label
     >Y2: {#each [`linear`, `log`] as scale (scale)}
       <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
     {/each}</label
   >
 
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.x_grid} />X grid</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label
-  >
+  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
+  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
+  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
-{#each base_series as srs, idx (srs.label)}
-  <label style="display: flex; align-items: center; gap: 4px">
-    <input type="checkbox" bind:checked={visible[idx]} />
-    <span style="width: 16px; height: 16px; background: {srs.color}"></span>
-    {srs.label}
-    {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
-  </label>
-{/each}
+<div class="demo-controls">
+  {#each base_series as srs, idx (srs.label)}
+    <label>
+      <input type="checkbox" bind:checked={visible[idx]} />
+      <span style:background={srs.color}></span>
+      {srs.label}
+      {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
+    </label>
+  {/each}
+</div>
 
 <Histogram
   {series}
@@ -247,6 +239,13 @@ Use `mode="single"` with `bind:selected_series_idx` to show one series at a time
     Value: {value.toFixed(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
+
+<style>
+  span {
+    width: 16px;
+    height: 16px;
+  }
+</style>
 ```
 
 ## Logarithmic Scales
@@ -287,7 +286,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   ])
 </script>
 
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em 1.5em">
+<div class="demo-controls">
   <fieldset>
     <legend>X</legend>
     {#each [`linear`, `log`] as scale (scale)}
@@ -300,9 +299,9 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
       <label><input type="radio" bind:group={y_axis.scale_type} value={scale} />{scale}</label>
     {/each}
   </fieldset>
-  <label style="display: flex; align-items: center; gap: 0.5em">
-    Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" />
-  </label>
+  <label
+    >Bins: {bins}<input type="range" bind:value={bins} min="10" max="100" step="5" /></label
+  >
 </div>
 
 <Histogram
@@ -318,6 +317,13 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     Value: {value.toExponential(2)}<br />Count: {count}
   {/snippet}
 </Histogram>
+
+<style>
+  fieldset {
+    display: flex;
+    gap: 1em;
+  }
+</style>
 ```
 
 ## Arcsinh Scale: Handling Data with Negative Values
@@ -352,9 +358,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   })
 </script>
 
-<div
-  style="display: flex; flex-wrap: wrap; align-items: center; gap: 1em; margin-bottom: 1em; font-size: 0.9em"
->
+<div class="demo-controls" style="font-size: 0.9em">
   <fieldset>
     <legend>X-axis Scale</legend>
     {#each scale_types as scale (scale)}
@@ -374,7 +378,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     {/each}
   </fieldset>
   {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh`}
-    <label style="display: flex; align-items: center; gap: 0.35em">
+    <label>
       Arcsinh Threshold: {arcsinh_threshold}
       <input
         type="range"
@@ -405,6 +409,13 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
     Value: {value.toFixed(1)}<br />Count: {count}
   {/snippet}
 </Histogram>
+
+<style>
+  fieldset {
+    display: flex;
+    gap: 1em;
+  }
+</style>
 ```
 
 ## Real-World Distributions
@@ -471,17 +482,14 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   )
 </script>
 
-<select bind:value={selected}>
-  {#each Object.entries(distributions) as [key, dist] (key)}
-    <option value={key}>{dist.label}</option>
-  {/each}
-</select>
-
-<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
+<div class="demo-controls">
+  <select bind:value={selected}>
+    {#each Object.entries(distributions) as [key, dist] (key)}
+      <option value={key}>{dist.label}</option>
+    {/each}
+  </select>
   {#each [`single`, `overlay`] as display_mode (display_mode)}
-    <label style="display: flex; align-items: center; gap: 4px"
-      ><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label
-    >
+    <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
   {/each}
 </div>
 
@@ -530,7 +538,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   ]
 </script>
 
-<div style="display: flex; gap: 1.5em; align-items: center; flex-wrap: wrap">
+<div class="demo-controls">
   {#each [`count`, `probability`, `density`] as option (option)}
     <label><input type="radio" bind:group={normalize} value={option} /> {option}</label>
   {/each}
@@ -568,14 +576,12 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em">
+<div class="demo-controls">
   {#each [`mixed`, `complex`] as type (type)}
-    <label style="display: flex; align-items: center; gap: 4px">
-      <input type="radio" bind:group={data_type} value={type} />{type}
-    </label>
+    <label><input type="radio" bind:group={data_type} value={type} />{type}</label>
   {/each}
   {#each bin_counts as count, idx (idx)}
-    <label style="display: flex; align-items: center; gap: 4px; color: {colors[idx]}">
+    <label style:color={colors[idx]}>
       {count} bins:
       <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" />
     </label>
@@ -583,7 +589,7 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 </div>
 
 <div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 0"
+  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr))"
 >
   {#each bin_counts as bins, idx (idx)}
     <Histogram
@@ -650,30 +656,26 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
   ])
 </script>
 
-<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
+<div class="demo-controls">
   {#each [`financial`, `scientific`] as source (source)}
-    <label style="display: flex; align-items: center; gap: 4px"
-      ><input type="radio" bind:group={data_source} value={source} />{source}</label
-    >
+    <label><input type="radio" bind:group={data_source} value={source} />{source}</label>
   {/each}
+  <select bind:value={color_scheme}>
+    {#each Object.keys(color_schemes) as scheme (scheme)}
+      <option value={scheme}>{scheme}</option>
+    {/each}
+  </select>
+  <select bind:value={x_format}>
+    {#each Object.entries(x_formats) as [key, format] (key)}
+      <option value={key}>{key} ({format})</option>
+    {/each}
+  </select>
+  <select bind:value={y_format}>
+    {#each Object.entries(y_formats) as [key, format] (key)}
+      <option value={key}>{key} ({format})</option>
+    {/each}
+  </select>
 </div>
-
-<select bind:value={color_scheme}>
-  {#each Object.keys(color_schemes) as scheme (scheme)}<option value={scheme}>{scheme}</option
-    >{/each}
-</select>
-
-<select bind:value={x_format}>
-  {#each Object.entries(x_formats) as [key, format] (key)}<option value={key}
-      >{key} ({format})</option
-    >{/each}
-</select>
-
-<select bind:value={y_format}>
-  {#each Object.entries(y_formats) as [key, format] (key)}<option value={key}
-      >{key} ({format})</option
-    >{/each}
-</select>
 
 <Histogram
   {series}
@@ -732,26 +734,21 @@ Binning is a single pass over the samples (100k values into 200 bins takes ~3 ms
   )
 </script>
 
-<label
-  >Size: {dataset_size.toLocaleString()}<input
-    type="range"
-    bind:value={dataset_size}
-    min="1000"
-    max="50000"
-    step="1000"
-  /></label
->
-
-{#each [`normal`, `uniform`, `sparse`] as type (type)}<label
-    ><input type="radio" bind:group={data_type} value={type} />{type}</label
-  >{/each}
-
-<label>Bins: {bins}<input type="range" bind:value={bins} min="10" max="200" step="10" /></label
->
-
-{#each [`single`, `overlay`] as display_mode (display_mode)}
-  <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
-{/each}
+<div class="demo-controls">
+  <label>
+    Size: {dataset_size.toLocaleString()}
+    <input type="range" bind:value={dataset_size} min="1000" max="50000" step="1000" />
+  </label>
+  {#each [`normal`, `uniform`, `sparse`] as type (type)}
+    <label><input type="radio" bind:group={data_type} value={type} />{type}</label>
+  {/each}
+  <label>
+    Bins: {bins}<input type="range" bind:value={bins} min="10" max="200" step="10" />
+  </label>
+  {#each [`single`, `overlay`] as display_mode (display_mode)}
+    <label><input type="radio" bind:group={mode} value={display_mode} />{display_mode}</label>
+  {/each}
+</div>
 
 <strong>Performance:</strong>
 {data_type} distribution, {dataset_size.toLocaleString()}
@@ -900,17 +897,26 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   style="height: 400px"
 />
 
-<div style="margin-top: 0.5em; font-size: 0.9em; text-align: center">
+<p>
   {#if comparison_mode}
     Δμ = {(mean_b - mean_a).toFixed(2)} (Treatment − Control)
   {:else}
     <span><strong style="color: #e74c3c">━</strong> Mean: {actual_mean.toFixed(2)}</span>
-    <span style="margin-left: 2em"
-      ><strong style="color: #2ecc71">╌</strong> Median: {actual_median.toFixed(2)}</span
-    >
-    <span style="margin-left: 2em"><strong style="color: #9b59b6">┄</strong> ±1σ</span>
+    <span><strong style="color: #2ecc71">╌</strong> Median: {actual_median.toFixed(2)}</span>
+    <span><strong style="color: #9b59b6">┄</strong> ±1σ</span>
   {/if}
-</div>
+</p>
+
+<style>
+  p {
+    margin-top: 0.5em;
+    font-size: 0.9em;
+    text-align: center;
+  }
+  span + span {
+    margin-left: 2em;
+  }
+</style>
 ```
 
 ## Interactive Axis Labels for Property Exploration
@@ -1090,10 +1096,10 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   let total_points = $derived(n_points * material_classes.length)
 </script>
 
-<div style="margin-bottom: 0.5em; font-size: 0.85em; opacity: 0.7">
+<p>
   Points: <strong>{total_points.toLocaleString()}</strong> | Bins: <strong>{bins}</strong>
   | Switches: <strong>{switch_count}</strong> | Avg load: <strong>{avg_load}ms</strong>
-</div>
+</p>
 
 <Histogram
   {series}
@@ -1109,6 +1115,14 @@ Use `ref_lines` to show statistical reference values like mean, median, standard
   legend={{ layout: `horizontal`, style: `justify-content: center` }}
   style="height: 400px"
 />
+
+<style>
+  p {
+    margin: 0 0 0.5em;
+    font-size: 0.85em;
+    opacity: 0.7;
+  }
+</style>
 ```
 
 ## Multiple Plots in 2×2 Grid Layout
@@ -1152,7 +1166,7 @@ Display multiple histograms in a responsive 2×2 grid:
   ]
 </script>
 
-<div class="grid">
+<div class="grid bleed-1400">
   {#each plots as { title, data, color, x_label, bins } (title)}
     <div class="cell">
       <h4>{title}</h4>
@@ -1172,7 +1186,7 @@ Display multiple histograms in a responsive 2×2 grid:
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1em;
-    margin: 2em 0;
+    margin-block: 2em; /* margin-inline belongs to bleed-1400 */
   }
   .cell {
     padding: 3pt;
@@ -1227,7 +1241,7 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
   let sync_mode = $state(`synced`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">
+<div class="demo-controls">
   <strong>Y2 Sync:</strong>
   {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
@@ -1305,7 +1319,7 @@ Plot titles, subtitles, and axis-title blocks use measured font metrics. Resize 
   let title_align = $state<`start` | `middle` | `end`>(`start`)
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em 2em; align-items: center">
+<div class="demo-controls">
   <label
     >Width: {plot_width}px
     <input type="range" bind:value={plot_width} min="300" max="900" step="20" /></label

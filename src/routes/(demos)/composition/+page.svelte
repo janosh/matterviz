@@ -17,6 +17,13 @@
   let patterns: ElementPatterns = $derived(
     use_patterns ? { Fe: `/`, O: { shape: `dots`, size: 6 }, P: { shape: `x`, size: 6 } } : {},
   )
+  const chart_props = $derived({
+    composition,
+    size: chart_size,
+    show_labels,
+    show_amounts,
+    patterns,
+  })
 </script>
 
 <h1 id="chemical-composition">Chemical Composition</h1>
@@ -42,18 +49,15 @@
   >
 </div>
 
-<LazyDemo label="Chart Controls" height="500px">
-  {@const chart_props = { composition, size: chart_size, show_labels, show_amounts, patterns }}
-  <div class="chart-row">
-    <BarChart {...chart_props} {bar_height} {show_percentages} />
-    <PieChart
-      {...chart_props}
-      inner_radius={(inner_radius * chart_size) / 2}
-      {show_percentages}
-    />
-    <BubbleChart {...chart_props} />
-  </div>
-</LazyDemo>
+<div class="chart-row">
+  <BarChart {...chart_props} {bar_height} {show_percentages} />
+  <PieChart
+    {...chart_props}
+    inner_radius={(inner_radius * chart_size) / 2}
+    {show_percentages}
+  />
+  <BubbleChart {...chart_props} />
+</div>
 
 <h2 id="dynamic-user-input">Dynamic User Input</h2>
 <LazyDemo label="Dynamic composition input" height="300px">

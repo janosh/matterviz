@@ -497,7 +497,7 @@
   </div>
 </section>
 
-<p style="margin: 2em auto; text-align: center">
+<p class="demo-note">
   Band dispersions were recomputed with phonopy from
   <a href="https://doi.org/10.48505/nims.4197">PhononDB (NIMS, PBEsol, CC BY 4.0)</a>
   force constants and Born charges; MgB2 from the

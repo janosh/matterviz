@@ -20,12 +20,10 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
   ] as const
 </script>
 
-<div style="display: grid; gap: 12pt">
+<div class="sizes">
   {#each sizes as size (size)}
-    <div style="display: flex; flex-wrap: wrap; gap: 8pt; align-items: center">
-      <span style="width: 30px; font-size: 0.75em; opacity: 0.5; text-transform: uppercase"
-        >{size}</span
-      >
+    <div>
+      <small>{size}</small>
       {#each tags as tag (tag.value)}
         <InfoTag label={tag.label} value={tag.value} variant={tag.variant} {size}>
           {#if tag.icon}
@@ -37,9 +35,28 @@ Five semantic variants (default, success, warning, error, info) × three sizes (
   {/each}
 </div>
 
-<p style="margin-top: 1em; font-size: 0.8em; opacity: 0.6">
+<p style="font-size: 0.8em; opacity: 0.6">
   Click any tag to copy its value. Icons via emoji (⚠️ ℹ️) or Icon component slot.
 </p>
+
+<style>
+  .sizes {
+    display: grid;
+    gap: 12pt;
+    > div {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8pt;
+      align-items: center;
+    }
+    small {
+      width: 30px;
+      font-size: 0.75em;
+      opacity: 0.5;
+      text-transform: uppercase;
+    }
+  }
+</style>
 ```
 
 ## Interactive Features
@@ -60,12 +77,12 @@ Removable tags, custom click handlers, and custom copy values:
   let disabled = $state(false)
 </script>
 
-<label style="display: flex; gap: 0.5em; margin-bottom: 1em; font-size: 0.9em">
+<label style="font-size: 0.9em">
   <input type="checkbox" bind:checked={disabled} /> Disabled
 </label>
 
-<div style="display: flex; flex-wrap: wrap; gap: 8pt; margin-bottom: 1em">
-  <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Filters:</strong>
+<div class="tag-row">
+  <strong>Filters:</strong>
   {#each filters as { id: filter_id, ...filter } (filter_id)}
     <InfoTag
       {...filter}
@@ -74,7 +91,7 @@ Removable tags, custom click handlers, and custom copy values:
       {disabled}
     />
   {:else}
-    <span style="opacity: 0.5; font-size: 0.9em">No filters</span>
+    <span>No filters</span>
   {/each}
   {#if filters.length < 3}
     <button
@@ -86,10 +103,8 @@ Removable tags, custom click handlers, and custom copy values:
   {/if}
 </div>
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 8pt; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2)"
->
-  <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Clickable:</strong>
+<div class="tag-row">
+  <strong>Clickable:</strong>
   {#each [`LiFePO4`, `LiCoO2`, `Fe2O3`] as mat (mat)}
     <InfoTag
       label="Material:"
@@ -98,15 +113,11 @@ Removable tags, custom click handlers, and custom copy values:
       variant={clicked === mat ? `success` : `default`}
     />
   {/each}
-  {#if clicked}<span style="font-size: 0.85em; opacity: 0.7; align-self: center"
-      >→ Selected: {clicked}</span
-    >{/if}
+  {#if clicked}<span>→ Selected: {clicked}</span>{/if}
 </div>
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 8pt; padding-top: 1em; border-top: 1px solid rgba(128, 128, 128, 0.2); margin-top: 1em"
->
-  <strong style="font-size: 0.85em; opacity: 0.7; align-self: center">Custom copy:</strong>
+<div class="tag-row">
+  <strong>Custom copy:</strong>
   <InfoTag
     label="ID:"
     value="mp-12345"
@@ -121,6 +132,24 @@ Removable tags, custom click handlers, and custom copy values:
     title="Click to copy DOI URL"
   />
 </div>
+
+<style>
+  .tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8pt;
+    margin-top: 1em;
+    & + .tag-row {
+      padding-top: 1em;
+      border-top: 1px solid rgba(128, 128, 128, 0.2);
+    }
+    > :is(strong, span) {
+      font-size: 0.85em;
+      opacity: 0.7;
+      align-self: center;
+    }
+  }
+</style>
 ```
 
 ## Subscripts & Superscripts
@@ -132,7 +161,7 @@ Both `label` and `value` support HTML via `{@html}`:
   import { InfoTag } from 'matterviz'
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 8pt">
+<div class="demo-controls">
   <InfoTag label="E<sub>g</sub>:" value="1.12 eV" />
   <InfoTag label="E<sub>hull</sub>:" value="0.02 eV" variant="warning" />
   <InfoTag label="Fe<sup>2+</sup>:" value="0.65 Å" variant="success" />
@@ -182,36 +211,54 @@ Combine tags with icons to display material properties with dynamic styling:
     ehull <= 0 ? CheckCircle : ehull <= 0.05 ? Alert : XCircle
 </script>
 
-<div
-  style="display: grid; gap: 1em; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))"
->
+<div class="cards">
   {#each materials as mat (mat.mp_id)}
-    <div
-      style="padding: 12pt; border: 1px solid rgba(128, 128, 128, 0.15); border-radius: 10px; background: rgba(255, 255, 255, 0.02)"
-    >
-      <h3 style="margin: 0 0 10pt; font-size: 1.15em; font-weight: 600">{mat.formula}</h3>
-      <div style="display: flex; flex-wrap: wrap; gap: 6pt">
-        <InfoTag label="E<sub>g</sub>:" value="{mat.bandgap} eV" size="sm" />
-        <InfoTag label="SG:" value={mat.spacegroup} size="sm" variant="info" />
-        <InfoTag
-          label="E<sub>hull</sub>:"
-          value="{mat.ehull.toFixed(3)} eV"
-          size="sm"
-          variant={stability_variant(mat.ehull)}
-        >
-          <Icon
-            icon={stability_icon(mat.ehull)}
-            style="width: 1em; height: 1em; margin-left: 2pt"
-          />
-        </InfoTag>
-        <InfoTag
-          label="ID:"
-          value={mat.mp_id}
-          size="sm"
-          copy_value="https://materialsproject.org/materials/{mat.mp_id}"
+    <div>
+      <h3>{mat.formula}</h3>
+      <InfoTag label="E<sub>g</sub>:" value="{mat.bandgap} eV" size="sm" />
+      <InfoTag label="SG:" value={mat.spacegroup} size="sm" variant="info" />
+      <InfoTag
+        label="E<sub>hull</sub>:"
+        value="{mat.ehull.toFixed(3)} eV"
+        size="sm"
+        variant={stability_variant(mat.ehull)}
+      >
+        <Icon
+          icon={stability_icon(mat.ehull)}
+          style="width: 1em; height: 1em; margin-left: 2pt"
         />
-      </div>
+      </InfoTag>
+      <InfoTag
+        label="ID:"
+        value={mat.mp_id}
+        size="sm"
+        copy_value="https://materialsproject.org/materials/{mat.mp_id}"
+      />
     </div>
   {/each}
 </div>
+
+<style>
+  .cards {
+    display: grid;
+    gap: 1em;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    > div {
+      display: flex;
+      flex-wrap: wrap;
+      align-content: start;
+      gap: 6pt;
+      padding: 12pt;
+      border: 1px solid rgba(128, 128, 128, 0.15);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    h3 {
+      flex-basis: 100%;
+      margin: 0 0 4pt;
+      font-size: 1.15em;
+      font-weight: 600;
+    }
+  }
+</style>
 ```

@@ -2,6 +2,9 @@
 
 `fit_eos(volumes, energies, kind)` fits the four parameters E<sub>0</sub>, V<sub>0</sub>, B<sub>0</sub>, B<sub>0</sub>' of a Birch–Murnaghan, Murnaghan or Vinet equation of state to an energy–volume scan (Levenberg–Marquardt, seeded from a parabola through the data). `EosPlot` does the fit and draws the data points and fitted curve(s) in one go; hover a curve for its fitted parameters. The forms and their parameterization are identical to `pymatgen.analysis.eos`, so fits agree with pymatgen to better than 1e-7 (relative) in E<sub>0</sub>/V<sub>0</sub> and 1e-5 in B<sub>0</sub>/B<sub>0</sub>'.
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Fitting a Scan
 
 A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). Toggle the forms with the buttons: near V<sub>0</sub> all three agree to second order, so the fitted parameters barely move, while the curves separate visibly once extrapolated:
@@ -50,6 +53,9 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 </style>
 ```
 
+</section>
+<section>
+
 ## Sparse or Noisy Data
 
 `fit_eos` needs at least four volumes that bracket the energy minimum (a scan entirely on one side of V<sub>0</sub> is refused, as in pymatgen); the ASE equation-of-state tutorial's five-point fcc Ag scan is enough. Its two central points share the lowest energy (to the 10 meV the tutorial quotes), so the minimum is located only by the curvature of their neighbours. Beyond the fit itself, `eos_pressure(kind, fit, volume)` gives P(V) = −dE/dV in eV/Å³ (× `EV_PER_A3_TO_GPA` for GPa):
@@ -86,3 +92,6 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
   </table>
 {/if}
 ```
+
+</section>
+</div>

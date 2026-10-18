@@ -33,8 +33,9 @@ test.describe(`Periodic Table`, () => {
     const n_lanthanide_actinide_placeholders = 2
     expect(await tiles.count()).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
-    await page.locator(`.auto-colorbar-grid`).scrollIntoViewIfNeeded()
-    const auto_tables = page.locator(`.auto-colorbar-grid .periodic-table`)
+    const auto_grid = page.locator(`.table-grid`).first()
+    await auto_grid.scrollIntoViewIfNeeded()
+    const auto_tables = auto_grid.locator(`.periodic-table`)
     await expect(auto_tables.locator(`.colorbar .label`)).toHaveText([
       `Atomic Mass`,
       `Density`,
@@ -79,6 +80,24 @@ test.describe(`Periodic Table`, () => {
         )
         .toEqual([true, true, true])
     }
+  })
+
+  // LazyDemo's "loaded" rule was scoped to its own children, so it never matched a demo's root
+  // and every loaded demo kept the 500px placeholder height, leaving gaps under short tables
+  test(`a loaded lazy demo shrinks to its content`, async ({ page }) => {
+    await page.goto(`/periodic-table`)
+    const demo = page.locator(`.table-grid .lazy-demo`).first()
+    // re-scroll until it loads: a scroll before hydration reaches no IntersectionObserver
+    await expect(async () => {
+      await demo.scrollIntoViewIfNeeded()
+      await expect(demo.locator(`.periodic-table`)).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20_000 })
+    const [demo_box, table_box] = await Promise.all([
+      require_bbox(demo, `lazy demo`),
+      require_bbox(demo.locator(`.periodic-table`), `periodic table`),
+    ])
+    expect(table_box.height).toBeLessThan(400)
+    expect(demo_box.height).toBeCloseTo(table_box.height, 0)
   })
 
   // span.value used to out-specify the multi-value rules, so long labels (H density
@@ -300,17 +319,19 @@ test(`periodic-table settings update rendered styles and reset each section`, as
     .click()
   await expect(table).toHaveCSS(`gap`, original_gap)
 
-  const automatic = controls.getByLabel(`Automatic font contrast`)
+  const automatic = controls.getByRole(`checkbox`, { name: `Automatic font contrast` })
   const font_color = controls.getByLabel(`Tile font color`, { exact: true })
-  await expect(font_color).toBeDisabled()
-  await automatic.uncheck()
+  // picking a color turns automatic contrast off; the swatch is never disabled
+  await expect(automatic).toBeChecked()
+  await expect(font_color).toBeEnabled()
   await font_color.fill(`#ff0000`)
+  await expect(automatic).not.toBeChecked()
   await expect(table.locator(`[data-element-symbol="H"]`)).toHaveCSS(`color`, `rgb(255, 0, 0)`)
   await controls
     .getByRole(`button`, { name: `Reset element tiles to defaults`, exact: true })
     .click()
   await expect(automatic).toBeChecked()
-  await expect(font_color).toBeDisabled()
+  await expect(font_color).toHaveValue(`#ffffff`)
 
   const alignment = controls.locator(`[data-key="tooltip_text_align"] select`)
   await alignment.selectOption(`left`)

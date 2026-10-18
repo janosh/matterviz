@@ -2,6 +2,9 @@
 
 `Treemap` renders the same node trees, builders, and value semantics as [Sunburst](/plot/sunburst) as squarified rectangles.
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Basic Treemap
 
 Leaves carry `value`; cell areas are proportional to it and parents sum their leaves by default. Set `sort="none"` to preserve input order. Click a cell to zoom into it; the breadcrumb pathbar, <kbd>Escape</kbd> (one level) or a double-click on empty background (back to the root) zoom out, and arrow keys move focus between siblings (left/right), children (down) and parents (up).
@@ -39,6 +42,9 @@ Leaves carry `value`; cell areas are proportional to it and parents sum their le
 <Treemap {data} style="height: 420px" />
 ```
 
+</section>
+<section>
+
 ## Pattern fills
 
 Any node can carry a `pattern` to hatch or texture its cell on top of its color, e.g. to flag estimated, predicted or otherwise special entries. Patterns are per node and not inherited by children. Pass a shape name (`diagonal`, `dots`, `cross`, `waves`, `bricks`, `hexagons`, …), a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a full options object with `size`, `solidity`, `angle`, `dash` (`solid`, `dashed` or `dotted`), `fg`/`bg` colors and `mode: 'replace'` to draw the texture in the node's color on a transparent background. The legend swatch picks up the same pattern.
@@ -71,6 +77,9 @@ Any node can carry a `pattern` to hatch or texture its cell on top of its color,
 
 <Treemap {data} style="height: 420px" />
 ```
+
+</section>
+</div>
 
 ## Multiline labels and fitting
 
@@ -105,6 +114,9 @@ Any node can carry a `pattern` to hatch or texture its cell on top of its color,
   style="height: 420px"
 />
 ```
+
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
 
 ## Chemical system treemap
 
@@ -141,6 +153,9 @@ Any node can carry a `pattern` to hatch or texture its cell on top of its color,
   style="height: 500px"
 />
 ```
+
+</section>
+<section>
 
 ## Spacegroup treemap
 
@@ -203,6 +218,9 @@ Any node can carry a `pattern` to hatch or texture its cell on top of its color,
   style="height: 500px"
 />
 ```
+
+</section>
+</div>
 
 ## Metric coloring and deep zoom
 

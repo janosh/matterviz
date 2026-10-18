@@ -1,5 +1,4 @@
 <script lang="ts">
-  import LazyDemo from './LazyDemo.svelte'
   import { sanitize_html } from '#lib/sanitize.js'
   import { to_error } from '#lib/utils.js'
   import type { CompositionType } from 'matterviz'
@@ -48,21 +47,25 @@
     [`Cantor Alloy`, { Co: 20, Cr: 20, Fe: 20, Mn: 20, Ni: 20 }],
     [`Refractory HEA`, { Ti: 20, Zr: 20, Nb: 20, Mo: 20, V: 20 }],
   ]
+  const interactive_charts = [
+    [`Pie Chart`, `pie`, `Vesta`, {}],
+    [`Bubble Chart`, `bubble`, `Jmol`, {}],
+    [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }],
+    [`Percentages`, `pie`, `Muted`, { show_percentages: true }],
+  ] as const
 </script>
 
 {#if show_grid}
   {#each [`pie`, `bubble`, `bar`] as const as mode (mode)}
     <h2 id="as-{mode}-chart">As {mode} chart</h2>
-    <div class="composition-grid">
+    <div class="composition-grid bleed-1400">
       {#each compositions as [name, composition] (name)}
         <div class="composition-card">
           <h3>{name}</h3>
           <div class="card-formula">
             {@html sanitize_html(get_electro_neg_formula(composition))}
           </div>
-          <LazyDemo label={name} height={mode === `bar` ? `30px` : `200px`}>
-            <Composition {composition} {mode} />
-          </LazyDemo>
+          <Composition {composition} {mode} />
         </div>
       {/each}
     </div>
@@ -83,7 +86,7 @@
     <p role="alert" style="text-align: center; color: var(--error-color)">{parsed.error}</p>
   {/if}
   <div class="composition-grid">
-    {#each [[`Pie Chart`, `pie`, `Vesta`], [`Bubble Chart`, `bubble`, `Jmol`], [`Donut Chart`, `pie`, `Pastel`, { inner_radius: 40 }], [`Percentages`, `pie`, `Muted`, { show_percentages: true }]] as const as [name, mode, color_scheme, props = { }] (name)}
+    {#each interactive_charts as [name, mode, color_scheme, props] (name)}
       <div class="composition-card">
         <h3>{name}</h3>
         <Composition composition={parsed.composition} {mode} {color_scheme} {...props} />

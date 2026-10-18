@@ -66,26 +66,24 @@
 
   <StructurePicker bind:selected={single_id} />
 
-  <LazyDemo label="Single Structure">
-    <section class="demo-2col">
-      {#if single_struct}
-        <BondAnglePlot
-          structures={single_struct}
-          strategy={single_strategy}
-          split_mode={single_split_mode}
-          {bin_width}
-          style="height: 500px"
-          on_sites_hover={(highlights) =>
-            (single_highlight = highlight_site_union(highlights?.[0]))}
-        />
-        <Structure
-          structure={single_struct}
-          bind:highlighted_sites={single_highlight}
-          scene_props={single_scene_props}
-          style="height: 500px"
-        />
-      {/if}
-    </section>
+  <LazyDemo label="Single Structure" class="demo-2col" style="margin-block: 2em">
+    {#if single_struct}
+      <BondAnglePlot
+        structures={single_struct}
+        strategy={single_strategy}
+        split_mode={single_split_mode}
+        {bin_width}
+        style="height: 500px"
+        on_sites_hover={(highlights) =>
+          (single_highlight = highlight_site_union(highlights?.[0]))}
+      />
+      <Structure
+        structure={single_struct}
+        bind:highlighted_sites={single_highlight}
+        scene_props={single_scene_props}
+        style="height: 500px"
+      />
+    {/if}
   </LazyDemo>
 
   <h2 id="compare-structures">Compare Structures</h2>
@@ -125,8 +123,5 @@
 <style>
   p {
     text-align: center;
-  }
-  .demo-2col {
-    margin: 2em 0;
   }
 </style>

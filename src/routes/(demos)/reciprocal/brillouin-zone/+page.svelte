@@ -107,10 +107,8 @@
   {/each}
 </div>
 
-<h2 id="try-your-own-structure" style="text-align: center; margin-block: 3em 1em">
-  Try Your Own Structure
-</h2>
-<p style="text-align: center; color: var(--text-color-muted)">
+<h2 id="try-your-own-structure" style="margin-block: 3em 1em">Try Your Own Structure</h2>
+<p class="demo-intro" style="color: var(--text-color-muted)">
   Pick a file or drag &amp; drop a structure (CIF, POSCAR, JSON) onto the viewer.
 </p>
 
@@ -133,7 +131,7 @@
   </LazyDemo>
 </div>
 
-<h2 id="higher-order-brillouin-zones" style="text-align: center; margin-block: 3em 1em">
+<h2 id="higher-order-brillouin-zones" style="margin-block: 3em 1em">
   Higher-Order Brillouin Zones
 </h2>
 
@@ -165,9 +163,6 @@
     grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
     gap: 2em;
     margin-block: 2em;
-  }
-  h1 {
-    text-align: center;
   }
   label {
     display: block;

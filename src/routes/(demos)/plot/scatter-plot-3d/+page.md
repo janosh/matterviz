@@ -81,6 +81,9 @@ Axis ranges accept independently automatic bounds: `{ range: [0, null] }` fixes 
 />
 ```
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Grid Surface
 
 Add a surface defined by a z = f(x, y) function. The surface is colored by the z-value by default:
@@ -134,6 +137,9 @@ Add a surface defined by a z = f(x, y) function. The surface is colored by the z
 />
 ```
 
+</section>
+<section>
+
 ## Parametric Surface
 
 A torus built from parametric equations:
@@ -176,6 +182,9 @@ A torus built from parametric equations:
   legend={null}
 />
 ```
+
+</section>
+</div>
 
 ## Lines with Markers
 
@@ -424,6 +433,9 @@ The component uses instanced rendering with per-instance colors for efficient ha
 />
 ```
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## 3D Reference Lines
 
 Add reference lines in 3D space to highlight axes, thresholds, or specific values. Lines can be parallel to any axis or defined as segments between points:
@@ -499,6 +511,9 @@ Add reference lines in 3D space to highlight axes, thresholds, or specific value
 />
 ```
 
+</section>
+<section>
+
 ## 3D Reference Planes
 
 Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, YZ), defined by a normal vector and point, or through three points:
@@ -561,6 +576,9 @@ Add reference planes in 3D space. Planes can be aligned to axis pairs (XY, XZ, Y
   style="height: 500px"
 />
 ```
+
+</section>
+</div>
 
 ## Combining Lines, Planes, and Surfaces
 
