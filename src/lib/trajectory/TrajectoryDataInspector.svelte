@@ -1,6 +1,7 @@
 <script lang="ts">
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
+  import { untrack } from 'svelte'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
@@ -103,9 +104,28 @@
       : `Loading frame properties: ${shown} of ${total} available so far.`
   })
 
-  let active_frame = $derived(
-    current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
-  )
+  // The frame on show, refreshed at most once per animation frame: a slider drag or fast
+  // playback switches frames faster than the screen repaints, and each switch re-renders every
+  // cell of the open table. The pending refresh reads the latest frame when it fires, so steady
+  // playback still shows each painted frame.
+  const read_shown = () => ({
+    step_idx: current_step_idx,
+    frame: current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
+  })
+  let shown = $state.raw(untrack(read_shown))
+  let refresh_id: number | undefined
+  $effect(() => {
+    read_shown()
+    refresh_id ??= requestAnimationFrame(() => {
+      refresh_id = undefined
+      shown = read_shown()
+    })
+  })
+  $effect(() => () => {
+    if (refresh_id !== undefined) cancelAnimationFrame(refresh_id)
+  })
+  let shown_step_idx = $derived(shown.step_idx)
+  let active_frame = $derived(shown.frame)
   // Read lazily: a numeric snapshot builds its Site records on first access
   let active_sites = $derived(active_frame?.structure.sites ?? [])
   let n_sites = $derived(site_count(active_frame?.structure))
@@ -143,8 +163,8 @@
     const { kind, entries } = frame_source
     const entry =
       kind === `full`
-        ? entries[current_step_idx]
-        : entries.find(({ frame_number }) => frame_number === current_step_idx)
+        ? entries[shown_step_idx]
+        : entries.find(({ frame_number }) => frame_number === shown_step_idx)
     const recorded =
       entry?.properties ??
       Object.fromEntries(
@@ -160,7 +180,7 @@
       const config = property_config(key)
       rows.push({ key, attribute: config?.label ?? label, value, unit: config?.unit ?? unit })
     }
-    add(`frame`, display_idx(current_step_idx), `Frame`)
+    add(`frame`, display_idx(shown_step_idx), `Frame`)
     add(`step`, active_frame?.step ?? entry?.step, `Step`)
     for (const [key, value] of Object.entries(recorded)) if (key !== `Step`) add(key, value)
     const structure = active_frame?.structure
@@ -220,7 +240,7 @@
           run,
           rows: frame_source.entries,
           rows_complete: frame_source.complete,
-          current_step_idx,
+          current_step_idx: shown_step_idx,
           current_frame: active_frame,
           summary: info_summary,
         })
@@ -249,12 +269,19 @@
       // Tried inline first: the room the tabs then reserve lets a content-fit sidebar widen for
       // the toolbar, which a sidebar measured with the toolbar in its own row never would. It
       // stays there unless that cuts a tab label short.
-      tabs.style.setProperty(`--toolbar-width`, `${toolbar?.offsetWidth ?? 0}px`)
-      tabs.dataset.toolbar = `inline`
+      // Writes only on change: every style write on this ancestor makes the tables below
+      // re-resolve their theme colors, and fit runs several times per frame switch.
+      const width = `${toolbar?.offsetWidth ?? 0}px`
+      if (tabs.style.getPropertyValue(`--toolbar-width`) !== width)
+        tabs.style.setProperty(`--toolbar-width`, width)
+      set_mode(`inline`)
       const inline =
         toolbar !== null &&
         [...list.children].every((tab) => tab.scrollWidth <= tab.clientWidth)
-      if (!inline) tabs.dataset.toolbar = `row`
+      if (!inline) set_mode(`row`)
+    }
+    const set_mode = (mode: `inline` | `row`): void => {
+      if (tabs.dataset.toolbar !== mode) tabs.dataset.toolbar = mode
     }
     sizes.observe(tabs)
     // relabelled tabs (growing counts) and the table a tab switch mounts
@@ -289,9 +316,10 @@ so a closed inspector builds no tables -->
           <HeatmapTable
             data={global_rows}
             columns={global_columns}
+            row_key="key"
             search={{ placeholder: `Filter attributes`, fuzzy: true }}
             export_formats={[`csv`, `json`]}
-            export_filename={`frame-${display_idx(current_step_idx)}-attributes`}
+            export_filename={`frame-${display_idx(shown_step_idx)}-attributes`}
             {...DATA_TABLE_PROPS}
             scroll_style={DOCKED_SCROLL_STYLE}
             virtual={false}

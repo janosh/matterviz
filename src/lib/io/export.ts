@@ -784,7 +784,19 @@ export function observe_canvas_presence(
   }
   const check = () => set(Boolean(wrapper.querySelector(`canvas`)))
   check()
-  const observer = new MutationObserver(check)
+  // Only an inserted or removed canvas (or subtree holding one) can change the answer: a
+  // viewer's tables and labels re-render on every frame, and querying its whole tree each
+  // time cost a trajectory's frame switches more than rendering them
+  const holds_canvas = (nodes: NodeList): boolean =>
+    [...nodes].some(
+      (node) =>
+        node instanceof Element &&
+        (node.localName === `canvas` || node.querySelector(`canvas`) !== null),
+    )
+  const observer = new MutationObserver((records) => {
+    if (records.some((rec) => holds_canvas(rec.addedNodes) || holds_canvas(rec.removedNodes)))
+      check()
+  })
   observer.observe(wrapper, { childList: true, subtree: true })
   return () => observer.disconnect()
 }

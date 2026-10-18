@@ -48,6 +48,11 @@ const mount_inspector = async (props: Record<string, unknown>) => {
   })
   await tick()
 }
+// The inspector follows the displayed frame once per animation frame
+const next_paint = async () => {
+  await new Promise((resolve) => requestAnimationFrame(resolve))
+  await tick()
+}
 const header_texts = () =>
   [...document.querySelectorAll(`thead th`)].map((header) => header.textContent?.trim() ?? ``)
 const body_rows = () => [
@@ -109,6 +114,39 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
   rows = attributes()
   expect(rows.Frame).toEqual([`3`, ``])
   expect(rows.Energy).toEqual([`-102`, `eV`])
+})
+
+// A slider drag or fast playback switches frames faster than the screen repaints: the open
+// table catches up once per animation frame, to the latest frame, rather than re-rendering every
+// cell per switch. Nor may a switch rewrite the tab row's inline style: each write there made the
+// tables below re-resolve their theme colors.
+test(`frame switches between repaints reach the global tab once, as the latest frame`, async () => {
+  const run = make_run(4)
+  const step = fromStore(writable(0))
+  mounted_inspector = mount(TrajectoryDataInspector, {
+    target: document.body,
+    props: {
+      run,
+      get current_step_idx() {
+        return step.current
+      },
+    },
+  })
+  await next_paint()
+  expect(attributes().Frame).toEqual([`1`, ``])
+  const style_writes: MutationRecord[] = []
+  const observer = new MutationObserver((records) => style_writes.push(...records))
+  observer.observe(doc_query(`.inspector-tabs`), { attributeFilter: [`style`] })
+  for (const step_idx of [1, 2, 3]) {
+    step.current = step_idx
+    await tick()
+  }
+  expect(attributes().Frame).toEqual([`1`, ``])
+  await next_paint()
+  expect(attributes().Frame).toEqual([`4`, ``])
+  expect(attributes().Energy).toEqual([`-103`, `eV`])
+  observer.disconnect()
+  expect(style_writes).toEqual([])
 })
 
 // Math.max(...norms) overflowed the call stack past ~125k atoms and took every tab down
@@ -240,7 +278,7 @@ test(`atom rows refresh coordinates and scalar values during fixed-topology play
   const before = cell_texts(body_rows()[0])
   expect(before).toContain(`10`)
   frames.set(make_frame(9))
-  await tick()
+  await next_paint()
   const after = cell_texts(body_rows()[0])
   expect(after).toContain(`90`)
   expect(after).not.toEqual(before)
