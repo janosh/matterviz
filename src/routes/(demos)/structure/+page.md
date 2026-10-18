@@ -57,7 +57,7 @@
     set_file_param(source_filename)
   }}
 >
-  <h3 class="demo-overlay-label" style="font-family: monospace">{display_filename}</h3>
+  <h3 class="demo-overlay-label">{display_filename}</h3>
 </Structure>
 
 <FilePicker files={all_files} show_category_filters style="margin-block: 2em" />

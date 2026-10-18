@@ -2139,7 +2139,6 @@
     text-overflow: ellipsis;
     display: inline-block;
     position: relative;
-    font-family: monospace;
     font-size: 0.9em;
     background: var(--code-bg, rgba(0, 0, 0, 0.1));
     @container trajectory (max-width: 1024px) {

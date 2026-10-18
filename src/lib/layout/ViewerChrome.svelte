@@ -119,7 +119,6 @@
     }
   }
   .filename {
-    font-family: monospace;
     font-size: 0.9em;
     background: var(--code-bg, rgba(0, 0, 0, 0.1));
     padding: 3pt 6pt;

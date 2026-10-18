@@ -238,7 +238,6 @@
     h3 {
       margin: 0 0 1ex;
       text-align: center;
-      font-family: monospace;
     }
   }
   p.note {

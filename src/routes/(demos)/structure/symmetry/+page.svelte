@@ -182,7 +182,7 @@
     }}
     style="height: 100%; min-height: 500px"
   >
-    <h2 class="demo-overlay-label" style="font-family: monospace">
+    <h2 class="demo-overlay-label">
       {display_filename}
     </h2>
   </Structure>
