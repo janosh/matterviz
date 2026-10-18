@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { goto_structure_test, IS_CI, open_structure_export_pane } from '../helpers'
+import { goto_structure_test, open_structure_export_pane, use_webgl_on_ci } from '../helpers'
 
 test.describe(`StructureExportPane Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `StructureExportPane tests timeout in CI`)
+    await use_webgl_on_ci(page)
     // always-visible controls: in hover mode the canvas intercepts the toggle's hit test
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })

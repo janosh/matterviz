@@ -1,15 +1,10 @@
 import { expect, type Locator, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
-import { IS_CI } from '../helpers'
 import { dom_click, goto_perf_page, open_info_and_controls, visible_count } from './utils'
 
 // Synthetic client-side data (no fixture download), a single hull and no rAF pulse loops:
 // the heavy demo page starves protocol calls under load
 test.describe(`ConvexHull2D on the performance page`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
-  })
-
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     const diagram = await goto_perf_page(page, `2d`, `count=100&click_selection=false`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
@@ -53,7 +48,6 @@ test.describe(`ConvexHull2D on the performance page`, () => {
 
 test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
     // Extend the default 30s test timeout: it would kill the 50s data-load wait below
     // before it can succeed when parallel workers load this heavy page simultaneously
     test.setTimeout(90_000)

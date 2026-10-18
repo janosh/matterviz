@@ -3,14 +3,14 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
   drag_canvas,
+  get_canvas_timeout,
+  require_bbox,
+  use_webgl_on_ci,
+  wait_for_3d_canvas,
+  wait_for_canvas_rendered,
   expect_canvas_changed,
   expect_canvas_changed_by,
   expect_gizmo_click_flies_camera,
-  get_canvas_timeout,
-  IS_CI,
-  require_bbox,
-  wait_for_3d_canvas,
-  wait_for_canvas_rendered,
 } from '../helpers'
 
 // One typed browser-test probe keeps the page and Playwright assertions in sync.
@@ -94,7 +94,7 @@ test(`touch controls keep every axis row visible`, async ({ browser }) => {
 test(`sized points and projections share meshes and resize their instance buffers`, async ({
   page,
 }) => {
-  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
+  await use_webgl_on_ci(page)
   await page.goto(`${TEST_URL}?points=64&varying_sizes&projections`)
   await page.waitForFunction(() => Boolean(window.scatter_probe))
   const read = () => page.evaluate(() => window.scatter_probe.instances())
@@ -135,7 +135,7 @@ test(`sized points and projections share meshes and resize their instance buffer
 test(`hover follows rotated markers and its tooltip never intercepts the pointer`, async ({
   page,
 }) => {
-  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
+  await use_webgl_on_ci(page)
   await page.goto(`${TEST_URL}?points=16&varying_sizes`)
   const container = page.locator(CONTAINER_SELECTOR)
   await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
@@ -208,7 +208,7 @@ test(`hover follows rotated markers and its tooltip never intercepts the pointer
 
 test.describe(`ScatterPlot3D`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
+    await use_webgl_on_ci(page)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
@@ -411,7 +411,7 @@ test.describe(`ScatterPlot3D Projections`, () => {
     pane.locator(`label`).filter({ hasText: label })
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
+    await use_webgl_on_ci(page)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 

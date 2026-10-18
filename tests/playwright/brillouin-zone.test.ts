@@ -1,11 +1,11 @@
 import { expect, type Page, test } from '@playwright/test'
 import {
+  require_bbox,
+  use_webgl_on_ci,
+  wait_for_3d_canvas,
   expect_centered,
   expect_centered_card,
   expect_inline_spinner,
-  IS_CI,
-  require_bbox,
-  wait_for_3d_canvas,
 } from './helpers'
 
 const BZ_SELECTOR = `#test-brillouin-zone`
@@ -52,7 +52,7 @@ test(`loading overlay stays centered and compact in wide and narrow viewers`, as
 
 test.describe(`BrillouinZone Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    test.skip(IS_CI, `BrillouinZone tests timeout in CI`)
+    await use_webgl_on_ci(page)
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
@@ -275,9 +275,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
 })
 
 test.describe(`BrillouinZone Event Handler Tests`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `BrillouinZone 3D tests timeout in CI due to WebGL software rendering`)
-  })
+  test.beforeEach(({ page }) => use_webgl_on_ci(page))
 
   test(`triggers on_file_load with source`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?source=/structures/mp-1.json`, {
@@ -298,7 +296,8 @@ test.describe(`BrillouinZone Event Handler Tests`, () => {
       timeout: 20000,
     })
     const viewer = page.locator(BZ_SELECTOR)
-    const alert = viewer.getByRole(`alert`)
+    // the card inside StatusMessage's alert live region (display: contents, so no box itself)
+    const alert = viewer.locator(`[role="alert"] > .status-message`)
     for (const width of [800, 320]) {
       await viewer.evaluate((element, size) => {
         element.style.setProperty(`--bz-width`, `${size}px`)

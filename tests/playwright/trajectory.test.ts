@@ -8,24 +8,17 @@ import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { readFile } from 'node:fs/promises'
 import {
+  collect_console_errors,
   drag_canvas,
   drop_file,
-  collect_console_errors,
+  require_bbox,
   expect_centered,
   expect_inline_spinner,
-  IS_CI,
-  require_bbox,
 } from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
 const HYDRATION_TIMEOUT = 30_000
-
-// Helper to conditionally skip entire describe blocks on CI
-const describe_local_only = (title: string, callback: () => void): void => {
-  if (IS_CI) test.describe.skip(title, callback)
-  else test.describe(title, callback)
-}
 
 test(`homepage keeps the compressed trajectory source URL after loading`, async ({ page }) => {
   const compressed_path = `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
@@ -1079,7 +1072,7 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  describe_local_only(`plot and data visualization`, () => {
+  test.describe(`plot and data visualization`, () => {
     // Skipped on CI because scatter plot rendering times out
 
     test(`legend toggle keeps a series hidden`, async () => {

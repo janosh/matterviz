@@ -16,6 +16,25 @@ const CI_CANVAS_TIMEOUT = 15_000
 // Centralized CI detection - use this instead of inline process.env.CI checks
 export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
 
+// CI's software WebGPU adapter hands out a device but composites no pixels under Xvfb, so
+// specs that read canvas pixels or hit-test the 3D scene ask for three's WebGL2 backend there:
+// with no adapter, WebGPURenderer falls back to WebGL2 by itself (over ANGLE's SwiftShader).
+// Call before the first page.goto(); the init script then applies to every navigation.
+export const use_webgl_on_ci = async (page: Page): Promise<void> => {
+  if (!IS_CI) return
+  await page.addInitScript(() => {
+    if (`gpu` in navigator)
+      Object.defineProperty(navigator.gpu, `requestAdapter`, { value: async () => null })
+  })
+}
+
+// File-level hook for single tests in suites that navigate in their own beforeEach: tests
+// tagged @webgl get use_webgl_on_ci first, since outer hooks run before inner ones
+export const webgl_on_ci_for_tagged = (): void =>
+  base.beforeEach(async ({ page }, test_info) => {
+    if (test_info.tags.includes(`@webgl`)) await use_webgl_on_ci(page)
+  })
+
 const is_mac = process.platform === `darwin`
 // KeyboardEvent init flag and Playwright key name for the platform's primary modifier
 export const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
@@ -771,9 +790,6 @@ export async function expect_gizmo_click_flies_camera(
   options: Parameters<typeof sweep_gizmo_handles>[1] = {},
 ): Promise<void> {
   const before = await sweep_gizmo_handles(canvas, options)
-  // Nothing to click where the scene never composites: CI's software WebGPU hands out an
-  // adapter but paints no pixels, so the sweep comes up empty however healthy the gizmo is.
-  if (before.length === 0 && IS_CI) return
   expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
 
   await canvas.page().mouse.click(before[0].x, before[0].y)

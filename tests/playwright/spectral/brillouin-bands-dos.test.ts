@@ -2,15 +2,15 @@ import { expect, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
   drag_plot_area,
+  get_chart_svg,
+  measure_plot_area,
+  numeric_y_ticks,
+  reset_plot_area,
+  use_webgl_on_ci,
   expect_canvas_changed,
   expect_combined_fullscreen,
   expect_same_clip_rows,
   expect_synced_y_ticks,
-  get_chart_svg,
-  IS_CI,
-  measure_plot_area,
-  numeric_y_ticks,
-  reset_plot_area,
 } from '../helpers'
 
 const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
@@ -42,7 +42,7 @@ test.describe(`BandsAndDos with Brillouin zone`, { lock: `brillouin-3d` }, () =>
   test.setTimeout(120_000)
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `3D canvas tests are flaky in CI`)
+    await use_webgl_on_ci(page)
     await page.goto(`/test/brillouin-bands-dos`, { waitUntil: `networkidle` })
     await expect(page.locator(default_bz_canvas_selector).first()).toBeVisible({
       timeout: 20000,

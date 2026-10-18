@@ -1,10 +1,9 @@
 import { expect, type Locator, test } from '@playwright/test'
-import { IS_CI, require_bbox } from '../helpers'
+import { require_bbox } from '../helpers'
 
 // The demo page has synthetic G(T) data in the "Temperature-Dependent Free Energies" section
 test.describe(`Temperature-dependent free energies`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Temperature slider tests timeout in CI`)
     await page.goto(`/convex-hull#temperature-dependent-free-energies`, {
       waitUntil: `networkidle`,
     })

@@ -3,17 +3,17 @@ import {
   canvas_box,
   collect_console_errors,
   drag_canvas,
-  enter_edit_atoms_mode,
-  expect_canvas_changed,
-  expect_canvas_changed_by,
   get_canvas_timeout,
   goto_structure_test,
-  IS_CI,
-  primary_modifier_key,
+  enter_edit_atoms_mode,
   rendered_instance_counts,
+  primary_modifier_key,
   set_scene_props,
   set_structure,
   structure_canvas,
+  use_webgl_on_ci,
+  expect_canvas_changed,
+  expect_canvas_changed_by,
 } from '../helpers'
 
 // Screenshot the canvas and assert it rendered non-trivial pixel data.
@@ -147,7 +147,7 @@ test(`large atom mesh keeps drawing across zoom detail transitions @source`, asy
 
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `3D scene tests are flaky in CI`)
+    await use_webgl_on_ci(page)
     await goto_structure_test(page)
   })
 
@@ -453,7 +453,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
 test.describe(`Edit Atoms Scene`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Edit atoms scene tests require WebGL, skip in CI`)
+    await use_webgl_on_ci(page)
     await goto_structure_test(page)
     await enter_edit_atoms_mode(page)
   })

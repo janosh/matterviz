@@ -7,26 +7,30 @@ import {
   dispatch_cancelable_keydown,
   drag_canvas,
   drop_file,
+  get_canvas_timeout,
+  goto_structure_test,
+  IS_CI,
   enter_edit_atoms_mode,
+  opacity_of,
+  open_structure_control_pane,
+  open_structure_export_pane,
+  require_bbox,
+  primary_modifier,
+  primary_modifier_key,
+  select_view_layout as select_structure_layout,
+  set_scene_props,
+  structure_canvas,
+  sweep_gizmo_handles,
+  use_webgl_on_ci,
+  webgl_on_ci_for_tagged,
   expect_canvas_changed,
   expect_canvas_changed_by,
   expect_centered,
   expect_centered_card,
   expect_inline_spinner,
-  get_canvas_timeout,
-  goto_structure_test,
-  IS_CI,
-  open_structure_control_pane,
-  open_structure_export_pane,
-  opacity_of,
-  primary_modifier,
-  primary_modifier_key,
-  require_bbox,
-  select_view_layout as select_structure_layout,
-  set_scene_props,
-  structure_canvas,
-  sweep_gizmo_handles,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 const section_body = (pane: Locator, title: string): Locator =>
   pane.getByRole(`region`, { name: title, exact: true })
@@ -451,8 +455,7 @@ test.describe(`Structure Component Tests`, () => {
     expect(perspective_fit_errors).toEqual([])
   })
 
-  test(`clicking a gizmo handle flies the camera`, async ({ page }) => {
-    test.skip(IS_CI, `SwiftShader lacks reliable gizmo hit testing`)
+  test(`clicking a gizmo handle flies the camera`, { tag: `@webgl` }, async ({ page }) => {
     // the legend needs this much room, and its mode toggle is our viewer-active signal
     await page.setViewportSize({ width: 1400, height: 1200 })
     const canvas = structure_canvas(page)
@@ -703,7 +706,6 @@ test.describe(`Structure Component Tests`, () => {
 
 test.describe(`File Drop Functionality Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Synthetic file drop events unreliable in headless CI`)
     await goto_structure_test(page)
   })
 
@@ -909,23 +911,25 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(await require_bbox(canvas)).toEqual(await require_bbox(viewer))
   })
 
-  test(`camera movement emits distinct on_camera_move events`, async ({ page }) => {
-    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-    await clear_events(page)
-    await drag_camera(page)
-    await wait_for_camera_move(page)
-    const camera_moves = await events_named(page, `on_camera_move`)
-    expect(camera_moves.length).toBeGreaterThan(1)
-    for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
-      expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
-    }
-  })
+  test(
+    `camera movement emits distinct on_camera_move events`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      await clear_events(page)
+      await drag_camera(page)
+      await wait_for_camera_move(page)
+      const camera_moves = await events_named(page, `on_camera_move`)
+      expect(camera_moves.length).toBeGreaterThan(1)
+      for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
+        expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
+      }
+    },
+  )
 
   // Nothing dollies a perspective camera's zoom, so it has none to report. The multi-view
   // grid makes this reachable: its primary pane — the one wired to on_camera_move — is the
   // perspective view, and a payload carrying `camera_zoom: undefined` would claim otherwise.
-  test(`perspective camera moves omit zoom`, async ({ page }) => {
-    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+  test(`perspective camera moves omit zoom`, { tag: `@webgl` }, async ({ page }) => {
     await set_scene_props(page, { camera_projection: `perspective` })
     await clear_events(page)
     await drag_camera(page)
@@ -933,54 +937,59 @@ test.describe(`Structure Event Handler Tests`, () => {
     expect(move.data).not.toHaveProperty(`camera_zoom`)
   })
 
-  test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
-    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-    // Move the camera so camera_has_moved flips true and the reset button appears
-    await clear_events(page)
-    const initial_box = await drag_camera(page)
-    const { camera_target: target_before_reset } = await wait_for_camera_move(page)
-    await clear_events(page)
-    await open_structure_control_pane(page)
-    const reset_btn = reset_camera_button(page)
-    await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
-    await reset_btn.click()
-    const reset_event = await wait_for_event(page, `on_camera_reset`, [
-      `structure`,
-      `camera_target`,
-      `camera_zoom`,
-    ])
-    const { camera_target: reset_target, camera_zoom: reset_zoom } = reset_event.data as {
-      camera_target: number[]
-      camera_zoom: number
-    }
-    expect(reset_target).toEqual(target_before_reset.map((coord) => expect.closeTo(coord, 12)))
+  test(
+    `should trigger on_camera_reset event when camera is reset`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      // Move the camera so camera_has_moved flips true and the reset button appears
+      await clear_events(page)
+      const initial_box = await drag_camera(page)
+      const { camera_target: target_before_reset } = await wait_for_camera_move(page)
+      await clear_events(page)
+      await open_structure_control_pane(page)
+      const reset_btn = reset_camera_button(page)
+      await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
+      await reset_btn.click()
+      const reset_event = await wait_for_event(page, `on_camera_reset`, [
+        `structure`,
+        `camera_target`,
+        `camera_zoom`,
+      ])
+      const { camera_target: reset_target, camera_zoom: reset_zoom } = reset_event.data as {
+        camera_target: number[]
+        camera_zoom: number
+      }
+      expect(reset_target).toEqual(
+        target_before_reset.map((coord) => expect.closeTo(coord, 12)),
+      )
 
-    await set_viewer_size(
-      page.locator(`#test-structure`),
-      Math.round(initial_box.width * 0.65),
-      initial_box.height,
-    )
-    const resized_box = await canvas_box(structure_canvas(page))
-    await clear_events(page)
-    // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
-    // viewer's right side and covers the middle, where the scroll would go to the pane.
-    await page.mouse.move(
-      resized_box.x + resized_box.width * 0.15,
-      resized_box.y + resized_box.height / 2,
-    )
-    await page.mouse.wheel(0, -120)
-    await wait_for_camera_move(page)
-    await clear_events(page)
-    await reset_btn.click()
-    const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
-    const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
-    // the reset re-fits to the narrower viewer, dropping the wheel zoom-in: the structure's
-    // width and height each fit their own edge, so only the width shrinking can tighten the
-    // zoom, by at most the width ratio
-    const width_ratio = resized_box.width / initial_box.width
-    expect(resized_zoom / reset_zoom).toBeGreaterThanOrEqual(width_ratio - 0.01)
-    expect(resized_zoom / reset_zoom).toBeLessThanOrEqual(1.01)
-  })
+      await set_viewer_size(
+        page.locator(`#test-structure`),
+        Math.round(initial_box.width * 0.65),
+        initial_box.height,
+      )
+      const resized_box = await canvas_box(structure_canvas(page))
+      await clear_events(page)
+      // Wheel over the canvas's left edge, not its center: the open pane is anchored to the
+      // viewer's right side and covers the middle, where the scroll would go to the pane.
+      await page.mouse.move(
+        resized_box.x + resized_box.width * 0.15,
+        resized_box.y + resized_box.height / 2,
+      )
+      await page.mouse.wheel(0, -120)
+      await wait_for_camera_move(page)
+      await clear_events(page)
+      await reset_btn.click()
+      const resized_reset = await wait_for_event(page, `on_camera_reset`, [`camera_zoom`])
+      const { camera_zoom: resized_zoom } = resized_reset.data as { camera_zoom: number }
+      // the reset re-fits to the narrower viewer, dropping the wheel zoom-in: the structure's
+      // width and height each fit their own edge, so only the width shrinking can tighten the
+      // zoom, by at most the width ratio
+      const width_ratio = resized_box.width / initial_box.width
+      expect(resized_zoom / reset_zoom).toBeGreaterThanOrEqual(width_ratio - 0.01)
+      expect(resized_zoom / reset_zoom).toBeLessThanOrEqual(1.01)
+    },
+  )
 
   test(`click without camera movement does not report a move`, async ({ page }) => {
     const canvas = structure_canvas(page)
@@ -1037,22 +1046,25 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(reset_camera_button(page)).toBeVisible({ timeout: get_canvas_timeout() })
   })
 
-  test(`pressing r resets the camera; Shift+R does not`, async ({ page }) => {
-    test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
-    const box = await drag_camera(page)
-    await clear_events(page)
-    // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
-    // hover()'s actionability check trips on the overlays the drag leaves behind
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.keyboard.press(`Shift+R`)
-    expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
-    await page.keyboard.press(`r`)
-    await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
-      `box-shadow`,
-      /0px 0px 0px 1px$/,
-    )
-    await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
-  })
+  test(
+    `pressing r resets the camera; Shift+R does not`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const box = await drag_camera(page)
+      await clear_events(page)
+      // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
+      // hover()'s actionability check trips on the overlays the drag leaves behind
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.keyboard.press(`Shift+R`)
+      expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
+      await page.keyboard.press(`r`)
+      await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
+        `box-shadow`,
+        /0px 0px 0px 1px$/,
+      )
+      await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
+    },
+  )
 })
 
 test.describe(`Element Visibility Toggle`, () => {
@@ -1148,7 +1160,7 @@ test.describe(`Element Visibility Toggle`, () => {
 
 test.describe(`Edit Atoms Mode`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Edit atoms tests require WebGL, skip in CI`)
+    await use_webgl_on_ci(page)
     await goto_structure_test(page, always_controls_url)
   })
 
@@ -1246,79 +1258,78 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     await expect(structure_div).toHaveClass(/multi-view/)
   })
 
-  // The grid toggle test below drives interactions that only settle once the panes have
-  // painted. On CI's software WebGPU — an adapter that hands out a device but composites
-  // nothing — the layout never finishes switching back, while every structural assertion
-  // around it passes. Gated on IS_CI rather than a pixel probe because the byte-size heuristic
-  // tried earlier reported a blank 800x500 canvas as painted.
-  const GRID_NEEDS_PIXELS = `grid interactions need a composited frame, unavailable in CI`
+  test(
+    `toggle splits canvas into 4 viewports and back`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      // each sweep probe costs a frame, and a frame here draws all 4 panes (~1 min under load)
+      test.setTimeout(IS_CI ? 180_000 : 120_000)
+      const structure_div = page.locator(`#test-structure`)
+      const cells = structure_div.locator(`.viewport-cell`)
+      const multi_stage = structure_div.locator(`.viewport-stage.multi`)
 
-  test(`toggle splits canvas into 4 viewports and back`, async ({ page }) => {
-    test.skip(IS_CI, GRID_NEEDS_PIXELS)
-    // each sweep probe costs a frame, and a frame here draws all 4 panes (~1 min under load)
-    test.setTimeout(IS_CI ? 180_000 : 120_000)
-    const structure_div = page.locator(`#test-structure`)
-    const cells = structure_div.locator(`.viewport-cell`)
-    const multi_stage = structure_div.locator(`.viewport-stage.multi`)
+      // Handle spread on screen, which scales with the gizmo box — the only way to measure a
+      // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
+      const gizmo_span = async (canvas: Locator): Promise<number> => {
+        await activate_viewer(page, canvas)
+        const hits = await sweep_gizmo_handles(canvas)
+        expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
+        const x_values = hits.map((hit) => hit.x)
+        const y_values = hits.map((hit) => hit.y)
+        return Math.max(
+          Math.max(...x_values) - Math.min(...x_values),
+          Math.max(...y_values) - Math.min(...y_values),
+        )
+      }
 
-    // Handle spread on screen, which scales with the gizmo box — the only way to measure a
-    // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
-    const gizmo_span = async (canvas: Locator): Promise<number> => {
-      await activate_viewer(page, canvas)
-      const hits = await sweep_gizmo_handles(canvas)
-      expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
-      const x_values = hits.map((hit) => hit.x)
-      const y_values = hits.map((hit) => hit.y)
-      return Math.max(
-        Math.max(...x_values) - Math.min(...x_values),
-        Math.max(...y_values) - Math.min(...y_values),
-      )
-    }
+      // Single view: one viewport cell, no grid
+      await expect(cells).toHaveCount(1)
+      await expect(multi_stage).toHaveCount(0)
+      const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
 
-    // Single view: one viewport cell, no grid
-    await expect(cells).toHaveCount(1)
-    await expect(multi_stage).toHaveCount(0)
-    const single_span = await gizmo_span(structure_div.locator(`canvas`).first())
+      await select_structure_layout(structure_div, `3D 2×2 grid`)
 
-    await select_structure_layout(structure_div, `3D 2×2 grid`)
+      // The primary perspective pane stays unlabeled so the global filename can use
+      // the top-left corner; the three fixed-direction panes retain their labels.
+      await expect(structure_div).toHaveClass(/multi-view/)
+      await expect(multi_stage).toBeVisible()
+      await expect(cells).toHaveCount(4)
+      await expect(multi_stage.locator(`canvas`)).toHaveCount(4, {
+        timeout: get_canvas_timeout(),
+      })
+      const labels = structure_div.locator(`.viewport-label`)
+      await expect(labels).toHaveCount(3)
+      await expect(labels.nth(0)).toHaveText(`Front`)
 
-    // The primary perspective pane stays unlabeled so the global filename can use
-    // the top-left corner; the three fixed-direction panes retain their labels.
-    await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(multi_stage).toBeVisible()
-    await expect(cells).toHaveCount(4)
-    await expect(multi_stage.locator(`canvas`)).toHaveCount(4, {
-      timeout: get_canvas_timeout(),
-    })
-    const labels = structure_div.locator(`.viewport-label`)
-    await expect(labels).toHaveCount(3)
-    await expect(labels.nth(0)).toHaveText(`Front`)
+      // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
+      const wrapper_box = await require_bbox(structure_div, `structure wrapper`)
+      for (let pane_idx = 0; pane_idx < 4; pane_idx++) {
+        await expect(async () => {
+          const { width } = await require_bbox(
+            cells.nth(pane_idx),
+            `viewport cell ${pane_idx}`,
+          )
+          expect(width).toBeLessThan(wrapper_box.width * 0.75)
+          expect(width).toBeGreaterThan(50)
+        }).toPass({ timeout: get_canvas_timeout() })
+      }
 
-    // Each pane occupies roughly a quarter of the viewer (clearly smaller than full width)
-    const wrapper_box = await require_bbox(structure_div, `structure wrapper`)
-    for (let pane_idx = 0; pane_idx < 4; pane_idx++) {
-      await expect(async () => {
-        const { width } = await require_bbox(cells.nth(pane_idx), `viewport cell ${pane_idx}`)
-        expect(width).toBeLessThan(wrapper_box.width * 0.75)
-        expect(width).toBeGreaterThan(50)
-      }).toPass({ timeout: get_canvas_timeout() })
-    }
+      // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
+      // responsive_gizmo_size (unit-tested) to what renders, now that the old `.responsive-gizmo`
+      // DOM box is gone with three-viewport-gizmo's HTML overlay.
+      const pane_span = await gizmo_span(multi_stage.locator(`canvas`).first())
+      expect(pane_span).toBeLessThan(single_span * 0.8)
 
-    // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
-    // responsive_gizmo_size (unit-tested) to what renders, now that the old `.responsive-gizmo`
-    // DOM box is gone with three-viewport-gizmo's HTML overlay.
-    const pane_span = await gizmo_span(multi_stage.locator(`canvas`).first())
-    expect(pane_span).toBeLessThan(single_span * 0.8)
-
-    // Toggle back to single view
-    await select_structure_layout(structure_div, `3D single view`)
-    await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(multi_stage).toHaveCount(0)
-    await expect(cells).toHaveCount(1)
-    await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
-      timeout: get_canvas_timeout(),
-    })
-  })
+      // Toggle back to single view
+      await select_structure_layout(structure_div, `3D single view`)
+      await expect(structure_div).not.toHaveClass(/multi-view/)
+      await expect(multi_stage).toHaveCount(0)
+      await expect(cells).toHaveCount(1)
+      await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
+        timeout: get_canvas_timeout(),
+      })
+    },
+  )
 
   // Picking the grid from the layout menu removed the open (top-layer) menu under the pointer,
   // and Chromium then never re-hovered the viewer, so its hover-only chrome stayed hidden

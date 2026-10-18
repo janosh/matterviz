@@ -1,11 +1,11 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
-  expect_canvas_changed_by,
   goto_structure_test,
-  IS_CI,
   open_structure_control_pane,
   set_structure,
   structure_canvas,
+  use_webgl_on_ci,
+  expect_canvas_changed_by,
 } from '../helpers'
 
 const SITE_PROPS = {
@@ -58,7 +58,7 @@ const labels_with = (pane: Locator, text: string) =>
 
 test.describe(`Site Vectors`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `3D vector tests require WebGL, skip in CI`)
+    await use_webgl_on_ci(page)
     await goto_structure_test(page)
   })
 

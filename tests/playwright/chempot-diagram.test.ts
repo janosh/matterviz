@@ -1,6 +1,6 @@
 import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { expect_centered, IS_CI, require_bbox } from './helpers'
+import { require_bbox, use_webgl_on_ci, expect_centered } from './helpers'
 
 const TEST_URL = `/convex-hull/chempot-diagram`
 
@@ -136,7 +136,7 @@ const assert_pin_toggle_and_escape = async (
 }
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ChemPot interactions rely on WebGL-heavy rendering`)
+    await use_webgl_on_ci(page)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
     await expect(
       page.getByRole(`heading`, { name: `Chemical Potential Diagram` }),

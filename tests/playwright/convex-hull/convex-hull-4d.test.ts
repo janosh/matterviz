@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { IS_CI, require_bbox } from '../helpers'
+import { require_bbox, use_webgl_on_ci } from '../helpers'
 import {
   ensure_pane_visible,
   expect_face_color_modes,
@@ -40,7 +40,7 @@ const semi_transparent_pixels = (canvas: Locator) =>
 
 test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
+    await use_webgl_on_ci(page)
     await page.goto(`/convex-hull#quaternary-chemical-systems`, { waitUntil: `networkidle` })
     // the grid appears once data loads; a diagram canvas means it has also rendered
     await expect(page.locator(`.quaternary-grid`).first()).toBeVisible({ timeout: 50000 })
@@ -215,7 +215,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
 test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
+    await use_webgl_on_ci(page)
     const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
     await expect(diagram).toBeVisible({ timeout: 15000 })
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
@@ -234,7 +234,7 @@ test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
   })
 
   test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
+    await use_webgl_on_ci(page)
     const diagram = await goto_perf_page(page, `4d`, `count=20`)
     const info = await open_pane(diagram, `info`)
     expect(Number.isFinite(await visible_count(info, `hull-visible-unstable`))).toBe(true)

@@ -1,11 +1,11 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
-  expect_canvas_changed,
   goto_structure_test,
-  IS_CI,
   set_input_value,
   structure_canvas,
+  use_webgl_on_ci,
+  expect_canvas_changed,
 } from '../helpers'
 
 test.describe(`Atom Radius Controls`, () => {
@@ -22,7 +22,7 @@ test.describe(`Atom Radius Controls`, () => {
   }
 
   test.beforeEach(async ({ page: point_value }) => {
-    test.skip(IS_CI, `Atom radius controls need a WebGL canvas, flaky in headless CI`)
+    await use_webgl_on_ci(point_value)
     page = point_value
     await goto_structure_test(page)
     legend = page.locator(`#test-structure .atom-legend`)

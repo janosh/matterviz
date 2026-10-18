@@ -2,7 +2,6 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_center,
   canvas_screenshot,
-  expect_canvas_changed,
   get_canvas_timeout,
   IS_CI,
   open_settings_pane,
@@ -10,7 +9,11 @@ import {
   select_view_layout,
   set_input_value,
   wait_for_canvas_rendered,
+  webgl_on_ci_for_tagged,
+  expect_canvas_changed,
 } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 const ISO_URL = `/structure/isosurface?file=Si-CHGCAR.gz`
 
@@ -63,7 +66,8 @@ test.describe(`Isosurface page`, () => {
     await expect(neg_cb).not.toBeChecked()
   })
 
-  test.describe(`Volumetric slices`, () => {
+  // slices are read pixel by pixel, which CI's WebGPU never composites (see use_webgl_on_ci)
+  test.describe(`Volumetric slices`, { tag: `@webgl` }, () => {
     test(`split layout shows the 3D view beside the slice and marks its plane`, async ({
       page,
     }) => {
@@ -155,16 +159,7 @@ test.describe(`Isosurface page`, () => {
       await expect(page.getByTestId(`volume-slice`)).toBeVisible({ timeout: 15_000 })
     })
 
-    // Skipped on CI, where the slice canvas comes back the right size but fully transparent:
-    // the masking test saw every pixel at alpha 0, and the two canvas-diff tests polled an
-    // unchanging canvas for 15-30 s across retries. The pixels themselves are CPU-drawn 2D
-    // (VolumeSlice.svelte renders through getContext('2d'), which needs no compositor), so
-    // something upstream leaves the slice unpainted there — reproduced on no local run,
-    // including under CI=1 with the software adapter forced.
-    const SLICE_BLANK_ON_CI = `slice canvas paints nothing on CI runners, see comment above`
-
     test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
-      test.skip(IS_CI, SLICE_BLANK_ON_CI)
       test.setTimeout(IS_CI ? 90_000 : 45_000)
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
@@ -191,7 +186,6 @@ test.describe(`Isosurface page`, () => {
     })
 
     test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
-      test.skip(IS_CI, SLICE_BLANK_ON_CI)
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
       const input = page.getByRole(`textbox`, { name: `hkl` })
@@ -212,7 +206,6 @@ test.describe(`Isosurface page`, () => {
     })
 
     test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {
-      test.skip(IS_CI, SLICE_BLANK_ON_CI)
       await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
       const slice = await open_slice_view(page)
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)

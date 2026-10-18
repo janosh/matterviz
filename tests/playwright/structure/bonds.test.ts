@@ -7,19 +7,21 @@ import {
   decode_canvas_png,
   dispatch_cancelable_keydown,
   drag_canvas,
-  expect_canvas_changed,
-  expect_canvas_changed_by,
   goto_structure_test,
-  IS_CI,
-  primary_modifier,
-  primary_modifier_key,
   rendered_instance_counts,
   require_bbox,
+  primary_modifier,
+  primary_modifier_key,
   set_scene_props,
   set_structure,
   structure_canvas,
   wait_for_3d_canvas,
+  webgl_on_ci_for_tagged,
+  expect_canvas_changed,
+  expect_canvas_changed_by,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 const count_canvas_content_pixels = async (
   page: Page,
@@ -287,119 +289,120 @@ test.describe(`Bond component`, () => {
 
     // Dark Cs–Pb colors catch double sRGB conversion; a thick horizontal bond exposes its
     // gradient. Matching ends mean Bond.svelte lost its instance-color or cylinder-Y TSL varyings.
-    test(`bond color-space gradients and camera moves keep bonds rendered`, async ({
-      page,
-    }) => {
-      test.skip(IS_CI, `Headless WebGPU device loss leaves the canvas blank`)
-      await dispatch_structure(
-        page,
-        {
-          sites: [
-            make_site(`Cs`, [-1.2, 0, 0], [0, 0, 0]),
-            make_site(`Pb`, [1.2, 0, 0], [0, 0, 0]),
-          ],
-          properties: { bonds: bond_0_1(1) },
-        },
-        {
-          show_atoms: false,
-          bond_thickness: 0.45,
-          // Perspective: ortho zoom is sized for the page's default mp-1 cell and does not
-          // re-fit when this dimer replaces it, which would shrink the bond to a few pixels.
-          camera_projection: `perspective`,
-          ...front_camera,
-          show_bonds: `always`,
-          auto_rotate: 0,
-        },
-      )
-      const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-      const initial = await canvas.screenshot()
-      const decoded_initial = await decode_canvas_png(page, initial)
-      try {
-        const halves = await decoded_initial.evaluate(
-          ({ data, width, height, background }) => {
-            const is_bond_pixel = (red: number, green: number, blue: number) => {
-              const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
-              const background_delta = Math.max(
-                Math.abs(red - background[0]),
-                Math.abs(green - background[1]),
-                Math.abs(blue - background[2]),
-              )
-              return chroma > 15 || background_delta > 12
-            }
-            let min_x = width
-            let max_x = 0
-            const coord_y_0 = Math.floor(height * 0.35)
-            const coord_y_1 = Math.floor(height * 0.65)
-            for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
-              for (let coord_x = 0; coord_x < width; coord_x++) {
-                const idx = (coord_y * width + coord_x) * 4
-                if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
-                if (coord_x < min_x) min_x = coord_x
-                if (coord_x > max_x) max_x = coord_x
-              }
-            }
-            if (max_x - min_x < 40) {
-              throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
-            }
-            const mean_bond_rgb = (coord_x_0: number, coord_x_1: number) => {
-              let red_sum = 0
-              let green_sum = 0
-              let blue_sum = 0
-              let count = 0
-              for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
-                for (let coord_x = coord_x_0; coord_x < coord_x_1; coord_x++) {
-                  const idx = (coord_y * width + coord_x) * 4
-                  const red = data[idx]
-                  const green = data[idx + 1]
-                  const blue = data[idx + 2]
-                  if (!is_bond_pixel(red, green, blue)) continue
-                  red_sum += red
-                  green_sum += green
-                  blue_sum += blue
-                  count++
-                }
-              }
-              if (count < 50) {
-                throw new Error(
-                  `too few bond pixels in x=[${coord_x_0},${coord_x_1}): ${count}`,
-                )
-              }
-              return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
-            }
-            const span = max_x - min_x
-            return {
-              left: mean_bond_rgb(min_x, min_x + Math.floor(span * 0.3)),
-              right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
-            }
+    test(
+      `bond color-space gradients and camera moves keep bonds rendered`,
+      { tag: `@webgl` },
+      async ({ page }) => {
+        await dispatch_structure(
+          page,
+          {
+            sites: [
+              make_site(`Cs`, [-1.2, 0, 0], [0, 0, 0]),
+              make_site(`Pb`, [1.2, 0, 0], [0, 0, 0]),
+            ],
+            properties: { bonds: bond_0_1(1) },
+          },
+          {
+            show_atoms: false,
+            bond_thickness: 0.45,
+            // Perspective: ortho zoom is sized for the page's default mp-1 cell and does not
+            // re-fit when this dimer replaces it, which would shrink the bond to a few pixels.
+            camera_projection: `perspective`,
+            ...front_camera,
+            show_bonds: `always`,
+            auto_rotate: 0,
           },
         )
-        // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
-        const max_channel_diff = Math.max(
-          Math.abs(halves.right.r - halves.left.r),
-          Math.abs(halves.right.g - halves.left.g),
-          Math.abs(halves.right.b - halves.left.b),
-        )
-        expect(max_channel_diff, JSON.stringify(halves)).toBeGreaterThan(25)
-        const dimmer_endpoint_max = Math.min(
-          Math.max(halves.left.r, halves.left.g, halves.left.b),
-          Math.max(halves.right.r, halves.right.g, halves.right.b),
-        )
-        // Gradient survives double conversion; endpoint max was 124 fixed versus 52 buggy.
-        expect(dimmer_endpoint_max, JSON.stringify(halves)).toBeGreaterThan(80)
-      } finally {
-        await decoded_initial.dispose()
-      }
+        const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+        const initial = await canvas.screenshot()
+        const decoded_initial = await decode_canvas_png(page, initial)
+        try {
+          const halves = await decoded_initial.evaluate(
+            ({ data, width, height, background }) => {
+              const is_bond_pixel = (red: number, green: number, blue: number) => {
+                const chroma = Math.max(red, green, blue) - Math.min(red, green, blue)
+                const background_delta = Math.max(
+                  Math.abs(red - background[0]),
+                  Math.abs(green - background[1]),
+                  Math.abs(blue - background[2]),
+                )
+                return chroma > 15 || background_delta > 12
+              }
+              let min_x = width
+              let max_x = 0
+              const coord_y_0 = Math.floor(height * 0.35)
+              const coord_y_1 = Math.floor(height * 0.65)
+              for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
+                for (let coord_x = 0; coord_x < width; coord_x++) {
+                  const idx = (coord_y * width + coord_x) * 4
+                  if (!is_bond_pixel(data[idx], data[idx + 1], data[idx + 2])) continue
+                  if (coord_x < min_x) min_x = coord_x
+                  if (coord_x > max_x) max_x = coord_x
+                }
+              }
+              if (max_x - min_x < 40) {
+                throw new Error(`bond bbox too narrow: x=[${min_x},${max_x}]`)
+              }
+              const mean_bond_rgb = (coord_x_0: number, coord_x_1: number) => {
+                let red_sum = 0
+                let green_sum = 0
+                let blue_sum = 0
+                let count = 0
+                for (let coord_y = coord_y_0; coord_y < coord_y_1; coord_y++) {
+                  for (let coord_x = coord_x_0; coord_x < coord_x_1; coord_x++) {
+                    const idx = (coord_y * width + coord_x) * 4
+                    const red = data[idx]
+                    const green = data[idx + 1]
+                    const blue = data[idx + 2]
+                    if (!is_bond_pixel(red, green, blue)) continue
+                    red_sum += red
+                    green_sum += green
+                    blue_sum += blue
+                    count++
+                  }
+                }
+                if (count < 50) {
+                  throw new Error(
+                    `too few bond pixels in x=[${coord_x_0},${coord_x_1}): ${count}`,
+                  )
+                }
+                return { r: red_sum / count, g: green_sum / count, b: blue_sum / count, count }
+              }
+              const span = max_x - min_x
+              return {
+                left: mean_bond_rgb(min_x, min_x + Math.floor(span * 0.3)),
+                right: mean_bond_rgb(max_x - Math.floor(span * 0.3), max_x + 1),
+              }
+            },
+          )
+          // The projected orientation can mirror left/right, but a constant mid-mix makes them match.
+          const max_channel_diff = Math.max(
+            Math.abs(halves.right.r - halves.left.r),
+            Math.abs(halves.right.g - halves.left.g),
+            Math.abs(halves.right.b - halves.left.b),
+          )
+          expect(max_channel_diff, JSON.stringify(halves)).toBeGreaterThan(25)
+          const dimmer_endpoint_max = Math.min(
+            Math.max(halves.left.r, halves.left.g, halves.left.b),
+            Math.max(halves.right.r, halves.right.g, halves.right.b),
+          )
+          // Gradient survives double conversion; endpoint max was 124 fixed versus 52 buggy.
+          expect(dimmer_endpoint_max, JSON.stringify(halves)).toBeGreaterThan(80)
+        } finally {
+          await decoded_initial.dispose()
+        }
 
-      // One orbit + zoom: bonds must stay rendered after camera motion.
-      await drag_canvas(canvas, { dx: 100 })
-      await expect_canvas_changed(canvas, initial)
-      const after_camera = await expect_canvas_changed_by(canvas, async () => {
-        const { x: coord_x, y: coord_y } = await canvas_center(canvas)
-        await page.mouse.move(coord_x, coord_y)
-        await page.mouse.wheel(0, -200)
-      })
-      expect(await count_canvas_content_pixels(page, after_camera)).toBeGreaterThan(100)
-    })
+        // One orbit + zoom: bonds must stay rendered after camera motion.
+        await drag_canvas(canvas, { dx: 100 })
+        await expect_canvas_changed(canvas, initial)
+        const after_camera = await expect_canvas_changed_by(canvas, async () => {
+          const { x: coord_x, y: coord_y } = await canvas_center(canvas)
+          await page.mouse.move(coord_x, coord_y)
+          await page.mouse.wheel(0, -200)
+        })
+        expect(await count_canvas_content_pixels(page, after_camera)).toBeGreaterThan(100)
+      },
+    )
 
     test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
       await dispatch_two_atom_bond_structure(page, 1)
@@ -671,41 +674,43 @@ test.describe(`Bond component`, () => {
       await expect.poll(bond_instances).toBe(9)
     })
 
-    test(`manual override wins over perceived bond order`, async ({ page }) => {
-      test.skip(IS_CI, `Visual bonds test times out in CI`)
-      await dispatch_co2(page)
-      await expect_bonds(page, undefined)
-      // Re-assert the camera: setting a structure re-frames it on the new cell and drops the
-      // camera_target sent alongside, which would slide the bond off the canvas centre.
-      await set_scene_props(page, { auto_bond_order: true, ...front_camera })
+    test(
+      `manual override wins over perceived bond order`,
+      { tag: `@webgl` },
+      async ({ page }) => {
+        await dispatch_co2(page)
+        await expect_bonds(page, undefined)
+        // Re-assert the camera: setting a structure re-frames it on the new cell and drops the
+        // camera_target sent alongside, which would slide the bond off the canvas centre.
+        await set_scene_props(page, { auto_bond_order: true, ...front_camera })
 
-      await page.getByTestId(`btn-set-edit-bonds`).click()
+        await page.getByTestId(`btn-set-edit-bonds`).click()
 
-      // dispatch_co2 puts the C-O1 bond midpoint at the canvas centre, but the click only
-      // picks it once perception has rebuilt the bond meshes and the camera has settled
-      // there, and neither has an event to wait on. Retry the click until it lands.
-      const menu = page.locator(`#test-structure .bond-context-menu`)
-      await expect(async () => {
-        await click_canvas_center(page, `right`)
-        await expect(menu).toBeVisible({ timeout: 500 })
-      }).toPass({ timeout: 15_000 })
-      // the menu first reports the perceived double, so perception is driving the order
-      await expect(menu).toContainText(`Bond Order (2)`)
-      await menu.getByRole(`button`, { name: `Triple` }).click()
-      await expect(menu).toBeHidden()
-      await expect
-        .poll(() => get_structure_bonds(page))
-        .toContainEqual(expect.objectContaining({ order: 3 }))
+        // dispatch_co2 puts the C-O1 bond midpoint at the canvas centre, but the click only
+        // picks it once perception has rebuilt the bond meshes and the camera has settled
+        // there, and neither has an event to wait on. Retry the click until it lands.
+        const menu = page.locator(`#test-structure .bond-context-menu`)
+        await expect(async () => {
+          await click_canvas_center(page, `right`)
+          await expect(menu).toBeVisible({ timeout: 500 })
+        }).toPass({ timeout: 15_000 })
+        // the menu first reports the perceived double, so perception is driving the order
+        await expect(menu).toContainText(`Bond Order (2)`)
+        await menu.getByRole(`button`, { name: `Triple` }).click()
+        await expect(menu).toBeHidden()
+        await expect
+          .poll(() => get_structure_bonds(page))
+          .toContainEqual(expect.objectContaining({ order: 3 }))
 
-      await page.getByTestId(`btn-set-bond-delete`).click()
-      await click_canvas_center(page)
-      await expect_bonds(page, [])
-      await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
-      await expect_bonds(page, undefined)
-    })
+        await page.getByTestId(`btn-set-bond-delete`).click()
+        await click_canvas_center(page)
+        await expect_bonds(page, [])
+        await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+        await expect_bonds(page, undefined)
+      },
+    )
 
-    test(`site labels avoid adjacent bond directions`, async ({ page }) => {
-      test.skip(IS_CI, `Visual bonds test times out in CI`)
+    test(`site labels avoid adjacent bond directions`, { tag: `@webgl` }, async ({ page }) => {
       await dispatch_structure(
         page,
         {
