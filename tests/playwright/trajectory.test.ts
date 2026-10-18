@@ -931,7 +931,8 @@ test.describe(`Trajectory Component`, () => {
         await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
         await export_button.click()
         await expect(export_button).toBeEnabled()
-        await expect(pane.getByRole(`alert`)).toHaveCount(0)
+        // StatusMessage keeps its alert region mounted; no error message may sit in it
+        await expect(pane.locator(`[role="alert"] .status-message`)).toHaveCount(0)
         expect(downloads).toBe(1)
         const saved = await page.evaluate(async (container) => {
           const directory = await (
