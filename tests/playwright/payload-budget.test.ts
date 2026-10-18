@@ -132,10 +132,14 @@ for (const route of demo_routes) {
         })
         .toBe(true)
 
-    await page.goto(route)
+    // a route missing from the build would pass on its small 404 page
+    const response = await page.goto(route)
+    expect(response?.ok(), `${route} answered ${response?.status()}`).toBe(true)
     await network_quiet()
     await load_all_demos(page)
     await network_quiet()
+    // a demo whose import failed swaps its placeholder for this alert and downloads nothing
+    await expect(page.locator(`.lazy-demo > p[role="alert"]`)).toHaveCount(0)
 
     const finished = await Promise.all(responses)
     const total_mb = finished.reduce((sum, { bytes }) => sum + bytes, 0) / 1e6

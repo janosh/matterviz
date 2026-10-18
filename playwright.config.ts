@@ -12,7 +12,8 @@ export default {
   webServer: {
     command: `pnpm exec vp ${e2e_mode === `preview` ? `preview` : `dev`} --port 3005`,
     port: 3005,
-    reuseExistingServer: true,
+    // a dev server already on 3005 would answer a preview run and skew its payload budgets
+    reuseExistingServer: e2e_mode !== `preview`,
     timeout: 60_000,
   },
   use: {
