@@ -23,6 +23,8 @@
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import { summarize_run_info, trajectory_info_cards } from './TrajectoryInfoPane.svelte'
 
+  type InspectorTab = `global` | `frames` | `atoms` | `info`
+
   let {
     run,
     current_step_idx = 0,
@@ -32,6 +34,7 @@
     on_step_change,
     selected_atoms = $bindable(),
     hovered_atom = $bindable(null),
+    active_tab = $bindable(`global`),
   }: {
     run?: TrajectoryRun
     // Session-mirrored: run.properties is rune-free (see run.ts). Fallback for standalone mounts.
@@ -47,11 +50,10 @@
     // Source atom (0-based) of the atom row under the pointer, null once it leaves. Bound to the
     // viewer's hover, an atom hovered in 3D shades and scrolls to its row.
     hovered_atom?: number | null
+    // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, the
+    // displayed frame's per-atom rows, or the run's info cards
+    active_tab?: InspectorTab
   } = $props()
-
-  // The displayed frame's scalars (OVITO's global attributes), every frame's scalars, or the
-  // displayed frame's per-atom rows
-  let active_tab = $state<`global` | `frames` | `atoms` | `info`>(`global`)
 
   let total_frames = $derived(run?.frame_count ?? 0)
 

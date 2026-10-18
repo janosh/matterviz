@@ -838,6 +838,13 @@
   let inspector_shown = $derived(
     data_inspector_open && controls_config.visible(`data-inspector-pane`),
   )
+  // The inspector's Info tab replaces the info pane while it shows, so an `info` active_pane
+  // opens that tab. Derived from the boolean, so switching between other panes keeps the tab
+  // the user picked; a tab click writes it directly.
+  const info_requested = $derived(active_pane === `info`)
+  let inspector_tab = $derived<ComponentProps<typeof TrajectoryDataInspector>[`active_tab`]>(
+    info_requested ? `info` : `global`,
+  )
   const show_toggle = $derived(shows_fullscreen_toggle(fullscreen_toggle, controls_config))
   // Hiding the viewer's controls hides those of the structure and plot inside it too
   const nested_controls = <Prop>(prop: Prop): Prop | false =>
@@ -1951,6 +1958,7 @@
         <!-- Mirrored property rows, because a run is rune-free and its `properties.rows`
         cannot be tracked -->
         <TrajectoryDataInspector
+          bind:active_tab={inspector_tab}
           run={trajectory}
           property_rows={session.property_rows}
           properties_complete={session.properties_complete}

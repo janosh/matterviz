@@ -557,6 +557,27 @@ describe(`controls`, () => {
     },
   )
 
+  // The inspector's Info tab stands in for the info pane while it shows: an `info` active_pane
+  // opens that tab, and switching between other panes keeps whichever tab the user picked
+  test(`active_pane="info" opens the inspector's Info tab`, async () => {
+    const props = $state(default_props({ active_pane: `info` as Pane }))
+    mount_trajectory(props)
+    const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
+    const selected_tab = () =>
+      sidebar.querySelector(`[role="tab"][aria-selected="true"]`)?.getAttribute(`data-value`)
+    expect(selected_tab()).toBe(`info`)
+    props.active_pane = `export`
+    await tick()
+    query<HTMLButtonElement>(sidebar, `[role="tab"][data-value="atoms"]`).click()
+    await tick()
+    props.active_pane = `flight`
+    await tick()
+    expect(selected_tab()).toBe(`atoms`)
+    props.active_pane = `info`
+    await tick()
+    expect(selected_tab()).toBe(`info`)
+  })
+
   test(`the inspector links render-sampled atom rows to scene sites`, async () => {
     const structure_props = last_props<StructureProps>(structure_component)
     const sample = { render_sample: true, total_atoms: 12, source_atom_indices: [3, 9] }
