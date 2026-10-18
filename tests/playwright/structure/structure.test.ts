@@ -847,13 +847,17 @@ test.describe(`Structure Event Handler Tests`, () => {
     return { camera_target, camera_zoom }
   }
 
+  // Two segments, each held past the 200 ms active-move sync interval, so even a software
+  // renderer draws a frame mid-drag and the sync reports a pose before the final one
   const drag_camera = async (page: Page) => {
     const box = await canvas_box(structure_canvas(page))
-    const center_y = box.y + box.height / 2
-    await page.mouse.move(box.x + box.width / 2 - 80, center_y)
+    const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
+    await page.mouse.move(center_x - 80, center_y)
     await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2 + 80, center_y, { steps: 5 })
-    await page.waitForTimeout(250) // cross the 200 ms active-move sync interval
+    for (const end_x of [center_x, center_x + 80]) {
+      await page.mouse.move(end_x, center_y, { steps: 3 })
+      await page.waitForTimeout(300)
+    }
     await page.mouse.up()
     return box
   }
@@ -918,8 +922,11 @@ test.describe(`Structure Event Handler Tests`, () => {
       await clear_events(page)
       await drag_camera(page)
       await wait_for_camera_move(page)
+      // the final pose syncs once the controls settle, after the first event already landed
+      await expect
+        .poll(async () => (await events_named(page, `on_camera_move`)).length)
+        .toBeGreaterThan(1)
       const camera_moves = await events_named(page, `on_camera_move`)
-      expect(camera_moves.length).toBeGreaterThan(1)
       for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
         expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
       }
