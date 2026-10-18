@@ -189,6 +189,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test(`editor updates the component name in the rendered diagram`, async ({ page }) => {
     const { diagram, svg } = get_diagram_elements(page)
+    await diagram.hover() // corner buttons only take the pointer while the diagram is hovered
     await diagram.locator(`.pd-editor-toggle`).click()
     const editor = diagram.locator(`.pd-editor-pane`)
     await editor.locator(`.json-value.string`).filter({ hasText: `"A"` }).first().dblclick()
