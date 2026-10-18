@@ -316,7 +316,8 @@ describe(`RdfPlot`, () => {
     await vi.waitFor(() => expect(mirror()).toMatch(/^parent note; .*broken: .*non-finite/))
     target.querySelector<HTMLButtonElement>(`[role="alert"] button`)?.click()
     await vi.waitFor(() => expect(mirror()).toBe(`none`))
-    expect(target.querySelector(`[role="alert"]`)).toBeNull()
+    // the alert live region stays mounted for the next error; only its message goes
+    expect(target.querySelector(`[role="alert"] .status-message`)).toBeNull()
     // recomputing the same failure keeps it dismissed
     target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
     await tick()

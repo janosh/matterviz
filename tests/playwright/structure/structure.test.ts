@@ -900,7 +900,10 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(notice).toHaveCount(0, { timeout: 5000 })
     await drop_file(page, viewer, `invalid structure`, `${`long-filename-`.repeat(20)}.cif`)
     await wait_for_event(page, `on_error`, [`error_msg`])
-    const alert = viewer.getByRole(`alert`).filter({ hasText: `Failed to load` })
+    // the card inside StatusMessage's alert live region, which also wraps it when empty
+    const alert = viewer
+      .locator(`[role="alert"] > .status-message`)
+      .filter({ hasText: `Failed to load` })
     await expect(alert).toBeVisible()
     const viewer_bounds = await expect_centered_card(alert, viewer)
     expect(await require_bbox(canvas)).toEqual(viewer_bounds)

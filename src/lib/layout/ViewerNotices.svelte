@@ -24,9 +24,15 @@
     z-index: 5;
     pointer-events: none;
     overflow-wrap: anywhere;
+    /* StatusMessage keeps its status and alert live regions mounted while empty; as boxes
+       they would each take a flex gap. display: contents drops the box but keeps the region in
+       the accessibility tree, so its message becomes the flex item. */
+    > :global([role='status'], [role='alert']) {
+      display: contents;
+    }
     /* doubled class: StatusMessage's own type padding ties a single-class rule and wins on
        load order */
-    > :global(.status-message.status-message) {
+    :global(.status-message.status-message) {
       pointer-events: auto;
       font-size: 0.8rem;
       padding: 0.3rem 0.6rem;

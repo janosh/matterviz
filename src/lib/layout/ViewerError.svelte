@@ -31,5 +31,11 @@
     overflow: auto;
     overflow-wrap: anywhere;
     backdrop-filter: blur(8px);
+    /* StatusMessage's two live regions stay mounted even when empty; as boxes they made two
+       grid rows and pushed the card off-center. display: contents keeps them for assistive
+       tech while the card itself is the one centered grid item. */
+    > :global([role='status'], [role='alert']) {
+      display: contents;
+    }
   }
 </style>

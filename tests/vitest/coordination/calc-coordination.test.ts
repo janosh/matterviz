@@ -192,7 +192,8 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
       const on_file_drop = intercept ? vi.fn() : undefined
       const root = await mount_plot({ structures: {}, allow_file_drop, on_file_drop })
       expect(root.textContent).toContain(message)
-      const container = root.parentElement
+      // the mount target: the plot and its notices replace the empty-state root
+      const container = root.closest(`body > div`)
       const file = new File([BAD_ROW_CIF], `si.cif`)
       root.dispatchEvent(create_drop_event(file))
       if (on_file_drop) {

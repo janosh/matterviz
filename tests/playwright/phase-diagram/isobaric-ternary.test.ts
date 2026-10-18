@@ -106,7 +106,8 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
     // the demo titles the diagram by the dropped file's stem
     await expect(page.locator(`${DIAGRAM} .diagram-title`)).toHaveText(`toy · 7 entries`)
     await expect(page.locator(DIAGRAM)).toHaveAttribute(`aria-label`, /K-Na-Li ternary/)
-    await expect(page.locator(`${DIAGRAM} [role="alert"]`)).toHaveCount(0)
+    // the alert live region stays mounted; no error message may sit in it
+    await expect(page.locator(`${DIAGRAM} [role="alert"] .status-message`)).toHaveCount(0)
     await expect(page.locator(SECTION_CANVAS)).toBeVisible()
     await expect(page.locator(`${DIAGRAM} .stable-count`)).toHaveText(/\d+ stable/, {
       timeout: LOAD_TIMEOUT,
