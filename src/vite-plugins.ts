@@ -73,13 +73,18 @@ export function vite_plugin_json_gz({
       const clean = claim(identifier)
       if (!clean) return null
       try {
-        const json_str = gunzipSync(readFileSync(clean)).toString(`utf-8`)
-        JSON.parse(json_str) // validate before passing to bundler
+        // Re-serialized compact: the fixtures are pretty-printed, and passing that through
+        // shipped 15x the bytes (a 1 MB .json.gz hull dataset arrived as 77 MB of JS).
+        const pretty = gunzipSync(readFileSync(clean)).toString(`utf-8`)
+        const json_str = JSON.stringify(JSON.parse(pretty))
         // Rolldown (production) needs moduleType:'json' for import.meta.glob
         // with import:'default' to properly unwrap the default export.
-        // Dev/test server doesn't support moduleType, needs JS module format.
+        // Dev/test server doesn't support moduleType, needs JS module format: a JSON.parse
+        // string, which V8 parses several times faster than the same data as an object literal.
         if (is_build) return { code: json_str, moduleType: `json` }
-        return `export default ${json_str}`
+        // an empty map, or dev appends an inline sourcemap embedding the whole dataset again
+        const code = `export default JSON.parse(${JSON.stringify(json_str)})`
+        return { code, map: { mappings: `` } }
       } catch (error) {
         return this.error(`Failed to decompress ${identifier}: ${error}`)
       }

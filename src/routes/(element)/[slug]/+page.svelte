@@ -149,7 +149,7 @@
 <p>{@html sanitize_html(element.summary)}</p>
 
 <section class="flex-wrap">
-  <LazyDemo label="Periodic table" height="180px" style="width: 100%; max-width: 300px">
+  <LazyDemo label="Periodic table" height="180px">
     <PeriodicTable
       tile_props={{ show_name: false, show_number: false }}
       show_photo={false}
@@ -187,7 +187,7 @@
     </tbody>
   </table>
 
-  <LazyDemo label="Electron shells" height="300px" style="width: 100%; max-width: 300px">
+  <LazyDemo label="Electron shells" height="300px">
     <BohrAtom
       symbol={element.symbol}
       shells={element.shells}
@@ -196,7 +196,6 @@
       orbital_period={orbiting ? 3 : 0}
       highlight_shell={active_shell}
       onclick={() => (orbiting = !orbiting)}
-      style="max-width: 300px"
     />
   </LazyDemo>
 </section>
@@ -227,10 +226,7 @@
 >
   {#snippet children({ item, kind })}
     {@const { element } = item}
-    <a
-      href={element.name.toLowerCase()}
-      style="display: flex; flex-direction: column; position: relative; width: min(200px, 40cqw)"
-    >
+    <a href={element.name.toLowerCase()} class="neighbor">
       <h3>
         {kind == `next` ? `Next →` : `← Previous`}
       </h3>
@@ -274,6 +270,16 @@
     gap: 1em;
     place-items: center;
     place-content: center space-around;
+    > :global(.lazy-demo) {
+      width: 100%;
+      max-width: 300px;
+    }
+  }
+  a.neighbor {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: min(200px, 40cqw);
   }
   section.properties {
     display: grid;

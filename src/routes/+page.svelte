@@ -79,10 +79,10 @@
 
 <h2 id="structure-viewer"><a href="/structure">Structure Viewer</a></h2>
 
-<div class="full-bleed" style="display: flex; flex-wrap: wrap; gap: 2em">
+<div class="full-bleed structure-pair">
   {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_name, idx (file_name)}
-    <div style="flex: 1">
-      <h3 style="margin: 0 0 1ex; text-align: center; font-family: monospace">
+    <div>
+      <h3>
         {structure_filenames[idx]}
       </h3>
       <LazyDemo
@@ -145,9 +145,7 @@
   }}
 />
 
-<p style="margin: 2em auto; text-align: center">
-  Drag any of these trajectory files onto a viewer above to load them:
-</p>
+<p class="note">Drag any of these trajectory files onto a viewer above to load them:</p>
 
 <LazyDemo
   label="Trajectory example files"
@@ -231,5 +229,20 @@
     display: inline-flex;
     gap: 6pt;
     place-items: center;
+  }
+  /* side by side until a viewer would drop below its 300px minimum width */
+  .structure-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 2em;
+    h3 {
+      margin: 0 0 1ex;
+      text-align: center;
+      font-family: monospace;
+    }
+  }
+  p.note {
+    margin: 2em auto;
+    text-align: center;
   }
 </style>

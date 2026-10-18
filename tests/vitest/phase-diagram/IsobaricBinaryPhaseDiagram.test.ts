@@ -344,7 +344,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // message) — which is what proves the parse ran on it
     await drop(empty_svg())
     await vi.waitFor(() =>
-      expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent).toContain(`pd.svg`),
+      expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent).toContain(`pd.svg`),
     )
     // the previously rendered diagram is kept behind the banner
     expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
@@ -386,7 +386,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   ])(`error banner for %s`, async (_label, props, error) => {
     const wrapper = await mount_diagram(props)
     await tick()
-    expect(wrapper.querySelector(`.error[role="alert"]`)?.textContent ?? ``).toMatch(error)
+    expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent ?? ``).toMatch(error)
   })
 })
 

@@ -131,33 +131,40 @@
     {@render structure_rdf(structures[`Al₂Lu`], `element_pairs`, cutoff, n_bins)}
   </LazyDemo>
 
-  <h2 id="full-rdf">Full RDF</h2>
-  <LazyDemo label="Full RDF">
-    <RdfPlot
-      structures={structures[`Al₂Lu`]}
-      mode="full"
-      {cutoff}
-      {n_bins}
-      style="height: 500px"
-    />
-  </LazyDemo>
+  <div class="demo-pairs">
+    <section>
+      <h2 id="full-rdf">Full RDF</h2>
+      <p>All atom pairs pooled into one g(r), regardless of which elements they join.</p>
+      <LazyDemo label="Full RDF">
+        <RdfPlot
+          structures={structures[`Al₂Lu`]}
+          mode="full"
+          {cutoff}
+          {n_bins}
+          style="height: 500px"
+        />
+      </LazyDemo>
+    </section>
 
-  <h2 id="pair-distribution-function-g-r">Pair Distribution Function G(r)</h2>
-  <p>
-    The reduced PDF G(r) = 4πrρ₀(g(r) − 1) combines partial RDFs with radiation-dependent
-    Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the closest
-    approach.
-  </p>
-  <LazyDemo label="Pair Distribution Function G(r)">
-    <PdfPlot
-      {structures}
-      bind:quantity={pdf_quantity}
-      bind:radiation={pdf_radiation}
-      bind:cutoff={pdf_cutoff}
-      bind:n_bins={pdf_bins}
-      style="height: 500px"
-    />
-  </LazyDemo>
+    <section>
+      <h2 id="pair-distribution-function-g-r">Pair Distribution Function G(r)</h2>
+      <p>
+        The reduced PDF G(r) = 4πrρ₀(g(r) − 1) combines partial RDFs with radiation-dependent
+        Faber–Ziman weights, so the curve depends on the probe and follows −4πrρ₀ below the
+        closest approach.
+      </p>
+      <LazyDemo label="Pair Distribution Function G(r)">
+        <PdfPlot
+          {structures}
+          bind:quantity={pdf_quantity}
+          bind:radiation={pdf_radiation}
+          bind:cutoff={pdf_cutoff}
+          bind:n_bins={pdf_bins}
+          style="height: 500px"
+        />
+      </LazyDemo>
+    </section>
+  </div>
 
   <h2 id="negative-scattering-length-nih">Negative Scattering Length: NiH</h2>
   <p>
@@ -165,17 +172,15 @@
       >coh</sub
     >, while the Ni–Ni shell stays positive.
   </p>
-  <LazyDemo label="Negative Scattering Length: NiH">
-    <section class="demo-2col">
-      <Structure structure={nickel_hydride} />
-      <PdfPlot
-        structures={nickel_hydride}
-        cutoff={10}
-        n_bins={1000}
-        show_partials
-        style="height: 100%"
-      />
-    </section>
+  <LazyDemo label="Negative Scattering Length: NiH" class="demo-2col">
+    <Structure structure={nickel_hydride} />
+    <PdfPlot
+      structures={nickel_hydride}
+      cutoff={10}
+      n_bins={1000}
+      show_partials
+      style="height: 100%"
+    />
   </LazyDemo>
 
   <h2 id="complex-bi₂zr₂o₈">Complex: Bi₂Zr₂O₈</h2>
@@ -254,15 +259,13 @@
 </div>
 
 <style>
-  .bleed-1400 section {
-    margin: 2em 0;
-  }
   p {
     text-align: center;
   }
-  .demo-2col {
+  .bleed-1400 :global(.demo-2col) {
     gap: 2em;
     min-height: 500px;
+    margin-block: 2em;
   }
   .separator {
     color: #ccc;

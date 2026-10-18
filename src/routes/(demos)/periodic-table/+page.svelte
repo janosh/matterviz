@@ -58,6 +58,21 @@
     idx % 3 === 0 ? element.atomic_mass : null,
   )
 
+  // One heatmap per property, for the auto color bar and 2×2 grids
+  type Property = `atomic_mass` | `density` | `melting_point` | `boiling_point`
+  const heatmap = (property: Property) => element_data.map((element) => element[property] || 0)
+  const auto_color_bar_tables = [
+    [`Atomic Mass`, `atomic_mass`, `interpolatePlasma`],
+    [`Density`, `density`, `interpolateCividis`],
+    [`Boiling Point`, `boiling_point`, `interpolateTurbo`],
+  ] as const
+  const grid_tables = [
+    [`Atomic Mass`, `atomic_mass`, `interpolateBlues`],
+    [`Density`, `density`, `interpolateReds`],
+    [`Melting Point`, `melting_point`, `interpolateOranges`],
+    [`Boiling Point`, `boiling_point`, `interpolateGreens`],
+  ] as const
+
   // Active elements border demo
   let active_elements: ElementSymbol[] = $state([`H`, `C`, `N`, `O`, `Fe`, `Cu`, `Au`, `Ag`])
   let active_tile_border = $state({ width: `2px`, style: `solid`, color: `#ff0000` })
@@ -128,19 +143,18 @@
     style="margin: 1em auto; max-width: 1000px"
   >
     {#snippet inset()}
-      {@const style = `display: flex; align-items: center; gap: 3pt;`}
       <TableInset style="display: flex; gap: 1em; justify-content: center; flex-wrap: wrap">
-        <label {style}>
+        <label>
           <input type="checkbox" bind:checked={missing_use_category} />
           Use element category colors
         </label>
 
-        <label {style}>
+        <label>
           Missing color:
           <input type="color" bind:value={missing_color} disabled={missing_use_category} />
         </label>
 
-        <label {style}>
+        <label>
           Missing label:
           <input
             type="text"
@@ -150,7 +164,7 @@
           />
         </label>
 
-        <label {style}>
+        <label>
           Missing opacity: {missing_opacity}
           <input type="range" min="0.1" max="1" step="0.1" bind:value={missing_opacity} />
         </label>
@@ -205,32 +219,30 @@
   bar width adapt to container width using container queries.
 </p>
 
-<div class="auto-colorbar-grid">
-  {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolatePlasma` }, { title: `Density`, property: `density`, color_scale: `interpolateCividis` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateTurbo` }] as const as { title, property, color_scale } (title)}
-    <div>
-      <h3 style="margin: 0 0 0.5em; text-align: center; font-size: 0.9em">{title}</h3>
-      <LazyDemo label="periodic table">
-        <PeriodicTable
-          tile_props={{ show_name: false, show_number: false, show_symbol: false }}
-          heatmap_values={element_data.map((element) => element[property] || 0)}
-          {color_scale}
-          color_bar={{ title }}
-          gap="1px"
-          style="--ptable-inner-transition-offset: 0.3"
-        />
-      </LazyDemo>
-    </div>
+<!-- the color bar names each table, so no heading above it -->
+<div class="table-grid bleed-1400">
+  {#each auto_color_bar_tables as [title, property, color_scale] (title)}
+    <LazyDemo label={title} height="220px">
+      <PeriodicTable
+        tile_props={{ show_name: false, show_number: false, show_symbol: false }}
+        heatmap_values={heatmap(property)}
+        {color_scale}
+        color_bar={{ title }}
+        gap="1px"
+        style="--ptable-inner-transition-offset: 0.3"
+      />
+    </LazyDemo>
   {/each}
 </div>
 
 <h2 id="2-2-grid-layout">2×2 Grid Layout</h2>
 
-<div class="two-by-two-grid">
-  {#each [{ title: `Atomic Mass`, property: `atomic_mass`, color_scale: `interpolateBlues` }, { title: `Density`, property: `density`, color_scale: `interpolateReds` }, { title: `Melting Point`, property: `melting_point`, color_scale: `interpolateOranges` }, { title: `Boiling Point`, property: `boiling_point`, color_scale: `interpolateGreens` }] as const as { title, property, color_scale } (title)}
-    <LazyDemo label="2×2 Grid Layout">
+<div class="table-grid two-by-two bleed-1400">
+  {#each grid_tables as [title, property, color_scale] (title)}
+    <LazyDemo label={title} height="220px">
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false }}
-        heatmap_values={element_data.map((element) => element[property] || 0)}
+        heatmap_values={heatmap(property)}
         {color_scale}
         color_bar={null}
       >
@@ -245,15 +257,17 @@
 </div>
 
 <style>
-  .auto-colorbar-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1.5em;
-  }
-  /* two columns on desktop (main is 50em wide), one below ~640px */
-  .two-by-two-grid {
+  /* tables at least 300px wide, as many per row as the page margins allow */
+  .table-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
     gap: 2em;
+    /* stays a 2×2 square at any width the page margins allow, one column on phones */
+    &.two-by-two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      @media (max-width: 700px) {
+        grid-template-columns: 1fr;
+      }
+    }
   }
 </style>

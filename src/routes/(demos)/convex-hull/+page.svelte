@@ -341,7 +341,7 @@
   <section class="demo-section">
     <h2 id="ternary-chemical-systems">Ternary Chemical Systems</h2>
     <LazyDemo label="Ternary Chemical Systems">
-      <div class="ternary-grid">
+      <div class="hull-grid">
         {#each ternary_examples as { title, entries } (title)}
           <ConvexHull {entries} controls={{ title }} />
         {/each}
@@ -352,7 +352,7 @@
   <section class="demo-section">
     <h2 id="quaternary-chemical-systems">Quaternary Chemical Systems</h2>
     {@render feature_list(quaternary_features)}
-    <div class="quaternary-grid">
+    <div class="hull-grid quaternary-grid">
       {#each Object.entries(quaternary_files) as [path, loader] (path)}
         {@const title = hull_system_name(path)}
         <LazyDemo label={title}>
@@ -374,7 +374,7 @@
 
   <section class="demo-section">
     <h2 id="binary-chemical-systems">Binary Chemical Systems</h2>
-    <div class="binary-grid">
+    <div class="hull-grid binary-grid">
       {#each binary_examples as { title, entries } (title)}
         {#if entries.length}
           <LazyDemo label={title}>
@@ -394,7 +394,7 @@
     </p>
     {@render feature_list(stats_features)}
     <LazyDemo label="Statistics Panel">
-      <div class="stats-example-grid">
+      <div class="hull-grid" style="--cols: 2fr 1fr; align-items: start">
         <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O with Stats` }}
@@ -419,7 +419,7 @@
     <h3 id="side-by-side-layout">Side-by-Side Layout</h3>
     {@render feature_list(side_by_side_features)}
     <LazyDemo label="Side-by-Side Layout">
-      <div class="side-by-side-example">
+      <div class="hull-grid" style="--cols: minmax(0, 1fr) minmax(0, 2fr); align-items: start">
         <ConvexHull
           entries={li_co_ni_o_data}
           controls={{ title: `Li-Co-O` }}
@@ -442,7 +442,7 @@
   <section class="demo-section">
     <h2 id="highlighted-entries">Highlighted Entries</h2>
     {@render feature_list(highlighted_features)}
-    <div class="highlight-grid">
+    <div class="hull-grid three-col highlight-grid">
       <LazyDemo label="Highlighted Entries">
         <ConvexHull
           entries={binary_examples[1]?.entries ?? []}
@@ -488,7 +488,7 @@
       added with E<sub>form</sub> = 0 eV/atom.
     </p>
     <LazyDemo label="Magnetic States & Custom Categories">
-      <div class="ternary-grid">
+      <div class="hull-grid">
         <div>
           <div class="marker-legend">
             {#each magnetic_marker_legend as item (item)}<span>{item}</span>{/each}
@@ -516,7 +516,7 @@
   <section class="demo-section">
     <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
     {@render feature_list(temp_features)}
-    <div class="temp-grid">
+    <div class="hull-grid three-col temp-grid">
       <LazyDemo label="Temperature-Dependent Free Energies">
         <ConvexHull
           entries={temp_binary_entries}
@@ -539,7 +539,7 @@
   <section class="demo-section">
     <h2 id="gas-atmosphere-control">Gas Atmosphere Control</h2>
     {@render feature_list(gas_features)}
-    <div class="gas-selector">
+    <div class="demo-controls">
       <label for="gas-select">Gas species:</label>
       <select id="gas-select" bind:value={selected_demo_gas}>
         {#each GAS_SPECIES as gas (gas)}
@@ -547,7 +547,7 @@
         {/each}
       </select>
     </div>
-    <div class="gas-grid">
+    <div class="hull-grid gas-grid">
       <LazyDemo label="Gas Atmosphere Control">
         <ConvexHull
           entries={gas_demo_fe_o_entries}
@@ -571,7 +571,7 @@
   <section class="demo-section">
     <h2 id="standalone-stats-for-quinary-systems">Standalone Stats for Quinary Systems</h2>
     {@render feature_list(quinary_stats_features)}
-    <div class="quinary-stats-controls">
+    <div class="demo-controls quinary-stats-controls">
       <label for="quinary-select">Quinary dataset:</label>
       <select id="quinary-select" bind:value={selected_quinary_path}>
         {#each quinary_paths as path (path)}
@@ -624,44 +624,21 @@
     text-align: center;
     margin-top: 1rem;
   }
-  .ternary-grid,
-  .highlight-grid,
-  .quaternary-grid,
-  .binary-grid,
-  .stats-example-grid,
-  .side-by-side-example,
-  .temp-grid,
-  .gas-grid {
+  /* stacks below 1100px; --cols sets the wide-screen columns */
+  .hull-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: var(--cols, 1fr 1fr);
     gap: 1rem;
-    width: 100%;
-    margin: 0 auto 3rem;
-  }
-  .highlight-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .quaternary-grid {
-    margin: 0 auto;
-  }
-  .binary-grid {
-    margin: 2rem auto 0;
-  }
-  .stats-example-grid {
-    grid-template-columns: 2fr 1fr;
-    margin: 2rem auto 0;
-    align-items: start;
-  }
-  .side-by-side-example {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-    align-items: start;
-  }
-  .temp-grid {
-    grid-template-columns: 1fr;
-    max-width: 900px;
-  }
-  .gas-grid {
-    margin: 0 auto 1rem;
+    margin: 1rem auto;
+    &.three-col {
+      --cols: repeat(3, 1fr);
+      @media (max-width: 1400px) {
+        --cols: 1fr 1fr;
+      }
+    }
+    @media (max-width: 1100px) {
+      grid-template-columns: 1fr;
+    }
   }
   .marker-legend {
     display: flex;
@@ -676,18 +653,7 @@
     align-items: center;
     gap: 0.25rem;
   }
-  @media (max-width: 1400px) {
-    .highlight-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-  .gas-selector,
-  .quinary-stats-controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+  .demo-controls {
     label {
       font-weight: 500;
     }
@@ -702,16 +668,6 @@
     }
   }
   @media (max-width: 1100px) {
-    .ternary-grid,
-    .quaternary-grid,
-    .binary-grid,
-    .highlight-grid,
-    .stats-example-grid,
-    .side-by-side-example,
-    .temp-grid,
-    .gas-grid {
-      grid-template-columns: 1fr;
-    }
     .marker-legend {
       flex-wrap: wrap;
     }

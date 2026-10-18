@@ -2,6 +2,9 @@
 
 `Sunburst` renders partition rings from nested node trees.
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Basic Sunburst
 
 Leaves carry `value`; branch angles sum their leaves by default. Top-level categories receive default colors unless set explicitly.
@@ -39,6 +42,9 @@ Leaves carry `value`; branch angles sum their leaves by default. Top-level categ
 <Sunburst {data} style="height: 420px" />
 ```
 
+</section>
+<section>
+
 ## Pattern fills
 
 Nodes accept a `pattern` (shape name, plotly-style shorthand like `/`, `x`, `.`, or a `PatternOptions` object) that hatches the arc over its color. Patterns apply per node without inheriting, so a hatched branch can hold plain children and vice versa. Here estimated and simulated entries are marked so the eye can separate them from measured ones at any zoom level; the legend swatches repeat the texture.
@@ -74,6 +80,9 @@ Nodes accept a `pattern` (shape name, plotly-style shorthand like `/`, `x`, `.`,
 
 <Sunburst {data} style="height: 420px" />
 ```
+
+</section>
+</div>
 
 ## Crystal-structure taxonomy (5 levels)
 

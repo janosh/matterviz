@@ -53,52 +53,56 @@
 
 <h1 id="chemical-potential-diagram">Chemical Potential Diagram</h1>
 
-<section data-demo-id="binary">
-  <h2 id="binary-system-li-o-mdash-2d">Binary System (Li-O) &mdash; 2D</h2>
-  <p>
-    Demonstrates pinned tooltips, formal-potential and bounds controls, color modes, and
-    export.
-  </p>
-  {@render diagram(`Li-Co-Ni-O`, { subset: [`Li`, `O`], width: 650, height: 550 })}
-</section>
+<div class="bleed-1400 demo-pairs">
+  <section data-demo-id="binary">
+    <h2 id="binary-system-li-o-mdash-2d">Binary System (Li-O) &mdash; 2D</h2>
+    <p>
+      Demonstrates pinned tooltips, formal-potential and bounds controls, color modes, and
+      export.
+    </p>
+    {@render diagram(`Li-Co-Ni-O`, { subset: [`Li`, `O`], width: 650, height: 550 })}
+  </section>
 
-<section data-demo-id="ternary">
-  <h2 id="ternary-system-li-co-o-mdash-3d">Ternary System (Li-Co-O) &mdash; 3D</h2>
-  <p>
-    Demonstrates pinned tooltips, camera and display controls, color modes, and 3D export.
-    Projection axis switching is hidden here since it only appears for systems with 4+
-    elements.
-  </p>
-  {@render diagram(`Li-Co-Ni-O`, { subset: [`Li`, `Co`, `O`] })}
-</section>
+  <section data-demo-id="ternary">
+    <h2 id="ternary-system-li-co-o-mdash-3d">Ternary System (Li-Co-O) &mdash; 3D</h2>
+    <p>
+      Demonstrates pinned tooltips, camera and display controls, color modes, and 3D export.
+      Projection axis switching is hidden here since it only appears for systems with 4+
+      elements.
+    </p>
+    {@render diagram(`Li-Co-Ni-O`, { subset: [`Li`, `Co`, `O`] })}
+  </section>
+</div>
 
-<section data-demo-id="li_fe_o">
-  <h2 id="ternary-system-li-fe-o-mdash-3d">Ternary System (Li-Fe-O) &mdash; 3D</h2>
-  <p>
-    Reference data from pymatgen for checking domain topology, labels, and energy-aware
-    coloring.
-  </p>
-  {@render diagram(`Li-Fe-O`, { config: { elements: [`Li`, `Fe`, `O`] } })}
-</section>
+<div class="bleed-1400 demo-pairs">
+  <section data-demo-id="li_fe_o">
+    <h2 id="ternary-system-li-fe-o-mdash-3d">Ternary System (Li-Fe-O) &mdash; 3D</h2>
+    <p>
+      Reference data from pymatgen for checking domain topology, labels, and energy-aware
+      coloring.
+    </p>
+    {@render diagram(`Li-Fe-O`, { config: { elements: [`Li`, `Fe`, `O`] } })}
+  </section>
 
-<section data-demo-id="temp_li_fe_o">
-  <h2 id="ternary-system-li-fe-o-with-temperature-slider-mdash-3d">
-    Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D
-  </h2>
-  <p>
-    This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page. Drag
-    the temperature slider to recompute stability domains from free energies.
-  </p>
-  <LazyDemo label="Temperature-dependent chemical potentials">
-    <ChemPotDiagram3D
-      entries={temp_ternary_entries}
-      config={{ elements: [`Li`, `Fe`, `O`] }}
-      bind:temperature={temp_demo_temperature}
-      width={550}
-      height={500}
-    />
-  </LazyDemo>
-</section>
+  <section data-demo-id="temp_li_fe_o">
+    <h2 id="ternary-system-li-fe-o-with-temperature-slider-mdash-3d">
+      Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D
+    </h2>
+    <p>
+      This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page. Drag
+      the temperature slider to recompute stability domains from free energies.
+    </p>
+    <LazyDemo label="Temperature-dependent chemical potentials">
+      <ChemPotDiagram3D
+        entries={temp_ternary_entries}
+        config={{ elements: [`Li`, `Fe`, `O`] }}
+        bind:temperature={temp_demo_temperature}
+        width={550}
+        height={500}
+      />
+    </LazyDemo>
+  </section>
+</div>
 
 <section data-demo-id="quaternary">
   <h2 id="quaternary-system-li-co-ni-o-mdash-all-ternary-projections">
@@ -115,65 +119,69 @@
   })}
 </section>
 
-<section data-demo-id="ytos_ti_s_y">
-  <h2 id="ytos-quaternary-mdash-ti-s-y-projection">
-    YTOS Quaternary &mdash; Ti-S-Y Projection
-  </h2>
-  <p>
-    Y-Ti-O-S projected onto Ti-S-Y, with runtime axis switching and a Y<sub>2</sub>Ti<sub
-      >2</sub
-    >S<sub>2</sub>O<sub>5</sub> formula overlay.
-  </p>
-  {@render diagram(`YTOS`, {
-    config: { elements: [`Ti`, `S`, `Y`], formulas_to_draw: [`O5S2Ti2Y2`] },
-  })}
-</section>
+<div class="bleed-1400 demo-pairs">
+  <section data-demo-id="ytos_ti_s_y">
+    <h2 id="ytos-quaternary-mdash-ti-s-y-projection">
+      YTOS Quaternary &mdash; Ti-S-Y Projection
+    </h2>
+    <p>
+      Y-Ti-O-S projected onto Ti-S-Y, with runtime axis switching and a Y<sub>2</sub>Ti<sub
+        >2</sub
+      >S<sub>2</sub>O<sub>5</sub> formula overlay.
+    </p>
+    {@render diagram(`YTOS`, {
+      config: { elements: [`Ti`, `S`, `Y`], formulas_to_draw: [`O5S2Ti2Y2`] },
+    })}
+  </section>
 
-<section data-demo-id="ytos_ti_y_o">
-  <h2 id="ytos-mdash-ti-y-o-with-y2ti2o7">
-    YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
-  </h2>
-  <p>
-    The same domains projected onto Ti-Y-O with a Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
-    overlay.
-  </p>
-  {@render diagram(`YTOS`, {
-    config: { elements: [`Ti`, `Y`, `O`], formulas_to_draw: [`O7Ti2Y2`] },
-  })}
-</section>
+  <section data-demo-id="ytos_ti_y_o">
+    <h2 id="ytos-mdash-ti-y-o-with-y2ti2o7">
+      YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
+    </h2>
+    <p>
+      The same domains projected onto Ti-Y-O with a Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub>
+      overlay.
+    </p>
+    {@render diagram(`YTOS`, {
+      config: { elements: [`Ti`, `Y`, `O`], formulas_to_draw: [`O7Ti2Y2`] },
+    })}
+  </section>
+</div>
 
-<section data-demo-id="ytos_slice">
-  <h2 id="ytos-mdash-slice-at-fixed-mu-s">YTOS &mdash; Slice at Fixed Δμ<sub>S</sub></h2>
-  <p>
-    Instead of projecting the S axis away, cut the 4D diagram at a fixed sulfur chemical
-    potential: every domain becomes the exact cross-section of its 4D facet at that Δμ<sub
-      >S</sub
-    >. Open the slice pane (scissors icon) to sweep Δμ<sub>S</sub> and see each phase's cross-section
-    area as a function of it; click the plot to jump there.
-  </p>
-  {@render diagram(`YTOS`, {
-    config: {
-      elements: [`O`, `Ti`, `Y`],
-      slice_chempots: { S: -3 },
-      formulas_to_draw: [`O5S2Ti2Y2`, `O7Ti2Y2`],
-    },
-  })}
-</section>
+<div class="bleed-1400 demo-pairs">
+  <section data-demo-id="ytos_slice">
+    <h2 id="ytos-mdash-slice-at-fixed-mu-s">YTOS &mdash; Slice at Fixed Δμ<sub>S</sub></h2>
+    <p>
+      Instead of projecting the S axis away, cut the 4D diagram at a fixed sulfur chemical
+      potential: every domain becomes the exact cross-section of its 4D facet at that Δμ<sub
+        >S</sub
+      >. Open the slice pane (scissors icon) to sweep Δμ<sub>S</sub> and see each phase's cross-section
+      area as a function of it; click the plot to jump there.
+    </p>
+    {@render diagram(`YTOS`, {
+      config: {
+        elements: [`O`, `Ti`, `Y`],
+        slice_chempots: { S: -3 },
+        formulas_to_draw: [`O5S2Ti2Y2`, `O7Ti2Y2`],
+      },
+    })}
+  </section>
 
-<section data-demo-id="li_fe_o_slice">
-  <h2 id="li-fe-o-mdash-2d-slice-at-fixed-mu-fe">
-    Li-Fe-O &mdash; 2D Slice at Fixed Δμ<sub>Fe</sub>
-  </h2>
-  <p>
-    The same cut one dimension down: the Li-Fe-O diagram on the Li-O axes at fixed Δμ<sub
-      >Fe</sub
-    >. Each line is the exact section of a 3D facet; the slice pane in the settings plots each
-    phase's section length against Δμ<sub>Fe</sub>.
-  </p>
-  {@render diagram(`Li-Fe-O`, {
-    config: { elements: [`Li`, `O`], slice_chempots: { Fe: -1 } },
-  })}
-</section>
+  <section data-demo-id="li_fe_o_slice">
+    <h2 id="li-fe-o-mdash-2d-slice-at-fixed-mu-fe">
+      Li-Fe-O &mdash; 2D Slice at Fixed Δμ<sub>Fe</sub>
+    </h2>
+    <p>
+      The same cut one dimension down: the Li-Fe-O diagram on the Li-O axes at fixed Δμ<sub
+        >Fe</sub
+      >. Each line is the exact section of a 3D facet; the slice pane in the settings plots
+      each phase's section length against Δμ<sub>Fe</sub>.
+    </p>
+    {@render diagram(`Li-Fe-O`, {
+      config: { elements: [`Li`, `O`], slice_chempots: { Fe: -1 } },
+    })}
+  </section>
+</div>
 
 <style>
   h1 {
@@ -181,7 +189,6 @@
   }
   /* Headings and blurbs centered like the page title; the fixed-width diagrams center too */
   section {
-    margin: 2em 0;
     text-align: center;
   }
   h2 {

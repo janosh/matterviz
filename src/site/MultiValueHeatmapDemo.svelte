@@ -19,6 +19,10 @@
     array_min(densities.filter((dens) => dens > 0)),
     array_max(densities),
   ]
+  const color_bars = [
+    [`Atomic Mass (u)`, atomic_mass_range],
+    [`Density (g/cm³)`, density_range],
+  ] as const
 
   const on_activate = (element: ChemicalElement) => {
     if (!element?.name) return
@@ -46,19 +50,19 @@ The periodic table supports multiple values per element with different visual la
       {on_activate}
     >
       {#snippet inset()}
-        <TableInset
-          style="display: flex; gap: 1.5em 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
-        >
-          {#each [[`Atomic Mass (u)`, atomic_mass_range], [`Density (g/cm³)`, density_range]] as const as [title, range] (title)}
-            <ColorBar
-              {title}
-              color_scale={{ scheme: `interpolateRdYlBu`, value_range: [...range] }}
-              orientation="horizontal"
-              bar_style="width: 180px; height: 12px"
-              tick_labels={3}
-              title_side="top"
-            />
-          {/each}
+        <TableInset>
+          <div class="color-bars">
+            {#each color_bars as [title, range] (title)}
+              <ColorBar
+                {title}
+                color_scale={{ scheme: `interpolateRdYlBu`, value_range: [...range] }}
+                orientation="horizontal"
+                bar_style="width: 180px; height: 12px"
+                tick_labels={3}
+                title_side="top"
+              />
+            {/each}
+          </div>
         </TableInset>
       {/snippet}
     </PeriodicTable>
@@ -66,3 +70,14 @@ The periodic table supports multiple values per element with different visual la
     <p role="alert">Failed to load multi-value heatmap: {String(error)}</p>
   {/await}
 </LazyDemo>
+
+<style>
+  .color-bars {
+    display: flex;
+    flex-wrap: wrap;
+    place-content: center;
+    align-items: center;
+    gap: 1.5em 2em;
+    padding: 0.5em;
+  }
+</style>

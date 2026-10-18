@@ -137,13 +137,14 @@ describe(`PeriodicTable`, () => {
     expect(selected.category).toBe(category)
     category_input.blur()
     expect(selected.category).toBeNull()
-    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([true, true])
-    auto_font_input.click()
+    // the swatch stays live under automatic contrast: picking a color is what turns it off
+    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([true, false])
+    set_input(font_color_input, `#ff0000`)
     set_input(number_input(`tile_border_radius`), 5)
     set_input(number_input(`hover_border_width`), 3)
     set_input(category_input, `#654321`)
     await tick()
-    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([false, false])
+    expect([auto_font_input.checked, font_color_input.value]).toEqual([false, `#ff0000`])
     expect(root_style.getPropertyValue(`--elem-tile-border-radius`)).toBe(`5pt`)
 
     await click_reset(`[data-key="tile_border_radius"] .setting-reset-button`)
@@ -152,7 +153,7 @@ describe(`PeriodicTable`, () => {
 
     await click_reset(`button[aria-label="Reset element tiles to defaults"]`)
     expect(number_input(`hover_border_width`).valueAsNumber).toBe(1)
-    expect([auto_font_input.checked, font_color_input.disabled]).toEqual([true, true])
+    expect([auto_font_input.checked, font_color_input.value]).toEqual([true, `#ffffff`])
 
     await click_reset(`button[aria-label="Reset element category colors to defaults"]`)
     expect(category_input.value).toBe(DEFAULT_CATEGORY_COLORS[category])
@@ -695,6 +696,7 @@ describe(`PeriodicTable`, () => {
           [`#00ff00`, `#0000ff`],
           42,
           [4, 5, 6],
+          [1, 2, 3, 4, 0.1 + 0.2],
         ] as never,
       })
       const tiles = all_tiles()
@@ -705,15 +707,24 @@ describe(`PeriodicTable`, () => {
       ])
       expect([``, `transparent`]).not.toContain(tiles[3].style.backgroundColor) // single number
       expect(tiles[4].querySelector(`.segment.horizontal-top`)).toBeInstanceOf(HTMLElement)
-      // array tiles list their values in the tooltip
-      for (const [idx, name] of [`Hydrogen`, `Helium`, `Lithium`].entries()) {
+      // the tooltip lists the values only when the tile hides some of their labels: colors,
+      // more values than segments, or labels the tile is too small for (a container query
+      // hides them; display: none stands in here). Numbers formatted like the tile labels.
+      tiles[3].querySelector<HTMLElement>(`.value`)?.style.setProperty(`display`, `none`)
+      for (const [idx, name, values] of [
+        [0, `Hydrogen`, `Value: #ff0000`],
+        [1, `Helium`, null],
+        [2, `Lithium`, `Values: #00ff00, #0000ff`],
+        [3, `Beryllium`, `Value: 42`],
+        [4, `Boron`, null],
+        [5, `Carbon`, `Values: 1, 2, 3, 4, 0.3`],
+      ] as const) {
         tiles[idx].dispatchEvent(mouseenter)
         await tick()
-        const tooltip_text = doc_query(`.plot-tooltip`).textContent
+        const tooltip_text = doc_query(`.plot-tooltip`).textContent?.trim()
         expect(tooltip_text).toContain(name)
-        // numbers formatted like the tile labels (no float noise), colors verbatim
-        const values = [/^/, /Values: 10, 0\.3$/, /Values: #00ff00, #0000ff$/][idx]
-        expect(tooltip_text?.trim()).toMatch(values)
+        if (values) expect(tooltip_text?.endsWith(values)).toBe(true)
+        else expect(tooltip_text).not.toContain(`Values`)
         tiles[idx].dispatchEvent(mouseleave)
         await tick()
         expect(document.querySelector(`.plot-tooltip`)).toBeNull()

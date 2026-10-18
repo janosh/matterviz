@@ -161,7 +161,15 @@
   />
   <output id="swap-camera">{JSON.stringify(swap_camera)}</output>
 
-  <Trajectory id="auto-layout" trajectory={test_trajectory} show_controls step_labels={3} />
+  <!-- the inspector sidebar takes part of the row, so the auto layout tests close it to measure
+  how the structure and plot panes split the viewer alone -->
+  <Trajectory
+    id="auto-layout"
+    trajectory={test_trajectory}
+    show_controls
+    step_labels={3}
+    data_inspector_open={false}
+  />
 
   <Trajectory
     id="vertical-layout"

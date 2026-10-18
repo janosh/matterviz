@@ -84,9 +84,6 @@ Axis ranges preserve automatic endpoints: `{ range: [50, null] }` fixes the mini
       hovered_point_info = 'No point hovered yet.'
     }
   }
-
-  const style =
-    'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
 <label style="margin-bottom: 1em; display: block">
@@ -109,15 +106,18 @@ Axis ranges preserve automatic endpoints: `{ range: [50, null] }` fixes the mini
   on_point_hover={handle_point_hover}
   style="height: 300px"
 />
-<div {style}>
-  {clicked_point_info}
-</div>
-<div {style}>
-  {double_clicked_point_info}
-</div>
-<div {style}>
-  {hovered_point_info}
-</div>
+<p>{clicked_point_info}</p>
+<p>{double_clicked_point_info}</p>
+<p>{hovered_point_info}</p>
+
+<style>
+  p {
+    margin: 1em 0;
+    padding: 2pt 5pt;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+</style>
 ```
 
 ## Marginal Distributions
@@ -154,7 +154,7 @@ The example below combines the common controls: per-side `type`, `per_series` (o
   let placement = $state('auto')
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em; margin-bottom: 1em">
+<div class="demo-controls">
   <label
     >Top:
     <select bind:value={top_type}
@@ -254,7 +254,7 @@ Dense point clouds (e.g. parity plots of predicted vs. reference energies) hide 
   let bandwidth = $state(15)
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em; margin-bottom: 1em">
+<div class="demo-controls">
   <label><input type="checkbox" bind:checked={filled} /> filled</label>
   <label><input type="checkbox" bind:checked={show_points} /> points</label>
   <label>levels <input type="range" min="1" max="12" bind:value={n_levels} /> {n_levels}</label
@@ -336,14 +336,16 @@ The connecting line between points chooses its interpolation via `line_style.cur
   ])
 </script>
 
-<label style="display: flex; gap: 6pt; align-items: center; margin-bottom: 8pt">
-  Connecting line curve:
-  <select bind:value={curve}>
-    {#each curves as option (option)}
-      <option value={option}>{option}</option>
-    {/each}
-  </select>
-</label>
+<div class="demo-controls">
+  <label>
+    Connecting line curve:
+    <select bind:value={curve}>
+      {#each curves as option (option)}
+        <option value={option}>{option}</option>
+      {/each}
+    </select>
+  </label>
+</div>
 <ScatterPlot {series} x_axis={{ label: 'x' }} y_axis={{ label: 'y' }} style="height: 300px" />
 ```
 
@@ -537,7 +539,7 @@ Per-point styles, sizes, and marker symbols in one series. Point size follows di
   })
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em 2em; margin: 1em">
+<div class="demo-controls">
   <label>
     Label Size: {label_size}
     <input type="range" bind:value={label_size} min="8" max="20" />
@@ -632,16 +634,18 @@ Categorized data with color coding, custom tick intervals, and negative values:
   const ticks = $state({ x: -5, y: -5 }) // Tick interval settings
 </script>
 
-{#each Object.keys(ticks) as axis (axis)}
-  <label style="display: inline-block; margin: 1em;">
-    {axis} Tick Interval:
-    <select bind:value={ticks[axis]}>
-      {#each [2, 5, 10] as num (num)}
-        <option value={-num}>{num} units</option>
-      {/each}
-    </select>
-  </label>
-{/each}
+<div class="demo-controls">
+  {#each Object.keys(ticks) as axis (axis)}
+    <label>
+      {axis} Tick Interval:
+      <select bind:value={ticks[axis]}>
+        {#each [2, 5, 10] as num (num)}
+          <option value={-num}>{num} units</option>
+        {/each}
+      </select>
+    </label>
+  {/each}
+</div>
 
 <ScatterPlot
   series={series_data.map((srs) => ({ ...srs, markers: 'points' }))}
@@ -656,18 +660,31 @@ Categorized data with color coding, custom tick intervals, and negative values:
 </ScatterPlot>
 
 <!-- Legend -->
-<div style="display: flex; flex-wrap: wrap; justify-content: center; margin: 1em; gap: 3ex;">
+<div class="legend">
   {#each categories as category, idx (category)}
-    <div style="display: flex; align-items: center;">
-      <span
-        style="width: 12px; height: 12px; background: {category_colors[
-          idx
-        ]}; border-radius: 50%;"
-      ></span>
-      &ensp;{category}
-    </div>
+    <span style:--color={category_colors[idx]}>{category}</span>
   {/each}
 </div>
+
+<style>
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3ex;
+    margin: 1em;
+  }
+  .legend span::before {
+    content: '';
+    display: inline-block;
+    vertical-align: middle;
+    width: 12px;
+    height: 12px;
+    margin-right: 0.5em;
+    border-radius: 50%;
+    background: var(--color);
+  }
+</style>
 ```
 
 ## Time-Based Data with Custom Formatting
@@ -726,7 +743,7 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
   let rotation = $state('auto')
 </script>
 
-<div>
+<div class="demo-controls">
   <label>
     Date Format:
     <select bind:value={date_format}>
@@ -735,7 +752,7 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
       {/each}
     </select>
   </label>
-  <label style="margin-left: 1em">
+  <label>
     Y-Value Format:
     <select bind:value={y_format}>
       {#each [['.1f', '1 decimal'], ['.2f', '2 decimals'], ['d', 'Integer']] as [value, label] (value)}
@@ -743,11 +760,11 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
       {/each}
     </select>
   </label>
-  <label style="margin-left: 1em">
+  <label>
     Date Ticks: {n_ticks}
     <input type="range" bind:value={n_ticks} min="3" max="20" style="width: 100px" />
   </label>
-  <label style="margin-left: 1em">
+  <label>
     Rotation:
     <select bind:value={rotation}>
       {#each ['auto', 0, -45, 90] as angle (angle)}
@@ -755,35 +772,35 @@ Date labels are the classic case for tick rotation: pick the `YYYY-MM-DD` format
       {/each}
     </select>
   </label>
-  <label style="margin-left: 1em">
+  <label>
     <input type="checkbox" bind:checked={inside} />
     Tick Labels Inside
   </label>
-
-  <ScatterPlot
-    series={time_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
-    x_axis={{
-      scale_type: 'time',
-      format: date_format,
-      ticks: n_ticks,
-      label: 'Date',
-      tick_label: { inside, rotation },
-    }}
-    y_axis={{ format: y_format, ticks: 5, label: 'Value', tick_label: { inside } }}
-    style="height: 350px"
-    legend={{
-      layout: `horizontal`,
-      layout_tracks: 3,
-      style: `max-width: none; justify-content: center;`,
-    }}
-  >
-    {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
-      <strong>{metadata?.series}</strong><br />
-      Date: {x_formatted}<br />
-      Value: {y_formatted}
-    {/snippet}
-  </ScatterPlot>
 </div>
+
+<ScatterPlot
+  series={time_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
+  x_axis={{
+    scale_type: 'time',
+    format: date_format,
+    ticks: n_ticks,
+    label: 'Date',
+    tick_label: { inside, rotation },
+  }}
+  y_axis={{ format: y_format, ticks: 5, label: 'Value', tick_label: { inside } }}
+  style="height: 350px"
+  legend={{
+    layout: `horizontal`,
+    layout_tracks: 3,
+    style: `max-width: none; justify-content: center;`,
+  }}
+>
+  {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
+    <strong>{metadata?.series}</strong><br />
+    Date: {x_formatted}<br />
+    Value: {y_formatted}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Points with Shared Coordinates
@@ -838,6 +855,9 @@ Points that share coordinates stay separately identifiable and interactive:
 </ScatterPlot>
 ```
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Text Annotations for Scatter Points
 
 Permanent text labels on scatter points:
@@ -870,6 +890,9 @@ Permanent text labels on scatter points:
 />
 ```
 
+</section>
+<section>
+
 ### Different Label Positions
 
 You can position labels in different directions relative to each point:
@@ -900,6 +923,9 @@ You can position labels in different directions relative to each point:
   style="height: 350px"
 />
 ```
+
+</section>
+</div>
 
 ## Interactive Log-Scaled Axes
 
@@ -1013,78 +1039,72 @@ Log scales for data spanning many orders of magnitude. Use the checkboxes to swi
   let y_range = $derived(y_is_log ? [0.1, 10000] : [null, 10000])
 </script>
 
-<div>
-  <div
-    style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em; margin-bottom: 1em"
-  >
-    <label>
-      <input type="checkbox" bind:checked={x_is_log} />
-      Log X-Axis
-    </label>
-    <label>
-      <input type="checkbox" bind:checked={y_is_log} />
-      Log Y-Axis
-    </label>
-  </div>
-
-  <div
-    style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2em; margin-bottom: 1em"
-  >
-    <label>
-      Min Size (px):
-      <input
-        type="number"
-        bind:value={size_scale.radius_range[0]}
-        min="0.5"
-        max="10"
-        step="0.5"
-        style="width: 50px"
-      />
-    </label>
-    <label>
-      Max Size (px):
-      <input
-        type="number"
-        bind:value={size_scale.radius_range[1]}
-        min="5"
-        max="30"
-        step="1"
-        style="width: 50px"
-      />
-    </label>
-    <label>
-      Size Scale:
-      <select bind:value={size_scale.type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select>
-    </label>
-  </div>
-
-  <ScatterPlot
-    series={all_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
-    x_axis={{
-      scale_type: x_scale_type,
-      range: x_range,
-      label: `X Axis (${x_scale_type})`,
-      format: '~s',
-    }}
-    y_axis={{
-      scale_type: y_scale_type,
-      range: y_range,
-      label: `Y Axis (${y_scale_type})`,
-      format: '~s',
-    }}
-    {size_scale}
-    style="height: 400px"
-  >
-    {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
-      <strong>{metadata.label ?? metadata.series}</strong><br />
-      X: {x_formatted || coord_x.toPrecision(3)}<br />
-      Y: {y_formatted || coord_y.toPrecision(3)}
-    {/snippet}
-  </ScatterPlot>
+<div class="demo-controls">
+  <label>
+    <input type="checkbox" bind:checked={x_is_log} />
+    Log X-Axis
+  </label>
+  <label>
+    <input type="checkbox" bind:checked={y_is_log} />
+    Log Y-Axis
+  </label>
 </div>
+
+<div class="demo-controls">
+  <label>
+    Min Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[0]}
+      min="0.5"
+      max="10"
+      step="0.5"
+      style="width: 50px"
+    />
+  </label>
+  <label>
+    Max Size (px):
+    <input
+      type="number"
+      bind:value={size_scale.radius_range[1]}
+      min="5"
+      max="30"
+      step="1"
+      style="width: 50px"
+    />
+  </label>
+  <label>
+    Size Scale:
+    <select bind:value={size_scale.type}>
+      <option value="linear">Linear</option>
+      <option value="log">Log</option>
+    </select>
+  </label>
+</div>
+
+<ScatterPlot
+  series={all_series.map((srs) => ({ ...srs, markers: 'line+points' }))}
+  x_axis={{
+    scale_type: x_scale_type,
+    range: x_range,
+    label: `X Axis (${x_scale_type})`,
+    format: '~s',
+  }}
+  y_axis={{
+    scale_type: y_scale_type,
+    range: y_range,
+    label: `Y Axis (${y_scale_type})`,
+    format: '~s',
+  }}
+  {size_scale}
+  style="height: 400px"
+>
+  {#snippet tooltip({ x: coord_x, y: coord_y, x_formatted, y_formatted, metadata })}
+    <strong>{metadata.label ?? metadata.series}</strong><br />
+    X: {x_formatted || coord_x.toPrecision(3)}<br />
+    Y: {y_formatted || coord_y.toPrecision(3)}
+  {/snippet}
+</ScatterPlot>
 ```
 
 ## Arcsinh Scale: Handling Negative Values and Wide Ranges
@@ -1180,13 +1200,11 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   )
 </script>
 
-<div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11em), 1fr)); gap: 1em; margin-bottom: 1em"
->
+<div class="demo-controls">
   <fieldset>
     <legend>X Axis Scale</legend>
     {#each scale_types as scale (scale)}
-      <label style="margin-right: 0.5em">
+      <label>
         <input type="radio" bind:group={x_scale_type} value={scale} />
         {scale}
       </label>
@@ -1196,7 +1214,7 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   <fieldset>
     <legend>Y Axis Scale</legend>
     {#each scale_types as scale (scale)}
-      <label style="margin-right: 0.5em">
+      <label>
         <input type="radio" bind:group={y_scale_type} value={scale} />
         {scale}
       </label>
@@ -1206,59 +1224,54 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
   <fieldset>
     <legend>Color Scale</legend>
     {#each scale_types as scale (scale)}
-      <label style="margin-right: 0.5em">
+      <label>
         <input type="radio" bind:group={color_scale_type} value={scale} />
         {scale}
       </label>
     {/each}
   </fieldset>
+
+  {#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` || color_scale_type === `arcsinh`}
+    <label>
+      Arcsinh Threshold: {arcsinh_threshold}
+      <input
+        type="range"
+        bind:value={arcsinh_threshold}
+        min="0.1"
+        max="100"
+        step="0.1"
+        style="width: 200px"
+      />
+      <span style="font-size: 0.85em; opacity: 0.7">
+        (smaller = sharper transition; default is 1, demo uses 10 for clearer visual
+        separation)
+      </span>
+    </label>
+  {/if}
 </div>
 
-{#if x_scale_type === `arcsinh` || y_scale_type === `arcsinh` || color_scale_type === `arcsinh`}
-  <label style="display: block; margin-bottom: 1em">
-    Arcsinh Threshold: {arcsinh_threshold}
-    <input
-      type="range"
-      bind:value={arcsinh_threshold}
-      min="0.1"
-      max="100"
-      step="0.1"
-      style="width: 200px"
-    />
-    <span style="font-size: 0.85em; opacity: 0.7">
-      (smaller = sharper transition; default is 1, demo uses 10 for clearer visual separation)
-    </span>
-  </label>
-{/if}
-
 {#if x_scale_type === `log` && x_has_non_positive}
-  <p
-    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
-  >
+  <p class="warn">
     ⚠️ <strong>X-axis log scale invalid:</strong> Data contains negative/zero values. Points
     with x ≤ 0 will not render.
   </p>
 {/if}
 
 {#if y_scale_type === `log` && y_has_non_positive}
-  <p
-    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
-  >
+  <p class="warn">
     ⚠️ <strong>Y-axis log scale invalid:</strong> Data contains negative/zero values. Points
     with y ≤ 0 will not render.
   </p>
 {/if}
 
 {#if color_scale_type === `log` && color_has_non_positive}
-  <p
-    style="color: #e74c3c; font-size: 0.9em; margin: 0.5em 0; padding: 0.5em; background: rgba(231, 76, 60, 0.1); border-radius: 4px"
-  >
+  <p class="warn">
     ⚠️ <strong>Color log scale invalid:</strong> Data contains negative/zero values. Color
     mapping may fail for those points.
   </p>
 {/if}
 
-<p style="font-size: 0.9em; opacity: 0.8; margin-bottom: 0.5em">
+<p style="opacity: 0.8">
   <strong>80 points</strong> spanning ±1000 with clusters at different magnitudes. Switch to
   "log" to see points with negative values disappear.
 </p>
@@ -1280,6 +1293,23 @@ Use `scale_type='arcsinh'` or `{ type: 'arcsinh', threshold }` for signed wide-r
     Magnitude: {metadata.magnitude}
   {/snippet}
 </ScatterPlot>
+
+<style>
+  fieldset {
+    display: flex;
+    gap: 1em;
+  }
+  p {
+    margin: 0.5em 0;
+    font-size: 0.9em;
+  }
+  .warn {
+    padding: 0.5em;
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+    border-radius: 4px;
+  }
+</style>
 ```
 
 ## Combined Interactive Scatter Plot with Custom Controls
@@ -1385,8 +1415,8 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
   })
 </script>
 
-<div>
-  <h3 id="interactive-multi-series-plot">Interactive Multi-Series Plot</h3>
+<h3 id="interactive-multi-series-plot">Interactive Multi-Series Plot</h3>
+<div class="demo-controls">
   <label>
     Display Mode:
     <select bind:value={display_mode}>
@@ -1395,95 +1425,93 @@ Mixed display modes, markers, hover styling, and independent X/Y grid controls. 
       <option value="line+points">Lines and Points</option>
     </select>
   </label>
-
   <!-- Legend with toggles -->
-  <div style="display: flex; flex-wrap: wrap; margin-left: 2em;">
-    {#each categories as category, idx (category)}
-      <label style="margin-right: 1em; display: flex; align-items: center;">
-        <input type="checkbox" bind:checked={visible_series[category]} />
-        <span
-          style="display: inline-block; width: 12px; height: 12px; background: {category_colors[
-            idx
-          ]}; border-radius: 50%; margin: 0 0.5em;"
-        ></span>
-        {category}
-      </label>
-    {/each}
-  </div>
-
-  <ScatterPlot
-    series={displayed_series.map((srs) => ({ ...srs, markers: display_mode }))}
-    x_axis={{ label: axis_labels.x }}
-    y_axis={{ label: axis_labels.y }}
-    style="height: 400px;"
-    legend={null}
-  >
-    {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
-      <strong>{metadata.category}</strong><br />
-      Point {metadata.idx + 1} ({coord_x}, {coord_y.toFixed(2)})<br />
-      Symbol: {metadata.symbol}
-    {/snippet}
-  </ScatterPlot>
-
-  <h3 id="random-points-with-custom-controls-and-external-legend" style="margin-top: 2em;">
-    Random Points with Custom Controls and External Legend
-  </h3>
-  <div style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 1em;">
-    {#each Object.keys(ticks) as axis (axis)}
-      <label>
-        {axis} Tick Interval:
-        <select bind:value={ticks[axis]}>
-          {#each [2, 5, 10] as num (num)}
-            <option value={-num}>{num} units</option>
-          {/each}
-        </select>
-      </label>
-    {/each}
-
-    {#each ['x', 'y'] as axis (axis)}
-      <label>
-        <input type="checkbox" bind:checked={display[`${axis}_grid`]} />
-        {axis} Grid
-      </label>
-    {/each}
-
-    {#each Object.keys(axis_labels) as axis (axis)}
-      <label>
-        {axis} Label:
-        <input type="text" bind:value={axis_labels[axis]} style="width: 120px" />
-      </label>
-    {/each}
-  </div>
-
-  <ScatterPlot
-    series={random_series.map((srs) => ({ ...srs, markers: 'points' }))}
-    x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
-    y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
-    bind:display
-    class="external-legend-plot"
-    style="height: 400px; position: relative;"
-    legend={{
-      style: `
-        position: absolute;
-        top: 3pt;
-        left: var(--legend-left, 100%);
-        right: var(--legend-right, auto);
-        background: rgba(255, 255, 255, 0.1);
-        padding: 5px 5px 5px 0;
-        border-radius: 3px;
-        border: none;
-      `,
-    }}
-  >
-    {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
-      <strong>{metadata.series}</strong><br />
-      Position: ({coord_x.toFixed(2)}, {coord_y.toFixed(2)})<br />
-      Point Index: {metadata.point}
-    {/snippet}
-  </ScatterPlot>
+  {#each categories as category, idx (category)}
+    <label>
+      <input type="checkbox" bind:checked={visible_series[category]} />
+      <span style:background={category_colors[idx]}></span>
+      {category}
+    </label>
+  {/each}
 </div>
 
+<ScatterPlot
+  series={displayed_series.map((srs) => ({ ...srs, markers: display_mode }))}
+  x_axis={{ label: axis_labels.x }}
+  y_axis={{ label: axis_labels.y }}
+  style="height: 400px;"
+  legend={null}
+>
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
+    <strong>{metadata.category}</strong><br />
+    Point {metadata.idx + 1} ({coord_x}, {coord_y.toFixed(2)})<br />
+    Symbol: {metadata.symbol}
+  {/snippet}
+</ScatterPlot>
+
+<h3 id="random-points-with-custom-controls-and-external-legend" style="margin-top: 2em">
+  Random Points with Custom Controls and External Legend
+</h3>
+<div class="demo-controls">
+  {#each Object.keys(ticks) as axis (axis)}
+    <label>
+      {axis} Tick Interval:
+      <select bind:value={ticks[axis]}>
+        {#each [2, 5, 10] as num (num)}
+          <option value={-num}>{num} units</option>
+        {/each}
+      </select>
+    </label>
+  {/each}
+
+  {#each ['x', 'y'] as axis (axis)}
+    <label>
+      <input type="checkbox" bind:checked={display[`${axis}_grid`]} />
+      {axis} Grid
+    </label>
+  {/each}
+
+  {#each Object.keys(axis_labels) as axis (axis)}
+    <label>
+      {axis} Label:
+      <input type="text" bind:value={axis_labels[axis]} style="width: 120px" />
+    </label>
+  {/each}
+</div>
+
+<ScatterPlot
+  series={random_series.map((srs) => ({ ...srs, markers: 'points' }))}
+  x_axis={{ label: axis_labels.x, range: [-15, 15], ticks: ticks.x }}
+  y_axis={{ label: axis_labels.y, range: [-15, 15], ticks: ticks.y }}
+  bind:display
+  class="external-legend-plot"
+  style="height: 400px; position: relative;"
+  legend={{
+    style: `
+      position: absolute;
+      top: 3pt;
+      left: var(--legend-left, 100%);
+      right: var(--legend-right, auto);
+      background: rgba(255, 255, 255, 0.1);
+      padding: 5px 5px 5px 0;
+      border-radius: 3px;
+      border: none;
+    `,
+  }}
+>
+  {#snippet tooltip({ x: coord_x, y: coord_y, metadata })}
+    <strong>{metadata.series}</strong><br />
+    Position: ({coord_x.toFixed(2)}, {coord_y.toFixed(2)})<br />
+    Point Index: {metadata.point}
+  {/snippet}
+</ScatterPlot>
+
 <style>
+  label span {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
   /* the legend hangs off the chart's right edge into the page margin, which only exists
      on wide viewports; below that it tucks into the top-right corner of the chart */
   @media (max-width: 1000px) {
@@ -1582,9 +1610,7 @@ The color bar picks the corner with the least data density (top-left, top-right,
   })
 </script>
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 1em 2em; justify-content: center; margin: 1em"
->
+<div class="demo-controls">
   {#each [['top_left', 'Top Left'], ['top_right', 'Top Right'], ['bottom_left', 'Bottom Left'], ['bottom_right', 'Bottom Right']] as [quadrant, label] (quadrant)}
     <label
       >{label}: {density[quadrant]}
@@ -1594,7 +1620,7 @@ The color bar picks the corner with the least data density (top-left, top-right,
         max="100"
         value={density[quadrant]}
         onchange={(evt) => (density[quadrant] = Number(evt.target.value))}
-        style="width: 100px; margin-left: 0.5em"
+        style="width: 100px"
       />
     </label>
   {/each}
@@ -1714,25 +1740,23 @@ When points cluster tightly, manual labels overlap. Set `auto_placement: true` o
   ])
 </script>
 
-<div>
-  <label style="margin-bottom: 1em; display: block">
-    <input type="checkbox" bind:checked={auto_place_enabled} />
-    Enable Automatic Label Placement
-  </label>
+<label style="margin-bottom: 1em; display: block">
+  <input type="checkbox" bind:checked={auto_place_enabled} />
+  Enable Automatic Label Placement
+</label>
 
-  <p style="margin-bottom: 1em; font-size: 0.95em; opacity: 0.9">
-    Toggle to compare: with auto-placement ON, clustered labels (purple markers) separate to
-    avoid overlap, and isolated labels (orange markers) position below their markers. With it
-    OFF, you'll see overlaps.
-  </p>
+<p style="font-size: 0.95em; opacity: 0.9">
+  Toggle to compare: with auto-placement ON, clustered labels (purple markers) separate to
+  avoid overlap, and isolated labels (orange markers) position below their markers. With it
+  OFF, you'll see overlaps.
+</p>
 
-  <ScatterPlot
-    series={series_data.map((srs) => ({ ...srs, markers: 'points' }))}
-    x_axis={{ label: 'X Position', range: [0, 100] }}
-    y_axis={{ label: 'Y Position', range: [0, 100] }}
-    style="height: 500px"
-  />
-</div>
+<ScatterPlot
+  series={series_data.map((srs) => ({ ...srs, markers: 'points' }))}
+  x_axis={{ label: 'X Position', range: [0, 100] }}
+  y_axis={{ label: 'Y Position', range: [0, 100] }}
+  style="height: 500px"
+/>
 ```
 
 ## Tuning Label Placement
@@ -1803,7 +1827,7 @@ Adjust SA iterations and the leader-line threshold to see how placement changes:
   ])
 </script>
 
-<div style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap">
+<div class="demo-controls">
   <label>
     SA iterations: <strong>{sa_iterations}</strong>
     <input type="range" min="100" max="5000" step="100" bind:value={sa_iterations} />
@@ -1863,7 +1887,7 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
   let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 6pt; flex-wrap: wrap; align-items: center">
+<div class="demo-controls">
   <strong>Color Scale Type:</strong>
   {#each [`linear`, `log`] as scale_type (scale_type)}
     <label>
@@ -2109,7 +2133,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
   ]
 </script>
 
-<div class="grid">
+<div class="grid bleed-1400">
   {#each plots as { title, data } (title)}
     <div class="cell">
       <h4>{title}</h4>
@@ -2127,7 +2151,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1em;
-    margin: 2em 0;
+    margin-block: 2em; /* margin-inline belongs to bleed-1400 */
   }
   .cell {
     border: 1px solid var(--border-color, #ddd);
@@ -2370,6 +2394,9 @@ Use the `where` condition to fill only where a condition is true, e.g. highlight
 </div>
 ```
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Fill Between Series with Mismatched X-Values
 
 Series on different x-grids need no resampling: each boundary keeps its own points and is drawn with the region's `curve`.
@@ -2420,6 +2447,9 @@ Series on different x-grids need no resampling: each boundary keeps its own poin
   style="height: 350px"
 />
 ```
+
+</section>
+<section>
 
 ## Fills Between Partially Overlapping Series
 
@@ -2487,6 +2517,9 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
 />
 ```
 
+</section>
+</div>
+
 ## Fill with Different Curve Types
 
 `curve` controls how the fill area interpolates between points. Side-by-side comparison of curve types:
@@ -2528,9 +2561,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
   ]
 </script>
 
-<div
-  style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1em"
->
+<section>
   {#each curve_types as curve_type, idx (curve_type)}
     <div>
       <strong style="text-transform: capitalize">{curve_type}</strong>
@@ -2552,7 +2583,15 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
       />
     </div>
   {/each}
-</div>
+</section>
+
+<style>
+  section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 1em;
+  }
+</style>
 ```
 
 ## Reference Lines: Horizontal, Vertical, and Diagonal
@@ -2620,7 +2659,7 @@ Fills are drawn only where both boundaries' x-ranges overlap; non-overlapping pa
   style="height: 400px"
 />
 
-<div style="margin-top: 0.5em; font-size: 0.9em; display: flex; gap: 1em; flex-wrap: wrap">
+<div class="demo-controls" style="font-size: 0.9em">
   {#each ref_lines as line (line.label)}
     <label>
       <input
@@ -2791,12 +2830,20 @@ Reference lines support interactive features including hover styling, click hand
   style="height: 400px"
 />
 
-<div
-  style="margin-top: 0.5em; padding: 0.5em; background: rgba(255, 255, 255, 0.05); border-radius: 4px; font-size: 0.9em"
->
+<aside>
   <div><strong>Clicked:</strong> {clicked_info}</div>
   <div><strong>Hovered:</strong> {hovered_info}</div>
-</div>
+</aside>
+
+<style>
+  aside {
+    margin-top: 0.5em;
+    padding: 0.5em;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+</style>
 ```
 
 ## Reference Lines with Z-Index Layering
@@ -2837,10 +2884,10 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
   })
 </script>
 
-<div style="margin-bottom: 1em">
+<div class="demo-controls">
   <strong>Z-Index:</strong>
   {#each [`below-grid`, `below-lines`, `below-points`, `above-all`] as z_index_2 (z_index_2)}
-    <label style="margin-left: 1em">
+    <label>
       <input type="radio" bind:group={z_index} value={z_index_2} />
       {z_index_2}
     </label>
@@ -3107,12 +3154,12 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
   }))
 </script>
 
-<p style="margin-bottom: 0.5em; font-size: 0.9em; opacity: 0.85">
+<p>
   <strong>Stress test:</strong> 240 points across 3 series. Click axis labels to switch
   properties. ~5% of loads will fail to test error recovery.
 </p>
 
-<div style="display: flex; gap: 1em; margin-bottom: 0.5em; font-size: 0.8em">
+<div class="stats">
   <span>Loads: <strong>{load_count}</strong></span>
   <span>Errors: <strong style="color: #e74c3c">{error_count}</strong></span>
 </div>
@@ -3134,9 +3181,7 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
   style="height: 400px"
 />
 
-<div
-  style="margin-top: 0.5em; padding: 0.5em; background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05)); border-radius: 4px; font-size: 0.8em; max-height: 80px; overflow-y: auto; font-family: monospace"
->
+<div class="log">
   {#each loading_log.slice(-6) as msg, idx (idx)}
     <div>{msg}</div>
   {/each}
@@ -3144,6 +3189,30 @@ Reference lines work with time-based x-axes. Use Date objects or ISO strings for
     <div style="opacity: 0.6">Click an axis label to see loading activity</div>
   {/if}
 </div>
+
+<style>
+  p {
+    margin-bottom: 0.5em;
+    font-size: 0.9em;
+    opacity: 0.85;
+  }
+  .stats {
+    display: flex;
+    gap: 1em;
+    margin-bottom: 0.5em;
+    font-size: 0.8em;
+  }
+  .log {
+    margin-top: 0.5em;
+    padding: 0.5em;
+    background: var(--surface-bg-hover, rgba(0, 0, 0, 0.05));
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-family: monospace;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+</style>
 ```
 
 ## Interactive Color Dimension with Dynamic ColorBar
@@ -3300,13 +3369,13 @@ Axis changes simulate delayed loading. Color property and palette changes use th
   }
 </script>
 
-<p style="font-size: 0.9em; opacity: 0.85; margin-bottom: 0.5em">
+<p>
   <strong>150 points</strong> with 3 interactive dimensions. Click axis labels to switch X/Y
   properties. Click the ColorBar title to switch color property, or the color scale dropdown to
   change the color scheme.
 </p>
 
-<div style="display: flex; gap: 1em; font-size: 0.8em; margin-bottom: 0.5em">
+<div class="stats">
   <span>Axis switches: <strong>{axis_switches}</strong></span>
   <span>Color switches: <strong>{color_switches}</strong></span>
 </div>
@@ -3337,6 +3406,20 @@ Axis changes simulate delayed loading. Color property and palette changes use th
   style="height: 450px"
   legend={null}
 />
+
+<style>
+  p {
+    margin-bottom: 0.5em;
+    font-size: 0.9em;
+    opacity: 0.85;
+  }
+  .stats {
+    display: flex;
+    gap: 1em;
+    margin-bottom: 0.5em;
+    font-size: 0.8em;
+  }
+</style>
 ```
 
 ## Stress Test: Many Interpolated Fills
@@ -3415,6 +3498,9 @@ Several fill regions between series at different sample densities, to stress-tes
 />
 ```
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Y2 Axis Synchronization
 
 When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` controls the Y2 axis range. Modes: `'synced'` (Y2 has exact same range as Y1), `'align'` (Y2 expands to show all data with a shared anchor point, default 0), or `undefined`/`'none'` (independent).
@@ -3455,9 +3541,7 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   let sync_mode = $state(`none`)
 </script>
 
-<div
-  style="margin-bottom: 1em; display: flex; flex-wrap: wrap; gap: 0.5em 1.5em; align-items: center"
->
+<div class="demo-controls">
   <strong>Y2 Sync:</strong>
   {#each Object.entries(sync_labels) as [mode, label] (mode)}
     <label><input type="radio" bind:group={sync_mode} value={mode} /> {label}</label>
@@ -3476,6 +3560,9 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   style="height: 400px"
 />
 ```
+
+</section>
+<section>
 
 ### Y2 Sync via PlotControls
 
@@ -3522,6 +3609,9 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
   style="height: 450px"
 />
 ```
+
+</section>
+</div>
 
 ## Dual X-Axes (X2)
 
@@ -3619,7 +3709,7 @@ The legend and colorbar are solved together against measured footprints and data
   ]
 </script>
 
-<div style="display: flex; flex-wrap: wrap; gap: 1em 2em">
+<div class="demo-controls">
   <label
     >Cluster x: {center_x}<input type="range" bind:value={center_x} min="18" max="82" /></label
   >

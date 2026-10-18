@@ -20,9 +20,9 @@
   import ThemeControl from '#lib/theme/ThemeControl.svelte'
   import pkg from '#root/package.json'
   import Footer from '#site/Footer.svelte'
-  import { link_source_mentions } from '#site/source-links.js'
   import { nav_routes, routes } from '#site/state.svelte.js'
   import type { Snippet } from 'svelte'
+  import type { Attachment } from 'svelte/attachments'
   import { MediaQuery } from 'svelte/reactivity'
   import type { CmdAction } from 'svelte-widgets'
   import CopyButton from 'svelte-widgets/CopyButton.svelte'
@@ -76,6 +76,20 @@
   const pagefind_enabled = $derived(
     !page.url.pathname.startsWith(`/test`) && page.url.pathname !== `/404`,
   )
+
+  // Source links need the ~1 MB symbol table, which no page needs to render, so it loads after
+  // the page instead of in front of every route
+  const link_sources: Attachment<HTMLElement> = (node) => {
+    let stop: (() => void) | undefined
+    let detached = false
+    void import('#site/source-links.js').then(({ link_source_mentions }) => {
+      if (!detached) stop = link_source_mentions(node) ?? undefined
+    })
+    return () => {
+      detached = true
+      stop?.()
+    }
+  }
 </script>
 
 <svelte:window
@@ -142,7 +156,7 @@
   {@attach heading_anchors({
     selector: `:scope > :is(h2, h3, h4, h5, h6), :scope > * > :is(h2, h3, h4, h5, h6)`,
   })}
-  {@attach link_source_mentions}
+  {@attach link_sources}
 >
   {@render children?.()}
 </main>

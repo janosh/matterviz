@@ -111,34 +111,33 @@
   all ~10k cells are mounted.
 </p>
 
-<div class="heatmap-controls-anchor bleed-1400" role="group">
-  <div class="scroll-container">
-    <LazyDemo label="Element Pair Electronegativity Difference">
-      <HeatmapMatrix
-        x_items={axis_items}
-        y_items={axis_items}
-        values={en_diff_values}
-        color_scale="interpolateViridis"
-        controls_props={{ children: full_controls }}
-        hide_empty={hide_mode}
-        selection_mode="multi"
-        bind:selected_cells
-        bind:pinned_cell
-        tooltip_mode="both"
-        enable_brush
-        on_brush={(payload) =>
-          (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
-            payload.x_range[1]
-          }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
-        on_export={async (format, { data, mime, filename, save }) => {
-          await save(data, `${filename}.${format}`, mime)
-          last_export_status = `Exported ${format.toUpperCase()}`
-        }}
-        on_click={(cell: CellContext) => (clicked_cell = cell)}
-      />
-    </LazyDemo>
-  </div>
-</div>
+<LazyDemo
+  label="Element Pair Electronegativity Difference"
+  class="bleed-1400 scroll-container heatmap-controls-anchor"
+>
+  <HeatmapMatrix
+    x_items={axis_items}
+    y_items={axis_items}
+    values={en_diff_values}
+    color_scale="interpolateViridis"
+    controls_props={{ children: full_controls }}
+    hide_empty={hide_mode}
+    selection_mode="multi"
+    bind:selected_cells
+    bind:pinned_cell
+    tooltip_mode="both"
+    enable_brush
+    on_brush={(payload) =>
+      (brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
+        payload.x_range[1]
+      }, ${payload.y_range[0]}-${payload.y_range[1]})`)}
+    on_export={async (format, { data, mime, filename, save }) => {
+      await save(data, `${filename}.${format}`, mime)
+      last_export_status = `Exported ${format.toUpperCase()}`
+    }}
+    on_click={(cell: CellContext) => (clicked_cell = cell)}
+  />
+</LazyDemo>
 {#if clicked_cell}
   <div class="click-info">
     Clicked: <strong>{clicked_cell.x_item.label}</strong> &ndash;
@@ -163,72 +162,76 @@
   <div class="click-info">{last_export_status}</div>
 {/if}
 
-<!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
-<h2 id="symmetric-subset-with-custom-tooltip">Symmetric Subset with Custom Tooltip</h2>
-<p>
-  Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
-</p>
+<!-- Demos 2 and 3: two small matrices side by side in the page margins -->
+<div class="bleed-1400 demo-pairs">
+  <!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
+  <section>
+    <h2 id="symmetric-subset-with-custom-tooltip">Symmetric Subset with Custom Tooltip</h2>
+    <p>
+      Demonstrates switchable <code>symmetric</code> modes and a custom <code>tooltip</code> snippet.
+    </p>
 
-<div class="heatmap-controls-anchor" role="group">
-  <LazyDemo label="Symmetric Subset with Custom Tooltip">
-    <HeatmapMatrix
-      x_items={small_axis}
-      y_items={small_axis}
-      values={small_values}
-      color_scale="interpolatePlasma"
-      symmetric="lower"
-      controls_props={{ children: subset_controls }}
-      tile_size="20px"
-      gap="1px"
-      on_double_click={(cell: CellContext) =>
-        (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
-          cell.value,
-        )}`)}
-      style="margin: 1em auto"
-    >
-      {#snippet tooltip(ctx)}
-        {@const x_el = ctx.x_item.data as ChemicalElement}
-        {@const y_el = ctx.y_item.data as ChemicalElement}
-        <strong>{x_el.name}</strong> &ndash; <strong>{y_el.name}</strong><br />
-        EN: {x_el.electronegativity_pauling ?? `?`} vs {y_el.electronegativity_pauling ??
-          `?`}<br />
-        |&Delta;EN| = {format_cell_value(ctx.value)}
-      {/snippet}
-    </HeatmapMatrix>
-  </LazyDemo>
-</div>
-{#if dblclick_info}
-  <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
-{/if}
-
-<!-- Demo 3: Arbitrary non-element axes -->
-<h2 id="arbitrary-axis-items">Arbitrary Axis Items</h2>
-<p>
-  Axes don't have to be elements. This demo uses property-range bins as both axes, showing that <code
-    >HeatmapMatrix</code
-  >
-  works with any <code>AxisItem[]</code>. Uses <code>interpolateYlOrRd</code> color scale and a custom
-  cell snippet that renders the value inside each tile.
-</p>
-
-<LazyDemo label="Arbitrary Axis Items">
-  <HeatmapMatrix
-    x_items={property_bins}
-    y_items={property_bins}
-    values={bin_values}
-    color_scale="interpolateYlOrRd"
-    tile_size="50px"
-    gap="2px"
-    label_style="font-size: 0.85em;"
-    style="margin: 1em auto"
-  >
-    {#snippet cell(ctx)}
-      {#if typeof ctx.value === `number` && ctx.value > 0}
-        <span style="font-size: 0.7em">{ctx.value}</span>
+    <LazyDemo label="Symmetric Subset with Custom Tooltip" class="heatmap-controls-anchor">
+      <HeatmapMatrix
+        x_items={small_axis}
+        y_items={small_axis}
+        values={small_values}
+        color_scale="interpolatePlasma"
+        symmetric="lower"
+        controls_props={{ children: subset_controls }}
+        tile_size="20px"
+        gap="1px"
+        on_double_click={(cell: CellContext) =>
+          (dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${format_cell_value(
+            cell.value,
+          )}`)}
+        style="margin: 1em auto"
+      >
+        {#snippet tooltip(ctx)}
+          {@const x_el = ctx.x_item.data as ChemicalElement}
+          {@const y_el = ctx.y_item.data as ChemicalElement}
+          <strong>{x_el.name}</strong> &ndash; <strong>{y_el.name}</strong><br />
+          EN: {x_el.electronegativity_pauling ?? `?`} vs {y_el.electronegativity_pauling ??
+            `?`}<br />
+          |&Delta;EN| = {format_cell_value(ctx.value)}
+        {/snippet}
+      </HeatmapMatrix>
+      {#if dblclick_info}
+        <p style="margin-top: 0.5em; font-size: 0.9em">Last double-click: {dblclick_info}</p>
       {/if}
-    {/snippet}
-  </HeatmapMatrix>
-</LazyDemo>
+    </LazyDemo>
+  </section>
+
+  <!-- Demo 3: Arbitrary non-element axes -->
+  <section>
+    <h2 id="arbitrary-axis-items">Arbitrary Axis Items</h2>
+    <p>
+      Axes don't have to be elements. This demo uses property-range bins as both axes, showing
+      that <code>HeatmapMatrix</code>
+      works with any <code>AxisItem[]</code>. Uses <code>interpolateYlOrRd</code> color scale and
+      a custom cell snippet that renders the value inside each tile.
+    </p>
+
+    <LazyDemo label="Arbitrary Axis Items">
+      <HeatmapMatrix
+        x_items={property_bins}
+        y_items={property_bins}
+        values={bin_values}
+        color_scale="interpolateYlOrRd"
+        tile_size="50px"
+        gap="2px"
+        label_style="font-size: 0.85em;"
+        style="margin: 1em auto"
+      >
+        {#snippet cell(ctx)}
+          {#if typeof ctx.value === `number` && ctx.value > 0}
+            <span style="font-size: 0.7em">{ctx.value}</span>
+          {/if}
+        {/snippet}
+      </HeatmapMatrix>
+    </LazyDemo>
+  </section>
+</div>
 
 <style>
   h2 {
@@ -248,10 +251,9 @@
     background: light-dark(#f0f0f0, #333);
     font-size: 0.85em;
   }
-  .scroll-container {
-    overflow-x: auto;
-    overflow-y: hidden;
-    max-width: 100%;
-    margin: 1em 0;
+  /* the full 118x118 matrix scrolls sideways instead of widening the page */
+  :global(.lazy-demo.scroll-container) {
+    overflow: auto hidden;
+    margin-block: 1em;
   }
 </style>

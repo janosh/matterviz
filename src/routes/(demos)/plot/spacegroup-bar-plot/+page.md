@@ -182,13 +182,9 @@ Display spacegroup distributions horizontally:
   let plot_style = $derived(orientation === 'horizontal' ? `height: 700px` : `height: 450px`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1em; align-items: center">
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="radio" bind:group={orientation} value="vertical" /> Vertical</label
-  >
-  <label style="display: flex; align-items: center; gap: 4px"
-    ><input type="radio" bind:group={orientation} value="horizontal" /> Horizontal</label
-  >
+<div class="demo-controls">
+  <label><input type="radio" bind:group={orientation} value="vertical" /> Vertical</label>
+  <label><input type="radio" bind:group={orientation} value="horizontal" /> Horizontal</label>
 </div>
 
 <SpacegroupBarPlot data={high_symmetry} {orientation} style={plot_style} />
@@ -271,14 +267,22 @@ Simulated space group distributions from Materials Project database:
   const materials_db = generate_distribution()
 </script>
 
-<div
-  style="margin-bottom: 1em; padding: 8pt; background: rgba(255, 255, 255, 0.05); border-radius: var(--border-radius); font-size: 0.9em"
->
+<aside>
   <strong>Dataset:</strong>
   {materials_db.length} materials with distribution resembling real materials databases. Notice
   how certain space groups like 225 (Fm-3m), 62 (Pnma), and 14/15 (monoclinic) are much more
   common.
-</div>
+</aside>
 
 <SpacegroupBarPlot data={materials_db} style="height: 500px" />
+
+<style>
+  aside {
+    margin-bottom: 1em;
+    padding: 8pt;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+  }
+</style>
 ```

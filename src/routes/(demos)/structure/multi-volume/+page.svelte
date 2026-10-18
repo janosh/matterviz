@@ -311,10 +311,7 @@
   {/each}
 </section>
 
-<h2
-  id="mix-your-own-matching-structures-append-as-extra-volumes"
-  style="margin: 0.5em 0 0.3em; font-size: 0.9rem; opacity: 0.85"
->
+<h2 id="mix-your-own-matching-structures-append-as-extra-volumes" class="mix-title">
   Mix your own (matching structures append as extra volumes)
 </h2>
 <FilePicker
@@ -336,6 +333,7 @@
   bind:error_msg
   bind:dragover={dragover_hint}
   show_controls="always"
+  class="bleed-1400"
   on_file_load={() => {
     loads.cancel() // a dropped file supersedes any scenario or file still loading
     clear_scenario()
@@ -416,6 +414,11 @@
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 0.6em;
     margin-bottom: 1em;
+  }
+  .mix-title {
+    margin: 0.5em 0 0.3em;
+    font-size: 0.9rem;
+    opacity: 0.85;
   }
   .scenario-card {
     display: flex;

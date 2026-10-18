@@ -198,6 +198,8 @@ describe(`display modes`, () => {
       default_props({
         trajectory: run,
         current_step_idx: 0,
+        // closed, so the display packet carries only the channels the scene draws
+        data_inspector_open: false,
         structure_props: {
           scene_props: {
             show_polyhedra: `always`,
@@ -248,7 +250,9 @@ describe(`display modes`, () => {
       }
     const run = trajectory_from_frames(frames)
     const read = vi.spyOn(run, `read_frame`)
-    const props = $state(default_props({ trajectory: run, active_pane: `controls` }))
+    const props = $state(
+      default_props({ trajectory: run, active_pane: `controls`, data_inspector_open: false }),
+    )
     const target = mount_trajectory(props)
     const last_channels = () => read.mock.lastCall?.[2]?.vectors
     await tick()
@@ -266,14 +270,9 @@ describe(`display modes`, () => {
     // Hiding a channel must leave its toggle available so it can be loaded again.
     toggle(`force`)
     await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
-    props.active_pane = `data-inspector`
+    props.data_inspector_open = true
     await vi.waitFor(() => expect(last_channels()).toBeUndefined())
-    props.active_pane = null
-    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
-    // a docked inspector is open without being the active pane
-    props.data_inspector_docked = true
-    await vi.waitFor(() => expect(last_channels()).toBeUndefined())
-    props.data_inspector_docked = false
+    props.data_inspector_open = false
     await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
     props.structure_props = {
       scene_props: {
@@ -315,7 +314,9 @@ describe(`display modes`, () => {
         expect(Boolean(target.querySelector(`.histogram`))).toBe(
           plot && plot_type === `distribution`,
         )
-        expect(Boolean(target.querySelector(`.pane-divider`))).toBe(structure && plot)
+        expect(Boolean(target.querySelector(`.content-area > .pane-divider`))).toBe(
+          structure && plot,
+        )
       }
     },
   )
@@ -514,7 +515,8 @@ describe(`controls`, () => {
   ] as const
 
   test(`every hideable control renders by default`, async () => {
-    const props = $state(default_props())
+    // the info button hides while the inspector's Info tab shows the same cards
+    const props = $state(default_props({ data_inspector_open: false }))
     const target = mount_trajectory(props)
     await tick()
     for (const [hidden, selector] of HIDEABLE_CONTROLS) {
@@ -533,7 +535,65 @@ describe(`controls`, () => {
 
   // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
   // its sites, so selection and hover map between the two in both directions
-  test(`a docked inspector links render-sampled atom rows to scene sites`, async () => {
+  // Open by default, except where its menu entry is hidden: there nothing could close it.
+  // Its Info tab shows the info pane's cards, so the info button hides while it shows.
+  test.each([
+    [`default props`, {}, true, false],
+    [
+      `a hidden menu entry`,
+      { show_controls: { hidden: [`data-inspector-pane` as const] } },
+      false,
+      true,
+    ],
+    [`no controls`, { show_controls: `never` as const }, false, false],
+    [`data_inspector_open=false`, { data_inspector_open: false }, false, true],
+  ])(
+    `with %s the inspector sidebar shows: %s, the info button: %s`,
+    (_name, overrides, shown, info_button) => {
+      const target = mount_trajectory(default_props(overrides))
+      expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(shown)
+      expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(shown)
+      expect(target.querySelector(`.trajectory-info-toggle`) !== null).toBe(info_button)
+    },
+  )
+
+  // A row too narrow for the viewer's 320px floor plus a usable 260px sidebar (a phone) stacks
+  // the inspector under the viewer: beside it, the inspector got a few dozen px
+  test.each([
+    [375, true],
+    [1200, false],
+  ])(`a %ipx viewer row stacks the inspector: %s`, async (row_width, stacked) => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(row_width)
+    const target = mount_trajectory(default_props())
+    const row = query(target, `.viewer-row`)
+    await vi.waitFor(() =>
+      expect(row.classList.contains(`docked-sidebar-stacked`)).toBe(stacked),
+    )
+    expect(row.querySelector(`.trajectory-data-inspector-sidebar`)).not.toBeNull()
+  })
+
+  // The inspector's Info tab stands in for the info pane while it shows: an `info` active_pane
+  // opens that tab, and switching between other panes keeps whichever tab the user picked
+  test(`active_pane="info" opens the inspector's Info tab`, async () => {
+    const props = $state(default_props({ active_pane: `info` as Pane }))
+    mount_trajectory(props)
+    const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
+    const selected_tab = () =>
+      sidebar.querySelector(`[role="tab"][aria-selected="true"]`)?.getAttribute(`data-value`)
+    expect(selected_tab()).toBe(`info`)
+    props.active_pane = `export`
+    await tick()
+    query<HTMLButtonElement>(sidebar, `[role="tab"][data-value="atoms"]`).click()
+    await tick()
+    props.active_pane = `flight`
+    await tick()
+    expect(selected_tab()).toBe(`atoms`)
+    props.active_pane = `info`
+    await tick()
+    expect(selected_tab()).toBe(`info`)
+  })
+
+  test(`the inspector links render-sampled atom rows to scene sites`, async () => {
     const structure_props = last_props<StructureProps>(structure_component)
     const sample = { render_sample: true, total_atoms: 12, source_atom_indices: [3, 9] }
     const frames = [0, 10].map((step) => make_trajectory_frame(step, 2, sample))
@@ -542,7 +602,7 @@ describe(`controls`, () => {
     const props = $state(
       default_props({
         trajectory: trajectory_from_frames(frames),
-        data_inspector_docked: true,
+        data_inspector_open: true,
         active_pane: null,
       }),
     )
@@ -572,25 +632,6 @@ describe(`controls`, () => {
     expect(rows().map((row) => row.classList.contains(`selected`))).toEqual([true, false])
     // the inner structure's own site table stays off: the inspector lists the sites
     expect(target.querySelector(`button[aria-label="Show the site table"]`)).toBeNull()
-    // a docked inspector has no floating pane, so its Analysis menu entry undocks it into one
-    await open_analysis(target, `Data inspector`)
-    expect(props.data_inspector_docked).toBe(false)
-    expect(props.active_pane).toBe(`data-inspector`)
-    expect(target.querySelector(`.trajectory-data-inspector-sidebar`)).toBeNull()
-    expect(query(target, `.trajectory-data-inspector-pane table`)).not.toBeNull()
-  })
-
-  // Unset, the inspector docks once the viewer row has 900 px for it
-  test.each([
-    [899, false],
-    [900, true],
-  ])(`a %d px viewer docks the inspector: %s`, async (width, docked) => {
-    const target = mount_trajectory(default_props())
-    const row = query(target, `.viewer-row`)
-    await resize_element(row, width, 600)
-    trigger_resize_observer(row)
-    await tick()
-    expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(docked)
   })
 
   test(`linked views: inspector rows select atoms, analysis hovers highlight them, structure types seek`, async () => {
@@ -604,7 +645,7 @@ describe(`controls`, () => {
     const props = $state(
       default_props({
         trajectory: make_shared_run(3, { lattice_params: { a: 5, b: 5, c: 5 } }),
-        active_pane: `data-inspector`,
+        data_inspector_open: true,
         current_step_idx: 0,
       }),
     )
@@ -618,7 +659,7 @@ describe(`controls`, () => {
     atoms_tab?.click()
     await tick()
     const atom_row = (row_idx: number) =>
-      doc_query(`.trajectory-data-inspector-pane tbody tr:nth-child(${row_idx})`)
+      doc_query(`.trajectory-data-inspector-sidebar tbody tr:nth-child(${row_idx})`)
     atom_row(2).click()
     await tick()
     expect(structure_props().selected_sites).toEqual([1])
@@ -1215,7 +1256,7 @@ describe(`banners`, () => {
     const banner = find_parse_banner(document) as HTMLElement
     expect(banner.textContent).toContain(`2 parse warnings: odd header; missing cell`)
     // in the shared top-center notice column, clear of the bottom-edge AtomLegend
-    expect(banner.parentElement?.classList.contains(`viewer-notices`)).toBe(true)
+    expect(banner.closest(`.viewer-notices`)).toBeInstanceOf(HTMLElement)
     banner.querySelector<HTMLButtonElement>(`button[aria-label="Dismiss message"]`)?.click()
     await tick()
     expect(find_parse_banner(target)).toBeUndefined()
@@ -1278,7 +1319,9 @@ describe(`banners`, () => {
 
 describe(`panes`, () => {
   test(`active_pane opens exactly one pane at a time`, async () => {
-    const props = $state(default_props({ active_pane: null as Pane }))
+    const props = $state(
+      default_props({ active_pane: null as Pane, data_inspector_open: false }),
+    )
     const target = mount_trajectory(props)
     const open_panes = () =>
       [...target.querySelectorAll(`.viewer-pane-open`)].map((pane) =>
@@ -1357,9 +1400,22 @@ describe(`panes`, () => {
     expect(props.active_pane).toBe(`msd`)
     expect(open_panes()).toEqual([`trajectory-msd-pane`])
     expect(target.querySelector(`.analysis-dropdown`)).toBeNull()
+    // The inspector is a sidebar beside the open pane, not a pane that replaces it, and its
+    // menu entry toggles it. Closed, it unmounts and builds no tables.
+    const sidebar = () => target.querySelector(`.trajectory-data-inspector-sidebar`)
+    expect(sidebar()).toBeNull()
     await open_analysis(target, `Data inspector`)
-    expect(props.active_pane).toBe(`data-inspector`)
-    expect(open_panes()).toEqual([`trajectory-data-inspector-pane`])
+    expect(props.data_inspector_open).toBe(true)
+    expect(sidebar()?.querySelector(`table`)).not.toBeNull()
+    // an analysis pane opened next leaves the sidebar open
+    await open_analysis(target, `Mean squared displacement`)
+    expect(props.active_pane).toBe(`msd`)
+    expect(open_panes()).toEqual([`trajectory-msd-pane`])
+    expect(props.data_inspector_open).toBe(true)
+    expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(true)
+    await open_analysis(target, `Data inspector`)
+    expect(props.data_inspector_open).toBe(false)
+    expect(sidebar()).toBeNull()
     props.active_pane = null
     await tick()
     expect(open_panes()).toEqual([])
@@ -1376,7 +1432,12 @@ describe(`panes`, () => {
   test(`the spectroscopy pane pauses playback and takes over the plot region`, async () => {
     const on_pause = vi.fn()
     const props = $state(
-      default_props({ auto_play: true, active_pane: null as Pane, on_pause }),
+      default_props({
+        auto_play: true,
+        active_pane: null as Pane,
+        data_inspector_open: false,
+        on_pause,
+      }),
     )
     const target = mount_trajectory(props)
     await tick()
@@ -1732,18 +1793,28 @@ describe(`panes track progressively loaded property rows`, () => {
     }))
 
   test.each([
-    [`info`, /Property Rows\s*(?<count>\d+(?: loaded)?)/, [`2 loaded`, `5 loaded`, `5`]],
-    [`data-inspector`, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
+    [
+      `info`,
+      { active_pane: `info`, data_inspector_open: false },
+      /Property Rows\s*(?<count>\d+(?: loaded)?)/,
+      [`2 loaded`, `5 loaded`, `5`],
+    ],
+    [
+      `data inspector`,
+      { data_inspector_open: true },
+      /Frames \((?<count>\d+)\)/,
+      [`2`, `5`, `5`],
+    ],
   ] as const)(
     `%s follows rows pushed and finished after mount`,
-    async (active_pane, pattern, expected) => {
+    async (_name, pane_props, pattern, expected) => {
       const properties = new TrajectoryProperties(rows_for([0, 1]), false)
       const trajectory = {
         ...make_shared_run([0, 10, 20, 30, 40]),
         frame_count: 5,
         properties,
       }
-      const target = mount_trajectory(default_props({ trajectory, active_pane }))
+      const target = mount_trajectory(default_props({ trajectory, ...pane_props }))
       await tick()
       const row_count = () => pattern.exec(target.textContent ?? ``)?.groups?.count
       expect(row_count()).toBe(expected[0])

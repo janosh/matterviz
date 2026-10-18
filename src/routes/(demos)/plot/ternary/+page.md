@@ -2,6 +2,9 @@
 
 Compositions of three components drawn in a barycentric triangle: alloy and glass compositions, mixing paths, phase-field sampling, or any three-way part-of-whole. Each point is a triple of amounts in the order of the corner `labels` and is normalized per point, so raw counts, fractions and percentages all land in the right spot. Points and lines sit on the same triangle as the [convex hull](/convex-hull) and the isothermal [phase diagram](/phase-diagram) sections: the first component at the right corner, the second at the apex, the third at the left.
 
+<div class="bleed-1400 demo-pairs" style="--pair-rows: 4">
+<section>
+
 ## Basic ternary
 
 Every series draws one marker per triple. Hover a marker for its fractions, click legend entries to hide series, and use the arrow keys to walk the markers by keyboard.
@@ -43,6 +46,9 @@ Every series draws one marker per triple. Hover a marker for its fractions, clic
 
 <TernaryPlot {series} labels={[`Fe`, `Cr`, `Ni`]} style="height: 420px" />
 ```
+
+</section>
+<section>
 
 ## Composition path
 
@@ -92,6 +98,9 @@ Every series draws one marker per triple. Hover a marker for its fractions, clic
   style="height: 420px"
 />
 ```
+
+</section>
+</div>
 
 ## Points colored by a property
 

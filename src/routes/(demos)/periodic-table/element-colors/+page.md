@@ -82,7 +82,7 @@
 
 ```svelte example
 <script lang="ts">
-  import { PeriodicTable } from 'matterviz'
+  import { PeriodicTable, TableInset } from 'matterviz'
   import { ELEMENT_COLOR_SCHEMES } from 'matterviz/colors'
   import { ELEM_SYMBOLS } from 'matterviz/labels'
 
@@ -104,33 +104,23 @@
   {@const color_overrides = Object.fromEntries(
     ELEM_SYMBOLS.map((key) => [key, scheme[key] ?? 'transparent']),
   )}
-  <section>
-    <h3 id={identifier}>{identifier}</h3>
-    <p class="subtitle">{@html subtitles[identifier]}</p>
-  </section>
-  <PeriodicTable {color_overrides} labels={scheme} />
+  <PeriodicTable {color_overrides} labels={scheme} style="margin: 3em 0">
+    {#snippet inset()}
+      <TableInset style="place-content: center; text-align: center">
+        <h3 id={identifier}>{identifier}</h3>
+        <p>{@html subtitles[identifier]}</p>
+      </TableInset>
+    {/snippet}
+  </PeriodicTable>
 {/each}
 
 <style>
-  section {
-    text-align: center;
-    margin: 2em 0 -2em -20cqw;
-  }
   h3 {
     font-size: 1.5rem;
+    margin: 0 0 0.5em;
   }
-  .subtitle {
-    max-width: 50cqw;
-    margin: auto;
-  }
-  /* narrow screens: no inset gap to center into, so stack the heading above the table */
-  @container (max-width: 600px) {
-    section {
-      margin: 2em 0 0;
-    }
-    .subtitle {
-      max-width: none;
-    }
+  p {
+    margin: 0;
   }
 </style>
 ```

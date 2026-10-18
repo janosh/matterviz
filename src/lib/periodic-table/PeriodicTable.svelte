@@ -178,7 +178,9 @@
 
   // The hovered tile's box in table coordinates, and the box that would clip a tooltip there:
   // the table itself when it pans (phones), so f-block tooltips flip above their tiles
-  type TileTooltip = { element: ChemicalElement; tile: Rect; bounds: Rect }
+  // `labeled`: value labels the tile shows, so the tooltip lists the values only when it hides
+  // some (tiles too small for labels, colors, off-scale values, segments past four)
+  type TileTooltip = { element: ChemicalElement; tile: Rect; bounds: Rect; labeled: number }
   let tooltip_hover = $state<TileTooltip | null>(null)
   // Clicking a tile without a link or on_activate pins its tooltip, as does a touch preview
   const pin = new TooltipPin<TileTooltip, Pick<TileTooltip, `element`>>({
@@ -269,7 +271,10 @@
     const { left, top, width, height } = target.getBoundingClientRect()
     const origin = table_node.getBoundingClientRect()
     const tile = { x: left - origin.left, y: top - origin.top, width, height }
-    tooltip_hover = { element, tile, bounds: clip_bounds(table_node) }
+    const labeled = [...target.querySelectorAll(`.value`)].filter(
+      (label) => getComputedStyle(label).display !== `none`,
+    ).length
+    tooltip_hover = { element, tile, bounds: clip_bounds(table_node), labeled }
   }
 
   let use_log = $derived(
@@ -449,11 +454,17 @@
   {/if}
 
   {#if shown_tooltip && tooltip !== false}
-    {@const { element, tile, bounds } = shown_tooltip}
+    {@const { element, tile, bounds, labeled } = shown_tooltip}
     {@const tooltip_value = heat_values[element.number - 1]}
+    {@const values = Array.isArray(tooltip_value)
+      ? tooltip_value
+      : tooltip_value == null
+        ? []
+        : [tooltip_value]}
     <!-- inline, so it beats PlotTooltip's start default while still reading the variable -->
     <PlotTooltip
       {...beside_rect(tile, `bottom`, 8)}
+      arrow
       constrain_to={bounds}
       pinned={pin.value !== null}
       style="text-align: var(--plot-tooltip-text-align, center)"
@@ -469,11 +480,11 @@
       {:else}
         {element.name}<br />
         <small>{element.symbol} • {element.number}</small>
-        {#if Array.isArray(tooltip_value)}
+        {#if values.length > labeled}
           <br />
           <!-- numbers formatted like the tile labels, colors verbatim -->
           <small
-            >Values: {tooltip_value
+            >{values.length > 1 ? `Values` : `Value`}: {values
               .map((val) =>
                 typeof val === `number` ? format_num(val, tile_props?.float_fmt) : val,
               )

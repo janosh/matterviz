@@ -115,8 +115,8 @@ test(`element pages use local photos and keep the miniature table within a phone
 })
 
 test(`galleries reserve space and defer lower examples`, async ({ page }) => {
+  // /composition renders its cheap SVG charts directly, so no gallery there defers anything
   for (const [path, selector, from_end] of [
-    [`/composition`, `svg`, 1],
     // The final Brillouin example is an empty drop target.
     [`/reciprocal/brillouin-zone`, `canvas`, 2],
   ] as const) {

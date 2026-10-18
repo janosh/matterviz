@@ -42,7 +42,8 @@ test(`Isosurface worker failures surface as a dismissible warning in Structure`,
   await tick()
   const notice = doc_query(`.isosurface-error`)
   expect(notice.textContent).toContain(worker_message)
-  expect(notice.getAttribute(`role`)).toBe(`status`)
+  // StatusMessage announces through the live region around its message box
+  expect(notice.closest(`[role]`)?.getAttribute(`role`)).toBe(`status`)
   // Not the fatal error path: the viewer stays up around the notice
   expect(document.querySelector(`.status-message.error`)).toBeNull()
   expect(document.querySelector(`.structure`)).toBeInstanceOf(HTMLElement)

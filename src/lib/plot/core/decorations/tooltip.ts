@@ -10,6 +10,9 @@ export type TooltipPlacementConfig = {
   bounds: Rect
   exclusion_rects?: readonly Rect[]
   offset?: { x: number; y: number }
+  // Center the tooltip on the anchor along this axis instead of placing it to one side, e.g.
+  // `x` for a chip below or above a tile; only the other axis then flips
+  center?: `x` | `y`
 }
 
 // A pointer hangs down and right from its hotspot, so the rect it occupies is not
@@ -63,6 +66,7 @@ export function get_tooltip_placement_candidates({
   bounds,
   exclusion_rects = [],
   offset = { x: 10, y: 10 },
+  center,
 }: TooltipPlacementConfig): TooltipPlacementCandidate[] {
   const { width, height } = tooltip_size
   if (
@@ -91,8 +95,18 @@ export function get_tooltip_placement_candidates({
   return DIRECTIONS.map((direction) => {
     const right = direction.startsWith(`right`)
     const below = direction.endsWith(`below`)
-    const raw_x = right ? anchor.x + offset_x : anchor.x - offset_x - width
-    const raw_y = below ? anchor.y + offset_y : anchor.y - offset_y - height
+    const raw_x =
+      center === `x`
+        ? anchor.x - width / 2
+        : right
+          ? anchor.x + offset_x
+          : anchor.x - offset_x - width
+    const raw_y =
+      center === `y`
+        ? anchor.y - height / 2
+        : below
+          ? anchor.y + offset_y
+          : anchor.y - offset_y - height
     const coord_x = clamp_axis(raw_x, width, bounds.x, bounds.width)
     const coord_y = clamp_axis(raw_y, height, bounds.y, bounds.height)
     const rect = { x: coord_x, y: coord_y, width, height }
@@ -103,9 +117,10 @@ export function get_tooltip_placement_candidates({
     const distance_penalty = Math.hypot(coord_x - raw_x, coord_y - raw_y)
     // A flip's cost is the physical move to the opposite side. This selects the relevant
     // axis at a single edge instead of relying on quadrant order when one-axis flips tie.
+    // A centered axis has no side to flip to, so its two candidates tie and order picks one.
     const flip_penalty =
-      (right !== preferred_right ? width + 2 * offset_x : 0) +
-      (below !== preferred_below ? height + 2 * offset_y : 0)
+      (center !== `x` && right !== preferred_right ? width + 2 * offset_x : 0) +
+      (center !== `y` && below !== preferred_below ? height + 2 * offset_y : 0)
     const score = -(
       overlap_area * OVERLAP_WEIGHT +
       distance_penalty * DISTANCE_WEIGHT +
@@ -146,6 +161,8 @@ export function beside_rect(rect: Rect, side: TooltipSide = `bottom`, gap = 4) {
     x: rect.x + rect.width / 2,
     y: rect.y + rect.height / 2,
     offset,
+    // centered along the side it sits on, so a chip below a tile hangs under its middle
+    center: side === `top` || side === `bottom` ? (`x` as const) : (`y` as const),
     exclusion_rects: [rect],
     avoid_cursor: false,
   }

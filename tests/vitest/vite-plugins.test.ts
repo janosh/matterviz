@@ -62,9 +62,16 @@ describe(`vite_plugin_json_gz`, () => {
 
   test(`dev/serve mode returns JS module matching decompressed content`, () => {
     const load = make_plugin(`serve`)
-    const result = load.call({ error: () => {} }, fixture_path) as string
-    expect(result).toMatch(/^export default /)
-    expect(JSON.parse(result.replace(/^export default /, ``))).toEqual(expected_data)
+    const { code: result, map } = load.call({ error: () => {} }, fixture_path) as {
+      code: string
+      map: { mappings: string }
+    }
+    expect(map).toEqual({ mappings: `` }) // no inline sourcemap repeating the dataset
+    // a JSON.parse of one compact string literal, which V8 parses faster than an object literal
+    const literal = /^export default JSON\.parse\((?<str>.*)\)$/s.exec(result)?.groups?.str
+    expect(literal).toBeDefined()
+    const json_str: string = JSON.parse(literal ?? ``)
+    expect(json_str).toBe(JSON.stringify(expected_data))
   })
 
   test(`build mode returns raw JSON with moduleType:'json'`, () => {
@@ -74,7 +81,8 @@ describe(`vite_plugin_json_gz`, () => {
       moduleType: string
     }
     expect(result.moduleType).toBe(`json`)
-    expect(JSON.parse(result.code)).toEqual(expected_data)
+    // compact, whatever the fixture's indentation
+    expect(result.code).toBe(JSON.stringify(expected_data))
   })
 
   test.each([

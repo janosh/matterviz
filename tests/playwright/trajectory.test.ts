@@ -108,11 +108,11 @@ test.describe(`Trajectory Component`, () => {
     `toolbar icons stay consistent and analysis anchors stay hidden`,
     { tag: `@single-viewer` },
     async ({ page }) => {
-      // The MSD/VACF/RDF/hotspots/structure-id/data-inspector panes keep their ViewerPane toggles inside
+      // The MSD/VACF/RDF/hotspots/structure-id panes keep their ViewerPane toggles inside
       // the Analysis ToolbarMenu only as layout anchors; #439 moved the wrapper into a child
       // component and a scoped selector stopped hiding them (stray toolbar icons)
       const anchors = controls.locator(`.analysis-dropdown-wrapper .analysis-toggle-anchor`)
-      await expect(anchors).toHaveCount(6)
+      await expect(anchors).toHaveCount(5)
       for (const anchor of await anchors.all()) {
         await expect(anchor).toHaveCSS(`opacity`, `0`)
         await expect(anchor).toHaveCSS(`pointer-events`, `none`)
@@ -122,9 +122,10 @@ test.describe(`Trajectory Component`, () => {
       await expect(controls.locator(`.view-mode-button > svg`)).toHaveCount(1)
       const check_icon_sizes = async () => {
         // the invisible analysis anchors (checked above) stretch over the Analysis button and
-        // squeeze their icons, so only visible toggles count
+        // squeeze their icons, so only visible toggles count; the data inspector's table
+        // toolbar is deliberately compact, so only the viewer's own toolbars count
         const icons = trajectory_viewer.locator(
-          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor) > svg`,
+          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor, .docked-sidebar button) > svg`,
         )
         // Resizing can unmount panes: read the current icons and sizes in one DOM snapshot.
         await expect(async () => {
@@ -607,11 +608,8 @@ test.describe(`Trajectory Component`, () => {
         }
         const structure = trajectory_viewer.locator(`.structure`)
         const toolbar = structure.locator(`.control-buttons`)
-        for (const label of [
-          `Thermal hotspots`,
-          `Mean squared displacement`,
-          `Data inspector`,
-        ]) {
+        // the data inspector is a sidebar, not a floating pane
+        for (const label of [`Thermal hotspots`, `Mean squared displacement`]) {
           await controls.locator(`.analysis-button`).click()
           await controls.getByRole(`button`, { name: label, exact: true }).click()
           const pane = controls.locator(`.viewer-pane-open`)
@@ -933,7 +931,8 @@ test.describe(`Trajectory Component`, () => {
         await expect(pane.locator(`.folder-name`)).toHaveText(`chosen-exports/`)
         await export_button.click()
         await expect(export_button).toBeEnabled()
-        await expect(pane.getByRole(`alert`)).toHaveCount(0)
+        // StatusMessage keeps its alert region mounted; no error message may sit in it
+        await expect(pane.locator(`[role="alert"] .status-message`)).toHaveCount(0)
         expect(downloads).toBe(1)
         const saved = await page.evaluate(async (container) => {
           const directory = await (
@@ -1176,7 +1175,14 @@ test.describe(`Trajectory Component`, () => {
         `title`,
         /Play|Pause/,
       )
+      // The open data inspector's Info tab replaces the info button; closing it brings it back
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
+      await expect(trajectory.locator(`.trajectory-data-inspector-sidebar`)).toBeVisible()
+      await expect(info_toggle).toHaveCount(0)
+      await trajectory_controls.locator(`button[aria-label="Analysis"]`).click()
+      await trajectory
+        .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
+        .click()
       await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
       await info_toggle.click()
       const info_pane = trajectory.locator(`.trajectory-info-pane`)
@@ -1418,8 +1424,7 @@ test.describe(`Trajectory Component`, () => {
       expect(panes.plot.top).toBeGreaterThan(panes.structure.top)
       expect(panes.structure.height).toBeCloseTo(panes.plot.height, 0)
 
-      // Widening the sidebar puts them back side by side without a remount. 890px stays
-      // below the 900px from which the data inspector docks and takes a third of the row.
+      // Widening the sidebar puts them back side by side without a remount
       await set_size(890)
       await expect(trajectory).toHaveClass(/horizontal/, resize_timeout)
       await expect(trajectory).not.toHaveClass(/vertical/)

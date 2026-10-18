@@ -79,7 +79,7 @@
 
   <StructurePicker bind:selected={single_id} />
 
-  <section>
+  <section class="demo-2col">
     {#if single_struct}
       <LazyDemo label="Single Structure">
         <CoordinationBarPlot
@@ -154,16 +154,14 @@
   .bleed-1400 {
     container-type: inline-size;
   }
-  .bleed-1400 section {
+  .multi-structure-layout {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1em;
   }
   .selected-structures-grid {
-    display: grid;
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: minmax(0, 1fr);
-    gap: 0.5em;
   }
   @container (min-width: 901px) {
     .structure-tile:last-child:nth-child(odd) {
@@ -171,7 +169,7 @@
     }
   }
   @container (max-width: 900px) {
-    .bleed-1400 .multi-structure-layout {
+    .multi-structure-layout {
       grid-template:
         minmax(0, 1.1fr) minmax(0, 0.9fr) /
         minmax(0, 1.1fr) minmax(0, 0.9fr);
@@ -179,21 +177,6 @@
     }
     .selected-structures-grid {
       display: contents;
-    }
-  }
-  .structure-tile {
-    --struct-min-width: 0;
-    min-width: 0;
-    min-height: 0;
-    border-radius: 4px;
-    position: relative;
-    h3 {
-      margin: 0;
-      font-size: 14px;
-      position: absolute;
-      top: 3pt;
-      left: 1ex;
-      z-index: 1;
     }
   }
 </style>

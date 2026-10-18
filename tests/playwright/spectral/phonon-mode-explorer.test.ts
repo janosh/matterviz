@@ -235,7 +235,8 @@ test.describe(`PhononModeExplorer`, () => {
     ).toHaveCount(20)
     // ~2100 band markers draw on canvas: walk the keyboard cursor to band 1, q-point 3
     const band_plot = explorer.locator(`svg[role="application"]`).first()
-    const announced = band_plot.locator(`..`).locator(`[aria-live="polite"]`)
+    // the plot's own keyboard announcer, not a StatusMessage's (always mounted) status region
+    const announced = band_plot.locator(`..`).locator(`.sr-only[aria-live="polite"]`)
     await band_plot.press(`Home`)
     for (let step = 0; step < 5; step++) {
       if ((await announced.textContent())?.includes(`Select band 1, q-point 3`)) break

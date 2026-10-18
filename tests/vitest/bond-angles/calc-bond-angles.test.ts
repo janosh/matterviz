@@ -513,9 +513,10 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
   // so an unguarded binning derived would take the whole render down with it. Which values
   // throw is pinned by the resolve_angle_bins table; one mount covers the guard.
   test(`reports an invalid bin_width as an error instead of crashing the render`, async () => {
-    // the error StatusMessage is a sibling of the mount root, so read the whole container
-    const container = (await mount_plot({ structures: rocksalt, bin_width: NaN }))
-      .parentElement
+    // the error StatusMessage is not under the mount root, so read the whole mount target
+    const container = (await mount_plot({ structures: rocksalt, bin_width: NaN })).closest(
+      `body > div`,
+    )
     await tick()
     expect(container?.textContent).toContain(`bin_width must be a number in (0, 180]`)
     expect(container?.querySelector(`svg`)).toBeNull()

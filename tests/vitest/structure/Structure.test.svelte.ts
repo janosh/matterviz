@@ -243,7 +243,7 @@ test(`parse warnings render as a dismissible notice and reset on the next load`,
   })
   mount_structure(bind_props({}, state))
   await tick()
-  expect(doc_query(`.viewer-notices > .parse-warnings`).textContent).toContain(
+  expect(doc_query(`.viewer-notices .parse-warnings`).textContent).toContain(
     `1 parse warning: host warning`,
   )
   // a host swapping in another structure retires the warnings of the one they came with
@@ -1589,9 +1589,9 @@ describe(`Structure`, () => {
       expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
     )
     // stacked top-center with the other notices, clear of the bottom-right atom legend
-    const warning = doc_query(`.viewer-notices > .symmetry-error`)
+    const warning = doc_query(`.viewer-notices .symmetry-error`)
     expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
-    expect(warning.getAttribute(`role`)).toBe(`status`)
+    expect(warning.closest(`[role]`)?.getAttribute(`role`)).toBe(`status`)
     doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
     flushSync()
     expect(document.querySelector(`.symmetry-error`)).toBeNull()
@@ -2952,7 +2952,7 @@ describe(`source acquisition`, () => {
           expect.objectContaining({ error_msg: expect.stringMatching(error), filename }),
         )
       const status_msg = doc_query(`.status-message.error`)
-      expect(status_msg.getAttribute(`role`)).toBe(`alert`)
+      expect(status_msg.closest(`[role]`)?.getAttribute(`role`)).toBe(`alert`)
     },
   )
 
