@@ -1,11 +1,5 @@
 <script lang="ts">
-  import {
-    numeric_sites,
-    get_site,
-    site_count,
-    snapshot_topologies,
-    toggle_site,
-  } from './site'
+  import { numeric_sites, get_site, site_count, snapshot_topologies } from './site'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
   import {
     enable_atom_sphere_picking,
@@ -95,7 +89,7 @@
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error, toggle_item } from '#lib/utils.js'
   import {
     compute_slice_geometry,
     merge_species_by_element,
@@ -963,7 +957,7 @@
       }
       if (!can_select_bond_site(site_index)) return
       // In Add mode, select atom pairs without making existing bonds destructive.
-      const new_sites = toggle_site(measured_sites, site_index)
+      const new_sites = toggle_item(measured_sites, site_index)
       measured_sites = new_sites
       selected_sites = new_sites
 
@@ -988,7 +982,7 @@
       // In edit-atoms mode, selected_sites and measured_sites always stay in sync. Shift
       // multi-selects; a plain click replaces the selection (or deselects a selected site).
       const new_sites = is_shift
-        ? toggle_site(selected_sites, site_index)
+        ? toggle_item(selected_sites, site_index)
         : selected_sites.includes(site_index)
           ? []
           : [site_index]
@@ -1011,8 +1005,8 @@
       return
     }
 
-    measured_sites = toggle_site(measured_sites, site_index)
-    selected_sites = toggle_site(selected_sites, site_index)
+    measured_sites = toggle_item(measured_sites, site_index)
+    selected_sites = toggle_item(selected_sites, site_index)
   }
 
   $effect(() => {

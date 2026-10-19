@@ -500,6 +500,12 @@ describe(`edit-atoms`, () => {
       show_image_atoms: true,
     })
     const image_idx = (session.displayed_structure?.sites.length ?? 0) - 1
+    // image atoms alone leave no base site to delete: no undo point, nothing rewritten
+    host.selected_sites = [image_idx]
+    flushSync()
+    expect(session.delete_selected()).toBe(false)
+    expect(session.history.undo_stack).toHaveLength(0)
+    expect(host.selected_sites).toEqual([image_idx])
     host.selected_sites = [0, image_idx]
     flushSync()
     expect(session.delete_selected()).toBe(true)

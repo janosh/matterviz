@@ -34,37 +34,65 @@
   // Until the divider moves the sidebar is as wide as its content (at most half the row), so a
   // short table does not leave a band of empty sidebar. A drag hands the width to `ratio`.
   let resized = $state(false)
-  // The viewer's share of the row: measured below while the sidebar fits its content
+  // The viewer's share of the row: measured below while the sidebar fits its content and the
+  // divider has focus
   let ratio = $state(0.5)
   let aside = $state<HTMLElement>()
   // Observed, not read once: a row that resizes around an unchanged content-fit sidebar still
-  // moves the divider's share
+  // moves the divider's share and can stack the sidebar
   let row_width = $state(0)
 
   $effect(() => () => (width = 0))
+  // The row is an ancestor of every color-resolving component in the viewer, whose theme
+  // observers re-read computed styles on each class/style write to it, so the effects below
+  // write it only when a value it shows changes (never on a row resize alone) and this one
+  // cleans it up
+  const row = $derived(aside?.parentElement)
   $effect(() => {
-    const row = aside?.parentElement
-    if (!row) return
-    const observer = new ResizeObserver(() => (row_width = row.clientWidth))
-    observer.observe(row)
-    return () => observer.disconnect()
+    const parent = row
+    if (!parent) return
+    const observer = new ResizeObserver(() => (row_width = parent.clientWidth))
+    observer.observe(parent)
+    return () => {
+      observer.disconnect()
+      parent.classList.remove(`docked-sidebar-stacked`)
+    }
   })
-  // The divider is the row's child and reads its place from the row, so the measured width
-  // goes there while the column fits its content. The ratio follows too, so the divider's
-  // arrow keys step from where it is drawn and it announces that place.
   // A row too narrow for both minimums (a phone) stacks the sidebar under the viewer: beside it,
   // the viewer's floor left the sidebar a few dozen px, too narrow to read or use
   let stacked = $derived(row_width > 0 && row_width < VIEWER_MIN_PX + SIDEBAR_MIN_PX)
   $effect(() => {
-    const row = aside?.parentElement
     row?.classList.toggle(`docked-sidebar-stacked`, stacked)
-    return () => row?.classList.remove(`docked-sidebar-stacked`)
+  })
+  // PaneDivider renders no element of its own to bind, but it is the sidebar's left sibling
+  const divider = $derived(aside?.previousElementSibling)
+  // While the column fits its content, the divider is drawn from the measured width, which goes
+  // on the divider itself: it follows every sidebar resize during playback, and on the row (an
+  // ancestor of the viewer) each write would re-run its theme observers. Once dragged, the
+  // divider sits at the ratio and nothing reads the width.
+  $effect(() => {
+    if (!(divider instanceof HTMLElement)) return
+    if (resized) divider.style.removeProperty(`--docked-sidebar-width`)
+    else divider.style.setProperty(`--docked-sidebar-width`, `${width}px`)
+  })
+  // The fit-content divider is drawn from the width above, so its ratio only matters to a
+  // keyboard user: the arrow keys step from it and it is the announced value. Synced while the
+  // divider has focus (a pointer drag works from the pointer, and preventDefault keeps it from
+  // focusing), since each new ratio makes the divider rewrite the row's --split-pane-size.
+  let divider_focused = $state(false)
+  $effect(() => {
+    if (!divider) return
+    const on_focus = () => (divider_focused = true)
+    const on_blur = () => (divider_focused = false)
+    divider.addEventListener(`focus`, on_focus)
+    divider.addEventListener(`blur`, on_blur)
+    return () => {
+      divider.removeEventListener(`focus`, on_focus)
+      divider.removeEventListener(`blur`, on_blur)
+    }
   })
   $effect(() => {
-    const row = aside?.parentElement
-    row?.style.setProperty(`--docked-sidebar-width`, `${width}px`)
-    if (!resized && row_width > 0) ratio = 1 - width / row_width
-    return () => row?.style.removeProperty(`--docked-sidebar-width`)
+    if (!resized && divider_focused && row_width > 0) ratio = 1 - width / row_width
   })
 </script>
 

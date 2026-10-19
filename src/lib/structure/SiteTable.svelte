@@ -3,9 +3,9 @@
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'
   import type { RowData } from '#lib/table/index.js'
+  import { toggle_item } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'
-  import { toggle_site } from './site'
   import { DATA_TABLE_PROPS, site_columns, site_property_specs, site_rows } from './site-table'
 
   const FRAC_COLUMNS = [`frac_a`, `frac_b`, `frac_c`] as const
@@ -47,7 +47,7 @@
 
   const toggle_atom = (_event: MouseEvent | KeyboardEvent, row: RowData) => {
     if (typeof row.site !== `number`) return
-    selected_atoms = toggle_site(selected_atoms ?? [], from_display_idx(row.site))
+    selected_atoms = toggle_item(selected_atoms ?? [], from_display_idx(row.site))
   }
 </script>
 

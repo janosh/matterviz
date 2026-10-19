@@ -93,7 +93,8 @@
     [`show_bounding_box`, `Bounds`],
   ] as const
   const projection_planes = [`xy`, `xz`, `yz`] as const
-  const camera_settings = track_settings(() => ({ camera_projection, auto_rotate }), defaults)
+  // CameraSection tracks and resets the projection itself
+  const camera_settings = track_settings(() => ({ auto_rotate }), defaults)
   const display_settings = track_settings(
     () =>
       Object.fromEntries(
@@ -137,7 +138,7 @@
     bind:camera_projection
     default_projection={defaults.camera_projection}
     changed_keys={camera_settings.changed_keys}
-    on_reset={() => ({ camera_projection, auto_rotate } = camera_settings.snapshot())}
+    on_reset={() => ({ auto_rotate } = camera_settings.snapshot())}
     layout="flow"
   >
     <NumberRangeInput min={0} max={5} step={0.1} bind:value={auto_rotate}

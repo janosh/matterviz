@@ -1,10 +1,15 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { goto_structure_test, open_structure_export_pane, use_webgl_on_ci } from '../helpers'
+import {
+  goto_structure_test,
+  open_structure_export_pane,
+  webgl_on_ci_for_tagged,
+} from '../helpers'
 
-test.describe(`StructureExportPane Tests`, () => {
+webgl_on_ci_for_tagged()
+
+test.describe(`StructureExportPane Tests`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     // always-visible controls: in hover mode the canvas intercepts the toggle's hit test
     await goto_structure_test(page, `/test/structure?show_controls=always`)
   })

@@ -1408,8 +1408,11 @@ export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 // search (identical inputs, one flush); the per-signature map also lets alternating
 // strategies/options on the same structure reuse earlier results instead of thrashing one slot.
 const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[] | BondFrame>>()
+const bond_sig = (strategy: BondingStrategy, options: Record<string, unknown>): string =>
+  `${strategy}:${JSON.stringify(options)}`
 
-// Install geometry computed by the source worker for this exact displayed structure.
+// Store bonds for this exact structure + signature in bond_memo: the one write path, used both
+// by get_bond_data to memoize its own search and to install bonds the source worker computed.
 export function cache_prepared_bonds(
   structure: AnyStructure,
   strategy: BondingStrategy,
@@ -1418,7 +1421,7 @@ export function cache_prepared_bonds(
 ): void {
   let by_sig = bond_memo.get(structure)
   if (!by_sig) bond_memo.set(structure, (by_sig = new Map()))
-  by_sig.set(`${strategy}:${JSON.stringify(options)}`, bonds)
+  by_sig.set(bond_sig(strategy, options), bonds)
 }
 
 type BondNeighborList = Pick<NeighborList, 'offsets' | 'neighbors' | 'distances'> & {
@@ -1623,7 +1626,7 @@ export function get_bond_data(
   strategy: BondingStrategy,
   options: Record<string, unknown> = {},
 ): BondPair[] | BondFrame {
-  const cached = bond_memo.get(structure)?.get(`${strategy}:${JSON.stringify(options)}`)
+  const cached = bond_memo.get(structure)?.get(bond_sig(strategy, options))
   if (cached) return cached
   // Strategy names arrive as plain strings from widgets and saved settings
   if (!Object.hasOwn(BONDING_STRATEGIES, strategy)) {

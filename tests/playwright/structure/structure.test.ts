@@ -7,7 +7,7 @@ import {
   dispatch_cancelable_keydown,
   drag_canvas,
   drop_file,
-  get_canvas_timeout,
+  EXPECT_TIMEOUT,
   goto_structure_test,
   IS_CI,
   enter_edit_atoms_mode,
@@ -21,7 +21,6 @@ import {
   set_scene_props,
   structure_canvas,
   sweep_gizmo_handles,
-  use_webgl_on_ci,
   webgl_on_ci_for_tagged,
   expect_canvas_changed,
   expect_canvas_changed_by,
@@ -75,7 +74,7 @@ const wait_for_event = async (
   page: Page,
   event_name: string,
   expected_props: string[],
-  timeout = get_canvas_timeout(),
+  timeout?: number,
 ): Promise<EventCall> => {
   await expect
     .poll(async () => (await events_named(page, event_name)).length, { timeout })
@@ -183,7 +182,6 @@ test.describe(`compressed source URL`, () => {
       expect(new URL(page.url()).searchParams.get(`file`)).toBe(compressed_source_filename)
       await expect(page.locator(`.structure ${heading_tag}`).first()).toHaveText(
         `source-loop.json`,
-        { timeout: get_canvas_timeout() * 4 },
       )
       expect(requests.length).toBeGreaterThan(0)
       expect(new Set(requests)).toEqual(new Set([compressed_source_path]))
@@ -357,7 +355,6 @@ test.describe(`Structure Component Tests`, () => {
     await expect(page.locator(`#test-structure`)).toHaveCSS(
       `background-color`,
       `rgba(255, 0, 0, 0.1)`,
-      { timeout: get_canvas_timeout() },
     )
   })
 
@@ -404,7 +401,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div.locator(`canvas`).first()).toBeVisible()
   })
 
-  test(`dragging the canvas orbits the camera`, async ({ page }) => {
+  test(`dragging the canvas orbits the camera`, { tag: `@webgl` }, async ({ page }) => {
     const canvas = structure_canvas(page)
     // Reset lives in the controls pane and is hidden at the default camera
     await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
@@ -564,22 +561,26 @@ test.describe(`Structure Component Tests`, () => {
     }
   })
 
-  test(`control inputs have intended effects on structure`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
-    const canvas = structure_canvas(page)
+  test(
+    `control inputs have intended effects on structure`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const { pane_div: control_pane } = await open_structure_control_pane(page)
+      const canvas = structure_canvas(page)
 
-    const atom_radius_input = control_pane
-      .locator(`label`)
-      .filter({ hasText: /Radius/ })
-      .locator(`input[type="number"]`)
-    await expect_canvas_changed_by(canvas, () => atom_radius_input.fill(`0.3`))
+      const atom_radius_input = control_pane
+        .locator(`label`)
+        .filter({ hasText: /Radius/ })
+        .locator(`input[type="number"]`)
+      await expect_canvas_changed_by(canvas, () => atom_radius_input.fill(`0.3`))
 
-    const show_atoms_checkbox = section_body(control_pane, `Visibility`)
-      .locator(`input[type="checkbox"]`)
-      .first()
-    await expect_canvas_changed_by(canvas, () => show_atoms_checkbox.uncheck())
-    await show_atoms_checkbox.check()
-  })
+      const show_atoms_checkbox = section_body(control_pane, `Visibility`)
+        .locator(`input[type="checkbox"]`)
+        .first()
+      await expect_canvas_changed_by(canvas, () => show_atoms_checkbox.uncheck())
+      await show_atoms_checkbox.check()
+    },
+  )
 
   test(`controls pane closes only on escape and outside clicks`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
@@ -608,18 +609,22 @@ test.describe(`Structure Component Tests`, () => {
     await expect(controls_toggle_button).toHaveAttribute(`aria-label`, `Structure controls`)
   })
 
-  test(`selected_sites controls highlight spheres (no labels/lines)`, async ({ page }) => {
-    const canvas = structure_canvas(page)
-    const labels = page.locator(`.selection-label`)
-    await expect_canvas_changed_by(canvas, () =>
-      page.locator(`[data-testid="btn-set-selected"]`).click(),
-    )
-    await expect(labels).toHaveCount(0)
-    await expect_canvas_changed_by(canvas, () =>
-      page.locator(`[data-testid="btn-clear-selected"]`).click(),
-    )
-    await expect(labels).toHaveCount(0)
-  })
+  test(
+    `selected_sites controls highlight spheres (no labels/lines)`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const canvas = structure_canvas(page)
+      const labels = page.locator(`.selection-label`)
+      await expect_canvas_changed_by(canvas, () =>
+        page.locator(`[data-testid="btn-set-selected"]`).click(),
+      )
+      await expect(labels).toHaveCount(0)
+      await expect_canvas_changed_by(canvas, () =>
+        page.locator(`[data-testid="btn-clear-selected"]`).click(),
+      )
+      await expect(labels).toHaveCount(0)
+    },
+  )
 
   test(`measured_sites shows order labels and measurements; clear and reset both remove them`, async ({
     page,
@@ -676,35 +681,41 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
   })
 
-  test(`perspective and orthographic projections differ and both zoom`, async ({ page }) => {
-    test.setTimeout(IS_CI ? 90_000 : 45_000)
-    const canvas = structure_canvas(page)
-    const screenshots: Record<string, Buffer> = {}
+  test(
+    `perspective and orthographic projections differ and both zoom`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      test.setTimeout(IS_CI ? 90_000 : 45_000)
+      const canvas = structure_canvas(page)
+      const screenshots: Record<string, Buffer> = {}
 
-    for (const projection of [`perspective`, `orthographic`]) {
-      const { pane_div } = await open_structure_control_pane(page)
-      const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
-      await expect(camera_projection_select).toBeVisible()
-      await camera_projection_select.scrollIntoViewIfNeeded()
-      await camera_projection_select.selectOption(projection)
-      await expect(camera_projection_select).toHaveValue(projection)
+      for (const projection of [`perspective`, `orthographic`]) {
+        const { pane_div } = await open_structure_control_pane(page)
+        const camera_projection_select = pane_div.locator(
+          `label:has-text("Projection") select`,
+        )
+        await expect(camera_projection_select).toBeVisible()
+        await camera_projection_select.scrollIntoViewIfNeeded()
+        await camera_projection_select.selectOption(projection)
+        await expect(camera_projection_select).toHaveValue(projection)
 
-      // Close the pane before the baseline so its disappearance cannot count as zoom.
-      await page.keyboard.press(`Escape`)
-      await expect(pane_div).toBeHidden()
-      await canvas.hover({ position: { x: 60, y: 60 } })
-      screenshots[projection] = await canvas_screenshot(canvas)
-      // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
-      await page.mouse.wheel(0, -250)
-      await page.mouse.wheel(0, -250)
-      await expect_canvas_changed(canvas, screenshots[projection])
-    }
+        // Close the pane before the baseline so its disappearance cannot count as zoom.
+        await page.keyboard.press(`Escape`)
+        await expect(pane_div).toBeHidden()
+        await canvas.hover({ position: { x: 60, y: 60 } })
+        screenshots[projection] = await canvas_screenshot(canvas)
+        // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
+        await page.mouse.wheel(0, -250)
+        await page.mouse.wheel(0, -250)
+        await expect_canvas_changed(canvas, screenshots[projection])
+      }
 
-    expect(screenshots.perspective.equals(screenshots.orthographic)).toBe(false)
-  })
+      expect(screenshots.perspective.equals(screenshots.orthographic)).toBe(false)
+    },
+  )
 })
 
-test.describe(`File Drop Functionality Tests`, () => {
+test.describe(`File Drop Functionality Tests`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
     await goto_structure_test(page)
   })
@@ -955,7 +966,7 @@ test.describe(`Structure Event Handler Tests`, () => {
       await clear_events(page)
       await open_structure_control_pane(page)
       const reset_btn = reset_camera_button(page)
-      await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(reset_btn).toBeVisible()
       await reset_btn.click()
       const reset_event = await wait_for_event(page, `on_camera_reset`, [
         `structure`,
@@ -1050,7 +1061,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     }
 
     await open_structure_control_pane(page)
-    await expect(reset_camera_button(page)).toBeVisible({ timeout: get_canvas_timeout() })
+    await expect(reset_camera_button(page)).toBeVisible()
   })
 
   test(
@@ -1117,57 +1128,58 @@ test.describe(`Element Visibility Toggle`, () => {
     expect(text_color).not.toMatch(/rgb\(255,\s*255,\s*255\)/)
   })
 
-  test(`toggling an element hides its atoms, and the hidden state persists`, async ({
-    page,
-  }) => {
-    const canvas = structure_canvas(page)
-    const first_item = legend_item(page)
-    const toggle_button = first_item.locator(`button.toggle-visibility`)
-    const label = first_item.locator(`label`)
+  test(
+    `toggling an element hides its atoms, and the hidden state persists`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const canvas = structure_canvas(page)
+      const first_item = legend_item(page)
+      const toggle_button = first_item.locator(`button.toggle-visibility`)
+      const label = first_item.locator(`label`)
 
-    const initial_opacity = await opacity_of(label)
-    await expect(toggle_button).toHaveAttribute(`aria-label`, /Hide .+ atoms/)
-    expect(await opacity_of(toggle_button)).toBe(0) // revealed only on hover
+      const initial_opacity = await opacity_of(label)
+      await expect(toggle_button).toHaveAttribute(`aria-label`, /Hide .+ atoms/)
+      expect(await opacity_of(toggle_button)).toBe(0) // revealed only on hover
 
-    await expect_canvas_changed_by(canvas, async () => {
-      await first_item.hover()
-      await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0)
-      await toggle_button.click()
+      await expect_canvas_changed_by(canvas, async () => {
+        await first_item.hover()
+        await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0)
+        await toggle_button.click()
+        await expect(label).toHaveClass(/hidden/)
+      })
+
+      // CSS transitions .element-legend label.hidden to opacity 0.4
+      await expect(async () => {
+        const hidden_opacity = await opacity_of(label)
+        expect(hidden_opacity).toBeLessThan(initial_opacity)
+        expect(hidden_opacity).toBeGreaterThan(0.3)
+        expect(hidden_opacity).toBeLessThan(0.5)
+      }).toPass({ timeout: 2000 })
+
+      // element-hidden keeps the button visible once the pointer leaves
+      await page.mouse.move(0, 0)
+      await expect(toggle_button).toHaveClass(/element-hidden/)
+      await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0.9)
+
+      // Hidden state persists through control pane interactions
+      const controls_checkbox = page.locator(
+        `label:has-text("Controls Open") input[type="checkbox"]`,
+      )
+      await controls_checkbox.check()
+      await controls_checkbox.uncheck()
       await expect(label).toHaveClass(/hidden/)
-    })
 
-    // CSS transitions .element-legend label.hidden to opacity 0.4
-    await expect(async () => {
-      const hidden_opacity = await opacity_of(label)
-      expect(hidden_opacity).toBeLessThan(initial_opacity)
-      expect(hidden_opacity).toBeGreaterThan(0.3)
-      expect(hidden_opacity).toBeLessThan(0.5)
-    }).toPass({ timeout: 2000 })
-
-    // element-hidden keeps the button visible once the pointer leaves
-    await page.mouse.move(0, 0)
-    await expect(toggle_button).toHaveClass(/element-hidden/)
-    await expect.poll(() => opacity_of(toggle_button)).toBeGreaterThan(0.9)
-
-    // Hidden state persists through control pane interactions
-    const controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await controls_checkbox.check()
-    await controls_checkbox.uncheck()
-    await expect(label).toHaveClass(/hidden/)
-
-    await expect_canvas_changed_by(canvas, async () => {
-      await first_item.hover()
-      await toggle_button.click()
-      await expect(label).not.toHaveClass(/hidden/)
-    })
-  })
+      await expect_canvas_changed_by(canvas, async () => {
+        await first_item.hover()
+        await toggle_button.click()
+        await expect(label).not.toHaveClass(/hidden/)
+      })
+    },
+  )
 })
 
-test.describe(`Edit Atoms Mode`, () => {
+test.describe(`Edit Atoms Mode`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await goto_structure_test(page, always_controls_url)
   })
 
@@ -1304,9 +1316,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       await expect(structure_div).toHaveClass(/multi-view/)
       await expect(multi_stage).toBeVisible()
       await expect(cells).toHaveCount(4)
-      await expect(multi_stage.locator(`canvas`)).toHaveCount(4, {
-        timeout: get_canvas_timeout(),
-      })
+      await expect(multi_stage.locator(`canvas`)).toHaveCount(4)
       const labels = structure_div.locator(`.viewport-label`)
       await expect(labels).toHaveCount(3)
       await expect(labels.nth(0)).toHaveText(`Front`)
@@ -1321,7 +1331,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
           )
           expect(width).toBeLessThan(wrapper_box.width * 0.75)
           expect(width).toBeGreaterThan(50)
-        }).toPass({ timeout: get_canvas_timeout() })
+        }).toPass({ timeout: EXPECT_TIMEOUT })
       }
 
       // Panes are ~half the viewer, so StructureViewport hands them a smaller gizmo. Ties
@@ -1335,9 +1345,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       await expect(structure_div).not.toHaveClass(/multi-view/)
       await expect(multi_stage).toHaveCount(0)
       await expect(cells).toHaveCount(1)
-      await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
-        timeout: get_canvas_timeout(),
-      })
+      await expect(structure_div.locator(`canvas`)).toHaveCount(1)
     },
   )
 
@@ -1414,19 +1422,13 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
   }) => {
     const structure_div = page.locator(`#test-structure`)
     const cells = structure_div.locator(`.viewport-cell`)
-    const canvas_timeout = get_canvas_timeout()
-
     for (let cycle = 0; cycle < 3; cycle++) {
       await select_structure_layout(structure_div, `3D 2×2 grid`)
       await expect(cells).toHaveCount(4)
-      await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4, {
-        timeout: canvas_timeout,
-      })
+      await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4)
       await select_structure_layout(structure_div, `3D single view`)
       await expect(cells).toHaveCount(1)
-      await expect(structure_div.locator(`canvas`)).toHaveCount(1, {
-        timeout: canvas_timeout,
-      })
+      await expect(structure_div.locator(`canvas`)).toHaveCount(1)
     }
   })
 })

@@ -4,7 +4,7 @@
   import type { PhononDos } from '#lib/spectral/types.js'
   import { electronic_bands } from '#site/electronic/bands/index.js'
   import { dos_spin_polarization } from '#site/electronic/dos/index.js'
-  import { mock_band_structure, mock_dos } from '../spectral-mocks'
+  import { mock_band_structure, mock_dos } from '#site/spectral-mocks.js'
 
   // Testing: CaO bands + mp-865805 DOS (mismatched materials, no shifts applied)
   const electronic_dos = normalize_dos(dos_spin_polarization)

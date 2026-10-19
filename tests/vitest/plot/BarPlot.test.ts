@@ -1,5 +1,6 @@
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import SpacegroupBarPlot from '#lib/plot/bar/SpacegroupBarPlot.svelte'
+import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
 import type { BarHandlerProps, BarSeries } from '#lib/plot/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
@@ -141,6 +142,37 @@ describe(`BarPlot`, () => {
     await tick()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
   })
+
+  // StructureBarPlot wires bar hover for on_sites_hover only when bar_sites maps bars to
+  // sites; without it on_sites_hover can never fire and a caller's on_bar_hover passes through
+  test.each([true, false])(
+    `StructureBarPlot reports hovered bar sites only with bar_sites=%s`,
+    async (with_sites) => {
+      const on_sites_hover = vi.fn()
+      const on_bar_hover = vi.fn<(info: { bar_idx: number } | null) => void>()
+      const plot = await mount_sized(
+        StructureBarPlot,
+        {
+          series: [basic],
+          primary_axis: { label: `Angle` },
+          value_axis: { label: `Count` },
+          subject: `angles`,
+          on_sites_hover,
+          on_bar_hover,
+          ...(with_sites && { bar_sites: () => [] }),
+        },
+        { selector: `.bar-plot` },
+      )
+      const bar = query(plot, `.bar-series path[role="button"]`)
+      bar.dispatchEvent(mouse(`mousemove`))
+      bar.dispatchEvent(mouse(`mouseleave`))
+      await tick()
+      // the caller sees the hover and the leave (BarPlot reports leaving the bar and the plot)
+      const hovered = on_bar_hover.mock.calls.map(([info]) => info?.bar_idx ?? null)
+      expect([hovered[0], hovered.at(-1)]).toEqual([0, null])
+      expect(on_sites_hover.mock.calls).toEqual(with_sites ? [[[]], [null]] : [])
+    },
+  )
 
   // Bars and line-series markers alike; on_bar_click/on_point_click would claim the click.
   // Bars have no hover look, markers keep theirs while pinned.

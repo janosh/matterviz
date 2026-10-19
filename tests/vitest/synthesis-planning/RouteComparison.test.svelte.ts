@@ -211,3 +211,16 @@ test(`route table sorts downhill windows by their lowest temperature, never-down
     expect(cell_texts()).toEqual([...order, `never downhill between 0 and 2000 K`])
   }
 })
+
+test(`route table selects a clicked row without remounting the others`, async () => {
+  const component = mount(RouteTable, { target: document.body, props: { routes } })
+  onTestFinished(() => unmount(component))
+  const rows_before = [...document.querySelectorAll(`tbody tr`)]
+  expect(rows_before).toHaveLength(routes.length)
+  ;(rows_before[2] as HTMLElement).click()
+  await tick()
+  for (const [idx, row] of [...document.querySelectorAll(`tbody tr`)].entries()) {
+    expect(row).toBe(rows_before[idx])
+    expect(row.classList.contains(`selected`)).toBe(idx === 2)
+  }
+})

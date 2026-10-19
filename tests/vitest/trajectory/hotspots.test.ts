@@ -1,4 +1,5 @@
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import { element_by_symbol } from '#lib/element/data.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -16,7 +17,11 @@ import {
   infer_mass_unit,
 } from '#lib/trajectory/hotspots.js'
 import type { ReadAtoms, AtomBatch, AtomReadOptions } from '#lib/trajectory/atom-batches.js'
-import { atom_range, frame_atom_batch } from '#lib/trajectory/atom-batches.js'
+import {
+  atom_batch_masses,
+  atom_range,
+  frame_atom_batch,
+} from '#lib/trajectory/atom-batches.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
@@ -73,6 +78,24 @@ function source(n_atoms = 8, steps = [0, 1, 2], drift = 0) {
     }
   }
 }
+
+// Each reader's mass errors name its file format; atoms count from 1 as in the UI
+it.each([
+  [`MD HDF5`, `recorded`, [28, Number.NaN], `MD HDF5 missing recorded mass for atom 2`],
+  [`TorchSim HDF5`, `recorded`, [28, 0], `TorchSim HDF5 missing recorded mass for atom 2`],
+  [`TorchSim HDF5`, `recorded`, undefined, `TorchSim HDF5 missing recorded mass for atom 1`],
+  // no symbol for the second atom
+  [`MD HDF5`, `standard`, undefined, `MD HDF5 missing standard mass for atom 2`],
+] as const)(`%s %s masses %j throw: %s`, (format, mass_source, masses, message) => {
+  expect(() => atom_batch_masses(format, mass_source, 0, 2, [`Si`], masses)).toThrow(message)
+})
+
+it(`atom_batch_masses reads recorded and standard masses from start`, () => {
+  expect([...atom_batch_masses(`MD HDF5`, `recorded`, 1, 2, [], [1, 2, 3])]).toEqual([2, 3])
+  expect([...atom_batch_masses(`MD HDF5`, `standard`, 0, 1, [`Si`])]).toEqual([
+    element_by_symbol.get(`Si`)?.atomic_mass,
+  ])
+})
 
 describe(`spatial kinetic hotspots`, () => {
   it.each([

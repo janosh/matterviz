@@ -17,7 +17,7 @@
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import { get_density, type AnyStructure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
-  import { toggle_site } from '#lib/structure/site.js'
+  import { toggle_item } from '#lib/utils.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
   import { DEFAULTS } from '#lib/settings.js'
   import RdfPlot from '#lib/rdf/RdfPlot.svelte'
@@ -93,7 +93,7 @@
   function select_site(site_idx: number, event?: MouseEvent | KeyboardEvent) {
     set_site_hover(null)
     if (event?.shiftKey) {
-      selected_sites = toggle_site(selected_sites, site_idx)
+      selected_sites = toggle_item(selected_sites, site_idx)
       return
     }
     selected_sites =

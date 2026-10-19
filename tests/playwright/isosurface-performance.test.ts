@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
-import { wait_for_canvas_rendered } from './helpers'
+import { wait_for_canvas_rendered, webgl_on_ci_for_tagged } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 type ProfileEvent = {
   stage: string
@@ -12,7 +14,7 @@ const read_events = async (page: Page): Promise<ProfileEvent[]> =>
     (await page.getByTestId(`profile-events`).textContent()) ?? `[]`,
   ) as ProfileEvent[]
 
-test.describe(`Isosurface performance harness`, () => {
+test.describe(`Isosurface performance harness`, { tag: `@webgl` }, () => {
   test(`exposes stage-level metrics and renders a surface`, async ({ page }) => {
     await page.goto(`/test/isosurface-performance?size=32&layers=1`)
     const canvas = page.getByTestId(`isosurface-benchmark-canvas`).locator(`canvas`)

@@ -1,8 +1,4 @@
-import {
-  apply_slice,
-  build_diagram,
-  parse_curve_ref,
-} from '#lib/phase-diagram/build-diagram.js'
+import { build_diagram, parse_curve_ref } from '#lib/phase-diagram/build-diagram.js'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
 import type { SpecialPoint } from '#lib/phase-diagram/types.js'
 import { describe, expect, test } from 'vitest'
@@ -10,33 +6,14 @@ import { pts } from './fixtures/test-data'
 
 describe(`parse_curve_ref`, () => {
   test.each([
-    { ref: `curve`, expected: { name: `curve`, reverse: false, start: null, end: null } },
-    { ref: `~curve`, expected: { name: `curve`, reverse: true, start: null, end: null } },
-    { ref: `curve[1:]`, expected: { name: `curve`, reverse: false, start: 1, end: null } },
-    { ref: `curve[:-1]`, expected: { name: `curve`, reverse: false, start: null, end: -1 } },
+    { ref: `curve`, expected: { name: `curve`, reverse: false } },
+    { ref: `~curve`, expected: { name: `curve`, reverse: true } },
+    { ref: `curve[1:]`, expected: { name: `curve`, reverse: false, start: 1 } },
+    { ref: `curve[:-1]`, expected: { name: `curve`, reverse: false, end: -1 } },
     { ref: `~solid_a[1:-1]`, expected: { name: `solid_a`, reverse: true, start: 1, end: -1 } },
     { ref: `liq_r_2[2:5]`, expected: { name: `liq_r_2`, reverse: false, start: 2, end: 5 } },
   ])(`parses "$ref"`, ({ ref, expected }) => {
     expect(parse_curve_ref(ref)).toEqual(expected)
-  })
-})
-
-describe(`apply_slice`, () => {
-  // Python slice semantics on [0, 1, 2, 3, 4] unless `arr` is given
-  test.each([
-    { start: null, end: null, expected: [0, 1, 2, 3, 4], desc: `full array` },
-    { start: 1, end: null, expected: [1, 2, 3, 4], desc: `[1:]` },
-    { start: null, end: 3, expected: [0, 1, 2], desc: `[:3]` },
-    { start: 1, end: 3, expected: [1, 2], desc: `[1:3]` },
-    { start: -1, end: null, expected: [4], desc: `[-1:]` },
-    { start: null, end: -1, expected: [0, 1, 2, 3], desc: `[:-1]` },
-    { start: 1, end: -1, expected: [1, 2, 3], desc: `[1:-1]` },
-    { start: 5, end: null, expected: [], desc: `start past the end` },
-    { start: null, end: 10, expected: [0, 1, 2, 3, 4], desc: `end past the end` },
-    { start: -10, end: null, expected: [0, 1, 2, 3, 4], desc: `start before the beginning` },
-    { arr: [], start: 1, end: null, expected: [], desc: `empty array` },
-  ])(`$desc → $expected`, ({ arr = [0, 1, 2, 3, 4], start, end, expected }) => {
-    expect(apply_slice(arr, start, end)).toEqual(expected)
   })
 })
 
@@ -86,6 +63,19 @@ describe(`build_diagram`, () => {
       [`liquidus`, `liquidus`, expect.objectContaining({ color: `#1565c0`, width: 2.5 })],
       [`solidus`, `solidus`, expect.anything()],
     ])
+  })
+
+  test.each([
+    [`Solvus_left`, `solvus`, { color: `#7b1fa2`, width: 1.5, dash: `2,2` }],
+    [`peritectic_line`, `peritectic`, { color: `#d32f2f`, width: 2 }],
+    [`liq_r`, `custom`, { color: `#333`, width: 1.5 }],
+  ])(`curve %s is a %s boundary styled %o`, (id, type, style) => {
+    const { boundaries } = build_diagram({
+      ...minimal_input,
+      curves: { [id]: pts(0, 500, 1, 500) },
+      regions: [],
+    })
+    expect(boundaries).toEqual([{ id, type, points: pts(0, 500, 1, 500), style }])
   })
 
   test(`an unknown curve reference throws instead of silently dropping the bound`, () => {

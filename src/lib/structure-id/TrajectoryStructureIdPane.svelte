@@ -2,7 +2,7 @@
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { TrajectoryRun } from '#lib/trajectory/index.js'
-  import { positive_int, sweep_progress, window_sweep_plan } from '#lib/trajectory/analysis.js'
+  import { positive_int, sweep_progress, window_sweep_size } from '#lib/trajectory/analysis.js'
   import type { AnalysisCollectOptions } from '#lib/trajectory/analysis.js'
   import TrajectoryAnalysisPane from '#lib/trajectory/TrajectoryAnalysisPane.svelte'
   import { cna_type_source_atoms } from '#lib/trajectory/linked-sites.js'
@@ -85,7 +85,7 @@
 >
   <!-- with no stride control, collected_frames is the selected frame window's count -->
   {#snippet controls({ collected_frames: window_frames, n_atoms })}
-    {@const plan = window_sweep_plan(window_frames, safe_max_frames)}
+    {@const sweep = window_sweep_size(window_frames, safe_max_frames)}
     <label>
       Max frames
       <input type="number" min="1" step="1" bind:value={max_frames} />
@@ -95,10 +95,9 @@
       Plot fraction of atoms
     </label>
     <p class="hint">
-      {plan.frame_numbers.length} of {window_frames} frames
-      {#if plan.frame_stride > 1}(every {plan.frame_stride}){/if}
+      {sweep.label}
       <!-- a-CNA measured at ~9-14 µs/atom; the upper end is what a user should plan for -->
-      × {n_atoms} atoms ≈ {format_num(plan.frame_numbers.length * n_atoms * 14e-6, `.2~g`)} s
+      × {n_atoms} atoms ≈ {format_num(sweep.n_frames * n_atoms * 14e-6, `.2~g`)} s
     </p>
   {/snippet}
   {#snippet children({ input, collecting })}

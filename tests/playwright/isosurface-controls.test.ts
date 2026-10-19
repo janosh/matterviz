@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_center,
   canvas_screenshot,
-  get_canvas_timeout,
+  EXPECT_TIMEOUT,
   IS_CI,
   open_settings_pane,
   require_bbox,
@@ -66,7 +66,7 @@ test.describe(`Isosurface page`, () => {
     await expect(neg_cb).not.toBeChecked()
   })
 
-  // slices are read pixel by pixel, which CI's WebGPU never composites (see use_webgl_on_ci)
+  // these read canvas pixels, which CI's WebGPU presents too late for (see webgl_on_ci_for_tagged)
   test.describe(`Volumetric slices`, { tag: `@webgl` }, () => {
     test(`split layout shows the 3D view beside the slice and marks its plane`, async ({
       page,
@@ -175,7 +175,7 @@ test.describe(`Isosurface page`, () => {
 
       await page.getByLabel(`Slice rendering mode`).selectOption(`contours`)
       // Contour strokes are drawn across animation frames; allow CI headroom.
-      await expect_canvas_changed(canvas, filled, get_canvas_timeout() * 2)
+      await expect_canvas_changed(canvas, filled, EXPECT_TIMEOUT * 2)
       await page.getByLabel(`Slice rendering mode`).selectOption(`filled`)
       await expect(page.getByLabel(`Slice colormap`)).toBeVisible()
       await page.getByLabel(`Slice colormap`).selectOption(`interpolateViridis`)

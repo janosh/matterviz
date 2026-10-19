@@ -7,7 +7,7 @@ import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, query } from '../setup'
+import { doc_query, query, trigger_resize_observer } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_inspector: ReturnType<typeof mount> | undefined
@@ -119,7 +119,9 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
 // A slider drag or fast playback switches frames faster than the screen repaints: the open
 // table catches up once per animation frame, to the latest frame, rather than re-rendering every
 // cell per switch. Nor may a switch rewrite the tab row's inline style: each write there made the
-// tables below re-resolve their theme colors.
+// tables below re-resolve their theme colors. fit_toolbar re-runs on every resize report, so each step
+// triggers one (the mock observer only reports on observe or when triggered) to give an
+// unguarded --toolbar-width write the chance to show up.
 test(`frame switches between repaints reach the global tab once, as the latest frame`, async () => {
   const run = make_run(4)
   const step = fromStore(writable(0))
@@ -136,15 +138,20 @@ test(`frame switches between repaints reach the global tab once, as the latest f
   expect(attributes().Frame).toEqual([`1`, ``])
   const style_writes: MutationRecord[] = []
   const observer = new MutationObserver((records) => style_writes.push(...records))
-  observer.observe(doc_query(`.inspector-tabs`), { attributeFilter: [`style`] })
+  const tabs = doc_query(`.inspector-tabs`)
+  observer.observe(tabs, { attributeFilter: [`style`] })
   for (const step_idx of [1, 2, 3]) {
     step.current = step_idx
     await tick()
+    trigger_resize_observer(tabs)
   }
   expect(attributes().Frame).toEqual([`1`, ``])
   await next_paint()
+  trigger_resize_observer(tabs)
   expect(attributes().Frame).toEqual([`4`, ``])
   expect(attributes().Energy).toEqual([`-103`, `eV`])
+  // takeRecords: disconnect drops records not yet delivered to the callback
+  style_writes.push(...observer.takeRecords())
   observer.disconnect()
   expect(style_writes).toEqual([])
 })

@@ -1,15 +1,18 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import type { Crystal } from '#lib'
+  import { type Crystal, SETTINGS_CONFIG } from '#lib'
   import type { CoordinationSplitMode } from '#lib/coordination/index.js'
   import { COORDINATION_SPLIT_MODES, CoordinationBarPlot } from '#lib/coordination/index.js'
   import type { StructureSiteHighlight } from '#lib/plot/core/structure-input.js'
   import { type AtomColorConfig, type AnyStructure, Structure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'
   import { structure_map } from '#site/structures.js'
-  import EnumSelect, { default_strategy, strategy_options } from '../../EnumSelect.svelte'
+  import EnumSelect from '../../EnumSelect.svelte'
   import StructurePicker, { labeled_structures } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'
+
+  const { value: default_strategy, enum: strategy_options = {} } =
+    SETTINGS_CONFIG.structure.bonding_strategy
 
   // Single structure example. Default to a complex oxide (Zr16Bi16O56) whose sites span
   // coordination numbers 4, 6 and 8, so the discrete color bar shows several segments.

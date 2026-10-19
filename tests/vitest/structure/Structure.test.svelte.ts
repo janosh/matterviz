@@ -3443,6 +3443,9 @@ describe(`site sidebar`, () => {
     await tick()
     const divider = doc_query(`.structure-site-layout > .pane-divider`)
     await resize(`.structure-site-sidebar`, 300)
+    // the share follows the row while the divider has focus (see DockedSidebar)
+    divider.dispatchEvent(new FocusEvent(`focus`))
+    await tick()
     for (const [row_width, viewer_pct] of [
       [1000, `70`],
       [1200, `75`],
@@ -3489,9 +3492,12 @@ describe(`site sidebar`, () => {
     ]
     expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
     // as wide as its content until the divider moves, which then hands the width to the ratio
-    const layout = doc_query(`.structure-site-layout`)
     expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
-    expect(layout.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
+    expect(
+      doc_query(`.structure-site-layout > .pane-divider`).style.getPropertyValue(
+        `--docked-sidebar-width`,
+      ),
+    ).toMatch(/^\d+px$/)
     doc_query(`.structure-site-layout > .pane-divider`).dispatchEvent(
       new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }),
     )

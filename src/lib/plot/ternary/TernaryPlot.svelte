@@ -662,14 +662,8 @@
         points={visible_points.map(svg_pixel)}
         bind:hover_idx={legend_hover_idx}
         series_data={legend_data}
-        on_toggle={(idx) => {
-          legend_vis.on_toggle(idx)
-          legend?.on_toggle?.(idx)
-        }}
-        on_double_click={(idx) => {
-          legend_vis.on_double_click(idx)
-          legend?.on_double_click?.(idx)
-        }}
+        on_toggle={legend_vis.on_toggle}
+        on_double_click={legend_vis.on_double_click}
       />
     {/if}
 

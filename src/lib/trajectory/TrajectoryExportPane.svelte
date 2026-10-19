@@ -137,11 +137,7 @@
   const xyz_reason = $derived(gated_preview && xyz_export_unavailable_reason(gated_preview))
 
   let canvas = $state.raw<HTMLCanvasElement | null>(null)
-  $effect(() =>
-    observe_canvas_presence(wrapper, () => {
-      canvas = wrapper?.querySelector<HTMLCanvasElement>(`canvas`) ?? null
-    }),
-  )
+  $effect(() => observe_canvas_presence(wrapper, (found) => (canvas = found)))
   const video_formats = ([`webm`, `mp4`] as const).map((format) => ({
     format,
     label: format === `webm` ? `WebM` : `MP4`,

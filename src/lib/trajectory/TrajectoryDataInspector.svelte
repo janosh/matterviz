@@ -104,10 +104,14 @@
       : `Loading frame properties: ${shown} of ${total} available so far.`
   })
 
-  // The frame on show, refreshed at most once per animation frame: a slider drag or fast
-  // playback switches frames faster than the screen repaints, and each switch re-renders every
-  // cell of the open table. The pending refresh reads the latest frame when it fires, so steady
-  // playback still shows each painted frame.
+  // The frame on show, refreshed at most once per animation frame, since each switch re-renders
+  // every cell of the open table. In the app, session.scrub already writes at most one index per
+  // animation frame and the player advances once per rAF tick, so this coalesces what else can
+  // land between paints: programmatic set_step bursts, key repeat, and a step change racing an
+  // async frame arrival, into one table render per paint. The pending refresh reads the latest
+  // frame when it fires, so playback still shows each painted frame. Never cancelled and
+  // re-requested per switch: the player advances inside its own animation frame callback, so
+  // that would starve the refresh.
   const read_shown = () => ({
     step_idx: current_step_idx,
     frame: current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
@@ -124,8 +128,7 @@
   $effect(() => () => {
     if (refresh_id !== undefined) cancelAnimationFrame(refresh_id)
   })
-  let shown_step_idx = $derived(shown.step_idx)
-  let active_frame = $derived(shown.frame)
+  let { step_idx: shown_step_idx, frame: active_frame } = $derived(shown)
   // Read lazily: a numeric snapshot builds its Site records on first access
   let active_sites = $derived(active_frame?.structure.sites ?? [])
   let n_sites = $derived(site_count(active_frame?.structure))
@@ -255,6 +258,9 @@
     if (!list) throw new Error(`Data inspector tabs have no .tabs-list`)
     let toolbar: HTMLElement | null = null
     const sizes = new ResizeObserver(() => fit())
+    const set_mode = (mode: `inline` | `row`): void => {
+      if (tabs.dataset.toolbar !== mode) tabs.dataset.toolbar = mode
+    }
     const fit = (): void => {
       // Only a table that starts its panel can lift its toolbar: a notice above it keeps its own
       const next = tabs.querySelector<HTMLElement>(
@@ -279,9 +285,6 @@
         toolbar !== null &&
         [...list.children].every((tab) => tab.scrollWidth <= tab.clientWidth)
       if (!inline) set_mode(`row`)
-    }
-    const set_mode = (mode: `inline` | `row`): void => {
-      if (tabs.dataset.toolbar !== mode) tabs.dataset.toolbar = mode
     }
     sizes.observe(tabs)
     // relabelled tabs (growing counts) and the table a tab switch mounts

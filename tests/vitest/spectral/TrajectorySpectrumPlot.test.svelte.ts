@@ -56,13 +56,12 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
   metadata: {},
 })
 
-const render = mount_in_test
-
 // the plot at a fixed 240px height, so both panels get room to lay out
 const render_plot = (
   spectrum: TrajectorySpectroscopyResult,
   props: Partial<ComponentProps<typeof TrajectorySpectrumPlot>> = {},
-) => render(TrajectorySpectrumPlot, { result: spectrum, style: `height: 240px`, ...props })
+) =>
+  mount_in_test(TrajectorySpectrumPlot, { result: spectrum, style: `height: 240px`, ...props })
 
 const labeled_select = (root: HTMLElement, label: string): HTMLSelectElement => {
   const select = Array.from(root.querySelectorAll(`select`)).find((element) =>
@@ -90,14 +89,14 @@ describe(`TrajectorySpectrumPlot`, () => {
   })
 
   it(`labels velocity-only output as vibrational rather than IR`, async () => {
-    const target = render(TrajectorySpectrumPlot, { result: result(false) })
+    const target = mount_in_test(TrajectorySpectrumPlot, { result: result(false) })
     await tick()
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(1)
     expect(target.querySelector(`.fullscreen-button`)).toBeNull()
     expect(target.textContent).toContain(`Vibrational spectrum; IR/Raman activity unavailable`)
     expect(target.textContent).not.toContain(`Relative IR intensity`)
 
-    const plot_only_target = render(TrajectorySpectrumPlot, {
+    const plot_only_target = mount_in_test(TrajectorySpectrumPlot, {
       result: result(false),
       show_summary: false,
     })
@@ -207,7 +206,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     pane_open: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
-  const target = render(TrajectorySpectroscopyPane, pane_props)
+  const target = mount_in_test(TrajectorySpectroscopyPane, pane_props)
   await tick()
   expect(target.textContent).toContain(`dipole`)
   expect(target.textContent).toContain(`polarization`)
@@ -232,7 +231,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     inline: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
-  const inline_target = render(TrajectorySpectroscopyPane, inline_props)
+  const inline_target = mount_in_test(TrajectorySpectroscopyPane, inline_props)
   await tick()
   await vi.waitFor(() => expect(inline_props.result).toBeDefined())
   expect(inline_target.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()

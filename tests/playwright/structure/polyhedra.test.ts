@@ -1,14 +1,17 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  canvas_screenshot,
   collect_console_errors,
   expect_canvas_changed,
   expect_canvas_changed_by,
   wait_for_3d_canvas,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
 
-// these recompute/redraw heavy supercell+polyhedra scenes; CI's software WebGL under worker
-// contention needs extra headroom for the canvas to change, so give the change detection a
-// longer timeout than the default
+webgl_on_ci_for_tagged()
+
+// these recompute and redraw heavy supercell+polyhedra scenes, so give change detection 30 s
+// everywhere rather than the 5 s local expect timeout (CI's expect timeout is 30 s already)
 const canvas_change_timeout = 30_000
 const expect_redraw = (canvas: Locator, act: () => Promise<unknown>) =>
   expect_canvas_changed_by(canvas, act, canvas_change_timeout)
@@ -41,33 +44,43 @@ test.describe(`Coordination Polyhedra Demo`, () => {
     expect(console_errors).toEqual([])
   })
 
-  test(`structure selector switches structures and polyhedra re-render`, async ({ page }) => {
-    test.slow()
-    const initial = await canvas.screenshot()
-    await page.getByRole(`button`, { name: /rutile/ }).click()
-    // {#key} remounts the viewer, so wait for the fresh canvas
-    const new_canvas = await demo_canvas(page)
-    await expect_canvas_changed(new_canvas, initial, canvas_change_timeout)
-  })
+  test(
+    `structure selector switches structures and polyhedra re-render`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      test.slow()
+      const initial = await canvas_screenshot(canvas)
+      await page.getByRole(`button`, { name: /rutile/ }).click()
+      // {#key} remounts the viewer, so wait for the fresh canvas
+      const new_canvas = await demo_canvas(page)
+      await expect_canvas_changed(new_canvas, initial, canvas_change_timeout)
+    },
+  )
 
-  test(`opacity slider and edge/hide-center toggles re-render the scene`, async ({ page }) => {
-    test.slow()
-    await expect_redraw(canvas, () =>
-      page.locator(`.demo-controls input[type="range"]`).fill(`0.1`),
-    )
-    await expect_redraw(canvas, () => control_checkbox(page, `Edges`).uncheck())
-    await expect_redraw(canvas, () => control_checkbox(page, `Hide center atoms`).check())
-  })
+  test(
+    `opacity slider and edge/hide-center toggles re-render the scene`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      test.slow()
+      await expect_redraw(canvas, () =>
+        page.locator(`.demo-controls input[type="range"]`).fill(`0.1`),
+      )
+      await expect_redraw(canvas, () => control_checkbox(page, `Edges`).uncheck())
+      await expect_redraw(canvas, () => control_checkbox(page, `Hide center atoms`).check())
+    },
+  )
 
-  test(`Ba spectator polyhedra hidden by default, force-include draws them`, async ({
-    page,
-  }) => {
-    test.slow()
-    await page.getByRole(`button`, { name: /BaTiO/ }).click()
-    const new_canvas = await demo_canvas(page)
+  test(
+    `Ba spectator polyhedra hidden by default, force-include draws them`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      test.slow()
+      await page.getByRole(`button`, { name: /BaTiO/ }).click()
+      const new_canvas = await demo_canvas(page)
 
-    const ba_toggle = control_checkbox(page, `Ba polyhedra`)
-    await expect(ba_toggle).not.toBeChecked()
-    await expect_redraw(new_canvas, () => ba_toggle.check())
-  })
+      const ba_toggle = control_checkbox(page, `Ba polyhedra`)
+      await expect(ba_toggle).not.toBeChecked()
+      await expect_redraw(new_canvas, () => ba_toggle.check())
+    },
+  )
 })

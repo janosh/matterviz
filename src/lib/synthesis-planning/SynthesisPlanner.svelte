@@ -9,7 +9,7 @@
   import { format_num, plural } from '#lib/labels.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error, toggle_item } from '#lib/utils.js'
   import { format_plan_text } from './agent'
   import { format_equation_html } from './format'
   import { format_mev } from './format-mev'
@@ -280,12 +280,9 @@
   })
 
   const toggle_gas = (gas: GasSpecies): void => {
-    const current = conditions.open_species ?? []
     conditions = {
       ...conditions,
-      open_species: current.includes(gas)
-        ? current.filter((item) => item !== gas)
-        : [...current, gas],
+      open_species: toggle_item(conditions.open_species ?? [], gas),
     }
   }
   const set_pressure = (gas: GasSpecies, value: number): void => {

@@ -237,29 +237,37 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // Series identity (element here, triplet in BondAnglePlot) reaches the tooltip as string
   // metadata that StructureBarPlot turns into a `value —` prefix. Both wrappers rely on the
   // shell for it, so nothing in either component would notice if the prefix disappeared.
-  test(`tooltip prefixes the hovered bar with its string metadata and reports its sites`, async () => {
-    const [on_sites_hover, on_bar_change] = [vi.fn(), vi.fn()]
-    const root = await mount_plot({ structures: simple_cubic, on_sites_hover, on_bar_change })
-    const bar = root.querySelector(`path[role="button"]`)
-    expect(bar).toBeInstanceOf(SVGPathElement)
-    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
-    expect(on_sites_hover).toHaveBeenCalledOnce()
-    // on_sites_hover wraps a caller's own on_bar_change instead of replacing it
-    expect(on_bar_change).toHaveBeenCalledOnce()
-    const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
-    const { element, cn } =
-      /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}
-    const { coordination_nums } = calc_coordination_nums(simple_cubic)
-    const expected = simple_cubic.sites.flatMap(({ species }, idx) =>
-      species[0].element === element && coordination_nums[idx] === Number(cn) ? [idx] : [],
-    )
-    expect(expected.length).toBeGreaterThan(0)
-    expect(on_sites_hover).toHaveBeenLastCalledWith([
-      { label: `Structure`, structure: simple_cubic, site_indices: expected },
-    ])
-    bar?.dispatchEvent(new MouseEvent(`mouseleave`))
-    expect(on_sites_hover).toHaveBeenLastCalledWith(null)
-  })
+  // with_bar_change=false: on_sites_hover alone must still be wired to bar hover
+  test.each([true, false])(
+    `tooltip prefixes the hovered bar with its string metadata and reports its sites (on_bar_change=%s)`,
+    async (with_bar_change) => {
+      const [on_sites_hover, on_bar_change] = [vi.fn(), vi.fn()]
+      const root = await mount_plot({
+        structures: simple_cubic,
+        on_sites_hover,
+        ...(with_bar_change && { on_bar_change }),
+      })
+      const bar = root.querySelector(`path[role="button"]`)
+      expect(bar).toBeInstanceOf(SVGPathElement)
+      bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      await tick()
+      expect(on_sites_hover).toHaveBeenCalledOnce()
+      // on_sites_hover wraps a caller's own on_bar_change instead of replacing it
+      expect(on_bar_change).toHaveBeenCalledTimes(with_bar_change ? 1 : 0)
+      const tooltip = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+      const { element, cn } =
+        /^\s*(?<element>Cl|Na)\s+—[\s\S]*CN:\s*(?<cn>\d+)/.exec(tooltip)?.groups ?? {}
+      const { coordination_nums } = calc_coordination_nums(simple_cubic)
+      const expected = simple_cubic.sites.flatMap(({ species }, idx) =>
+        species[0].element === element && coordination_nums[idx] === Number(cn) ? [idx] : [],
+      )
+      expect(expected.length).toBeGreaterThan(0)
+      expect(on_sites_hover).toHaveBeenLastCalledWith([
+        { label: `Structure`, structure: simple_cubic, site_indices: expected },
+      ])
+      bar?.dispatchEvent(new MouseEvent(`mouseleave`))
+      expect(on_sites_hover).toHaveBeenLastCalledWith(null)
+    },
+  )
 })

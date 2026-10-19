@@ -830,7 +830,14 @@ const parse_torch_sim_datasets = (
       ...(energy_key && { energies: channel(energy_key, 1) }),
     }
     if (mass_source)
-      batch.masses = atom_batch_masses(mass_source, start, count, elements, atom_masses)
+      batch.masses = atom_batch_masses(
+        FORMAT,
+        mass_source,
+        start,
+        count,
+        elements,
+        atom_masses,
+      )
     if (selection_key)
       batch.selected = Uint8Array.from(channel(selection_key, 1), (value) => {
         if (value !== 0 && value !== 1)

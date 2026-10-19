@@ -1,5 +1,11 @@
 import type { DisplayMetrics } from './site'
-import { available_site_vector_keys, get_site, numeric_sites, site_count } from './site'
+import {
+  available_site_vector_keys,
+  get_site,
+  numeric_sites,
+  site_count,
+  vector_offset,
+} from './site'
 import { characteristic_atom_spacing } from './density'
 import type { Vec3 } from '#lib/math.js'
 import { EPS, is_finite_vec3, normalize_vec, compute_in_plane_basis } from '#lib/math.js'
@@ -106,7 +112,7 @@ export function vector_reader(
     }
   return (idx) => {
     if (magnitudes && Number.isNaN(magnitudes[idx])) return null
-    const offset = idx * stride + 6 + column * 3
+    const offset = idx * stride + vector_offset(column)
     vector[0] = coordinates[offset]
     vector[1] = coordinates[offset + 1]
     vector[2] = coordinates[offset + 2]

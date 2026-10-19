@@ -11,7 +11,7 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 
 ```svelte example
 <script lang="ts">
-  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot, format_num } from 'matterviz'
+  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot, format_num, toggle_item } from 'matterviz'
   import type { EosFit, EosKind } from 'matterviz'
 
   const volumes = [10.384, 10.738, 11.092, 11.446, 11.8, 12.154, 12.508, 12.862, 13.216]
@@ -22,14 +22,14 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 
   let kinds = $state<EosKind[]>([`birch_murnaghan`])
   let fits = $state<EosFit[]>([])
-  const toggle = (kind: EosKind) => {
-    kinds = kinds.includes(kind) ? kinds.filter((val) => val !== kind) : [...kinds, kind]
-  }
 </script>
 
 <div style="display: flex; gap: 1ex; margin-bottom: 1ex">
   {#each EOS_KINDS as kind (kind)}
-    <button class:active={kinds.includes(kind)} onclick={() => toggle(kind)}>
+    <button
+      class:active={kinds.includes(kind)}
+      onclick={() => (kinds = toggle_item(kinds, kind))}
+    >
       {EOS_KIND_LABELS[kind]}
     </button>
   {/each}

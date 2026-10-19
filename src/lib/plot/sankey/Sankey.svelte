@@ -604,7 +604,7 @@
         points={layout.nodes.map(node_center)}
         bind:hover_idx={legend_hover_idx}
         series_data={legend_data}
-        on_toggle={legend?.on_toggle ?? toggle_node}
+        on_toggle={toggle_node}
       />
     {/if}
   {/snippet}

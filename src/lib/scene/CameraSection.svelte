@@ -1,5 +1,6 @@
 <script lang="ts">
-  // Camera settings section: projection select plus children (pass changed_keys/on_reset for them)
+  // Camera settings section: projection select plus children. Callers pass changed_keys/on_reset
+  // for their children's settings; they're merged with the projection's own tracking and reset.
   import { SettingsSection } from '#lib/layout/index.js'
   import type { CameraProjection } from '#lib/settings.js'
   import type { ComponentProps } from 'svelte'
@@ -7,6 +8,8 @@
   let {
     camera_projection = $bindable(),
     default_projection,
+    changed_keys = [],
+    on_reset,
     children,
     ...rest
   }: Partial<ComponentProps<typeof SettingsSection>> & {
@@ -17,10 +20,15 @@
 
 <SettingsSection
   title="Camera"
-  changed_keys={camera_projection === default_projection ? [] : [`camera_projection`]}
-  on_reset={() => (camera_projection = default_projection)}
   layout="grid"
   {...rest}
+  changed_keys={camera_projection === default_projection
+    ? changed_keys
+    : [`camera_projection`, ...changed_keys]}
+  on_reset={() => {
+    camera_projection = default_projection
+    on_reset?.()
+  }}
 >
   <label>
     <span>Projection</span>

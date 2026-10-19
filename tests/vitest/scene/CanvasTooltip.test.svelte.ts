@@ -1,14 +1,21 @@
 import CanvasTooltip from '#lib/scene/CanvasTooltip.svelte'
 import type { Vec3 } from '#lib/math.js'
+import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { PerspectiveCamera } from 'three/webgpu'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { mount_scene } from './mount'
+
+vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
+  const original = await import_original<{ clip_bounds: typeof clip_bounds }>()
+  return { ...original, clip_bounds: vi.fn(original.clip_bounds) }
+})
 
 const px = (length: string) => Number(length.replace(/px$/, ``))
 
 // A PlotTooltip at the projected 3D anchor, right of and below it by the anchor's on-screen
-// radius, so the hovered object stays visible; hidden while the anchor is behind the camera
+// radius, so the hovered object stays visible; hidden while the anchor is behind the camera.
+// Its clip box is measured once per showing, not again on every move of the anchor.
 test.each<[string, Vec3, number]>([
   [`point anchor`, [0, 0, 0], 0],
   [`sphere anchor`, [0, 0, 0], 1],
@@ -52,6 +59,17 @@ test.each<[string, Vec3, number]>([
   // f64 matrix math; style:left/top serialize 6 decimals, so 1e-5 px
   expect(Math.abs(px(tip.style.left) - (screen_x + radius_px + 4))).toBeLessThan(1e-5)
   expect(Math.abs(px(tip.style.top) - (screen_y + 4))).toBeLessThan(1e-5)
+
+  vi.mocked(clip_bounds).mockClear()
+  props.position = [position[0] + 1, position[1], position[2]]
+  flushSync()
+  expect(Math.abs(px(tip.style.left) - (screen_x + px_per_unit + radius_px + 4))).toBeLessThan(
+    1e-5,
+  )
+  expect(clip_bounds).not.toHaveBeenCalled()
+  // a scroll moves the clip box relative to the host: a shown tooltip re-measures
+  document.dispatchEvent(new Event(`scroll`))
+  expect(clip_bounds).toHaveBeenCalledOnce()
 
   props.position = [0, 0, 20] // behind the camera
   flushSync()

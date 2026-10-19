@@ -149,7 +149,7 @@
       }}
       bind:display
       tooltip={tooltip === false ? false : labelled_tooltip}
-      on_bar_hover={on_bar_change
+      on_bar_hover={on_bar_change || (bar_sites && on_sites_hover)
         ? (bar) => {
             rest.on_bar_hover?.(bar)
             report_bar_change(bar)

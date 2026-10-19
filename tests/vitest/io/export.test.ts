@@ -193,7 +193,7 @@ const mock_image = (src_behaviour: `load` | `error` | `throw` | `never`, delay_m
 // Export panes enable canvas formats once the viewer holds a <canvas>. Only a canvas (or a
 // subtree holding one) coming or going can change that, so other DOM churn under the wrapper,
 // like a table re-rendering on every frame, must not re-query the whole tree.
-test(`observe_canvas_presence reports canvases coming and going, ignoring other churn`, async () => {
+test(`observe_canvas_presence hands over canvases coming and going, ignoring other churn`, async () => {
   const wrapper = document.createElement(`div`)
   document.body.append(wrapper)
   onTestFinished(() => wrapper.remove())
@@ -202,21 +202,26 @@ test(`observe_canvas_presence reports canvases coming and going, ignoring other 
   const stop = observe_canvas_presence(wrapper, set)
   onTestFinished(() => stop?.())
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
-  expect(set.mock.calls).toEqual([[false]])
+  expect(set.mock.calls).toEqual([[null]])
   const row = document.createElement(`p`)
   wrapper.append(row)
   row.textContent = `frame 2`
   await flush()
   expect(set).toHaveBeenCalledOnce()
   const nested = document.createElement(`div`)
-  nested.append(document.createElement(`canvas`))
+  const canvas = document.createElement(`canvas`)
+  nested.append(canvas)
   wrapper.append(nested)
   await flush()
-  expect(set).toHaveBeenLastCalledWith(true)
+  expect(set.mock.lastCall?.[0]).toBe(canvas)
   nested.remove()
   await flush()
-  expect(set).toHaveBeenLastCalledWith(false)
+  expect(set).toHaveBeenLastCalledWith(null)
   expect(query_spy).toHaveBeenCalledTimes(3)
+  // without a wrapper there is nothing to observe
+  const unwrapped = vi.fn()
+  expect(observe_canvas_presence(undefined, unwrapped)).toBeUndefined()
+  expect(unwrapped.mock.calls).toEqual([[null]])
 })
 
 describe(`dpi_to_scale`, () => {

@@ -4,9 +4,11 @@ import {
   open_structure_control_pane,
   set_structure,
   structure_canvas,
-  use_webgl_on_ci,
   expect_canvas_changed_by,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 const SITE_PROPS = {
   multi: [
@@ -56,9 +58,8 @@ const inject_vectors = (page: Page, mode: `multi` | `single`) =>
 const labels_with = (pane: Locator, text: string) =>
   pane.locator(`label`).filter({ hasText: text })
 
-test.describe(`Site Vectors`, () => {
+test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await goto_structure_test(page)
   })
 

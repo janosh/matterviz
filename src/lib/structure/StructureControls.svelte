@@ -264,22 +264,28 @@
     return () => clearTimeout(save_timeout)
   })
 
+  // A restored size reaches the pane. Writes only on change: a resize drag feeds every step
+  // back through controls_pane_size, and each style write on this ancestor makes the color
+  // bars inside re-resolve their theme colors.
+  $effect(() => {
+    const pane = controls_pane
+    if (!pane || !controls_pane_size) return
+    for (const key of [`width`, `height`] as const) {
+      const length = `${controls_pane_size[key]}px`
+      if (pane.style[key] !== length) pane.style[key] = length
+    }
+  })
   $effect(() => {
     const pane = controls_pane
     if (!pane) return
-    if (controls_pane_size) {
-      pane.style.width = `${controls_pane_size.width}px`
-      pane.style.height = `${controls_pane_size.height}px`
-    }
+    // Only a pixel size set on the pane (a resize drag) is the user's to keep
     const observer = new ResizeObserver(() => {
-      if (!pane.style.width || !pane.style.height) return
-      const width = Number(pane.style.width.replace(/px$/, ``))
-      const height = Number(pane.style.height.replace(/px$/, ``))
+      const [width, height] = [pane.style.width, pane.style.height].map((length) =>
+        length.endsWith(`px`) ? Number(length.slice(0, -2)) : NaN,
+      )
       if (!Number.isFinite(width) || !Number.isFinite(height)) return
-      if (controls_pane_size?.width === width && controls_pane_size.height === height) {
-        return
-      }
-      controls_pane_size = { width, height }
+      if (controls_pane_size?.width !== width || controls_pane_size.height !== height)
+        controls_pane_size = { width, height }
     })
     observer.observe(pane)
     return () => observer.disconnect()

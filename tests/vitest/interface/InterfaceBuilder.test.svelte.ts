@@ -7,10 +7,10 @@ import type { Crystal } from '#lib/structure/index.js'
 import { flushSync } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, doc_query, mount_in_test, mouse } from '../setup'
-import { make_crystal, make_fcc } from '../test-fixtures'
+import { make_crystal, fcc_cell } from '../test-fixtures'
 
 const fcc_slab = (lattice_const: number, element: string, hkl: Vec3 = [1, 0, 0]) =>
-  make_slab(make_fcc(lattice_const, element), hkl, { min_slab_thickness: 4 })
+  make_slab(fcc_cell(lattice_const, element), hkl, { min_slab_thickness: 4 })
 const CU_100 = fcc_slab(3.615, `Cu`)
 const AG_100 = fcc_slab(4.086, `Ag`)
 const PD_111 = fcc_slab(3.89, `Pd`, [1, 1, 1])

@@ -1,5 +1,6 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
+import { mock_band_structure as band_structs } from '#site/spectral-mocks.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
@@ -13,7 +14,6 @@ import {
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
-import { mock_band_structure as band_structs } from '#root/src/routes/test/spectral-mocks.ts'
 
 const phonon_dos: PhononDos = {
   type: `phonon`,

@@ -12,7 +12,7 @@ import type { Slab } from '#lib/slab/index.js'
 import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
 import { structure_map } from '#site/structures.js'
 import { describe, expect, test } from 'vitest'
-import { FCC_FACE_CENTRES, make_crystal, make_fcc, make_rocksalt } from '../test-fixtures'
+import { FCC_FACE_CENTRES, make_crystal, fcc_cell, make_rocksalt } from '../test-fixtures'
 
 // Conventional cubic cells: exact fractional coordinates, so every expectation below can
 // be compared against a hand-derived analytic value rather than a stored number.
@@ -26,11 +26,11 @@ const HCP_CELL = math.cell_to_lattice_matrix(HCP_A, HCP_A, HCP_C, 90, 90, 120)
 // highly oblique triclinic cell, to check nothing silently assumes orthogonal axes
 const TRICLINIC_CELL = math.cell_to_lattice_matrix(4.1, 5.3, 6.7, 71, 83, 115)
 
-const site = (element: string, abc: Vec3) => ({ element, abc })
-const on_sites = (element: string, positions: Vec3[]) =>
+const site = (element: string, abc: Readonly<Vec3>) => ({ element, abc })
+const on_sites = (element: string, positions: readonly Readonly<Vec3>[]) =>
   positions.map((abc) => site(element, abc))
 
-const fcc = (): Crystal => make_fcc(FCC_A)
+const fcc = (): Crystal => fcc_cell(FCC_A)
 const rocksalt = (): Crystal => make_rocksalt(ROCKSALT_A)
 // the three perovskite O sit on the cube faces, i.e. the fcc face centres bar the origin
 const perovskite = (): Crystal =>

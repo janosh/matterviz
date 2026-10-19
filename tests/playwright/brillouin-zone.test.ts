@@ -1,12 +1,14 @@
 import { expect, type Page, test } from '@playwright/test'
 import {
   require_bbox,
-  use_webgl_on_ci,
   wait_for_3d_canvas,
   expect_centered,
   expect_centered_card,
   expect_inline_spinner,
+  webgl_on_ci_for_tagged,
 } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 const BZ_SELECTOR = `#test-brillouin-zone`
 const status_locator = (page: Page, test_id: string) =>
@@ -50,9 +52,8 @@ test(`loading overlay stays centered and compact in wide and narrow viewers`, as
   await expect(loading).toBeHidden()
 })
 
-test.describe(`BrillouinZone Component Tests`, () => {
+test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
-    await use_webgl_on_ci(page)
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
@@ -274,9 +275,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
   })
 })
 
-test.describe(`BrillouinZone Event Handler Tests`, () => {
-  test.beforeEach(({ page }) => use_webgl_on_ci(page))
-
+test.describe(`BrillouinZone Event Handler Tests`, { tag: `@webgl` }, () => {
   test(`triggers on_file_load with source`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?source=/structures/mp-1.json`, {
       waitUntil: `networkidle`,

@@ -10,7 +10,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import * as d3_sc from 'd3-scale-chromatic'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
 // depends on which energy fields are absent
@@ -596,9 +596,19 @@ describe(`helpers: temperature interpolation`, () => {
     [400, [300, 900], false, 300],
     [600, [300, 900], false, 300],
     [900, [300, 900], false, 900],
+    [undefined, [], true, undefined],
   ] as const)(`get_valid_temperature(%s, %j, %s) = %s`, (temp, temps, interp, want) =>
     expect(helpers.get_valid_temperature(temp, temps, interp)).toBe(want),
   )
+
+  // undefined only comes back for an undefined temperature, so a defined one needs no fallback
+  test(`get_valid_temperature narrows its return type for a defined temperature`, () => {
+    expectTypeOf(helpers.get_valid_temperature(700, [], true)).toEqualTypeOf<number>()
+    const maybe_temp = undefined as number | undefined
+    expectTypeOf(helpers.get_valid_temperature(maybe_temp, [], true)).toEqualTypeOf<
+      number | undefined
+    >()
+  })
 
   describe(`interpolate_energy_at_temperature`, () => {
     test.each([

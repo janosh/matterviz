@@ -75,9 +75,24 @@
   })
 
   // Measured once the tooltip is in the DOM: hosts may lift their clip only while one shows (a
-  // gallery card's overflow), so a box read before mounting would keep it inside the card
+  // gallery card's overflow), so a box read before mounting would keep it inside the card.
+  // Tracks only whether it shows, not where: the anchor moves on every frame of a camera
+  // orbit, and each measure forces layout and walks the ancestors' computed styles. A scroll or
+  // window resize moves the clip box relative to the host, so a shown (e.g. pinned) tooltip
+  // re-measures on those.
+  const tooltip_shown = $derived(screen !== null)
   $effect(() => {
-    if (screen && host) bounds = clip_bounds(host)
+    void $size
+    if (!tooltip_shown || !host) return
+    const measure = () => (bounds = clip_bounds(host))
+    measure()
+    const options = { capture: true, passive: true }
+    globalThis.addEventListener(`scroll`, measure, options)
+    globalThis.addEventListener(`resize`, measure, options)
+    return () => {
+      globalThis.removeEventListener(`scroll`, measure, options)
+      globalThis.removeEventListener(`resize`, measure, options)
+    }
   })
 
   const portal_to_host = (node: HTMLElement) => {

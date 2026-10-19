@@ -14,8 +14,8 @@ import type { BoundaryType, PhaseBoundary, PhaseDiagramData, PhaseRegion } from 
 interface CurveRef {
   name: string
   reverse: boolean
-  start: number | null // null means from beginning
-  end: number | null // null means to end
+  start?: number // Array.slice bounds: Python-style, negative counts from the end
+  end?: number
 }
 
 // Parse curve reference syntax: 'curve_name', '~curve_name', 'curve_name[1:]', etc.
@@ -23,15 +23,11 @@ export function parse_curve_ref(ref: string): CurveRef {
   const reverse = ref.startsWith(`~`)
   const name = reverse ? ref.slice(1) : ref
   const slice = /^(?<base>.+)\[(?<start>-?\d*):(?<end>-?\d*)\]$/.exec(name)?.groups
-  const index = (digits: string | undefined) => (digits ? Number(digits) : null)
+  const index = (digits?: string) => (digits ? Number(digits) : undefined)
   return slice
     ? { name: slice.base, reverse, start: index(slice.start), end: index(slice.end) }
-    : { name, reverse, start: null, end: null }
+    : { name, reverse }
 }
-
-// Python-style slice (negative indices count from the end), which Array.slice already does
-export const apply_slice = <T>(arr: T[], start: number | null, end: number | null): T[] =>
-  arr.slice(start ?? 0, end ?? arr.length)
 
 // Expand bounds to vertex list
 const expand_bounds = (
@@ -48,7 +44,7 @@ const expand_bounds = (
       )
     }
     // Reverse before slicing, to match Python's `reversed(curve)[1:]` pattern
-    return apply_slice(ref.reverse ? points.toReversed() : points, ref.start, ref.end)
+    return (ref.reverse ? points.toReversed() : points).slice(ref.start, ref.end)
   })
 
 // Remove consecutive duplicate vertices and a closing vertex that repeats the first
@@ -62,25 +58,23 @@ function dedupe_consecutive_vertices(vertices: DiagramPoint[]): DiagramPoint[] {
   return result
 }
 
-// Boundary type from the curve name prefix (liquidus_left → liquidus)
-const NAMED_BOUNDARY_TYPES = [
-  `liquidus`,
-  `solidus`,
-  `solvus`,
-  `eutectic`,
-  `peritectic`,
-] as const
-const infer_boundary_type = (curve_name: string): BoundaryType =>
-  NAMED_BOUNDARY_TYPES.find((type) => curve_name.toLowerCase().startsWith(type)) ?? `custom`
+// Default style of each boundary type a curve name can start with (liquidus_left → liquidus)
+const NAMED_BOUNDARY_STYLES = {
+  liquidus: { color: `#1565c0`, width: 2.5 },
+  solidus: { color: `#2e7d32`, width: 2, dash: `4,2` },
+  solvus: { color: `#7b1fa2`, width: 1.5, dash: `2,2` },
+  eutectic: { color: `#d32f2f`, width: 2 },
+  peritectic: { color: `#d32f2f`, width: 2 },
+} as const satisfies Partial<Record<BoundaryType, PhaseBoundary[`style`]>>
+const NAMED_BOUNDARY_TYPES = Object.keys(
+  NAMED_BOUNDARY_STYLES,
+) as (keyof typeof NAMED_BOUNDARY_STYLES)[]
 
-function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
-  if (btype === `liquidus`) return { color: `#1565c0`, width: 2.5 }
-  if (btype === `solidus`) return { color: `#2e7d32`, width: 2, dash: `4,2` }
-  if (btype === `solvus`) return { color: `#7b1fa2`, width: 1.5, dash: `2,2` }
-  if (btype === `eutectic` || btype === `peritectic`) {
-    return { color: `#d32f2f`, width: 2 }
-  }
-  return { color: `#333`, width: 1.5 }
+const curve_boundary = (id: string, points: DiagramPoint[]): PhaseBoundary => {
+  const type = NAMED_BOUNDARY_TYPES.find((name) => id.toLowerCase().startsWith(name))
+  return type
+    ? { id, type, points, style: { ...NAMED_BOUNDARY_STYLES[type] } }
+    : { id, type: `custom`, points, style: { color: `#333`, width: 1.5 } }
 }
 
 // Region, boundary and special-point ids key the rendered SVG elements (and gradient ids), so
@@ -113,11 +107,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     }
   })
 
-  const boundaries: PhaseBoundary[] = Object.entries(curves).map(([name, points]) => {
-    const btype = infer_boundary_type(name)
-    const style = get_boundary_style(btype)
-    return { id: name, type: btype, points, style }
-  })
+  const boundaries = Object.entries(curves).map(([id, points]) => curve_boundary(id, points))
 
   const data: PhaseDiagramData = {
     components: meta.components,

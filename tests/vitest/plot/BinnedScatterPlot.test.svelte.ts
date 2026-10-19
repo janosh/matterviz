@@ -1290,6 +1290,21 @@ describe(`BinnedScatterPlot`, () => {
     expect(leader_count()).toBeGreaterThan(0)
   })
 
+  // A tiny label 2px off the point sits under the default 15px threshold. An explicit
+  // undefined threshold spreads over the default, and must not draw a leader for every label.
+  test.each([
+    [`default`, {}, 0],
+    [`explicit undefined`, { leader_line_threshold: undefined }, 0],
+    [`zero`, { leader_line_threshold: 0 }, 1],
+  ] as const)(
+    `%s leader threshold draws %i leaders near the point`,
+    async (_, placement, want) => {
+      mock_label_measurement(2, 2)
+      await mount_labelled_point({ gap_px: 2, placement, leaders: { min_length_px: 0 } })
+      expect(document.querySelectorAll(`.point-label-leaders line`)).toHaveLength(want)
+    },
+  )
+
   test(`applies point label font size to rendered and measured labels`, async () => {
     await mount_labelled_point({ font_size: `20px` })
     expect(getComputedStyle(doc_query(`.point-labels .point-label`)).fontSize).toBe(`20px`)

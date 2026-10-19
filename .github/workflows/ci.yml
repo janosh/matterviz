@@ -162,12 +162,13 @@ jobs:
           run=true
           if [ "$ACTION" = synchronize ]; then
             # newest first. A run decides once any E2E job failed (even while its other jobs
-            # still run) or its E2E gate passed; cancelled runs and running ones without a
-            # failure decide nothing. Manually dispatched full runs of the branch count like PR
-            # runs; the head repo filter drops a fork's same-named branch and base-repo
+            # still run) or its E2E gate passed; running ones without a failure decide nothing.
+            # Cancelled runs are skipped outright: their always() E2E aggregator job fails, which
+            # would read as a failed gate. Manually dispatched full runs of the branch count like
+            # PR runs; the head repo filter drops a fork's same-named branch and base-repo
             # dispatches for fork PRs alike.
             for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=$HEAD_REF&per_page=30" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.event == \"pull_request\" or .event == \"workflow_dispatch\") and .head_repository.full_name == \"$HEAD_REPO\") | .id"); do
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.event == \"pull_request\" or .event == \"workflow_dispatch\") and .head_repository.full_name == \"$HEAD_REPO\" and .conclusion != \"cancelled\") | .id"); do
               gate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" \
                 --jq '[.jobs[] | select(.name | startswith("E2E"))] | if any(.conclusion == "failure") then "failure" elif any(.name == "E2E tests (shard 1/4)" and .conclusion == "success") then "success" else "" end')
               if [ "$gate" = success ]; then run=false; break; fi

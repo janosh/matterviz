@@ -10,15 +10,14 @@ import * as math from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_fcc, make_rocksalt } from '../test-fixtures'
+import { FCC_FACE_CENTRES, fcc_cell, make_crystal, make_rocksalt } from '../test-fixtures'
 
-const fcc = make_fcc
 // reoriented slabs: a ∥ x, surface normal ∥ z
 const slab = (crystal: Crystal, hkl: Vec3, min_slab_thickness = 6) =>
   make_slab(crystal, hkl, { min_slab_thickness, min_vacuum_thickness: 10 })
-const CU_111 = slab(fcc(3.615, `Cu`), [1, 1, 1])
-const CU_100 = slab(fcc(3.615, `Cu`), [1, 0, 0])
-const AG_100 = slab(fcc(4.086, `Ag`), [1, 0, 0])
+const CU_111 = slab(fcc_cell(3.615, `Cu`), [1, 1, 1])
+const CU_100 = slab(fcc_cell(3.615, `Cu`), [1, 0, 0])
+const AG_100 = slab(fcc_cell(4.086, `Ag`), [1, 0, 0])
 const D_111 = 3.615 / Math.sqrt(3)
 
 const counts = (crystal: Crystal): Record<string, number> =>
@@ -52,6 +51,32 @@ const expect_film_registry = (built: Heterostructure, film_cell: Crystal): void 
     )
   }
 }
+
+// The slabs above are built from shared fixture constants: make_crystal hands back fresh
+// arrays, and the shared fcc positions refuse mutation outright instead of leaking it
+test(`make_crystal shares no arrays with its inputs and FCC_FACE_CENTRES is frozen`, () => {
+  const abc: Vec3 = [0.25, 0.25, 0.25]
+  const xyz: Vec3 = [1, 2, 3]
+  // oxfmt-ignore
+  const matrix: Matrix3x3 = [[4, 0, 0], [0, 4, 0], [0, 0, 4]]
+  const crystal = make_crystal(matrix, [
+    { element: `Cu`, abc },
+    { element: `Cu`, xyz },
+  ])
+  const [abc_site, xyz_site] = crystal.sites
+  expect(abc_site.abc).toEqual(abc)
+  expect(abc_site.abc).not.toBe(abc)
+  expect(xyz_site.xyz).toEqual(xyz)
+  expect(xyz_site.xyz).not.toBe(xyz)
+  expect(crystal.lattice.matrix).toEqual(matrix)
+  expect(crystal.lattice.matrix).not.toBe(matrix)
+  crystal.lattice.matrix.forEach((row, idx) => expect(row).not.toBe(matrix[idx]))
+
+  expect(fcc_cell(4).sites[1].abc).not.toBe(FCC_FACE_CENTRES[1])
+  expect(() => Object.assign(FCC_FACE_CENTRES[1], [1])).toThrow(TypeError)
+  expect(() => Object.assign(FCC_FACE_CENTRES, [[1, 1, 1]])).toThrow(TypeError)
+  expect(FCC_FACE_CENTRES[1]).toEqual([0.5, 0.5, 0])
+})
 
 describe(`in_plane_supercell`, () => {
   const nacl = slab(make_rocksalt(), [1, 0, 0], 5)
@@ -257,7 +282,7 @@ describe(`make_interface`, () => {
   })
 
   test(`without a match a near-commensurate film is strained 1×1 onto the substrate`, () => {
-    const film = slab(fcc(3.615 * 1.02, `Cu`), [1, 0, 0])
+    const film = slab(fcc_cell(3.615 * 1.02, `Cu`), [1, 0, 0])
     const built = make_interface(CU_100, film)
     const { match } = built.interface_info
     expect([match.n_film_cells, match.n_substrate_cells]).toEqual([1, 1])

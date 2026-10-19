@@ -6,7 +6,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { is_finite_vec3, type Matrix3x3, reciprocal_lattice } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
-import { site_stride } from '#lib/structure/site.js'
+import { site_stride, vector_offset } from '#lib/structure/site.js'
 import { values_per_sample } from '../helpers'
 import type { NumericFrame } from '../frame'
 import type {
@@ -161,7 +161,7 @@ class PositionAccumulator {
         key,
         scalar,
         target: this.vectors[key],
-        offset: 6 + column * 3,
+        offset: vector_offset(column),
         source: column >= 0 && !scalar ? numeric?.coordinates : undefined,
       }
     })

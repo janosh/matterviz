@@ -271,10 +271,11 @@ export const get_dummy_structure = (
 
 // Simplified site input for make_crystal helper
 // Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }
+// Coords may be readonly: make_crystal copies them into the sites it returns
 type SimpleSiteObject = {
   element: string // usually ElementSymbol but any string is allowed
-  abc?: Vec3
-  xyz?: Vec3
+  abc?: Readonly<Vec3>
+  xyz?: Readonly<Vec3>
   occu?: number
   oxidation_state?: number
   label?: string
@@ -282,7 +283,7 @@ type SimpleSiteObject = {
 }
 
 // Tuple shorthand: [`Li`, [0, 0, 0]] or [`Li`, [0, 0, 0], 1] (with oxidation state)
-export type SimpleSite = SimpleSiteObject | [string, Vec3, number?]
+export type SimpleSite = SimpleSiteObject | [string, Readonly<Vec3>, number?]
 
 // Flexible helper to create test structures with minimal boilerplate
 // Handles auto-calculation of abc↔xyz, lattice params, and site defaults
@@ -291,8 +292,12 @@ export function make_crystal(
   site_inputs: SimpleSite[],
   options: { pbc?: Pbc; charge?: number } = {},
 ): Crystal {
+  // Copied, like the site coords below, so the returned crystal shares no arrays with the
+  // caller: mutating one must not reach the other (or a shared fixture constant)
   const lattice_matrix: math.Matrix3x3 =
-    typeof lattice_input === `number` ? cubic_matrix(lattice_input) : lattice_input
+    typeof lattice_input === `number`
+      ? cubic_matrix(lattice_input)
+      : [[...lattice_input[0]], [...lattice_input[1]], [...lattice_input[2]]]
 
   // Use standard pymatgen convention for frac↔cart conversion:
   // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
@@ -311,10 +316,10 @@ export function make_crystal(
     let abc: Vec3
     let xyz: Vec3
     if (input.abc) {
-      abc = input.abc
+      abc = [...input.abc]
       xyz = frac_to_cart(abc)
     } else if (input.xyz) {
-      xyz = input.xyz
+      xyz = [...input.xyz]
       abc = (cart_to_frac ??= math.create_cart_to_frac(lattice_matrix))(xyz)
     } else {
       throw new Error(`Site ${idx} must have either abc or xyz coordinates`)
@@ -367,27 +372,29 @@ export const make_molecule = (atoms: [string, Vec3][]): Molecule => ({
   })),
 })
 
-// Conventional rocksalt NaCl cell (4 Na + 4 Cl): every ion octahedrally coordinated by 6
-// counter-ions, only 3 of which sit inside the box (the rest are periodic images)
 // oxfmt-ignore
-export const FCC_FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+const fcc_face_centres: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
+for (const vec of fcc_face_centres) Object.freeze(vec)
+// Frozen, rows too, so a test mutating a shared position throws instead of leaking into every
+// later fixture built from it
+export const FCC_FACE_CENTRES: readonly Readonly<Vec3>[] = Object.freeze(fcc_face_centres)
 // Conventional 4-atom fcc cell of one element (Cu by default)
-export const make_fcc = (lattice_const: number, element = `Cu`): Crystal =>
+export const fcc_cell = (lattice_const: number, element = `Cu`): Crystal =>
   make_crystal(
     lattice_const,
     FCC_FACE_CENTRES.map((abc) => ({ element, abc })),
   )
 
+// Conventional rocksalt NaCl cell (4 Na + 4 Cl): every ion octahedrally coordinated by 6
+// counter-ions, only 3 of which sit inside the box (the rest are periodic images). The anion
+// sublattice is the cation one shifted by half a cell along a.
 export const make_rocksalt = (lattice_const = 5.64, cation = `Na`, anion = `Cl`): Crystal =>
   make_crystal(lattice_const, [
-    [cation, [0, 0, 0]],
-    [cation, [0.5, 0.5, 0]],
-    [cation, [0.5, 0, 0.5]],
-    [cation, [0, 0.5, 0.5]],
-    [anion, [0.5, 0, 0]],
-    [anion, [0, 0.5, 0]],
-    [anion, [0, 0, 0.5]],
-    [anion, [0.5, 0.5, 0.5]],
+    ...FCC_FACE_CENTRES.map((abc) => ({ element: cation, abc })),
+    ...FCC_FACE_CENTRES.map(([frac_a, frac_b, frac_c]) => ({
+      element: anion,
+      abc: [(frac_a + 0.5) % 1, frac_b, frac_c] as Vec3,
+    })),
   ])
 
 // Trajectory frame with sites at explicit Cartesian coordinates. With `box_length` the

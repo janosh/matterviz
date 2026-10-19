@@ -178,38 +178,58 @@ export function analysis_pane_setup(
   }
 }
 
+const check_positive_ints = (fn_name: string, values: Record<string, number>): void => {
+  for (const [name, value] of Object.entries(values)) {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${fn_name}: ${name} must be a positive integer, got ${value}`)
+    }
+  }
+}
+
+// Stride and sample size of at most `max_frames` evenly spaced frames out of `n_frames`. ceil,
+// not floor: a stride that rounds down would let ceil(n_frames / stride) exceed the cap
+const strided_sample = (
+  n_frames: number,
+  max_frames: number,
+): { n_frames: number; frame_stride: number } => {
+  const frame_stride = Math.max(1, Math.ceil(n_frames / max_frames))
+  return { n_frames: Math.ceil(n_frames / frame_stride), frame_stride }
+}
+
 // Evenly spaced source-frame indices, at most `max_frames` of them, for the frame-at-a-time
-// sweeps (structure-id, RDF) whose per-frame cost caps the sample rather than memory. Exported
-// so a UI can show the sample count and stride before committing to the sweep.
+// sweeps (structure-id, RDF) whose per-frame cost caps the sample rather than memory.
 export function sweep_frame_plan(
   total_frames: number,
   max_frames: number,
   range: FrameRange = {},
 ): { frame_numbers: number[]; frame_stride: number } {
-  for (const [name, value] of Object.entries({ total_frames, max_frames })) {
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`sweep_frame_plan: ${name} must be a positive integer, got ${value}`)
-    }
-  }
-  // ceil, not floor: a stride that rounds down would let ceil(total / stride) exceed the cap
+  check_positive_ints(`sweep_frame_plan`, { total_frames, max_frames })
   const { start_frame, end_frame } = resolve_frame_range(total_frames, range)
-  const frame_stride = Math.max(1, Math.ceil((end_frame - start_frame) / max_frames))
+  const { n_frames, frame_stride } = strided_sample(end_frame - start_frame, max_frames)
   const frame_numbers = Array.from(
-    { length: Math.ceil((end_frame - start_frame) / frame_stride) },
+    { length: n_frames },
     (_unused, idx) => start_frame + idx * frame_stride,
   )
   return { frame_numbers, frame_stride }
 }
 
-// `sweep_frame_plan` over a pane's selected window, empty while that window is: the panes'
-// frame-count hints render before a trajectory (or a non-empty window) is loaded
-export const window_sweep_plan = (
+// Size of `sweep_frame_plan` over a pane's selected window, counted without building the frame
+// list (the panes' controls re-render on every input), plus their `N of M frames (every k)` hint.
+// Zero frames while the window is empty: the hints render before a trajectory (or a non-empty
+// window) is loaded.
+export const window_sweep_size = (
   window_frames: number,
   max_frames: number,
-): { frame_numbers: number[]; frame_stride: number } =>
-  window_frames > 0
-    ? sweep_frame_plan(window_frames, max_frames)
-    : { frame_numbers: [], frame_stride: 1 }
+): { n_frames: number; frame_stride: number; label: string } => {
+  let sample = { n_frames: 0, frame_stride: 1 }
+  if (window_frames > 0) {
+    check_positive_ints(`window_sweep_size`, { window_frames, max_frames })
+    sample = strided_sample(window_frames, max_frames)
+  }
+  const { n_frames, frame_stride } = sample
+  const every = frame_stride > 1 ? ` (every ${frame_stride})` : ``
+  return { n_frames, frame_stride, label: `${n_frames} of ${window_frames} frames${every}` }
+}
 
 export interface FrameSweepOptions extends FrameRange {
   max_frames: number

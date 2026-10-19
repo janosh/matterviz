@@ -776,12 +776,11 @@
       label_position.x - payload.cx,
       label_position.y - payload.cy,
     )
-    if (
-      displacement <=
-      (actual_label_placement_config.leader_line_threshold ??
-        LABEL_PLACEMENT_DEFAULTS.leader_line_threshold)
-    )
-      return null
+    // `??`: an explicit `leader_line_threshold: undefined` in placement spreads over the default
+    const threshold =
+      actual_label_placement_config.leader_line_threshold ??
+      LABEL_PLACEMENT_DEFAULTS.leader_line_threshold
+    if (displacement <= threshold) return null
     return label_leader_segment({
       point: { x: payload.cx, y: payload.cy },
       point_radius: point_radius_for_value(payload.point.size_value),

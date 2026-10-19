@@ -356,10 +356,13 @@ describe(`Sunburst`, () => {
   })
 
   test(`legend renders categories and toggles subtree and label opacity`, async () => {
+    // a caller's on_toggle observes the muting instead of replacing it
+    const on_toggle = vi.fn()
     const plot = await mount_sized_sunburst({
       data: tree,
       show_legend: true,
       show_labels: true,
+      legend: { on_toggle },
     })
     const items = [...plot.querySelectorAll(`.legend-item`)]
     expect(items.map((item) => item.querySelector(`.legend-label`)?.textContent)).toEqual([
@@ -381,6 +384,7 @@ describe(`Sunburst`, () => {
     expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
     await fire(plot.querySelector(`.legend-item`)) // mute A
     expect(opacities()).toEqual([`0.12`, `0.12`, `0.12`, `1`])
+    expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
     // muted arcs must not keep fully opaque labels floating over invisible arcs
     expect(label_opacity(`A`)).toBe(`0.12`)
     expect(label_opacity(`B`)).toBeNull()

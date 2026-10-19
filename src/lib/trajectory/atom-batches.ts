@@ -5,7 +5,7 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { finite_vec3_from_values, partition_point } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
-import { site_stride } from '#lib/structure/site.js'
+import { site_stride, vector_offset } from '#lib/structure/site.js'
 import type { TrajectoryRunSignal } from './index'
 import type { NumericFrame } from './frame'
 import { element_from_atomic_number, symbol_to_atomic_number } from '#lib/element/helpers.js'
@@ -65,8 +65,10 @@ export function atom_range(
   return { start, count: Math.min(count, total - start) }
 }
 
-// Masses of atoms [start, start + count): the file's recorded ones or the elements' standard ones
+// Masses of atoms [start, start + count): the file's recorded ones or the elements' standard ones.
+// `format` names the source file format in errors.
 export const atom_batch_masses = (
+  format: string,
   mass_source: `recorded` | `standard`,
   start: number,
   count: number,
@@ -80,7 +82,9 @@ export const atom_batch_masses = (
         ? element_by_symbol.get(symbols[atom_idx])?.atomic_mass
         : recorded_masses?.[atom_idx]
     if (mass === undefined || !Number.isFinite(mass) || mass <= 0)
-      throw new Error(`Missing ${mass_source} mass at atom ${display_idx(atom_idx)}`)
+      throw new Error(
+        `${format} missing ${mass_source} mass for atom ${display_idx(atom_idx)}`,
+      )
     return mass
   })
 
@@ -157,7 +161,7 @@ export function frame_atom_batch(
   const { positions, atomic_numbers, masses, velocities, energies, selected } = batch
   const [origin_x, origin_y, origin_z] = origin
   const velocity_values = velocity_signal ?? coordinates
-  const velocity_start = 6 + velocity_column * 3
+  const velocity_start = vector_offset(velocity_column)
   for (let idx = 0; idx < count; idx++) {
     const atom_idx = start + idx
     const offset = atom_idx * frame_width

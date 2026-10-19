@@ -27,8 +27,7 @@
   // Typed values clamp to the range, or snap to the nearest tabulated T without interpolation
   function set_closest_temp(value: number): void {
     if (!Number.isFinite(value)) return
-    temperature =
-      get_valid_temperature(value, available_temperatures, interpolate_temperature) ?? value
+    temperature = get_valid_temperature(value, available_temperatures, interpolate_temperature)
   }
 </script>
 

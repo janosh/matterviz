@@ -5,9 +5,9 @@ import type { Crystal } from '#lib/structure/index.js'
 import { flushSync } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props, doc_query, mount_in_test } from '../setup'
-import { make_fcc, make_rocksalt } from '../test-fixtures'
+import { fcc_cell, make_rocksalt } from '../test-fixtures'
 
-const fcc = (): Crystal => make_fcc(3.615)
+const fcc = (): Crystal => fcc_cell(3.615)
 
 type BuilderState = {
   slab: Slab | null

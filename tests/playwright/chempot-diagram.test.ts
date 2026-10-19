@@ -1,6 +1,8 @@
 import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { require_bbox, use_webgl_on_ci, expect_centered } from './helpers'
+import { require_bbox, expect_centered, webgl_on_ci_for_tagged } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 const TEST_URL = `/convex-hull/chempot-diagram`
 
@@ -134,9 +136,8 @@ const assert_pin_toggle_and_escape = async (
   await page.keyboard.press(`Escape`)
   await expect(pin_hint).toHaveCount(0)
 }
-test.describe(`ChemPot Diagram interactions`, () => {
+test.describe(`ChemPot Diagram interactions`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
     await expect(
       page.getByRole(`heading`, { name: `Chemical Potential Diagram` }),

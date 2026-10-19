@@ -4,11 +4,13 @@ import {
   goto_structure_test,
   set_input_value,
   structure_canvas,
-  use_webgl_on_ci,
   expect_canvas_changed,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
 
-test.describe(`Atom Radius Controls`, () => {
+webgl_on_ci_for_tagged()
+
+test.describe(`Atom Radius Controls`, { tag: `@webgl` }, () => {
   let page: Page
   let legend: Locator
 
@@ -22,7 +24,6 @@ test.describe(`Atom Radius Controls`, () => {
   }
 
   test.beforeEach(async ({ page: point_value }) => {
-    await use_webgl_on_ci(point_value)
     page = point_value
     await goto_structure_test(page)
     legend = page.locator(`#test-structure .atom-legend`)

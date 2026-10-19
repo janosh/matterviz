@@ -711,7 +711,14 @@ describe(`StructureControls reactive props`, () => {
     flushSync()
     pane.style.width = `520px`
     pane.style.height = `610px`
+    // The size the drag wrote flows back through state without a second style write: each
+    // one on this ancestor makes the color bars inside re-resolve their theme colors
+    const style_writes = new MutationObserver(() => {})
+    style_writes.observe(pane, { attributeFilter: [`style`] })
     trigger_resize_observer(pane)
+    flushSync()
+    expect(style_writes.takeRecords()).toEqual([])
+    style_writes.disconnect()
     document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
     await vi.waitFor(() =>
       expect(load_structure_view_state()).toMatchObject({
@@ -719,6 +726,39 @@ describe(`StructureControls reactive props`, () => {
         viewer: { controls_pane_size: { width: 520, height: 610 } },
       }),
     )
+  })
+
+  // Once a resize owns the pane's size, an imported size reaches the pane and importing a state
+  // without one hands the pane back its automatic size. (Before any drag or resize, the pane's
+  // anchoring clears inline sizes whenever it re-anchors, so a size restored on mount does not
+  // survive opening the pane: a svelte-widgets DraggablePane limitation.)
+  test(`applies imported pane sizes and clears them on a sizeless import`, async () => {
+    const { target } = await mount_persisted_controls()
+    const pane = doc_query(`.controls-pane`)
+    doc_query(`[data-resize-edge="right"]`).dispatchEvent(
+      new PointerEvent(`pointerdown`, {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+      }),
+    )
+    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+    flushSync()
+    const pane_size = () => [pane.style.width, pane.style.height]
+    for (const [controls_pane_size, expected] of [
+      [{ width: 600, height: 700 }, [`600px`, `700px`]],
+      [undefined, [``, ``]],
+    ] as const) {
+      const shared = create_structure_view_state({ scene_props: {}, controls_pane_size })
+      await import_settings_file(
+        target,
+        serialize_structure_view_state(shared),
+        /Imported shared-view\.json/,
+      )
+      flushSync()
+      expect(pane_size()).toEqual(expected)
+    }
   })
 
   // Nothing else may change alongside it: comparing against the mount baseline rather than the

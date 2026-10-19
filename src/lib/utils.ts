@@ -110,6 +110,10 @@ export function make_change_detector(): (value: unknown) => boolean {
   }
 }
 
+// Append `item`, or drop every copy of it when already present; keeps insertion order
+export const toggle_item = <T>(items: readonly T[], item: T): T[] =>
+  items.includes(item) ? items.filter((entry) => entry !== item) : [...items, item]
+
 // First item whose key repeats an earlier one's (adding it leaves the Set's size unchanged)
 export const first_duplicate = <Item>(
   items: readonly Item[],

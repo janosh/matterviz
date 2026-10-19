@@ -1,3 +1,4 @@
+import { assert_non_negative } from '#lib/math.js'
 import {
   DEFAULT_FONT_SPEC,
   graphemes,
@@ -211,18 +212,15 @@ const validate_layout_input = (
   input: PlotTitleLayoutInput,
 ): { gap: number; max_lines: number } => {
   const { gap = DEFAULT_PLOT_TITLE_GAP, max_lines } = config ?? {}
-  const assert_finite = (value: number, name: string, non_negative = false): void => {
-    if (Number.isFinite(value) && (!non_negative || value >= 0)) return
-    throw new Error(
-      `Plot title ${name} must be ${non_negative ? `a finite non-negative number` : `finite`}, got ${value}`,
-    )
+  assert_non_negative(input.width, `Plot title width`)
+  assert_non_negative(gap, `Plot title gap`)
+  for (const name of [`x`, `y`] as const) {
+    const value = input[name]
+    if (value !== undefined && !Number.isFinite(value))
+      throw new RangeError(`Plot title ${name} must be finite, got ${value}`)
   }
-  assert_finite(input.width, `width`, true)
-  if (input.x !== undefined) assert_finite(input.x, `x`)
-  if (input.y !== undefined) assert_finite(input.y, `y`)
-  assert_finite(gap, `gap`, true)
   if (max_lines !== undefined && (!Number.isInteger(max_lines) || max_lines < 1)) {
-    throw new Error(`Plot title max_lines must be a positive integer, got ${max_lines}`)
+    throw new RangeError(`Plot title max_lines must be a positive integer, got ${max_lines}`)
   }
   return { gap, max_lines: max_lines ?? Number.POSITIVE_INFINITY }
 }

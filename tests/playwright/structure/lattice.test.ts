@@ -5,12 +5,15 @@ import {
   open_structure_control_pane,
   set_scene_props,
   structure_canvas,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 const opacity_input = (pane: Locator, surface: `edge` | `surface`, type: `range` | `number`) =>
   pane.locator(`[data-key="cell_${surface}_opacity"] input[type="${type}"]`)
 
-test.describe(`Lattice Component Tests`, () => {
+test.describe(`Lattice Component Tests`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
     await goto_structure_test(page)
   })

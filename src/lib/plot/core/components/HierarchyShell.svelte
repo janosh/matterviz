@@ -132,11 +132,11 @@
   {@const { plot_left, pad, inner_width, inner_height } = chart_state}
   <InsetLegend
     legend={chart_state.legend}
-    measured={Boolean(chart_state.width && chart_state.height)}
+    measured={chart_state.width > 0 && chart_state.height > 0}
     plot_bounds={{ x: plot_left, y: pad.t, width: inner_width, height: inner_height }}
     points={chart_state.legend_points()}
     series_data={chart_state.legend_items}
-    on_toggle={chart_state.legend?.on_toggle ?? chart_state.toggle_category}
+    on_toggle={chart_state.toggle_category}
     on_item_hover={chart_state.legend_hover}
   />
 {/if}

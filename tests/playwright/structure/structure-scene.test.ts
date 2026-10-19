@@ -1,9 +1,10 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_box,
+  canvas_screenshot,
   collect_console_errors,
   drag_canvas,
-  get_canvas_timeout,
+  EXPECT_TIMEOUT,
   goto_structure_test,
   enter_edit_atoms_mode,
   rendered_instance_counts,
@@ -11,14 +12,16 @@ import {
   set_scene_props,
   set_structure,
   structure_canvas,
-  use_webgl_on_ci,
   expect_canvas_changed,
   expect_canvas_changed_by,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 // Screenshot the canvas and assert it rendered non-trivial pixel data.
 const expect_canvas_renders = async (canvas: Locator): Promise<Buffer> => {
-  const screenshot = await canvas.screenshot()
+  const screenshot = await canvas_screenshot(canvas)
   expect(screenshot.length).toBeGreaterThan(1000)
   return screenshot
 }
@@ -87,67 +90,69 @@ const hover_canvas_corner = (canvas: Locator) =>
 
 const site_tooltip = (page: Page) => page.locator(`[role="tooltip"]:has(.coordinates)`)
 
-test(`large atom mesh keeps drawing across zoom detail transitions @source`, async ({
-  page,
-}) => {
-  const console_errors = collect_console_errors(page)
-  await goto_structure_test(page)
-  await set_structure(
-    page,
-    {
-      sites: Array.from({ length: 2197 }, (_unused, idx) => ({
-        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-        xyz: [(idx % 13) * 3, (Math.floor(idx / 13) % 13) * 3, Math.floor(idx / 169) * 3],
-        abc: [0, 0, 0],
-        properties: {},
-      })),
-    },
-    { show_bonds: `never`, show_image_atoms: false, sphere_segments: 20, auto_rotate: 0 },
-  )
-  const canvas = structure_canvas(page)
-  const vertex_counts = () =>
-    canvas.evaluate(async (element) => {
-      const module_path = `/src/lib/io/export.ts`
-      const { scene_registry } = await import(/* @vite-ignore */ module_path)
-      const scene = scene_registry.get(element)?.scene
-      const levels: number[] = []
-      scene?.traverse(
-        (node: {
-          count?: number
-          geometry?: { getAttribute: (name: string) => { count: number } | undefined }
-        }) => {
-          const vertices = node.geometry?.getAttribute(`position`)?.count
-          if (
-            node.count === 2197 &&
-            node.geometry?.getAttribute(`atomPositionRadius`) &&
-            vertices
-          )
-            levels.push(vertices)
-        },
-      )
-      return levels
-    })
-  await expect.poll(vertex_counts).toEqual([81]) // (8 + 1)^2 vertices per sphere
-  await hover_canvas_center(canvas)
-  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
-  await expect
-    .poll(async () => {
-      const levels = await vertex_counts()
-      return levels.length === 1 && levels[0] > 81
-    })
-    .toBe(true)
-  // Camera changes after the first detail switch must still produce pixels. A live rAF
-  // loop alone misses WebGPU refusing draws against a destroyed instance buffer.
-  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
-  await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, 2700))
-  await expect.poll(vertex_counts).toEqual([81])
-  // Do not apply the general software-GPU noise filter to resource-lifetime errors.
-  expect(console_errors).toEqual([])
-})
+test(
+  `large atom mesh keeps drawing across zoom detail transitions @source`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    const console_errors = collect_console_errors(page)
+    await goto_structure_test(page)
+    await set_structure(
+      page,
+      {
+        sites: Array.from({ length: 2197 }, (_unused, idx) => ({
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [(idx % 13) * 3, (Math.floor(idx / 13) % 13) * 3, Math.floor(idx / 169) * 3],
+          abc: [0, 0, 0],
+          properties: {},
+        })),
+      },
+      { show_bonds: `never`, show_image_atoms: false, sphere_segments: 20, auto_rotate: 0 },
+    )
+    const canvas = structure_canvas(page)
+    const vertex_counts = () =>
+      canvas.evaluate(async (element) => {
+        const module_path = `/src/lib/io/export.ts`
+        const { scene_registry } = await import(/* @vite-ignore */ module_path)
+        const scene = scene_registry.get(element)?.scene
+        const levels: number[] = []
+        scene?.traverse(
+          (node: {
+            count?: number
+            geometry?: { getAttribute: (name: string) => { count: number } | undefined }
+          }) => {
+            const vertices = node.geometry?.getAttribute(`position`)?.count
+            if (
+              node.count === 2197 &&
+              node.geometry?.getAttribute(`atomPositionRadius`) &&
+              vertices
+            )
+              levels.push(vertices)
+          },
+        )
+        return levels
+      })
+    await expect.poll(vertex_counts).toEqual([81]) // (8 + 1)^2 vertices per sphere
+    await hover_canvas_center(canvas)
+    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
+    await expect
+      .poll(async () => {
+        const levels = await vertex_counts()
+        return levels.length === 1 && levels[0] > 81
+      })
+      .toBe(true)
+    // Camera changes after the first detail switch must still produce pixels. A live rAF
+    // loop alone misses WebGPU refusing draws against a destroyed instance buffer. Tagged
+    // @webgl, CI checks the pixels on WebGL2, so that WebGPU failure is caught by local runs.
+    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
+    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, 2700))
+    await expect.poll(vertex_counts).toEqual([81])
+    // Do not apply the general software-GPU noise filter to resource-lifetime errors.
+    expect(console_errors).toEqual([])
+  },
+)
 
-test.describe(`StructureScene Component Tests`, () => {
+test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await goto_structure_test(page)
   })
 
@@ -179,7 +184,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const canvas = structure_canvas(page)
     await hover_canvas_center(canvas)
     const tooltip = site_tooltip(page)
-    await expect(tooltip).toBeVisible({ timeout: get_canvas_timeout() })
+    await expect(tooltip).toBeVisible()
     const elements = tooltip.locator(`.elements`)
     await expect(elements.locator(`strong`)).toHaveText(/^\s*C\s*$/)
     await expect(elements.locator(`.elem-name`)).toHaveText(`Carbon`)
@@ -218,7 +223,7 @@ test.describe(`StructureScene Component Tests`, () => {
     )
     await fullscreen_button.click()
     await hover_canvas_corner(canvas)
-    await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
+    await expect(tooltip).toBeHidden()
 
     // Topology changes invalidate the cached neighbor lookup used by subsequent tooltips.
     for (const symbols of [
@@ -257,7 +262,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await load_disordered_site_scene(page)
     await hover_canvas_center(structure_canvas(page))
     const elements = site_tooltip(page).locator(`.elements`)
-    await expect(elements).toBeVisible({ timeout: get_canvas_timeout() })
+    await expect(elements).toBeVisible()
     for (const element of [`Zn`, `Fe`, `Pb`]) {
       await expect(elements.locator(`strong`).filter({ hasText: element })).toBeVisible()
     }
@@ -296,14 +301,12 @@ test.describe(`StructureScene Component Tests`, () => {
     // Points along the formerly-dead equatorial band through the ball center.
     for (const delta_x of [0, -24, 24, -12, 12]) {
       await hover_canvas_corner(canvas)
-      await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
+      await expect(tooltip).toBeHidden()
       await canvas.hover({
         position: { x: box.width / 2 + delta_x, y: box.height / 2 },
         force: true,
       })
-      await expect(tooltip, `point (${delta_x}, 0) should be hoverable`).toBeVisible({
-        timeout: get_canvas_timeout(),
-      })
+      await expect(tooltip, `point (${delta_x}, 0) should be hoverable`).toBeVisible()
     }
   })
 
@@ -335,13 +338,13 @@ test.describe(`StructureScene Component Tests`, () => {
 
     // Screenshot once the canvas stops changing (framing/damping settled)
     const settled_screenshot = async (): Promise<Buffer> => {
-      let prev = await canvas.screenshot()
+      let prev = await canvas_screenshot(canvas)
       await expect(async () => {
-        const next = await canvas.screenshot()
+        const next = await canvas_screenshot(canvas)
         const stable = next.equals(prev)
         prev = next
         expect(stable).toBe(true)
-      }).toPass({ timeout: get_canvas_timeout() })
+      }).toPass({ timeout: EXPECT_TIMEOUT })
       return prev
     }
 
@@ -451,9 +454,8 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 })
 
-test.describe(`Edit Atoms Scene`, () => {
+test.describe(`Edit Atoms Scene`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await goto_structure_test(page)
     await enter_edit_atoms_mode(page)
   })
@@ -463,8 +465,11 @@ test.describe(`Edit Atoms Scene`, () => {
   }) => {
     const canvas = structure_canvas(page)
     const console_errors = collect_console_errors(page)
-    const first_atom = { x: 350, y: 200 }
-    const second_atom = { x: 450, y: 300 }
+    // the two base atoms of the default structure sit at the canvas centre and just below it;
+    // edit-atoms mode fades the image atoms around them, and clicks on those select nothing
+    const { width, height } = await canvas_box(canvas)
+    const first_atom = { x: width / 2, y: height / 2 }
+    const second_atom = { x: width / 2 + 10, y: height / 2 + 48 }
     const click_atom = (position: { x: number; y: number }, modifiers?: `Shift`[]) =>
       expect_canvas_changed_by(canvas, () =>
         canvas.click({ position, modifiers, force: true }),
@@ -479,7 +484,7 @@ test.describe(`Edit Atoms Scene`, () => {
     const replaced = await click_atom(second_atom)
     await click_atom(first_atom)
     await click_atom(second_atom, [`Shift`])
-    expect(replaced.equals(await canvas.screenshot())).toBe(false)
+    expect(replaced.equals(await canvas_screenshot(canvas))).toBe(false)
 
     // Keyboard shortcuts should not cause errors
     await page.keyboard.press(`Delete`)

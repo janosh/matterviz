@@ -771,18 +771,19 @@ export async function canvas_overlay_png_blob(
   }
 }
 
-// Watch a wrapper element for <canvas> insertion/removal: calls set(bool) immediately
-// and on every DOM mutation. Returns a cleanup that disconnects the observer (or
-// undefined when no wrapper is given). Used by export panes to enable canvas exports.
+// Watch a wrapper element for <canvas> insertion/removal: calls set with its first canvas (or
+// null) immediately and whenever a canvas comes or goes. Returns a cleanup that disconnects
+// the observer (or undefined when no wrapper is given). Used by export panes to enable canvas
+// exports.
 export function observe_canvas_presence(
   wrapper: HTMLElement | undefined,
-  set: (has_canvas: boolean) => void,
+  set: (canvas: HTMLCanvasElement | null) => void,
 ): (() => void) | undefined {
   if (!wrapper) {
-    set(false)
+    set(null)
     return undefined
   }
-  const check = () => set(Boolean(wrapper.querySelector(`canvas`)))
+  const check = () => set(wrapper.querySelector(`canvas`))
   check()
   // Only an inserted or removed canvas (or subtree holding one) can change the answer: a
   // viewer's tables and labels re-render on every frame, and querying its whole tree each

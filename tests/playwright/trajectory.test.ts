@@ -604,8 +604,7 @@ test.describe(`Trajectory Component`, () => {
         const toolbar = structure.locator(`.control-buttons`)
         // the data inspector is a sidebar, not a floating pane
         for (const label of [`Thermal hotspots`, `Mean squared displacement`]) {
-          await controls.locator(`.analysis-button`).click()
-          await controls.getByRole(`button`, { name: label, exact: true }).click()
+          await open_analysis(label)
           const pane = controls.locator(`.viewer-pane-open`)
           await expect(pane).toBeVisible()
           // Focus keeps the underlying hover toolbar visible even though the pane covers it.
@@ -1073,8 +1072,6 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`plot and data visualization`, () => {
-    // Skipped on CI because scatter plot rendering times out
-
     test(`legend toggle keeps a series hidden`, async () => {
       const scatter_plot = trajectory_viewer.locator(`.scatter`)
       await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })

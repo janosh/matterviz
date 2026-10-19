@@ -4,7 +4,13 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
 
 ```svelte example
 <script lang="ts">
-  import { element_data, ELEM_PROPERTY_LABELS, PeriodicTable, ScatterPlot } from 'matterviz'
+  import {
+    element_data,
+    ELEM_PROPERTY_LABELS,
+    PeriodicTable,
+    ScatterPlot,
+    toggle_item,
+  } from 'matterviz'
   import type { ChemicalElement, ElementSymbol, InternalPoint } from 'matterviz'
 
   const symbols = element_data.map(({ symbol }) => symbol)
@@ -33,14 +39,8 @@ Brushing one view highlights the same items in every other view. Each `ScatterPl
     selected = next.length > 0 ? next : null
     rings = [[], []]
   }
-  const toggle_element = ({ symbol }: ChemicalElement) => {
-    const current = selected ?? []
-    set_selection(
-      current.includes(symbol)
-        ? current.filter((other) => other !== symbol)
-        : [...current, symbol],
-    )
-  }
+  const toggle_element = ({ symbol }: ChemicalElement) =>
+    set_selection(toggle_item(selected ?? [], symbol))
   // Grey out the tiles outside the selection so the table reads like the dimmed plots
   const dimmed_tiles = $derived(
     Object.fromEntries(

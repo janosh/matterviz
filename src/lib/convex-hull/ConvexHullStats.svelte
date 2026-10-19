@@ -226,8 +226,9 @@
   }
 
   // Table rows, index-aligned with table_entries (the `#` column is idx + 1, which is how
-  // a clicked row maps back to its entry). Cell HTML is sanitized by HeatmapTable (unsafe
-  // hrefs are dropped there).
+  // a clicked row maps back to its entry, and the row key: threshold and temperature steps
+  // rebuild every row object, which unkeyed would remount every rendered row). Cell HTML is
+  // sanitized by HeatmapTable (unsafe hrefs are dropped there).
   const table_data = $derived(
     table_entries.map((entry, idx): RowData => {
       const formula = formulas_of(entry.composition).html
@@ -400,7 +401,7 @@
       ? undefined
       : (row: RowData | null) => entry_link.publish((row && row_entry(row)?.entry_id) ?? null)}
     highlighted_row_id={linked_row}
-    row_key={link_hover === undefined ? undefined : `#`}
+    row_key="#"
     export_formats={TABLE_EXPORT_FORMATS}
     {export_filename}
   />

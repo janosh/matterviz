@@ -1,11 +1,3 @@
-<script module lang="ts">
-  import { SETTINGS_CONFIG } from '#lib'
-
-  // Bonding-strategy options and default for the coordination and bond-angle demos
-  export const { value: default_strategy, enum: strategy_options = {} } =
-    SETTINGS_CONFIG.structure.bonding_strategy
-</script>
-
 <script lang="ts" generics="Value extends string">
   // Labelled dropdown over a value -> label map, e.g. SETTINGS_CONFIG enums or the
   // BOND_ANGLE_SPLIT_MODES/COORDINATION_SPLIT_MODES constants the plot modules export

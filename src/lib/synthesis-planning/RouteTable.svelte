@@ -87,6 +87,7 @@
   const downhill_cell = (windows: [number, number][]): string =>
     `<span data-sort-value="${windows[0]?.[0] ?? ``}">${describe_downhill_windows(windows)}</span>`
 
+  // Rows are rebuilt on every selection change; row_key keeps them mounted meanwhile
   const data = $derived<RowData[]>(
     routes.map((route, idx) => ({
       route_id: route.id,
@@ -115,6 +116,7 @@
     {data}
     {columns}
     on_row_click={handle_row_click}
+    row_key="route_id"
     initial_sort={{ column: `rank`, direction: `asc` }}
     density="compact"
     pagination={{ page_size: 15, page_sizes: [15, 30, 100] }}

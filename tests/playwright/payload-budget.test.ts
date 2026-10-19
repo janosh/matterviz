@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Page, type Request, test } from '@playwright/test'
 import { globSync } from 'node:fs'
 import process from 'node:process'
 
@@ -105,22 +105,22 @@ for (const route of demo_routes) {
   test(`payload: ${route}`, async ({ page }) => {
     // context-level events also cover requests from web workers
     const context = page.context()
-    const in_flight = new Set<unknown>()
+    const in_flight = new Set<Request>()
     let last_activity = performance.now()
     const responses: Promise<{ url: string; bytes: number }>[] = []
+    const settle = (request: Request) => {
+      in_flight.delete(request)
+      last_activity = performance.now()
+    }
     context.on(`request`, (request) => {
       in_flight.add(request)
       last_activity = performance.now()
     })
-    context.on(`requestfailed`, (request) => {
-      in_flight.delete(request)
-      last_activity = performance.now()
-    })
+    context.on(`requestfailed`, settle)
     context.on(`requestfinished`, (request) => {
-      in_flight.delete(request)
-      last_activity = performance.now()
-      if (!request.url().startsWith(`http`)) return // data: and blob: URLs download nothing
+      settle(request)
       const url = request.url()
+      if (!url.startsWith(`http`)) return // data: and blob: URLs download nothing
       responses.push(request.sizes().then((sizes) => ({ url, bytes: sizes.responseBodySize })))
     })
     // nothing in flight for a full second

@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { require_bbox, use_webgl_on_ci } from '../helpers'
+import { require_bbox, webgl_on_ci_for_tagged } from '../helpers'
 import {
   ensure_pane_visible,
   expect_face_color_modes,
@@ -8,6 +8,8 @@ import {
   open_info_and_controls,
   visible_count,
 } from './utils'
+
+webgl_on_ci_for_tagged()
 
 const quaternary_diagram = (page: Page) =>
   page.locator(`.quaternary-grid .convex-hull-4d`).first()
@@ -38,9 +40,8 @@ const semi_transparent_pixels = (canvas: Locator) =>
     return { count, avg_alpha: count > 0 ? total / count : 0 }
   })
 
-test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
+test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    await use_webgl_on_ci(page)
     await page.goto(`/convex-hull#quaternary-chemical-systems`, { waitUntil: `networkidle` })
     // the grid appears once data loads; a diagram canvas means it has also rendered
     await expect(page.locator(`.quaternary-grid`).first()).toBeVisible({ timeout: 50000 })
@@ -214,32 +215,38 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
 test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
-  test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    await use_webgl_on_ci(page)
-    const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
-    await expect(diagram).toBeVisible({ timeout: 15000 })
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    const canvas = hull_canvas(diagram)
-    await expect(canvas).toBeVisible({ timeout: 10000 })
-    const box = await require_bbox(canvas, `canvas`)
-    // click a grid of positions to be sure one lands on an entry
-    for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-      for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-        await canvas.click({
-          position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
-        })
+  test(
+    `enable_click_selection=false prevents entry selection`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
+      await expect(diagram).toBeVisible({ timeout: 15000 })
+      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+      const canvas = hull_canvas(diagram)
+      await expect(canvas).toBeVisible({ timeout: 10000 })
+      const box = await require_bbox(canvas, `canvas`)
+      // click a grid of positions to be sure one lands on an entry
+      for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+        for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+          await canvas.click({
+            position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
+          })
+        }
       }
-    }
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-  })
+      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    },
+  )
 
-  test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    await use_webgl_on_ci(page)
-    const diagram = await goto_perf_page(page, `4d`, `count=20`)
-    const info = await open_pane(diagram, `info`)
-    expect(Number.isFinite(await visible_count(info, `hull-visible-unstable`))).toBe(true)
-    expect(await visible_count(info, `hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
-  })
+  test(
+    `computes hull distances on-the-fly when data is incomplete`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const diagram = await goto_perf_page(page, `4d`, `count=20`)
+      const info = await open_pane(diagram, `info`)
+      expect(Number.isFinite(await visible_count(info, `hull-visible-unstable`))).toBe(true)
+      expect(await visible_count(info, `hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
+    },
+  )
 
   for (const [direction, axis, [delta_x, delta_y], expect_increase] of [
     [`right`, `y`, [80, 0], true],

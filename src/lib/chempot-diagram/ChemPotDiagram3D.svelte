@@ -25,7 +25,6 @@
     positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
-  import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -56,6 +55,7 @@
     chempot_svg_string,
     export_glb_file,
     get_view_settings,
+    occlude_tick_labels,
   } from './export'
   import type { VisibleDomainLabel } from './compute'
   import {
@@ -770,37 +770,12 @@
       container_height > 0,
   )
 
-  const is_shown = (element: HTMLElement): boolean => {
-    const style = getComputedStyle(element)
-    return style.display !== `none` && style.visibility !== `hidden`
-  }
-
-  function update_label_occlusion(): void {
-    if (!wrapper) return
-    const tick_labels = Array.from(wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`))
-    tick_labels_occluded = false
-    for (const tick_label of tick_labels) tick_label.style.visibility = ``
-    const domain_rects = Array.from(wrapper.querySelectorAll<HTMLElement>(`.domain-label`))
-      .filter(is_shown)
-      .map((label_el) => pad_rect(label_el.getBoundingClientRect(), 1))
-    if (domain_rects.length === 0) return
-
-    for (const tick_label of tick_labels) {
-      if (!is_shown(tick_label)) continue
-      const tick_rect = tick_label.getBoundingClientRect()
-      if (domain_rects.some((domain_rect) => rects_overlap(tick_rect, domain_rect))) {
-        tick_label.style.visibility = `hidden`
-        tick_labels_occluded = true
-      }
-    }
-  }
-
   function schedule_label_occlusion_update(): void {
     if (typeof requestAnimationFrame === `undefined`) return
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
     label_occlusion_frame = requestAnimationFrame(() => {
       label_occlusion_frame = null
-      update_label_occlusion()
+      if (wrapper) tick_labels_occluded = occlude_tick_labels(wrapper)
     })
   }
 

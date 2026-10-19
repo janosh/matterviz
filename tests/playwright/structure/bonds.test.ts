@@ -3,6 +3,7 @@ import type { Buffer } from 'node:buffer'
 import {
   canvas_box,
   canvas_center,
+  canvas_screenshot,
   collect_console_errors,
   decode_canvas_png,
   dispatch_cancelable_keydown,
@@ -293,9 +294,9 @@ test.describe(`Bond component`, () => {
     test(`bond color-space gradients and camera moves keep bonds rendered`, async ({
       page,
     }) => {
-      // CI's WebGPU composites nothing, and on its WebGL2 fallback ANGLE's SwiftShader GL
-      // draws this bond flat gray at both ends (~219,221,223); hardware WebGL2 and WebGPU
-      // render the gradient
+      // CI's WebGPU presents frames too late for pixel reads, and on its WebGL2 fallback
+      // ANGLE's SwiftShader GL draws this bond flat gray at both ends (~219,221,223); hardware
+      // WebGL2 and WebGPU render the gradient
       test.skip(IS_CI, `SwiftShader renders the bond gradient flat on CI`)
       await dispatch_structure(
         page,
@@ -318,7 +319,7 @@ test.describe(`Bond component`, () => {
         },
       )
       const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-      const initial = await canvas.screenshot()
+      const initial = await canvas_screenshot(canvas)
       const decoded_initial = await decode_canvas_png(page, initial)
       try {
         const halves = await decoded_initial.evaluate(
@@ -546,36 +547,38 @@ test.describe(`Bond component`, () => {
       await expect_bonds(page, [])
     })
 
-    test(`edit-bonds delete mode removes auto-detected and manual bonds to image atoms`, async ({
-      page,
-    }) => {
-      const canvas = structure_canvas(page)
+    test(
+      `edit-bonds delete mode removes auto-detected and manual bonds to image atoms`,
+      { tag: `@webgl` },
+      async ({ page }) => {
+        const canvas = structure_canvas(page)
 
-      // auto-detected image bond: hovering highlights it, clicking deletes it
-      await dispatch_periodic_image_structure(page, {
-        bonding_options: { strategy: `electroneg_ratio` },
-      })
-      await page.getByTestId(`btn-set-edit-bonds`).click()
-      await page.getByTestId(`btn-set-bond-delete`).click()
-      await expect_canvas_changed_by(canvas, async () => {
-        const outer_delete_area = await canvas_center(canvas, { y: 24 })
-        await page.mouse.move(outer_delete_area.x, outer_delete_area.y)
-      })
-      await click_canvas_center(page)
-      await expect_bonds(page, [])
+        // auto-detected image bond: hovering highlights it, clicking deletes it
+        await dispatch_periodic_image_structure(page, {
+          bonding_options: { strategy: `electroneg_ratio` },
+        })
+        await page.getByTestId(`btn-set-edit-bonds`).click()
+        await page.getByTestId(`btn-set-bond-delete`).click()
+        await expect_canvas_changed_by(canvas, async () => {
+          const outer_delete_area = await canvas_center(canvas, { y: 24 })
+          await page.mouse.move(outer_delete_area.x, outer_delete_area.y)
+        })
+        await click_canvas_center(page)
+        await expect_bonds(page, [])
 
-      // manually added image bond
-      await dispatch_periodic_image_structure(page, { ...unbonded, show_site_labels: true })
-      await page.getByTestId(`btn-set-edit-bonds`).click()
-      await page.getByTestId(`btn-set-bond-add`).click()
-      await select_atom_label_with_keyboard(page, `C`, `first`)
-      await select_atom_label_with_keyboard(page, `O`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+        // manually added image bond
+        await dispatch_periodic_image_structure(page, { ...unbonded, show_site_labels: true })
+        await page.getByTestId(`btn-set-edit-bonds`).click()
+        await page.getByTestId(`btn-set-bond-add`).click()
+        await select_atom_label_with_keyboard(page, `C`, `first`)
+        await select_atom_label_with_keyboard(page, `O`)
+        await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
 
-      await page.getByTestId(`btn-set-bond-delete`).click()
-      await click_canvas_center(page)
-      await expect_bonds(page, undefined)
-    })
+        await page.getByTestId(`btn-set-bond-delete`).click()
+        await click_canvas_center(page)
+        await expect_bonds(page, undefined)
+      },
+    )
 
     test(`bond redo history is cleared after source changes and edit-atoms`, async ({
       page,

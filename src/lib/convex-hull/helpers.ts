@@ -412,6 +412,16 @@ export interface TemperatureAnalysis {
 // Snap an unset temperature to the lowest available one, an out-of-range or (without
 // interpolation) untabulated one to the nearest (lower on ties)
 export function get_valid_temperature(
+  temperature: number,
+  temps: readonly number[],
+  interpolate: boolean,
+): number
+export function get_valid_temperature(
+  temperature: number | undefined,
+  temps: readonly number[],
+  interpolate: boolean,
+): number | undefined
+export function get_valid_temperature(
   temperature: number | undefined,
   temps: readonly number[],
   interpolate: boolean,

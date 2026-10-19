@@ -763,15 +763,18 @@ export class StructureSession {
   }
 
   // The structure and the selection's base-site indices once an undo point is pushed; null
-  // (and no undo point) when there is no structure or no selection to edit
+  // (and no undo point) when there is no structure or no base site to edit, e.g. a deletion
+  // whose selection holds only image atoms
   private edit_selection(
     skip_image_atoms = false,
   ): { structure: AnyStructure; indices: Set<number> } | null {
     const structure = this.inputs.structure()
     const selected = this.inputs.selected_sites()
     if (selected.length === 0 || !structure?.sites) return null
+    const indices = this.scene_to_structure_indices(selected, skip_image_atoms)
+    if (indices.size === 0) return null
     this.push_undo()
-    return { structure, indices: this.scene_to_structure_indices(selected, skip_image_atoms) }
+    return { structure, indices }
   }
 
   delete_selected = (): boolean => {

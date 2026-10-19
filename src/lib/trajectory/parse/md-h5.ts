@@ -291,7 +291,7 @@ export const parse_md_h5_file = (
       pbc,
       ...(velocity_key && { velocities: read_atomic(`velocities`) }),
       ...(mass_source && {
-        masses: atom_batch_masses(mass_source, start, count, elements, atom_masses),
+        masses: atom_batch_masses(FORMAT, mass_source, start, count, elements, atom_masses),
       }),
     }
   }

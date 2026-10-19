@@ -68,6 +68,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '#lib/math.js'
   import {
+    chain_callbacks,
     create_focus_exit,
     is_activation_key,
     vec2_equal,
@@ -112,7 +113,7 @@
     on_ref_line_hover,
     show_controls,
     controls_open = $bindable(false),
-    on_series_toggle = () => {},
+    on_series_toggle,
     controls_toggle_props,
     controls_pane_props,
     fullscreen = $bindable(false),
@@ -688,10 +689,7 @@
       {legend}
       series_data={legend_data}
       active_series_idx={hover_info?.series_idx ?? frame.hovered_series_idx}
-      on_toggle={(series_idx: number) => {
-        legend_vis.on_toggle(series_idx)
-        on_series_toggle(series_idx)
-      }}
+      on_toggle={chain_callbacks(legend_vis.on_toggle, on_series_toggle)}
       on_group_toggle={legend_vis.on_group_toggle}
       on_double_click={legend_vis.on_double_click}
     />

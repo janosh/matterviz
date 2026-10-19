@@ -13,6 +13,18 @@ import {
   is_y2_sync_mode,
 } from '#lib/plot/core/types.js'
 
+// Combine two optional handlers into one that runs the component's own handler first, then
+// the caller's observer, with the same arguments (either may be undefined)
+export const chain_callbacks =
+  <Args extends unknown[]>(
+    own: ((...args: Args) => void) | undefined,
+    observer: ((...args: Args) => void) | undefined,
+  ) =>
+  (...args: Args): void => {
+    own?.(...args)
+    observer?.(...args)
+  }
+
 // Mouse event coordinates relative to `element` (default: the event's currentTarget)
 export function get_relative_coords(
   evt: MouseEvent,

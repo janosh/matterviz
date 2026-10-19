@@ -1776,3 +1776,52 @@ test(`mulberry32 is deterministic per seed and uniform on [0, 1)`, () => {
     0.01,
   )
 })
+
+describe(`leading_number`, () => {
+  test.each([
+    [`2px`, 2],
+    [`600 K`, 600],
+    [`.5px`, 0.5],
+    [`+3`, 3],
+    [`-1.5e2x`, -150],
+    [`1e`, 1], // a dangling exponent marker is not part of the number
+    [`  7 `, 7],
+    [`Infinity`, NaN], // unlike parseFloat, only digits count
+    [``, NaN],
+    [`px`, NaN],
+    [null, NaN],
+    [undefined, NaN],
+  ])(`%j -> %d`, (text, expected) => {
+    expect(math.leading_number(text)).toBe(expected)
+  })
+})
+
+describe(`assert_non_negative`, () => {
+  test.each([0, -0, 1e-12, 2.5, Number.MAX_VALUE])(`returns %d as is`, (value) => {
+    // toBe compares with Object.is, so -0 must come back as -0
+    expect(math.assert_non_negative(value, `size`)).toBe(value)
+    expect(math.assert_non_negative(value, `size`, true)).toBe(value)
+  })
+
+  test.each([
+    [-1, false, `non-negative finite number, got -1`],
+    [-1e-12, false, `non-negative finite number, got -1e-12`],
+    [NaN, false, `non-negative finite number, got NaN`],
+    [-Infinity, false, `non-negative finite number, got -Infinity`],
+    [Infinity, false, `non-negative finite number, got Infinity`],
+    [-1, true, `non-negative number, got -1`],
+    [NaN, true, `non-negative number, got NaN`],
+    [-Infinity, true, `non-negative number, got -Infinity`],
+  ])(
+    `%d (allow_infinity=%s) throws a RangeError naming it`,
+    (value, allow_infinity, message) => {
+      const call = () => math.assert_non_negative(value, `size`, allow_infinity)
+      expect(call).toThrow(RangeError)
+      expect(call).toThrow(`size must be a ${message}`)
+    },
+  )
+
+  test(`allow_infinity lets +Infinity through`, () => {
+    expect(math.assert_non_negative(Infinity, `size`, true)).toBe(Infinity)
+  })
+})
