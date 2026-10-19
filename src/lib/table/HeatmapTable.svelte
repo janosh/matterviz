@@ -190,7 +190,9 @@
       // preserving scroll geometry, so DOM size stays bounded for any data length.
       // Inactive when pagination is enabled.
       virtual?: VirtualScroll
-      // Required for selection; identifies rows across sorting and data replacement.
+      // Required for selection; identifies rows across sorting and data replacement. Without
+      // it rows are keyed by object identity, so a new object for a row remounts that row:
+      // pass it for live data that replaces row objects, to update their cells in place.
       row_key?: Extract<keyof Row, string> | ((row: Row) => RowId)
       // Row reorder duration in ms; disabled for reduced motion and virtualized tables.
       row_animation_ms?: number
@@ -269,8 +271,21 @@
   // Keyed cell access is internal; callers can use ordinary typed row interfaces.
   const data = $derived(input_data as (Row & RowData)[])
 
+  // Elementwise === of two lists, for the memoized deriveds below
+  const same_parts = (parts: readonly unknown[], prev: readonly unknown[]): boolean =>
+    parts.length === prev.length && parts.every((part, idx) => part === prev[idx])
+
+  // Discovered columns keep their identity while the same keys are found, so a data update
+  // doesn't rebuild every column view (and with it every cell)
+  let discovered: Column<Row>[] = []
   let columns = $derived.by(() => {
-    const resolved = given_columns.length > 0 ? given_columns : discover_columns<Row>(data)
+    let resolved = given_columns
+    if (resolved.length === 0) {
+      const found = discover_columns<Row>(data)
+      const id_list = (list: Column<Row>[]) => list.map((col) => col.id)
+      if (!same_parts(id_list(found), id_list(discovered))) discovered = found
+      resolved = discovered
+    }
     const ids = new Set<string>()
     for (const col of resolved) {
       if (!col.id || ids.has(col.id))
@@ -377,8 +392,10 @@
   const is_log_scale = (color_scale: ColorScale | null | undefined): boolean =>
     color_scale != null &&
     get_scale_type_name(to_color_scale_config(color_scale).type) === `log`
-  const color_scale_of = (col: Column<Row>): ColorScale | null | undefined => {
-    const pref = prefs_of(col.id).color_scale
+  const color_scale_of = (
+    col: Column<Row>,
+    pref = prefs_of(col.id).color_scale,
+  ): ColorScale | null | undefined => {
     if (pref === undefined) return col.color_scale
     return pref && col.color_scale ? with_scheme(col.color_scale, pref) : pref
   }
@@ -641,10 +658,10 @@
           scroll: scroll_top,
           viewport: viewport_height,
           item_size: avg_row_height,
-          count: sorted_data.length,
+          count: row_count,
           ...virtual_config,
         })
-      : { start: 0, end: sorted_data.length },
+      : { start: 0, end: row_count },
   )
 
   // Scroll events only read offsets; clientHeight can force layout, so only measure on request
@@ -789,67 +806,97 @@
 
   // === Column view model ===
   // Per-column cell inputs, resolved once per column rather than per cell (a 60x30 window is
-  // 1800 cells). Views stay stable so editing one pref doesn't invalidate other columns.
-  function create_column_view(col: Column<Row>) {
-    const identifier = col.id
-    const width = $derived(prefs_of(identifier).width)
-    const stats = $derived(column_stats.get(identifier))
-    const better = $derived(better_of(col))
-    const configured_scale = $derived(color_scale_of(col))
-    const dt_mode = $derived(is_datetime_column(col) ? datetime_mode(col) : null)
-    const color = $derived(
-      !show_heatmap || configured_scale === null
-        ? undefined
-        : make_cell_color_scale(
-            // Linear scales need only the cached extrema; logarithmic scales still need
-            // the smallest positive value, which may differ from the overall minimum.
-            !stats
-              ? []
-              : is_log_scale(configured_scale)
-                ? stats.values
-                : [stats.min, stats.max],
-            better,
-            configured_scale ?? `interpolateViridis`,
-            // Explicit domains clamp; plain minmax preserves its unclamped behavior.
-            col.normalize || col.domain_group ? stats?.domain : undefined,
-          ),
+  // 1800 cells). Views are cached by column id and survive data updates; every field is its
+  // own derived signal, so a cell re-runs only when a field it reads changes value. New data
+  // rebuilds column_stats, but a column keeps its color function and bar domain while their
+  // inputs (extrema, domain, scheme) are equal: an edit that moves no range repaints one cell.
+  // (Fields are $derived.by closures: they read `col`, which the constructor assigns.)
+  type ColorFn = ReturnType<typeof make_cell_color_scale>
+  class ColumnView {
+    col: Column<Row>
+    id: string
+    constructor(col: Column<Row>) {
+      this.col = col
+      this.id = col.id
+    }
+    key = $derived.by(() => cell_key(this.col))
+    bar = $derived.by(() => this.col.render_as === `bar` || this.col.render_as === `both`)
+    numeric = $derived.by(() => numeric_columns.has(this.id))
+    width = $derived.by(() => prefs_of(this.id).width)
+    #size = (edge: `min-width` | `max-width`) =>
+      this.width ? `; width: ${this.width}px; ${edge}: ${this.width}px` : ``
+    head_style = $derived.by(
+      () => `${this.col.style ?? ``}${this.#size(`min-width`)}` || undefined,
     )
-    const view = $derived.by(() => {
-      const size = (edge: `min-width` | `max-width`) =>
-        width ? `; width: ${width}px; ${edge}: ${width}px` : ``
-      return {
-        col,
-        id: identifier,
-        key: key_of_id(identifier),
-        numeric: numeric_columns.has(identifier),
-        sticky_left: col.sticky ? `${sticky_offsets[identifier] ?? 0}px` : undefined,
-        width,
-        head_style: `${col.style ?? ``}${size(`min-width`)}` || undefined,
-        cell_style: `${col.cell_style ?? col.style ?? ``}${size(`max-width`)}` || undefined,
-        dt_mode,
-        color,
-        stats,
-        bar: col.render_as === `bar` || col.render_as === `both`,
-        best:
-          col.highlight_best && stats && better
-            ? stats[better === `lower` ? `min` : `max`]
-            : null,
-      }
+    cell_style = $derived.by(
+      () =>
+        `${this.col.cell_style ?? this.col.style ?? ``}${this.#size(`max-width`)}` ||
+        undefined,
+    )
+    sticky_left = $derived.by(() =>
+      this.col.sticky ? `${sticky_offsets[this.id] ?? 0}px` : undefined,
+    )
+    dt_mode = $derived.by(() =>
+      is_datetime_column(this.col) ? datetime_mode(this.col) : null,
+    )
+    better = $derived.by(() => better_of(this.col))
+    // A new object on every data update: cells read the narrower fields below instead
+    stats = $derived.by(() => column_stats.get(this.id))
+    best = $derived.by(() =>
+      this.col.highlight_best && this.stats && this.better
+        ? this.stats[this.better === `lower` ? `min` : `max`]
+        : null,
+    )
+    #prev_domain: [number, number] | undefined
+    domain = $derived.by(() => {
+      const next = this.stats?.domain
+      if (next?.[0] !== this.#prev_domain?.[0] || next?.[1] !== this.#prev_domain?.[1])
+        this.#prev_domain = next
+      return this.#prev_domain
     })
-    return () => view
+    // Read apart from the scale so other prefs (a width drag) don't rebuild it
+    #scheme_pref = $derived.by(() => prefs_of(this.id).color_scale)
+    #scale = $derived.by(() => color_scale_of(this.col, this.#scheme_pref))
+    #color_parts: unknown[] = []
+    #color_fn: ColorFn | undefined
+    // Undefined when the column paints nothing (heatmap off, or no number to color)
+    color = $derived.by(() => {
+      const [scale, stats] = [this.#scale, this.stats]
+      if (!show_heatmap || scale === null || !stats) return undefined
+      // Linear scales need only the cached extrema; logarithmic scales still need the
+      // smallest positive value, which may differ from the overall minimum.
+      const log = is_log_scale(scale)
+      const values = log ? stats.values : [stats.min, stats.max]
+      // Explicit domains clamp; plain minmax preserves its unclamped behavior.
+      const domain = this.col.normalize || this.col.domain_group ? this.domain : undefined
+      const parts = [scale, this.better, domain, ...(log ? [values] : values)]
+      if (!same_parts(parts, this.#color_parts)) {
+        this.#color_parts = parts
+        const scheme = scale ?? `interpolateViridis`
+        this.#color_fn = make_cell_color_scale(values, this.better, scheme, domain)
+      }
+      return this.#color_fn
+    })
   }
-  const column_views = $derived(visible_columns.map(create_column_view))
-  let cols = $derived(column_views.map((get_view) => get_view()))
-  type ColumnView = (typeof cols)[number]
+  // One view per visible column, reused while its definition object is unchanged
+  let view_cache = new Map<string, ColumnView>()
+  let cols = $derived.by(() => {
+    const views = visible_columns.map((col) => {
+      const cached = view_cache.get(col.id)
+      return cached?.col === col ? cached : new ColumnView(col)
+    })
+    view_cache = new Map(views.map((view) => [view.id, view]))
+    return views
+  })
 
   // Fraction of the column's domain a value fills, for in-cell data bars. Clamped so a
   // quantile-clipped domain saturates instead of overflowing the cell.
   const bar_fraction = (num: number | null, view: ColumnView): number | null => {
-    if (num === null || !view.stats) return null
-    const [lower, upper] = view.stats.domain
+    if (num === null || !view.domain) return null
+    const [lower, upper] = view.domain
     const frac = upper === lower ? 1 : (num - lower) / (upper - lower)
     // `lower is better` puts the best value at the full end, matching the color scale
-    const oriented = better_of(view.col) === `lower` ? 1 - frac : frac
+    const oriented = view.better === `lower` ? 1 - frac : frac
     return clamp01(oriented)
   }
 
@@ -858,9 +905,8 @@
     backdrop: () => page_backdrop.current,
     alpha: () => heatmap_opacity,
   })
-  function calc_color(num: number | null, view: ColumnView): CellColor {
-    if (!view.color) return NULL_CELL_COLOR
-    const color = view.color(num)
+  function calc_color(color_fn: ColorFn, num: number | null): CellColor {
+    const color = color_fn(num)
     if (!color.bg || heatmap_opacity >= 1) return color
     return { bg: color.bg, text: translucent_text(color.bg) }
   }
@@ -930,7 +976,7 @@
   $effect(() => {
     void sorted_data
     void visible_columns
-    selection.clear()
+    untrack(() => selection.clear()) // untracked: clear() reads the selection
   })
 
   // active_cell clamped to rendered cells, else an off-page anchor would leave every cell at
@@ -943,6 +989,9 @@
       col: Math.min(active_cell.col, visible_columns.length - 1),
     }
   })
+  // Cells read numbers, not tab_stop: that is a new object each time the rows change
+  const tab_row = $derived(tab_stop.row)
+  const tab_col = $derived(tab_stop.col)
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
     target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
@@ -1842,18 +1891,16 @@
           {#each cols as view, col_idx (view.id)}
             {@const { col } = view}
             {@const val = row[view.key]}
+            <!-- num is parsed lazily: only colors, bars and best-cell rings read it -->
             {@const num = parse_numeric_val(val)}
-            {@const color = calc_color(num, view)}
+            {@const color = view.color ? calc_color(view.color, num) : NULL_CELL_COLOR}
+            {@const is_html = is_html_str(val)}
             {@const date_val = view.dt_mode
               ? format_datetime_cell(val, col, view.dt_mode)
               : null}
             <td
               data-col={col.label}
-              data-sort-value={is_html_str(val)
-                ? null
-                : val instanceof Date
-                  ? val.getTime()
-                  : val}
+              data-sort-value={is_html ? null : val instanceof Date ? val.getTime() : val}
               data-row-idx={abs_idx}
               data-col-idx={col_idx}
               style:left={view.sticky_left}
@@ -1862,7 +1909,7 @@
               class:cell-selected={selection.has(abs_idx, col_idx)}
               class:best-cell={view.best !== null && num === view.best}
               tabindex={keyboard_cells
-                ? tab_stop.row === abs_idx && tab_stop.col === col_idx
+                ? tab_row === abs_idx && tab_col === col_idx
                   ? 0
                   : -1
                 : undefined}
@@ -1896,7 +1943,7 @@
               {:else if is_invalid(val)}
                 <!-- data-title feeds the delegated tooltip, so no per-cell attachment -->
                 <span data-title="Not available">n/a</span>
-              {:else if typeof val === `string` && !is_html_str(val)}
+              {:else if typeof val === `string` && !is_html}
                 {@render plain_text(val)}
               {:else}
                 {@const html = render_html(val)}

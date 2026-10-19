@@ -46,24 +46,58 @@ test.describe(`Isosurface page`, () => {
     await wait_for_isosurface(page)
   })
 
-  // The collapsed search magnifier is pinned to the pane's top-right corner and used to
-  // cover the Volumetric data header's `isosurface` subtitle
-  test(`settings pane: search trigger clears the first header, halo and neg. lobe controls`, async ({
+  test(`settings pane: search trigger clears the first header, volume controls, drag and resize`, async ({
     page,
   }) => {
     const pane = await open_settings_pane(page)
-    const trigger = await require_bbox(pane.getByRole(`button`, { name: `Search settings` }))
-    const header = await require_bbox(pane.locator(`details.settings-group > summary`).first())
-    expect(trigger.y + trigger.height).toBeLessThanOrEqual(header.y)
-    // periodic volumes get a halo slider
-    const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
-    await expect(halo_slider).toBeVisible()
-    await expect(halo_slider).toHaveValue(`0`)
-    const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
-    await neg_cb.check()
-    await expect(neg_cb).toBeChecked()
-    await neg_cb.uncheck()
-    await expect(neg_cb).not.toBeChecked()
+    await test.step(`search trigger clears the first header`, async () => {
+      // The collapsed search magnifier is pinned to the pane's top-right corner and used to
+      // cover the Volumetric data header's `isosurface` subtitle
+      const trigger = await require_bbox(pane.getByRole(`button`, { name: `Search settings` }))
+      const header = await require_bbox(
+        pane.locator(`details.settings-group > summary`).first(),
+      )
+      expect(trigger.y + trigger.height).toBeLessThanOrEqual(header.y)
+    })
+
+    await test.step(`halo and neg. lobe controls`, async () => {
+      // periodic volumes get a halo slider
+      const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
+      await expect(halo_slider).toBeVisible()
+      await expect(halo_slider).toHaveValue(`0`)
+      const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
+      await neg_cb.check()
+      await expect(neg_cb).toBeChecked()
+      await neg_cb.uncheck()
+      await expect(neg_cb).not.toBeChecked()
+    })
+
+    await test.step(`dragging exposes reset and close`, async () => {
+      const tab = pane.locator(`.control-tab`)
+      await expect(tab.locator(`.drag-handle`)).toBeVisible()
+      await expect(tab.locator(`.reset-button`)).not.toBeVisible()
+      await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
+      await expect(tab.locator(`.reset-button`)).toBeVisible()
+      await expect(tab.locator(`.close-button`)).toBeVisible()
+      await tab.locator(`.reset-button`).click()
+      await expect(pane).toBeVisible()
+    })
+
+    await test.step(`resize grip resizes and resets`, async () => {
+      const grip = pane.locator(`.resize-grip`)
+      await expect(grip).toBeVisible()
+      const initial_box = await require_bbox(pane)
+      await drag_from(page, grip, 100, 0)
+      await expect(pane).toBeVisible()
+      expect((await require_bbox(pane)).width).toBeGreaterThan(initial_box.width + 50)
+
+      // The gutter beneath the grip owns the dblclick-to-reset (the grip itself is a
+      // decorative overlay with pointer-events: none). Dispatched rather than synthesized:
+      // the gutter's pointerdown takes pointer capture, and Chromium then never emits the
+      // dblclick for a real double-click, though one from a user does reset the pane.
+      await pane.locator(`[data-resize-edge="right"]`).dispatchEvent(`dblclick`)
+      expect(await pane.evaluate((element) => element.style.width)).toBe(``)
+    })
   })
 
   // these read canvas pixels, which CI's WebGPU presents too late for (see webgl_on_ci_for_tagged)
@@ -159,12 +193,32 @@ test.describe(`Isosurface page`, () => {
       await expect(page.getByTestId(`volume-slice`)).toBeVisible({ timeout: 15_000 })
     })
 
-    test(`switches between HKL, Cartesian, filled, and contour views`, async ({ page }) => {
-      test.setTimeout(IS_CI ? 90_000 : 45_000)
+    test(`switches between HKL, Cartesian, filled, and contour views; Miller input stays responsive`, async ({
+      page,
+    }) => {
+      test.setTimeout(IS_CI ? 180_000 : 75_000)
       const slice = await open_slice_view(page)
       const canvas = slice.locator(`canvas`)
       await wait_for_canvas_rendered(canvas)
       expect(Number(await canvas.getAttribute(`width`))).toBeGreaterThanOrEqual(1024)
+
+      await test.step(`Miller input stays responsive at high slice resolution`, async () => {
+        const input = page.getByRole(`textbox`, { name: `hkl` })
+        await input.fill(`11`)
+        const initial_image = await canvas_screenshot(canvas)
+        const update_ms = await input.evaluate(async (input_element) => {
+          const input_node = input_element as HTMLInputElement
+          const start = performance.now()
+          input_node.value += `0`
+          input_node.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await Promise.resolve()
+          return performance.now() - start
+        })
+
+        expect(update_ms).toBeLessThan(100)
+        await expect_canvas_changed(canvas, initial_image)
+        await expect(input).toHaveValue(`110`)
+      })
 
       await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
       await expect(page.getByLabel(`Cartesian point x`)).toBeVisible()
@@ -184,80 +238,6 @@ test.describe(`Isosurface page`, () => {
       await select_view_layout(page, `3D single view`)
       await expect(slice).not.toBeVisible()
     })
-
-    test(`keeps Miller input responsive at high slice resolution`, async ({ page }) => {
-      const slice = await open_slice_view(page)
-      const canvas = slice.locator(`canvas`)
-      const input = page.getByRole(`textbox`, { name: `hkl` })
-      await input.fill(`11`)
-      const initial_image = await canvas_screenshot(canvas)
-      const update_ms = await input.evaluate(async (input_element) => {
-        const input_node = input_element as HTMLInputElement
-        const start = performance.now()
-        input_node.value += `0`
-        input_node.dispatchEvent(new Event(`input`, { bubbles: true }))
-        await Promise.resolve()
-        return performance.now() - start
-      })
-
-      expect(update_ms).toBeLessThan(100)
-      await expect_canvas_changed(canvas, initial_image)
-      await expect(input).toHaveValue(`110`)
-    })
-
-    test(`masks pixels outside an oblique triclinic cross-section`, async ({ page }) => {
-      await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
-      const slice = await open_slice_view(page)
-      await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
-      for (const axis of [`x`, `y`, `z`]) {
-        await set_input_value(page.getByLabel(`Cartesian normal ${axis}`), `1`)
-      }
-      const canvas = slice.locator(`canvas`)
-      await wait_for_canvas_rendered(canvas)
-
-      const alpha_values = await canvas.evaluate((canvas_element) => {
-        const canvas_node = canvas_element as HTMLCanvasElement
-        const pixels = canvas_node
-          .getContext(`2d`)
-          ?.getImageData(0, 0, canvas_node.width, canvas_node.height).data
-        return pixels
-          ? Array.from(
-              { length: pixels.length / 4 },
-              (_, pixel_idx) => pixels[pixel_idx * 4 + 3],
-            )
-          : []
-      })
-      expect(alpha_values).toContain(0)
-      expect(alpha_values.some(Boolean)).toBe(true)
-    })
-  })
-
-  test(`DraggablePane dragging exposes reset and close; resize grip resizes and resets`, async ({
-    page,
-  }) => {
-    const pane = await open_settings_pane(page)
-    const tab = pane.locator(`.control-tab`)
-    await expect(tab.locator(`.drag-handle`)).toBeVisible()
-    await expect(tab.locator(`.reset-button`)).not.toBeVisible()
-    await drag_from(page, tab.locator(`.drag-handle`), 20, 20)
-    await expect(tab.locator(`.reset-button`)).toBeVisible()
-    await expect(tab.locator(`.close-button`)).toBeVisible()
-    await tab.locator(`.reset-button`).click()
-    await expect(pane).toBeVisible()
-
-    const grip = pane.locator(`.resize-grip`)
-    await expect(grip).toBeVisible()
-    const initial_box = await require_bbox(pane)
-    await drag_from(page, grip, 100, 0)
-    await expect(pane).toBeVisible()
-    expect((await require_bbox(pane)).width).toBeGreaterThan(initial_box.width + 50)
-
-    // The gutter beneath the grip owns the dblclick-to-reset (the grip itself is a
-    // decorative overlay with pointer-events: none). Dispatched rather than synthesized:
-    // the gutter's pointerdown takes pointer capture, and Chromium then never emits the
-    // dblclick for a real double-click, though one from a user does reset the pane.
-    await pane.locator(`[data-resize-edge="right"]`).dispatchEvent(`dblclick`)
-    expect(await pane.evaluate((element) => element.style.width)).toBe(``)
   })
 })
 
@@ -283,3 +263,34 @@ test(`spin-polarized ELFCAR shows ELF ranges and switches a surface between spin
   // both channels span the same range, so the surface keeps its isovalue
   await expect(groups.nth(1).locator(`.layer-value`).first()).toHaveText(isovalue ?? ``)
 })
+
+// loads hBN-CHGCAR, so it sits outside the describe above, whose beforeEach would load Si first
+test(
+  `masks pixels outside an oblique triclinic cross-section`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    await wait_for_isosurface(page, `/structure/isosurface?file=hBN-CHGCAR.gz`)
+    const slice = await open_slice_view(page)
+    await page.getByLabel(`Slice plane mode`).selectOption(`cartesian`)
+    for (const axis of [`x`, `y`, `z`]) {
+      await set_input_value(page.getByLabel(`Cartesian normal ${axis}`), `1`)
+    }
+    const canvas = slice.locator(`canvas`)
+    await wait_for_canvas_rendered(canvas)
+
+    const alpha_values = await canvas.evaluate((canvas_element) => {
+      const canvas_node = canvas_element as HTMLCanvasElement
+      const pixels = canvas_node
+        .getContext(`2d`)
+        ?.getImageData(0, 0, canvas_node.width, canvas_node.height).data
+      return pixels
+        ? Array.from(
+            { length: pixels.length / 4 },
+            (_, pixel_idx) => pixels[pixel_idx * 4 + 3],
+          )
+        : []
+    })
+    expect(alpha_values).toContain(0)
+    expect(alpha_values.some(Boolean)).toBe(true)
+  },
+)

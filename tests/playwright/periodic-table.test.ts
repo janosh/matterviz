@@ -19,7 +19,7 @@ test.describe(`Periodic Table`, () => {
     return option_list
   }
 
-  test(`keeps tile tracks equal and color bars inside their insets across widths`, async ({
+  test(`keeps tile tracks equal, lazy demos fit their content and color bars inside their insets across widths`, async ({
     page,
   }) => {
     await page.goto(`/periodic-table`)
@@ -34,8 +34,25 @@ test.describe(`Periodic Table`, () => {
     expect(await tiles.count()).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
     const auto_grid = page.locator(`.table-grid`).first()
-    await auto_grid.scrollIntoViewIfNeeded()
     const auto_tables = auto_grid.locator(`.periodic-table`)
+    // LazyDemo's "loaded" rule was scoped to its own children, so it never matched a demo's
+    // root and every loaded demo kept the 500px placeholder height, leaving gaps under short
+    // tables. Checked before the width loop below restyles these tables.
+    await test.step(`a loaded lazy demo shrinks to its content`, async () => {
+      const demo = auto_grid.locator(`.lazy-demo`).first()
+      // re-scroll until it loads: a scroll before hydration reaches no IntersectionObserver
+      await expect(async () => {
+        await demo.scrollIntoViewIfNeeded()
+        await expect(demo.locator(`.periodic-table`)).toBeVisible({ timeout: 2000 })
+      }).toPass({ timeout: 20_000 })
+      const [demo_box, table_box] = await Promise.all([
+        require_bbox(demo, `lazy demo`),
+        require_bbox(demo.locator(`.periodic-table`), `periodic table`),
+      ])
+      expect(table_box.height).toBeLessThan(400)
+      expect(demo_box.height).toBeCloseTo(table_box.height, 0)
+    })
+    await auto_grid.scrollIntoViewIfNeeded()
     await expect(auto_tables.locator(`.colorbar .label`)).toHaveText([
       `Atomic Mass`,
       `Density`,
@@ -80,24 +97,6 @@ test.describe(`Periodic Table`, () => {
         )
         .toEqual([true, true, true])
     }
-  })
-
-  // LazyDemo's "loaded" rule was scoped to its own children, so it never matched a demo's root
-  // and every loaded demo kept the 500px placeholder height, leaving gaps under short tables
-  test(`a loaded lazy demo shrinks to its content`, async ({ page }) => {
-    await page.goto(`/periodic-table`)
-    const demo = page.locator(`.table-grid .lazy-demo`).first()
-    // re-scroll until it loads: a scroll before hydration reaches no IntersectionObserver
-    await expect(async () => {
-      await demo.scrollIntoViewIfNeeded()
-      await expect(demo.locator(`.periodic-table`)).toBeVisible({ timeout: 2000 })
-    }).toPass({ timeout: 20_000 })
-    const [demo_box, table_box] = await Promise.all([
-      require_bbox(demo, `lazy demo`),
-      require_bbox(demo.locator(`.periodic-table`), `periodic table`),
-    ])
-    expect(table_box.height).toBeLessThan(400)
-    expect(demo_box.height).toBeCloseTo(table_box.height, 0)
   })
 
   // span.value used to out-specify the multi-value rules, so long labels (H density
@@ -200,52 +199,56 @@ test.describe(`Periodic Table`, () => {
       return tooltip
     }
 
-    test(`shows selected heatmap values and custom tooltip`, async ({ page }) => {
-      await page.goto(`/periodic-table`)
-      const option_list = await open_heatmap_select(page)
-      const first_option = option_list.locator(`li`).first()
-      await expect(first_option).toContainText(/atomic.*mass/i)
-      await first_option.click()
-
-      const first_heatmap_key = ELEM_HEATMAP_KEYS[0]
-      const hydrogen = element_data.find(({ symbol }) => symbol === `H`)
-      if (!first_heatmap_key || !hydrogen) throw new Error(`Missing atomic mass test data`)
-      const heatmap_value = hydrogen[first_heatmap_key]
-      if (typeof heatmap_value !== `number`)
-        throw new Error(`Hydrogen atomic mass is not numeric`)
-      await expect(get_element_tile(page, hydrogen.symbol)).toContainText(
-        format_num(heatmap_value),
-      )
-
-      await page.mouse.click(10, 10)
-      await expect(option_list).not.toBeVisible()
-
-      const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
-      await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
-      await expect(tooltip).toContainText(`C • 6`)
-      await expect(tooltip).toContainText(/Position:|Column|Row/)
-      await expect(tooltip).toContainText(/Range:|Min|Max/)
-    })
-
-    test(`shows default tooltip content and follows the hovered element`, async ({ page }) => {
+    // The default tooltip runs first: selecting a heatmap changes tile and tooltip content
+    test(`default tooltip follows the hovered element; heatmap selection shows values and custom tooltip`, async ({
+      page,
+    }) => {
       await page.goto(`/periodic-table`)
 
-      const hydrogen_tile = get_element_tile(page, `H`)
-      // right-edge tile, where the tooltip used to wrap "Ne • 10" onto a third line
-      const neon_tile = get_element_tile(page, `Ne`)
+      await test.step(`default tooltip content follows the hovered element`, async () => {
+        const hydrogen_tile = get_element_tile(page, `H`)
+        // right-edge tile, where the tooltip used to wrap "Ne • 10" onto a third line
+        const neon_tile = get_element_tile(page, `Ne`)
 
-      const tooltip = await hover_until_tooltip(page, hydrogen_tile)
-      await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
-      await expect(tooltip).toContainText(`H • 1`)
-      const initial_box = await require_bbox(tooltip)
+        const tooltip = await hover_until_tooltip(page, hydrogen_tile)
+        await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
+        await expect(tooltip).toContainText(`H • 1`)
+        const initial_box = await require_bbox(tooltip)
 
-      await hover_until_tooltip(page, neon_tile)
-      await expect(tooltip).toContainText(`Neon`)
-      await expect(tooltip).toContainText(`Ne • 10`)
-      const new_box = await require_bbox(tooltip)
+        await hover_until_tooltip(page, neon_tile)
+        await expect(tooltip).toContainText(`Neon`)
+        await expect(tooltip).toContainText(`Ne • 10`)
+        const new_box = await require_bbox(tooltip)
 
-      expect(new_box.x).not.toBe(initial_box.x)
-      expect(new_box.height).toBeCloseTo(initial_box.height, 0) // same two lines
+        expect(new_box.x).not.toBe(initial_box.x)
+        expect(new_box.height).toBeCloseTo(initial_box.height, 0) // same two lines
+      })
+
+      await test.step(`selected heatmap values and custom tooltip`, async () => {
+        const option_list = await open_heatmap_select(page)
+        const first_option = option_list.locator(`li`).first()
+        await expect(first_option).toContainText(/atomic.*mass/i)
+        await first_option.click()
+
+        const first_heatmap_key = ELEM_HEATMAP_KEYS[0]
+        const hydrogen = element_data.find(({ symbol }) => symbol === `H`)
+        if (!first_heatmap_key || !hydrogen) throw new Error(`Missing atomic mass test data`)
+        const heatmap_value = hydrogen[first_heatmap_key]
+        if (typeof heatmap_value !== `number`)
+          throw new Error(`Hydrogen atomic mass is not numeric`)
+        await expect(get_element_tile(page, hydrogen.symbol)).toContainText(
+          format_num(heatmap_value),
+        )
+
+        await page.mouse.click(10, 10)
+        await expect(option_list).not.toBeVisible()
+
+        const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
+        await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
+        await expect(tooltip).toContainText(`C • 6`)
+        await expect(tooltip).toContainText(/Position:|Column|Row/)
+        await expect(tooltip).toContainText(/Range:|Min|Max/)
+      })
     })
   })
 })

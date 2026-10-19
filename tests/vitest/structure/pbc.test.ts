@@ -475,11 +475,6 @@ describe(`wrap_to_unit_cell`, () => {
     { input: [-0.3, -0.8, -0.1], expected: [0.7, 0.2, 0.9], desc: `< 0 wraps up` },
     { input: [5.8, -10.7, 100.9], expected: [0.8, 0.3, 0.9], desc: `large values wrap` },
     { input: [1.0, -2.0, 0.0], expected: [0.0, 0.0, 0.0], desc: `exact ints -> 0` },
-    // values within epsilon of 1 snap to 0 to suppress floating-point noise
-    // oxfmt-ignore
-    { input: [1.0 - 1e-12, 1 - 1e-15, 1e-15], expected: [0.0, 0.0, 0.0], desc: `all dims ~ 1 (or ~ 0) snap to 0` },
-    // oxfmt-ignore
-    { input: [1.0 - 1e-12, 1.0 - 1e-11, 1.0 - 1e-10], expected: [0.0, 0.0, 0.0], desc: `all dims within epsilon of 1 snap to 0` },
   ] as { input: Vec3; expected: Vec3; desc: string }[])(`$desc`, ({ input, expected }) => {
     const result = wrap_to_unit_cell(input)
     for (let dim = 0; dim < 3; dim++) {
@@ -489,10 +484,15 @@ describe(`wrap_to_unit_cell`, () => {
     }
   })
 
-  // The snap epsilon is exactly 1e-10: 1 - 1e-10 is the first value that snaps, a value 10x
-  // further from 1 must survive as itself (a real position, not float noise)
+  // Values within epsilon of 1 snap to 0 to suppress floating-point noise. The snap epsilon is
+  // exactly 1e-10: 1 - 1e-10 is the first value that snaps, a value 10x further from 1 must
+  // survive as itself (a real position, not float noise), and so does a tiny value near 0
   test.each([
+    [1 - 1e-15, 0],
+    [1 - 1e-12, 0],
+    [1 - 1e-11, 0],
     [1 - 1e-10, 0],
+    [1e-15, 1e-15],
     [1 - 1e-9, 1 - 1e-9],
     [1 - 1e-8, 1 - 1e-8],
     [2 - 1e-10, 0],

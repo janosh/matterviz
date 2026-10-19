@@ -29,21 +29,25 @@ const scan_for_entry = async (
   )
 }
 
+// Reproducible synthetic entries, including five structures for popup tests.
+const seed_math_random = async (page: Page): Promise<void> => {
+  await page.addInitScript(() => {
+    let seed = 42
+    Math.random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      return seed / 4294967296
+    }
+  })
+}
+
 test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
   test.beforeEach(async ({ page }) => {
-    // Reproducible synthetic entries, including five structures for popup tests.
-    await page.addInitScript(() => {
-      let seed = 42
-      Math.random = () => {
-        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
-        return seed / 4294967296
-      }
-    })
+    await seed_math_random(page)
     await goto_perf_page(page, `3d`, `count=10&hull_dist=10`)
     await expect(ternary_diagram(page)).toBeVisible()
   })
 
-  test(`control buttons and gizmo are hover-visible, initial data attributes are unset`, async ({
+  test(`initial state: hover-visible control buttons and gizmo, unset data attributes, info pane stats`, async ({
     page,
   }) => {
     const diagram = ternary_diagram(page)
@@ -65,7 +69,187 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     }
     await diagram.hover()
     for (const overlay of overlays) await expect.poll(() => opacity_of(overlay)).toBe(1)
+
+    // info pane stats show chemical system and counts
+    const info = await open_info_pane(page, diagram)
+    await expect(info).toBeVisible()
+    await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
+    // the heading, not the shortcut list's "Toggle stability / energy coloring" below it
+    await expect(info.getByRole(`heading`, { name: `Stability` })).toBeVisible()
+
+    // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
+    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
+    const unstable_match = unstable_text?.match(/(?<count>\d+)/)
+    expect(unstable_match ? Number(unstable_match[1]) : 0).toBeGreaterThan(0)
   })
+
+  test(`controls pane: scrollable content, pointer-events, drag isolation, camera inputs, hull face toggle, color modes and scale selector`, async ({
+    page,
+  }) => {
+    const diagram = ternary_diagram(page)
+    const controls = await open_controls_pane(page, diagram)
+    await expect(controls).toBeVisible({ timeout: 10_000 })
+
+    // Short viewports keep all controls reachable through scrolling.
+    const content = controls.locator(`.pane-content`).first()
+    const remaining_scroll = await content.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+      return element.scrollHeight - element.clientHeight - element.scrollTop
+    })
+    expect(remaining_scroll).toBeLessThanOrEqual(2)
+    await content.evaluate((element) => (element.scrollTop = 0))
+
+    // Pane has pointer-events: auto (prevents event leaking to canvas)
+    expect(await controls.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe(
+      `auto`,
+    )
+
+    // Read the camera directly: canvas pixels can change as fonts finish loading.
+    const read_camera = () =>
+      diagram.evaluate((element) => {
+        const {
+          elevation,
+          azimuth,
+          zoom,
+          centerX: center_x,
+          centerY: center_y,
+        } = (element as HTMLElement).dataset
+        return { elevation, azimuth, zoom, center_x, center_y }
+      })
+    const camera_before = await read_camera()
+    for (const value of Object.values(camera_before))
+      expect(Number.isFinite(Number(value))).toBe(true)
+    const pane_before = await require_bbox(controls)
+    const handle_box = await require_bbox(controls.locator(`.drag-handle`), `drag handle`)
+    const [handle_x, handle_y] = [
+      handle_box.x + handle_box.width / 2,
+      handle_box.y + handle_box.height / 2,
+    ]
+    await page.mouse.move(handle_x, handle_y)
+    await page.mouse.down()
+    await page.mouse.move(handle_x + 50, handle_y + 30, { steps: 5 })
+    await page.mouse.up()
+    await expect
+      .poll(async () => (await require_bbox(controls)).x)
+      .toBeGreaterThan(pane_before.x)
+    expect(await read_camera()).toEqual(camera_before)
+
+    // camera inputs, hull face toggle and color modes, now on the dragged pane
+    for (const [label, value] of [
+      [`Elev`, `45`],
+      [`Azim`, `120`],
+    ] as const) {
+      await controls
+        .getByText(label)
+        .locator(`..`)
+        .locator(`input[type="number"]`)
+        .first()
+        .fill(value)
+    }
+    // test_without_errors fails a canvas redraw that throws on the hull-face toggle
+    await controls.getByText(`Hull Faces`, { exact: false }).click()
+    await expect(diagram.locator(`canvas`).first()).toBeVisible()
+
+    // Uniform is active by default, which shows the color picker
+    await expect_face_color_modes(controls, `Uniform`)
+
+    // Color scale label is clickable and its multiselect rendered
+    const color_label = controls.getByText(`Color scale`, { exact: true })
+    await expect(color_label).toBeVisible()
+    expect(await color_label.evaluate((element) => getComputedStyle(element).cursor)).toBe(
+      `pointer`,
+    )
+    await expect(controls.locator(`.multiselect`)).toBeVisible()
+  })
+
+  test(`drag release does not trigger click callback`, async ({ page }) => {
+    // Regression: dragging to rotate should not trigger on_point_click
+    const diagram = ternary_diagram(page)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
+
+    // Find an entry by scanning - selection indicates we hit one
+    const entry_pos = await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
+      await page.mouse.click(coord_x, coord_y)
+      await page.waitForTimeout(30)
+      return (await diagram.getAttribute(`data-has-selection`)) === `true`
+    })
+
+    // Clear selection by clicking corner
+    await page.mouse.click(box.x + 5, box.y + 5)
+    await page.waitForTimeout(50)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+
+    // Drag operation should not trigger selection
+    await page.mouse.move(entry_pos.x, entry_pos.y)
+    await page.mouse.down()
+    await page.mouse.move(entry_pos.x + 30, entry_pos.y + 30, { steps: 3 })
+    await page.mouse.up()
+    await page.waitForTimeout(50)
+    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+  })
+
+  test(`hover tooltip shows compact fractional compositions; Escape closes a clicked entry's structure popup`, async ({
+    page,
+  }) => {
+    const diagram = ternary_diagram(page)
+    const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
+    const tooltip = diagram.locator(`.plot-tooltip`)
+    await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
+      await page.mouse.move(coord_x, coord_y)
+      return (await tooltip.allTextContents()).join(``).includes(`Fractional:`)
+    })
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(`Fractional:`)
+    await expect(tooltip).not.toContainText(/\d{3,}\.\d+/)
+
+    // Escape closes the structure popup of a clicked entry
+    const canvas = diagram.locator(`canvas`).first()
+    const popup = diagram.locator(`.structure-popup`)
+
+    // Hover first: only click a compound known to carry a structure in this fixture.
+    const entry_pos = await scan_for_entry(box, 0.02, async (coord_x, coord_y) => {
+      await page.mouse.move(coord_x, coord_y)
+      return (await tooltip.allTextContents()).some((text) => /test-[0-4]\b/.test(text))
+    })
+    await page.mouse.click(entry_pos.x, entry_pos.y)
+
+    await expect(popup).toBeVisible()
+    await canvas.press(`Escape`)
+    await expect(popup).toBeHidden()
+  })
+
+  test(`t shortcut changes canvas view after drag`, async ({ page }) => {
+    const canvas = ternary_diagram(page).locator(`canvas`).first()
+    await expect(canvas).toBeVisible()
+    const box = await require_bbox(canvas, `canvas`)
+
+    await page.waitForTimeout(1000)
+    const initial = (await canvas.screenshot()).toString(`base64`)
+
+    // Drag to rotate
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 - 50, {
+      steps: 8,
+    })
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+
+    const dragged = (await canvas.screenshot()).toString(`base64`)
+    expect(dragged).not.toBe(initial)
+
+    // Press t for top-down — should change view again
+    await canvas.focus()
+    await canvas.press(`t`)
+    await page.waitForTimeout(300)
+    expect((await canvas.screenshot()).toString(`base64`)).not.toBe(dragged)
+  })
+})
+
+// Tests that load the performance page with their own query, so they skip the shared load above
+test.describe(`ConvexHullCanvas dim=3 on the performance page`, () => {
+  test.beforeEach(({ page }) => seed_math_random(page))
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
     test.setTimeout(30000)
@@ -132,189 +316,5 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await dom_click(fm_toggle)
     await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `true`)
     await expect.poll(() => get_canvas_hash(canvas), { timeout: 10000 }).toBe(hash_before)
-  })
-
-  test(`info pane stats show chemical system and counts`, async ({ page }) => {
-    const diagram = ternary_diagram(page)
-    const info = await open_info_pane(page, diagram)
-    await expect(info).toBeVisible()
-    await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
-    // the heading, not the shortcut list's "Toggle stability / energy coloring" below it
-    await expect(info.getByRole(`heading`, { name: `Stability` })).toBeVisible()
-
-    // Regression: verify unstable phases > 0 (catches possible e_above_hull placeholder bugs)
-    const unstable_text = await info.getByTestId(`hull-visible-unstable`).textContent()
-    const unstable_match = unstable_text?.match(/(?<count>\d+)/)
-    expect(unstable_match ? Number(unstable_match[1]) : 0).toBeGreaterThan(0)
-  })
-
-  test(`controls pane exposes camera inputs, hull face toggle, color modes and scale selector`, async ({
-    page,
-  }) => {
-    const diagram = ternary_diagram(page)
-    const controls = await open_controls_pane(page, diagram)
-    await expect(controls).toBeVisible({ timeout: 10_000 })
-
-    for (const [label, value] of [
-      [`Elev`, `45`],
-      [`Azim`, `120`],
-    ] as const) {
-      await controls
-        .getByText(label)
-        .locator(`..`)
-        .locator(`input[type="number"]`)
-        .first()
-        .fill(value)
-    }
-    // test_without_errors fails a canvas redraw that throws on the hull-face toggle
-    await controls.getByText(`Hull Faces`, { exact: false }).click()
-    await expect(diagram.locator(`canvas`).first()).toBeVisible()
-
-    // Uniform is active by default, which shows the color picker
-    await expect_face_color_modes(controls, `Uniform`)
-
-    // Color scale label is clickable and its multiselect rendered
-    const color_label = controls.getByText(`Color scale`, { exact: true })
-    await expect(color_label).toBeVisible()
-    expect(await color_label.evaluate((element) => getComputedStyle(element).cursor)).toBe(
-      `pointer`,
-    )
-    await expect(controls.locator(`.multiselect`)).toBeVisible()
-  })
-
-  test(`drag release does not trigger click callback`, async ({ page }) => {
-    // Regression: dragging to rotate should not trigger on_point_click
-    const diagram = ternary_diagram(page)
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
-
-    // Find an entry by scanning - selection indicates we hit one
-    const entry_pos = await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
-      await page.mouse.click(coord_x, coord_y)
-      await page.waitForTimeout(30)
-      return (await diagram.getAttribute(`data-has-selection`)) === `true`
-    })
-
-    // Clear selection by clicking corner
-    await page.mouse.click(box.x + 5, box.y + 5)
-    await page.waitForTimeout(50)
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-
-    // Drag operation should not trigger selection
-    await page.mouse.move(entry_pos.x, entry_pos.y)
-    await page.mouse.down()
-    await page.mouse.move(entry_pos.x + 30, entry_pos.y + 30, { steps: 3 })
-    await page.mouse.up()
-    await page.waitForTimeout(50)
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-  })
-
-  test(`tooltip shows compact fractional compositions`, async ({ page }) => {
-    const diagram = ternary_diagram(page)
-    const box = await require_bbox(diagram.locator(`canvas`).first(), `canvas`)
-    const tooltip = diagram.locator(`.plot-tooltip`)
-    await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
-      await page.mouse.move(coord_x, coord_y)
-      return (await tooltip.allTextContents()).join(``).includes(`Fractional:`)
-    })
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).toContainText(`Fractional:`)
-    await expect(tooltip).not.toContainText(/\d{3,}\.\d+/)
-  })
-
-  test(`t shortcut changes canvas view after drag`, async ({ page }) => {
-    const canvas = ternary_diagram(page).locator(`canvas`).first()
-    await expect(canvas).toBeVisible()
-    const box = await require_bbox(canvas, `canvas`)
-
-    await page.waitForTimeout(1000)
-    const initial = (await canvas.screenshot()).toString(`base64`)
-
-    // Drag to rotate
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 - 50, {
-      steps: 8,
-    })
-    await page.mouse.up()
-    await page.waitForTimeout(300)
-
-    const dragged = (await canvas.screenshot()).toString(`base64`)
-    expect(dragged).not.toBe(initial)
-
-    // Press t for top-down — should change view again
-    await canvas.focus()
-    await canvas.press(`t`)
-    await page.waitForTimeout(300)
-    expect((await canvas.screenshot()).toString(`base64`)).not.toBe(dragged)
-  })
-
-  test(`Escape key closes structure popup`, async ({ page }) => {
-    const diagram = ternary_diagram(page)
-    const canvas = diagram.locator(`canvas`).first()
-    const box = await require_bbox(canvas, `canvas`)
-    const popup = diagram.locator(`.structure-popup`)
-
-    // Hover first: only click a compound known to carry a structure in this fixture.
-    const tooltip = diagram.locator(`.plot-tooltip`)
-    const entry_pos = await scan_for_entry(box, 0.02, async (coord_x, coord_y) => {
-      await page.mouse.move(coord_x, coord_y)
-      return (await tooltip.allTextContents()).some((text) => /test-[0-4]\b/.test(text))
-    })
-    await page.mouse.click(entry_pos.x, entry_pos.y)
-
-    await expect(popup).toBeVisible()
-    await canvas.press(`Escape`)
-    await expect(popup).toBeHidden()
-  })
-
-  test(`controls pane: scrollable content, pointer-events, drag isolation`, async ({
-    page,
-  }) => {
-    const diagram = ternary_diagram(page)
-    const pane = await open_controls_pane(page, diagram)
-    await expect(pane).toBeVisible({ timeout: 10_000 })
-
-    // Short viewports keep all controls reachable through scrolling.
-    const content = pane.locator(`.pane-content`).first()
-    const remaining_scroll = await content.evaluate((element) => {
-      element.scrollTop = element.scrollHeight
-      return element.scrollHeight - element.clientHeight - element.scrollTop
-    })
-    expect(remaining_scroll).toBeLessThanOrEqual(2)
-    await content.evaluate((element) => (element.scrollTop = 0))
-
-    // Pane has pointer-events: auto (prevents event leaking to canvas)
-    expect(await pane.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe(
-      `auto`,
-    )
-
-    // Read the camera directly: canvas pixels can change as fonts finish loading.
-    const read_camera = () =>
-      diagram.evaluate((element) => {
-        const {
-          elevation,
-          azimuth,
-          zoom,
-          centerX: center_x,
-          centerY: center_y,
-        } = (element as HTMLElement).dataset
-        return { elevation, azimuth, zoom, center_x, center_y }
-      })
-    const camera_before = await read_camera()
-    for (const value of Object.values(camera_before))
-      expect(Number.isFinite(Number(value))).toBe(true)
-    const pane_before = await require_bbox(pane)
-    const handle_box = await require_bbox(pane.locator(`.drag-handle`), `drag handle`)
-    const [handle_x, handle_y] = [
-      handle_box.x + handle_box.width / 2,
-      handle_box.y + handle_box.height / 2,
-    ]
-    await page.mouse.move(handle_x, handle_y)
-    await page.mouse.down()
-    await page.mouse.move(handle_x + 50, handle_y + 30, { steps: 5 })
-    await page.mouse.up()
-    await expect.poll(async () => (await require_bbox(pane)).x).toBeGreaterThan(pane_before.x)
-    expect(await read_camera()).toEqual(camera_before)
   })
 })

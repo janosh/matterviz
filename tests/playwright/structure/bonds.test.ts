@@ -74,6 +74,15 @@ const select_atom_label_with_keyboard = async (
   await label.press(`Enter`)
 }
 
+// edit-bonds UI shared by the tests below
+const bond_menu = (page: Page) => page.locator(`#test-structure .bond-context-menu`)
+const bond_order_select = (page: Page) =>
+  page.locator(`#test-structure .bond-edit-toolbar select`)
+const reset_bond_edits = (page: Page) =>
+  page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+const undo_bond_edit = (page: Page) =>
+  page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+
 const set_structure_bonds = (page: Page, bonds: unknown) =>
   page.evaluate((next_bonds) => {
     window.dispatchEvent(new CustomEvent(`set-bonds`, { detail: { bonds: next_bonds } }))
@@ -413,7 +422,7 @@ test.describe(`Bond component`, () => {
       await page.getByTestId(`btn-set-edit-bonds`).click()
 
       await click_canvas_center(page, `right`)
-      const menu = page.locator(`#test-structure .bond-context-menu`)
+      const menu = bond_menu(page)
       await expect(menu).toBeVisible()
       await expect(menu).toContainText(`Bond Order`)
       await menu.getByRole(`button`, { name: `Double` }).click()
@@ -423,7 +432,7 @@ test.describe(`Bond component`, () => {
       await expect(menu).toBeVisible()
       await expect(menu).toContainText(`Bond Order (2)`)
       await expect_bonds(page, bond_0_1(2))
-      await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+      await reset_bond_edits(page)
       await expect_bonds(page, bond_0_1(1))
 
       // Delete mode must still allow right-click order edits (not only left-click delete).
@@ -443,7 +452,7 @@ test.describe(`Bond component`, () => {
       await expect(page.getByTestId(`bond-edit-mode-status`)).toContainText(`add`)
 
       await click_canvas_center(page)
-      const menu = page.locator(`#test-structure .bond-context-menu`)
+      const menu = bond_menu(page)
       await expect(menu).toBeHidden()
       await expect_bonds(page, undefined)
       await page.getByTestId(`btn-clear-selected`).click()
@@ -461,7 +470,7 @@ test.describe(`Bond component`, () => {
     }) => {
       await dispatch_two_atom_unbonded_structure(page)
       await page.getByTestId(`btn-set-edit-bonds`).click()
-      const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
+      const order_select = bond_order_select(page)
       await order_select.selectOption({ label: `Double` })
 
       await select_atom_label_with_keyboard(page, `C`)
@@ -469,7 +478,7 @@ test.describe(`Bond component`, () => {
       await expect_bonds(page, bond_0_1(2))
 
       await order_select.selectOption({ label: `Triple` })
-      await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+      await undo_bond_edit(page)
       await expect(order_select).toHaveValue(`2`)
       await expect_bonds(page, undefined)
 
@@ -482,7 +491,7 @@ test.describe(`Bond component`, () => {
       await dispatch_two_image_atom_unbonded_structure(page)
       await page.getByTestId(`btn-set-edit-bonds`).click()
 
-      const menu = page.locator(`#test-structure .bond-context-menu`)
+      const menu = bond_menu(page)
       await select_atom_label_with_keyboard(page, `C`, `first`)
       await expect(menu).toBeHidden()
       await select_atom_label_with_keyboard(page, `O`)
@@ -490,7 +499,7 @@ test.describe(`Bond component`, () => {
       await expect(menu).toBeHidden()
       await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 3, order: 1 }])
 
-      await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+      await reset_bond_edits(page)
       await expect_bonds(page, undefined)
 
       await select_atom_label_with_keyboard(page, `C`, `first`)
@@ -529,7 +538,7 @@ test.describe(`Bond component`, () => {
       await page.keyboard.press(`a`)
       await expect(mode_status).toContainText(`add`)
       // typing into the order select must not trigger the mode shortcut
-      const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
+      const order_select = bond_order_select(page)
       await order_select.focus()
       await page.keyboard.press(`d`)
       await expect(mode_status).toContainText(`add`)
@@ -593,7 +602,7 @@ test.describe(`Bond component`, () => {
         await expect_bonds(page, [])
       }
       const undo_bond_delete = async (expected_bonds: unknown) => {
-        await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+        await undo_bond_edit(page)
         await expect_bonds(page, expected_bonds)
       }
       const reenter_edit_bonds = async () => {
@@ -605,7 +614,7 @@ test.describe(`Bond component`, () => {
 
       // Mid-edit structure swap must emit the new structure's bonds (not keep the override).
       await click_canvas_center(page, `right`)
-      const menu = page.locator(`#test-structure .bond-context-menu`)
+      const menu = bond_menu(page)
       await expect(menu).toBeVisible()
       await menu.getByRole(`button`, { name: `Double` }).click()
       await expect_bonds(page, bond_0_1(2))
@@ -695,7 +704,7 @@ test.describe(`Bond component`, () => {
         // dispatch_co2 puts the C-O1 bond midpoint at the canvas centre, but the click only
         // picks it once perception has rebuilt the bond meshes and the camera has settled
         // there, and neither has an event to wait on. Retry the click until it lands.
-        const menu = page.locator(`#test-structure .bond-context-menu`)
+        const menu = bond_menu(page)
         await expect(async () => {
           await click_canvas_center(page, `right`)
           await expect(menu).toBeVisible({ timeout: 500 })
@@ -711,7 +720,7 @@ test.describe(`Bond component`, () => {
         await page.getByTestId(`btn-set-bond-delete`).click()
         await click_canvas_center(page)
         await expect_bonds(page, [])
-        await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+        await reset_bond_edits(page)
         await expect_bonds(page, undefined)
       },
     )

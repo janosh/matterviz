@@ -38,8 +38,9 @@ export class CellSelection {
   size = $derived(this.keys.size)
 
   has = (row: number, col: number): boolean => this.keys.has(`${row}:${col}`)
+  // A no-op when empty, so clearing on every data update re-runs no cell's has()
   clear = (): void => {
-    this.rects = []
+    if (this.rects.length > 0) this.rects = []
   }
 
   // Pointer down on a cell: start a 1x1 rectangle, replacing the selection unless additive

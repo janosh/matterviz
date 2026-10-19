@@ -1,6 +1,6 @@
 import { expect, type Locator, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
-import { dom_click, goto_perf_page, open_info_and_controls, visible_count } from './utils'
+import { dom_click, goto_perf_page, visible_count } from './utils'
 
 // Synthetic client-side data (no fixture download), a single hull and no rAF pulse loops:
 // the heavy demo page starves protocol calls under load
@@ -58,7 +58,8 @@ test.describe(`ConvexHull2D (Binary)`, () => {
 
   const visible_unstable = (info: Locator) => visible_count(info, `hull-visible-unstable`)
 
-  test(`renders hull and colorbar; color modes switch controls and 'Above hull' hides unstable points`, async ({
+  // One test so the ~20MB binary data only loads once
+  test(`renders hull and colorbar; color modes switch controls, 'Above hull' and threshold filter unstable points`, async ({
     page,
   }) => {
     await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
@@ -77,6 +78,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     expect(widths).toHaveLength(2)
     const [label_width, value_width] = widths
     expect(value_width).toBeGreaterThan(label_width)
+    const unstable_initial = await visible_unstable(info)
 
     const controls_btn = pd2d.locator(`.legend-controls-btn`)
     await dom_click(controls_btn)
@@ -90,24 +92,27 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(controls.getByText(`Points`, { exact: true })).toBeVisible()
     await expect(controls.getByText(`Color scale`)).toHaveCount(0)
 
-    await dom_click(controls.getByText(`Above hull`, { exact: false }))
-    await expect.poll(() => visible_unstable(info)).toBe(0)
-  })
+    const above_hull = controls.getByText(`Above hull`, { exact: false })
+    await dom_click(above_hull)
+    await expect.poll(() => visible_unstable(info), { message: `Above hull off` }).toBe(0)
+    // re-show unstable points so the threshold below has something to filter
+    await dom_click(above_hull)
+    await expect
+      .poll(() => visible_unstable(info), { message: `Above hull back on` })
+      .toBe(unstable_initial)
 
-  test(`threshold slider filters entries and info pane reflects changes`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .scatter.convex-hull-2d`).first()
-    const { info, controls } = await open_info_and_controls(pd2d)
-    const before = await visible_unstable(info)
+    // threshold slider filters entries and the info pane reflects it
     const markers = pd2d.locator(`path.marker`)
     const count_before = await markers.count()
-
     const number_input = controls.getByRole(`spinbutton`, {
       name: `Points threshold (eV/atom)`,
     })
     await number_input.fill(`0`)
     await number_input.blur() // fires the change handlers
 
-    await expect.poll(() => visible_unstable(info)).toBeLessThanOrEqual(before)
+    await expect
+      .poll(() => visible_unstable(info), { message: `threshold 0` })
+      .toBeLessThanOrEqual(unstable_initial)
     // lowering the threshold to 0 never adds markers
     const count_after = await markers.count()
     expect(count_after).toBeGreaterThan(0)

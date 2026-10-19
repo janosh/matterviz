@@ -19,65 +19,67 @@ test.describe(`Temperature-dependent free energies`, () => {
         markers.map((marker) => marker.parentElement?.getAttribute(`transform`)),
       )
 
-  test(`2D binary slider shows its K range, and the hull follows temperature`, async ({
+  test(`2D, 3D and 4D hulls get a 300-1500 K slider that drives the hull`, async ({
     page,
   }) => {
-    const diagram = page.locator(`.temp-grid .scatter.convex-hull-2d`).first()
-    const temp_slider = diagram.locator(`.temperature-slider`)
-    const temp_label = temp_slider.locator(`.slider-header`)
-    await expect(temp_label).toContainText(`K`)
-    await expect(temp_slider.locator(`.slider-range`)).toContainText(`300`)
-    await expect(temp_slider.locator(`.slider-range`)).toContainText(`1500`)
-    const range_input = temp_slider.locator(`input[type="range"]`)
-    await expect(range_input).toHaveAttribute(`aria-label`, `Temperature (Kelvin)`)
+    await test.step(`2D binary slider shows its K range, and the hull follows temperature`, async () => {
+      const diagram = page.locator(`.temp-grid .scatter.convex-hull-2d`).first()
+      const temp_slider = diagram.locator(`.temperature-slider`)
+      const temp_label = temp_slider.locator(`.slider-header`)
+      await expect(temp_label).toContainText(`K`)
+      await expect(temp_slider.locator(`.slider-range`)).toContainText(`300`)
+      await expect(temp_slider.locator(`.slider-range`)).toContainText(`1500`)
+      const range_input = temp_slider.locator(`input[type="range"]`)
+      await expect(range_input).toHaveAttribute(`aria-label`, `Temperature (Kelvin)`)
 
-    const temp_input = temp_label.locator(`input[type="number"]`)
-    await expect(temp_input).not.toHaveValue(`900`)
-    await range_input.fill(`900`)
-    await expect(temp_input).toHaveValue(`900`)
+      const temp_input = temp_label.locator(`input[type="number"]`)
+      await expect(temp_input).not.toHaveValue(`900`)
+      await range_input.fill(`900`)
+      await expect(temp_input).toHaveValue(`900`)
 
-    const temperature = diagram.getByRole(`spinbutton`, { name: `Temperature (Kelvin)` })
-    await expect(diagram.locator(`path.marker`).first()).toBeVisible()
-    const initial_positions = await marker_positions(diagram)()
-    await temperature.fill(`1500`)
-    await temperature.press(`Tab`)
-    await expect(temperature).toHaveValue(`1500`)
-    await expect.poll(marker_positions(diagram)).not.toEqual(initial_positions)
-  })
+      const temperature = diagram.getByRole(`spinbutton`, { name: `Temperature (Kelvin)` })
+      await expect(diagram.locator(`path.marker`).first()).toBeVisible()
+      const initial_positions = await marker_positions(diagram)()
+      await temperature.fill(`1500`)
+      await temperature.press(`Tab`)
+      await expect(temperature).toHaveValue(`1500`)
+      await expect.poll(marker_positions(diagram)).not.toEqual(initial_positions)
+    })
 
-  test(`3D ternary slider spans 300-1500 K in the top-right corner`, async ({ page }) => {
-    const diagram = page.locator(`.temp-grid .convex-hull-3d`).first()
-    await expect(diagram.locator(`canvas[aria-label]`)).toHaveAttribute(`aria-label`, /.+/)
-    const temp_slider = diagram.locator(`.temperature-slider`)
-    const range_input = temp_slider.locator(`input[type="range"]`)
-    await expect(range_input).toHaveAttribute(`min`, `300`)
-    await expect(range_input).toHaveAttribute(`max`, `1500`)
+    await test.step(`3D ternary slider spans 300-1500 K in the top-right corner`, async () => {
+      const diagram = page.locator(`.temp-grid .convex-hull-3d`).first()
+      await expect(diagram.locator(`canvas[aria-label]`)).toHaveAttribute(`aria-label`, /.+/)
+      const temp_slider = diagram.locator(`.temperature-slider`)
+      const range_input = temp_slider.locator(`input[type="range"]`)
+      await expect(range_input).toHaveAttribute(`min`, `300`)
+      await expect(range_input).toHaveAttribute(`max`, `1500`)
 
-    // right half of the diagram, below the control-button row
-    const [slider_box, diagram_box] = await Promise.all(
-      [temp_slider, diagram].map((locator) => require_bbox(locator)),
-    )
-    expect(slider_box.x).toBeGreaterThan(diagram_box.x + diagram_box.width / 2)
-    expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(
-      diagram_box.x + diagram_box.width,
-    )
-    expect(slider_box.y).toBeGreaterThan(diagram_box.y)
-    expect(slider_box.y).toBeLessThan(diagram_box.y + diagram_box.height / 2)
-  })
+      // right half of the diagram, below the control-button row
+      const [slider_box, diagram_box] = await Promise.all(
+        [temp_slider, diagram].map((locator) => require_bbox(locator)),
+      )
+      expect(slider_box.x).toBeGreaterThan(diagram_box.x + diagram_box.width / 2)
+      expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(
+        diagram_box.x + diagram_box.width,
+      )
+      expect(slider_box.y).toBeGreaterThan(diagram_box.y)
+      expect(slider_box.y).toBeLessThan(diagram_box.y + diagram_box.height / 2)
+    })
 
-  test(`4D quaternary slider selects every temperature in its range`, async ({ page }) => {
-    const diagram = page.locator(`.temp-grid .convex-hull-4d`).first()
-    await expect(diagram.locator(`canvas[aria-label]`)).toHaveAttribute(`aria-label`, /.+/)
-    const temp_slider = diagram.locator(`.temperature-slider`)
-    await expect(temp_slider.locator(`.slider-range`)).toContainText(`300`)
-    await expect(temp_slider.locator(`.slider-range`)).toContainText(`1500`)
-    const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
-    const range_input = temp_slider.locator(`input[type="range"]`)
-    // sequential: each fill must land before the next
-    for (const temp of [`300`, `900`, `1500`]) {
-      await range_input.fill(temp)
-      await expect(temp_input).toHaveValue(temp)
-    }
+    await test.step(`4D quaternary slider selects every temperature in its range`, async () => {
+      const diagram = page.locator(`.temp-grid .convex-hull-4d`).first()
+      await expect(diagram.locator(`canvas[aria-label]`)).toHaveAttribute(`aria-label`, /.+/)
+      const temp_slider = diagram.locator(`.temperature-slider`)
+      await expect(temp_slider.locator(`.slider-range`)).toContainText(`300`)
+      await expect(temp_slider.locator(`.slider-range`)).toContainText(`1500`)
+      const temp_input = temp_slider.locator(`.slider-header input[type="number"]`)
+      const range_input = temp_slider.locator(`input[type="range"]`)
+      // sequential: each fill must land before the next
+      for (const temp of [`300`, `900`, `1500`]) {
+        await range_input.fill(temp)
+        await expect(temp_input).toHaveValue(temp)
+      }
+    })
   })
 
   test(`gas pressure updates its chemical potential and rendered hull`, async ({ page }) => {

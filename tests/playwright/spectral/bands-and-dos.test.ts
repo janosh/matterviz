@@ -30,16 +30,15 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await expect_combined_fullscreen(container, [`.scatter`, `.scatter >> nth=1`])
   })
 
-  test(`renders bands and DOS side by side in a grid with a shared y-axis`, async ({
+  test(`renders bands and DOS side by side with a shared y-axis and hover reference lines`, async ({
     page,
   }) => {
     const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     expect(await container.evaluate((element) => getComputedStyle(element).display)).toBe(
       `grid`,
     )
-    const plots = container.locator(`.scatter`)
-    await expect(plots).toHaveCount(2)
-    const [bands_plot, dos_plot] = [plots.first(), plots.nth(1)]
+    await expect(container.locator(`.scatter`)).toHaveCount(2)
+    const [bands_plot, dos_plot] = default_plots(page)
     for (const plot of [bands_plot, dos_plot]) {
       expect(await plot.locator(`path[fill="none"]`).count()).toBeGreaterThan(0)
       await expect(plot.locator(`g.x-axis`)).toBeVisible()
@@ -63,6 +62,18 @@ test.describe(`BandsAndDos Component Tests`, () => {
       expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
       expect(bands_y_ticks.length).toBeGreaterThan(2)
       expect(dos_y_ticks.length).toBeGreaterThan(2)
+    }).toPass({ timeout: 15_000 })
+
+    // hovering the DOS adds a reference line in both plots
+    const initial_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
+    const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
+    const dos_box = await require_bbox(get_chart_svg(dos_plot), `DOS plot`)
+    await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
+    await expect(async () => {
+      const hovered_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
+      const hovered_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
+      expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
+      expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
     }).toPass({ timeout: 15_000 })
   })
 
@@ -92,7 +103,9 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await expect_synced_y_ticks(bands_plot, dos_plot, initial_ticks)
   })
 
-  test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
+  test(`applies custom widths, passes props to subcomponents and keeps independent y-axes apart`, async ({
+    page,
+  }) => {
     const custom_container = page.locator(`[data-testid="bands-and-dos-custom-widths"]`)
     await expect(custom_container).toBeVisible()
     await expect(custom_container).toHaveAttribute(`style`, /grid-template-columns/)
@@ -110,9 +123,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Check DOS props passed (normalization)
     const dos_container = page.locator(`[data-testid="bands-and-dos-dos-norm"]`)
     await expect(dos_container.locator(`.scatter`).nth(1).locator(`g.y-axis`)).toBeVisible()
-  })
 
-  test(`independent y-axes keep their own ranges and render children`, async ({ page }) => {
+    // independent y-axes keep their own ranges and render children
     await page.locator(`#independent-axes`).scrollIntoViewIfNeeded()
     const container = page.locator(`[data-testid="bands-and-dos-independent-axes"]`)
     const custom_overlay = container.locator(`.custom-overlay`)
@@ -132,57 +144,40 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(Math.abs(Math.max(...bands_y_ticks) - Math.max(...dos_y_ticks))).toBeGreaterThan(5)
   })
 
-  test(`hovering over DOS shows reference lines in both plots`, async ({ page }) => {
-    const [bands_plot, dos_plot] = default_plots(page)
-    const initial_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
-    const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
+  // BandsAndDos' fermi_level prop takes precedence over any fermi_level in
+  // bands_props/dos_props, so the Bands and DOS Fermi lines align
+  test(`Fermi level lines align across bands and DOS`, async ({ page }) => {
+    for (const { anchor, testid, tolerance } of [
+      { anchor: `#electronic-bands`, testid: `bands-and-dos-electronic`, tolerance: 15 },
+      {
+        anchor: `#electronic-spin-polarized`,
+        testid: `bands-and-dos-spin-polarized`,
+        tolerance: 30,
+      },
+    ] as const) {
+      await test.step(testid, async () => {
+        await page.locator(anchor).scrollIntoViewIfNeeded()
+        const container = page.locator(`[data-testid="${testid}"]`)
+        await expect(container).toBeVisible()
+        const plots = container.locator(`.scatter`)
+        await expect(plots).toHaveCount(2)
 
-    const dos_svg = get_chart_svg(dos_plot)
-    const dos_box = await require_bbox(dos_svg, `DOS plot`)
-    await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
+        const bands_fermi = plots.first().locator(`.fermi-level-line`)
+        const dos_fermi = plots.nth(1).locator(`.fermi-level-line`)
 
-    await expect(async () => {
-      const hovered_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
-      const hovered_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
-      expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
-      expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
-    }).toPass({ timeout: 15_000 })
+        await expect(bands_fermi).toHaveCount(1, { timeout: 15_000 })
+        await expect(dos_fermi).toHaveCount(1, { timeout: 15_000 })
+
+        // Fermi lines should be at approximately the same y position
+        await expect(async () => {
+          const [bands_y1, dos_y1] = await Promise.all([
+            bands_fermi.getAttribute(`y1`),
+            dos_fermi.getAttribute(`y1`),
+          ])
+          if (!bands_y1 || !dos_y1) throw new Error(`Fermi level y-coordinates not found`)
+          expect(Math.abs(Number(bands_y1) - Number(dos_y1))).toBeLessThanOrEqual(tolerance)
+        }).toPass({ timeout: 15_000 })
+      })
+    }
   })
-
-  // Fermi level alignment tests - verifies BandsAndDos fermi_level prop takes precedence
-  // over any fermi_level in bands_props/dos_props, ensuring Bands and DOS are aligned
-  const fermi_alignment_cases = [
-    { anchor: `#electronic-bands`, testid: `bands-and-dos-electronic`, tolerance: 15 },
-    {
-      anchor: `#electronic-spin-polarized`,
-      testid: `bands-and-dos-spin-polarized`,
-      tolerance: 30,
-    },
-  ] as const
-
-  for (const { anchor, testid, tolerance } of fermi_alignment_cases) {
-    test(`Fermi level lines aligned in ${testid}`, async ({ page }) => {
-      await page.locator(anchor).scrollIntoViewIfNeeded()
-      const container = page.locator(`[data-testid="${testid}"]`)
-      await expect(container).toBeVisible()
-      const plots = container.locator(`.scatter`)
-      await expect(plots).toHaveCount(2)
-
-      const bands_fermi = plots.first().locator(`.fermi-level-line`)
-      const dos_fermi = plots.nth(1).locator(`.fermi-level-line`)
-
-      await expect(bands_fermi).toHaveCount(1, { timeout: 15_000 })
-      await expect(dos_fermi).toHaveCount(1, { timeout: 15_000 })
-
-      // Fermi lines should be at approximately the same y position
-      await expect(async () => {
-        const [bands_y1, dos_y1] = await Promise.all([
-          bands_fermi.getAttribute(`y1`),
-          dos_fermi.getAttribute(`y1`),
-        ])
-        if (!bands_y1 || !dos_y1) throw new Error(`Fermi level y-coordinates not found`)
-        expect(Math.abs(Number(bands_y1) - Number(dos_y1))).toBeLessThanOrEqual(tolerance)
-      }).toPass({ timeout: 15_000 })
-    })
-  }
 })

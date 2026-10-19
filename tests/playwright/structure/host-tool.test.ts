@@ -1,5 +1,5 @@
 import { expect, type Download, type Locator, type Page } from '@playwright/test'
-import { goto_structure_test, test_without_errors as test } from '../helpers'
+import { goto_structure_test, set_scene_props, test_without_errors as test } from '../helpers'
 
 const scene_state = (page: Page) =>
   page.evaluate(async () => {
@@ -61,6 +61,12 @@ const scene_state = (page: Page) =>
     }
   })
 
+// Poll until the prediction's dipole arrows and density surface are both in the scene
+const expect_prediction_drawn = async (page: Page): Promise<void> => {
+  await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
+  await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
+}
+
 const drop_prediction = async (page: Page, prediction: unknown): Promise<void> => {
   const transfer = await page.evaluateHandle((payload) => {
     const drop_data = new DataTransfer()
@@ -85,8 +91,7 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
   await expect(
     page.getByRole(`status`).filter({ hasText: `charges, dipoles and density` }),
   ).toBeVisible()
-  await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
-  await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
+  await expect_prediction_drawn(page)
   expect((await scene_state(page)).atom_colors).not.toEqual(original_colors)
   const visibility = page.getByRole(`checkbox`, { name: `Show prediction` })
   await visibility.uncheck()
@@ -98,8 +103,7 @@ test(`prediction tools render with WebGPU and hand keyboard/camera ownership to 
       atom_colors: original_colors,
     })
   await visibility.check()
-  await expect.poll(async () => (await scene_state(page)).arrows).toBeGreaterThan(0)
-  await expect.poll(async () => (await scene_state(page)).density_vertices).toBeGreaterThan(0)
+  await expect_prediction_drawn(page)
   await page.locator(`button.structure-controls-toggle`).click()
   await expect(
     page.getByRole(`button`, { name: `Add surface for Predicted density`, exact: true }),
@@ -164,13 +168,7 @@ test(`caller camera updates during a host view take precedence over its saved vi
   await expect.poll(() => scene_state(page)).toMatchObject({ webgpu: true, rendered: true })
   await page.getByRole(`button`, { name: `Show predicted trajectory` }).click()
   await expect(page.getByTestId(`predicted-trajectory`)).toBeVisible()
-  await page.evaluate(() =>
-    window.dispatchEvent(
-      new CustomEvent(`set-scene-props`, {
-        detail: { camera_position: [12, 9, 7], camera_target: [0, 0, 0] },
-      }),
-    ),
-  )
+  await set_scene_props(page, { camera_position: [12, 9, 7], camera_target: [0, 0, 0] })
   await page.getByRole(`button`, { name: `Return to structure` }).click()
   await expect(page.getByTestId(`predicted-trajectory`)).toHaveCount(0)
   // OrbitControls reconstructs position from spherical coordinates (CI error: 8.9e-16).
@@ -286,6 +284,7 @@ test(`worker predictions guard reversed completion, failure and cancellation`, a
   await predict.click()
   await expect(status).toContainText(`Prediction 2 ready`)
   await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `2`)
+  // run 1's late reply has now landed and must not overwrite run 2's result
   await expect(status).toContainText(`Prediction 2 ready`)
   const exporting = export_prediction_btn(page)
   await page.getByRole(`checkbox`, { name: `Fail prediction` }).check()
@@ -301,6 +300,7 @@ test(`worker predictions guard reversed completion, failure and cancellation`, a
   await page.getByRole(`button`, { name: `Cancel prediction`, exact: true }).click()
   await expect(status).toContainText(`cancelled`)
   await expect(page.locator(`html`)).toHaveAttribute(`data-worker-replies`, `4`)
+  // the cancelled run's late reply must neither publish a result nor clear the status
   await expect(exporting).toHaveCount(0)
   await expect(status).toContainText(`cancelled`)
   await predict.click()

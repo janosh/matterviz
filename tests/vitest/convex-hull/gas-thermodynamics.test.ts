@@ -23,6 +23,8 @@ import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.
 import { describe, expect, test } from 'vitest'
 import { make_phase } from '../test-fixtures'
 
+const provider = get_default_gas_provider()
+
 // a typo in the stoichiometry/gas-mapping tables silently skews all corrections, so each row
 // must match its gas's own formula
 test(`GAS_STOICHIOMETRY and DEFAULT_ELEMENT_TO_GAS hold the standard gas data`, () => {
@@ -34,7 +36,6 @@ describe(`gas-thermodynamics: default provider`, () => {
   // μ°(T) = Δ_fH(0 K) + H(T) - H(0 K) - T*S: the formation enthalpy at 0 K (0 for elemental
   // gases), falling with T
   test(`μ°(T=0) equals formation enthalpy and μ°(T) decreases with T`, () => {
-    const provider = get_default_gas_provider()
     for (const gas of [`O2`, `N2`, `H2`] as const) {
       expect(provider.get_standard_chemical_potential(gas, 0)).toBe(0)
       const [mu_300, mu_600, mu_1000] = [300, 600, 1000].map((temp) =>
@@ -68,7 +69,7 @@ describe(`gas-thermodynamics: default provider`, () => {
     [`H2O`, 1500, -1.09818],
     [`F2`, 1000, -1.09397],
   ])(`μ°(%s, %d K) - μ°(0 K) matches NIST-JANAF %f eV/atom`, (gas, temperature, janaf) => {
-    const { get_standard_chemical_potential: mu_standard } = get_default_gas_provider()
+    const { get_standard_chemical_potential: mu_standard } = provider
     expect(Math.abs(mu_standard(gas, temperature) - mu_standard(gas, 0) - janaf)).toBeLessThan(
       1e-3,
     )
@@ -84,8 +85,6 @@ describe(`gas-thermodynamics: default provider`, () => {
 })
 
 describe(`gas-thermodynamics: chemical potential calculations`, () => {
-  const provider = get_default_gas_provider()
-
   test(`compute_gas_chemical_potential at P=P_REF equals μ°(T)`, () => {
     const temperature = 500
     for (const gas of GAS_SPECIES) {
@@ -289,7 +288,6 @@ test(`a tabulated O2 reference only gets the pressure term, matching the ternary
 })
 
 describe(`gas-thermodynamics: multi-element gas reservoirs`, () => {
-  const provider = get_default_gas_provider()
   const setup = (config: GasThermodynamicsConfig, temperature: number) => {
     const pressures = get_effective_pressures(config)
     const shift = (element: string) =>
@@ -343,8 +341,6 @@ describe(`gas-thermodynamics: formatting`, () => {
 })
 
 describe(`gas-thermodynamics: boundary pressures`, () => {
-  const provider = get_default_gas_provider()
-
   // Slider range: 10^-10 to 10^2 bar
   const P_MIN = 1e-10
   const P_MAX = 1e2

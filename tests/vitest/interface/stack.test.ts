@@ -15,8 +15,8 @@ import { FCC_FACE_CENTRES, fcc_cell, make_crystal, make_rocksalt } from '../test
 // reoriented slabs: a ∥ x, surface normal ∥ z
 const slab = (crystal: Crystal, hkl: Vec3, min_slab_thickness = 6) =>
   make_slab(crystal, hkl, { min_slab_thickness, min_vacuum_thickness: 10 })
-const CU_111 = slab(fcc_cell(3.615, `Cu`), [1, 1, 1])
-const CU_100 = slab(fcc_cell(3.615, `Cu`), [1, 0, 0])
+const CU_111 = slab(fcc_cell(3.615), [1, 1, 1])
+const CU_100 = slab(fcc_cell(3.615), [1, 0, 0])
 const AG_100 = slab(fcc_cell(4.086, `Ag`), [1, 0, 0])
 const D_111 = 3.615 / Math.sqrt(3)
 
@@ -80,43 +80,17 @@ test(`make_crystal shares no arrays with its inputs and FCC_FACE_CENTRES is froz
 
 describe(`in_plane_supercell`, () => {
   const nacl = slab(make_rocksalt(), [1, 0, 0], 5)
+  // oxfmt-ignore
   test.each([
-    [
-      [1, 0],
-      [0, 1],
-    ],
-    [
-      [2, 0],
-      [0, 3],
-    ],
-    [
-      [2, 1],
-      [0, 2],
-    ],
-    [
-      [3, -1],
-      [1, 2],
-    ],
-    [
-      [5, 3],
-      [2, 1],
-    ], // unimodular, far from HNF
-    [
-      [0, 1],
-      [1, 0],
-    ], // det −1
-    [
-      [1, 2],
-      [3, 4],
-    ], // det −2
-    [
-      [-2, 1],
-      [1, 3],
-    ], // det −7
-    [
-      [-1, 0],
-      [0, -1],
-    ],
+    [[1, 0], [0, 1]],
+    [[2, 0], [0, 3]],
+    [[2, 1], [0, 2]],
+    [[3, -1], [1, 2]],
+    [[5, 3], [2, 1]], // unimodular, far from HNF
+    [[0, 1], [1, 0]], // det −1
+    [[1, 2], [3, 4]], // det −2
+    [[-2, 1], [1, 3]], // det −7
+    [[-1, 0], [0, -1]],
   ] satisfies Matrix2x2[])(`%j: |det| cells of exact lattice translates`, (...matrix) => {
     const [[m00, m01], [m10, m11]] = matrix
     const n_cells = Math.abs(m00 * m11 - m01 * m10)
@@ -160,29 +134,12 @@ describe(`in_plane_supercell`, () => {
     }
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      [
-        [1, 2],
-        [2, 4],
-      ] satisfies Matrix2x2,
-      `(det 0)`,
-    ],
-    [
-      [
-        [1.5, 0],
-        [0, 1],
-      ] satisfies Matrix2x2,
-      `must be integer`,
-    ],
-    [
-      [
-        [300, 0],
-        [0, 300],
-      ] satisfies Matrix2x2,
-      `above MAX_SLAB_SITES=50000`,
-    ],
-  ])(`rejects %j`, (matrix, message) => {
+    [[[1, 2], [2, 4]], `(det 0)`],
+    [[[1.5, 0], [0, 1]], `must be integer`],
+    [[[300, 0], [0, 300]], `above MAX_SLAB_SITES=50000`],
+  ] satisfies [Matrix2x2, string][])(`rejects %j`, (matrix, message) => {
     expect(() => in_plane_supercell(nacl, matrix)).toThrow(message)
   })
 })
@@ -282,7 +239,7 @@ describe(`make_interface`, () => {
   })
 
   test(`without a match a near-commensurate film is strained 1×1 onto the substrate`, () => {
-    const film = slab(fcc_cell(3.615 * 1.02, `Cu`), [1, 0, 0])
+    const film = slab(fcc_cell(3.615 * 1.02), [1, 0, 0])
     const built = make_interface(CU_100, film)
     const { match } = built.interface_info
     expect([match.n_film_cells, match.n_substrate_cells]).toEqual([1, 1])
@@ -413,34 +370,10 @@ describe(`make_interface`, () => {
   const monolayer = slab(make_crystal(3.35, [[`Po`, [0, 0, 0]]]), [1, 0, 0], 0)
   test.each([
     [CU_100, AG_100, {}, `does not fit substrate mesh (a=2.5562 Å, b=2.5562 Å, γ=90.00°)`],
-    [
-      CU_100,
-      AG_100,
-      {
-        match: {
-          ...twisted,
-          film_matrix: [
-            [0, 2],
-            [2, 0],
-          ],
-        },
-      },
-      `positive determinants`,
-    ],
-    [
-      CU_100,
-      AG_100,
-      {
-        match: {
-          ...twisted,
-          substrate_matrix: [
-            [0, 1],
-            [1, 0],
-          ],
-        },
-      },
-      `positive determinants`,
-    ],
+    // oxfmt-ignore
+    [CU_100, AG_100, { match: { ...twisted, film_matrix: [[0, 2], [2, 0]] } }, `positive determinants`],
+    // oxfmt-ignore
+    [CU_100, AG_100, { match: { ...twisted, substrate_matrix: [[0, 1], [1, 0]] } }, `positive determinants`],
     [{ ...CU_100, sites: [] }, AG_100, {}, `substrate slab has no sites`],
     [CU_100, { ...AG_100, sites: [] }, {}, `film slab has no sites`],
     [CU_100, CU_100, { gap: -1 }, `gap must be a non-negative finite number, got -1`],

@@ -18,7 +18,6 @@ import {
   rotation_from_direction,
 } from '#lib/structure/geometry.js'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
-import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
@@ -312,7 +311,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
           { length: expected_count },
           (_, instance_idx) => matrix_buffer[instance_idx * 16 + 14],
         )
-        expect(new SvelteSet(offsets).size).toBe(expected_count)
+        expect(new Set(offsets).size).toBe(expected_count)
       }
     },
   )
@@ -323,6 +322,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       new BondMesh(undefined, undefined, 2).update(prepare_bond_placements([bond])),
     ).toThrow(`Bond capacity 2 cannot hold 3 instances`)
   })
+
   test.each([
     [0, 0, 0],
     [0, -2, 0],

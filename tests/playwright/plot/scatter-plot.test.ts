@@ -98,52 +98,70 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.goto(`/test/scatter-plot`, { waitUntil: `networkidle` })
   })
 
-  test(`renders basic scatter plot with correct axis labels and ticks`, async ({ page }) => {
-    const scatter_plot = page.locator(`#basic-example .scatter`)
-    await expect(scatter_plot.locator(`.axis-label.x-label`)).toHaveText(`X Axis`)
-    await expect(scatter_plot.locator(`.axis-label.y-label`)).toHaveText(`Y Axis`)
-    await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
+  // static demos with no shared state, checked on one page load
+  test(`basic axes and ticks, canvas auto renderer and color-mapped legend lines render`, async ({
+    page,
+  }) => {
+    await test.step(`basic scatter plot has axis labels, markers and sorted ticks`, async () => {
+      const scatter_plot = page.locator(`#basic-example .scatter`)
+      await expect(scatter_plot.locator(`.axis-label.x-label`)).toHaveText(`X Axis`)
+      await expect(scatter_plot.locator(`.axis-label.y-label`)).toHaveText(`Y Axis`)
+      await expect(scatter_plot.locator(`path.marker`)).toHaveCount(10)
 
-    for (const axis of [`x`, `y`] as const) {
-      const axis_ticks = scatter_plot.locator(`g.${axis}-axis .tick`)
-      const tick_count = await axis_ticks.count()
-      expect(tick_count).toBeGreaterThanOrEqual(4)
-      expect(tick_count).toBeLessThanOrEqual(15)
-      const values = (await axis_ticks.locator(`text`).allTextContents())
-        .map(Number)
-        .filter((val) => !isNaN(val))
-      expect(values.length).toBeGreaterThan(0)
-      expect(values).toEqual(values.toSorted((val_a, val_b) => val_a - val_b))
-      await expect(axis_ticks.locator(`text`).first()).toBeVisible()
-      await expect(axis_ticks.locator(`text`).last()).toBeVisible()
-    }
-  })
+      for (const axis of [`x`, `y`] as const) {
+        const axis_ticks = scatter_plot.locator(`g.${axis}-axis .tick`)
+        const tick_count = await axis_ticks.count()
+        expect(tick_count).toBeGreaterThanOrEqual(4)
+        expect(tick_count).toBeLessThanOrEqual(15)
+        const values = (await axis_ticks.locator(`text`).allTextContents())
+          .map(Number)
+          .filter((val) => !isNaN(val))
+        expect(values.length).toBeGreaterThan(0)
+        expect(values).toEqual(values.toSorted((val_a, val_b) => val_a - val_b))
+        await expect(axis_ticks.locator(`text`).first()).toBeVisible()
+        await expect(axis_ticks.locator(`text`).last()).toBeVisible()
+      }
+    })
 
-  test(`auto renderer paints dense markers to a real canvas`, async ({ page }) => {
-    const plot = page.locator(`#canvas-auto-renderer .scatter`)
-    const canvas = plot.locator(`canvas.marker-canvas`)
-    await plot.scrollIntoViewIfNeeded()
-    await expect(canvas).toBeVisible()
-    await expect(plot.locator(`path.marker`)).toHaveCount(0)
-    await expect
-      .poll(() =>
-        canvas.evaluate((element) => {
-          const canvas_element = element as HTMLCanvasElement
-          const context = canvas_element.getContext(`2d`)
-          if (!context) return false
-          const { data } = context.getImageData(
-            0,
-            0,
-            canvas_element.width,
-            canvas_element.height,
-          )
-          for (let alpha_idx = 3; alpha_idx < data.length; alpha_idx += 4) {
-            if (data[alpha_idx] > 0) return true
-          }
-          return false
-        }),
-      )
-      .toBe(true)
+    await test.step(`auto renderer paints dense markers to a real canvas`, async () => {
+      const plot = page.locator(`#canvas-auto-renderer .scatter`)
+      const canvas = plot.locator(`canvas.marker-canvas`)
+      await plot.scrollIntoViewIfNeeded()
+      await expect(canvas).toBeVisible()
+      await expect(plot.locator(`path.marker`)).toHaveCount(0)
+      await expect
+        .poll(() =>
+          canvas.evaluate((element) => {
+            const canvas_element = element as HTMLCanvasElement
+            const context = canvas_element.getContext(`2d`)
+            if (!context) return false
+            const { data } = context.getImageData(
+              0,
+              0,
+              canvas_element.width,
+              canvas_element.height,
+            )
+            for (let alpha_idx = 3; alpha_idx < data.length; alpha_idx += 4) {
+              if (data[alpha_idx] > 0) return true
+            }
+            return false
+          }),
+        )
+        .toBe(true)
+    })
+
+    await test.step(`legend line color reflects color scale for color-mapped series`, async () => {
+      // color-mapped series with lines but no explicit line stroke
+      const legend_item_el = page
+        .locator(`#color-mapped-line-legend-test .scatter .legend .legend-item`)
+        .first()
+      const legend_line = legend_item_el.locator(`line[stroke]`)
+      await expect(legend_line).toHaveCount(1)
+      const legend_stroke = await legend_line.getAttribute(`stroke`)
+      // the legend uses color_scale_fn instead of defaulting to black
+      expect(legend_stroke).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(legend_stroke).not.toBe(`#000000`)
+    })
   })
 
   test(`marginals align with plot area, portal tooltips, recompute on zoom, and do not start zoom drags`, async ({
@@ -329,78 +347,46 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`bind:hovered prop reflects hover state`, async ({ page }) => {
-    const svg = get_chart_svg(page.locator(`#bind-hovered .scatter`))
-    const hover_status = page.locator(`#hover-status`)
-    await expect(hover_status).toHaveText(`false`)
-    await svg.hover()
-    await expect(hover_status).toHaveText(`true`)
-    await page.mouse.move(0, 0)
-    await expect(hover_status).toHaveText(`false`)
-  })
-
-  test(`point click/double-click events fire and give points a pointer cursor`, async ({
+  test(`bind:hovered reflects hover state; point click/double-click events fire with a pointer cursor`, async ({
     page,
   }) => {
-    const section = page.locator(`#point-event-test`)
-    const first_marker = section.locator(`.scatter path.marker`).first()
-    const clicked_text = section.locator(`[data-testid="last-clicked-point"]`)
-    const double_clicked_text = section.locator(`[data-testid="last-double-clicked-point"]`)
-    await expect(first_marker).toBeVisible()
-    await expect(first_marker).toHaveCSS(`cursor`, `pointer`)
-    // no handler -> no pointer cursor
-    await expect(page.locator(`#basic-example .scatter path.marker`).first()).not.toHaveCSS(
-      `cursor`,
-      `pointer`,
-    )
+    await test.step(`bind:hovered prop reflects hover state`, async () => {
+      const svg = get_chart_svg(page.locator(`#bind-hovered .scatter`))
+      const hover_status = page.locator(`#hover-status`)
+      await expect(hover_status).toHaveText(`false`)
+      await svg.hover()
+      await expect(hover_status).toHaveText(`true`)
+      await page.mouse.move(0, 0)
+      await expect(hover_status).toHaveText(`false`)
+    })
 
-    await expect(clicked_text).toContainText(`Last Clicked Point: none`)
-    await expect(double_clicked_text).toContainText(`Last Double-Clicked Point: none`)
+    await test.step(`point click/double-click events fire and give points a pointer cursor`, async () => {
+      const section = page.locator(`#point-event-test`)
+      const first_marker = section.locator(`.scatter path.marker`).first()
+      const clicked_text = section.locator(`[data-testid="last-clicked-point"]`)
+      const double_clicked_text = section.locator(`[data-testid="last-double-clicked-point"]`)
+      await expect(first_marker).toBeVisible()
+      await expect(first_marker).toHaveCSS(`cursor`, `pointer`)
+      // no handler -> no pointer cursor
+      await expect(page.locator(`#basic-example .scatter path.marker`).first()).not.toHaveCSS(
+        `cursor`,
+        `pointer`,
+      )
 
-    const clickable = first_marker.locator(`..`)
-    await clickable.dispatchEvent(`click`)
-    await expect(clicked_text).toContainText(
-      `Last Clicked Point: Point: series 0, index 0 (x=1, y=2)`,
-    )
-    await expect(double_clicked_text).toContainText(`Last Double-Clicked Point: none`)
-    await clickable.dispatchEvent(`dblclick`)
-    await expect(double_clicked_text).toContainText(
-      `Last Double-Clicked Point: DblClick: series 0, index 0 (x=1, y=2)`,
-    )
-  })
+      await expect(clicked_text).toContainText(`Last Clicked Point: none`)
+      await expect(double_clicked_text).toContainText(`Last Double-Clicked Point: none`)
 
-  test(`drag zoom shrinks both axes, extends past the plot edge, and resets`, async ({
-    page,
-  }) => {
-    const plot = page.locator(`#basic-example .scatter`)
-    const console_errors = collect_console_errors(page)
-    const page_errors = collect_page_errors(page)
-    await expect_zoom_shrinks_axes(page, plot)
-
-    // a drag continuing outside the plot area keeps growing the zoom rect
-    const zoom_rect = plot.locator(`rect.zoom-rect`)
-    const { clip, svg_box } = await measure_plot_area(plot)
-    await page.mouse.move(
-      svg_box.x + clip.x + clip.width * 0.8,
-      svg_box.y + clip.y + clip.height * 0.8,
-    )
-    await page.mouse.down()
-    await page.mouse.move(svg_box.x + clip.x + 5, svg_box.y + clip.y + 5, { steps: 5 })
-    await expect(zoom_rect).toBeVisible()
-    const rect_inside = await require_bbox(zoom_rect, `zoom rect inside`)
-    await page.mouse.move(svg_box.x - 50, svg_box.y - 50, { steps: 5 })
-    await expect(zoom_rect).toBeVisible()
-    const rect_outside = await require_bbox(zoom_rect, `zoom rect outside`)
-    expect(rect_outside.width).toBeGreaterThan(rect_inside.width)
-    expect(rect_outside.height).toBeGreaterThan(rect_inside.height)
-    await page.mouse.up()
-    await expect(zoom_rect).toBeHidden()
-    await expect
-      .poll(async () => (await get_tick_range(plot.locator(`g.x-axis`))).range)
-      .toBeGreaterThan(0)
-
-    expect(page_errors).toHaveLength(0)
-    expect(console_errors).toHaveLength(0)
+      const clickable = first_marker.locator(`..`)
+      await clickable.dispatchEvent(`click`)
+      await expect(clicked_text).toContainText(
+        `Last Clicked Point: Point: series 0, index 0 (x=1, y=2)`,
+      )
+      await expect(double_clicked_text).toContainText(`Last Double-Clicked Point: none`)
+      await clickable.dispatchEvent(`dblclick`)
+      await expect(double_clicked_text).toContainText(
+        `Last Double-Clicked Point: DblClick: series 0, index 0 (x=1, y=2)`,
+      )
+    })
   })
 
   test(`legend toggles and isolates series; axis ranges follow visible series and survive a full hide`, async ({
@@ -456,19 +442,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await series_a_item.click()
     await series_b_item.click()
     await expect.poll(y_range).toBeCloseTo(initial_y.range, 0)
-  })
-
-  test(`legend line color reflects color scale for color-mapped series`, async ({ page }) => {
-    // color-mapped series with lines but no explicit line stroke
-    const legend_item_el = page
-      .locator(`#color-mapped-line-legend-test .scatter .legend .legend-item`)
-      .first()
-    const legend_line = legend_item_el.locator(`line[stroke]`)
-    await expect(legend_line).toHaveCount(1)
-    const legend_stroke = await legend_line.getAttribute(`stroke`)
-    // the legend uses color_scale_fn instead of defaulting to black
-    expect(legend_stroke).toMatch(/^#[0-9a-f]{6}$/i)
-    expect(legend_stroke).not.toBe(`#000000`)
   })
 
   // one page per case: placement has hysteresis, so a colorbar already parked in a corner
@@ -885,50 +858,85 @@ test.describe(`ScatterPlot Component Tests`, () => {
     ).toBeLessThan(Math.min(top_left.y, top_right.y))
   })
 
-  test(`Shift+drag pans the plot instead of zooming, with grab/grabbing cursors`, async ({
+  // Ordered so each step sees the state its checks need: the wheel step needs an unfocused
+  // chart (any mousedown focuses it) and only pans y, the pan step resets both axes by
+  // double-click, and the final out-of-bounds zoom drag leaves the plot zoomed.
+  test(`Shift+wheel pans only with focus, Shift+drag pans with grab cursors, drag zoom extends past the plot edge`, async ({
     page,
   }) => {
     const plot = page.locator(`#basic-example .scatter`)
     const svg = get_chart_svg(plot)
-    await expect(svg).toHaveCSS(`cursor`, `crosshair`)
-    await page.keyboard.down(`Shift`)
-    await expect(svg).toHaveCSS(`cursor`, `grab`)
-    const svg_box = await require_bbox(svg, `svg`)
-    await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
-    await page.mouse.down()
-    // Cursor is set on document.body during pan drag
-    await expect.poll(() => page.evaluate(() => document.body.style.cursor)).toBe(`grabbing`)
-    await page.mouse.up()
-    await page.keyboard.up(`Shift`)
-    await expect(svg).toHaveCSS(`cursor`, `crosshair`)
+    const console_errors = collect_console_errors(page)
+    const page_errors = collect_page_errors(page)
 
-    await expect_shift_drag_pans(page, plot)
-  })
+    await test.step(`pan requires focus for wheel events`, async () => {
+      const y_axis = plot.locator(`g.y-axis`)
+      await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
+      const initial_y = await get_tick_range(y_axis)
+      const svg_box = await require_bbox(svg, `svg`)
+      const shift_wheel = async () => {
+        await page.mouse.move(svg_box.x + svg_box.width / 2, svg_box.y + svg_box.height / 2)
+        await page.keyboard.down(`Shift`)
+        await page.mouse.wheel(0, 100)
+        await page.keyboard.up(`Shift`)
+      }
 
-  test(`pan requires focus for wheel events`, async ({ page }) => {
-    const plot = page.locator(`#basic-example .scatter`)
-    const svg = get_chart_svg(plot)
-    const y_axis = plot.locator(`g.y-axis`)
-    await expect(y_axis.locator(`.tick text`).first()).toBeVisible()
-    const initial_y = await get_tick_range(y_axis)
-    const svg_box = await require_bbox(svg, `svg`)
-    const shift_wheel = async () => {
-      await page.mouse.move(svg_box.x + svg_box.width / 2, svg_box.y + svg_box.height / 2)
+      // without focus the wheel is not captured
+      await shift_wheel()
+      expect((await get_tick_range(y_axis)).ticks).toEqual(initial_y.ticks)
+
+      await svg.focus()
+      await expect(svg).toBeFocused()
+      await shift_wheel()
+      await expect
+        .poll(async () => (await get_tick_range(y_axis)).ticks)
+        .not.toEqual(initial_y.ticks)
+    })
+
+    await test.step(`Shift+drag pans instead of zooming, with grab/grabbing cursors`, async () => {
+      await expect(svg).toHaveCSS(`cursor`, `crosshair`)
       await page.keyboard.down(`Shift`)
-      await page.mouse.wheel(0, 100)
+      await expect(svg).toHaveCSS(`cursor`, `grab`)
+      const svg_box = await require_bbox(svg, `svg`)
+      await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
+      await page.mouse.down()
+      // Cursor is set on document.body during pan drag
+      await expect.poll(() => page.evaluate(() => document.body.style.cursor)).toBe(`grabbing`)
+      await page.mouse.up()
       await page.keyboard.up(`Shift`)
-    }
+      await expect(svg).toHaveCSS(`cursor`, `crosshair`)
 
-    // without focus the wheel is not captured
-    await shift_wheel()
-    expect((await get_tick_range(y_axis)).ticks).toEqual(initial_y.ticks)
+      await expect_shift_drag_pans(page, plot)
+    })
 
-    await svg.focus()
-    await expect(svg).toBeFocused()
-    await shift_wheel()
-    await expect
-      .poll(async () => (await get_tick_range(y_axis)).ticks)
-      .not.toEqual(initial_y.ticks)
+    await test.step(`drag zoom shrinks both axes, extends past the plot edge, and resets`, async () => {
+      await expect_zoom_shrinks_axes(page, plot)
+
+      // a drag continuing outside the plot area keeps growing the zoom rect
+      const zoom_rect = plot.locator(`rect.zoom-rect`)
+      const { clip, svg_box } = await measure_plot_area(plot)
+      await page.mouse.move(
+        svg_box.x + clip.x + clip.width * 0.8,
+        svg_box.y + clip.y + clip.height * 0.8,
+      )
+      await page.mouse.down()
+      await page.mouse.move(svg_box.x + clip.x + 5, svg_box.y + clip.y + 5, { steps: 5 })
+      await expect(zoom_rect).toBeVisible()
+      const rect_inside = await require_bbox(zoom_rect, `zoom rect inside`)
+      await page.mouse.move(svg_box.x - 50, svg_box.y - 50, { steps: 5 })
+      await expect(zoom_rect).toBeVisible()
+      const rect_outside = await require_bbox(zoom_rect, `zoom rect outside`)
+      expect(rect_outside.width).toBeGreaterThan(rect_inside.width)
+      expect(rect_outside.height).toBeGreaterThan(rect_inside.height)
+      await page.mouse.up()
+      await expect(zoom_rect).toBeHidden()
+      await expect
+        .poll(async () => (await get_tick_range(plot.locator(`g.x-axis`))).range)
+        .toBeGreaterThan(0)
+    })
+
+    expect(page_errors).toHaveLength(0)
+    expect(console_errors).toHaveLength(0)
   })
 })
 
@@ -941,79 +949,84 @@ test.describe(`Legend Placement Stability`, () => {
     await page.locator(plot_selector).scrollIntoViewIfNeeded()
   })
 
-  test(`smart placement keeps the legend inside the plot and away from markers`, async ({
+  test(`smart placement keeps the legend inside the plot, away from markers, and fixed while hovered`, async ({
     page,
   }) => {
     const plot = page.locator(plot_selector)
     const legend = plot.locator(`.legend`)
-    // Wait for smart placement to move the legend away from the top-left fallback corner
-    const legend_bbox = await wait_for_stable_bbox(legend)
-    const plot_bbox = await require_bbox(plot, `plot`)
-    const legend_center_x = legend_bbox.x + legend_bbox.width / 2
-    const legend_center_y = legend_bbox.y + legend_bbox.height / 2
-    expect(legend_center_x).toBeGreaterThan(plot_bbox.x)
-    expect(legend_center_x).toBeLessThan(plot_bbox.x + plot_bbox.width)
-    expect(legend_center_y).toBeGreaterThan(plot_bbox.y)
-    expect(legend_center_y).toBeLessThan(plot_bbox.y + plot_bbox.height)
 
-    // 5% of the plot diagonal is a reasonable clearance for a small dataset
-    const marker_boxes = await Promise.all(
-      (await plot.locator(`path.marker`).all()).map((marker) => marker.boundingBox()),
-    )
-    const min_distance = Math.min(
-      ...marker_boxes.map((marker_bbox) =>
-        marker_bbox
-          ? Math.hypot(
-              legend_center_x - (marker_bbox.x + marker_bbox.width / 2),
-              legend_center_y - (marker_bbox.y + marker_bbox.height / 2),
-            )
-          : Infinity,
-      ),
-    )
-    expect(min_distance).toBeGreaterThan(Math.hypot(plot_bbox.width, plot_bbox.height) * 0.05)
+    await test.step(`smart placement keeps the legend inside the plot and away from markers`, async () => {
+      // Wait for smart placement to move the legend away from the top-left fallback corner
+      const legend_bbox = await wait_for_stable_bbox(legend)
+      const plot_bbox = await require_bbox(plot, `plot`)
+      const legend_center_x = legend_bbox.x + legend_bbox.width / 2
+      const legend_center_y = legend_bbox.y + legend_bbox.height / 2
+      expect(legend_center_x).toBeGreaterThan(plot_bbox.x)
+      expect(legend_center_x).toBeLessThan(plot_bbox.x + plot_bbox.width)
+      expect(legend_center_y).toBeGreaterThan(plot_bbox.y)
+      expect(legend_center_y).toBeLessThan(plot_bbox.y + plot_bbox.height)
 
-    // hovering a series marks its legend item with the accent edge alone, no background
-    await plot.locator(`path.marker`).first().hover({ force: true })
-    const active_item = plot.locator(`.legend-item.active`) // strict: exactly one
-    await expect(active_item).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
-    await expect(active_item).toHaveCSS(`box-shadow`, /inset/)
-  })
+      // 5% of the plot diagonal is a reasonable clearance for a small dataset
+      const marker_boxes = await Promise.all(
+        (await plot.locator(`path.marker`).all()).map((marker) => marker.boundingBox()),
+      )
+      const min_distance = Math.min(
+        ...marker_boxes.map((marker_bbox) =>
+          marker_bbox
+            ? Math.hypot(
+                legend_center_x - (marker_bbox.x + marker_bbox.width / 2),
+                legend_center_y - (marker_bbox.y + marker_bbox.height / 2),
+              )
+            : Infinity,
+        ),
+      )
+      expect(min_distance).toBeGreaterThan(
+        Math.hypot(plot_bbox.width, plot_bbox.height) * 0.05,
+      )
 
-  test(`legend position stays fixed while hovered during series toggles`, async ({ page }) => {
-    const plot = page.locator(plot_selector)
-    const legend = plot.locator(`.legend`)
-    const initial_pos = await wait_for_stable_bbox(legend)
+      // hovering a series marks its legend item with the accent edge alone, no background
+      await plot.locator(`path.marker`).first().hover({ force: true })
+      const active_item = plot.locator(`.legend-item.active`) // strict: exactly one
+      await expect(active_item).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+      await expect(active_item).toHaveCSS(`box-shadow`, /inset/)
+      // leave the marker so the next step starts with no series hovered
+      await page.mouse.move(0, 0)
+    })
 
-    await legend.hover()
-    const series_a = legend.locator(`.legend-item`).first()
-    await series_a.click()
-    await expect(series_a).toHaveClass(/hidden/)
-    // hover lock: the legend does not re-place while the pointer is on it
-    const after_toggle = await require_bbox(legend, `legend`)
-    expect(
-      Math.hypot(after_toggle.x - initial_pos.x, after_toggle.y - initial_pos.y),
-    ).toBeLessThan(10)
-    await series_a.click()
+    await test.step(`legend position stays fixed while hovered during series toggles`, async () => {
+      const initial_pos = await wait_for_stable_bbox(legend)
 
-    // rapid toggling of every item leaves a sane legend behind
-    const items = legend.locator(`.legend-item`)
-    const count = await items.count()
-    for (const hide of [true, false]) {
-      for (let idx = 0; idx < count; idx++) {
-        await items.nth(idx).click()
-        if (hide) await expect(items.nth(idx)).toHaveClass(/hidden/)
-        else await expect(items.nth(idx)).not.toHaveClass(/hidden/)
+      await legend.hover()
+      const series_a = legend.locator(`.legend-item`).first()
+      await series_a.click()
+      await expect(series_a).toHaveClass(/hidden/)
+      // hover lock: the legend does not re-place while the pointer is on it
+      const after_toggle = await require_bbox(legend, `legend`)
+      expect(
+        Math.hypot(after_toggle.x - initial_pos.x, after_toggle.y - initial_pos.y),
+      ).toBeLessThan(10)
+      await series_a.click()
+
+      // rapid toggling of every item leaves a sane legend behind
+      const items = legend.locator(`.legend-item`)
+      const count = await items.count()
+      for (const hide of [true, false]) {
+        for (let idx = 0; idx < count; idx++) {
+          await items.nth(idx).click()
+          if (hide) await expect(items.nth(idx)).toHaveClass(/hidden/)
+          else await expect(items.nth(idx)).not.toHaveClass(/hidden/)
+        }
       }
-    }
-    const plot_bbox = await require_bbox(plot, `plot`)
-    await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
-    const final_pos = await wait_for_stable_bbox(legend)
-    expect(final_pos.width).toBeGreaterThan(50)
-    expect(final_pos.height).toBeGreaterThan(20)
-    // a released hover lock may re-place, but not across the plot
-    expect(Math.hypot(final_pos.x - initial_pos.x, final_pos.y - initial_pos.y)).toBeLessThan(
-      100,
-    )
+      const plot_bbox = await require_bbox(plot, `plot`)
+      await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
+      const final_pos = await wait_for_stable_bbox(legend)
+      expect(final_pos.width).toBeGreaterThan(50)
+      expect(final_pos.height).toBeGreaterThan(20)
+      // a released hover lock may re-place, but not across the plot
+      expect(
+        Math.hypot(final_pos.x - initial_pos.x, final_pos.y - initial_pos.y),
+      ).toBeLessThan(100)
+    })
   })
 
   test(`dragging moves the legend, keeps it interactive and inside the plot after resize`, async ({

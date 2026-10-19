@@ -331,6 +331,131 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Score`)).toEqual([`0.99`, `0.95`, `0.85`, `0.75`])
     })
 
+    // Svelte already skips DOM writes of unchanged values, so beyond node identity and DOM
+    // mutations this counts each column's td attribute-effect runs through a `label` getter
+    // (every td reads it for data-col): stable column views keep other columns' cells idle.
+    it(`updates one cell in place, repainting its column only when the color range moves`, () => {
+      const label_reads: Record<string, number> = {}
+      type Extra = Pick<Column, `better` | `color_scale` | `highlight_best`>
+      const counted = (id: string, label: string, extra: Extra = {}): Column => ({
+        id,
+        ...extra,
+        get label() {
+          label_reads[id] = (label_reads[id] ?? 0) + 1
+          return label
+        },
+      })
+      const columns = [
+        counted(`name`, `Name`),
+        counted(`count`, `Count`, { color_scale: null }),
+        counted(`energy`, `Energy`, { better: `higher`, highlight_best: true }),
+        counted(`phase`, `Phase`),
+      ]
+      const phases = [`solid`, `liquid`, `gas`]
+      let data = $state.raw(
+        Array.from({ length: 20 }, (_, idx) => ({
+          name: `row ${idx}`,
+          count: idx * 3,
+          energy: idx / 4,
+          phase: phases[idx % 3],
+        })),
+      )
+      mount_table({
+        get data() {
+          return data
+        },
+        columns,
+        row_key: `name`,
+      })
+      flushSync()
+      const tbody = doc_query(`tbody`)
+      const nodes = () => [...tbody.querySelectorAll(`tr, td`)]
+      const initial_nodes = nodes()
+      expect(initial_nodes).toHaveLength(20 * 5)
+      const energy_styles = () =>
+        Array.from({ length: 20 }, (_, idx) => cell_at(idx, 2).style.cssText)
+      const initial_styles = energy_styles()
+      const best_row = () => doc_query(`td.best-cell`).dataset.rowIdx
+      expect(best_row()).toBe(`19`)
+      const observer = new MutationObserver(() => {})
+      observer.observe(tbody, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      })
+      onTestFinished(() => observer.disconnect())
+      // Replaces one row object, returning the cells whose DOM changed
+      const update_energy = (row_idx: number, energy: number): HTMLElement[] => {
+        for (const id of Object.keys(label_reads)) label_reads[id] = 0
+        data = data.with(row_idx, { ...data[row_idx], energy })
+        flushSync()
+        // a mutated row or tbody maps to itself, failing the column checks below
+        const targets = observer.takeRecords().map(({ target }) => {
+          const element = target instanceof HTMLElement ? target : target.parentElement
+          return element?.closest(`td`) ?? element
+        })
+        return [...new Set(targets)].filter((node) => node != null)
+      }
+
+      // A new maximum moves the color range: the whole Energy column repaints, nothing else
+      const repainted = update_energy(7, 99)
+      expect(label_reads).toEqual({ name: 0, count: 0, energy: 20, phase: 0 })
+      expect(cell_at(7, 2).textContent?.trim()).toBe(`99`)
+      expect(repainted.every((cell) => cell.dataset.col === `Energy`)).toBe(true)
+      expect(repainted).toContain(cell_at(7, 2))
+      expect(repainted).toContain(cell_at(19, 2))
+      expect(best_row()).toBe(`7`)
+
+      // An edit inside the range keeps the column's color function: one cell re-runs
+      const edited = update_energy(3, 0.8)
+      expect(label_reads).toEqual({ name: 0, count: 0, energy: 1, phase: 0 })
+      expect(edited).toHaveLength(1)
+      expect(edited[0]).toBe(cell_at(3, 2))
+      expect(cell_at(3, 2).textContent?.trim()).toBe(`0.8`)
+
+      // Restoring the old maximum restores every other cell's color
+      update_energy(7, 7 / 4)
+      update_energy(3, 3 / 4)
+      expect(energy_styles()).toEqual(initial_styles)
+      expect(best_row()).toBe(`19`)
+      const current = nodes()
+      expect(current).toHaveLength(initial_nodes.length)
+      expect(current.every((node, idx) => node === initial_nodes[idx])).toBe(true)
+    })
+
+    it(`keeps discovered columns across data updates, re-running only the edited row`, () => {
+      let runs = 0
+      const seen_cols = new Set<unknown>()
+      const cell = createRawSnippet((args: () => CellSnippetArgs) => ({
+        render: () => `<span></span>`,
+        setup: (span) => {
+          $effect(() => {
+            const { col, val } = args()
+            runs++
+            seen_cols.add(col)
+            span.textContent = `${Number(val)}`
+          })
+        },
+      }))
+      let data = $state.raw(value_rows([1, 2, 3, 4]))
+      mount_table({
+        get data() {
+          return data
+        },
+        cell,
+        row_key: `Name`,
+      })
+      flushSync()
+      expect(runs).toBe(8)
+      data = data.with(2, { ...data[2], Value: 30 })
+      flushSync()
+      // both cells of the replaced row get the new row object, no other cell re-runs
+      expect(runs).toBe(10)
+      expect(seen_cols.size).toBe(2)
+      expect(cell_at(2, 1).querySelector(`span`)?.textContent).toBe(`30`)
+    })
+
     it(`selects valid date/time column display modes`, async () => {
       const created = new Date(2024, 0, 2, 3, 4)
       const now = new Date(2024, 0, 3, 5, 34).getTime()

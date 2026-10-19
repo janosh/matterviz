@@ -1797,10 +1797,15 @@ describe(`leading_number`, () => {
 })
 
 describe(`assert_non_negative`, () => {
-  test.each([0, -0, 1e-12, 2.5, Number.MAX_VALUE])(`returns %d as is`, (value) => {
+  test.each<[number, true | undefined]>([
+    ...[0, -0, 1e-12, 2.5, Number.MAX_VALUE].flatMap((value): [number, true | undefined][] => [
+      [value, undefined],
+      [value, true],
+    ]),
+    [Infinity, true], // only allow_infinity lets +Infinity through
+  ])(`returns %d as is (allow_infinity=%s)`, (value, allow_infinity) => {
     // toBe compares with Object.is, so -0 must come back as -0
-    expect(math.assert_non_negative(value, `size`)).toBe(value)
-    expect(math.assert_non_negative(value, `size`, true)).toBe(value)
+    expect(math.assert_non_negative(value, `size`, allow_infinity)).toBe(value)
   })
 
   test.each([
@@ -1820,8 +1825,4 @@ describe(`assert_non_negative`, () => {
       expect(call).toThrow(`size must be a ${message}`)
     },
   )
-
-  test(`allow_infinity lets +Infinity through`, () => {
-    expect(math.assert_non_negative(Infinity, `size`, true)).toBe(Infinity)
-  })
 })

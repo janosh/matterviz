@@ -53,62 +53,119 @@ test(`loading overlay stays centered and compact in wide and narrow viewers`, as
 })
 
 test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
-  test.beforeEach(async ({ page }: { page: Page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.goto(`/test/brillouin-zone`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
 
-  // inputs bound to the status readouts; bz-order's readout repeats in the Status section
-  for (const [setting, initial, changed] of [
-    [`bz-order`, `1`, `2`],
-    [`ibz-color`, `#ff8844`, `#00ff00`],
-    [`ibz-opacity`, `0.5`, `0.8`],
-  ]) {
-    test(`${setting} control updates its status`, async ({ page }) => {
+  test(`bound inputs and the fullscreen checkbox update their status readouts`, async ({
+    page,
+  }) => {
+    // inputs bound to the status readouts; bz-order's readout repeats in the Status section
+    for (const [setting, initial, changed] of [
+      [`bz-order`, `1`, `2`],
+      [`ibz-color`, `#ff8844`, `#00ff00`],
+      [`ibz-opacity`, `0.5`, `0.8`],
+    ]) {
       const status = status_locator(page, setting)
-      await expect(status).toHaveText(initial)
+      await expect(status, `${setting} initial`).toHaveText(initial)
       await page.locator(`#${setting}`).fill(changed)
-      await expect(status).toHaveText(changed)
+      await expect(status, `${setting} changed`).toHaveText(changed)
+    }
+
+    // fullscreen last, since it covers the page's other controls
+    const fullscreen_status = page.locator(`[data-testid="fullscreen-status"]`)
+    const fullscreen_checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
+    await expect(fullscreen_status).toHaveText(`false`)
+    await expect(fullscreen_checkbox).not.toBeChecked()
+
+    await fullscreen_checkbox.click({ force: true })
+    await expect(fullscreen_status).toHaveText(`true`)
+    await expect(fullscreen_checkbox).toBeChecked()
+
+    // the fullscreen viewer can cover the checkbox, so uncheck it programmatically
+    await fullscreen_checkbox.evaluate((element: HTMLInputElement) => {
+      element.checked = false
+      element.dispatchEvent(new Event(`change`, { bubbles: true }))
     })
-  }
+    await expect(fullscreen_status).toHaveText(`false`)
+    await expect(fullscreen_checkbox).not.toBeChecked()
+  })
 
-  test(`camera projection toggles and orthographic zoom fits the zone`, async ({ page }) => {
-    const projection = page.locator(`#camera-projection`)
-    await expect(projection).toHaveValue(`perspective`)
-    await projection.selectOption(`orthographic`)
-    await expect(status_locator(page, `camera-projection`)).toHaveText(`orthographic`)
+  test(`camera projection toggles, orthographic zoom fits the zone and the clipped canvas rotates and zooms`, async ({
+    page,
+  }) => {
+    await test.step(`projection toggle and orthographic fit`, async () => {
+      const projection = page.locator(`#camera-projection`)
+      await expect(projection).toHaveValue(`perspective`)
+      await projection.selectOption(`orthographic`)
+      await expect(status_locator(page, `camera-projection`)).toHaveText(`orthographic`)
 
-    // initial_zoom (50) is relative to the fit, not an absolute camera zoom: passing it
-    // through verbatim left the zone a few times too small and deaf to the viewport size
-    const read_zoom = () =>
-      page.evaluate(() => (globalThis as { read_bz_zoom?: () => number }).read_bz_zoom?.())
-    const set_bz_width = async (css_width: string) => {
-      await page.locator(BZ_SELECTOR).evaluate((element, width) => {
-        ;(element as HTMLElement).style.setProperty(`--bz-width`, width)
-      }, css_width)
-      await page.waitForTimeout(200)
-    }
+      // initial_zoom (50) is relative to the fit, not an absolute camera zoom: passing it
+      // through verbatim left the zone a few times too small and deaf to the viewport size
+      const read_zoom = () =>
+        page.evaluate(() => (globalThis as { read_bz_zoom?: () => number }).read_bz_zoom?.())
+      const set_bz_width = async (css_width: string) => {
+        await page.locator(BZ_SELECTOR).evaluate((element, width) => {
+          ;(element as HTMLElement).style.setProperty(`--bz-width`, width)
+        }, css_width)
+        await page.waitForTimeout(200)
+      }
 
-    // Zoom per shorter canvas edge, the quantity the fit holds constant. Measured from the
-    // canvas rather than the CSS width so borders or sub-pixel layout rounding can't turn a
-    // correct fit into a failure — and so the assertion says what invariant it is checking.
-    const canvas = page.locator(`${BZ_SELECTOR} canvas`)
-    const zoom_per_edge = async (): Promise<number> => {
+      // Zoom per shorter canvas edge, the quantity the fit holds constant. Measured from the
+      // canvas rather than the CSS width so borders or sub-pixel layout rounding can't turn a
+      // correct fit into a failure — and so the assertion says what invariant it is checking.
+      const canvas = page.locator(`${BZ_SELECTOR} canvas`)
+      const zoom_per_edge = async (): Promise<number> => {
+        const box = await require_bbox(canvas, `BZ canvas`)
+        return ((await read_zoom()) ?? 0) / Math.min(box.width, box.height)
+      }
+
+      const wide_zoom = await read_zoom()
+      expect(wide_zoom).toBeGreaterThan(50)
+      const wide_zoom_per_edge = await zoom_per_edge()
+      // the page fixes height at 500px, so narrowing past it drives the shorter edge
+      await set_bz_width(`400px`)
+      await expect.poll(read_zoom).toBeLessThan(wide_zoom ?? 0)
+      expect(await zoom_per_edge()).toBeCloseTo(wide_zoom_per_edge, 5)
+      await set_bz_width(`800px`)
+      await expect.poll(read_zoom).toBeCloseTo(wide_zoom ?? 0, 5)
+
+      await projection.selectOption(`perspective`)
+    })
+
+    // projection is back to perspective; the restored 800px width is the page default
+    await test.step(`clipped canvas rotation and zoom`, async () => {
+      const viewer = page.locator(BZ_SELECTOR)
+      const canvas = viewer.locator(`canvas`)
+      await expect(viewer).toHaveCSS(`overflow`, `visible`)
+      await expect(canvas.locator(`..`)).toHaveCSS(`overflow`, `hidden`)
+      await expect(canvas).toHaveAttribute(`width`, /^[1-9]\d*$/)
+      await expect(canvas).toHaveAttribute(`height`, /^[1-9]\d*$/)
       const box = await require_bbox(canvas, `BZ canvas`)
-      return ((await read_zoom()) ?? 0) / Math.min(box.width, box.height)
-    }
 
-    const wide_zoom = await read_zoom()
-    expect(wide_zoom).toBeGreaterThan(50)
-    const wide_zoom_per_edge = await zoom_per_edge()
-    // the page fixes height at 500px, so narrowing past it drives the shorter edge
-    await set_bz_width(`400px`)
-    await expect.poll(read_zoom).toBeLessThan(wide_zoom ?? 0)
-    expect(await zoom_per_edge()).toBeCloseTo(wide_zoom_per_edge, 5)
-    await set_bz_width(`800px`)
-    await expect.poll(read_zoom).toBeCloseTo(wide_zoom ?? 0, 5)
+      const initial = await canvas.screenshot()
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
+      })
 
-    await projection.selectOption(`perspective`)
+      // Poll until canvas screenshot differs from initial (rotation applied)
+      let rotated = initial
+      await expect(async () => {
+        rotated = await canvas.screenshot()
+        expect(rotated.equals(initial)).toBe(false)
+      }).toPass({ timeout: 5000 })
+
+      await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
+      await page.mouse.wheel(0, -200)
+
+      // Poll until canvas screenshot differs from rotated (zoom applied)
+      await expect(async () => {
+        const zoomed = await canvas.screenshot()
+        expect(zoomed.equals(rotated)).toBe(false)
+      }).toPass({ timeout: 5000 })
+    })
   })
 
   test(`controls pane toggles`, async ({ page }) => {
@@ -176,62 +233,6 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
     }
   })
 
-  test(`clipped canvas handles camera rotation and zoom`, async ({ page }) => {
-    const viewer = page.locator(BZ_SELECTOR)
-    const canvas = viewer.locator(`canvas`)
-    await expect(viewer).toHaveCSS(`overflow`, `visible`)
-    await expect(canvas.locator(`..`)).toHaveCSS(`overflow`, `hidden`)
-    await expect(canvas).toHaveAttribute(`width`, /^[1-9]\d*$/)
-    await expect(canvas).toHaveAttribute(`height`, /^[1-9]\d*$/)
-    const box = await require_bbox(canvas, `BZ canvas`)
-
-    const initial = await canvas.screenshot()
-    await canvas.dragTo(canvas, {
-      sourcePosition: { x: box.width / 2 - 50, y: box.height / 2 },
-      targetPosition: { x: box.width / 2 + 50, y: box.height / 2 },
-    })
-
-    // Poll until canvas screenshot differs from initial (rotation applied)
-    let rotated = initial
-    await expect(async () => {
-      rotated = await canvas.screenshot()
-      expect(rotated.equals(initial)).toBe(false)
-    }).toPass({ timeout: 5000 })
-
-    await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
-    await page.mouse.wheel(0, -200)
-
-    // Poll until canvas screenshot differs from rotated (zoom applied)
-    await expect(async () => {
-      const zoomed = await canvas.screenshot()
-      expect(zoomed.equals(rotated)).toBe(false)
-    }).toPass({ timeout: 5000 })
-  })
-
-  test(`fullscreen prop is bindable`, async ({ page }) => {
-    const status = page.locator(`[data-testid="fullscreen-status"]`)
-    const checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-
-    await expect(status).toHaveText(`false`)
-    await expect(checkbox).not.toBeChecked()
-
-    await checkbox.click({ force: true })
-    await expect(status).toHaveText(`true`)
-    await expect(checkbox).toBeChecked()
-
-    await page.evaluate(() => {
-      const element = document.querySelector<HTMLInputElement>(
-        `[data-testid="fullscreen-checkbox"]`,
-      )
-      if (element) {
-        element.checked = false
-        element.dispatchEvent(new Event(`change`, { bubbles: true }))
-      }
-    })
-    await expect(status).toHaveText(`false`)
-    await expect(checkbox).not.toBeChecked()
-  })
-
   test(`IBZ loads, changes the rendering and clears when disabled`, async ({ page }) => {
     const checkbox = page.locator(`#show-ibz`)
     const status = page.locator(`[data-testid="show-ibz"]`)
@@ -257,7 +258,10 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
     await expect(status).toHaveText(`false`)
     await expect(data_status).toHaveText(`null`)
   })
+})
 
+// tests navigating to their own URL stay outside the describe above to skip its page load
+test.describe(`BrillouinZone URL-driven loads`, { tag: `@webgl` }, () => {
   test(`IBZ can be enabled via URL parameter`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?show_ibz=true`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, BZ_SELECTOR)
@@ -273,14 +277,12 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
       timeout: IBZ_LOAD_TIMEOUT,
     })
   })
-})
 
-test.describe(`BrillouinZone Event Handler Tests`, { tag: `@webgl` }, () => {
   test(`triggers on_file_load with source`, async ({ page }) => {
     await page.goto(`/test/brillouin-zone?source=/structures/mp-1.json`, {
       waitUntil: `networkidle`,
     })
-    await page.waitForSelector(`${BZ_SELECTOR} canvas`, { timeout: 20000 })
+    await wait_for_3d_canvas(page, BZ_SELECTOR, 20_000)
     await expect(page.locator(`[data-testid="events"]`)).toContainText(`on_file_load`, {
       timeout: IBZ_LOAD_TIMEOUT,
     })

@@ -45,6 +45,7 @@
   // frame, so resolve the colour per theme/style change instead.
   const contour_color = resolve_computed_color(() => canvas, `color`, {
     fallback: `currentColor`,
+    watch: [`--volume-slice-contour-color`],
   })
 
   let image_data: ImageData | undefined

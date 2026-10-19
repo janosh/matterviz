@@ -20,6 +20,7 @@ import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 import {
   cubic_matrix,
+  FCC_FACE_CENTRES,
   make_crystal,
   make_molecule,
   make_rocksalt,
@@ -554,11 +555,9 @@ const wrap_frac = (val: number) => val - Math.floor(val)
 // sites of one element at the given fractional coordinates
 const sites_at = (element: ElementSymbol, abcs: Vec3[]) =>
   abcs.map((abc) => ({ element, abc }))
-// oxfmt-ignore
-const fcc_offsets: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
 // fcc lattice sites for `element`, once per basis vector
 const fcc = (element: ElementSymbol, basis: Vec3[] = [[0, 0, 0]]) =>
-  fcc_offsets.flatMap((off) =>
+  FCC_FACE_CENTRES.flatMap((off) =>
     basis.map((vec) => ({
       element,
       abc: off.map((coord, axis) => wrap_frac(coord + vec[axis])) as Vec3,
@@ -787,6 +786,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   const counts = bonds_per_site(bonds, structure.sites.length)
   expect(counts[3]).toBe(counts[0]) // image (idx 3) bonds identically to original (idx 0)
 })
+
 test(`bonding logic treats original and image atoms consistently`, () => {
   const structure = make_crystal(10, [
     [`C`, [0.02, 0.5, 0.5]], // x=0.2, within the 0.5 Å face tolerance => phase-1 image at 10.2

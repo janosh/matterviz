@@ -1,10 +1,12 @@
 import { expect, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
+  drag_canvas,
   drag_plot_area,
   get_chart_svg,
   measure_plot_area,
   numeric_y_ticks,
+  require_bbox,
   reset_plot_area,
   expect_canvas_changed,
   expect_combined_fullscreen,
@@ -60,95 +62,115 @@ test.describe(
       await expect_combined_fullscreen(container, panels, `.brillouin-zone`)
     })
 
-    test(`renders all three panels with content`, async ({ page }) => {
-      const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
+    test(`renders panels, custom bands styling, independent y-axes, BZ controls and multi-structure children`, async ({
+      page,
+    }) => {
+      await test.step(`default component renders all three panels with content`, async () => {
+        const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
 
-      const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
-      await expect(bands_svg).toBeVisible({ timeout: 10_000 })
-      await expect(bands_svg.locator(line_path_selector).first()).toBeVisible({
-        timeout: 5000,
+        const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
+        await expect(bands_svg).toBeVisible({ timeout: 10_000 })
+        await expect(bands_svg.locator(line_path_selector).first()).toBeVisible({
+          timeout: 5000,
+        })
+
+        const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
+        await expect(dos_svg).toBeVisible({ timeout: 10_000 })
+        await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
+        await expect(dos_svg.locator(line_path_selector).first()).toBeVisible({
+          timeout: 5000,
+        })
+
+        const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
+        expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
       })
 
-      const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
-      await expect(dos_svg).toBeVisible({ timeout: 10_000 })
-      await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
-      await expect(dos_svg.locator(line_path_selector).first()).toBeVisible({
-        timeout: 5000,
+      await test.step(`custom bands styling`, async () => {
+        // red, thick lines
+        const styling_container = page.locator(`[data-testid="bz-bands-dos-bands-styling"]`)
+        const first_path = styling_container
+          .locator(`svg:has(g.x-axis)`)
+          .first()
+          .locator(line_path_selector)
+          .first()
+        const stroke = await first_path.evaluate((element) => getComputedStyle(element).stroke)
+        expect(stroke).toContain(`rgb(255, 0, 0)`)
       })
 
-      const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
-      expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
-    })
+      await test.step(`independent y-axes and BZ controls`, async () => {
+        const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
+        const bands_y = await indep_container
+          .locator(`svg:has(g.x-axis)`)
+          .first()
+          .locator(`g.y-axis text`)
+          .allTextContents()
+        const dos_y = await indep_container
+          .locator(`svg:has(g.y-axis)`)
+          .nth(1)
+          .locator(`g.y-axis text`)
+          .allTextContents()
+        expect(bands_y).not.toEqual(dos_y)
 
-    test(`applies custom bands styling`, async ({ page }) => {
-      // red, thick lines
-      const styling_container = page.locator(`[data-testid="bz-bands-dos-bands-styling"]`)
-      const first_path = styling_container
-        .locator(`svg:has(g.x-axis)`)
-        .first()
-        .locator(line_path_selector)
-        .first()
-      const stroke = await first_path.evaluate((element) => getComputedStyle(element).stroke)
-      expect(stroke).toContain(`rgb(255, 0, 0)`)
-    })
+        // BZ controls visible when enabled
+        const controls_container = page.locator(`[data-testid="bz-bands-dos-with-controls"]`)
+        await expect(controls_container.locator(`button.controls-toggle`)).toBeVisible()
+      })
 
-    test(`handles independent y-axes and custom BZ appearance`, async ({ page }) => {
-      const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
-      const bands_y = await indep_container
-        .locator(`svg:has(g.x-axis)`)
-        .first()
-        .locator(`g.y-axis text`)
-        .allTextContents()
-      const dos_y = await indep_container
-        .locator(`svg:has(g.y-axis)`)
-        .nth(1)
-        .locator(`g.y-axis text`)
-        .allTextContents()
-      expect(bands_y).not.toEqual(dos_y)
+      await test.step(`multiple structures with legend and children snippet`, async () => {
+        await page.locator(`#multiple-structures`).scrollIntoViewIfNeeded()
+        const container = page.locator(`[data-testid="bz-bands-dos-multiple"]`)
+        // Bands and DOS may each show a legend for multiple series
+        const legend = container.locator(`.legend`).first()
+        await expect(legend).toBeVisible()
+        expect(await legend.locator(`.legend-item`).count()).toBeGreaterThanOrEqual(2)
+        expect(await legend.textContent()).toContain(`DFT`)
 
-      // BZ controls visible when enabled
-      const controls_container = page.locator(`[data-testid="bz-bands-dos-with-controls"]`)
-      await expect(controls_container.locator(`button.controls-toggle`)).toBeVisible()
-    })
-
-    test(`renders multiple structures with legend and children snippet`, async ({ page }) => {
-      await page.locator(`#multiple-structures`).scrollIntoViewIfNeeded()
-      const container = page.locator(`[data-testid="bz-bands-dos-multiple"]`)
-      // Bands and DOS may each show a legend for multiple series
-      const legend = container.locator(`.legend`).first()
-      await expect(legend).toBeVisible()
-      expect(await legend.locator(`.legend-item`).count()).toBeGreaterThanOrEqual(2)
-      expect(await legend.textContent()).toContain(`DFT`)
-
-      const custom_overlay = container.locator(`.custom-overlay`)
-      await expect(custom_overlay).toBeVisible()
-      await expect(custom_overlay).toHaveText(`Custom Overlay`)
-      // all three panels still render alongside the child
-      await expect(container.locator(`canvas`).first()).toBeVisible()
-      await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
-      await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
+        const custom_overlay = container.locator(`.custom-overlay`)
+        await expect(custom_overlay).toBeVisible()
+        await expect(custom_overlay).toHaveText(`Custom Overlay`)
+        // all three panels still render alongside the child
+        await expect(container.locator(`canvas`).first()).toBeVisible()
+        await expect(container.locator(`svg:has(g.x-axis)`).first()).toBeVisible()
+        await expect(container.locator(`svg:has(g.y-axis)`).nth(1)).toBeVisible()
+      })
     })
 
     test(`BZ rotates with mouse drag`, async ({ page }) => {
       const bz_canvas = page.locator(default_bz_canvas_selector).first()
       const initial = await canvas_screenshot(bz_canvas)
-
-      const box = await bz_canvas.boundingBox()
-      if (!box) throw new Error(`Missing BZ canvas geometry`)
-      const center_x = box.x + box.width / 2
-      const center_y = box.y + box.height / 2
-      await page.mouse.move(center_x, center_y)
-      await page.mouse.down()
-      await page.mouse.move(center_x + 50, center_y, { steps: 10 })
-      await page.mouse.up()
-
+      await drag_canvas(bz_canvas, { dx: 50, steps: 10 })
       await expect_canvas_changed(bz_canvas, initial, 5000)
     })
 
-    test(`desktop panels share y-axis ticks; zoom and reset propagate from either panel`, async ({
+    test(`desktop panels show DOS hover reference lines and share y-axis ticks; zoom and reset propagate from either panel`, async ({
       page,
     }) => {
       const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
+      // hover first: the zoom steps end with the mouse over the DOS, where a reference line
+      // would already show and hide the one this hover should add
+      await test.step(`hovering over DOS shows reference lines in both bands and DOS`, async () => {
+        const bands_svg = get_chart_svg(bands_plot)
+        const dos_svg = get_chart_svg(dos_plot)
+
+        // Get initial count of dashed lines (fermi level lines may already exist)
+        const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
+
+        // Hover over DOS plot area (on a DOS path to trigger hover)
+        const dos_path = dos_svg.locator(line_path_selector).first()
+        await expect(dos_path).toBeVisible()
+        await dos_path.hover({ force: true })
+
+        // Wait for hover state to update - reference lines with stroke-dasharray should appear
+        await expect(async () => {
+          const current_dashed_count = await bands_svg
+            .locator(`line[stroke-dasharray]`)
+            .count()
+          // Reference line should be added on hover (in addition to any existing fermi level lines)
+          expect(current_dashed_count).toBeGreaterThan(initial_dashed_count)
+        }).toPass({ timeout: 3000 })
+      })
+      await page.mouse.move(0, 0)
+
       // plot control panes can extend beyond their grid cells
       await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
       await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
@@ -210,8 +232,7 @@ test.describe(
       const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
       await expect(bands_svg).toBeVisible()
       await expect(dos_svg).toBeVisible()
-      const desktop_dos_box = await dos_svg.boundingBox()
-      if (!desktop_dos_box) throw new Error(`Missing desktop DOS geometry`)
+      const desktop_dos_box = await require_bbox(dos_svg, `desktop DOS`)
       expect(desktop_dos_box.width).toBeLessThan(desktop_dos_box.height * 2)
 
       const tablet = await set_layout(800, 700, `tablet`)
@@ -220,13 +241,10 @@ test.describe(
       expect(tablet.columns.split(` `)).toHaveLength(2)
       expect(tablet.gap).not.toMatch(/^$|^0px$/)
       const [canvas_box, container_box, tablet_dos_box] = await Promise.all([
-        container.locator(`canvas`).first().boundingBox(),
-        container.boundingBox(),
-        dos_svg.boundingBox(),
+        require_bbox(container.locator(`canvas`).first(), `tablet BZ canvas`),
+        require_bbox(container, `tablet container`),
+        require_bbox(dos_svg, `tablet DOS`),
       ])
-      if (!canvas_box || !container_box || !tablet_dos_box) {
-        throw new Error(`Missing tablet panel geometry`)
-      }
       expect(canvas_box.height).toBeLessThanOrEqual(container_box.height / 2 + 50)
       expect(tablet_dos_box.width).toBeGreaterThan(tablet_dos_box.height * 0.5)
 
@@ -236,27 +254,6 @@ test.describe(
       expect(phone.gap).not.toMatch(/^$|^0px$/)
       await expect(bands_svg).toBeVisible()
       await expect(dos_svg).toBeVisible()
-    })
-
-    test(`hovering over DOS shows reference lines in both bands and DOS`, async ({ page }) => {
-      const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
-      const bands_svg = get_chart_svg(bands_plot)
-      const dos_svg = get_chart_svg(dos_plot)
-
-      // Get initial count of dashed lines (fermi level lines may already exist)
-      const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
-
-      // Hover over DOS plot area (on a DOS path to trigger hover)
-      const dos_path = dos_svg.locator(line_path_selector).first()
-      await expect(dos_path).toBeVisible()
-      await dos_path.hover({ force: true })
-
-      // Wait for hover state to update - reference lines with stroke-dasharray should appear
-      await expect(async () => {
-        const current_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
-        // Reference line should be added on hover (in addition to any existing fermi level lines)
-        expect(current_dashed_count).toBeGreaterThan(initial_dashed_count)
-      }).toPass({ timeout: 3000 })
     })
   },
 )

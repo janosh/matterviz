@@ -45,15 +45,26 @@ test.describe(`Coordination Polyhedra Demo`, () => {
   })
 
   test(
-    `structure selector switches structures and polyhedra re-render`,
+    `structure selector re-renders polyhedra; BaTiO3 Ba spectators are opt-in`,
     { tag: `@webgl` },
     async ({ page }) => {
       test.slow()
-      const initial = await canvas_screenshot(canvas)
-      await page.getByRole(`button`, { name: /rutile/ }).click()
-      // {#key} remounts the viewer, so wait for the fresh canvas
-      const new_canvas = await demo_canvas(page)
-      await expect_canvas_changed(new_canvas, initial, canvas_change_timeout)
+      await test.step(`switching to rutile redraws`, async () => {
+        const initial = await canvas_screenshot(canvas)
+        await page.getByRole(`button`, { name: /rutile/ }).click()
+        // {#key} remounts the viewer, so wait for the fresh canvas
+        const new_canvas = await demo_canvas(page)
+        await expect_canvas_changed(new_canvas, initial, canvas_change_timeout)
+      })
+
+      await test.step(`Ba spectator polyhedra hidden by default, force-include draws them`, async () => {
+        await page.getByRole(`button`, { name: /BaTiO/ }).click()
+        const new_canvas = await demo_canvas(page)
+
+        const ba_toggle = control_checkbox(page, `Ba polyhedra`)
+        await expect(ba_toggle).not.toBeChecked()
+        await expect_redraw(new_canvas, () => ba_toggle.check())
+      })
     },
   )
 
@@ -67,20 +78,6 @@ test.describe(`Coordination Polyhedra Demo`, () => {
       )
       await expect_redraw(canvas, () => control_checkbox(page, `Edges`).uncheck())
       await expect_redraw(canvas, () => control_checkbox(page, `Hide center atoms`).check())
-    },
-  )
-
-  test(
-    `Ba spectator polyhedra hidden by default, force-include draws them`,
-    { tag: `@webgl` },
-    async ({ page }) => {
-      test.slow()
-      await page.getByRole(`button`, { name: /BaTiO/ }).click()
-      const new_canvas = await demo_canvas(page)
-
-      const ba_toggle = control_checkbox(page, `Ba polyhedra`)
-      await expect(ba_toggle).not.toBeChecked()
-      await expect_redraw(new_canvas, () => ba_toggle.check())
     },
   )
 })

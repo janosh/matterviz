@@ -579,18 +579,22 @@ describe(`plan_synthesis`, () => {
       ).toThrow(/Target mass/)
     }
     expect(plan.routes[0].thermodynamics.atmosphere).toBe(`releases CO2`)
-    for (const [temperature, partial_pressures, expected] of [
-      [300, {}, `300 K; closed system`],
-      [900, { O2: 0.21, CO2: 1 }, `900 K; O2: 0.21 bar, CO2: 1 bar`],
-    ] as const)
-      expect(format_model_conditions({ temperature, partial_pressures })).toBe(expected)
-    for (const [exchange, expected] of [
-      [{}, `no net gas exchange`],
-      [{ CO2: 0 }, `no net gas exchange`],
-      [{ O2: -1 }, `consumes O2`],
-      [{ O2: -1, CO2: 2 }, `consumes O2; releases CO2`],
-    ] as const)
-      expect(describe_atmosphere(exchange)).toBe(expected)
+  })
+
+  test.each([
+    [300, {}, `300 K; closed system`],
+    [900, { O2: 0.21, CO2: 1 }, `900 K; O2: 0.21 bar, CO2: 1 bar`],
+  ])(`format_model_conditions(%i K, %o) = %s`, (temperature, partial_pressures, expected) => {
+    expect(format_model_conditions({ temperature, partial_pressures })).toBe(expected)
+  })
+
+  test.each([
+    [{}, `no net gas exchange`],
+    [{ CO2: 0 }, `no net gas exchange`],
+    [{ O2: -1 }, `consumes O2`],
+    [{ O2: -1, CO2: 2 }, `consumes O2; releases CO2`],
+  ])(`describe_atmosphere(%o) = %s`, (exchange, expected) => {
+    expect(describe_atmosphere(exchange)).toBe(expected)
   })
 
   test(`closed 0 K planning of LiCoO2 only finds oxide routes; carbonates need open species`, () => {

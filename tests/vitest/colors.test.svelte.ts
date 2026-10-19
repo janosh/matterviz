@@ -53,6 +53,32 @@ test(`resolve_backdrop re-reads its token when the theme changes`, async () => {
   expect(backdrop.current).toBe(`#ffffff`)
 })
 
+// Layout writes on an ancestor (a sidebar width, a toolbar's inline size) must not make every
+// color read below re-run getComputedStyle; a real theme change re-reads each once
+test(`ancestor layout writes trigger no color re-reads, a theme change one per resolver`, async () => {
+  const child_of = (parent: HTMLElement): HTMLElement => {
+    const child = document.createElement(`div`)
+    parent.append(child)
+    return child
+  }
+  let parent: HTMLElement = document.body
+  for (let depth = 0; depth < 8; depth++) parent = child_of(parent)
+  const nodes = Array.from({ length: 20 }, () => child_of(parent))
+  for (const node of nodes) observe(() => resolve_backdrop(() => node))
+  const reads = vi.spyOn(globalThis, `getComputedStyle`)
+  const ancestor = parent.parentElement ?? parent
+  for (let step = 0; step < 50; step++) {
+    ancestor.style.setProperty(`--docked-sidebar-width`, `${step}px`)
+    ancestor.style.left = `${step}px`
+  }
+  await settle()
+  expect(reads).not.toHaveBeenCalled()
+  document.documentElement.dataset.theme = `dark`
+  await settle()
+  expect(reads.mock.calls.length).toBeGreaterThanOrEqual(nodes.length)
+  expect(reads.mock.calls.length).toBeLessThanOrEqual(2 * nodes.length) // token + probe each
+})
+
 // The ancestor observer only sees the node's own attribute mutations. Watching the theme
 // separately is what catches the root's color-scheme flipping (apply_theme_to_dom, another tab's
 // saved preference, an OS dark-mode change), and a function fallback is how PeriodicTable's

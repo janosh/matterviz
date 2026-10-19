@@ -266,20 +266,21 @@ test.describe(`Trajectory performance`, () => {
     }
   })
 
-  test(`mounts a 300x64 synthetic run and reports every frame`, async ({ page }) => {
+  test(`mounts a 300x64 synthetic run and auto-plays it without falling below 0.5 fps`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
     const trajectory = await load_page(page, 300, 64)
     const { build_ms, mount_ms } = await read_metrics(page)
     await expect(
       trajectory.locator(`.trajectory-controls span`).filter({ hasText: `/ 300` }),
+      `controls report every frame`,
     ).toBeVisible()
     console.info(`build ${build_ms.toFixed(0)} ms, mount ${mount_ms?.toFixed(0)} ms`)
-    expect(build_ms).toBeLessThan(IS_CI ? 5000 : 1500)
-    expect(mount_ms ?? Infinity).toBeLessThan(IS_CI ? 15_000 : 5000)
-  })
+    expect(build_ms, `build time`).toBeLessThan(IS_CI ? 5000 : 1500)
+    expect(mount_ms ?? Infinity, `mount time`).toBeLessThan(IS_CI ? 15_000 : 5000)
 
-  test(`auto-plays through frames without falling below 0.5 fps`, async ({ page }) => {
-    test.setTimeout(120_000)
-    await load_page(page, 300, 64)
+    // Read the start step right before the clock starts so earlier waits can't inflate the fps
     const start_step = (await read_metrics(page)).current_step_idx
     const frames_to_measure = 10
     const start_time = Date.now()
@@ -293,7 +294,7 @@ test.describe(`Trajectory performance`, () => {
       `${frames_to_measure} frames in ${elapsed_ms} ms (${actual_fps.toFixed(2)} fps)`,
     )
     // Software WebGPU renders a 64-atom scene at a few fps; anything under 0.5 is a regression
-    expect(actual_fps).toBeGreaterThan(0.5)
+    expect(actual_fps, `playback fps`).toBeGreaterThan(0.5)
 
     // Chromium-only heap probe: playback must not accumulate per-frame garbage
     const heap_mb = await page.evaluate(() => {

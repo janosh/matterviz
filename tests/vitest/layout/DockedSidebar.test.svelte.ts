@@ -1,7 +1,7 @@
 import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { expect, onTestFinished, test } from 'vitest'
-import { trigger_resize_observer } from '../setup'
+import { query, trigger_resize_observer } from '../setup'
 
 const snippet = (html: string) => createRawSnippet(() => ({ render: () => html }))
 // happy-dom lays nothing out: give an element the width the row/sidebar/divider measure
@@ -17,11 +17,6 @@ const resize = async (element: Element, width: number): Promise<void> => {
   set_width(element, width)
   trigger_resize_observer(element)
   await tick()
-}
-const query = (root: Element, selector: string): HTMLElement => {
-  const element = root.querySelector<HTMLElement>(selector)
-  if (!element) throw new Error(`no ${selector} in ${root.outerHTML.slice(0, 200)}`)
-  return element
 }
 const mount_sidebar = async (row_width: number) => {
   const row = document.createElement(`div`)

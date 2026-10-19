@@ -260,91 +260,95 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure).toHaveCSS(`z-index`, `12`)
   })
 
-  test(`CellSelect appears on hover and hides on mouse leave`, async ({ page }) => {
+  test(`CellSelect reveals on hover, has an opaque themed surface, stays legible when narrow`, async ({
+    page,
+  }) => {
     const structure = page.locator(`#test-structure`)
-    const supercell = structure.locator(`.cell-select`)
-
-    await page.mouse.move(0, 0)
-    await expect(supercell).toHaveCSS(`opacity`, `0`)
-    await structure.hover()
-    await expect(supercell).toHaveCSS(`opacity`, `1`)
-    await page.mouse.move(0, 0)
-    await expect(supercell).toHaveCSS(`opacity`, `0`)
-  })
-
-  test(`CellSelect toggle has an opaque theme-aware surface`, async ({ page }) => {
-    const structure = page.locator(`#test-structure`)
-    const toggle = structure.locator(`.cell-select .toggle-btn`)
-    // color-mix() may serialize as oklab()/color(srgb …); rgb() omits alpha when opaque.
-    const is_opaque_css_color = (value: string): boolean => {
-      if (value === `transparent`) return false
-      if (
-        value.startsWith(`oklab(`) ||
-        value.startsWith(`oklch(`) ||
-        value.startsWith(`color(`)
-      ) {
-        const alpha_part = value.split(`/`)[1]
-        if (!alpha_part) return true
-        return Number(alpha_part.replace(`)`, ``).trim()) === 1
-      }
-      const match = /rgba?\((?<channels>[^)]+)\)/u.exec(value)
-      if (!match) return false
-      const parts = match[1].split(`,`).map((part) => Number(part.trim()))
-      return parts.length === 3 || parts[3] === 1
-    }
-    // Resolve --cell-select-hover-surface without needing a real :hover (pointer-events
-    // on .cell-select is none until the structure is hovered).
-    const hover_surface_of = (): Promise<string> =>
-      toggle.evaluate((element) => {
-        const cell = element.closest(`.cell-select`)
-        if (!(cell instanceof HTMLElement)) throw new Error(`missing .cell-select`)
-        const probe = document.createElement(`div`)
-        cell.append(probe)
-        probe.style.backgroundColor = `var(--cell-select-hover-surface)`
-        const background = getComputedStyle(probe).backgroundColor
-        probe.remove()
-        return background
-      })
-    const background_of = () =>
-      toggle.evaluate((element) => getComputedStyle(element).backgroundColor)
-    const backgrounds: string[] = []
-    for (const color_scheme of [`light`, `dark`] as const) {
-      await page.evaluate((scheme) => {
-        document.documentElement.style.colorScheme = scheme
-      }, color_scheme)
-      await expect.poll(background_of).not.toBe(backgrounds.at(-1))
-      const background = await background_of()
-      expect(is_opaque_css_color(background), `${color_scheme} background`).toBe(true)
-      const hover_bg = await hover_surface_of()
-      expect(is_opaque_css_color(hover_bg), `${color_scheme} hover surface`).toBe(true)
-      expect(hover_bg).not.toBe(background)
-      backgrounds.push(background)
-    }
-  })
-
-  test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
-    const structure = page.locator(`#test-structure`)
-    await structure.evaluate((element) => element.style.setProperty(`--struct-min-width`, `0`))
-    await set_viewer_size(structure, 260, 400)
-    await expect
-      .poll(() => structure.evaluate((element) => element.clientWidth))
-      .toBeLessThan(300)
-    await structure.hover()
     const cell_select = structure.locator(`.cell-select`)
-    await cell_select.locator(`.toggle-btn`).click() // the menu opens only on click
-    await expect(cell_select.locator(`.dropdown`)).toBeVisible()
+    const toggle = cell_select.locator(`.toggle-btn`)
 
-    const get_font_size = (selector: string): Promise<number> =>
-      structure
-        .locator(selector)
-        .first()
-        .evaluate((element) => Number(getComputedStyle(element).fontSize.replace(`px`, ``)))
-    const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
-    const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
-    const preset_size = await get_font_size(`.cell-select .preset-btn`)
+    await test.step(`appears on hover and hides on mouse leave`, async () => {
+      await page.mouse.move(0, 0)
+      await expect(cell_select).toHaveCSS(`opacity`, `0`)
+      await structure.hover()
+      await expect(cell_select).toHaveCSS(`opacity`, `1`)
+      await page.mouse.move(0, 0)
+      await expect(cell_select).toHaveCSS(`opacity`, `0`)
+    })
 
-    expect(toggle_size).toBeCloseTo(legend_label_size, 1)
-    expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
+    await test.step(`toggle has an opaque theme-aware surface`, async () => {
+      // color-mix() may serialize as oklab()/color(srgb …); rgb() omits alpha when opaque.
+      const is_opaque_css_color = (value: string): boolean => {
+        if (value === `transparent`) return false
+        if (
+          value.startsWith(`oklab(`) ||
+          value.startsWith(`oklch(`) ||
+          value.startsWith(`color(`)
+        ) {
+          const alpha_part = value.split(`/`)[1]
+          if (!alpha_part) return true
+          return Number(alpha_part.replace(`)`, ``).trim()) === 1
+        }
+        const match = /rgba?\((?<channels>[^)]+)\)/u.exec(value)
+        if (!match) return false
+        const parts = match[1].split(`,`).map((part) => Number(part.trim()))
+        return parts.length === 3 || parts[3] === 1
+      }
+      // Resolve --cell-select-hover-surface without needing a real :hover (pointer-events
+      // on .cell-select is none until the structure is hovered).
+      const hover_surface_of = (): Promise<string> =>
+        toggle.evaluate((element) => {
+          const cell = element.closest(`.cell-select`)
+          if (!(cell instanceof HTMLElement)) throw new Error(`missing .cell-select`)
+          const probe = document.createElement(`div`)
+          cell.append(probe)
+          probe.style.backgroundColor = `var(--cell-select-hover-surface)`
+          const background = getComputedStyle(probe).backgroundColor
+          probe.remove()
+          return background
+        })
+      const background_of = () =>
+        toggle.evaluate((element) => getComputedStyle(element).backgroundColor)
+      const backgrounds: string[] = []
+      for (const color_scheme of [`light`, `dark`] as const) {
+        await page.evaluate((scheme) => {
+          document.documentElement.style.colorScheme = scheme
+        }, color_scheme)
+        await expect.poll(background_of).not.toBe(backgrounds.at(-1))
+        const background = await background_of()
+        expect(is_opaque_css_color(background), `${color_scheme} background`).toBe(true)
+        const hover_bg = await hover_surface_of()
+        expect(is_opaque_css_color(hover_bg), `${color_scheme} hover surface`).toBe(true)
+        expect(hover_bg).not.toBe(background)
+        backgrounds.push(background)
+      }
+    })
+
+    // last: shrinks the viewer and opens the menu
+    await test.step(`typography stays legible in narrow legends`, async () => {
+      await structure.evaluate((element) =>
+        element.style.setProperty(`--struct-min-width`, `0`),
+      )
+      await set_viewer_size(structure, 260, 400)
+      await expect
+        .poll(() => structure.evaluate((element) => element.clientWidth))
+        .toBeLessThan(300)
+      await structure.hover()
+      await toggle.click() // the menu opens only on click
+      await expect(cell_select.locator(`.dropdown`)).toBeVisible()
+
+      const get_font_size = (selector: string): Promise<number> =>
+        structure
+          .locator(selector)
+          .first()
+          .evaluate((element) => Number(getComputedStyle(element).fontSize.replace(`px`, ``)))
+      const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
+      const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
+      const preset_size = await get_font_size(`.cell-select .preset-btn`)
+
+      expect(toggle_size).toBeCloseTo(legend_label_size, 1)
+      expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
+    })
   })
 
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
@@ -503,62 +507,91 @@ test.describe(`Structure Component Tests`, () => {
     expect(webgpu_errors).toEqual([])
   })
 
-  test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
-    const { pane_div: control_pane } = await open_structure_control_pane(page)
+  test(`controls pane stays open while editing inputs, closes only on escape and outside clicks`, async ({
+    page,
+  }) => {
+    const structure_div = page.locator(`#test-structure`)
     const controls_open_status = page.locator(`[data-testid="controls-open-status"]`)
 
-    const atom_radius_label = control_pane.locator(`label`).filter({ hasText: /Radius/ })
-    const interactions: {
-      name: string
-      input: Locator
-      act: (input: Locator) => Promise<unknown>
-    }[] = [
-      {
-        // exact match to avoid matching "Image atoms"
-        name: `show atoms checkbox`,
-        input: control_pane.getByRole(`checkbox`, { name: `Atoms`, exact: true }),
-        act: (input) => input.click(),
-      },
-      {
-        // Bonds visibility is a native select in the Visibility section. Matched on the
-        // label's own span: a label's text also carries every <option>, so "has text Bonds"
-        // alone would not distinguish it.
-        name: `bonds select`,
-        input: control_pane.locator(`label:has(span:text-is("Bonds")) select`),
-        act: (input) => input.selectOption(`always`),
-      },
-      {
-        name: `lattice vectors checkbox`,
-        input: control_pane
-          .locator(`label`)
-          .filter({ hasText: `Lattice Vectors` })
-          .locator(`input[type="checkbox"]`),
-        act: (input) => input.click(),
-      },
-      {
-        name: `atom radius number`,
-        input: atom_radius_label.locator(`input[type="number"]`),
-        act: (input) => input.fill(`0.8`),
-      },
-      {
-        name: `atom radius range`,
-        input: atom_radius_label.locator(`input[type="range"]`),
-        act: (input) => input.fill(`0.6`),
-      },
-      {
-        name: `background color`,
-        input: section_body(control_pane, `Background`).locator(`input[type="color"]`),
-        act: (input) => input.fill(`#00ff00`),
-      },
-    ]
+    await test.step(`stays open when interacting with control inputs`, async () => {
+      const { pane_div: control_pane } = await open_structure_control_pane(page)
+      const atom_radius_label = control_pane.locator(`label`).filter({ hasText: /Radius/ })
+      const interactions: {
+        name: string
+        input: Locator
+        act: (input: Locator) => Promise<unknown>
+      }[] = [
+        {
+          // exact match to avoid matching "Image atoms"
+          name: `show atoms checkbox`,
+          input: control_pane.getByRole(`checkbox`, { name: `Atoms`, exact: true }),
+          act: (input) => input.click(),
+        },
+        {
+          // Bonds visibility is a native select in the Visibility section. Matched on the
+          // label's own span: a label's text also carries every <option>, so "has text Bonds"
+          // alone would not distinguish it.
+          name: `bonds select`,
+          input: control_pane.locator(`label:has(span:text-is("Bonds")) select`),
+          act: (input) => input.selectOption(`always`),
+        },
+        {
+          name: `lattice vectors checkbox`,
+          input: control_pane
+            .locator(`label`)
+            .filter({ hasText: `Lattice Vectors` })
+            .locator(`input[type="checkbox"]`),
+          act: (input) => input.click(),
+        },
+        {
+          name: `atom radius number`,
+          input: atom_radius_label.locator(`input[type="number"]`),
+          act: (input) => input.fill(`0.8`),
+        },
+        {
+          name: `atom radius range`,
+          input: atom_radius_label.locator(`input[type="range"]`),
+          act: (input) => input.fill(`0.6`),
+        },
+        {
+          name: `background color`,
+          input: section_body(control_pane, `Background`).locator(`input[type="color"]`),
+          act: (input) => input.fill(`#00ff00`),
+        },
+      ]
 
-    // Download buttons are left out: they may close the pane through the download itself
-    for (const { name, input, act } of interactions) {
-      await expect(input, name).toBeVisible()
-      await act(input)
-      await expect(controls_open_status, name).toContainText(`true`)
-      await expect(control_pane, name).toHaveClass(/pane-open/)
-    }
+      // Download buttons are left out: they may close the pane through the download itself
+      for (const { name, input, act } of interactions) {
+        await expect(input, name).toBeVisible()
+        await act(input)
+        await expect(controls_open_status, name).toContainText(`true`)
+        await expect(control_pane, name).toHaveClass(/pane-open/)
+      }
+    })
+
+    await test.step(`closes on escape and outside clicks`, async () => {
+      const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
+      const canvas = structure_div.locator(`canvas`)
+      const close_actions: { name: string; close: () => Promise<unknown> }[] = [
+        // clicking the canvas counts as an outside click, so it closes the pane too
+        { name: `canvas click`, close: () => canvas.click({ position: { x: 100, y: 100 } }) },
+        { name: `toggle button`, close: () => controls_toggle_button.click() },
+        { name: `escape key`, close: () => page.keyboard.press(`Escape`) },
+        {
+          name: `outside click`,
+          close: () => page.locator(`body`).click({ position: { x: 10, y: 10 } }),
+        },
+      ]
+
+      for (const { name, close } of close_actions) {
+        const { pane_div } = await open_structure_control_pane(page)
+        await close()
+        await expect(controls_open_status, name).toContainText(`false`)
+        await expect(pane_div, name).toBeHidden()
+      }
+
+      await expect(controls_toggle_button).toHaveAttribute(`aria-label`, `Structure controls`)
+    })
   })
 
   test(
@@ -582,33 +615,6 @@ test.describe(`Structure Component Tests`, () => {
     },
   )
 
-  test(`controls pane closes only on escape and outside clicks`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
-    const canvas = structure_div.locator(`canvas`)
-    const controls_open_status = page.locator(`[data-testid="controls-open-status"]`)
-
-    const close_actions: { name: string; close: () => Promise<unknown> }[] = [
-      // clicking the canvas counts as an outside click, so it closes the pane too
-      { name: `canvas click`, close: () => canvas.click({ position: { x: 100, y: 100 } }) },
-      { name: `toggle button`, close: () => controls_toggle_button.click() },
-      { name: `escape key`, close: () => page.keyboard.press(`Escape`) },
-      {
-        name: `outside click`,
-        close: () => page.locator(`body`).click({ position: { x: 10, y: 10 } }),
-      },
-    ]
-
-    for (const { name, close } of close_actions) {
-      const { pane_div } = await open_structure_control_pane(page)
-      await close()
-      await expect(controls_open_status, name).toContainText(`false`)
-      await expect(pane_div, name).toBeHidden()
-    }
-
-    await expect(controls_toggle_button).toHaveAttribute(`aria-label`, `Structure controls`)
-  })
-
   test(
     `selected_sites controls highlight spheres (no labels/lines)`,
     { tag: `@webgl` },
@@ -626,59 +632,55 @@ test.describe(`Structure Component Tests`, () => {
     },
   )
 
-  test(`measured_sites shows order labels and measurements; clear and reset both remove them`, async ({
+  test(`measured_sites shows order labels and measurements; clear, reset, supercell and image atoms remove them`, async ({
     page,
   }) => {
     const set_measured = page.locator(`[data-testid="btn-set-measured"]`)
-    await set_measured.click()
-
     const labels = page.locator(`.selection-label`)
-    await expect(labels).toHaveText([`1`, `2`, `3`])
 
-    const measurement = page.locator(`#test-structure .measure-label`).first()
-    await expect(measurement).toBeVisible()
-    await page.setViewportSize({ width: 1920, height: 1080 })
-    const fullscreen_button = page.locator(
-      `#test-structure > section.control-buttons > .fullscreen-btn`,
-    )
-    await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
-    await fullscreen_button.click()
-    await expect(page.locator(`#test-structure`)).toHaveCSS(`height`, `1080px`)
-    await expect(measurement).toHaveCSS(`font-size`, `14px`)
-    await fullscreen_button.click()
+    await test.step(`labels and measurements show, clear and reset remove them`, async () => {
+      await set_measured.click()
+      await expect(labels).toHaveText([`1`, `2`, `3`])
 
-    await page.locator(`[data-testid="btn-clear-measured"]`).click()
-    await expect(labels).toHaveCount(0)
+      const measurement = page.locator(`#test-structure .measure-label`).first()
+      await expect(measurement).toBeVisible()
+      await page.setViewportSize({ width: 1920, height: 1080 })
+      const fullscreen_button = page.locator(
+        `#test-structure > section.control-buttons > .fullscreen-btn`,
+      )
+      await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
+      await fullscreen_button.click()
+      await expect(page.locator(`#test-structure`)).toHaveCSS(`height`, `1080px`)
+      await expect(measurement).toHaveCSS(`font-size`, `14px`)
+      await fullscreen_button.click()
 
-    // the reset button clears measured_sites and the selected_sites they set, then leaves
-    await set_measured.click()
-    await expect(labels).toHaveCount(3)
-    const reset_button = page.locator(
-      `#test-structure button[aria-label="Reset selection and bond edits"]`,
-    )
-    await reset_button.click()
-    await expect(labels).toHaveCount(0)
-    await expect(reset_button).toBeHidden()
-  })
+      await page.locator(`[data-testid="btn-clear-measured"]`).click()
+      await expect(labels).toHaveCount(0)
 
-  test(`selections are cleared on supercell scaling and image atoms toggle`, async ({
-    page,
-  }) => {
-    const labels = page.locator(`.selection-label`)
-    const supercell_input = page.locator(`[data-testid="supercell-input"]`)
+      // the reset button clears measured_sites and the selected_sites they set, then leaves
+      await set_measured.click()
+      await expect(labels).toHaveCount(3)
+      const reset_button = page.locator(
+        `#test-structure button[aria-label="Reset selection and bond edits"]`,
+      )
+      await reset_button.click()
+      await expect(labels).toHaveCount(0)
+      await expect(reset_button).toBeHidden()
+    })
 
-    // Supercell scaling clears selections
-    await page.locator(`[data-testid="btn-set-measured"]`).click()
-    await expect(labels).toHaveCount(3)
-    await supercell_input.fill(`2x2x2`)
-    await expect(labels).toHaveCount(0)
+    await test.step(`supercell scaling and image atoms toggle clear selections`, async () => {
+      const supercell_input = page.locator(`[data-testid="supercell-input"]`)
+      await set_measured.click()
+      await expect(labels).toHaveCount(3)
+      await supercell_input.fill(`2x2x2`)
+      await expect(labels).toHaveCount(0)
 
-    // Image atoms toggle clears selections
-    await supercell_input.fill(`1x1x1`)
-    await page.locator(`[data-testid="btn-set-measured"]`).click()
-    await expect(labels).toHaveCount(3)
-    await page.locator(`[data-testid="image-atoms-checkbox"]`).click()
-    await expect(labels).toHaveCount(0)
+      await supercell_input.fill(`1x1x1`)
+      await set_measured.click()
+      await expect(labels).toHaveCount(3)
+      await page.locator(`[data-testid="image-atoms-checkbox"]`).click()
+      await expect(labels).toHaveCount(0)
+    })
   })
 
   test(
@@ -927,20 +929,38 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test(
-    `camera movement emits distinct on_camera_move events`,
+    `camera drag emits distinct on_camera_move events; r resets it, Shift+R does not`,
     { tag: `@webgl` },
     async ({ page }) => {
       await clear_events(page)
-      await drag_camera(page)
-      await wait_for_camera_move(page)
-      // the final pose syncs once the controls settle, after the first event already landed
-      await expect
-        .poll(async () => (await events_named(page, `on_camera_move`)).length)
-        .toBeGreaterThan(1)
-      const camera_moves = await events_named(page, `on_camera_move`)
-      for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
-        expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
-      }
+      const box = await drag_camera(page)
+
+      await test.step(`camera movement emits distinct on_camera_move events`, async () => {
+        await wait_for_camera_move(page)
+        // the final pose syncs once the controls settle, after the first event already landed
+        await expect
+          .poll(async () => (await events_named(page, `on_camera_move`)).length)
+          .toBeGreaterThan(1)
+        const camera_moves = await events_named(page, `on_camera_move`)
+        for (let move_idx = 1; move_idx < camera_moves.length; move_idx++) {
+          expect(camera_moves[move_idx].data).not.toEqual(camera_moves[move_idx - 1].data)
+        }
+      })
+
+      await test.step(`pressing r resets the camera; Shift+R does not`, async () => {
+        await clear_events(page)
+        // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
+        // hover()'s actionability check trips on the overlays the drag leaves behind
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        await page.keyboard.press(`Shift+R`)
+        expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
+        await page.keyboard.press(`r`)
+        await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
+          `box-shadow`,
+          /0px 0px 0px 1px$/,
+        )
+        await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
+      })
     },
   )
 
@@ -1009,80 +1029,62 @@ test.describe(`Structure Event Handler Tests`, () => {
     },
   )
 
-  test(`click without camera movement does not report a move`, async ({ page }) => {
-    const canvas = structure_canvas(page)
-    const box = await canvas_box(canvas)
-    await clear_events(page)
-
-    await canvas.click({
-      position: { x: box.width / 2, y: box.height / 2 },
-      force: true,
-    })
-    await page.waitForTimeout(100) // include the post-end damping settle sync
-    expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
-
-    await open_structure_control_pane(page)
-    await expect(reset_camera_button(page)).toHaveCount(0)
-  })
-
   // Wheel zoom must leave the orbit target alone: with zoomToCursor the target follows the
   // pointer and zooming back out never returns it, so a few flicks walk the structure into a
   // corner. Zooming also has to register as a camera move — OrbitControls fires start and end
   // in the same tick for a wheel, and the reset control only appears once a move is reported.
-  test(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async ({
+  test(`a click reports no camera move; wheel zoom reports one during auto-rotate and leaves the orbit target put`, async ({
     page,
   }) => {
     const canvas = structure_canvas(page)
     const box = await canvas_box(canvas)
-    const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
-      canvas.dispatchEvent(`wheel`, {
-        bubbles: true,
-        cancelable: true,
-        clientX: box.x + box.width * x_ratio,
-        clientY: box.y + box.height * y_ratio,
-        deltaY: delta_y,
-      })
-    await set_scene_props(page, { auto_rotate: 1 })
 
-    await clear_events(page)
-    await wheel(0.5, 0.5, -120)
-    const { camera_target: target_before, camera_zoom: zoom_before } =
-      await wait_for_camera_move(page)
-
-    // zoom in and back out far off-center, where cursor zoom would drag the target along
-    await clear_events(page)
-    for (const delta of [-120, -120, -120, 120, 120]) await wheel(0.8, 0.8, delta)
-
-    const { camera_target: target_after, camera_zoom: zoom_after } =
-      await wait_for_camera_move(page)
-    expect(zoom_after).toBeGreaterThan(zoom_before)
-    for (const [axis_idx, coord] of target_after.entries()) {
-      expect(coord, `axis ${axis_idx}`).toBeCloseTo(target_before[axis_idx], 6)
-    }
-
-    await open_structure_control_pane(page)
-    await expect(reset_camera_button(page)).toBeVisible()
-  })
-
-  test(
-    `pressing r resets the camera; Shift+R does not`,
-    { tag: `@webgl` },
-    async ({ page }) => {
-      const box = await drag_camera(page)
+    await test.step(`click without camera movement does not report a move`, async () => {
       await clear_events(page)
-      // mouse.move, not hover(): the shortcut only needs the pointer over the viewer, and
-      // hover()'s actionability check trips on the overlays the drag leaves behind
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      await page.keyboard.press(`Shift+R`)
-      expect(await events_named(page, `on_camera_reset`)).toHaveLength(0)
-      await page.keyboard.press(`r`)
-      await expect(page.locator(`#test-structure .view-layout-dropdown > button`)).toHaveCSS(
-        `box-shadow`,
-        /0px 0px 0px 1px$/,
-      )
-      await wait_for_event(page, `on_camera_reset`, [`structure`, `camera_target`])
-    },
-  )
+      await canvas.click({
+        position: { x: box.width / 2, y: box.height / 2 },
+        force: true,
+      })
+      await page.waitForTimeout(100) // include the post-end damping settle sync
+      expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
+
+      const { pane_div } = await open_structure_control_pane(page)
+      await expect(reset_camera_button(page)).toHaveCount(0)
+      await page.keyboard.press(`Escape`) // the wheel step starts with the pane closed
+      await expect(pane_div).toBeHidden()
+    })
+
+    await test.step(`wheel zoom reports during auto-rotate and leaves the orbit target put`, async () => {
+      const wheel = (x_ratio: number, y_ratio: number, delta_y: number) =>
+        canvas.dispatchEvent(`wheel`, {
+          bubbles: true,
+          cancelable: true,
+          clientX: box.x + box.width * x_ratio,
+          clientY: box.y + box.height * y_ratio,
+          deltaY: delta_y,
+        })
+      await set_scene_props(page, { auto_rotate: 1 })
+
+      await clear_events(page)
+      await wheel(0.5, 0.5, -120)
+      const { camera_target: target_before, camera_zoom: zoom_before } =
+        await wait_for_camera_move(page)
+
+      // zoom in and back out far off-center, where cursor zoom would drag the target along
+      await clear_events(page)
+      for (const delta of [-120, -120, -120, 120, 120]) await wheel(0.8, 0.8, delta)
+
+      const { camera_target: target_after, camera_zoom: zoom_after } =
+        await wait_for_camera_move(page)
+      expect(zoom_after).toBeGreaterThan(zoom_before)
+      for (const [axis_idx, coord] of target_after.entries()) {
+        expect(coord, `axis ${axis_idx}`).toBeCloseTo(target_before[axis_idx], 6)
+      }
+
+      await open_structure_control_pane(page)
+      await expect(reset_camera_button(page)).toBeVisible()
+    })
+  })
 })
 
 test.describe(`Element Visibility Toggle`, () => {
@@ -1093,39 +1095,43 @@ test.describe(`Element Visibility Toggle`, () => {
     await goto_structure_test(page)
   })
 
-  test(`hover chrome reveals repeatedly`, async ({ page }) => {
-    // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
-    // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle
-    // only appeared on the very first mouseenter until page reload.
-    await page.setViewportSize({ width: 1400, height: 1200 })
-    const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
-    const canvas = structure_canvas(page)
+  test(`hover chrome reveals repeatedly; element badge tooltip uses light theme colors`, async ({
+    page,
+  }) => {
+    await test.step(`hover chrome reveals repeatedly`, async () => {
+      // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
+      // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle
+      // only appeared on the very first mouseenter until page reload.
+      await page.setViewportSize({ width: 1400, height: 1200 })
+      const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
+      const canvas = structure_canvas(page)
 
-    for (let cycle = 0; cycle < 3; cycle++) {
-      await activate_viewer(page, canvas)
-      await page.mouse.move(3, 3) // move off the viewer
-      await expect(toggle).toHaveCSS(`opacity`, `0`)
-    }
-  })
-
-  test(`element badge tooltip uses light theme colors`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme: `light` })
-    await page.locator(`#test-structure`).hover()
-    const label = legend_item(page).locator(`label`)
-    await label.hover({ force: true })
-    const tooltip = page.locator(`.custom-tooltip`)
-    await expect(tooltip).toBeVisible()
-
-    const { background_color, text_color } = await tooltip.evaluate((element) => {
-      const style = getComputedStyle(element)
-      return {
-        background_color: style.backgroundColor,
-        text_color: style.color,
+      for (let cycle = 0; cycle < 3; cycle++) {
+        await activate_viewer(page, canvas)
+        await page.mouse.move(3, 3) // move off the viewer
+        await expect(toggle).toHaveCSS(`opacity`, `0`)
       }
     })
 
-    expect(background_color).not.toMatch(/rgba?\(0,\s*0,\s*0/)
-    expect(text_color).not.toMatch(/rgb\(255,\s*255,\s*255\)/)
+    await test.step(`element badge tooltip uses light theme colors`, async () => {
+      await page.emulateMedia({ colorScheme: `light` })
+      await page.locator(`#test-structure`).hover()
+      const label = legend_item(page).locator(`label`)
+      await label.hover({ force: true })
+      const tooltip = page.locator(`.custom-tooltip`)
+      await expect(tooltip).toBeVisible()
+
+      const { background_color, text_color } = await tooltip.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          background_color: style.backgroundColor,
+          text_color: style.color,
+        }
+      })
+
+      expect(background_color).not.toMatch(/rgba?\(0,\s*0,\s*0/)
+      expect(text_color).not.toMatch(/rgb\(255,\s*255,\s*255\)/)
+    })
   })
 
   test(
@@ -1189,92 +1195,70 @@ test.describe(`Edit Atoms Mode`, { tag: `@webgl` }, () => {
     redo: structure_div.locator(`button.undo-redo-btn[aria-label^="Redo"]`),
   })
 
-  test(`empty edit-atoms undo redo shortcuts are not canceled`, async ({ page }) => {
-    await enter_edit_atoms_mode(page)
-
-    const structure_div = page.locator(`#test-structure`)
-    for (const init of [
-      { key: `z`, [primary_modifier]: true },
-      { key: `y`, [primary_modifier]: true },
-      { key: `z`, [primary_modifier]: true, shiftKey: true },
-    ]) {
-      await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
-    }
-  })
-
-  test(`undo/redo buttons only exist in edit-atoms mode`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const { undo: undo_btn } = undo_redo_btns(structure_div)
-    await expect(undo_btn).toHaveCount(0)
-
-    await enter_edit_atoms_mode(page)
-    await expect(undo_btn).toBeVisible()
-    // clicking the canvas keeps edit mode active
-    await structure_div.locator(`canvas`).click({ position: { x: 50, y: 50 }, force: true })
-    await expect(undo_btn).toBeVisible()
-
-    // Switch back to distance mode via the dropdown
-    await structure_div.getByRole(`button`, { name: `Measure / Edit` }).click()
-    const distance_option = structure_div.locator(`.view-mode-option`).filter({
-      hasText: `Distance`,
-    })
-    await expect(distance_option).toBeVisible()
-    await distance_option.click()
-    await expect(undo_btn).toHaveCount(0)
-  })
-
-  test(`deleting a selected atom enables undo, then redo via buttons and shortcuts`, async ({
+  test(`undo/redo exists only in edit-atoms mode and tracks an atom deletion`, async ({
     page,
   }) => {
-    await enter_edit_atoms_mode(page)
     const structure_div = page.locator(`#test-structure`)
     const { undo: undo_btn, redo: redo_btn } = undo_redo_btns(structure_div)
-    await expect(undo_btn).toBeDisabled()
-    await expect(redo_btn).toBeDisabled()
-    await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
 
-    await page.locator(`[data-testid="btn-select-site-0"]`).click()
-    await structure_div.focus()
-    await page.keyboard.press(`Delete`)
+    await test.step(`undo/redo buttons appear on entering edit-atoms mode`, async () => {
+      await expect(undo_btn).toHaveCount(0)
+      await enter_edit_atoms_mode(page)
+      await expect(undo_btn).toBeVisible()
+    })
 
-    await expect(structure_div.locator(`.history-count`).first()).toHaveText(`1`)
-    await expect(undo_btn).toBeEnabled()
-    await undo_btn.click({ force: true })
-    await expect(redo_btn).toBeEnabled()
+    await test.step(`empty edit-atoms undo redo shortcuts are not canceled`, async () => {
+      for (const init of [
+        { key: `z`, [primary_modifier]: true },
+        { key: `y`, [primary_modifier]: true },
+        { key: `z`, [primary_modifier]: true, shiftKey: true },
+      ]) {
+        await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
+      }
+    })
 
-    // Redo via keyboard puts the deletion back on the undo stack, undo via keyboard pops it
-    await structure_div.focus()
-    await page.keyboard.press(`${primary_modifier_key}+y`)
-    await expect(undo_btn).toBeEnabled()
-    await expect(redo_btn).toBeDisabled()
-    await page.keyboard.press(`${primary_modifier_key}+z`)
-    await expect(redo_btn).toBeEnabled()
+    await test.step(`deleting a selected atom enables undo, then redo via buttons and shortcuts`, async () => {
+      await expect(undo_btn).toBeDisabled()
+      await expect(redo_btn).toBeDisabled()
+      await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
+
+      await page.locator(`[data-testid="btn-select-site-0"]`).click()
+      await structure_div.focus()
+      await page.keyboard.press(`Delete`)
+
+      await expect(structure_div.locator(`.history-count`).first()).toHaveText(`1`)
+      await expect(undo_btn).toBeEnabled()
+      await undo_btn.click({ force: true })
+      await expect(redo_btn).toBeEnabled()
+
+      // Redo via keyboard puts the deletion back on the undo stack, undo via keyboard pops it
+      await structure_div.focus()
+      await page.keyboard.press(`${primary_modifier_key}+y`)
+      await expect(undo_btn).toBeEnabled()
+      await expect(redo_btn).toBeDisabled()
+      await page.keyboard.press(`${primary_modifier_key}+z`)
+      await expect(redo_btn).toBeEnabled()
+    })
+
+    await test.step(`canvas clicks keep edit mode; leaving it removes the buttons`, async () => {
+      await structure_div.locator(`canvas`).click({ position: { x: 50, y: 50 }, force: true })
+      await expect(undo_btn).toBeVisible()
+
+      // Switch back to distance mode via the dropdown
+      await structure_div.getByRole(`button`, { name: `Measure / Edit` }).click()
+      const distance_option = structure_div.locator(`.view-mode-option`).filter({
+        hasText: `Distance`,
+      })
+      await expect(distance_option).toBeVisible()
+      await distance_option.click()
+      await expect(undo_btn).toHaveCount(0)
+    })
   })
 })
 
 test.describe(`Multi-side view (2x2 grid)`, () => {
   test.beforeEach(async ({ page }) => {
     await goto_structure_test(page, always_controls_url)
-  })
-
-  test(`collapses and restores multi-view across its responsive size threshold`, async ({
-    page,
-  }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const layout_button = structure_div.getByRole(`button`, {
-      name: /^View layout:/,
-    })
-    await expect(layout_button).toBeVisible()
-    await select_structure_layout(structure_div, `3D 2×2 grid`)
-    await expect(structure_div).toHaveClass(/multi-view/)
-
-    await set_viewer_size(structure_div, 599, 399)
-    await expect(layout_button).toHaveCount(0)
-    await expect(structure_div).not.toHaveClass(/multi-view/)
-
-    await set_viewer_size(structure_div, 800, 600)
-    await expect(layout_button).toBeVisible()
-    await expect(structure_div).toHaveClass(/multi-view/)
   })
 
   test(
@@ -1392,43 +1376,62 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
     expect(webgpu_errors).toEqual([]) // the switch shrinks the active pane under its gizmo
   })
 
-  test(`g toggles between grid and single view`, async ({ page }) => {
-    const structure_div = page.locator(`#test-structure`)
-    const cells = structure_div.locator(`.viewport-cell`)
-    await structure_div.focus() // viewer must be focused to receive the shortcut
-    await expect(cells).toHaveCount(1)
-
-    // the chord is the browser's; only the plain letter is ours
-    await page.keyboard.press(`${primary_modifier_key}+g`)
-    await expect(structure_div).not.toHaveClass(/multi-view/)
-
-    await page.keyboard.press(`g`)
-    await expect(structure_div).toHaveClass(/multi-view/)
-    await expect(cells).toHaveCount(4)
-
-    await page.keyboard.press(`g`)
-    await expect(structure_div).not.toHaveClass(/multi-view/)
-    await expect(cells).toHaveCount(1)
-
-    // A real click leaves the viewer focused *and* hovered, so the root handler and the
-    // window forwarder both see the key. Without a guard it would double-toggle.
-    await structure_div.click()
-    await page.keyboard.press(`g`)
-    await expect(structure_div).toHaveClass(/multi-view/)
-  })
-
-  test(`repeated toggling settles on the right canvas count without leaking contexts`, async ({
+  test(`layout menu, g shortcut and viewer size switch between grid and single view`, async ({
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
     const cells = structure_div.locator(`.viewport-cell`)
-    for (let cycle = 0; cycle < 3; cycle++) {
-      await select_structure_layout(structure_div, `3D 2×2 grid`)
-      await expect(cells).toHaveCount(4)
-      await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4)
-      await select_structure_layout(structure_div, `3D single view`)
+
+    await test.step(`repeated toggling settles on the right canvas count without leaking contexts`, async () => {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        await select_structure_layout(structure_div, `3D 2×2 grid`)
+        await expect(cells).toHaveCount(4)
+        await expect(structure_div.locator(`.viewport-stage.multi canvas`)).toHaveCount(4)
+        await select_structure_layout(structure_div, `3D single view`)
+        await expect(cells).toHaveCount(1)
+        await expect(structure_div.locator(`canvas`)).toHaveCount(1)
+      }
+    })
+
+    await test.step(`g toggles between grid and single view`, async () => {
+      await structure_div.focus() // viewer must be focused to receive the shortcut
       await expect(cells).toHaveCount(1)
-      await expect(structure_div.locator(`canvas`)).toHaveCount(1)
-    }
+
+      // the chord is the browser's; only the plain letter is ours
+      await page.keyboard.press(`${primary_modifier_key}+g`)
+      await expect(structure_div).not.toHaveClass(/multi-view/)
+
+      await page.keyboard.press(`g`)
+      await expect(structure_div).toHaveClass(/multi-view/)
+      await expect(cells).toHaveCount(4)
+
+      await page.keyboard.press(`g`)
+      await expect(structure_div).not.toHaveClass(/multi-view/)
+      await expect(cells).toHaveCount(1)
+
+      // A real click leaves the viewer focused *and* hovered, so the root handler and the
+      // window forwarder both see the key. Without a guard it would double-toggle.
+      await structure_div.click()
+      await page.keyboard.press(`g`)
+      await expect(structure_div).toHaveClass(/multi-view/)
+    })
+
+    // last: resizes the viewer
+    await test.step(`collapses and restores multi-view across its responsive size threshold`, async () => {
+      const layout_button = structure_div.getByRole(`button`, {
+        name: /^View layout:/,
+      })
+      await expect(layout_button).toBeVisible()
+      await select_structure_layout(structure_div, `3D 2×2 grid`)
+      await expect(structure_div).toHaveClass(/multi-view/)
+
+      await set_viewer_size(structure_div, 599, 399)
+      await expect(layout_button).toHaveCount(0)
+      await expect(structure_div).not.toHaveClass(/multi-view/)
+
+      await set_viewer_size(structure_div, 800, 600)
+      await expect(layout_button).toBeVisible()
+      await expect(structure_div).toHaveClass(/multi-view/)
+    })
   })
 })

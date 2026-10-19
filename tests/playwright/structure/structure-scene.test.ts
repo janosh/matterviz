@@ -255,59 +255,107 @@ test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
     }
   })
 
-  test(`tooltip lists all elements on disordered split sites`, async ({ page }) => {
-    // Disordered sites (e.g. tsumcorite M2: Zn+Fe+Pb) are stored as separate
-    // single-species sites at the same position. The tooltip must show every
-    // element, not just the majority one (regression guard).
-    await load_disordered_site_scene(page)
-    await hover_canvas_center(structure_canvas(page))
-    const elements = site_tooltip(page).locator(`.elements`)
-    await expect(elements).toBeVisible()
-    for (const element of [`Zn`, `Fe`, `Pb`]) {
-      await expect(elements.locator(`strong`).filter({ hasText: element })).toBeVisible()
-    }
-    // partial occupancies render next to each species
-    await expect(elements.locator(`.occupancy`)).toHaveText([`0.645`, `0.345`, `0.01`])
-    // tooltip must respect its max-width (wrap) rather than grow unbounded: a 10rem cap is
-    // narrower than the three long species, which fit on one line under the default 16rem
-    const { width, max_width, line_count } = await elements.evaluate((element) => {
-      const tip = element.closest(`[role="tooltip"]`) as HTMLElement
-      tip.style.setProperty(`--plot-tooltip-max-width`, `10rem`)
-      const species = element.querySelector(`.species`) as HTMLElement
-      return {
-        width: tip.getBoundingClientRect().width,
-        max_width: Number(getComputedStyle(tip).maxWidth.replace(`px`, ``)),
-        // rows = total height / single species (one-line) height
-        line_count: Math.round(element.clientHeight / species.clientHeight),
-      }
-    })
-    expect(max_width).toBeGreaterThan(0)
-    expect(width).toBeLessThanOrEqual(max_width + 1)
-    // three long species exceed the cap, so the line wraps to >= 2 rows
-    expect(line_count).toBeGreaterThanOrEqual(2)
-  })
-
-  test(`disordered atom is hoverable across its whole area`, async ({ page }) => {
-    // Disordered sites render as wedge (lune) meshes that converge to a point at
-    // the sphere poles. Viewed pole-on, the ball center had a non-hoverable band.
-    // The invisible full-sphere hit target must make the whole ball hoverable.
-    // Rotation tips the wedge (Y) axis toward the camera so the weak pole faces us.
-    await load_disordered_site_scene(page, [-Math.PI / 2, 0, 0])
-
+  // Disordered sites (e.g. tsumcorite M2: Zn+Fe+Pb) are stored as separate single-species
+  // sites at the same position and render as wedge (lune) meshes, one per species
+  test(`disordered sites: tooltip lists every species, whole ball hoverable, segments colored per element`, async ({
+    page,
+  }) => {
+    test.slow() // three formerly separate tests on one page load
     const canvas = structure_canvas(page)
-    const box = await canvas_box(canvas)
     const tooltip = site_tooltip(page)
 
-    // Points along the formerly-dead equatorial band through the ball center.
-    for (const delta_x of [0, -24, 24, -12, 12]) {
-      await hover_canvas_corner(canvas)
-      await expect(tooltip).toBeHidden()
-      await canvas.hover({
-        position: { x: box.width / 2 + delta_x, y: box.height / 2 },
-        force: true,
+    await test.step(`tooltip lists all elements on disordered split sites`, async () => {
+      // The tooltip must show every element, not just the majority one (regression guard).
+      await load_disordered_site_scene(page)
+      await hover_canvas_center(canvas)
+      const elements = tooltip.locator(`.elements`)
+      await expect(elements).toBeVisible()
+      for (const element of [`Zn`, `Fe`, `Pb`]) {
+        await expect(elements.locator(`strong`).filter({ hasText: element })).toBeVisible()
+      }
+      // partial occupancies render next to each species
+      await expect(elements.locator(`.occupancy`)).toHaveText([`0.645`, `0.345`, `0.01`])
+      // tooltip must respect its max-width (wrap) rather than grow unbounded: a 10rem cap is
+      // narrower than the three long species, which fit on one line under the default 16rem
+      const { width, max_width, line_count } = await elements.evaluate((element) => {
+        const tip = element.closest(`[role="tooltip"]`) as HTMLElement
+        tip.style.setProperty(`--plot-tooltip-max-width`, `10rem`)
+        const species = element.querySelector(`.species`) as HTMLElement
+        return {
+          width: tip.getBoundingClientRect().width,
+          max_width: Number(getComputedStyle(tip).maxWidth.replace(`px`, ``)),
+          // rows = total height / single species (one-line) height
+          line_count: Math.round(element.clientHeight / species.clientHeight),
+        }
       })
-      await expect(tooltip, `point (${delta_x}, 0) should be hoverable`).toBeVisible()
-    }
+      expect(max_width).toBeGreaterThan(0)
+      expect(width).toBeLessThanOrEqual(max_width + 1)
+      // three long species exceed the cap, so the line wraps to >= 2 rows
+      expect(line_count).toBeGreaterThanOrEqual(2)
+    })
+
+    await test.step(`disordered atom is hoverable across its whole area`, async () => {
+      // Wedges converge to a point at the sphere poles. Viewed pole-on, the ball center had
+      // a non-hoverable band. The invisible full-sphere hit target must make the whole ball
+      // hoverable. Rotation tips the wedge (Y) axis toward the camera so the weak pole faces us.
+      await load_disordered_site_scene(page, [-Math.PI / 2, 0, 0])
+      const box = await canvas_box(canvas)
+      // Points along the formerly-dead equatorial band through the ball center.
+      for (const delta_x of [0, -24, 24, -12, 12]) {
+        await hover_canvas_corner(canvas)
+        await expect(tooltip).toBeHidden()
+        await canvas.hover({
+          position: { x: box.width / 2 + delta_x, y: box.height / 2 },
+          force: true,
+        })
+        await expect(tooltip, `point (${delta_x}, 0) should be hoverable`).toBeVisible()
+      }
+      await hover_canvas_corner(canvas) // keep the tooltip off the pixel comparison below
+    })
+
+    // Regression guard for commit 16dbcf0b (disordered sites wrongly used only the first
+    // species' color). Geometry is pinned identical via same_size_atoms + fixed occupancies,
+    // so the only difference between the two renders is the second species' color.
+    await test.step(`disordered sites color each species segment by its own element`, async () => {
+      const console_errors = collect_console_errors(page)
+
+      // Pole-on rotation shows all species wedges as pie slices. auto_rotate must be off
+      // so the canvas can settle for the pixel comparison below.
+      const dispatch_disordered_site = async (elements: [string, string]) => {
+        await load_centered_scene(
+          page,
+          elements.map((element, species_idx) => ({
+            element,
+            occu: 0.49 + species_idx * 0.02,
+          })),
+          [-Math.PI / 2, 0, 0],
+        )
+        await set_scene_props(page, { same_size_atoms: true, auto_rotate: 0 })
+      }
+
+      // Screenshot once the canvas stops changing (framing/damping settled)
+      const settled_screenshot = async (): Promise<Buffer> => {
+        let prev = await canvas_screenshot(canvas)
+        await expect(async () => {
+          const next = await canvas_screenshot(canvas)
+          const stable = next.equals(prev)
+          prev = next
+          expect(stable).toBe(true)
+        }).toPass({ timeout: EXPECT_TIMEOUT })
+        return prev
+      }
+
+      await dispatch_disordered_site([`Bi`, `Bi`])
+      const uniform_color_render = await settled_screenshot()
+      expect(uniform_color_render.length).toBeGreaterThan(1000)
+
+      await dispatch_disordered_site([`Bi`, `Zr`])
+      const two_color_render = await settled_screenshot()
+
+      // If the Zr half wrongly reused the Bi color, both renders would be pixel-identical
+      expect(two_color_render.equals(uniform_color_render)).toBe(false)
+      expect(console_errors).toHaveLength(0)
+    })
   })
 
   // orbit and wheel zoom are covered in structure.test.ts, including on CI
@@ -318,78 +366,22 @@ test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
     )
   })
 
-  // Regression guard for commit 16dbcf0b (disordered sites wrongly used only the first
-  // species' color). Geometry is pinned identical via same_size_atoms + fixed occupancies,
-  // so the only difference between the two renders is the second species' color.
-  test(`disordered sites color each species segment by its own element`, async ({ page }) => {
-    const console_errors = collect_console_errors(page)
-    const canvas = structure_canvas(page)
-
-    // Pole-on rotation shows all species wedges as pie slices. auto_rotate must be off
-    // so the canvas can settle for the pixel comparison below.
-    const dispatch_disordered_site = async (elements: [string, string]) => {
-      await load_centered_scene(
-        page,
-        elements.map((element, species_idx) => ({ element, occu: 0.49 + species_idx * 0.02 })),
-        [-Math.PI / 2, 0, 0],
-      )
-      await set_scene_props(page, { same_size_atoms: true, auto_rotate: 0 })
-    }
-
-    // Screenshot once the canvas stops changing (framing/damping settled)
-    const settled_screenshot = async (): Promise<Buffer> => {
-      let prev = await canvas_screenshot(canvas)
-      await expect(async () => {
-        const next = await canvas_screenshot(canvas)
-        const stable = next.equals(prev)
-        prev = next
-        expect(stable).toBe(true)
-      }).toPass({ timeout: EXPECT_TIMEOUT })
-      return prev
-    }
-
-    await dispatch_disordered_site([`Bi`, `Bi`])
-    const uniform_color_render = await settled_screenshot()
-    expect(uniform_color_render.length).toBeGreaterThan(1000)
-
-    await dispatch_disordered_site([`Bi`, `Zr`])
-    const two_color_render = await settled_screenshot()
-
-    // If the Zr half wrongly reused the Bi color, both renders would be pixel-identical
-    expect(two_color_render.equals(uniform_color_render)).toBe(false)
-    expect(console_errors).toHaveLength(0)
-  })
-
-  test(`site labels and indices display correctly alone and combined`, async ({ page }) => {
-    const labels = page.locator(`.atom-label`)
-
-    await goto_structure_test(page, `/test/structure?show_site_labels=true`)
-    await expect(labels.first()).toBeVisible()
-
-    // indices are 1-based
-    await goto_structure_test(page, `/test/structure?show_site_indices=true`)
-    await expect(labels.first()).toBeVisible()
-    const index_texts = await labels.allTextContents()
-    expect(index_texts.some((text) => /^\s*1\s*$/.test(text))).toBe(true)
-    expect(index_texts.some((text) => /^\s*0\s*$/.test(text))).toBe(false)
-
-    await goto_structure_test(
-      page,
-      `/test/structure?show_site_labels=true&show_site_indices=true`,
-    )
-    await expect(labels.first()).toBeVisible()
-    const combined_texts = await labels.allTextContents()
-    expect(combined_texts.some((text) => /[A-Z][a-z]?\s*-\s*\d+/.test(text))).toBe(true)
-  })
-
   // Edge/surface opacities are independent, colors repaint the cell, and extreme widths /
-  // out-of-range opacities clamp instead of crashing.
-  test(`cell edge and surface props render distinct visuals without errors`, async ({
+  // out-of-range opacities clamp instead of crashing. same_size_atoms swaps per-element radii
+  // for a uniform one, so the rendered atom sizes must visibly change.
+  test(`cell edge/surface props and same_size_atoms render distinct visuals without errors`, async ({
     page,
   }) => {
     const console_errors = collect_console_errors(page)
     const canvas = structure_canvas(page)
     const white = { cell_edge_color: `#ffffff`, cell_surface_color: `#ffffff` }
+
+    // same_size_atoms visibly changes atom scaling (first: the opaque white cell the clamping
+    // checks below leave behind would hide the atoms)
+    await set_scene_props(page, { same_size_atoms: false, atom_radius: 1, show_atoms: true })
+    const per_element_radii = await expect_canvas_renders(canvas)
+    await set_scene_props(page, { same_size_atoms: true })
+    await expect_canvas_changed(canvas, per_element_radii)
 
     const opacity_cases = {
       edges_only: { cell_edge_opacity: 0.8, cell_surface_opacity: 0 },
@@ -438,21 +430,37 @@ test.describe(`StructureScene Component Tests`, { tag: `@webgl` }, () => {
       })
       await expect_canvas_renders(canvas)
     }
-    expect(console_errors).toHaveLength(0)
-  })
 
-  test(`same_size_atoms visibly changes atom scaling`, async ({ page }) => {
-    const console_errors = collect_console_errors(page)
-    const canvas = structure_canvas(page)
-
-    await set_scene_props(page, { same_size_atoms: false, atom_radius: 1, show_atoms: true })
-    const per_element_radii = await expect_canvas_renders(canvas)
-
-    await set_scene_props(page, { same_size_atoms: true })
-    await expect_canvas_changed(canvas, per_element_radii)
     expect(console_errors).toHaveLength(0)
   })
 })
+
+// Outside the describe above: one URL-seeded load, then scene props switch label modes
+test(
+  `site labels and indices display correctly alone and combined`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    const labels = page.locator(`.atom-label`)
+    const label_texts = () => labels.allTextContents()
+
+    await goto_structure_test(page, `/test/structure?show_site_labels=true`)
+    await expect(labels.first()).toBeVisible()
+
+    // indices are 1-based
+    await set_scene_props(page, { show_site_labels: false, show_site_indices: true })
+    await expect
+      .poll(async () => (await label_texts()).some((text) => /^\s*1\s*$/.test(text)))
+      .toBe(true)
+    expect((await label_texts()).some((text) => /^\s*0\s*$/.test(text))).toBe(false)
+
+    await set_scene_props(page, { show_site_labels: true, show_site_indices: true })
+    await expect
+      .poll(async () =>
+        (await label_texts()).some((text) => /[A-Z][a-z]?\s*-\s*\d+/.test(text)),
+      )
+      .toBe(true)
+  },
+)
 
 test.describe(`Edit Atoms Scene`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {

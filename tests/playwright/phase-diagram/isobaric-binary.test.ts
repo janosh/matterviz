@@ -18,7 +18,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     })
   })
 
-  test(`renders accessible diagram structure, axes and styled special points`, async ({
+  test(`renders accessible diagram structure, axes and styled special points, and resizes with the viewport`, async ({
     page,
   }) => {
     const { diagram, svg } = get_diagram_elements(page)
@@ -59,9 +59,16 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(marker).toHaveAttribute(`stroke`, `white`)
     const labels = special_points.locator(`text`)
     if (await labels.count()) await expect(labels.first()).not.toHaveText(``)
+
+    // responsive: the SVG shrinks with the viewport
+    const initial = await require_bbox(svg)
+    await page.setViewportSize({ width: 500, height: 400 })
+    expect((await require_bbox(svg)).width).toBeLessThan(initial.width)
   })
 
-  test(`tooltip shows phase info over regions only and hides on leave`, async ({ page }) => {
+  test(`tooltip shows phase info over regions only and hides on leave; click or Enter pins it, click, Escape or Space unpins it`, async ({
+    page,
+  }) => {
     const { diagram, svg } = get_diagram_elements(page)
     const tooltip = diagram.locator(`.tooltip-container`)
     const region = svg.locator(`.phase-regions path`).first()
@@ -84,6 +91,40 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(tooltip).toHaveCount(0)
     await page.mouse.move(box.x + 5, box.y + box.height / 2)
     await expect(tooltip).toHaveCount(0)
+
+    // click or Enter pins the tooltip; click, Escape or Space unpins it
+    const leave = async () => {
+      await page.mouse.move(10, 10)
+      await expect(tooltip).toHaveCount(0)
+    }
+    await region.hover()
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).not.toHaveClass(/pinned/)
+    await region.click()
+    await expect(tooltip).toHaveClass(/pinned/)
+    await expect(diagram.locator(`.pin-hint`)).toBeVisible()
+    // a pinned tooltip outlives the pointer leaving; clicking the region again unpins it
+    await page.mouse.move(10, 10)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveClass(/pinned/)
+    await region.click()
+    await expect(tooltip).not.toHaveClass(/pinned/)
+    await leave()
+
+    await region.click()
+    await expect(tooltip).toHaveClass(/pinned/)
+    await page.keyboard.press(`Escape`)
+    await expect(tooltip).not.toHaveClass(/pinned/)
+    await leave()
+
+    // Enter pins and Space unpins while the SVG is focused
+    await region.hover()
+    await expect(tooltip).toBeVisible()
+    await svg.focus()
+    await page.keyboard.press(`Enter`)
+    await expect(tooltip).toHaveClass(/pinned/)
+    await page.keyboard.press(`Space`)
+    await expect(tooltip).not.toHaveClass(/pinned/)
   })
 
   test(`double-click copies phase data to clipboard`, async ({ page, context }) => {
@@ -153,12 +194,26 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(field_width).toBeLessThan(pane_width / 2)
   })
 
-  test(`export pane has format options and functional buttons`, async ({ page }) => {
+  test(`export pane: e toggles it while its chords stay the browser's; format options and functional buttons`, async ({
+    page,
+  }) => {
     const { diagram } = get_diagram_elements(page)
-    await diagram.hover()
-
-    await diagram.locator(`.pd-export-toggle`).click()
     const pane = diagram.locator(`.export-pane`)
+    await expect(pane).toBeHidden()
+    await diagram.hover() // the shortcut follows the pointer
+
+    for (const chord of [`Control+Shift+E`, `Meta+Shift+E`, `Control+E`, `Meta+E`]) {
+      await page.keyboard.press(chord)
+      await expect(pane, chord).toBeHidden()
+    }
+
+    await page.keyboard.press(`e`)
+    await expect(pane).toBeVisible()
+    await page.keyboard.press(`e`)
+    await expect(pane).toBeHidden()
+
+    await diagram.hover()
+    await diagram.locator(`.pd-export-toggle`).click()
     await expect(pane).toBeVisible()
 
     await pane.locator(`input[type="number"]`).fill(`96`)
@@ -211,13 +266,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
       require_bbox(diagram.locator(`section.control-buttons`), `corner buttons`),
     ])
     expect(banner_box.x + banner_box.width).toBeLessThan(buttons_box.x)
-  })
-
-  test(`responsive: SVG resizes with viewport`, async ({ page }) => {
-    const { svg } = get_diagram_elements(page)
-    const initial = await require_bbox(svg)
-    await page.setViewportSize({ width: 500, height: 400 })
-    expect((await require_bbox(svg)).width).toBeLessThan(initial.width)
   })
 
   test(`file picker switches diagrams`, async ({ page }) => {
@@ -286,62 +334,5 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     }
 
     throw new Error(`No tie-line found in the two-phase scan positions`)
-  })
-
-  test(`click or Enter pins the tooltip; click, Escape or Space unpins it`, async ({
-    page,
-  }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    const region = svg.locator(`.phase-regions path`).first()
-    const tooltip = diagram.locator(`.tooltip-container`)
-    const leave = async () => {
-      await page.mouse.move(10, 10)
-      await expect(tooltip).toHaveCount(0)
-    }
-    await region.hover()
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).not.toHaveClass(/pinned/)
-    await region.click()
-    await expect(tooltip).toHaveClass(/pinned/)
-    await expect(diagram.locator(`.pin-hint`)).toBeVisible()
-    // a pinned tooltip outlives the pointer leaving; clicking the region again unpins it
-    await page.mouse.move(10, 10)
-    await expect(tooltip).toBeVisible()
-    await expect(tooltip).toHaveClass(/pinned/)
-    await region.click()
-    await expect(tooltip).not.toHaveClass(/pinned/)
-    await leave()
-
-    await region.click()
-    await expect(tooltip).toHaveClass(/pinned/)
-    await page.keyboard.press(`Escape`)
-    await expect(tooltip).not.toHaveClass(/pinned/)
-    await leave()
-
-    // Enter pins and Space unpins while the SVG is focused
-    await region.hover()
-    await expect(tooltip).toBeVisible()
-    await svg.focus()
-    await page.keyboard.press(`Enter`)
-    await expect(tooltip).toHaveClass(/pinned/)
-    await page.keyboard.press(`Space`)
-    await expect(tooltip).not.toHaveClass(/pinned/)
-  })
-
-  test(`e toggles the export pane, its chords stay the browser's`, async ({ page }) => {
-    const { diagram } = get_diagram_elements(page)
-    const pane = diagram.locator(`.export-pane`)
-    await expect(pane).toBeHidden()
-    await diagram.hover() // the shortcut follows the pointer
-
-    for (const chord of [`Control+Shift+E`, `Meta+Shift+E`, `Control+E`, `Meta+E`]) {
-      await page.keyboard.press(chord)
-      await expect(pane, chord).toBeHidden()
-    }
-
-    await page.keyboard.press(`e`)
-    await expect(pane).toBeVisible()
-    await page.keyboard.press(`e`)
-    await expect(pane).toBeHidden()
   })
 })

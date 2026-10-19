@@ -5,7 +5,7 @@ import {
   declared_color_scheme,
   get_system_mode,
   nearest_declared,
-  observe_theme_attributes,
+  watch_theme_changes,
 } from '#lib/theme/index.js'
 
 declare global {
@@ -72,11 +72,8 @@ export function watch_theme(
     clearTimeout(timer)
     timer = setTimeout(notify, 10)
   }
-  const nodes: Node[] = [document.documentElement]
-  if (document.body) nodes.push(document.body)
-  const root_node = target_element.getRootNode()
-  if (root_node instanceof ShadowRoot) nodes.push(root_node.host)
-  const stop_observing = observe_theme_attributes(nodes, schedule)
+  // its ancestor chain covers <html>, <body> and the shadow host (marimo cells)
+  const stop_observing = watch_theme_changes(target_element, schedule)
   // notify on subscribe: callers have no other way to read the host theme
   notify()
   return () => {

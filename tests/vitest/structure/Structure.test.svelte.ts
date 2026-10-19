@@ -3384,17 +3384,11 @@ describe(`site sidebar`, () => {
 
   // Below 900 px auto leaves the table undocked behind a reopen button, unless the host hides
   // that button because it shows the sites itself (Trajectory's data inspector)
+  // oxfmt-ignore
   test.each([
     [`forces, forced on`, with_forces, true, undefined, true, false],
     [`forces, auto, narrow`, with_forces, `auto`, undefined, false, true],
-    [
-      `forces, auto, button hidden`,
-      with_forces,
-      `auto`,
-      { hidden: [`site-table`] },
-      false,
-      false,
-    ],
+    [`forces, auto, button hidden`, with_forces, `auto`, { hidden: [`site-table`] }, false, false],
     [`no site numbers, auto`, structure, `auto`, undefined, false, false],
     [`no site numbers, forced on`, structure, true, undefined, false, false],
   ] as const)(
@@ -3492,15 +3486,10 @@ describe(`site sidebar`, () => {
     ]
     expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
     // as wide as its content until the divider moves, which then hands the width to the ratio
+    const divider = doc_query(`.structure-site-layout > .pane-divider`)
     expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
-    expect(
-      doc_query(`.structure-site-layout > .pane-divider`).style.getPropertyValue(
-        `--docked-sidebar-width`,
-      ),
-    ).toMatch(/^\d+px$/)
-    doc_query(`.structure-site-layout > .pane-divider`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }),
-    )
+    expect(divider.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
+    divider.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }))
     await tick()
     expect(sidebar()?.classList.contains(`fit-content`)).toBe(false)
     rows()[1].click()

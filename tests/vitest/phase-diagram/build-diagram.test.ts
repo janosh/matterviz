@@ -41,7 +41,7 @@ describe(`build_diagram`, () => {
     special_points: [{ id: `eutectic`, type: `eutectic`, position: [0.5, 600], label: `E` }],
   }
 
-  test(`copies metadata, expands curve refs into region vertices, types and styles boundaries`, () => {
+  test(`copies metadata, expands curve refs into region vertices, builds a boundary per curve`, () => {
     const result = build_diagram(minimal_input)
     expect(result).toMatchObject({
       components: [`A`, `B`],
@@ -56,16 +56,13 @@ describe(`build_diagram`, () => {
     expect(result.regions.map((region) => region.vertices)).toEqual([
       pts(0, 900, 1, 900, 1, 700, 0.5, 600, 0, 800),
     ])
-    // boundary type inferred from the curve name, default style from the type
-    expect(
-      result.boundaries.map(({ id: identifier, type, style }) => [identifier, type, style]),
-    ).toEqual([
-      [`liquidus`, `liquidus`, expect.objectContaining({ color: `#1565c0`, width: 2.5 })],
-      [`solidus`, `solidus`, expect.anything()],
-    ])
+    expect(result.boundaries.map(({ id }) => id)).toEqual([`liquidus`, `solidus`])
   })
 
+  // boundary type inferred from the (case-insensitive) curve name prefix, style from the type
   test.each([
+    [`liquidus`, `liquidus`, { color: `#1565c0`, width: 2.5 }],
+    [`solidus_b`, `solidus`, { color: `#2e7d32`, width: 2, dash: `4,2` }],
     [`Solvus_left`, `solvus`, { color: `#7b1fa2`, width: 1.5, dash: `2,2` }],
     [`peritectic_line`, `peritectic`, { color: `#d32f2f`, width: 2 }],
     [`liq_r`, `custom`, { color: `#333`, width: 1.5 }],

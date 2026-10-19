@@ -443,7 +443,7 @@ describe(`slab geometry`, () => {
     // A unimodular re-cell holds the same atoms, so it keeps the charge; the in-plane
     // primitive cell holds 1/index of them, so it keeps 1/index of it. A cleaved slab is
     // not charge-neutral by construction, so no bulk-derived number describes it.
-    const charged = make_crystal(FCC_A, on_sites(`Cu`, FCC_FACE_CENTRES), { charge: -2 })
+    const charged: Crystal = { ...fcc(), charge: -2 }
     const whole = make_oriented_bulk(charged, [1, 1, 1], { primitive_in_plane: false })
     expect(whole.crystal.charge).toBe(-2)
     const primitive = make_oriented_bulk(charged, [1, 1, 1])

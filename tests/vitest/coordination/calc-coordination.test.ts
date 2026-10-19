@@ -27,6 +27,15 @@ const water = make_molecule([
   [`H`, [5.757, 5.587, 5]],
   [`H`, [4.243, 5.587, 5]],
 ])
+// Na-Cl pair whose Cl sits at a NaN position, which neighbor_query rejects
+const with_nan_site = () => {
+  const broken = make_crystal(5, [
+    [`Na`, [0, 0, 0]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+  broken.sites[1].xyz = [NaN, 0, 0]
+  return broken
+}
 
 test.each([
   [`lone crystal`, simple_cubic, [`Structure`]],
@@ -96,7 +105,7 @@ describe(`calc_coordination_nums`, () => {
     ])
   })
 
-  test(`should handle structure with distant atoms`, () => {
+  test(`atoms 50 Å apart get CN 0`, () => {
     const isolated_atoms = make_crystal(
       100,
       [
@@ -148,12 +157,7 @@ describe(`calc_coordination_nums`, () => {
   // neighbor_query rejects a non-finite position; the wrapper must let that through rather
   // than hand the plot a histogram computed from garbage
   test(`throws on a NaN site position`, () => {
-    const broken = make_crystal(5, [
-      [`Na`, [0, 0, 0]],
-      [`Cl`, [0.5, 0.5, 0.5]],
-    ])
-    broken.sites[1].xyz = [NaN, 0, 0]
-    expect(() => calc_coordination_nums(broken)).toThrow(/non-finite position/)
+    expect(() => calc_coordination_nums(with_nan_site())).toThrow(/non-finite position/)
   })
 })
 
@@ -221,11 +225,7 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // neighbor_query throws on a non-finite position; an unguarded compute derived would take
   // the whole render down with it. The healthy structure next to it must still plot.
   test(`reports a NaN site as an error and keeps plotting the other structures`, async () => {
-    const broken = make_crystal(5, [
-      [`Na`, [0, 0, 0]],
-      [`Cl`, [0.5, 0.5, 0.5]],
-    ])
-    broken.sites[0].xyz = [NaN, 0, 0]
+    const broken = with_nan_site()
     // the error StatusMessage is a sibling of the mount root, so read the whole container
     const container = (await mount_plot({ structures: { cubic: simple_cubic, broken } }))
       .parentElement
@@ -239,7 +239,7 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
   // shell for it, so nothing in either component would notice if the prefix disappeared.
   // with_bar_change=false: on_sites_hover alone must still be wired to bar hover
   test.each([true, false])(
-    `tooltip prefixes the hovered bar with its string metadata and reports its sites (on_bar_change=%s)`,
+    `tooltip prefixes the bar's string metadata and reports its sites (on_bar_change=%s)`,
     async (with_bar_change) => {
       const [on_sites_hover, on_bar_change] = [vi.fn(), vi.fn()]
       const root = await mount_plot({

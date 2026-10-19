@@ -695,11 +695,8 @@ describe(`StructureControls reactive props`, () => {
     },
   )
 
-  test(`persists changed settings and pane size after debounce`, async () => {
-    const { state } = await mount_persisted_controls()
-    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
-    const pane = doc_query(`.controls-pane`)
-    // A real resize takes ownership from the pane's automatic anchoring.
+  // Press and release the controls pane's right resize handle
+  const start_pane_resize = () =>
     doc_query(`[data-resize-edge="right"]`).dispatchEvent(
       new PointerEvent(`pointerdown`, {
         bubbles: true,
@@ -708,6 +705,15 @@ describe(`StructureControls reactive props`, () => {
         pointerId: 1,
       }),
     )
+  const end_pane_resize = () =>
+    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+
+  test(`persists changed settings and pane size after debounce`, async () => {
+    const { state } = await mount_persisted_controls()
+    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
+    const pane = doc_query(`.controls-pane`)
+    // A real resize takes ownership from the pane's automatic anchoring.
+    start_pane_resize()
     flushSync()
     pane.style.width = `520px`
     pane.style.height = `610px`
@@ -719,7 +725,7 @@ describe(`StructureControls reactive props`, () => {
     flushSync()
     expect(style_writes.takeRecords()).toEqual([])
     style_writes.disconnect()
-    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+    end_pane_resize()
     await vi.waitFor(() =>
       expect(load_structure_view_state()).toMatchObject({
         settings: { structure: { atom_radius: 1.6 } },
@@ -735,15 +741,8 @@ describe(`StructureControls reactive props`, () => {
   test(`applies imported pane sizes and clears them on a sizeless import`, async () => {
     const { target } = await mount_persisted_controls()
     const pane = doc_query(`.controls-pane`)
-    doc_query(`[data-resize-edge="right"]`).dispatchEvent(
-      new PointerEvent(`pointerdown`, {
-        bubbles: true,
-        button: 0,
-        isPrimary: true,
-        pointerId: 1,
-      }),
-    )
-    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+    start_pane_resize()
+    end_pane_resize()
     flushSync()
     const pane_size = () => [pane.style.width, pane.style.height]
     for (const [controls_pane_size, expected] of [

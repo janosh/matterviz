@@ -125,13 +125,10 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
 test(`frame switches between repaints reach the global tab once, as the latest frame`, async () => {
   const run = make_run(4)
   const step = fromStore(writable(0))
-  mounted_inspector = mount(TrajectoryDataInspector, {
-    target: document.body,
-    props: {
-      run,
-      get current_step_idx() {
-        return step.current
-      },
+  await mount_inspector({
+    run,
+    get current_step_idx() {
+      return step.current
     },
   })
   await next_paint()
@@ -271,16 +268,12 @@ test(`atom rows refresh coordinates and scalar values during fixed-topology play
   const view = new FrameView()
   const frames = writable(make_frame(1))
   const display = fromStore(derived(frames, (frame) => view.update(frame)))
-  mounted_inspector = mount(TrajectoryDataInspector, {
-    target: document.body,
-    props: {
-      run: make_run(),
-      get current_frame() {
-        return display.current
-      },
+  await mount_inspector({
+    run: make_run(),
+    get current_frame() {
+      return display.current
     },
   })
-  await tick()
   await open_atoms()
   const before = cell_texts(body_rows()[0])
   expect(before).toContain(`10`)

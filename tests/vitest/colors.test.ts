@@ -351,7 +351,7 @@ describe(`is_dark_mode + watch_dark_mode`, () => {
     const widget_calls: boolean[] = []
     const stop_widget = watch_dark_mode((dark) => widget_calls.push(dark), widget)
     expect(widget_calls).toEqual([])
-    widget.style.colorScheme = `dark` // the element's own scheme is not watched, its roots are
+    widget.style.colorScheme = `dark`
     document.documentElement.style.colorScheme = `light`
     await settle()
     expect(widget_calls.at(-1)).toBe(true) // re-read from the element, not the (light) root

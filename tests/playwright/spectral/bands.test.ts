@@ -21,43 +21,76 @@ test.describe(`Bands Component Tests`, () => {
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
   })
 
-  test(`renders single band structure with axes and high-symmetry labels`, async ({
+  test(`renders band structure variants with band paths and high-symmetry labels`, async ({
     page,
   }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    await expect(plot).toBeVisible()
-    // 4 bands × 2 branches (Γ→X, X→M) from mock data
-    const paths = band_paths(plot)
-    await expect(paths.first()).toBeVisible()
-    await expect(paths).toHaveCount(8)
-
-    await expect(plot.locator(`g.x-axis`)).toBeVisible()
-    await expect(plot.locator(`g.y-axis`)).toBeVisible()
-    const x_labels = await x_axis_labels(plot)
-    expect(x_labels).toContain(`Γ`)
-    expect(x_labels).toContain(`X`)
-    expect((await numeric_y_ticks(plot)).length).toBeGreaterThan(2)
-  })
-
-  // path_count null only requires that bands rendered
-  for (const [identifier, path_count, x_labels] of [
-    [`union-path`, null, []],
-    [`intersection-path`, null, []],
-    [`union-non-canonical`, null, [`K`]], // K only exists in alt_path
-    // the U→K jump is a gap between branches, so draws no path: 3 branches × 4 bands
-    [`discontinuity`, 12, [`U | K`, `Γ`, `X`, `L`]],
-    [`electronic-spin-down-only`, 8, []],
-  ] as const) {
-    test(`renders ${identifier} plot with band paths and labels`, async ({ page }) => {
-      const plot = page.getByTestId(`${identifier}-plot`)
+    await test.step(`single band structure with axes`, async () => {
+      const plot = page.getByTestId(`single-bands-plot`)
       await expect(plot).toBeVisible()
+      // 4 bands × 2 branches (Γ→X, X→M) from mock data
       const paths = band_paths(plot)
       await expect(paths.first()).toBeVisible()
-      if (path_count !== null) await expect(paths).toHaveCount(path_count)
-      const labels = await x_axis_labels(plot)
-      for (const label of x_labels) expect(labels).toContain(label)
+      await expect(paths).toHaveCount(8)
+
+      await expect(plot.locator(`g.x-axis`)).toBeVisible()
+      await expect(plot.locator(`g.y-axis`)).toBeVisible()
+      const x_labels = await x_axis_labels(plot)
+      expect(x_labels).toContain(`Γ`)
+      expect(x_labels).toContain(`X`)
+      expect((await numeric_y_ticks(plot)).length).toBeGreaterThan(2)
     })
-  }
+
+    // path_count null only requires that bands rendered
+    for (const [identifier, path_count, x_labels] of [
+      [`union-path`, null, []],
+      [`intersection-path`, null, []],
+      [`union-non-canonical`, null, [`K`]], // K only exists in alt_path
+      // the U→K jump is a gap between branches, so draws no path: 3 branches × 4 bands
+      [`discontinuity`, 12, [`U | K`, `Γ`, `X`, `L`]],
+      [`electronic-spin-down-only`, 8, []],
+    ] as const) {
+      await test.step(identifier, async () => {
+        const plot = page.getByTestId(`${identifier}-plot`)
+        await expect(plot).toBeVisible()
+        const paths = band_paths(plot)
+        await expect(paths.first()).toBeVisible()
+        if (path_count !== null) await expect(paths).toHaveCount(path_count)
+        const labels = await x_axis_labels(plot)
+        for (const label of x_labels) expect(labels).toContain(label)
+      })
+    }
+
+    await test.step(`electronic spin overlay channels and gap annotation`, async () => {
+      const plot = page.getByTestId(`electronic-spin-overlay-plot`)
+      await expect(plot).toBeVisible()
+      const line_paths = band_paths(plot)
+      await expect(line_paths.first()).toBeVisible()
+      expect(await line_paths.count()).toBeGreaterThan(4)
+      await expect(plot.locator(`svg text`).filter({ hasText: `Eg:` })).toBeVisible()
+    })
+  })
+
+  test(`applies line styling, legend, phonon unit and highlight props; strict mode errors on path mismatch`, async ({
+    page,
+  }) => {
+    const first_path = band_paths(page.getByTestId(`custom-styling-plot`)).first()
+    await expect(first_path).toBeVisible()
+    expect(
+      await first_path.evaluate((element) => getComputedStyle(element).stroke),
+    ).toBeTruthy()
+    await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
+
+    const phonon_plot = page.getByTestId(`phonon-units-highlight-plot`)
+    await expect(phonon_plot).toBeVisible()
+    // unit lives in the y-axis label ("Frequency (cm<sup>−1</sup>)"), not the tick text
+    await expect(phonon_plot.locator(`.axis-label.y-label`)).toContainText(`cm−1`)
+    await expect(phonon_plot.locator(`svg path`).first()).toBeVisible()
+
+    const strict_plot = page.getByTestId(`strict-mismatch-plot`)
+    await expect(strict_plot).toBeVisible()
+    await expect(strict_plot.locator(`svg`)).toHaveCount(0)
+    await expect(strict_plot).toContainText(`different q-point paths`)
+  })
 
   test(`multiple band structures get a toggleable legend and series-labelled tooltips`, async ({
     page,
@@ -81,15 +114,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(paths).toHaveCount(16, { timeout: 2000 })
   })
 
-  test(`applies custom line styling and hides legend when configured`, async ({ page }) => {
-    const first_path = band_paths(page.getByTestId(`custom-styling-plot`)).first()
-    await expect(first_path).toBeVisible()
-    expect(
-      await first_path.evaluate((element) => getComputedStyle(element).stroke),
-    ).toBeTruthy()
-    await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
-  })
-
   test(`maintains responsive layout`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     const initial_box = await require_bbox(plot, `plot`)
@@ -98,13 +122,6 @@ test.describe(`Bands Component Tests`, () => {
       .poll(async () => (await plot.boundingBox())?.width, { timeout: 2000 })
       .not.toBe(initial_box.width)
     await expect(plot).toBeVisible()
-  })
-
-  test(`shows error state for strict mode path mismatches`, async ({ page }) => {
-    const plot = page.getByTestId(`strict-mismatch-plot`)
-    await expect(plot).toBeVisible()
-    await expect(plot.locator(`svg`)).toHaveCount(0)
-    await expect(plot).toContainText(`different q-point paths`)
   })
 
   test(`tooltip shows frequency, path and band index, switches between bands, and hides on leave`, async ({
@@ -143,24 +160,5 @@ test.describe(`Bands Component Tests`, () => {
     const box = await require_bbox(plot, `plot`)
     await page.mouse.move(box.x - 50, box.y - 50)
     await expect(tooltip).toBeHidden()
-  })
-
-  test(`applies phonon unit conversion and renders custom highlight region`, async ({
-    page,
-  }) => {
-    const plot = page.getByTestId(`phonon-units-highlight-plot`)
-    await expect(plot).toBeVisible()
-    // unit lives in the y-axis label ("Frequency (cm<sup>−1</sup>)"), not the tick text
-    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm−1`)
-    await expect(plot.locator(`svg path`).first()).toBeVisible()
-  })
-
-  test(`renders electronic spin overlay channels and gap annotation`, async ({ page }) => {
-    const plot = page.getByTestId(`electronic-spin-overlay-plot`)
-    await expect(plot).toBeVisible()
-    const line_paths = band_paths(plot)
-    await expect(line_paths.first()).toBeVisible()
-    expect(await line_paths.count()).toBeGreaterThan(4)
-    await expect(plot.locator(`svg text`).filter({ hasText: `Eg:` })).toBeVisible()
   })
 })

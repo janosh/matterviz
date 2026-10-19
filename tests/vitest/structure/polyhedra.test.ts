@@ -139,12 +139,13 @@ const face_verts = (hull: { vertices: Vec3[] }, face: number[]): Vec3[] =>
   face.map((idx) => hull.vertices[idx])
 const sorted_vertex_sites = (poly: Polyhedron): number[] =>
   poly.vertex_site_idxs.toSorted((left, right) => left - right)
-// 1.8 Å bonds that close exactly one regular octahedron around site 0
+// 1.8 Å bonds that close exactly one regular (8-face) octahedron around site 0
 const expect_one_octahedron = (structure: AnyStructure, bonds: BondPair[]): Polyhedron => {
   for (const bond of bonds) expect(bond.bond_length).toBeCloseTo(1.8, 12)
   const [poly, ...rest] = compute_polyhedra(structure, bonds)
   expect(rest).toHaveLength(0)
   expect(poly.vertices).toHaveLength(6)
+  expect(poly.faces).toHaveLength(8)
   expect(poly.volume).toBeCloseTo((4 / 3) * 1.8 ** 3, 12)
   return poly
 }
@@ -431,11 +432,10 @@ describe(`compute_polyhedra`, () => {
       [`Ti`, [0.1, 0.5, 0.5]], [`O`, [0.4, 0.5, 0.5]], [`O`, [0.1, 0.8, 0.5]], [`O`, [0.1, 0.2, 0.5]],
       [`O`, [0.1, 0.5, 0.8]], [`O`, [0.1, 0.5, 0.2]], [`O`, [0.8, 0.5, 0.5]],
     ])
-    const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) =>
+    const bonds = sites_after_0(6).map((site_idx) =>
       image_bond(structure, site_idx, site_idx === 6 ? [-1, 0, 0] : undefined),
     )
     const poly = expect_one_octahedron(structure, bonds)
-    expect(poly.faces).toHaveLength(8)
     // the 6th corner sits at the -x image of site 6, not at its in-cell position
     expect(poly.vertices).toContainEqual([-1.2, 3, 3].map((val) => expect.closeTo(val, 12)))
 
@@ -485,7 +485,7 @@ describe(`compute_polyhedra`, () => {
       ] as Vec3,
     }))
     const structure = make_crystal(20, [{ element: `Ti`, xyz: [0, 0, 0] as Vec3 }, ...ring])
-    const bonds = [1, 2, 3, 4, 5, 6].map((site_idx) => image_bond(structure, site_idx))
+    const bonds = sites_after_0(6).map((site_idx) => image_bond(structure, site_idx))
     expect(compute_polyhedra(structure, bonds)).toHaveLength(n_polyhedra)
   })
 
@@ -504,7 +504,7 @@ describe(`compute_polyhedra`, () => {
         [0, 1, 2].map((axis) => (axis === site_idx - 1 ? -1 : 0)) as Vec3,
       ),
     ])
-    expect(expect_one_octahedron(structure, bonds).faces).toHaveLength(8)
+    expect(expect_one_octahedron(structure, bonds).center_element).toBe(`Ti`)
   })
 
   test(`one physical neighbor reached twice is counted once`, () => {

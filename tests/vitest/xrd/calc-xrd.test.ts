@@ -24,6 +24,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
 import { symmetry_families } from '../fixtures/xrd/symmetry-families'
 import {
+  fcc_cell,
   init_moyo_for_tests,
   make_crystal,
   make_rocksalt,
@@ -740,12 +741,7 @@ describe(`compute_xrd_pattern options`, () => {
   // fcc Al over [20, 33]° at Cu Kα has 18 reflections, none allowed, largest raw |F|²·L
   // 2.14e-27 — relative scaling emitted that as a forbidden (100) at 21.9465°, y = 100
   test(`an all-extinct 2θ window returns nothing instead of scaling round-off to 100`, () => {
-    const fcc_al = make_crystal(4.05, [
-      { element: `Al`, abc: [0, 0, 0], label: `Al1` },
-      { element: `Al`, abc: [0, 0.5, 0.5], label: `Al2` },
-      { element: `Al`, abc: [0.5, 0, 0.5], label: `Al3` },
-      { element: `Al`, abc: [0.5, 0.5, 0], label: `Al4` },
-    ])
+    const fcc_al = fcc_cell(4.05, `Al`)
     expect(
       compute_xrd_pattern(fcc_al, { wavelength: `CuKa`, two_theta_range: [20, 33] }),
     ).toEqual({ x: [], y: [] })

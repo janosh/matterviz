@@ -1,34 +1,20 @@
 import type { CameraProjection } from '#lib/settings.js'
 import CameraSection from '#lib/scene/CameraSection.svelte'
-import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
-import { bind_props } from '../setup'
+import { flushSync } from 'svelte'
+import { expect, test, vi } from 'vitest'
+import { bind_props, mount_in_test } from '../setup'
 
 const reset_selector = `button[title="Reset camera to defaults"]`
-let component: ReturnType<typeof mount> | undefined
-afterEach(() => {
-  if (component) void unmount(component)
-  component = undefined
-})
 
 // Caller keys/reset (for the section's children) merge with the projection's own tracking, so
 // passing them never drops the projection reset
+// oxfmt-ignore
 test.each([
   { projection: `perspective`, caller_keys: undefined, with_reset: false, shows_reset: false },
   { projection: `orthographic`, caller_keys: undefined, with_reset: false, shows_reset: true },
   { projection: `orthographic`, caller_keys: [], with_reset: true, shows_reset: true },
-  {
-    projection: `perspective`,
-    caller_keys: [`auto_rotate`],
-    with_reset: true,
-    shows_reset: true,
-  },
-  {
-    projection: `orthographic`,
-    caller_keys: [`auto_rotate`],
-    with_reset: true,
-    shows_reset: true,
-  },
+  { projection: `perspective`, caller_keys: [`auto_rotate`], with_reset: true, shows_reset: true },
+  { projection: `orthographic`, caller_keys: [`auto_rotate`], with_reset: true, shows_reset: true },
 ] as const)(
   `projection=$projection caller_keys=$caller_keys on_reset=$with_reset`,
   ({ projection, caller_keys, with_reset, shows_reset }) => {
@@ -36,9 +22,9 @@ test.each([
       camera_projection: projection,
     })
     const on_reset = vi.fn()
-    component = mount(CameraSection, {
-      target: document.body,
-      props: bind_props(
+    mount_in_test(
+      CameraSection,
+      bind_props(
         {
           default_projection: `perspective` as const,
           ...(caller_keys && { changed_keys: caller_keys }),
@@ -46,7 +32,7 @@ test.each([
         },
         state,
       ),
-    })
+    )
     flushSync()
     const reset_button = document.querySelector<HTMLButtonElement>(reset_selector)
     expect(Boolean(reset_button)).toBe(shows_reset)

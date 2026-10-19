@@ -24,7 +24,7 @@ type AttributeBackend = {
 
 let destroy_attribute_guarded = false
 
-// three 0.185's WebGPUAttributeUtils.destroyAttribute() calls data.buffer.destroy() unguarded.
+// three's WebGPUAttributeUtils.destroyAttribute() (r186, still on dev) calls data.buffer.destroy() unguarded.
 // If that attribute's createBuffer was refused earlier — CI's software WebGPU rejects uploads as
 // small as 480 bytes under memory pressure — the backend entry exists but holds no buffer, so
 // disposing the geometry throws a TypeError. That throw surfaces in a Threlte <T> effect

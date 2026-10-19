@@ -1,5 +1,7 @@
 import { rescale_zoom_to_fit } from '#lib/chempot-diagram/camera.js'
 import ChemPotControls from '#lib/chempot-diagram/ChemPotControls.svelte'
+import diagram_source from '#lib/chempot-diagram/ChemPotDiagram3D.svelte?raw'
+import scene_source from '#lib/chempot-diagram/ChemPotScene3D.svelte?raw'
 import ChemPotSlices from '#lib/chempot-diagram/ChemPotSlices.svelte'
 import {
   create_chempot_overrides,
@@ -8,7 +10,6 @@ import {
 import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import type { Vec2 } from '#lib/math.js'
-import { readFileSync } from 'node:fs'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { clip_rect, doc_query, fire, mouse, plot_svg, resize_element } from '../setup'
@@ -153,14 +154,7 @@ test(`ChemPotSlices clamps typed values, ignores unparsable ones, jumps to a cli
 })
 
 test(`ChemPotDiagram3D sanitizes its only raw-HTML sink`, () => {
-  const source = [`ChemPotDiagram3D`, `ChemPotScene3D`]
-    .map((name) =>
-      readFileSync(
-        `${import.meta.dirname}/../../../src/lib/chempot-diagram/${name}.svelte`,
-        `utf8`,
-      ),
-    )
-    .join(`\n`)
+  const source = `${diagram_source}\n${scene_source}`
   const sinks = [...source.matchAll(/\{@html\s+(?<expr>[^}]+)\}/g)].map((match) =>
     (match.groups?.expr ?? ``).trim(),
   )

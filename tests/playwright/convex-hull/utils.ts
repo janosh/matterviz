@@ -53,22 +53,6 @@ export const open_controls_pane = (page: Page, diagram: Locator): Promise<Locato
 export const open_info_pane = (page: Page, diagram: Locator): Promise<Locator> =>
   open_pane(page, diagram, `convex-hull-info-pane`, `.info-btn`)
 
-export async function open_info_and_controls(
-  diagram: Locator,
-): Promise<{ info: Locator; controls: Locator }> {
-  const info_btn = diagram.locator(`.info-btn`)
-  await dom_click(info_btn)
-  const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
-  await expect(info).toBeVisible()
-
-  const controls_btn = diagram.locator(`.legend-controls-btn`)
-  await dom_click(controls_btn)
-  const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-  await expect(controls).toBeVisible()
-
-  return { info, controls }
-}
-
 // Visible count X of an info-pane "Visible ... X / Y" row
 export const visible_count = async (info: Locator, testid: string): Promise<number> => {
   const text = await info.getByTestId(testid).textContent()

@@ -5,7 +5,8 @@
 
 <script lang="ts">
   import type { TooltipPaint } from '#lib/colors/index.js'
-  import { resolve_color_token, tooltip_paint, watch_css_color } from '#lib/colors/index.js'
+  import { css_var_names, resolve_color_token, tooltip_paint } from '#lib/colors/index.js'
+  import { watch_theme_changes } from '#lib/theme/index.js'
   import { DEFAULT_CURSOR_SIZE, place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
   import type { Rect } from '#lib/plot/core/layout.js'
   import type { Snippet } from 'svelte'
@@ -135,7 +136,10 @@
     const resolve = (color: string) => tooltip_paint(resolve_color_token(node, color))
     const read = () => (dom_paint = resolve(fill) ?? resolve(NEUTRAL_BG))
     read()
-    return watch_css_color(node.parentElement ?? node, read)
+    return watch_theme_changes(node.parentElement ?? node, read, [
+      ...css_var_names(fill),
+      ...css_var_names(NEUTRAL_BG),
+    ])
   })
   const paint = $derived(js_paint ?? dom_paint)
 </script>
