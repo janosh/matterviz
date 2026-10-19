@@ -1,8 +1,17 @@
+import type { ShowControlsProp } from '#lib/controls.js'
+import ControlPane from '#lib/overlays/ControlPane.svelte'
 import ViewerPane from '#lib/overlays/ViewerPane.svelte'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { Expand } from 'svelte-widgets/icons'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { doc_query, fire, mock_fullscreen, trigger_resize_observer } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  fire,
+  mock_fullscreen,
+  mount_in_test,
+  trigger_resize_observer,
+} from '../setup'
 
 test.each([
   [-600, -300, 4, 4],
@@ -152,3 +161,39 @@ test.each([
     expect(pane.querySelector(`.reset-button`)).toBeNull()
   },
 )
+
+test.each([
+  [`hover`, true],
+  [`never`, false],
+  [{ hidden: [`controls`] }, false],
+  [{ mode: `always`, hidden: [`fullscreen`] }, true],
+] satisfies [ShowControlsProp, boolean][])(
+  `ControlPane with show_controls=%j renders its toggle: %s`,
+  (show_controls, shown) => {
+    const target = mount_in_test(ControlPane, { show_controls, controls_name: `test` })
+    flushSync()
+    expect(target.querySelector(`.test-controls-toggle`) !== null).toBe(shown)
+  },
+)
+
+// Closed panes cost nothing, but once opened their controls keep state across close/reopen
+test(`ControlPane mounts children on first open and keeps them mounted`, async () => {
+  const state = $state({ controls_open: false })
+  const children = createRawSnippet(() => ({ render: () => `<input class="pane-input" />` }))
+  mount_in_test(ControlPane, bind_props({ controls_name: `test`, children }, state))
+  flushSync()
+  const toggle = doc_query<HTMLButtonElement>(`.test-controls-toggle`)
+  expect(document.querySelector(`.pane-input`)).toBeNull()
+
+  await fire(toggle)
+  expect([state.controls_open, toggle.getAttribute(`aria-expanded`)]).toEqual([true, `true`])
+  const input = doc_query<HTMLInputElement>(`.pane-input`)
+  input.value = `edited`
+
+  await fire(toggle)
+  expect([state.controls_open, toggle.getAttribute(`aria-expanded`)]).toEqual([false, `false`])
+  state.controls_open = true
+  flushSync()
+  expect(doc_query<HTMLInputElement>(`.pane-input`)).toBe(input)
+  expect(input.value).toBe(`edited`)
+})

@@ -4,10 +4,12 @@ import type {
   ColumnFilter,
   ColumnPrefs,
   Column,
+  DateTimeFormatMode,
   RowData,
   RowId,
   SummaryStat,
 } from '#lib/table/index.js'
+import DateTimeFormatMenu from '#lib/table/DateTimeFormatMenu.svelte'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
@@ -20,6 +22,7 @@ import {
   doc_query,
   fire,
   keydown,
+  mount_in_test,
   mouse,
   stub_reduced_motion,
   trigger_resize_observer,
@@ -519,6 +522,40 @@ describe(`HeatmapTable`, () => {
       await select_mode(2, `time`)
       expect(cells()[2]).toBe(`03:04`)
       expect(cells()[1]).toBe(`03:04`)
+    })
+
+    // The menu sits in a sortable, draggable header, which must not react to any of its events
+    it(`DateTimeFormatMenu keeps its events from the header`, () => {
+      const [on_toggle, on_change, header] = [vi.fn(), vi.fn(), vi.fn()]
+      const options: DateTimeFormatMode[] = [`date`, `relative`]
+      mount_in_test(DateTimeFormatMenu, {
+        col_label: `Created`,
+        mode: options[0],
+        options,
+        open: true,
+        on_toggle,
+        on_change,
+      })
+      const types = [`click`, `input`, `keydown`, `mousedown`, `pointerdown`]
+      for (const type of types) document.body.addEventListener(type, header)
+      onTestFinished(() => {
+        for (const type of types) document.body.removeEventListener(type, header)
+      })
+      const trigger = doc_query(`button.datetime-format-trigger`)
+      for (const event of [
+        mouse(`mousedown`),
+        mouse(`pointerdown`),
+        keydown(`a`),
+        mouse(`click`),
+      ])
+        trigger.dispatchEvent(event)
+      expect(on_toggle).toHaveBeenCalledOnce()
+      const select = doc_query<HTMLSelectElement>(`select.datetime-format-select`)
+      select.value = `relative`
+      select.dispatchEvent(new Event(`input`, { bubbles: true }))
+      expect(on_change).toHaveBeenCalledExactlyOnceWith(`relative`)
+      expect(on_toggle).toHaveBeenCalledTimes(2) // a pick also closes the menu
+      expect(header).not.toHaveBeenCalled()
     })
 
     // Cell parsing itself is covered by the compare_rows/parse_numeric_val unit tests; these

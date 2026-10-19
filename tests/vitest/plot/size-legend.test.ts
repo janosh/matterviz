@@ -1,3 +1,4 @@
+import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
 import { create_size_scale } from '#lib/plot/core/scales.js'
 import {
   size_legend_entries,
@@ -8,6 +9,7 @@ import { DEFAULT_FONT_SPEC, measure_text_line } from '#lib/plot/core/text-metric
 import type { ScaleType } from '#lib/plot/core/types.js'
 import type { Vec2 } from '#lib/math.js'
 import { describe, expect, test } from 'vitest'
+import { mount_in_test, query } from '../setup'
 
 const format_label = (value: number) => `${value}`
 const font = { ...DEFAULT_FONT_SPEC, font_size: 11 }
@@ -103,4 +105,21 @@ describe(`size_legend_layout`, () => {
       items: [],
     })
   })
+})
+
+// Labels take the d3 `format` (else format_num) and the aria-label lists them after the title
+test.each([
+  [`.0%`, `Share`, [0.25, 1.5], [`25%`, `150%`], `Share: marker size legend, 25%, 150%`],
+  [undefined, undefined, [1500, 2e6], [`1.5k`, `2M`], `marker size legend, 1.5k, 2M`],
+])(`SizeLegend format=%s title=%s`, (format, title, values, labels, aria_label) => {
+  const entries = values.map((value, idx) => ({ value, radius: 3 * (idx + 1) }))
+  const svg = query(mount_in_test(SizeLegend, { entries, format, title }), `svg.size-legend`)
+  const texts = [...svg.querySelectorAll(`text:not(.title)`)].map((node) => node.textContent)
+  const radii = [...svg.querySelectorAll(`circle`)].map((node) => node.getAttribute(`r`))
+  expect([texts, radii, svg.getAttribute(`aria-label`)]).toEqual([
+    labels,
+    [`3`, `6`],
+    aria_label,
+  ])
+  expect(svg.querySelector(`.title`)?.textContent ?? null).toBe(title ?? null)
 })

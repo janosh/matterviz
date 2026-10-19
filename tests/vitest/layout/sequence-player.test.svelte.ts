@@ -1,9 +1,10 @@
-import { normalize_show_controls } from '#lib/controls.js'
+import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
+import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
 import SequenceControls from '#lib/layout/SequenceControls.svelte'
 import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
-import { flushSync, mount, unmount } from 'svelte'
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, set_input } from '../setup'
+import { bind_props, doc_query, mount_in_test, set_input } from '../setup'
 
 const flashed_controls = (player: Player) =>
   ([`play`, `previous`, `next`, `step`, `fps`] as const).filter((control) =>
@@ -332,5 +333,31 @@ describe(`SequenceControls`, () => {
     },
   )
 })
+
+// `never` hides the bar, except that an active fullscreen controller inside must stay mounted
+test.each([
+  [`hover`, false, `shown`],
+  [`never`, false, `absent`],
+  [`never`, true, `hidden`],
+] satisfies [ShowControlsProp, boolean, `shown` | `hidden` | `absent`][])(
+  `SequenceControlBar with show_controls=%j fullscreen=%s: %s`,
+  (show_controls, fullscreen, expected) => {
+    const state = $state({ height: 0 })
+    const children = createRawSnippet(() => ({
+      render: () => `<button class="play">x</button>`,
+    }))
+    const controls_config = normalize_show_controls(show_controls)
+    const target = mount_in_test(
+      SequenceControlBar,
+      bind_props({ controls_config, fullscreen, children }, state),
+    )
+    flushSync()
+    const bar = target.querySelector<HTMLElement>(`.sequence-control-bar`)
+    expect(!bar ? `absent` : bar.style.display === `none` ? `hidden` : `shown`).toBe(expected)
+    expect(target.querySelector(`.play`) !== null).toBe(expected !== `absent`)
+    // happy-dom reports clientHeight 600 for every element (tests/vitest/environment.ts)
+    expect(state.height).toBe(expected === `absent` ? 0 : 600)
+  },
+)
 
 type Player = ReturnType<typeof create_sequence_player>

@@ -1,4 +1,5 @@
 import type { PhaseData } from '#lib/convex-hull/index.js'
+import ReactionSlicePlot from '#lib/synthesis-planning/ReactionSlicePlot.svelte'
 import RouteComparison from '#lib/synthesis-planning/RouteComparison.svelte'
 import RouteTable from '#lib/synthesis-planning/RouteTable.svelte'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
@@ -219,4 +220,20 @@ test(`route table selects a clicked row without remounting the others`, async ()
     expect(row).toBe(rows_before[idx])
     expect(row.classList.contains(`selected`)).toBe(idx === 2)
   }
+})
+
+// The slice is a pseudo-binary to -quaternary hull over 2 to 4 solid precursors (gases are no
+// corners); with fewer there's no hull to draw
+const solids = base.reaction.reactants.filter(({ phase }) => !phase.is_gas)
+test.each([
+  [`all precursors`, base.reaction.reactants, 1],
+  [`one solid precursor`, solids.slice(0, 1), 0],
+])(`reaction slice plot with %s draws %i hulls`, async (_name, reactants, n_hulls) => {
+  mount_in_test(ReactionSlicePlot, {
+    route: { ...base, reaction: { ...base.reaction, reactants } },
+  })
+  await tick()
+  const hulls = `.convex-hull-2d, .convex-hull-3d, .convex-hull-4d`
+  if (n_hulls) await vi.waitFor(() => doc_query(hulls))
+  expect(document.querySelectorAll(hulls)).toHaveLength(n_hulls)
 })

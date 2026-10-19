@@ -1,10 +1,15 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
+import ChemPotLegend from '#lib/chempot-diagram/ChemPotLegend.svelte'
 import {
   compute_chempot_system,
   section_measure_curves,
 } from '#lib/chempot-diagram/compute.js'
 import { create_chempot_state } from '#lib/chempot-diagram/controls-state.svelte.js'
-import type { ChemPotDiagramConfig, ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
+import type {
+  ChemPotColorMode,
+  ChemPotDiagramConfig,
+  ChemPotHoverInfo,
+} from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
@@ -14,6 +19,7 @@ import {
   expect_tooltip_paint,
   keydown,
   marker_position,
+  mount_in_test,
   mouse,
   plot_svg,
   resize_element,
@@ -399,4 +405,19 @@ test.each([
   await resolve_latest()
   const label = document.querySelector(`.chempot-legend .colorbar .label`)
   expect(label?.textContent ?? null).toBe(title)
+})
+
+// A given colour bar wins; arity mode lists one row per element count up to the highest drawn
+// (capped at 4+); otherwise no legend. null = the colour bar.
+test.each<[ChemPotColorMode, ChemPotDiagramConfig[`color_bar`], string[], string[] | null]>([
+  [`arity`, null, [`Li`, `Li2O`], [`Unary`, `Binary`]],
+  [`arity`, null, [`Li`, `LiFePO4`], [`Unary`, `Binary`, `Ternary`, `4+`]],
+  [`arity`, { title: `E` }, [`Li2O`], null],
+  [`energy`, { title: `E` }, [`Li2O`], null],
+  [`none`, null, [`Li2O`], []],
+])(`ChemPotLegend in %s mode with color_bar=%j`, (color_mode, color_bar, formulas, rows) => {
+  const target = mount_in_test(ChemPotLegend, { color_mode, color_bar, formulas })
+  const arity_rows = [...target.querySelectorAll(`.arity-legend > span`)]
+  expect(arity_rows.map((row) => row.textContent)).toEqual(rows ?? [])
+  expect(target.querySelector(`.chempot-legend .colorbar`) !== null).toBe(rows === null)
 })

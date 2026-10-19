@@ -1,11 +1,14 @@
 import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+import { create_colorbar_decoration } from '#lib/plot/core/placed-decoration.svelte.js'
+import type { PlacedDecoration } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { Vec2 } from '#lib'
 import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.js'
 import type { AxisOption, ColorScaleOption, ScaleType } from '#lib/plot/core/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, trigger_resize_observer } from '../setup'
+import { bind_props, doc_query, mount_in_test, query, trigger_resize_observer } from '../setup'
 
 const mount_bar = (props: Record<string, unknown>) => {
   const component = mount(ColorBar, { target: document.body, props })
@@ -619,4 +622,32 @@ describe(`ColorBar Interactive Selects`, () => {
       expect(doc_query(`.bar`).getAttribute(`style`)).toContain(d3_sc.interpolateMagma(0))
     },
   )
+})
+
+// Hovering the placed bar freezes its tween so it can't slide out from under the pointer
+test(`ColorBarDecoration registers its element and locks the tween while hovered`, async () => {
+  const config = { title: `Energy`, wrapper_style: `left: 12px; top: 34px` }
+  const pad = { t: 0, b: 0, l: 0, r: 0 }
+  const plot_bounds = { x: 0, y: 0, width: 400, height: 300 }
+  const created: { decoration?: PlacedDecoration } = {}
+  onTestFinished(
+    $effect.root(() => {
+      created.decoration = create_colorbar_decoration({
+        id: `colorbar`,
+        enabled: () => true,
+        config: () => config,
+        dims: () => plot_bounds,
+        decoration_solution: () => ({ base_pad: pad, pad, plot_bounds, placements: [] }),
+      })
+    }),
+  )
+  const { decoration } = created
+  if (!decoration) throw new Error(`create_colorbar_decoration returned nothing`)
+  const set_locked = vi.spyOn(decoration.tween, `set_locked`)
+  const target = mount_in_test(ColorBarDecoration, { decoration, color_bar: config })
+  await tick() // bind:this lands in an effect
+  const wrapper = query(target, `.colorbar-wrapper`)
+  expect(decoration.element).toBe(wrapper) // the solver measures this element
+  for (const type of [`mouseenter`, `mouseleave`]) wrapper.dispatchEvent(new MouseEvent(type))
+  expect(set_locked.mock.calls).toEqual([[true], [false]])
 })

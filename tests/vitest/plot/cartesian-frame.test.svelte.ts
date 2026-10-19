@@ -16,6 +16,8 @@ import {
   rects_overlap,
 } from '#lib/plot/core/layout.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
+import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
+import type { PaneToggleProps } from '#lib/overlays/index.js'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -25,6 +27,7 @@ import {
   doc_query,
   inside_clip_path,
   mock_fullscreen,
+  mount_in_test,
   mount_sized,
   query,
   with_measured_text,
@@ -946,3 +949,40 @@ describe(`cartesian frame`, () => {
     },
   )
 })
+
+// `never` drops the caller's buttons and the export pane, still tells the controls snippet it
+// is hidden, and keeps the button of an active fullscreen (hidden) so it can still exit
+test.each([
+  [`always`, false, [`320x200`, true, `true`, `shown`]],
+  [{ hidden: [`fullscreen`] }, false, [`320x200`, true, `true`, null]],
+  [`never`, false, [null, false, `false`, null]],
+  [`never`, true, [null, false, `false`, `hidden`]],
+] as const)(
+  `ChartHeaderControls show_controls=%j fullscreen=%s`,
+  (show_controls, fullscreen, expected) => {
+    const target = mount_in_test(ChartHeaderControls, {
+      dims: { width: 320, height: 200, fullscreen },
+      fullscreen,
+      css_prefix: `scatter`,
+      fullscreen_toggle: true,
+      show_controls,
+      header_controls: createRawSnippet((dims: () => { width: number; height: number }) => ({
+        render: () => `<span class="custom">${dims().width}x${dims().height}</span>`,
+      })),
+      export_pane: {
+        children: createRawSnippet(() => ({ render: () => `<p>extra export</p>` })),
+      },
+      controls: createRawSnippet((_toggle: () => PaneToggleProps, visible: () => boolean) => ({
+        render: () => `<i class="controls" data-visible="${visible()}"></i>`,
+      })),
+    })
+    const row = query(target, `.header-controls`)
+    const fullscreen_btn = row.querySelector<HTMLButtonElement>(`.fullscreen-btn`)
+    expect([
+      row.querySelector(`.custom`)?.textContent ?? null,
+      row.querySelector(`button.export-toggle`) !== null,
+      query(row, `.controls`).dataset.visible,
+      fullscreen_btn && (fullscreen_btn.hidden ? `hidden` : `shown`),
+    ]).toEqual(expected)
+  },
+)
