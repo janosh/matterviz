@@ -108,6 +108,7 @@ const make_site = (
   label,
   properties: {},
 })
+// Full LatticeType: StructureScene sizes the camera far plane from a/b/c, and NaN there blanks the canvas
 const cubic_10 = {
   matrix: [
     [10, 0, 0],
@@ -115,6 +116,13 @@ const cubic_10 = {
     [0, 0, 10],
   ],
   pbc: [true, true, true],
+  a: 10,
+  b: 10,
+  c: 10,
+  alpha: 90,
+  beta: 90,
+  gamma: 90,
+  volume: 1000,
 }
 const dispatch_structure = (
   page: Page,
