@@ -795,28 +795,20 @@
     warned_structure === structure ? parse_warnings_notice(parse_warnings) : undefined,
   )
   let last_symmetry_structure: AnyStructure | null = null
-  let hovered = $state(false)
-  let focused = $state(false)
-  let viewer_active = $derived(hovered || focused)
-  // Sticky once set (by a press, or the effect below latching any other need), so the analysis
-  // outlives the focus, pane or cell switch that asked for it. Not on hover: content scrolling
+  // Sticky once set (by a press or focus, or the effect below latching any other need), so the
+  // analysis outlives the pane or cell switch that asked for it. Not on hover: content scrolling
   // under a resting cursor fires pointerenter, and every consumer starts with a press or key.
   let symmetry_demanded = $state(false)
   let symmetry_wanted = $derived(
     analyze_symmetry === true ||
       (analyze_symmetry === `on-demand` &&
         (symmetry_demanded ||
-          focused ||
           active_pane !== null ||
           cell_type !== `original` ||
           atom_color_config.mode === `wyckoff`)),
   )
-  let symmetry_analyzing = $derived(
-    symmetry_wanted &&
-      !sym_data &&
-      !symmetry_error &&
-      Boolean(structure && `lattice` in structure),
-  )
+  // Read only by CellSelect, which shows for crystals alone
+  let symmetry_analyzing = $derived(symmetry_wanted && !sym_data && !symmetry_error)
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
@@ -923,6 +915,9 @@
         ? `Requires at least ${MULTI_VIEW_MIN_WIDTH}×${multi_view_min_height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
+  let hovered = $state(false)
+  let focused = $state(false)
+  let viewer_active = $derived(hovered || focused)
   let view_layout_menu_open = $state(false)
   const is_pane_open = (pane: StructurePane): boolean => active_pane === pane
   const set_pane_open = (pane: StructurePane, open: boolean): void => {
@@ -1250,7 +1245,7 @@
       rest.onpointerleave?.(event)
     }}
     onfocusin={(event) => {
-      focused = true
+      focused = symmetry_demanded = true
       rest.onfocusin?.(event)
     }}
     onfocusout={(event) => {
