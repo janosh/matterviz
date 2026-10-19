@@ -2,10 +2,12 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import { fuzzy_match } from 'svelte-widgets/utils'
   import { highlight_matches } from 'svelte-widgets/attachments'
-  // Namespace import is gallery-only: computed access pins every glyph into the bundle.
-  import * as icons from 'svelte-widgets/icons'
+  import { Search } from 'svelte-widgets/icons'
   import type { IconData } from 'svelte-widgets'
   import Usage from './usage.md'
+
+  // Every glyph, loaded by +page.ts without pinning them all into the shared icons module
+  let { data }: { data: { icons: Record<string, IconData> } } = $props()
 
   let filter_text = $state(``)
   let copied_text = $state<string | null>(null)
@@ -17,8 +19,8 @@
   }
 
   // dev SSR keeps export order but browsers sort namespace keys: sort so both render alike
-  const icon_entries = Object.entries(icons).toSorted(([name_a], [name_b]) =>
-    name_a < name_b ? -1 : 1,
+  const icon_entries = $derived(
+    Object.entries(data.icons).toSorted(([name_a], [name_b]) => (name_a < name_b ? -1 : 1)),
   )
   const icon_svg = (entry: IconData): string => entry.d ?? entry.markup
 
@@ -42,7 +44,7 @@
 
 <div class="controls">
   <label>
-    <Icon icon={icons.Search} style="font-size: 1.2em" />
+    <Icon icon={Search} style="font-size: 1.2em" />
     <input type="text" placeholder="Filter icons (fuzzy search)..." bind:value={filter_text} />
   </label>
   <span class="count">
@@ -80,7 +82,7 @@
 
 {#if filtered_icons.length === 0}
   <div class="no-results">
-    <Icon icon={icons.Search} style="font-size: 3em; opacity: 0.3" />
+    <Icon icon={Search} style="font-size: 3em; opacity: 0.3" />
     <p>No icons match "{filter_text}"</p>
   </div>
 {/if}

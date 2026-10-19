@@ -27,51 +27,47 @@ const demo_routes = globSync(`**/+page.{svelte,md}`, {
   .filter((route) => !/^\/(?:test|404|\[slug\])(?:\/|$)/.test(route))
   .toSorted()
 
-// Budget = HEADROOM x MB measured at af92e264 (production build, Chromium, 1280x720). Routes
-// not listed measured at most 1 MB and get BASELINE. When a deliberate change outgrows its
-// budget, re-measure (the failure prints the numbers) and update. Bytes only: request counts
+// Budget = HEADROOM x MB measured after #496 dropped the shared icons chunk (production build,
+// Chromium, 1280x720). Routes not listed measured at most 1 MB and get BASELINE. When a
+// deliberate change outgrows its budget, re-measure (the failure prints the numbers) and update. Bytes only: request counts
 // swing with the environment (/acknowledgements made 162 requests locally, 255 in CI, mostly
 // element photos loading as the page scrolls), so the failure lists them but they don't gate.
 const HEADROOM = 1.5
 const BASELINE = 1
 // oxfmt-ignore
 const measured: Record<string, number> = {
-  '/': 3.68,
-  '/acknowledgements': 1.93,
-  '/convex-hull': 2.85,
-  '/convex-hull/chempot-diagram': 1.86,
-  '/convex-hull/synthesis-planning': 1.59,
-  '/how-to/hook-up-to-external-api': 1.98,
-  '/neb': 2.26,
-  '/phase-diagram/ternary': 1.14,
-  '/plot/binned-scatter': 1.5,
-  '/plot/scatter-plot': 1.07,
-  '/plot/scatter-plot-3d': 1.1,
-  '/reciprocal/bands': 1.74,
-  '/reciprocal/bands-and-dos': 1.75,
-  '/reciprocal/brillouin-bands-dos': 1.83,
-  '/reciprocal/brillouin-zone': 2.01,
-  '/reciprocal/dos': 1.32,
-  '/reciprocal/fermi-surface': 1.42,
-  '/reciprocal/fermi-surface-bands': 1.57,
-  '/reciprocal/ir-raman': 1.68,
-  '/reciprocal/phonon-mode-explorer': 1.66,
-  '/structure': 2.36,
-  '/structure/bond-angles': 2.32,
-  '/structure/coordination': 2.32,
-  '/structure/gallery': 2.33,
-  '/structure/host-tool': 2.35,
-  '/structure/interface': 2.25,
-  '/structure/isosurface': 2.27,
-  '/structure/multi-volume': 3.37,
-  '/structure/polyhedra': 2.32,
-  '/structure/rdf': 2.33,
-  '/structure/slab': 2.25,
-  '/structure/symmetry': 2.32,
-  '/structure/vectors': 2.25,
-  '/structure/xrd': 2.35,
-  '/trajectory': 2.99,
-  '/trajectory/render': 1.59,
+  '/': 3.09,
+  '/acknowledgements': 1.59,
+  '/convex-hull': 2.52,
+  '/convex-hull/chempot-diagram': 1.53,
+  '/convex-hull/synthesis-planning': 1.26,
+  '/how-to/hook-up-to-external-api': 1.65,
+  '/neb': 1.93,
+  '/plot/binned-scatter': 1.17,
+  '/reciprocal/bands': 1.41,
+  '/reciprocal/bands-and-dos': 1.42,
+  '/reciprocal/brillouin-bands-dos': 1.5,
+  '/reciprocal/brillouin-zone': 1.68,
+  '/reciprocal/fermi-surface': 1.09,
+  '/reciprocal/fermi-surface-bands': 1.24,
+  '/reciprocal/ir-raman': 1.34,
+  '/reciprocal/phonon-mode-explorer': 1.33,
+  '/structure': 2.02,
+  '/structure/bond-angles': 1.99,
+  '/structure/coordination': 1.99,
+  '/structure/gallery': 2.0,
+  '/structure/host-tool': 2.01,
+  '/structure/interface': 1.92,
+  '/structure/isosurface': 1.94,
+  '/structure/multi-volume': 2.42,
+  '/structure/polyhedra': 1.99,
+  '/structure/rdf': 1.99,
+  '/structure/slab': 1.92,
+  '/structure/symmetry': 1.99,
+  '/structure/vectors': 1.92,
+  '/structure/xrd': 2.02,
+  '/trajectory': 2.65,
+  '/trajectory/render': 1.26,
 }
 
 test(`payload: demo routes are enumerated and every measurement names one`, () => {
