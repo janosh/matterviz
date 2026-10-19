@@ -1625,14 +1625,23 @@ describe(`Structure`, () => {
     },
   )
 
-  // The ~0.75 MB WASM loads only once the viewer is touched or the display needs symmetry,
-  // and a demand sticks: closing the pane or going back to the original cell keeps the data
+  // The ~0.75 MB WASM loads only once the viewer is pressed or focused or the display needs
+  // symmetry (never on hover), and a demand sticks: closing the pane or going back to the
+  // original cell keeps the data
   const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
   test.each<[string, Partial<ComponentProps<typeof Structure>>, string | null, boolean]>([
-    [`disabled, even when touched`, { analyze_symmetry: false }, `pointerenter`, false],
+    [`disabled, even when pressed`, { analyze_symmetry: false }, `pointerdown`, false],
     [`on demand, untouched`, {}, null, false],
-    [`on demand, on pointer`, {}, `pointerenter`, true],
+    [`on demand, not on mere hover`, {}, `pointerenter`, false],
+    [`on demand, on press`, {}, `pointerdown`, true],
+    [
+      `on demand, on press beside a host handler`,
+      { onpointerdown: vi.fn() },
+      `pointerdown`,
+      true,
+    ],
     [`on demand, on focus`, {}, `focusin`, true],
+    [`on demand, on focus beside a host handler`, { onfocusin: vi.fn() }, `focusin`, true],
     [`on demand, for a conventional cell`, { cell_type: `conventional` }, null, true],
     [`on demand, for Wyckoff coloring`, { atom_color_config: wyckoff_colors }, null, true],
     [`on demand, for an open pane`, { active_pane: `info` }, null, true],
@@ -1646,14 +1655,18 @@ describe(`Structure`, () => {
     const state = $state<ComponentProps<typeof Structure>>({ structure, ...props })
     mount_structure(state)
     flushSync()
-    if (event) doc_query(`.structure`).dispatchEvent(new Event(event, { bubbles: true }))
-    flushSync()
-    await tick()
+    const fire_on_viewer = async (type?: string | null) =>
+      type ? fire(doc_query(`.structure`), new Event(type, { bubbles: true })) : tick()
+    await fire_on_viewer(event)
     expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
     expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+    // the viewer's own handlers compose with the host's instead of being replaced
+    const host_handler = props.onpointerdown ?? props.onfocusin
+    if (host_handler) expect(host_handler).toHaveBeenCalledOnce()
     if (!expected) return
     // the demand outlives what raised it: dropping and re-raising the need neither clears the
     // data (which would re-analyze on the way back) nor analyzes again
+    await fire_on_viewer({ focusin: `focusout` }[event ?? ``])
     Object.assign(state, {
       active_pane: null,
       cell_type: `original`,
@@ -1661,8 +1674,7 @@ describe(`Structure`, () => {
     })
     flushSync()
     Object.assign(state, props)
-    flushSync()
-    await tick()
+    await fire_on_viewer(event)
     expect(analyze_spy).toHaveBeenCalledTimes(1)
     expect(document.querySelector(`.symmetry-error`)).toBeNull()
   })

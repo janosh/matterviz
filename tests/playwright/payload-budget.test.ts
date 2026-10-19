@@ -131,6 +131,9 @@ for (const route of demo_routes) {
     // a route missing from the build would pass on its small 404 page
     const response = await page.goto(route)
     expect(response?.ok(), `${route} answered ${response?.status()}`).toBe(true)
+    // A cursor resting mid-page, as under CI's Xvfb: scrolling demos under it fires hover
+    // events, which must not pull in data meant for interaction (the symmetry WASM)
+    await page.mouse.move(640, 360)
     await network_quiet()
     await load_all_demos(page)
     await network_quiet()

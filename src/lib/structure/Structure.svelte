@@ -300,7 +300,7 @@
     defer_expensive_geometry?: boolean
     enable_info_pane?: boolean
     // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
-    // (pointer, focus, an open pane) or the display needs it (a conventional/primitive cell,
+    // (press, focus, an open pane) or the display needs it (a conventional/primitive cell,
     // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
     // `analysis.wyckoff_positions`; `false` never, for rapidly changing structures.
     analyze_symmetry?: boolean | `on-demand`
@@ -795,13 +795,18 @@
     warned_structure === structure ? parse_warnings_notice(parse_warnings) : undefined,
   )
   let last_symmetry_structure: AnyStructure | null = null
-  // Sticky once set (first pointer or focus, or any need below), so the analysis outlives the
-  // hover, pane or cell switch that asked for it
+  let hovered = $state(false)
+  let focused = $state(false)
+  let viewer_active = $derived(hovered || focused)
+  // Sticky once set (by a press, or the effect below latching any other need), so the analysis
+  // outlives the focus, pane or cell switch that asked for it. Not on hover: content scrolling
+  // under a resting cursor fires pointerenter, and every consumer starts with a press or key.
   let symmetry_demanded = $state(false)
   let symmetry_wanted = $derived(
     analyze_symmetry === true ||
       (analyze_symmetry === `on-demand` &&
         (symmetry_demanded ||
+          focused ||
           active_pane !== null ||
           cell_type !== `original` ||
           atom_color_config.mode === `wyckoff`)),
@@ -912,9 +917,6 @@
         ? `Requires at least ${MULTI_VIEW_MIN_WIDTH}×${multi_view_min_height} px. Enlarge the viewer or use fullscreen.`
         : undefined,
   )
-  let hovered = $state(false)
-  let focused = $state(false)
-  let viewer_active = $derived(hovered || focused)
   let view_layout_menu_open = $state(false)
   const is_pane_open = (pane: StructurePane): boolean => active_pane === pane
   const set_pane_open = (pane: StructurePane, open: boolean): void => {
@@ -1024,7 +1026,8 @@
   })
 
   // Live read-only results: consumers bind:this and read analysis without copying outputs
-  // through effects or exposing setters that the next render would overwrite.
+  // through effects or exposing setters that the next render would overwrite. sym_data and
+  // wyckoff_positions stay empty until the viewer is touched unless analyze_symmetry is true.
   export const analysis = {
     get displayed_structure() {
       return session.displayed_structure
@@ -1227,15 +1230,29 @@
     bind:this={wrapper}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    onpointerenter={() => (hovered = symmetry_demanded = true)}
-    onpointerleave={() => (hovered = false)}
-    onfocusin={() => (focused = symmetry_demanded = true)}
+    {...rest}
+    onpointerdown={(event) => {
+      symmetry_demanded = true
+      rest.onpointerdown?.(event)
+    }}
+    onpointerenter={(event) => {
+      hovered = true
+      rest.onpointerenter?.(event)
+    }}
+    onpointerleave={(event) => {
+      hovered = false
+      rest.onpointerleave?.(event)
+    }}
+    onfocusin={(event) => {
+      focused = true
+      rest.onfocusin?.(event)
+    }}
     onfocusout={(event) => {
       if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
         focused = false
       }
+      rest.onfocusout?.(event)
     }}
-    {...rest}
     style={site_sidebar_shown ? `height: 100%; width: 100%; min-width: 0` : outer_style}
     class={[`structure`, rest.class]}
     {@attach drop_zone}
