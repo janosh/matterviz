@@ -661,6 +661,9 @@ describe(`parse_in_worker`, () => {
     expect(worker_factory).toHaveBeenCalledTimes(2)
   })
 
+  // A worker error takes the worker and every run it serves down; a reply that fails to
+  // deserialize only fails the parses in flight (it names no request), and runs, served over
+  // their own ports, keep working on the same worker
   it.each([
     [
       `error`,
@@ -668,38 +671,41 @@ describe(`parse_in_worker`, () => {
       /failed for .+: out of memory/,
     ],
     [`messageerror`, new MessageEvent(`messageerror`), /failed to deserialize for/],
-  ])(
-    `a worker %s rejects in-flight parses, disposes its runs and the next parse respawns`,
-    async (event_type, event, message) => {
-      const workers: FakeWorker[] = []
-      const worker_factory = vi.fn(() => {
-        const worker = make_fake_worker(() => null)
-        workers.push(worker)
-        return worker
-      })
-      const opening = parse_in_worker(`text`, `movie.xyz`, false, { worker_factory })
-      reply(workers[0], trajectory_response(workers[0].posted[0].request))
-      const opened = await opening
-      if (opened.type !== `trajectory`) throw new Error(`Expected trajectory`)
-      // the served run keeps the worker alive, so later parses share it
-      const filenames = [`a.cif`, `b.cif`]
-      const parses = filenames.map((filename) =>
-        parse_in_worker(`data`, filename, false, { worker_factory }),
-      )
-      expect(worker_factory).toHaveBeenCalledOnce()
-      workers[0].emit(event_type, event)
-      for (const [idx, filename] of filenames.entries()) {
-        await expect(parses[idx]).rejects.toThrow(message)
-        await expect(parses[idx]).rejects.toThrow(filename)
-      }
-      await expect(Promise.resolve(opened.data.read_frame(0))).rejects.toThrow(/disposed/)
-      expect(workers[0].terminate).toHaveBeenCalledOnce()
-      const next = parse_in_worker(`data`, `c.cif`, false, { worker_factory })
-      expect(worker_factory).toHaveBeenCalledTimes(2)
-      reply(workers[1], { id: workers[1].posted[0].request.id, result: structure_result })
-      await expect(next).resolves.toEqual(structure_result)
-    },
-  )
+  ])(`a worker %s rejects every in-flight parse`, async (event_type, event, message) => {
+    const crashes = event_type === `error`
+    const workers: FakeWorker[] = []
+    const worker_factory = vi.fn(() => {
+      const worker = make_fake_worker(() => null)
+      workers.push(worker)
+      return worker
+    })
+    const opening = parse_in_worker(`text`, `movie.xyz`, false, { worker_factory })
+    reply(workers[0], trajectory_response(workers[0].posted[0].request))
+    const opened = await opening
+    if (opened.type !== `trajectory`) throw new Error(`Expected trajectory`)
+    // the served run keeps the worker alive, so later parses share it
+    const filenames = [`a.cif`, `b.cif`]
+    const parses = filenames.map((filename) =>
+      parse_in_worker(`data`, filename, false, { worker_factory }),
+    )
+    expect(worker_factory).toHaveBeenCalledOnce()
+    workers[0].emit(event_type, event)
+    for (const [idx, filename] of filenames.entries()) {
+      await expect(parses[idx]).rejects.toThrow(message)
+      await expect(parses[idx]).rejects.toThrow(filename)
+    }
+    const frame_read = Promise.resolve(opened.data.read_frame(0))
+    if (crashes) await expect(frame_read).rejects.toThrow(/disposed/)
+    else expect(await materialize_frame_result(frame_read)).toEqual(frame)
+    expect(workers[0].terminate).toHaveBeenCalledTimes(crashes ? 1 : 0)
+    const next = parse_in_worker(`data`, `c.cif`, false, { worker_factory })
+    expect(worker_factory).toHaveBeenCalledTimes(crashes ? 2 : 1)
+    const next_worker = workers.at(-1)
+    const next_request = next_worker?.posted.at(-1)?.request
+    if (!next_worker || !next_request) throw new Error(`c.cif was never posted`)
+    reply(next_worker, { id: next_request.id, result: structure_result })
+    await expect(next).resolves.toEqual(structure_result)
+  })
 
   it(`surfaces an ambiguous HDF5 group choice as a typed error`, async () => {
     const worker = make_fake_worker((request) => ({

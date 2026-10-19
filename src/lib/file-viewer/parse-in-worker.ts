@@ -108,13 +108,6 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     runs: new Set(),
     terminated: false,
   }
-  // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
-  // parse started synchronously from a disposed run's release spawns a fresh worker.
-  const crash = (describe: (filename: string) => string): void => {
-    terminate_host(host)
-    for (const { filename, fail } of host.pending.values()) fail(new Error(describe(filename)))
-    for (const run of host.runs) run.dispose()
-  }
   host.worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
     const response: ParseWorkerResponse | undefined = event.data
     const pending = response && host.pending.get(response.id)
@@ -122,14 +115,24 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     if (pending) pending.receive(response)
     else dispose_run_port(response?.run_port)
   }) as EventListener)
+  // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
+  // parse started synchronously from a disposed run's release spawns a fresh worker.
   host.worker.addEventListener(`error`, (event) => {
     event.preventDefault()
     const reason = event.message || `unknown worker error`
-    crash((filename) => `Parse worker failed for ${filename}: ${reason}`)
+    terminate_host(host)
+    for (const { filename, fail } of host.pending.values()) {
+      fail(new Error(`Parse worker failed for ${filename}: ${reason}`))
+    }
+    for (const run of host.runs) run.dispose()
   })
-  host.worker.addEventListener(`messageerror`, () =>
-    crash((filename) => `Parse worker response failed to deserialize for ${filename}`),
-  )
+  // A reply that failed to deserialize names no request, so every parse in flight fails. The
+  // worker stays up, and its runs talk over their own ports.
+  host.worker.addEventListener(`messageerror`, () => {
+    for (const { filename, fail } of host.pending.values()) {
+      fail(new Error(`Parse worker response failed to deserialize for ${filename}`))
+    }
+  })
   if (!dedicated) shared_hosts.set(factory, host)
   return host
 }
