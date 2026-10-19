@@ -104,6 +104,9 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   }
 }
 
+const reply = (worker: FakeWorker, data: ParseWorkerResponse): void =>
+  worker.emit(`message`, new MessageEvent(`message`, { data }))
+
 type ParseOptions = NonNullable<Parameters<typeof parse_in_worker>[3]>
 // Parse through `worker`; content and filename matter only where a test inspects the request
 const parse_with = (
@@ -558,14 +561,89 @@ describe(`parse_in_worker`, () => {
     expect(content.byteLength).toBe(expected_transfers === 0 ? size : 0)
   })
 
-  it.each([`error`, `messageerror`])(
-    `a late worker %s disposes the opened trajectory`,
-    async (event_type) => {
-      const worker = make_fake_worker(trajectory_response)
-      const run = await open_run(worker)
-      worker.emit(event_type, new Event(event_type))
-      await expect(Promise.resolve(run.read_frame(0))).rejects.toThrow(/disposed/)
-      expect(worker.terminate).toHaveBeenCalledOnce()
+  it(`concurrent parses share one worker and each reply reaches only its caller`, async () => {
+    const worker = make_fake_worker(() => null)
+    const worker_factory = vi.fn(() => worker)
+    const filenames = [`a.cif`, `b.cif`, `c.cif`]
+    const progress = filenames.map(() => vi.fn())
+    const parses = filenames.map((filename, idx) =>
+      parse_in_worker(`data`, filename, false, { worker_factory, on_progress: progress[idx] }),
+    )
+    expect(worker_factory).toHaveBeenCalledOnce()
+    const requests = worker.posted.map(({ request }) => request)
+    expect(requests.map(({ filename }) => filename)).toEqual(filenames)
+    reply(worker, { id: requests[1].id, progress: { current: 1, total: 2, stage: `read` } })
+    expect(progress.map((on_progress) => on_progress.mock.calls.length)).toEqual([0, 1, 0])
+    for (const { id, filename } of requests.toReversed()) {
+      expect(worker.terminate).not.toHaveBeenCalled()
+      reply(worker, { id, result: { ...structure_result, filename } })
+    }
+    expect((await Promise.all(parses)).map(({ filename }) => filename)).toEqual(filenames)
+    expect(worker.terminate).toHaveBeenCalledOnce() // only once the last parse settles
+  })
+
+  it.each([`abort`, `error`])(`one parse's %s leaves the others intact`, async (failure) => {
+    const worker = make_fake_worker(() => null)
+    const worker_factory = () => worker
+    const controller = new AbortController()
+    const failing = parse_in_worker(`data`, `bad.cif`, false, {
+      worker_factory,
+      signal: controller.signal,
+    })
+    const healthy = parse_in_worker(`data`, `good.cif`, false, { worker_factory })
+    const [failing_request, healthy_request] = worker.posted.map(({ request }) => request)
+    if (failure === `abort`) controller.abort()
+    else reply(worker, { id: failing_request.id, error: `bad atoms` })
+    await expect(failing).rejects.toThrow(failure === `abort` ? /abort/i : `bad atoms`)
+    expect(worker.terminate).not.toHaveBeenCalled()
+    // a late reply to the settled parse is dropped and its run port released
+    const late = trajectory_response(failing_request)
+    if (!late.run_port) throw new Error(`Expected run port`)
+    const close_port = vi.spyOn(late.run_port, `close`)
+    reply(worker, late)
+    expect(close_port).toHaveBeenCalledOnce()
+    reply(worker, { id: healthy_request.id, result: structure_result })
+    await expect(healthy).resolves.toEqual(structure_result)
+    expect(worker.terminate).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    [
+      `error`,
+      new ErrorEvent(`error`, { message: `out of memory` }),
+      /failed for .+: out of memory/,
+    ],
+    [`messageerror`, new MessageEvent(`messageerror`), /failed to deserialize for/],
+  ])(
+    `a worker %s rejects in-flight parses, disposes its runs and the next parse respawns`,
+    async (event_type, event, message) => {
+      const workers: FakeWorker[] = []
+      const worker_factory = vi.fn(() => {
+        const worker = make_fake_worker(() => null)
+        workers.push(worker)
+        return worker
+      })
+      const opening = parse_in_worker(`text`, `movie.xyz`, false, { worker_factory })
+      reply(workers[0], trajectory_response(workers[0].posted[0].request))
+      const opened = await opening
+      if (opened.type !== `trajectory`) throw new Error(`Expected trajectory`)
+      // the served run keeps the worker alive, so later parses share it
+      const filenames = [`a.cif`, `b.cif`]
+      const parses = filenames.map((filename) =>
+        parse_in_worker(`data`, filename, false, { worker_factory }),
+      )
+      expect(worker_factory).toHaveBeenCalledOnce()
+      workers[0].emit(event_type, event)
+      for (const [idx, filename] of filenames.entries()) {
+        await expect(parses[idx]).rejects.toThrow(message)
+        await expect(parses[idx]).rejects.toThrow(filename)
+      }
+      await expect(Promise.resolve(opened.data.read_frame(0))).rejects.toThrow(/disposed/)
+      expect(workers[0].terminate).toHaveBeenCalledOnce()
+      const next = parse_in_worker(`data`, `c.cif`, false, { worker_factory })
+      expect(worker_factory).toHaveBeenCalledTimes(2)
+      reply(workers[1], { id: workers[1].posted[0].request.id, result: structure_result })
+      await expect(next).resolves.toEqual(structure_result)
     },
   )
 
