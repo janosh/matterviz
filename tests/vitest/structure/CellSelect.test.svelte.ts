@@ -1,6 +1,6 @@
 import CellSelect from '#lib/structure/CellSelect.svelte'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-import { mount, tick } from 'svelte'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, keydown, mouse, set_input } from '../setup'
 
@@ -11,12 +11,7 @@ const mock_sym_data = {
   choice: ``,
 } as unknown as SymmetryDataset
 
-type CellSelectProps = {
-  supercell_scaling: string
-  cell_type?: CellType
-  sym_data?: SymmetryDataset | null
-  loading?: boolean
-}
+type CellSelectProps = ComponentProps<typeof CellSelect>
 
 const normalize_supercell_label = (label: string | undefined): string | undefined =>
   label?.replaceAll(`\u200A`, ``).trim()
@@ -106,15 +101,16 @@ describe(`CellSelect`, () => {
   })
 
   describe(`cell type buttons`, () => {
-    // Prim/Conv need symmetry data; their tooltip says so while disabled
+    // Prim/Conv need symmetry data; while disabled their tooltip says whether it is on its way
     test.each([
-      [null, `original`, [false, true, true]],
-      [mock_sym_data, `primitive`, [false, false, false]],
-      [mock_sym_data, `conventional`, [false, false, false]],
+      [null, `original`, [false, true, true], false],
+      [null, `original`, [false, true, true], true],
+      [mock_sym_data, `primitive`, [false, false, false], false],
+      [mock_sym_data, `conventional`, [false, false, false], false],
     ] as const)(
-      `sym_data=%s, cell_type=%s: labels, selection, disabled states %s and tooltips`,
-      async (sym_data, cell_type, disabled) => {
-        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data, cell_type })
+      `sym_data=%s, cell_type=%s: labels, selection, disabled states %s and tooltips (analyzing=%s)`,
+      async (sym_data, cell_type, disabled, analyzing) => {
+        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data, cell_type, analyzing })
         const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)]
         expect(buttons.map((btn) => btn.textContent?.trim())).toEqual([`Orig`, `Prim`, `Conv`])
         expect(buttons.map((btn) => btn.classList.contains(`selected`))).toEqual(
@@ -129,7 +125,8 @@ describe(`CellSelect`, () => {
             `Conventional cell (standardized representation)`,
           ])
         } else {
-          for (const tip of tooltips.slice(1)) expect(tip).toContain(`requires symmetry data`)
+          const reason = analyzing ? `analyzing symmetry…` : `requires symmetry data`
+          for (const tip of tooltips.slice(1)) expect(tip).toContain(reason)
         }
       },
     )

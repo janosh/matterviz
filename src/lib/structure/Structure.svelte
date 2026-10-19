@@ -811,6 +811,12 @@
           cell_type !== `original` ||
           atom_color_config.mode === `wyckoff`)),
   )
+  let symmetry_analyzing = $derived(
+    symmetry_wanted &&
+      !sym_data &&
+      !symmetry_error &&
+      Boolean(structure && `lattice` in structure),
+  )
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
@@ -1516,6 +1522,7 @@
                   bind:cell_type
                   {sym_data}
                   loading={session.supercell_loading}
+                  analyzing={symmetry_analyzing}
                 />
               {/if}
             {/snippet}

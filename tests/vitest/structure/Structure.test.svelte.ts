@@ -1663,6 +1663,11 @@ describe(`Structure`, () => {
     // the viewer's own handlers compose with the host's instead of being replaced
     const host_handler = props.onpointerdown ?? props.onfocusin
     if (host_handler) expect(host_handler).toHaveBeenCalledOnce()
+    // while the analysis runs, the cell menu says Prim/Conv are coming rather than unavailable
+    await fire(doc_query(`.cell-select .toggle-btn`))
+    expect(doc_query(`.cell-type-btn:nth-child(2)`).getAttribute(`aria-label`)).toContain(
+      expected ? `analyzing symmetry…` : `requires symmetry data`,
+    )
     if (!expected) return
     // the demand outlives what raised it: dropping and re-raising the need neither clears the
     // data (which would re-analyze on the way back) nor analyzes again

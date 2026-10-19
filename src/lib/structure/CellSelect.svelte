@@ -13,11 +13,13 @@
     cell_type = $bindable(`original`),
     sym_data = null,
     loading = false,
+    analyzing = false,
   }: {
     supercell_scaling: string
     cell_type?: CellType
     sym_data?: SymmetryDataset | null
     loading?: boolean
+    analyzing?: boolean // symmetry analysis under way, so Prim/Conv enable once it lands
   } = $props()
 
   let menu_open = $state(false)
@@ -108,7 +110,7 @@
         {#each cell_types as { type, label, tooltip: cell_tooltip } (type)}
           {@const disabled = type !== `original` && !sym_data}
           {@const tooltip_text = disabled
-            ? `${cell_tooltip} - requires symmetry data`
+            ? `${cell_tooltip} - ${analyzing ? `analyzing symmetry…` : `requires symmetry data`}`
             : cell_tooltip}
           <button
             class={['cell-type-btn', { selected: cell_type === type, disabled }]}
