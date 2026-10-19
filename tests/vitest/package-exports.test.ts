@@ -304,11 +304,13 @@ describe(`package.json exports`, () => {
     `symmetry builds retain default and overridable WASM resolution`,
     () => {
       const source = readFileSync(join(dist_dir, `symmetry/analyze.js`), `utf8`)
-      // undefined must reach init() untouched so wasm-bindgen resolves the .wasm next to its
-      // glue module; the anywidget build rewrites that resolution to a CDN/host URL via the
-      // shared moyo plugin in src/vite-plugins.ts
+      // with no source passed or registered (set_moyo_wasm_source), undefined must reach init()
+      // untouched so wasm-bindgen resolves the .wasm next to its glue module; the anywidget
+      // build rewrites that resolution to a CDN/host URL via the shared moyo plugin in
+      // src/vite-plugins.ts
+      expect(source).toContain(`const module_or_path = source ?? registered_source`)
       expect(source).toMatch(
-        /init\(source === undefined \? undefined : \{ module_or_path: source \}\)/,
+        /init\(module_or_path === undefined \? undefined : \{ module_or_path \}\)/,
       )
       expect(source).not.toContain(`moyo_wasm_bg.wasm`)
       const widget_config = readFileSync(

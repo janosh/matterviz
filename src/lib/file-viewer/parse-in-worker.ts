@@ -60,12 +60,9 @@ interface ParseWorkerHost {
 }
 
 // One host per factory, so the default factory gives one worker (one script fetch) per page.
-// HDF5 sources and their preparation replicas get dedicated hosts: WASM memory never shrinks,
-// so h5wasm's heap is only returned by terminating its worker, and a replica's own thread is
-// its point.
+// HDF5 sources and replicas get dedicated hosts: only terminating a worker returns h5wasm's
+// heap, and a replica's own thread is its point. Idle shared workers linger for the next viewer.
 const shared_hosts = new Map<WorkerFactory, ParseWorkerHost>()
-// The shared worker outlives a gap between parses (viewers loading one after another) instead
-// of being refetched and recompiled for each, like the HDF5 replica pool below
 const SHARED_IDLE_MS = 10_000
 
 // Stop routing new parses to this worker; it still serves its runs until they end
@@ -115,24 +112,23 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     if (pending) pending.receive(response)
     else dispose_run_port(response?.run_port)
   }) as EventListener)
+  const fail_pending = (describe: (filename: string) => string): void => {
+    for (const { filename, fail } of host.pending.values()) fail(new Error(describe(filename)))
+  }
   // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
   // parse started synchronously from a disposed run's release spawns a fresh worker.
   host.worker.addEventListener(`error`, (event) => {
     event.preventDefault()
     const reason = event.message || `unknown worker error`
     terminate_host(host)
-    for (const { filename, fail } of host.pending.values()) {
-      fail(new Error(`Parse worker failed for ${filename}: ${reason}`))
-    }
+    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`)
     for (const run of host.runs) run.dispose()
   })
-  // A reply that failed to deserialize names no request, so every parse in flight fails. The
-  // worker stays up, and its runs talk over their own ports.
-  host.worker.addEventListener(`messageerror`, () => {
-    for (const { filename, fail } of host.pending.values()) {
-      fail(new Error(`Parse worker response failed to deserialize for ${filename}`))
-    }
-  })
+  // A reply that failed to deserialize names no request, so every parse in flight fails; the
+  // worker stays up, and its runs talk over their own ports
+  host.worker.addEventListener(`messageerror`, () =>
+    fail_pending((filename) => `Parse worker response failed to deserialize for ${filename}`),
+  )
   if (!dedicated) shared_hosts.set(factory, host)
   return host
 }

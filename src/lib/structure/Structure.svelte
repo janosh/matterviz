@@ -34,7 +34,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
   import { key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
@@ -1232,28 +1232,15 @@
     bind:clientWidth={width}
     bind:clientHeight={height}
     {...rest}
-    onpointerdown={(event) => {
-      symmetry_demanded = true
-      rest.onpointerdown?.(event)
-    }}
-    onpointerenter={(event) => {
-      hovered = true
-      rest.onpointerenter?.(event)
-    }}
-    onpointerleave={(event) => {
-      hovered = false
-      rest.onpointerleave?.(event)
-    }}
-    onfocusin={(event) => {
-      focused = symmetry_demanded = true
-      rest.onfocusin?.(event)
-    }}
-    onfocusout={(event) => {
+    onpointerdown={chain_handlers(() => (symmetry_demanded = true), rest.onpointerdown)}
+    onpointerenter={chain_handlers(() => (hovered = true), rest.onpointerenter)}
+    onpointerleave={chain_handlers(() => (hovered = false), rest.onpointerleave)}
+    onfocusin={chain_handlers(() => (focused = symmetry_demanded = true), rest.onfocusin)}
+    onfocusout={chain_handlers((event: FocusEvent) => {
       if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
         focused = false
       }
-      rest.onfocusout?.(event)
-    }}
+    }, rest.onfocusout)}
     style={site_sidebar_shown ? `height: 100%; width: 100%; min-width: 0` : outer_style}
     class={[`structure`, rest.class]}
     {@attach drop_zone}

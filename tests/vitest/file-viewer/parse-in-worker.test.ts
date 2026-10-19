@@ -124,6 +124,16 @@ const expect_stops_after_grace = async (worker: FakeWorker): Promise<void> => {
   await vi.advanceTimersByTimeAsync(1000)
   expect(worker.terminate).toHaveBeenCalledOnce()
 }
+// A factory of workers that answer nothing on their own, each kept for the test to drive
+const silent_workers = () => {
+  const workers: FakeWorker[] = []
+  const worker_factory = vi.fn(() => {
+    const worker = make_fake_worker(() => null)
+    workers.push(worker)
+    return worker
+  })
+  return { workers, worker_factory }
+}
 const open_run = async (worker: WorkerLike): Promise<TrajectoryRun> => {
   const result = await parse_with(worker)
   if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
@@ -614,12 +624,7 @@ describe(`parse_in_worker`, () => {
       `x.bin`,
     ],
   ])(`HDF5 detected %s parses on a dedicated worker`, async (_label, content, filename) => {
-    const workers: FakeWorker[] = []
-    const worker_factory = vi.fn(() => {
-      const worker = make_fake_worker(() => null)
-      workers.push(worker)
-      return worker
-    })
+    const { workers, worker_factory } = silent_workers()
     const shared = parse_in_worker(`data`, `a.cif`, false, { worker_factory })
     const hdf5 = parse_in_worker(content, filename, false, { worker_factory })
     expect(worker_factory).toHaveBeenCalledTimes(2)
@@ -673,12 +678,7 @@ describe(`parse_in_worker`, () => {
     [`messageerror`, new MessageEvent(`messageerror`), /failed to deserialize for/],
   ])(`a worker %s rejects every in-flight parse`, async (event_type, event, message) => {
     const crashes = event_type === `error`
-    const workers: FakeWorker[] = []
-    const worker_factory = vi.fn(() => {
-      const worker = make_fake_worker(() => null)
-      workers.push(worker)
-      return worker
-    })
+    const { workers, worker_factory } = silent_workers()
     const opening = parse_in_worker(`text`, `movie.xyz`, false, { worker_factory })
     reply(workers[0], trajectory_response(workers[0].posted[0].request))
     const opened = await opening
@@ -700,10 +700,11 @@ describe(`parse_in_worker`, () => {
     expect(workers[0].terminate).toHaveBeenCalledTimes(crashes ? 1 : 0)
     const next = parse_in_worker(`data`, `c.cif`, false, { worker_factory })
     expect(worker_factory).toHaveBeenCalledTimes(crashes ? 2 : 1)
-    const next_worker = workers.at(-1)
-    const next_request = next_worker?.posted.at(-1)?.request
-    if (!next_worker || !next_request) throw new Error(`c.cif was never posted`)
-    reply(next_worker, { id: next_request.id, result: structure_result })
+    const [next_worker, post_idx] = crashes ? [workers[1], 0] : [workers[0], 3]
+    reply(next_worker, {
+      id: next_worker.posted[post_idx].request.id,
+      result: structure_result,
+    })
     await expect(next).resolves.toEqual(structure_result)
   })
 
