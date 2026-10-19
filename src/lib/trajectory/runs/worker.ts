@@ -1,6 +1,7 @@
 // A run served over a MessagePort: the worker keeps the real run (and with it the source
 // bytes or HDF5 handle) and answers read_frame / collect_positions requests; the client side
-// is itself a TrajectoryRun whose dispose() releases the port and terminates the worker.
+// is itself a TrajectoryRun whose dispose() releases the port and lets the caller stop the
+// worker once nothing else uses it.
 //
 // MessagePort.postMessage takes no targetOrigin (that's window.postMessage).
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
@@ -210,7 +211,7 @@ export const dispose_run_port = (port: MessagePort | undefined): void => {
 export type WorkerRun = TrajectoryRun & Required<Pick<TrajectoryRun, `prepare_frame`>>
 
 // Client side. `release` runs once on dispose (or a port failure) and is where the caller
-// terminates the worker that owns the other end.
+// releases the worker that owns the other end.
 export const worker_run = (
   port: MessagePort,
   summary: TrajectoryRunSummary,

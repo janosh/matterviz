@@ -115,6 +115,15 @@ const parse_with = (
   content: Parameters<typeof parse_in_worker>[0] = `text`,
   filename = `movie.xyz`,
 ) => parse_in_worker(content, filename, false, { worker_factory: () => worker, ...options })
+// A shared worker lingers 10 s once idle (a dedicated or retired one stops at once). Needs fake
+// timeouts, installed by the test before the worker goes idle.
+const use_fake_timeouts = () => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+const expect_stops_after_grace = async (worker: FakeWorker): Promise<void> => {
+  await vi.advanceTimersByTimeAsync(9000)
+  expect(worker.terminate).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(worker.terminate).toHaveBeenCalledOnce()
+}
 const open_run = async (worker: WorkerLike): Promise<TrajectoryRun> => {
   const result = await parse_with(worker)
   if (result.type !== `trajectory`) throw new Error(`Expected trajectory`)
@@ -192,6 +201,9 @@ afterEach(() => {
 })
 
 describe(`parse_in_worker`, () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
   it.each([3, 8])(
     `keeps frames moving while replicas open together (%i cores), then shares work`,
     async (cores) => {
@@ -462,7 +474,8 @@ describe(`parse_in_worker`, () => {
     await expect(pending).rejects.toThrow(/abort/i)
   })
 
-  it(`posts a file request and terminates the worker after a non-trajectory reply`, async () => {
+  it(`posts a file request and stops the worker after a non-trajectory reply`, async () => {
+    use_fake_timeouts()
     const worker = make_fake_worker()
     const load_options = { index_above_bytes: 4096, atom_type_mapping: { 1: `H` as const } }
     await expect(parse_with(worker, { load_options }, `data_si`, `si.cif`)).resolves.toEqual(
@@ -475,7 +488,7 @@ describe(`parse_in_worker`, () => {
       is_base64: false,
       load_options,
     })
-    expect(worker.terminate).toHaveBeenCalledOnce()
+    await expect_stops_after_grace(worker)
   })
 
   it.each([
@@ -516,19 +529,21 @@ describe(`parse_in_worker`, () => {
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
 
-  it(`returns a live worker-backed run and terminates its worker on dispose`, async () => {
+  it(`returns a live worker-backed run and stops its worker after dispose`, async () => {
+    use_fake_timeouts()
     const worker = make_fake_worker(trajectory_response)
     const run = await open_run(worker)
     expect(run.frame_count).toBe(1)
     expect(await materialize_frame_result(run.read_frame(0))).toEqual(frame)
     expect(worker.terminate).not.toHaveBeenCalled()
     run.dispose()
-    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce())
+    await expect_stops_after_grace(worker)
   })
 
   it.each([`missing port`, `malformed summary`])(
     `rejects a trajectory with %s and releases its worker`,
     async (failure) => {
+      use_fake_timeouts()
       const worker = make_fake_worker((request) => {
         const response = trajectory_response(request)
         if (failure === `missing port`) {
@@ -542,7 +557,7 @@ describe(`parse_in_worker`, () => {
       await expect(parse_with(worker)).rejects.toThrow(
         failure === `missing port` ? /missing its run port/ : /rows/,
       )
-      expect(worker.terminate).toHaveBeenCalledOnce()
+      await expect_stops_after_grace(worker)
     },
   )
 
@@ -562,6 +577,7 @@ describe(`parse_in_worker`, () => {
   })
 
   it(`concurrent parses share one worker and each reply reaches only its caller`, async () => {
+    use_fake_timeouts()
     const worker = make_fake_worker(() => null)
     const worker_factory = vi.fn(() => worker)
     const filenames = [`a.cif`, `b.cif`, `c.cif`]
@@ -579,12 +595,47 @@ describe(`parse_in_worker`, () => {
       reply(worker, { id, result: { ...structure_result, filename } })
     }
     expect((await Promise.all(parses)).map(({ filename }) => filename)).toEqual(filenames)
-    expect(worker.terminate).toHaveBeenCalledOnce() // only once the last parse settles
+    // a parse within the grace period reuses the worker and restarts the countdown from when
+    // it settles
+    await vi.advanceTimersByTimeAsync(5000)
+    const late = parse_in_worker(`data`, `d.cif`, false, { worker_factory })
+    expect(worker_factory).toHaveBeenCalledOnce()
+    reply(worker, { id: worker.posted[3].request.id, result: structure_result })
+    await late
+    await expect_stops_after_grace(worker)
   })
 
+  // h5wasm's heap only shrinks when its worker stops, so HDF5 sources never share one
+  it.each([
+    [`by extension`, `data`, `movie.h5`],
+    [
+      `by signature`,
+      new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]).buffer,
+      `x.bin`,
+    ],
+  ])(`HDF5 detected %s parses on a dedicated worker`, async (_label, content, filename) => {
+    const workers: FakeWorker[] = []
+    const worker_factory = vi.fn(() => {
+      const worker = make_fake_worker(() => null)
+      workers.push(worker)
+      return worker
+    })
+    const shared = parse_in_worker(`data`, `a.cif`, false, { worker_factory })
+    const hdf5 = parse_in_worker(content, filename, false, { worker_factory })
+    expect(worker_factory).toHaveBeenCalledTimes(2)
+    reply(workers[1], { id: workers[1].posted[0].request.id, result: structure_result })
+    await hdf5
+    expect(workers[1].terminate).toHaveBeenCalledOnce() // at once, no grace period
+    reply(workers[0], { id: workers[0].posted[0].request.id, result: structure_result })
+    await shared
+  })
+
+  // An aborted parse can't be interrupted, so its worker is retired: new parses get a fresh
+  // worker, and the retired one stops as soon as the parses it already took have settled
   it.each([`abort`, `error`])(`one parse's %s leaves the others intact`, async (failure) => {
+    use_fake_timeouts()
     const worker = make_fake_worker(() => null)
-    const worker_factory = () => worker
+    const worker_factory = vi.fn(() => worker)
     const controller = new AbortController()
     const failing = parse_in_worker(`data`, `bad.cif`, false, {
       worker_factory,
@@ -604,7 +655,10 @@ describe(`parse_in_worker`, () => {
     expect(close_port).toHaveBeenCalledOnce()
     reply(worker, { id: healthy_request.id, result: structure_result })
     await expect(healthy).resolves.toEqual(structure_result)
-    expect(worker.terminate).toHaveBeenCalledOnce()
+    if (failure === `abort`) expect(worker.terminate).toHaveBeenCalledOnce()
+    else await expect_stops_after_grace(worker)
+    void parse_in_worker(`data`, `next.cif`, false, { worker_factory })
+    expect(worker_factory).toHaveBeenCalledTimes(2)
   })
 
   it.each([
@@ -663,6 +717,7 @@ describe(`parse_in_worker`, () => {
   it.each([false, true])(
     `handles progress before the result (callback throws: %s)`,
     async (throws) => {
+      use_fake_timeouts()
       const failure = new Error(`Progress observer failed`)
       const progress = vi.fn(() => {
         if (throws) throw failure
@@ -686,7 +741,7 @@ describe(`parse_in_worker`, () => {
         result.data.dispose()
       }
       expect(progress).toHaveBeenCalledWith({ current: 1, total: 2, stage: `read` })
-      expect(worker.terminate).toHaveBeenCalledOnce()
+      await expect_stops_after_grace(worker)
     },
   )
 })

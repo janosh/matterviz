@@ -3,6 +3,8 @@
 // MessagePort.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 // oxlint-disable eslint-plugin-unicorn/relative-url-style
+import { HDF5_EXT_REGEX } from '#lib/constants.js'
+import { has_hdf5_magic, magic_head } from '#lib/io/is-binary.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
@@ -54,29 +56,51 @@ interface ParseWorkerHost {
   pending: Map<number, PendingParse>
   runs: Set<WorkerRun>
   terminated: boolean
+  idle_timer?: ReturnType<typeof setTimeout>
 }
 
 // One host per factory, so the default factory gives one worker (one script fetch) per page.
-// HDF5 preparation replicas bypass this with dedicated hosts: a thread of their own is their point.
+// HDF5 sources and their preparation replicas get dedicated hosts: WASM memory never shrinks,
+// so h5wasm's heap is only returned by terminating its worker, and a replica's own thread is
+// its point.
 const shared_hosts = new Map<WorkerFactory, ParseWorkerHost>()
+// The shared worker outlives a gap between parses (viewers loading one after another) instead
+// of being refetched and recompiled for each, like the HDF5 replica pool below
+const SHARED_IDLE_MS = 10_000
+
+// Stop routing new parses to this worker; it still serves its runs until they end
+const retire_host = (host: ParseWorkerHost): void => {
+  if (shared_hosts.get(host.factory) === host) shared_hosts.delete(host.factory)
+}
 
 const terminate_host = (host: ParseWorkerHost): void => {
   if (host.terminated) return
   host.terminated = true
-  if (shared_hosts.get(host.factory) === host) shared_hosts.delete(host.factory)
+  clearTimeout(host.idle_timer)
+  retire_host(host)
   host.worker.terminate()
 }
 
-// Terminate once no parse is in flight and no run is served: only termination returns the
-// worker's WASM heap (h5wasm) and parser state, which the former one-worker-per-parse design
-// relied on. Viewers whose parses or runs overlap in time still share the one worker.
+const is_idle = (host: ParseWorkerHost): boolean => !host.pending.size && !host.runs.size
+
+// A dedicated or retired worker stops as soon as nothing uses it; the shared one after a grace
+// period, re-checked when it ends
 const release_if_idle = (host: ParseWorkerHost): void => {
-  if (!host.pending.size && !host.runs.size) terminate_host(host)
+  if (!is_idle(host)) return
+  if (shared_hosts.get(host.factory) !== host) return terminate_host(host)
+  host.idle_timer ??= setTimeout(() => {
+    host.idle_timer = undefined
+    if (is_idle(host)) terminate_host(host)
+  }, SHARED_IDLE_MS)
 }
 
 const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost => {
   const existing = dedicated ? undefined : shared_hosts.get(factory)
-  if (existing) return existing
+  if (existing) {
+    clearTimeout(existing.idle_timer)
+    existing.idle_timer = undefined
+    return existing
+  }
   const host: ParseWorkerHost = {
     worker: factory(),
     factory,
@@ -84,8 +108,8 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     runs: new Set(),
     terminated: false,
   }
-  // A crashed worker takes every parse and run it holds down with it. Unregister it first so
-  // a parse started from a rejection handler spawns a fresh worker.
+  // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
+  // parse started synchronously from a disposed run's release spawns a fresh worker.
   const crash = (describe: (filename: string) => string): void => {
     terminate_host(host)
     for (const { filename, fail } of host.pending.values()) fail(new Error(describe(filename)))
@@ -110,8 +134,9 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
   return host
 }
 
-// Cancelling a parse settles only its own promise and drops its late reply; the worker is
-// terminated (stopping the parse) only if nothing else is using it.
+// Cancelling a parse settles only its own promise and drops its late reply. The worker can't
+// interrupt the parse, so it is retired: new parses go to a fresh worker, and this one stops
+// (ending the parse) as soon as no run it serves is left.
 const parse_file_worker = async (
   content: TrajectorySource,
   filename: string,
@@ -155,7 +180,10 @@ const parse_file_worker = async (
       if (outcome instanceof Error) reject(outcome)
       else resolve(outcome)
     }
-    const abort = (): void => settle(to_error(signal?.reason ?? parse_abort_error()))
+    const abort = (): void => {
+      retire_host(host)
+      settle(to_error(signal?.reason ?? parse_abort_error()))
+    }
     const receive = (response: ParseWorkerResponse): void => {
       const { result, error, progress, run_port, hdf5_group_paths } = response
       if (progress) {
@@ -229,11 +257,14 @@ export const parse_in_worker = async (
     return result
   }
   let dispose_pool: (() => void) | undefined
+  const is_hdf5 =
+    HDF5_EXT_REGEX.test(filename) ||
+    (content instanceof ArrayBuffer && has_hdf5_magic(magic_head(content)))
   const result = await parse_file_worker(
     content,
     filename,
     is_base64,
-    { ...options, load_options },
+    { ...options, load_options, dedicated: is_hdf5 },
     () => dispose_pool?.(),
   )
   if (
