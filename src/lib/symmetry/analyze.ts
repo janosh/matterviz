@@ -74,10 +74,17 @@ export function set_symmetry_backend(backend: SymmetryBackend | null): void {
 // forgotten so the next call can retry (e.g. after a transient fetch error).
 let init_promise: Promise<unknown> | null = null
 let wasm_ready = false
+// Where hosts serving the WASM elsewhere (the VS Code webview) keep it. Registering it fetches
+// nothing: the first analysis does, and a retry after a failed fetch reuses it.
+let registered_source: InitInput | undefined
+export const set_moyo_wasm_source = (source: InitInput): void => {
+  registered_source = source
+}
 export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
   if (symmetry_backend) return Promise.resolve()
   // wasm-bindgen resolves the default .wasm relative to its glue module
-  init_promise ??= init(source === undefined ? undefined : { module_or_path: source })
+  const module_or_path = source ?? registered_source
+  init_promise ??= init(module_or_path === undefined ? undefined : { module_or_path })
     .then(() => {
       wasm_ready = true
     })

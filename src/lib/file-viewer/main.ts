@@ -12,7 +12,7 @@ import {
 import type { DefaultSettings } from '#lib/settings.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { DownloadData } from '#lib/io/fetch.js'
-import { ensure_moyo_wasm_ready } from '#lib/symmetry/index.js'
+import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
 import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
@@ -586,9 +586,9 @@ async function initialize(gen: number): Promise<MatterVizApp | null> {
     throw new Error(`No data provided to MatterViz app`)
   }
 
-  // Initialize WASM early with URL from extension (for symmetry analysis)
-  if (moyo_wasm_url) await ensure_moyo_wasm_ready(moyo_wasm_url)
-  if (!is_current(gen)) return null
+  // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
+  // the first render doesn't wait for it
+  if (moyo_wasm_url) set_moyo_wasm_source(moyo_wasm_url)
 
   setup_vscode_download()
   if (theme) apply_theme_to_dom(theme)
