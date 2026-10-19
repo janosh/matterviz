@@ -168,6 +168,7 @@
   <Structure
     source="/structures/{source_filename}"
     bind:this={top_viewer}
+    analyze_symmetry
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
     bind:structure={top_ex_structure}
@@ -209,6 +210,7 @@
             source="/structures/{source_filename}"
             show_controls
             bind:this={layout_viewers[idx]}
+            analyze_symmetry
             bind:symmetry_settings={layout_sym_settings[idx]}
             {style}
           />

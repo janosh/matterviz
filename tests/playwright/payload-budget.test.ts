@@ -27,7 +27,7 @@ const demo_routes = globSync(`**/+page.{svelte,md}`, {
   .filter((route) => !/^\/(?:test|404|\[slug\])(?:\/|$)/.test(route))
   .toSorted()
 
-// Budget = HEADROOM x MB measured after #496 dropped the shared icons chunk (production build,
+// Budget = HEADROOM x MB measured after #496 made symmetry analysis on-demand (production build,
 // Chromium, 1280x720). Routes not listed measured at most 1 MB and get BASELINE. When a
 // deliberate change outgrows its budget, re-measure (the failure prints the numbers) and update. Bytes only: request counts
 // swing with the environment (/acknowledgements made 162 requests locally, 255 in CI, mostly
@@ -36,13 +36,13 @@ const HEADROOM = 1.5
 const BASELINE = 1
 // oxfmt-ignore
 const measured: Record<string, number> = {
-  '/': 3.09,
+  '/': 2.35,
   '/acknowledgements': 1.59,
   '/convex-hull': 2.52,
   '/convex-hull/chempot-diagram': 1.53,
   '/convex-hull/synthesis-planning': 1.26,
   '/how-to/hook-up-to-external-api': 1.65,
-  '/neb': 1.93,
+  '/neb': 1.18,
   '/plot/binned-scatter': 1.17,
   '/reciprocal/bands': 1.41,
   '/reciprocal/bands-and-dos': 1.42,
@@ -52,19 +52,19 @@ const measured: Record<string, number> = {
   '/reciprocal/fermi-surface-bands': 1.24,
   '/reciprocal/ir-raman': 1.34,
   '/reciprocal/phonon-mode-explorer': 1.33,
-  '/structure': 2.02,
-  '/structure/bond-angles': 1.99,
-  '/structure/coordination': 1.99,
-  '/structure/gallery': 2.0,
-  '/structure/host-tool': 2.01,
-  '/structure/interface': 1.92,
-  '/structure/isosurface': 1.94,
-  '/structure/multi-volume': 2.42,
-  '/structure/polyhedra': 1.99,
-  '/structure/rdf': 1.99,
-  '/structure/slab': 1.92,
+  '/structure': 1.28,
+  '/structure/bond-angles': 1.24,
+  '/structure/coordination': 1.24,
+  '/structure/gallery': 1.26,
+  '/structure/host-tool': 1.27,
+  '/structure/interface': 1.17,
+  '/structure/isosurface': 1.19,
+  '/structure/multi-volume': 1.67,
+  '/structure/polyhedra': 1.24,
+  '/structure/rdf': 1.25,
+  '/structure/slab': 1.17,
   '/structure/symmetry': 1.99,
-  '/structure/vectors': 1.92,
+  '/structure/vectors': 1.17,
   '/structure/xrd': 2.02,
   '/trajectory': 2.65,
   '/trajectory/render': 1.26,

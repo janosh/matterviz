@@ -338,7 +338,7 @@ test.each([`edit`, `bake`, `load`] as const)(
       cell_type: `original`,
     })
     const analysis = mount_structure(
-      bind_props({ measure_mode: `edit-atoms` as const }, state),
+      bind_props({ measure_mode: `edit-atoms` as const, analyze_symmetry: true }, state),
     )
     if (change === `bake`) await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
     await tick()
@@ -1072,6 +1072,7 @@ test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const
     const own_stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`Cu`])
     const props = $state<ComponentProps<typeof Structure>>({
       structure: prim_fcc_cu,
+      analyze_symmetry: true,
       cell_type: `original`,
       supercell_scaling: `1x1x1`,
       ...(shown === `a trajectory stream` ? { trajectory_position_stream: own_stream } : {}),
@@ -1581,7 +1582,7 @@ describe(`Structure`, () => {
       new Error(`WASM unavailable`),
     )
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    mount_structure({ structure })
+    mount_structure({ structure, analyze_symmetry: true })
     await vi.waitFor(() =>
       expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
     )
@@ -1604,7 +1605,10 @@ describe(`Structure`, () => {
         .spyOn(symmetry, `analyze_structure_symmetry`)
         .mockReturnValue(pending.promise)
       const error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const props = $state<ComponentProps<typeof Structure>>({ structure })
+      const props = $state<ComponentProps<typeof Structure>>({
+        structure,
+        analyze_symmetry: true,
+      })
       const analysis = mount_structure(props)
       await vi.waitFor(() => expect(analyze).toHaveBeenCalled())
       if (transition === `disabled`) props.analyze_symmetry = false
@@ -1621,15 +1625,45 @@ describe(`Structure`, () => {
     },
   )
 
-  test(`skips symmetry analysis when disabled`, async () => {
+  // The ~0.75 MB WASM loads only once the viewer is touched or the display needs symmetry,
+  // and a demand sticks: closing the pane or going back to the original cell keeps the data
+  const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
+  test.each<[string, Partial<ComponentProps<typeof Structure>>, string | null, boolean]>([
+    [`disabled, even when touched`, { analyze_symmetry: false }, `pointerenter`, false],
+    [`on demand, untouched`, {}, null, false],
+    [`on demand, on pointer`, {}, `pointerenter`, true],
+    [`on demand, on focus`, {}, `focusin`, true],
+    [`on demand, for a conventional cell`, { cell_type: `conventional` }, null, true],
+    [`on demand, for Wyckoff coloring`, { atom_color_config: wyckoff_colors }, null, true],
+    [`on demand, for an open pane`, { active_pane: `info` }, null, true],
+  ])(`symmetry analysis %s`, async (_label, props, event, expected) => {
     vi.stubEnv(`VITEST`, ``)
-    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
-    const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
-    mount_structure({ structure, analyze_symmetry: false })
+    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+    // never lands: only whether (and how often) analysis starts matters here
+    const analyze_spy = vi
+      .spyOn(symmetry, `analyze_structure_symmetry`)
+      .mockReturnValue(Promise.withResolvers<never>().promise)
+    const state = $state<ComponentProps<typeof Structure>>({ structure, ...props })
+    mount_structure(state)
+    flushSync()
+    if (event) doc_query(`.structure`).dispatchEvent(new Event(event, { bubbles: true }))
     flushSync()
     await tick()
-    expect(ready_spy).not.toHaveBeenCalled()
-    expect(analyze_spy).not.toHaveBeenCalled()
+    expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+    expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+    if (!expected) return
+    // the demand outlives what raised it: dropping and re-raising the need neither clears the
+    // data (which would re-analyze on the way back) nor analyzes again
+    Object.assign(state, {
+      active_pane: null,
+      cell_type: `original`,
+      atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
+    })
+    flushSync()
+    Object.assign(state, props)
+    flushSync()
+    await tick()
+    expect(analyze_spy).toHaveBeenCalledTimes(1)
     expect(document.querySelector(`.symmetry-error`)).toBeNull()
   })
 
@@ -2085,7 +2119,10 @@ describe(`Structure`, () => {
     const state = $state<{ cell_type: symmetry.CellType }>({ cell_type: `original` })
     // no image atoms so site_indices are exactly the cell's own sites
     const analysis = mount_structure(
-      bind_props({ structure: prim_fcc_cu, show_image_atoms: false }, state),
+      bind_props(
+        { structure: prim_fcc_cu, show_image_atoms: false, analyze_symmetry: true },
+        state,
+      ),
     )
     flushSync()
     expect(analysis.wyckoff_positions).toEqual([])
@@ -2123,6 +2160,7 @@ describe(`Structure`, () => {
       const thermal = overlay === `thermal`
       const props = $state<ComponentProps<typeof Structure>>({
         structure: prim_fcc_cu,
+        analyze_symmetry: true,
         ...(thermal && {
           atom_color_field: field,
           volume_color_field: field,

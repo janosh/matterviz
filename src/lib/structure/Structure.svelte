@@ -200,7 +200,7 @@
     defer_expensive_geometry = false,
 
     enable_info_pane = true,
-    analyze_symmetry = true,
+    analyze_symmetry = `on-demand`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     performance_mode = `quality`,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
@@ -299,8 +299,11 @@
     trajectory_line_end_frame?: number
     defer_expensive_geometry?: boolean
     enable_info_pane?: boolean
-    // Off for rapidly changing structures whose consumers do not read symmetry data
-    analyze_symmetry?: boolean
+    // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
+    // (pointer, focus, an open pane) or the display needs it (a conventional/primitive cell,
+    // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
+    // `analysis.wyckoff_positions`; `false` never, for rapidly changing structures.
+    analyze_symmetry?: boolean | `on-demand`
     png_dpi?: number
     // 'speed' caps sphere tessellation for large structures
     performance_mode?: `quality` | `speed`
@@ -792,12 +795,24 @@
     warned_structure === structure ? parse_warnings_notice(parse_warnings) : undefined,
   )
   let last_symmetry_structure: AnyStructure | null = null
+  // Sticky once set (first pointer or focus, or any need below), so the analysis outlives the
+  // hover, pane or cell switch that asked for it
+  let symmetry_demanded = $state(false)
+  let symmetry_wanted = $derived(
+    analyze_symmetry === true ||
+      (analyze_symmetry === `on-demand` &&
+        (symmetry_demanded ||
+          active_pane !== null ||
+          cell_type !== `original` ||
+          atom_color_config.mode === `wyckoff`)),
+  )
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
     const run_id = ++symmetry_run_id
     if (session.dragging_atoms) return
-    if (!analyze_symmetry || !structure || !(`lattice` in structure)) {
+    if (symmetry_wanted) symmetry_demanded = true
+    if (!symmetry_wanted || !structure || !(`lattice` in structure)) {
       untrack(() => {
         sym_data = null
         symmetry_error = undefined
@@ -1212,9 +1227,9 @@
     bind:this={wrapper}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    onpointerenter={() => (hovered = true)}
+    onpointerenter={() => (hovered = symmetry_demanded = true)}
     onpointerleave={() => (hovered = false)}
-    onfocusin={() => (focused = true)}
+    onfocusin={() => (focused = symmetry_demanded = true)}
     onfocusout={(event) => {
       if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
         focused = false
@@ -1238,7 +1253,7 @@
         dismissible
         class="parse-warnings"
       />
-      {#if scene_shown && analyze_symmetry && symmetry_error}
+      {#if scene_shown && symmetry_wanted && symmetry_error}
         <StatusMessage
           bind:message={symmetry_error}
           type="warning"
